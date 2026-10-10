@@ -167,6 +167,50 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 			t.Errorf("%s spec role/segment/timeout = %q/%q/%v, want %q/plan/7m", label, spec.role, spec.segment, spec.timeout, wantRole)
 		}
 	}
+
+	t.Run("Prompts composes one prompt per seat", func(t *testing.T) {
+		t.Parallel()
+		writeStencil(t, geom.StencilsDir, "seat-test-note-block", "Block note [{{.note}}].\n")
+		writeStencil(t, geom.StencilsDir, "seat-test-note", "Note [{{.note}}].\n{{template \"seat-test-note-block\"}}\n{{template \"seat-directive-chair\"}}\n")
+		noted := promptTable()
+		noted.Values["note"] = ""
+		noted.Optional = []string{"note"}
+		noted.Seats[0].Stencil = "seat-test-note"
+
+		prompts, err := Prompts(geom, noted)
+		if err != nil {
+			t.Fatalf("Prompts() = %v", err)
+		}
+		if len(prompts) != len(noted.Seats) {
+			t.Fatalf("Prompts() holds %d prompts, want one per seat (%d)", len(prompts), len(noted.Seats))
+		}
+		for _, want := range []string{"Note [].", "Block note [].", "You are the chair of this step"} {
+			if !strings.Contains(prompts[RoleChair], want) {
+				t.Errorf("chair prompt lacks %q:\n%s", want, prompts[RoleChair])
+			}
+		}
+
+		plain, err := Prompts(geom, table)
+		if err != nil {
+			t.Fatalf("Prompts(plain table) = %v", err)
+		}
+		advisorNone, err := seatValues(geom, table, table.Seats[1], names, nil)
+		if err != nil {
+			t.Fatalf("seatValues(advisor) = %v", err)
+		}
+		wantAdvisor, err := composePrompt(geom.StencilsDir, table.Seats[1], advisorNone)
+		if err != nil {
+			t.Fatalf("composePrompt(advisor) = %v", err)
+		}
+		if plain[AdvisorName(1)] != wantAdvisor {
+			t.Errorf("Prompts()[advisor-1] = %q, want composePrompt's %q", plain[AdvisorName(1)], wantAdvisor)
+		}
+
+		noted.Optional = nil
+		if _, err := Prompts(geom, noted); err == nil || !strings.Contains(err.Error(), `value "note" is empty`) {
+			t.Errorf("Prompts() with an unlisted blank value = %v, want the blank-value refusal", err)
+		}
+	})
 }
 
 func TestComposePrompt_RefusesAMarkerAbsentFromTheValueMap(t *testing.T) {
