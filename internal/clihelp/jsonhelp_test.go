@@ -43,13 +43,15 @@ func buildJSONHelpRoot() (*cobra.Command, *bool) {
 		Short: "child short",
 		RunE:  WrapRun(func(_ io.Writer, _ []string) int { return 0 }),
 	}
-	root.AddCommand(child)
+	helpChild := &cobra.Command{Use: "help", Short: "help short", RunE: child.RunE}
+	completionChild := &cobra.Command{Use: "completion", Short: "completion short", RunE: child.RunE}
+	root.AddCommand(child, helpChild, completionChild)
 
 	InstallJSONHelp(root, &jsonFlag)
 	return root, &jsonFlag
 }
 
-// TestInstallJSONHelp_RendersSchema renders the synthetic root's help once with the json flag set and asserts the output is a valid JSON document whose fields carry the command's own text, its child and its domain flag, and omit hidden flags, meta flags and cobra's built-in subcommands.
+// TestInstallJSONHelp_RendersSchema renders the synthetic root's help once with the json flag set and asserts the output is a valid JSON document whose fields carry the command's own text, its child and its domain flag, and omit hidden flags, meta flags and the completion subcommand.
 func TestInstallJSONHelp_RendersSchema(t *testing.T) {
 	t.Parallel()
 
@@ -123,12 +125,17 @@ func TestInstallJSONHelp_RendersSchema(t *testing.T) {
 		}
 	})
 
-	t.Run("omits cobra built-in subcommands", func(t *testing.T) {
+	t.Run("lists help and omits completion", func(t *testing.T) {
 		t.Parallel()
+		names := map[string]bool{}
 		for _, cmd := range result.Commands {
-			if cmd.Name == "help" || cmd.Name == "completion" {
-				t.Errorf("Commands contains cobra built-in %q; want it omitted", cmd.Name)
-			}
+			names[cmd.Name] = true
+		}
+		if !names["help"] {
+			t.Errorf("Commands does not contain \"help\"; got %v", result.Commands)
+		}
+		if names["completion"] {
+			t.Errorf("Commands contains \"completion\"; want it omitted")
 		}
 	})
 }

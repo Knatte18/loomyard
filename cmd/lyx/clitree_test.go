@@ -13,9 +13,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
-// walkCommands calls fn on cmd and every descendant, skipping cobra's help and completion subtrees.
+// walkCommands calls fn on cmd and every descendant, skipping cobra's completion subtree.
 func walkCommands(cmd *cobra.Command, fn func(*cobra.Command)) {
-	if name := cmd.Name(); name == "help" || name == "completion" {
+	if cmd.Name() == "completion" {
 		return
 	}
 	fn(cmd)
@@ -24,11 +24,11 @@ func walkCommands(cmd *cobra.Command, fn func(*cobra.Command)) {
 	}
 }
 
-// visibleChildren returns the non-hidden children of cmd, without cobra's help and completion.
+// visibleChildren returns the non-hidden children of cmd, without cobra's completion.
 func visibleChildren(cmd *cobra.Command) []*cobra.Command {
 	var out []*cobra.Command
 	for _, child := range cmd.Commands() {
-		if name := child.Name(); name == "help" || name == "completion" || child.Hidden {
+		if child.Name() == "completion" || child.Hidden {
 			continue
 		}
 		out = append(out, child)
@@ -111,10 +111,13 @@ func TestCLITree_EveryCommand(t *testing.T) {
 
 		name := strings.Join(args, " ")
 
-		t.Run(name+"/bare", func(t *testing.T) {
-			problems, out := bareProblems(args, children)
-			checkInvocation(t, args, problems, out)
-		})
+		// Bare "lyx help" prints the root's help rather than its own children.
+		if cmd.Name() != "help" {
+			t.Run(name+"/bare", func(t *testing.T) {
+				problems, out := bareProblems(args, children)
+				checkInvocation(t, args, problems, out)
+			})
+		}
 
 		t.Run(name+"/bogus", func(t *testing.T) {
 			bogus := append(append([]string{}, args...), "bogus")
