@@ -42,6 +42,9 @@ type Geometry struct {
 	WorktreeRoot string
 	// LogsDir is the shared per-hub server's runtime log directory.
 	LogsDir string
+	// DiscoverSignalPath is the hub-level file a cold session boot touches to wake the watchdog daemon's discovery loop.
+	// It is empty in standalone mode, where nothing is touched.
+	DiscoverSignalPath string
 	// WorktreeName names the worktree in the strand-name refusals.
 	WorktreeName string
 	// HubPath names the hub in the told-identity error messages.

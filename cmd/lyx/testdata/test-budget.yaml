@@ -71,7 +71,7 @@ internal/preflightshed: 8
 internal/proc: 12
 internal/quarrycli: 7
 internal/reedcli: 36
-internal/reedengine: 240
+internal/reedengine: 242
 internal/reedengine/render: 12
 internal/segmentcolor: 4
 internal/selfreportcli: 3

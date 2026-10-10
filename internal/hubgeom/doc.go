@@ -13,6 +13,8 @@
 // Later waves add their own siblings here rather than spawning per-engine packages or re-deriving the
 // construction inline at each call site.
 //
+// ReedGeometry tells reed the hub-level discover signal file in DiscoverSignalPath, beside LogsDir: reedengine.DiscoverSignalFileName under fabricengine.HubScratchDir.
+//
 // ReedGeometry also tells reed the hub's spawn order (spawnorder.go), as a lazy closure over the Location that does nothing until a revival is due:
 // it lists the hub's worktrees with fabricengine.List, skips prunable and unresolvable ones, and orders the prime first, then each pair by its run's start time, then pairs without one by name.
 // A pair's start time is the `started_at` stamp of its own run seed, which shedrun.WriteSeed writes once when the run is seeded; the file's modification time is never read, so a checkout, rebase or re-materialized worktree cannot move it.

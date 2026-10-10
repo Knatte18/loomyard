@@ -198,6 +198,11 @@
 // An event stats the signal file, removes it when found and arms a one-shot debounce timer; a failed apply arms a one-shot retry timer on an escalating delay, bounded by the retry cap.
 // When the watcher cannot be opened the loop logs that once and stays in poll mode for good.
 // The hub watchdog daemon runs a name-repair tick (namerepair.go) beside its resize loop: it resets a drifted pane title itself and repairs a drifted provider session name through the SessionNamer seam, which the provider package implements and cliwire fills.
+// The name-repair tick backs off: its wait starts at ten seconds, doubles through NextWakeCadence up to a minute across passes that repair nothing, and returns to ten seconds after a pass that repaired a title or a session name.
+// NextWakeCadence is the one backoff rule the daemon's loops share.
+// The discover signal is the hub-level file named DiscoverSignalFileName, at the path Geometry.DiscoverSignalPath tells.
+// A cold session boot touches it, right after the new session exists and on the boot path alone, so every path that boots a session raises it and an attach to a live session touches nothing; a failed touch is logged at Warn and never fails the boot.
+// The daemon's discovery loop wakes on it; standalone mode tells no path and touches nothing.
 // `lyx reed list` reports the hub-wide directory of names across worktrees, with each row's live state.
 //
 // # Multiplexer contract surface
