@@ -25,10 +25,13 @@ func gateCard(groups ...planparser.TargetGroup) planparser.Card {
 }
 
 func TestCardGateCommand(t *testing.T) {
-	plan := &planparser.Plan{Language: "go"}
+	t.Parallel()
+
+	plan :=&planparser.Plan{Language: "go"}
 	const lint = "lyx loom lint-comments"
 
 	t.Run("one step covers each package directory", func(t *testing.T) {
+		t.Parallel()
 		root := t.TempDir()
 		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"internal/a/a.go#", "internal/b/b.go#Run"}})
 		want := []string{"lyx gate test ./internal/a ./internal/b", lint}
@@ -38,6 +41,7 @@ func TestCardGateCommand(t *testing.T) {
 	})
 
 	t.Run("Delete-only directory drops out", func(t *testing.T) {
+		t.Parallel()
 		root := t.TempDir()
 		writeGateFile(t, root, "internal/gone/g.go")
 		card := gateCard(
@@ -51,6 +55,7 @@ func TestCardGateCommand(t *testing.T) {
 	})
 
 	t.Run("directory with no Go files runs the lint alone", func(t *testing.T) {
+		t.Parallel()
 		root := t.TempDir()
 		writeGateFile(t, root, "contracts/stencils/x.md")
 		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeProsa, Refs: []string{"contracts/stencils/x.md"}})
@@ -61,6 +66,7 @@ func TestCardGateCommand(t *testing.T) {
 	})
 
 	t.Run("directory holding a Go file on disk is kept", func(t *testing.T) {
+		t.Parallel()
 		root := t.TempDir()
 		writeGateFile(t, root, "testdata/helper.go")
 		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeProsa, Refs: []string{"testdata/notes.md"}})
@@ -71,6 +77,7 @@ func TestCardGateCommand(t *testing.T) {
 	})
 
 	t.Run("worktree root package is spelled dot", func(t *testing.T) {
+		t.Parallel()
 		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"main.go"}})
 		want := []string{"lyx gate test .", lint}
 		if got := cardGateCommand(plan, card, t.TempDir()); !slices.Equal(got, want) {
@@ -79,6 +86,7 @@ func TestCardGateCommand(t *testing.T) {
 	})
 
 	t.Run("nested module", func(t *testing.T) {
+		t.Parallel()
 		tests := []struct {
 			name  string
 			disk  []string
@@ -142,6 +150,7 @@ func TestCardGateCommand(t *testing.T) {
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
 				root := t.TempDir()
 				for _, file := range tt.disk {
 					writeGateFile(t, root, file)
@@ -171,6 +180,8 @@ func numberedGateCard(number int, groups ...planparser.TargetGroup) planparser.C
 
 //testtiming:keep pins the per-card gate bullet shape re-rooted onto the plan display, one sub-bullet per step, and the lint-only gate of a card with no Go target; the begin-batch prompt test checks one card's steps
 func TestRenderCardGates_OneBulletPerCardWithAStepSubBulletEach(t *testing.T) {
+	t.Parallel()
+
 	cards := []planparser.Card{
 		gateCard(planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"internal/a/a.go#"}}),
 		{Number: 2, Slug: "docs", SourcePath: "_lyx/plan/02-docs.md"},
