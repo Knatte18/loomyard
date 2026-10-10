@@ -39,6 +39,7 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 		events     string
 		outstand   []BackgroundTask
 		interact   bool
+		quiet      bool
 		noNotifier bool
 		notifyErr  error
 		strand     string
@@ -92,6 +93,14 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 		},
 		{
 			name: "an interactive run holds without notifying", events: "STOP:hello\n", interact: true,
+			check: func(t *testing.T, got heldRun) {
+				if len(got.notices) != 0 || got.result.Outcome != OutcomeTimeout {
+					t.Errorf("notices = %q, outcome = %q, want none and a hold to the deadline", got.notices, got.result.Outcome)
+				}
+			},
+		},
+		{
+			name: "a quiet-hold run holds to its deadline without notifying", events: "STOP:hello\n", quiet: true,
 			check: func(t *testing.T, got heldRun) {
 				if len(got.notices) != 0 || got.result.Outcome != OutcomeTimeout {
 					t.Errorf("notices = %q, outcome = %q, want none and a hold to the deadline", got.notices, got.result.Outcome)
@@ -181,7 +190,7 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 				steps = &multiStepClock{fakeClock: fc}
 				clk = steps
 			}
-			run := fx.newRun(Spec{OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}, Timeout: timeout, Interactive: tt.interact},
+			run := fx.newRun(Spec{OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}, Timeout: timeout, Interactive: tt.interact, QuietHold: tt.quiet},
 				withRunState(RunState{StrandGUID: "strand-1", StrandName: tt.strand, SessionID: "session-1"}),
 				withRunEvents(tt.events),
 				withRunClock(clk, fc.Now().Add(timeout)))

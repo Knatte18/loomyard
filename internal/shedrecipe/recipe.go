@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -105,6 +106,12 @@ type Env struct {
 	Shuttle shedadapters.Shuttle
 	// Burler is the injected shedadapters.BurlerRunner seam.
 	Burler shedadapters.BurlerRunner
+	// Seats is the injected shedadapters.SeatRunner seam, the seat engine over the caller's shuttle runner, read by the MultiLLM entry.
+	// Nil is legal when no row uses that entry.
+	Seats shedadapters.SeatRunner
+	// Models is the model registry a seat's model spec resolves against, read by the MultiLLM entry.
+	// It is run-wide, since one registry serves every row.
+	Models modelspec.Registry
 	// WebsterRun is the injected shedadapters.WebsterRunner seam.
 	WebsterRun shedadapters.WebsterRunner
 	// WebsterDeps is the already-resolved websterengine.RunDeps value passed through to

@@ -1,6 +1,6 @@
-// Package shedfake fakes the shed-layer seams: the shuttle, the burler runner, the merge shuttle and the webster run seams, plus the producer Call helpers.
+// Package shedfake fakes the shed-layer seams: the shuttle, the burler runner, the seat runner, the merge shuttle and the webster run seams, plus the producer Call helpers.
 //
-// Shuttle satisfies shedadapters.Shuttle and frictionengine.Shuttle, BurlerRunner satisfies shedadapters.BurlerRunner, and MergeShuttle satisfies mergeresolve.Shuttle, all structurally, so no consumer package is imported here and shedadapters' and landingshed's in-package tests can use the kit.
+// Shuttle satisfies shedadapters.Shuttle and frictionengine.Shuttle, BurlerRunner satisfies shedadapters.BurlerRunner, SeatRunner satisfies shedadapters.SeatRunner, and MergeShuttle satisfies mergeresolve.Shuttle, all structurally, so no consumer package is imported here and shedadapters' and landingshed's in-package tests can use the kit.
 // Every fake exposes fields and optional func overrides, and none asserts anything.
 // CallOK and RequireOutcome are the only assertions the kit makes.
 //
@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/planindex"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -235,6 +236,77 @@ func scripted[T any](entries []T, i int) T {
 		return entries[len(entries)-1]
 	}
 	return zero
+}
+
+// SeatRunner is a fake seat runner: Results[i] and Errs[i] answer the (i+1)th Run, and once either slice is exhausted its last entry repeats.
+// Probe and Resume answer their own scripted slices the same way, and an unscripted Probe answers a table with no seat live.
+// RunFn, ProbeFn and ResumeFn, when set, replace the scripted answer of their verb.
+type SeatRunner struct {
+	mu sync.Mutex
+
+	Results []seatengine.Result
+	Errs    []error
+
+	// LiveTables and ProbeErrs script Probe; ResumeResults and ResumeErrs script Resume.
+	LiveTables    []seatengine.LiveTable
+	ProbeErrs     []error
+	ResumeResults []seatengine.Result
+	ResumeErrs    []error
+
+	// RunFn, ProbeFn and ResumeFn replace the scripted answers, for a consumer that dispatches per table.
+	RunFn    func(table seatengine.Table) (seatengine.Result, error)
+	ProbeFn  func(table seatengine.Table) (seatengine.LiveTable, error)
+	ResumeFn func(table seatengine.Table, live seatengine.LiveTable) (seatengine.Result, error)
+
+	// Calls, ProbeCalls and ResumeCalls count the invocations of each verb.
+	Calls       int
+	ProbeCalls  int
+	ResumeCalls int
+	// GotTables, GotProbeTables and GotResumeTables hold every Table handed to each verb, in order, and GotLive every LiveTable handed to Resume.
+	GotTables       []seatengine.Table
+	GotProbeTables  []seatengine.Table
+	GotResumeTables []seatengine.Table
+	GotLive         []seatengine.LiveTable
+}
+
+// Run records table, then answers RunFn, else the scripted entry for this invocation.
+func (f *SeatRunner) Run(table seatengine.Table) (seatengine.Result, error) {
+	f.mu.Lock()
+	i := f.Calls
+	f.Calls++
+	f.GotTables = append(f.GotTables, table)
+	f.mu.Unlock()
+	if f.RunFn != nil {
+		return f.RunFn(table)
+	}
+	return scripted(f.Results, i), scripted(f.Errs, i)
+}
+
+// Probe counts the call, records table, then answers ProbeFn, else the scripted LiveTable and error for this invocation.
+func (f *SeatRunner) Probe(table seatengine.Table) (seatengine.LiveTable, error) {
+	f.mu.Lock()
+	i := f.ProbeCalls
+	f.ProbeCalls++
+	f.GotProbeTables = append(f.GotProbeTables, table)
+	f.mu.Unlock()
+	if f.ProbeFn != nil {
+		return f.ProbeFn(table)
+	}
+	return scripted(f.LiveTables, i), scripted(f.ProbeErrs, i)
+}
+
+// Resume counts the call, records table and live, then answers ResumeFn, else the scripted Result and error for this invocation.
+func (f *SeatRunner) Resume(table seatengine.Table, live seatengine.LiveTable) (seatengine.Result, error) {
+	f.mu.Lock()
+	i := f.ResumeCalls
+	f.ResumeCalls++
+	f.GotResumeTables = append(f.GotResumeTables, table)
+	f.GotLive = append(f.GotLive, live)
+	f.mu.Unlock()
+	if f.ResumeFn != nil {
+		return f.ResumeFn(table, live)
+	}
+	return scripted(f.ResumeResults, i), scripted(f.ResumeErrs, i)
 }
 
 // MergeShuttle is a Run-only fake shuttle: Results[i] and Errs[i] answer the (i+1)th call, and a call past the scripted entries answers a zero Result and a nil error, so an unscripted MergeShuttle is a no-op.

@@ -24,11 +24,25 @@ func Fill(template []byte, values map[string]string) ([]byte, error) {
 // FillOptional renders a template like Fill, except names in optional are exempt from the
 // unfilled-marker guarantee and render as nothing if absent or empty.
 func FillOptional(template []byte, values map[string]string, optional []string) ([]byte, error) {
+	return FillWith(template, nil, values, optional)
+}
+
+// FillWith renders a template like FillOptional, together with the named included templates its bare {{template "name"}} actions pull in.
+// Each include renders from the same values as the main template, even inside a {{with}} or {{range}} body.
+// An include action carrying a pipeline of its own, an action naming a block absent from includes, and an included block that itself declares an include are refused, each naming the block;
+// includes resolve one level deep.
+// The unfilled-marker guarantee covers the top-level markers of the main template and of every included block.
+func FillWith(template []byte, includes map[string][]byte, values map[string]string, optional []string) ([]byte, error) {
 	stripped := stripLeadingComment(string(template))
 
 	t, err := tmpl.New("stencil").Option("missingkey=error").Parse(stripped)
 	if err != nil {
 		return nil, fmt.Errorf("parse template: %w", err)
+	}
+
+	attached, err := attachIncludes(t, includes)
+	if err != nil {
+		return nil, err
 	}
 
 	optionalNames := make(map[string]bool, len(optional))
@@ -39,6 +53,9 @@ func FillOptional(template []byte, values map[string]string, optional []string) 
 	offenders := unfilledTopLevelMarkers(t, values, optionalNames)
 	if t.Tree != nil {
 		offenders = append(offenders, presentButEmptyBranchMarkers(t.Tree.Root, values, optionalNames)...)
+	}
+	for _, included := range attached {
+		offenders = append(offenders, unfilledTopLevelMarkers(included, values, optionalNames)...)
 	}
 	if len(offenders) > 0 {
 		offenders = dedupSorted(offenders)
@@ -63,6 +80,113 @@ func FillOptional(template []byte, values map[string]string, optional []string) 
 		return nil, fmt.Errorf("execute template: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// attachIncludes parses every include that t's include actions name into t's template set under its name,
+// and points each bare include action at the root variable $ so the block renders from the values Execute is given.
+// It returns the attached include templates, in name order.
+func attachIncludes(t *tmpl.Template, includes map[string][]byte) ([]*tmpl.Template, error) {
+	if t.Tree == nil {
+		return nil, nil
+	}
+	actions := includeActions(t.Tree.Root)
+	rootPipe, err := rootVariablePipe()
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, action := range actions {
+		if action.Pipe != nil {
+			return nil, fmt.Errorf("stencil: include %q carries a pipeline of its own; write it as the bare {{template %q}}", action.Name, action.Name)
+		}
+		names = append(names, action.Name)
+	}
+	names = dedupSorted(names)
+
+	attached := make([]*tmpl.Template, 0, len(names))
+	for _, name := range names {
+		body, ok := includes[name]
+		if !ok {
+			return nil, fmt.Errorf("stencil: include %q has no entry in the includes", name)
+		}
+		included, err := t.New(name).Parse(stripLeadingComment(string(body)))
+		if err != nil {
+			return nil, fmt.Errorf("parse include %q: %w", name, err)
+		}
+		if included.Tree != nil && len(includeNames(included.Tree.Root)) > 0 {
+			return nil, fmt.Errorf("stencil: include %q declares an include of its own; includes resolve one level deep", name)
+		}
+		attached = append(attached, included)
+	}
+	for _, action := range actions {
+		action.Pipe = rootPipe
+	}
+	return attached, nil
+}
+
+// rootVariablePipe returns the parsed pipeline of {{$}}, which evaluates to the data a template is executed with.
+func rootVariablePipe() (*parse.PipeNode, error) {
+	t, err := tmpl.New("root").Parse("{{$}}")
+	if err != nil {
+		return nil, fmt.Errorf("parse root pipeline: %w", err)
+	}
+	return t.Tree.Root.Nodes[0].(*parse.ActionNode).Pipe, nil
+}
+
+// includeActions returns every {{template "name"}} action under root, walking {{if}}, {{with}} and {{range}} bodies and their else branches.
+func includeActions(root *parse.ListNode) []*parse.TemplateNode {
+	if root == nil {
+		return nil
+	}
+	var actions []*parse.TemplateNode
+	var walk func(list *parse.ListNode)
+	walk = func(list *parse.ListNode) {
+		if list == nil {
+			return
+		}
+		for _, node := range list.Nodes {
+			switch n := node.(type) {
+			case *parse.TemplateNode:
+				actions = append(actions, n)
+			case *parse.IfNode:
+				walk(n.List)
+				walk(n.ElseList)
+			case *parse.WithNode:
+				walk(n.List)
+				walk(n.ElseList)
+			case *parse.RangeNode:
+				walk(n.List)
+				walk(n.ElseList)
+			}
+		}
+	}
+	walk(root)
+	return actions
+}
+
+// includeNames returns the sorted, deduplicated names of the include actions under root.
+func includeNames(root *parse.ListNode) []string {
+	var names []string
+	for _, action := range includeActions(root) {
+		names = append(names, action.Name)
+	}
+	return dedupSorted(names)
+}
+
+// IncludeNames parses template and returns the sorted, deduplicated names of the {{template "name"}} actions it declares,
+// so a caller knows which blocks to read for FillWith.
+// A leading comment is stripped first, so a header spelling an include action reports none.
+func IncludeNames(template []byte) ([]string, error) {
+	stripped := stripLeadingComment(string(template))
+
+	t, err := tmpl.New("stencil").Option("missingkey=error").Parse(stripped)
+	if err != nil {
+		return nil, fmt.Errorf("parse template: %w", err)
+	}
+	if t.Tree == nil {
+		return nil, nil
+	}
+	return includeNames(t.Tree.Root), nil
 }
 
 // dedupSorted returns names deduplicated and sorted -- used to merge unfilledTopLevelMarkers' and
