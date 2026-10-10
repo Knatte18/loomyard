@@ -11,7 +11,7 @@ import (
 
 func strPtr(s string) *string { return &s }
 
-// TestRenderCompact asserts the compact listing aligns columns by display width, shows the status bracket only when a status is set, leaves no trailing gap without labels, keeps the input order and prints nothing for no input.
+// TestRenderCompact asserts the compact listing aligns columns by display width, shows the status bracket only when a status is set, shows the priority column only when an entry is high or low, leaves no trailing gap without labels, keeps the input order and prints nothing for no input.
 //
 //testtiming:keep pins the column alignment, multi-byte widths, status bracket, label gap and ordering of the compact listing, which its covering test asserts for one listing only
 func TestRenderCompact(t *testing.T) {
@@ -51,6 +51,15 @@ func TestRenderCompact(t *testing.T) {
 			name: "no labels leaves no trailing gap",
 			in:   []boardengine.BriefTask{{Kind: "note", Slug: "a", Title: "One"}},
 			want: "note  a  One\n",
+		},
+		{
+			name: "priority column only when an entry is high or low",
+			in: []boardengine.BriefTask{
+				{Kind: "task", Priority: "high", Labels: []string{"bug"}, Slug: "a", Title: "One"},
+				{Kind: "task", Labels: []string{"bug"}, Slug: "b", Title: "Two"},
+				{Kind: "note", Priority: "low", Labels: []string{"bug"}, Slug: "c", Title: "Six"},
+			},
+			want: "task  high  a  One  bug\ntask        b  Two  bug\nnote  low   c  Six  bug\n",
 		},
 		{
 			name: "input order is preserved",
