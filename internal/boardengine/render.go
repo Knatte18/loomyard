@@ -1,8 +1,10 @@
 // render.go — turns the entry list into the wiki's output files.
 //
-// Render is a pure function: entries in, a map of filename → content out (a single README.md built by renderTasksSection, plus design-*.md for any entry with a body).
-// The README reads like a roadmap: Tasks split into a Running subsection and dependency layers, Notes with one subsection per type label, then Done, each entry one numbered item showing its labels.
-// The section names and their meaning lines are declared here alone;
+// Render is a pure function: entries in, a map of filename → content out (a single README.md built by renderReadme, plus design-*.md for any entry with a body).
+// The README reads like a roadmap: Tasks split into Running, Ready, dependency layers and Independent, Notes with one subsection per type label, then Done.
+// Each subsection is one markdown table numbered from 1, whose rows show the linked slug, the bold title over the brief, and the labels that are not type labels;
+// Running adds where its run stands, and Ready and the layers add the open entries each waits on.
+// The section names, their meaning lines and the table columns are declared here alone;
 // the data holds only the kind and the labels.
 // No I/O — the caller writes the files.
 // The design files are built by renderDesigns;
@@ -89,7 +91,7 @@ func Render(tasks []Task, out Outputs) (map[string]string, error) {
 	}
 
 	result := map[string]string{
-		out.Readme: renderTasksSection(ordered, out.DesignPrefix, out.Types),
+		out.Readme: renderReadme(ordered, out.DesignPrefix, out.Types),
 	}
 
 	for name, content := range renderDesigns(tasks, out.DesignPrefix) {
@@ -104,16 +106,38 @@ type readmeSection struct {
 	meaning string
 }
 
-// The README's Tasks, Notes and Done sections and the Running subsection of Tasks, declared here alone.
+// The README's Tasks, Notes and Done sections and the Running and Ready subsections of Tasks, declared here alone.
 var (
 	tasksSection   = readmeSection{"Tasks", "Concrete and claimable; only a task can run."}
 	runningSection = readmeSection{"Running", "Held by a run; its scope is locked until the run ends."}
+	readySection   = readmeSection{"Ready", "Waits on nothing open; can start now."}
 	notesSection   = readmeSection{"Notes", "Not tasks: ideas and observations, merged into a task when one is promoted."}
 	doneSection    = readmeSection{"Done", "Finished, awaiting `lyx board prune`."}
 )
 
 // otherNotesHeading is the Notes subsection for a note whose type label is no longer configured.
 const otherNotesHeading = "Other"
+
+// emptySectionLine stands in for the table of a subsection that is always rendered and has no entry.
+const emptySectionLine = "_None._"
+
+// The README table columns: each table opens with the row number, the linked slug and the entry, and closes with its labels.
+const (
+	columnNumber = "#"
+	columnSlug   = "Slug"
+	columnTask   = "Task"
+	columnNote   = "Note"
+	columnEntry  = "Entry"
+	columnAt     = "At"
+	columnAfter  = "After"
+	columnLabels = "Labels"
+)
+
+// runningState is the run state the At cell leaves out, since the Running section already says it.
+const runningState = "running"
+
+// cellLineBreak puts the brief under the title inside one table cell.
+const cellLineBreak = "<br>"
 
 // kindName is the capitalised display name of an entry kind.
 func kindName(kind string) string {
@@ -143,12 +167,7 @@ func noteType(t Task, types []string) string {
 
 // metaLine is `slug` · [middle ·] [labels ·] [status], the design doc header's metadata line.
 func metaLine(t Task, middle ...string) string {
-	return metaLineWithSlug(t, "`"+t.Slug+"`", middle...)
-}
-
-// metaLineWithSlug is metaLine with the slug already rendered, so the README can make it a link.
-func metaLineWithSlug(t Task, slug string, middle ...string) string {
-	parts := append([]string{slug}, middle...)
+	parts := append([]string{"`" + t.Slug + "`"}, middle...)
 	if len(t.Labels) > 0 {
 		parts = append(parts, strings.Join(t.Labels, ", "))
 	}
@@ -158,8 +177,14 @@ func metaLineWithSlug(t Task, slug string, middle ...string) string {
 	return strings.Join(parts, " · ")
 }
 
-// renderTasksSection builds the README: a title, an intro, Tasks split into Running and dependency layers, Notes split by type label, then Done when any entry is done.
-func renderTasksSection(ordered []TaskWithLayer, designPrefix string, types []string) string {
+// readmeTable is one README subsection's table: its middle column headers, and the cells under them per entry.
+type readmeTable struct {
+	columns []string
+	cells   func(t Task) []string
+}
+
+// renderReadme builds the README: a title, an intro, Tasks split into Running, Ready, dependency layers and Independent, Notes split by type label, then Done when any entry is done.
+func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string) string {
 	lines := []string{
 		"# Board",
 		"",
@@ -168,53 +193,68 @@ func renderTasksSection(ordered []TaskWithLayer, designPrefix string, types []st
 		"",
 	}
 
-	dependents := openDependents(ordered)
 	finished := make(map[string]bool)
 	for _, twl := range ordered {
 		finished[twl.Slug] = isDone(twl.Task)
 	}
-	writeEntries := func(entries []TaskWithLayer) {
-		for _, twl := range entries {
-			var after []string
-			for _, dep := range twl.DependsOn {
-				if !finished[dep] {
-					after = append(after, dep)
-				}
-			}
-			var before []string
-			if !finished[twl.Slug] {
-				before = dependents[twl.Slug]
-			}
-			lines = append(lines, renderEntry(twl.Task, after, before, designPrefix)...)
+	writeTable := func(entries []TaskWithLayer, table readmeTable) {
+		header := append(append([]string{columnNumber, columnSlug}, table.columns...), columnLabels)
+		lines = append(lines, tableRow(header), tableRow(slices.Repeat([]string{"---"}, len(header))))
+		for i, twl := range entries {
+			row := append([]string{fmt.Sprint(i + 1), slugCell(twl.Task, designPrefix)}, table.cells(twl.Task)...)
+			lines = append(lines, tableRow(append(row, labelsCell(twl.Task, types))))
 		}
 		lines = append(lines, "")
 	}
+	waitTable := readmeTable{[]string{columnTask, columnAfter}, func(t Task) []string {
+		var after []string
+		for _, dep := range t.DependsOn {
+			if !finished[dep] {
+				after = append(after, dep)
+			}
+		}
+		return []string{entryCell(t), codeList(after)}
+	}}
 
 	lines = append(lines, "## "+tasksSection.name, "", tasksSection.meaning, "")
-	// A task a run holds goes under Running, split on the run lock's own predicate so README and lock agree.
-	var running, tasks []TaskWithLayer
+	var tasks []TaskWithLayer
 	for _, twl := range ordered {
-		if isDone(twl.Task) || twl.Kind != KindTask {
-			continue
-		}
-		if IsRunStatus(twl.Status) {
-			running = append(running, twl)
-		} else {
+		if !isDone(twl.Task) && twl.Kind == KindTask {
 			tasks = append(tasks, twl)
 		}
 	}
-	if len(running) > 0 {
-		lines = append(lines, "### "+runningSection.name, "", runningSection.meaning, "")
-		writeEntries(running)
+	byLayer := func(layer string) []TaskWithLayer {
+		var entries []TaskWithLayer
+		for _, twl := range tasks {
+			if twl.Layer == layer {
+				entries = append(entries, twl)
+			}
+		}
+		return entries
 	}
+	if running := byLayer(runningLayer); len(running) > 0 {
+		lines = append(lines, "### "+runningSection.name, "", runningSection.meaning, "")
+		writeTable(running, readmeTable{[]string{columnTask, columnAt}, func(t Task) []string {
+			return []string{entryCell(t), atCell(*t.Status)}
+		}})
+	}
+	lines = append(lines, "### "+readySection.name, "", readySection.meaning, "")
+	if ready := byLayer(readyLayer); len(ready) > 0 {
+		writeTable(ready, waitTable)
+	} else {
+		lines = append(lines, emptySectionLine, "")
+	}
+	// RenderOrder sorts tasks by layer, so each dependency layer and Independent is a contiguous run.
 	for start := 0; start < len(tasks); {
 		end := start
 		for end < len(tasks) && tasks[end].Layer == tasks[start].Layer {
 			end++
 		}
-		layer := layerSection(tasks[start].Layer)
-		lines = append(lines, "### "+layer.name, "", layer.meaning, "")
-		writeEntries(tasks[start:end])
+		if layer := tasks[start].Layer; layer != runningLayer && layer != readyLayer {
+			section := layerSection(layer)
+			lines = append(lines, "### "+section.name, "", section.meaning, "")
+			writeTable(tasks[start:end], waitTable)
+		}
 		start = end
 	}
 
@@ -226,6 +266,7 @@ func renderTasksSection(ordered []TaskWithLayer, designPrefix string, types []st
 			byType[typeLabel] = append(byType[typeLabel], twl)
 		}
 	}
+	noteTable := readmeTable{[]string{columnNote}, func(t Task) []string { return []string{entryCell(t)} }}
 	for _, typeLabel := range append(slices.Clone(types), "") {
 		entries := byType[typeLabel]
 		if len(entries) == 0 {
@@ -236,7 +277,7 @@ func renderTasksSection(ordered []TaskWithLayer, designPrefix string, types []st
 			heading = typeHeading(typeLabel)
 		}
 		lines = append(lines, "### "+heading, "")
-		writeEntries(entries)
+		writeTable(entries, noteTable)
 	}
 
 	var done []TaskWithLayer
@@ -247,7 +288,7 @@ func renderTasksSection(ordered []TaskWithLayer, designPrefix string, types []st
 	}
 	if len(done) > 0 {
 		lines = append(lines, "## "+doneSection.name, "", doneSection.meaning, "")
-		writeEntries(done)
+		writeTable(done, readmeTable{[]string{columnEntry}, func(t Task) []string { return []string{entryCell(t)} }})
 	}
 
 	return strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
@@ -257,7 +298,7 @@ func renderTasksSection(ordered []TaskWithLayer, designPrefix string, types []st
 func layerSection(layer string) readmeSection {
 	switch layer {
 	case "A":
-		return readmeSection{"Layer A", "Waits on nothing that is not running; next to start."}
+		return readmeSection{"Layer A", "Waits only on Running or Ready entries."}
 	case isolatedLayer:
 		return readmeSection{"Independent", "Depends on nothing and nothing depends on it, by design."}
 	default:
@@ -265,40 +306,51 @@ func layerSection(layer string) readmeSection {
 	}
 }
 
-// openDependents maps each slug to the slugs of the open entries that depend on it, in README order.
-func openDependents(ordered []TaskWithLayer) map[string][]string {
-	dependents := make(map[string][]string)
-	for _, twl := range ordered {
-		if isDone(twl.Task) {
-			continue
-		}
-		for _, dep := range twl.DependsOn {
-			dependents[dep] = append(dependents[dep], twl.Slug)
-		}
-	}
-	return dependents
+// tableRow joins cells into one markdown table row.
+func tableRow(cells []string) string {
+	return "| " + strings.Join(cells, " | ") + " |"
 }
 
-// renderEntry builds the lines of one numbered README item, whose title line links the slug to its design doc when the entry has a body.
-// after and before name the open entries it waits on and that wait on it, so a finished dependency drops out of both.
-func renderEntry(t Task, after, before []string, designPrefix string) []string {
-	slug := "`" + t.Slug + "`"
-	if t.Body != "" {
-		slug = fmt.Sprintf("[`%s`](%s%s.md)", t.Slug, designPrefix, t.Slug)
-	}
-	lines := []string{fmt.Sprintf("1. **%s** — %s", t.Title, metaLineWithSlug(t, slug))}
+// cellText makes s safe inside one table cell: a pipe is escaped, and a line break becomes a space so the row stays on one line.
+func cellText(s string) string {
+	s = strings.ReplaceAll(s, "|", `\|`)
+	return strings.Join(strings.Fields(strings.ReplaceAll(s, "\r\n", "\n")), " ")
+}
 
-	// Each detail is its own sub-item: markdown joins plain continuation lines into one paragraph.
+// slugCell is the slug as a code span, linked to its design doc when the entry has a body.
+func slugCell(t Task, designPrefix string) string {
+	if t.Body != "" {
+		return fmt.Sprintf("[`%s`](%s%s.md)", t.Slug, designPrefix, t.Slug)
+	}
+	return "`" + t.Slug + "`"
+}
+
+// entryCell is the bold title, with the brief under it when there is one.
+func entryCell(t Task) string {
+	cell := "**" + cellText(t.Title) + "**"
 	if t.Brief != "" {
-		lines = append(lines, "   - "+t.Brief)
+		cell += cellLineBreak + cellText(t.Brief)
 	}
-	if len(after) > 0 {
-		lines = append(lines, "   - **After:** "+codeList(after))
+	return cell
+}
+
+// atCell is where a run stands: the producer alone while it is running, else the whole run status.
+func atCell(status string) string {
+	if state, producer, _ := strings.Cut(status, runStatusSeparator); state == runningState {
+		return cellText(producer)
 	}
-	if len(before) > 0 {
-		lines = append(lines, "   - **Before:** "+codeList(before))
+	return cellText(status)
+}
+
+// labelsCell lists the labels of t that are not type labels; the section shows a note's type.
+func labelsCell(t Task, types []string) string {
+	var labels []string
+	for _, label := range t.Labels {
+		if !slices.Contains(types, label) {
+			labels = append(labels, label)
+		}
 	}
-	return lines
+	return cellText(strings.Join(labels, ", "))
 }
 
 // codeList joins slugs as comma-separated code spans.

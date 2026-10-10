@@ -36,10 +36,15 @@
 //
 // # README
 //
-// Every write renders README.md, with a Tasks section split into dependency layers, a Notes section grouped by type label in the order of the types list with the remainder under Other, and a Done section.
-// A task a run holds, by IsRunStatus as the run lock decides it, goes under a Running subsection written before the layers and in no layer; the subsection is omitted when no task runs.
-// A dependency on a running task adds no layer depth, as one on a done task does not, so Layer A holds the tasks next to start once the running ones are set aside.
-// Each entry line carries its labels and status, and the After and Before lists come from depends_on.
+// Every write renders README.md, with a Tasks section, a Notes section grouped by type label in the order of the types list with the remainder under Other, and a Done section.
+// Tasks splits into Running, Ready, the dependency layers A, B and on, and Independent for an isolated task.
+// A task a run holds, by IsRunStatus as the run lock decides it, goes under Running and in no layer; Running is omitted when no task runs.
+// Ready holds the open tasks with no open dependency, and is always written, as `_None._` when empty.
+// A dependency on a done task does not count, and one on a running task does, so a task waiting on a run is not Ready.
+// Layer A holds the tasks that wait only on Running or Ready entries, Layer B those that wait on something in Layer A, and so on; ComputeLayers names each task's subsection, and the same name is the layer field of `lyx board list`.
+// Each subsection is one markdown table numbered from 1: the slug linked to its design doc when the entry has a body, the bold title with the brief under it, and the labels that are not type labels.
+// Running adds an At column, the run status without the state when the state is `running`, and Ready and the layers add an After column, the open entries named in depends_on.
+// A pipe in a cell is escaped and a line break becomes a space, so an entry is always one row.
 //
 // # Intake
 //
