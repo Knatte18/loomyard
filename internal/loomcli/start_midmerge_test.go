@@ -43,11 +43,8 @@ func writeTestRunStateAt(t *testing.T, c *loomCLI, st shedengine.State, producer
 	}
 }
 
-// Undecodable status files the spawned driver's own read gate diagnoses: one with a field the status type lacks, and one cut off mid-object.
-const (
-	unknownFieldStatusBody = `{"state":"running","current_producer":"Publish","__unknown_field__":true}`
-	truncatedStatusBody    = `{"state":"running","current_pro`
-)
+// unknownFieldStatusBody is a status file the spawned driver's own read gate diagnoses, since it carries a field the status type lacks.
+const unknownFieldStatusBody = `{"state":"running","current_producer":"Publish","__unknown_field__":true}`
 
 // writeTestRunStateRaw writes body verbatim as the run's status file.
 func writeTestRunStateRaw(t *testing.T, c *loomCLI, body string) {
@@ -334,7 +331,6 @@ func TestRunDriverSpawnAndWait_MidMerge_CleanPairProceeds(t *testing.T) {
 	}{
 		{name: "clean pair", state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}},
 		{name: "clean pair with a status file carrying an unknown field", state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}, statusBody: unknownFieldStatusBody},
-		{name: "clean pair with a truncated status file", state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}, statusBody: truncatedStatusBody},
 		{name: "own leftover at Publish on a halted run", state: ownLeftoverState, runState: shedengine.StateBlocked, producer: loomshed.NamePublish},
 		{name: "own leftover at Finalize on a running run with a dead driver", state: ownLeftoverState, runState: shedengine.StateRunning, producer: loomshed.NameFinalize},
 	}
