@@ -58,6 +58,10 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 
 		wantChanges       []string
 		wantDisagreements int
+		// promptOffset is the run's persisted prompt offset, also where it starts reading;
+		// wantLog are substrings the shadowed drive must log, and a nonzero promptOffset makes the two drives' notices differ, since only the parser's engine skips a turn end before the prompt's turn start.
+		promptOffset int64
+		wantLog      []string
 	}{
 		{
 			name:   "a turn start, a waiting turn end, a held turn end and done log one line each with the loop's classification",
@@ -113,6 +117,21 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 			wantChanges: []string{"idle-done/done waiting"},
 		},
 		{
+			name:   "a turn end before the prompt's turn start is skipped with a Warn while the loop reads running, and the next turn end reads held",
+			events: skillLoadEvents, liveness: LivenessAlive, timeout: time.Hour, promptOffset: skillLoadOffset,
+			script: func(appendLine func(string), touchOutput func(), _ func(), _ func(string)) []func() {
+				return []func(){
+					func() { appendLine("STOP:stray") },
+					func() { appendLine("START") },
+					func() { appendLine("STOP:what now?") },
+					func() { touchOutput(); appendLine("STOP:finished") },
+				}
+			},
+			wantChanges:       []string{"unknown/no-signal running", "idle-stalled/no-output running", "busy/turn running", "idle-stalled/no-output held", "idle-done/done done"},
+			wantDisagreements: 2,
+			wantLog:           []string{"turn end before the prompt's turn start; not held"},
+		},
+		{
 			name:   "done beside busy on background work is expected",
 			events: "WAIT:background work\n", outstanding: shadowPayloadShell, liveness: LivenessAlive, outputsAtStart: true, timeout: time.Hour,
 			wantChanges: []string{"busy/background done"},
@@ -146,8 +165,9 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 					gate = tt.gate()
 				}
 				run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: tt.timeout},
-					withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1"}),
+					withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", PromptOffset: tt.promptOffset}),
 					withRunEvents(tt.events),
+					withRunOffset(tt.promptOffset),
 					withRunClock(clk, fc.Now().Add(tt.timeout)),
 					withRunGate(gate))
 				if steps != nil {
@@ -196,7 +216,12 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 			if !reflect.DeepEqual(shadowed.result, plain.result) {
 				t.Errorf("result with the parser = %+v, without = %+v", shadowed.result, plain.result)
 			}
-			if !reflect.DeepEqual(shadowed.notices, plain.notices) {
+			for _, want := range tt.wantLog {
+				if !strings.Contains(shadowed.log, want) {
+					t.Errorf("shadowed log lacks %q in %q", want, shadowed.log)
+				}
+			}
+			if tt.promptOffset == 0 && !reflect.DeepEqual(shadowed.notices, plain.notices) {
 				t.Errorf("notices with the parser = %q, without = %q", shadowed.notices, plain.notices)
 			}
 		})

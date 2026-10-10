@@ -50,6 +50,13 @@
 // A turn end without every output file never ends a run: Wait holds it, logs it at Info and keeps polling the same agent,
 // whether the turn end is a Stop or a live ask.
 // A run ends only as done (every output file present at a turn end, or at the deadline or a pane's death), died, timeout or a mechanism failure.
+// A turn end that precedes the start prompt's own turn start is not a task turn end:
+// Wait logs it at Warn as `turn end before the prompt's turn start; not held` and neither holds nor notifies it.
+// The hold guard arms when the events file holds a turn start before `promptOffset`, which proves the provider writes turn starts for typed turns.
+// It lifts at the first turn start read from the prompt offset on, or at once for a Wait attached past it.
+// An engine without SessionSignalParser, a zero `promptOffset`, a file with no turn start before it and an unreadable file leave the guard off, so every turn end is held as before.
+// Bound: the guard skips only turn ends before the first post-prompt turn start,
+// and a provider that writes a turn start for the load turns and none for the prompt turn skips every turn end of the run, each with a Warn, and waits out the deadline with no hold notice.
 // A hold never extends the run's deadline: it is bounded by the caller's own Spec.Timeout (run_timeout_min only where that is zero, so the bound differs per caller),
 // each Attach starts a fresh deadline, and the liveness check still classifies a dead pane.
 // RunState.Outcome records whether a run ever ended, seeded "running" and overwritten on every terminal
@@ -190,8 +197,8 @@
 // otherwise, for an engine with both the idle reading and the optional InputBoxClearer capability, a box that shows this send's own text, or the provider's collapsed paste placeholder, is cleared and read again;
 // a box holding anything else gets no key, and a box the clear did not empty is named in the error.
 // An engine without the capability keeps the appearance-only check.
-// The run's events offset ends past every load turn end, the retry's included,
-// so Wait never reads one as a held turn end.
+// The run's events offset is the events file's size at the moment before the prompt is sent.
+// That lies past every load turn end, the retry's included, and past any line appended after them.
 // run.json records that offset as `promptOffset` before the prompt goes out,
 // and every reader that replays the events file without Waiting on the Run starts there: Attach, and webster's recovery classification through its batch record.
 // A pane that dies meanwhile is a died startup.

@@ -299,6 +299,11 @@ type Run struct {
 	wait waitState
 	// eventsRead is true when the latest pollEventsTick parsed at least one event, which ends a held wait.
 	eventsRead bool
+	// holdGuard is true while a turn end read is not yet a task turn end: the load turns' own turn starts were seen and the prompt's has not been read.
+	// promptTurnStarted is true once a turn start at or past the prompt offset has been read.
+	// Both live in memory for one Wait.
+	holdGuard         bool
+	promptTurnStarted bool
 	// shadow is the session-state logging Wait keeps beside its classification, display only.
 	shadow sessionShadow
 
