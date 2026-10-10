@@ -399,6 +399,31 @@ func TestLoadConfig_Refuses(t *testing.T) {
 			t.Errorf("LoadConfig() error = %v; want a refusal that names no entry", err)
 		}
 	})
+
+	t.Run("a malformed models.yaml refuses advisors and is never read for none", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeLoomConfigWithKey(t, dir, "discussion_advisors", `["sonnet[high]"]`)
+		modelsPath := filepath.Join(dir, "_lyx", "config", "models.yaml")
+		if err := os.WriteFile(modelsPath, []byte("sonnet: [unclosed\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", modelsPath, err)
+		}
+
+		_, err := LoadConfig(dir, "loom")
+		if err == nil {
+			t.Fatal("LoadConfig() error = nil; want the models.yaml refusal for discussion_advisors")
+		}
+		for _, want := range []string{"discussion_advisors", "fix models.yaml, or set the key to an empty list for no advisors"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+			}
+		}
+
+		writeLoomConfigWithKey(t, dir, "discussion_advisors", "[]")
+		if _, err := LoadConfig(dir, "loom"); err != nil {
+			t.Errorf("LoadConfig() with no advisors and a malformed models.yaml = %v; want nil", err)
+		}
+	})
 }
 
 // TestLoadConfig_NotInitialized verifies uninitialized baseDir yields recovery hint.
