@@ -1893,10 +1893,12 @@ func TestRun_DoneOutcome(t *testing.T) {
 	}
 }
 
-// expiredShellRun drives fx's Run to a shuttle-done end whose Master result lists labels as expired shells, with Master's last action writing outcomeYAML.
-func expiredShellRun(t *testing.T, fx *runFixture, labels []string, outcomeYAML string) websterengine.RunResult {
+// endedSleepShell is the background shell the run-end rows leave outstanding for a minute and a half.
+var endedSleepShell = shuttleengine.EndedShell{Label: "sleep 9999", ID: "sh-1", Signal: shuttleengine.SignalTranscript, Outstanding: 90 * time.Second}
+
+// expiredShellRun drives fx's Run to a shuttle-done end whose Master result lists shells as ended shells, with Master's last action writing outcomeYAML.
+func expiredShellRun(t *testing.T, fx *runFixture, shells []shuttleengine.EndedShell, outcomeYAML string) websterengine.RunResult {
 	t.Helper()
-	fx.Deps.ShuttleCfg.BackgroundShellWaitMin = 15
 	seedMatchingState(t, fx, &websterengine.State{
 		Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
@@ -1905,11 +1907,11 @@ func expiredShellRun(t *testing.T, fx *runFixture, labels []string, outcomeYAML 
 	fx.Starter.handle = &runFakeHandle{
 		strandGUID: "master-strand-shells",
 		result: shuttleengine.Result{
-			Outcome:       shuttleengine.OutcomeDone,
-			SessionID:     "master-session-shells",
-			RunDir:        "/run/dir/shells",
-			ForkAudit:     &shuttleengine.ForkAudit{Forks: forkReports(1)},
-			ExpiredShells: labels,
+			Outcome:     shuttleengine.OutcomeDone,
+			SessionID:   "master-session-shells",
+			RunDir:      "/run/dir/shells",
+			ForkAudit:   &shuttleengine.ForkAudit{Forks: forkReports(1)},
+			EndedShells: shells,
 		},
 		onWait: func() {
 			writeContractFiles(t, fx, outcomeYAML, "# Shipped\n\nAll good.\n")
@@ -1924,14 +1926,14 @@ func expiredShellRun(t *testing.T, fx *runFixture, labels []string, outcomeYAML 
 	return result
 }
 
-// The parts of the sentence the friction note and the warning share for the shell `sleep 9999` under a 15-minute bound.
+// The parts of the sentence the friction note and the warning share for `endedSleepShell`.
 const (
-	shellSentenceHead    = "background shell `sleep 9999` was still running when the wait counted Master's turn end, which comes after `background_shell_wait_min` (15 minutes) for a shell only the transcript reports and at once for one the Stop payload reports when Master's output files exist: the wait stopped waiting on the shell at a turn end, which finished the run when Master's output files existed and otherwise held it for the parent, and lyx did not stop the shell; "
-	shellStrandRemoved   = "shuttle removes Master's strand when the run finishes, which ends the session and the shell with it; "
-	shellStrandReclaimed = "Master's strand stays alive until the next `lyx webster run` reclaims it at entry, which ends the session and the shell with it; "
+	shellSentenceHead    = "background shell `sleep 9999` (reported by the transcript signal) was still running, outstanding for 1m30s, when the run ended, and lyx did not stop the shell; "
+	shellStrandRemoved   = "shuttle removes Master's strand when the run finishes, which ends the session and the shell with it where the shell is in the pane's process tree; "
+	shellStrandReclaimed = "Master's strand stays alive until the next `lyx webster run` reclaims it at entry, which ends the session and the shell with it where the shell is in the pane's process tree; "
 )
 
-// TestRun_ExpiredShells asserts a waited-out shell states the run's outcome in its friction note and, on every outcome that returns a RunResult, in its warning; that only a done outcome lands in summary.md; and that an empty list adds no warning, summary section or friction note.
+// TestRun_ExpiredShells asserts an ended shell states the run's outcome in its friction note and, on every outcome that returns a RunResult, in its warning; that only a done outcome lands in summary.md; and that an empty list adds no warning, summary section or friction note.
 func TestRun_ExpiredShells(t *testing.T) {
 	t.Parallel()
 
@@ -1940,15 +1942,15 @@ func TestRun_ExpiredShells(t *testing.T) {
 		fx := newRunFixture(t, 1)
 		fx.Deps.FrictionDir = t.TempDir()
 
-		result := expiredShellRun(t, fx, []string{"sleep 9999"}, "outcome: done\nstuck_reason: null\nbatches_done: 1\n")
+		result := expiredShellRun(t, fx, []shuttleengine.EndedShell{endedSleepShell}, "outcome: done\nstuck_reason: null\nbatches_done: 1\n")
 
 		want := shellSentenceHead + shellStrandRemoved + "the run's final outcome: done"
 		if !slices.Contains(result.Warnings, want) {
 			t.Errorf("Warnings = %v; want %q", result.Warnings, want)
 		}
 		summary := readSummary(t, fx)
-		if !strings.Contains(summary, "## Background shells waited out") || !strings.Contains(summary, "- `sleep 9999`") {
-			t.Errorf("summary.md = %q; want the waited-out section naming the shell", summary)
+		if !strings.Contains(summary, "## Background shells at the run's end") || !strings.Contains(summary, "- `sleep 9999` (transcript signal, outstanding 1m30s)") {
+			t.Errorf("summary.md = %q; want the ended-shells section naming the shell with its signal and duration", summary)
 		}
 		note, err := os.ReadFile(filepath.Join(fx.Deps.FrictionDir, "webster-background-shell.md"))
 		if err != nil {
@@ -1964,7 +1966,7 @@ func TestRun_ExpiredShells(t *testing.T) {
 		fx := newRunFixture(t, 1)
 		fx.Deps.FrictionDir = t.TempDir()
 
-		result := expiredShellRun(t, fx, []string{"sleep 9999"}, "outcome: stuck\nstuck_reason: \"batch 1 red\"\nbatches_done: 0\n")
+		result := expiredShellRun(t, fx, []shuttleengine.EndedShell{endedSleepShell}, "outcome: stuck\nstuck_reason: \"batch 1 red\"\nbatches_done: 0\n")
 
 		want := shellSentenceHead + shellStrandRemoved + "the run's final outcome: stuck (batch 1 red)"
 		if !slices.Contains(result.Warnings, want) {
@@ -1977,8 +1979,8 @@ func TestRun_ExpiredShells(t *testing.T) {
 		if !strings.Contains(string(note), "- "+want+"\n") {
 			t.Errorf("friction note = %q; want the same sentence as the warning", note)
 		}
-		if summary := readSummary(t, fx); strings.Contains(summary, "Background shells waited out") {
-			t.Errorf("summary.md = %q; want no waited-out section on a stuck outcome", summary)
+		if summary := readSummary(t, fx); strings.Contains(summary, "Background shells at the run's end") {
+			t.Errorf("summary.md = %q; want no ended-shells section on a stuck outcome", summary)
 		}
 	})
 
@@ -1990,13 +1992,12 @@ func TestRun_ExpiredShells(t *testing.T) {
 		)
 		fx := newRunFixture(t, 1)
 		fx.Deps.FrictionDir = t.TempDir()
-		fx.Deps.ShuttleCfg.BackgroundShellWaitMin = 15
 		seedMatchingState(t, fx, &websterengine.State{
 			Batches: map[int]*websterengine.BatchState{1: doneBatch("batch1", session)},
 		})
 		fx.Starter.handle = &runFakeHandle{
 			strandGUID: strand,
-			result:     shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, SessionID: session, RunDir: "/run/dir/shells-died", ExpiredShells: []string{"sleep 9999"}},
+			result:     shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, SessionID: session, RunDir: "/run/dir/shells-died", EndedShells: []shuttleengine.EndedShell{endedSleepShell}},
 		}
 		seedShuttleRunState(t, fx.ShuttleRunRoot, strand, session)
 
@@ -2022,11 +2023,11 @@ func TestRun_ExpiredShells(t *testing.T) {
 
 		result := expiredShellRun(t, fx, nil, "outcome: done\nstuck_reason: null\nbatches_done: 1\n")
 
-		if warningsContain(result.Warnings, "background_shell_wait_min") {
-			t.Errorf("Warnings = %v; want no expired-shell warning", result.Warnings)
+		if warningsContain(result.Warnings, "background shell") {
+			t.Errorf("Warnings = %v; want no ended-shell warning", result.Warnings)
 		}
-		if summary := readSummary(t, fx); strings.Contains(summary, "Background shells waited out") {
-			t.Errorf("summary.md = %q; want no waited-out section", summary)
+		if summary := readSummary(t, fx); strings.Contains(summary, "Background shells at the run's end") {
+			t.Errorf("summary.md = %q; want no ended-shells section", summary)
 		}
 		if _, err := os.Stat(filepath.Join(fx.Deps.FrictionDir, "webster-background-shell.md")); !os.IsNotExist(err) {
 			t.Errorf("friction note stat error = %v; want not-exist", err)

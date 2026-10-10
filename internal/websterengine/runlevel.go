@@ -760,7 +760,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// The note is best-effort and written at every return below, once the outcome is known,
 	// so a hang's evidence outlives a non-done run.
 	noteExpiredShells := func(outcome backgroundShellOutcome) {
-		if err := writeBackgroundShellFrictionNote(deps.FrictionDir, result.ExpiredShells, deps.ShuttleCfg.BackgroundShellWaitMin, outcome); err != nil {
+		if err := writeBackgroundShellFrictionNote(deps.FrictionDir, result.EndedShells, outcome); err != nil {
 			logger.Warn("websterengine: background shell friction note not written", "err", err)
 		}
 	}
@@ -831,13 +831,13 @@ func finishMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summar
 	if rebaselineWarning != "" && runResult.Outcome == outcomeStuck {
 		runResult.StuckReason = rebaselineWarning + ": " + runResult.StuckReason
 	}
-	// Each shell the wait counted a turn end past is warned on every outcome that returns a RunResult, stating the outcome after the demotion.
+	// Each shell the run ended over is warned on every outcome that returns a RunResult, stating the outcome after the demotion.
 	shellOutcome := finishedShellOutcome(runResult)
-	for _, label := range result.ExpiredShells {
-		runResult.Warnings = append(runResult.Warnings, expiredShellWarning(label, deps.ShuttleCfg.BackgroundShellWaitMin, shellOutcome))
+	for _, shell := range result.EndedShells {
+		runResult.Warnings = append(runResult.Warnings, expiredShellWarning(shell, shellOutcome))
 	}
 	if masterDone {
-		if err := AppendBackgroundShells(deps.Geom.WebsterDir, result.ExpiredShells); err != nil {
+		if err := AppendBackgroundShells(deps.Geom.WebsterDir, result.EndedShells); err != nil {
 			return RunResult{}, err
 		}
 		if err := appendRebaselineWarning(deps.Geom.WebsterDir, rebaselineWarning); err != nil {

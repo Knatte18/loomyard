@@ -205,21 +205,17 @@
 // the wait loop sends the entry's carried text once, keeps polling, and re-evaluates on poll ticks while the writer is idle.
 // The deadline and liveness checks keep running, and a deadline or liveness finalize evaluates each entry's optional Final closure in place of Gate, reporting the entry waiting.
 //
-// A turn end that leaves background work outstanding (EventWaiting) keeps the run waiting, with one bound for transcript-reported shells.
-// A shell the turn-end payload itself reported (SignalPayload) is live work and never expires: it keeps the turn waiting, never held and never notified, bounded only by the run's own Timeout and the liveness check, and lyx reaps no shell.
-// Once it has been outstanding for Config.BackgroundShellWaitMin minutes the wait logs that once at Info, which changes no decision.
-// A gated run whose output files all exist and whose outstanding tasks are all unawaited payload-reported shells finishes Done at once, through the gate, with those shells in Result.ExpiredShells;
-// an outstanding fork or awaited shell keeps even that run waiting.
-// An ungated run with every output file present finishes Done at any turn end, whatever is outstanding.
-// For any other shell, those the transcript fallback reported or a record with no signal, once every outstanding task is a background shell and each has been outstanding for Config.BackgroundShellWaitMin minutes (stamped when first seen, kept across ticks),
-// the wait loop counts the turn end as a Stop would: OutcomeDone when every output file exists, otherwise a held turn end naming the expired shells.
-// A gated run reaches its gate through the Done branch, so the expiry is an arrival.
-// A fork in the list keeps the turn waiting however long it runs, as does a shell whose label starts with one of Spec.AwaitedShellPrefixes;
-// both are bounded only by the run's own Timeout.
-// The prefixes are caller data, which Spec.validate does not inspect.
-// A shell once waited out stays expired for the rest of the run, so a later turn end listing it again ends at once.
-// Result.ExpiredShells names the waited-out shells' labels in expiry order, and each expiry is logged as a warning.
-// ShellWaitBound and ShellWaitExpires export that bound and which outstanding lists it applies to, so a reader that replays an events file without Waiting on the Run, such as webster's recovery classification, waits on the same shells for the same time.
+// A turn end that leaves background work outstanding (EventWaiting) is judged by the output files, one rule for a shell of either signal and for a fork.
+// An ungated run with every output file present finishes Done at that turn end, whatever is outstanding.
+// With an output file missing, the turn end keeps waiting on every outstanding task, never held and never notified, bounded only by the run's own Timeout and the liveness check, and lyx reaps no shell.
+// A gated run's waiting turn end with every output file present is not an arrival, because the files may predate the session's background work;
+// it finishes Done at once, through the gate, only when every outstanding task is an unawaited shell, the run was started fresh rather than attached or resumed, and no gated arrival of the run has reached the gate yet.
+// A fork or a shell whose label starts with one of Spec.AwaitedShellPrefixes holds the turn end in every other case;
+// the prefixes are caller data, which Spec.validate does not inspect.
+// Config.BackgroundShellWaitMin is a display and logging threshold, not an expiry: a shell outstanding that long is logged once at Warn and shown in the wait marker.
+// Result.EndedShells records each shell outstanding when the run ends, whatever ends it, with its label, id, signal and how long it was outstanding, and finalize logs the record at Info.
+// lyx kills no shell, since the provider reports no pid: strand removal ends the shells it can, and a shell detached from the pane's process tree survives it.
+// ShellWaitBound exports the threshold.
 //
 // Wait shows its three Go-side waits, a gate entry's closure (`gate <entry name>`), the background-shell wait above (`background shells`) and a held turn end (`held`), in two places:
 // a WaitMarker file, `wait.yaml` in the run's own directory, carrying the label, the start time and the pid of the process running Wait,

@@ -912,7 +912,7 @@ func TestRunCmd_ErrRunBusySkipsRecordsBackstop(t *testing.T) {
 	}
 }
 
-// verbsDiedMaster is a websterengine.MasterStarter double whose Master ends died with one expired background shell.
+// verbsDiedMaster is a websterengine.MasterStarter double whose Master ends died with one background shell outstanding.
 type verbsDiedMaster struct {
 	strandGUID string
 	sessionID  string
@@ -925,7 +925,7 @@ func (m *verbsDiedMaster) StartMaster(shuttleengine.Spec, shuttleengine.GateSpec
 func (m *verbsDiedMaster) StrandGUID() string { return m.strandGUID }
 
 func (m *verbsDiedMaster) Wait() (shuttleengine.Result, error) {
-	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, SessionID: m.sessionID, ExpiredShells: []string{"sleep 9999"}}, nil
+	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, SessionID: m.sessionID, EndedShells: []shuttleengine.EndedShell{{Label: "sleep 9999", ID: "sh-1", Signal: shuttleengine.SignalTranscript, Outstanding: 90 * time.Second}}}, nil
 }
 
 var (
@@ -933,12 +933,11 @@ var (
 	_ websterengine.MasterHandle  = (*verbsDiedMaster)(nil)
 )
 
-// TestRunCmd_DiedMasterNotesExpiredShellOutcome drives `run` through its cobra command with a Master that dies after one background shell ran past the wait, and asserts the friction note on disk states the error outcome and that the next run reclaims the strand.
+// TestRunCmd_DiedMasterNotesExpiredShellOutcome drives `run` through its cobra command with a Master that dies with one background shell outstanding, and asserts the friction note on disk states the error outcome and that the next run reclaims the strand.
 func TestRunCmd_DiedMasterNotesExpiredShellOutcome(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	fx.CLI.frictionDir = t.TempDir()
-	fx.CLI.shuttleCfg.BackgroundShellWaitMin = 15
 	fx.CLI.cfg.VerifyGateAttempts = 3
 	master := &verbsDiedMaster{strandGUID: "master-strand-died", sessionID: "master-session-died"}
 	fx.CLI.masterStarter = master
@@ -967,7 +966,7 @@ func TestRunCmd_DiedMasterNotesExpiredShellOutcome(t *testing.T) {
 	}
 	for _, want := range []string{
 		"`sleep 9999`",
-		"`background_shell_wait_min` (15 minutes)",
+		"outstanding for 1m30s",
 		"lyx did not stop the shell",
 		"the next `lyx webster run` reclaims it at entry",
 		"the run's final outcome: error (",

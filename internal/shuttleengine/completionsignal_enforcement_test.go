@@ -182,7 +182,7 @@ var auditedNegativeVerdictReturns = map[string]int{
 // two call sites — its retry-cap guard and its tick-cap answer — carried over unchanged by the
 // shuttle-blocking-start batch when the startup step moved from its own method into Start's own
 // blocking call),
-// plus expiredTurnEnd, whose held turn end for a waited-out background shell consults the files first.
+// plus expiredTurnEnd, whose waiting turn end counts as a Done only after consulting the files, and otherwise keeps waiting.
 // The last site is stopOutcome, whose stopped answer consults the files first.
 var auditedFileContractCallSites = map[string]int{
 	"awaitStartup":                    2,

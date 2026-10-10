@@ -114,7 +114,7 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 			wantChanges: []string{"idle-done/done waiting"},
 		},
 		{
-			name:   "a held turn end after transcript-reported shells expired beside busy on background work is expected",
+			name:   "a waiting turn end on transcript-reported shells past the bound beside busy on background work is expected",
 			events: "WAIT:background work\n", outstanding: shadowTranscriptShell, liveness: LivenessAlive, timeout: time.Hour, jump: 6 * time.Minute,
 			wantChanges: []string{"busy/background waiting"},
 		},
