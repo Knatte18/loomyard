@@ -349,6 +349,7 @@ func writeVerifyLog(t *testing.T, gate *gateFixture, log string) {
 // TestPublishVerify_FailureRecord pins the Publish failure record.
 // A failed plan verify or publish_verify writes it with its kind, tests, log copy, HEAD and merge-in commit.
 // A dirty tree or a timeout writes none, and a passing Publish removes a present one before the push.
+// It stays serial (no t.Parallel): failOnGitHubClient swaps the package-level NewGitHubClient, which is process-global state.
 func TestPublishVerify_FailureRecord(t *testing.T) {
 	const planCommand, publishCommand = "go test ./...", "go test -tags tmux ./..."
 	failed := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}

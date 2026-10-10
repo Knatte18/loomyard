@@ -187,6 +187,8 @@ func TestRenderCardGates_OneBulletPerCardWithAStepSubBulletEach(t *testing.T) {
 }
 
 func TestRenderBatchGate(t *testing.T) {
+	t.Parallel()
+
 	plan := &planparser.Plan{Language: "go"}
 
 	tests := []struct {
@@ -218,6 +220,7 @@ func TestRenderBatchGate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			root := t.TempDir()
 			for _, file := range tt.disk {
 				writeGateFile(t, root, file)

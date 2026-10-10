@@ -52,6 +52,8 @@ func TestRerunCardVerifies_MissingDir(t *testing.T) {
 }
 
 func TestRerunCardVerifies_Slotted(t *testing.T) {
+	t.Parallel()
+
 	const requireCap = `case "$GOFLAGS" in *-p=6*) true;; *) exit 9;; esac`
 	tests := []struct {
 		name        string
@@ -70,6 +72,7 @@ func TestRerunCardVerifies_Slotted(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			pool := &gateslot.Pool{Dir: filepath.Join(t.TempDir(), "gate"), Limits: tc.limits, Poll: 10 * time.Millisecond}
 			waitDir := filepath.Join(t.TempDir(), "wait")
 
