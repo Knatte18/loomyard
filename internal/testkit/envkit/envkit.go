@@ -197,7 +197,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				OutputFiles: []string{filepath.Join(dir, "rework-coverage.md")},
 			}, nil
 		},
-		Rework: ReworkDeps(t, dir),
+		Rework:             ReworkDeps(t, dir),
+		DarnVerifyAttempts: 3,
 		DarnSpec: func(loomshed.DarnTold) (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
 				Prompt:      "test darn prompt",

@@ -78,27 +78,31 @@ func TestNew_ShapeMatchesRecipe(t *testing.T) {
 	}
 }
 
-// TestRecipe_StructuralCheckHasNoFindings parses recipes.LoomRecipe through shedbuild.Parse, builds
+// TestRecipe_StructuralCheckHasNoFindings parses each embedded recipe through shedbuild.Parse, builds
 // it through shedbuild.Build against testEnv(t)'s Env, and asserts shedbuild.Check(recipe, built)
 // returns no findings.
 //
 // This goes through Parse/Build rather than through New deliberately: it needs the parsed Recipe
 // value, which New does not return, so it must not be "simplified" back onto New.
 func TestRecipe_StructuralCheckHasNoFindings(t *testing.T) {
-	env, _ := testEnv(t)
+	for name, source := range map[string][]byte{"loom": recipes.LoomRecipe, "darn": recipes.DarnRecipe} {
+		t.Run(name, func(t *testing.T) {
+			env, _ := testEnv(t)
 
-	recipe, err := shedbuild.Parse(recipes.LoomRecipe)
-	if err != nil {
-		t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
-	}
+			recipe, err := shedbuild.Parse(source)
+			if err != nil {
+				t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
+			}
 
-	built, err := shedbuild.Build(recipe, env)
-	if err != nil {
-		t.Fatalf("shedbuild.Build() error = %v; want nil", err)
-	}
+			built, err := shedbuild.Build(recipe, env)
+			if err != nil {
+				t.Fatalf("shedbuild.Build() error = %v; want nil", err)
+			}
 
-	if findings := shedbuild.Check(recipe, built); len(findings) != 0 {
-		t.Errorf("shedbuild.Check() = %v; want no findings", findings)
+			if findings := shedbuild.Check(recipe, built); len(findings) != 0 {
+				t.Errorf("shedbuild.Check() = %v; want no findings", findings)
+			}
+		})
 	}
 }
 

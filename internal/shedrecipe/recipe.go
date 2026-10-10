@@ -207,6 +207,9 @@ type Env struct {
 	// DarnSpec is the injected Spec factory the DarnWrite entry evaluates once per Call, with the token texts the producer tells that session.
 	// It arrives as a closure for the reason ReworkSpec does.
 	DarnSpec func(loomshed.DarnTold) (shuttleengine.Spec, error)
+	// DarnVerifyAttempts is the verify gate's attempt budget of the darn recipe, which `darn.yaml`'s verify_attempts supplies.
+	// internal/loomrecipe alone reads it, stamping it onto the Darn row at every build.
+	DarnVerifyAttempts int
 	// Darn is a whole-struct passthrough to loomshed.NewDarnWrite, for the reason Rework is.
 	Darn loomshed.DarnDeps
 	// PlanIndex is the code index the "plan" and "rework-plan" gates resolve plan refs against.
