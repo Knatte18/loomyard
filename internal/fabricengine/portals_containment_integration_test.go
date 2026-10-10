@@ -29,7 +29,7 @@ func TestAdd_DoesNotCreatePortalOutsideHubThroughContainerSymlink(t *testing.T) 
 	t.Parallel()
 
 	const slug = "toctou-portal"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	outside := t.TempDir()

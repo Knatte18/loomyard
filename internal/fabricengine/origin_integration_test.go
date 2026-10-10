@@ -52,7 +52,7 @@ func gitShow(t *testing.T, dir, rev, path string) string {
 func TestAdd_OriginRecord(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	t.Run("record is committed on the weft branch", func(t *testing.T) {
@@ -195,7 +195,7 @@ func TestAdd_OriginRecord(t *testing.T) {
 func TestAdd_RecordsParentBranch_SubpathAnchoredHub(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, "backend")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
 	l := h.Location
 	const slug = "subpath-parent"
 
@@ -234,7 +234,7 @@ func TestAdd_RecordsParentBranch_SubpathAnchoredHub(t *testing.T) {
 func TestAddRollback_CreatedPathLeavesNoOriginRecord(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	const slug = "created-path-no-record"
 	weftBranch := fabricengine.RecordsBranchName(slug)
@@ -270,7 +270,7 @@ func TestAddRollback_AdoptedPathPreservesOriginRecordCommit(t *testing.T) {
 	t.Parallel()
 
 	const slug = "adopted-path-keeps-record"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftBranch := fabricengine.RecordsBranchName(slug)
 
@@ -328,7 +328,7 @@ func TestAddRollback_AdoptedPathPreservesOriginRecordCommit(t *testing.T) {
 func TestAdd_AdoptedWeftKeepsItsOriginRecord(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	const slug = "moved-pair"
 	weftBranch := fabricengine.RecordsBranchName(slug)
@@ -380,7 +380,7 @@ func TestAdd_AdoptedWeftKeepsItsOriginRecord(t *testing.T) {
 func TestAdd_OriginRecordMutationEntries(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	const slug = "record-mutation-entries"
 
@@ -425,7 +425,7 @@ func TestAdd_OriginRecordMutationEntries(t *testing.T) {
 func TestAdd_SkipGitWritesRecordWithoutCommit(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	const slug = "skip-git-record-only"
 
@@ -464,7 +464,7 @@ func TestAdd_SkipGitWritesRecordWithoutCommit(t *testing.T) {
 func TestAdd_RunLauncherLifecycle(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	const slug = "run-launcher-lifecycle"
 

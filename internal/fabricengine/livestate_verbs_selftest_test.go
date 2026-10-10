@@ -46,7 +46,7 @@ func TestVerbCases_CleanState(t *testing.T) {
 					t.Parallel()
 
 					// Phase 1: build.
-					h := hubforge.NewHub(t, anchor)
+					h := hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
 
 					// Phase 2: arrange.
 					fixture := vc.Arrange(t, h)

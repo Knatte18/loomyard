@@ -51,7 +51,7 @@ func resolveCommonHooksDir(t *testing.T, repoDir string) string {
 func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	hub := h.PrimeWorktree()
 
@@ -98,7 +98,7 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 
 	const userHookContent = "#!/bin/sh\necho user\n"
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	hub := h.PrimeWorktree()
 
@@ -162,7 +162,7 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	hub := h.PrimeWorktree()
 	weftPrime := h.PrimeRecords()
@@ -224,7 +224,7 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 
 	const slug = "hook-child-test"
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	hub := h.PrimeWorktree()
 	weftPrime := h.PrimeRecords()
@@ -285,7 +285,7 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 func TestInstallPostCheckoutHook_ChainedWrapperIsExecutable(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	hooksDir := resolveCommonHooksDir(t, l.WorktreePath())
@@ -345,7 +345,7 @@ func TestInstallPostCheckoutHook_ChainedWrapperIsExecutable(t *testing.T) {
 func TestInstallPostCheckoutHook_HonoursCoreHooksPath(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	customHooksDir := filepath.Join(t.TempDir(), "custom-hooks")

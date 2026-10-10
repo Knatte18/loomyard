@@ -26,7 +26,7 @@ import (
 func newMergeStateFixture(t *testing.T) (f *fabricengine.Fabric, h *hubforge.Hub) {
 	t.Helper()
 
-	h = hubforge.NewHub(t, ".")
+	h = hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f = fabricengine.NewFabricForTest(t, h.PrimeWorktree(), h.PrimeRecords())
 	return f, h
 }

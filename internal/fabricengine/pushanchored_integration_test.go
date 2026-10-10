@@ -59,7 +59,7 @@ func TestPushAnchored_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h := hubforge.NewHub(t, ".")
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 			// The weft bare is genuinely empty at clone time (hubforge's own doc comment), so it
 			// carries no branch to read a "before" SHA from yet; a priming push establishes one.
 			if _, err := fabricengine.PushAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded); err != nil {
@@ -91,7 +91,7 @@ func TestPushAnchored_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	weftSHA := gitkit.CommitFile(t, h.PrimeRecords(), "weft-file.txt", "weft change", "weft change")
 	warpBranch := gitkit.CurrentBranch(t, h.PrimeWorktree())
 	warpBareBefore := fabricengine.BareBranchSHAForTest(t, h.CodeBare, warpBranch)
@@ -137,7 +137,7 @@ func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	// A priming push establishes real content and upstream tracking on the weft bare — the weft
 	// bare is genuinely empty at clone time (hubforge's own doc comment) — before the second clone
@@ -167,7 +167,7 @@ func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped(t *test
 func TestPushAnchored_OtherPushErrorKind_DoesNotMatchErrPushRejected(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	gitkit.CommitFile(t, h.PrimeRecords(), "weft-file.txt", "weft change", "weft change")
 	gitkit.MustRun(t, h.PrimeRecords(), "git", "remote", "remove", "origin")
 
@@ -194,7 +194,7 @@ type pushPair struct {
 func newPushPair(t *testing.T) pushPair {
 	t.Helper()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	added := hubforge.AddPair(t, h, "pushpair")
 	loc, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("pushpair"))
 	if err != nil {
@@ -401,7 +401,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 
 	// The prime pushes the records side only and reports its unpushed code branch.
 	t.Run("PrimePushesRecordsSideOnly", func(t *testing.T) {
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		codeBranch := gitkit.CurrentBranch(t, h.PrimeWorktree())
 		recordsBranch := gitkit.CurrentBranch(t, h.PrimeRecords())
 		codeBefore := fabricengine.BareBranchSHAForTest(t, h.CodeBare, codeBranch)
@@ -426,7 +426,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 
 	// A prime that cannot be resolved fails the call with nothing pushed.
 	t.Run("UnresolvablePrimePushesNothing", func(t *testing.T) {
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		recordsBranch := gitkit.CurrentBranch(t, h.PrimeRecords())
 		gitkit.CommitFile(t, h.PrimeRecords(), "records-file.txt", "records change", "records change")
 		unresolvable := *h.Location

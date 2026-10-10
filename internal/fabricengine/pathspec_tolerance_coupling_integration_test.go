@@ -43,7 +43,7 @@ func TestStageAndCommit_PathspecMissMarkerSurvivesTheErrorChain(t *testing.T) {
 
 	// A real hub gives a real weft checkout with real history, so `git add` fails for the reason
 	// under test (the pathspec matches nothing) rather than because the repo is unusable.
-	weftPath := hubforge.NewHub(t, ".").PrimeRecords()
+	weftPath := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."}).PrimeRecords()
 	repo := gitrepo.New(weftPath)
 
 	const missingPathspec = "no-such-directory-at-all"

@@ -38,7 +38,7 @@ func buildReconcileFixture(t *testing.T, fixturesDir string, n int) (f *fabricen
 	warpPath = fabricengine.NewPlainWarpRepoForTest(t)
 	bareDir = addWarpBareRemote(t, fixturesDir, warpPath)
 	initWarpSHA = fabricengine.CurrentSHAForTest(t, warpPath)
-	weftFixture = hubforge.NewHub(t, ".")
+	weftFixture = hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f = fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	for i := 0; i < n; i++ {
@@ -466,7 +466,7 @@ func TestPull_EmptyIndexNoDrift(t *testing.T) {
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	bareDir := addWarpBareRemote(t, fixturesDir, warpPath)
 	initWarpSHA := fabricengine.CurrentSHAForTest(t, warpPath)
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	// Warp commits happen, but nothing is ever synced to weft — the
@@ -507,7 +507,7 @@ func TestPull_WeftDivergedAndWarpFetchFails_PartialError(t *testing.T) {
 
 	fixturesDir := t.TempDir()
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	// A real hub's weft primary checks out the suffixed branch (fabricengine.RecordsBranchName("main")), never bare "main", and that suffixed branch carries no upstream at all until something pushes
