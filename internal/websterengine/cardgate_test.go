@@ -185,3 +185,46 @@ func TestRenderCardGates_OneBulletPerCardWithAStepSubBulletEach(t *testing.T) {
 		t.Errorf("renderCardGates() =\n%s\nwant\n%s", got, want)
 	}
 }
+
+func TestRenderBatchGate(t *testing.T) {
+	plan := &planparser.Plan{Language: "go"}
+
+	tests := []struct {
+		name  string
+		disk  []string
+		cards []planparser.Card
+		want  string
+	}{
+		{
+			name: "a two-card batch unions its directories across the root and a nested module",
+			disk: []string{"nested/go.mod"},
+			cards: []planparser.Card{
+				numberedGateCard(1, gateEdit("internal/a/a.go#", "nested/pkg/p.go#")),
+				numberedGateCard(2, gateEdit("internal/a/b.go#", "internal/b/b.go#", "nested/other/o.go#")),
+			},
+			want: "The batch's Go packages:\n" +
+				"- the root module: `./internal/a ./internal/b`\n" +
+				"- the module `nested`: `./pkg ./other`\n" +
+				"\n" +
+				"The batch gate:\n" +
+				"- `lyx gate test --tags integration ./internal/a ./internal/b`\n" +
+				"- `lyx gate test -C nested --tags integration ./pkg ./other`",
+		},
+		{
+			name:  "a batch with no Go package has no batch gate",
+			cards: []planparser.Card{numberedGateCard(1, planparser.TargetGroup{Type: planparser.CardTypeProsa, Refs: []string{"contracts/stencils/x.md"}})},
+			want:  "This batch has no Go package, so it has no batch gate.",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			for _, file := range tt.disk {
+				writeGateFile(t, root, file)
+			}
+			if got := renderBatchGate(plan, tt.cards, root); got != tt.want {
+				t.Errorf("renderBatchGate() =\n%s\nwant\n%s", got, tt.want)
+			}
+		})
+	}
+}

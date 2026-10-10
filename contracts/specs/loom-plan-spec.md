@@ -292,9 +292,9 @@ The three tiers match this repo's own test-tier discipline — `internal/planpar
   The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it, and the batch gate or the plan-level verify catches that.
   Untagged tests are fast by construction, per the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn.
   Fully mechanical — no author enumerates a file list, which is what made V1-style `verify:` lists grow long in practice.
-- **Tier 2 (per card for its own packages, plan-level for the whole suite).**
+- **Tier 2 (per batch for its own packages, plan-level for the whole suite).**
   Real git-against-remote tests, built via `internal/hubforge` with real repository creation and a real clone, are genuinely slower.
-  The card gate runs only the integration-tagged tests of the card's own package directories;
+  The batch gate runs `lyx gate test --tags integration` over the union of the batch's package directories, once per batch, by the fork after its last card; Go never runs it, and the plan-level verify catches a fork that skips it;
   the plan-level `## verify:` stays the once-per-plan run, now a must-pass gate on Merriam that sends a failure back to Merriam to fix.
   The Concurrency section's post-merge backstop assumes the same gate.
 - **Tier 3 (rare, explicit only, never automatic).**

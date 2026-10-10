@@ -43,7 +43,10 @@ func newTestStencilsDir(t *testing.T) string {
 }
 
 // testCardGates is the placeholder per-card gate list passed as RenderForkPrompt's and RenderRecoveryPrompt's cardGates parameter.
-const testCardGates = "- `_lyx/plan/01-gate.md`: `go build ./... && go test ./...`"
+const testCardGates = "- `_lyx/plan/01-gate.md`:\n  - `lyx gate test ./internal/alpha`"
+
+// testBatchGate is the placeholder batch gate passed as RenderForkPrompt's and RenderRecoveryPrompt's batchGate parameter.
+const testBatchGate = "The batch gate:\n- `lyx gate test --tags integration ./internal/alpha`"
 
 // testOutcomePath and testSummaryPath are the placeholder contract-file paths passed as RenderForkPrompt's and RenderVerifyFixPrompt's outcomePath and summaryPath parameters.
 const (
@@ -274,6 +277,7 @@ func forkTemplateMarkerValues() map[string]string {
 	return map[string]string{
 		"card_pointers":      "- `_lyx/plan/02-list-tests.md`",
 		"card_gates":         testCardGates,
+		"batch_gate":         testBatchGate,
 		"report_path":        "/webster/reports/02-list-tests.yaml",
 		"self_fix_cap":       "2",
 		"worktree_root":      "/worktree",
@@ -332,7 +336,7 @@ func assertCardPointerIsRelative(t *testing.T, got, sourcePath string) {
 // renderFork renders the fork prompt for batch with the shared placeholder paths; root is both the
 // anchor root and the prompt worktree root, and the plan directory is derived under it.
 func renderFork(batch batcher.Batch, root, stencilsDir, specsDir, prevDigest string, selfFixCap int, notePath string) (string, error) {
-	got, err := websterengine.RenderForkPrompt(batch, testCardGates, prevDigest, "/reports/01-alpha.yaml", filepath.Join(root, "_lyx", "plan"), root, stencilsDir, specsDir, testOutcomePath, testSummaryPath, selfFixCap, notePath)
+	got, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, prevDigest, "/reports/01-alpha.yaml", filepath.Join(root, "_lyx", "plan"), root, stencilsDir, specsDir, testOutcomePath, testSummaryPath, selfFixCap, notePath)
 	return string(got), err
 }
 
@@ -344,7 +348,7 @@ func renderRecovery(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, spec
 
 // renderRecoveryWithUncommitted is renderRecovery with the caller-rendered uncommitted-paths block.
 func renderRecoveryWithUncommitted(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, uncommittedPaths, notePath, parent string) (string, error) {
-	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", failureDigest, uncommittedPaths, "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, specsDir, 2, notePath, parent)
+	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, testBatchGate, "", failureDigest, uncommittedPaths, "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, specsDir, 2, notePath, parent)
 	return string(got), err
 }
 
@@ -462,14 +466,14 @@ func TestTemplates_FillRequiresEveryRequiredMarker(t *testing.T) {
 			template: mustForkTemplate,
 			values:   forkTemplateMarkerValues,
 			optional: []string{"friction_directive"},
-			required: []string{"card_pointers", "card_gates", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "outcome_path", "summary_path"},
+			required: []string{"card_pointers", "card_gates", "batch_gate", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "outcome_path", "summary_path"},
 		},
 		{
 			name:     "recovery",
 			template: mustRecoveryTemplate,
 			values:   recoveryTemplateMarkerValues,
 			optional: []string{"pattern_directive", "failure_digest", "uncommitted_paths", "friction_directive", "parent_directive"},
-			required: []string{"card_pointers", "card_gates", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "edit_directive"},
+			required: []string{"card_pointers", "card_gates", "batch_gate", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "edit_directive"},
 		},
 	}
 	for _, tc := range cases {
@@ -594,15 +598,15 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "")
 			return promptCheck{text: text, err: err,
-				contains:    []string{testCardGates, testOutcomePath, testSummaryPath},
-				notContains: []string{"{{.card_gates}}", "this card's package's unit tests"}}
+				contains:    []string{testCardGates, testBatchGate, testOutcomePath, testSummaryPath},
+				notContains: []string{"{{.card_gates}}", "{{.batch_gate}}", "this card's package's unit tests"}}
 		}},
 		{"recovery carries the card gates and no leftover marker", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
 			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
 			return promptCheck{text: text, err: err,
-				contains:    []string{testCardGates},
-				notContains: []string{"{{.card_gates}}", "this card's package's unit tests"}}
+				contains:    []string{testCardGates, testBatchGate},
+				notContains: []string{"{{.card_gates}}", "{{.batch_gate}}", "this card's package's unit tests"}}
 		}},
 		{"fork self-fix section counts card-caused failures", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)

@@ -133,3 +133,26 @@ func renderCardGates(plan *planparser.Plan, cards []planparser.Card, planDirDisp
 	}
 	return strings.Join(lines, "\n")
 }
+
+// renderBatchGate renders the batch's Go package list and its gate: the union of its cards' surviving directories per module, then one `lyx gate test --tags integration` step per module, one step per line.
+// A batch with no surviving directory renders a line saying it has no Go package and no batch gate.
+func renderBatchGate(plan *planparser.Plan, cards []planparser.Card, worktree string) string {
+	scope := gateScopeOf(plan, cards, worktree)
+	steps := scope.steps("integration")
+	if len(steps) == 0 {
+		return "This batch has no Go package, so it has no batch gate."
+	}
+
+	lines := []string{"The batch's Go packages:"}
+	if len(scope.rootDirs) > 0 {
+		lines = append(lines, fmt.Sprintf("- the root module: `%s`", strings.Join(scope.rootDirs, " ")))
+	}
+	for _, m := range scope.modules {
+		lines = append(lines, fmt.Sprintf("- the module `%s`: `%s`", m.module, strings.Join(m.dirs, " ")))
+	}
+	lines = append(lines, "", "The batch gate:")
+	for _, step := range steps {
+		lines = append(lines, fmt.Sprintf("- `%s`", step))
+	}
+	return strings.Join(lines, "\n")
+}

@@ -67,16 +67,11 @@
 // holding every symbol-shaped target entry, with `Uses:` excluded because it
 // is read rather than written.
 // The deviation list is ALWAYS informational, never a failure condition — a
-// fork returns FAILED only on a non-zero build/unit gate or a non-zero
-// per-card `verify:`, never on deviation alone (plan-predicted file impact
-// is frequently incomplete; treating deviation as failure would make the
-// system impractically brittle). Within one fork's batch, each card lands
-// as its own commit (BatchState.CardSHAs records the ordered per-card SHA
-// trail — one element under the identity batcher, more once a grouping
-// batchifier ships) and each card's own optional `verify:` runs and must
-// pass before that card's commit; there is no batch-wide verify distinct
-// from its cards' own gates, mirroring the plan-format card model
-// directly.
+// fork returns FAILED on a failed card gate, card `**Verify:**` or batch gate, never on deviation alone and never on a slot-busy exit.
+// Plan-predicted file impact is frequently incomplete, so treating deviation as failure would make the system impractically brittle.
+// Within one fork's batch, each card lands as its own commit (BatchState.CardSHAs records the ordered per-card SHA trail — one element under the identity batcher, more once a grouping batchifier ships), and each card's own optional `verify:` runs and must pass before that card's commit.
+// After the last card the fork runs the batch gate once, over the batch's packages with `-tags integration`;
+// Go never runs it, and Webster's plan-level verify gate catches a fork that skips it.
 // A card's own gate, which begin-batch and recover-batch render into the fork's prompt, is `lyx gate test` over the card's own package directories, one step per module (a directory inside a nested module is tested inside it with `lyx gate test -C <module>` and module-relative paths), one step per line, and ends with `lyx loom lint-comments`, the comment line-break lint.
 //
 // record-batch and recover-batch apply one merge-only rule when they cross-check the consumed report's `head_sha` against the worktree's HEAD,
