@@ -42,6 +42,15 @@ func TestComputeLayers(t *testing.T) {
 			want: map[string]string{"a": "A", "b": "__done__"},
 		},
 		{
+			name: "running task excluded from depth along a chain",
+			tasks: []boardengine.Task{
+				{ID: 1, Slug: "run", Title: "Running", Status: stringPtr(boardengine.RunStatus("plan", "burler"))},
+				{ID: 2, Slug: "x", Title: "Task X", DependsOn: []string{"run"}},
+				{ID: 3, Slug: "y", Title: "Task Y", DependsOn: []string{"x"}},
+			},
+			want: map[string]string{"run": "A", "x": "A", "y": "B"},
+		},
+		{
 			name: "isolated task",
 			tasks: []boardengine.Task{
 				{ID: 1, Slug: "a", Title: "Task A", Isolated: true},

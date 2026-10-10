@@ -229,6 +229,9 @@ func readmeFixture() []boardengine.Task {
 
 // TestRenderReadmeGolden pins the README for a fixture with tasks and notes, notes grouped by type in Outputs.Types order and an Other group, a done entry, an abandoned note, a slug linked to its design doc, labels on every line, After and Before lines that leave out a done dependency, an isolated task, and a two-layer chain.
 // A second row pins that the Done section and every empty Notes subsection are omitted when no entry is done and no note exists for them.
+// Neither row has a run status, the first only the hand-set word "running", so neither renders a Running subsection.
+// A third row pins that a task with a run status renders under Running, before Layer A and in no layer, with its After and Before lines.
+// The same row pins that a task waiting only on it lands in Layer A, still naming it under After, and that a task after that one lands in Layer B.
 func TestRenderReadmeGolden(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -250,7 +253,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"### Layer A\n" +
 				"\n" +
-				"Waits on nothing open; can start now, in parallel.\n" +
+				"Waits on nothing that is not running; next to start.\n" +
 				"\n" +
 				"1. **Base work** — `base` · enhancement\n" +
 				"   - The foundation.\n" +
@@ -312,6 +315,52 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"### Enhancements\n" +
 				"\n" +
 				"1. **A** — `a` · enhancement\n",
+		},
+		{
+			name: "running task under Running before Layer A and in no layer",
+			tasks: []boardengine.Task{
+				{ID: 1, Slug: "base", Title: "Base work", Kind: boardengine.KindTask, Labels: []string{"enhancement"}},
+				{ID: 2, Slug: "held", Title: "Held work", Kind: boardengine.KindTask, Labels: []string{"bug"}, Status: stringPtr(boardengine.RunStatus("plan", "burler")), DependsOn: []string{"base"}},
+				{ID: 3, Slug: "next", Title: "Next work", Kind: boardengine.KindTask, DependsOn: []string{"held"}},
+				{ID: 4, Slug: "last", Title: "Last work", Kind: boardengine.KindTask, DependsOn: []string{"next"}},
+			},
+			want: "# Board\n" +
+				"\n" +
+				"Tasks are grouped by dependency layer and notes by type.\n" +
+				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
+				"\n" +
+				"## Tasks\n" +
+				"\n" +
+				"Concrete and claimable; only a task can run.\n" +
+				"\n" +
+				"### Running\n" +
+				"\n" +
+				"Held by a run; its scope is locked until the run ends.\n" +
+				"\n" +
+				"1. **Held work** — `held` · bug · plan · burler\n" +
+				"   - **After:** `base`\n" +
+				"   - **Before:** `next`\n" +
+				"\n" +
+				"### Layer A\n" +
+				"\n" +
+				"Waits on nothing that is not running; next to start.\n" +
+				"\n" +
+				"1. **Base work** — `base` · enhancement\n" +
+				"   - **Before:** `held`\n" +
+				"1. **Next work** — `next`\n" +
+				"   - **After:** `held`\n" +
+				"   - **Before:** `last`\n" +
+				"\n" +
+				"### Layer B\n" +
+				"\n" +
+				"Starts when every entry it names under After is done.\n" +
+				"\n" +
+				"1. **Last work** — `last`\n" +
+				"   - **After:** `next`\n" +
+				"\n" +
+				"## Notes\n" +
+				"\n" +
+				"Not tasks: ideas and observations, merged into a task when one is promoted.\n",
 		},
 	}
 	for _, tt := range tests {

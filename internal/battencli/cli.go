@@ -9,6 +9,11 @@
 // and "the hub's prime worktree" instead.
 //
 // "lyx batten run <slug> --window" runs the same status check as a plain run and refuses a done slug before opening anything.
+//
+// The Worktree-Create row opens by claiming the slug's board entry with "running · Worktree-Create", before the pair exists, so the board's run lock starts at the claim.
+// An absent or done entry is skipped, and a board failure only warns: the board is the hub's overview, never the run's bookkeeping.
+// The claim stays when the row then fails, and the stopped run resumes with the same verb.
+// No other row writes a board status; loom's transitions are the only later writer.
 package battencli
 
 import (

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -179,16 +180,11 @@ func loomCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusD
 			return err
 		},
 		SetBoardStatus: func(status string) error {
-			board, err := openHubBoard(location)
+			board, err := boardengine.OpenHub(location.HubPath)
 			if err != nil {
 				return err
 			}
-			slug := shedrun.ResolveRunID(location, runID)
-			task, found, err := board.GetTask(slug)
-			if err != nil || !found || (task.Status != nil && *task.Status == "done") {
-				return err
-			}
-			return board.SetStatus(slug, &status)
+			return board.SetRunStatus(shedrun.ResolveRunID(location, runID), status)
 		},
 	}
 }
@@ -199,7 +195,7 @@ func boardStatus(producer, state string) (string, bool) {
 	if state == string(shedengine.StateDone) {
 		return "", false
 	}
-	return state + " · " + producer, true
+	return boardengine.RunStatus(state, producer), true
 }
 
 // newCommitStatusSeam builds the shedengine.Shed.CommitStatus closure from deps.
