@@ -128,7 +128,7 @@ Example:
 // acceptBatch runs `accept-audit --batch n` under the lease the caller holds: accept, save, release, then fabric-sync.
 func (c *websterCLI) acceptBatch(cmd *cobra.Command, st *websterengine.State, n int, release func() error, held *bool) {
 	out := cmd.OutOrStdout()
-	accepted, err := websterengine.AcceptBatchFabricReference(st, c.geom, n, fabricengine.IsReadOnlyCommand)
+	accepted, err := websterengine.AcceptBatchFabricReference(st, c.geom, n, fabricengine.IsReadOnlyCommand, "accept-audit --batch")
 	if err != nil {
 		clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 		return

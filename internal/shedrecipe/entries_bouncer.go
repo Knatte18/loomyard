@@ -212,6 +212,7 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		WorktreeRoot:    env.WorktreeRoot,
 		SpecsDir:        env.SpecsDir,
 		PublishFailure:  env.PublishFailure,
+		WebsterRecord:   env.WebsterRecord,
 		RubricStencil:   rubricStencil,
 		Model:           model,
 		Effort:          effort,

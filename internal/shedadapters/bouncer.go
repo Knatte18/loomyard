@@ -78,6 +78,9 @@ type BouncerConfig struct {
 	// PublishFailure returns the note the rubric's publish_failure marker is filled from, called each time the seed or judge reads the rubric.
 	// Nil renders `none`.
 	PublishFailure func() string
+	// WebsterRecord returns the note the rubric's webster_record marker is filled from, called each time the seed or judge reads the rubric.
+	// Nil renders `none`.
+	WebsterRecord func() string
 	// RubricStencil is the stencilstore name of the rubric this Bouncer's judge applies.
 	RubricStencil string
 	// Model, Effort, and Version are an already-resolved triple threaded verbatim into
@@ -842,6 +845,14 @@ func (b *Bouncer) publishFailureNote() string {
 	return b.cfg.PublishFailure()
 }
 
+// websterRecordNote returns the note the rubric's webster_record marker is filled from, blank when no function is configured.
+func (b *Bouncer) websterRecordNote() string {
+	if b.cfg.WebsterRecord == nil {
+		return ""
+	}
+	return b.cfg.WebsterRecord()
+}
+
 // runSeedSpawn attempts one seed pass writing focusPath: it probes for a still-live seed run and
 // waits on that when one is found, and otherwise archives the stale focus file and spawns a fresh
 // seed. Each step -- reading the seed template, reading and stripping the rubric, filling the
@@ -864,7 +875,7 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 		return nil
 	}
 
-	rubric, err := ReadRubric(b.cfg.StencilsDir, b.cfg.RubricStencil, b.cfg.SpecsDir, b.publishFailureNote())
+	rubric, err := ReadRubric(b.cfg.StencilsDir, b.cfg.RubricStencil, b.cfg.SpecsDir, b.publishFailureNote(), b.websterRecordNote())
 	if err != nil {
 		logger.Warn("shedadapters: bouncer rubric unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
 		return nil
@@ -975,7 +986,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 	if err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer judge template unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}
-	rubric, err := ReadRubric(b.cfg.StencilsDir, b.cfg.RubricStencil, b.cfg.SpecsDir, b.publishFailureNote())
+	rubric, err := ReadRubric(b.cfg.StencilsDir, b.cfg.RubricStencil, b.cfg.SpecsDir, b.publishFailureNote(), b.websterRecordNote())
 	if err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer rubric unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}

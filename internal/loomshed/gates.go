@@ -166,13 +166,35 @@ func NewPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.In
 // A run moved back to the plan review after Webster executed batches keeps its run record, and a done card's work is already in the tree, so the index skips its tree-dependent checks.
 // With no run record every card is checked.
 // A run record that cannot be read is a returned error, never a finding.
+//
+// A done card whose file no longer hashes to what its batch recorded at begin adds one blocking done-card-edited finding, since a done card is frozen.
+// It reads the record and the card bytes alone; an unreadable card file is a returned error.
 func ValidatePlan(plan *planparser.Plan, anchorPath, worktreeRoot string, index planindex.Index) ([]planindex.Finding, error) {
 	st, err := websterengine.LoadState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath))
 	if err != nil {
 		return nil, err
 	}
-	return index.ValidateFormat(plan, worktreeRoot, websterengine.DoneCards(plan, st))
+	findings, err := index.ValidateFormat(plan, worktreeRoot, websterengine.DoneCards(plan, st))
+	if err != nil {
+		return nil, err
+	}
+	edited, err := websterengine.EditedDoneCards(plan, st, plan.Dir)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range edited {
+		findings = append(findings, planindex.Finding{
+			Check:    doneCardEditedCheck,
+			Card:     id,
+			Detail:   "a done card is frozen: its work has landed, so a finding against it goes in a follow-up card placed after the last begun batch, with its Card Index line in 00-overview.md",
+			Severity: planindex.SeverityBlocking,
+		})
+	}
+	return findings, nil
 }
+
+// doneCardEditedCheck names the finding ValidatePlan appends for an edited done card.
+const doneCardEditedCheck = "done-card-edited"
 
 // NewReworkPlanGate returns the PR-Rework row's gate closure: a shuttleengine.Gate that parses the plan under anchorPath and checks it with ValidateReworkPlan over index.
 // The whole new plan is held to the plan-format checks plus the told first_card.

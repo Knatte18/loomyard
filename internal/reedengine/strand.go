@@ -162,14 +162,14 @@ const defaultRole = "strand"
 func (e *Engine) validateNaming(spec AddSpec) (string, error) {
 	shortname, slug := e.geom.NameShortname, e.geom.NameSlug
 	if shortname == "" {
-		return "", fmt.Errorf("no strand name can be formed: this hub records no shortname; way forward: lyx fabric shortname <shortname> records it, then retry")
+		return "", fmt.Errorf("no strand name can be formed: this hub records no shortname; way forward: lyx fabric shortname <shortname> records it, then retry; a session lyx refuses the verb from reports status: FAILED and the orch runs it")
 	}
 	if err := agentname.ValidateShortname(shortname); err != nil {
 		return "", fmt.Errorf("no strand name can be formed: the told shortname is invalid: %w", err)
 	}
 	if slug != "" {
 		if err := agentname.ValidateSlug(slug); err != nil {
-			return "", fmt.Errorf("no strand name can be formed: worktree %q does not fit the name grammar [a-z][a-z0-9-]*; way forward: lyx fabric add <slug> creates the task under a slug that fits: %w",
+			return "", fmt.Errorf("no strand name can be formed: worktree %q does not fit the name grammar [a-z][a-z0-9-]*; way forward: lyx fabric add <slug> creates the task under a slug that fits; a session lyx refuses the verb from reports status: FAILED and the orch runs it: %w",
 				e.geom.WorktreeName, err)
 		}
 	}

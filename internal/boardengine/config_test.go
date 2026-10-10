@@ -94,8 +94,8 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 			if !strings.Contains(errMsg, configengine.ConfigFile(tmpDir, "board")) {
 				t.Errorf("expected error naming the board.yaml path, got: %v", err)
 			}
-			if !strings.Contains(errMsg, "lyx fabric reconcile") {
-				t.Errorf("expected error containing 'lyx fabric reconcile', got: %v", err)
+			if !strings.Contains(errMsg, "lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it") {
+				t.Errorf("expected error containing the reconcile way forward and the orch clause, got: %v", err)
 			}
 		})
 	}

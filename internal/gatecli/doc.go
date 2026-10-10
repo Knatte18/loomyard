@@ -23,6 +23,8 @@
 //
 // Inside a hub the pool comes from hubgeom.GateSlots and its limits are read from the board's gate.yaml.
 // The run writes a wait record under the worktree's wait directory, acquires a slot under a context bounded by `cli_wait_sec`, removes the record once the acquire returns, and runs go test with the lease's environment.
+// Every branch, slotted, inherited and unslotted, runs go test without the strand-name variable (agentname.StrandNameEnv), so a test that drives `lyx fabric` never meets the sandboxed-role guard.
+// Bound: a test is code the fork writes, which could clear the variable itself.
 // A bound that passes with every slot held exits with SlotBusyExit and a JSON error naming each holder's worktree and site; the way forward is to re-run the same command.
 // An absent gate.yaml is refused with a way forward naming `lyx fabric reconcile`, which writes it from the template.
 // An unreadable or invalid gate.yaml is refused with a way forward naming `lyx config gate` from the prime.

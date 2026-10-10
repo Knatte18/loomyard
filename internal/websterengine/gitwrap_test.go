@@ -6,8 +6,13 @@
 package websterengine
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -102,6 +107,64 @@ func TestRepositoryProbes(t *testing.T) {
 		}
 	})
 
+	t.Run("nonMergeCommitsBetween sees a commit past the start, ignores merge-ins and refuses an absent start", func(t *testing.T) {
+		repo := gitwrapNewScratchRepo(t)
+		start := gitkit.CommitFile(t, repo, "a.txt", "one", "first")
+		branch := strings.TrimSpace(gitkit.Git(t, repo, "branch", "--show-current"))
+		gitkit.Git(t, repo, "switch", "-c", "side")
+		gitkit.CommitFile(t, repo, "side.txt", "side", "side work")
+		gitkit.Git(t, repo, "switch", branch)
+		gitkit.Git(t, repo, "merge", "--no-ff", "-m", "merge side", "side")
+		mergedHead := strings.TrimSpace(gitkit.Git(t, repo, "rev-parse", "HEAD"))
+		ownHead := gitkit.CommitFile(t, repo, "b.txt", "two", "own work")
+
+		for _, tt := range []struct {
+			name    string
+			base    string
+			head    string
+			want    bool
+			wantErr bool
+		}{
+			{name: "a commit past the start is true", base: start, head: ownHead, want: true},
+			{name: "a first-parent range of merge-ins only is false", base: start, head: mergedHead},
+			{name: "an empty range is false", base: ownHead, head: ownHead},
+			{name: "a start absent from the store is an error", base: strings.Repeat("0", 40), head: ownHead, wantErr: true},
+		} {
+			got, err := nonMergeCommitsBetween(repo, tt.base, tt.head)
+			if (err != nil) != tt.wantErr || got != tt.want {
+				t.Errorf("%s: nonMergeCommitsBetween() = (%v, %v); want (%v, error %v)", tt.name, got, err, tt.want, tt.wantErr)
+			}
+		}
+	})
+
+	t.Run("commitsFromBatchCheck keeps the commit lines", func(t *testing.T) {
+		for _, tt := range []struct {
+			name    string
+			output  string
+			want    []string
+			wantErr string
+		}{
+			{name: "commit, blob and tree lines return the commit alone", output: "aaaa commit 230\nbbbb blob 12\ncccc tree 33\n", want: []string{"aaaa"}},
+			{name: "a missing line names the object", output: "aaaa commit 230\nbbbb missing\n", wantErr: "bbbb"},
+			{name: "a malformed line is an error", output: "aaaa commit\n", wantErr: "malformed"},
+			{name: "empty output returns nothing", output: ""},
+		} {
+			got, err := commitsFromBatchCheck(tt.output)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("%s: error = %v; want one containing %q", tt.name, err, tt.wantErr)
+				}
+				continue
+			}
+			if err != nil {
+				t.Fatalf("%s: error = %v; want nil", tt.name, err)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("%s: got %v; want %v", tt.name, got, tt.want)
+			}
+		}
+	})
+
 	// Runs last: the untracked file it writes leaves the tree dirty.
 	t.Run("dirty is true with an untracked file", func(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "untracked.txt"), []byte("x"), 0o644); err != nil {
@@ -115,6 +178,93 @@ func TestRepositoryProbes(t *testing.T) {
 			t.Errorf("dirty() = false with an untracked file present; want true")
 		}
 	})
+}
+
+// gitwrapObjectNamedLike hashes candidate objects of kind with body from bodyFor(0), bodyFor(1), … and returns the first body whose object id starts with prefix,
+// so a test can plant a blob and a tree sharing the commit's abbreviated name.
+func gitwrapObjectNamedLike(t *testing.T, kind, prefix string, bodyFor func(attempt int) []byte) []byte {
+	t.Helper()
+	for attempt := 0; attempt < 5_000_000; attempt++ {
+		body := bodyFor(attempt)
+		sum := sha1.Sum(append([]byte(fmt.Sprintf("%s %d\x00", kind, len(body))), body...))
+		if strings.HasPrefix(hex.EncodeToString(sum[:]), prefix) {
+			return body
+		}
+	}
+	t.Fatalf("no %s body hashes to prefix %s", kind, prefix)
+	return nil
+}
+
+// TestCommitsNamedBy_OneBatchCheck pins that commitsNamedBy classifies every object a prefix names in a single `cat-file --batch-check` call, never one `cat-file -t` per object:
+// a recording git first on PATH logs each invocation, over a prefix naming a commit, a blob and a tree.
+// It sets PATH, process-global state, so it runs without t.Parallel.
+func TestCommitsNamedBy_OneBatchCheck(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the recording git is a shell script")
+	}
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatalf("git not on PATH: %v", err)
+	}
+
+	dir := gitwrapNewScratchRepo(t)
+	commit := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
+	prefix := commit[:4]
+
+	blobBody := gitwrapObjectNamedLike(t, "blob", prefix, func(attempt int) []byte { return []byte(fmt.Sprintf("blob %d\n", attempt)) })
+	blob, err := gitexec.RunStdin([]string{"hash-object", "-w", "--stdin"}, dir, string(blobBody))
+	if err != nil {
+		t.Fatalf("write blob: %v", err)
+	}
+	blob = strings.TrimSpace(blob)
+	rawBlob, err := hex.DecodeString(blob)
+	if err != nil {
+		t.Fatalf("decode blob id %q: %v", blob, err)
+	}
+	treeBody := gitwrapObjectNamedLike(t, "tree", prefix, func(attempt int) []byte {
+		return append([]byte(fmt.Sprintf("100644 f%d\x00", attempt)), rawBlob...)
+	})
+	entryName := strings.TrimPrefix(strings.SplitN(string(treeBody), "\x00", 2)[0], "100644 ")
+	tree, err := gitexec.RunStdin([]string{"mktree"}, dir, fmt.Sprintf("100644 blob %s\t%s\n", blob, entryName))
+	if err != nil {
+		t.Fatalf("write tree: %v", err)
+	}
+	if strings.TrimSpace(tree)[:4] != prefix || blob[:4] != prefix {
+		t.Fatalf("planted blob %s and tree %s do not share prefix %s", blob, strings.TrimSpace(tree), prefix)
+	}
+
+	binDir := t.TempDir()
+	logPath := filepath.Join(binDir, "git-calls.log")
+	script := fmt.Sprintf("#!/bin/sh\necho \"$@\" >> %q\nexec %q \"$@\"\n", logPath, realGit)
+	if err := os.WriteFile(filepath.Join(binDir, "git"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write recording git: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	got, err := commitsNamedBy(dir, prefix)
+	if err != nil {
+		t.Fatalf("commitsNamedBy(%q) error = %v; want nil", prefix, err)
+	}
+	if !slices.Equal(got, []string{commit}) {
+		t.Errorf("commitsNamedBy(%q) = %v; want [%s]", prefix, got, commit)
+	}
+
+	logged, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read call log: %v", err)
+	}
+	var batchChecks int
+	for _, call := range strings.Split(strings.TrimSpace(string(logged)), "\n") {
+		if strings.HasPrefix(call, "cat-file -t") {
+			t.Errorf("per-object call %q; want one cat-file --batch-check", call)
+		}
+		if call == "cat-file --batch-check" {
+			batchChecks++
+		}
+	}
+	if batchChecks != 1 {
+		t.Errorf("cat-file --batch-check calls = %d; want 1 in:\n%s", batchChecks, logged)
+	}
 }
 
 // gitwrapParentBranch is the parent branch every reconcileReportHead test's run merges from.
@@ -449,7 +599,7 @@ func TestRefuseMidMerge(t *testing.T) {
 	if err == nil {
 		t.Fatal("mid-merge: error = nil; want refusal")
 	}
-	for _, want := range []string{"lyx fabric merge --continue", "lyx fabric merge --abort", "git merge --continue", "git merge --abort"} {
+	for _, want := range []string{"lyx fabric merge --continue", "lyx fabric merge --abort", "git merge --continue", "git merge --abort", "a session lyx refuses the verb from reports status: FAILED and the orch runs it"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q missing %q", err, want)
 		}

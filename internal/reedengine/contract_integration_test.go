@@ -588,8 +588,7 @@ func TestSessionNameRewriteIsSilentAndExactTargetsMissIt(t *testing.T) {
 			// new-session then races that asynchronous teardown ("server exited
 			// unexpectedly", observed while writing this test — the same
 			// async-kill hazard lifecycle.go's own doc comment describes).
-			// Every case's session is torn down together by the package
-			// server's kill-server when the package ends.
+			// Every case's session is torn down together by the package server's kill-server when the package ends.
 		})
 	}
 }

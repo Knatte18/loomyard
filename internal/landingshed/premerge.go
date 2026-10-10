@@ -41,7 +41,7 @@ func (m preMerge) clear(producer, parentBranch string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: probe merge state: %w", producer, err)
 	}
-	const mergeWayForward = `conclude it with "lyx fabric merge --continue" or discard it with "lyx fabric merge --abort", then resume`
+	const mergeWayForward = `conclude it with "lyx fabric merge --continue" or discard it with "lyx fabric merge --abort", then resume; a session lyx refuses the verb from reports status: FAILED and the orch runs it`
 	switch state.Kind {
 	case fabricengine.MidMergeNone:
 		return "", nil

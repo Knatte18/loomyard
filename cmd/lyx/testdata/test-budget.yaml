@@ -29,7 +29,7 @@ internal/discussionparser: 16
 internal/dotgit: 3
 internal/editdirective: 2
 internal/envsource: 3
-internal/fabriccli: 20
+internal/fabriccli: 21
 internal/fabricengine: 635
 internal/friction: 6
 internal/frictionengine: 15
@@ -56,7 +56,7 @@ internal/loggerconfig: 3
 internal/loomcli: 185
 internal/loomengine: 41
 internal/loomrecipe: 46
-internal/loomshed: 72
+internal/loomshed: 73
 internal/lyxcwd: 23
 internal/mergeresolve: 17
 internal/modelspec: 11
@@ -68,7 +68,7 @@ internal/parentdirective: 4
 internal/parentreview: 53
 internal/pattern: 7
 internal/planglyph: 83
-internal/planparser: 85
+internal/planparser: 86
 internal/preflight: 7
 internal/preflightshed: 8
 internal/proc: 17
@@ -116,10 +116,10 @@ internal/testkit/stencilkit: 3
 internal/testkit/tmuxkit: 14
 internal/treadleengine: 34
 internal/verifyrun: 4
-internal/verifytree: 6
+internal/verifytree: 7
 internal/vscode: 12
 internal/webstercli: 81
-internal/websterengine: 194
+internal/websterengine: 199
 internal/weftname: 1
 internal/yamlengine: 12
 tools/codestats: 9

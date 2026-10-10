@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -388,7 +389,7 @@ func recoverAtReportHead(t *testing.T, fx *recoverFixture, clk *recoverFakeClock
 // TestRecoverBatch_SecondCall asserts how a re-entrant second call classifies a recovery strand the first call spawned:
 // a landed report attaches (never re-spawns) and persists the done digest, a report disagreeing with the worktree or a HEAD moved by anything but a clean parent merge is refused and leaves the batch non-terminal,
 // the recovery timeout is measured from the recorded SpawnedAt across calls, and the default wait budget ends a silent strand dead inside one call but returns at a report that landed.
-// Over real Claude hook lines, a turn end counts dead/asking only when no later turn start follows it, it has stood past the settle, and no background shell keeps it waiting under Master's background-shell bound.
+// Over real Claude hook lines, a turn end counts dead/asking only when no later turn start follows it, it has stood past the settle, and nothing keeps it waiting.
 func TestRecoverBatch_SecondCall(t *testing.T) {
 	t.Parallel()
 
@@ -670,8 +671,8 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			check: checkRecoveryRunning,
 		},
 		{
-			// A shell only the transcript reports counts as a turn end once background_shell_wait_min has passed, as in Master's wait.
-			name: "a turn end waiting on a transcript-reported shell is dead once background_shell_wait_min has passed",
+			// A shell only the transcript reports keeps the strand running past background_shell_wait_min, like a payload-reported one: no shell expires, recovery_timeout_min bounds it.
+			name: "a turn end waiting on a transcript-reported shell keeps the strand running past background_shell_wait_min",
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
 				fx.Deps.Engine = claudeengine.New()
 				transcript := filepath.Join(t.TempDir(), "session.jsonl")
@@ -683,7 +684,22 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 				appendClaudeHook(t, fx, "Stop", clk.now.Add(-11*time.Minute), map[string]any{"transcript_path": transcript})
 				return secondCall{}
 			},
-			check: checkRecoveryAsking,
+			check: checkRecoveryRunning,
+		},
+		{
+			name: "a report present beside a turn end with a shell outstanding classifies done",
+			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
+				fx.Deps.Engine = claudeengine.New()
+				appendClaudeHook(t, fx, "Stop", clk.now, map[string]any{"background_tasks": []any{
+					map[string]any{"id": "bgate0001", "type": "shell", "status": "running", "command": "lyx gate test ./x"},
+				}})
+				return secondCall{head: seedReportAtHead(t, fx)}
+			},
+			check: func(t *testing.T, fx *recoverFixture, a attempt) {
+				if a.second.Running || a.second.Digest == nil || a.second.Digest.Status != websterengine.DigestStatusDone {
+					t.Fatalf("second call = %+v; want a done digest from the report", a.second)
+				}
+			},
 		},
 		{
 			name: "a plain turn end that has stood past the settle is dead asking",
@@ -976,6 +992,18 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 	}
 	fabricRefusalSetup, fabricRefusalBase := uncheckableRefusal("fabric-reference: Bash command references the fabric")
 	pauseRefusalSetup, pauseRefusalBase := uncheckableRefusal(".lyx/webster/pause")
+	notReadOnlySetup, notReadOnlyCheck := uncheckableRefusal(readOnlyEntry("lyx fabric add x"))
+	nilClassifierSetup, nilClassifierCheck := uncheckableRefusal(readOnlyEntry("cat a"))
+	mixedSetup, mixedCheck := uncheckableRefusal(readOnlyEntry("cat a"), ".lyx/webster/pause")
+	withPathSetup, withPathCheck := uncheckableRefusal("internal/fabric/x.go")
+	// readOnlyInLine seeds a failed batch whose uncheckable entries are entries, at HEAD = its start commit, with the real classifier.
+	readOnlyInLine := func(fx *recoverFixture, entries ...string) {
+		rec := failedRecord("correctness finding")
+		rec.Uncheckable = entries
+		rec.StartSHA = fx.Git.head
+		fx.Deps.State.Batches[1] = rec
+		fx.Deps.ReadOnly = fabricengine.IsReadOnlyCommand
+	}
 	// Only a refusal over pathless fabric references names the accept-audit --batch route.
 	const acceptBatchStep = `"lyx webster accept-audit --batch 1" then "lyx webster recover-batch 1"`
 	// The route names both evidence: HEAD at the start commit, and a committed batch whose recorded commands are read-only.
@@ -1016,6 +1044,57 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				}
 				if hashes := fx.Deps.State.Batches[1].CardHashes; len(hashes) != 1 || hashes["01-json-flag"] == "" {
 					t.Errorf("recovery BatchState.CardHashes = %v; want one hash for 01-json-flag", hashes)
+				}
+				if rec := fx.Deps.State.Batches[1]; rec.Recoveries != 1 || rec.RecoveryStartSHA != fx.Git.head {
+					t.Errorf("recovery BatchState Recoveries = %d, RecoveryStartSHA = %q; want 1 and HEAD %q", rec.Recoveries, rec.RecoveryStartSHA, fx.Git.head)
+				}
+			},
+		},
+		{
+			name: "a spawn over a prior recovery raises the count and records HEAD as its start",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 1, RecoveryStartSHA: fx.Git.head, StartSHA: fx.Git.head}
+				fx.Git.commit()
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				requireSpawned(t, spawned, err)
+				if rec := fx.Deps.State.Batches[1]; rec.Recoveries != 2 || rec.RecoveryStartSHA != fx.Git.head {
+					t.Errorf("recovery BatchState Recoveries = %d, RecoveryStartSHA = %q; want 2 and HEAD %q", rec.Recoveries, rec.RecoveryStartSHA, fx.Git.head)
+				}
+			},
+		},
+		{
+			name: "a third counted spawn refuses ErrRecoveryExhausted naming the reset routes",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 2}
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if !errors.Is(err, websterengine.ErrRecoveryExhausted) {
+					t.Fatalf("RecoverSpawnOrAttach() error = %v; want ErrRecoveryExhausted", err)
+				}
+				for _, want := range []string{"lyx webster reset --to batch-start --batch 01", "lyx webster recover-batch 1", "lyx webster reset --to start"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error %q lacks %q", err, want)
+					}
+				}
+				if spawned || fx.Engine.PrepareCalls != 0 || fx.Deps.State.Batches[1].Recoveries != 2 {
+					t.Errorf("spawned = %v, prepareCalls = %d, Recoveries = %d; want no spawn and the count unchanged at 2", spawned, fx.Engine.PrepareCalls, fx.Deps.State.Batches[1].Recoveries)
+				}
+			},
+		},
+		{
+			name: "a card_amended re-run at two recoveries spawns uncounted",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.State.Batches[1] = &websterengine.BatchState{
+					Slug: "json-flag", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusFailed, Recoveries: 2,
+					AmendedCards: []websterengine.AmendedCard{{Card: "01-json-flag"}},
+				}
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				requireSpawned(t, spawned, err)
+				rec := fx.Deps.State.Batches[1]
+				if rec.Recoveries != 2 || len(rec.AmendedCards) != 1 || !rec.AmendedCards[0].Rendered {
+					t.Errorf("recovery BatchState Recoveries = %d, AmendedCards = %+v; want 2 and the amendment rendered", rec.Recoveries, rec.AmendedCards)
 				}
 			},
 		},
@@ -1126,6 +1205,68 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 			check: pauseRefusalCheck,
 		},
 		{
+			name: "a failed batch whose findings are all read-only fabric references recovers in line with warnings naming recover-batch",
+			setup: func(fx *recoverFixture) {
+				readOnlyInLine(fx, readOnlyEntry("cat x/a.md | grep needle"), readOnlyEntry("lyx fabric list"))
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				requireSpawned(t, spawned, err)
+				warnings := fx.Deps.State.Batches[1].AuditWarnings
+				if len(warnings) != 2 {
+					t.Fatalf("AuditWarnings = %+v; want one per accepted entry", warnings)
+				}
+				for _, w := range warnings {
+					if !strings.Contains(w.Detail, "accepted by recover-batch, ") {
+						t.Errorf("warning detail = %q; want it to name recover-batch", w.Detail)
+					}
+				}
+			},
+		},
+		{
+			name: "a failed batch with a mutating fabric reference still refuses needs_fresh",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.ReadOnly = fabricengine.IsReadOnlyCommand
+				notReadOnlySetup(fx)
+			},
+			check: notReadOnlyCheck,
+		},
+		{
+			name:  "a nil classifier refuses needs_fresh over read-only fabric references",
+			setup: func(fx *recoverFixture) { nilClassifierSetup(fx) },
+			check: nilClassifierCheck,
+		},
+		{
+			name: "read-only fabric references beside an uncheckable entry of another kind refuse needs_fresh",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.ReadOnly = fabricengine.IsReadOnlyCommand
+				mixedSetup(fx)
+			},
+			check: mixedCheck,
+		},
+		{
+			name: "a fabric reference recorded with a path refuses needs_fresh",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.ReadOnly = fabricengine.IsReadOnlyCommand
+				withPathSetup(fx)
+			},
+			check: withPathCheck,
+		},
+		{
+			name: "a dirty tree refuses the in-line route with the evidence text naming recover-batch",
+			setup: func(fx *recoverFixture) {
+				readOnlyInLine(fx, readOnlyEntry("cat x/a.md"))
+				fx.Git.dirtyPaths = []string{"internal/x/x.go"}
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if !errors.Is(err, websterengine.ErrAuditNotAcceptable) || spawned {
+					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want ErrAuditNotAcceptable and no strand", spawned, err)
+				}
+				if want := `re-run "lyx webster recover-batch 1"`; !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q lacks %q", err, want)
+				}
+			},
+		},
+		{
 			// An OK report a still-running fork writes after the batch failed is archived rather than refused, so no refusal ring re-forms.
 			name: "a failed batch archives a late OK report instead of refusing it",
 			setup: func(fx *recoverFixture) {
@@ -1232,13 +1373,143 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 	}
 }
 
-// TestRecoverSpawnOrAttach_StartFailures asserts a transient failure before the recovery strand is recorded refuses with the transient re-run as the way forward, records no batch state, and spawns no strand, after which re-running the verb once the failure clears spawns it.
-// The failures are a not-ready start (shuttle's Start returning ErrNotStarted after tearing its own strand down, a strand that must never be persisted as this batch's recovery record) and, for the recovery prompt's uncommitted paths, a git status that cannot list them or an audit of the run's sessions that cannot tell which of them the run wrote.
+// TestRecoveryRetry asserts the one retry rule recover-batch and begin-batch read: a terminal dead recovery below the cap retries only when HEAD descends from the recovery's start through a first-parent range holding a non-merge commit.
+// The recovery's own commits give true with the batch's recovery count; no commits of its own, a fork's earlier commits, a record with no start, a HEAD a reset moved off the start, a range of merge-ins only, the cap, and a stuck or failed recovery each give false;
+// a failed git read, a start absent from the store, gives false and a Warn line.
+// It captures the logger's process-global output, so it and its rows run without t.Parallel.
+func TestRecoveryRetry(t *testing.T) {
+	const unreadMessage = "could not tell whether the dead recovery committed"
+	cases := []struct {
+		name string
+		// setup builds the history and returns the recovery record the rule reads.
+		setup          func(g *fakeGit) *websterengine.BatchState
+		wantRetry      bool
+		wantRecoveries int
+		wantWarn       bool
+	}{
+		{
+			name: "a dead recovery with commits past its start retries",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				start := g.head
+				g.commit()
+				return deadRecovery(1, start)
+			},
+			wantRetry: true, wantRecoveries: 1,
+		},
+		{
+			name: "a dead recovery without commits of its own does not retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				return deadRecovery(1, g.head)
+			},
+			wantRecoveries: 1,
+		},
+		{
+			name: "a fork's commits before the recovery's start do not make it retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				g.commit()
+				return deadRecovery(1, g.head)
+			},
+			wantRecoveries: 1,
+		},
+		{
+			name: "a record with no start does not retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				g.commit()
+				return deadRecovery(1, "")
+			},
+			wantRecoveries: 1,
+		},
+		{
+			name: "a HEAD a reset moved off the start does not retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				before := g.head
+				start := g.commit()
+				g.head = before
+				return deadRecovery(1, start)
+			},
+			wantRecoveries: 1,
+		},
+		{
+			name: "a range of merge-ins only does not retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				start := g.head
+				g.merge("")
+				return deadRecovery(1, start)
+			},
+			wantRecoveries: 1,
+		},
+		{
+			name: "a dead recovery at two recoveries does not retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				start := g.head
+				g.commit()
+				return deadRecovery(2, start)
+			},
+			wantRecoveries: 2,
+		},
+		{
+			name: "a stuck recovery holding commits does not retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				start := g.head
+				g.commit()
+				rec := deadRecovery(1, start)
+				rec.Status = websterengine.DigestStatusStuck
+				return rec
+			},
+			wantRecoveries: 1,
+		},
+		{
+			name: "a failed recovery holding commits does not retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				start := g.head
+				g.commit()
+				rec := deadRecovery(1, start)
+				rec.Status = websterengine.DigestStatusFailed
+				return rec
+			},
+			wantRecoveries: 1,
+		},
+		{
+			name: "a start absent from the store is a failed read that does not retry and warns",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				g.commit()
+				return deadRecovery(1, "ffffffffffffffffffffffffffffffffffffffff")
+			},
+			wantRecoveries: 1,
+			wantWarn:       true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := logcapture.CaptureVerbose(t)
+			fx := newRecoverFixture(t)
+			fx.Deps.State.Batches[1] = tc.setup(fx.Git)
+
+			retry, recoveries := websterengine.RecoveryRetry(fx.Deps.Geom, fx.Deps.State, 1)
+
+			if retry != tc.wantRetry || recoveries != tc.wantRecoveries {
+				t.Errorf("RecoveryRetry() = (%v, %d); want (%v, %d)", retry, recoveries, tc.wantRetry, tc.wantRecoveries)
+			}
+			if warned := strings.Contains(buf.String(), unreadMessage); warned != tc.wantWarn {
+				t.Errorf("Warn line %q present = %v; want %v; log:\n%s", unreadMessage, warned, tc.wantWarn, buf.String())
+			}
+		})
+	}
+}
+
+// deadRecovery is a terminal dead recovery record that spawned at start with recoveries counted spawns.
+func deadRecovery(recoveries int, start string) *websterengine.BatchState {
+	return &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: recoveries, RecoveryStartSHA: start}
+}
+
+// TestRecoverSpawnOrAttach_StartFailures asserts a transient failure before the recovery strand is recorded refuses with the transient re-run as the way forward, leaves the batch's record and its recovery count unchanged, and spawns no strand, after which re-running the verb once the failure clears spawns it and counts it.
+// The failures are a not-ready start (shuttle's Start returning ErrNotStarted after tearing its own strand down, a strand that must never be persisted as this batch's recovery record), a HEAD that cannot be read before the spawn and, for the recovery prompt's uncommitted paths, a git status that cannot list them or an audit of the run's sessions that cannot tell which of them the run wrote.
 func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 	t.Parallel()
 
 	statusErr := errors.New("git status failed")
 	auditErr := errors.New("transcript unreadable")
+	headErr := errors.New("git rev-parse HEAD failed")
 	tests := []struct {
 		name    string
 		fail    func(fx *recoverFixture) (restore func())
@@ -1252,6 +1523,14 @@ func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 				return func() { fx.Deps.Starter = realStarter }
 			},
 			wantErr: shuttleengine.ErrNotStarted,
+		},
+		{
+			name: "an unreadable HEAD",
+			fail: func(fx *recoverFixture) func() {
+				fx.Git.headErr = headErr
+				return func() { fx.Git.headErr = nil }
+			},
+			wantErr: headErr,
 		},
 		{
 			name: "an unreadable uncommitted-path listing",
@@ -1276,6 +1555,8 @@ func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fx := newRecoverFixture(t)
+			prior := &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: 1, RecoveryStartSHA: fx.Git.head}
+			fx.Deps.State.Batches[1] = prior
 			restore := tt.fail(fx)
 			clk := &recoverFakeClock{now: time.Unix(0, 0)}
 
@@ -1292,8 +1573,8 @@ func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 			if bs != nil {
 				t.Errorf("RecoverSpawnOrAttach() BatchState = %+v; want nil", bs)
 			}
-			if fx.Deps.State.Batches[1] != nil {
-				t.Errorf("State.Batches[1] = %+v; want nil", fx.Deps.State.Batches[1])
+			if fx.Deps.State.Batches[1] != prior || prior.Recoveries != 1 {
+				t.Errorf("State.Batches[1] = %+v; want the prior record unchanged at one recovery", fx.Deps.State.Batches[1])
 			}
 			if fx.Engine.PrepareCalls != 0 {
 				t.Errorf("Engine.PrepareCalls = %d; want no strand prepared", fx.Engine.PrepareCalls)
@@ -1303,6 +1584,9 @@ func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 			_, spawned, err = websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
 			if err != nil || !spawned {
 				t.Fatalf("RecoverSpawnOrAttach() after the retry = spawned %v, error %v; want a spawned strand", spawned, err)
+			}
+			if got := fx.Deps.State.Batches[1].Recoveries; got != 2 {
+				t.Errorf("Recoveries after the retried spawn = %d; want 2", got)
 			}
 		})
 	}

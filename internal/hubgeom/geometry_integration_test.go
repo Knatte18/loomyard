@@ -154,7 +154,7 @@ func TestGeometryOverRealHub(t *testing.T) {
 			t.Fatalf("ResolveWorktree: %v", err)
 		}
 		_, err = hubgeom.ResolveParent(l)
-		if err == nil || !strings.Contains(err.Error(), filepath.Base(lockDir)) || !strings.Contains(err.Error(), "lyx fabric reconcile") {
+		if err == nil || !strings.Contains(err.Error(), filepath.Base(lockDir)) || !strings.Contains(err.Error(), "lyx fabric reconcile` to restore it; a session lyx refuses the verb from reports status: FAILED and the orch runs it") {
 			t.Fatalf("ResolveParent without the lock directory = %v; want an error naming the lock directory and `lyx fabric reconcile`", err)
 		}
 

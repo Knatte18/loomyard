@@ -257,6 +257,9 @@ func TestWire_DefaultConfig(t *testing.T) {
 		if deps.RefMatcher == nil {
 			t.Error("runDeps.RefMatcher = nil; want the real fabric reference matcher")
 		}
+		if deps.ReadOnly == nil {
+			t.Error("runDeps.ReadOnly = nil; want the read-only classifier beside the reference matcher")
+		}
 
 		// The same value must also be embedded verbatim in c.env.WebsterDeps.
 		if c.env.WebsterDeps.Geom != deps.Geom {
@@ -861,6 +864,11 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 	if c.env.FixStart != burlerengine.FixStartAfterReview {
 		t.Errorf("c.env.FixStart = %q; want %q", c.env.FixStart, burlerengine.FixStartAfterReview)
+	}
+	if c.env.WebsterRecord == nil {
+		t.Error("c.env.WebsterRecord = nil; want the closure over loomshed.WebsterRecordNote")
+	} else if got := c.env.WebsterRecord(); got != "none" {
+		t.Errorf("c.env.WebsterRecord() = %q; want none for an anchor with no webster run record", got)
 	}
 
 	// The template's empty fans leave every fan entry empty, and Webster rows never carry one.

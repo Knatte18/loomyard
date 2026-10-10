@@ -108,7 +108,7 @@ type Card struct {
 	// Slug is the card's segment, taken from the Card Index entry.
 	Slug string
 
-	// Text is the raw text of the card's file, read only by CheckCardFabricReference.
+	// Text is the raw text of the card's file, read only by CheckCardFabricReference and the pattern-entry-line-cap check.
 	Text string
 
 	// Title is the card file's "# Card N — <name>" heading's trailing name text.

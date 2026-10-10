@@ -30,6 +30,8 @@ type Git interface {
 	CommitsNamedBy(worktree, prefix string) ([]string, error)
 	// IsAncestor reports whether sha is an ancestor of ref.
 	IsAncestor(worktree, sha, ref string) (bool, error)
+	// NonMergeCommitsBetween reports whether the first-parent range base..head holds a commit that is not a merge; a base the repository does not hold is an error.
+	NonMergeCommitsBetween(worktree, base, head string) (bool, error)
 	// IgnoredPath reports whether git ignores path in the worktree.
 	IgnoredPath(worktree, path string) (bool, error)
 	// OtherWorktrees returns the canonical root of every worktree of the repository except the given one.
@@ -73,6 +75,10 @@ func (realGit) CommitsNamedBy(worktree, prefix string) ([]string, error) {
 
 func (realGit) IsAncestor(worktree, sha, ref string) (bool, error) {
 	return isAncestor(worktree, sha, ref)
+}
+
+func (realGit) NonMergeCommitsBetween(worktree, base, head string) (bool, error) {
+	return nonMergeCommitsBetween(worktree, base, head)
 }
 
 func (realGit) IgnoredPath(worktree, path string) (bool, error) { return ignoredPath(worktree, path) }

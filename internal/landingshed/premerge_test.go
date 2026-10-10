@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	mergeWayForwardClause = `conclude it with "lyx fabric merge --continue" or discard it with "lyx fabric merge --abort", then resume`
+	mergeWayForwardClause = `conclude it with "lyx fabric merge --continue" or discard it with "lyx fabric merge --abort", then resume; a session lyx refuses the verb from reports status: FAILED and the orch runs it`
 	resolverRanReason     = "the resolver ran"
 )
 
