@@ -64,12 +64,9 @@ var spawnObservabilityScanRoots = []string{"internal", "cmd"}
 // cmd/lyx/tierpurity_test.go's allowedSpawners and cmd/lyx/sandbox_coverage_test.go's
 // excludedModules style.
 //
-// The structurally barred entries are exemptions INSIDE the rule: each owes a written reason because it
-// is a real spawn site the invariant would otherwise require logged, but is barred from doing
-// so. The "not governed" entries are OUTSIDE the rule: the walk reaches them because they live under internal/ or
-// cmd/, but they were never governed by this invariant in the first place — a test-fixture builder and
-// a test-timing harness, neither reachable from a lyx command. tools/ sites need no entry at all: the
-// walk never visits tools/.
+// The structurally barred entries are exemptions INSIDE the rule: each owes a written reason because it is a real spawn site the invariant would otherwise require logged, but is barred from doing so.
+// The "not governed" entries are OUTSIDE the rule: the walk reaches them because they live under internal/ or cmd/, but they were never governed by this invariant in the first place — a test-fixture builder and a test-timing harness, neither reachable from a lyx command.
+// tools/ sites need no entry at all: the walk never visits tools/.
 var spawnObservabilityAllowedSpawners = []scankit.Entry{
 	{
 		Key: "internal/gitexec/gitexec.go",
