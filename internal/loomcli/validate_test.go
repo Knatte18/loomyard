@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/indexkit"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
@@ -379,6 +380,22 @@ func TestValidatePlanCmd(t *testing.T) {
 			wantOKRequire:    false,
 			wantFindRequire:  true,
 			wantFindingsName: "plan-unapproved[blocking]",
+		},
+		{
+			// --require-approved validates through the wired index, whose type load a hub slots.
+			name: "RequireApprovedValidatesThroughTheWiredIndex",
+			build: func(anchorPath, worktreeRoot string) *loomCLI {
+				c := planFixture(t, anchorPath, worktreeRoot, true)
+				c.env.PlanIndex = indexkit.ValidateStub{Index: c.env.PlanIndex, Finding: planglyph.Finding{Check: "wired-index", Severity: planglyph.SeverityBlocking}}
+				return c
+			},
+			wantExitAbsent:   0,
+			wantOKAbsent:     true,
+			wantFindAbsent:   false,
+			wantExitRequire:  1,
+			wantOKRequire:    false,
+			wantFindRequire:  true,
+			wantFindingsName: "wired-index[blocking]",
 		},
 		{
 			name: "ParseFault_NoPlanDirectory",

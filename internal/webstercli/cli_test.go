@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/testkit/indexkit"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -505,6 +506,7 @@ func seedTwoCardGlyphPlanDir(t *testing.T, planDir, worktreeRoot string) {
 // One plan drives every row.
 // With no run recorded, card 1's already-existing Create target is a blocking create-already-exists and the verb must still refuse -- that is the pre-flight answer the verb exists for.
 // With state.json recording batch 1 begun, terminal or not, that same finding is the plan working as designed and must vanish, leaving only card 2's informational finding and exit 0.
+// Both whole-plan branches, no run and a run with no batch begun, answer through the wired index, whose type load a hub slots.
 func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 	identity := batcher.Identity()
 
@@ -530,6 +532,39 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 			t.Errorf("output missing the blocking glyph-not-found finding for card 3's missing Delete target; got %q", got)
 		}
 	})
+
+	for _, tc := range []struct {
+		name     string
+		runSaved bool
+	}{
+		{"NoRunRecordedValidatesThroughTheWiredIndex", false},
+		{"RunWithNoBatchBegunValidatesThroughTheWiredIndex", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := newTestCLI(t)
+			c.batcher = identity
+			seedTwoCardGlyphPlanDir(t, c.geom.PlanDir, c.geom.WorktreeRoot)
+			c.geom.Index = indexkit.ValidateStub{Finding: planglyph.Finding{Check: "wired-index", Severity: planglyph.SeverityBlocking}}
+			if tc.runSaved {
+				fingerprint, err := websterengine.Fingerprint(c.geom.PlanDir)
+				if err != nil {
+					t.Fatalf("websterengine.Fingerprint(planDir) = %v; want nil", err)
+				}
+				state := &websterengine.State{RunGUID: "run-guid", PlanFingerprint: fingerprint, Batches: map[int]*websterengine.BatchState{}}
+				if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, state); err != nil {
+					t.Fatalf("SaveState: %v", err)
+				}
+			}
+
+			var out bytes.Buffer
+			exitCode := clihelp.Execute(c.validateCmd(), &out, []string{})
+
+			got := out.String()
+			if exitCode != 1 || !strings.Contains(got, `"scope":"whole-plan"`) || !strings.Contains(got, `"check":"wired-index"`) {
+				t.Errorf("validate = %d, %q; want 1 with the wired index's whole-plan finding", exitCode, got)
+			}
+		})
+	}
 
 	for _, tc := range []struct {
 		name  string
