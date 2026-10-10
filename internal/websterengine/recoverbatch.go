@@ -230,6 +230,7 @@ func rendersNewAmendment(prior *BatchState) bool {
 // recoverSpawn archives any stale report, stops a live prior strand, renders
 // the recovery prompt, and starts the recovery strand, returning a fresh BatchState.
 // clk stamps SpawnedAt so elapsed-since-spawn is measured against the same clock.
+// The record appends the spawned run's session id to the prior record's RecoverySessions.
 // The record counts the spawn in Recoveries unless the prompt renders an amendment no earlier spawn rendered, and carries HEAD at the spawn as RecoveryStartSHA.
 // HEAD is read before anything is stopped or started, so a failed read starts nothing and counts nothing.
 func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prevDigest string, clk Clock) (*BatchState, error) {
@@ -332,7 +333,9 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	// The prompt above rendered every amended card, so the fresh record carries the entries as rendered: only an edit made after this spawn forces it failed.
 	var amended []AmendedCard
 	recoveries := 0
+	var recoverySessions []string
 	if prior != nil {
+		recoverySessions = slices.Clone(prior.RecoverySessions)
 		for _, a := range prior.AmendedCards {
 			amended = append(amended, AmendedCard{Card: a.Card, Rendered: true})
 		}
@@ -344,6 +347,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	if !rendersNewAmendment(prior) {
 		recoveries++
 	}
+	recoverySessions = append(recoverySessions, runState.SessionID)
 
 	return &BatchState{
 		Slug:             slug,
@@ -361,6 +365,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		EventsPath:       runState.EventsPath,
 		EventsOffset:     runState.PromptOffset,
 		Recoveries:       recoveries,
+		RecoverySessions: recoverySessions,
 		RecoveryStartSHA: head,
 	}, nil
 }

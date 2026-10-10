@@ -359,7 +359,7 @@
 // The master and the recovery strand both load `scribe:prose`, `scribe:code-quality` and `scribe:testing` through their spawn spec's skills (`roleSkills`), and their opening prompts render the parent directive (internal/parentdirective) from Geometry.ParentName, which hubgeom.WebsterGeometry fills from the worktree's origin record.
 // Forks get no skills and no directive: they inherit the master's context.
 // The recovery prompt also carries a block of the worktree's uncommitted paths (the optional uncommitted_paths marker, `none` on a clean tree), taken from UncommittedPaths when the strand is spawned.
-// Each path is grouped by the run's write evidence (loadRunWrites): "Written by this run" is the earlier attempt's unfinished work, which the strand keeps as its starting point after checking it against the card, and "Not written by this run", which includes every path the evidence cannot attribute, the strand leaves untouched and never stages or commits.
+// Each path is grouped by the run's write evidence (loadRunWrites), which covers Master, every fork and every recovery session: "Written by this run" is the earlier attempt's unfinished work, which the strand keeps as its starting point after checking it against the card, and "Not written by this run", which includes every path the evidence cannot attribute, the strand leaves untouched and never stages or commits.
 // The call that spawns the recovery strand first waits for its provider to come up (normally seconds, bounded by startup_timeout_s),
 // and every call then blocks for RecoveryWaitBudget (recovery_timeout_min plus one poll tick) and returns a terminal digest:
 // the budget outlasts the timeout measured from spawn, so a strand that never reports classifies dead on its timeout and the call returns.
@@ -377,7 +377,8 @@
 // A turn end left waiting on any task, a shell of either signal or a fork, never counts, so recovery_timeout_min bounds that strand and a report present before it classifies done.
 // This mirrors classify.go's dead/timeout/stuck classification.
 //
-// A batch's recovery spawns are counted in BatchState.Recoveries, and the spawn records HEAD as RecoveryStartSHA, read before anything is stopped or started, so a HEAD that cannot be read starts and counts nothing.
+// A batch's recovery spawns are counted in BatchState.Recoveries, and BatchState.RecoverySessions records every recovery strand's session id in spawn order, so the batch records every recovery session.
+// The spawn records HEAD as RecoveryStartSHA, read before anything is stopped or started, so a HEAD that cannot be read starts and counts nothing.
 // A re-begin and a rebaseline keep the count.
 // A spawn whose prompt renders an amendment no earlier spawn rendered does not count, so an amendment forces at most one uncounted re-run.
 // A counted spawn is refused with ErrRecoveryExhausted once the batch has two recoveries, whoever asks, with a way forward through `reset --to batch-start` or `reset --to start`.
@@ -530,7 +531,7 @@
 // `--batch` is required for `report-head` and `batch-start` and refused for the other three, before any git read.
 // The refusals run in order: the `--batch` pairing, run lock held (transient, except for `report-head`), no state, a merge in progress, a checked-out branch that is not the task branch,
 // no recorded target, a recorded commit missing from the repository, a target that is not an ancestor of HEAD, and a dirty tracked path outside the run's own writes.
-// The own paths are the tracked paths that loadRunWrites records a successful write to, Master's and every fork's; a failed write is not evidence.
+// The own paths are the tracked paths that loadRunWrites records a successful write to, Master's, every fork's and every recovery session's; a failed write is not evidence.
 // Each refusal ends in wayForwardSteps' numbered list.
 // The plan carries the SHA and the own paths, and reads no force flag.
 // `start` is the one start-over verb, so it does not refuse where the start cannot be moved to:

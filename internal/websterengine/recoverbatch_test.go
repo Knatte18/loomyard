@@ -1075,18 +1075,24 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				if rec := fx.Deps.State.Batches[1]; rec.Recoveries != 1 || rec.RecoveryStartSHA != fx.Git.head {
 					t.Errorf("recovery BatchState Recoveries = %d, RecoveryStartSHA = %q; want 1 and HEAD %q", rec.Recoveries, rec.RecoveryStartSHA, fx.Git.head)
 				}
+				if got, want := fx.Deps.State.Batches[1].RecoverySessions, []string{"fake-session"}; !slices.Equal(got, want) {
+					t.Errorf("recovery BatchState.RecoverySessions = %v; want %v", got, want)
+				}
 			},
 		},
 		{
 			name: "a spawn over a prior recovery raises the count and records HEAD as its start",
 			setup: func(fx *recoverFixture) {
-				fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 1, RecoveryStartSHA: fx.Git.head, StartSHA: fx.Git.head}
+				fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 1, RecoveryStartSHA: fx.Git.head, StartSHA: fx.Git.head, RecoverySessions: []string{"earlier-session"}}
 				fx.Git.commit()
 			},
 			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
 				requireSpawned(t, spawned, err)
 				if rec := fx.Deps.State.Batches[1]; rec.Recoveries != 2 || rec.RecoveryStartSHA != fx.Git.head {
 					t.Errorf("recovery BatchState Recoveries = %d, RecoveryStartSHA = %q; want 2 and HEAD %q", rec.Recoveries, rec.RecoveryStartSHA, fx.Git.head)
+				}
+				if got, want := fx.Deps.State.Batches[1].RecoverySessions, []string{"earlier-session", "fake-session"}; !slices.Equal(got, want) {
+					t.Errorf("recovery BatchState.RecoverySessions = %v; want %v", got, want)
 				}
 			},
 		},

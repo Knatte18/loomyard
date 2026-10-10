@@ -1,5 +1,5 @@
 // runwrites.go reads the run's own write history: every Write, Edit or NotebookEdit a Master session
-// or one of its forks made, with each write's time and result.
+// or one of its forks or recovery sessions made, with each write's time and result.
 // It is the one reader behind the contract-file evidence, the own-path set of a reset and the uncommitted-path classing of a recovery prompt.
 
 package websterengine
@@ -18,22 +18,36 @@ type RunWrites struct {
 	Master []shuttleengine.WriteEvent
 	// Forks holds every fork's writes, session by session, each in discovery then transcript order.
 	Forks []shuttleengine.WriteEvent
+	// Recoveries holds every recovery session's own writes, session by session, each in transcript order.
+	Recoveries []shuttleengine.WriteEvent
 }
 
-// loadRunWrites audits every Master session the state records and collects the write events.
-// The sessions are State.MasterSessionID then each batch record's SessionID in batch-number order, deduplicated, an empty id skipped.
+// loadRunWrites audits every session the state records and collects the write events.
+// The Master sessions are State.MasterSessionID then each batch record's SessionID in batch-number order;
+// the recovery sessions follow, each batch's RecoverySessions in batch-number order; both are deduplicated, an empty id skipped, and each id is audited once.
 // It reads only; an audit error is returned naming the session.
 func loadRunWrites(engine shuttleengine.Engine, st *State, worktree string) (RunWrites, error) {
 	var writes RunWrites
 	if st == nil {
 		return writes, nil
 	}
-	for _, session := range recordedSessions(st) {
+	master, recovery := recordedSessions(st)
+	for _, session := range master {
 		audit, err := engine.AuditForks(session, worktree)
 		if err != nil {
 			return RunWrites{}, fmt.Errorf("audit session %s for run writes: %w", session, err)
 		}
 		writes.Master = append(writes.Master, audit.ParentWriteEvents...)
+		for _, fork := range audit.Forks {
+			writes.Forks = append(writes.Forks, fork.WriteEvents...)
+		}
+	}
+	for _, session := range recovery {
+		audit, err := engine.AuditForks(session, worktree)
+		if err != nil {
+			return RunWrites{}, fmt.Errorf("audit recovery session %s for run writes: %w", session, err)
+		}
+		writes.Recoveries = append(writes.Recoveries, audit.ParentWriteEvents...)
 		for _, fork := range audit.Forks {
 			writes.Forks = append(writes.Forks, fork.WriteEvents...)
 		}
@@ -50,7 +64,7 @@ func writtenWorktreePaths(writes RunWrites, worktree string) ([]string, error) {
 		return nil, err
 	}
 	var written []string
-	for _, ev := range slices.Concat(writes.Master, writes.Forks) {
+	for _, ev := range slices.Concat(writes.Master, writes.Forks, writes.Recoveries) {
 		if !ev.Succeeded {
 			continue
 		}
@@ -73,15 +87,15 @@ func writtenWorktreePaths(writes RunWrites, worktree string) ([]string, error) {
 	return written, nil
 }
 
-// recordedSessions lists the distinct non-empty Master session ids st records, in a stable order.
-func recordedSessions(st *State) []string {
-	var sessions []string
-	add := func(id string) {
-		if id != "" && !slices.Contains(sessions, id) {
-			sessions = append(sessions, id)
+// recordedSessions lists the distinct non-empty Master session ids st records, and separately the distinct recovery session ids of every batch in batch-number order, each in a stable order.
+// An id recorded as a Master session is never listed again as a recovery session.
+func recordedSessions(st *State) (master, recovery []string) {
+	add := func(list *[]string, id string) {
+		if id != "" && !slices.Contains(master, id) && !slices.Contains(recovery, id) {
+			*list = append(*list, id)
 		}
 	}
-	add(st.MasterSessionID)
+	add(&master, st.MasterSessionID)
 	numbers := make([]int, 0, len(st.Batches))
 	for n := range st.Batches {
 		numbers = append(numbers, n)
@@ -89,8 +103,15 @@ func recordedSessions(st *State) []string {
 	slices.Sort(numbers)
 	for _, n := range numbers {
 		if b := st.Batches[n]; b != nil {
-			add(b.SessionID)
+			add(&master, b.SessionID)
 		}
 	}
-	return sessions
+	for _, n := range numbers {
+		if b := st.Batches[n]; b != nil {
+			for _, id := range b.RecoverySessions {
+				add(&recovery, id)
+			}
+		}
+	}
+	return master, recovery
 }

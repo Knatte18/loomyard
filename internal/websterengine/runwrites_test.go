@@ -58,6 +58,42 @@ func TestLoadRunWrites(t *testing.T) {
 		}
 	})
 
+	t.Run("recovery sessions are audited after the Master sessions, once each", func(t *testing.T) {
+		t.Parallel()
+
+		st := &State{
+			MasterSessionID: "s1",
+			Batches: map[int]*BatchState{
+				1: {SessionID: "s1", RecoverySessions: []string{"r1", "r2"}},
+				2: {SessionID: "s2", RecoverySessions: []string{"r2", "s1"}},
+			},
+		}
+		var audited []string
+		engine := &shuttlefake.Engine{AuditForksFn: func(session, _ string) (shuttleengine.ForkAudit, error) {
+			audited = append(audited, session)
+			return shuttleengine.ForkAudit{
+				ParentWriteEvents: []shuttleengine.WriteEvent{{Path: session + "-parent", Succeeded: true}},
+				Forks:             []shuttleengine.ForkReport{{WriteEvents: []shuttleengine.WriteEvent{{Path: session + "-fork"}}}},
+			}, nil
+		}}
+
+		got, err := loadRunWrites(engine, st, "/wt")
+		if err != nil {
+			t.Fatalf("loadRunWrites: %v", err)
+		}
+		if want := []string{"s1", "s2", "r1", "r2"}; !reflect.DeepEqual(audited, want) {
+			t.Errorf("audited sessions = %v, want %v", audited, want)
+		}
+		wantRecoveries := []shuttleengine.WriteEvent{{Path: "r1-parent", Succeeded: true}, {Path: "r2-parent", Succeeded: true}}
+		if !reflect.DeepEqual(got.Recoveries, wantRecoveries) {
+			t.Errorf("Recoveries = %v, want %v", got.Recoveries, wantRecoveries)
+		}
+		wantForks := []shuttleengine.WriteEvent{{Path: "s1-fork"}, {Path: "s2-fork"}, {Path: "r1-fork"}, {Path: "r2-fork"}}
+		if !reflect.DeepEqual(got.Forks, wantForks) {
+			t.Errorf("Forks = %v, want %v", got.Forks, wantForks)
+		}
+	})
+
 	t.Run("a session recorded twice is audited once", func(t *testing.T) {
 		t.Parallel()
 
@@ -101,13 +137,17 @@ func TestLoadRunWrites(t *testing.T) {
 				{Path: "a.go", Succeeded: true},
 				{Path: filepath.Join(worktree, "b", "new.go"), Succeeded: true},
 			},
+			Recoveries: []shuttleengine.WriteEvent{
+				{Path: "recovered.go", Succeeded: true},
+				{Path: "recovery-failed.go"},
+			},
 		}
 
 		got, err := writtenWorktreePaths(writes, worktree)
 		if err != nil {
 			t.Fatalf("writtenWorktreePaths: %v", err)
 		}
-		if want := []string{"a.go", "b/new.go"}; !reflect.DeepEqual(got, want) {
+		if want := []string{"a.go", "b/new.go", "recovered.go"};!reflect.DeepEqual(got, want) {
 			t.Errorf("writtenWorktreePaths = %v, want %v", got, want)
 		}
 	})

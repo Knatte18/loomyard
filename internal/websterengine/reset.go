@@ -428,7 +428,7 @@ func ownTrackedPaths(deps ResetDeps) ([]string, error) {
 		return nil, err
 	}
 	var own []string
-	for _, ev := range slices.Concat(writes.Master, writes.Forks) {
+	for _, ev := range slices.Concat(writes.Master, writes.Forks, writes.Recoveries) {
 		if !ev.Succeeded {
 			continue
 		}
