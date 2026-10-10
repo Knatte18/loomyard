@@ -46,7 +46,13 @@ func TestVerbCases_CleanState(t *testing.T) {
 					t.Parallel()
 
 					// Phase 1: build.
-					h := hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
+					// A copy's relocation rewrites the tracked .lyx-warp binding, so a reset of it refuses to re-point.
+					var h *hubforge.Hub
+					if vc.Name == "CloneHubReset/RealHub" {
+						h = hubforge.NewHub(t, anchor)
+					} else {
+						h = hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
+					}
 
 					// Phase 2: arrange.
 					fixture := vc.Arrange(t, h)

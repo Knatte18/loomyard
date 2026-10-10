@@ -337,7 +337,8 @@ func TestCloneHubReset(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
 
-				h := hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
+				// A copy's relocation rewrites the tracked .lyx-warp binding, so a reset of it refuses to re-point.
+				h := hubforge.NewHub(t, anchor)
 				fixture := verbCase.Arrange(t, h)
 
 				before := CaptureManifest(t, fixture.ResetHubPath)
