@@ -102,7 +102,7 @@ func TestReadConfigChanges(t *testing.T) {
 			t.Parallel()
 
 			const slug = "feature"
-			h := hubforge.NewHub(t, tc.anchor)
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: tc.anchor})
 			l := h.Location
 			weftRoot := mustRecordsRepoRoot(t, l)
 			forkPoint := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName("main"))

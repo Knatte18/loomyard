@@ -32,7 +32,7 @@ func TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink(t *testing.T) {
 	t.Parallel()
 
 	const slug = "toctou-launcher"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	topology := h.Topology

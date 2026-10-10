@@ -3,7 +3,7 @@
 // add_remoteleftover_integration_test.go covers Add's pre-flight probes of both origins: a live pair's branches on origin are adopted,
 // and a leftover remote branch from a removed pair is refused with an *ErrRemoteLeftover before Add's first mutation, or, when provably replaceable, does not block the add.
 //
-// Every hub here is built through hubforge.NewHub with an empty branch_prefix, so a slug's warp branch is the bare slug and its weft branch is <slug>-weft.
+// Every hub here is built through hubforge.CopyHub with an empty branch_prefix, so a slug's warp branch is the bare slug and its weft branch is <slug>-weft.
 // pushCommitToOrigin plants the leftover's divergence from a throwaway clone of the fixture's bare.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -77,7 +77,7 @@ func requireNothingCreated(t *testing.T, h *hubforge.Hub, slug string) {
 func removedPair(t *testing.T, slug string) *hubforge.Hub {
 	t.Helper()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	if _, err := topology.Remove(h.Location, slug, false, false); err != nil {
@@ -135,7 +135,7 @@ func TestAdd_LiveLocalWeftAgainstOrigin(t *testing.T) {
 
 			const slug = "leftover-adopt"
 			weftBranch := fabricengine.RecordsBranchName(slug)
-			h := hubforge.NewHub(t, ".")
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 			topology := h.Topology
 			hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 			oldTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
@@ -194,7 +194,7 @@ func TestAdd_LiveLocalWeftAdoptsDivergedWarpFromOrigin(t *testing.T) {
 
 	const slug = "leftover-live-warp"
 	weftBranch := fabricengine.RecordsBranchName(slug)
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	wt := fabricengine.WorktreePath(h.Location, slug)
@@ -230,7 +230,7 @@ func TestAdd_WarpLeftoverRefusedAtPreflight(t *testing.T) {
 	t.Parallel()
 
 	const slug = "leftover-warp"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	wt := fabricengine.WorktreePath(h.Location, slug)
@@ -259,7 +259,7 @@ func TestAdd_WarpFastForwardableLeftoverProceeds(t *testing.T) {
 	t.Parallel()
 
 	const slug = "leftover-warp-ff"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	if _, err := topology.Remove(h.Location, slug, false, true); err != nil {
@@ -331,7 +331,7 @@ func TestAdd_DivergedArchivedWeftLeftoverReplaced(t *testing.T) {
 
 	const slug = "leftover-diverged"
 	weftBranch := fabricengine.RecordsBranchName(slug)
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(h.Location, slug), "extra.txt", "extra.txt\n", "extra weft work")
@@ -371,7 +371,7 @@ func TestAdd_ArchivedAncestorWeftLeftoverReplaced(t *testing.T) {
 
 	const slug = "leftover-ancestor"
 	weftBranch := fabricengine.RecordsBranchName(slug)
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	oldTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)

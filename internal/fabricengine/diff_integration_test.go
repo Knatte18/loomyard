@@ -45,7 +45,7 @@ func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	fabricengine.SeedFabricConfigForTest(t, warpPath)
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
@@ -90,7 +90,7 @@ func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *tes
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	fabricengine.SeedFabricConfigForTest(t, warpPath)
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
@@ -137,7 +137,7 @@ func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	initialWarpSHA := fabricengine.CurrentSHAForTest(t, warpPath)
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	fabricengine.SeedFabricConfigForTest(t, warpPath)
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
@@ -178,7 +178,7 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	// One CommitWeft round first, so ensureWeftLockDir has already seeded

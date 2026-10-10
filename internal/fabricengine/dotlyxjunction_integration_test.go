@@ -17,7 +17,7 @@
 // Package fabricengine_test to reuse gitkit.GitStatusPorcelain; shares the single TestMain in
 // testmain_test.go.
 //
-// Every case in this file builds its hub via hubforge.NewHub, whose CloneAndWire call already wires
+// Every case in this file builds its hub via hubforge.CopyHub, whose CloneAndWire call already wires
 // the prime pair's .lyx junction (and seeds both sides' git-exclude) before any test body runs —
 // unlike the old fixture, which never wired anything. resetDotLyxJunction tears that pre-wiring back
 // down to a real, unwired starting point wherever a case's own subject is the wire-from-scratch or
@@ -61,7 +61,7 @@ func resetDotLyxJunction(t *testing.T, l *lyxcwd.Location, slug string) string {
 func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	l := h.Location
 	slug := l.WorktreeName
@@ -144,7 +144,7 @@ func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) 
 func TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	l := h.Location
 	slug := l.WorktreeName
@@ -175,7 +175,7 @@ func TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite(t *testing.T) {
 func TestDotLyxJunction_AdoptsPreExistingRealDotLyx(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	l := h.Location
 	slug := l.WorktreeName
@@ -228,7 +228,7 @@ func TestDotLyxJunction_AdoptsPreExistingRealDotLyx(t *testing.T) {
 func TestDotLyxJunction_AdoptionCollisionAbortsAndLeavesBothSidesUntouched(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	l := h.Location
 	slug := l.WorktreeName
@@ -303,7 +303,7 @@ func TestDotLyxJunction_AdoptionCollisionAbortsAndLeavesBothSidesUntouched(t *te
 func TestDotLyxJunction_AdoptionMergesADirectoryPresentOnBothSides(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	l := h.Location
 	slug := l.WorktreeName
@@ -386,7 +386,7 @@ func TestDotLyxJunction_AdoptionDoesNotOverreachIntoLyxOrPattern(t *testing.T) {
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			h := hubforge.NewHub(t, ".")
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 			l := h.Location
 			slug := l.WorktreeName
