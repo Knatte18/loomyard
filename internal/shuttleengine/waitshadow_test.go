@@ -132,6 +132,18 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 			wantLog:           []string{"turn end before the prompt's turn start; not held"},
 		},
 		{
+			name:   "a held turn end followed by a turn start returns the loop to running beside busy",
+			events: "START\n", liveness: LivenessAlive, timeout: time.Hour,
+			script: func(appendLine func(string), touchOutput func(), _ func(), _ func(string)) []func() {
+				return []func(){
+					func() { appendLine("STOP:what now?") },
+					func() { appendLine("START") },
+					func() { touchOutput(); appendLine("STOP:finished") },
+				}
+			},
+			wantChanges: []string{"busy/turn running", "idle-stalled/no-output held", "busy/turn running", "idle-done/done done"},
+		},
+		{
 			name:   "done beside busy on background work is expected",
 			events: "WAIT:background work\n", outstanding: shadowPayloadShell, liveness: LivenessAlive, outputsAtStart: true, timeout: time.Hour,
 			wantChanges: []string{"busy/background done"},
@@ -215,6 +227,9 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 			shadowed.result.EndedAt, plain.result.EndedAt = time.Time{}, time.Time{}
 			if !reflect.DeepEqual(shadowed.result, plain.result) {
 				t.Errorf("result with the parser = %+v, without = %+v", shadowed.result, plain.result)
+			}
+			if tt.wantDisagreements > 0 && !strings.Contains(shadowed.log, "stands=loop") {
+				t.Errorf("disagreement lacks stands=loop in %q", shadowed.log)
 			}
 			for _, want := range tt.wantLog {
 				if !strings.Contains(shadowed.log, want) {

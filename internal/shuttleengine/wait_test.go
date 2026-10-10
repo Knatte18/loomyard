@@ -551,6 +551,45 @@ func TestRun_Wait_HeldTurnEnd(t *testing.T) {
 			wantHeld:    []bool{false, true},
 		},
 		{
+			name: "a turn start read alone ends the hold and shows no new one", events: "STOP:question\n", status: live,
+			engine: sessionEngine(LivenessAlive),
+			script: func(a agentActions) []func() {
+				return []func(){
+					func() { a.appendLine("START") },
+					func() { a.writeOutput(); a.appendLine("STOP:done") },
+				}
+			},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+			wantHeld:    []bool{true, false},
+		},
+		{
+			name: "a stop and the turn start past it read in one batch show no hold", events: "START\n", status: live,
+			engine: sessionEngine(LivenessAlive),
+			script: func(a agentActions) []func() {
+				return []func(){
+					func() { a.appendLine("STOP:question"); a.appendLine("START") },
+					func() { a.writeOutput(); a.appendLine("STOP:done") },
+				}
+			},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+			wantHeld:    []bool{false, false},
+		},
+		{
+			name: "a turn start before a new stop in one batch leaves the new hold on show", events: "STOP:question\n", status: live,
+			engine: sessionEngine(LivenessAlive),
+			script: func(a agentActions) []func() {
+				return []func(){
+					func() { a.appendLine("START"); a.appendLine("STOP:question again") },
+					func() { a.writeOutput(); a.appendLine("STOP:done") },
+				}
+			},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+			wantHeld:    []bool{true, true},
+		},
+		{
 			name: "a zero prompt offset holds the first stop", events: skillLoadEvents, status: live,
 			engine: sessionEngine(LivenessAlive), readOffset: skillLoadOffset,
 			script: func(a agentActions) []func() {
@@ -665,8 +704,12 @@ func TestRun_Wait_HeldTurnEnd(t *testing.T) {
 			for _, call := range reed.WaitMarkCalls {
 				labels = append(labels, call.Label)
 			}
-			if !slices.Contains(labels, heldWaitLabel) || labels[len(labels)-1] != "" {
-				t.Errorf("pane mark labels = %q; want the held label set and the mark cleared last", labels)
+			if wantShown := tt.wantHeld == nil || slices.Contains(tt.wantHeld, true); wantShown {
+				if !slices.Contains(labels, heldWaitLabel) || labels[len(labels)-1] != "" {
+					t.Errorf("pane mark labels = %q; want the held label set and the mark cleared last", labels)
+				}
+			} else if slices.Contains(labels, heldWaitLabel) {
+				t.Errorf("pane mark labels = %q; want the held label never set", labels)
 			}
 			if _, err := os.Stat(filepath.Join(runDir, waitMarkerFileName)); !os.IsNotExist(err) {
 				t.Errorf("wait marker file after Wait: stat error = %v; want it removed", err)

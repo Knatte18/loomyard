@@ -251,7 +251,7 @@ func (run *Run) Wait() (Result, error) {
 	for tick := 1; ; tick++ {
 		outcome, held, err := run.pollEventsTick()
 		run.syncShellWait()
-		if err == nil && run.eventsRead {
+		if err == nil && (run.eventsRead || run.turnStartRead) {
 			run.endHeldWait()
 		}
 		if err != nil {
@@ -270,7 +270,10 @@ func (run *Run) Wait() (Result, error) {
 				// A turn end without every output file never ends the run.
 				// Log it so the durable trace records each one, and keep polling the same agent.
 				logger.Info("shuttle: turn end held, output files missing", "strandGUID", run.state.StrandGUID, "offset", held.offset, "lastAssistantMessage", held.message)
-				run.beginHeldWait()
+				// A turn start read past this turn end in the same batch means the next turn is already under way, so no hold shows.
+				if !run.turnStartRead {
+					run.beginHeldWait(held.offset)
+				}
 				run.notifyHeld(held)
 			} else if outcome != "" && (outcome != OutcomeDone || len(run.gate) == 0) {
 				// Not a gated Done: finalize exactly as this branch always has.
@@ -622,6 +625,7 @@ func (run *Run) abandonStartup(outcome Outcome, cause error) (Result, error) {
 // Returns outcome == "" and a nil held turn end when there is nothing new to classify yet.
 func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	run.eventsRead = false
+	run.turnStartRead = false
 	startOffset := run.offset
 	data, newOffset, err := readEventsFrom(run.state.EventsPath, startOffset)
 	if err != nil {
@@ -645,6 +649,8 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 		run.holdGuard = false
 		run.promptTurnStarted = true
 	}
+	// The reference is the held turn end on show; a held turn end this tick returns replaces it below.
+	run.turnStartRead = run.wait.heldOffset > 0 && turnStartAfter(turnStarts, run.wait.heldOffset)
 	if len(events) == 0 {
 		return run.expiredTurnEnd()
 	}
@@ -668,7 +674,13 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 		logger.Warn("shuttle: turn end before the prompt's turn start; not held", "strandGUID", run.state.StrandGUID, "offset", held.offset, "lastAssistantMessage", held.message)
 		return "", nil, nil
 	}
+	run.turnStartRead = turnStartAfter(turnStarts, held.offset)
 	return "", held, nil
+}
+
+// turnStartAfter reports whether any of the turn-start offsets lies past offset.
+func turnStartAfter(turnStarts []int64, offset int64) bool {
+	return slices.ContainsFunc(turnStarts, func(start int64) bool { return start > offset })
 }
 
 // armHoldGuard sets the hold guard for a Wait from the events file as it stands.
