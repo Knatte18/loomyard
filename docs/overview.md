@@ -392,6 +392,7 @@ User-facing modules each get one `lyx <module>` namespace:
   A live driver over a run halted at a hand-back with no park marker yet is still writing its stop report, so `start` refuses with the retryable kind `driver_not_parked`;
   batten's Inner-Run retries it, at most once per `notice_probe_s`, without recording the approval as acted on.
   When `start` would spawn or resume a driver over a pair with an unfinished merge it refuses with the non-retryable kind `merge_in_progress`, listing the conflicted paths under `conflicts` and naming the remedy.
+  A run whose current producer is Publish or Finalize is let through over a parked fabric `merge-in` of its own parent branch, since that row aborts and redoes it; `lyx loom resume` makes the same exception.
   `lyx loom resume` wakes a halted run's live, parked driver through the same branch, and a run awaiting at a review segment's Bouncer row with a pending circling decision takes that branch too, since its driver's step re-calls the Bouncer, which acts on the decision;
   it never spawns a driver, adds a strand or brings reed up, while `start` still resumes as before;
   it reads the driver strand from reed's sessionless directory, and refuses every other state with its way forward, as the loom section of [refusal-spec.md](../contracts/specs/refusal-spec.md) lists.
