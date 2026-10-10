@@ -84,28 +84,44 @@ func TestRun(t *testing.T) {
 	nonZeroArgs := []string{"log", "--format=stdout-marker", "-1"}
 	nonZeroDir := t.TempDir()
 	tests := []struct {
-		name        string
-		args        []string
-		dir         string
-		wantGitErr  bool
-		wantAnyErr  bool
-		wantStdout  bool
+		name       string
+		args       []string
+		dir        string
+		stdin      string
+		viaStdin   bool
+		wantGitErr bool
+		wantAnyErr bool
+		wantStdout bool
+		// wantExact, when set, is the exact stdout.
+		wantExact   string
 		wantDetails bool
 	}{
 		{name: "success", args: []string{"--version"}, dir: ".", wantStdout: true},
 		{name: "non-zero exit", args: nonZeroArgs, dir: nonZeroDir, wantGitErr: true, wantAnyErr: true, wantDetails: true},
 		{name: "exec failure", args: []string{"status"}, dir: filepath.Join(t.TempDir(), "does-not-exist"), wantAnyErr: true},
+		{name: "stdin reaches git", args: []string{"hash-object", "--stdin"}, dir: nonZeroDir, stdin: "hello\n", viaStdin: true, wantStdout: true, wantExact: "ce013625030ba8dba906f756967f9e9ca394464a\n"},
+		{name: "stdin non-zero exit", args: nonZeroArgs, dir: nonZeroDir, stdin: "ignored\n", viaStdin: true, wantGitErr: true, wantAnyErr: true, wantDetails: true},
+		{name: "empty stdin behaves as Run", args: []string{"--version"}, dir: ".", viaStdin: true, wantStdout: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			stdout, err := gitexec.Run(tt.args, tt.dir)
+			var stdout string
+			var err error
+			if tt.viaStdin {
+				stdout, err = gitexec.RunStdin(tt.args, tt.dir, tt.stdin)
+			} else {
+				stdout, err = gitexec.Run(tt.args, tt.dir)
+			}
 			if (err != nil) != tt.wantAnyErr {
 				t.Fatalf("Run error = %v; wantErr %v", err, tt.wantAnyErr)
 			}
 			if (stdout != "") != tt.wantStdout {
 				t.Errorf("stdout = %q; non-empty want %v", stdout, tt.wantStdout)
+			}
+			if tt.wantExact != "" && stdout != tt.wantExact {
+				t.Errorf("stdout = %q; want %q", stdout, tt.wantExact)
 			}
 			var gitErr *gitexec.GitError
 			if errors.As(err, &gitErr) != tt.wantGitErr {
@@ -156,17 +172,24 @@ func TestRun_StdoutOnError(t *testing.T) {
 		t.Fatalf("failed to modify a.txt: %v", err)
 	}
 
-	stdout, err := gitexec.Run([]string{"diff", "--exit-code", "--", "a.txt"}, tempDir)
-	if err == nil {
-		t.Fatal("expected a non-nil error for a non-empty diff with --exit-code")
+	diffArgs := []string{"diff", "--exit-code", "--", "a.txt"}
+	forms := map[string]func() (string, error){
+		"Run":      func() (string, error) { return gitexec.Run(diffArgs, tempDir) },
+		"RunStdin": func() (string, error) { return gitexec.RunStdin(diffArgs, tempDir, "ignored\n") },
 	}
+	for name, form := range forms {
+		stdout, err := form()
+		if err == nil {
+			t.Fatalf("%s: expected a non-nil error for a non-empty diff with --exit-code", name)
+		}
 
-	var gitErr *gitexec.GitError
-	if !errors.As(err, &gitErr) {
-		t.Fatalf("expected errors.As to recover *gitexec.GitError, got %T: %v", err, err)
-	}
-	if stdout == "" {
-		t.Fatal("expected non-empty stdout containing the diff output")
+		var gitErr *gitexec.GitError
+		if !errors.As(err, &gitErr) {
+			t.Fatalf("%s: expected errors.As to recover *gitexec.GitError, got %T: %v", name, err, err)
+		}
+		if stdout == "" {
+			t.Fatalf("%s: expected non-empty stdout containing the diff output", name)
+		}
 	}
 }
 
