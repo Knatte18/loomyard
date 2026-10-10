@@ -42,7 +42,7 @@ producers:
       poll_interval_s: 2
       notice_probe_s: 30
       driver_exit_grace_s: 900
-      notice_quiet_min: 45
+      notice_quiet_min: 30
 
   - name: Worktree-Teardown
     engine: WorktreeTeardown
