@@ -36,7 +36,7 @@ func watchdogOption(raw string) (bool, error) {
 const (
 	// watchdogDebounceQuiet is how long the loop waits for resize signals to stop arriving before
 	// treating a burst as one settled event.
-	watchdogDebounceQuiet = 200 * time.Millisecond
+	watchdogDebounceQuiet = 200 * time.Millisecond //lyx:one-shot a debounce armed once after a resize event
 	// watchdogSignalTick is how often the loop polls for the signal file's presence.
 	watchdogSignalTick = 100 * time.Millisecond
 	// watchdogPollCycle is the poll-mode reconcile cadence, used only where the signal-file
@@ -44,7 +44,7 @@ const (
 	watchdogPollCycle = 2 * time.Second
 	// watchdogRetryBaseDelay is the base of one debounced event's escalating retry delay
 	// (watchdogRetryBaseDelay << (attempt-1)).
-	watchdogRetryBaseDelay = 200 * time.Millisecond
+	watchdogRetryBaseDelay = 200 * time.Millisecond //lyx:one-shot a bounded retry after a failed apply, capped by watchdogMaxAttempts
 	// watchdogMaxAttempts caps one debounced event's retries, never the watcher itself.
 	watchdogMaxAttempts = 3
 	// watchdogDormantCycle is the cadence a watcher runs at once it is told its worktree root is

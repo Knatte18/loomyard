@@ -194,6 +194,9 @@
 // launchStrandLocked exports it to the strand's process as LYX_STRAND_NAME, with LYX_PARENT when a parent is told, ahead of the launch command.
 // It also sets the pane title to the full name after `set-option -p allow-set-title off`, so the program in the pane cannot overwrite it.
 // A provider session name is the other mirror, passed by the launch line as `--name`.
+// The resize loop (watchloop.go) polls at a two-second cycle until the window-resized hook is seen installed, then blocks on a file event for the signal file through a FileWatchOpener, whose production value OpenFileWatch wraps internal/fswatch.
+// An event stats the signal file, removes it when found and arms a one-shot debounce timer; a failed apply arms a one-shot retry timer on an escalating delay, bounded by the retry cap.
+// When the watcher cannot be opened the loop logs that once and stays in poll mode for good.
 // The hub watchdog daemon runs a name-repair tick (namerepair.go) beside its resize loop: it resets a drifted pane title itself and repairs a drifted provider session name through the SessionNamer seam, which the provider package implements and cliwire fills.
 // `lyx reed list` reports the hub-wide directory of names across worktrees, with each row's live state.
 //
@@ -681,7 +684,7 @@
 //     window-resized array; its own doc comment records the disposition and points back at that
 //     Measurement record block. With no repaint entry, a resize's dot-fill artifact is cleared by
 //     the watchdog's own round trip when the watchdog is on (the hook's run-shell touch,
-//     watchdogSignalTick, watchdogDebounceQuiet, and the re-apply round trip — roughly a second) or
+//     the file event on the signal, watchdogDebounceQuiet, and the re-apply round trip — a fraction of a second) or
 //     stands until the next reed operation when the watchdog is off; the cross-client trigger is
 //     never cleared by anything, per the split above.
 //   - The two acceptance criteria and why "did it clear the artifact" was not sufficient:
