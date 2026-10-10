@@ -66,6 +66,7 @@ var nilLegal = map[string]bool{
 	"InnerRun.Sleep":                                   true,
 	"InnerRun.ReviewWait":                              true,
 	"InnerRun.Now":                                     true,
+	"InnerRun.Awake":                                   true,
 	"InnerRun.Notify":                                  true,
 	"InnerRun.AttachDir":                               true,
 	"PrimeLock.Sleep":                                  true,
