@@ -19,9 +19,8 @@ type shadowRun struct {
 }
 
 var (
-	sessionStateLine      = regexp.MustCompile(`shuttle: session state" .*state=(\S+) cause=(\S+) .*loop=(\S+)`)
-	shadowPayloadShell    = []BackgroundTask{{Kind: BackgroundShell, ID: "shell-1", Label: "sleep 600", Signal: SignalPayload}}
-	shadowTranscriptShell = []BackgroundTask{{Kind: BackgroundShell, ID: "shell-1", Label: "sleep 600", Signal: SignalTranscript}}
+	sessionStateLine   = regexp.MustCompile(`shuttle: session state" .*state=(\S+) cause=(\S+) .*loop=(\S+)`)
+	shadowPayloadShell = []BackgroundTask{{Kind: BackgroundShell, ID: "shell-1", Label: "sleep 600", Signal: SignalPayload}}
 )
 
 // stateChanges returns the "state/cause loop" of every `shuttle: session state` line in log, in order.
@@ -112,11 +111,6 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 				return GateSpec{{Name: "parent-review", Gate: pending, Final: pending, Attempts: 3, PassOnCap: true}}
 			},
 			wantChanges: []string{"idle-done/done waiting"},
-		},
-		{
-			name:   "a waiting turn end on transcript-reported shells past the bound beside busy on background work is expected",
-			events: "WAIT:background work\n", outstanding: shadowTranscriptShell, liveness: LivenessAlive, timeout: time.Hour, jump: 6 * time.Minute,
-			wantChanges: []string{"busy/background waiting"},
 		},
 		{
 			name:   "done beside busy on background work is expected",

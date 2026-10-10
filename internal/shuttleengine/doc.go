@@ -48,7 +48,7 @@
 // and provider grammar is the concrete Engine's, reached only through the Engine interface.
 //
 // A turn end without every output file never ends a run: Wait holds it, logs it at Info and keeps polling the same agent,
-// whether the turn end is a Stop, a live ask or an expired-shell turn end.
+// whether the turn end is a Stop or a live ask.
 // A run ends only as done (every output file present at a turn end, or at the deadline or a pane's death), died, timeout or a mechanism failure.
 // A hold never extends the run's deadline: it is bounded by the caller's own Spec.Timeout (run_timeout_min only where that is zero, so the bound differs per caller),
 // each Attach starts a fresh deadline, and the liveness check still classifies a dead pane.
@@ -264,7 +264,7 @@
 // Each tick, and once more just before a classified outcome is finalized, it logs every state change at Info as `shuttle: session state` with the loop's classification: running, waiting, held, done or died.
 // It logs `shuttle: session state disagrees` at Warn once per disagreement, again only after either side changed, when the pair is outside the fixed mapping:
 // waiting and running read busy, held reads idle-stalled or asking, done reads idle-done, died reads dead.
-// Three pairings are expected and log nothing: a gate wait with every output present beside idle-done, a held turn end after transcript-reported shells expired beside busy on background work, and done beside busy on background work.
+// Two pairings are expected and log nothing: a gate wait with every output present beside idle-done, and done beside busy on background work.
 // The loop never branches on the state; an engine without the parser, an unreadable events file or a failed fact read logs once at Debug and changes no verdict, notice, wait mark or return.
 //
 // Start/StartGated/Run/RunGated run the startup probe (readiness plus dismissal of any one-time
