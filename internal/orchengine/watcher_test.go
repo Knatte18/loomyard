@@ -1274,12 +1274,23 @@ func TestWatcher_ReloadTypesNothingWhenIdleProbeFails(t *testing.T) {
 	}
 }
 
-func TestWatcher_HeldReloadStepRecordsReasonLogsOncePerChangeAndTypedLogsWait(t *testing.T) {
+func TestWatcher_HeldInjectionRecordsReasonLogsOncePerChangeWithinAHoldAndTypedLogsWait(t *testing.T) {
 	// Not parallel: it captures the process-global logger.
 	buf := logcapture.CaptureVerbose(t)
 	e := newWatchEnv(t)
-	e.reachClearing()
 	count := func(msg string) int { return strings.Count(buf.String(), msg) }
+
+	// A hold that a passing probe ends before an injection that is no reload step is still over.
+	e.injectHandoff()
+	e.writeHandoff()
+	e.s.events = append(e.s.events, stop("handoff"))
+	e.s.idle, e.s.reason = false, "a turn is running"
+	e.tick()
+	e.s.idle, e.s.reason = true, ""
+	e.tick()
+	if st := e.state(); st.Phase != PhaseClearing {
+		t.Fatalf("phase = %s, want clearing", st.Phase)
+	}
 
 	e.s.idle, e.s.reason = false, "a turn is running"
 	e.s.sessionStartAt = e.clock.now
@@ -1288,8 +1299,8 @@ func TestWatcher_HeldReloadStepRecordsReasonLogsOncePerChangeAndTypedLogsWait(t 
 	if st := e.state(); st.Stuck != "a turn is running" {
 		t.Errorf("Stuck = %q, want the probe's reason", st.Stuck)
 	}
-	if got := count("orch: injection held"); got != 1 {
-		t.Errorf("held logged %d times for an unchanged reason, want once", got)
+	if got := count("orch: injection held"); got != 2 {
+		t.Errorf("held logged %d times over two holds for an unchanged reason, want once per hold", got)
 	}
 	if got := count("orch: session start signal read"); got != 1 {
 		t.Errorf("session start logged %d times for one time, want once", got)
@@ -1300,8 +1311,8 @@ func TestWatcher_HeldReloadStepRecordsReasonLogsOncePerChangeAndTypedLogsWait(t 
 	if st := e.state(); st.Stuck != "a tool is running" {
 		t.Errorf("Stuck = %q, want the changed reason", st.Stuck)
 	}
-	if got := count("orch: injection held"); got != 2 {
-		t.Errorf("held logged %d times after the reason changed, want 2", got)
+	if got := count("orch: injection held"); got != 3 {
+		t.Errorf("held logged %d times after the reason changed, want 3", got)
 	}
 
 	e.s.idle = true

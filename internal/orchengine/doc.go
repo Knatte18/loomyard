@@ -126,7 +126,7 @@
 // Every idle probe goes through one watcher helper.
 // A probe that is not idle holds cycles and notice delivery, and records why in State.Stuck:
 // its own reason when the reading decided, `orch pane too short for the idle probe; resize or use the larger client` for a pane too short to draw an input box, else a fixed pane text.
-// The reason is saved and logged as `orch: injection held` at Info with the phase, the reload step, the reason and the time since the phase began, once per change of reason; the last reason is watcher memory and not State.
+// The reason is saved and logged as `orch: injection held` at Info with the phase, the reload step, the reason and the time since the phase began, once per change of reason within a hold, a run of probes that are not idle which the next passing probe ends; the last reason is watcher memory and not State.
 // A passing probe clears a State.Stuck that a hold wrote and only that, so `lyx orch status` shows the hold in the idle phase too, and a Stuck written by anything else is never overwritten by a hold.
 // State.StuckByHold records that a hold wrote it, so a restarted watcher clears it too.
 //
@@ -253,7 +253,7 @@
 //   - A step typed before a restart and not confirmed is typed again once the idle probe passes, without a fresh timeout.
 //     Loading a skill twice costs one turn and changes nothing.
 //
-// Each successful typing of a step logs `orch: injection typed` at Info with the phase, the step name, the length of the hold before it and the time since the phase began, and forgets the hold.
+// Each successful typing of a step logs `orch: injection typed` at Info with the phase, the step name, the length of the hold the passing probe before it ended and the time since the phase began.
 // A boundary found is logged as `orch: compaction boundary found` with its time, when a fresh one is read at a turn end and again when a qualifying one completes a requested compaction,
 // so the delay from boundary to reload is readable from `watch.log` alone.
 //

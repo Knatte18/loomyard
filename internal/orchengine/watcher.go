@@ -102,11 +102,13 @@ type Watcher struct {
 	idleDisagreement    idleStatePair
 	hasIdleDisagreement bool
 
-	// lastHeld is the reason the idle probe last held an injection for, as logged; empty when none.
-	// heldSince is when that hold began, zero when none, and sessionStartLogged the newest session-start time logged.
-	// All three are memory only: binding to another strand clears them, and a restarted watcher logs again.
+	// A hold is a run of consecutive probes that are not idle, ended by the next passing probe.
+	// lastHeld is the reason the current hold last held an injection for, as logged, and heldSince when the hold began; empty and zero outside a hold.
+	// heldWaited is how long the hold the last passing probe ended lasted, zero when it ended none, and sessionStartLogged the newest session-start time logged.
+	// All four are memory only: binding to another strand clears them, and a restarted watcher logs again.
 	lastHeld           string
 	heldSince          time.Time
+	heldWaited         time.Duration
 	sessionStartLogged time.Time
 }
 
@@ -328,7 +330,7 @@ func (w *Watcher) initCursor(st State) (State, error) {
 	w.compactedAt = time.Time{}
 	w.colorPending = true
 	w.idleDisagreement, w.hasIdleDisagreement = idleStatePair{}, false
-	w.lastHeld, w.heldSince, w.sessionStartLogged = "", time.Time{}, time.Time{}
+	w.lastHeld, w.heldSince, w.heldWaited, w.sessionStartLogged = "", time.Time{}, 0, time.Time{}
 	switch {
 	case st.Phase == PhaseIdle:
 		w.cursor = st.LastInjectionOffset
@@ -371,7 +373,6 @@ func (w *Watcher) enter(st State, phase Phase, now time.Time) (State, error) {
 	st.PhaseEventsOffset = w.cursor
 	st.PhaseInjected = false
 	st.Stuck, st.StuckByHold = "", false
-	w.heldSince = time.Time{}
 	w.seen = phaseEvents{}
 	return st, w.save(st)
 }
@@ -412,7 +413,7 @@ func heldReason(probe shuttleengine.IdleProbe) string {
 
 // probeIdle runs the idle probe, the one door every watcher probe goes through.
 // A probe that is not idle is logged and recorded in st.Stuck through logHeld;
-// a passing probe clears a Stuck that a hold wrote, and only that.
+// a passing probe ends the hold and clears a Stuck that a hold wrote, and only that.
 func (w *Watcher) probeIdle(st *State) (shuttleengine.IdleProbe, error) {
 	probe, err := w.session.SessionIdle(st.Strand)
 	if err != nil {
@@ -422,6 +423,11 @@ func (w *Watcher) probeIdle(st *State) (shuttleengine.IdleProbe, error) {
 	if !probe.Idle {
 		return probe, w.logHeld(st, probe)
 	}
+	w.heldWaited = 0
+	if !w.heldSince.IsZero() {
+		w.heldWaited = w.clock.Now().Sub(w.heldSince)
+	}
+	w.lastHeld, w.heldSince = "", time.Time{}
 	if st.StuckByHold {
 		st.Stuck, st.StuckByHold = "", false
 		return probe, w.save(*st)
@@ -448,15 +454,11 @@ func (w *Watcher) logHeld(st *State, probe shuttleengine.IdleProbe) error {
 	return w.save(*st)
 }
 
-// logTyped logs that step was typed into the session, with how long the hold before it lasted, and forgets the hold.
+// logTyped logs that step was typed into the session, with how long the hold the caller's passing probe ended lasted.
 func (w *Watcher) logTyped(st State, step string) {
 	now := w.clock.Now()
-	var waited time.Duration
-	if !w.heldSince.IsZero() {
-		waited = now.Sub(w.heldSince)
-	}
-	logger.Info("orch: injection typed", "strandGUID", st.Strand, "phase", string(st.Phase), "step", step, "waited", waited, "sincePhase", w.sincePhase(st, now))
-	w.lastHeld, w.heldSince = "", time.Time{}
+	logger.Info("orch: injection typed", "strandGUID", st.Strand, "phase", string(st.Phase), "step", step, "waited", w.heldWaited, "sincePhase", w.sincePhase(st, now))
+	w.heldWaited = 0
 }
 
 // stepName names the reload step st is in while it is resuming, and is empty in every other phase.
