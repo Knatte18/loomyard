@@ -30,6 +30,7 @@ const (
 // watchDefaultTiming.
 type watchTiming struct {
 	PollCycle   time.Duration
+	PollCeiling time.Duration
 	Quiet       time.Duration
 	BaseDelay   time.Duration
 	MaxAttempts int
@@ -41,6 +42,7 @@ type watchTiming struct {
 func watchDefaultTiming() watchTiming {
 	return watchTiming{
 		PollCycle:   watchdogPollCycle,
+		PollCeiling: watchdogPollCeiling,
 		Quiet:       watchdogDebounceQuiet,
 		BaseDelay:   watchdogRetryBaseDelay,
 		MaxAttempts: watchdogMaxAttempts,
@@ -128,7 +130,7 @@ func (s *watchState) Deferred() {}
 type watchMode int
 
 const (
-	// watchModePoll re-applies once per cycle and re-probes hook availability
+	// watchModePoll re-applies at a backed-off cadence and re-probes hook availability
 	// each cycle. It is the safe default: it works whether or not the hook exists.
 	watchModePoll watchMode = iota
 	// watchModeSignal waits on file events for the hook-written signal file and performs no
@@ -194,13 +196,16 @@ func (e *Engine) Watch(ctx context.Context) error {
 	return e.watchLoop(ctx, watchDefaultTiming(), OpenFileWatch)
 }
 
-// tickerPeriodFor returns the ticker period the loop should run at while in a ticking mode.
-// Signal mode runs no ticker.
-func tickerPeriodFor(mode watchMode, t watchTiming) time.Duration {
-	if mode == watchModeDormant {
-		return t.Dormant
+// pollWakeChanged reports whether one poll tick observed a change, which returns the next wait to the base.
+// It is judged before handleWatchOutcome moves lastApplied.
+// A deferral counts as a change because another op is changing the session.
+// A failed re-apply does not, so a broken tmux costs at most one round trip a minute.
+// A degraded box is no observation, so it counts only when a layout was applied.
+func pollWakeChanged(res ReapplyResult, err error, lastApplied render.Box) bool {
+	if err != nil {
+		return false
 	}
-	return t.PollCycle
+	return res.Deferred || res.Applied || (res.BoxIsLive && res.Box != lastApplied)
 }
 
 // consumeResizeSignal removes the signal file when it exists and records the signal on state at now, reporting whether a signal was found.
@@ -222,8 +227,8 @@ func (e *Engine) consumeResizeSignal(state *watchState, now time.Time) bool {
 // watchLoop is Watch's driver. It reads e.cfg.Watchdog exactly once, at the top, and never again:
 // flipping the key on disk changes nothing until the process restarts.
 //
-// Poll and dormant mode run a ticker.
-// Signal mode runs none: it blocks on the events open delivers for the signal file, a one-shot debounce timer armed from the quiet window, a one-shot retry timer armed from the escalating failure delay, and ctx.
+// Poll and dormant mode wake from a re-armed one-shot timer: poll mode doubles its wait from the base to the ceiling across ticks that change nothing, and dormant mode keeps its fixed cadence.
+// Signal mode arms no wake: it blocks on the events open delivers for the signal file, a one-shot debounce timer armed from the quiet window, a one-shot retry timer armed from the escalating failure delay, and ctx.
 // When open fails at promotion the loop logs that once, stays in poll mode and never promotes again.
 func (e *Engine) watchLoop(ctx context.Context, t watchTiming, open FileWatchOpener) error {
 	enabled, err := watchdogOption(e.cfg.Watchdog)
@@ -275,24 +280,23 @@ func (e *Engine) watchLoop(ctx context.Context, t watchTiming, open FileWatchOpe
 	defer debounce.stop()
 	defer retry.stop()
 
-	var ticker *time.Ticker
-	var tick <-chan time.Time
-	restartTicker := func() {
-		if ticker != nil {
-			ticker.Stop()
-			ticker, tick = nil, nil
-		}
-		if mode != watchModeSignal {
-			ticker = time.NewTicker(tickerPeriodFor(mode, t))
-			tick = ticker.C
+	// wake is the poll and dormant modes' timer, and wait the poll mode's current backed-off cadence.
+	var wake oneShot
+	defer wake.stop()
+	wait := t.PollCycle
+	// armWake arms the wake from the current mode's base, and stops it in signal mode.
+	armWake := func() {
+		wait = t.PollCycle
+		switch mode {
+		case watchModePoll:
+			wake.arm(wait)
+		case watchModeDormant:
+			wake.arm(t.Dormant)
+		default:
+			wake.stop()
 		}
 	}
-	defer func() {
-		if ticker != nil {
-			ticker.Stop()
-		}
-	}()
-	restartTicker()
+	armWake()
 
 	// signalFound is the one place a signal is consumed and its debounce armed.
 	signalFound := func() {
@@ -322,7 +326,7 @@ func (e *Engine) watchLoop(ctx context.Context, t watchTiming, open FileWatchOpe
 			retry.stop()
 		}
 		mode = newMode
-		restartTicker()
+		armWake()
 		if mode == watchModeSignal {
 			// A signal that landed while no watcher was listening, or before dormancy, is owed an apply.
 			signalFound()
@@ -362,7 +366,7 @@ func (e *Engine) watchLoop(ctx context.Context, t watchTiming, open FileWatchOpe
 			applyOwed()
 		case <-retry.fired():
 			applyOwed()
-		case <-tick:
+		case <-wake.fired():
 			var res ReapplyResult
 			var applyErr error
 
@@ -383,7 +387,19 @@ func (e *Engine) watchLoop(ctx context.Context, t watchTiming, open FileWatchOpe
 				res, applyErr = e.reapplyLayout(lastApplied, false)
 			}
 
+			changed := pollWakeChanged(res, applyErr, lastApplied)
+			tickMode := mode
 			switchMode(e.handleWatchOutcome(mode, state, t, res, applyErr, &lastApplied, &dormantFrom))
+			// A mode switch has already armed the wake from the new mode's base.
+			if mode == tickMode {
+				switch mode {
+				case watchModePoll:
+					wait = NextWakeCadence(wait, t.PollCycle, t.PollCeiling, changed)
+					wake.arm(wait)
+				case watchModeDormant:
+					wake.arm(t.Dormant)
+				}
+			}
 		}
 	}
 }
