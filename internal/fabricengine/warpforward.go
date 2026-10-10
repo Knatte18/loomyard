@@ -10,6 +10,7 @@ package fabricengine
 import (
 	"sync"
 
+	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -41,37 +42,68 @@ func HeadContains(worktreePath, sha string) (bool, error) {
 	return gitrepo.New(worktreePath).HeadContains(sha)
 }
 
-// StencilSource builds the stencil seed pass's Source for the worktree at worktreePath.
-// An empty sourceDir returns the zero Source, and an empty revision (an unstamped binary) returns a Source with no Build.
-// Otherwise Build asks HeadContains for revision at most once per Source, so a pass with several drifted stencils reads ancestry once and a pass with none runs no git.
+// StencilSource builds the stencil seed pass's Source for the worktree at worktreePath, told the running binary's identity.
+// A running identity with a revision sets Writer to its revision and commit time, and Older to the ordering of a recorded writer against it.
+// Older orders by ancestry when the worktree holds both commits, answering RecordedOlder only for a strict ancestor.
+// It orders by commit time when the worktree lacks either, answering RecordedOlder only when the recorded time is strictly before the running time and both are set.
+// Otherwise, or on a failed read (logged once), it answers OrderingUnknown.
+// An empty sourceDir returns a Source with no Dir and no Build, which keeps the drift warning silent, and an empty revision returns a Source with no Build.
+// Otherwise Build asks HeadContains for the revision at most once per Source, so a pass with several drifted stencils reads ancestry once and a pass with none runs no git.
 // A failed read is logged and reported as unknown ancestry.
-func StencilSource(worktreePath, sourceDir, revision string) stencilstore.Source {
-	if sourceDir == "" {
-		return stencilstore.Source{}
-	}
-	if revision == "" {
-		return stencilstore.Source{Dir: sourceDir}
+func StencilSource(worktreePath, sourceDir string, running buildvcs.Identity) stencilstore.Source {
+	source := stencilstore.Source{Dir: sourceDir}
+	if running.Revision == "" {
+		return source
 	}
 
-	var once sync.Once
-	ancestry := stencilstore.BuildAncestryUnknown
-	return stencilstore.Source{
-		Dir: sourceDir,
-		Build: func() stencilstore.BuildAncestry {
-			once.Do(func() {
-				held, err := HeadContains(worktreePath, revision)
-				switch {
-				case err != nil:
-					logger.Warn("fabricengine: reading whether the worktree holds the build commit failed", "worktree", worktreePath, "revision", revision, "error", err)
-				case held:
-					ancestry = stencilstore.BuildInHead
-				default:
-					ancestry = stencilstore.BuildNotInHead
-				}
-			})
-			return ancestry
-		},
+	source.Writer = stencilstore.Writer{Revision: running.Revision, Time: running.Time}
+
+	var orderLogOnce sync.Once
+	source.Older = func(recorded stencilstore.Writer) stencilstore.Ordering {
+		repo := gitrepo.New(worktreePath)
+		if repo.SHAExists(recorded.Revision) && repo.SHAExists(running.Revision) {
+			ancestor, err := repo.IsAncestor(recorded.Revision, running.Revision)
+			if err != nil {
+				orderLogOnce.Do(func() {
+					logger.Warn("fabricengine: reading whether the recorded build precedes the running build failed", "worktree", worktreePath, "recorded", recorded.Revision, "running", running.Revision, "error", err)
+				})
+				return stencilstore.OrderingUnknown
+			}
+			if ancestor && recorded.Revision != running.Revision {
+				return stencilstore.RecordedOlder
+			}
+			return stencilstore.RecordedNotOlder
+		}
+		if recorded.Time.IsZero() || running.Time.IsZero() {
+			return stencilstore.OrderingUnknown
+		}
+		if recorded.Time.Before(running.Time) {
+			return stencilstore.RecordedOlder
+		}
+		return stencilstore.RecordedNotOlder
 	}
+
+	if sourceDir == "" {
+		return source
+	}
+
+	var buildOnce sync.Once
+	ancestry := stencilstore.BuildAncestryUnknown
+	source.Build = func() stencilstore.BuildAncestry {
+		buildOnce.Do(func() {
+			held, err := HeadContains(worktreePath, running.Revision)
+			switch {
+			case err != nil:
+				logger.Warn("fabricengine: reading whether the worktree holds the build commit failed", "worktree", worktreePath, "revision", running.Revision, "error", err)
+			case held:
+				ancestry = stencilstore.BuildInHead
+			default:
+				ancestry = stencilstore.BuildNotInHead
+			}
+		})
+		return ancestry
+	}
+	return source
 }
 
 // ResetHard has moved to destroy.go, where it becomes the gated executor for the ResetHard

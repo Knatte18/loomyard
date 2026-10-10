@@ -156,8 +156,9 @@ Examples:
 			// pre-flight-style failure: a bare output.Err deliberately, not errWithRecord's
 			// mutations/partial pair. Any partially-written state is re-detected and completed by
 			// the next sync via Classify, so this is a reporting gap, not a correctness bug.
-			mode := stencilstore.ModeFor(buildinfo.IsDev(), buildinfo.IsProduction(), buildvcs.Running().Clean())
-			written, err := stencilstore.ForceRefresh(stencilsDir, stencils.Registry(), mode, fabricengine.StencilSource(l.WorktreePath(), sourceDir, buildvcs.Running().Revision))
+			running := buildvcs.Running()
+			mode := stencilstore.ModeFor(buildinfo.IsDev(), buildinfo.IsProduction(), running.Clean())
+			written, err := stencilstore.ForceRefresh(stencilsDir, stencils.Registry(), mode, fabricengine.StencilSource(l.WorktreePath(), sourceDir, running))
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -181,7 +182,7 @@ Examples:
 			// includes the stencils half's own mutations. Both return early, leaving the stencils
 			// commit landed and reported as partial.
 			specsDir := fabricengine.SpecsDir(l.HubPath)
-			specsWritten, specsErr := stencilstore.ForceRefresh(specsDir, specs.Registry(), mode, stencilstore.Source{})
+			specsWritten, specsErr := stencilstore.ForceRefresh(specsDir, specs.Registry(), mode, fabricengine.StencilSource(l.WorktreePath(), "", running))
 			if specsErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, specsErr.Error()))
 				return nil

@@ -118,9 +118,10 @@ func seedStencilsAt(hub, worktree string) {
 		sourceDir = ""
 	}
 
-	mode := stencilstore.ModeFor(buildinfo.IsDev(), buildinfo.IsProduction(), buildvcs.Running().Clean())
+	running := buildvcs.Running()
+	mode := stencilstore.ModeFor(buildinfo.IsDev(), buildinfo.IsProduction(), running.Clean())
 
-	seedSubtree(hub, fabricengine.StencilsDir(hub), fabricengine.StencilsSubtreeRel(), stencils.Registry(), mode, fabricengine.StencilSource(worktree, sourceDir, buildvcs.Running().Revision), "stencils")
+	seedSubtree(hub, fabricengine.StencilsDir(hub), fabricengine.StencilsSubtreeRel(), stencils.Registry(), mode, fabricengine.StencilSource(worktree, sourceDir, running), "stencils")
 
 	// sourceDir is deliberately empty here rather than derived from worktree: sourceDir exists only
 	// to drive the port-back drift warning, which serves an authoring workflow specs do not have --
@@ -128,7 +129,7 @@ func seedStencilsAt(hub, worktree string) {
 	// A per-name source mapping is deliberately not built either: the two travelling docs live in
 	// different directories and one's basename differs from its registered name, so no single
 	// sourceDir shape fits.
-	seedSubtree(hub, fabricengine.SpecsDir(hub), fabricengine.SpecsSubtreeRel(), specs.Registry(), mode, stencilstore.Source{}, "specs")
+	seedSubtree(hub, fabricengine.SpecsDir(hub), fabricengine.SpecsSubtreeRel(), specs.Registry(), mode, fabricengine.StencilSource(worktree, "", running), "specs")
 }
 
 // seedSubtree reconciles baseDir (the subtreeRel-rooted subtree under hub's board) against registry
