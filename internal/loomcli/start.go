@@ -139,9 +139,6 @@ func driverNotParkedMessage(handBack shedengine.State, retry string) string {
 	return "loom: the driver has not parked yet (the run is " + string(handBack) + " and its driver is still writing its stop report and committing its records); retry `" + retry + "` in a few seconds"
 }
 
-// mergeInVerb is the verb a parked fabric merge record carries when a merge-in stopped part-way.
-const mergeInVerb = "merge-in"
-
 // isLandingProducer reports whether producer is one of the two rows that abort and redo their own parked merge-in.
 func isLandingProducer(producer string) bool {
 	return producer == loomshed.NamePublish || producer == loomshed.NameFinalize
@@ -150,7 +147,7 @@ func isLandingProducer(producer string) bool {
 // ownMergeInLeftover reports whether st is the parked merge-in of parentBranch that producer's row aborts and redoes itself:
 // a parked `merge-in` sourced from the parent branch, at Publish or Finalize.
 func ownMergeInLeftover(st fabricengine.MidMergeState, producer, parentBranch string) bool {
-	return st.Kind == fabricengine.MidMergeParked && st.Verb == mergeInVerb && st.Source == parentBranch && isLandingProducer(producer)
+	return st.Kind == fabricengine.MidMergeParked && st.Verb == fabricengine.MergeVerbMergeIn && st.Source == parentBranch && isLandingProducer(producer)
 }
 
 // readRecordedParentBranch returns the parent branch the pair's fabric origin record names, or an error when the record is absent.
@@ -193,7 +190,7 @@ func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, 
 	case fabricengine.MidMergeNone:
 		return true
 	case fabricengine.MidMergeParked:
-		if st.Verb == mergeInVerb && isLandingProducer(producer) {
+		if st.Verb == fabricengine.MergeVerbMergeIn && isLandingProducer(producer) {
 			parentBranch, err := c.recordedParentBranch(c.location)
 			if err != nil {
 				_ = bootstrapLock.Release()

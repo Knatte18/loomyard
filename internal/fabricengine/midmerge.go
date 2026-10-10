@@ -20,6 +20,14 @@ const (
 	MidMergeForeign
 )
 
+// The verbs a fabric merge-state record carries, as MidMergeState.Verb reports them.
+const (
+	// MergeVerbMergeIn is the verb of a record written by a merge-in of a source branch into the current pair.
+	MergeVerbMergeIn = "merge-in"
+	// MergeVerbMerge is the verb of a record written by a merge of a source branch into a target pair.
+	MergeVerbMerge = "merge"
+)
+
 // MidMergeState is MidMerge's answer.
 // Conflicts lists the still-conflicted paths in the pair's one-repo form, the same form a fabric merge verb's conflicts use, so every listed path is accepted by `lyx fabric merge-stage`;
 // it is empty-never-nil.

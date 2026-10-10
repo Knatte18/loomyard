@@ -10,9 +10,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// mergeInVerb is the verb a parked record carries when a merge-in of the parent branch stopped part-way.
-const mergeInVerb = "merge-in"
-
 // preMerge holds the three told seams of the pre-merge step.
 // A nil mergeState skips the whole step, so a producer built by a struct literal runs no probe.
 type preMerge struct {
@@ -49,7 +46,7 @@ func (m preMerge) clear(producer, parentBranch string) (string, error) {
 	case fabricengine.MidMergeNone:
 		return "", nil
 	case fabricengine.MidMergeParked:
-		if state.Verb != mergeInVerb || state.Source != parentBranch {
+		if state.Verb != fabricengine.MergeVerbMergeIn || state.Source != parentBranch {
 			return fmt.Sprintf("a fabric merge (%s of %s) is in progress in the task worktree; way forward: %s", state.Verb, state.Source, mergeWayForward), nil
 		}
 	default:
