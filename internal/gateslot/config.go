@@ -27,15 +27,25 @@ type Config struct {
 var ErrConfigAbsent = errors.New("gate config absent; run \"lyx fabric reconcile\"")
 
 // LoadConfig loads gate.yaml from baseDir strictly: an absent file is ErrConfigAbsent, and a value below 1 fails naming its key.
+// Every other failure names its way forward, fixing the file with `lyx config gate` from the prime, so each gate site that wraps it carries the clause.
 func LoadConfig(baseDir string) (Config, error) {
 	if _, err := os.Stat(configengine.ConfigFile(baseDir, "gate")); errors.Is(err, os.ErrNotExist) {
 		return Config{}, ErrConfigAbsent
 	}
 	resolved, err := configengine.Load(baseDir, "gate", []byte(ConfigTemplate()))
 	if err != nil {
-		return Config{}, err
+		return Config{}, withConfigWayForward(err)
 	}
-	return decodeConfig(resolved)
+	cfg, err := decodeConfig(resolved)
+	if err != nil {
+		return Config{}, withConfigWayForward(err)
+	}
+	return cfg, nil
+}
+
+// withConfigWayForward appends to err the way forward for a gate.yaml that is present but unusable.
+func withConfigWayForward(err error) error {
+	return fmt.Errorf("%w; fix it with \"lyx config gate\" from the prime", err)
 }
 
 // TemplateConfig decodes the embedded template alone, the config of a run outside every hub.
