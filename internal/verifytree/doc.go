@@ -10,6 +10,13 @@
 // a caller's own cancel is a returned error and no record.
 // While a command runs, Verify keeps a running marker that loom status reads through ReadMarker.
 //
+// Given a gate-slot pool, Verify takes a slot after the dirty and skip checks and before it spawns.
+// The marker is written in the waiting state with its wait start, then rewritten as running with a fresh start time once the slot is held, and the timeout counts only from that moment.
+// The command runs with the lease's environment, so GOFLAGS carries the slot's `-p` cap and a nested gate run inherits the held slot, and the slot is released whatever the outcome.
+// A cancelled wait is a returned error with no record.
+// A nil pool runs unslotted with the parent's environment, the form of a standalone run and of a unit test.
+// A marker written before it had a state reads as running.
+//
 // Every site of one worktree shares one directory, Dir(anchorRoot), so a pass at one site lets the next site skip.
 // The package imports no resolver: the worktree and the directory are told through Paths.
 package verifytree
