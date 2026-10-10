@@ -90,9 +90,10 @@ func TestEngine_Run_ChairEndStopsEverySeat(t *testing.T) {
 	}
 }
 
-func TestEngine_Run_ChairStartFailureStopsTheAdvisors(t *testing.T) {
+func TestEngine_Run_StartFailureEndingTheRunStopsTheStartedAdvisors(t *testing.T) {
 	t.Parallel()
 	chairRole := role(RoleChair)
+	lastAdvisorRole := role(AdvisorName(2))
 	tests := []struct {
 		name      string
 		shuttle   func(*fakeShuttle)
@@ -107,6 +108,10 @@ func TestEngine_Run_ChairStartFailureStopsTheAdvisors(t *testing.T) {
 			f.strandNames = map[string]string{chairRole: "ly:task:multi-chair-2"}
 			f.stopErrs = map[string]error{chairRole: errors.New("pane gone")}
 		}, wantIs: ErrSeatNotStopped, wantText: `lyx reed remove guid-multi-chair"`, chairStop: 1},
+		{name: "an advisor's held strand name and a failed stop", shuttle: func(f *fakeShuttle) {
+			f.strandNames = map[string]string{lastAdvisorRole: "ly:task:multi-advisor-2-2"}
+			f.stopErrs = map[string]error{lastAdvisorRole: errors.New("pane gone")}
+		}, wantIs: ErrSeatNotStopped, wantText: `lyx reed remove guid-multi-advisor-2"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

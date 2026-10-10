@@ -119,7 +119,8 @@ func (e *Engine) absolute(paths []string) []string {
 
 // Run starts table's seats fresh and returns once the chair has ended.
 // It starts the advisors in table order and the chair last, so the chair's prompt can name an advisor that never started.
-// An advisor that fails to start is recorded and the step goes on without it.
+// An advisor that fails to start is recorded and the step goes on without it,
+// unless its misnamed strand could not be stopped: that seat is still live, so Run stops every started advisor and returns the error.
 // A chair that fails to start stops every started advisor and returns the error, which wraps shuttleengine.ErrNotStarted when the provider never came up.
 // The result carries the chair's outcome, gate and NotStarted as shuttle reported them; the engine judges nothing about finishing itself.
 // A seat that cannot be stopped is an error wrapping ErrSeatNotStopped.
@@ -143,6 +144,11 @@ func (e *Engine) Run(table Table) (Result, error) {
 		}
 		outputs := e.absolute(seat.Outputs)
 		handle, err := e.startSeat(table, seat, names, nil)
+		if errors.Is(err, ErrSeatNotStopped) {
+			sender.stop()
+			stopErr := stopAdvisors(advisors)
+			return Result{ChairOutputs: chairOutputs, Advisors: snapshot(advisors, sender)}, errors.Join(err, stopErr)
+		}
 		if err != nil {
 			logger.Warn("seatengine: advisor did not start", "seat", seat.Name, "error", err)
 			failed = append(failed, names[seat.Name])
