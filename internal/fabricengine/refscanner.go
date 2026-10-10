@@ -185,6 +185,13 @@ var readOnlyCommands = map[string]bool{
 	"cat": true, "head": true, "tail": true, "ls": true, "wc": true, "grep": true, "jq": true, "cut": true,
 }
 
+// FabricReaderVerbs returns the names of the `lyx fabric` verbs that only read: list, pairs, status, diff, shortname, prune and cleanup.
+// It declares names only; the arguments each verb may take without mutating stay with the consumer that applies them.
+// Every call returns a fresh slice, so no caller can change another's set.
+func FabricReaderVerbs() []string {
+	return []string{"list", "pairs", "status", "diff", "shortname", "prune", "cleanup"}
+}
+
 // substitutionMarkers are the spellings of command and process substitution.
 var substitutionMarkers = []string{"$(", "`", "<(", ">("}
 
