@@ -24,7 +24,7 @@ const gateQuiescenceFailureMessage = "a turn end whose Stop payload reports an o
 // gatedRowFanViolations returns one message per gated row of r that breaks the fork rule.
 // A row is gated when its config carries a non-empty "gates" list.
 // A gated row receives a fan from its profile's "cluster-fan" or from fans, a row-name to fan map as Env.RowClusterFans carries them.
-// A gated row that receives a fan must be a BurlerRound row, and a gated row must be a writer engine (DiscussionWrite, PlanWrite, Describe, PRRework) or BurlerRound.
+// A gated row that receives a fan must be a BurlerRound row, and a gated row must be a writer engine (DiscussionWrite, DiscussionSeats, PlanWrite, Describe, PRRework) or BurlerRound.
 // A writer engine's spec factory never sets shuttleengine.Spec.ForkSubagents, and burlerengine.Engine.Run sets it from a non-empty fan alone.
 func gatedRowFanViolations(r shedbuild.Recipe, fans map[string]string) []string {
 	var violations []string
@@ -42,12 +42,12 @@ func gatedRowFanViolations(r shedbuild.Recipe, fans map[string]string) []string 
 
 		switch row.Engine {
 		case "BurlerRound":
-		case "DiscussionWrite", "PlanWrite", "Describe", "PRRework":
+		case "DiscussionWrite", discussionSeatsEngine, "PlanWrite", "Describe", "PRRework":
 			if fan != "" {
 				violations = append(violations, fmt.Sprintf("row %q (engine %q): receives fan %q; want no fan on a gated writer row -- %s", row.Name, row.Engine, fan, gateQuiescenceFailureMessage))
 			}
 		default:
-			violations = append(violations, fmt.Sprintf("row %q: carries a \"gates\" config list with engine %q, neither a writer engine (DiscussionWrite/PlanWrite/Describe/PRRework) nor BurlerRound -- %s", row.Name, row.Engine, gateQuiescenceFailureMessage))
+			violations = append(violations, fmt.Sprintf("row %q: carries a \"gates\" config list with engine %q, neither a writer engine (DiscussionWrite/DiscussionSeats/PlanWrite/Describe/PRRework) nor BurlerRound -- %s", row.Name, row.Engine, gateQuiescenceFailureMessage))
 		}
 	}
 	return violations
@@ -95,22 +95,27 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 		},
 	}}}
 
+	// A second parse, so the substitution does not touch the shipped recipe the other cases read.
+	substituted, err := shedbuild.Parse(recipes.LoomRecipe)
+	if err != nil {
+		t.Fatalf("shedbuild.Parse(recipes.LoomRecipe) error = %v; want nil", err)
+	}
+	applyDiscussionProducer(&substituted, true)
+	reviewFans := map[string]string{
+		loomshed.NameDiscussionBouncer: "standard",
+		loomshed.NameDiscussionBurler:  "standard",
+		loomshed.NamePlanBouncer:       "full",
+		loomshed.NamePlanBurler:        "full",
+	}
+
 	tests := []struct {
 		name           string
 		recipe         shedbuild.Recipe
 		fans           map[string]string
 		wantViolations int
 	}{
-		{
-			name:   "shipped recipe with Discussion-Review and Plan-Review fans",
-			recipe: shipped,
-			fans: map[string]string{
-				loomshed.NameDiscussionBouncer: "standard",
-				loomshed.NameDiscussionBurler:  "standard",
-				loomshed.NamePlanBouncer:       "full",
-				loomshed.NamePlanBurler:        "full",
-			},
-		},
+		{name: "shipped recipe with Discussion-Review and Plan-Review fans", recipe: shipped, fans: reviewFans},
+		{name: "shipped recipe with the Discussion-Write row on the seat producer", recipe: substituted, fans: reviewFans},
 		{name: "gated writer row receiving a fan from the map", recipe: gatedWriter(nil), fans: map[string]string{"Writer": "standard"}, wantViolations: 1},
 		{name: "gated writer row receiving a fan from its profile", recipe: gatedWriter("standard"), wantViolations: 1},
 		{name: "gated writer row with no fan", recipe: gatedWriter(nil)},

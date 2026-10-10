@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +22,31 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
+
+// fakeClock is a shuttleengine.Clock whose Sleep advances it, so a runner's poll sleeps cost no wall-clock time.
+type fakeClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *fakeClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *fakeClock) Sleep(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+}
+
+// newFakeClockRunner is shuttleengine.NewRunner with a fake clock installed, at the floor poll interval.
+func newFakeClockRunner(reed shuttleengine.ReedOps, engine shuttleengine.Engine, anchorPath, worktreeRoot string) *shuttleengine.Runner {
+	runner := shuttleengine.NewRunner(reed, engine, anchorPath, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30, PollIntervalMS: 1000, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+	runner.SetClock(&fakeClock{now: time.Now()})
+	return runner
+}
 
 // TestRunCLI_Run_FlagValidation drives runCmd directly rather than through RunCLI, so no parent
 // PersistentPreRunE runs and no abort is in play — this is the flag-shape check on its own terms,
@@ -271,7 +297,7 @@ func TestRunCmd_MechanismFailure_EnvelopeCarriesRunIdentity(t *testing.T) {
 		},
 		StatusErr: errors.New(`no reed session; run "lyx reed up"`),
 	}
-	runner := shuttleengine.NewRunner(reed, engine, anchorPath, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30, PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+	runner := newFakeClockRunner(reed, engine, anchorPath, worktreeRoot)
 
 	c := &shuttleCLI{runner: runner}
 	cmd := c.runCmd()
@@ -332,7 +358,7 @@ func TestSendCmd_AppendsMessageTail(t *testing.T) {
 					return []shuttleengine.PaneInput{{Text: text, Submit: true}}
 				},
 			}
-			runner := shuttleengine.NewRunner(reed, engine, root, root, shuttleengine.Config{RunTimeoutMin: 30, PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+			runner := newFakeClockRunner(reed, engine, root, root)
 			run, err := runner.Start(shuttleengine.Spec{Prompt: "do the thing", OutputFiles: []string{filepath.Join(root, "out.md")}})
 			if err != nil {
 				t.Fatalf("runner.Start: %v", err)

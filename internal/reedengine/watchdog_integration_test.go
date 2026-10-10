@@ -25,12 +25,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
-// fastWatchTiming shortens watchDefaultTiming's SignalTick, PollCycle, and Quiet durations, which
+// fastWatchTiming shortens watchDefaultTiming's PollCycle and Quiet durations, which
 // would otherwise make every test in this file needlessly slow; MaxAttempts and BaseDelay stay at
 // their production values since no case here drives a failure streak.
 func fastWatchTiming() watchTiming {
 	t := watchDefaultTiming()
-	t.SignalTick = 20 * time.Millisecond
 	t.PollCycle = 150 * time.Millisecond
 	t.Quiet = 120 * time.Millisecond
 	return t
@@ -166,7 +165,7 @@ func assertLayoutSelfHeals(t *testing.T, fx *watchdogFixture, newCols, newRows i
 // re-applies to exactly the planned string for the new, larger box.
 func TestWatchdogSelfHeal_GrowsBackToPlannedLayout(t *testing.T) {
 	fx := bootWatchdogFixture(t, 100, 30)
-	startWatchLoop(t, fx.e, fastWatchTiming())
+	startWatchLoop(t, fx.e, fastWatchTiming(), OpenFileWatch)
 	assertLayoutSelfHeals(t, fx, 140, 45)
 }
 
@@ -175,7 +174,7 @@ func TestWatchdogSelfHeal_GrowsBackToPlannedLayout(t *testing.T) {
 // grow case above is the failure mode this task must not ship.
 func TestWatchdogSelfHeal_ShrinksBackToPlannedLayout(t *testing.T) {
 	fx := bootWatchdogFixture(t, 100, 30)
-	startWatchLoop(t, fx.e, fastWatchTiming())
+	startWatchLoop(t, fx.e, fastWatchTiming(), OpenFileWatch)
 	assertLayoutSelfHeals(t, fx, 100, 16)
 }
 
@@ -203,7 +202,7 @@ func TestWatchdogSelfHeal_BurstCoalesces(t *testing.T) {
 	fake := installFakeTmux(t, e)
 	fake.forwardTo(real)
 
-	startWatchLoop(t, e, timing)
+	startWatchLoop(t, e, timing, OpenFileWatch)
 
 	sizes := []struct{ cols, rows int }{
 		{100, 32}, {100, 34}, {100, 36}, {100, 38}, {100, 40}, {100, 42}, {100, 44}, {100, 46},
@@ -245,7 +244,7 @@ func TestWatchdogSelfHeal_DegradedPathStillConverges(t *testing.T) {
 	}
 
 	timing := fastWatchTiming()
-	startWatchLoop(t, e, timing)
+	startWatchLoop(t, e, timing, OpenFileWatch)
 
 	resizePTY(t, fx.pty, 130, 42)
 
@@ -267,7 +266,7 @@ func TestWatchdogSelfHeal_SurvivesInducedTmuxFailure(t *testing.T) {
 	timing := fastWatchTiming()
 	fx := bootWatchdogFixture(t, 100, 30)
 	e := fx.e
-	_, loopDone := startWatchLoop(t, e, timing)
+	_, loopDone := startWatchLoop(t, e, timing, OpenFileWatch)
 
 	if err := e.tmux.run("kill-session", "-t", exactSessionTarget(e.SessionName())); err != nil {
 		t.Fatalf("kill-session (induced failure): %v", err)
@@ -299,7 +298,7 @@ func TestWatchdogSelfHeal_SurvivesInducedTmuxFailure(t *testing.T) {
 func TestWatchdogSelfHeal_FocusNeverStolen(t *testing.T) {
 	fx := bootWatchdogFixture(t, 100, 30)
 	e := fx.e
-	startWatchLoop(t, e, fastWatchTiming())
+	startWatchLoop(t, e, fastWatchTiming(), OpenFileWatch)
 
 	st, err := LoadState(e.stateDir())
 	if err != nil || st == nil || len(st.Strands) < 2 {
@@ -330,7 +329,7 @@ func TestWatchdogSelfHeal_NoSelfTriggerLoop(t *testing.T) {
 	timing := fastWatchTiming()
 	fx := bootWatchdogFixture(t, 100, 30)
 	e := fx.e
-	startWatchLoop(t, e, timing)
+	startWatchLoop(t, e, timing, OpenFileWatch)
 
 	resizePTY(t, fx.pty, 145, 41)
 	waitUntil(t, 15*time.Second, "layout never settled after the resize", func() bool {
@@ -343,7 +342,7 @@ func TestWatchdogSelfHeal_NoSelfTriggerLoop(t *testing.T) {
 	// No further client resize happens here — select-layout does not itself fire window-resized
 	// (doc.go), so a self-triggering watcher would show up as the layout drifting with nothing new to
 	// react to.
-	time.Sleep(10 * timing.SignalTick)
+	time.Sleep(200 * time.Millisecond)
 
 	if got := windowLayoutNow(t, e); got != settled {
 		t.Errorf("#{window_layout} drifted from %q to %q with no new client resize — the watcher must never self-trigger", settled, got)

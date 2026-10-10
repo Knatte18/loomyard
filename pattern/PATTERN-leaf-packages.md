@@ -16,7 +16,7 @@ Imports only the standard library, `configengine` and `gopkg.in/yaml.v3`.
 ## `internal/buildinfo`
 
 Imports nothing at all, not even the standard library.
-It exposes `Channel` and `IsDev()` only.
+It exposes `Channel`, its two values `ChannelProduction` and `ChannelDev`, and the accessors `IsDev()` and `IsProduction()` only.
 
 ## `internal/standalonestate`
 
@@ -42,3 +42,9 @@ Imports only the standard library, `internal/logger`, `internal/stencil` and `in
 Imports only the standard library.
 It is the sole `.git` parser: git dir, common dir, the repository test and the walk-up to a worktree root, in-process and spawning nothing.
 It is its own package because `gitrepo`'s in-package test imports `gitkit`, which reaches `lyxcwd`, so `lyxcwd` importing `gitrepo` would close a cycle.
+
+## `internal/fswatch`
+
+Imports only the standard library, `github.com/fsnotify/fsnotify` and `internal/logger`.
+- Every lyx process that waits on a file event goes through it, so fsnotify is imported nowhere else.
+- `internal/logger` is admitted because fsnotify's error channel is drained and logged at Debug.

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -100,6 +101,79 @@ func TestMultiLLMProducer_ProbesBeforeArchiving(t *testing.T) {
 		archived, err := filepath.Glob(filepath.Join(filepath.Dir(paths[0]), "*20260102T030405Z*"))
 		if err != nil || len(archived) != len(paths) {
 			t.Errorf("archived files = %v (%v), want one per seat output", archived, err)
+		}
+	})
+
+	t.Run("a table source is evaluated once per call and its table is probed and run", func(t *testing.T) {
+		t.Parallel()
+		table := multiLLMTable(t.TempDir(), 1)
+		evaluations := 0
+		source := func() (seatengine.Table, error) {
+			evaluations++
+			return table, nil
+		}
+		runner := &shedfake.SeatRunner{Results: []seatengine.Result{{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, ChairOutputs: table.Chair().Outputs}}}
+		producer := NewMultiLLMProducerSourced("multi", source, runner, multiLLMFixedNow, nil)
+
+		shedfake.RequireOutcome(t, producer, shedengine.Done)
+
+		if evaluations != 1 {
+			t.Errorf("table source evaluations = %d, want 1", evaluations)
+		}
+		if !reflect.DeepEqual(runner.GotProbeTables, []seatengine.Table{table}) || !reflect.DeepEqual(runner.GotTables, []seatengine.Table{table}) {
+			t.Errorf("probed tables = %+v, run tables = %+v, want the source's table in both", runner.GotProbeTables, runner.GotTables)
+		}
+	})
+
+	t.Run("the preparation runs after the probe and before the archive on the fresh path", func(t *testing.T) {
+		t.Parallel()
+		table := multiLLMTable(t.TempDir(), 1)
+		paths := writeTableFiles(t, table)
+		runner := &shedfake.SeatRunner{Results: []seatengine.Result{{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, ChairOutputs: table.Chair().Outputs}}}
+		var probesWhenPrepared int
+		var staleWhenPrepared []bool
+		prepare := func() error {
+			probesWhenPrepared = runner.ProbeCalls
+			for _, path := range paths {
+				_, err := os.Stat(path)
+				staleWhenPrepared = append(staleWhenPrepared, err == nil)
+			}
+			return nil
+		}
+		producer := NewMultiLLMProducerSourced("multi", func() (seatengine.Table, error) { return table, nil }, runner, multiLLMFixedNow, prepare)
+
+		shedfake.RequireOutcome(t, producer, shedengine.Done)
+
+		if probesWhenPrepared != 1 {
+			t.Errorf("probe calls when the preparation ran = %d, want 1", probesWhenPrepared)
+		}
+		if len(staleWhenPrepared) != len(paths) || slices.Contains(staleWhenPrepared, false) {
+			t.Errorf("stale outputs present when the preparation ran = %v, want every output still in place", staleWhenPrepared)
+		}
+		for _, path := range paths {
+			if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("output %s after the call: %v, want it archived", path, err)
+			}
+		}
+	})
+
+	t.Run("the preparation never runs when the probe finds a live chair", func(t *testing.T) {
+		t.Parallel()
+		table := multiLLMTable(t.TempDir(), 1)
+		runner := &shedfake.SeatRunner{
+			LiveTables:    []seatengine.LiveTable{{Chair: liveChair}},
+			ResumeResults: []seatengine.Result{{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, ChairOutputs: table.Chair().Outputs}},
+		}
+		prepared := false
+		producer := NewMultiLLMProducerSourced("multi", func() (seatengine.Table, error) { return table, nil }, runner, multiLLMFixedNow, func() error {
+			prepared = true
+			return nil
+		})
+
+		shedfake.RequireOutcome(t, producer, shedengine.Done)
+
+		if prepared || runner.ResumeCalls != 1 {
+			t.Errorf("preparation ran = %v, resume calls = %d, want it unrun on a resume", prepared, runner.ResumeCalls)
 		}
 	})
 }
@@ -203,17 +277,25 @@ func TestMultiLLMProducer_ErrorExits(t *testing.T) {
 	tests := []struct {
 		name         string
 		runner       func() *shedfake.SeatRunner
+		build        func(table seatengine.Table, runner *shedfake.SeatRunner) *MultiLLMProducer
 		wantIs       error
 		wantArchived bool
 		wantRun      int
+		wantProbe    int
 	}{
-		{name: "a probe error", runner: func() *shedfake.SeatRunner { return &shedfake.SeatRunner{ProbeErrs: []error{boom}} }, wantIs: boom},
-		{name: "a probe that cannot stop a seat", runner: func() *shedfake.SeatRunner { return &shedfake.SeatRunner{ProbeErrs: []error{stuck}} }, wantIs: stuck},
+		{name: "a table source error", runner: func() *shedfake.SeatRunner { return &shedfake.SeatRunner{} }, build: func(_ seatengine.Table, runner *shedfake.SeatRunner) *MultiLLMProducer {
+			return NewMultiLLMProducerSourced("multi", func() (seatengine.Table, error) { return seatengine.Table{}, boom }, runner, multiLLMFixedNow, nil)
+		}, wantIs: boom},
+		{name: "a preparation error", runner: func() *shedfake.SeatRunner { return &shedfake.SeatRunner{} }, build: func(table seatengine.Table, runner *shedfake.SeatRunner) *MultiLLMProducer {
+			return NewMultiLLMProducerSourced("multi", func() (seatengine.Table, error) { return table, nil }, runner, multiLLMFixedNow, func() error { return boom })
+		}, wantIs: boom, wantProbe: 1},
+		{name: "a probe error", runner: func() *shedfake.SeatRunner { return &shedfake.SeatRunner{ProbeErrs: []error{boom}} }, wantIs: boom, wantProbe: 1},
+		{name: "a probe that cannot stop a seat", runner: func() *shedfake.SeatRunner { return &shedfake.SeatRunner{ProbeErrs: []error{stuck}} }, wantIs: stuck, wantProbe: 1},
 		{name: "a resume error", runner: func() *shedfake.SeatRunner {
 			return &shedfake.SeatRunner{LiveTables: []seatengine.LiveTable{{Chair: liveChair}}, ResumeErrs: []error{boom}}
-		}, wantIs: boom},
-		{name: "a run error", runner: func() *shedfake.SeatRunner { return &shedfake.SeatRunner{Errs: []error{boom}} }, wantIs: boom, wantArchived: true, wantRun: 1},
-		{name: "a run that cannot stop a seat", runner: func() *shedfake.SeatRunner { return &shedfake.SeatRunner{Errs: []error{stuck}} }, wantIs: stuck, wantArchived: true, wantRun: 1},
+		}, wantIs: boom, wantProbe: 1},
+		{name: "a run error", runner: func() *shedfake.SeatRunner { return &shedfake.SeatRunner{Errs: []error{boom}} }, wantIs: boom, wantArchived: true, wantRun: 1, wantProbe: 1},
+		{name: "a run that cannot stop a seat", runner: func() *shedfake.SeatRunner { return &shedfake.SeatRunner{Errs: []error{stuck}} }, wantIs: stuck, wantArchived: true, wantRun: 1, wantProbe: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -222,14 +304,17 @@ func TestMultiLLMProducer_ErrorExits(t *testing.T) {
 			paths := writeTableFiles(t, table)
 			runner := tt.runner()
 			producer := NewMultiLLMProducer("multi", table, runner, multiLLMFixedNow)
+			if tt.build != nil {
+				producer = tt.build(table, runner)
+			}
 
 			_, _, err := producer.Call(context.Background())
 
 			if !errors.Is(err, tt.wantIs) || !strings.Contains(err.Error(), "multi (seats)") {
 				t.Errorf("Call() error = %v, want it to wrap %v and name the producer and engine", err, tt.wantIs)
 			}
-			if runner.Calls != tt.wantRun {
-				t.Errorf("Run calls = %d, want %d", runner.Calls, tt.wantRun)
+			if runner.Calls != tt.wantRun || runner.ProbeCalls != tt.wantProbe {
+				t.Errorf("Run/Probe calls = %d/%d, want %d/%d", runner.Calls, runner.ProbeCalls, tt.wantRun, tt.wantProbe)
 			}
 			for _, path := range paths {
 				_, statErr := os.Stat(path)

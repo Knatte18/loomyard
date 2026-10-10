@@ -228,7 +228,7 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	// refuses a MergeContinue resume on. A crash in that window would leave an unresumable record
 	// for a state this code never intends to occupy.
 	st := &mergeState{
-		Verb:        "merge-in",
+		Verb:        MergeVerbMergeIn,
 		Source:      source,
 		Squash:      false,
 		Message:     "",
@@ -447,7 +447,7 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 	// WeftOutcome is filled in the literal rather than by a second write — see MergeIn's own comment
 	// on the same line for why the intermediate empty-WeftOutcome record is worth not writing.
 	st := &mergeState{
-		Verb:        "merge",
+		Verb:        MergeVerbMerge,
 		Source:      source,
 		Squash:      opts.Squash,
 		Message:     opts.Message,

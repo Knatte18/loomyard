@@ -110,6 +110,18 @@ type Deps struct {
 	// every-field-populated drift guard is what keeps it filled.
 	CommitStatus func() error
 
+	// MergeState probes the pair's merge state, AbortMerge aborts the pair's parked fabric merge and StopConflictSession stops every live conflict-session strand of the run.
+	// Both producers use them to clear the merge-in their own earlier attempt left parked, before the clean-tree check that precedes a fresh merge-in.
+	// StopConflictSession returns an empty guid and a nil error when each strand stopped or none is live.
+	// It returns the guid of the strand whose stop failed beside its error.
+	// It returns an empty guid beside an error when the strand table could not be read.
+	//
+	// Each is nil-is-absent like CommitStatus: a nil MergeState skips the step, a nil AbortMerge aborts nothing and a nil StopConflictSession stops nothing.
+	// internal/loomcli's landingDeps fills all three, and its drift guard keeps them filled.
+	MergeState          func() (fabricengine.MidMergeState, error)
+	AbortMerge          func() error
+	StopConflictSession func() (guid string, err error)
+
 	// ApprovalPath and RejectionPath are the operator's two decision records' paths,
 	// and TaskHead returns the task branch's local HEAD SHA.
 	// The PR gate, not Publish, reads both records and TaskHead, and lands or bounces the pull request only if the pull request, a record and TaskHead all agree.

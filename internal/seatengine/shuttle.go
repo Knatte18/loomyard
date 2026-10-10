@@ -5,8 +5,7 @@ package seatengine
 import "github.com/Knatte18/loomyard/internal/shuttleengine"
 
 // Handle is one started seat.
-// The engine stops it through Stop, which records the stop, waits on it for the seat's terminal result,
-// and sends the chair a line through Send while it waits.
+// The engine stops it through Stop, which records the stop, waits on it for the seat's terminal result, and sends the chair a line through Send while it waits.
 // StrandName is the name reed formed for the seat's strand.
 // *shuttleengine.Run satisfies it.
 type Handle interface {

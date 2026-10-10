@@ -354,6 +354,10 @@
 // `--to pre-fix` removes none.
 // Merriam runs the call as a backgrounded Bash command, ends its turn and acts on the completion notification.
 // Only an operator's shorter --wait can return a running snapshot.
+// A recovery strand's turn end with no report classifies dead/asking only when it is the strand's newest turn signal and nothing keeps it waiting (TurnEndedAfter):
+// a later turn start is the strand working again, and a plain turn end counts only after it has stood a few seconds, because a background shell that finished just before the turn ended starts the next turn through its completion notification (issue #498).
+// A turn end left waiting on background work follows Master's background-shell rule through shuttle's ShellWaitBound and ShellWaitExpires:
+// one waiting only on transcript-reported shells counts after `background_shell_wait_min`, and one waiting on a fork or a payload-reported shell never counts, so recovery_timeout_min bounds it.
 // This mirrors classify.go's dead/timeout/stuck classification.
 //
 // # digest persistence carries batch context forward

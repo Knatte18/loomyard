@@ -22,7 +22,7 @@
 // The geometry reads — GitDir and CommonDir — are the one local read beside go-git:
 // they resolve the checkout's `.git` entry through internal/dotgit once per handle, spawning nothing.
 // The worktree root is not among them: that query belongs to internal/lyxcwd alone.
-// Every other CLI-bound method — StageAndCommit, StageAllAndCommit, Push, PushCoalesced, ResetHard, ResetKeep, IsAncestor, CommitsNotIn, UpdateRemoteBranchLeased, HasUnpulled, and HasUnpushed (measured and reverted from a go-git ancestry walk; see HasUnpushed's own godoc in push.go for the reversal criterion) — sits on runChecked.
+// Every other CLI-bound method — StageAndCommit, StageAllAndCommit, Push, PushCoalesced, ResetHard, ResetKeep, CherryPick, CherryPickAbort, IsAncestor, CommitsNotIn, UpdateRemoteBranchLeased, HasUnpulled, and HasUnpushed (measured and reverted from a go-git ancestry walk; see HasUnpushed's own godoc in push.go for the reversal criterion) — sits on runChecked.
 // See PATTERN-gitrepo-client-boundary for the enforced, exhaustive version of this split and the review obligation any new CLI call inside this package carries.
 // gitexec itself stays a zero-dependency leaf regardless of which side of the boundary a gitrepo method is on — it has roughly seventy non-test call sites across gitrepo, fabricengine, fabriccli, lyxcwd, and websterengine,
 // and gitrepo remains one of its many consumers, not merged into it.
@@ -64,6 +64,10 @@
 //   - ResetHard is the SHA-validated hard-reset surface (see below).
 //   - ResetKeep moves HEAD and the index to a SHA and carries uncommitted changes across, refusing with nothing changed when one sits in a path the move would rewrite.
 //   - CurrentBranch reads the branch HEAD points to, and errors on a detached HEAD.
+//   - UpstreamSHA resolves the current branch's configured upstream to its remote-tracking SHA, as last fetched, and returns ErrNoUpstream when there is none.
+//   - CommitDetail returns one commit's full message and the paths its tree changes against its first parent, read through go-git.
+//   - CherryPick replays one commit onto HEAD via `git cherry-pick --empty=drop`, so a commit whose change the branch already carries is dropped; CherryPickAbort abandons one in progress, and succeeds when none is.
+//   - A push whose recovery rebase failed and was aborted returns an error satisfying errors.Is(err, ErrPullRebaseFailed), which tells a replayable conflict from every other push failure.
 //
 // Caller-supplied SHA arguments (SHAExists, ChangedFilesSince, ResetHard, ResetKeep) are
 // validated as plain hex object names before ever reaching git, so an

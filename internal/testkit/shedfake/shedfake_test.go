@@ -3,6 +3,7 @@ package shedfake
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
@@ -229,6 +230,57 @@ func TestSeatRunner_LastEntryRepeatsAndFnsOverride(t *testing.T) {
 	}
 	if _, err := overriding.Resume(table, live); !errors.Is(err, last) || overriding.ResumeCalls != 1 {
 		t.Errorf("Resume() with ResumeFn = %v; want the override's error, counted", err)
+	}
+
+	// A gated table's gate is evaluated once on a done chair that carries no GateOutcome, in Run and in Resume alike.
+	done := seatengine.Result{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	ownOutcome := &shuttleengine.GateOutcome{Passed: true, Attempts: 9}
+	gateRows := []struct {
+		name     string
+		gate     shuttleengine.GateResult
+		gateErr  error
+		scripted seatengine.Result
+		fnOwn    bool
+		wantGate *shuttleengine.GateOutcome
+		wantErr  error
+		want     int
+	}{
+		{name: "a failing closure stamps a failed outcome", gate: shuttleengine.GateResult{Passed: false}, scripted: done, wantGate: &shuttleengine.GateOutcome{Passed: false, Attempts: 3, Reason: "why"}, want: 1},
+		{name: "a passing closure stamps a passed outcome", gate: shuttleengine.GateResult{Passed: true}, scripted: done, wantGate: &shuttleengine.GateOutcome{Passed: true, Attempts: 3}, want: 1},
+		{name: "a closure error is returned", gateErr: last, scripted: done, wantErr: last, want: 1},
+		{name: "a result already carrying an outcome is left alone", gate: shuttleengine.GateResult{Passed: false}, scripted: seatengine.Result{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: ownOutcome}}, wantGate: ownOutcome},
+		{name: "a chair that is not done is left alone", gate: shuttleengine.GateResult{Passed: false}, scripted: seatengine.Result{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}}},
+		{name: "a fn that evaluates the gate itself is not evaluated twice", gate: shuttleengine.GateResult{Passed: false}, fnOwn: true, wantGate: ownOutcome},
+	}
+	for _, row := range gateRows {
+		for _, verb := range []string{"Run", "Resume"} {
+			calls := 0
+			gated := table
+			gated.Gate = gateOf(row.gate, row.gateErr, &calls)
+			runner := &SeatRunner{GateAttempts: 3, GateReason: "why"}
+			own := func() seatengine.Result {
+				return seatengine.Result{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: ownOutcome}}
+			}
+			var got seatengine.Result
+			var err error
+			switch {
+			case verb == "Run" && row.fnOwn:
+				runner.RunFn = func(seatengine.Table) (seatengine.Result, error) { return own(), nil }
+				got, err = runner.Run(gated)
+			case verb == "Run":
+				runner.Results = []seatengine.Result{row.scripted}
+				got, err = runner.Run(gated)
+			case row.fnOwn:
+				runner.ResumeFn = func(seatengine.Table, seatengine.LiveTable) (seatengine.Result, error) { return own(), nil }
+				got, err = runner.Resume(gated, live)
+			default:
+				runner.ResumeResults = []seatengine.Result{row.scripted}
+				got, err = runner.Resume(gated, live)
+			}
+			if !errors.Is(err, row.wantErr) || calls != row.want || !reflect.DeepEqual(got.Chair.Gate, row.wantGate) {
+				t.Errorf("%s, %s: gate outcome %+v, error %v, closure calls %d; want %+v, %v, %d", verb, row.name, got.Chair.Gate, err, calls, row.wantGate, row.wantErr, row.want)
+			}
+		}
 	}
 }
 

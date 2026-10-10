@@ -12,6 +12,9 @@
 package reedengine
 
 import (
+	"errors"
+	"io/fs"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -55,6 +58,8 @@ func newColdScratchEngine(t *testing.T) *Engine {
 		HubPath:       hub,
 		NameShortname: "tc",
 		NameSlug:      "tslug",
+
+		DiscoverSignalPath: filepath.Join(hub, DiscoverSignalFileName),
 	}
 	e := New(cfg, geom)
 
@@ -100,6 +105,13 @@ func TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm(t *testing.T) {
 	if pidAfter := serverPID(); pidAfter != pidBefore {
 		t.Errorf("server pid after the cold boot = %s, want the pre-started server's %s", pidAfter, pidBefore)
 	}
+	signal := e.geom.DiscoverSignalPath
+	if _, err := os.Stat(signal); err != nil {
+		t.Fatalf("discover signal after a cold boot: %v, want the file at the told path", err)
+	}
+	if err := os.Remove(signal); err != nil {
+		t.Fatalf("remove discover signal: %v", err)
+	}
 
 	booted, err = e.EnsureSession()
 	if err != nil {
@@ -107,6 +119,9 @@ func TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm(t *testing.T) {
 	}
 	if booted {
 		t.Errorf("EnsureSession (warm) booted = true, want false — the session it just created is already usable")
+	}
+	if _, err := os.Stat(signal); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("discover signal after a warm ensure: stat error = %v, want it absent — an attach touches nothing", err)
 	}
 }
 

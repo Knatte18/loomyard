@@ -444,6 +444,8 @@ func TestInnerRun_UnparseableDoneSeenMarkerRestartsTheGrace(t *testing.T) {
 	}
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 
+	// The call sleeps after it rewrites the marker, which advances the clock past the written time.
+	written := clock.Now().Format(time.RFC3339)
 	outcome, _, err := producer.Call(context.Background())
 	if err != nil || outcome != shedengine.Stuck {
 		t.Fatalf("Call() over an empty marker = %v %v; want an exempt Stuck, not a hard error", outcome, err)
@@ -452,7 +454,7 @@ func TestInnerRun_UnparseableDoneSeenMarkerRestartsTheGrace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read done-seen marker: %v", err)
 	}
-	if got, want := strings.TrimSpace(string(raw)), clock.Now().Format(time.RFC3339); got != want {
+	if got, want := strings.TrimSpace(string(raw)), written; got != want {
 		t.Errorf("done-seen marker = %q; want it rewritten with the current time %q", got, want)
 	}
 

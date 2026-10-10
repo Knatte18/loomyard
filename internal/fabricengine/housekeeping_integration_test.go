@@ -5,38 +5,19 @@
 package fabricengine_test
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
-
-// lockedBuffer is a bytes.Buffer safe for the logger's writes from any goroutine.
-type lockedBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *lockedBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.Write(p)
-}
-
-func (b *lockedBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.String()
-}
 
 // hubStorePaths returns h's code store and records store working directories, the two places the housekeeping keys live.
 func hubStorePaths(t *testing.T, h *hubforge.Hub) (code, records string) {
@@ -73,13 +54,54 @@ func requireHousekeepingKeys(t *testing.T, dir string, want bool) {
 	}
 }
 
+// fillSampledLooseObjects commits many files in the code store at dir so objects/17, the directory git samples for its auto gc, holds more than a threshold of 1 loose objects.
+func fillSampledLooseObjects(t *testing.T, dir string) {
+	t.Helper()
+
+	for i := 0; i < 4000; i++ {
+		name := filepath.Join(dir, "gc-fill", fmt.Sprintf("file-%04d.txt", i))
+		if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+			t.Fatalf("mkdir for %s: %v", name, err)
+		}
+		if err := os.WriteFile(name, []byte(fmt.Sprintf("loose object %d\n", i)), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	gitkit.Git(t, dir, "add", "gc-fill")
+	gitkit.Git(t, dir, "commit", "-m", "reachable loose objects")
+	if n := sampledLooseObjects(t, dir); n < 2 {
+		t.Fatalf("objects/17 holds %d loose objects; the fixture needs more than the lowered threshold's one", n)
+	}
+}
+
+// sampledLooseObjects returns how many loose objects the code store at dir holds in objects/17.
+func sampledLooseObjects(t *testing.T, dir string) int {
+	t.Helper()
+
+	entries, err := os.ReadDir(filepath.Join(dir, ".git", "objects", "17"))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read objects/17: %v", err)
+	}
+	return len(entries)
+}
+
+// writeUnreachableObject writes content as a loose blob no ref reaches into the code store at dir and returns the object's file path.
+func writeUnreachableObject(t *testing.T, dir, content string) string {
+	t.Helper()
+
+	source := filepath.Join(t.TempDir(), "blob.txt")
+	if err := os.WriteFile(source, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", source, err)
+	}
+	oid := gitkit.Git(t, dir, "hash-object", "-w", source)
+	return filepath.Join(dir, ".git", "objects", oid[:2], oid[2:])
+}
+
 // TestStoreHousekeeping drives Add's key writes and Remove's foreground gc over hubs from hubforge.
-// It is not parallel: it lowers fabricengine's gc threshold and captures the logger's output, both process-global state.
+// It is not parallel: it lowers fabricengine's gc threshold and captures the logger's output at Info, all process-global state.
 // hubforge's clones may or may not carry the keys, so each subtest unsets them in both stores right before the step whose write it checks.
 func TestStoreHousekeeping(t *testing.T) {
-	var logs lockedBuffer
-	logger.SetOutput(&logs)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	logs := logcapture.CaptureVerbose(t)
 
 	const slug = "gc-pair"
 
@@ -117,36 +139,87 @@ func TestStoreHousekeeping(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPair(t, h, slug)
 		code, _ := hubStorePaths(t, h)
+		fillSampledLooseObjects(t, code)
 
-		// git samples objects/17: with a threshold of 1 it packs once that directory holds more than one loose object.
-		for i := 0; i < 4000; i++ {
-			name := filepath.Join(code, "gc-fill", fmt.Sprintf("file-%04d.txt", i))
-			if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
-				t.Fatalf("mkdir for %s: %v", name, err)
-			}
-			if err := os.WriteFile(name, []byte(fmt.Sprintf("loose object %d\n", i)), 0o644); err != nil {
-				t.Fatalf("write %s: %v", name, err)
-			}
+		if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
+			t.Fatalf("Remove: %v", err)
 		}
-		gitkit.Git(t, code, "add", "gc-fill")
-		gitkit.Git(t, code, "commit", "-m", "reachable loose objects")
 
-		sampled := filepath.Join(code, ".git", "objects", "17")
-		before, err := os.ReadDir(sampled)
-		if err != nil || len(before) < 2 {
-			t.Fatalf("objects/17 holds %d loose objects (err %v); the fixture needs more than the lowered threshold's one", len(before), err)
+		if n := sampledLooseObjects(t, code); n != 0 {
+			t.Errorf("objects/17 still holds %d loose objects after Remove; want them packed", n)
+		}
+	})
+
+	// The probe answers for the pair being removed: sessions of other pairs or an error skip the gc and keep the keys, an empty answer packs.
+	for _, tc := range []struct {
+		name     string
+		probe    fabricengine.InFlightProbe
+		wantPack bool
+		wantLog  string
+	}{
+		{
+			name:    "live sessions of other pairs skip the gc",
+			probe:   func(string) ([]string, error) { return []string{"other-pair-session"}, nil },
+			wantLog: "other-pair-session",
+		},
+		{
+			name:    "a failing probe skips the gc",
+			probe:   func(string) ([]string, error) { return nil, fmt.Errorf("probe-boom") },
+			wantLog: "probe-boom",
+		},
+		{
+			name:     "an empty answer packs",
+			probe:    func(string) ([]string, error) { return nil, nil },
+			wantPack: true,
+		},
+	} {
+		t.Run("the in-flight probe: "+tc.name, func(t *testing.T) {
+			fabricengine.SetGCAutoThresholdForTest(t, 1)
+			h := hubforge.NewHub(t, ".")
+			hubforge.AddPair(t, h, slug)
+			h.Topology.SetInFlightProbe(tc.probe)
+			code, records := hubStorePaths(t, h)
+			unsetHousekeepingKeys(t, code)
+			unsetHousekeepingKeys(t, records)
+			fillSampledLooseObjects(t, code)
+
+			if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
+				t.Fatalf("Remove: %v", err)
+			}
+
+			requireHousekeepingKeys(t, code, true)
+			requireHousekeepingKeys(t, records, true)
+			if packed := sampledLooseObjects(t, code) == 0; packed != tc.wantPack {
+				t.Errorf("objects/17 packed = %v; want %v", packed, tc.wantPack)
+			}
+			if tc.wantLog != "" && !strings.Contains(logs.String(), tc.wantLog) {
+				t.Errorf("log lacks %q:\n%s", tc.wantLog, logs.String())
+			}
+		})
+	}
+
+	t.Run("gc prunes unreachable loose objects older than a day and keeps younger ones", func(t *testing.T) {
+		fabricengine.SetGCAutoThresholdForTest(t, 1)
+		h := hubforge.NewHub(t, ".")
+		hubforge.AddPair(t, h, slug)
+		code, _ := hubStorePaths(t, h)
+		fillSampledLooseObjects(t, code)
+		oldObject := writeUnreachableObject(t, code, "unreachable and two days old\n")
+		youngObject := writeUnreachableObject(t, code, "unreachable and fresh\n")
+		twoDaysAgo := time.Now().Add(-48 * time.Hour)
+		if err := os.Chtimes(oldObject, twoDaysAgo, twoDaysAgo); err != nil {
+			t.Fatalf("backdate %s: %v", oldObject, err)
 		}
 
 		if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
 			t.Fatalf("Remove: %v", err)
 		}
 
-		after, err := os.ReadDir(sampled)
-		if err != nil && !os.IsNotExist(err) {
-			t.Fatalf("read objects/17: %v", err)
+		if _, err := os.Stat(oldObject); !os.IsNotExist(err) {
+			t.Errorf("stat of the two-day-old unreachable object = %v; want it pruned", err)
 		}
-		if len(after) != 0 {
-			t.Errorf("objects/17 still holds %d loose objects after Remove; want them packed", len(after))
+		if _, err := os.Stat(youngObject); err != nil {
+			t.Errorf("the fresh unreachable object is gone: %v; want it kept", err)
 		}
 	})
 

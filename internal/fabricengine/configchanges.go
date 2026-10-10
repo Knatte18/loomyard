@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// ConfigChanges is the set of per-worktree config files a task changed on its weft branch since it forked from its parent.
+// ConfigChanges is the set of per-worktree config files a task changed on its weft branch away from both its fork point and its parent's current copy.
 type ConfigChanges struct {
 	// Files are the changed files, repository-relative and slash-separated, sorted.
 	Files []string
@@ -21,13 +21,15 @@ type ConfigChanges struct {
 	Base string
 	// Tip is the SHA of the task's weft branch tip.
 	Tip string
+	// ParentTip is the SHA of the parent's weft branch tip.
+	ParentTip string
 }
 
-// ReadConfigChanges reports which of configRels changed on taskBranch's weft branch since it forked from parentBranch's weft branch.
+// ReadConfigChanges reports which of configRels changed on taskBranch's weft branch away from both its fork point from parentBranch's weft branch and the parent's current tip.
 // configRels are anchor-relative paths the caller supplies;
 // an empty configRels returns an empty ConfigChanges without running git.
-// The diff runs from the merge-base to the task tip,
-// so a commit on the parent's side after the fork never appears.
+// A file is reported only when the task tip differs from the merge-base and from the parent's tip,
+// so a parent-side change the task never took, one it took through a sync, and a task edit the parent holds identically all drop out.
 // A failure is wrapped naming both branches compared.
 // It writes nothing.
 func ReadConfigChanges(l *lyxcwd.Location, taskBranch, parentBranch string, configRels []string) (ConfigChanges, error) {
@@ -60,21 +62,40 @@ func ReadConfigChanges(l *lyxcwd.Location, taskBranch, parentBranch string, conf
 	}
 	base = strings.TrimSpace(base)
 
-	args := []string{"diff", "--name-only", base, tip, "--"}
+	pathspec := []string{"--"}
 	for _, spec := range ScopedPathspec(l.AnchorRel, configRels) {
-		args = append(args, filepath.ToSlash(spec))
+		pathspec = append(pathspec, filepath.ToSlash(spec))
 	}
-	out, err := gitexec.Run(args, weftRepoRoot)
+	sinceFork, err := diffNames(weftRepoRoot, base, tip, pathspec)
 	if err != nil {
-		return fail("diff", err)
+		return fail("diff against the fork point", err)
+	}
+	fromParent, err := diffNames(weftRepoRoot, parentTip, tip, pathspec)
+	if err != nil {
+		return fail("diff against the parent tip", err)
 	}
 
 	var files []string
-	if changed := strings.TrimSpace(out); changed != "" {
-		files = strings.Split(changed, "\n")
-		slices.Sort(files)
+	for _, name := range sinceFork {
+		if slices.Contains(fromParent, name) {
+			files = append(files, name)
+		}
 	}
-	return ConfigChanges{Files: files, Base: base, Tip: tip}, nil
+	return ConfigChanges{Files: files, Base: base, Tip: tip, ParentTip: parentTip}, nil
+}
+
+// diffNames lists the sorted paths `git diff --name-only from to` reports in the repo at dir, limited by pathspec.
+func diffNames(dir, from, to string, pathspec []string) ([]string, error) {
+	out, err := gitexec.Run(append([]string{"diff", "--name-only", from, to}, pathspec...), dir)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	if changed := strings.TrimSpace(out); changed != "" {
+		names = strings.Split(changed, "\n")
+		slices.Sort(names)
+	}
+	return names, nil
 }
 
 // revParseBranch resolves refs/heads/<branch> in the repo at dir to its SHA.

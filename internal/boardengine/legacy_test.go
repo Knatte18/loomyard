@@ -66,7 +66,7 @@ func TestMigrateLegacyKindAndLabels(t *testing.T) {
 		t.Errorf("bracket prefixes: labels=%v brief=%q, want [enhancement infra] and the stripped brief", prefixed.Labels, prefixed.Brief)
 	}
 	for _, e := range entries {
-		if err := validateTask(e); err != nil {
+		if err := normalizeTask(&e); err != nil {
 			t.Errorf("entry %q fails validation: %v", e.Slug, err)
 		}
 	}

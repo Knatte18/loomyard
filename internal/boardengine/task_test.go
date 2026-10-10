@@ -171,6 +171,45 @@ func TestNewTask(t *testing.T) {
 		}
 	})
 
+	t.Run("priority is stored only when high or low", func(t *testing.T) {
+		tests := []struct {
+			priority string
+			want     string
+		}{
+			{"high", `"priority":"high"`},
+			{"low", `"priority":"low"`},
+			{"normal", ""},
+		}
+		for _, tt := range tests {
+			task, err := boardengine.NewTask(map[string]any{"slug": "my-task", "priority": tt.priority}, 1)
+			if err != nil {
+				t.Fatalf("NewTask(priority %q): %v", tt.priority, err)
+			}
+			got, err := json.Marshal(task)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if tt.want == "" && strings.Contains(string(got), `"priority"`) {
+				t.Errorf("NewTask(priority %q) JSON = %s; want no priority key", tt.priority, got)
+			}
+			if tt.want != "" && !strings.Contains(string(got), tt.want) {
+				t.Errorf("NewTask(priority %q) JSON = %s; want %s", tt.priority, got, tt.want)
+			}
+		}
+	})
+
+	t.Run("an unknown priority is refused naming the accepted values", func(t *testing.T) {
+		_, err := boardengine.NewTask(map[string]any{"slug": "my-task", "priority": "urgent"}, 1)
+		if err == nil {
+			t.Fatal("NewTask(priority urgent) = nil error; want a refusal")
+		}
+		for _, want := range []string{`"my-task"`, `"urgent"`, "high", "normal", "low"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("refusal %q lacks %q", err.Error(), want)
+			}
+		}
+	})
+
 	t.Run("omitempty keeps a record with no recipe free of the key", func(t *testing.T) {
 		task, err := boardengine.NewTask(map[string]any{"slug": "my-task"}, 1)
 		if err != nil {
@@ -292,6 +331,21 @@ func TestApplyPatch(t *testing.T) {
 		}
 		if result.Status != nil {
 			t.Errorf("expected Status=nil, got %v", result.Status)
+		}
+	})
+
+	t.Run("priority survives a patch without it and normal clears it", func(t *testing.T) {
+		existing := boardengine.Task{ID: 1, Slug: "test", Kind: boardengine.KindNote, Priority: boardengine.PriorityHigh}
+		kept, err := boardengine.ApplyPatch(existing, map[string]any{"title": "Updated"})
+		if err != nil || kept.Priority != boardengine.PriorityHigh {
+			t.Errorf("ApplyPatch(title) priority = %q, err %v; want high", kept.Priority, err)
+		}
+		cleared, err := boardengine.ApplyPatch(existing, map[string]any{"priority": "normal"})
+		if err != nil || cleared.Priority != "" {
+			t.Errorf("ApplyPatch(priority normal) priority = %q, err %v; want empty", cleared.Priority, err)
+		}
+		if _, err := boardengine.ApplyPatch(existing, map[string]any{"priority": "HIGH"}); err == nil {
+			t.Error("ApplyPatch(priority HIGH) = nil error; want a refusal")
 		}
 	})
 

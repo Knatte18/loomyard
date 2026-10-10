@@ -19,6 +19,7 @@ func testPaths(t *testing.T) Paths {
 		WatchLockPath:    filepath.Join(dir, "watch.lock"),
 		StartLockPath:    filepath.Join(dir, "start.lock"),
 		CycleRequestPath: filepath.Join(dir, "cycle-request"),
+		ResumeMarkPath:   filepath.Join(dir, "resume-mark"),
 		HandoffsDir:      filepath.Join(dir, "handoffs"),
 		WatchLogPath:     filepath.Join(dir, "watch.log"),
 		RolePath:         filepath.Join(dir, "role.md"),
@@ -106,6 +107,30 @@ func TestCycleRequest_WriteProbeClear(t *testing.T) {
 	}
 	if _, ok, _ := CycleRequested(p); ok {
 		t.Error("request still present after clear")
+	}
+}
+
+func TestResumeMark_WriteReadClear(t *testing.T) {
+	p := testPaths(t)
+	if _, found, err := ReadResumeMark(p); err != nil || found {
+		t.Fatalf("ReadResumeMark before = %v, %v; want none", found, err)
+	}
+	if err := ClearResumeMark(p); err != nil {
+		t.Fatalf("clear absent: %v", err)
+	}
+	want := ResumeMark{At: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), Text: "read the role"}
+	if err := WriteResumeMark(p, want); err != nil {
+		t.Fatalf("WriteResumeMark: %v", err)
+	}
+	got, found, err := ReadResumeMark(p)
+	if err != nil || !found || !got.At.Equal(want.At) || got.Text != want.Text {
+		t.Fatalf("ReadResumeMark = %+v, %v, %v; want %+v", got, found, err, want)
+	}
+	if err := ClearResumeMark(p); err != nil {
+		t.Fatalf("ClearResumeMark: %v", err)
+	}
+	if _, found, _ := ReadResumeMark(p); found {
+		t.Error("mark still present after clear")
 	}
 }
 

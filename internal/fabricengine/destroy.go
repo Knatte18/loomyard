@@ -1,5 +1,5 @@
 // destroy.go is the only file in package fabricengine permitted to perform a destructive primitive.
-// The primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git worktree remove), removing or re-pointing a link (fslink.Remove), deleting a branch (git branch -D), deleting a branch on a remote (git push <remote> --delete), moving a branch on a remote (a leased force push, updateRemoteBranch), and resetting a warp checkout hard (ResetHard, and ResetPairCode for a task pair's checkout, both through resetHardTo).
+// The primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git worktree remove), removing or re-pointing a link (fslink.Remove), deleting a branch (git branch -D), deleting a branch on a remote (git push <remote> --delete), moving a branch on a remote (a leased force push, updateRemoteBranch), resetting a warp checkout hard (ResetHard, and ResetPairCode for a task pair's checkout, both through resetHardTo), and dropping seed commits from the hub's own board checkout (dropSeedCommits: a `reset --keep` to upstream and a replay of the other commits).
 // Every one of them is reached only through one of this file's executors, and every executor runs the shared check pipeline before performing its act — the gate executes, it does not merely approve.
 //
 // The pipeline runs four checks, always in this fixed order, stopping at the first failure:
@@ -69,6 +69,7 @@ import (
 	"os"
 	pathpkg "path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -302,6 +303,7 @@ const (
 	pathOwnershipWiredJunction
 	pathOwnershipDriftedWiredJunction
 	pathOwnershipPairWarpCheckout
+	pathOwnershipBoardWorktree
 )
 
 // pathOwnership declares which of the closed set of ownership kinds a pathRequest's target must
@@ -340,6 +342,13 @@ func ownedWarpCheckout(repoDir string) pathOwnership {
 // A detached HEAD on either side fails the predicate.
 func ownedPairWarpCheckout(repoDir, weftDir, parentBranch string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipPairWarpCheckout, repoDir: repoDir, weftDir: weftDir, parentBranch: parentBranch}
+}
+
+// ownedBoardWorktree declares target as owned when its base name is BoardDirName and a weft repo of the same hub registers it as a linked worktree:
+// some directory directly in target's parent, whose name WeftWarpSlug admits, lists target among its linked worktrees.
+// A directory that merely shares the name, or a `_board` of another hub, fails the predicate.
+func ownedBoardWorktree() pathOwnership {
+	return pathOwnership{kind: pathOwnershipBoardWorktree}
 }
 
 // ownedFabricHub declares target as owned when it structurally looks like a fabric hub — a `_board`
@@ -456,6 +465,7 @@ const (
 	pathDirtinessScope
 	pathDirtinessNA
 	pathDirtinessTrackedExcept
+	pathDirtinessTrackedOn
 )
 
 // pathDirtiness declares which dirtiness probe (or N/A) the pipeline runs against a pathRequest's
@@ -467,6 +477,15 @@ type pathDirtiness struct {
 	reason string
 	// ownPaths serves dirtyTrackedExcept only: worktree-relative, slash-separated.
 	ownPaths []string
+	// onPaths serves dirtyTrackedOn only: worktree-relative, slash-separated.
+	onPaths []string
+}
+
+// dirtyTrackedOn declares that the pipeline's dirtiness step probes tracked files only, and refuses only on a dirty tracked path in paths (worktree-relative, slash-separated).
+// A dirty path anywhere else is carried across by the act and never refuses.
+// The refusal names each such path.
+func dirtyTrackedOn(paths []string) pathDirtiness {
+	return pathDirtiness{kind: pathDirtinessTrackedOn, scope: scopeTracked, onPaths: paths}
 }
 
 // dirtyTrackedExcept declares that the pipeline's dirtiness step probes tracked files only, as dirtyScopeTracked does,
@@ -580,6 +599,12 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 	case pathOwnershipPairWarpCheckout:
 		return resolvePairWarpCheckout(own, target)
 
+	case pathOwnershipBoardWorktree:
+		if !isHubBoardWorktree(target) {
+			return false, fmt.Sprintf("%s is not the %s worktree of a weft repo in its hub", target, BoardDirName)
+		}
+		return true, ""
+
 	case pathOwnershipFabricHub:
 		if !looksLikeHub(target) {
 			return false, fmt.Sprintf("%s does not look like a fabric hub (no %s entry and no weft sibling)", target, BoardDirName)
@@ -677,6 +702,31 @@ func resolvePairWarpCheckout(own pathOwnership, target string) (bool, string) {
 		return false, fmt.Sprintf("the pair's weft %s has %q checked out, not %q, so %s is not the pair's own warp branch", own.weftDir, weftBranch, RecordsBranchName(branch), branch)
 	}
 	return true, ""
+}
+
+// isHubBoardWorktree implements ownedBoardWorktree's predicate.
+// An unreadable parent directory answers false, the conservative direction.
+func isHubBoardWorktree(target string) bool {
+	if filepath.Base(target) != BoardDirName {
+		return false
+	}
+	hub := filepath.Dir(target)
+	entries, err := os.ReadDir(hub)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if _, ok := WeftWarpSlug(entry.Name()); !ok {
+			continue
+		}
+		if isRegisteredLinkedWorktreeIn(filepath.Join(hub, entry.Name()), target) {
+			return true
+		}
+	}
+	return false
 }
 
 // isAnyWorktreeOf reports whether target is ANY worktree of the repo at repoDir, prime included —
@@ -901,6 +951,18 @@ func checkPathDirtiness(req pathRequest) error {
 			return nil
 		}
 		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.target, Reason: "tracked changes outside the run's own paths: " + strings.Join(foreign, ", ")}
+	}
+	if dirty && req.dirtiness.kind == pathDirtinessTrackedOn {
+		var touched []string
+		for _, path := range dirtyPathsOutside(detail, nil) {
+			if slices.Contains(req.dirtiness.onPaths, pathpkg.Clean(path)) {
+				touched = append(touched, path)
+			}
+		}
+		if len(touched) == 0 {
+			return nil
+		}
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.target, Reason: "tracked changes on paths the act rewrites: " + strings.Join(touched, ", ")}
 	}
 	if dirty {
 		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.target, Reason: "worktree has uncommitted changes; use --force"}
@@ -1608,6 +1670,72 @@ func resetHardTo(rec *Mutations, req pathRequest, repo *gitrepo.Repo, sha string
 		return err
 	}
 	rec.Append(KindWorktreeReset, req.target, sha)
+	return nil
+}
+
+// Failure classes of dropSeedCommits that a gate refusal does not cover.
+var (
+	// errDropResetRefused marks a `reset --keep` that git refused over a local change, with nothing changed.
+	errDropResetRefused = errors.New("reset to upstream refused over a local change")
+	// errDropReplayFailed marks a replay that conflicted; the repo is back at the tip the drop started from.
+	errDropReplayFailed = errors.New("replaying the commits that are not seed commits conflicted")
+)
+
+// boardDropRequest builds the gate request both seed-commit drop callers share:
+// container the board dir's parent, target the board dir, ownership ownedBoardWorktree, dirtiness dirtyTrackedOn(touched), and force always false.
+// touched is every path the commits ahead of upstream change.
+func boardDropRequest(boardDir string, touched []string) pathRequest {
+	return pathRequest{
+		what:      "drop seed commits from the board",
+		container: filepath.Dir(boardDir),
+		target:    boardDir,
+		ownership: ownedBoardWorktree(),
+		dirtiness: dirtyTrackedOn(touched),
+		force:     false,
+	}
+}
+
+// dropSeedCommits is the executor for dropping seed commits from the board checkout:
+// it runs the pipeline against req, resets repo to upstream keeping uncommitted changes, then replays every commit of ahead that IsSeedCommit does not admit, oldest first.
+// ahead is the commits HEAD has over upstream, newest first.
+// A replayed commit whose change upstream already carries is dropped with the rest, as `pull --rebase` would.
+// A replay failure aborts the cherry-pick, restores the tip the call started from and returns errDropReplayFailed, so the repo is never left mid-replay.
+// A reset git refuses over a local change returns errDropResetRefused with nothing changed.
+// It appends KindCommitsDropped, with the dropped seed SHAs as the detail, once HEAD observably moved, and nothing on a refusal or a failure.
+func dropSeedCommits(rec *Mutations, req pathRequest, repo *gitrepo.Repo, upstream string, ahead []string) error {
+	if err := checkPathRequest(req); err != nil {
+		return err
+	}
+	seed, other, _, err := seedCommitsAhead(repo, ahead)
+	if err != nil {
+		return err
+	}
+	startTip, err := repo.CurrentSHA()
+	if err != nil {
+		return err
+	}
+	if err := repo.ResetKeep(upstream); err != nil {
+		return fmt.Errorf("%w: %w", errDropResetRefused, err)
+	}
+	for i := len(other) - 1; i >= 0; i-- {
+		replayErr := repo.CherryPick(other[i])
+		if replayErr == nil {
+			continue
+		}
+		abortErr := repo.CherryPickAbort()
+		restoreErr := repo.ResetKeep(startTip)
+		if abortErr != nil || restoreErr != nil {
+			return fmt.Errorf("restore %s after a failed replay of %s: %w", startTip, other[i], errors.Join(replayErr, abortErr, restoreErr))
+		}
+		return fmt.Errorf("%w: %w", errDropReplayFailed, replayErr)
+	}
+	endTip, err := repo.CurrentSHA()
+	if err != nil {
+		return err
+	}
+	if endTip != startTip {
+		rec.Append(KindCommitsDropped, req.target, strings.Join(seed, " "))
+	}
 	return nil
 }
 

@@ -31,17 +31,24 @@ type SeatRunner interface {
 var _ SeatRunner = (*seatengine.Engine)(nil)
 
 // MultiLLMProducer is the shedadapters adapter over one seatengine table:
-// it probes for a live chair, resumes it or archives every seat's stale outputs and runs the table fresh,
-// and maps the chair's result onto the shedengine.ShedProducer contract.
+// it probes for a live chair, resumes it or archives every seat's stale outputs and runs the table fresh, and maps the chair's result onto the shedengine.ShedProducer contract.
 // The advisors' results are logged and never judged: an advisor's death weakens nothing the chair decided.
 type MultiLLMProducer struct {
 	name  string
 	table seatengine.Table
-	seats SeatRunner
-	now   func() time.Time
+	// tables, when set, builds the table for each call and table is unused.
+	tables TableSource
+	seats  SeatRunner
+	now    func() time.Time
+	// prepareFreshSpawn, when non-nil, runs on the fresh path after the probe and before the archive.
+	prepareFreshSpawn func() error
 }
 
 var _ shedengine.ShedProducer = (*MultiLLMProducer)(nil)
+
+// TableSource builds the seatengine.Table for one MultiLLMProducer call, evaluated once per Call.
+// It is a function so the table's stencils and directives are read at call time, never captured at construction.
+type TableSource func() (seatengine.Table, error)
 
 // NewMultiLLMProducer returns a MultiLLMProducer identified as name, running table through seats.
 // A nil now defaults to time.Now; it resolves only the archive filename's same-second collision suffix.
@@ -53,31 +60,55 @@ func NewMultiLLMProducer(name string, table seatengine.Table, seats SeatRunner, 
 	return &MultiLLMProducer{name: name, table: table, seats: seats, now: now}
 }
 
-// Call runs one MultiLLMProducer iteration: entry-check the context, probe the table's seats, and either resume a live chair and map its result,
-// or archive every seat's stale outputs, run the table fresh and map the chair's result.
+// NewMultiLLMProducerSourced returns a MultiLLMProducer identified as name that builds its table from tables on every call and runs it through seats.
+// A non-nil prepareFreshSpawn runs on the fresh path only, after the probe found no live chair and before the stale outputs are archived; its error fails the call with nothing archived and no seat started.
+// A nil now defaults to time.Now.
+func NewMultiLLMProducerSourced(name string, tables TableSource, seats SeatRunner, now func() time.Time, prepareFreshSpawn func() error) *MultiLLMProducer {
+	if now == nil {
+		now = time.Now
+	}
+	return &MultiLLMProducer{name: name, tables: tables, seats: seats, now: now, prepareFreshSpawn: prepareFreshSpawn}
+}
+
+// Call runs one MultiLLMProducer iteration: entry-check the context, probe the table's seats, and either resume a live chair and map its result, or prepare a fresh spawn, archive every seat's stale outputs, run the table fresh and map the chair's result.
+// The table is the source's answer, evaluated once before the probe, or the constructed table when there is no source.
 // The probe runs before anything is archived, because archiving renames files a live seat may be about to write.
-// A probe that finds the chair not live has already stopped every live advisor, so the archive never runs beside a live seat.
+// A probe that finds the chair not live has already stopped every live advisor, so the preparation and the archive never run beside a live seat.
 func (p *MultiLLMProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name, multiLLMEngineLabel); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
 
-	live, err := p.seats.Probe(p.table)
+	table := p.table
+	if p.tables != nil {
+		built, err := p.tables()
+		if err != nil {
+			return p.errorExit(ctx, "build table", err)
+		}
+		table = built
+	}
+
+	live, err := p.seats.Probe(table)
 	if err != nil {
 		return p.errorExit(ctx, "seat probe", err)
 	}
 	if live.Chair != nil {
-		result, err := p.seats.Resume(p.table, live)
+		result, err := p.seats.Resume(table, live)
 		if err != nil {
 			return p.errorExit(ctx, "seat resume", err)
 		}
 		return p.mapOutcome(ctx, result)
 	}
 
-	if err := archiveStaleOutputs(p.table.Outputs(), p.now); err != nil {
+	if p.prepareFreshSpawn != nil {
+		if err := p.prepareFreshSpawn(); err != nil {
+			return p.errorExit(ctx, "prepare fresh spawn", err)
+		}
+	}
+	if err := archiveStaleOutputs(table.Outputs(), p.now); err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): archive stale outputs: %w", p.name, multiLLMEngineLabel, err)
 	}
-	result, err := p.seats.Run(p.table)
+	result, err := p.seats.Run(table)
 	if err != nil {
 		return p.errorExit(ctx, "seat run", err)
 	}

@@ -16,9 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fsx"
 )
 
-// shortRevisionLength is how many leading characters of a revision a commit message and a log line carry.
-const shortRevisionLength = 12
-
 // stamp is the build stamp file: the key of the build that last reconciled the hub, with its identity in readable form for the log.
 type stamp struct {
 	BuildKey string `json:"build_key"`
@@ -38,21 +35,6 @@ func BuildKey(id buildvcs.Identity, fingerprint string) string {
 func runningStamp() stamp {
 	id := buildvcs.Running()
 	return stamp{BuildKey: BuildKey(id, configreg.Fingerprint()), Identity: id}
-}
-
-// revisionLabel renders an identity for a commit message and a log line.
-func revisionLabel(id buildvcs.Identity) string {
-	label := "unknown"
-	if id.Revision != "" {
-		label = id.Revision
-		if len(label) > shortRevisionLength {
-			label = label[:shortRevisionLength]
-		}
-	}
-	if id.Modified {
-		label += "-modified"
-	}
-	return label
 }
 
 // readStamp reads the stamp at path; an absent file reports not found with no error.

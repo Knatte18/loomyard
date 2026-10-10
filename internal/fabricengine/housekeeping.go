@@ -1,6 +1,6 @@
 // housekeeping.go keeps the hub's two object stores from auto-gc'ing under live steps:
 // disableStoreAutoGC turns git's automatic gc and maintenance off in both, and housekeepStores runs gc in the foreground where lyx is already doing slow work, after a pair's removal.
-// It removes no worktree, branch or file the destruction gate protects: gc deletes only unreachable objects and expired reflog entries past git's own default expiry.
+// It removes no worktree, branch or file the destruction gate protects: gc deletes only unreachable objects older than a day and expired reflog entries past git's own default expiry.
 
 package fabricengine
 
@@ -52,13 +52,33 @@ func disableStoreAutoGC(l *lyxcwd.Location) error {
 	return errors.Join(failures...)
 }
 
+// gcPruneExpire is the age past which gc prunes an unreachable loose object.
+const gcPruneExpire = "1.day.ago"
+
+// InFlightProbe answers, for the pair slug being removed, the live reed sessions that belong to other pairs.
+// An empty answer means no other pair is mid-step; an error means the answer is unknown.
+type InFlightProbe func(slug string) ([]string, error)
+
 // housekeepStores disables auto gc in both stores, then runs `git gc --auto` in the foreground in each.
-// The gc runs only when a store is above gcAutoThreshold, and never prunes a worktree's admin entry, which stays under the destruction gate.
+// The gc is skipped, with the keys still written, when probe reports another pair's live session or fails, since a live step may hold objects no ref reaches yet; a nil probe reports none.
+// The gc runs only when a store is above gcAutoThreshold, prunes unreachable loose objects older than gcPruneExpire, and never prunes a worktree's admin entry, which stays under the destruction gate.
 // It is best-effort and returns nothing: a failure is logged as a warning and never fails the caller.
 // A store another gc already holds is skipped silently, since git exits 0 without packing then.
-func housekeepStores(l *lyxcwd.Location) {
+func housekeepStores(l *lyxcwd.Location, slug string, probe InFlightProbe) {
 	if err := disableStoreAutoGC(l); err != nil {
 		logger.Warn("fabricengine: disabling store auto gc failed (non-fatal)", "error", err)
+	}
+
+	if probe != nil {
+		sessions, err := probe(slug)
+		if err != nil {
+			logger.Warn("fabricengine: store gc skipped, the live sessions of other pairs are unknown (non-fatal)", "slug", slug, "error", err)
+			return
+		}
+		if len(sessions) > 0 {
+			logger.Info("fabricengine: store gc skipped while other pairs have live sessions", "slug", slug, "sessions", sessions)
+			return
+		}
 	}
 
 	stores, err := hubStores(l)
@@ -70,6 +90,7 @@ func housekeepStores(l *lyxcwd.Location) {
 		"-c", "gc.auto=" + strconv.Itoa(gcAutoThreshold),
 		"-c", "gc.autoDetach=false",
 		"-c", "gc.worktreePruneExpire=never",
+		"-c", "gc.pruneExpire=" + gcPruneExpire,
 		"gc", "--auto", "--quiet",
 	}
 	for _, store := range stores {

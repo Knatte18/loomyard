@@ -5,8 +5,8 @@
 // The group carries its own PersistentPreRunE, and the loom parent's pre-run skips it, for the reason review.go gives.
 // It resolves the target worktree through the same resolver the review group uses.
 //
-// The verb checks no caller identity, like `lyx loom review` and `lyx loom circling`:
-// any shell addressing the run can add an entry to the answer key, a Plan-Write agent's tmux session in the task worktree included, and `--by` is an unverified label.
+// The verb refuses a task session's label: a caller whose exported strand name differs from the run's recorded parent is refused, and the operator's own unnamed shell always passes.
+// The check reads only the exported strand name and the recorded parent name, so it guards a mistaken call, not a session that clears or forges the variable, and `--by` stays an unverified label.
 // That is bounded by the entry being append-only, one entry per call, under an `Added after Discussion` heading with the claimed label and the date, in a committed diff.
 // The verb never routes the run, never touches the support log or the plan, and an approved plan is not re-planned by it.
 
@@ -17,11 +17,14 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -51,6 +54,10 @@ type decisionInput struct {
 
 // decisionDeps is every side effect decisionVerb performs, injected so tests supply fakes.
 type decisionDeps struct {
+	// strandName is the full name reed exported to the calling session, empty for a shell reed did not spawn.
+	strandName string
+	// parent resolves the run's recorded parent, called only for a named caller.
+	parent func() (hubgeom.Parent, error)
 	// readStatus reads the target worktree's default run status; found is false when the run has no status file.
 	readStatus reviewStatusReader
 	// recordPath is the decision record the entry lands in, reported on the success envelope.
@@ -75,6 +82,19 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 	for _, flag := range []struct{ name, value string }{{"title", input.title}, {"decision", input.decision}, {"rationale", input.rationale}} {
 		if strings.TrimSpace(flag.value) == "" {
 			return refuse("--%s is empty; way forward: pass --%s with the text to record", flag.name, flag.name)
+		}
+	}
+
+	if deps.strandName != "" {
+		parent, err := deps.parent()
+		if err != nil {
+			return refuse("the caller %q is a named session; way forward: the run's parent could not be resolved (%s); the operator's own unnamed shell may still run the verb", deps.strandName, err)
+		}
+		if deps.strandName != parent.Name {
+			if parent.Name == "" {
+				return refuse("the caller %q is a task session; way forward: a design call after the Discussion is the operator's to record; the operator's own unnamed shell may always run it", deps.strandName)
+			}
+			return refuse("the caller %q is a task session; way forward: a design call after the Discussion is the parent's to record; ask %s to run the verb; the operator's own unnamed shell may always run it", deps.strandName, parent.Name)
 		}
 	}
 
@@ -160,6 +180,8 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 	recordPath := loomengine.DiscussionDecisionRecord(target)
 	supportLogPath := loomengine.DiscussionSupportLog(target)
 	s.deps = decisionDeps{
+		strandName: os.Getenv(agentname.StrandNameEnv),
+		parent:     func() (hubgeom.Parent, error) { return hubgeom.ResolveParent(target) },
 		readStatus: circlingStatusReader(shedrun.StatusFile(target, shedrun.SelfRunID), shedrun.StatusLock(target, shedrun.SelfRunID)),
 		recordPath: recordPath,
 		append: func(d discussionparser.AddedDecision) ([]discussionparser.Finding, error) {
@@ -182,8 +204,10 @@ func (c *loomCLI) decisionCmd() *cobra.Command {
 ended is recorded in the decision record. "decision add" is the only verb.
 
 The verb takes an optional slug naming the task worktree. A task worktree
-addresses itself; from the prime the slug is required. It checks no caller
-identity, and --by is a label that is not verified.
+addresses itself; from the prime the slug is required. It refuses a task
+session's label: a caller whose reed strand name differs from the run's
+recorded parent is refused, and the operator's own unnamed shell always passes.
+--by is a label that is not verified.
 
 Example:
   lyx loom decision add <slug> --by parent --title "..." --decision "..." --rationale "..."`,
@@ -201,8 +225,10 @@ when the check flags it, and commits the record. It resumes nothing and
 changes neither the support log nor the plan.
 
 --by is parent or operator. --title, --decision and --rationale are all
-required. It is refused while Discussion-Write is running, since that row owns
-the record; message the Discussion-Write session with the decision instead.
+required. It is refused for a named session other than the run's recorded
+parent: ask the parent to run it, or run it from the operator's own shell. It is
+refused while Discussion-Write is running, since that row owns the record;
+message the Discussion-Write session with the decision instead.
 
 Example:
   lyx loom decision add <slug> --by parent --title "Keep the cache" --decision "Keep the cache per run." --rationale "A shared cache races."`,

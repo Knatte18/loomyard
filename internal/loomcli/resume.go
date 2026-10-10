@@ -99,7 +99,7 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 	}
 
 	if !driverLive {
-		if !c.refuseOverUnfinishedMerge(ctx, out, bootstrapLock, retryResume) {
+		if !c.refuseOverUnfinishedMerge(ctx, out, bootstrapLock, retryResume, status.CurrentProducer) {
 			return
 		}
 		refuse(resumeRefusal{message: noLiveDriverMessage(driver, driverFound)})
@@ -115,7 +115,7 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 		refuse(resumeRefusal{message: driverNotParkedMessage(status.State, retryResume), kind: shedrun.StartNotParkedKind})
 		return
 	}
-	if !c.refuseOverUnfinishedMerge(ctx, out, bootstrapLock, retryResume) {
+	if !c.refuseOverUnfinishedMerge(ctx, out, bootstrapLock, retryResume, status.CurrentProducer) {
 		return
 	}
 	reportPath, err := c.resumeParkedDriver(driver.GUID, retryResume)
@@ -214,10 +214,13 @@ and decides by the run's state first:
                     shortly
   halted, live driver, park marker
                     resumed; the envelope names the stop-report path; refused
-                    with the kind "merge_in_progress" over an unfinished merge
+                    with the kind "merge_in_progress" over an unfinished merge,
+                    except a parked merge-in of the run's own parent branch at
+                    Publish or Finalize, which that row aborts and redoes
   halted, no live driver
-                    refused over an unfinished merge with "merge_in_progress",
-                    otherwise with the way forward its driver strand calls for:
+                    refused over an unfinished merge with "merge_in_progress"
+                    (same exception), otherwise with the way forward its driver
+                    strand calls for:
                     a dead strand takes "lyx batten run <slug>" from the prime
                     and then resume again, a retiring strand or none takes
                     "lyx loom start"

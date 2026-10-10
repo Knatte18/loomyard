@@ -20,6 +20,7 @@
 //     Both verbs report `requested` and `watcher_live`, and with no watcher live they withdraw the marker again, so no later watcher acts on a request made while none ran.
 //   - stop: removes the orchestrator strand; the watcher notices and exits on its own.
 //   - watch: the hidden daemon verb `start` spawns detached; it is not an operator verb.
+//   - resume-context: the hidden verb the orch run's session-start hook runs after every compaction; it prints the resume pointer as the provider's additional-context JSON and writes the delivery mark.
 //
 // The verbs, the reed and shuttle wiring, and the strand-identity rules live in internal/orchcli.
 // This package holds what sits behind the seam: the config, the stencil renders, the persisted state, `start`'s two decisions, and the watcher.
@@ -121,14 +122,19 @@
 //     A requested cycle waits no grace: the operator chose the moment, and the idle probe below still guards the pane.
 //   - Session.SessionIdle reports an empty input box with no turn running.
 //
+// The probe is the shuttle engine's readiness reading: the session state the hooks derived decides, and the pane decides only while that reading is unknown.
 // Every idle probe goes through one watcher helper.
-// A probe that reports the pane too short to draw an input box records `orch pane too short for the idle probe; resize or use the larger client` in State.Stuck, saved and logged once, and holds cycles and notice delivery like any failing probe.
-// The next probe that does not report it clears that reason and only that reason, so `lyx orch status` shows the hold in the idle phase too.
+// A probe that is not idle holds cycles and notice delivery, and records why in State.Stuck:
+// its own reason when the reading decided, `orch pane too short for the idle probe; resize or use the larger client` for a pane too short to draw an input box, else a fixed pane text.
+// The reason is saved and logged as `orch: injection held` at Info with the phase, the reload step, the reason and the time since the phase began, once per change of reason within a hold, a run of probes that are not idle which the next passing probe ends; the last reason is watcher memory and not State.
+// A passing probe clears a State.Stuck that a hold wrote and only that, so `lyx orch status` shows the hold in the idle phase too, and a Stuck written by anything else is never overwritten by a hold.
+// State.StuckByHold records that a hold wrote it, so a restarted watcher clears it too.
 //
 // Session.SessionState reads the orch session's state from its shuttle run record, which is interactive with a never-written sentinel output, so its turn ends read `asking`.
 // The watcher only logs it: after a successful probe that is not too short, a probe that reads idle beside the state `busy`, or not idle beside `idle-done`, `idle-stalled` or `asking`, logs `orch: session state disagrees with the idle probe` at Warn.
 // A disagreement is logged once and again only after either side changes, the last pair being watcher memory and not State.
 // A state that cannot be read is logged at Debug, and no probe result, cycle, delivery or State write depends on the state.
+// The same read logs the hook's session-start event as `orch: session start signal read` at Info, once per new time.
 //
 // A soft cycle holds the same gates with `soft_idle_s` in place of the idle grace, and adds one:
 // State.LastDeferral is zero or at least `soft_idle_s` before now.
@@ -247,6 +253,10 @@
 //   - A step typed before a restart and not confirmed is typed again once the idle probe passes, without a fresh timeout.
 //     Loading a skill twice costs one turn and changes nothing.
 //
+// Each successful typing of a step logs `orch: injection typed` at Info with the phase, the step name, the length of the hold the passing probe before it ended and the time since the phase began.
+// A boundary found is logged as `orch: compaction boundary found` with its time, when a fresh one is read at a turn end and again when a qualifying one completes a requested compaction,
+// so the delay from boundary to reload is readable from `watch.log` alone.
+//
 // The sequence has three entry points, each entered only on a tick whose idle probe passed:
 //
 //   - After `/clear`: the pointer names the note, as before.
@@ -267,6 +277,14 @@
 //     Bound: a compaction mid-turn whose turn end is followed by another before the watcher reads gets no reload,
 //     and the role pointer reaches the session at its next cycle.
 //
+// The provider's session-start hook can deliver the pointer itself after a compaction:
+// the hidden `lyx orch resume-context` verb renders it from the persisted state through ResumeContext, which renders the role file first in every phase but a resuming one with a pending pointer, and then writes the delivery mark, `resume-mark`.
+// The pointer step reads the mark first.
+// A mark dated at or after State.CompactionBaseline whose text equals the pending pointer means the hook delivered it, so the step types nothing, logs `orch: pointer delivered by the session-start hook` at Info, and ends the phase at once with no abort reason.
+// It does not wait for a turn end, since the one that revealed the boundary was read before the step, and a skip waiting for another could end in `resume timed out`.
+// No mark, an older one or one with other text types the pointer as before, so a hook that never fired costs nothing; a pointer delivered by both ways costs the session one redundant read.
+// Every return to idle clears the mark, so it never carries into the next compaction.
+//
 // Bound: only the two compaction entries skip the skills step and `/clear` keeps it;
 // the pointer step still has the session read its role file.
 // A session that did lose a skill in a compaction misses it until its next `/clear` or restart.
@@ -282,6 +300,7 @@
 //   - watch.lock: held for the watcher's life.
 //   - start.lock: serializes `start`.
 //   - cycle-request: the JSON marker `refresh` and `distill` write and the watcher consumes.
+//   - resume-mark: the JSON delivery mark `resume-context` writes after a successful render and the pointer step reads; removed when the reload ends.
 //   - watch.log: the detached watcher's stdout and stderr.
 //   - handoffs/: one timestamped handoff file per cycle, all kept.
 //   - notices/: one file per queued notice, removed on delivery.

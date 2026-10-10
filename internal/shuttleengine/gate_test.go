@@ -265,7 +265,7 @@ func TestGate_ClosureError(t *testing.T) {
 //
 //testtiming:keep pins that every exit with no live session finalizes through its own branch with the gate run once, a failed verdict, and no re-prompt or attempt charged
 func TestGate_NoLiveSessionDonePaths(t *testing.T) {
-	liveness := Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 0}
+	liveness := Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1, StartupTimeoutS: 0}
 	tests := []struct {
 		name          string
 		cfg           Config
@@ -449,9 +449,9 @@ func TestGate_DeadlineExpiresBetweenAttempts(t *testing.T) {
 		CaptureQueue: repromptCaptureSequence(findingsPath, 1),
 	}
 	engine := readyAgentEngine()
-	// PollIntervalMS's 5ms Sleep after the one successful re-prompt crosses the 2ms-out deadline
+	// PollIntervalMS's 1s Sleep after the one successful re-prompt crosses the 2ms-out deadline
 	// below, so the SECOND tick's deadline check trips with no further event ever appended.
-	fx := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 5, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30}))
+	fx := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30}))
 	stubInputSleep(t)
 
 	fc := newFakeClock(time.Now())

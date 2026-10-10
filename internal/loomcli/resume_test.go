@@ -202,6 +202,10 @@ func TestResumeVerb(t *testing.T) {
 		{name: "failed parked driver is woken", runState: shedengine.StateFailed, directory: liveDriver, marker: true, wantOK: true, wantSent: true, wantIn: []string{"woken"}},
 		{name: "parked driver over an unfinished merge is refused", runState: shedengine.StateBlocked, directory: liveDriver, marker: true, merge: mergeParked, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{`"lyx loom resume"`, "lyx fabric merge"}},
 		{name: "no live driver over an unfinished merge is refused", runState: shedengine.StateBlocked, directory: deadDriver, merge: mergeParked, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{`"lyx loom resume"`}},
+		{name: "parked driver at Publish over the own leftover is woken", runState: shedengine.StateBlocked, producer: loomshed.NamePublish, directory: liveDriver, marker: true, merge: ownLeftoverState, wantOK: true, wantSent: true, wantIn: []string{"woken"}},
+		{name: "no live driver at Publish over the own leftover reports the dead driver", runState: shedengine.StateBlocked, producer: loomshed.NamePublish, directory: deadDriver, merge: ownLeftoverState, wantIn: []string{"dead", "lyx batten run <slug>"}},
+		{name: "own leftover at another row keeps the merge refusal", runState: shedengine.StateBlocked, producer: loomshed.NamePRGate, directory: liveDriver, marker: true, merge: ownLeftoverState, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{"lyx fabric merge"}},
+		{name: "parked merge of another source at Finalize keeps the merge refusal", runState: shedengine.StateBlocked, producer: loomshed.NameFinalize, directory: liveDriver, marker: true, merge: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: "merge-in", Source: "other", Conflicts: []string{"a.go"}}, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{"lyx fabric merge"}},
 		{name: "dead driver strand names batten then resume, or start", runState: shedengine.StateBlocked, directory: deadDriver, wantIn: []string{"dead", "lyx batten run <slug>", `"lyx loom resume" again`, `"lyx loom start"`}},
 		{name: "retiring driver strand names start", runState: shedengine.StateBlocked, directory: retiringDriver, marker: true, wantIn: []string{"retiring", `"lyx loom start"`}},
 		{name: "no driver strand names start", runState: shedengine.StateBlocked, directory: noDriver, wantIn: []string{"no driver strand", `"lyx loom start"`}},
@@ -211,6 +215,7 @@ func TestResumeVerb(t *testing.T) {
 			sender := &fakeDriverSender{}
 			c, starter, probe := newResumeVerbReceiver(t, sender, tt.directory)
 			c.midMerge = func(*lyxcwd.Location) (fabricengine.MidMergeState, error) { return tt.merge, nil }
+			c.recordedParentBranch = parentBranchSeam(nil)
 			if tt.producer != "" {
 				if err := state.WriteJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, shedengine.Status{State: tt.runState, CurrentProducer: tt.producer}); err != nil {
 					t.Fatalf("write status: %v", err)

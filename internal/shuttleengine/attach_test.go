@@ -434,7 +434,7 @@ func TestAttach_OutputFilesMismatch(t *testing.T) {
 //testtiming:keep pins that a terminal persisted Outcome is respawn-eligible at any directory age for both an untracked strand and a cleared pane binding, which the age-rule rows never reach
 func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testing.T) {
 	t.Run("Untracked", func(t *testing.T) {
-		for _, outcome := range []string{"done", "asking", "died", "timeout"} {
+		for _, outcome := range []string{"done", "asking", "died", "timeout", runOutcomeStopped} {
 			t.Run(outcome, func(t *testing.T) {
 				reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: nil}}}
 				fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
@@ -459,7 +459,7 @@ func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testin
 	})
 
 	t.Run("BindingCleared", func(t *testing.T) {
-		for _, outcome := range []string{"done", "asking", "died", "timeout"} {
+		for _, outcome := range []string{"done", "asking", "died", "timeout", runOutcomeStopped} {
 			t.Run(outcome, func(t *testing.T) {
 				reed := &fakeReed{StatusQueue: []reedengine.StatusResult{deadStatus("strand-1", "")}}
 				fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
@@ -1042,7 +1042,7 @@ func TestAttach_StartedSeededTrue(t *testing.T) {
 	// StartupScript deliberately left empty: fakeEngine.Startup would return StartupPending for
 	// every call, and any call at all is the regression this test exists to catch.
 	engine := &fakeEngine{}
-	fx := newFixture(t, reed, engine, withConfig(Config{StartupTimeoutS: 1, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1}), withSeparateRunDir())
+	fx := newFixture(t, reed, engine, withConfig(Config{StartupTimeoutS: 1, RunTimeoutMin: 5, PollIntervalMS: 1000, LivenessEveryNPolls: 1}), withSeparateRunDir())
 	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 
