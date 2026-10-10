@@ -164,7 +164,7 @@ func archiveRunInPlace(geom Geometry, now func() time.Time) error {
 // ArchiveRunAfterReset archives the run record in place once a reset to the run's start has moved the branch, or has no branch move to make.
 // It first judges every pending audit finding against the worktree's HEAD, which is the tree the next run starts from:
 // it refuses with ErrPendingAuditFindings, archiving nothing, only where the caller can clear the state, each refusal naming the clearing step and then `lyx webster reset --to start`.
-// Those are an uncleared contract file a fork wrote last, a plan path that differs from the recorded plan, and a suspect path that differs from HEAD.
+// Those are an uncleared contract file a fork or a recovery session wrote last, a plan path that differs from the recorded plan, and a suspect path that differs from HEAD.
 // Every other pending finding, and every batch record's uncheckable entries, is dropped with the archived record, and the returned warnings name each drop.
 // A nil state has nothing to judge, and archives whatever record is on disk.
 func ArchiveRunAfterReset(engine shuttleengine.Engine, geom Geometry, st *State) ([]string, error) {
@@ -238,7 +238,7 @@ func resetPendingGuard() pendingGuard {
 
 // checkPendingFindings judges st's pending audit findings, and the suspect paths of batches with uncheckable entries, against base, and returns one drop warning per finding.
 // It refuses with ErrPendingAuditFindings where the caller can clear the state:
-// a contract file a fork wrote last, a suspect path that differs from base, and a plan path that differs from the recorded plan while restore-plan can undo that, either because the store holds the recorded copy or because the file was never recorded.
+// a contract file a fork or a recovery session wrote last, a suspect path that differs from base, and a plan path that differs from the recorded plan while restore-plan can undo that, either because the store holds the recorded copy or because the file was never recorded.
 // An unverifiable path, a pathless finding and a differing plan path whose recorded copy is missing from the store are dropped, since no verb could restore the last; its warning says so.
 func checkPendingFindings(engine shuttleengine.Engine, geom Geometry, st *State, base string, guard pendingGuard) ([]string, error) {
 	uncheckableBatches := uncheckableBatchNumbers(st)

@@ -1650,11 +1650,14 @@ func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 func TestRecoverSpawnOrAttach_ContractFileEvidence(t *testing.T) {
 	at := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
-		name      string
-		master    []shuttleengine.WriteEvent
+		name   string
+		master []shuttleengine.WriteEvent
+		// recovery holds the writes of a recorded earlier recovery session; its path is the contract file.
+		recovery  []shuttleengine.WriteEvent
 		wantSpawn bool
 		// pathless adds a pathless entry longer than NAME_MAX beside the contract path, which the call must never resolve as a path.
-		pathless  string
+		pathless string
+		// wantInErr entries ending in "wrote /" match the writer clause, which precedes an absolute contract path.
 		wantInErr []string
 		notInErr  []string
 		// needsFresh expects ErrRecoveryNeedsFresh instead of the delete refusal.
@@ -1671,8 +1674,15 @@ func TestRecoverSpawnOrAttach_ContractFileEvidence(t *testing.T) {
 		{
 			name:      "fork wrote last",
 			master:    []shuttleengine.WriteEvent{{At: at, Succeeded: true}},
-			wantInErr: []string{"batch 01", "rm ", "lyx webster recover-batch 1", "after Master's last write"},
-			notInErr:  []string{"--fresh"},
+			wantInErr: []string{"batch 01", "rm ", "lyx webster recover-batch 1", "a fork or a recovery session wrote last", "a fork wrote /", "after Master's last write"},
+			notInErr:  []string{"--fresh", "a recovery session wrote /"},
+		},
+		{
+			name:      "recovery wrote last",
+			master:    []shuttleengine.WriteEvent{{At: at, Succeeded: true}},
+			recovery:  []shuttleengine.WriteEvent{{At: at.Add(2 * time.Minute), Succeeded: true}},
+			wantInErr: []string{"batch 01", "rm ", "lyx webster recover-batch 1", "a fork or a recovery session wrote last", "a recovery session wrote /", "after Master's last write"},
+			notInErr:  []string{"--fresh", "a fork wrote /"},
 		},
 		{
 			name:      "master wrote after the fork",
@@ -1692,7 +1702,14 @@ func TestRecoverSpawnOrAttach_ContractFileEvidence(t *testing.T) {
 			}
 			master := slices.Clone(tt.master)
 			master[0].Path = contract
-			fx.Engine.AuditForksFn = func(string, string) (shuttleengine.ForkAudit, error) {
+			recovery := slices.Clone(tt.recovery)
+			for i := range recovery {
+				recovery[i].Path = contract
+			}
+			fx.Engine.AuditForksFn = func(session, _ string) (shuttleengine.ForkAudit, error) {
+				if session == "r1" {
+					return shuttleengine.ForkAudit{ParentWriteEvents: recovery}, nil
+				}
 				return shuttleengine.ForkAudit{
 					ParentWriteEvents: master,
 					Forks:             []shuttleengine.ForkReport{{WriteEvents: []shuttleengine.WriteEvent{{Path: contract, At: at.Add(time.Minute), Succeeded: true}}}},
@@ -1700,6 +1717,9 @@ func TestRecoverSpawnOrAttach_ContractFileEvidence(t *testing.T) {
 			}
 			fx.Deps.State.MasterSessionID = "s1"
 			rec := failedRecord("fork wrote the contract file")
+			if tt.recovery != nil {
+				rec.RecoverySessions = []string{"r1"}
+			}
 			rec.Uncheckable = []string{contract}
 			if tt.pathless != "" {
 				rec.Uncheckable = append(rec.Uncheckable, tt.pathless)

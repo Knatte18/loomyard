@@ -289,7 +289,8 @@
 // and end in one ordered list: the restores, then `lyx webster accept-audit`, then exactly one re-entry step, RunDeps.ReentryStep (`lyx webster run` when empty);
 // the reset route ends in that same re-entry step, since the reset archives the run record and a plain run starts over.
 // A suspect path that is one of the run's two contract files, outcome.yaml or summary.md, is the exception, since it lies outside the tracked tree and has no blob to compare:
-// contractFileStatus clears it on evidence, when the file is absent or the latest successful Master write to it (from RunWrites) is later than every fork write to it.
+// contractFileStatus clears it on evidence, when the file is absent or the latest successful Master write to it (from RunWrites) is later than every fork write and every recovery write to it;
+// an uncleared path is one a fork or a recovery session wrote last, and the refusal names which.
 // A Master write whose result failed is not evidence, and an acknowledgement never clears it.
 // Every other path under `_lyx`, `.lyx` or the scratch directory stays uncheckable.
 // Four sites consult it before checkSuspectPaths: AcceptPendingAudit, RecoverSpawnOrAttach, the way forward of a pending finding (pendingPathsWayForward) and `run --fresh`.

@@ -39,36 +39,54 @@ func contractCanon(geom Geometry, path string) (canon string, contract bool, err
 	return canon, false, nil
 }
 
+const (
+	// writerFork names a fork as the last writer of a contract file.
+	writerFork = "a fork"
+	// writerRecovery names a recovery session as the last writer of a contract file.
+	writerRecovery = "a recovery session"
+)
+
 // contractFileStatus reports whether path is one of this run's contract files, and whether the audit finding on it is cleared.
-// A contract path is cleared when the file is absent, or when the latest successful Master write to it is later than every fork write to it.
+// A contract path is cleared when the file is absent, or when the latest successful Master write to it is later than every fork write and every recovery write to it.
 // A Master write whose result failed is not evidence.
-// Every other path is no contract path and never cleared here.
+// An uncleared path's writer is writerFork or writerRecovery, whichever made the latest write at or after Master's;
+// it defaults to writerFork when the run recorded no write to the file.
+// The writer is empty when the path is cleared or is no contract path.
 // The error is a link-resolution or stat failure.
-func contractFileStatus(geom Geometry, writes RunWrites, path string) (contract, cleared bool, err error) {
+func contractFileStatus(geom Geometry, writes RunWrites, path string) (contract, cleared bool, writer string, err error) {
 	canon, contract, err := contractCanon(geom, path)
 	if err != nil || !contract {
-		return false, false, err
+		return false, false, "", err
 	}
 	if _, statErr := os.Stat(canon); statErr != nil {
 		if errors.Is(statErr, os.ErrNotExist) {
-			return true, true, nil
+			return true, true, "", nil
 		}
-		return false, false, fmt.Errorf("websterengine: stat contract file %s: %w", canon, statErr)
+		return false, false, "", fmt.Errorf("websterengine: stat contract file %s: %w", canon, statErr)
 	}
 	lastMaster, found := latestSucceededWrite(geom, writes.Master, canon)
-	if !found {
-		return true, false, nil
-	}
-	for _, ev := range writes.Forks {
-		evCanon, err := canonicalPath(resolveWritePath(geom.WorktreeRoot, ev.Path))
-		if err != nil {
-			return false, false, err
+	var latest time.Time
+	for _, source := range []struct {
+		writer string
+		events []shuttleengine.WriteEvent
+	}{{writerFork, writes.Forks}, {writerRecovery, writes.Recoveries}} {
+		for _, ev := range source.events {
+			evCanon, err := canonicalPath(resolveWritePath(geom.WorktreeRoot, ev.Path))
+			if err != nil {
+				return false, false, "", err
+			}
+			if evCanon == canon && !lastMaster.After(ev.At) && (writer == "" || ev.At.After(latest)) {
+				writer, latest = source.writer, ev.At
+			}
 		}
-		if evCanon == canon && !lastMaster.After(ev.At) {
-			return true, false, nil
-		}
 	}
-	return true, true, nil
+	switch {
+	case writer != "":
+		return true, false, writer, nil
+	case !found:
+		return true, false, writerFork, nil
+	}
+	return true, true, "", nil
 }
 
 // latestSucceededWrite returns the time of the latest successful event in events whose path canonicalizes to canon.
@@ -88,12 +106,20 @@ func latestSucceededWrite(geom Geometry, events []shuttleengine.WriteEvent, cano
 	return latest, found
 }
 
+// unclearedContract is a contract path the evidence does not clear, with the kind of session that wrote it last.
+type unclearedContract struct {
+	// Path is the contract path as the finding named it.
+	Path string
+	// Writer is writerFork or writerRecovery.
+	Writer string
+}
+
 // contractSplit sorts suspect paths by what the contract-file evidence says about them.
 type contractSplit struct {
 	// Cleared holds the contract paths the evidence clears, Absent the subset whose file is absent.
 	Cleared, Absent []string
-	// Uncleared holds the contract paths a fork wrote last.
-	Uncleared []string
+	// Uncleared holds the contract paths a fork or a recovery session wrote last.
+	Uncleared []unclearedContract
 	// Rest holds every path that is no contract file, in input order.
 	Rest []string
 }
@@ -107,7 +133,7 @@ func splitContractPaths(geom Geometry, writes RunWrites, paths []string) (contra
 			s.Rest = append(s.Rest, p)
 			continue
 		}
-		contract, cleared, err := contractFileStatus(geom, writes, p)
+		contract, cleared, writer, err := contractFileStatus(geom, writes, p)
 		if err != nil {
 			return contractSplit{}, err
 		}
@@ -115,7 +141,7 @@ func splitContractPaths(geom Geometry, writes RunWrites, paths []string) (contra
 		case !contract:
 			s.Rest = append(s.Rest, p)
 		case !cleared:
-			s.Uncleared = append(s.Uncleared, p)
+			s.Uncleared = append(s.Uncleared, unclearedContract{Path: p, Writer: writer})
 		default:
 			s.Cleared = append(s.Cleared, p)
 			canon, _, err := contractCanon(geom, p)
@@ -150,7 +176,13 @@ func contractWritesFor(engine shuttleengine.Engine, st *State, geom Geometry, pa
 	return RunWrites{}, nil
 }
 
-// contractDeleteClause is the delete route for contract paths a fork wrote last: remove the files, then re-run through rerun.
-func contractDeleteClause(paths []string, rerun string) string {
-	return fmt.Sprintf("a fork wrote %s after Master's last write; %s", strings.Join(paths, ", "), wayForwardSteps("rm "+strings.Join(paths, " "), rerun))
+// contractDeleteClause is the delete route for contract paths a fork or a recovery session wrote last: remove the files, then re-run through rerun.
+// It names each path's writer.
+func contractDeleteClause(uncleared []unclearedContract, rerun string) string {
+	var wrote, paths []string
+	for _, u := range uncleared {
+		wrote = append(wrote, u.Writer+" wrote "+u.Path)
+		paths = append(paths, u.Path)
+	}
+	return fmt.Sprintf("%s after Master's last write; %s", strings.Join(wrote, ", "), wayForwardSteps("rm "+strings.Join(paths, " "), rerun))
 }

@@ -147,7 +147,7 @@ func TestLoadRunWrites(t *testing.T) {
 		if err != nil {
 			t.Fatalf("writtenWorktreePaths: %v", err)
 		}
-		if want := []string{"a.go", "b/new.go", "recovered.go"};!reflect.DeepEqual(got, want) {
+		if want := []string{"a.go", "b/new.go", "recovered.go"}; !reflect.DeepEqual(got, want) {
 			t.Errorf("writtenWorktreePaths = %v, want %v", got, want)
 		}
 	})

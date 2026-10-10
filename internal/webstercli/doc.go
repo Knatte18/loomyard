@@ -33,7 +33,7 @@
 // The remote-commits refusal lists the commits and names the `git merge --strategy ours` step for the run's own abandoned commits.
 //
 // reset clears the persisted pre-fix head and changes no other webster state, except that start also archives the run record, renaming state.json and the reports directory with a stamp and clearing the rendered prompts.
-// The archive sits behind a pending-findings guard judged against HEAD, which refuses with the move already made only on a contract file a fork wrote last, a plan path that differs from the recorded plan, or a suspect path that differs from HEAD, each naming its clearing step;
+// The archive sits behind a pending-findings guard judged against HEAD, which refuses with the move already made only on a contract file a fork or a recovery session wrote last, a plan path that differs from the recorded plan, or a suspect path that differs from HEAD, each naming its clearing step;
 // re-running the reset then converges.
 // Every other pending finding is dropped with a warning.
 //

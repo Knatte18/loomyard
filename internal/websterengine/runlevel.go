@@ -1160,7 +1160,7 @@ func pendingFindingsText(engine shuttleengine.Engine, st *State, geom Geometry, 
 // A finding with no path, or a path nothing the run recorded can check (see uncheckableReason) other than a cleared contract file, clears only through the reset route,
 // so the steps are then the reset to start, then reentry:
 // accept-audit refuses every finding while any one of them cannot be checked.
-// Otherwise the steps are the restores first (git checkout of the differing tracked paths to the last batch head, restore-plan for plan paths that differ, rm for a contract path a fork wrote last),
+// Otherwise the steps are the restores first (git checkout of the differing tracked paths to the last batch head, restore-plan for plan paths that differ, rm for a contract path a fork or a recovery session wrote last),
 // then accept-audit, then reentry.
 // The error is a link-resolution or git probe failure.
 func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []string, pathless bool, reentry string) (steps []string, notes map[string]string, err error) {
@@ -1172,8 +1172,10 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 	for _, p := range contracts.Cleared {
 		notes[p] = noteClearedContract
 	}
-	for _, p := range contracts.Uncleared {
-		notes[p] = noteForkWroteLast
+	var unclearedPaths []string
+	for _, u := range contracts.Uncleared {
+		notes[u.Path] = noteWroteLast(u.Writer)
+		unclearedPaths = append(unclearedPaths, u.Path)
 	}
 	plan, rest, err := splitPlanPaths(geom, contracts.Rest)
 	if err != nil {
@@ -1215,8 +1217,8 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 	if len(plan) > 0 {
 		steps = append(steps, stepRestorePlan)
 	}
-	if len(contracts.Uncleared) > 0 {
-		steps = append(steps, "rm "+strings.Join(contracts.Uncleared, " "))
+	if len(unclearedPaths) > 0 {
+		steps = append(steps, "rm "+strings.Join(unclearedPaths, " "))
 	}
 	return append(steps, stepAcceptAudit, reentry), notes, nil
 }

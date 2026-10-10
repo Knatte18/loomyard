@@ -473,8 +473,8 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 				}
 				what = append(what, fmt.Sprintf("%s (%s)", entry, reason))
 			}
-			for _, p := range contracts.Uncleared {
-				what = append(what, fmt.Sprintf("%s (%s)", p, noteForkWroteLast))
+			for _, u := range contracts.Uncleared {
+				what = append(what, fmt.Sprintf("%s (%s)", u.Path, noteWroteLast(u.Writer)))
 			}
 			wayForward := resetToStartSteps(stepRun)
 			if len(contracts.Uncleared) == 0 && allPathlessFabricReference(contracts.Rest) {
@@ -483,7 +483,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 			return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; %s", batchNumber, strings.Join(what, ", "), wayForward)}
 		}
 		if len(contracts.Uncleared) > 0 {
-			return nil, false, fmt.Errorf("webster: batch %02d failed on contract file(s) a fork wrote last: %s", batchNumber, contractDeleteClause(contracts.Uncleared, fmt.Sprintf("lyx webster recover-batch %d", batchNumber)))
+			return nil, false, fmt.Errorf("webster: batch %02d failed on contract file(s) a fork or a recovery session wrote last: %s", batchNumber, contractDeleteClause(contracts.Uncleared, fmt.Sprintf("lyx webster recover-batch %d", batchNumber)))
 		}
 	}
 
