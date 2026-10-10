@@ -5,12 +5,19 @@ package shedadapters
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// ReadRubric reads the rubric stencil name from stencilsDir, strips its stamp banner, fills it as its own template with specsDir and stencilsDir, and returns the filled result.
+// noPublishFailure is what the publish_failure marker renders as when no Publish failure is named.
+const noPublishFailure = "none"
+
+// ReadRubric reads the rubric stencil name from stencilsDir, strips its stamp banner, fills it as its own template with specsDir, stencilsDir and publishFailure, and returns the filled result.
+//
+// publishFailure fills the optional publish_failure marker, the rendered Publish failure note only the Webster-Review rubric carries.
+// A blank publishFailure fills it as `none`, and a rubric with no such marker ignores it.
 //
 // The strip is about value semantics, not about protecting Fill. stencil.Fill already strips a
 // leading banner from the template it parses, but never from a marker value -- and a rubric's
@@ -29,13 +36,16 @@ import (
 // reaching a producer through a config key rather than through the stencil store -- never goes
 // through here, because running author prose through Fill turns any bare {{ in it into a
 // parse-template error and imposes specs-dir semantics on text that never had them.
-func ReadRubric(stencilsDir, name, specsDir string) (string, error) {
+func ReadRubric(stencilsDir, name, specsDir, publishFailure string) (string, error) {
 	raw, err := stencilstore.Read(stencilsDir, name)
 	if err != nil {
 		return "", fmt.Errorf("shedadapters: read rubric %q: %w", name, err)
 	}
+	if strings.TrimSpace(publishFailure) == "" {
+		publishFailure = noPublishFailure
+	}
 	stripped := stencil.StripLeadingComment(string(raw))
-	filled, err := stencil.Fill([]byte(stripped), map[string]string{"specs_dir": specsDir, "stencils_dir": stencilsDir})
+	filled, err := stencil.Fill([]byte(stripped), map[string]string{"specs_dir": specsDir, "stencils_dir": stencilsDir, "publish_failure": publishFailure})
 	if err != nil {
 		return "", fmt.Errorf("shedadapters: read rubric %q: %w", name, err)
 	}

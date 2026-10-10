@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlercli"
 	"github.com/Knatte18/loomyard/internal/configcli"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
+	"github.com/Knatte18/loomyard/internal/gatecli"
 	"github.com/Knatte18/loomyard/internal/idecli"
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/orchcli"
@@ -34,6 +35,7 @@ var _ = []func(io.Writer, []string) int{
 	burlercli.RunCLI,
 	configcli.RunCLI,
 	fabriccli.RunCLI,
+	gatecli.RunCLI,
 	idecli.RunCLI,
 	loomcli.RunCLI,
 	orchcli.RunCLI,
@@ -56,6 +58,7 @@ var _ = []func(string, io.Writer, []string) int{
 	burlercli.RunCLIIn,
 	configcli.RunCLIIn,
 	fabriccli.RunCLIIn,
+	gatecli.RunCLIIn,
 	idecli.RunCLIIn,
 	loomcli.RunCLIIn,
 	orchcli.RunCLIIn,

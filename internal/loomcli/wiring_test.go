@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
@@ -47,17 +48,20 @@ func seedLoomConfig(t *testing.T, anchorPath string) {
 	}
 }
 
-// seedLandingConfig creates <anchorPath>/_lyx/config/landing.yaml with the embedded template's
-// contents. landingshed.LoadConfig is strict (an absent file is an error), so wire() fails on every
-// existing test in this file without this seed.
-func seedLandingConfig(t *testing.T, anchorPath string) {
+// hubPublishVerify is the publish_verify value the hub's landing.yaml carries in hubLocation, so a wired config reading a pair's copy instead differs from it.
+const hubPublishVerify = "go test -tags tmux ./..."
+
+// seedLandingConfig creates <baseDir>/_lyx/config/landing.yaml with the embedded template's contents, its publish_verify set to publishVerify.
+// landingshed.LoadConfig is strict (an absent file is an error), so wire() fails on every existing test in this file without the hub's seed.
+func seedLandingConfig(t *testing.T, baseDir, publishVerify string) {
 	t.Helper()
-	configDir := filepath.Join(anchorPath, "_lyx", "config")
+	configDir := filepath.Join(baseDir, "_lyx", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
 	cfgPath := filepath.Join(configDir, "landing.yaml")
-	if err := os.WriteFile(cfgPath, []byte(landingshed.ConfigTemplate()), 0o644); err != nil {
+	contents := strings.Replace(landingshed.ConfigTemplate(), `publish_verify: ""`, fmt.Sprintf("publish_verify: %q", publishVerify), 1)
+	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
 	}
 }
@@ -120,7 +124,7 @@ parent_review_wait_min: 60
 }
 
 // hubLocation returns a *lyxcwd.Location standing in for a real hub location, with its anchor path
-// seeded on disk with loom.yaml and landing.yaml, and its hub seeded with both loom stencils.
+// seeded on disk with loom.yaml and a pair landing.yaml that blanks publish_verify, and its hub seeded with the hub-wide landing.yaml at the board dir and both loom stencils.
 func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location {
 	t.Helper()
 	hub := t.TempDir()
@@ -130,7 +134,8 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location 
 		t.Fatalf("MkdirAll(.git) = %v; want nil", err)
 	}
 	seedLoomConfig(t, loc.AnchorPath())
-	seedLandingConfig(t, loc.AnchorPath())
+	seedLandingConfig(t, fabricengine.BoardDir(hub), hubPublishVerify)
+	seedLandingConfig(t, loc.AnchorPath(), "")
 	// stencilstore.Read hard-errors on a missing file, so the stencils the Spec closures read are seeded into the hub's stencils directory.
 	stencilkit.SeedInto(t, fabricengine.StencilsDir(hub))
 	return loc
@@ -182,6 +187,13 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 		if want := shedrun.StatusLock(loc, shedrun.SelfRunID); c.env.StatusLockPath != want {
 			t.Errorf("c.env.StatusLockPath = %q; want %q", c.env.StatusLockPath, want)
+		}
+	})
+
+	t.Run("gate pool is the hub's slot directory", func(t *testing.T) {
+		want := gateslot.Dir(fabricengine.BoardDir(loc.HubPath))
+		if c.env.GateSlots == nil || c.env.GateSlots.Dir != want {
+			t.Errorf("c.env.GateSlots = %+v; want a pool over %q", c.env.GateSlots, want)
 		}
 	})
 
@@ -260,12 +272,20 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Error("c.runner = nil; want the constructed shuttle runner")
 		}
 
-		want, err := landingshed.LoadConfig(loc.AnchorPath(), "landing")
+		boardDir := fabricengine.BoardDir(loc.HubPath)
+		want, err := landingshed.LoadConfig(boardDir, "landing")
 		if err != nil {
-			t.Fatalf("landingshed.LoadConfig(%q, \"landing\") = %v; want nil", loc.AnchorPath(), err)
+			t.Fatalf("landingshed.LoadConfig(%q, \"landing\") = %v; want nil", boardDir, err)
 		}
 		if !reflect.DeepEqual(c.landingCfg, want) {
 			t.Errorf("c.landingCfg = %+v; want %+v", c.landingCfg, want)
+		}
+	})
+
+	// landing is hub-wide: the pair's own landing.yaml, which blanks publish_verify, never reaches the wired config.
+	t.Run("a pair landing.yaml does not reach the wired config", func(t *testing.T) {
+		if c.landingCfg.PublishVerify != hubPublishVerify {
+			t.Errorf("c.landingCfg.PublishVerify = %q; want the hub file's %q", c.landingCfg.PublishVerify, hubPublishVerify)
 		}
 	})
 

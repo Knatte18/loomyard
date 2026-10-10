@@ -287,13 +287,14 @@ The Webster-Burler round gate instead runs a derived impacted-set command betwee
 The three tiers match this repo's own test-tier discipline — `internal/planparser`'s existing `Verify` fields are the V1 precedent this generalizes, not three tiers invented for this format:
 
 - **Tier 1 (per card, automatic, no author action).**
-  Implemented as the Go-derived per-card gate: `go build ./...`, the whole untagged test suite, and the integration-tagged tests of the card's own package directories.
-  A package directory inside a nested module is tested inside that module with `go -C <module>` and module-relative paths.
+  Implemented as the Go-derived per-card gate: `lyx gate test` over the card's own package directories, one step per module, then the comment line-break lint.
+  A package directory inside a nested module is tested inside that module with `lyx gate test -C <module>` and module-relative paths.
+  The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it, and the batch gate or the plan-level verify catches that.
   Untagged tests are fast by construction, per the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn.
   Fully mechanical — no author enumerates a file list, which is what made V1-style `verify:` lists grow long in practice.
-- **Tier 2 (per card for its own packages, plan-level for the whole suite).**
+- **Tier 2 (per batch for its own packages, plan-level for the whole suite).**
   Real git-against-remote tests, built via `internal/hubforge` with real repository creation and a real clone, are genuinely slower.
-  The card gate runs only the integration-tagged tests of the card's own package directories;
+  The batch gate runs `lyx gate test --tags integration` over the union of the batch's package directories, once per batch, by the fork after its last card; Go never runs it, and the plan-level verify catches a fork that skips it;
   the plan-level `## verify:` stays the once-per-plan run, now a must-pass gate on Merriam that sends a failure back to Merriam to fix.
   The Concurrency section's post-merge backstop assumes the same gate.
 - **Tier 3 (rare, explicit only, never automatic).**
@@ -443,6 +444,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
     A reference is resolved by type where a load of the root module's packages answers: `go/packages` over the directories holding a file that names the member, run offline (`GOPROXY=off`, `-mod=readonly`) with test variants and the `integration`, `tmux` and `llm` tags, under a timeout, and logged.
     A typed reference is an identifier whose used object is the member, so a call on another type, through an interface or on a same-named function of another package is no reference, and a promoted call or a method value is.
     The load is skipped when the worktree root holds no `go.mod`, and covers no directory inside a nested module; a failed or timed-out load is logged and leaves every file to the scan below, never an error.
+    In a hub the load first waits for a gate slot, and a slot that cannot be acquired, as over an absent or invalid `gate.yaml`, is a failed load.
     The scan tokenizes every `.go` file under the worktree root, `_test.go` and build-tagged files included, and skipping directories named `testdata` or `vendor` and directories whose name starts with `.` or `_`; comments and string literals never match.
     It runs over every file the load did not check (a nested module, a file built only for another GOOS, a file that does not parse, a file in a directory the load did not reach) and, in a checked file, only on lines where an identifier named like the member has no type information.
     A package-level member is referenced inside its own package (the files of its declaring file's directory sharing its package clause) by its bare identifier not preceded by `.`, and elsewhere, an external test package of that directory and every nested module included, by an import of the member's import path (from the `go.mod` covering its directory) under the name that import binds, a `.` and the identifier, or by the bare identifier when the import is a dot import; an import's name is its alias, else the package clause or the last path element without a `/vN` suffix.
@@ -452,8 +454,8 @@ The rows below stay in one fixed order regardless of which entry point runs them
     A re-signed member admits only its own card, and a deleted member its own card and every earlier one; a deleted member's reference inside a later card's `Edit:` code is `delete-before-reference`'s alone, while a re-signed member's is reported here.
     A resolved reference, package-level or method, gets one blocking finding per subject and file, attributed to the subject's card, with `Ref` the member and the file and its lines named; its way forward is to list the file, or the member glyph whose body holds the reference, on that card, or for a deleted member on an earlier card.
     A method's uncovered name-only matches collapse into one informational finding per subject, naming every file with its lines and stating that the receiver could not be resolved; its way forward is the same.
-    Emitted by `internal/planglyph`'s plan-gate pass at `ValidateFormat`, `Validate` and `ValidateRework`, never at `ValidateDispatch`, because the reference set shrinks as earlier cards land; the scan misses a caller in a file an earlier card creates, which webster's per-card build and test gate catches.
-    Bound: a call through an interface whose method set holds the method is no longer reported, where it was an informational name match before; a re-signed method that stops satisfying an interface breaks compilation at assignment sites this check does not see, which the card gate's root build catches in untagged root-module code, its integration step only in the card's own directories, the plan-level verify in tagged files, and no gate for a file built only for another GOOS or in a nested module unless a command runs inside it.
+    Emitted by `internal/planglyph`'s plan-gate pass at `ValidateFormat`, `Validate` and `ValidateRework`, never at `ValidateDispatch`, because the reference set shrinks as earlier cards land; the scan misses a caller in a file an earlier card creates, which webster's batch gate catches when the caller's package is in the batch, and webster's plan-level verify otherwise.
+    Bound: a call through an interface whose method set holds the method is no longer reported, where it was an informational name match before; a re-signed method that stops satisfying an interface breaks compilation at assignment sites this check does not see, which the batch gate catches in the batch's own directories, the plan-level verify's root build in untagged root-module code and its tagged vet steps in tagged files, and no gate for a file built only for another GOOS or in a nested module unless a command runs inside it.
     Without type information the check is never weaker than the import-path scan.
 36. `delete-target-gone` (informational) — a `Delete:` target of a card that has not begun, already absent from the tree.
     Emitted by `internal/planglyph` at `ValidateDispatch` only, once at least one batch is begun, in place of the blocking `path-missing` or `glyph-not-found` finding for that target; `ValidateFormat`, `Validate` and `ValidateRework` keep refusing a missing `Delete:` target.
@@ -466,6 +468,13 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Its way forward is to take the data from committed test data an earlier card creates, or to drop the command.
     The plan index runs it in its format validation, so both plan gates and `lyx loom validate-plan`'s default and `--rework` modes report it; `--require-approved`, webster's own `validate` verb and dispatch validation do not run it.
     It only refuses and removes no guard: it misses a spelling in `bash -c "…"` or built from a variable, the rest of a span after an unterminated quote, a spelling in an inline span or prose, and a fabric-repo path not spelled as a name ending in the suffix, and the implementer audit stays the guard for those.
+38. `verify-module-wide` — a `go test`, `go build` or `go vet` in a card's `**Verify:**` value whose package argument holds `...` or equals `all`, or a `go test` whose `-tags` value names `tmux` or `llm`.
+    An agent's settings deny such a command, so it can never run under a fork.
+    It splits a chain at `&&` and `;`, skips a `go -C <dir>` and a leading environment assignment, and stops reading a command at `--` or `-args`; a flag that takes a value takes the next field.
+    One finding per command, attributed to the card; the overview's `## verify:` section is never read, since Go runs it itself.
+    Its way forward is `lyx gate test [-C <module>] [--tags <tags>] <packages>` over the card's own packages, run as a background Bash call.
+    Runs under any `language:` and is reported by both plan gates, `lyx loom validate-plan` and dispatch through `ValidateFormat`.
+    It only refuses: it misses a command built from a variable or behind `bash -c`.
 
 One further check, `rework-first-card`, is outside both entry points and has no row above.
 Only the rework gate runs it: `planglyph.ValidateRework` runs it after the format-only set, and it reports a `first_card:` that differs from the card number Go told the rework session to start at.
@@ -538,7 +547,7 @@ go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
 **Intent:** Define the `RowJSON` struct carrying the list command's existing table columns as JSON-taggable fields.
 
 **Commit:** `1: json-row-type`
-**Verify:** go build ./...
+**Verify:** go test ./internal/boardcli
 ```
 
 `_lyx/plan/02-json-flag.md`:

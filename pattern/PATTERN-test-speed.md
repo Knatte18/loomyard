@@ -7,8 +7,8 @@ Tests stay fast: Tier 1 is offline and spawns nothing, no test waits out a produ
 | Tier | Tag | Needs | Costs |
 |---|---|---|---|
 | 1 | none | nothing: offline, no spawn | seconds, runs on every `go test ./...` |
-| 2 | `integration` | git, a built `lyx`, subprocesses; no tmux server and no LLM | tens of seconds, runs under the card gates |
-| 3 | `tmux` | a real tmux server, no LLM | slower, runs at Publish through landing config's `publish_verify` and by hand |
+| 2 | `integration` | git, a built `lyx`, subprocesses; no tmux server and no LLM | tens of seconds, runs once per batch and in the plan's full verify |
+| 3 | `tmux` | a real tmux server, no LLM | slower, runs at Publish through landing config's `publish_verify`, at the round gate while a Publish failure record is present, and by hand |
 | 4 | `llm` | a real LLM session | billed, compiled by every gate and run by hand only |
 
 - Tags do not nest: `-tags integration` runs no `tmux` or `llm` file, so a run names every tag it wants.
@@ -21,11 +21,23 @@ Tests stay fast: Tier 1 is offline and spawns nothing, no test waits out a produ
 
 | Gate | Runs |
 |---|---|
-| Card gate | the card's own command, then the comment lint |
-| Webster-Burler round gate | the comment lint, then the impacted-set command, or the plan's verify wherever the impacted set cannot narrow; the `tmux` and `llm` tiers are compiled by its `go vet` steps, never run |
+| Card gate | tier 1 of the card's own packages through `lyx gate test`, then the comment lint |
+| Batch gate | `lyx gate test --tags integration` once per batch over the batch's packages |
+| Webster-Burler round gate | the comment lint, then the impacted-set command, or the plan's verify wherever the impacted set cannot narrow; the `tmux` and `llm` tiers are compiled by its `go vet` steps and run only as below |
+| Webster-Burler round gate, while a Publish failure record is present | the failing tests the record names, and for a `publish_verify` failure an impacted-set `tmux` pass, to confirm the fix |
 | Webster's gate, Publish, Finalize | the plan's `## verify:` in full: build, vet under each tag, the untagged tier, then the `integration` tier |
 | Publish, after the plan verify | landing config's `publish_verify`, where the repo sets it: the `tmux` tier |
 | By hand | the `llm` tier |
+
+### No gate runs `llm`
+
+Every gate compiles the `llm` tier through `go vet -tags llm`, and no gate runs it.
+Running it is the operator's call, because an `llm` run is billed, nondeterministic and needs a live session.
+
+### Every gate run takes a slot
+
+Every gate build or test run takes a slot of the hub's gate-slot pool, so the hub never runs more at once than its configured count.
+An agent runs a module-wide or `tmux`-tier test only through `lyx gate test`, which takes the slot, and never as a raw `go` run.
 
 ## Only `llm` files reach an LLM
 

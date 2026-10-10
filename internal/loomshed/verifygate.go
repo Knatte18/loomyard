@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/commentlint"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -22,11 +23,16 @@ const verifyLogTailBytes = 4096
 
 // NewVerifyGate returns a must-pass shuttleengine.Gate that, at each arrival, parses the plan under anchorPath for its `## verify:` command, lints the comments the round added, and runs the round's command through verifytree.Verify over worktreeRoot, keeping its record, marker and log in verifyDir.
 // siteLabel names the call site in the running marker, and the closure's own count of its calls is the attempt.
+// slots is the hub pool the round command waits on before it runs; nil runs it unslotted.
 //
 // The base of the round is the commit of the plan verify command's latest recorded pass.
 // With a usable base the comment lint runs from it to HEAD before any test, and the round command is the impacted-set command impactset derives.
 // With no usable base the lint passes and the round command is the plan's own verify command, as it is wherever impactset names a fallback.
 // The pass of the round command keeps the plan verify command's record entry, so the next round still diffs from it.
+//
+// While a Publish failure record is present, the round command also runs the `tmux` tier to confirm the fix:
+// each failing test the checked record names, by name in its package, and for a `publish_verify` failure the impacted set under `tmux`, or `./...` where the round fell back to the plan's verify.
+// The record's fields are shape-checked first, and a field that fails is dropped and logged, so no record text reaches the command as shell.
 //
 // `StatusPassed` and `StatusSkipped` pass.
 // `StatusDirty` fails with the dirty paths.
@@ -34,7 +40,7 @@ const verifyLogTailBytes = 4096
 // A comment lint finding, or a test file the guard scan rejects such as a misplaced `//lyx:guard` marker, fails with its file and line and the way forward.
 // A plan with no `## verify:` section passes with a logged warning.
 // A plan read error, a failure to read git or a package directory, a lint run error or a cancelled verify is a returned error, since none is a defect the writer can fix.
-func NewVerifyGate(anchorPath, worktreeRoot, verifyDir, siteLabel string) shuttleengine.Gate {
+func NewVerifyGate(anchorPath, worktreeRoot, verifyDir, siteLabel string, slots *gateslot.Pool) shuttleengine.Gate {
 	attempt := 0
 	paths := verifytree.NewPaths(worktreeRoot, verifyDir)
 	return func() (shuttleengine.GateResult, error) {
@@ -76,9 +82,19 @@ func NewVerifyGate(anchorPath, worktreeRoot, verifyDir, siteLabel string) shuttl
 			command = plan.Verify
 			logger.Info("loomshed: verify gate runs the plan's verify command", "gate", siteLabel, "attempt", attempt, "reason", derivation.Fallback)
 		}
+		if failure, ok := checkedPublishFailure(paths, worktreeRoot); ok {
+			tmuxPackages := derivation.Packages
+			if derivation.Fallback != "" {
+				tmuxPackages = []string{"./..."}
+			}
+			if extra := publishFailureCommand(failure, tmuxPackages); extra != "" {
+				command += " && " + extra
+				logger.Info("loomshed: verify gate confirms a publish failure", "gate", siteLabel, "attempt", attempt, "kind", failure.Kind)
+			}
+		}
 
 		site := verifytree.Site{Label: siteLabel, Attempt: attempt, BaseCommand: plan.Verify}
-		res, err := verifytree.Verify(context.Background(), paths, site, command, verifytree.Timeout)
+		res, err := verifytree.Verify(context.Background(), paths, site, command, verifytree.Timeout, slots)
 		if err != nil {
 			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: %w", err)
 		}

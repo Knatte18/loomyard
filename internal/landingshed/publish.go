@@ -88,7 +88,9 @@ func NewPublish(deps Deps) (*Publish, error) {
 		return nil, fmt.Errorf("landingshed: NewPublish: build resolver: %w", err)
 	}
 
-	return &Publish{deps: deps, resolver: res, gate: newVerifyGate(deps)}, nil
+	gate := newVerifyGate(deps)
+	gate.recorder = &failureRecorder{failingTests: deps.FailingTests, head: deps.TaskHead}
+	return &Publish{deps: deps, resolver: res, gate: gate}, nil
 }
 
 // Call runs one Publish iteration.
@@ -149,6 +151,7 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	if mergeResult.Outcome == mergeresolve.OutcomeStuck {
 		return p.stuckOrCancelled(ctx, mergeResult.Reason)
 	}
+	p.noteMergeCommit(mergeResult)
 
 	// Step 4a: verify the merged tree before anything leaves the worktree.
 	// A merge can compile cleanly and still break tests;
@@ -172,6 +175,7 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
 		return outcome, out, err
 	}
+	p.gate.clearFailure()
 
 	// Step 5: push the task branch. Mandatory and load-bearing: agents commit per fix and never
 	// push, so without this the task branch exists only locally, the create call fails, and the
@@ -282,6 +286,24 @@ func (p *Publish) pushRejectedReason() string {
 		return fmt.Sprintf("%s; the remote task branch holds no commit the local branch lacks, %s", prefix, ruleWayForward)
 	}
 	return fmt.Sprintf("%s; the remote task branch is at %s and holds %d commit(s) the local branch lacks; %s", prefix, tip, len(commits), wayForward)
+}
+
+// noteMergeCommit hands the failure recorder the merge-in commit: HEAD after a merge-in that was not already up to date, empty otherwise.
+// A failed HEAD read is logged and leaves it empty.
+func (p *Publish) noteMergeCommit(merge mergeresolve.Result) {
+	if p.gate.recorder == nil {
+		return
+	}
+	p.gate.recorder.mergeCommit = ""
+	if merge.AlreadyUpToDate || p.deps.TaskHead == nil {
+		return
+	}
+	head, err := p.deps.TaskHead()
+	if err != nil {
+		logger.Warn("landingshed: could not read the merge-in commit for the publish failure record", "producer", publishName, "cause", err)
+		return
+	}
+	p.gate.recorder.mergeCommit = head
 }
 
 // gateStop maps one gate call's result onto Call's return.
