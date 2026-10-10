@@ -417,6 +417,17 @@ func isAncestor(worktree, sha, ref string) (bool, error) {
 	return gitrepo.New(worktree).IsAncestor(sha, ref)
 }
 
+// nonMergeCommitsBetween reports whether the first-parent range base..head holds a commit that is not a merge.
+// A base the repository does not hold is an error, as is any other failed git call.
+// It wraps gitexec.Run directly since gitrepo.Repo exposes no first-parent range walk.
+func nonMergeCommitsBetween(worktree, base, head string) (bool, error) {
+	stdout, err := gitexec.Run([]string{"rev-list", "--first-parent", "--no-merges", "--max-count=1", base + ".." + head}, worktree)
+	if err != nil {
+		return false, fmt.Errorf("websterengine: git rev-list --first-parent --no-merges %s..%s in %s: %w", base, head, worktree, err)
+	}
+	return strings.TrimSpace(stdout) != "", nil
+}
+
 // dirtyTrackedPaths returns the slash-separated worktree-relative paths of tracked files whose content differs from HEAD, staged or not, sorted.
 // Untracked files are not listed.
 // It wraps gitexec.Run directly for the same reason dirty does.

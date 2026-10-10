@@ -393,6 +393,8 @@ func TestRebaseline_CardSet(t *testing.T) {
 			t.Parallel()
 
 			rec := doneBatchOne()
+			rec.Recoveries = 2
+			rec.RecoveryStartSHA = "recovery-start"
 			if tc.edit != nil {
 				tc.edit(rec)
 			}
@@ -416,6 +418,9 @@ func TestRebaseline_CardSet(t *testing.T) {
 				}
 				if deps.State.PlanFingerprint == "old-fingerprint" {
 					t.Error("PlanFingerprint not restamped")
+				}
+				if kept := deps.State.Batches[1]; kept.Recoveries != 2 || kept.RecoveryStartSHA != "recovery-start" {
+					t.Errorf("kept batch record Recoveries = %d, RecoveryStartSHA = %q; want both to survive the rebaseline", kept.Recoveries, kept.RecoveryStartSHA)
 				}
 				return
 			}

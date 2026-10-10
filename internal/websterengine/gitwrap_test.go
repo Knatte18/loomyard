@@ -107,6 +107,36 @@ func TestRepositoryProbes(t *testing.T) {
 		}
 	})
 
+	t.Run("nonMergeCommitsBetween sees a commit past the start, ignores merge-ins and refuses an absent start", func(t *testing.T) {
+		repo := gitwrapNewScratchRepo(t)
+		start := gitkit.CommitFile(t, repo, "a.txt", "one", "first")
+		branch := strings.TrimSpace(gitkit.Git(t, repo, "branch", "--show-current"))
+		gitkit.Git(t, repo, "switch", "-c", "side")
+		gitkit.CommitFile(t, repo, "side.txt", "side", "side work")
+		gitkit.Git(t, repo, "switch", branch)
+		gitkit.Git(t, repo, "merge", "--no-ff", "-m", "merge side", "side")
+		mergedHead := strings.TrimSpace(gitkit.Git(t, repo, "rev-parse", "HEAD"))
+		ownHead := gitkit.CommitFile(t, repo, "b.txt", "two", "own work")
+
+		for _, tt := range []struct {
+			name    string
+			base    string
+			head    string
+			want    bool
+			wantErr bool
+		}{
+			{name: "a commit past the start is true", base: start, head: ownHead, want: true},
+			{name: "a first-parent range of merge-ins only is false", base: start, head: mergedHead},
+			{name: "an empty range is false", base: ownHead, head: ownHead},
+			{name: "a start absent from the store is an error", base: strings.Repeat("0", 40), head: ownHead, wantErr: true},
+		} {
+			got, err := nonMergeCommitsBetween(repo, tt.base, tt.head)
+			if (err != nil) != tt.wantErr || got != tt.want {
+				t.Errorf("%s: nonMergeCommitsBetween() = (%v, %v); want (%v, error %v)", tt.name, got, err, tt.want, tt.wantErr)
+			}
+		}
+	})
+
 	t.Run("commitsFromBatchCheck keeps the commit lines", func(t *testing.T) {
 		for _, tt := range []struct {
 			name    string

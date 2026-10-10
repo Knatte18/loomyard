@@ -369,6 +369,15 @@
 // A turn end left waiting on any task, a shell of either signal or a fork, never counts, so recovery_timeout_min bounds that strand and a report present before it classifies done.
 // This mirrors classify.go's dead/timeout/stuck classification.
 //
+// A batch's recovery spawns are counted in BatchState.Recoveries, and the spawn records HEAD as RecoveryStartSHA, read before anything is stopped or started, so a HEAD that cannot be read starts and counts nothing.
+// A re-begin and a rebaseline keep the count.
+// A spawn whose prompt renders an amendment no earlier spawn rendered does not count, so an amendment forces at most one uncounted re-run.
+// A counted spawn is refused with ErrRecoveryExhausted once the batch has two recoveries, whoever asks, with a way forward through `reset --to batch-start` or `reset --to start`.
+// A terminal dead recovery below the cap earns one more when it committed work of its own (RecoveryRetry):
+// HEAD descends from its start through a first-parent range holding a non-merge commit.
+// An empty start, a HEAD a reset moved off the start, a range of merge-ins only and a failed git read, which is logged at Warn, all give no retry.
+// begin-batch reads the same function, so its report-present remedy names recover-batch once more for such a batch.
+//
 // # digest persistence carries batch context forward
 //
 // webster persists its distilled Digest into BatchState.Digest at terminal

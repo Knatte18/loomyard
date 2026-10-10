@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -1044,6 +1045,57 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				if hashes := fx.Deps.State.Batches[1].CardHashes; len(hashes) != 1 || hashes["01-json-flag"] == "" {
 					t.Errorf("recovery BatchState.CardHashes = %v; want one hash for 01-json-flag", hashes)
 				}
+				if rec := fx.Deps.State.Batches[1]; rec.Recoveries != 1 || rec.RecoveryStartSHA != fx.Git.head {
+					t.Errorf("recovery BatchState Recoveries = %d, RecoveryStartSHA = %q; want 1 and HEAD %q", rec.Recoveries, rec.RecoveryStartSHA, fx.Git.head)
+				}
+			},
+		},
+		{
+			name: "a spawn over a prior recovery raises the count and records HEAD as its start",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 1, RecoveryStartSHA: fx.Git.head, StartSHA: fx.Git.head}
+				fx.Git.commit()
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				requireSpawned(t, spawned, err)
+				if rec := fx.Deps.State.Batches[1]; rec.Recoveries != 2 || rec.RecoveryStartSHA != fx.Git.head {
+					t.Errorf("recovery BatchState Recoveries = %d, RecoveryStartSHA = %q; want 2 and HEAD %q", rec.Recoveries, rec.RecoveryStartSHA, fx.Git.head)
+				}
+			},
+		},
+		{
+			name: "a third counted spawn refuses ErrRecoveryExhausted naming the reset routes",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 2}
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if !errors.Is(err, websterengine.ErrRecoveryExhausted) {
+					t.Fatalf("RecoverSpawnOrAttach() error = %v; want ErrRecoveryExhausted", err)
+				}
+				for _, want := range []string{"lyx webster reset --to batch-start --batch 01", "lyx webster recover-batch 1", "lyx webster reset --to start"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error %q lacks %q", err, want)
+					}
+				}
+				if spawned || fx.Engine.PrepareCalls != 0 || fx.Deps.State.Batches[1].Recoveries != 2 {
+					t.Errorf("spawned = %v, prepareCalls = %d, Recoveries = %d; want no spawn and the count unchanged at 2", spawned, fx.Engine.PrepareCalls, fx.Deps.State.Batches[1].Recoveries)
+				}
+			},
+		},
+		{
+			name: "a card_amended re-run at two recoveries spawns uncounted",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.State.Batches[1] = &websterengine.BatchState{
+					Slug: "json-flag", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusFailed, Recoveries: 2,
+					AmendedCards: []websterengine.AmendedCard{{Card: "01-json-flag"}},
+				}
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				requireSpawned(t, spawned, err)
+				rec := fx.Deps.State.Batches[1]
+				if rec.Recoveries != 2 || len(rec.AmendedCards) != 1 || !rec.AmendedCards[0].Rendered {
+					t.Errorf("recovery BatchState Recoveries = %d, AmendedCards = %+v; want 2 and the amendment rendered", rec.Recoveries, rec.AmendedCards)
+				}
 			},
 		},
 		{
@@ -1321,13 +1373,143 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 	}
 }
 
-// TestRecoverSpawnOrAttach_StartFailures asserts a transient failure before the recovery strand is recorded refuses with the transient re-run as the way forward, records no batch state, and spawns no strand, after which re-running the verb once the failure clears spawns it.
-// The failures are a not-ready start (shuttle's Start returning ErrNotStarted after tearing its own strand down, a strand that must never be persisted as this batch's recovery record) and, for the recovery prompt's uncommitted paths, a git status that cannot list them or an audit of the run's sessions that cannot tell which of them the run wrote.
+// TestRecoveryRetry asserts the one retry rule recover-batch and begin-batch read: a terminal dead recovery below the cap retries only when HEAD descends from the recovery's start through a first-parent range holding a non-merge commit.
+// The recovery's own commits give true with the batch's recovery count; no commits of its own, a fork's earlier commits, a record with no start, a HEAD a reset moved off the start, a range of merge-ins only, the cap, and a stuck or failed recovery each give false;
+// a failed git read, a start absent from the store, gives false and a Warn line.
+// It captures the logger's process-global output, so it and its rows run without t.Parallel.
+func TestRecoveryRetry(t *testing.T) {
+	const unreadMessage = "could not tell whether the dead recovery committed"
+	cases := []struct {
+		name string
+		// setup builds the history and returns the recovery record the rule reads.
+		setup          func(g *fakeGit) *websterengine.BatchState
+		wantRetry      bool
+		wantRecoveries int
+		wantWarn       bool
+	}{
+		{
+			name: "a dead recovery with commits past its start retries",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				start := g.head
+				g.commit()
+				return deadRecovery(1, start)
+			},
+			wantRetry: true, wantRecoveries: 1,
+		},
+		{
+			name: "a dead recovery without commits of its own does not retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				return deadRecovery(1, g.head)
+			},
+			wantRecoveries: 1,
+		},
+		{
+			name: "a fork's commits before the recovery's start do not make it retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				g.commit()
+				return deadRecovery(1, g.head)
+			},
+			wantRecoveries: 1,
+		},
+		{
+			name: "a record with no start does not retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				g.commit()
+				return deadRecovery(1, "")
+			},
+			wantRecoveries: 1,
+		},
+		{
+			name: "a HEAD a reset moved off the start does not retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				before := g.head
+				start := g.commit()
+				g.head = before
+				return deadRecovery(1, start)
+			},
+			wantRecoveries: 1,
+		},
+		{
+			name: "a range of merge-ins only does not retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				start := g.head
+				g.merge("")
+				return deadRecovery(1, start)
+			},
+			wantRecoveries: 1,
+		},
+		{
+			name: "a dead recovery at two recoveries does not retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				start := g.head
+				g.commit()
+				return deadRecovery(2, start)
+			},
+			wantRecoveries: 2,
+		},
+		{
+			name: "a stuck recovery holding commits does not retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				start := g.head
+				g.commit()
+				rec := deadRecovery(1, start)
+				rec.Status = websterengine.DigestStatusStuck
+				return rec
+			},
+			wantRecoveries: 1,
+		},
+		{
+			name: "a failed recovery holding commits does not retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				start := g.head
+				g.commit()
+				rec := deadRecovery(1, start)
+				rec.Status = websterengine.DigestStatusFailed
+				return rec
+			},
+			wantRecoveries: 1,
+		},
+		{
+			name: "a start absent from the store is a failed read that does not retry and warns",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				g.commit()
+				return deadRecovery(1, "ffffffffffffffffffffffffffffffffffffffff")
+			},
+			wantRecoveries: 1,
+			wantWarn:       true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := logcapture.CaptureVerbose(t)
+			fx := newRecoverFixture(t)
+			fx.Deps.State.Batches[1] = tc.setup(fx.Git)
+
+			retry, recoveries := websterengine.RecoveryRetry(fx.Deps.Geom, fx.Deps.State, 1)
+
+			if retry != tc.wantRetry || recoveries != tc.wantRecoveries {
+				t.Errorf("RecoveryRetry() = (%v, %d); want (%v, %d)", retry, recoveries, tc.wantRetry, tc.wantRecoveries)
+			}
+			if warned := strings.Contains(buf.String(), unreadMessage); warned != tc.wantWarn {
+				t.Errorf("Warn line %q present = %v; want %v; log:\n%s", unreadMessage, warned, tc.wantWarn, buf.String())
+			}
+		})
+	}
+}
+
+// deadRecovery is a terminal dead recovery record that spawned at start with recoveries counted spawns.
+func deadRecovery(recoveries int, start string) *websterengine.BatchState {
+	return &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: recoveries, RecoveryStartSHA: start}
+}
+
+// TestRecoverSpawnOrAttach_StartFailures asserts a transient failure before the recovery strand is recorded refuses with the transient re-run as the way forward, leaves the batch's record and its recovery count unchanged, and spawns no strand, after which re-running the verb once the failure clears spawns it and counts it.
+// The failures are a not-ready start (shuttle's Start returning ErrNotStarted after tearing its own strand down, a strand that must never be persisted as this batch's recovery record), a HEAD that cannot be read before the spawn and, for the recovery prompt's uncommitted paths, a git status that cannot list them or an audit of the run's sessions that cannot tell which of them the run wrote.
 func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 	t.Parallel()
 
 	statusErr := errors.New("git status failed")
 	auditErr := errors.New("transcript unreadable")
+	headErr := errors.New("git rev-parse HEAD failed")
 	tests := []struct {
 		name    string
 		fail    func(fx *recoverFixture) (restore func())
@@ -1341,6 +1523,14 @@ func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 				return func() { fx.Deps.Starter = realStarter }
 			},
 			wantErr: shuttleengine.ErrNotStarted,
+		},
+		{
+			name: "an unreadable HEAD",
+			fail: func(fx *recoverFixture) func() {
+				fx.Git.headErr = headErr
+				return func() { fx.Git.headErr = nil }
+			},
+			wantErr: headErr,
 		},
 		{
 			name: "an unreadable uncommitted-path listing",
@@ -1365,6 +1555,8 @@ func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fx := newRecoverFixture(t)
+			prior := &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: 1, RecoveryStartSHA: fx.Git.head}
+			fx.Deps.State.Batches[1] = prior
 			restore := tt.fail(fx)
 			clk := &recoverFakeClock{now: time.Unix(0, 0)}
 
@@ -1381,8 +1573,8 @@ func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 			if bs != nil {
 				t.Errorf("RecoverSpawnOrAttach() BatchState = %+v; want nil", bs)
 			}
-			if fx.Deps.State.Batches[1] != nil {
-				t.Errorf("State.Batches[1] = %+v; want nil", fx.Deps.State.Batches[1])
+			if fx.Deps.State.Batches[1] != prior || prior.Recoveries != 1 {
+				t.Errorf("State.Batches[1] = %+v; want the prior record unchanged at one recovery", fx.Deps.State.Batches[1])
 			}
 			if fx.Engine.PrepareCalls != 0 {
 				t.Errorf("Engine.PrepareCalls = %d; want no strand prepared", fx.Engine.PrepareCalls)
@@ -1392,6 +1584,9 @@ func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 			_, spawned, err = websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
 			if err != nil || !spawned {
 				t.Fatalf("RecoverSpawnOrAttach() after the retry = spawned %v, error %v; want a spawned strand", spawned, err)
+			}
+			if got := fx.Deps.State.Batches[1].Recoveries; got != 2 {
+				t.Errorf("Recoveries after the retried spawn = %d; want 2", got)
 			}
 		})
 	}

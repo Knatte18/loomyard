@@ -324,7 +324,8 @@ func predecessorDigestLine(batches []batcher.Batch, st *State, batchNumber int) 
 }
 
 // existingReportRemedy names the one step the recorded state of batch number calls for when begin-batch finds the batch's report already on disk.
-func existingReportRemedy(number int, recorded *BatchState) string {
+// retry is RecoveryRetry's verdict: a dead recovery that committed and is below the cap names recover-batch once more.
+func existingReportRemedy(number int, recorded *BatchState, retry bool) string {
 	if !recorded.Terminal {
 		if recorded.Kind == "recovery" {
 			return fmt.Sprintf("`lyx webster recover-batch %d`", number)
@@ -335,6 +336,9 @@ func existingReportRemedy(number int, recorded *BatchState) string {
 	case DigestStatusDone:
 		return "the batch is finished, so begin the next batch"
 	case DigestStatusDead:
+		if retry {
+			return fmt.Sprintf("`lyx webster recover-batch %d`, once more, since the dead recovery committed work of its own", number)
+		}
 		return fmt.Sprintf("the recovery of batch %d is exhausted, so end the run stuck naming the batch", number)
 	default:
 		return fmt.Sprintf("`lyx webster recover-batch %d`", number)
@@ -448,7 +452,8 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 			if recorded.Terminal {
 				seen = "terminal with status " + recorded.Status
 			}
-			return nil, fmt.Errorf("webster: batch %02d-%s already has a report at %s and state.json records the batch as %s — begin-batch never overwrites finished work; way forward: %s", number, slug, existingReport, seen, existingReportRemedy(number, recorded))
+			retry, _ := RecoveryRetry(deps.Geom, deps.State, number)
+			return nil, fmt.Errorf("webster: batch %02d-%s already has a report at %s and state.json records the batch as %s — begin-batch never overwrites finished work; way forward: %s", number, slug, existingReport, seen, existingReportRemedy(number, recorded, retry))
 		}
 	} else if !os.IsNotExist(statErr) {
 		return nil, fmt.Errorf("webster: stat batch report %s: %w", existingReport, statErr)
@@ -517,22 +522,29 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	}
 	// Recorded warnings carry over too: their identities stay dispositioned, so no later call would record them again.
 	// So do the fork transcripts already attributed to the batch, so the run-exit audit still knows which report each of those forks owns.
+	// The recovery count and its start commit carry over as well, so a re-begin does not hand a batch a fresh pair of recoveries.
 	var priorWarnings []AuditWarning
 	var priorTranscripts []string
+	var priorRecoveries int
+	var priorRecoveryStart string
 	if prior != nil {
 		priorWarnings = prior.AuditWarnings
 		priorTranscripts = prior.ForkTranscripts
+		priorRecoveries = prior.Recoveries
+		priorRecoveryStart = prior.RecoveryStartSHA
 	}
 
 	deps.State.Batches[number] = &BatchState{
-		Slug:            slug,
-		Cards:           batchCardIDs(batch),
-		CardHashes:      cardHashes,
-		StartSHA:        startSHA,
-		Kind:            "fork",
-		AuditWarnings:   priorWarnings,
-		ForkTranscripts: priorTranscripts,
-		SpawnedAt:       time.Now().UTC().Format(time.RFC3339),
+		Slug:             slug,
+		Cards:            batchCardIDs(batch),
+		CardHashes:       cardHashes,
+		StartSHA:         startSHA,
+		Kind:             "fork",
+		AuditWarnings:    priorWarnings,
+		ForkTranscripts:  priorTranscripts,
+		Recoveries:       priorRecoveries,
+		RecoveryStartSHA: priorRecoveryStart,
+		SpawnedAt:        time.Now().UTC().Format(time.RFC3339),
 		// Stamp the opening Master session so the run-exit audit cross-check
 		// can scope its begun-batch count to the session whose forks the
 		// whole-session audit actually covers.
