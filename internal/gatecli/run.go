@@ -84,7 +84,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	cmd.Stdout = out
 	cmd.Stderr = out
 	logger.Info("gate test: spawning go test", "binary", request.goBinary, "args", strings.Join(cmd.Args[1:], " "))
-	runErr := runChild(cmd)
+	runErr := runTiedChild(cmd)
 	code := exitCodeOf(runErr)
 	logger.Info("gate test: go test ended", "exit", code, "error", runErr)
 	if cmd.Process == nil && caught.Load() == 0 {
@@ -162,7 +162,7 @@ func releaseSlot(lease *gateslot.Lease, dir string) {
 func catchTerminatingSignals(ctx context.Context) (context.Context, *atomic.Int32, func()) {
 	runCtx, cancel := context.WithCancel(ctx)
 	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, terminatingSignals...)
+	signal.Notify(signals, terminatingSignalSet...)
 	var caught atomic.Int32
 	go func() {
 		select {

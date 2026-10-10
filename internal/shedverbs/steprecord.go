@@ -97,6 +97,39 @@ func (r *stepRecorder) write(envelope []byte) (string, bool) {
 	return path, true
 }
 
+// RunningStepPID returns the pid of the newest step in stepsDir that has an in-flight record and no envelope beside it, and false when none does.
+// A record that cannot be read, or carries no pid, never counts; an absent or unreadable directory reports false.
+func RunningStepPID(stepsDir string) (int, bool) {
+	entries, err := os.ReadDir(stepsDir)
+	if err != nil {
+		return 0, false
+	}
+	var newest time.Time
+	pid := 0
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, inflightSuffix) {
+			continue
+		}
+		traceID := strings.TrimSuffix(name, inflightSuffix)
+		if _, err := os.Stat(filepath.Join(stepsDir, traceID+envelopeSuffix)); err == nil {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(stepsDir, name))
+		if err != nil {
+			continue
+		}
+		var rec inflightRecord
+		if json.Unmarshal(data, &rec) != nil || rec.PID <= 0 {
+			continue
+		}
+		if pid == 0 || rec.StartedAt.After(newest) {
+			newest, pid = rec.StartedAt, rec.PID
+		}
+	}
+	return pid, pid != 0
+}
+
 // lastStepOf reads dir for the most recent in-flight record and reports it, or nil when dir is
 // empty, unreadable or holds none.
 // running is the build identity of the calling lyx, compared with the chosen record's recorded one to set binary_changed.
