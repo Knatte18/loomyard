@@ -111,9 +111,6 @@ type realClock struct{}
 func (realClock) Now() time.Time        { return time.Now() }
 func (realClock) Sleep(d time.Duration) { time.Sleep(d) }
 
-// defaultPollIntervalMS is the template.yaml default poll interval.
-const defaultPollIntervalMS = 1000
-
 // pollFloor is the shortest poll interval; a configured value below it is floored to it.
 const pollFloor = time.Second
 
@@ -479,7 +476,7 @@ func startupTickCap(startupTimeout, interval time.Duration) int {
 // the shipped template's poll_interval_ms: 1000 and liveness_every_n_polls: 10) and never faster.
 // awaitStartup has no events file to poll between probes, so it sleeps the whole probe interval at
 // once rather than ticking at the poll interval. This is deliberate: checkLivenessTick replays the
-// trust-dismiss sequence on every probe whose capture still shows a gate, and probing every 500ms
+// trust-dismiss sequence on every probe whose capture still shows a gate, and probing at every poll
 // would let a capture taken before the provider redraws after the first Enter drive a second key
 // into the next gate — the stray-keypress hazard the capture-driven dismissal exists to prevent;
 // matching Wait's cadence keeps awaitStartup on the one cadence already proven live for producers.

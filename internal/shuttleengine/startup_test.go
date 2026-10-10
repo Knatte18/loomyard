@@ -734,7 +734,7 @@ func TestStartup_RunDeadlineShorterThanWindow_NeverReady(t *testing.T) {
 		}
 		elapsed := fc.Now().Sub(start)
 		// "Near Spec.Timeout" rather than exact: the loop only samples the deadline once per probe
-		// interval (500ms here), so it can overshoot by up to one interval, but must land nowhere
+		// interval (1s here), so it can overshoot by up to one interval, but must land nowhere
 		// close to the 3600s startup window.
 		if elapsed < specTimeout || elapsed > specTimeout+5*time.Second {
 			t.Errorf("virtual elapsed = %s; want it near Spec.Timeout (%s), not the startup window", elapsed, specTimeout)

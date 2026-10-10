@@ -68,13 +68,9 @@ func (c *scriptedClock) Sleep(d time.Duration) {
 var _ Clock = (*scriptedClock)(nil)
 
 // TestPollInterval_FloorsNonPositive pins the busy-spin guard: a configured poll_interval_ms below one second, zero and negative included, is floored to one second rather than making Wait tick with a short sleep.
-// The template default sits at or above the floor.
 //
 //testtiming:keep pins the busy-spin guard: a poll_interval_ms below one second is floored to one second, which no Wait test measures
 func TestPollInterval_FloorsNonPositive(t *testing.T) {
-	if defaultPollIntervalMS*time.Millisecond < pollFloor {
-		t.Errorf("defaultPollIntervalMS = %d, want at or above the %v floor", defaultPollIntervalMS, pollFloor)
-	}
 	tests := []struct {
 		name       string
 		intervalMS int
