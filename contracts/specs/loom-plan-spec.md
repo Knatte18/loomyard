@@ -421,7 +421,8 @@ The rows below stay in one fixed order regardless of which entry point runs them
     `Custom` stays exempt on its own targets — and from the `prosa-symbol-target` rule above, restated in group terms: a `Custom` group's own targets are exempt from both rules — and from nothing else, since every other group and every card-generic check still binds it.
 29. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix. Card-generic.
 30. `verify-nested-module` — a `go` command in a card's `**Verify:**` value or the overview's `## verify:` section whose relative package argument lies in a nested module other than the one the command runs in, so the go tool cannot resolve it from there.
-    It splits a chain at `&&` and `;`, follows a literal `cd <dir>` and a `go -C <dir>`, and ends the scan of a chain at a `cd` or `-C` to an absolute path or out of the worktree root.
+    It joins a backslash-newline continuation into one line, then splits a chain at `&&`, `||`, `;`, `|` and a newline, reading `||` as one separator and a separator inside a quoted span as text.
+    It follows a literal `cd <dir>` and a `go -C <dir>`, and ends the scan of a chain at a `cd` or `-C` to an absolute path or out of the worktree root, or at a `cd` in a pipeline stage or after `||`, which may not have run.
     A field after the subcommand that opens with `-` is a flag, taking the next field when the flag takes a value; a package argument is `.`, `..` or a field opening with `./` or `../`, with a trailing `/...` dropped.
     A nested module is a directory below the root holding a `go.mod`, on disk or created by a card's `Create` (or the New side of a `Rename`) at or below the card, minus those a `Delete` or a `Rename` Old side removes; the overview's line is judged against the whole plan.
     So `./...` from the root, which the go tool limits to the root module, is silent.
@@ -471,7 +472,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
     It only refuses and removes no guard: it misses a spelling in `bash -c "…"` or built from a variable, the rest of a span after an unterminated quote, a spelling in an inline span or prose, and a fabric-repo path not spelled as a name ending in the suffix, and the implementer audit stays the guard for those.
 38. `verify-module-wide` — a `go test`, `go build` or `go vet` in a card's `**Verify:**` value whose package argument holds `...` or equals `all`, or a `go test` whose `-tags` value names `tmux` or `llm`.
     An agent's settings deny such a command, so it can never run under a fork.
-    It splits a chain at `&&` and `;`, skips a `go -C <dir>` and a leading environment assignment, and stops reading a command at `--` or `-args`; a flag that takes a value takes the next field.
+    It splits a chain as `verify-nested-module` does, at `&&`, `||`, `;`, `|` and a newline after joining line continuations, skips a `go -C <dir>` and a leading environment assignment, and stops reading a command at `--` or `-args`; a flag that takes a value takes the next field.
     One finding per command, attributed to the card; the overview's `## verify:` section is never read, since Go runs it itself.
     Its way forward is `lyx gate test [-C <module>] [--tags <tags>] <packages>` over the card's own packages, run as a background Bash call.
     Runs under any `language:` and is reported by both plan gates, `lyx loom validate-plan` and dispatch through `ValidateFormat`.

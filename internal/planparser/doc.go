@@ -110,6 +110,12 @@
 // CheckFirstCard and CheckCardFabricReference sit outside ValidateFormat and Validate, since only a caller holding the rework round's first card number, or a matcher for the fabric-reference rule, can run them.
 // CheckCardFabricReference scans the raw text the parse step records in Plan.OverviewText and Card.Text, so it reads no file and planparser stays the sole parser.
 //
+// # Verify chains
+//
+// verify-nested-module and verify-module-wide read a shell chain through one splitter.
+// It joins a backslash-newline continuation into one line, then splits at `&&`, `||`, `;`, `|` and a newline, reading `||` as one separator and a separator inside a single- or double-quoted span as text.
+// A segment carries the separator that preceded it, so verify-nested-module follows a `cd` only after a sequencing separator and ends its scan at a `cd` in a pipeline stage or after `||`.
+//
 // # The language: key and the glyph alphabet
 //
 // The overview's optional `language:` frontmatter key names the alphabet a
