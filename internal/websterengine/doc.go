@@ -385,7 +385,7 @@
 // Geometry — one from a resolved hub *lyxcwd.Location, the other from a standalone state tree — and
 // the dependency direction between them and this package is one-way: they import websterengine to
 // build the struct it declares, and websterengine never imports either back.
-// See geometry.go for what each of Geometry's eight fields means; this section does not restate them.
+// See geometry.go for what each of Geometry's fields means; this section does not restate them.
 // Every fabric commit of a webster artifact (state.json, a batch report,
 // outcome.yaml, summary.md) happens in internal/webstercli, never here, at
 // the same deterministic boundary points: begin-batch, record-batch,
