@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -171,6 +172,7 @@ Example:
 				Stopper:      c.runner,
 				ShuttleCfg:   c.shuttleCfg,
 				Geom:         c.geom,
+				ReadOnly:     fabricengine.IsReadOnlyCommand,
 				FrictionDir:  c.frictionDir,
 				ParentBranch: c.parentBranch,
 			}

@@ -73,6 +73,8 @@ type RecoverDeps struct {
 	Stopper    StrandStopper
 	ShuttleCfg shuttleengine.Config
 	Geom       Geometry
+	// ReadOnly classifies a fabric-referencing command as read-only, which makes its finding a policy warning; nil accepts nothing.
+	ReadOnly func(cmd string) bool
 
 	// FrictionDir is the told absolute friction directory (see internal/friction), empty when Tier 2
 	// is off. It lives here rather than on Geometry because internal/hubgeom and

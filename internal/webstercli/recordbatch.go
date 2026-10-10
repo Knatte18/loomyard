@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -135,6 +136,7 @@ Example:
 				Engine:       c.engine,
 				Geom:         c.geom,
 				RefMatcher:   c.refMatcher,
+				ReadOnly:     fabricengine.IsReadOnlyCommand,
 				OutcomePath:  websterengine.OutcomePath(c.geom.WebsterDir),
 				SummaryPath:  summaryparser.Path(c.geom.WebsterDir),
 				Sleeper:      realSleeper{},

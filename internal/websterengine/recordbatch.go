@@ -182,12 +182,14 @@ func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, erro
 // exempts;
 // Sleeper is the clock seam SettleRetry's bounded wait uses.
 type RecordDeps struct {
-	Batches     []batcher.Batch
-	State       *State
-	Config      Config
-	Engine      shuttleengine.Engine
-	Geom        Geometry
-	RefMatcher  RefMatcher
+	Batches    []batcher.Batch
+	State      *State
+	Config     Config
+	Engine     shuttleengine.Engine
+	Geom       Geometry
+	RefMatcher RefMatcher
+	// ReadOnly classifies a fabric-referencing command as read-only, which makes its finding a policy warning; nil accepts nothing.
+	ReadOnly    func(cmd string) bool
 	OutcomePath string
 	SummaryPath string
 	Sleeper     Sleeper
@@ -368,7 +370,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		if isDispositioned(deps.State, id) {
 			continue
 		}
-		severity, err := ClassifyViolation(v, deps.Geom)
+		severity, err := ClassifyViolation(v, deps.Geom, deps.ReadOnly)
 		if err != nil {
 			return nil, err
 		}
@@ -633,7 +635,7 @@ func auditTerminalFork(deps RecordDeps, bs *BatchState, batchNumber int) (*Recor
 			if isDispositioned(deps.State, id) {
 				continue
 			}
-			severity, err := ClassifyViolation(v, deps.Geom)
+			severity, err := ClassifyViolation(v, deps.Geom, deps.ReadOnly)
 			if err != nil {
 				return nil, err
 			}

@@ -2314,9 +2314,13 @@ func TestRun_RunExitRefusals(t *testing.T) {
 		outcome string
 		summary bool
 		// wantOK expects Run to succeed outright, with no refusal to take a way forward from.
-		wantOK      bool
-		msgContains []string
-		want        string
+		wantOK bool
+		// readOnlyFabric wires a RefMatcher that matches FABRICREF and the real read-only classifier.
+		readOnlyFabric bool
+		// wantRunWarnings is how many run-level audit warnings a wantOK run records.
+		wantRunWarnings int
+		msgContains     []string
+		want            string
 		// repair mutates the world the way the way forward describes, before the clean re-run.
 		repair func(t *testing.T, fx *runFixture)
 		// rerunBatches is how many batches and forks the clean re-run covers; zero means one.
@@ -2395,6 +2399,21 @@ func TestRun_RunExitRefusals(t *testing.T) {
 			wantOK:  true,
 		},
 		{
+			name:  "a read-only fabric reference warns and leaves the outcome done",
+			cards: 1,
+			state: map[int]*websterengine.BatchState{1: doneRecord()},
+			audit: &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{
+				TranscriptPath: "/transcripts/fork1.jsonl",
+				ReportReturned: true,
+				BashCommands:   []string{"cat FABRICREF/webster/state.json"},
+			}}},
+			outcome:         doneOutcome,
+			summary:         true,
+			readOnlyFabric:  true,
+			wantOK:          true,
+			wantRunWarnings: 1,
+		},
+		{
 			name:  "the current session's own shortfall still fails",
 			cards: 2,
 			state: map[int]*websterengine.BatchState{
@@ -2437,11 +2456,18 @@ func TestRun_RunExitRefusals(t *testing.T) {
 				},
 			}
 			seedShuttleRunState(t, fx.ShuttleRunRoot, strand, session)
+			if tt.readOnlyFabric {
+				fx.Deps.RefMatcher = fabricMatcher{}
+				fx.Deps.ReadOnly = fabricengine.IsReadOnlyCommand
+			}
 
 			_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
 			if tt.wantOK {
 				if err != nil {
 					t.Fatalf("Run() = %v; want nil", err)
+				}
+				if got := len(loadRunState(t, fx).AuditWarnings); got != tt.wantRunWarnings {
+					t.Errorf("run-level AuditWarnings = %d; want %d", got, tt.wantRunWarnings)
 				}
 				return
 			}

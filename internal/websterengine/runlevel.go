@@ -139,6 +139,8 @@ type RunDeps struct {
 	Batcher    batcher.Batcher
 	Geom       Geometry
 	RefMatcher RefMatcher
+	// ReadOnly classifies a fabric-referencing command as read-only, which makes its finding a policy warning; nil accepts nothing.
+	ReadOnly func(cmd string) bool
 
 	// Gate is the list of mechanical validators Master's own shuttle run is held to:
 	// Run hands it to StartMaster beside the Spec, and the run's Wait re-prompts the live Master on a failed verdict until it passes or the failing entry's re-prompt budget is exhausted.
@@ -1035,7 +1037,7 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		if isDispositioned(st, id) {
 			continue
 		}
-		severity, err := ClassifyViolation(v, deps.Geom)
+		severity, err := ClassifyViolation(v, deps.Geom, deps.ReadOnly)
 		if err != nil {
 			return nil, "", err
 		}

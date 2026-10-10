@@ -419,12 +419,22 @@ func TestPauseCmd_ResolvesSameFileAsBeginBatchGate(t *testing.T) {
 // and the {"no_report": true} ladder signal (not an error) when the report has not landed yet.
 func TestRecordBatchCmd_Envelope(t *testing.T) {
 	tests := []struct {
-		name          string
-		writeReport   bool
+		name        string
+		writeReport bool
+		// bashCommand, when set, is the one command the fork's audit records.
+		bashCommand   string
 		wantSubstrs   []string
 		wantTerminal  bool
 		wantDigestSet bool
 	}{
+		{
+			name:          "ReadOnlyFabricReferenceEnvelope",
+			writeReport:   true,
+			bashCommand:   "lyx fabric list",
+			wantSubstrs:   []string{`"batch":"01-only"`, `"status":"done"`, `audit warning (fabric-reference)`},
+			wantTerminal:  true,
+			wantDigestSet: true,
+		},
 		{
 			name:          "DigestEnvelope",
 			writeReport:   true,
@@ -467,6 +477,9 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 			}
 			fx.Engine.Audit = shuttleengine.ForkAudit{
 				Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/fork1.jsonl", ReportReturned: true}},
+			}
+			if tt.bashCommand != "" {
+				fx.Engine.Audit.Forks[0].BashCommands = []string{tt.bashCommand}
 			}
 			if tt.writeReport {
 				writeBatchReport(t, fx.CLI.geom.ReportsDir, startSHA)

@@ -236,6 +236,9 @@ func TestWire_DefaultConfig(t *testing.T) {
 		if deps.RefMatcher == nil {
 			t.Error("runDeps.RefMatcher = nil; want the real fabric reference matcher")
 		}
+		if deps.ReadOnly == nil {
+			t.Error("runDeps.ReadOnly = nil; want the read-only classifier beside the reference matcher")
+		}
 
 		// The same value must also be embedded verbatim in c.env.WebsterDeps.
 		if c.env.WebsterDeps.Geom != deps.Geom {
