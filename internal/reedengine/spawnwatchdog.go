@@ -13,6 +13,7 @@ package reedengine
 import (
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -25,9 +26,11 @@ import (
 // would run the whole suite recursively) or when hubPath is empty (this caller was never given a
 // hub, e.g. the watchdog verb's own PersistentPreRunE early return).
 //
-// shellPath is passed unconditionally, empty or not: this spawn is best-effort and its child's
-// stderr is discarded, so refusing here would silently cost the hub its entire watchdog daemon over
-// one empty config value, while an empty shell costs only the descendant half of a reap on Windows.
+// shellPath is passed unconditionally, empty or not.
+// This spawn is best-effort and nobody watches its child's stderr, so refusing here would silently cost the hub its entire watchdog daemon over one empty config value, while an empty shell costs only the descendant half of a reap on Windows.
+//
+// The child's nil stdio gives it the null device, and its environment drops LYX_LOG_FILE so the operator's log file cannot reroute the daemon's stderr half.
+// LYX_LOG_LEVEL passes on unchanged, so a spawn run at Debug verbosity starts a daemon at Debug.
 //
 // A spawn failure is never fatal to the caller's own operation: up, resume and attach each already
 // succeeded at their own engine op by the time this runs, and the daemon is a convenience the
@@ -57,6 +60,7 @@ func SpawnWatchdog(hubPath, tmuxPath, shellPath string, suppress bool) {
 	// on a worktree directory blocks that directory's deletion, which would break fabric teardown —
 	// pinning cmd.Dir to the hub instead avoids that entirely.
 	cmd.Dir = hubPath
+	cmd.Env = spawnWatchdogEnv(os.Environ())
 	// Leave stdin/stdout/stderr nil so no parent handles are inherited.
 	proc.Detach(cmd)
 
@@ -65,4 +69,16 @@ func SpawnWatchdog(hubPath, tmuxPath, shellPath string, suppress bool) {
 		// logs the spawn alone, since there is no teardown to log.
 		logger.Warn("reed: watchdog spawn failed", "exe", exe, "hub", hubPath, "err", err)
 	}
+}
+
+// spawnWatchdogEnv returns environ without any entry whose key is exactly LYX_LOG_FILE.
+func spawnWatchdogEnv(environ []string) []string {
+	out := make([]string, 0, len(environ))
+	for _, entry := range environ {
+		if strings.SplitN(entry, "=", 2)[0] == "LYX_LOG_FILE" {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
 }
