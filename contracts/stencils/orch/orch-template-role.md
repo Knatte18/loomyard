@@ -41,6 +41,8 @@ A driver, webster or a review loop that cannot go on escalates to you, its paren
 - A run that needs a fresh budget at a producer: `lyx loom goto` or `lyx shed goto`, naming the producer.
   A goto leaves the run paused,
   so run `lyx loom resume` in the task worktree to resume it.
+- A Publish blocked on a verify that exited non-zero: `lyx loom goto --to Webster-Burler`, then `lyx loom resume` in the task worktree.
+  Never a goto to Plan-Bouncer, since the plan does not change.
 - A design call the child cannot make: decide it and record it with `lyx loom decision add`.
 
 ## Investigating a stop

@@ -326,6 +326,11 @@ func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnFailure(t *testing.T) {
 	deadStrand := func() ([]reedengine.StrandStatus, error) {
 		return []reedengine.StrandStatus{{GUID: "g-dead", Name: driverStrandDisplayName, Live: false}}, nil
 	}
+	retiringStrand := func() ([]reedengine.StrandStatus, error) {
+		return []reedengine.StrandStatus{{GUID: "g-retiring", Name: driverStrandDisplayName, PaneID: "%0", Live: true, Retiring: true}}, nil
+	}
+	// rerunStart is the retry clause as the JSON envelope escapes it.
+	const rerunStart = `re-run \"lyx loom start\"`
 	tests := []struct {
 		name string
 		// strands, removeErr and startErr configure the probe and starter seams; a nil strands answers no strands.
@@ -344,8 +349,34 @@ func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnFailure(t *testing.T) {
 			mutate: func(_ *testing.T, c *loomCLI) { c.cfg.Driver = "bad spec with a space" },
 		},
 		{
-			name:    "strand read",
-			strands: func() ([]reedengine.StrandStatus, error) { return nil, errors.New("strand read failed") },
+			name: "run-lock probe",
+			mutate: func(t *testing.T, c *loomCLI) {
+				c.shedPaths.LockPath = filepath.Join(t.TempDir(), "missing", "run.lock")
+			},
+			wantOutput: rerunStart,
+		},
+		{
+			name:       "strand read",
+			strands:    func() ([]reedengine.StrandStatus, error) { return nil, errors.New("strand read failed") },
+			wantOutput: rerunStart,
+		},
+		{
+			name:             "retiring strand removal",
+			strands:          retiringStrand,
+			removeErr:        errors.New("remove failed"),
+			wantRemoveCalled: true,
+			wantOutput:       rerunStart,
+		},
+		{
+			// A non-empty directory where the park marker belongs makes its removal fail.
+			name: "stale park marker removal",
+			mutate: func(t *testing.T, c *loomCLI) {
+				marker := shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
+				if err := os.MkdirAll(filepath.Join(marker, "blocker"), 0o755); err != nil {
+					t.Fatalf("mkdir blocker under the marker path: %v", err)
+				}
+			},
+			wantOutput: rerunStart,
 		},
 		{
 			// The corpse removal happens before the run start when the strand action is dead, so the
@@ -598,18 +629,27 @@ func writeTestRunState(t *testing.T, c *loomCLI, st shedengine.State) {
 // TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker asserts a live driver strand without a park marker, and without the retiring mark, is neither removed, replaced nor sent to:
 // over a run with no status or a running run the call is a no-op that succeeds, and over a run handed back to the driver it refuses retryably until the driver parks.
 func TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker(t *testing.T) {
+	notParked := []string{"not parked yet", "lyx loom start"}
 	tests := []struct {
 		name string
 		// runState is the persisted run state; empty writes no status file.
-		runState    shedengine.State
-		wantRefusal bool
+		runState shedengine.State
+		// statusBody, when set, is written verbatim as the status file instead.
+		statusBody string
+		// statusUnreadable puts a directory where the status file belongs, so reading it fails without a decode failure.
+		statusUnreadable bool
+		// wantKind and wantIn are the refusal's kind and message substrings; a nil wantIn wants a silent success.
+		wantKind string
+		wantIn   []string
 	}{
 		{name: "no status file"},
 		{name: "running run is a no-op", runState: shedengine.StateRunning},
-		{name: "awaiting run refuses retryably", runState: shedengine.StateAwaiting, wantRefusal: true},
-		{name: "blocked run refuses retryably", runState: shedengine.StateBlocked, wantRefusal: true},
-		{name: "paused run refuses retryably", runState: shedengine.StatePaused, wantRefusal: true},
-		{name: "failed run refuses retryably", runState: shedengine.StateFailed, wantRefusal: true},
+		{name: "undecodable status file is a no-op", statusBody: unknownFieldStatusBody},
+		{name: "awaiting run refuses retryably", runState: shedengine.StateAwaiting, wantKind: shedrun.StartNotParkedKind, wantIn: notParked},
+		{name: "blocked run refuses retryably", runState: shedengine.StateBlocked, wantKind: shedrun.StartNotParkedKind, wantIn: notParked},
+		{name: "paused run refuses retryably", runState: shedengine.StatePaused, wantKind: shedrun.StartNotParkedKind, wantIn: notParked},
+		{name: "failed run refuses retryably", runState: shedengine.StateFailed, wantKind: shedrun.StartNotParkedKind, wantIn: notParked},
+		{name: "unreadable status file names the failure and the retry", statusUnreadable: true, wantIn: []string{state.ErrRead.Error(), `re-run "lyx loom start"`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -624,6 +664,14 @@ func TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker(t *testing.T) {
 				c.frictionDir = t.TempDir()
 				writeTestRunState(t, c, tt.runState)
 			}
+			if tt.statusBody != "" {
+				writeTestRunStateRaw(t, c, tt.statusBody)
+			}
+			if tt.statusUnreadable {
+				if err := os.MkdirAll(c.shedPaths.StatusPath, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
 
 			var out bytes.Buffer
 			bootstrapLock := acquireTestBootstrapLock(t, lockPath)
@@ -635,7 +683,7 @@ func TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker(t *testing.T) {
 			if _, found := voucherOnDisk(t, c); found {
 				t.Error("the live-strand call wrote a handoff voucher")
 			}
-			if !tt.wantRefusal {
+			if tt.wantIn == nil {
 				if !ok || out.Len() != 0 {
 					t.Errorf("runDriverSpawnAndWait() = %v, output %q; want true and no output", ok, out.String())
 				}
@@ -653,10 +701,10 @@ func TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker(t *testing.T) {
 			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
 				t.Fatalf("envelope %q: %v", out.String(), err)
 			}
-			if envelope.OK || envelope.Kind != shedrun.StartNotParkedKind {
-				t.Errorf("envelope = %+v; want ok=false kind=%q", envelope, shedrun.StartNotParkedKind)
+			if envelope.OK || envelope.Kind != tt.wantKind {
+				t.Errorf("envelope = %+v; want ok=false kind=%q", envelope, tt.wantKind)
 			}
-			for _, want := range []string{"not parked yet", "lyx loom start"} {
+			for _, want := range tt.wantIn {
 				if !strings.Contains(envelope.Error, want) {
 					t.Errorf("error = %q; want substring %q", envelope.Error, want)
 				}

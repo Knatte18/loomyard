@@ -528,7 +528,7 @@
 // origin is never touched.
 //
 // **Config changes.**
-// `ReadConfigChanges` (configchanges.go) diffs a task's weft branch against its fork point from the parent's weft branch and reports which of the config files its caller names changed, as `ConfigChanges`.
+// `ReadConfigChanges` (configchanges.go) intersects the diff of a task's weft branch against its fork point from the parent's weft branch with its diff against the parent's current tip, and reports which of the config files its caller names are in both, as `ConfigChanges`.
 // It is read-only and writes nothing;
 // the caller supplies the anchor-relative file set, because the config registry imports this package.
 //
@@ -574,8 +574,9 @@
 // substring-match, so a caller like `preflight.CheckResolved` switches on `HealthReason.Cause`
 // instead of parsing prose.
 // `PushAnchored(l, opts, lockWait)`, `PushPairAnchored(l, opts, lockWait)`, `MergeStateActive(l)`, `MidMerge(l)` and `RequireDrivableWorktree(l)` are further vocabulary-neutral, `l`-in entry points reachable the same way `CommitAnchoredPaths` is.
-// `MidMerge(l)` answers whether the pair carries an unfinished merge and which paths are still conflicted,
-// and `lyx loom start` consults it before putting a driver to work.
+// `MidMerge(l)` answers whether the pair carries an unfinished merge and which paths are still conflicted.
+// For a parked fabric merge the answer also carries the record's verb, source branch and the code side's source and start SHAs.
+// `lyx loom start` consults it before putting a driver to work.
 // `RequireDrivableWorktree` is `RequireWarpWorktree` under a name a non-owner may say at all — the
 // invariant's scan matches the bare token inside an identifier, so the published name is itself the
 // leak, and a caller that must refuse fabric's own checkouts before driving topology has no other

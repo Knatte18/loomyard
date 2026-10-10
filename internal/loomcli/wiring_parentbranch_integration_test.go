@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestWire_WebsterParentBranchReadsPairOrigin asserts the wired RunDeps.ParentBranch returns the parent branch the pair's origin record names.
+// TestWire_WebsterParentBranchReadsPairOrigin asserts the wired RunDeps.ParentBranch refuses while the pair has no origin record and then returns the parent branch the record names.
 func TestWire_WebsterParentBranchReadsPairOrigin(t *testing.T) {
 	loc := hubLocation(t, "pair", ".")
 
@@ -33,6 +33,11 @@ func TestWire_WebsterParentBranchReadsPairOrigin(t *testing.T) {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", records, err)
 	}
 	gitkit.Git(t, records, "init")
+
+	const wantAbsent = "the pair has no fabric origin record"
+	if _, err := c.runDeps.ParentBranch(); err == nil || err.Error() != wantAbsent {
+		t.Fatalf("runDeps.ParentBranch() with no origin record error = %v; want %q", err, wantAbsent)
+	}
 
 	recordPath := fabricengine.OriginRecordPath(loc)
 	if err := os.MkdirAll(filepath.Dir(recordPath), 0o755); err != nil {

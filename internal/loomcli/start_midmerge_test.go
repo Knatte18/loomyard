@@ -15,10 +15,47 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/state"
 )
+
+// ownLeftoverState is a fabric merge-in of main the Publish and Finalize rows abort and redo themselves.
+var ownLeftoverState = fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: fabricengine.MergeVerbMergeIn, Source: "main", Conflicts: []string{"a.go"}}
+
+// parentBranchSeam answers the recorded parent branch main, or the failure err when it is non-nil.
+func parentBranchSeam(err error) func(*lyxcwd.Location) (string, error) {
+	return func(*lyxcwd.Location) (string, error) {
+		if err != nil {
+			return "", err
+		}
+		return "main", nil
+	}
+}
+
+// writeTestRunStateAt persists a status file in state st naming producer as current.
+func writeTestRunStateAt(t *testing.T, c *loomCLI, st shedengine.State, producer string) {
+	t.Helper()
+	if err := state.WriteJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, shedengine.Status{State: st, CurrentProducer: producer}); err != nil {
+		t.Fatalf("write status: %v", err)
+	}
+}
+
+// unknownFieldStatusBody is a status file the spawned driver's own read gate diagnoses, since it carries a field the status type lacks.
+const unknownFieldStatusBody = `{"state":"running","current_producer":"Publish","__unknown_field__":true}`
+
+// writeTestRunStateRaw writes body verbatim as the run's status file.
+func writeTestRunStateRaw(t *testing.T, c *loomCLI, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(c.shedPaths.StatusPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(c.shedPaths.StatusPath, []byte(body), 0o644); err != nil {
+		t.Fatalf("write status: %v", err)
+	}
+}
 
 // fakeMidMerge records its calls and answers a canned state or error.
 type fakeMidMerge struct {
@@ -94,6 +131,13 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 		staleMark bool
 		// parkedLive replaces the receiver with one whose live driver is parked, its park marker on disk.
 		parkedLive bool
+		// producer is the row the persisted status names as current;
+		// empty leaves it unset.
+		producer string
+		// parentErr makes the recorded-parent-branch seam fail, so a refusal that is still a merge_in_progress one pins that the guard never read it.
+		parentErr error
+		// statusBody, when set, is written verbatim as the status file instead of one naming producer.
+		statusBody string
 	}{
 		{name: "llm fabric-parked with conflicts", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Conflicts: []string{"a.go", "b/c.go"}}, want: []string{"a.go", "b/c.go"}, wantIn: fabricMsg},
 		{name: "go arm fabric-parked", driver: shedrun.DriverGo, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg},
@@ -101,6 +145,11 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 		{name: "foreign", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeForeign, Conflicts: []string{"x"}}, want: []string{"x"}, wantIn: []string{"git"}, wantNotIn: []string{"merge-stage"}},
 		{name: "stale marker kept", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Conflicts: []string{"a"}}, want: []string{"a"}, wantIn: fabricMsg, staleMark: true},
 		{name: "parked live driver refused", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg, parkedLive: true},
+		{name: "own leftover at a row other than Publish or Finalize", driver: shedrun.DriverLLM, state: ownLeftoverState, want: []string{"a.go"}, wantIn: fabricMsg, producer: loomshed.NamePlanBouncer, parentErr: errors.New("origin record unreadable")},
+		{name: "parked merge verb at Publish", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: "merge", Source: "main", Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg, producer: loomshed.NamePublish, parentErr: errors.New("origin record unreadable")},
+		{name: "merge-in of another source at Publish", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: fabricengine.MergeVerbMergeIn, Source: "other", Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg, producer: loomshed.NamePublish},
+		{name: "foreign state at Finalize", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeForeign, Conflicts: []string{"x"}}, want: []string{"x"}, wantIn: []string{"git"}, wantNotIn: []string{"merge-stage"}, producer: loomshed.NameFinalize, parentErr: errors.New("origin record unreadable")},
+		{name: "own leftover under an undecodable status file", driver: shedrun.DriverLLM, state: ownLeftoverState, want: []string{"a.go"}, wantIn: fabricMsg, statusBody: unknownFieldStatusBody, parentErr: errors.New("origin record unreadable")},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -115,7 +164,10 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 				c, lockPath = newTestSpawnAndWaitReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: noStrands})
 				c.driverSender = sender
 				c.frictionDir = t.TempDir()
-				writeTestRunState(t, c, shedengine.StateRunning)
+				writeTestRunStateAt(t, c, shedengine.StateRunning, tc.producer)
+				if tc.statusBody != "" {
+					writeTestRunStateRaw(t, c, tc.statusBody)
+				}
 				marker = shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
 				if tc.staleMark {
 					if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
@@ -128,6 +180,7 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 			}
 			fake := &fakeMidMerge{state: tc.state}
 			c.midMerge = fake.probe
+			c.recordedParentBranch = parentBranchSeam(tc.parentErr)
 
 			var out bytes.Buffer
 			bl := acquireTestBootstrapLock(t, lockPath)
@@ -210,11 +263,20 @@ func TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses(t *testing.T) {
 	tests := []struct {
 		name  string
 		probe func(*lyxcwd.Location) (fabricengine.MidMergeState, error)
-		// wantIn is a substring of the error message, when the probe's failure is canned.
-		wantIn string
+		// wantIn are substrings of the error message, when the failure is canned.
+		wantIn []string
+		// producer is the row the persisted status names as current;
+		// empty writes no status file.
+		producer string
+		// parentErr makes the recorded-parent-branch seam fail.
+		parentErr error
+		// statusUnreadable puts a directory where the status file belongs, so reading it fails without a decode failure.
+		statusUnreadable bool
 	}{
-		{name: "probe error names the failure", probe: (&fakeMidMerge{err: errors.New("boom")}).probe, wantIn: "boom"},
+		{name: "probe error names the failure and the retry", probe: (&fakeMidMerge{err: errors.New("boom")}).probe, wantIn: []string{"boom", `re-run "lyx loom start"`}},
 		{name: "real probe on a non-pair", probe: fabricengine.MidMerge},
+		{name: "unreadable parent branch at Publish names the failure and the way forward", probe: (&fakeMidMerge{state: ownLeftoverState}).probe, producer: loomshed.NamePublish, parentErr: errors.New("origin boom"), wantIn: []string{"origin boom", `"lyx loom start --parent <branch>"`, `re-run "lyx loom start"`}},
+		{name: "unreadable status file names the failure and the retry", probe: (&fakeMidMerge{state: ownLeftoverState}).probe, statusUnreadable: true, wantIn: []string{state.ErrRead.Error(), `re-run "lyx loom start"`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -223,6 +285,15 @@ func TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses(t *testing.T) {
 			c, lockPath := newTestSpawnAndWaitReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: noStrands})
 			c.driverSender = sender
 			c.midMerge = tt.probe
+			c.recordedParentBranch = parentBranchSeam(tt.parentErr)
+			if tt.producer != "" {
+				writeTestRunStateAt(t, c, shedengine.StateBlocked, tt.producer)
+			}
+			if tt.statusUnreadable {
+				if err := os.MkdirAll(c.shedPaths.StatusPath, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
 
 			var out bytes.Buffer
 			bl := acquireTestBootstrapLock(t, lockPath)
@@ -232,8 +303,13 @@ func TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses(t *testing.T) {
 				t.Fatal("runDriverSpawnAndWait() = true; want a refusal")
 			}
 			env := decodeMidMergeEnvelope(t, out.String())
-			if env.OK || env.Kind == shedrun.StartMergeInProgressKind || !strings.Contains(env.Error, tt.wantIn) {
-				t.Errorf("envelope = %+v; want a plain error containing %q", env, tt.wantIn)
+			if env.OK || env.Kind == shedrun.StartMergeInProgressKind {
+				t.Errorf("envelope = %+v; want a plain error", env)
+			}
+			for _, s := range tt.wantIn {
+				if !strings.Contains(env.Error, s) {
+					t.Errorf("message %q lacks %q", env.Error, s)
+				}
 			}
 			assertNothingPutToWork(t, c, starter, sender)
 			assertBootstrapLockReleased(t, lockPath)
@@ -243,19 +319,45 @@ func TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses(t *testing.T) {
 
 //testtiming:keep pins the mid-merge probe running exactly once on a clean pair before the starter is reached; its covering test uses a probe that counts nothing
 func TestRunDriverSpawnAndWait_MidMerge_CleanPairProceeds(t *testing.T) {
-	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
-	c, lockPath := newTestSpawnAndWaitReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: noStrands})
-	fake := &fakeMidMerge{state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}}
-	c.midMerge = fake.probe
-
-	bl := acquireTestBootstrapLock(t, lockPath)
-	c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bl, noopLockHeld)
-
-	if fake.calls != 1 {
-		t.Errorf("probe calls = %d; want 1", fake.calls)
+	tests := []struct {
+		name  string
+		state fabricengine.MidMergeState
+		// runState and producer are the persisted status;
+		// an empty runState writes no status file.
+		runState shedengine.State
+		producer string
+		// statusBody, when set, is written verbatim as the status file instead.
+		statusBody string
+	}{
+		{name: "clean pair", state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}},
+		{name: "clean pair with a status file carrying an unknown field", state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}, statusBody: unknownFieldStatusBody},
+		{name: "own leftover at Publish on a halted run", state: ownLeftoverState, runState: shedengine.StateBlocked, producer: loomshed.NamePublish},
+		{name: "own leftover at Finalize on a running run with a dead driver", state: ownLeftoverState, runState: shedengine.StateRunning, producer: loomshed.NameFinalize},
 	}
-	if !starter.called {
-		t.Error("the starter was not reached on a clean pair")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
+			c, lockPath := newTestSpawnAndWaitReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: noStrands})
+			fake := &fakeMidMerge{state: tt.state}
+			c.midMerge = fake.probe
+			c.recordedParentBranch = parentBranchSeam(nil)
+			if tt.runState != "" {
+				writeTestRunStateAt(t, c, tt.runState, tt.producer)
+			}
+			if tt.statusBody != "" {
+				writeTestRunStateRaw(t, c, tt.statusBody)
+			}
+
+			bl := acquireTestBootstrapLock(t, lockPath)
+			c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bl, noopLockHeld)
+
+			if fake.calls != 1 {
+				t.Errorf("probe calls = %d; want 1", fake.calls)
+			}
+			if !starter.called {
+				t.Error("the starter was not reached")
+			}
+			_ = bl.Release()
+		})
 	}
-	_ = bl.Release()
 }

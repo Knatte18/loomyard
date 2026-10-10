@@ -8,6 +8,7 @@
 package fabricengine_test
 
 import (
+	"cmp"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -37,7 +38,12 @@ func TestReadConfigChanges(t *testing.T) {
 		outsideAnchorFile string
 		// parentFileAfterFork is an anchor-relative file committed on the parent's weft branch after the fork.
 		parentFileAfterFork string
-		parentBranch        string
+		// parentContent is the content of parentFileAfterFork; empty means "parent change".
+		parentContent string
+		// pickParentIntoTask cherry-picks the parent's commit after the fork onto the pair's weft branch,
+		// so the task carries the parent's change while its fork point stays where it was.
+		pickParentIntoTask bool
+		parentBranch       string
 		// wantFiles are anchor-relative paths the call reports.
 		wantFiles []string
 		wantErr   bool
@@ -79,6 +85,32 @@ func TestReadConfigChanges(t *testing.T) {
 			parentBranch:        "main",
 		},
 		{
+			name:                "a parent change the task carried over is not reported",
+			anchor:              ".",
+			rels:                []string{loomRel},
+			parentFileAfterFork: loomRel,
+			pickParentIntoTask:  true,
+			parentBranch:        "main",
+		},
+		{
+			name:                "a task edit identical to the parent's current copy is not reported",
+			anchor:              ".",
+			rels:                []string{loomRel},
+			taskFiles:           []string{loomRel},
+			parentFileAfterFork: loomRel,
+			parentContent:       "task change",
+			parentBranch:        "main",
+		},
+		{
+			name:                "a task edit that still differs from the parent is reported",
+			anchor:              ".",
+			rels:                []string{loomRel},
+			taskFiles:           []string{loomRel},
+			parentFileAfterFork: loomRel,
+			parentBranch:        "main",
+			wantFiles:           []string{loomRel},
+		},
+		{
 			name:         "a parent whose weft branch is missing is an error naming both branches",
 			anchor:       ".",
 			rels:         []string{loomRel},
@@ -117,7 +149,11 @@ func TestReadConfigChanges(t *testing.T) {
 				gitkit.CommitFile(t, pairWeft, tc.outsideAnchorFile, "outside the anchor", "outside the anchor")
 			}
 			if tc.parentFileAfterFork != "" {
-				gitkit.CommitFile(t, weftRoot, filepath.Join(l.AnchorRel, tc.parentFileAfterFork), "parent change", "parent change")
+				content := cmp.Or(tc.parentContent, "parent change")
+				gitkit.CommitFile(t, weftRoot, filepath.Join(l.AnchorRel, tc.parentFileAfterFork), content, "parent change")
+			}
+			if tc.pickParentIntoTask {
+				gitkit.MustRun(t, pairWeft, "git", "cherry-pick", fabricengine.RecordsBranchName(tc.parentBranch))
 			}
 
 			got, err := fabricengine.ReadConfigChanges(l, slug, tc.parentBranch, tc.rels)
@@ -137,7 +173,7 @@ func TestReadConfigChanges(t *testing.T) {
 			}
 
 			if tc.wantZero {
-				if len(got.Files) != 0 || got.Base != "" || got.Tip != "" {
+				if len(got.Files) != 0 || got.Base != "" || got.Tip != "" || got.ParentTip != "" {
 					t.Errorf("ReadConfigChanges() = %+v; want the zero value", got)
 				}
 				return
@@ -155,6 +191,9 @@ func TestReadConfigChanges(t *testing.T) {
 			}
 			if wantTip := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName(slug)); got.Tip != wantTip {
 				t.Errorf("Tip = %s; want the task branch tip %s", got.Tip, wantTip)
+			}
+			if wantParentTip := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName(tc.parentBranch)); got.ParentTip != wantParentTip {
+				t.Errorf("ParentTip = %s; want the parent branch tip %s", got.ParentTip, wantParentTip)
 			}
 		})
 	}

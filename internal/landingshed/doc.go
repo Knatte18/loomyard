@@ -7,6 +7,14 @@
 // The PR-Gate producer in this package then owns approval, rejection and the wait for the reviewer;
 // PRGate.Call documents its decision table.
 //
+// Both producers clear the merge-in their own earlier attempt left parked before the clean-tree check that precedes each merge-in, Finalize's retry pass included.
+// A parked fabric `merge-in` of the parent branch is aborted, whoever started it, so a conflict session's resolution and a hand-started merge-in with its partial resolution are both discarded and the merge starts afresh.
+// Every live conflict-session strand of the run is stopped through Deps.StopConflictSession first, and only after every stop succeeded is the merge aborted, so no session is left writing into the redone merge;
+// a stop that fails is Stuck naming the strand, with the merge untouched.
+// Any other parked merge and git merge state fabric did not start is Stuck with its way forward, never stopped over or touched.
+// The resolver's own abort stays as crash recovery within one merge-in step.
+// The seams are nil-is-absent: a nil Deps.MergeState skips the step.
+//
 // Publish checks the task worktree is clean at three points: before the merge-in (after the status commit), after the merge-in, and after the verify.
 // A dirty tree at any of them is Stuck naming the paths, before anything is pushed;
 // a verify that dirties the tree is a non-hermetic test and halts rather than ships.
@@ -32,6 +40,7 @@
 // Publish alone persists its failure.
 // When its plan verify or `publish_verify` fails with a non-zero exit, it writes the verifytree Publish failure record with the failing kind, the failing tests the told Deps.FailingTests parses from the log, HEAD, and the merge-in commit, which is HEAD after a merge-in that was not already up to date and empty otherwise.
 // A dirty tree, a timeout and a shell that could not start write no record, and a write failure is logged and never changes the Stuck verdict.
+// The Stuck reason of a failed verify names the `lyx loom goto --to Webster-Burler` then `lyx loom resume` route only when the record was written; otherwise it asks to fix forward on the task branch.
 // A Publish that passes both verifies removes the record before its push, and Finalize neither writes nor removes it.
 //
 // The push that follows is never retried when the remote rejects it, because the remote task branch moved and a repeat would be rejected again.
@@ -53,7 +62,7 @@
 // Each catch-up merge-in, the retry after the parent moved included, runs the same three clean-tree checks and the same post-merge verify gate as Publish before the parent-side merge,
 // and a dirty tree or a failure is Stuck with the parent branch untouched.
 // The landing commit carries the change description and exactly one Co-Authored-By trailer, appended from landing.yaml's co_authored_by.
-// Before the catch-up merge-in, Finalize reads the task's changes to its own per-worktree config files and, at Done, queues one notice about them for the hub's orchestrator;
+// Before the catch-up merge-in, Finalize reads the per-worktree config files the task changed away from both its fork point and the parent's current tip, so a parent-side change never reads as a task edit, and, at Done, queues one notice about them naming the base, task tip and parent tip for the hub's orchestrator;
 // it never carries those files to the parent,
 // and a read failure or a failed notice never stops the landing.
 // After the parent-side merge and before the push, Finalize marks the board task done; after a

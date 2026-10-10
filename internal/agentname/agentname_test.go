@@ -73,6 +73,18 @@ func TestNumberRole(t *testing.T) {
 		if got := NumberRole("worker", tt.held); got != tt.want {
 			t.Errorf("NumberRole(held=%v) = %q, want %q", tt.held, got, tt.want)
 		}
+		if got := NumberRole("worker", tt.held); !MatchesRole(got, "worker") {
+			t.Errorf("MatchesRole(%q, worker) = false, want true", got)
+		}
+	}
+
+	for _, role := range []string{"other", "worker-1", "worker-x", "worker-", "worker-02", "workers", "workers-2"} {
+		if MatchesRole(role, "worker") {
+			t.Errorf("MatchesRole(%q, worker) = true, want false", role)
+		}
+	}
+	if MatchesRole("conflicted", "conflict") {
+		t.Error(`MatchesRole("conflicted", "conflict") = true, want false`)
 	}
 }
 
