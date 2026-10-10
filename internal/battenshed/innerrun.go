@@ -18,6 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
+// pollFloor is the shortest interval the producer's in-call wait checks its child at; a told interval below it is floored to it.
+const pollFloor = time.Second
+
 // waitOrCancel pauses for d, returning as soon as ctx is cancelled if that happens first.
 // It is the production value a nil InnerRunDeps.Sleep resolves to, so a caller driving the producer
 // under a cancellable context gets it back promptly. The lyx CLI itself never cancels its context:
@@ -152,6 +155,7 @@ var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 
 // NewInnerRun returns a shedengine.ShedProducer that resolves the task worktree's status path and spawns the inner shed run via deps.Spawn the first time Call finds no status file.
 // It then waits on the child inside the call, checking every pollInterval through deps.Sleep.
+// A pollInterval below one second is floored to one second with one Warn naming poll_interval_s.
 //
 // driverExitGrace bounds the wait for a done child's driver strand to end before the row returns Done anyway.
 //
@@ -162,6 +166,10 @@ var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 // A nil deps.PauseRequested resolves to never paused.
 // A nil deps.MarkWatched resolves to reporting not held, and a nil deps.Activity to reporting no live run and no live wait.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
+	if pollInterval < pollFloor {
+		logger.Warn("battenshed: poll_interval_s is below the floor and is raised to it", "key", "poll_interval_s", "value", pollInterval, "floor_s", int(pollFloor.Seconds()))
+		pollInterval = pollFloor
+	}
 	if deps.PauseRequested == nil {
 		deps.PauseRequested = func() (bool, error) { return false, nil }
 	}

@@ -525,7 +525,7 @@ func (r *skillReed) CapturePane(guid string) (string, error) {
 var _ ReedOps = (*skillReed)(nil)
 
 // sessionFakeEngine is waitingEngine plus the opt-in SessionSignalParser, SessionProber and ActivityReader capabilities.
-// ParseSessionSignals reads "START" as a turn start, "STOP:<message>" as a turn end and "WAIT:<message>" as a turn end carrying outstanding.
+// ParseSessionSignals reads "START" as a turn start, "STOP:<message>" as a turn end, "WAIT:<message>" as a turn end carrying outstanding, "ASK" as an ask and "SESSIONSTART" as a session start.
 // Every signal names session-1, and the read consumes through the last complete line.
 // ProcessLiveness answers liveness for any session id, and TurnStartInterrupt answers interrupted and interruptAt for any turn start.
 // TurnEndActivity marks a turn end as an API error when its line is apiErrorLine.
@@ -549,6 +549,10 @@ func (e *sessionFakeEngine) ParseSessionSignals(data []byte) ([]SessionSignal, i
 			signal.Kind = SessionSignalTurnStart
 		case trimmed == "APIERR":
 			signal.Kind = SessionSignalAPIErrorTurnEnd
+		case trimmed == "ASK":
+			signal.Kind = SessionSignalAsk
+		case trimmed == "SESSIONSTART":
+			signal.Kind = SessionSignalSessionStart
 		case strings.HasPrefix(trimmed, "STOP:"):
 			signal.Kind = SessionSignalTurnEnd
 		case strings.HasPrefix(trimmed, "WAIT:"):
@@ -599,6 +603,32 @@ func (e *idleEngine) ReloadPluginsSequence() []PaneInput        { return nil }
 func (e *idleEngine) CompactSessionSequence(string) []PaneInput { return nil }
 
 var _ SessionCycler = (*idleEngine)(nil)
+
+// readinessEngine is idleEngine plus the InputBoxReader capability and a scripted PaneTooShort.
+// The input box is the text after the last caret "❯ " of a capture, and a capture with no caret shows no box.
+type readinessEngine struct {
+	idleEngine
+	tooShort bool
+}
+
+func (e *readinessEngine) PaneTooShort(string) bool { return e.tooShort }
+
+func (e *readinessEngine) InputBoxText(capture string) (string, bool) {
+	caret := strings.LastIndex(capture, "❯ ")
+	if caret < 0 {
+		return "", false
+	}
+	return strings.TrimSpace(capture[caret+len("❯ "):]), true
+}
+
+func (e *readinessEngine) SubmitSettle() time.Duration { return 0 }
+
+func (e *readinessEngine) TypeSequence(text string) []PaneInput { return []PaneInput{{Text: text}} }
+
+var (
+	_ SessionCycler  = (*readinessEngine)(nil)
+	_ InputBoxReader = (*readinessEngine)(nil)
+)
 
 // idleReed is a fakeReed whose pane reads busyFrame until idleAt on its clock and "IDLE" after, followed by the last text typed.
 // A zero idleAt reads idle at once, and a zero failAt never fails a capture.

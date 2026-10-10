@@ -52,6 +52,12 @@ func (p pwshShell) PrependPathEntry(dir string) string {
 	return "$env:PATH = " + p.Quote(dir) + ` + $(if ($env:PATH) { [IO.Path]::PathSeparator + $env:PATH })`
 }
 
+// ChangeDir returns the pwsh `Set-Location -LiteralPath <quoted dir>` statement.
+// `-LiteralPath` keeps wildcard characters in dir from being expanded.
+func (p pwshShell) ChangeDir(dir string) string {
+	return "Set-Location -LiteralPath " + p.Quote(dir)
+}
+
 // Source returns a pwsh dot-source of a script block built from the file's text, `. ([scriptblock]::Create((Get-Content -Raw <quoted path>)))`.
 // It is never a dot-source of the file path itself: evaluating text runs no script file,
 // so no ExecutionPolicy (Restricted, AllSigned, Windows PowerShell 5.1's client default) can refuse it,

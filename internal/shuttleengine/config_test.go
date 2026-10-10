@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // seedLyxConfig creates <tmpDir>/_lyx/config/<module>.yaml with content, the
@@ -57,8 +58,8 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.RunDir != "" {
 		t.Errorf("RunDir = %q, want empty default", cfg.RunDir)
 	}
-	if cfg.PollIntervalMS != 500 {
-		t.Errorf("PollIntervalMS = %d, want 500", cfg.PollIntervalMS)
+	if cfg.PollIntervalMS != 1000 {
+		t.Errorf("PollIntervalMS = %d, want 1000", cfg.PollIntervalMS)
 	}
 	if cfg.LivenessEveryNPolls != 10 {
 		t.Errorf("LivenessEveryNPolls = %d, want 10", cfg.LivenessEveryNPolls)
@@ -277,15 +278,32 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	// module name would be caught either way: this module reads back its
 	// seeded value, and the never-seeded "shuttle" module reads back the
 	// template default instead.
-	seeded := strings.Replace(shuttleengine.ConfigTemplate(), "poll_interval_ms: 500", "poll_interval_ms: 750", 1)
+	seeded := strings.Replace(shuttleengine.ConfigTemplate(), "poll_interval_ms: 1000", "poll_interval_ms: 1500", 1)
 	seedLyxConfig(t, tmpDir, "othershuttle", seeded)
 
+	logs := logcapture.Capture(t)
 	cfg, err := shuttleengine.LoadConfig(tmpDir, "othershuttle")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.PollIntervalMS != 750 {
-		t.Errorf("PollIntervalMS = %d, want 750 (seeded value)", cfg.PollIntervalMS)
+	if cfg.PollIntervalMS != 1500 {
+		t.Errorf("PollIntervalMS = %d, want 1500 (seeded value)", cfg.PollIntervalMS)
+	}
+	if strings.Contains(logs.String(), "poll_interval_ms") {
+		t.Errorf("a poll interval at or above the floor warned: %q", logs.String())
+	}
+
+	// A module seeded below the floor loads, logging the one warning that names the key and the floor.
+	below := strings.Replace(shuttleengine.ConfigTemplate(), "poll_interval_ms: 1000", "poll_interval_ms: 250", 1)
+	if err := os.WriteFile(configengine.ConfigFile(tmpDir, "belowshuttle"), []byte(below), 0o644); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
+	logs.Reset()
+	if _, err := shuttleengine.LoadConfig(tmpDir, "belowshuttle"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := strings.Count(logs.String(), "level=WARN"); got != 1 || !strings.Contains(logs.String(), "key=poll_interval_ms") || !strings.Contains(logs.String(), "floor_ms=1000") {
+		t.Errorf("below-floor load logged %q, want one warning naming poll_interval_ms and the floor", logs.String())
 	}
 
 	// The never-seeded "shuttle" module must fall back to the template
@@ -294,8 +312,8 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if defaultCfg.PollIntervalMS != 500 {
-		t.Errorf("PollIntervalMS = %d, want 500 (template default)", defaultCfg.PollIntervalMS)
+	if defaultCfg.PollIntervalMS != 1000 {
+		t.Errorf("PollIntervalMS = %d, want 1000 (template default)", defaultCfg.PollIntervalMS)
 	}
 }
 
@@ -308,8 +326,8 @@ func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if cfg.PollIntervalMS != 500 {
-		t.Errorf("PollIntervalMS = %d, want 500", cfg.PollIntervalMS)
+	if cfg.PollIntervalMS != 1000 {
+		t.Errorf("PollIntervalMS = %d, want 1000", cfg.PollIntervalMS)
 	}
 	if cfg.LivenessEveryNPolls != 10 {
 		t.Errorf("LivenessEveryNPolls = %d, want 10", cfg.LivenessEveryNPolls)

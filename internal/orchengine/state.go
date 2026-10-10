@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -25,6 +26,7 @@ type Paths struct {
 	WatchLockPath    string // Lock held for the watcher's life.
 	StartLockPath    string // Lock serializing `start`.
 	CycleRequestPath string // Marker file a `refresh` or `distill` request writes.
+	ResumeMarkPath   string // Delivery mark the session-start hook's verb writes after rendering the pointer.
 	HandoffsDir      string // One timestamped handoff file per cycle.
 	NoticesDir       string // One file per queued notice, delivered by the watcher.
 	WatchLogPath     string // Detached watcher's stdout and stderr.
@@ -76,6 +78,7 @@ type State struct {
 	CycleCount      int    `json:"cycle_count"`       // Cycles that reached /clear, plus compactions that completed.
 	LastAbortReason string `json:"last_abort_reason"` // Why the last cycle aborted.
 	Stuck           string `json:"stuck"`             // Why the current phase is overdue and waiting on the session; empty while on time.
+	StuckByHold     bool   `json:"stuck_by_hold"`     // Whether Stuck is an idle probe's hold reason, which a passing probe clears.
 	WatcherExit     string `json:"watcher_exit"`      // Why the last watcher exited; empty while one runs.
 	// WatcherStopping is set by a watcher that has received SIGINT or SIGTERM and not yet released watch.lock,
 	// so `start` waits for it instead of reading it as live.
@@ -218,6 +221,48 @@ func ClearCycleRequest(p Paths) error {
 	return nil
 }
 
+// ResumeMark is the recorded delivery of the resume pointer by the session-start hook.
+type ResumeMark struct {
+	At   time.Time `json:"at"`   // When the pointer was rendered.
+	Text string    `json:"text"` // The pointer the hook delivered.
+}
+
+// WriteResumeMark writes the delivery mark atomically, so the watcher never reads it half written.
+func WriteResumeMark(p Paths, mark ResumeMark) error {
+	data, err := json.Marshal(mark)
+	if err != nil {
+		return fmt.Errorf("orch: encode resume mark: %w", err)
+	}
+	if err := fsx.AtomicWriteBytes(p.ResumeMarkPath, append(data, '\n')); err != nil {
+		return fmt.Errorf("orch: write resume mark: %w", err)
+	}
+	return nil
+}
+
+// ReadResumeMark returns the delivery mark and whether one exists; an absent mark reads as none.
+func ReadResumeMark(p Paths) (ResumeMark, bool, error) {
+	data, err := os.ReadFile(p.ResumeMarkPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return ResumeMark{}, false, nil
+	}
+	if err != nil {
+		return ResumeMark{}, false, fmt.Errorf("orch: read resume mark: %w", err)
+	}
+	var mark ResumeMark
+	if err := json.Unmarshal(data, &mark); err != nil {
+		return ResumeMark{}, false, fmt.Errorf("orch: parse resume mark: %w", err)
+	}
+	return mark, true, nil
+}
+
+// ClearResumeMark removes the delivery mark; an absent mark is not an error.
+func ClearResumeMark(p Paths) error {
+	if err := os.Remove(p.ResumeMarkPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("orch: clear resume mark: %w", err)
+	}
+	return nil
+}
+
 // NewHandoffPath returns a new file path under HandoffsDir named from now's UTC time to the second.
 func NewHandoffPath(p Paths, now time.Time) string {
 	return filepath.Join(p.HandoffsDir, "handoff-"+now.UTC().Format("20060102T150405Z")+".md")
@@ -245,7 +290,7 @@ func ResetForFreshLaunch(s State, strand string, launchedAt time.Time) State {
 	s.PhaseInjected = false
 	s.PendingHandoff = ""
 	s.PendingResume = ""
-	s.Stuck = ""
+	s.Stuck, s.StuckByHold = "", false
 	s.WatcherExit = ""
 	return s
 }

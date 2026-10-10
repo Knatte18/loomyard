@@ -115,8 +115,8 @@ func TestNaming(t *testing.T) {
 			t.Fatalf("pane title = %q after the hand edit, want hand-edited", got)
 		}
 
-		if err := e.repairNames(nil); err != nil {
-			t.Fatalf("repairNames: %v", err)
+		if repaired, err := e.repairNames(nil); err != nil || !repaired {
+			t.Fatalf("repairNames = %v, %v; want true, nil", repaired, err)
 		}
 		if got := paneTitle(t, e, strand.PaneID); got != strand.Name {
 			t.Errorf("pane title = %q after repair, want %q", got, strand.Name)

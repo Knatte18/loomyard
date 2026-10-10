@@ -37,6 +37,8 @@ func (e *readEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
 			signal.Kind = SessionSignalTurnStart
 		case "END":
 			signal.Kind = SessionSignalTurnEnd
+		case "SESSION":
+			signal.Kind = SessionSignalSessionStart
 		}
 		signals = append(signals, signal)
 	}
@@ -95,7 +97,15 @@ func TestReadSessionStates(t *testing.T) {
 		plain  bool
 		engine readEngine
 		want   []wanted
+		// wantSessionStartAt is the first reading's SessionStartAt; zero when no session start is read.
+		wantSessionStartAt time.Time
 	}{
+		{
+			name:               "a session start after the turn end leaves the reading and is reported as SessionStartAt",
+			runs:               map[string]readRun{"run-a": {outcome: runOutcomeRunning, events: startLine + endLine + "SESSION@2026-10-08T07:10:00Z\n", outputExists: true}},
+			want:               []wanted{{"hub:task:driver", SessionIdleDone, SessionCauseDone, end}},
+			wantSessionStartAt: end.Add(5 * time.Minute),
+		},
 		{
 			name: "a stamped turn end with outputs present reads idle-done at the turn end's time",
 			runs: map[string]readRun{"run-a": finished},
@@ -180,6 +190,9 @@ func TestReadSessionStates(t *testing.T) {
 			}
 			if !reflect.DeepEqual(gotWanted, tt.want) {
 				t.Errorf("ReadSessionStates = %+v; want %+v", gotWanted, tt.want)
+			}
+			if len(got) > 0 && !got[0].SessionStartAt.Equal(tt.wantSessionStartAt) {
+				t.Errorf("ReadSessionStates SessionStartAt = %v; want %v", got[0].SessionStartAt, tt.wantSessionStartAt)
 			}
 		})
 	}

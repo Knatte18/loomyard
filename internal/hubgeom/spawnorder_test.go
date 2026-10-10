@@ -77,7 +77,7 @@ func TestSortSpawnOrder(t *testing.T) {
 	}
 }
 
-// TestRunStartTime pins that a pair's start time is its run seed's modification time, and that an absent seed has none.
+// TestRunStartTime pins that a pair's start time is its run seed's started_at stamp, that a seed without a parseable stamp or an absent seed has none, and that the seed file's modification time is never read.
 func TestRunStartTime(t *testing.T) {
 	t.Parallel()
 
@@ -92,16 +92,49 @@ func TestRunStartTime(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(seed), 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
-	if err := os.WriteFile(seed, []byte("{}"), 0o644); err != nil {
+	if err := os.WriteFile(seed, []byte(`{"recipe":"loom","driver":"go"}`), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	want := time.Date(2026, 9, 1, 8, 30, 0, 0, time.UTC)
-	if err := os.Chtimes(seed, want, want); err != nil {
-		t.Fatalf("Chtimes: %v", err)
+	if _, ok := runStartTime(location); ok {
+		t.Error("runStartTime() with a seed without the stamp = ok, want none")
+	}
+	if err := os.WriteFile(seed, []byte(`{"recipe":"loom","driver":"go","started_at":"not a time"}`), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if _, ok := runStartTime(location); ok {
+		t.Error("runStartTime() with an unparseable stamp = ok, want none")
 	}
 
-	got, ok := runStartTime(location)
-	if !ok || !got.Equal(want) {
+	if err := os.Remove(seed); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	want := time.Date(2026, 9, 1, 8, 30, 0, 0, time.UTC)
+	stamped := shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo, StartedAt: want.Format(time.RFC3339)}
+	if err := shedrun.WriteSeed(location, shedrun.SelfRunID, stamped); err != nil {
+		t.Fatalf("WriteSeed: %v", err)
+	}
+	if got, ok := runStartTime(location); !ok || !got.Equal(want) {
 		t.Errorf("runStartTime() = (%v, %v), want (%v, true)", got, ok, want)
+	}
+
+	// A re-written agreeing seed keeps its time whatever the file's mtime.
+	touched := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(seed, touched, touched); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+	if err := shedrun.WriteSeed(location, shedrun.SelfRunID, stamped); err != nil {
+		t.Fatalf("second WriteSeed: %v", err)
+	}
+	if got, ok := runStartTime(location); !ok || !got.Equal(want) {
+		t.Errorf("runStartTime() after a rewrite and a touch = (%v, %v), want (%v, true)", got, ok, want)
+	}
+
+	// A seed written without a stamp is dated by WriteSeed.
+	unstamped := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+	if err := shedrun.WriteSeed(unstamped, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
+		t.Fatalf("WriteSeed unstamped: %v", err)
+	}
+	if got, ok := runStartTime(unstamped); !ok || got.IsZero() {
+		t.Errorf("runStartTime() after an unstamped WriteSeed = (%v, %v), want a date", got, ok)
 	}
 }

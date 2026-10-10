@@ -1,7 +1,7 @@
 # Top-level test functions per package, in its _test.go files under every build tag.
 # TestTestBudget_PackagesStayWithinBudget fails when a package exceeds its row or has tests and no row.
 # Raise a row in the commit that adds the tests that need it.
-cmd/lyx: 70
+cmd/lyx: 71
 cmd/testtiming: 13
 contracts/specs: 3
 contracts/stencils: 16
@@ -33,6 +33,7 @@ internal/fabricengine: 635
 internal/friction: 6
 internal/frictionengine: 15
 internal/fslink: 5
+internal/fswatch: 5
 internal/fsx: 3
 internal/gatecli: 3
 internal/gateslot: 11
@@ -58,8 +59,8 @@ internal/loomshed: 72
 internal/lyxcwd: 23
 internal/mergeresolve: 17
 internal/modelspec: 11
-internal/orchcli: 24
-internal/orchengine: 126
+internal/orchcli: 25
+internal/orchengine: 131
 internal/output: 4
 internal/pairteardown: 5
 internal/parentdirective: 4
@@ -71,8 +72,8 @@ internal/preflight: 7
 internal/preflightshed: 8
 internal/proc: 12
 internal/quarrycli: 7
-internal/reedcli: 36
-internal/reedengine: 239
+internal/reedcli: 38
+internal/reedengine: 242
 internal/reedengine/render: 12
 internal/seatengine: 15
 internal/segmentcolor: 4
@@ -87,10 +88,10 @@ internal/shedrecipe: 99
 internal/shedrun: 22
 internal/shedtransient: 2
 internal/shedverbs: 65
-internal/shell: 11
+internal/shell: 12
 internal/shuttlecli: 22
 internal/shuttleengine: 161
-internal/shuttleengine/claudeengine: 101
+internal/shuttleengine/claudeengine: 103
 internal/standalonegeom: 7
 internal/standalonestate: 6
 internal/state: 8

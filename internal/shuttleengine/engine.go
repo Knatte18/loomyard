@@ -260,10 +260,12 @@ type CompactionBoundary struct {
 
 // IdleProbe is a provider-neutral answer to whether a live session's pane shows the provider idle.
 type IdleProbe struct {
-	// Idle is true when the pane shows the provider's input box empty and no turn in progress.
+	// Idle is true when the session can take typed input: the readiness reading says so, or the pane shows the provider's input box empty and no turn in progress when the reading is unknown.
 	Idle bool
 	// TooShort is true when the pane is too short to draw an input box, so Idle false says nothing about the session; always false when Idle is true.
 	TooShort bool
+	// Reason says why the session is held when Idle is false and the hook-derived readiness reading decided; empty when Idle is true or the pane probe decided.
+	Reason string
 }
 
 // SessionCycler is an optional capability beside Engine: the provider operations a caller needs to cycle a live session's context (read its usage, probe whether it is idle, clear it, compact it).
