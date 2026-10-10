@@ -117,8 +117,9 @@ func TestCreateFindings_ResolvedTargets(t *testing.T) {
 			t.Parallel()
 
 			index := tc.index
+			root := ""
 			if index == nil {
-				root := writeFixtureRepo(t, tc.files)
+				root = writeFixtureRepo(t, tc.files)
 				repo, err := openRepo(root)
 				if err != nil {
 					t.Fatalf("openRepo(%q) returned error: %v", root, err)
@@ -133,7 +134,7 @@ func TestCreateFindings_ResolvedTargets(t *testing.T) {
 				index = resultByTarget(results)
 			}
 
-			got := createFindings(createPlan(tc.target), index)
+			got := createFindings(createPlan(tc.target), root, index)
 			if tc.wantCheck == "" {
 				if len(got) != 0 {
 					t.Errorf("createFindings(%s) = %+v; want no findings", tc.name, got)
@@ -162,11 +163,28 @@ func TestCreateFindings_ResolvedTargets(t *testing.T) {
 // unreadableStatusDetail as `Create target "sub#Dup" answered the unrecognized resolve status
 // "ambiguous"` — false, since ambiguous is one of quarry's four documented statuses, and it pointed
 // the operator at quarry rather than at the colliding declarations in their own tree.
+//
+// A candidate set partitioned by build constraints is the same blocking finding, and the detail
+// names each candidate's build constraint beside its file.
 func TestCreateFindings_AmbiguousIsAlreadyExists(t *testing.T) {
-	root := writeFixtureRepo(t, map[string]string{
-		"sub/a.go": "package sub\n\nfunc Dup() {}\n",
-		"sub/b.go": "package sub\n\nfunc Dup() {}\n",
+	t.Run("unconstrained duplicates", func(t *testing.T) {
+		assertAmbiguousCreateIsAlreadyExists(t, map[string]string{
+			"sub/a.go": "package sub\n\nfunc Dup() {}\n",
+			"sub/b.go": "package sub\n\nfunc Dup() {}\n",
+		}, "no constraint")
 	})
+	t.Run("partitioned by build constraints", func(t *testing.T) {
+		assertAmbiguousCreateIsAlreadyExists(t, map[string]string{
+			"sub/a.go": "//go:build linux\n\npackage sub\n\nfunc Dup() {}\n",
+			"sub/b.go": "//go:build !linux\n\npackage sub\n\nfunc Dup() {}\n",
+		}, "//go:build linux", "//go:build !linux")
+	})
+}
+
+// assertAmbiguousCreateIsAlreadyExists resolves sub#Dup over files, requires quarry to answer ambiguous, and asserts the one blocking create-already-exists finding names every candidate's file and each of wantConstraints.
+func assertAmbiguousCreateIsAlreadyExists(t *testing.T, files map[string]string, wantConstraints ...string) {
+	t.Helper()
+	root := writeFixtureRepo(t, files)
 	repo, err := openRepo(root)
 	if err != nil {
 		t.Fatalf("openRepo(%q) returned error: %v", root, err)
@@ -179,7 +197,7 @@ func TestCreateFindings_AmbiguousIsAlreadyExists(t *testing.T) {
 		t.Fatalf("fixture did not produce the status under test: resolve(sub#Dup).Status = %q; want %q", got, quarry.StatusAmbiguous)
 	}
 
-	got := createFindings(createPlan("sub#Dup"), resultByTarget(results))
+	got := createFindings(createPlan("sub#Dup"), root, resultByTarget(results))
 	if len(got) != 1 {
 		t.Fatalf("createFindings(ambiguous) = %+v; want exactly one finding", got)
 	}
@@ -204,6 +222,11 @@ func TestCreateFindings_AmbiguousIsAlreadyExists(t *testing.T) {
 			t.Errorf("finding detail = %q; want it to locate candidate %q via its file %q", got[0].Detail, cand.ID, cand.File)
 		}
 	}
+	for _, constraint := range wantConstraints {
+		if !strings.Contains(got[0].Detail, constraint) {
+			t.Errorf("finding detail = %q; want it to name the build constraint %q", got[0].Detail, constraint)
+		}
+	}
 }
 
 // TestCreateFindings_UnreadableStatusFailsClosed is R9-6's regression: the Create inversion must
@@ -219,7 +242,7 @@ func TestCreateFindings_UnreadableStatusFailsClosed(t *testing.T) {
 		index := map[string]quarry.ResolveResult{
 			"plan:sub#Bar": {Target: "sub#Bar", Error: "a glyph needs a \"#\"", Reason: "no_separator"},
 		}
-		got := createFindings(createPlan("plan:sub#Bar"), index)
+		got := createFindings(createPlan("plan:sub#Bar"), "", index)
 		if len(got) != 1 || got[0].Check != "glyph-rejected" || got[0].Severity != SeverityBlocking {
 			t.Fatalf("createFindings(pre-resolution rejection) = %+v; want one blocking glyph-rejected finding", got)
 		}
@@ -232,7 +255,7 @@ func TestCreateFindings_UnreadableStatusFailsClosed(t *testing.T) {
 		index := map[string]quarry.ResolveResult{
 			"plan:sub#Bar": {Target: "sub#Bar", Status: "partially_found"},
 		}
-		got := createFindings(createPlan("plan:sub#Bar"), index)
+		got := createFindings(createPlan("plan:sub#Bar"), "", index)
 		if len(got) != 1 || got[0].Check != "glyph-rejected" || got[0].Severity != SeverityBlocking {
 			t.Fatalf("createFindings(unrecognized status) = %+v; want one blocking glyph-rejected finding", got)
 		}

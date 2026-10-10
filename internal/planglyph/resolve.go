@@ -60,7 +60,9 @@ func sortedCards(cards []planparser.Card) []planparser.Card {
 // Error/Reason pre-resolution rejection) calls for, attributed to every card that references the
 // target: found and multipart both pass with no finding — multipart marks one symbol the language
 // lets be declared in several places, not a defect; ambiguous is the blocking finding
-// glyph-ambiguous, listing every ResolveResult.Candidates entry by its ID; not_found is the
+// glyph-ambiguous, listing every ResolveResult.Candidates entry by its ID, file and build
+// constraint, unless classifyAmbiguity reports the candidates partitioned by build constraints,
+// which pass like multipart; not_found is the
 // blocking finding glyph-not-found, whose detail branches on ResolveResult.Unit — found means the
 // unit is there and only the member is missing (a misspelled member), not_found means the unit
 // itself is missing (a misspelled unit); and EVERY other answer is the blocking finding
@@ -71,7 +73,7 @@ func sortedCards(cards []planparser.Card) []planparser.Card {
 // This function does not special-case a Create group's targets: resolvePass excludes those before
 // calling statusFindings, and create.go's createFindings handles them instead, so this policy
 // stays readable on its own.
-func statusFindings(plan *planparser.Plan, results []quarry.ResolveResult) []Finding {
+func statusFindings(plan *planparser.Plan, worktreeRoot string, results []quarry.ResolveResult) []Finding {
 	var findings []Finding
 	index := targetCards(plan)
 
@@ -82,11 +84,16 @@ func statusFindings(plan *planparser.Plan, results []quarry.ResolveResult) []Fin
 		case quarry.StatusFound, quarry.StatusMultipart:
 			// Both pass with no finding.
 		case quarry.StatusAmbiguous:
+			classified := classifyAmbiguity(worktreeRoot, r.Candidates)
+			if classified.Partitioned {
+				// One member declared once per mutually exclusive build-constraint set passes like multipart.
+				continue
+			}
 			for _, c := range cards {
 				findings = append(findings, Finding{
 					Check:    "glyph-ambiguous",
 					Card:     c.ID(),
-					Detail:   fmt.Sprintf("target %q is ambiguous among candidates: %s", r.Target, candidateList(r.Candidates)),
+					Detail:   fmt.Sprintf("target %q is ambiguous among candidates: %s", r.Target, candidateList(classified.Candidates)),
 					Severity: SeverityBlocking,
 					Ref:      r.Target,
 				})
@@ -129,18 +136,19 @@ func statusFindings(plan *planparser.Plan, results []quarry.ResolveResult) []Fin
 }
 
 // candidateList renders a batched Resolve answer's ambiguous candidates for an operator-facing
-// detail: each candidate's ID, with its declaring file appended in parentheses when the answer
-// carries one (Resolve fills Symbol.File because its entries span files). The file is the
+// detail: each candidate's ID, with its declaring file and build constraint appended in
+// parentheses when the answer carries a file (Resolve fills Symbol.File because its entries span
+// files). The file is the
 // load-bearing half for the one ambiguity Go actually produces — the same name declared twice in
 // one unit — where every candidate shares a single glyph ID, so an ID-only rendering read
 // "ambiguous among: X, X", naming the collision without locating either declaration (crucible
 // round fable5-high-r2, F-R2-2). One renderer serves both ambiguous arms — statusFindings above
 // and createFindings (create.go) — so the two details cannot drift.
-func candidateList(candidates []quarry.Symbol) string {
+func candidateList(candidates []constrainedCandidate) string {
 	parts := make([]string, 0, len(candidates))
 	for _, cand := range candidates {
 		if cand.File != "" {
-			parts = append(parts, fmt.Sprintf("%s (%s)", cand.ID, cand.File))
+			parts = append(parts, fmt.Sprintf("%s (%s, %s)", cand.ID, cand.File, cand.Constraint))
 			continue
 		}
 		parts = append(parts, cand.ID)

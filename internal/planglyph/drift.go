@@ -248,7 +248,7 @@ func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot strin
 		// the caller blocks on the finding rather than on a missing amendment. Only an infrastructure
 		// error — the resolve failing outright, or failing this coverage guard — skips the amendment
 		// loop, exactly as the resolveTargets error path above already does.
-		findings = append(findings, statusFindings(reloaded, postRepairResults)...)
+		findings = append(findings, statusFindings(reloaded, worktreeRoot, postRepairResults)...)
 	}
 
 	for _, r := range repairs {

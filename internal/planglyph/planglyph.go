@@ -387,8 +387,8 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 		createIndex[handle] = r
 	}
 
-	findings = append(findings, statusFindings(current, nonCreateResults)...)
-	findings = append(findings, createFindings(current, createIndex)...)
+	findings = append(findings, statusFindings(current, worktreeRoot, nonCreateResults)...)
+	findings = append(findings, createFindings(current, worktreeRoot, createIndex)...)
 
 	deleteOrderFindings, err := LaterDeleteReferences(plan, current.Cards, current.Cards, worktreeRoot)
 	findings = append(findings, deleteOrderFindings...)
