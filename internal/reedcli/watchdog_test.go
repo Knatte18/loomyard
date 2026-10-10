@@ -1,11 +1,12 @@
 // watchdog_test.go pins the watchdog daemon's pure seams — planSessionDiff, sessionsAreIdle,
-// planReapCycle, worktreeRootGone, hubIsLiveDir, validateWatchdogFlags and watchdogDefaultTiming —
+// planReapCycle, worktreeRootGone, hubIsLiveDir, validateWatchdogFlags, watchdogDefaultTiming, discoveryWake and consumeDiscoverSignal —
 // against no tmux server and no filesystem at all beyond t.TempDir(), table-driven.
 
 package reedcli
 
 import (
 	"errors"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"slices"
 	"sort"
 	"testing"
+	"time"
 )
 
 //testtiming:keep pins the appeared and departed sets for the empty, populated, partial-overlap and unchanged listings, which the live daemon scenario reaches for two at most
@@ -423,11 +425,104 @@ func TestWatchdogDefaultTiming(t *testing.T) {
 	got := watchdogDefaultTiming()
 	want := watchdogTiming{
 		DiscoveryCycle:   watchdogHubDiscoveryCycle,
+		DiscoveryCeiling: watchdogHubDiscoveryCeiling,
 		IdleCycles:       watchdogHubIdleCycles,
 		OrphanGoneCycles: watchdogOrphanGoneCycles,
 		ReapTimeout:      0,
 	}
 	if got != want {
 		t.Errorf("watchdogDefaultTiming() = %+v, want %+v", got, want)
+	}
+	// A periodic wake below one second is the idle wake-up cost the daemon's cadence floor rules out.
+	for name, period := range map[string]time.Duration{"DiscoveryCycle": got.DiscoveryCycle, "DiscoveryCeiling": got.DiscoveryCeiling} {
+		if period < time.Second {
+			t.Errorf("watchdogDefaultTiming().%s = %v, want at least one second", name, period)
+		}
+	}
+}
+
+// TestDiscoveryWake pins the wake planner over scripted cycles and signals: the wait doubles to the ceiling across unchanged listings (order aside) and returns to the base on a changed set or a signal, and a signal runs its cycle once the base has passed since the last one, at once when it already has.
+func TestDiscoveryWake(t *testing.T) {
+	t.Parallel()
+	const base, ceiling = 5 * time.Second, 20 * time.Second
+	type step struct {
+		at     time.Duration
+		signal bool
+		live   []string
+		want   time.Duration
+	}
+	backedOff := []step{
+		{at: 5 * time.Second, live: []string{"a"}, want: base},
+		{at: 10 * time.Second, live: []string{"a"}, want: 10 * time.Second},
+		{at: 20 * time.Second, live: []string{"a"}, want: ceiling},
+	}
+	tests := []struct {
+		name  string
+		steps []step
+	}{
+		{"doubles to the ceiling and stays there", append(slices.Clone(backedOff), step{at: 40 * time.Second, live: []string{"a"}, want: ceiling})},
+		{"a changed set returns to the base", append(slices.Clone(backedOff), step{at: 40 * time.Second, live: []string{"a", "b"}, want: base})},
+		{"the same set in another order is unchanged", []step{
+			{at: 5 * time.Second, live: []string{"a", "b"}, want: base},
+			{at: 10 * time.Second, live: []string{"b", "a"}, want: 10 * time.Second},
+		}},
+		{"a signal within the base waits for the base to pass and resets the cadence", append(slices.Clone(backedOff),
+			step{at: 21 * time.Second, signal: true, want: 4 * time.Second},
+			step{at: 25 * time.Second, live: []string{"a"}, want: 10 * time.Second},
+		)},
+		{"a signal after the base runs at once", append(slices.Clone(backedOff), step{at: 100 * time.Second, signal: true, want: 0})},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+			wake := &discoveryWake{base: base, ceiling: ceiling, cadence: base, lastCycle: start}
+			var previous []string
+			for i, s := range tt.steps {
+				now := start.Add(s.at)
+				if s.signal {
+					wake.onSignal(now)
+				} else {
+					wake.afterCycle(now, !sameSessionSet(s.live, previous))
+					previous = s.live
+				}
+				if got := wake.next(now); got != s.want {
+					t.Errorf("step %d at %v: next = %v, want %v", i, s.at, got, s.want)
+				}
+			}
+		})
+	}
+}
+
+// TestConsumeDiscoverSignal pins that a present signal file is consumed and removed, an absent one answers false and leaves nothing, and a removal failure is an error.
+func TestConsumeDiscoverSignal(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	present := filepath.Join(dir, "present.signal")
+	if err := os.WriteFile(present, nil, 0o644); err != nil {
+		t.Fatalf("write signal: %v", err)
+	}
+	if consumed, err := consumeDiscoverSignal(present); err != nil || !consumed {
+		t.Errorf("consumeDiscoverSignal(present) = %v, %v; want true, nil", consumed, err)
+	}
+	if _, err := os.Stat(present); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("signal file after consume: stat error = %v, want it removed", err)
+	}
+
+	absent := filepath.Join(dir, "absent.signal")
+	if consumed, err := consumeDiscoverSignal(absent); err != nil || consumed {
+		t.Errorf("consumeDiscoverSignal(absent) = %v, %v; want false, nil", consumed, err)
+	}
+	if _, err := os.Stat(absent); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("absent signal path after consume: stat error = %v, want nothing left behind", err)
+	}
+
+	unremovable := filepath.Join(dir, "unremovable")
+	if err := os.MkdirAll(filepath.Join(unremovable, "child"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if consumed, err := consumeDiscoverSignal(unremovable); err == nil || consumed {
+		t.Errorf("consumeDiscoverSignal(non-empty dir) = %v, %v; want false and an error", consumed, err)
 	}
 }
