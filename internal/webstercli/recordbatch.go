@@ -55,12 +55,13 @@ func (c *websterCLI) batchFailedFields(batchName string, warnings []string, err 
 	return fields
 }
 
-// recordBatchCmd builds the `record-batch <NN>` subcommand.
+// recordBatchCmd builds the `record-batch <nn>` subcommand.
 func (c *websterCLI) recordBatchCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "record-batch <NN>",
-		Short: "Master's bracket call immediately after one batch's fork returns",
-		Long: `record-batch <NN> refuses loud if no begin-batch record exists for this
+		Use:         "record-batch <nn>",
+		Short:       "close one batch's bracket after its fork returns: audit the fork and record the batch's digest",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
+		Long: `record-batch <nn> refuses loud if no begin-batch record exists for this
 batch (the bracket-discipline check), runs the incremental fork audit
 (with a bounded settle retry against a zero-new-transcript miss), enforces
 webster's own fork-audit policy, and -- once the batch's own report file

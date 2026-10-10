@@ -14,8 +14,9 @@ import (
 // pauseCmd builds the `pause` subcommand.
 func (c *websterCLI) pauseCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "pause",
-		Short: "request a pause at the next batch boundary",
+		Use:         "pause",
+		Short:       "request a pause at the next batch boundary",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `pause writes a flag file "begin-batch" checks at the batch boundary. Once
 set, "lyx webster begin-batch" refuses to open a new batch with a
 "paused": true envelope; any batch already forked finishes normally --

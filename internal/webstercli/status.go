@@ -19,8 +19,9 @@ import (
 // statusCmd builds the `status` subcommand.
 func (c *websterCLI) statusCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "print an instant snapshot of the run's persisted state.json",
+		Use:         "status",
+		Short:       "print an instant snapshot of the run's persisted state.json",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `status reads _lyx/webster/state.json and reports the run's identity, the
 in-flight batch cursor, the plan fingerprint, every batch's own persisted
 record (number, slug, kind, status, terminal, whether a digest is
