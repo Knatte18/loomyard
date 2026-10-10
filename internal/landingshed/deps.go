@@ -110,6 +110,14 @@ type Deps struct {
 	// every-field-populated drift guard is what keeps it filled.
 	CommitStatus func() error
 
+	// CommitParentRecords commits the parent pair's own run records, which Finalize calls after its catch-up merge-in and before the parent-side merge.
+	// Sibling runs leave their status records uncommitted in the parent pair, and the merge guard refuses any tracked modification there.
+	// A clean subtree is a no-op, and a returned error is Stuck.
+	//
+	// Nil means "no parent run records to commit", following CommitStatus's nil-is-absent convention.
+	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	CommitParentRecords func() error
+
 	// MergeState probes the pair's merge state, AbortMerge aborts the pair's parked fabric merge and StopConflictSession stops every live conflict-session strand of the run.
 	// Both producers use them to clear the merge-in their own earlier attempt left parked, before the clean-tree check that precedes a fresh merge-in.
 	// StopConflictSession returns an empty guid and a nil error when each strand stopped or none is live.

@@ -7,6 +7,7 @@ package loomcli
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -94,6 +95,7 @@ func landingDeps(
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{shedrun.StatusRel(l, shedrun.SelfRunID)}, fmt.Sprintf("loom: status checkpoint for %s", seedSlug(l.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
+		CommitParentRecords: parentRecordsCommitter(l, seedSlug(l.WorktreeName)),
 		// The pre-merge step probes the pair's merge state, aborts the row's own parked merge-in and stops the run's conflict sessions first.
 		MergeState: func() (fabricengine.MidMergeState, error) {
 			return fabricengine.MidMerge(l)
@@ -155,6 +157,32 @@ func landingDeps(
 		Shuttle:        runner,
 		Registry:       registry,
 		Config:         cfg,
+	}
+}
+
+// parentRecordsCommitter returns the seam Finalize commits the parent pair's own run records through before its parent-side merge.
+// The parent pair is resolved at call time, so a parent that came or went after bootstrap is read as it stands.
+// A pair with no parent, and a parent whose run-records directory holds no file, commit nothing: git refuses a pathspec that matches nothing.
+// slug names the landing run in the commit message.
+func parentRecordsCommitter(l *lyxcwd.Location, slug string) func() error {
+	return func() error {
+		parent, err := hubgeom.ResolveParent(l)
+		if err != nil {
+			return fmt.Errorf("resolve the parent pair: %w", err)
+		}
+		if parent.Worktree == "" {
+			return nil
+		}
+		parentLocation, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(l, parent.Worktree))
+		if err != nil {
+			return fmt.Errorf("locate the parent pair %q: %w", parent.Worktree, err)
+		}
+		runsRoot := shedrun.RunsRootRel()
+		if !holdsFile(filepath.Join(parentLocation.AnchorPath(), runsRoot)) {
+			return nil
+		}
+		_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), parentLocation, []string{runsRoot}, fmt.Sprintf("loom: run records checkpoint for landing %s", slug), fabricengine.EnvSyncOptions())
+		return err
 	}
 }
 
