@@ -301,8 +301,9 @@ func TestGateTest_Scenario(t *testing.T) {
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d; want 0", code)
 		}
-		if record := g.standIn(t); record.Args[2] != prime || filepath.Dir(record.Slot) != pool.Dir {
-			t.Errorf("go args = %q, slot %q; want -C %s inside a slot of %s", record.Args, record.Slot, prime, pool.Dir)
+		record := g.standIn(t)
+		if want := []string{"test", "-C", prime, "-p", "3", "./pkg"}; !slices.Equal(record.Args, want) || filepath.Dir(record.Slot) != pool.Dir {
+			t.Errorf("go args = %q, slot %q; want %q inside a slot of %s", record.Args, record.Slot, want, pool.Dir)
 		}
 	})
 
