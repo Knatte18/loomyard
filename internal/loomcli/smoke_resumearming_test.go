@@ -1,24 +1,26 @@
 //go:build tmux
 
-// smoke_resumearming_test.go pins the arming half of `loom resume` after a hub reconcile, on a hub whose reed config is good and whose tmux key is registered with the kit.
+// smoke_resumearming_test.go pins the half of `loom resume` past the reed config load after a hub reconcile, on a hub whose reed config is good and whose tmux key is registered with the kit.
 // The reconcile half, which refuses at reed's config load before any server could start, is TestLoomResumeReconcilesTheHubConfigBeforeArming in the integration tier.
 
 package loomcli
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
-// TestLoomResumeArmsAfterReconcile asserts `loom resume` on a hub whose build has no stamp reconciles the hub config and then arms past the reed config load.
+// TestLoomResumeReconcilesThenRefusesWithoutLiveDriver asserts `loom resume` on a hub whose build has no stamp reconciles the hub config and then gets past the reed config load.
 // The stamp exists afterwards, and the verb reaches the run's own state: it refuses over the missing driver with the way forward, never over a config.
-// Resume brings no reed session up, so the registered hub key holds the kit's session-less server and no session.
-func TestLoomResumeArmsAfterReconcile(t *testing.T) {
+// Resume brings no reed session up, so reed reports no session on the registered hub key.
+func TestLoomResumeReconcilesThenRefusesWithoutLiveDriver(t *testing.T) {
 	tmuxBinaryPath(t)
 	exe := lyxbin.Build(t)
 	_, loc, worktree, slug := newWiredPairFixture(t)
@@ -42,7 +44,7 @@ func TestLoomResumeArmsAfterReconcile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reed geometry: %v", err)
 	}
-	if _, statusErr := probeReedEngine(t, loc).Status(); statusErr == nil {
-		t.Errorf("reed session is up on key %q after loom resume; want none: resume never brings reed up", reedGeom.SocketKey)
+	if _, statusErr := probeReedEngine(t, loc).Status(); !errors.Is(statusErr, reedengine.ErrNoSession) {
+		t.Errorf("reed status on key %q after loom resume = %v; want reed's no-session refusal: resume never brings reed up", reedGeom.SocketKey, statusErr)
 	}
 }

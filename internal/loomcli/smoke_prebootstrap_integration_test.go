@@ -178,7 +178,7 @@ func TestLoomStatusAndPauseOnNeverBootstrappedPair(t *testing.T) {
 // Status leaves a retired key in a pair's committed batcher.yaml and writes no stamp.
 // Resume on an unparseable loom.yaml refuses, naming the file and the way forward, and writes no stamp.
 // Resume after the fix removes the key, commits it and writes the stamp, then refuses at reed Up before any server starts: the pair's reed config is bad.
-// The arming half, which needs a good reed config and a tmux server, is TestLoomResumeArmsAfterReconcile.
+// The half past the reed config load, which needs a good reed config and a tmux server, is TestLoomResumeReconcilesThenRefusesWithoutLiveDriver.
 func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 	t.Parallel()
 
