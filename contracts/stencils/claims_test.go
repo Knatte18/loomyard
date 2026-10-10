@@ -246,9 +246,9 @@ var wordingClaims = []stencilClaims{
 		{must: "replaces the single-agent framing at the top of this prompt", why: "the included stencil opens by calling its reader a single agent, and the chair's section overrides that"},
 		{must: "naming the advisor's strand name", section: "## Working with your advisors", why: "the interview record names the advisor whose answer the chair relied on"},
 		{must: "mark a pick that rests on such an answer as advisor-informed, naming the same strand name", section: "## Working with your advisors", why: "the question ledger marks an advisor-informed pick, naming the strand"},
-			{must: "send every batch to every advisor", section: "## Working with your advisors", why: "every advisor sees every question, since each may find a different weakness"},
-			{must: "after weighing every advisor's answer", section: "## Working with your advisors", why: "the chair settles a question on all advisors' answers, not one advisor's area"},
-			{mustNot: "an area of the design", why: "the retired area assignment never returns"},
+		{must: "send every batch to every advisor", section: "## Working with your advisors", why: "every advisor sees every question, since each may find a different weakness"},
+		{must: "after weighing every advisor's answer", section: "## Working with your advisors", why: "the chair settles a question on all advisors' answers, not one advisor's area"},
+		{mustNot: "an area of the design", why: "the retired area assignment never returns"},
 	}},
 	{"loom-template-discussion-advisor.md", LoomTemplateDiscussionAdvisor, []claim{
 		{must: "You write only your notes file", why: "the notes file is the advisor's only write"},
