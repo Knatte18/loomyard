@@ -21,6 +21,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
@@ -2107,6 +2108,66 @@ func TestValidate_IndexFileMismatch_FirstCard(t *testing.T) {
 			findings := planparser.Validate(plan, t.TempDir())
 			if got := countFor(findings, "index-file-mismatch"); got != tt.want {
 				t.Errorf("countFor(findings, index-file-mismatch) = %d; want %d (%+v)", got, tt.want, findings)
+			}
+		})
+	}
+}
+
+// TestValidate_PatternEntryLineCap covers pattern-entry-line-cap: a PATTERN.md entry line a card prescribes in a fenced code block must stay within the cap in runes, whatever the fence's info string, and prose or an unfenced line is never scanned.
+func TestValidate_PatternEntryLineCap(t *testing.T) {
+	t.Parallel()
+
+	// entryLine returns an entry line of exactly length runes, padded with filler.
+	entryLine := func(length int, filler string) string {
+		line := "- `PATTERN-x` — "
+		return line + strings.Repeat(filler, length-len([]rune(line)))
+	}
+	limit := pattern.MaxEntryLineChars
+
+	tests := []struct {
+		name string
+		text string
+		// want holds the lengths the findings name; empty means silent.
+		want []int
+	}{
+		{name: "one rune over the cap fails", text: "```\n" + entryLine(limit+1, "x") + "\n```\n", want: []int{limit + 1}},
+		{name: "exactly the cap passes", text: "```\n" + entryLine(limit,"x") + "\n```\n"},
+		{name: "multibyte runes under the rune cap pass", text: "```\n" + entryLine(limit,"é") + "\n```\n"},
+		{name: "over-cap line outside a fence passes", text: entryLine(limit+1, "x") + "\n"},
+		{name: "over-cap line in an inline span passes", text: "`" + entryLine(limit+1, "x") + "`\n"},
+		{name: "fence with an info string fails", text: "```markdown\n" + entryLine(limit+1, "x") + "\n```\n", want: []int{limit + 1}},
+		{name: "unclosed fence fails", text: "```\n" + entryLine(limit+1, "x") + "\n", want: []int{limit + 1}},
+		{
+			name: "second of two fenced blocks fails and the prose between is not scanned",
+			text: "```\nshort\n```\n" + entryLine(limit+5, "x") + "\n```\n" + entryLine(limit+2, "x") + "\n```\n",
+			want: []int{limit + 2},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			card := validCard(1, "a")
+			card.Text = tt.text
+			plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
+
+			var got []int
+			for _, f := range planparser.ValidateFormat(plan, t.TempDir()) {
+				if f.Check != "pattern-entry-line-cap" {
+					continue
+				}
+				var length int
+				if _, err := fmt.Sscanf(f.Detail[strings.Index(f.Detail, "` at ")+len("` at "):], "%d", &length); err != nil {
+					t.Fatalf("finding %q does not name its length: %v", f.Detail, err)
+				}
+				for _, want := range []string{"`PATTERN-x`", fmt.Sprintf("over the %d cap", limit), "1-a"} {
+					if !strings.Contains(f.Detail+f.Card, want) {
+						t.Errorf("finding %q on card %q does not name %q", f.Detail, f.Card, want)
+					}
+				}
+				got = append(got, length)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("pattern-entry-line-cap lengths = %v; want %v", got, tt.want)
 			}
 		})
 	}
