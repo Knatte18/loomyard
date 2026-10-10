@@ -37,6 +37,7 @@ import (
 var nilLegal = map[string]bool{
 	"Now":                                              true,
 	"GateSlots":                                        true,
+	"VerifyMergeBase":                                  true,
 	"PublishFailure":                                   true,
 	"Landing.CommitStatus":                             true,
 	"Landing.CommitParentRecords":                      true,
@@ -149,6 +150,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		AnchorPath:         mustMkdir(t, filepath.Join(dir, "anchor")),
 		WorktreeRoot:       mustMkdir(t, filepath.Join(dir, "worktree")),
 		VerifyDir:          mustMkdir(t, filepath.Join(dir, "verify")),
+		VerifyCommand:      func() (string, error) { return "go test ./...", nil },
 		StatusPath:         filepath.Join(dir, "status.json"),
 		StatusLockPath:     filepath.Join(dir, "status.json.lock"),
 		StencilsDir:        mustMkdir(t, filepath.Join(dir, "stencils")),

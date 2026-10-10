@@ -55,6 +55,11 @@ type Env struct {
 	RunScratchDir string
 	// VerifyDir is the told verify directory, read by the gate resolver's "verify" gate.
 	VerifyDir string
+	// VerifyCommand is the told verify-command source, read at each arrival by the gate resolver's "verify" gate, which requires it.
+	VerifyCommand func() (string, error)
+	// VerifyMergeBase is the told reader of the task branch's merge base with the parent branch, read by the gate resolver's "verify" gate.
+	// Nil selects the gate's round form; set selects its whole-diff form.
+	VerifyMergeBase func() (string, error)
 	// GateSlots is the hub gate-slot pool every Go-side verify a row runs acquires from, read by the gate resolver's "verify" gate.
 	// Nil where no hub is wired, which runs the verify unslotted.
 	GateSlots *gateslot.Pool

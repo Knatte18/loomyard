@@ -308,12 +308,12 @@ func TestResolveGateSpec_UnknownNameListsSixValues(t *testing.T) {
 }
 
 func TestResolveGateSpec_VerifyRequiresAbsoluteEnvRoots(t *testing.T) {
-	for _, field := range []string{"AnchorPath", "WorktreeRoot", "VerifyDir"} {
+	for _, field := range []string{"VerifyCommand", "WorktreeRoot", "VerifyDir"} {
 		t.Run(field, func(t *testing.T) {
 			env := newTestEnv(t)
 			switch field {
-			case "AnchorPath":
-				env.AnchorPath = ""
+			case "VerifyCommand":
+				env.VerifyCommand = nil
 			case "WorktreeRoot":
 				env.WorktreeRoot = "relative/worktree"
 			case "VerifyDir":
@@ -324,6 +324,7 @@ func TestResolveGateSpec_VerifyRequiresAbsoluteEnvRoots(t *testing.T) {
 		})
 	}
 
+	// newTestEnv tells no VerifyMergeBase, so this resolution also pins that the seam is optional.
 	spec, err := resolveGateSpec("Row", gatesCfg("verify", 3), newTestEnv(t))
 	if err != nil {
 		t.Fatalf("resolveGateSpec() error = %v; want nil", err)

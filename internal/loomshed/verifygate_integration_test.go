@@ -6,6 +6,7 @@ package loomshed
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,8 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/impactset"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -28,40 +28,36 @@ func verifyLogs(t *testing.T, verifyDir string) []string {
 	return logs
 }
 
-// TestVerifyGate_Scenario drives NewVerifyGate over one one-commit repo, a separate anchor holding the plan and a verify directory outside the worktree.
-// The steps run in order and each rewrites the plan's `## verify:` section; the last step dirties the worktree, so it must stay last.
+// TestVerifyGate_Scenario drives NewVerifyGate in its round form over one one-commit repo and a verify directory outside the worktree.
+// The steps run in order and each sets the told verify command; the last step dirties the worktree, so it must stay last.
 // The scenario calls no t.Parallel in its steps because they share the repo, and the top level calls it because nothing else touches that fixture.
 func TestVerifyGate_Scenario(t *testing.T) {
 	t.Parallel()
 
-	anchor, worktree, verifyDir := t.TempDir(), t.TempDir(), t.TempDir()
+	worktree, verifyDir := t.TempDir(), t.TempDir()
 	gitkit.Git(t, worktree, "init", "-b", "main")
 	gitkit.Git(t, worktree, "config", "user.email", "test@test.com")
 	gitkit.Git(t, worktree, "config", "user.name", "Test")
 	gitkit.CommitFile(t, worktree, "a.txt", "a\n", "init")
 
-	// setVerifyCommand rewrites the plan with command as its `## verify:` section, or none when command is empty.
+	var told string
 	setVerifyCommand := func(t *testing.T, command string) {
 		t.Helper()
-		plan := firstCardPlan(true, "none", "internal/firstcard/new.go", "")
-		if command != "" {
-			plan.Sections = append(plan.Sections, plankit.Section{Heading: "verify:", Body: command})
-		}
-		plankit.Write(t, filepath.Join(anchor, lyxdirs.LyxDirName, "plan"), plan)
+		told = command
 	}
 	runGate := func(t *testing.T) (passed bool, findings string) {
 		t.Helper()
-		got, err := NewVerifyGate(anchor, worktree, verifyDir, "Webster-Burler gate", nil)()
+		got, err := NewVerifyGate(worktree, verifyDir, "Webster-Burler gate", func() (string, error) { return told, nil }, nil, nil)()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
 		return got.Passed, got.Findings
 	}
 
-	if !t.Run("passes on a plan without a verify section", func(t *testing.T) {
+	if !t.Run("passes on an empty told command", func(t *testing.T) {
 		setVerifyCommand(t, "")
 		if passed, findings := runGate(t); !passed {
-			t.Errorf("gate() findings = %q; want a pass without a verify section", findings)
+			t.Errorf("gate() findings = %q; want a pass without a told command", findings)
 		}
 	}) {
 		return
@@ -111,11 +107,11 @@ func TestVerifyGate_Scenario(t *testing.T) {
 	})
 }
 
-// roundGateFixture is a repo holding a two-package Go module, a separate anchor holding the plan and a verify directory outside the worktree.
-// The plan's `## verify:` command appends to planRanLog, so a line there means the plan's own command ran.
+// roundGateFixture is a repo holding a two-package Go module and a verify directory outside the worktree.
+// The told verify command appends to planRanLog, so a line there means the told command ran in full.
 type roundGateFixture struct {
-	anchor, worktree, verifyDir string
-	planCommand, planRanLog     string
+	worktree, verifyDir     string
+	planCommand, planRanLog string
 }
 
 // commitFiles writes each file under the worktree, commits them all and returns the new HEAD.
@@ -137,11 +133,16 @@ func (f roundGateFixture) commitFiles(t *testing.T, files map[string]string) str
 
 func (f roundGateFixture) runGate(t *testing.T) (passed bool, findings string) {
 	t.Helper()
-	got, err := NewVerifyGate(f.anchor, f.worktree, f.verifyDir, "Webster-Burler gate", nil)()
+	got, err := NewVerifyGate(f.worktree, f.verifyDir, "Webster-Burler gate", func() (string, error) { return f.planCommand, nil }, nil, nil)()
 	if err != nil {
 		t.Fatalf("gate() error = %v; want nil", err)
 	}
 	return got.Passed, got.Findings
+}
+
+// wholeDiffGate runs the whole-diff form of the gate once, told the fixture's command and the given merge base reader.
+func (f roundGateFixture) wholeDiffGate(command, mergeBase func() (string, error)) (shuttleengine.GateResult, error) {
+	return NewVerifyGate(f.worktree, f.verifyDir, "Darn gate", command, mergeBase, nil)()
 }
 
 func (f roundGateFixture) planRanCount(t *testing.T) int {
@@ -161,7 +162,7 @@ func (f roundGateFixture) planRanCount(t *testing.T) int {
 func TestVerifyGate_RoundScenario(t *testing.T) {
 	t.Parallel()
 
-	f := roundGateFixture{anchor: t.TempDir(), worktree: t.TempDir(), verifyDir: t.TempDir()}
+	f := roundGateFixture{worktree: t.TempDir(), verifyDir: t.TempDir()}
 	f.planRanLog = filepath.ToSlash(filepath.Join(t.TempDir(), "plan-ran.log"))
 	f.planCommand = "echo plan >> " + f.planRanLog
 	gitkit.Git(t, f.worktree, "init", "-b", "main")
@@ -174,9 +175,6 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 		"b/b.go":      "package b\n",
 		"b/b_test.go": "package b\n\nimport \"testing\"\n\nfunc TestB(t *testing.T) {}\n",
 	})
-	plan := firstCardPlan(true, "none", "internal/firstcard/new.go", "")
-	plan.Sections = append(plan.Sections, plankit.Section{Heading: "verify:", Body: f.planCommand})
-	plankit.Write(t, filepath.Join(f.anchor, lyxdirs.LyxDirName, "plan"), plan)
 	paths := verifytree.NewPaths(f.worktree, f.verifyDir)
 
 	if !t.Run("runs the plan's command and passes the lint with no recorded pass", func(t *testing.T) {
@@ -259,6 +257,80 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 		return
 	}
 
+	baseOf := func(sha string) func() (string, error) { return func() (string, error) { return sha, nil } }
+	toldCommand := func() (string, error) { return f.planCommand, nil }
+
+	if !t.Run("whole-diff form runs the told command in full and records its pass under it", func(t *testing.T) {
+		head := gitkit.Git(t, f.worktree, "rev-parse", "HEAD")
+		ranBefore := f.planRanCount(t)
+		got, err := f.wholeDiffGate(toldCommand, baseOf(planPass.Commit))
+		if err != nil || !got.Passed {
+			t.Fatalf("gate() = %+v, %v; want a pass", got, err)
+		}
+		if ran := f.planRanCount(t); ran != ranBefore+1 {
+			t.Errorf("the told command ran %d times; want %d, one more in full", ran, ranBefore+1)
+		}
+		if pass, ok := verifytree.LatestPass(paths, f.planCommand); !ok || pass.Commit != head {
+			t.Errorf("LatestPass(told command) = %+v, %v; want a pass at %s", pass, ok, head)
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("whole-diff form appends the failing tests and the tmux pass over all packages while a publish failure record is present", func(t *testing.T) {
+		head := f.commitFiles(t, map[string]string{"b/b.go": "package b\n\nconst Changed = 3\n"})
+		failure := verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify, Head: head, Tests: []verifytree.FailedTest{{Package: "example.com/m/b", Test: "TestB"}}}
+		if err := verifytree.WritePublishFailure(paths, failure); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := verifytree.RemovePublishFailure(paths); err != nil {
+				t.Error(err)
+			}
+		})
+
+		got, err := f.wholeDiffGate(toldCommand, baseOf(planPass.Commit))
+		if err != nil || !got.Passed {
+			t.Fatalf("gate() = %+v, %v; want a pass", got, err)
+		}
+		want := f.planCommand + " && go test -tags tmux -run '^TestB$' example.com/m/b && go test -tags tmux ./..."
+		if pass, ok := verifytree.LatestPass(paths, want); !ok || pass.Commit != head {
+			t.Errorf("LatestPass(extended command) = %+v, %v; want a pass at %s of %q", pass, ok, head, want)
+		}
+	}) {
+		return
+	}
+
+	t.Run("whole-diff form returns the read errors and an empty command as errors and runs nothing", func(t *testing.T) {
+		logsBefore := verifyLogs(t, f.verifyDir)
+		ranBefore := f.planRanCount(t)
+		tests := []struct {
+			name      string
+			command   func() (string, error)
+			mergeBase func() (string, error)
+			want      string
+		}{
+			{"CommandError", func() (string, error) { return "", errors.New("command source down") }, baseOf(planPass.Commit), "command source down"},
+			{"EmptyCommand", func() (string, error) { return "", nil }, baseOf(planPass.Commit), "empty command"},
+			{"MergeBaseError", toldCommand, func() (string, error) { return "", errors.New("merge base unreadable") }, "merge base unreadable"},
+		}
+		for _, tt := range tests {
+			got, err := f.wholeDiffGate(tt.command, tt.mergeBase)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("%s: gate() error = %v; want it to contain %q", tt.name, err, tt.want)
+			}
+			if got.Passed {
+				t.Errorf("%s: gate() passed; want no pass alongside the error", tt.name)
+			}
+		}
+		if logs := verifyLogs(t, f.verifyDir); len(logs) != len(logsBefore) {
+			t.Errorf("verify logs = %q; want %q, no command to have run", logs, logsBefore)
+		}
+		if ran := f.planRanCount(t); ran != ranBefore {
+			t.Errorf("the told command ran %d times; want %d, none", ran, ranBefore)
+		}
+	})
+
 	if !t.Run("fails with the file and line of a misplaced marker", func(t *testing.T) {
 		f.commitFiles(t, map[string]string{"a/a_test.go": "package a\n\nimport \"testing\"\n\n//lyx:guard\nvar misplaced = 1\n\nfunc TestA(t *testing.T) {}\n"})
 		passed, findings := f.runGate(t)
@@ -281,6 +353,11 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 		}
 		if logs := verifyLogs(t, f.verifyDir); len(logs) != len(logsBefore) {
 			t.Errorf("verify logs = %q; want %q, the lint to fail before any command ran", logs, logsBefore)
+		}
+
+		got, err := f.wholeDiffGate(toldCommand, baseOf(planPass.Commit))
+		if err != nil || got.Passed || !strings.Contains(got.Findings, "a/a.go:3") {
+			t.Errorf("whole-diff gate() = %+v, %v; want a failure naming a/a.go:3 from the merge base", got, err)
 		}
 	}) {
 		return

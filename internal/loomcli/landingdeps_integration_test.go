@@ -43,7 +43,7 @@ func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 		t.Fatalf("lyxcwd.ResolveWorktree(task) error = %v; want nil", err)
 	}
 	deps := landingDeps(taskLocation, websterengine.Geometry{}, "task", "https://example.com/o.git", "main",
-		true, func() error { return nil }, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil)
+		true, func() error { return nil }, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, planVerifySource(taskLocation))
 
 	t.Run("ConfigChanges reports the per-worktree file and not the hub-wide one", func(t *testing.T) {
 		changes, err := deps.ConfigChanges()

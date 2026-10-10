@@ -178,6 +178,11 @@ type Deps struct {
 	// the gate never runs and nothing is logged.
 	// An empty returned string means the source carries no verify command, which skips the gate with a warning.
 	VerifyCommand func() (string, error)
+	// VerifyFailedWayForward is the whole way-forward clause a failed-verify Stuck reason ends with when the failure record was written.
+	// The recipe that drives the run tells it, since the route back to a fix depends on the recipe's graph.
+	// Empty asks to fix forward on the task branch instead.
+	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	VerifyFailedWayForward string
 	// VerifyWaitMark sets or clears the pane mark of the run's driver strand around the post-merge verify,
 	// so the wait shows on screen.
 	// The gate clears the mark before each verify, sets it with the label `verify <producer>` and the verify's start time immediately before the verify runs,

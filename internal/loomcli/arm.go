@@ -368,6 +368,7 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 		c.parentName,
 		driverWaitMark(c.reed.Status, c.reed.SetWaitMark),
 		conflictSessionStopper(c.reed.Status, c.runner.StopStrand),
+		planVerifySource(c.location),
 	)
 
 	// Ensure the friction directory before the run starts, and never clear it here: run requires

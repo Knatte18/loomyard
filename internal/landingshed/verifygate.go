@@ -18,17 +18,18 @@ import (
 // dirtyPathsShown caps how many dirty paths a Stuck reason names.
 const dirtyPathsShown = 10
 
-// verifyGate holds the told command closure, the told wait-mark callback, the verify paths and the two verifytree seams.
+// verifyGate holds the told command closure, the told failed-verify way-forward clause, the told wait-mark callback, the verify paths and the two verifytree seams.
 // The dirty, verify and now fields are in-package seams tests replace with fakes,
 // so unit tests never spawn git or a shell and the mark's start time is fixed.
 // A zero dirty seam skips the clean-tree check, a nil command skips the verify and a nil waitMark marks nothing.
 type verifyGate struct {
-	command  func() (string, error)
-	waitMark func(label string, start time.Time) error
-	paths    verifytree.Paths
-	dirty    func(worktree string) ([]string, error)
-	verify   func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error)
-	now      func() time.Time
+	command          func() (string, error)
+	failedWayForward string
+	waitMark         func(label string, start time.Time) error
+	paths            verifytree.Paths
+	dirty            func(worktree string) ([]string, error)
+	verify           func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error)
+	now              func() time.Time
 	// recorder is set only by Publish: nil leaves a failed verify unrecorded.
 	recorder *failureRecorder
 }
@@ -82,11 +83,12 @@ func (g verifyGate) clearFailure() {
 // newVerifyGate copies the gate's told values from deps and wires the real verifytree functions.
 func newVerifyGate(deps Deps) verifyGate {
 	return verifyGate{
-		command:  deps.VerifyCommand,
-		waitMark: deps.VerifyWaitMark,
-		paths:    verifytree.NewPaths(deps.WorktreeRoot, deps.VerifyDir),
-		dirty:    verifytree.DirtyPaths,
-		now:      time.Now,
+		command:          deps.VerifyCommand,
+		failedWayForward: deps.VerifyFailedWayForward,
+		waitMark:         deps.VerifyWaitMark,
+		paths:            verifytree.NewPaths(deps.WorktreeRoot, deps.VerifyDir),
+		dirty:            verifytree.DirtyPaths,
+		now:              time.Now,
 		verify: func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error) {
 			return verifytree.Verify(ctx, p, site, command, verifytree.Timeout, deps.GateSlots)
 		},
@@ -200,7 +202,7 @@ func (g verifyGate) checkPublishVerify(ctx context.Context, producer, parentBran
 
 // verdict maps a verify result to the producer's decision, naming the command's config source as what.
 // It returns a non-empty Stuck reason for a dirty tree or a failed command, an error for an unknown status, and ("", nil) when the producer may proceed.
-// recorded says the failure record was written; a failed command with an exit code then names the Webster-Burler goto as its way forward, and otherwise asks to fix forward on the task branch.
+// recorded says the failure record was written; a failed command with an exit code then ends with the told way-forward clause, and otherwise, or with no clause told, asks to fix forward on the task branch.
 func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBranch string, recorded bool) (string, error) {
 	switch result.Status {
 	case verifytree.StatusPassed:
@@ -216,8 +218,8 @@ func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBran
 		if result.ExitCode < 0 {
 			return fmt.Sprintf("%s could not start after merging parent branch %q: %s; output: %s", what, parentBranch, result.Detail, result.Log), nil
 		}
-		if recorded {
-			return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s; way forward: run \"lyx loom goto --to Webster-Burler\", then \"lyx loom resume\", in the task worktree; the Webster-Review round reads the Publish failure record and its gate runs the failing tests", what, parentBranch, result.ExitCode, result.Log), nil
+		if recorded && g.failedWayForward != "" {
+			return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s; way forward: %s", what, parentBranch, result.ExitCode, result.Log, g.failedWayForward), nil
 		}
 		return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s; fix forward on the task branch, then resume", what, parentBranch, result.ExitCode, result.Log), nil
 	default:
