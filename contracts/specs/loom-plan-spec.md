@@ -466,6 +466,13 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Its way forward is to take the data from committed test data an earlier card creates, or to drop the command.
     The plan index runs it in its format validation, so both plan gates and `lyx loom validate-plan`'s default and `--rework` modes report it; `--require-approved`, webster's own `validate` verb and dispatch validation do not run it.
     It only refuses and removes no guard: it misses a spelling in `bash -c "…"` or built from a variable, the rest of a span after an unterminated quote, a spelling in an inline span or prose, and a fabric-repo path not spelled as a name ending in the suffix, and the implementer audit stays the guard for those.
+38. `verify-module-wide` — a `go test`, `go build` or `go vet` in a card's `**Verify:**` value whose package argument holds `...` or equals `all`, or a `go test` whose `-tags` value names `tmux` or `llm`.
+    An agent's settings deny such a command, so it can never run under a fork.
+    It splits a chain at `&&` and `;`, skips a `go -C <dir>` and a leading environment assignment, and stops reading a command at `--` or `-args`; a flag that takes a value takes the next field.
+    One finding per command, attributed to the card; the overview's `## verify:` section is never read, since Go runs it itself.
+    Its way forward is `lyx gate test [-C <module>] [--tags <tags>] <packages>` over the card's own packages, run as a background Bash call.
+    Runs under any `language:` and is reported by both plan gates, `lyx loom validate-plan` and dispatch through `ValidateFormat`.
+    It only refuses: it misses a command built from a variable or behind `bash -c`.
 
 One further check, `rework-first-card`, is outside both entry points and has no row above.
 Only the rework gate runs it: `planglyph.ValidateRework` runs it after the format-only set, and it reports a `first_card:` that differs from the card number Go told the rework session to start at.
@@ -538,7 +545,7 @@ go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
 **Intent:** Define the `RowJSON` struct carrying the list command's existing table columns as JSON-taggable fields.
 
 **Commit:** `1: json-row-type`
-**Verify:** go build ./...
+**Verify:** go test ./internal/boardcli
 ```
 
 `_lyx/plan/02-json-flag.md`:

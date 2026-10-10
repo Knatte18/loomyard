@@ -624,7 +624,7 @@ Framing paragraph.
 		{
 			name: "Commit and Verify fields",
 			body: "# Card 1 — flag\n\n**Edit:**\n- `a.go`\n**Intent:** placeholder.\n" +
-				"**Commit:** `1: add the --json flag`\n**Verify:** go build ./...\n",
+				"**Commit:** `1: add the --json flag`\n**Verify:** go test ./internal/boardcli\n",
 			check: func(t *testing.T, card planparser.Card) {
 				if card.Commit != "1: add the --json flag" {
 					t.Errorf("card.Commit = %q; want %q", card.Commit, "1: add the --json flag")
@@ -632,8 +632,8 @@ Framing paragraph.
 				if !card.HasVerify {
 					t.Errorf("card.HasVerify = false; want true")
 				}
-				if card.Verify != "go build ./..." {
-					t.Errorf("card.Verify = %q; want %q", card.Verify, "go build ./...")
+				if card.Verify != "go test ./internal/boardcli" {
+					t.Errorf("card.Verify = %q; want %q", card.Verify, "go test ./internal/boardcli")
 				}
 			},
 		},
@@ -812,7 +812,7 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 				{typ: planparser.CardTypeCreate, refs: []string{"internal/boardcli#RowJSON"}},
 			},
 			intent: "Define the `RowJSON` struct carrying the list command's existing table columns as JSON-taggable fields.",
-			commit: "1: json-row-type", verify: "go build ./...", hasVerify: true,
+			commit: "1: json-row-type", verify: "go test ./internal/boardcli", hasVerify: true,
 		},
 		{
 			number: 2, slug: "json-flag", summary: "add the --json bool flag and wire list.go",

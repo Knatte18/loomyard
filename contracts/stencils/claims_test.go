@@ -200,6 +200,8 @@ var wordingClaims = []stencilClaims{
 			{must: "{{.specs_dir}}", why: "a normative citation names the deployed specs through the marker, so a bare path cannot creep back"},
 			{must: "tested with `go -C <module>` and module-relative package paths", why: "the plan template states the nested-module command form"},
 			{must: "`verify-nested-module` in `{{.specs_dir}}/loom/loom-plan-spec.md`", why: "the plan template points at the check rather than restating it"},
+			{must: "A card's `**Verify:**` is package-scoped", why: "the plan template states that a card Verify is package-scoped"},
+			{must: "`lyx gate test [-C <module>] [--tags <tags>] <packages>`, run as a background Bash call", why: "the plan template names the slotted route for a module-wide or tmux-tier run"},
 		},
 		wantAll("Edit lists the member glyphs a card changes, and the redundancy checks are pointed at rather than restated", "`**Edit:**` lists the member glyphs the card changes", "a file path only for a file with no symbol to name", "`redundant-package-target`", "`redundant-file-target`"),
 		wantAll("a signature change is written with the re-sign arrow, which an interface method or a struct field never takes", "the re-sign arrow, `` `<glyph>` -> `<new declaration head>` ``", "An interface method or a struct field takes no arrow"),
