@@ -54,12 +54,9 @@ type StencilSeedResult struct {
 // writtenRelPaths arrive relative to subtreeDir (e.g. "loom/loom-template-discussion.md" and
 // ".gitattributes"); message is the commit message; rec accumulates the mutation record.
 //
-// When writtenRelPaths is empty, this returns the zero result with Committed: false and no error,
-// taking no lock and running no git at all — the common case on an ordinary run, and what keeps the
-// seeding pass free.
+// When writtenRelPaths is empty, this returns the zero result with Committed: false and no error, taking no lock and running no git at all.
 //
-// This never pushes: the commit rides board's next push through the existing coalescing path, since
-// pushing per run would fire a push on nearly every lyx invocation.
+// This never pushes: the commit rides the board's next push through the coalescing path.
 func CommitSeededStencils(hub, subtreeRel, subtreeDir string, writtenRelPaths []string, message string, rec *Mutations) (res StencilSeedResult, err error) {
 	if len(writtenRelPaths) == 0 {
 		return StencilSeedResult{}, nil
