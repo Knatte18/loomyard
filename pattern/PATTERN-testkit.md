@@ -9,7 +9,7 @@ Shared test support — fakes, builders, fixtures and the scan harness — used 
   - `internal/testkit/lyxbin` is exempt from the `os/exec` ban alone, bounded to `go build` of `./cmd/lyx` and running that binary under group kill.
     It builds at most once per test binary and per ldflags, or returns the binary `gateslot.PrebuiltLyxEnv` names, which a gate run builds once for every package of a tagged run.
     Banning its import keeps the kit-on-kit exemption from handing another kit a transitive `go build`.
-  - `internal/testkit/tmuxkit` is the second exemption from the `os/exec` ban alone, bounded to running the `tmux` binary against sockets under its own directory or its own fixture keys, and to the post-run `/proc` scan that kills a leftover process.
+  - `internal/testkit/tmuxkit` is the second exemption from the `os/exec` ban alone, bounded to running the `tmux` binary against sockets under its own directory or its own fixture keys, to starting servers under the kit's own config, and to the post-run `/proc` scan that kills a leftover process.
     No other kit imports it, for the same reason.
   - `internal/testkit/llmkit` is the third exemption from the `os/exec` ban alone, bounded to `exec.LookPath` for the `claude` binary; it starts nothing.
     Only `llm`-tagged test files import it, and no other kit does, for the same reason.

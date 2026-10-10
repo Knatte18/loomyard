@@ -3,8 +3,8 @@
 // A package's TestMain calls Main, which points `TMUX_TMPDIR` at a private directory, so no test reaches the caller's own tmux server or leaves a socket in the default directory.
 // Socket hands a single test a unique `-L` key and, when the test ends, kills its server and removes its socket file.
 // KillOnCleanup does the same for a key the test did not mint.
-// PackageServer hands every test of the package that names its own sessions, kills no server and asserts nothing about the whole session set one shared server, which Main's sweep kills.
-// Both first start a hermetic server on the key from the kit's own tmux config, so no server a test uses reads `~/.tmux.conf`, starts login-shell panes or exits when it has no session.
+// PackageServer hands one shared server, which Main's sweep kills, to every test of the package that names its own sessions, kills no server and asserts nothing about the whole session set.
+// Socket, KillOnCleanup and PackageServer each first start a hermetic server on the key from the kit's own tmux config, so no server a test uses reads `~/.tmux.conf`, starts login-shell panes or exits when it has no session.
 // The config marks its servers with the user option `@lyx_test_server`, which reed's stale-holder probe reads to leave such a server alone.
 // Reed starts a server itself, carrying no such config, only after a test's own `down` or `kill-server` on its key, or when a test registers its key after reed's boot.
 //
