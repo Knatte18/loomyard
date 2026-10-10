@@ -112,7 +112,7 @@ func afterRun(w io.Writer, dir string, code int, grace time.Duration, sweep func
 			if IsWatchdog(l.argv) {
 				continue
 			}
-			fmt.Fprintf(w, "tmuxkit: process %d left running by the package: %q\n", l.pid, l.argv)
+			fmt.Fprintf(w, "tmuxkit: process %d left running by the package in %s: %q\n", l.pid, l.cwd, l.argv)
 			code = 1
 		}
 	}
@@ -140,8 +140,10 @@ func checkSockets(dir string, allowed bool) []string {
 }
 
 // leftover is a process that references a package's private directory.
+// Its cwd names the test fixture it was started in.
 type leftover struct {
 	pid  int
+	cwd  string
 	argv []string
 }
 
@@ -158,7 +160,7 @@ func leftovers(dir string) []leftover {
 		if !argvOK || !referencesDir(dir, cwd, exe, argv) {
 			continue
 		}
-		found = append(found, leftover{pid: pid, argv: argv})
+		found = append(found, leftover{pid: pid, cwd: cwd, argv: argv})
 	}
 	return found
 }

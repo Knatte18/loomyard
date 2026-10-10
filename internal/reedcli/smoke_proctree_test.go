@@ -10,10 +10,8 @@
 // Windows, Linux needs no external process to answer any of these
 // questions — the kernel exposes them directly over /proc — so these
 // probes shell out to nothing, not even a POSIX substitute for pwsh.
-// Reimplemented here as a small, self-contained test-harness copy rather
-// than imported from reedengine, since that package's equivalents
-// (parseStatPPID, descendantClosure, matchSocketCmdlines) are unexported and
-// only meaningful bound to an *Engine value. Deliberately a _test.go file
+// Reimplemented here as a small, self-contained test-harness copy rather than imported from reedengine, since that package's equivalents (parseStat, descendantClosure, matchSocketCmdlines) are unexported and only meaningful bound to an *Engine value.
+// Deliberately a _test.go file
 // (not a _linux.go one): its caller functions in smoke_test.go compile on
 // every GOOS (gated only by the `tmux || llm` tag) and runtime.GOOS-branch into this
 // file's functions, so this file must compile everywhere too, and it

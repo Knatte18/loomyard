@@ -1000,8 +1000,29 @@ func (e *Engine) removeSocketFile() {
 
 // reapPaneChildren waits for pane child processes to exit, force-killing
 // stragglers. Pane-destroying ops must reap children to avoid worktree dir locks.
+// pids is the descendant closure snapshotted before the kill.
+// Once those are reaped, every other process still in a session one of them led is reaped too:
+// a pane shell can fork a command after the snapshot,
+// and a command it has not yet moved into the terminal's foreground can miss the hangup.
 func reapPaneChildren(pids []int, timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
+	reapPIDsBy(pids, deadline)
+
+	snapshotted := make(map[int]bool, len(pids))
+	for _, pid := range pids {
+		snapshotted[pid] = true
+	}
+	var late []int
+	for _, pid := range sessionMemberPIDs(pids) {
+		if !snapshotted[pid] {
+			late = append(late, pid)
+		}
+	}
+	reapPIDsBy(late, deadline)
+}
+
+// reapPIDsBy waits until deadline for each of pids to exit, force-killing and confirming each one still up when it passes.
+func reapPIDsBy(pids []int, deadline time.Time) {
 	for _, pid := range pids {
 		if pid <= 0 {
 			continue

@@ -241,8 +241,8 @@ func TestAfterRun_LeftoverProcesses(t *testing.T) {
 	if code != 1 {
 		t.Errorf("afterRun code = %d; want 1 for a stray process", code)
 	}
-	if want := fmt.Sprintf("process %d left running", stray.Process.Pid); !strings.Contains(out.String(), want) || !strings.Contains(out.String(), "sleep") {
-		t.Errorf("output %q does not name the stray process by pid and argv (want %q)", out.String(), want)
+	if want := fmt.Sprintf("tmuxkit: process %d left running by the package in %s: %q\n", stray.Process.Pid, dir, []string{"sh", "-c", "sleep 60"}); !strings.Contains(out.String(), want) {
+		t.Errorf("output %q does not name the stray process by pid, cwd and argv (want %q)", out.String(), want)
 	}
 	if strings.Contains(out.String(), fmt.Sprintf("process %d left running", watchdog.Process.Pid)) {
 		t.Errorf("output %q names the watchdog process, which must not fail the package", out.String())
