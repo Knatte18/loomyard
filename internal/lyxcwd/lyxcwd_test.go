@@ -197,7 +197,7 @@ func TestResolve_AnchorScenario(t *testing.T) {
 	linkedDir := filepath.Join(filepath.Dir(root), "linked")
 	adminDir := filepath.Join(root, ".git", "worktrees", "linked")
 	if !t.Run("linked worktree", func(t *testing.T) {
-		gitkit.MustRun(t, root, "worktree", "add", "-b", "linked", linkedDir)
+		gitkit.Git(t, root, "worktree", "add", "-b", "linked", linkedDir)
 
 		want := &lyxcwd.Location{RepoName: base.RepoName, HubPath: base.HubPath, WorktreeName: "linked", AnchorRel: "."}
 		requireLocation := func(t *testing.T) {
