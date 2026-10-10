@@ -105,6 +105,9 @@
 // write merge is safe against a concurrent external writer that takes the same lock, and against no
 // other -- this merge-safety property is never stated unconditionally.
 //
+// WriteFailedStop is a Shed write under the run lock, not an external write: it takes the run lock without waiting and writes failed, with the error and the transient class, only into a file that still reads running.
+// That is how a failure stop leaves a run non-running while State and Error stay written by Shed alone.
+//
 // # loom's status.json is one instance of this shape
 //
 // internal/loomengine's own status type carries only loom's three fields -- slug, parent,
