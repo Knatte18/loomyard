@@ -1,6 +1,6 @@
 // layer.go — derived task fields.
 //
-// ComputeLayers assigns each task a dependency depth, which groups entries into layers inside a README section,
+// ComputeLayers assigns each task its README subsection: Running, Ready, a dependency layer or Independent,
 // and RenderOrder orders tasks for output.
 // All computed at read time;
 // never stored.
@@ -12,18 +12,28 @@ import (
 	"sort"
 )
 
-// isolatedLayer is the layer of an isolated task, which sorts after every dependency layer.
-const isolatedLayer = "Z"
+// The non-letter layers: a running task, an open task waiting on nothing open, an isolated task and a done entry.
+const (
+	runningLayer  = "Running"
+	readyLayer    = "Ready"
+	isolatedLayer = "Z"
+	doneLayer     = "__done__"
+)
 
 // ComputeLayers assigns each task a bucket based on topological depth.
-// A dependency on a done or running task adds no depth, while cycle detection still follows running tasks.
-// A running task gets a layer too, which the README ignores in favor of its Running subsection.
+// A task a run holds is runningLayer, by IsRunStatus as the run lock decides it.
+// An open task with no open dependency is readyLayer, and every other task is the letter of its depth:
+// A waits only on running or ready tasks, B on something in A, and so on.
+// A dependency on a done task adds no depth, while one on a running task counts as one on a ready task,
+// and cycle detection still follows running tasks.
 func ComputeLayers(tasks []Task) (map[string]string, error) {
 	layerMap := make(map[string]string)
 
 	for _, t := range tasks {
-		if t.Status != nil && *t.Status == "done" {
-			layerMap[t.Slug] = "__done__"
+		if isDone(t) {
+			layerMap[t.Slug] = doneLayer
+		} else if IsRunStatus(t.Status) {
+			layerMap[t.Slug] = runningLayer
 		} else if t.Isolated {
 			layerMap[t.Slug] = isolatedLayer
 		}
@@ -56,7 +66,7 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 				continue // Skip missing deps.
 			}
 			// Skip done tasks in cycle detection.
-			if depTask.Status != nil && *depTask.Status == "done" {
+			if isDone(*depTask) {
 				continue
 			}
 			if err := detectCycleDFS(dep); err != nil {
@@ -99,8 +109,8 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 			if !ok {
 				continue
 			}
-			// A done or running dependency adds no depth, so the layers start after the Running subsection.
-			if (depTask.Status != nil && *depTask.Status == "done") || IsRunStatus(depTask.Status) {
+			// A done dependency adds no depth; a running one weighs as a ready one, at depth 0.
+			if isDone(*depTask) {
 				continue
 			}
 			d, err := getDepth(dep)
@@ -112,8 +122,9 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 			}
 		}
 
+		// Depth 0 is ready, and depth n from 1 on is the nth letter, so the letters stop at Y.
 		d := maxDepth + 1
-		if d >= 25 {
+		if d > 25 {
 			return 0, fmt.Errorf("layer depth exceeds A..Y cap")
 		}
 
@@ -130,7 +141,11 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		layerMap[slug] = string(rune('A' + d))
+		if d == 0 {
+			layerMap[slug] = readyLayer
+		} else {
+			layerMap[slug] = string(rune('A' + d - 1))
+		}
 	}
 
 	return layerMap, nil
@@ -160,20 +175,15 @@ func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
 		})
 	}
 
-	// Define bucket order.
-	bucketOrder := map[string]int{
-		"A": 0, "B": 1, "C": 2, "D": 3, "E": 4,
-		"F": 5, "G": 6, "H": 7, "I": 8, "J": 9,
-		"K": 10, "L": 11, "M": 12, "N": 13, "O": 14,
-		"P": 15, "Q": 16, "R": 17, "S": 18, "T": 19,
-		"U": 20, "V": 21, "W": 22, "X": 23, "Y": 24,
-		isolatedLayer: 25,
-		"__done__":    26,
+	// Running, then ready, then the letters A..Y, isolated and done.
+	bucketOrder := map[string]int{runningLayer: 0, readyLayer: 1, isolatedLayer: 27, doneLayer: 28}
+	for letter := 'A'; letter <= 'Y'; letter++ {
+		bucketOrder[string(letter)] = 2 + int(letter-'A')
 	}
 
 	sort.Slice(result, func(i, j int) bool {
-		doneI := result[i].Layer == "__done__"
-		doneJ := result[j].Layer == "__done__"
+		doneI := result[i].Layer == doneLayer
+		doneJ := result[j].Layer == doneLayer
 		if doneI != doneJ {
 			return doneJ
 		}
