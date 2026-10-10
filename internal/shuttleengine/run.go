@@ -238,6 +238,8 @@ type Run struct {
 	recordMu sync.Mutex
 	// stopMarked reports that Stop recorded a stop on this handle, which makes finalize store the stop outcome instead of the classified one.
 	stopMarked bool
+	// sendMu orders the in-process sends on this run: Send and sendWithin each hold it for the whole idle wait, typing and delivery check.
+	sendMu sync.Mutex
 
 	// offset is the byte offset already consumed from state.EventsPath.
 	offset int64
@@ -781,12 +783,19 @@ func (run *Run) Interrupt() error {
 // Text must be a single, non-empty line.
 // Verifies delivery by observing the text in the pane capture, replaying once if it never appears.
 // Waits for an idle session first and fails with ErrSessionBusy if it stays busy.
-// Safe to call concurrently with a blocked Wait.
+// Safe to call concurrently with a blocked Wait and with other Sends on the run, which type one after the other.
 func (run *Run) Send(text string) error {
 	if err := validateSendText(text); err != nil {
 		return err
 	}
+	run.sendMu.Lock()
+	defer run.sendMu.Unlock()
 	return sendVerified(run.newSendContext(), text)
+}
+
+// StrandName returns the name reed formed for the run's strand.
+func (run *Run) StrandName() string {
+	return run.state.StrandName
 }
 
 // validateSendText rejects multiline text, empty text, or whitespace-only text
