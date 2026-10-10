@@ -485,75 +485,28 @@ func (c *loomCLI) startCmd() *cobra.Command {
 	var noAttachFlag bool
 
 	cmd := &cobra.Command{
-		Use:   "start",
-		Short: "bootstrap this worktree's loom task and launch its driver session",
-		Long: `start is the session bootstrap. It performs four steps in order:
+		Use:         "start",
+		Short:       "bootstrap this worktree's loom task and launch its driver session",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `start bootstraps this worktree's loom task and launches its driver: it seeds
+the status file and commits it into the fabric when absent, brings up the
+worktree's tmux session, and spawns the driver the run's seed records, the
+detached Go runner or a Claude strand running the loom driver. With a driver
+already alive it ensures the substrate instead of spawning a second one, and
+a live loom driver parked at a hand-back is resumed in its own pane.
 
-  1. resolve the recorded parent branch, seed the status file when it is
-     absent, and commit that seed into the fabric before anything else touches it
-  2. ensure the worktree's tmux session is up; on a go-driven run ensure its
-     status strand exists, and on an llm-driven run remove any status strand
-     the session still holds; then spawn the per-hub watchdog daemon,
-     best-effort
-  3. read this run's seed and, unless a driver is already alive, spawn the
-     driver its recorded choice selects -- the detached Go runner, or a
-     Claude strand running the loom driver in this worktree's own reed session --
-     a second invocation while a driver is running ensures substrate
-     rather than spawning a second one; which driver runs is the
-     seed's recorded choice, never a flag on this command; a live loom
-     driver that parked at a hand-back is resumed by typing one line into its
-     pane, and start refuses after a bounded wait when that pane is not
-     ready, since the driver may be busy having resumed on its own; a live
-     loom driver over a run halted at a hand-back (awaiting, blocked,
-     paused or failed) that has not written its park marker yet is still
-     writing its stop report, so start refuses with the kind
-     "driver_not_parked" and is retried a few seconds later, while a live
-     driver over a running run is left working; before spawning or resuming
-     a driver, start refuses with the kind "merge_in_progress" when the
-     worktree carries an unfinished merge, naming the conflicted paths and the
-     remedy (the fabric verbs for a fabric merge, git for one fabric did not
-     start), except that a run whose current producer is Publish or Finalize
-     goes through over a parked fabric merge-in of its own parent branch, which
-     that row aborts and redoes, while a live driver that is working is left alone; a live
-     loom driver strand that reed marked retiring (some caller of
-     "reed remove --detach" already asked to remove it) is never adopted:
-     start removes it and spawns a fresh driver in its place
-  4. print the success envelope
+Reach for it in a task worktree to begin the task, and again after "lyx loom
+approve", "lyx loom reject" or any other hand-back that waits on start to
+carry the run on.
 
-The detached Go driver's own stdout/stderr go to the log the ephemeral-tree
-driver-log accessor names, never to this command's own output -- a loom driver
-strand writes no such log, since its own pane is where its output already
-lives.
+It returns once the driver is up and never attaches to the session; watch it
+with "lyx reed attach". The envelope carries the run's driver, slug, run id
+and status file.
 
-A loom driver strand launches from the driver stencil, read from the
-stencils directory at start time.
-
-A worktree opened through "lyx ide spawn"'s generated VS Code task starts
-"lyx reed up", then "lyx reed add --if-absent --cmd claude --name claude
---focus", then "lyx reed attach", so the operator's own session is the
-strand named "claude" and the panes the run spawns are its siblings. To
-self-check, compare $TMUX_PANE against the tracked strands "lyx reed status"
-reports: tracked is fine; set but untracked means relaunch through that
-chain or proceed without reed supervision; unset is unconfirmed, not
-failed, since psmux on Windows may not export it. A worktree whose
-.vscode/tasks.json predates this convention is upgraded by deleting that
-file and re-running "lyx ide spawn".
-
-start never attaches to the session or switches a tmux client, with or without
-$TMUX; "lyx reed attach" is the way to watch the session.
-It returns once the driver's readiness signal confirms the driver is up; for a
-parked loom driver it returns once the delivery of the resume line is verified.
-That readiness signal is the run lock being taken for the Go driver; for a
-loom driver, it is the driver's provider TUI coming up ready, with any
-one-time startup gate its provider requires dismissed along the way (shuttle's
-engine seam owns which gates exist), within shuttle's startup_timeout_s. A
-readiness refusal removes the driver strand, so the next start spawns a
-fresh one; the signal is checked only for a driver this invocation spawns,
-and the two cases that can still leave an unready loom driver strand live --
-shuttle could not get a liveness answer from reed at all, or its teardown
-could not remove the strand -- are returned over by a later start without
-re-checking readiness. The success envelope carries the run's driver, slug,
-run id and status file.
+It refuses with the kind "merge_in_progress" while the worktree holds an
+unfinished merge, naming the conflicted paths and the remedy, and with the
+kind "driver_not_parked" while a live loom driver over a halted run is still
+writing its stop report; retry that one a few seconds later.
 
 Example:
   lyx loom start

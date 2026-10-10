@@ -112,8 +112,9 @@ func approveVerb(ctx context.Context, out io.Writer, d approveDeps) int {
 // approveCmd builds the `approve` subcommand.
 func (c *loomCLI) approveCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "approve",
-		Short: "record approval of the task's open pull request at the PR-Gate row so the next lyx loom start lands it",
+		Use:         "approve",
+		Short:       "record approval of the task's open pull request at the PR-Gate row so the next lyx loom start lands it",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `approve records the operator's approval of the task's open pull request,
 for a run awaiting or blocked at PR-Gate, and removes any pending rejection. It refuses unless the run is awaiting or blocked at PR-Gate,
 the pull request is open, and the local task HEAD equals the pull request's
