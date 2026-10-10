@@ -1,4 +1,4 @@
-// blobread.go adds the read-only, go-git-only primitives diff-base recovery and history lookups build on: FileAtRevision reads one path's blob contents as of a given revision, FilesInDirAtRevision lists the files directly in one directory as of a revision, PathRevisions walks the commits that touched a path, CommitsWithSubject finds the commits carrying one subject line, and HeadContains asks whether HEAD's history holds a commit.
+// blobread.go adds the read-only, go-git-only primitives diff-base recovery and history lookups build on: FileAtRevision reads one path's blob contents as of a given revision, FilesInDirAtRevision lists the files directly in one directory as of a revision, PathRevisions walks the commits that touched a path, CommitsWithSubject finds the commits carrying one subject line, HeadContains asks whether HEAD's history holds a commit, UpstreamSHA resolves the current branch's configured upstream to its remote-tracking SHA, and CommitDetail returns one commit's message and changed paths.
 // No method calls r.run or r.runChecked — all resolve state that is already on disk, which is go-git's side of the package's Client Boundary Invariant.
 
 package gitrepo
@@ -263,4 +263,100 @@ func branchAndTagCommits(repo *git.Repository) ([]plumbing.Hash, error) {
 		return nil, err
 	}
 	return tips, nil
+}
+
+// ErrNoUpstream is returned by UpstreamSHA when the current branch has no upstream configured.
+var ErrNoUpstream = errors.New("gitrepo: no upstream configured")
+
+// UpstreamSHA returns the SHA of the remote-tracking ref the current branch's configured upstream (branch.<name>.remote and branch.<name>.merge) names.
+// A detached HEAD or a branch with no upstream returns ErrNoUpstream bare.
+// It reads the ref as last fetched and never contacts the remote.
+func (r *Repo) UpstreamSHA() (string, error) {
+	return readGoGit(r, func(repo *git.Repository) (string, error) {
+		head, err := repo.Head()
+		if err != nil {
+			if errors.Is(err, plumbing.ErrReferenceNotFound) {
+				return "", ErrNoUpstream
+			}
+			return "", fmt.Errorf("gitrepo: read HEAD: %w", err)
+		}
+		if !head.Name().IsBranch() {
+			return "", ErrNoUpstream
+		}
+
+		cfg, err := repo.Config()
+		if err != nil {
+			return "", fmt.Errorf("gitrepo: read config: %w", err)
+		}
+		branch, ok := cfg.Branches[head.Name().Short()]
+		if !ok || branch.Remote == "" || !branch.Merge.IsBranch() {
+			return "", ErrNoUpstream
+		}
+
+		tracking, err := repo.Reference(plumbing.NewRemoteReferenceName(branch.Remote, branch.Merge.Short()), true)
+		if err != nil {
+			return "", fmt.Errorf("gitrepo: resolve upstream %s/%s: %w", branch.Remote, branch.Merge.Short(), err)
+		}
+		return tracking.Hash().String(), nil
+	})
+}
+
+// CommitDetail is one commit's full message and the repo-relative, slash-separated paths its tree changes.
+type CommitDetail struct {
+	Message string
+	Paths   []string
+}
+
+// CommitDetail returns sha's full message and the sorted paths its tree changes against its first parent, or every path in its tree for a root commit.
+// An invalid sha is ErrInvalidSHA.
+// It reads the object store through go-git and never runs git.
+func (r *Repo) CommitDetail(sha string) (CommitDetail, error) {
+	if !validSHA(sha) {
+		return CommitDetail{}, ErrInvalidSHA
+	}
+
+	return readGoGit(r, func(repo *git.Repository) (CommitDetail, error) {
+		commit, err := commitByHash(repo, sha)
+		if err != nil {
+			return CommitDetail{}, fmt.Errorf("gitrepo: resolve commit %s: %w", sha, err)
+		}
+		tree, err := commit.Tree()
+		if err != nil {
+			return CommitDetail{}, fmt.Errorf("gitrepo: read tree of %s: %w", sha, err)
+		}
+
+		var paths []string
+		if commit.NumParents() == 0 {
+			err = tree.Files().ForEach(func(file *object.File) error {
+				paths = append(paths, file.Name)
+				return nil
+			})
+			if err != nil {
+				return CommitDetail{}, fmt.Errorf("gitrepo: list files of %s: %w", sha, err)
+			}
+		} else {
+			parent, err := commit.Parent(0)
+			if err != nil {
+				return CommitDetail{}, fmt.Errorf("gitrepo: read first parent of %s: %w", sha, err)
+			}
+			parentTree, err := parent.Tree()
+			if err != nil {
+				return CommitDetail{}, fmt.Errorf("gitrepo: read tree of first parent of %s: %w", sha, err)
+			}
+			changes, err := parentTree.Diff(tree)
+			if err != nil {
+				return CommitDetail{}, fmt.Errorf("gitrepo: diff %s against its first parent: %w", sha, err)
+			}
+			for _, change := range changes {
+				name := change.To.Name
+				if name == "" {
+					name = change.From.Name
+				}
+				paths = append(paths, name)
+			}
+		}
+
+		sort.Strings(paths)
+		return CommitDetail{Message: commit.Message, Paths: paths}, nil
+	})
 }
