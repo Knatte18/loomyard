@@ -321,13 +321,7 @@ func TestStates(t *testing.T) {
 				t.Run(anchor, func(t *testing.T) {
 					t.Parallel()
 
-					// A copy's relocation rewrites the tracked .lyx-warp binding, which the clean state would find dirty.
-					var h *hubforge.Hub
-					if state.Name == "clean" {
-						h = hubforge.NewHub(t, anchor)
-					} else {
-						h = hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
-					}
+					h := hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
 					target := resolveStateTarget(t, h, state.Name)
 
 					beforeWarp := gitkit.GitStatusPorcelain(t, target.WarpCheckout)

@@ -1,7 +1,7 @@
 //go:build integration
 
 // configcli_integration_test.go — e2e integration tests for configcli.
-// Tests real fabriccli.RunCLI over a hubforge.NewHub fixture.
+// Tests real fabriccli.RunCLI over a hubforge.CopyHub fixture.
 
 package configcli
 
@@ -34,8 +34,7 @@ func TestConfigOverRealHub(t *testing.T) {
 	const slug = "config-hub-test"
 
 	// fabriccli.CloneAndWire has already materialized every registered module's config plus the repo-wide fabric.yaml at BoardDir, and the records-side primary already sits on its RecordsBranchName-suffixed branch.
-	// A copy's relocation rewrites the tracked worktree binding file, which the clean-tree assertions would find dirty.
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	// Topology.Add wires the new pair's junctions itself, reading the wired name-set from the real repo-wide fabric.yaml.
 	// Without that the worktree has no _lyx, so configengine.Edit→FindBaseDir would error.

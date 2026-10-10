@@ -55,8 +55,7 @@ func TestStencilSeedTarget_PlainRepoHasNoHub(t *testing.T) {
 func TestStencilSeeding_HubScenario(t *testing.T) {
 	t.Parallel()
 
-	// A copy's relocation rewrites the tracked worktree binding file, which the clean-tree assertions would find dirty.
-	hub := hubforge.NewHub(t, ".")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	worktree := hub.PrimeWorktree()
 	stencilsDir := fabricengine.StencilsDir(hub.Path)
 	specsDir := fabricengine.SpecsDir(hub.Path)

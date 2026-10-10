@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -141,6 +142,7 @@ func (template *hubTemplate) requireIntact(tb testing.TB) {
 }
 
 // CopyHub returns a hub of shape that is the test's own: the shape's template relocated into tb's temp directory, with every path inside it rewritten to the copy's.
+// Every checkout of the copy is clean against its HEAD and upstream, as a fresh hub's is.
 // A write to the copy touches nothing shared.
 // It fails tb, naming the fixture, when the template is poisoned or its tree changed since it was built.
 func CopyHub(tb testing.TB, shape Shape) *Hub {
@@ -156,7 +158,20 @@ func CopyHub(tb testing.TB, shape Shape) *Hub {
 	if err := relocateHub(template.root, root); err != nil {
 		tb.Fatalf("CopyHub: fixture %q: %v", template.name, err)
 	}
-	return hubAt(tb, root, shape)
+	hub := hubAt(tb, root, shape)
+	commitRelocatedBinding(tb, hub.BoardDir())
+	return hub
+}
+
+// commitRelocatedBinding folds the board checkout's relocated `.lyx-warp` binding into the board's one commit and force-pushes it to the copy's own records bare.
+// The relocation rewrites the binding's working-tree file, but the committed blob, compressed in the object store, still names the template's warp bare;
+// amending the commit leaves the board clean against its HEAD and its upstream, with the one-commit history a fresh hub's board has.
+func commitRelocatedBinding(tb testing.TB, boardDir string) {
+	tb.Helper()
+
+	gitkit.Git(tb, boardDir, "add", fabricengine.WarpBindingFileName)
+	gitkit.Git(tb, boardDir, "commit", "--amend", "--no-edit", "--quiet")
+	gitkit.Git(tb, boardDir, "push", "--force", "--quiet", "origin", "HEAD")
 }
 
 // SharedHub returns the template's own hub for a test that only reads it: a file read, a link read or an in-process go-git read.

@@ -522,6 +522,14 @@ func TestCopyHub(t *testing.T) {
 	if changes, _ := status.Raw["changes"].([]any); len(changes) != 0 {
 		t.Errorf("fabric status changes on the copy = %v; want none", changes)
 	}
+	for _, dir := range []string{h.BoardDir(), h.PrimeRecords()} {
+		if porcelain := gitkit.Git(t, dir, "status", "--porcelain"); porcelain != "" {
+			t.Errorf("git status in the copy's %s = %q; want a clean checkout, as a fresh hub's is", dir, porcelain)
+		}
+	}
+	if ahead := gitkit.Git(t, h.BoardDir(), "rev-list", "--count", "@{upstream}..HEAD"); ahead != "0" {
+		t.Errorf("the copy's board is %s commits ahead of its upstream; want the relocated binding pushed", ahead)
+	}
 
 	listing := gitkit.Git(t, h.PrimeWorktree(), "worktree", "list", "--porcelain")
 	worktrees := 0
