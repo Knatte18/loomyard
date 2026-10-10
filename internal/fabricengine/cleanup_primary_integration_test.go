@@ -26,7 +26,7 @@ import (
 func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	primaryWeftBranch := fabricengine.RecordsBranchName("main")
 
@@ -69,7 +69,7 @@ func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 func TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	if err := os.RemoveAll(fabricengine.BoardDir(h.Location.HubPath)); err != nil {
 		t.Fatalf("remove board worktree: %v", err)
 	}

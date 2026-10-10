@@ -22,7 +22,7 @@ func TestRemove_UntrackedDriveReportIsCommittedAndArchived(t *testing.T) {
 	t.Parallel()
 
 	const slug = "sibling-dirty"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 
@@ -54,7 +54,7 @@ func TestRemove_TaskSideDirtyDoesNotSatisfySiblingDirty(t *testing.T) {
 	t.Parallel()
 
 	const slug = "task-side-dirty"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 

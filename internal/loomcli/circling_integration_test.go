@@ -15,7 +15,7 @@ import (
 )
 
 func TestCirclingCLI_PreRunResolvesTarget(t *testing.T) {
-	hub := hubforge.NewHub(t, ".")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "circling"
 	hubforge.AddPair(t, hub, slug)
 

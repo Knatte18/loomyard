@@ -46,7 +46,7 @@ func TestRemove_FinishesPairWhoseTaskWorktreeWasRemovedByHand(t *testing.T) {
 	t.Parallel()
 
 	const slug = "finish-by-hand"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -98,7 +98,7 @@ func TestRemove_FinishesPairWithBothWorktreesGone(t *testing.T) {
 	t.Parallel()
 
 	const slug = "finish-both-gone"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -148,7 +148,7 @@ func TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin(t *testing.T) {
 	t.Parallel()
 
 	const slug = "finish-origin-only"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	siblingTip := gitkit.RevParse(t, h.RecordsBare, fabricengine.RecordsBranchName(slug))
@@ -178,7 +178,7 @@ func TestRemove_KeepsOriginOnlySiblingBranchWithoutRemote(t *testing.T) {
 	t.Parallel()
 
 	const slug = "finish-origin-kept"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	leaveSiblingBranchOnlyOnOrigin(t, h, slug)
@@ -206,7 +206,7 @@ func TestRemove_ReportsStrayPathAndFinishesBranchTeardown(t *testing.T) {
 	t.Parallel()
 
 	const slug = "finish-stray"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -240,7 +240,7 @@ func TestRemove_ReturnsPairNotFoundWhenNothingRemains(t *testing.T) {
 	t.Parallel()
 
 	const slug = "finish-nothing-left"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 

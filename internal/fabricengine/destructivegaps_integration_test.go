@@ -50,7 +50,7 @@ func escapeFabricConfigYAML(escapeName string) string {
 func TestUnwireJunctions_RefusesLinkOutsideItsWorktree(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	const slug = "gap1-owner"
 
@@ -90,7 +90,7 @@ func TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree(t *testing.T) {
 	// hubforge.NewHub's CloneAndWire already checks the weft primary out on its suffixed branch and
 	// materializes a real _board worktree the gate's ownedManagedBranch/primaryWeftBranch read
 	// succeeds against, so only the escape-specific pathspec override is seeded here.
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedFabricConfig(t, h, escapeFabricConfigYAML("../gap1-rollback-escape"))
 
 	l := h.Location
@@ -190,7 +190,7 @@ func TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFil
 	t.Parallel()
 
 	const slug = "gap3-untracked"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
@@ -245,7 +245,7 @@ func TestRemoveWarpWorktreeDir_FallbackHonoursForce(t *testing.T) {
 			t.Parallel()
 
 			slug := "force-fallback-" + strings.ToLower(tt.name)
-			h := hubforge.NewHub(t, ".")
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 			l := h.Location
 			hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
@@ -292,7 +292,7 @@ func TestOwnership_RegisteredLinkedWorktreeKind(t *testing.T) {
 	t.Parallel()
 
 	const slug = "ownership-registered"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	repoDir := l.WorktreePath()
@@ -353,7 +353,7 @@ func TestOwnership_WarpCheckoutKind(t *testing.T) {
 	t.Parallel()
 
 	const slug = "ownership-warpcheckout"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	repoDir := l.WorktreePath()
@@ -397,7 +397,7 @@ func TestOwnership_FabricHubKind(t *testing.T) {
 
 	t.Run("AcceptsRealHub", func(t *testing.T) {
 		t.Parallel()
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		if !fabricengine.LooksLikeHubForTest(h.Location.HubPath) {
 			t.Errorf("LooksLikeHubForTest(real hub) = false; want true")
 		}
@@ -480,7 +480,7 @@ func TestOwnership_FabricHubKind(t *testing.T) {
 func TestWorktreeDirty_BothScopesAcrossFourStates(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	dir := h.Location.WorktreePath()
 
 	assertScopes := func(t *testing.T, wantTracked, wantAll bool) {
@@ -571,7 +571,7 @@ func assertBranchGateRefusesBothForceModes(t *testing.T, l *lyxcwd.Location, wef
 func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	primaryWeft := fabricengine.RecordsBranchName("main")
@@ -584,7 +584,7 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 		// A hub whose board worktree is gone cannot answer "what is the repo's primary weft
 		// branch" at all — the inherited fail-closed direction that must never invert, since these
 		// deletions are irreversible.
-		unreadable := hubforge.NewHub(t, ".")
+		unreadable := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		ul := unreadable.Location
 		uWeftRoot := mustRecordsRepoRoot(t, ul)
 		if err := os.RemoveAll(fabricengine.BoardDir(ul.HubPath)); err != nil {
@@ -596,7 +596,7 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 	})
 
 	t.Run("RefusesCheckedOutBranch", func(t *testing.T) {
-		checkedOut := hubforge.NewHub(t, ".")
+		checkedOut := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		cl := checkedOut.Location
 		cWeftRoot := mustRecordsRepoRoot(t, cl)
 		topology := checkedOut.Topology
@@ -644,7 +644,7 @@ func TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch(t *testing.T) {
 	t.Parallel()
 
 	const slug = "vanished-mid-walk"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPair(t, h, slug)
 
 	warpPath := h.PairCodeWorktree(slug)

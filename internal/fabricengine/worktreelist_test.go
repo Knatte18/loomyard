@@ -101,7 +101,7 @@ func TestList(t *testing.T) {
 				return
 			}
 
-			h := hubforge.NewHub(t, ".")
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 			hub := h.PrimeWorktree()
 
 			for i := 0; i < tt.extraWorktrees; i++ {
@@ -127,7 +127,7 @@ func TestList(t *testing.T) {
 func TestList_ParsesPrunable(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hub := h.PrimeWorktree()
 
 	wtPath := filepath.Join(filepath.Dir(hub), "wt-prunable")

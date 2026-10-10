@@ -230,6 +230,7 @@
 // and state.json's ledger dispositions it once per run, so the whole-session parent audit repeating earlier findings on every record-batch never re-judges them.
 // A policy finding is recorded as a warning on the batch once the evidence holds:
 // an OK report on a batch that carries policy findings first has its cards' verify commands re-run in-process (rerunCardVerifies), and a failing re-run makes those findings correctness for the batch and fails it.
+// A rerun command never sees gateslot.PrebuiltLyxEnv, slotted or not, so its own `go test` builds lyx once per test binary.
 // A correctness finding fails the batch on its merits instead of wedging it:
 // the batch goes terminal with digest status failed and its reasons, the report is archived, and record-batch returns *BatchFailedError naming `lyx webster recover-batch`.
 // recover-batch proceeds from a failed batch and hands its strand the failure digest,

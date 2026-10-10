@@ -9,11 +9,10 @@
 package fabricengine
 
 import (
-	"errors"
 	"fmt"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
 // ensureBoardWorktree materializes boardPath as a second worktree of the weft repo,
@@ -21,19 +20,10 @@ import (
 // worktree adopts it. Otherwise (genuinely empty weft remote), the worktree is created
 // as an orphan. Returns any git error.
 func ensureBoardWorktree(weftRepoRoot, warpBranch, boardPath string) error {
-	// Mixed probe: the exit path answers "the branch is not there yet", the orphan-create path
-	// this function exists to support, so it is recovered via errors.As rather than merged into a
-	// single message.
-	_, err := gitexec.Run(
-		[]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + warpBranch},
-		weftRepoRoot,
-	)
-	branchExistsLocally := err == nil
+	// A missing branch is an answer, the orphan-create path this function exists to support; a failed read is an error.
+	branchExistsLocally, err := gitrepo.New(weftRepoRoot).BranchExists(warpBranch)
 	if err != nil {
-		var gitErr *gitexec.GitError
-		if !errors.As(err, &gitErr) {
-			return fmt.Errorf("check for local weft branch %q: %w", warpBranch, err)
-		}
+		return fmt.Errorf("check for local weft branch %q: %w", warpBranch, err)
 	}
 
 	// Both worktree-add forms route through containedWorktreeAdd so a symlink standing at boardPath

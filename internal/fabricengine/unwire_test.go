@@ -43,7 +43,7 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "unwire-removes-stale"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	// hubforge.NewHub seeds the repo-wide config with fabricengine.ConfigTemplate()'s own
 	// default pathspec; override it to "_extra" so Add's RepoWiredNames-driven wiring below
@@ -99,7 +99,7 @@ func TestUnwire_PreservesWeftLyxAndOptionalContent(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "unwire-preserves-lyx-and-extra"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
@@ -209,7 +209,7 @@ func TestUnwire_NeverWiredWarpIsIdempotentNoOp(t *testing.T) {
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	res, err := fabricengine.Unwire(h.PrimeWorktree())
 	if err != nil {
@@ -245,7 +245,7 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "unwire-preserves-repo-wide-records"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	// Record the anchor marker alongside the repo-wide fabric.yaml
@@ -293,7 +293,7 @@ func TestUnwire_LeavesSiblingWorktreeUndirtied(t *testing.T) {
 	const keptSlug = "unwire-sibling-kept"
 	const unwiredSlug = "unwire-sibling-torn-down"
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	for _, slug := range []string{keptSlug, unwiredSlug} {
 		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})

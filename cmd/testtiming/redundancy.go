@@ -347,7 +347,12 @@ func runRedundancy(tags, pkgFlag, outPath string) error {
 			return fmt.Errorf("keep directive: %w", err)
 		}
 	}
-	pkgs, err := runPackageTimings(tags, patterns)
+	env, cleanupLyx, err := prebuildLyx("go", tags, layout.dir, os.Environ())
+	if err != nil {
+		return err
+	}
+	defer cleanupLyx()
+	pkgs, err := runPackageTimings(tags, patterns, env)
 	if err != nil {
 		return err
 	}
@@ -377,7 +382,7 @@ func runRedundancy(tags, pkgFlag, outPath string) error {
 		// A package whose own run failed is still measured.
 		// Each failing test is listed under "no coverage" as failed.
 		fmt.Fprintf(os.Stderr, "redundancy: %s (%d tests)\n", report.pkg, timing.tests)
-		report.verdicts, err = measurePackage(layout, tags, importPath, strings.Join(coverpkg, ","), tmp, keeps[importPath])
+		report.verdicts, err = measurePackage(layout, tags, importPath, strings.Join(coverpkg, ","), tmp, keeps[importPath], env)
 		if err != nil {
 			report.err = err.Error()
 		}
@@ -411,7 +416,8 @@ func runRedundancy(tags, pkgFlag, outPath string) error {
 // measurePackage builds the package's coverage binary, runs each top-level test alone and classifies the runs.
 // A test named in keeps carries its keep reason on its verdict.
 // The keep changes the report only, never the classification.
-func measurePackage(layout moduleLayout, tags, importPath, coverpkg, tmp string, keeps map[string]string) ([]verdict, error) {
+// env is the environment each test runs under.
+func measurePackage(layout moduleLayout, tags, importPath, coverpkg, tmp string, keeps map[string]string, env []string) ([]verdict, error) {
 	dir := layout.dirs[importPath]
 	names, err := listTests(tags, importPath)
 	if err != nil {
@@ -434,7 +440,7 @@ func measurePackage(layout moduleLayout, tags, importPath, coverpkg, tmp string,
 
 	runs := make([]testRun, 0, len(names))
 	for _, name := range names {
-		run, err := runAlone(bin, dir, tmp, name)
+		run, err := runAlone(bin, dir, tmp, name, env)
 		if err != nil {
 			return nil, err
 		}
@@ -467,11 +473,13 @@ func runAloneArgs(name, profile string) []string {
 
 // runAlone runs one top-level test under the coverage binary and reads its elapsed time, outcome and covered blocks.
 // A failing run is returned as such, never as an error.
-func runAlone(bin, dir, tmp, name string) (testRun, error) {
+// The test runs under env.
+func runAlone(bin, dir, tmp, name string, env []string) (testRun, error) {
 	prof := filepath.Join(tmp, "cover.out")
 	os.Remove(prof)
 	cmd := exec.Command(bin, runAloneArgs(name, prof)...)
 	cmd.Dir = dir
+	cmd.Env = env
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	var exitErr *exec.ExitError
@@ -540,7 +548,8 @@ func coversModule(layout moduleLayout, targets []string) bool {
 
 // runPackageTimings runs the packages matching the patterns once under `go test -json` and folds the stream with the timing mode's own parser.
 // A failing test is recorded on its package and does not fail this call.
-func runPackageTimings(tags string, patterns []string) (map[string]*pkgResult, error) {
+// The run takes env as its environment.
+func runPackageTimings(tags string, patterns []string, env []string) (map[string]*pkgResult, error) {
 	args := []string{"test"}
 	if tags != "" {
 		args = append(args, "-tags", tags)
@@ -548,6 +557,7 @@ func runPackageTimings(tags string, patterns []string) (map[string]*pkgResult, e
 	args = append(args, "-json", "-count=1")
 	args = append(args, patterns...)
 	cmd := exec.Command("go", args...)
+	cmd.Env = env
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = os.Stderr

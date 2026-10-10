@@ -1,6 +1,6 @@
-// leaf_enforcement_test.go enforces internal/lyxcwd's own import cap from PATTERN-cwd-resolution:
-// production code in internal/lyxcwd imports ONLY the standard library and
-// internal/gitexec — this is what keeps fabricengine -> logger -> lyxcwd acyclic.
+// leaf_enforcement_test.go enforces internal/lyxcwd's own import cap from PATTERN-cwd-resolution.
+// Production code in internal/lyxcwd imports ONLY the standard library and internal/dotgit.
+// That keeps fabricengine -> logger -> lyxcwd acyclic, and leaves lyxcwd unable to spawn git.
 
 package lyxcwd
 
@@ -12,6 +12,6 @@ import (
 
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 	scankit.AssertImportAllowlist(t, "internal/lyxcwd",
-		"github.com/Knatte18/loomyard/internal/gitexec",
+		"github.com/Knatte18/loomyard/internal/dotgit",
 	)
 }

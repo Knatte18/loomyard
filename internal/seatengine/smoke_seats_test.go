@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 const (
@@ -55,12 +56,18 @@ func copyTestdataStencil(t *testing.T, stencilsDir, name, file string) {
 func TestSmokeSeatsChairAsksAdvisor(t *testing.T) {
 	llmkit.Claude(t, "LYX_REED_CLAUDE")
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	stencilsDir := fabricengine.StencilsDir(h.Location.HubPath)
 	stencilkit.SeedInto(t, stencilsDir)
 	copyTestdataStencil(t, stencilsDir, smokeChairStencil, "smoke-chair.md")
 	copyTestdataStencil(t, stencilsDir, smokeAdvisorStencil, "smoke-advisor.md")
 
+	registerCfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
+	if err != nil {
+		t.Fatalf("load reed config: %v", err)
+	}
+	// Registered before the first boot, so reed's boot finds the kit's hermetic server on the hub's key.
+	tmuxkit.KillOnCleanup(t, registerCfg.Tmux, reedengine.ServerName(h.Path))
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer

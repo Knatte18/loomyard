@@ -26,7 +26,7 @@ import (
 func TestGeometryOverRealHub(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	if !t.Run("reed prime carries the shortname only", func(t *testing.T) {
 		geom, err := hubgeom.ReedGeometry(h.Location)

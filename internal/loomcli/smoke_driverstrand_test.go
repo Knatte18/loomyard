@@ -55,6 +55,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -156,11 +157,11 @@ func waitDriverStrandDead(t *testing.T, eng *reedengine.Engine, timeout time.Dur
 // so it pins that an llm-seeded start ensures the status strand while its driver strand still spawns.
 func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
-	exe := sharedLyxBinary(t)
+	exe := lyxbin.Build(t)
 
 	stubPath := writeStubDriverScript(t)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedConfig(t, h, map[string]string{
 		"loom":    fastDeadlineLoomConfig(),
 		"reed":    reedengine.ConfigTemplate(),

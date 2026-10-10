@@ -8,6 +8,7 @@ When a recovery needs a denied step, lyx performs the step itself behind a guard
   `claudeengine`'s deny table in `internal/shuttleengine/claudeengine/settings.go` owns lyx's own denies, and the operator's permission set owns the rest; the list in `cmd/lyx/norecoverydeny_test.go` follows both.
 - The raw `go` deny in `claudeengine`'s table is pattern-shaped and stays outside this closed list and its token scan, because specs legitimately describe the plan verify commands Go runs.
   No refusal, stencil or spec names a raw module-wide `go` run as a way forward; the way forward is `lyx gate test`.
+  The raw `go` deny also refuses a command naming the slot, strand or prebuilt-binary variable, so no refusal, stencil or spec may spell one.
 - A form matches only as a whole command token sequence, so `git push --force-with-lease` is not `git push --force`.
 - The scanned surface is `contracts/specs/`, `contracts/stencils/`, `plugins/ly/skills/` and the string literals of the non-test Go files under `internal/webster*`, `internal/shed*` and `internal/loom*`, the modules with a refusal-spec section.
   `pattern/` itself is unscanned, because these background files name the denied forms to explain the rule.

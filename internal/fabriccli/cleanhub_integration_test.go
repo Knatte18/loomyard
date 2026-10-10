@@ -97,7 +97,7 @@ func boardGit(t *testing.T, h *hubforge.Hub, args ...string) string {
 func TestRunCLI_CleanHubScenario(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: \"\"\n")
 
 	steps := []struct {
@@ -513,7 +513,7 @@ func TestRunCLI_AnchoredHubScenario(t *testing.T) {
 	// "backend" is a subpath anchor, so the weft ROOT (h.PrimeRecords()) is not the anchored directory
 	// (h.WeftBase) -- fabriccli.CloneAndWire records that anchor for real, so no hand-written anchor
 	// marker is needed here.
-	h := hubforge.NewHub(t, "backend")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
 
 	steps := []struct {
 		name string

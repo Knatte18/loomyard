@@ -25,7 +25,7 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 	t.Parallel()
 
 	slugs := []string{"cleanup-archive-a", "cleanup-archive-b"}
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	tips := make(map[string]string, len(slugs))
@@ -64,7 +64,7 @@ func TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-archive-fail-weft"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
@@ -89,7 +89,7 @@ func TestCleanup_NoOriginDeletesAndReportsArchiveSkip(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-archive-noorigin-weft"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)

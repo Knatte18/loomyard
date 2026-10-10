@@ -68,7 +68,7 @@ func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeRecords(), "newmodule", "newfile.txt"), "brand new, never staged")
@@ -102,7 +102,7 @@ func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	trackedPath := filepath.Join(weftFixture.PrimeRecords(), "_lyx", "trackedfile.txt")
@@ -146,7 +146,7 @@ func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeRecords(), "_lyx", "durable.txt"), "durable state")
@@ -184,7 +184,7 @@ func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	preSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeRecords())
@@ -275,7 +275,7 @@ func TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptio
 		t.Parallel()
 
 		warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-		weftFixture := hubforge.NewHub(t, ".")
+		weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 		if _, err := os.Stat(filepath.Join(weftFixture.PrimeRecords(), "_extra")); !os.IsNotExist(err) {
@@ -300,7 +300,7 @@ func TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptio
 		t.Parallel()
 
 		warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-		weftFixture := hubforge.NewHub(t, ".")
+		weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 		// git tracks files, not directories: a materialised-but-empty

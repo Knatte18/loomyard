@@ -21,6 +21,7 @@ package gitoracle
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -94,6 +95,110 @@ func ChangedFilesSince(t testing.TB, dir, sha string) ([]string, error) {
 		files = append(files, path)
 	}
 	return files, nil
+}
+
+// GitDir reimplements gitrepo's GitDir on `git rev-parse --git-dir`, absolutized against dir when git answers a relative path.
+func GitDir(t testing.TB, dir string) (string, error) {
+	t.Helper()
+	return revParsePath(dir, "--git-dir")
+}
+
+// CommonDir reimplements gitrepo's CommonDir on `git rev-parse --git-common-dir`, absolutized against dir when git answers a relative path.
+func CommonDir(t testing.TB, dir string) (string, error) {
+	t.Helper()
+	return revParsePath(dir, "--git-common-dir")
+}
+
+// BranchExists reimplements gitrepo's BranchExists on `git rev-parse --verify --quiet refs/heads/<branch>`: exit 0 means present, exit 1 absent.
+func BranchExists(t testing.TB, dir, branch string) bool {
+	t.Helper()
+
+	_, found := verifyQuiet(t, dir, "refs/heads/"+branch)
+	return found
+}
+
+// RefSHA reimplements gitrepo's RefSHA on `git rev-parse --verify --quiet <ref>`; the bool is false for an absent ref.
+func RefSHA(t testing.TB, dir, ref string) (string, bool) {
+	t.Helper()
+	return verifyQuiet(t, dir, ref)
+}
+
+// HeadRef reimplements gitrepo's HeadRef on `git rev-parse --abbrev-ref HEAD`, which prints `HEAD` for a detached HEAD.
+// An unborn branch makes that command fail, so the name then comes from `git branch --show-current`.
+func HeadRef(t testing.TB, dir string) (branch string, detached bool, err error) {
+	t.Helper()
+
+	//gitexec:raw the oracle reads the exit code to tell an unborn HEAD from a branch with a commit
+	stdout, stderr, code, runErr := gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, dir)
+	if runErr != nil {
+		return "", false, runErr
+	}
+	if code == 0 {
+		name := strings.TrimSpace(stdout)
+		if name == "HEAD" {
+			return "", true, nil
+		}
+		return name, false, nil
+	}
+	if !strings.Contains(stderr, "ambiguous argument 'HEAD'") && !strings.Contains(stderr, "unknown revision") {
+		return "", false, fmt.Errorf("oracle: git rev-parse --abbrev-ref HEAD: %s", stderr)
+	}
+
+	current, err := gitexec.Run([]string{"branch", "--show-current"}, dir)
+	if err != nil {
+		return "", false, fmt.Errorf("oracle: git branch --show-current: %w", err)
+	}
+	return strings.TrimSpace(current), false, nil
+}
+
+// RefTree reimplements gitrepo's RefTree on `git rev-parse <ref>^{tree}`.
+func RefTree(t testing.TB, dir, ref string) (string, error) {
+	t.Helper()
+
+	stdout, err := gitexec.Run([]string{"rev-parse", ref + "^{tree}"}, dir)
+	if err != nil {
+		return "", fmt.Errorf("oracle: git rev-parse %s^{tree}: %w", ref, err)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+// Upstream reimplements gitrepo's Upstream on `git rev-parse --verify --quiet <branch>@{upstream}`; the bool is false when git reports no upstream or an unresolvable one.
+func Upstream(t testing.TB, dir, branch string) (string, bool) {
+	t.Helper()
+	return verifyQuiet(t, dir, branch+"@{upstream}")
+}
+
+// verifyQuiet runs `git rev-parse --verify --quiet <rev>` in dir and classifies the exit codes git documents: 0 prints the SHA, 1 means the revision does not resolve, anything else fails the test.
+func verifyQuiet(t testing.TB, dir, rev string) (string, bool) {
+	t.Helper()
+
+	//gitexec:raw the oracle reads the exit code: 0 present, 1 absent, anything else fatal
+	stdout, stderr, code, err := gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", rev}, dir)
+	if err != nil {
+		t.Fatalf("oracle: git rev-parse --verify --quiet %s spawn error = %v", rev, err)
+	}
+	switch code {
+	case 0:
+		return strings.TrimSpace(stdout), true
+	case 1:
+		return "", false
+	default:
+		t.Fatalf("oracle: git rev-parse --verify --quiet %s exited %d: %s", rev, code, stderr)
+		return "", false
+	}
+}
+
+// revParsePath runs `git rev-parse <flag>` in dir and returns the path it prints, joined onto dir when git prints it relative.
+func revParsePath(dir, flag string) (string, error) {
+	stdout, err := gitexec.Run([]string{"rev-parse", flag}, dir)
+	if err != nil {
+		return "", fmt.Errorf("oracle: git rev-parse %s: %w", flag, err)
+	}
+	path := strings.TrimSpace(stdout)
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(dir, path)
+	}
+	return path, nil
 }
 
 // CurrentBranch reimplements gitrepo's CurrentBranch directly on `git symbolic-ref --short HEAD`, which fails on a detached HEAD and succeeds — printing the branch name — even on an unborn or orphan HEAD that has never been committed.

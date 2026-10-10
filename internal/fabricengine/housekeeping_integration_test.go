@@ -106,7 +106,7 @@ func TestStoreHousekeeping(t *testing.T) {
 	const slug = "gc-pair"
 
 	t.Run("Add writes both keys into both stores", func(t *testing.T) {
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		code, records := hubStorePaths(t, h)
 		unsetHousekeepingKeys(t, code)
 		unsetHousekeepingKeys(t, records)
@@ -120,7 +120,7 @@ func TestStoreHousekeeping(t *testing.T) {
 	})
 
 	t.Run("Remove writes both keys into both stores", func(t *testing.T) {
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPair(t, h, slug)
 		code, records := hubStorePaths(t, h)
 		unsetHousekeepingKeys(t, code)
@@ -136,7 +136,7 @@ func TestStoreHousekeeping(t *testing.T) {
 
 	t.Run("Remove packs a store above the lowered threshold", func(t *testing.T) {
 		fabricengine.SetGCAutoThresholdForTest(t, 1)
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPair(t, h, slug)
 		code, _ := hubStorePaths(t, h)
 		fillSampledLooseObjects(t, code)
@@ -224,7 +224,7 @@ func TestStoreHousekeeping(t *testing.T) {
 	})
 
 	t.Run("a failing gc is a warning and never fails Remove", func(t *testing.T) {
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPair(t, h, slug)
 		_, records := hubStorePaths(t, h)
 		// An unparsable size makes `gc --auto` exit 128 on its config parse, whatever the threshold.

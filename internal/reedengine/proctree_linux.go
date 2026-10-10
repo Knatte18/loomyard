@@ -1,9 +1,7 @@
-// proctree_linux.go implements the two process-tree probes (descendantClosurePIDs,
-// serverProcessesOnSocket) directly against /proc — Linux has no Win32_Process analog, so both
-// probes read the kernel's own process table instead of shelling out to a helper.
+// proctree_linux.go implements the process-tree probes (descendantClosurePIDs, sessionMemberPIDs, serverProcessesOnSocket) directly against /proc — Linux has no Win32_Process analog, so the probes read the kernel's own process table instead of shelling out to a helper.
 // Each enumerates the numeric entries under /proc, reads the per-pid file it needs
 // (/proc/<pid>/stat or /proc/<pid>/cmdline), and delegates the actual decision to the pure helpers
-// in proctree.go (parseStatPPID, descendantClosure, matchSocketCmdlines).
+// in proctree.go (parseStat, descendantClosure, matchSocketCmdlines).
 // Linux is the platform lyx runs on, so this file is exercised for real rather than merely
 // compile-checked.
 
@@ -40,7 +38,7 @@ func (e *Engine) descendantClosurePIDs(roots []int) []int {
 			// a benign race, not a fatal condition for the whole probe.
 			continue
 		}
-		ppid, err := parseStatPPID(string(stat))
+		ppid, _, err := parseStat(string(stat))
 		if err != nil {
 			continue
 		}
@@ -50,6 +48,37 @@ func (e *Engine) descendantClosurePIDs(roots []int) []int {
 		return roots
 	}
 	return descendantClosure(pidToPPID, roots)
+}
+
+// sessionMemberPIDs returns every process whose session id is one of sessions, read from /proc/<pid>/stat.
+// Returns nil on read failure.
+func sessionMemberPIDs(sessions []int) []int {
+	if len(sessions) == 0 {
+		return nil
+	}
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil
+	}
+	wanted := make(map[int]bool, len(sessions))
+	for _, sid := range sessions {
+		wanted[sid] = true
+	}
+	var members []int
+	for _, entry := range entries {
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil {
+			continue
+		}
+		stat, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "stat"))
+		if err != nil {
+			continue
+		}
+		if _, session, err := parseStat(string(stat)); err == nil && wanted[session] {
+			members = append(members, pid)
+		}
+	}
+	return members
 }
 
 // serverProcessesOnSocket returns OS pids of processes on this engine's socket,

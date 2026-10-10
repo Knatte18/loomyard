@@ -22,7 +22,7 @@ import (
 func TestClean_ReasonWording(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	warpUntracked := filepath.Join(h.PrimeWorktree(), "untracked.txt")
 	weftUntracked := filepath.Join(h.PrimeRecords(), "untracked.txt")
 

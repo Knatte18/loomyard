@@ -1,8 +1,8 @@
 # Top-level test functions per package, in its _test.go files under every build tag.
 # TestTestBudget_PackagesStayWithinBudget fails when a package exceeds its row or has tests and no row.
 # Raise a row in the commit that adds the tests that need it.
-cmd/lyx: 71
-cmd/testtiming: 13
+cmd/lyx: 72
+cmd/testtiming: 21
 contracts/specs: 3
 contracts/stencils: 16
 internal/agentname: 7
@@ -26,6 +26,7 @@ internal/configengine: 13
 internal/configreg: 7
 internal/configsync: 6
 internal/discussionparser: 16
+internal/dotgit: 3
 internal/editdirective: 2
 internal/envsource: 3
 internal/fabriccli: 20
@@ -39,10 +40,10 @@ internal/gatecli: 3
 internal/gateslot: 11
 internal/gitexec: 7
 internal/githubclient: 11
-internal/gitkit: 8
+internal/gitkit: 9
 internal/gitrepo: 40
 internal/gitrepo/internal/gitoracle: 1
-internal/hubforge: 5
+internal/hubforge: 7
 internal/hubgeom: 11
 internal/hubreconcile: 18
 internal/idecli: 2
@@ -52,7 +53,7 @@ internal/landingshed: 67
 internal/lock: 4
 internal/logger: 34
 internal/loggerconfig: 3
-internal/loomcli: 184
+internal/loomcli: 185
 internal/loomengine: 41
 internal/loomrecipe: 46
 internal/loomshed: 72
@@ -106,13 +107,13 @@ internal/testkit/envkit: 4
 internal/testkit/llmkit: 1
 internal/testkit/locationkit: 2
 internal/testkit/logcapture: 5
-internal/testkit/lyxbin: 3
+internal/testkit/lyxbin: 5
 internal/testkit/plankit: 4
 internal/testkit/scankit: 10
 internal/testkit/shedfake: 9
 internal/testkit/shuttlefake: 8
 internal/testkit/stencilkit: 3
-internal/testkit/tmuxkit: 9
+internal/testkit/tmuxkit: 14
 internal/treadleengine: 34
 internal/verifyrun: 4
 internal/verifytree: 6

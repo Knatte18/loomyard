@@ -24,7 +24,7 @@ import (
 func TestCommitSeededStencils_EmptyInputIsNoOp(t *testing.T) {
 	t.Parallel()
 
-	hub := hubforge.NewHub(t, ".")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	rec := fabricengine.NewMutations(filepath.Dir(hub.Path))
 
 	res, err := fabricengine.CommitSeededStencils(hub.Path, fabricengine.StencilsSubtreeRel(), fabricengine.StencilsDir(hub.Path), nil, "lyx: seed stencils", rec)
@@ -48,7 +48,7 @@ func TestCommitSeededStencils_EmptyInputIsNoOp(t *testing.T) {
 func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
 	t.Parallel()
 
-	hub := hubforge.NewHub(t, ".")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	board := gitrepo.New(hub.BoardDir())
 
 	// Push whatever hubforge already committed so HasUnpushed starts false, proving below that
@@ -158,7 +158,7 @@ func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
 func TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory(t *testing.T) {
 	t.Parallel()
 
-	hub := hubforge.NewHub(t, ".")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	specsDir := fabricengine.SpecsDir(hub.Path)
 	if err := os.MkdirAll(specsDir, 0o755); err != nil {

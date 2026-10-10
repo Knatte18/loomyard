@@ -35,7 +35,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remove-nested-junction"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 
@@ -109,7 +109,7 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 	const slug = "remove-anchored-sweep"
 	const anchor = "backend"
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	// PrimeName resolves the hub from the anchored directory, so it must exist in the prime
 	// worktree before the anchor is recorded — the same precondition CloneHub's own subpath guard
 	// enforces against the freshly cloned warp.
@@ -157,7 +157,7 @@ func TestRemove_FailedWeftTeardownIsReported(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "remove-locked-pair"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	topology := h.Topology

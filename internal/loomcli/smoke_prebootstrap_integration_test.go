@@ -20,10 +20,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
 // TestLoomPreBootstrapPair walks one never-bootstrapped pair through the pre-bootstrap states in this order, each step building on the one before:
@@ -31,7 +31,7 @@ import (
 func TestLoomPreBootstrapPair(t *testing.T) {
 	t.Parallel()
 
-	exe := sharedLyxBinary(t)
+	exe := lyxbin.Build(t)
 	hub, loc, worktree, slug := newWiredPairFixture(t)
 	recordsDir := fabricengine.RecordsWorktree(loc)
 
@@ -137,7 +137,7 @@ func TestLoomPreBootstrapPair(t *testing.T) {
 func TestLoomStatusAndPauseOnNeverBootstrappedPair(t *testing.T) {
 	t.Parallel()
 
-	exe := sharedLyxBinary(t)
+	exe := lyxbin.Build(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	seedGoDriverRun(t, loc)
 
@@ -174,25 +174,18 @@ func TestLoomStatusAndPauseOnNeverBootstrappedPair(t *testing.T) {
 	}
 }
 
-// hubStampPath returns the hub's build stamp file.
-func hubStampPath(loc *lyxcwd.Location) string {
-	return hubreconcile.Geometry{BoardDir: fabricengine.BoardDir(loc.HubPath)}.StampPath()
-}
-
 // TestLoomResumeReconcilesTheHubConfigBeforeArming asserts only a start verb reconciles a hub whose build has no stamp.
 // Status leaves a retired key in a pair's committed batcher.yaml and writes no stamp.
 // Resume on an unparseable loom.yaml refuses, naming the file and the way forward, and writes no stamp.
-// Resume after the fix removes the key, commits it and writes the stamp whatever its own exit.
+// Resume after the fix removes the key, commits it and writes the stamp, then refuses at reed Up before any server starts: the pair's reed config is bad.
+// The half past the reed config load, which needs a good reed config and a tmux server, is TestLoomResumeReconcilesThenRefusesWithoutLiveDriver.
 func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 	t.Parallel()
 
-	exe := sharedLyxBinary(t)
-	_, loc, worktree, _ := newWiredPairFixture(t)
+	exe := lyxbin.Build(t)
+	loc, worktree := newBadReedUpFixture(t, commitRetiredBatcherKey)
+	waitForFixtureProcessesToExit(t)
 	recordsDir := fabricengine.RecordsWorktree(loc)
-
-	batcher, _ := configreg.Lookup("batcher")
-	retired := strings.Replace(batcher.Template(), "orientation: 31400", "master_base: 52000", 1)
-	gitkit.CommitFile(t, recordsDir, configengine.ConfigFileRel("batcher"), retired, "fixture: retired key")
 	batcherPath := configengine.ConfigFile(worktree, "batcher")
 
 	if _, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "status"); err != nil {
@@ -241,6 +234,12 @@ func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 	if _, err := os.Stat(hubStampPath(loc)); err != nil {
 		t.Errorf("hub build stamp after loom resume: %v; want it written", err)
 	}
+	if pids := findWatchdogPIDs(loc.HubPath); len(pids) != 0 {
+		t.Errorf("watchdog pids after a resume refused at reed Up = %v; want none", pids)
+	}
+	if pids := findDriverPIDs(worktree); len(pids) != 0 {
+		t.Errorf("driver pids after a resume refused at reed Up = %v; want none", pids)
+	}
 }
 
 // TestLoomFailedReedUpRefuses asserts a bad reed config refuses the verbs that bring reed up, before any watchdog or driver is spawned.
@@ -248,7 +247,7 @@ func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 func TestLoomFailedReedUpRefuses(t *testing.T) {
 	t.Parallel()
 
-	exe := sharedLyxBinary(t)
+	exe := lyxbin.Build(t)
 	const verbTimeout = 60 * time.Second
 
 	requireStartRefusal := func(t *testing.T, loc *lyxcwd.Location, worktree string) {

@@ -30,7 +30,7 @@ import (
 func TestRunCLI_HubMutationScenario(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	steps := []struct {
 		name string

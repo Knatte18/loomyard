@@ -8,6 +8,7 @@
 package webstercli
 
 import (
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate drives "run" from a temporary directory that is not a git repository at all -- lyxcwd.Resolve fails there, so preflight.HubPresent folds it into standalone mode rather than refusing outright.
@@ -33,6 +35,12 @@ func TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate(t *testing.T) {
 		t.Fatalf("standalonestate.Derive(%q) = %v; want nil error", target, err)
 	}
 	seedMissingIntentPlanDir(t, filepath.Join(stateDir, "_lyx", "plan"))
+	tmuxPath, err := exec.LookPath("tmux")
+	if err != nil {
+		t.Skipf("tmux not found on PATH: %v", err)
+	}
+	// Registered before the invocation boots the standalone session, so its boot finds the kit's hermetic server; the kill runs after tearDownStandaloneReed's Down.
+	tmuxkit.KillOnCleanup(t, tmuxPath, standalonegeom.ReedGeometry(target, stateDir, hash8).SocketKey)
 	tearDownStandaloneReed(t, target, stateDir, hash8)
 
 	var out strings.Builder

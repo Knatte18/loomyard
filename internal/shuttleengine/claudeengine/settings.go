@@ -54,7 +54,7 @@ const commandPositionPattern = `("command"[[:space:]]*:[[:space:]]*"|\\n|[;&|(` 
 const pythonCommandPattern = commandPositionPattern + `python(3(\.[0-9]+)?)?([^A-Za-z0-9_./-]|$)`
 
 // steerRawGoDeny refuses a Bash go run that bypasses the gate slots; it must contain no single/double quote or backslash (checked at init).
-const steerRawGoDeny = "raw module-wide, tmux-tier and llm-tier go runs are refused here. Run the package-scoped command through lyx gate test as a background Bash call, for example lyx gate test ./internal/x, and use its --tags flag for a tag. The slot and strand environment variables belong to lyx, and a command naming either is refused"
+const steerRawGoDeny = "raw module-wide, tmux-tier and llm-tier go runs are refused here. Run the package-scoped command through lyx gate test as a background Bash call, for example lyx gate test ./internal/x, and use its --tags flag for a tag. The slot, strand and prebuilt-binary environment variables belong to lyx, and a command naming any of them is refused"
 
 // noticeRawGoDeny announces the raw go deny in the same wording as its steer.
 const noticeRawGoDeny = steerRawGoDeny + "."
@@ -72,13 +72,13 @@ const goWordPattern = `[^[:space:]"\\;&|()` + "`" + `]*`
 // It matches three shapes.
 // A go test, build or vet whose arguments include a word holding ... or the word all.
 // A go test whose -tags value names tmux or llm.
-// Any command naming the slot-inheritance variable or the strand-name variable.
+// Any command naming the slot-inheritance variable, the strand-name variable or the prebuilt-binary variable.
 // It sees static text only, so it is a guardrail and not a barrier:
 // a run hidden behind a script, bash -c, a cd plus a relative pattern it does not cover, or a shell variable passes, as does any raw package-scoped go test.
 // It falsely denies a matching spelling inside a quoted argument, a commit message or a grep.
 const rawGoCommandPattern = `(` + goSubcommandPattern + `(test|build|vet)[[:space:]]` + goArgumentsPattern + `(` + goWordPattern + `\.\.\.` + goWordPattern + `|all)([[:space:]"\\;&|()` + "`" + `]|$))` +
 	`|(` + goSubcommandPattern + `test[[:space:]]` + goArgumentsPattern + `-{1,2}tags[[:space:]=]+[^[:space:];&|]*(tmux|llm))` +
-	`|` + gateslot.InheritEnv + `|` + agentname.StrandNameEnv
+	`|` + gateslot.InheritEnv + `|` + agentname.StrandNameEnv + `|` + gateslot.PrebuiltLyxEnv
 
 // noticeAgentDeny announces the Agent deny in a non-fork run;
 // it must hold for every session that receives it.

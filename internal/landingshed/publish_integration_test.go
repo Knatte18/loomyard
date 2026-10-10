@@ -110,7 +110,7 @@ func newPublishDepsAt(t *testing.T, taskWorktree string) landingshed.Deps {
 // against the faked GitHub client, which itself asserts the pair is clean and carries the parent
 // branch's own content before it ever answers the create call.
 func TestPublish_MergesInCleanlyBeforeCreatingPullRequest(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	taskWorktree := h.PrimeWorktree()
 
 	gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "-b", "task-branch")
@@ -146,7 +146,7 @@ func TestPublish_MergesInCleanlyBeforeCreatingPullRequest(t *testing.T) {
 // the remote task branch holds a commit the local branch lacks, so the real push is rejected and Publish stops Stuck naming the real remote tip and a count of 1;
 // after the way forward's merge of origin/<task-branch> in the task worktree, a re-run pushes and reaches the GitHub step.
 func TestPublish_RejectedPushNamesRemoteTipThenResumesAfterMerge(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	taskWorktree := h.PrimeWorktree()
 
 	// The remote task branch gets a commit the local one never sees: push it, then rewind the local branch.

@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -79,12 +80,30 @@ func newColdScratchEngine(t *testing.T) *Engine {
 func TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm(t *testing.T) {
 	e := newColdScratchEngine(t)
 
+	// The kit pre-started a session-less hermetic server on this key; the cold boot must reuse it, not wait out the stale-holder grace and replace it.
+	serverPID := func() string {
+		t.Helper()
+		out, err := e.tmux.output("display-message", "-p", "#{pid}")
+		if err != nil {
+			t.Fatalf("display-message #{pid}: %v", err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	pidBefore := serverPID()
+
+	start := time.Now()
 	booted, err := e.EnsureSession()
 	if err != nil {
 		t.Fatalf("EnsureSession (cold) = %v, want a nil error", err)
 	}
 	if !booted {
 		t.Errorf("EnsureSession (cold) booted = false, want true — nothing usable existed to attach to")
+	}
+	if elapsed := time.Since(start); elapsed >= staleSocketGrace {
+		t.Errorf("EnsureSession (cold) took %v, want less than the %v stale-holder grace", elapsed, staleSocketGrace)
+	}
+	if pidAfter := serverPID(); pidAfter != pidBefore {
+		t.Errorf("server pid after the cold boot = %s, want the pre-started server's %s", pidAfter, pidBefore)
 	}
 	signal := e.geom.DiscoverSignalPath
 	if _, err := os.Stat(signal); err != nil {

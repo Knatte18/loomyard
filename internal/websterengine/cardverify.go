@@ -28,6 +28,7 @@ const DefaultCardVerifyTimeout = 10 * time.Minute
 //
 // A non-nil slots pool gates each card's run: a wait record naming the site `card verify NN-<slug>` sits in waitDir while the acquire waits, the timeout counts only from the moment the slot is held, the command runs with the lease's environment, and the slot is released after it.
 // A nil slots runs unslotted with the parent's environment, and an empty waitDir writes no wait record.
+// Either way the command never sees gateslot.PrebuiltLyxEnv: its own go test builds lyx once per test binary.
 func rerunCardVerifies(cards []planparser.Card, worktree string, timeout time.Duration, slots *gateslot.Pool, waitDir string) []string {
 	if timeout <= 0 {
 		timeout = DefaultCardVerifyTimeout
@@ -50,7 +51,8 @@ func rerunCardVerifies(cards []planparser.Card, worktree string, timeout time.Du
 
 // runCardVerify runs one card's command and returns how it failed, empty when it passed.
 func runCardVerify(command, worktree string, timeout time.Duration, slots *gateslot.Pool, waitDir, site string) string {
-	var env []string
+	// A card's verify never inherits the prebuilt-lyx variable: its own go test builds lyx once per test binary.
+	env := gateslot.StripPrebuilt(os.Environ())
 	if slots != nil {
 		lease, err := acquireCardVerifySlot(slots, worktree, waitDir, site)
 		if err != nil {
@@ -61,7 +63,7 @@ func runCardVerify(command, worktree string, timeout time.Duration, slots *gates
 				logger.Warn("webster: release gate slot", "site", site, "cause", err)
 			}
 		}()
-		env = lease.Env(os.Environ())
+		env = lease.Env(env)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)

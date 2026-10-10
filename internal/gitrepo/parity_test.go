@@ -8,6 +8,7 @@ package gitrepo_test
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -134,7 +135,18 @@ func resolveRevOrFatal(t *testing.T, dir, rev string) string {
 	return strings.TrimSpace(stdout)
 }
 
-// TestParity drives the oracle and gitrepo through one committed repository, asserting they agree on CurrentSHA, SHAExists, ChangedFilesSince and CurrentBranch.
+// requireBranchExists returns repo.BranchExists(branch), failing the test on an error.
+func requireBranchExists(t *testing.T, repo *gitrepo.Repo, branch string) bool {
+	t.Helper()
+
+	exists, err := repo.BranchExists(branch)
+	if err != nil {
+		t.Fatalf("BranchExists(%s) error = %v", branch, err)
+	}
+	return exists
+}
+
+// TestParity drives the oracle and gitrepo through one committed repository, asserting they agree on CurrentSHA, SHAExists, ChangedFilesSince, CurrentBranch, the geometry reads and the ref reads.
 // The steps run serially in one order and share the repository's state: the file-list steps each take their own base commit and add commits on main, and the detached-HEAD step runs before the orphan step because both leave HEAD off main.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestParity(t *testing.T) {
@@ -199,6 +211,118 @@ func TestParity(t *testing.T) {
 			assertParityString(t, oracleBranch, implBranch)
 			if implBranch != "main" {
 				t.Errorf("CurrentBranch() = %q, want %q", implBranch, "main")
+			}
+		}},
+		// The linked worktree's git dir sits under the primary's common dir, so the two reads differ there and agree on the primary.
+		{"GitDir and CommonDir agree on the primary and on a linked worktree", func(t *testing.T) {
+			linkedDir := filepath.Join(t.TempDir(), "linked")
+			gitkit.MustRun(t, dir, "git", "worktree", "add", "-b", "linked-geometry", linkedDir)
+
+			for _, checkout := range []struct {
+				name string
+				dir  string
+			}{{"primary", dir}, {"linked", linkedDir}} {
+				handle := gitrepo.New(checkout.dir)
+				reads := []struct {
+					name   string
+					oracle func(testing.TB, string) (string, error)
+					impl   func() (string, error)
+				}{
+					{"GitDir", gitoracle.GitDir, handle.GitDir},
+					{"CommonDir", gitoracle.CommonDir, handle.CommonDir},
+				}
+				for _, read := range reads {
+					oracleValue, oracleErr := read.oracle(t, checkout.dir)
+					if oracleErr != nil {
+						t.Fatalf("gitoracle.%s() on the %s checkout error = %v", read.name, checkout.name, oracleErr)
+					}
+					implValue, implErr := read.impl()
+					if implErr != nil {
+						t.Fatalf("%s() on the %s checkout error = %v", read.name, checkout.name, implErr)
+					}
+					assertParityString(t, oracleValue, implValue)
+				}
+			}
+
+			linked := gitrepo.New(linkedDir)
+			linkedGitDir, _ := linked.GitDir()
+			linkedCommonDir, _ := linked.CommonDir()
+			if linkedGitDir == linkedCommonDir {
+				t.Errorf("linked worktree GitDir() = CommonDir() = %q; want them to differ", linkedGitDir)
+			}
+		}},
+		{"BranchExists, RefSHA, RefTree and HeadRef agree on branches, tags and missing refs", func(t *testing.T) {
+			gitkit.MustRun(t, dir, "git", "tag", "parity-tag")
+
+			for _, branch := range []string{"main", "linked-geometry", "missing-branch"} {
+				assertParityBool(t, gitoracle.BranchExists(t, dir, branch), requireBranchExists(t, repo, branch))
+			}
+			if !requireBranchExists(t, repo, "main") || requireBranchExists(t, repo, "missing-branch") {
+				t.Error("BranchExists(main, missing-branch) did not answer true, false")
+			}
+
+			for _, ref := range []string{"refs/heads/main", "refs/tags/parity-tag", "refs/heads/missing-branch"} {
+				oracleSHA, oracleFound := gitoracle.RefSHA(t, dir, ref)
+				implSHA, implErr := repo.RefSHA(ref)
+				if oracleFound != (implErr == nil) {
+					t.Fatalf("RefSHA(%s): oracle found = %v; gitrepo error = %v", ref, oracleFound, implErr)
+				}
+				if !oracleFound {
+					if !errors.Is(implErr, gitrepo.ErrRefNotFound) {
+						t.Errorf("RefSHA(%s) error = %v; want gitrepo.ErrRefNotFound", ref, implErr)
+					}
+					continue
+				}
+				assertParitySHA(t, oracleSHA, implSHA)
+			}
+
+			for _, ref := range []string{"HEAD", "main", "parity-tag", requireCurrentSHA(t, repo)} {
+				oracleTree, oracleErr := gitoracle.RefTree(t, dir, ref)
+				if oracleErr != nil {
+					t.Fatalf("gitoracle.RefTree(%s) error = %v", ref, oracleErr)
+				}
+				implTree, implErr := repo.RefTree(ref)
+				if implErr != nil {
+					t.Fatalf("RefTree(%s) error = %v", ref, implErr)
+				}
+				assertParityString(t, oracleTree, implTree)
+			}
+			if _, err := repo.RefTree("missing-branch"); !errors.Is(err, gitrepo.ErrRefNotFound) {
+				t.Errorf("RefTree(missing) error = %v; want gitrepo.ErrRefNotFound", err)
+			}
+
+			oracleBranch, oracleDetached, oracleErr := gitoracle.HeadRef(t, dir)
+			implBranch, implDetached, implErr := repo.HeadRef()
+			if oracleErr != nil || implErr != nil {
+				t.Fatalf("HeadRef() errors: oracle = %v; gitrepo = %v", oracleErr, implErr)
+			}
+			assertParityString(t, oracleBranch, implBranch)
+			assertParityBool(t, oracleDetached, implDetached)
+			if implBranch != "main" || implDetached {
+				t.Errorf("HeadRef() = (%q, %v); want (%q, false)", implBranch, implDetached, "main")
+			}
+		}},
+		{"Upstream agrees with and without a configured upstream", func(t *testing.T) {
+			remote := t.TempDir()
+			gitkit.MustRun(t, remote, "git", "init", "--bare", "-b", "main")
+			gitkit.MustRun(t, dir, "git", "remote", "add", "origin", remote)
+			gitkit.MustRun(t, dir, "git", "push", "-u", "origin", "main")
+			gitkit.MustRun(t, dir, "git", "branch", "no-upstream")
+
+			for _, tt := range []struct {
+				branch string
+				wantOK bool
+			}{{"main", true}, {"no-upstream", false}, {"missing-branch", false}} {
+				oracleSHA, oracleOK := gitoracle.Upstream(t, dir, tt.branch)
+				implSHA, implOK, implErr := repo.Upstream(tt.branch)
+				if implErr != nil {
+					t.Fatalf("Upstream(%s) error = %v", tt.branch, implErr)
+				}
+				assertParityBool(t, oracleOK, implOK)
+				assertParitySHA(t, oracleSHA, implSHA)
+				if implOK != tt.wantOK {
+					t.Errorf("Upstream(%s) ok = %v; want %v", tt.branch, implOK, tt.wantOK)
+				}
 			}
 		}},
 		// Each side returns its own ErrInvalidSHA-class sentinel before either ever resolves or diffs anything.
@@ -270,6 +394,17 @@ func TestParity(t *testing.T) {
 			if implErr == nil {
 				t.Error("CurrentBranch() on detached HEAD error = nil, want non-nil")
 			}
+
+			oracleBranch, oracleDetached, oracleHeadErr := gitoracle.HeadRef(t, dir)
+			implBranch, implDetached, implHeadErr := repo.HeadRef()
+			if oracleHeadErr != nil || implHeadErr != nil {
+				t.Fatalf("HeadRef() errors on detached HEAD: oracle = %v; gitrepo = %v", oracleHeadErr, implHeadErr)
+			}
+			assertParityString(t, oracleBranch, implBranch)
+			assertParityBool(t, oracleDetached, implDetached)
+			if implBranch != "" || !implDetached {
+				t.Errorf("HeadRef() on detached HEAD = (%q, %v); want (%q, true)", implBranch, implDetached, "")
+			}
 		}},
 		// Relies on the detached HEAD the previous step leaves: an orphan branch is started from it.
 		{"CurrentBranch agrees on an orphan branch", func(t *testing.T) {
@@ -329,6 +464,28 @@ func TestParity_UnbornHEAD(t *testing.T) {
 	assertParityString(t, oracleBranch, implBranch)
 	if implBranch != "main" {
 		t.Errorf("CurrentBranch() on unborn HEAD = %q, want %q", implBranch, "main")
+	}
+
+	oracleHead, oracleDetached, oracleHeadErr := gitoracle.HeadRef(t, dir)
+	implHead, implDetached, implHeadErr := repo.HeadRef()
+	if oracleHeadErr != nil || implHeadErr != nil {
+		t.Fatalf("HeadRef() errors on unborn HEAD: oracle = %v; gitrepo = %v", oracleHeadErr, implHeadErr)
+	}
+	assertParityString(t, oracleHead, implHead)
+	assertParityBool(t, oracleDetached, implDetached)
+	if implHead != "main" || implDetached {
+		t.Errorf("HeadRef() on unborn HEAD = (%q, %v); want (%q, false)", implHead, implDetached, "main")
+	}
+
+	oracleSHA, oracleOK := gitoracle.Upstream(t, dir, "main")
+	implSHA, implOK, implUpstreamErr := repo.Upstream("main")
+	if implUpstreamErr != nil {
+		t.Fatalf("Upstream() on unborn HEAD error = %v", implUpstreamErr)
+	}
+	assertParityBool(t, oracleOK, implOK)
+	assertParitySHA(t, oracleSHA, implSHA)
+	if implOK {
+		t.Error("Upstream() on the unborn branch ok = true; want false")
 	}
 }
 

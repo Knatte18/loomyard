@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -63,27 +62,16 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 	}
 
 	// Capture both original branches for rollback on later failure.
-	origBranchOut, err := gitexec.Run(
-		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
-		l.WorktreePath(),
-	)
+	originalBranch, err := readBranch(l.WorktreePath())
 	if err != nil {
 		return CheckoutResult{}, fmt.Errorf("capture warp branch: %w", err)
 	}
-	originalBranch := strings.TrimSpace(origBranchOut)
 
-	// The weft branch capture is best-effort: a detached or unborn weft HEAD
-	// (abbrev-ref "HEAD" or empty) has no branch name to switch back to, so
-	// rollbackSwitch simply skips the weft side in that abnormal case, matching
-	// the best-effort posture of the rollback as a whole.
+	// The weft branch capture is best-effort: a detached weft HEAD (readBranch's "HEAD") has no branch name to switch back to.
+	// rollbackSwitch simply skips the weft side in that abnormal case, matching the best-effort posture of the rollback as a whole.
 	originalWeftBranch := ""
-	if weftBranchOut, err := gitexec.Run(
-		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
-		weftWorktree,
-	); err == nil {
-		if b := strings.TrimSpace(weftBranchOut); b != "HEAD" {
-			originalWeftBranch = b
-		}
+	if b, err := readBranch(weftWorktree); err == nil && b != "HEAD" {
+		originalWeftBranch = b
 	}
 
 	// Switch the warp worktree to the target branch.
@@ -160,14 +148,10 @@ func (t *Topology) switchOrForkWeft(rec *Mutations, l *lyxcwd.Location, branch s
 	}
 
 	// Branch does not exist: fork from current weft HEAD to preserve merge-base.
-	parentWeftBranchOut, err := gitexec.Run(
-		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
-		weftWorktree,
-	)
+	parentWeftBranch, err := readBranch(weftWorktree)
 	if err != nil {
 		return false, fmt.Errorf("capture parent weft branch: %w", err)
 	}
-	parentWeftBranch := strings.TrimSpace(parentWeftBranchOut)
 
 	// Create and switch to the new weft branch.
 	if _, err := gitexec.Run(

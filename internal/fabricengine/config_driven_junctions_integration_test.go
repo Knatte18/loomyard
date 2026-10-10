@@ -11,7 +11,7 @@
 // drift shape.
 //
 // Package fabricengine_test, mirroring junction_pattern_integration_test.go's
-// imports and hubforge.NewHub(t, ".") fixture pattern; shares the single
+// imports and hubforge.CopyHub(t, hubforge.Shape{Anchor: "."}) fixture pattern; shares the single
 // TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -39,7 +39,7 @@ import (
 func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	l := h.Location
 	slug := l.WorktreeName
@@ -102,7 +102,7 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	// The repo-wide pathspec (not the weft prime's own weft base) is what Healthy reads after card
 	// 7; override it with a pathspec naming neither structural directory, proving _lyx is still
 	// wired structurally.

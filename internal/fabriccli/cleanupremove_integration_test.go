@@ -88,7 +88,7 @@ func warpEntryOf(t *testing.T, env envelope.Envelope, raw, branch string) map[st
 // Steps run serially in this order, each tolerating the branches earlier steps leave behind:
 // the all-protected step runs first because it needs a hub with no deletable branch, the steps that break or remove the weft origin run last because every later push would fail, and the pair the no-origin remove needs is added before the origin is broken, since `add` pushes.
 func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	weftRoot, err := fabricengine.RecordsRepoRoot(h.Location)
 	if err != nil {
 		t.Fatalf("RecordsRepoRoot: %v", err)

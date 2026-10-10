@@ -27,7 +27,7 @@ import (
 func TestOpenParent_HappyPath(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	res := hubforge.AddPair(t, h, "task1")
 
 	taskLoc, err := lyxcwd.ResolveWorktree(res.Path)
@@ -67,7 +67,7 @@ func TestOpenParent_HappyPath(t *testing.T) {
 func TestOpenParent_NoLivePairForBranch(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", "orphan-branch")
 
 	_, err := fabricengine.OpenParent(h.Location, "orphan-branch")
@@ -85,7 +85,7 @@ func TestOpenParent_NoLivePairForBranch(t *testing.T) {
 func TestOpenParent_ParentSiblingMissing(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	res := hubforge.AddPair(t, h, "task1")
 	taskLoc, err := lyxcwd.ResolveWorktree(res.Path)
 	if err != nil {
@@ -117,7 +117,7 @@ func TestOpenParent_ParentSiblingMissing(t *testing.T) {
 func TestOpenParent_PrunableParentDirRemoved(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	res := hubforge.AddPair(t, h, "task2")
 
 	if err := os.RemoveAll(res.Path); err != nil {
@@ -148,7 +148,7 @@ func TestOpenParent_PrunableParentDirRemoved(t *testing.T) {
 func TestOpenParent_ResolveFailureNamesBranchAndPath(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	res := hubforge.AddPair(t, h, "task3")
 
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "lock", res.Path)
@@ -178,7 +178,7 @@ func TestCodeWorktrees_ListOpenAndPairComplete(t *testing.T) {
 		t.Run("anchor "+anchor, func(t *testing.T) {
 			t.Parallel()
 
-			h := hubforge.NewHub(t, anchor)
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
 			kept := hubforge.AddPair(t, h, "kept")
 			gone := hubforge.AddPair(t, h, "gone")
 			anchorOf := func(worktree string) string { return filepath.Join(worktree, h.Location.AnchorRel) }

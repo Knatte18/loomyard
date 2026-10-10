@@ -55,7 +55,7 @@ func TestManifestRoundTrip(t *testing.T) {
 	t.Run("UnchangedHubDiffsEmpty", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		before := CaptureManifest(t, h.Path)
 		after := CaptureManifest(t, h.Path)
 
@@ -67,7 +67,7 @@ func TestManifestRoundTrip(t *testing.T) {
 	t.Run("DeletionOutsidePermittedRootIsReported", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		scratch := filepath.Join(h.Path, "scratch-unpermitted.txt")
 		if err := os.WriteFile(scratch, []byte("scratch"), 0o644); err != nil {
 			t.Fatalf("write %s: %v", scratch, err)
@@ -88,7 +88,7 @@ func TestManifestRoundTrip(t *testing.T) {
 	t.Run("DeletionUnderPermittedRootIsNotReported", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		permittedDir := filepath.Join(h.Path, "scratch-permitted")
 		if err := os.Mkdir(permittedDir, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", permittedDir, err)
@@ -114,7 +114,7 @@ func TestManifestRoundTrip(t *testing.T) {
 	t.Run("LinkTargetChangeIsReported", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		linkAbs, linkRel := firstWiredJunction(t, h)
 		before := CaptureManifest(t, h.Path)
 
@@ -136,7 +136,7 @@ func TestManifestRoundTrip(t *testing.T) {
 	t.Run("KindChangeIsReported", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		linkAbs, linkRel := firstWiredJunction(t, h)
 		before := CaptureManifest(t, h.Path)
 
@@ -159,7 +159,7 @@ func TestManifestGitAllowlist(t *testing.T) {
 	t.Run("OrdinaryGitStatusAndCommitProduceEmptyDiff", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		repoDir := h.PrimeWorktree()
 		before := CaptureManifest(t, h.Path)
 
@@ -175,7 +175,7 @@ func TestManifestGitAllowlist(t *testing.T) {
 	t.Run("LinkedWorktreeDeregistrationIsReported", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		const slug = "wtdereg"
 		hubforge.AddPair(t, h, slug)
 
@@ -210,7 +210,7 @@ func TestManifestPortability(t *testing.T) {
 	t.Run("KeysAreToSlashNormalised", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		manifest := CaptureManifest(t, h.Path)
 
 		for key := range manifest {
@@ -223,7 +223,7 @@ func TestManifestPortability(t *testing.T) {
 	t.Run("PermitRootWithForwardSlashMatchesRunningPlatform", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		nestedDir := filepath.Join(h.Path, "scratch-nested", "deeper")
 		if err := os.MkdirAll(nestedDir, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", nestedDir, err)
@@ -253,7 +253,7 @@ func TestManifestPortability(t *testing.T) {
 func TestManifestWiredJunctionWalk(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	linkAbs, linkRel := firstWiredJunction(t, h)
 
 	rawTarget, err := fslink.RawTarget(linkAbs)

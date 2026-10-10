@@ -70,7 +70,7 @@ func trackedUnderRoot(t *testing.T, l *lyxcwd.Location, dir, branch string) stri
 func TestAdd_RunRecords(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	parentWeft := fabricengine.RecordsBranchName("main")
@@ -213,7 +213,7 @@ func TestAdd_RunRecords(t *testing.T) {
 func TestAdd_DropsParentRunRecords_SubpathAnchor(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, "backend")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
 	l := h.Location
 	const slug = "drops-records-subpath"
 	weftRoot := mustRecordsRepoRoot(t, l)

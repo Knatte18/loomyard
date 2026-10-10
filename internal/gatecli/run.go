@@ -79,6 +79,21 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		logger.Info("gate test: no hub bound applies; running unslotted under the template's -p cap", "dir", dir, "parallel", parallel)
 	}
 
+	env = gateslot.StripPrebuilt(env)
+	if request.tags != "" {
+		bin, cleanup, err := prebuildLyx(runCtx, request.goBinary, buildRoot(location, dir), parallel)
+		if err != nil {
+			if caught.Load() != 0 {
+				return exitAfterSignal(caught, 1)
+			}
+			return output.Err(out, fmt.Sprintf("gate test: cannot build lyx for the tagged run: %v; way forward: fix the build, then re-run the same command", err))
+		}
+		defer cleanup()
+		if bin != "" {
+			env = append(env, gateslot.PrebuiltLyxEnv+"="+bin)
+		}
+	}
+
 	cmd := exec.CommandContext(runCtx, request.goBinary, goTestArgs(dir, parallel, request.tags, request.packages, request.flags)...)
 	cmd.Env = env
 	cmd.Stdout = out

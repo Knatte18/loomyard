@@ -1,7 +1,4 @@
-// proctree_test.go table-tests the pure /proc process-tree helpers in proctree.go: parseStatPPID's
-// stat-line parsing (including the space-and-paren comm edge case), descendantClosure's fixed-point
-// walk (including a missing-parent, a reparent-to-init, and a cycle), and matchSocketCmdlines' argv
-// matcher (including both near-miss shapes).
+// proctree_test.go table-tests the pure /proc process-tree helpers in proctree.go: parseStat's stat-line parsing (including the space-and-paren comm edge case), descendantClosure's fixed-point walk (including a missing-parent, a reparent-to-init, and a cycle), and matchSocketCmdlines' argv matcher (including both near-miss shapes).
 // These are the TDD surface for the batch: the OS-suffixed seams that call them (proctree_linux.go,
 // proctree_windows.go) are compile-checked only, never run on this host.
 
@@ -12,22 +9,25 @@ import (
 	"testing"
 )
 
-func TestParseStatPPID(t *testing.T) {
+func TestParseStat(t *testing.T) {
 	tests := []struct {
-		name    string
-		stat    string
-		want    int
-		wantErr bool
+		name        string
+		stat        string
+		wantPPID    int
+		wantSession int
+		wantErr     bool
 	}{
 		{
-			name: "comm with embedded space and paren",
-			stat: "1234 (a) b) S 42 1234 1234 0 -1 4194304 100 0 0 0",
-			want: 42,
+			name:        "comm with embedded space and paren",
+			stat:        "1234 (a) b) S 42 1234 1200 0 -1 4194304 100 0 0 0",
+			wantPPID:    42,
+			wantSession: 1200,
 		},
 		{
-			name: "normal comm",
-			stat: "99 (bash) S 1 99 99 0 -1 4194304 100 0 0 0",
-			want: 1,
+			name:        "normal comm",
+			stat:        "99 (bash) S 1 99 98 0 -1 4194304 100 0 0 0",
+			wantPPID:    1,
+			wantSession: 98,
 		},
 		{
 			name:    "malformed: no closing paren",
@@ -36,29 +36,34 @@ func TestParseStatPPID(t *testing.T) {
 		},
 		{
 			name:    "malformed: too few fields after comm",
-			stat:    "1234 (bash) S",
+			stat:    "1234 (bash) S 42 1234",
 			wantErr: true,
 		},
 		{
 			name:    "malformed: non-numeric ppid",
-			stat:    "1234 (bash) S notanumber 1234",
+			stat:    "1234 (bash) S notanumber 1234 1234",
+			wantErr: true,
+		},
+		{
+			name:    "malformed: non-numeric session",
+			stat:    "1234 (bash) S 42 1234 notanumber",
 			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseStatPPID(tt.stat)
+			ppid, session, err := parseStat(tt.stat)
 			if tt.wantErr {
 				if err == nil {
-					t.Fatalf("parseStatPPID(%q): expected error, got nil", tt.stat)
+					t.Fatalf("parseStat(%q): expected error, got nil", tt.stat)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("parseStatPPID(%q): unexpected error: %v", tt.stat, err)
+				t.Fatalf("parseStat(%q): unexpected error: %v", tt.stat, err)
 			}
-			if got != tt.want {
-				t.Errorf("parseStatPPID(%q) = %d; want %d", tt.stat, got, tt.want)
+			if ppid != tt.wantPPID || session != tt.wantSession {
+				t.Errorf("parseStat(%q) = (%d, %d); want (%d, %d)", tt.stat, ppid, session, tt.wantPPID, tt.wantSession)
 			}
 		})
 	}

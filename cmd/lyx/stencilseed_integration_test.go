@@ -58,7 +58,7 @@ func TestStencilSeedTarget_PlainRepoHasNoHub(t *testing.T) {
 func TestStencilSeeding_HubScenario(t *testing.T) {
 	t.Parallel()
 
-	hub := hubforge.NewHub(t, ".")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	worktree := hub.PrimeWorktree()
 	stencilsDir := fabricengine.StencilsDir(hub.Path)
 	specsDir := fabricengine.SpecsDir(hub.Path)
@@ -337,7 +337,7 @@ func TestStencilSeeding_HubScenario(t *testing.T) {
 // TestSeedStencils_NoOpAndEnvelopeUnderRoot drives one read-only command through the root against a real hub and asserts both that seedStencils stays a no-op under testing.Testing() -- without that guard every untagged cmd/lyx test driving a Runnable command would spawn git -- and that the emitted JSON object carries neither a "mutations" nor a "partial" key, so a pre-run seed never widens a command's envelope.
 // It chdirs, which is process-global state, so it does not run in parallel.
 func TestSeedStencils_NoOpAndEnvelopeUnderRoot(t *testing.T) {
-	hub := hubforge.NewHub(t, ".")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	stencilsDir := fabricengine.StencilsDir(hub.Path)
 	if _, err := os.Stat(stencilsDir); !os.IsNotExist(err) {
 		t.Fatalf("precondition failed: %s already exists", stencilsDir)

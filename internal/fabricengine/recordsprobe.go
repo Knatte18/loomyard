@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -80,15 +81,13 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 		return warpProbeResult{}, wrapProbeError(weftURL, "clone", err)
 	}
 
-	// Unborn-HEAD check is a mixed probe: its exit path answers "the weft candidate has no commits
-	// at all", the genuinely empty weft remote that ensureBoardWorktree's orphan-create path already
-	// supports, while its exec path returns a real *GitError that must be wrapped and propagated.
-	_, err = gitexec.Run([]string{"rev-parse", "--verify", "--quiet", "HEAD"}, probeDir)
+	// Unborn-HEAD check: ErrNoCommits answers "the weft candidate has no commits at all", the genuinely empty weft remote that ensureBoardWorktree's orphan-create path already supports.
+	// Any other error is a real failure that must be wrapped and propagated.
+	_, err = gitrepo.New(probeDir).CurrentSHA()
+	if errors.Is(err, gitrepo.ErrNoCommits) {
+		return warpProbeResult{Found: false, WeftLooksLikeWeft: true}, nil
+	}
 	if err != nil {
-		var gitErr *gitexec.GitError
-		if errors.As(err, &gitErr) {
-			return warpProbeResult{Found: false, WeftLooksLikeWeft: true}, nil
-		}
 		return warpProbeResult{}, wrapProbeError(weftURL, "rev-parse HEAD", err)
 	}
 

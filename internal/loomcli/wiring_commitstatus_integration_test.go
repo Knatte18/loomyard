@@ -31,7 +31,7 @@ import (
 func realSeamFixture(t *testing.T) (seam func(producer, state string) error, location *lyxcwd.Location, recordsSibling string) {
 	t.Helper()
 
-	hub := hubforge.NewHub(t, ".")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "commitstatus"
 	hubforge.AddPair(t, hub, slug)
 	codeWorktree := hub.PairCodeWorktree(slug)

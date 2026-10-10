@@ -43,7 +43,7 @@ import (
 func TestWireJunctions_RepairsCorruptedJunctions(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	slug := l.WorktreeName
 

@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
@@ -27,22 +28,13 @@ const gitExcludeLockFileName = "exclude.lyx.lock"
 
 // resolveGitExcludePath returns the absolute path of the `.git/info/exclude` belonging to the
 // repository checked out at repoDir.
-// It asks git rather than composing the path, so a linked worktree resolves to its repo's COMMON
-// gitdir instead of its own private one.
+// It joins onto the repository's COMMON gitdir, so a linked worktree resolves to its repo's exclude file instead of a private one.
 func resolveGitExcludePath(repoDir string) (string, error) {
-	stdout, err := gitexec.Run(
-		[]string{"rev-parse", "--git-path", "info/exclude"},
-		repoDir,
-	)
+	commonDir, err := gitrepo.New(repoDir).CommonDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve git exclude path for %q: %w", repoDir, err)
 	}
-
-	excludePath := strings.TrimSpace(stdout)
-	if !filepath.IsAbs(excludePath) {
-		excludePath = filepath.Join(repoDir, excludePath)
-	}
-	return excludePath, nil
+	return filepath.Join(commonDir, "info", "exclude"), nil
 }
 
 // mutateGitExclude applies rewrite to the `.git/info/exclude` of the repository checked out at

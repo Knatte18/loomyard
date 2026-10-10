@@ -17,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
 // verbSmokeTimeout bounds one step or `start --no-attach` invocation.
@@ -28,7 +29,7 @@ const verbSmokeTimeout = 60 * time.Second
 // The step that adds a status strand builds on the reed session the step before it brought up, and the strand it adds stays for the steps after it.
 func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := sharedLyxBinary(t)
+	exe := lyxbin.Build(t)
 
 	requireNoStatusStrandAfter := func(t *testing.T, loc *lyxcwd.Location, worktree, verb string, args ...string) {
 		t.Helper()

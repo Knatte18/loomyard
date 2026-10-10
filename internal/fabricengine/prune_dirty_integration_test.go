@@ -27,7 +27,7 @@ func TestPrune_ProtectsDirtyWeftWorktreeUntilForced(t *testing.T) {
 	t.Parallel()
 
 	const slug = "prune-dirty"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 

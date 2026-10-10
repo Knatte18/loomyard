@@ -2,7 +2,7 @@
 
 // archive_integration_test.go covers archiveWeftTip: the archive tag lands on the weft origin at the branch tip, the call is idempotent on an unchanged tip, and each degraded shape — no origin, an unreachable origin, a branch only on origin, a clashing tag — answers as the helper documents.
 //
-// Every hub is built through hubforge.NewHub, with the hub's RecordsBare as the weft origin.
+// Every hub is built through hubforge.CopyHub, with the hub's RecordsBare as the weft origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -51,7 +51,7 @@ func countKind(rec *fabricengine.Mutations, kind fabricengine.Kind) int {
 func TestArchiveWeftTip(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 
@@ -147,7 +147,7 @@ func TestArchiveWeftTip_NoOriginSkips(t *testing.T) {
 	t.Parallel()
 
 	const branch = "archive-no-origin-weft"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
@@ -179,7 +179,7 @@ func TestArchiveWeftTip_UnreachableOriginErrors(t *testing.T) {
 
 	const slug = "archive-unreachable"
 	const branch = "archive-unreachable-weft"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)

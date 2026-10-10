@@ -85,7 +85,7 @@ func listRows(t *testing.T, worktree string) map[string]map[string]any {
 // The scenario calls t.Parallel but no step does, because every step shares the one hub and its tmux server.
 func TestStrandNamingAndList(t *testing.T) {
 	t.Parallel()
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	skipWithoutMultiplexer(t, h)
 
 	const listSlug = "list-task"

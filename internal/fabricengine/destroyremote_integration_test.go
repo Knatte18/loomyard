@@ -5,7 +5,7 @@
 // The first two cases drive checkRemoteBranchRequest through CheckRemoteBranchRequestForTest (export_test.go) and pin refusals the real call sites cannot reach.
 // The rest are executor-level cases driven through DeleteArchivedWeftBranchForTest: a pair's weft branch, still checked out at its weft worktree, is deleted from origin under a lease, and every refusal or stale lease leaves origin untouched.
 //
-// Package fabricengine_test: building every case needs a real hub via hubforge.NewHub, but an
+// Package fabricengine_test: building every case needs a real hub via hubforge.CopyHub, but an
 // internal fabricengine test file cannot import internal/hubforge without closing an import cycle
 // (hubforge -> fabriccli -> fabricengine). Shares the single TestMain in testmain_test.go.
 
@@ -28,7 +28,7 @@ import (
 func TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	weftRoot, err := fabricengine.RecordsRepoRoot(h.Location)
 	if err != nil {
 		t.Fatalf("RecordsRepoRoot: %v", err)
@@ -57,7 +57,7 @@ func TestDeleteRemoteBranchGate_CheckedOutBranchRefused(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remoteslug"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPair(t, h, slug)
 
 	weftRoot, err := fabricengine.RecordsRepoRoot(h.Location)
@@ -76,7 +76,7 @@ func TestDeleteRemoteBranchGate_CheckedOutBranchRefused(t *testing.T) {
 func archivedDeleteFixture(t *testing.T, slug string) (*hubforge.Hub, string, string, string) {
 	t.Helper()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPair(t, h, slug)
 	weftRoot, err := fabricengine.RecordsRepoRoot(h.Location)
 	if err != nil {

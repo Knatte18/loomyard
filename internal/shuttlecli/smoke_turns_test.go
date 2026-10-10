@@ -44,8 +44,9 @@ type turnHub struct {
 func newTurnHub(t *testing.T) turnHub {
 	t.Helper()
 	llmkit.Claude(t, "LYX_REED_CLAUDE")
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.Path)
+	registerReedServer(t, h)
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer

@@ -23,7 +23,7 @@ import (
 // It stays serial (no t.Parallel): t.Setenv("FABRIC_SKIP_PUSH", "1") panics under t.Parallel, and the env var is process-global state.
 // Steps run serially in this order, because both rewrite the weft placeholder file and each commit must differ from the last.
 func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	// Prevent the detached push child from doing any real network work;
 	// SpawnDetachedPush itself checks this env var before spawning.

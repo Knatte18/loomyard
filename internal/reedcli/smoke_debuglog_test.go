@@ -16,6 +16,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // TestSmokeDebugLog arms debug_log through LYX_REED_DEBUG on one hub's prime worktree, one step per verbosity.
@@ -24,7 +26,7 @@ import (
 func TestSmokeDebugLog(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	prime := h.PrimeWorktree()
 	deferHubRelease(t, prime)
 	t.Cleanup(func() {
@@ -50,6 +52,8 @@ func TestSmokeDebugLog(t *testing.T) {
 		writeFakeLog(t, fakeNewest, now.Add(-1*time.Hour))
 
 		mustRunReed(t, prime, "up")
+		// Registered after the boot on purpose: this test asserts the verbose log reed's own server spawn writes, which a pre-started server never does.
+		tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
 
 		if _, err := os.Stat(fakeOldest); !os.IsNotExist(err) {
 			t.Errorf("fake-oldest server log survived the boot prune (stat err = %v); want removed", err)

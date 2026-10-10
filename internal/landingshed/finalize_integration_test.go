@@ -148,7 +148,7 @@ func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttl
 func TestFinalize_OverRealHub(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPair(t, h, "task")
 	hubforge.AddPair(t, h, "parent")
 	parentCode, parentRecords := h.PairCodeWorktree("parent"), h.PairRecordsSibling("parent")

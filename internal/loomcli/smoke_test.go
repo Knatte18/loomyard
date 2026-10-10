@@ -45,6 +45,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // tmuxBinaryPath returns the tmux binary path from the environment or resolved via PATH, skipping
@@ -75,6 +77,12 @@ func tmuxBinaryPath(t *testing.T) string {
 // either -- that key reaches the worktree-level watch goroutine, never the process start.
 func registerBootstrapTeardown(t *testing.T, loc *lyxcwd.Location, worktree string) {
 	t.Helper()
+	reedGeom, err := hubgeom.ReedGeometry(loc)
+	if err != nil {
+		t.Fatalf("reed geometry: %v", err)
+	}
+	// Registered before the first boot, so reed's boot finds the kit's hermetic server on the hub's key; the kill and socket-file removal run after the teardown below.
+	tmuxkit.KillOnCleanup(t, tmuxBinaryPath(t), reedGeom.SocketKey)
 	t.Cleanup(func() {
 		for _, pid := range findDriverPIDs(worktree) {
 			_ = proc.KillPID(pid)
@@ -245,7 +253,7 @@ func countStrands(t *testing.T, eng *reedengine.Engine, accept func(strandName s
 // The second step builds on the status file the first leaves behind.
 func TestSmokeRunStandalone(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := sharedLyxBinary(t)
+	exe := lyxbin.Build(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	// "loom run" calls reed.Up() before the phase machine runs, so the second step brings a real tmux
 	// server up even though it never reaches a producer.
@@ -393,7 +401,7 @@ func recordsPathspecStatus(t *testing.T, dir, relPath string) string {
 // The steps that rig a died driver kill any surviving driver first and clear the driver log, so each asserts on its own driver's log.
 func TestSmokeBootstrapLifecycle(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := sharedLyxBinary(t)
+	exe := lyxbin.Build(t)
 	_, loc, worktree, slug := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)

@@ -1,8 +1,4 @@
-// proctree_windows.go implements the two Windows-only process-tree probes (descendantClosurePIDs,
-// serverProcessesOnSocket) via the configured shell's (pwsh on Windows) Get-CimInstance
-// Win32_Process table — the only reliable tmux-server liveness and parent-walk signal on this
-// platform, since every tmux CLI probe (list-sessions, kill-server, has-session) exits identically
-// with and without a server on the socket.
+// proctree_windows.go implements the Windows-only process-tree probes: descendantClosurePIDs and serverProcessesOnSocket via the configured shell's (pwsh on Windows) Get-CimInstance Win32_Process table — the only reliable tmux-server liveness and parent-walk signal on this platform, since every tmux CLI probe (list-sessions, kill-server, has-session) exits identically with and without a server on the socket — and an empty sessionMemberPIDs.
 // These bodies are moved here verbatim from lifecycle.go so the pure helpers in proctree.go stay
 // platform-agnostic while the OS I/O they used to embed lives in one thin, filename-suffixed seam;
 // see proctree_linux.go for the /proc-backed counterpart.
@@ -53,6 +49,11 @@ $acc`, strings.Join(rootLiterals, ","))
 		return roots
 	}
 	return pids
+}
+
+// sessionMemberPIDs returns nil: Windows has no POSIX sessions, so a pane's processes are reaped through the descendant snapshot alone.
+func sessionMemberPIDs(sessions []int) []int {
+	return nil
 }
 
 // serverProcessesOnSocket returns OS pids on this engine's socket via

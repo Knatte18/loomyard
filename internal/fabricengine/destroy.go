@@ -1066,10 +1066,10 @@ func checkUnlandedRemoteTip(req remoteBranchRequest) error {
 
 	if parent := req.dirtiness.parentBranch; parent != "" {
 		merged, mergeErr := gitexec.Run([]string{"merge-tree", "--write-tree", parent, tip}, req.repoDir)
-		parentTree, treeErr := gitexec.Run([]string{"rev-parse", parent + "^{tree}"}, req.repoDir)
+		parentTree, treeErr := gitrepo.New(req.repoDir).RefTree(parent)
 		if mergeErr == nil && treeErr == nil {
 			mergedTree, _, _ := strings.Cut(strings.TrimSpace(merged), "\n")
-			if mergedTree != "" && mergedTree == strings.TrimSpace(parentTree) {
+			if mergedTree != "" && mergedTree == parentTree {
 				return nil
 			}
 		}
@@ -1112,10 +1112,10 @@ func checkUnlandedWork(req branchRequest) error {
 
 	if parent := req.dirtiness.parentBranch; parent != "" {
 		merged, mergeErr := gitexec.Run([]string{"merge-tree", "--write-tree", parent, ref}, req.repoDir)
-		parentTree, treeErr := gitexec.Run([]string{"rev-parse", parent + "^{tree}"}, req.repoDir)
+		parentTree, treeErr := gitrepo.New(req.repoDir).RefTree(parent)
 		if mergeErr == nil && treeErr == nil {
 			mergedTree, _, _ := strings.Cut(strings.TrimSpace(merged), "\n")
-			if mergedTree != "" && mergedTree == strings.TrimSpace(parentTree) {
+			if mergedTree != "" && mergedTree == parentTree {
 				return nil
 			}
 		}

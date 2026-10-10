@@ -21,7 +21,7 @@ import (
 func TestCommittedAnchoredFile(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	// A path absent at HEAD reports found == false.

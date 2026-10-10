@@ -26,7 +26,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 	t.Run("BranchMismatch", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		l := h.Location
 		slug := filepath.Base(h.PrimeWorktree())
 
@@ -51,7 +51,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 	t.Run("ConfigLoadFailed", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		l := h.Location
 		slug := filepath.Base(h.PrimeWorktree())
 
@@ -82,7 +82,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 	t.Run("JunctionMissing", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		l := h.Location
 		slug := filepath.Base(h.PrimeWorktree())
 
@@ -110,7 +110,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 	t.Run("NotAJunction", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		l := h.Location
 		slug := filepath.Base(h.PrimeWorktree())
 
@@ -141,7 +141,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 	t.Run("JunctionPointsElsewhere", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		l := h.Location
 		slug := filepath.Base(h.PrimeWorktree())
 
@@ -182,7 +182,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 func TestHealthy_UnbornWeftBranchIsAVerdictNotAnAbort(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	weftWorktree := fabricengine.RecordsWorktree(l)

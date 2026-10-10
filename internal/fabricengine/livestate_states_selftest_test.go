@@ -321,7 +321,7 @@ func TestStates(t *testing.T) {
 				t.Run(anchor, func(t *testing.T) {
 					t.Parallel()
 
-					h := hubforge.NewHub(t, anchor)
+					h := hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
 					target := resolveStateTarget(t, h, state.Name)
 
 					beforeWarp := gitkit.GitStatusPorcelain(t, target.WarpCheckout)

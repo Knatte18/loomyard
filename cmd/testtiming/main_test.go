@@ -87,6 +87,37 @@ func TestRedundancyTags(t *testing.T) {
 	}
 }
 
+func TestModeConflict(t *testing.T) {
+	t.Parallel()
+
+	rows := []struct {
+		name       string
+		redundancy bool
+		resources  bool
+		wantErr    string
+	}{
+		{name: "neither"},
+		{name: "redundancy alone", redundancy: true},
+		{name: "resources alone", resources: true},
+		{name: "both", redundancy: true, resources: true, wantErr: "-resources and -redundancy"},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+			err := modeConflict(row.redundancy, row.resources)
+			if row.wantErr == "" {
+				if err != nil {
+					t.Fatalf("modeConflict = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), row.wantErr) {
+				t.Fatalf("err = %v, want it to contain %q", err, row.wantErr)
+			}
+		})
+	}
+}
+
 func TestResolveTags(t *testing.T) {
 	t.Parallel()
 

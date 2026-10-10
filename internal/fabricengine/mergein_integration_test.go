@@ -32,7 +32,7 @@ import (
 func newMergePairFixture(t *testing.T, anchor string) (h *hubforge.Hub, f *fabricengine.Fabric, commitOnWarpBranch, commitOnWeftBranch func(branch, filename, content, msg string), commitOnWarpCurrent, commitOnWeftCurrent func(filename, content, msg string)) {
 	t.Helper()
 
-	h = hubforge.NewHub(t, anchor)
+	h = hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
 	f = hubforge.OpenFabric(t, h)
 
 	warpDir, weftDir := h.PrimeWorktree(), h.PrimeRecords()

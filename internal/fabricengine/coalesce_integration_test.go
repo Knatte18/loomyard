@@ -69,7 +69,7 @@ func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.
 	warpBare := addWarpBareRemote(t, fixtures, warpPath)
 	warpSHA := gitkit.CommitFile(t, warpPath, "warp-file.txt", "warp change", "warp change")
 
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	weftSHA := gitkit.CommitFile(t, weftFixture.PrimeRecords(), "weft-file.txt", "weft change", "weft change")
 
 	if _, err := fabricengine.CoalescePushBothAt(warpPath, weftFixture.PrimeRecords(), fabricengine.SyncOptions{}); err != nil {
@@ -114,7 +114,7 @@ func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *test
 	// second clone's commit — its next push is a genuine non-fast-forward.
 	gitkit.CommitFile(t, warpPath, "warp-file.txt", "warp change that will be rejected", "warp change that will be rejected")
 
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	bareHeadBefore := fabricengine.BareBranchSHAForTest(t, warpBare, "main")
 	wantWarpFileContent, err := os.ReadFile(filepath.Join(warpPath, "warp-file.txt"))
@@ -169,7 +169,7 @@ func TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd(t *testing.
 		}
 	})
 
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	weftSHA := gitkit.CommitFile(t, weftFixture.PrimeRecords(), "weft-file.txt", "weft change, no warp", "weft change, no warp")
 
 	if _, err := fabricengine.CoalescePushBothAt("", weftFixture.PrimeRecords(), fabricengine.SyncOptions{}); err != nil {

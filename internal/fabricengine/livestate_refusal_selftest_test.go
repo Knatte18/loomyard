@@ -134,7 +134,7 @@ func TestRefusedByGate(t *testing.T) {
 	t.Run("Containment", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		err := driveContainmentGateRefusal(t, h, "escape-owner", "escape-link")
 		if err == nil {
 			t.Fatalf("driveContainmentGateRefusal: want a refusal, got nil")
@@ -147,7 +147,7 @@ func TestRefusedByGate(t *testing.T) {
 	t.Run("Ownership", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		err := driveOwnershipGateRefusal(t, h, "own-owner")
 		if err == nil {
 			t.Fatalf("driveOwnershipGateRefusal: want a refusal, got nil")
@@ -160,7 +160,7 @@ func TestRefusedByGate(t *testing.T) {
 	t.Run("Dirtiness", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		err := driveDirtinessGateRefusal(t, h, "dirty-owner")
 		if err == nil {
 			t.Fatalf("driveDirtinessGateRefusal: want a refusal, got nil")
@@ -180,7 +180,7 @@ func TestRefusedByGate_Negatives(t *testing.T) {
 	t.Run("OrdinaryErrorMatchesNoCheck", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		const slug = "ordinary-owner"
 		hubforge.AddPair(t, h, slug)
 		// A second Add against the same slug fails for an entirely ordinary, non-refusal reason
@@ -201,7 +201,7 @@ func TestRefusedByGate_Negatives(t *testing.T) {
 	t.Run("EachRefusalMatchesOnlyItsOwnCheck", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		containmentErr := driveContainmentGateRefusal(t, h, "cross-owner", "cross-escape-link")
 		ownershipErr := driveOwnershipGateRefusal(t, h, "cross-own-owner")
 		dirtinessErr := driveDirtinessGateRefusal(t, h, "cross-dirty-owner")
@@ -238,7 +238,7 @@ func TestRefusedBefore(t *testing.T) {
 	t.Run("RemovesOwnDirtyMessage", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		const slug = "before-dirty-owner"
 		hubforge.AddPair(t, h, slug)
 
@@ -266,7 +266,7 @@ func TestRefusedBefore(t *testing.T) {
 	t.Run("DiscriminatesFromGateDirtinessOnIdenticalReasonText", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		err := driveDirtinessGateRefusal(t, h, "before-gate-owner")
 		if err == nil {
 			t.Fatalf("driveDirtinessGateRefusal: want a refusal, got nil")
@@ -282,7 +282,7 @@ func TestRefusedBefore(t *testing.T) {
 	t.Run("RemovesSlugValidationRefusal", func(t *testing.T) {
 		t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		_, err := h.Topology.Remove(h.Location, "..", false, false)
 		if err == nil {
 			t.Fatalf(`Remove(h.Location, "..", false): want an error, got nil`)

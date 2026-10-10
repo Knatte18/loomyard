@@ -39,7 +39,7 @@ import (
 func newFabricPair(t *testing.T) (*fabricengine.Fabric, string) {
 	t.Helper()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f, err := fabricengine.Open(h.Location)
 	if err != nil {
 		t.Fatalf("fabricengine.Open: %v", err)
@@ -207,7 +207,13 @@ func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth(t *testing
 
 	for _, anchor := range []string{".", "backend", "wts/some-task"} {
 		t.Run(anchor, func(t *testing.T) {
-			h := hubforge.NewHub(t, anchor)
+			// The shape set holds only "." and "backend"; the nested anchor has no template.
+			var h *hubforge.Hub
+			if anchor == "wts/some-task" {
+				h = hubforge.NewHub(t, anchor)
+			} else {
+				h = hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
+			}
 			f, err := fabricengine.Open(h.Location)
 			if err != nil {
 				t.Fatalf("fabricengine.Open: %v", err)

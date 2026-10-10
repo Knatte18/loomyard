@@ -62,7 +62,7 @@ func driveConflictedSquashMerge(t *testing.T, dir string) {
 func TestMergeStateActive(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, h.PrimeWorktree(), h.PrimeRecords())
 
 	requireMergeStateActive := func(t *testing.T, want bool, shape string) {

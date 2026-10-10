@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
@@ -486,17 +487,12 @@ func suffixWeftPrimaryBranch(weftPath, warpBranch string) error {
 	// from origin/<suffixed> both checks out that history and configures the
 	// upstream (git's default branch.autoSetupMerge for a remote-tracking start
 	// point), which the create path below deliberately leaves to the first push.
-	// This is a mixed probe: the exit path answers "no remote suffixed branch
-	// yet", so it is recovered via errors.As rather than merged into a single
-	// message.
+	// ErrRefNotFound answers "no remote suffixed branch yet"; any other error is a real failure.
 	remoteRef := "refs/remotes/origin/" + suffixedBranch
-	_, err := gitexec.Run([]string{"rev-parse", "--verify", "--quiet", remoteRef}, weftPath)
+	_, err := gitrepo.New(weftPath).RefSHA(remoteRef)
 	remoteBranchExists := err == nil
-	if err != nil {
-		var gitErr *gitexec.GitError
-		if !errors.As(err, &gitErr) {
-			return fmt.Errorf("check for remote weft primary branch: %w", err)
-		}
+	if err != nil && !errors.Is(err, gitrepo.ErrRefNotFound) {
+		return fmt.Errorf("check for remote weft primary branch: %w", err)
 	}
 	checkoutArgs := []string{"checkout", "-b", suffixedBranch}
 	if remoteBranchExists {
@@ -525,15 +521,13 @@ func suffixWeftPrimaryBranch(weftPath, warpBranch string) error {
 // A branch that already resolves is left untouched, so the ordinary non-empty-remote clone and the
 // re-clone adopt path are unaffected.
 func bornWeftPrimaryBranch(weftPath, branch string) error {
-	// Mixed probe: the exit path answers "the branch is still unborn", the case this function
-	// exists to fix, so it is recovered via errors.As rather than merged into a single message.
-	_, err := gitexec.Run([]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + branch}, weftPath)
-	if err == nil {
-		return nil
-	}
-	var gitErr *gitexec.GitError
-	if !errors.As(err, &gitErr) {
+	// A missing branch is an answer, the still-unborn case this function exists to fix; a failed read is an error.
+	exists, err := gitrepo.New(weftPath).BranchExists(branch)
+	if err != nil {
 		return fmt.Errorf("verify weft primary branch %q: %w", branch, err)
+	}
+	if exists {
+		return nil
 	}
 
 	if _, err := gitexec.Run(
@@ -600,8 +594,7 @@ func cloneRepo(url, dest string) error {
 // An enumeration failure answers "no refusal": this check exists to catch a specific misconfiguration
 // loudly, never to invent a new way for a clone against an awkward remote to fail.
 func refuseUncheckedOutWarpClone(warpWorktreePath, warpURL string) error {
-	head, headErr := gitexec.Run([]string{"rev-parse", "--verify", "--quiet", "HEAD"}, warpWorktreePath)
-	if headErr == nil && strings.TrimSpace(head) != "" {
+	if _, headErr := gitrepo.New(warpWorktreePath).CurrentSHA(); headErr == nil {
 		return nil
 	}
 

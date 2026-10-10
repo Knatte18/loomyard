@@ -35,7 +35,7 @@ import (
 func setupFixture(t *testing.T) (*hubforge.Hub, string) {
 	t.Helper()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	slug := filepath.Base(h.Location.WorktreePath())
 
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _extra\n")

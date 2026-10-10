@@ -85,6 +85,7 @@ func TestRawGoDenyHook_DeniesModuleWideAndTierRunsOnly(t *testing.T) {
 		{"long_tags_flag", "go test --tags tmux ./internal/x", true},
 		{"names_the_slot_variable", "LYX_GATE_SLOT=/x lyx gate test ./internal/x", true},
 		{"names_the_strand_variable", "echo $LYX_STRAND_NAME", true},
+		{"names_the_prebuilt_binary_variable", "LYX_PREBUILT_LYX=/x/lyx go test ./internal/x", true},
 		{"package_scoped_test", "go test ./internal/x", false},
 		{"integration_tier_with_a_filter", "go test -tags integration ./internal/x -run Foo", false},
 		{"gate_route_module_wide", "lyx gate test ./...", false},

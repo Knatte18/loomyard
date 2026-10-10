@@ -73,7 +73,7 @@ func TestHubContainment_AddWiresNoBoardJunction(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "hubcontainment-add"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	res, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true})
@@ -103,7 +103,7 @@ func TestHubContainment_ReconcileWiresNoBoardJunction(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "hubcontainment-reconcile"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})

@@ -50,7 +50,7 @@ func TestRemove_CommitsPendingRecordsIntoArchiveTag(t *testing.T) {
 	t.Parallel()
 
 	const slug = "records-commit"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
@@ -88,7 +88,7 @@ func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
 	t.Parallel()
 
 	const slug = "records-stray"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -139,7 +139,7 @@ func TestCommitPendingRecords_NothingPresentCommitsNothingWithoutGit(t *testing.
 	t.Parallel()
 
 	const slug = "records-plain-sibling"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	if err := os.MkdirAll(fabricengine.RecordsWorktreePath(l, slug), 0o755); err != nil {
 		t.Fatalf("create the plain sibling directory: %v", err)
@@ -159,7 +159,7 @@ func TestRemoveRefusal_ProbeLeavesPairUntouched(t *testing.T) {
 	t.Parallel()
 
 	const slug = "records-probe"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})

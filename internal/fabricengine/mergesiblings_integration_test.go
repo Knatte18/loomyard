@@ -34,7 +34,7 @@ import (
 func newMergeSiblingsFixture(t *testing.T) (h *hubforge.Hub, f *fabricengine.Fabric, l *lyxcwd.Location, slug string) {
 	t.Helper()
 
-	h = hubforge.NewHub(t, ".")
+	h = hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	slug = "merge-siblings-pair"
 	hubforge.AddPair(t, h, slug)
 

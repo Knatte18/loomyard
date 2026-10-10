@@ -9,9 +9,7 @@ package reedcli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,24 +30,11 @@ import (
 // OS process, not to an io.Writer this package controls.
 func runReedCLINoFatal(t *testing.T, exe, dir string, timeout time.Duration, args ...string) string {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, exe, args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if ctx.Err() == context.DeadlineExceeded {
-		t.Fatalf("lyx %v timed out after %s in %s; output so far:\n%s", args, timeout, dir, out)
+	out, _, err := lyxbin.Run(exe, dir, timeout, args...)
+	if err != nil {
+		t.Fatalf("lyx %v: %v", args, err)
 	}
-	if err == nil {
-		return string(out)
-	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return string(out)
-	}
-	t.Fatalf("lyx %v: %v; output:\n%s", args, err, out)
-	return ""
+	return out
 }
 
 // TestSmokeColdStart runs the cold-start claims against one hub, each step on its own fresh sibling worktree so the worktree is never brought up and carries no state file when the step begins.
@@ -59,7 +44,7 @@ func TestSmokeColdStart(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 	lyxExe := lyxbin.Build(t)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.PrimeWorktree())
 	socket := reedengine.ServerName(h.Path)
 	tmuxkit.KillOnCleanup(t, tmuxPath, socket)

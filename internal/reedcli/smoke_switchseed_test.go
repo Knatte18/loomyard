@@ -36,7 +36,7 @@ func TestSmokeSwitchDeclinesStencilSeedPass(t *testing.T) {
 	// The dev channel stamp makes stencilstore.ModeFor return ModeDev, which warns instead of refreshing an untouched stencil.
 	lyxExe := lyxbin.BuildWithLDFlags(t, "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev")
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.PrimeWorktree())
 
 	registry := stencils.Registry()

@@ -26,7 +26,7 @@ import (
 func TestAdd_ExistingBranchErrorNamesRemedy(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 
@@ -51,7 +51,7 @@ func TestAdd_ExistingBranchErrorNamesRemedy(t *testing.T) {
 func TestAdd_LeftoverWorktreeDirErrorNamesRemedy(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 

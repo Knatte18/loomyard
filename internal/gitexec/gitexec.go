@@ -120,7 +120,8 @@ func renderArg(arg string) string {
 // RunGit and Run are both thin wrappers over this shared core and never call each other.
 //
 // A remote subcommand runs under remoteDeadline, in its own process group, with lowSpeedEnv added to the environment;
-// a local one runs unbounded with the inherited environment.
+// a local one runs unbounded.
+// Every child gets the process environment less GIT_DIR and GIT_WORK_TREE.
 func runCore(args []string, cwd string) (stdout, stderr string, exitCode int, err error) {
 	var cmd *exec.Cmd
 	var ctx context.Context
@@ -131,12 +132,13 @@ func runCore(args []string, cwd string) (stdout, stderr string, exitCode int, er
 		defer cancel()
 		cmd = exec.CommandContext(ctx, "git", args...)
 		cmd.WaitDelay = remoteWaitDelay
-		cmd.Env = append(os.Environ(), lowSpeedEnv...)
+		cmd.Env = childEnv(lowSpeedEnv)
 		proc.ConfigureGroupKill(cmd, func(pid int, groupErr error) {
 			reportKill(args, pid, groupErr)
 		})
 	} else {
 		cmd = exec.Command("git", args...)
+		cmd.Env = childEnv(nil)
 	}
 	cmd.Dir = cwd
 
@@ -161,6 +163,20 @@ func runCore(args []string, cwd string) (stdout, stderr string, exitCode int, er
 	}
 
 	return outBuf.String(), errBuf.String(), 0, nil
+}
+
+// childEnv returns the process environment without GIT_DIR and GIT_WORK_TREE, followed by extra.
+// Dropping the two variables makes a git child follow the directory it is run in, so one command never reads one repository and writes another.
+func childEnv(extra []string) []string {
+	environ := os.Environ()
+	env := make([]string, 0, len(environ)+len(extra))
+	for _, entry := range environ {
+		if strings.HasPrefix(entry, "GIT_DIR=") || strings.HasPrefix(entry, "GIT_WORK_TREE=") {
+			continue
+		}
+		env = append(env, entry)
+	}
+	return append(env, extra...)
 }
 
 // RunGit runs a git command and returns stdout, stderr, and exit code.

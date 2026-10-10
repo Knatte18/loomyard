@@ -1,5 +1,5 @@
 // proctree.go holds the pure, build-tag-free process-tree logic the Linux and Windows probe seams
-// (proctree_linux.go, proctree_windows.go) delegate to: /proc/<pid>/stat PPID parsing,
+// (proctree_linux.go, proctree_windows.go) delegate to: /proc/<pid>/stat PPID and session parsing,
 // descendant-closure computation over a pid->ppid map, and socket-cmdline matching.
 // None of these functions touch the OS — they transform strings/maps/structs the platform files
 // read off disk or a process-table query — which is what makes them unit-testable on the Windows
@@ -21,22 +21,26 @@ type ProcCmdline struct {
 	Argv []string
 }
 
-// parseStatPPID extracts parent pid (field 4) from /proc/<pid>/stat.
+// parseStat extracts the parent pid (field 4) and the session id (field 6) from /proc/<pid>/stat.
 // Anchors on the last ')' to handle comm with embedded parens/spaces.
-func parseStatPPID(stat string) (int, error) {
+func parseStat(stat string) (ppid, session int, err error) {
 	idx := strings.LastIndex(stat, ")")
 	if idx == -1 {
-		return 0, fmt.Errorf("parse stat line: no closing paren found: %q", stat)
+		return 0, 0, fmt.Errorf("parse stat line: no closing paren found: %q", stat)
 	}
 	fields := strings.Fields(stat[idx+1:])
-	if len(fields) < 2 {
-		return 0, fmt.Errorf("parse stat line: expected state and ppid after comm, got %d fields: %q", len(fields), stat)
+	if len(fields) < 4 {
+		return 0, 0, fmt.Errorf("parse stat line: expected state, ppid, pgrp and session after comm, got %d fields: %q", len(fields), stat)
 	}
-	ppid, err := strconv.Atoi(fields[1])
+	ppid, err = strconv.Atoi(fields[1])
 	if err != nil {
-		return 0, fmt.Errorf("parse stat line: non-numeric ppid %q: %w", fields[1], err)
+		return 0, 0, fmt.Errorf("parse stat line: non-numeric ppid %q: %w", fields[1], err)
 	}
-	return ppid, nil
+	session, err = strconv.Atoi(fields[3])
+	if err != nil {
+		return 0, 0, fmt.Errorf("parse stat line: non-numeric session %q: %w", fields[3], err)
+	}
+	return ppid, session, nil
 }
 
 // descendantClosure returns roots plus every transitive descendant.

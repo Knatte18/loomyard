@@ -63,7 +63,7 @@ func (s generationSession) Call(context.Context) (shedengine.Outcome, shedengine
 // Each round is one records commit carrying both the moved-from deletions and the archive, webster's directory is emptied,
 // and the live plan holds only the newest generation.
 func TestWire_Real_ReworkRoundsArchiveGenerations(t *testing.T) {
-	hub := hubforge.NewHub(t, ".")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "reworkgenerations"
 	hubforge.AddPair(t, hub, slug)
 	location, err := lyxcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
@@ -209,7 +209,7 @@ func (s proseSession) Call(context.Context) (shedengine.Outcome, shedengine.Outp
 
 // TestWire_Real_PlanReviewSkipFollowsGenerationClass asserts Env.SkipPlanReview, over a real fabric pair, answers true after a round whose new generation is all-Prosa on .md files and false after a round whose generation carries an Edit card.
 func TestWire_Real_PlanReviewSkipFollowsGenerationClass(t *testing.T) {
-	hub := hubforge.NewHub(t, ".")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "reworkskip"
 	hubforge.AddPair(t, hub, slug)
 	location, err := lyxcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
