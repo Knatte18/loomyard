@@ -32,7 +32,7 @@ func TestNames(t *testing.T) {
 	}
 }
 
-// TestModules_SeedOnlyAndHubWideFlags pins the two flags: "models" and "burler" are the two modules carrying an open-ended, operator-owned key set (model aliases; lenses/fans respectively), so they are the only entries with SeedOnly == true, and "fabric", "board" and "gate" describe hub-level facts, so they are the only entries with HubWide == true.
+// TestModules_SeedOnlyAndHubWideFlags pins the two flags: "models" and "burler" are the two modules carrying an open-ended, operator-owned key set (model aliases; lenses/fans respectively), so they are the only entries with SeedOnly == true, "fabric", "board", "gate" and "landing" describe hub-level facts, so they are the only entries with HubWide == true, and "landing", whose per-worktree copy was in effect before it moved hub-wide, is the only entry with SeedsFromPrime == true.
 //
 //testtiming:keep pins which modules carry the SeedOnly and HubWide flags, which the covering TestFill never asserts
 func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
@@ -42,9 +42,13 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 		if m.SeedOnly != wantSeedOnly {
 			t.Errorf("Modules(): module %q SeedOnly = %v; want %v", m.Name, m.SeedOnly, wantSeedOnly)
 		}
-		wantHubWide := m.Name == "fabric" || m.Name == "board" || m.Name == "gate"
+		wantHubWide := m.Name == "fabric" || m.Name == "board" || m.Name == "gate" || m.Name == "landing"
 		if m.HubWide != wantHubWide {
 			t.Errorf("Modules(): module %q HubWide = %v; want %v", m.Name, m.HubWide, wantHubWide)
+		}
+		wantSeedsFromPrime := m.Name == "landing"
+		if m.SeedsFromPrime != wantSeedsFromPrime {
+			t.Errorf("Modules(): module %q SeedsFromPrime = %v; want %v", m.Name, m.SeedsFromPrime, wantSeedsFromPrime)
 		}
 	}
 }
@@ -129,6 +133,7 @@ func TestFingerprint(t *testing.T) {
 		{"changed template", func(m []Module) { m[1].Template = func() string { return "b: 3\n" } }, false},
 		{"flipped HubWide", func(m []Module) { m[0].HubWide = true }, false},
 		{"flipped SeedOnly", func(m []Module) { m[0].SeedOnly = true }, false},
+		{"flipped SeedsFromPrime", func(m []Module) { m[0].SeedsFromPrime = true }, false},
 		{"added OpenMaps entry", func(m []Module) { m[1].OpenMaps = []string{"b"} }, false},
 		{"renamed module", func(m []Module) { m[0].Name = "gamma" }, false},
 		{"swapped Migrate hook", func(m []Module) {

@@ -47,6 +47,9 @@ type Module struct {
 	// Its one file lives at configengine.ConfigFile(<BoardDir>, name)
 	// and is never read or written in a worktree's _lyx/config/.
 	HubWide bool
+	// SeedsFromPrime marks a hub-wide module whose per-worktree copy was in effect before it moved hub-wide.
+	// A hub's first reconcile seeds an absent hub file from the prime's copy, like a module with open maps.
+	SeedsFromPrime bool
 	// Migrate, when non-nil, rewrites a present config file's bytes before reconcile compares them to the template.
 	// It returns the rewritten bytes and one human-readable line per rewrite, and changes only the keys its module declares retired.
 	Migrate func(existing []byte) ([]byte, []string, error)
@@ -64,7 +67,7 @@ func Modules() []Module {
 		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true},
 		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true},
 		{Name: "gate", Template: gateslot.ConfigTemplate, HubWide: true},
-		{Name: "landing", Template: landingshed.ConfigTemplate},
+		{Name: "landing", Template: landingshed.ConfigTemplate, HubWide: true, SeedsFromPrime: true},
 		{Name: "logger", Template: loggerconfig.ConfigTemplate},
 		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps()},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true},
@@ -133,6 +136,7 @@ func fingerprintOf(modules []Module) string {
 		writeField(m.Name)
 		writeFlag(m.HubWide)
 		writeFlag(m.SeedOnly)
+		writeFlag(m.SeedsFromPrime)
 		writeField(strconv.Itoa(len(m.OpenMaps)))
 		for _, openMap := range m.OpenMaps {
 			writeField(openMap)

@@ -133,41 +133,46 @@ func TestConfigOverRealHub(t *testing.T) {
 
 	guardRows := []struct {
 		name     string
+		module   string
+		set      string
 		cwd      string
 		strand   string
 		wantCode int
 		wantErr  string
+		// wantWritten is the text the hub file gains on an allowed write.
+		wantWritten string
 	}{
-		{name: "task pair is refused naming the prime", cwd: codeWorktreePath, wantCode: 1, wantErr: "prime worktree"},
-		{name: "prime under a slug-bearing strand name is refused", cwd: primeWorktreePath, strand: "ly:" + slug + ":webster", wantCode: 1, wantErr: "task session"},
-		{name: "prime under the hub orch's slug-free name is allowed", cwd: primeWorktreePath, strand: "ly:orch", wantCode: 0},
+		{name: "task pair is refused naming the prime", module: "board", set: "labels.guard=desc", cwd: codeWorktreePath, wantCode: 1, wantErr: "prime worktree"},
+		{name: "task pair is refused weakening landing's publish_verify", module: "landing", set: "publish_verify=", cwd: codeWorktreePath, wantCode: 1, wantErr: "prime worktree"},
+		{name: "prime under a slug-bearing strand name is refused", module: "board", set: "labels.guard=desc", cwd: primeWorktreePath, strand: "ly:" + slug + ":webster", wantCode: 1, wantErr: "task session"},
+		{name: "prime under the hub orch's slug-free name is allowed", module: "board", set: "labels.guard=desc", cwd: primeWorktreePath, strand: "ly:orch", wantWritten: "guard: desc"},
 	}
 	for _, row := range guardRows {
 		t.Run("hub-wide write guard: "+row.name, func(t *testing.T) {
 			t.Setenv(agentname.StrandNameEnv, row.strand)
-			boardFile := configengine.ConfigFile(boardDir, "board")
-			before, err := os.ReadFile(boardFile)
+			hubFile := configengine.ConfigFile(boardDir, row.module)
+			before, err := os.ReadFile(hubFile)
 			if err != nil {
-				t.Fatalf("read hub board.yaml: %v", err)
+				t.Fatalf("read hub %s.yaml: %v", row.module, err)
 			}
 
 			var out bytes.Buffer
-			if code := RunCLIIn(row.cwd, &out, []string{"board", "--set", "labels.guard=desc"}); code != row.wantCode {
-				t.Fatalf("lyx config board --set = %d; want %d; output: %s", code, row.wantCode, out.String())
+			if code := RunCLIIn(row.cwd, &out, []string{row.module, "--set", row.set}); code != row.wantCode {
+				t.Fatalf("lyx config %s --set %s = %d; want %d; output: %s", row.module, row.set, code, row.wantCode, out.String())
 			}
-			after, err := os.ReadFile(boardFile)
+			after, err := os.ReadFile(hubFile)
 			if err != nil {
-				t.Fatalf("read hub board.yaml: %v", err)
+				t.Fatalf("read hub %s.yaml: %v", row.module, err)
 			}
 			if row.wantCode != 0 {
 				assertJSONErrContains(t, out.String(), row.wantErr)
 				if !bytes.Equal(before, after) {
-					t.Errorf("hub board.yaml changed on a refused write; got %q", after)
+					t.Errorf("hub %s.yaml changed on a refused write; got %q", row.module, after)
 				}
 				return
 			}
-			if !strings.Contains(string(after), "guard: desc") {
-				t.Errorf("hub board.yaml lacks the allowed write; got %q", after)
+			if !strings.Contains(string(after), row.wantWritten) {
+				t.Errorf("hub %s.yaml lacks the allowed write %q; got %q", row.module, row.wantWritten, after)
 			}
 		})
 	}

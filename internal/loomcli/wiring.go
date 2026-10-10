@@ -414,7 +414,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	landingCfg, err := landingshed.LoadConfig(anchorPath, "landing")
+	// landing is hub-wide: Publish and Finalize read the hub's file, never a pair's copy.
+	landingCfg, err := landingshed.LoadConfig(fabricengine.BoardDir(location.HubPath), "landing")
 	if err != nil {
 		return err
 	}
