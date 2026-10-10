@@ -13,6 +13,7 @@ package loomcli
 import (
 	"io"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -71,6 +72,12 @@ type loomCLI struct {
 	// runner is the constructed shuttle runner, carried onto the struct so run.go can pass it to
 	// landingDeps as the landing seam's Shuttle value.
 	runner *shuttleengine.Runner
+	// shuttleCfg is the loaded shuttle config, kept so the loop's activity reading finds the worktree's live agent runs;
+	// zero under the lightweight wiring, whose verbs never run the loop.
+	shuttleCfg shuttleengine.Config
+	// stepIdleTimeout is the window after which a --until-stop step showing no activity is killed, from loom.yaml's step_idle_timeout_min;
+	// zero under the lightweight wiring.
+	stepIdleTimeout time.Duration
 	// landingCfg is the loaded landing.yaml configuration, loaded once in wire() per the
 	// landing-config-loads-in-wire decision, so an unreconciled hub's absent-config error reaches
 	// the operator's own terminal on every verb, not only inside run's detached driver log.

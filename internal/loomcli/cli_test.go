@@ -10,10 +10,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/frictionengine"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/spf13/cobra"
@@ -259,6 +263,67 @@ func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
 		c := &loomCLI{runID: "self"}
 		if got := c.specFor("step").ScratchDir; got != "" {
 			t.Errorf("specFor(step).ScratchDir = %q; want empty for a nil location", got)
+		}
+	})
+
+	t.Run("LoopArmedForALocatedReceiver", func(t *testing.T) {
+		c := &loomCLI{location: loc, runID: "self", stepIdleTimeout: 7 * time.Minute}
+		spec := c.specFor("step")
+		loop := spec.Loop
+
+		if loop.LockPath != shedrun.LoopLock(loc, "self") || loop.PIDPath != shedrun.LoopPIDFile(loc, "self") || loop.LogPath != shedrun.LoopLog(loc, "self") ||
+			loop.EnvelopePath != shedrun.LoopEnvelope(loc, "self") || loop.JobName != shedrun.LoopJobName(loc, "self") {
+			t.Errorf("loop paths = %+v; want shedrun's constructors over the run", loop)
+		}
+		if got, want := loop.Delivered("abc"), shedrun.LoopDelivered(loc, "self", "abc"); got != want {
+			t.Errorf("loop.Delivered(abc) = %q; want %q", got, want)
+		}
+		traceCopy, stderr := loop.StopFiles("0123456789abcdef")
+		if traceCopy != shedrun.StepTraceCopy(loc, "self", "0123456789abcdef") || stderr != shedrun.StepStderr(loc, "self", "0123456789abcdef") {
+			t.Errorf("loop.StopFiles = %q, %q; want shedrun's step trace copy and stderr", traceCopy, stderr)
+		}
+		if files, err := loop.TraceFiles("0123456789abcdef"); err != nil || len(files) != 0 {
+			t.Errorf("loop.TraceFiles of a trace group with no file = %v, %v; want none and no error", files, err)
+		}
+		if loop.Executable == "" || loop.Activity == nil || loop.IdleTimeout != 7*time.Minute || spec.Hooks.AfterInterrupt == nil {
+			t.Errorf("loop executable %q, activity set %v, idle %s, interrupt hook set %v; want the binary, a reading, the receiver's window and the hook", loop.Executable, loop.Activity != nil, loop.IdleTimeout, spec.Hooks.AfterInterrupt != nil)
+		}
+	})
+
+	t.Run("LoopLeftZeroForANilLocation", func(t *testing.T) {
+		spec := (&loomCLI{runID: "self"}).specFor("step")
+		if spec.Loop.EnvelopePath != "" || spec.Loop.Activity != nil || spec.Hooks.AfterInterrupt != nil {
+			t.Errorf("loop envelope %q, activity set %v, interrupt hook set %v; want all zero for a nil location", spec.Loop.EnvelopePath, spec.Loop.Activity != nil, spec.Hooks.AfterInterrupt != nil)
+		}
+	})
+
+	t.Run("InterruptHookWritesAFailedHaltNote", func(t *testing.T) {
+		f := newHaltFixture(t)
+		f.c.runID = "self"
+		f.seedStatus(t, "Plan-Write", shedengine.StateRunning, "")
+
+		got := f.c.specFor("step").Hooks.AfterInterrupt(t.Context(), "Plan-Write", "watchdog", "/logs/child.log")
+
+		// The reflection covers the note and archives it beside the friction directory.
+		archived, err := filepath.Glob(loomengine.LoomFrictionArchivePrefix(f.c.location) + "*/loom-halt.md")
+		if got != frictionengine.StatusReflected || err != nil || len(archived) != 1 {
+			t.Fatalf("hook = %q with archived notes %v (glob error %v); want the halt note written and reflected", got, archived, err)
+		}
+		note := readNote(t, archived[0])
+		for _, want := range []string{"loom halted failed at Plan-Write", "state: failed", "watchdog", "trace_file: /logs/child.log"} {
+			if !strings.Contains(note, want) {
+				t.Errorf("halt note %q does not contain %q", note, want)
+			}
+		}
+	})
+
+	t.Run("InterruptHookSkippedWithTier2Off", func(t *testing.T) {
+		f := newHaltFixture(t)
+		f.c.runID = "self"
+		f.c.frictionDir = ""
+
+		if got := f.c.specFor("step").Hooks.AfterInterrupt(t.Context(), "Plan-Write", "watchdog", "/logs/child.log"); got != frictionengine.StatusSkipped {
+			t.Errorf("hook with no friction directory = %q; want %q", got, frictionengine.StatusSkipped)
 		}
 	})
 }

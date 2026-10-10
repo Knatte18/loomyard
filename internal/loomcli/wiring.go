@@ -782,6 +782,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	c.location = location
 	c.cwd = cwd
 	c.cfg = loomCfg
+	c.shuttleCfg = shuttleCfg
+	c.stepIdleTimeout = time.Duration(loomCfg.StepIdleTimeoutMin) * time.Minute
 	c.reed = reedEngine
 	c.runDeps = runDeps
 	c.registry = registry
