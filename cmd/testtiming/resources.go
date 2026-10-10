@@ -68,7 +68,7 @@ func runResources(tags, pkgFlag string) error {
 	if err != nil {
 		return fmt.Errorf("read the working directory: %w", err)
 	}
-	lyxEnv, cleanupLyx, err := prebuildLyx(tags, cwd, os.Environ())
+	lyxEnv, cleanupLyx, err := prebuildLyx("go", tags, cwd, os.Environ())
 	if err != nil {
 		return err
 	}

@@ -171,7 +171,7 @@ func run(tags string, top int) error {
 	if err != nil {
 		return fmt.Errorf("read the working directory: %w", err)
 	}
-	env, cleanup, err := prebuildLyx(tags, root, os.Environ())
+	env, cleanup, err := prebuildLyx("go", tags, root, os.Environ())
 	if err != nil {
 		return err
 	}
