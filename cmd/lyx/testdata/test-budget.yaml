@@ -55,7 +55,7 @@ internal/loggerconfig: 3
 internal/loomcli: 183
 internal/loomengine: 39
 internal/loomrecipe: 45
-internal/loomshed: 72
+internal/loomshed: 73
 internal/lyxcwd: 23
 internal/mergeresolve: 17
 internal/modelspec: 11
