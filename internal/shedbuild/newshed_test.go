@@ -103,6 +103,23 @@ producers:
 	if len(committed) != 1 || committed[0] != "row1:done" {
 		t.Errorf("committed = %v after calling shed.CommitStatus; want exactly [%q], proving shed.CommitStatus is paths.CommitStatus itself", committed, "row1:done")
 	}
+
+	// NewShedFrom over the parsed recipe assembles the same shed as NewShed over its bytes.
+	from, err := NewShedFrom(recipe, env, paths)
+	if err != nil {
+		t.Fatalf("NewShedFrom() = _, %v; want nil", err)
+	}
+	if len(from.Producers) != len(shed.Producers) {
+		t.Fatalf("NewShedFrom() built %d producers; want %d, as NewShed", len(from.Producers), len(shed.Producers))
+	}
+	for i := range shed.Producers {
+		if from.Producers[i].Name != shed.Producers[i].Name || from.Producers[i].OnDone != shed.Producers[i].OnDone {
+			t.Errorf("NewShedFrom() producer %d = %q -> %q; want %q -> %q, as NewShed", i, from.Producers[i].Name, from.Producers[i].OnDone, shed.Producers[i].Name, shed.Producers[i].OnDone)
+		}
+	}
+	if from.StatusPath != shed.StatusPath || from.LockPath != shed.LockPath || from.StatusLockPath != shed.StatusLockPath || from.MaxBounces != shed.MaxBounces || from.RunID != shed.RunID || from.MissingStatusWayForward != shed.MissingStatusWayForward {
+		t.Errorf("NewShedFrom() paths fields differ from NewShed's for the same paths")
+	}
 }
 
 // TestNewShed_EmptyProducersErrorsWithoutDoublePrefix asserts an empty-producer recipe still

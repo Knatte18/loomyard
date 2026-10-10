@@ -98,6 +98,9 @@ type Env struct {
 	// It is set on each row of a segment holding a Bouncer row, because the recipe declares no max_bounces there.
 	ReviewMaxBounces int
 
+	// DiscussionSeats, when true, runs the Discussion-Write row on the DiscussionSeats engine instead of the recipe's DiscussionWrite, read by loomrecipe alone.
+	DiscussionSeats bool
+
 	// ReviewCirclingCheckpoint is the run-wide first round a Bouncer's judge may rule CIRCLING in.
 	// The Bouncer entry requires it positive and passes it to shedadapters.BouncerConfig.CirclingCheckpoint.
 	ReviewCirclingCheckpoint int

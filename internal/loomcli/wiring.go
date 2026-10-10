@@ -732,6 +732,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		SegmentBounces: segmentBounces(statusPath, statusLockPath, loomCfg.ReviewMaxBounces),
 
 		ReviewMaxBounces:         loomCfg.ReviewMaxBounces,
+		DiscussionSeats:          loomCfg.DiscussionProducer == loomengine.DiscussionProducerSeats,
 		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
 
 		ReviewModels:  reviewSettings.Models,

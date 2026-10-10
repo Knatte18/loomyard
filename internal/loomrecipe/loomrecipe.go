@@ -1,6 +1,5 @@
-// loomrecipe.go implements New: the coherence guard across env and paths, then the delegation to
-// shedbuild.NewShed that parses contracts/recipes.LoomRecipe, builds it against a caller-supplied
-// shedrecipe.Env, and returns the assembled *shedengine.Shed.
+// loomrecipe.go implements New: the coherence guard across env and paths, then the parse of contracts/recipes.LoomRecipe, the Discussion-Write engine choice, and the delegation to shedbuild.NewShedFrom.
+// NewShedFrom builds the recipe against a caller-supplied shedrecipe.Env and returns the assembled *shedengine.Shed.
 
 package loomrecipe
 
@@ -8,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/contracts/recipes"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -29,6 +29,8 @@ import (
 // entry validates exactly the fields it reads, and preflightEntry's
 // requireAbsRoot("Preflight", "Cwd", …) is what now covers the guard loomshed.New's nil-Preflight
 // check used to.
+//
+// New runs the Discussion-Write row on the DiscussionSeats engine when env.DiscussionSeats is true, by changing the parsed recipe's engine for that row before the build; Routing never reads the choice.
 //
 // New sets MaxBounces to env.ReviewMaxBounces on every row of a review segment (a segment holding a
 // Bouncer row) after the build, and refuses an env.ReviewMaxBounces below 1 as its first act.
@@ -67,7 +69,13 @@ func New(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error
 		return nil, err
 	}
 
-	shed, err := shedbuild.NewShed(recipes.LoomRecipe, env, paths)
+	parsed, err := shedbuild.Parse(recipes.LoomRecipe)
+	if err != nil {
+		return nil, fmt.Errorf("loomrecipe: %w", err)
+	}
+	applyDiscussionProducer(&parsed, env.DiscussionSeats)
+
+	shed, err := shedbuild.NewShedFrom(parsed, env, paths)
 	if err != nil {
 		return nil, fmt.Errorf("loomrecipe: %w", err)
 	}
@@ -79,6 +87,19 @@ func New(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error
 	applyReviewBudget(shed.Producers, segments, env.ReviewMaxBounces)
 
 	return shed, nil
+}
+
+// applyDiscussionProducer runs the Discussion-Write row on the seat-table engine when seats is true, and leaves recipe alone otherwise.
+// Only the row's engine changes: its name, gates and routing stay, so the durable resume identity and the status file are the same whichever producer runs.
+func applyDiscussionProducer(recipe *shedbuild.Recipe, seats bool) {
+	if !seats {
+		return
+	}
+	for i := range recipe.Producers {
+		if recipe.Producers[i].Name == loomshed.NameDiscussionWrite {
+			recipe.Producers[i].Engine = discussionSeatsEngine
+		}
+	}
 }
 
 // Routing projects the embedded loom recipe's routing without building any engine, so a caller

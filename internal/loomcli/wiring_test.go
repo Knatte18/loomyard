@@ -605,6 +605,34 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 			}
 		})
 	}
+
+	// discussion_producer selects which producer the Discussion-Write row runs; the table closure is wired either way.
+	producerTests := []struct {
+		name      string
+		seed      bool
+		wantSeats bool
+	}{
+		{"TemplateKeepsTheSingleAgentProducer", false, false},
+		{"SeatsKeySelectsTheSeatProducer", true, true},
+	}
+	for _, tt := range producerTests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			loc := hubLocation(t, "pair", ".")
+			if tt.seed {
+				seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"discussion_producer": loomengine.DiscussionProducerSeats})
+			}
+
+			c := &loomCLI{runID: shedrun.SelfRunID}
+			if err := c.wire(loc, loc.AnchorPath()); err != nil {
+				t.Fatalf("wire() = %v; want nil", err)
+			}
+
+			if c.env.DiscussionSeats != tt.wantSeats {
+				t.Errorf("c.env.DiscussionSeats = %v; want %v", c.env.DiscussionSeats, tt.wantSeats)
+			}
+		})
+	}
 }
 
 // TestVerbUsesLightweightWiring pins the exact set of verbs that skip the full engine-stack
