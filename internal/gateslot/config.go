@@ -5,7 +5,7 @@ package gateslot
 import (
 	"errors"
 	"fmt"
-	"strings"
+	"os"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -25,11 +25,11 @@ type Config struct {
 
 // LoadConfig loads gate.yaml from baseDir strictly: an absent file is an error that names `lyx fabric reconcile`, and a value below 1 fails naming its key.
 func LoadConfig(baseDir string) (Config, error) {
+	if _, err := os.Stat(configengine.ConfigFile(baseDir, "gate")); errors.Is(err, os.ErrNotExist) {
+		return Config{}, errors.New("gate config absent; run \"lyx fabric reconcile\"")
+	}
 	resolved, err := configengine.Load(baseDir, "gate", []byte(ConfigTemplate()))
 	if err != nil {
-		if errors.Is(err, configengine.ErrNotInitialized) || strings.Contains(err.Error(), "not found") {
-			return Config{}, fmt.Errorf("gate config absent; run \"lyx fabric reconcile\": %w", err)
-		}
 		return Config{}, err
 	}
 	return decodeConfig(resolved)
