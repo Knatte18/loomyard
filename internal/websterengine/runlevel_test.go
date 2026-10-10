@@ -1095,6 +1095,27 @@ func TestRun_AutoRebaseline(t *testing.T) {
 		requireReinitialisedRun(t, fx)
 	})
 
+	t.Run("an edit to the Card Index alone accepts no card file", func(t *testing.T) {
+		fx := seed(t, 1, nil)
+		overview := filepath.Join(fx.PlanDir, "00-overview.md")
+		data, err := os.ReadFile(overview)
+		if err != nil {
+			t.Fatalf("read overview: %v", err)
+		}
+		if err := os.WriteFile(overview, []byte(strings.Replace(string(data), "placeholder card 1", "placeholder card 1, reworded", 1)), 0o644); err != nil {
+			t.Fatalf("edit overview: %v", err)
+		}
+		diedMaster(t, fx, "index")
+
+		_, err = autoRun(fx)
+		if !errors.Is(err, websterengine.ErrMasterDied) || !strings.HasPrefix(err.Error(), warningLead) {
+			t.Fatalf("Run() error = %v; want the Master death opening with the rebaseline warning", err)
+		}
+		if !strings.Contains(err.Error(), "accepting no card file") {
+			t.Errorf("Run() error = %q; want the warning to say it accepted no card file", err)
+		}
+	})
+
 	t.Run("an in-flight card's edit is recorded unrendered and a recovery renders it", func(t *testing.T) {
 		fx := seed(t, 1, func(bs *websterengine.BatchState) {
 			bs.Terminal, bs.Status, bs.Digest = false, "", nil
@@ -1105,6 +1126,9 @@ func TestRun_AutoRebaseline(t *testing.T) {
 		_, err := autoRun(fx)
 		if !errors.Is(err, websterengine.ErrMasterDied) || !strings.HasPrefix(err.Error(), warningLead) {
 			t.Fatalf("Run() error = %v; want the Master death opening with the rebaseline warning", err)
+		}
+		if !strings.Contains(err.Error(), "amended in-flight cards: 01-batch1") {
+			t.Errorf("Run() error = %q; want the warning to name the amended in-flight card 01-batch1", err)
 		}
 		st := loadRunState(t, fx)
 		want := []websterengine.AmendedCard{{Card: "01-batch1", Rendered: false}}
