@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -56,7 +57,9 @@ type standInRecord struct {
 	Args    []string `json:"args"`
 	GoFlags string   `json:"goflags"`
 	// Slot is the inherited-slot variable the stand-in saw.
-	Slot       string `json:"slot"`
+	Slot string `json:"slot"`
+	// Strand is the strand-name variable the stand-in saw; empty when the gate dropped it.
+	Strand     string `json:"strand"`
 	PID        int    `json:"pid"`
 	Grandchild int    `json:"grandchild"`
 }
@@ -73,7 +76,7 @@ func runGateHelper() int {
 }
 
 func runStandIn() int {
-	record := standInRecord{Args: os.Args[1:], GoFlags: os.Getenv("GOFLAGS"), Slot: os.Getenv(gateslot.InheritEnv), PID: os.Getpid()}
+	record := standInRecord{Args: os.Args[1:], GoFlags: os.Getenv("GOFLAGS"), Slot: os.Getenv(gateslot.InheritEnv), Strand: os.Getenv(agentname.StrandNameEnv), PID: os.Getpid()}
 	hold := os.Getenv(helperHoldEnv) != ""
 	if hold {
 		sleeper := exec.Command(os.Args[0])
@@ -101,6 +104,9 @@ func runStandIn() int {
 	code, _ := strconv.Atoi(os.Getenv(helperExitEnv))
 	return code
 }
+
+// strandEnvEntry is the strand-name entry a gate run is started with, which the gate must not hand to its go binary.
+var strandEnvEntry = agentname.StrandNameEnv + "=gate-test-strand"
 
 // gateRun is one `lyx gate test` process to start.
 type gateRun struct {
@@ -232,11 +238,14 @@ func TestGateTest_Scenario(t *testing.T) {
 	}
 
 	t.Run("a free slot runs go test under the cap and exits with its code", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tags", "integration", "./pkg", "--", "-run", "X"}, env: []string{helperExitEnv + "=7"}})
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tags", "integration", "./pkg", "--", "-run", "X"}, env: []string{helperExitEnv + "=7", strandEnvEntry}})
 		if code := g.wait(t); code != 7 {
 			t.Errorf("exit code = %d; want the stand-in's 7", code)
 		}
 		record := g.standIn(t)
+		if record.Strand != "" {
+			t.Errorf("go environment %s = %q; want it dropped", agentname.StrandNameEnv, record.Strand)
+		}
 		if want := []string{"test", "-C", prime, "-p", "3", "-tags", "integration", "./pkg", "-run", "X"}; !slices.Equal(record.Args, want) {
 			t.Errorf("go args = %q; want %q", record.Args, want)
 		}
@@ -283,12 +292,16 @@ func TestGateTest_Scenario(t *testing.T) {
 			t.Errorf("Holders = (%+v, %v); want the holding gate's worktree and site", holders, err)
 		}
 
-		nested := startGate(t, gateRun{cwd: prime, args: []string{"test", "./nested"}, env: []string{gateslot.InheritEnv + "=" + held.Slot}})
+		nested := startGate(t, gateRun{cwd: prime, args: []string{"test", "./nested"}, env: []string{gateslot.InheritEnv + "=" + held.Slot, strandEnvEntry}})
 		if code := nested.wait(t); code != 0 {
 			t.Errorf("nested exit code = %d, stdout %q; want 0 inside the held slot", code, nested.stdout.String())
 		}
-		if got := nested.standIn(t).Slot; got != held.Slot {
-			t.Errorf("nested %s = %q; want the held slot %q", gateslot.InheritEnv, got, held.Slot)
+		nestedRecord := nested.standIn(t)
+		if nestedRecord.Slot != held.Slot {
+			t.Errorf("nested %s = %q; want the held slot %q", gateslot.InheritEnv, nestedRecord.Slot, held.Slot)
+		}
+		if nestedRecord.Strand != "" {
+			t.Errorf("nested go environment %s = %q; want it dropped", agentname.StrandNameEnv, nestedRecord.Strand)
 		}
 
 		_ = holder.cmd.Process.Kill()
@@ -341,13 +354,16 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("a target outside every hub runs unslotted and logs it", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "./pkg"}})
+		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "./pkg"}, env: []string{strandEnvEntry}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d; want 0", code)
 		}
 		record := g.standIn(t)
 		if record.Slot != "" || !slices.Contains(record.Args, "4") {
 			t.Errorf("go args = %q, slot %q; want the template's -p 4 and no slot", record.Args, record.Slot)
+		}
+		if record.Strand != "" {
+			t.Errorf("go environment %s = %q; want it dropped", agentname.StrandNameEnv, record.Strand)
 		}
 		if !strings.Contains(g.stderr.String(), "no hub bound applies") {
 			t.Errorf("stderr = %q; want the log that no hub bound applies", g.stderr.String())

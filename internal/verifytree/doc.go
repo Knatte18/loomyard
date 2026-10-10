@@ -15,6 +15,8 @@
 // The command runs with the lease's environment, so GOFLAGS carries the slot's `-p` cap and a nested gate run inherits the held slot, and the slot is released whatever the outcome.
 // A cancelled wait is a returned error with no record.
 // A nil pool runs unslotted with the parent's environment, the form of a standalone run and of a unit test.
+// Either way the command's environment drops the strand-name variable (agentname.StrandNameEnv), so a test that drives `lyx fabric` never meets the sandboxed-role guard.
+// Bound: a test is code the fork writes, which could clear the variable itself.
 // A marker written before it had a state reads as running.
 //
 // The Publish failure record is the one never-tracked file Publish leaves when its plan verify or `publish_verify` fails.

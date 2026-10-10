@@ -10,11 +10,13 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -48,7 +50,8 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		return output.Err(out, fmt.Sprintf("gate test: %v; way forward: re-run the same command", err))
 	}
 
-	env := os.Environ()
+	// The tests run without the strand name, so a test driving `lyx fabric` never meets a role guard that reads it.
+	env := slices.DeleteFunc(os.Environ(), func(entry string) bool { return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") })
 	var parallel int
 	if inHub {
 		pool := hubgeom.GateSlots(location)
