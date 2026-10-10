@@ -530,13 +530,24 @@ func TestGlyphChain_RedundantFile(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
+		name string
+		// files are written into the fixture copy before the plan is checked.
+		files   map[string]string
 		targets []string
 		want    []findingKey
 	}{
 		{
 			name:    "file beside a member declared in it",
 			targets: []string{"shapes/shapes.go", "shapes#Func"},
+			want:    []findingKey{{"redundant-file-target", "1-card1", SeverityBlocking}},
+		},
+		{
+			name: "file beside a member partitioned by build constraints, declared in it",
+			files: map[string]string{
+				"parts/a.go": "//go:build linux\n\npackage parts\n\nfunc Part() {}\n",
+				"parts/b.go": "//go:build !linux\n\npackage parts\n\nfunc Part() {}\n",
+			},
+			targets: []string{"parts/a.go", "parts#Part"},
 			want:    []findingKey{{"redundant-file-target", "1-card1", SeverityBlocking}},
 		},
 		{
@@ -553,6 +564,7 @@ func TestGlyphChain_RedundantFile(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			root := copyGlyphChainFixture(t)
+			writeFixtureFiles(t, root, tc.files)
 			_, plan := writeGlyphPlan(t, []string{editCard(tc.targets...)})
 			assertPlanGate(t, plan, root, tc.want)
 

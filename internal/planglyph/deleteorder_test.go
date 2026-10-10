@@ -3,6 +3,7 @@
 package planglyph
 
 import (
+	"maps"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -38,6 +39,8 @@ func TestLaterDeleteReferences(t *testing.T) {
 		language string
 		deleting planparser.Card
 		later    planparser.Card
+		// extraFiles are written beside deleteOrderFixture.
+		extraFiles map[string]string
 		// wantRefs is the file:line of each expected finding, all attributed to the deleting card.
 		wantRefs []string
 	}{
@@ -97,6 +100,17 @@ func TestLaterDeleteReferences(t *testing.T) {
 			later:    groupCard(2, "edit", planparser.CardTypeEdit, "sub/b.go#"),
 		},
 		{
+			name:     "a member partitioned by build constraints is checked through its declarations",
+			deleting: groupCard(1, "del", planparser.CardTypeDelete, "part#Foo"),
+			later:    groupCard(2, "edit", planparser.CardTypeEdit, "part/c.go#"),
+			extraFiles: map[string]string{
+				"part/a.go": "//go:build linux\n\npackage part\n\nfunc Foo() {}\n",
+				"part/b.go": "//go:build !linux\n\npackage part\n\nfunc Foo() {}\n",
+				"part/c.go": "package part\n\nfunc Use() { Foo() }\n",
+			},
+			wantRefs: []string{"part/c.go:3"},
+		},
+		{
 			name:     "a non-glyph language finds nothing and opens no repository",
 			language: "none",
 			deleting: deleteFoo,
@@ -108,7 +122,9 @@ func TestLaterDeleteReferences(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			root := writeFixtureRepo(t, deleteOrderFixture)
+			files := maps.Clone(deleteOrderFixture)
+			maps.Copy(files, tc.extraFiles)
+			root := writeFixtureRepo(t, files)
 			if tc.language == "none" {
 				root = filepath.Join(root, "does-not-exist")
 			}

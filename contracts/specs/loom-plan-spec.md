@@ -438,7 +438,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Emitted by `internal/planglyph`'s resolve pass, not by `internal/planparser`, at `ValidateFormat`, `Validate`, `ValidateRework` and `ValidateDispatch`, and never under `language: "none"`.
     The match is textual, and the finding is attributed to the deleting card; the fix is to move the delete to a card after the editing one.
 33. `redundant-file-target` — a card's own target list holds a file self glyph beside a member glyph that resolves into that file; one finding per file and member, attributed to the card, with `Ref` the member.
-    A member that resolves `not_found`, ambiguous or unreadably is skipped, since the resolve status policy already reports it.
+    A member that resolves `not_found`, ambiguous without being partitioned by build constraints, or unreadably is skipped, since the resolve status policy already reports it.
     The way forward is to keep the member glyphs and drop the file, or keep the file when the card changes the whole file.
     Emitted by `internal/planglyph`'s plan-gate pass at `ValidateFormat`, `Validate` and `ValidateRework`, never at `ValidateDispatch` and never under `language: "none"`: the verdict depends on a member's resolved file, which the run itself changes once record-batch binds a handle into a member glyph.
 34. `resign-interface-method` — an `Edit` re-sign arrow on a member glyph that resolves to a method whose signature does not open with `func`, which is how an interface method answers; its own spec is no declaration a head can re-sign.

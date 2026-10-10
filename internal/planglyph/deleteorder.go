@@ -107,7 +107,7 @@ func collectEditTargets(lang glyph.Language, cards []planparser.Card) []editTarg
 
 // buildEditRegions returns the code each of edits covers: the whole file for a file target, and each resolved span for a member glyph answered in index.
 // A member whose answer cannot be read adds a glyph-rejected finding instead of a region.
-func buildEditRegions(edits []editTarget, index map[string]quarry.ResolveResult) ([]editRegion, []Finding) {
+func buildEditRegions(edits []editTarget, index map[string]quarry.ResolveResult, partitioned map[string]bool) ([]editRegion, []Finding) {
 	var regions []editRegion
 	var findings []Finding
 	for _, e := range edits {
@@ -115,7 +115,7 @@ func buildEditRegions(edits []editTarget, index map[string]quarry.ResolveResult)
 			regions = append(regions, editRegion{card: e.card, file: e.path})
 			continue
 		}
-		answered, readable := answerSymbols(index[e.ref])
+		answered, readable := answerSymbols(index[e.ref], partitioned[e.ref])
 		if !readable {
 			findings = append(findings, unreadableAnswerFinding(e.card, "Edit target", e.ref, index[e.ref]))
 			continue
@@ -198,6 +198,7 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 		}
 		index = resultByTarget(results)
 	}
+	partitioned := partitionedAnswers(worktreeRoot, index)
 
 	var findings []Finding
 	var symbols []deletedSymbol
@@ -207,7 +208,7 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 			symbols = append(symbols, deletedSymbol{card: d.card, target: d.ref, samePackage: quoted, otherPackage: quoted, dir: d.path})
 			continue
 		}
-		answered, readable := answerSymbols(index[d.ref])
+		answered, readable := answerSymbols(index[d.ref], partitioned[d.ref])
 		if !readable {
 			findings = append(findings, unreadableAnswerFinding(d.card, "Delete target", d.ref, index[d.ref]))
 			continue
@@ -235,7 +236,7 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 		})
 	}
 
-	regions, regionFindings := buildEditRegions(edits, index)
+	regions, regionFindings := buildEditRegions(edits, index, partitioned)
 	findings = append(findings, regionFindings...)
 
 	linesOf := make(map[string][]string)
@@ -298,13 +299,31 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 	return findings, nil
 }
 
-// answerSymbols returns the declarations a resolve answer names: the symbols of a found or multipart answer, none for a not_found or ambiguous one.
+// partitionedAnswers classifies each ambiguous answer of answers once, reading its candidate files under worktreeRoot, and returns the targets whose candidates no single build environment selects together.
+// A pass that consults one answer many times builds the map once, so no candidate file is read again per consultation.
+// It tests the candidates rather than the status: only an ambiguous answer carries two or more.
+func partitionedAnswers(worktreeRoot string, answers map[string]quarry.ResolveResult) map[string]bool {
+	partitioned := make(map[string]bool)
+	for target, answer := range answers {
+		if len(answer.Candidates) >= 2 && classifyAmbiguity(worktreeRoot, answer.Candidates).Partitioned {
+			partitioned[target] = true
+		}
+	}
+	return partitioned
+}
+
+// answerSymbols returns the declarations a resolve answer names: the symbols of a found or multipart answer, the candidates of an ambiguous one that partitioned reports partitioned by build constraints, and none for a not_found or any other ambiguous one.
 // readable is false for an answer outside quarry's four-value vocabulary, a pre-resolution rejection included, so the caller fails closed.
-func answerSymbols(r quarry.ResolveResult) (symbols []quarry.Symbol, readable bool) {
+func answerSymbols(r quarry.ResolveResult, partitioned bool) (symbols []quarry.Symbol, readable bool) {
 	switch r.Status {
 	case quarry.StatusFound, quarry.StatusMultipart:
 		return r.Symbols, true
-	case quarry.StatusNotFound, quarry.StatusAmbiguous:
+	case quarry.StatusAmbiguous:
+		if partitioned {
+			return r.Candidates, true
+		}
+		return nil, true
+	case quarry.StatusNotFound:
 		return nil, true
 	default:
 		return nil, false
