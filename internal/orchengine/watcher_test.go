@@ -174,6 +174,9 @@ type watchEnv struct {
 	cfg   Config
 
 	skills []string // The skill list the watcher reloads, set before newWatcher.
+
+	// indexErr, when set, makes the watcher's index source fail; otherwise it serves testIndex.
+	indexErr error
 }
 
 func stop(msg string) shuttleengine.Event {
@@ -226,7 +229,13 @@ func (e *watchEnv) noticeLines() []string {
 }
 
 func (e *watchEnv) newWatcher() *Watcher {
-	return NewWatcher(e.s, e.cfg, e.paths, e.stDir, e.skills, e.clock)
+	index := func() (string, error) {
+		if e.indexErr != nil {
+			return "", e.indexErr
+		}
+		return testIndex, nil
+	}
+	return NewWatcher(e.s, e.cfg, e.paths, e.stDir, e.skills, index, e.clock)
 }
 
 func (e *watchEnv) tick() {
@@ -1414,8 +1423,8 @@ func TestWatcher_AutoCompactionReloadsPluginsThenPointer(t *testing.T) {
 	if st := e.state(); st.Phase != PhaseResuming || !st.CompactionBaseline.Equal(boundary) || !st.ReloadSkipsSkills || st.ReloadStep != ReloadStepPlugins {
 		t.Fatalf("state = %+v, want resuming at the plugins step with the baseline at the boundary", st)
 	}
-	if _, err := os.Stat(e.paths.RolePath); err != nil {
-		t.Errorf("role file not rendered: %v", err)
+	if role, err := os.ReadFile(e.paths.RolePath); err != nil || !strings.Contains(string(role), testIndex) {
+		t.Errorf("role file = %q, %v; want it rendered with the index", role, err)
 	}
 	e.tick() // the plugins reload after the color
 	e.tick() // the pointer, with no skills step in between
@@ -1482,6 +1491,21 @@ func TestWatcher_AutoCompactionWaitsForIdleProbe(t *testing.T) {
 // freshBoundary is a compaction boundary with exactly one turn end after it, the one being read.
 func freshBoundary(at time.Time) shuttleengine.CompactionBoundary {
 	return shuttleengine.CompactionBoundary{At: at, TurnEndsAfter: 1, ReadTurnEndAfter: true}
+}
+
+func TestWatcher_AutoCompactionReloadGoesIdleWhenTheIndexSourceFails(t *testing.T) {
+	t.Parallel()
+
+	e := newWatchEnv(t)
+	e.indexErr = errBoom
+	e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(e.clock.now.Add(time.Second))}
+	e.s.usage["a"] = 100
+	e.endTurn("a")
+	st := e.state()
+	if st.Phase != PhaseIdle || !strings.Contains(st.LastAbortReason, roleStencilName) || !strings.Contains(st.LastAbortReason, errBoom.Error()) {
+		t.Fatalf("state = %+v, want idle with a reason naming the role stencil and the index failure", st)
+	}
+	e.assertNoCalls()
 }
 
 func TestWatcher_AutoCompactionReloadsOnlyAFreshBoundary(t *testing.T) {
@@ -1573,8 +1597,8 @@ func TestWatcher_ClearRendersRoleFileBeforeResume(t *testing.T) {
 	if e.s.count("clear") != 1 {
 		t.Fatalf("calls = %v; want the clear sent", e.s.calls)
 	}
-	if _, err := os.Stat(e.paths.RolePath); err != nil {
-		t.Errorf("role file not rendered before the resume pointer: %v", err)
+	if role, err := os.ReadFile(e.paths.RolePath); err != nil || !strings.Contains(string(role), testIndex) {
+		t.Errorf("role file = %q, %v; want it rendered with the index before the resume pointer", role, err)
 	}
 	if !strings.Contains(e.state().PendingResume, e.paths.RolePath) {
 		t.Errorf("resume pointer %q must name the role file", e.state().PendingResume)
@@ -1588,16 +1612,21 @@ func TestWatcher_FailingRenderAbortsWithoutClear(t *testing.T) {
 		name    string
 		stencil string
 		content string
+		// indexErr makes the index source fail instead of the stencil, which stays as shipped.
+		indexErr error
 	}{
-		{"role", roleStencilName, "{{.nope}}"},
-		{"resume", resumeStencilName, "line one\nline two\n"},
+		{name: "role", stencil: roleStencilName, content: "{{.nope}}"},
+		{name: "resume", stencil: resumeStencilName, content: "line one\nline two\n"},
+		{name: "index source", stencil: roleStencilName, indexErr: errBoom},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			e := newWatchEnv(t)
 			e.injectHandoff()
-			if err := os.WriteFile(stencilstore.Path(e.stDir, c.stencil), []byte(c.content), 0o644); err != nil {
+			if c.indexErr != nil {
+				e.indexErr = c.indexErr
+			} else if err := os.WriteFile(stencilstore.Path(e.stDir, c.stencil), []byte(c.content), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			e.writeHandoff()

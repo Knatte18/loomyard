@@ -43,7 +43,8 @@ does not type the same pointer again.`,
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			text, err := orchengine.ResumeContext(c.paths, c.stencilsDir, time.Now())
+			index := clihelp.RenderIndex(cmd.Root(), clihelp.AudienceOperator)
+			text, err := orchengine.ResumeContext(c.paths, c.stencilsDir, index, time.Now())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil

@@ -13,6 +13,7 @@ import (
 const (
 	testRolePath         = "/orch/role.md"
 	testNoteTemplatePath = "/orch/note-template.md"
+	testIndex            = "- board\n  - list: show the board\n"
 )
 
 func seedStencils(t *testing.T) string {
@@ -25,9 +26,10 @@ func TestRenderFiles_WriteWithoutLeadingComment(t *testing.T) {
 		name   string
 		file   string
 		render func(dir, path string) error
+		want   []string
 	}{
-		{"role", "role.md", RenderRoleFile},
-		{"note template", "note-template.md", RenderNoteTemplateFile},
+		{"role", "role.md", func(dir, path string) error { return RenderRoleFile(dir, path, testIndex) }, []string{"## Commands\n", testIndex}},
+		{"note template", "note-template.md", RenderNoteTemplateFile, nil},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -46,7 +48,27 @@ func TestRenderFiles_WriteWithoutLeadingComment(t *testing.T) {
 			if strings.Contains(string(data), "<!--") {
 				t.Errorf("%s file keeps the stencil's leading comment", c.name)
 			}
+			for _, want := range c.want {
+				if !strings.Contains(string(data), want) {
+					t.Errorf("%s file lacks %q", c.name, want)
+				}
+			}
 		})
+	}
+}
+
+func TestRenderRoleFile_RefusesStencilWithoutIndexMarker(t *testing.T) {
+	dir := seedStencils(t)
+	if err := os.WriteFile(stencilstore.Path(dir, roleStencilName), []byte("# Hub orchestrator\n\nNo marker here.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "role.md")
+	err := RenderRoleFile(dir, path, testIndex)
+	if err == nil || !strings.Contains(err.Error(), roleStencilName) || !strings.Contains(err.Error(), commandIndexMarker) {
+		t.Fatalf("want an error naming %s and the %s marker, got %v", roleStencilName, commandIndexMarker, err)
+	}
+	if _, statErr := os.Stat(path); statErr == nil {
+		t.Error("a refused render wrote the role file")
 	}
 }
 

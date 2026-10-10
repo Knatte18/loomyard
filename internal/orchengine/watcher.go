@@ -71,7 +71,9 @@ type Watcher struct {
 	paths       Paths
 	stencilsDir string
 	skills      []string // Skills the reload sequence's skills step loads in one turn after a clear, before the pointer.
-	clock       Clock
+	// index returns the operator command index each role-file render fills in; an error from it fails that render.
+	index func() (string, error)
+	clock Clock
 
 	// compactedAt is the time of an auto-compaction boundary a turn end read confirmed fresh and not yet reloaded from;
 	// zero when none.
@@ -139,8 +141,18 @@ type phaseEvents struct {
 
 // NewWatcher builds a watcher over session.
 // skills is the orch skill list the reload sequence types after a clear.
-func NewWatcher(session Session, cfg Config, paths Paths, stencilsDir string, skills []string, clock Clock) *Watcher {
-	return &Watcher{session: session, cfg: cfg, paths: paths, stencilsDir: stencilsDir, skills: skills, clock: clock}
+// index supplies the operator command index each role-file render fills in.
+func NewWatcher(session Session, cfg Config, paths Paths, stencilsDir string, skills []string, index func() (string, error), clock Clock) *Watcher {
+	return &Watcher{session: session, cfg: cfg, paths: paths, stencilsDir: stencilsDir, skills: skills, index: index, clock: clock}
+}
+
+// renderRoleFile fetches the command index and renders the role file with it.
+func (w *Watcher) renderRoleFile() error {
+	index, err := w.index()
+	if err != nil {
+		return fmt.Errorf("command index unavailable: %w", err)
+	}
+	return RenderRoleFile(w.stencilsDir, w.paths.RolePath, index)
 }
 
 // isTurnEnd reports whether ev ends a turn.
@@ -757,7 +769,7 @@ func handoffWritten(path string) (bool, error) {
 // startClearing renders the role file and the resume prompt first, so what the cleared session needs is known good before /clear runs, then persists clearing and types /clear.
 // The caller must have seen the session idle on this tick.
 func (w *Watcher) startClearing(st State, now time.Time) error {
-	if err := RenderRoleFile(w.stencilsDir, w.paths.RolePath); err != nil {
+	if err := w.renderRoleFile(); err != nil {
 		return w.toIdle(st, fmt.Sprintf("role stencil %s failed to render: %v", roleStencilName, err))
 	}
 	resume, err := RenderResumePrompt(w.stencilsDir, w.paths.RolePath, st.PendingHandoff)
@@ -823,6 +835,7 @@ func (w *Watcher) removeSatisfiedRequest(mode string, effectAt time.Time) error 
 
 // startAutoReload reloads the plugins and the role after an auto-compaction read at a turn end, once the idle probe passes.
 // The baseline moves to the boundary when the phase is entered, so no boundary reloads twice.
+// A role-file render failure, the command index's included, returns to idle with the reason, as a clear cycle's does.
 func (w *Watcher) startAutoReload(st State, now time.Time) error {
 	probe, err := w.probeIdle(&st)
 	if err != nil {
@@ -831,8 +844,8 @@ func (w *Watcher) startAutoReload(st State, now time.Time) error {
 	if !probe.Idle {
 		return nil
 	}
-	if err := RenderRoleFile(w.stencilsDir, w.paths.RolePath); err != nil {
-		return err
+	if err := w.renderRoleFile(); err != nil {
+		return w.toIdle(st, fmt.Sprintf("role stencil %s failed to render: %v", roleStencilName, err))
 	}
 	pointer, err := RenderReloadPrompt(w.stencilsDir, w.paths.RolePath)
 	if err != nil {
@@ -1074,7 +1087,7 @@ func (w *Watcher) startCompacting(st State, now time.Time) error {
 // The caller must have seen the session idle on this tick.
 // A stencil failure returns to idle with the reason, as a clear cycle's does.
 func (w *Watcher) reloadAfterCompaction(st State, now time.Time) error {
-	if err := RenderRoleFile(w.stencilsDir, w.paths.RolePath); err != nil {
+	if err := w.renderRoleFile(); err != nil {
 		return w.toIdle(st, fmt.Sprintf("role stencil %s failed to render: %v", roleStencilName, err))
 	}
 	resume, err := RenderResumePrompt(w.stencilsDir, w.paths.RolePath, st.LastHandoff)

@@ -533,7 +533,7 @@ var wordingClaims = []stencilClaims{
 	{"friction-directive-interview.md", FrictionDirectiveInterview, frictionOptionalClaims},
 	{"orch-template-role.md", OrchTemplateRole, joinClaims(
 		wantAll("the role file carries every theme of the orch procedure",
-			"## The run loop", "## Parent-review", "## Escalations from a child", "## PR-Gate", "## After landing",
+			"## Commands", "## The run loop", "## Parent-review", "## Escalations from a child", "## PR-Gate", "## After landing",
 			"## The board", "## Where a finding goes", "## Acting without asking", "## Status reports", "## Messaging", "## Which role can do what"),
 		wantNone(orchNoScribeHandoffWhy, "scribe:handoff"),
 		[]claim{
