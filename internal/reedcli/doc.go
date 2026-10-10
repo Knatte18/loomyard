@@ -5,4 +5,7 @@
 // The loop also wakes on the hub-level discover signal, a file that a cold session boot touches: a consumed signal runs a cycle at once, but never sooner than five seconds after the previous cycle, so a process touching the file in a loop costs one cycle per five seconds.
 // When the signal file cannot be watched the loop logs that once and keeps its backed-off cadence.
 // Idle exit and orphan reap each count three consecutive cycles, so at the backed-off cadence they take up to three minutes.
+//
+// The daemon logs to the durable sink in the hub logs directory, and Debug lines reach it at Debug verbosity.
+// A Debug trace comes from running `lyx reed watchdog -vv` in the foreground, or from `lyx reed up`, `attach` or `resume` run with `LYX_LOG_LEVEL=debug` while no daemon runs for the hub.
 package reedcli
