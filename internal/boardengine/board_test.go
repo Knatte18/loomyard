@@ -658,3 +658,64 @@ func TestSetRunStatus(t *testing.T) {
 		})
 	}
 }
+
+// TestPriorityRoundTrip pins that every Board write path keeps an entry's priority, and that board.json names it only on a high or low entry.
+//
+//testtiming:keep pins the priority field across every facade write path and its omitempty storage on disk, which no other test asserts
+func TestPriorityRoundTrip(t *testing.T) {
+	t.Parallel()
+	boardPath := t.TempDir()
+	b := boardengine.New(boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
+	for _, fields := range []map[string]any{
+		{"slug": "hi", "title": "Hi", "kind": "note", "labels": bugLabels, "priority": "high"},
+		{"slug": "lo", "title": "Lo", "kind": "task", "labels": bugLabels, "priority": "low"},
+		{"slug": "plain", "title": "Plain", "kind": "task", "labels": bugLabels, "priority": "normal"},
+		{"slug": "gone", "title": "Gone", "kind": "task", "labels": bugLabels, "status": "done"},
+	} {
+		if _, err := b.UpsertTask(fields); err != nil {
+			t.Fatalf("UpsertTask(%v): %v", fields["slug"], err)
+		}
+	}
+
+	writes := []struct {
+		name  string
+		write func() error
+	}{
+		{"set-status", func() error { return b.SetStatus("lo", strPtr("active")) }},
+		{"run status", func() error { return b.SetRunStatus("lo", boardengine.RunStatus("running", "Webster")) }},
+		{"clear status", func() error { return b.SetStatus("lo", nil) }},
+		{"promote", func() error { _, err := b.Promote("hi"); return err }},
+		{"set-deps", func() error { return b.SetDeps("lo", []string{"hi"}) }},
+		{"batch", func() error {
+			return b.UpsertTasksBatch([]map[string]any{{"slug": "hi", "brief": "batched"}, {"slug": "lo", "brief": "batched"}})
+		}},
+		{"merge", func() error {
+			_, err := b.MergeTasks([]string{"gone"}, map[string]any{"slug": "hi", "body": "merged"}, &boardengine.MergeStatusUpdate{Selector: "lo", Status: strPtr("active")})
+			return err
+		}},
+		{"prune", func() error { _, err := b.Prune(); return err }},
+	}
+	for _, w := range writes {
+		if err := w.write(); err != nil {
+			t.Fatalf("%s: %v", w.name, err)
+		}
+		for slug, want := range map[string]string{"hi": "high", "lo": "low", "plain": ""} {
+			got, found, err := b.GetTask(slug)
+			if err != nil || !found || got.Priority != want {
+				t.Errorf("after %s: GetTask(%s) priority = %q, found %v, err %v; want %q", w.name, slug, got.Priority, found, err, want)
+			}
+		}
+	}
+
+	if _, err := b.MergeTasks(nil, map[string]any{"slug": "hi", "priority": "urgent"}, nil); err == nil || !strings.Contains(err.Error(), `"urgent"`) {
+		t.Errorf("MergeTasks(priority urgent) err = %v; want a refusal naming the value", err)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(boardPath, "board.json"))
+	if err != nil {
+		t.Fatalf("read board.json: %v", err)
+	}
+	if got := strings.Count(string(raw), `"priority"`); got != 2 {
+		t.Errorf("board.json names priority %d times; want 2, on hi and lo only:\n%s", got, raw)
+	}
+}

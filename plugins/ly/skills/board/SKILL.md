@@ -46,6 +46,9 @@ Create or update an entry, demotion included:
 lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'
 ```
 
+An entry's optional `priority` is `high`, `normal` or `low`; absent means normal, and `"priority":"normal"` clears it.
+It orders the entry within its README group and listing.
+
 Read a long body from a file, or from stdin with `-`, instead of embedding it in the payload:
 
 ```
