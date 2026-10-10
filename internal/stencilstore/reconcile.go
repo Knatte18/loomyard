@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -91,6 +93,9 @@ func WritesDue(baseDir string, registry Registry, mode Mode, source Source) (boo
 // reconcileAll is the shared walk behind Reconcile and ForceRefresh; force performs the refresh row whatever the mode or ordering.
 func reconcileAll(baseDir string, registry Registry, mode Mode, source Source, force bool) ([]string, error) {
 	var written []string
+	var notices []refreshNotice
+	// The notices are logged on every return, so a pass that fails midway still reports the stencils it left untouched.
+	defer func() { logRefreshNotices(notices, source.Writer.Revision) }()
 
 	for _, name := range registry.Names() {
 		shipped, known := registry.Default(name)
@@ -106,7 +111,10 @@ func reconcileAll(baseDir string, registry Registry, mode Mode, source Source, f
 		}
 
 		state := Classify(onDisk, exists, shipped)
-		wrote, writeErr := reconcileOne(path, name, state, onDisk, shipped, mode, source, force)
+		wrote, notice, writeErr := reconcileOne(path, name, state, onDisk, shipped, mode, source, force)
+		if notice.kind != noNotice {
+			notices = append(notices, notice)
+		}
 		if writeErr != nil {
 			return written, writeErr
 		}
@@ -172,11 +180,35 @@ const (
 	actionRestamp
 )
 
-// decision is the outcome of classifying one registry name: the action, the content a restamp writes, and the log line the decision owes.
+// noticeCase is why a stencil was left untouched, one of the four cases a refresh notice reports.
+type noticeCase int
+
+const (
+	noNotice noticeCase = iota
+	// noticeNotOlder: a production build found the recorded writer not older than itself.
+	noticeNotOlder
+	// noticeDevBuild: a dev build never refreshes an untouched stencil.
+	noticeDevBuild
+	// noticeUnstampedBuild: an unstamped build never refreshes an untouched stencil.
+	noticeUnstampedBuild
+	// noticeEditedBehind: an edited stencil has fallen behind a newer shipped default.
+	noticeEditedBehind
+)
+
+// refreshNotice is what a decision owes the log: the stencil, the case that left it untouched, and the recorded and running revisions where the case has them.
+// The zero value owes nothing.
+type refreshNotice struct {
+	stencil  string
+	kind     noticeCase
+	recorded string
+	running  string
+}
+
+// decision is the outcome of classifying one registry name: the action, the content a restamp writes, and the notice the decision owes.
 type decision struct {
-	kind      actionKind
-	restamp   []byte
-	logNotice func()
+	kind    actionKind
+	restamp []byte
+	notice  refreshNotice
 }
 
 // writerFor returns the writer a write records: the running binary under ModeProduction, and none under any other mode.
@@ -214,22 +246,11 @@ func decide(name string, state State, onDisk, shipped []byte, mode Mode, source 
 			if ordering == RecordedOlder {
 				return decision{kind: actionWrite}
 			}
-			return decision{logNotice: func() {
-				logger.Info("stencilstore: board copy was written by a build that is not older than this binary; left untouched -- run \"lyx stencil sync\" to override", "stencil", name, "recorded", recorded.Revision, "running", source.Writer.Revision)
-			}}
+			return decision{notice: refreshNotice{stencil: name, kind: noticeNotOlder, recorded: recorded.Revision, running: source.Writer.Revision}}
 		case ModeDev:
-			// The remedy is named at the point of failure rather than left for a reader to find,
-			// because without it this warning reads as benign housekeeping while it is in fact
-			// reporting that every producer reading this stencil will run on the OLDER on-disk text.
-			// A dev build refuses to refresh so it never clobbers a board's stencils with whatever
-			// is in a working tree.
-			return decision{logNotice: func() {
-				logger.Warn("stencilstore: dev build does not refresh an untouched stencil; producers will read the OLDER on-disk copy -- run \"lyx stencil sync\" to force-refresh it", "stencil", name)
-			}}
+			return decision{notice: refreshNotice{stencil: name, kind: noticeDevBuild}}
 		default:
-			return decision{logNotice: func() {
-				logger.Warn("stencilstore: unstamped build does not refresh an untouched stencil; producers will read the OLDER on-disk copy -- run \"lyx stencil sync\", or deploy with update-plugins.sh", "stencil", name)
-			}}
+			return decision{notice: refreshNotice{stencil: name, kind: noticeUnstampedBuild}}
 		}
 
 	case StateReconciled:
@@ -241,9 +262,7 @@ func decide(name string, state State, onDisk, shipped []byte, mode Mode, source 
 
 	case StateEdited:
 		if BodyHash(shipped) != BodyHash(onDisk) {
-			return decision{logNotice: func() {
-				logger.Warn("stencilstore: edited stencil has fallen behind a newer shipped default; see lyx stencil diff", "stencil", name)
-			}}
+			return decision{notice: refreshNotice{stencil: name, kind: noticeEditedBehind}}
 		}
 		return decision{}
 
@@ -253,30 +272,62 @@ func decide(name string, state State, onDisk, shipped []byte, mode Mode, source 
 }
 
 // reconcileOne applies one registry name's classified state to disk, per Reconcile's per-row
-// requirements, and reports whether it wrote the file.
-func reconcileOne(path, name string, state State, onDisk, shipped []byte, mode Mode, source Source, force bool) (bool, error) {
+// requirements, and reports whether it wrote the file and the notice the decision owes.
+// The caller logs the notice, so a pass reports each case once.
+func reconcileOne(path, name string, state State, onDisk, shipped []byte, mode Mode, source Source, force bool) (bool, refreshNotice, error) {
 	if state < StateAbsent || state > StateEdited {
-		return false, fmt.Errorf("stencilstore: stencil %q classified as unknown state %v", name, state)
+		return false, refreshNotice{}, fmt.Errorf("stencilstore: stencil %q classified as unknown state %v", name, state)
 	}
 
 	d := decide(name, state, onDisk, shipped, mode, source, force)
-	if d.logNotice != nil {
-		d.logNotice()
-	}
 
 	switch d.kind {
 	case actionWrite:
 		if err := writeStamped(path, shipped, BodyHash(shipped), writerFor(mode, source)); err != nil {
-			return false, err
+			return false, d.notice, err
 		}
-		return true, nil
+		return true, d.notice, nil
 	case actionRestamp:
 		if err := os.WriteFile(path, d.restamp, 0o644); err != nil {
-			return false, fmt.Errorf("stencilstore: restamp stencil %q: %w", name, err)
+			return false, d.notice, fmt.Errorf("stencilstore: restamp stencil %q: %w", name, err)
 		}
-		return true, nil
+		return true, d.notice, nil
 	default:
-		return false, nil
+		return false, d.notice, nil
+	}
+}
+
+// logRefreshNotices emits one line per notice case, listing the stencils the case left untouched and naming its remedy once.
+// The remedy is named at the point of failure rather than left for a reader to find.
+// Without it these warnings read as benign housekeeping while they report that every producer reading the stencil will run on the OLDER on-disk text.
+// A dev or unstamped build refuses to refresh so it never clobbers a board's stencils with whatever is in a working tree.
+func logRefreshNotices(notices []refreshNotice, running string) {
+	for _, kind := range []noticeCase{noticeNotOlder, noticeDevBuild, noticeUnstampedBuild, noticeEditedBehind} {
+		var listed []string
+		for _, notice := range notices {
+			if notice.kind != kind {
+				continue
+			}
+			entry := notice.stencil
+			if kind == noticeNotOlder {
+				entry += " (recorded " + notice.recorded + ")"
+			}
+			listed = append(listed, entry)
+		}
+		if len(listed) == 0 {
+			continue
+		}
+		stencils := strings.Join(listed, ", ")
+		switch kind {
+		case noticeNotOlder:
+			logger.Info("stencilstore: board copies were written by a build that is not older than this binary; left untouched -- run \"lyx stencil sync\" to override", "stencils", stencils, "running", running)
+		case noticeDevBuild:
+			logger.Warn("stencilstore: dev build does not refresh untouched stencils; producers will read the OLDER on-disk copies -- run \"lyx stencil sync\" to force-refresh them", "stencils", stencils)
+		case noticeUnstampedBuild:
+			logger.Warn("stencilstore: unstamped build does not refresh untouched stencils; producers will read the OLDER on-disk copies -- run \"lyx stencil sync\", or deploy with update-plugins.sh", "stencils", stencils)
+		case noticeEditedBehind:
+			logger.Warn("stencilstore: edited stencils have fallen behind a newer shipped default; see lyx stencil diff", "stencils", stencils)
+		}
 	}
 }
 
@@ -347,6 +398,9 @@ const (
 	driftBehind driftClass = 4
 )
 
+// driftMessagePrefix opens every message classifyPortBackDrift returns; the rest of the message is the remedy.
+const driftMessagePrefix = "stencilstore: board copy has drifted from worktree source; "
+
 // classifyPortBackDrift classifies a differing board copy on the two signals the warning turns on:
 // hand-edited (Classify reports StateEdited against the embedded bytes) and source-ahead (the source
 // body differs from the embedded body).
@@ -359,25 +413,27 @@ func classifyPortBackDrift(boardContent, sourceContent, embedded []byte, build f
 
 	switch {
 	case handEdited && sourceAhead:
-		return driftBoth, "stencilstore: board copy has drifted from worktree source; both sides changed and promote would overwrite the source's changes -- reconcile by hand"
+		return driftBoth, driftMessagePrefix + "both sides changed and promote would overwrite the source's changes -- reconcile by hand"
 	case handEdited:
-		return driftHandEdited, "stencilstore: board copy has drifted from worktree source; it was hand-edited -- run \"lyx stencil promote <name>\" to port it back"
+		return driftHandEdited, driftMessagePrefix + "it was hand-edited -- run \"lyx stencil promote <name>\" to port it back"
 	case sourceAhead && build != nil && build() == BuildNotInHead:
-		return driftBehind, "stencilstore: board copy has drifted from worktree source; this worktree is behind the build that deployed the board copy -- syncing this worktree with main resolves it"
+		return driftBehind, driftMessagePrefix + "this worktree is behind the build that deployed the board copy -- syncing this worktree with main resolves it"
 	case sourceAhead:
-		return driftSourceAhead, "stencilstore: board copy has drifted from worktree source; the board copy is untouched and a binary older than the source deployed it -- run a production deploy (update-plugins.sh)"
+		return driftSourceAhead, driftMessagePrefix + "the board copy is untouched and a binary older than the source deployed it -- run a production deploy (update-plugins.sh)"
 	default:
-		return driftNeither, "stencilstore: board copy has drifted from worktree source; the board copy is untouched but older than this binary's embedded bytes (a dev build never refreshes one) -- run \"lyx stencil sync\""
+		return driftNeither, driftMessagePrefix + "the board copy is untouched but older than this binary's embedded bytes (a dev build never refreshes one) -- run \"lyx stencil sync\""
 	}
 }
 
-// warnPortBackDrift compares each registry name's on-disk board copy against source.Dir's worktree
-// copy and emits one log line per differing stencil, naming the stencil, its drift class and
-// the remedy that class allows (see classifyPortBackDrift).
-// A behind class logs at Info, since a sync clears it; every other class logs at Warn.
+// warnPortBackDrift compares each registry name's on-disk board copy against source.Dir's worktree copy.
+// It emits one log line for the pass, naming the count, each differing stencil with its drift class and, once, the remedies those classes allow (see classifyPortBackDrift).
+// The line logs at Info when every differing stencil is in the behind class, since a sync clears it; otherwise it logs at Warn.
 // A missing source file is skipped silently; this comparison never returns an error and never
 // affects an exit code, per the drift-notification-is-logger-warn-and-never-blocks Shared Decision.
 func warnPortBackDrift(baseDir string, registry Registry, source Source) {
+	var drifted []string
+	var remedies []string
+	onlyBehind := true
 	for _, name := range registry.Names() {
 		boardPath := Path(baseDir, name)
 		boardContent, err := os.ReadFile(boardPath)
@@ -396,13 +452,26 @@ func warnPortBackDrift(baseDir string, registry Registry, source Source) {
 		if string(boardBody) != string(sourceBody) {
 			embedded, _ := registry.Default(name)
 			class, msg := classifyPortBackDrift(boardContent, sourceContent, embedded, source.Build)
-			if class == driftBehind {
-				logger.Info(msg, "stencil", name, "class", class.String())
-				continue
+			drifted = append(drifted, name+": "+class.String())
+			if remedy := strings.TrimPrefix(msg, driftMessagePrefix); !slices.Contains(remedies, remedy) {
+				remedies = append(remedies, remedy)
 			}
-			logger.Warn(msg, "stencil", name, "class", class.String())
+			onlyBehind = onlyBehind && class == driftBehind
 		}
 	}
+	if len(drifted) == 0 {
+		return
+	}
+	noun := "stencils"
+	if len(drifted) == 1 {
+		noun = "stencil"
+	}
+	line := fmt.Sprintf("stencilstore: %d %s drifted from worktree source: %s -- %s", len(drifted), noun, strings.Join(drifted, ", "), strings.Join(remedies, "; "))
+	if onlyBehind {
+		logger.Info(line)
+		return
+	}
+	logger.Warn(line)
 }
 
 // ForceRefresh performs the refresh row even on a stencil a ModeDev or ModeUnstamped pass would leave untouched, whatever the recorded writer's ordering.

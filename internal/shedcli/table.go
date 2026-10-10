@@ -47,7 +47,7 @@ type entry struct {
 // The gate this table's Verbs field backs stays even though every recipe now supports every verb it
 // once excluded, because a future recipe may still exclude one: without this table gating a
 // recipe's dispatch, an excluded verb would reach the generic body with StepBusyKind unset and
-// PreStep nil, emitting kind: "" -- a sixth value outside the five the Shed Verb-Set Invariant and
+// PreStep nil, emitting kind: "" -- a seventh value outside the six the Shed Verb-Set Invariant and
 // the driver stencil both pin closed -- and skipping that recipe's own PreRun pre-flight.
 var recipes = map[string]entry{
 	"loom": {

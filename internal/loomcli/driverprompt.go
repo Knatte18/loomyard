@@ -19,6 +19,12 @@ import (
 // driverStencilName is the registered name of the shed driver stencil.
 const driverStencilName = "shed-template-driver"
 
+// driverGuideStencilName is the registered name of the repair guide stencil the driver's one-shot fork reads.
+const driverGuideStencilName = "shed-template-driver-guide"
+
+// driverGuideMarker is the driver stencil's marker for the deployed path of the repair guide.
+const driverGuideMarker = "guide_path"
+
 // driverNotifyStencilName and driverNotifyWatchedStencilName are the registered names of the two parent-notification rules driverPrompt fills into the driver stencil's parent_notify marker.
 const (
 	driverNotifyStencilName        = "shed-template-driver-notify"
@@ -31,6 +37,7 @@ const driverNotifyMarker = "parent_notify"
 // driverPrompt composes the driver session's launch prompt: the shed driver stencil, read from stencilsDir through stencilstore.Read and filled with the run-id, the report path the session writes at every stop,
 // driverParkCommand(reportPath), driverTeardownCommand, parentdirective.Directive(stencilsDir, parentName, false) and editdirective.Directive(stencilsDir).
 // The marker for the parent-notification rule is filled with the watched stencil when watched is true and with the plain one otherwise.
+// The guide marker is filled with the deployed path of the repair guide stencil, the copy the fork the driver spawns at a failure stop reads.
 // The prompt is the driver's whole procedure, so the session depends on no installed skill.
 // At a done run or a busy refusal, as its last act after writing its stop report, the session runs driverTeardownCommand to end its own strand;
 // at every other stop it parks, leaving the session open for `lyx loom start` to resume by typing one line.
@@ -70,6 +77,7 @@ func driverPrompt(stencilsDir, parentName, runID, reportPath string, watched boo
 		parentdirective.MarkerName: directive,
 		editdirective.MarkerName:   editDirective,
 		driverNotifyMarker:         notify,
+		driverGuideMarker:          stencilstore.Path(stencilsDir, driverGuideStencilName),
 	})
 	if err != nil {
 		return "", fmt.Errorf("loom: driver prompt: fill stencil %q: %w", driverStencilName, err)

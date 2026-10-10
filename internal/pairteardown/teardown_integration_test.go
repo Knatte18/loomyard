@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -19,9 +20,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -103,6 +109,57 @@ func writeFile(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
+}
+
+// startAndReap starts cmd and reaps it in the background, returning a channel closed once it has exited.
+func startAndReap(t *testing.T, cmd *exec.Cmd) <-chan struct{} {
+	t.Helper()
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start %v: %v", cmd.Args, err)
+	}
+	done := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(done)
+	}()
+	return done
+}
+
+// waitUntil polls cond until it holds, failing the test with what after a few seconds.
+func waitUntil(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// waitForPID waits for the file at path to hold a pid and returns it.
+func waitForPID(t *testing.T, path string) int {
+	t.Helper()
+	var pid int
+	waitUntil(t, "the pid file "+path, func() bool {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return false
+		}
+		pid, err = strconv.Atoi(strings.TrimSpace(string(data)))
+		return err == nil
+	})
+	return pid
+}
+
+// processGone reports whether pid names no process, or one that has exited and awaits its reaper.
+func processGone(pid int) bool {
+	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return true
+	}
+	_, afterName, _ := strings.Cut(string(data), ") ")
+	return strings.HasPrefix(afterName, "Z")
 }
 
 // TestRun_TeardownScenario runs the composite's real-substrate checks over one hub.
@@ -219,6 +276,69 @@ func TestRun_TeardownScenario(t *testing.T) {
 			if out != "stopped\n" {
 				t.Errorf("archived report = %q, want %q", out, "stopped\n")
 			}
+		}},
+		{"LiveLoopAndItsStepTreeDieBeforeTheSessionEnds", func(t *testing.T) {
+			if _, err := exec.LookPath("flock"); err != nil {
+				t.Skipf("flock not found, so no stand-in loop can hold the loop lock: %v", err)
+			}
+			p := addLivePair(t, h, cfg.Tmux, "pt-loop")
+			task, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(p.h.Location, p.slug))
+			if err != nil {
+				t.Fatalf("ResolveWorktree: %v", err)
+			}
+			pidPath := shedrun.LoopPIDFile(task, shedrun.SelfRunID)
+			lockPath := shedrun.LoopLock(task, shedrun.SelfRunID)
+			if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+				t.Fatalf("create the steps directory: %v", err)
+			}
+
+			// The stand-in loop is a process holding the loop lock; the stand-in child is its own process group holding a grandchild.
+			// The shell locks its own descriptor and execs sleep, so the process that holds the lock keeps the recorded pid.
+			loop := exec.Command("sh", "-c", `exec 9>"$1"; flock 9 && exec sleep 300`, "sh", lockPath)
+			grandchildFile := filepath.Join(t.TempDir(), "grandchild.pid")
+			child := exec.Command("sh", "-c", `sleep 300 & echo $! > "$1"; wait`, "sh", grandchildFile)
+			child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			loopDone, childDone := startAndReap(t, loop), startAndReap(t, child)
+			t.Cleanup(func() { _ = loop.Process.Kill(); _ = syscall.Kill(-child.Process.Pid, syscall.SIGKILL) })
+
+			grandchild := waitForPID(t, grandchildFile)
+			waitUntil(t, "the stand-in loop to hold the loop lock", func() bool {
+				held, ok, err := lock.TryAcquireWriteLock(lockPath)
+				if err == nil && ok {
+					_ = held.Release()
+				}
+				return err == nil && !ok
+			})
+			loopStart, _ := proc.StartTime(loop.Process.Pid)
+			childStart, _ := proc.StartTime(child.Process.Pid)
+			record := shedverbs.LoopPIDRecord{
+				LoopID: "stand-in",
+				Loop:   proc.TreeRecord{PID: loop.Process.Pid, StartTime: loopStart},
+				Child:  proc.TreeRecord{PID: child.Process.Pid, PGID: child.Process.Pid, StartTime: childStart},
+			}
+			if err := shedverbs.WriteLoopPIDRecord(pidPath, record); err != nil {
+				t.Fatalf("write the stand-in loop's pid record: %v", err)
+			}
+
+			if _, err := p.td.EndSession(context.Background(), pairteardown.Request{Slug: p.slug}); err != nil {
+				t.Fatalf("EndSession: %v", err)
+			}
+			for name, done := range map[string]<-chan struct{}{"loop": loopDone, "child": childDone} {
+				select {
+				case <-done:
+				case <-time.After(10 * time.Second):
+					t.Errorf("the stand-in %s is still running after EndSession", name)
+				}
+			}
+			waitUntil(t, "the grandchild to die", func() bool { return processGone(grandchild) })
+			if p.sessionUp(t) {
+				t.Error("session is still up after EndSession")
+			}
+			held, ok, err := lock.TryAcquireWriteLock(shedrun.RunLock(task, shedrun.SelfRunID))
+			if err != nil || !ok {
+				t.Fatalf("the run lock after EndSession: ok = %v, err = %v; want it free", ok, err)
+			}
+			_ = held.Release()
 		}},
 		{"TaskWorktreeRemovedByHandEndsTheSessionByName", func(t *testing.T) {
 			// Runs last: it ends the only live session on the hub's server, so the server's socket file must go.

@@ -29,6 +29,9 @@ var unboundedWaitFiles = []string{
 	"internal/shuttleengine/wait.go",
 	"internal/websterengine/poll.go",
 	"internal/shedverbs/status.go",
+	"internal/shedverbs/loopwait.go",
+	"internal/shedverbs/loop.go",
+	"internal/shedverbs/loopwatchdog.go",
 }
 
 // oneShotMarker opens the comment that lets a sub-second literal through on its own line, followed by the reason.

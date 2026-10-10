@@ -27,8 +27,11 @@ import (
 var shedverbsAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/buildvcs",
 	"github.com/Knatte18/loomyard/internal/clihelp",
+	"github.com/Knatte18/loomyard/internal/fswatch",
+	"github.com/Knatte18/loomyard/internal/lock",
 	"github.com/Knatte18/loomyard/internal/logger",
 	"github.com/Knatte18/loomyard/internal/output",
+	"github.com/Knatte18/loomyard/internal/proc",
 	"github.com/Knatte18/loomyard/internal/state",
 	"github.com/Knatte18/loomyard/internal/shedengine",
 	"github.com/spf13/cobra",

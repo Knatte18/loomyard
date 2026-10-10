@@ -43,6 +43,8 @@ A fresh seed carries `current_producer: "Preflight"`, `state: "running"`, empty 
   "error": "",                                 // Shed-owned: human-readable detail for a failed/blocked/awaiting halt (awaiting is the planned PR-review hand-off at PR-Gate, or a review segment's escalation to the parent at its Bouncer row); a blocked halt carries the producer's own stuck reason (the generic "stuck with no OnStuck target" when it supplied none) or, for an exhausted bounce budget, a reason that starts with "bounce budget exhausted" and carries its `goto` way forward after it
   "parent_notice": "",                         // optional, Shed-owned: the one-line notice an awaiting escalation hands the run's parent; set only on an awaiting halt and absent on every other write
   "pause_requested": false,                    // shared write-to-clear: set true by an outside actor, cleared by Shed
+  "pause_before": "",                          // optional, outside-set: a producer name the run pauses before running; Shed clears it with pause_after when a condition fires, and `goto` clears both
+  "pause_after": "",                           // optional, outside-set: a producer name the run pauses after it returns a routed running outcome; cleared with pause_before
   "activity": {"now": "...", "last": "...", "wait": "..."}, // Shed-owned, mechanically composed
   "history": [                                 // Shed-owned: one entry per producer call
     {"producer": "Preflight", "outcome": "done", "output": "", "at": "2026-07-17T10:01:30Z"}
@@ -60,6 +62,10 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
 - **`product.slug` / `product.parent`** — the only handoff pointers into the wider task record;
   the board owns durable title/description, not this file.
 - **`product.start_sha`** — the repo `HEAD` stamped when Webster begins, so Raddle can diff `start_sha..HEAD`. `null` until Webster starts.
+- **`pause_before` / `pause_after`** — stop conditions an outside actor records through `lyx shed pause --before|--after`; both keys are absent when empty.
+  `pause_before` fires when `current_producer` equals it, before that producer is called.
+  `pause_after` fires when the named producer returns a routed running outcome, pausing at the routed row, and stays recorded across a halting outcome or a producer error.
+  A fired condition pauses the run with the reason `paused before <target>, as requested` or `paused after <target>, as requested` and clears both keys.
 - **`history[]` is budget-bearing, not only a log.**
   Its one-entry-per-producer-call rule (see the schema block above) is no longer merely an audit trail: it is the sole storage of every producer's per-producer, episode-scoped bounce budget, derived by counting a producer's own `stuck` entries since its own most recent `done` entry, the most recent `done` by a producer of the same segment (a Burler-round row never returns `done`, so its review segment's Bouncer passing ends its episode), or the most recent `goto` entry into its segment (into the producer itself when it has no segment).
   It must never be truncated or compacted — doing so would silently hand every producer a fresh budget with nothing here to warn a future retention task that it just did.

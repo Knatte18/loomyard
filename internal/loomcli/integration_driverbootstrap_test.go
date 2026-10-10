@@ -44,16 +44,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// integrationWriteStubDriverScript writes a POSIX shell script standing in for the claude binary this
-// file's one spawn launches. The driver spec names a skill, so the claude engine's launch line carries no
-// prompt pointer: shuttle types one skill-load message first and the pointer to the run's prompt.md afterwards.
-// The script prints claudeengine's own idle-input-box fixture at start and again after each line it reads.
-// Shuttle's startup step blocks Start until it sees a ready marker, and every verified send waits for an idle box,
+// integrationWriteStubDriverScript writes a POSIX shell script standing in for the claude binary this file's one spawn launches.
+// The driver spec names no skill, so the claude engine's launch line carries the prompt pointer as an argument, from which the script takes the prompt.md path and extracts the drive report path driverPrompt quoted into that file.
+// The script prints claudeengine's own idle-input-box fixture at start and again after the one line it reads.
+// Shuttle's startup step blocks Start until it sees a ready marker, and the color step waits for a ready pane,
 // so a script that skipped the fixture would make every call here time out instead of returning fast.
-// It reads typed lines:
-// a leading `/color` line, which shuttle types for the driver's colored segment, is skipped, and the next is the load message, answered by appending a Stop event with no transcript to the events.jsonl beside the `--settings` file,
-// so shuttle confirms the load unverified at once,
-// and the one after it is the pointer, from which the script takes the prompt.md path and extracts the drive report path driverPrompt quoted into that file.
+// The one typed line is the `/color` command shuttle types for the driver's colored segment.
 // It then sleeps settleDelay, giving the caller a window
 // to observe the run in flight, past readiness, before the report exists -- writes a one-line report
 // there, and exits.
@@ -61,20 +57,15 @@ func integrationWriteStubDriverScript(t *testing.T, settleDelay time.Duration) s
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "stub-claude.sh")
 	script := fmt.Sprintf(`#!/bin/sh
-settings=
+prompt_file=
 while [ $# -gt 0 ]; do
-  if [ "$1" = "--settings" ]; then settings=$2; fi
+  case $1 in *prompt.md*) prompt_file=$(printf '%%s' "$1" | grep -o '[^ "]*prompt\.md' | head -1) ;; esac
   shift
 done
 box() { printf '%%s\n' '%s'; }
 box
 IFS= read -r line
 box
-case $line in /color*) IFS= read -r line; box ;; esac
-printf '%%s\n' '{"hook_event_name":"Stop","last_assistant_message":"ok"}' >> "$(dirname "$settings")/events.jsonl"
-IFS= read -r line
-box
-prompt_file=$(printf '%%s' "$line" | grep -o '[^ "]*prompt\.md' | head -1)
 report=$(grep -o '"[^"]*drive-report[^"]*"' "$prompt_file" | head -1 | tr -d '"')
 sleep %s
 if [ -n "$report" ]; then
@@ -122,7 +113,7 @@ func waitForDriveReport(t *testing.T, dir string, timeout time.Duration) string 
 
 // TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver drives one end-to-end llm driver launch over a fixture hub built through hubforge, seeded with the llm driver, and asserts three things: the launch call returns once the stub's ready marker lands and well before its settle delay elapses, proving shuttle's own blocking Start returns past the provider's startup gates rather than waiting on the whole driver session to finish; the started run's persisted state file exists under the run directory the handle reports; and the drive report the stubbed driver writes and exits lands under the run's durable drive-reports directory, never its ephemeral scratch one.
 func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.T) {
-	// Long enough that Start's own paced, confirmed typing of the skill message and the pointer (a submit settle and a redraw settle per send) finishes well inside it.
+	// Long enough that Start's own startup probing and its typing and settling of the color command finish well inside it.
 	const stubSettleDelay = 5 * time.Second
 	stubPath := integrationWriteStubDriverScript(t, stubSettleDelay)
 

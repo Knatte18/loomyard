@@ -43,11 +43,8 @@
 //
 // # Child lifetime
 //
-// go test runs in its own process group, so the verb can kill the whole tree without signalling the shell that called it.
-// On a terminating signal, including one sent to the verb's own group, it kills that group, releases its slot and exits with 128 plus the signal number.
-// On Linux the child also carries a parent-death SIGKILL, set from a goroutine locked to its OS thread for the child's lifetime, so a SIGKILL of the verb ends go itself.
-// On another Unix the group outlives an uncatchable kill.
-// On Windows the child is assigned to a job object created with kill-on-job-close right after it starts, so any exit of the verb, a hard kill included, ends the tree.
+// go test runs through `internal/proc`'s tied child, which keeps its tree killable without signalling the shell that called the verb and ends it when the verb dies, a hard kill included.
+// On a terminating signal, including one sent to the verb's own group, the verb kills that tree, releases its slot and exits with 128 plus the signal number.
 //
 // # Exit codes
 //

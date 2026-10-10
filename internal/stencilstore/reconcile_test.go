@@ -310,9 +310,9 @@ func TestForceRefresh_PerformsRefreshRowFromDevSkippedFile(t *testing.T) {
 }
 
 // TestWritesDue covers the dry-run classification: nothing due on a settled board, and a write due for an absent file, a missing .gitattributes, or an untouched copy the mode would refresh, but not for one it would leave or for an edited copy.
+// The pass logs nothing, even over a copy a mode leaves behind.
+// It captures the logger's output, which is process-global state, so it stays serial.
 func TestWritesDue(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name  string
 		mode  Mode
@@ -344,6 +344,13 @@ func TestWritesDue(t *testing.T) {
 			registry.defaults["family-one"] = []byte("updated shipped body\n")
 		}, false},
 	}
+	buf := logcapture.CaptureVerbose(t)
+	// The parallel subtests finish before the parent's cleanups run, so the log holds every row's output by then.
+	t.Cleanup(func() {
+		if buf.String() != "" {
+			t.Errorf("WritesDue logged %q; want nothing", buf.String())
+		}
+	})
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -465,18 +472,19 @@ func TestReconcile_ModeDevRefusalNamesItsRemedy(t *testing.T) {
 		older func(Writer) Ordering
 		want  []string
 	}{
-		{"DevMode", ModeDev, nil, []string{"lyx stencil sync", "OLDER", "family-one"}},
-		{"UnstampedMode", ModeUnstamped, nil, []string{"lyx stencil sync", "update-plugins.sh", "OLDER", "family-one"}},
-		{"ProductionRecordedNotOlder", ModeProduction, func(Writer) Ordering { return RecordedNotOlder }, []string{"lyx stencil sync", "family-one", "recorded-rev", "running-rev"}},
+		{"DevMode", ModeDev, nil, []string{"lyx stencil sync", "OLDER", "family-one", "family-two"}},
+		{"UnstampedMode", ModeUnstamped, nil, []string{"lyx stencil sync", "update-plugins.sh", "OLDER", "family-one", "family-two"}},
+		{"ProductionRecordedNotOlder", ModeProduction, func(Writer) Ordering { return RecordedNotOlder }, []string{"lyx stencil sync", "family-one", "family-two", "recorded-rev", "running-rev"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			registry := newFakeRegistry(map[string][]byte{"family-one": []byte("original shipped body\n")})
+			registry := newFakeRegistry(map[string][]byte{"family-one": []byte("original shipped body\n"), "family-two": []byte("original body two\n")})
 			baseDir := t.TempDir()
 			if _, err := Reconcile(baseDir, registry, ModeProduction, Source{Writer: recorded}); err != nil {
 				t.Fatalf("seed Reconcile(...) returned error: %v", err)
 			}
 			registry.defaults["family-one"] = []byte("updated shipped body\n")
+			registry.defaults["family-two"] = []byte("updated body two\n")
 
 			buf := logcapture.CaptureVerbose(t)
 
@@ -489,6 +497,9 @@ func TestReconcile_ModeDevRefusalNamesItsRemedy(t *testing.T) {
 				if !strings.Contains(got, want) {
 					t.Errorf("refusal log = %q; want it to contain %q", got, want)
 				}
+			}
+			if lines := strings.Split(strings.TrimSpace(got), "\n"); len(lines) != 1 {
+				t.Errorf("refusal log = %q; want one line listing both stencils, got %d lines", got, len(lines))
 			}
 		})
 	}

@@ -63,7 +63,7 @@ internal/modelspec: 11
 internal/orchcli: 25
 internal/orchengine: 131
 internal/output: 4
-internal/pairteardown: 5
+internal/pairteardown: 6
 internal/parentdirective: 4
 internal/parentreview: 53
 internal/pattern: 7
@@ -71,7 +71,7 @@ internal/planglyph: 83
 internal/planparser: 85
 internal/preflight: 7
 internal/preflightshed: 8
-internal/proc: 12
+internal/proc: 17
 internal/quarrycli: 7
 internal/reedcli: 38
 internal/reedengine: 242
@@ -84,11 +84,11 @@ internal/shedadapters: 159
 internal/shedbuild: 13
 internal/shedcheck: 3
 internal/shedcli: 17
-internal/shedengine: 130
-internal/shedrecipe: 101
+internal/shedengine: 133
+internal/shedrecipe: 100
 internal/shedrun: 22
 internal/shedtransient: 2
-internal/shedverbs: 65
+internal/shedverbs: 79
 internal/shell: 12
 internal/shuttlecli: 22
 internal/shuttleengine: 161

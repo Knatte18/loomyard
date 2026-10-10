@@ -1,7 +1,6 @@
 package loomcli
 
 import (
-	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -11,7 +10,7 @@ import (
 
 // TestDriverSpec pins driverSpec's whole output shape, each field as its own named assertion.
 //
-//testtiming:keep pins every field of the driver launch spec: prompt, the scribe:prose skill, the report as its single output file, the resolved model, effort and version, the name override, role, display anchor and the zero-valued fields; it names Spec.Skills, so the skills-in-one-turn task owns it, and its covering test runs the spec without asserting the fields
+//testtiming:keep pins every field of the driver launch spec: prompt, the empty skill list, the report as its single output file, the resolved model, effort and version, the name override, role, display anchor and the zero-valued fields; it names Spec.Skills, so the skills-in-one-turn task owns it, and its covering test runs the spec without asserting the fields
 func TestDriverSpec(t *testing.T) {
 	prompt := "drive the run"
 	reportPath := "/hub/wt/.lyx/shed/wt/drive-report-20260920-120000-cafe.md"
@@ -29,8 +28,8 @@ func TestDriverSpec(t *testing.T) {
 		}
 	})
 	t.Run("Skills", func(t *testing.T) {
-		if want := []string{"scribe:prose"}; !slices.Equal(got.Skills, want) {
-			t.Errorf("driverSpec().Skills = %v; want %v", got.Skills, want)
+		if len(got.Skills) != 0 {
+			t.Errorf("driverSpec().Skills = %v; want none -- the prompt is the driver's whole procedure", got.Skills)
 		}
 	})
 	t.Run("OutputFiles", func(t *testing.T) {
@@ -64,8 +63,8 @@ func TestDriverSpec(t *testing.T) {
 		}
 	})
 	t.Run("ForkSubagents", func(t *testing.T) {
-		if got.ForkSubagents {
-			t.Error("driverSpec().ForkSubagents = true; want false -- the driving loop has no research fan-out to delegate")
+		if !got.ForkSubagents {
+			t.Error("driverSpec().ForkSubagents = false; want true -- the driver forks itself once at a failure stop")
 		}
 	})
 	t.Run("Role", func(t *testing.T) {
