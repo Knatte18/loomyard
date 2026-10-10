@@ -15,6 +15,12 @@ import (
 // indexWayForward is the way forward every unusable-binary refusal names.
 const indexWayForward = "run `lyx orch stop`, then `lyx orch start`"
 
+// watcherIndexSource returns the index source the watch verb hands its watcher.
+// The watcher outlives a deploy and may run from another binary than the pane's, so it renders the index from the binary the orch strand recorded, never in-process.
+func (c *orchCLI) watcherIndexSource() func() (string, error) {
+	return newIndexSource(c.strands, c.indexRunner)
+}
+
 // newIndexSource returns the index source the watcher renders the role file from.
 // Each call reads the strands, finds the orch strand, and runs `help index` through run with the `lyx` path that strand recorded.
 // It errors, naming the way forward, when there is no orch strand, when the strand recorded no path, or when the recorded path no longer exists.

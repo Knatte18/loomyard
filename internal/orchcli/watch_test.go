@@ -37,8 +37,8 @@ func TestRunnerSession_StrandAlive(t *testing.T) {
 	}
 }
 
-// TestNewIndexSource pins which binary the watcher's index comes from: the one the orch strand recorded, and a refusal naming the way forward when none usable is recorded.
-func TestNewIndexSource(t *testing.T) {
+// TestWatcherIndexSource pins which binary the watch verb's watcher reads its index from: the one the orch strand recorded, through the CLI's index runner, and a refusal naming the way forward when none usable is recorded.
+func TestWatcherIndexSource(t *testing.T) {
 	t.Parallel()
 
 	recorded := filepath.Join(t.TempDir(), "lyx")
@@ -63,11 +63,12 @@ func TestNewIndexSource(t *testing.T) {
 			t.Parallel()
 
 			var ranWith []string
-			source := newIndexSource(&fakeStrands{strands: tc.strands}, func(bin string) (string, error) {
+			c := newTestCLI(t, &fakeStrands{strands: tc.strands})
+			c.indexRunner = func(bin string) (string, error) {
 				ranWith = append(ranWith, bin)
 				return fakeRunnerIndex, nil
-			})
-			got, err := source()
+			}
+			got, err := c.watcherIndexSource()()
 			if tc.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantErr) || !strings.Contains(err.Error(), "lyx orch start") {
 					t.Fatalf("source() = %q, %v; want an error naming %q and `lyx orch start`", got, err, tc.wantErr)

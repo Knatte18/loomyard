@@ -49,9 +49,7 @@ A second watcher finding the first alive reports already_running and exits.`,
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
-			// The watcher outlives a deploy and may run from another binary than the pane's, so it renders the index from the binary the orch strand recorded.
-			index := newIndexSource(c.strands, c.indexRunner)
-			watcher := orchengine.NewWatcher(runnerSession{runner: c.runner, strands: c.strands}, c.cfg, c.paths, c.stencilsDir, orchSkills, index, realClock{})
+			watcher := orchengine.NewWatcher(runnerSession{runner: c.runner, strands: c.strands}, c.cfg, c.paths, c.stencilsDir, orchSkills, c.watcherIndexSource(), realClock{})
 			runErr := watcher.Run(ctx, time.Sleep)
 
 			if errors.Is(runErr, orchengine.ErrWatcherRunning) {
