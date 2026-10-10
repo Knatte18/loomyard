@@ -250,8 +250,14 @@
 // Either HEAD is that start, so the batch changed nothing (a batch that committed qualifies after `lyx webster reset --to batch-start --batch NN`),
 // or the start is an ancestor of HEAD and every entry's recorded command is read-only (`fabricengine.IsReadOnlyCommand`), so the batch's commits are kept.
 // An entry that is not read-only, or records no command, refuses the whole call with the reset-to-start and fresh-run steps.
-// The evidence shows the start still lies in HEAD's history, nothing uncommitted, and no listed reader able to write; it does not inspect the batch's commits.
+// The evidence shows the start still lies in HEAD's history and nothing uncommitted;
+// no command the classifier accepts writes tracked content, a ref, config or a remote, and `git status` may refresh the index's stat cache, which changes no content.
+// It does not inspect the batch's commits.
 // The fabric repo's own state it cannot show, and the caller vouches for it by running the verb.
+// recover-batch runs the same call in line (RecoverSpawnOrAttach, with RecoverDeps.ReadOnly) before its refusal, when every Uncheckable entry is a pathless fabric reference whose recorded command the classifier accepts:
+// on success the warnings are recorded on the batch, each naming `recover-batch`, and the recovery spawns;
+// an evidence failure returns ErrAuditNotAcceptable, which recover-batch's envelope carries as `audit_not_acceptable` and whose way forward names `recover-batch` for the re-run.
+// A command the classifier rejects, a nil classifier, an entry of another kind or a fabric reference recorded with a path keeps the refusal.
 // record-batch on a batch already terminal as a fork batch first audits the fork transcripts it has not consumed, once and without the settle wait:
 // an undispositioned correctness finding (a fork that marked its own batch done by writing state.json) replaces the terminal record with a failed one,
 // and otherwise the "already terminal" refusal stands.

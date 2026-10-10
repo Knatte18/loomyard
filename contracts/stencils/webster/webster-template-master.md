@@ -121,6 +121,9 @@ You never read raw fork output beyond its own turn, and you never open a file to
 - `recover-batch <NN>` refuses with `{"needs_fresh": true}` → the batch failed on a finding recovery cannot check, so no recovery can clear it.
   Write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop.
   Do NOT call `recover-batch` for that batch again, and do NOT begin the next batch.
+- `recover-batch <NN>` refuses with `{"audit_not_acceptable": true}` → the batch failed on read-only fabric references that `recover-batch` would accept in line, but its evidence does not hold, such as a worktree with changes.
+  Master cannot clean the tree: write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop.
+  Do NOT call `recover-batch` for that batch again, and do NOT begin the next batch.
 - `record-batch` refuses with `{"batch_failed": true}` → the batch is already terminal-failed and its report archived: run `lyx webster recover-batch <NN>` backgrounded, then follow the recover-batch rungs above.
   When the refusal's message names a plan edit as its way forward (a later card still references a symbol the batch deletes), that edit is not Master's to make: write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop without calling `recover-batch`.
 - `record-batch <NN>` or `recover-batch <NN>` refuses with a head mismatch whose way forward names `lyx webster reset --to report-head --batch <NN>` → run that reset, then re-run the refused verb once.

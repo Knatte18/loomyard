@@ -976,6 +976,18 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 	}
 	fabricRefusalSetup, fabricRefusalBase := uncheckableRefusal("fabric-reference: Bash command references the fabric")
 	pauseRefusalSetup, pauseRefusalBase := uncheckableRefusal(".lyx/webster/pause")
+	notReadOnlySetup, notReadOnlyCheck := uncheckableRefusal(readOnlyEntry("lyx fabric add x"))
+	nilClassifierSetup, nilClassifierCheck := uncheckableRefusal(readOnlyEntry("cat a"))
+	mixedSetup, mixedCheck := uncheckableRefusal(readOnlyEntry("cat a"), ".lyx/webster/pause")
+	withPathSetup, withPathCheck := uncheckableRefusal("internal/fabric/x.go")
+	// readOnlyInLine seeds a failed batch whose uncheckable entries are entries, at HEAD = its start commit, with the real classifier.
+	readOnlyInLine := func(fx *recoverFixture, entries ...string) {
+		rec := failedRecord("correctness finding")
+		rec.Uncheckable = entries
+		rec.StartSHA = fx.Git.head
+		fx.Deps.State.Batches[1] = rec
+		fx.Deps.ReadOnly = fabricengine.IsReadOnlyCommand
+	}
 	// Only a refusal over pathless fabric references names the accept-audit --batch route.
 	const acceptBatchStep = `"lyx webster accept-audit --batch 1" then "lyx webster recover-batch 1"`
 	// The route names both evidence: HEAD at the start commit, and a committed batch whose recorded commands are read-only.
@@ -1124,6 +1136,68 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				pauseRefusalSetup(fx)
 			},
 			check: pauseRefusalCheck,
+		},
+		{
+			name: "a failed batch whose findings are all read-only fabric references recovers in line with warnings naming recover-batch",
+			setup: func(fx *recoverFixture) {
+				readOnlyInLine(fx, readOnlyEntry("cat x/a.md | grep needle"), readOnlyEntry("lyx fabric list"))
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				requireSpawned(t, spawned, err)
+				warnings := fx.Deps.State.Batches[1].AuditWarnings
+				if len(warnings) != 2 {
+					t.Fatalf("AuditWarnings = %+v; want one per accepted entry", warnings)
+				}
+				for _, w := range warnings {
+					if !strings.Contains(w.Detail, "accepted by recover-batch, ") {
+						t.Errorf("warning detail = %q; want it to name recover-batch", w.Detail)
+					}
+				}
+			},
+		},
+		{
+			name: "a failed batch with a mutating fabric reference still refuses needs_fresh",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.ReadOnly = fabricengine.IsReadOnlyCommand
+				notReadOnlySetup(fx)
+			},
+			check: notReadOnlyCheck,
+		},
+		{
+			name:  "a nil classifier refuses needs_fresh over read-only fabric references",
+			setup: func(fx *recoverFixture) { nilClassifierSetup(fx) },
+			check: nilClassifierCheck,
+		},
+		{
+			name: "read-only fabric references beside an uncheckable entry of another kind refuse needs_fresh",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.ReadOnly = fabricengine.IsReadOnlyCommand
+				mixedSetup(fx)
+			},
+			check: mixedCheck,
+		},
+		{
+			name: "a fabric reference recorded with a path refuses needs_fresh",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.ReadOnly = fabricengine.IsReadOnlyCommand
+				withPathSetup(fx)
+			},
+			check: withPathCheck,
+		},
+		{
+			name: "a dirty tree refuses the in-line route with the evidence text naming recover-batch",
+			setup: func(fx *recoverFixture) {
+				readOnlyInLine(fx, readOnlyEntry("cat x/a.md"))
+				fx.Git.dirtyPaths = []string{"internal/x/x.go"}
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if !errors.Is(err, websterengine.ErrAuditNotAcceptable) || spawned {
+					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want ErrAuditNotAcceptable and no strand", spawned, err)
+				}
+				if want := `re-run "lyx webster recover-batch 1"`; !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q lacks %q", err, want)
+				}
+			},
 		},
 		{
 			// An OK report a still-running fork writes after the batch failed is archived rather than refused, so no refusal ring re-forms.

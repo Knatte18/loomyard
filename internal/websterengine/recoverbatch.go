@@ -376,6 +376,12 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 	if prior != nil && prior.Kind == "recovery" && !prior.Terminal && prior.StrandGUID != "" {
 		return prior, false, nil
 	}
+	if prior != nil && prior.Terminal && prior.Status == DigestStatusFailed && allReadOnlyFabricReferences(prior.Uncheckable, deps.ReadOnly) {
+		// An evidence failure returns the wrap unchanged: its way forward names this verb for the re-run.
+		if _, err := AcceptBatchFabricReference(deps.State, deps.Geom, batchNumber, deps.ReadOnly, "recover-batch"); err != nil {
+			return nil, false, err
+		}
+	}
 	if prior != nil && prior.Terminal && prior.Status == DigestStatusFailed && len(prior.Uncheckable) > 0 {
 		writes, err := contractWritesFor(deps.Engine, deps.State, deps.Geom, prior.Uncheckable)
 		if err != nil {

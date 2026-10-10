@@ -185,6 +185,10 @@ Example:
 					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"needs_fresh": true}))
 					return nil
 				}
+				if errors.Is(err, websterengine.ErrAuditNotAcceptable) {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"audit_not_acceptable": true}))
+					return nil
+				}
 				if errors.Is(err, websterengine.ErrRecoveryDeleteReferenced) {
 					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"batch_failed": true}))
 					return nil

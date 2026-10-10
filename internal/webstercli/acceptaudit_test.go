@@ -126,6 +126,30 @@ func TestAcceptAuditCmd_BatchClearsFabricReference(t *testing.T) {
 	if !strings.Contains(out.String(), "lyx webster recover-batch 3") {
 		t.Errorf("output missing the recover-batch next step; got %q", out.String())
 	}
+
+	// An uncommitted file refuses the verb with its own re-run text.
+	loaded, err = websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || loaded == nil {
+		t.Fatalf("LoadState() = %v, %v; want a state, nil", loaded, err)
+	}
+	loaded.Batches[4] = &websterengine.BatchState{
+		Slug: "dirty", Kind: "fork", StartSHA: head, Terminal: true, Status: "failed",
+		Digest:      &websterengine.Digest{Status: "failed", HeadSHA: head},
+		Uncheckable: []string{"fabric-reference: ran a fabric-referencing command (\"ls ../x-records\")"},
+	}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, loaded); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(fx.Worktree, "uncommitted.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, []string{"--batch", "4"}); code == 0 {
+		t.Fatalf("accept-audit --batch 4 over a dirty tree = 0; want a refusal, output: %s", out.String())
+	}
+	if want := `re-run \"lyx webster accept-audit --batch 4\"`; !strings.Contains(out.String(), want) {
+		t.Errorf("output missing %q; got %q", want, out.String())
+	}
 }
 
 // TestAcceptAuditCmd_Refusals proves a suspect path that moved since the run recorded it refuses with its way forward and leaves state.json byte-identical:

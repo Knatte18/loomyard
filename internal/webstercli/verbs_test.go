@@ -686,6 +686,21 @@ func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 	if bs := loaded.Batches[1]; !bs.Terminal || bs.Status != websterengine.DigestStatusFailed || bs.StrandGUID != "" {
 		t.Errorf("loaded.Batches[1] = %+v; want the failed record unchanged", bs)
 	}
+
+	// Read-only fabric references recover in line, so a batch that recorded no start commit refuses with the evidence text and its own flag.
+	loaded.Batches[1].Uncheckable = []string{`fabric-reference: ran a fabric-referencing command ("lyx fabric list") that can rewrite run state`}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, loaded); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	out.Reset()
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code == 0 {
+		t.Fatalf("recover-batch 1 over a read-only fabric reference with no start commit = 0; want non-zero, output: %s", out.String())
+	}
+	for _, want := range []string{`"audit_not_acceptable":true`, "recorded no start commit"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output missing %q; got %q", want, out.String())
+		}
+	}
 }
 
 // TestRebaselineCmd_EditedCardOfFailedBatchThenRecover proves a one-card fix needs no reset:
