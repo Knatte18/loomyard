@@ -317,8 +317,15 @@ func registerKey(key string) {
 	registeredKeys[key] = true
 }
 
+// ConfigText is the kit's tmux config for shell.
+// `default-shell` and an equal `default-command` start a pane's shell without the login flag; `exit-empty off` keeps a server with no session alive;
+// and the marker option tells reed's stale-holder probe to leave the server alone.
+func ConfigText(shell string) string {
+	return fmt.Sprintf("set -g default-shell %q\nset -g default-command %q\nset -g exit-empty off\nset -g %s on\n", shell, shell, testServerOption)
+}
+
 // serverConfig writes the kit's tmux config once per test binary, under the directory Main set `TMUX_TMPDIR` to, and returns its path.
-// The config sets the default shell and an equal default command, so panes start the shell without the login flag; it keeps an empty server alive; and it marks the server as the kit's.
+// The config is ConfigText for `$SHELL`, else `sh`.
 func serverConfig() (string, error) {
 	configOnce.Do(func() {
 		dir := os.Getenv("TMUX_TMPDIR")
@@ -330,9 +337,8 @@ func serverConfig() (string, error) {
 		if shell == "" {
 			shell = "sh"
 		}
-		config := fmt.Sprintf("set -g default-shell %q\nset -g default-command %q\nset -g exit-empty off\nset -g %s on\n", shell, shell, testServerOption)
 		configPath = filepath.Join(dir, configFileName)
-		if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		if err := os.WriteFile(configPath, []byte(ConfigText(shell)), 0o600); err != nil {
 			configErr = fmt.Errorf("write tmux config: %w", err)
 		}
 	})
