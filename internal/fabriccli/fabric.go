@@ -6,11 +6,6 @@
 // weft_verbs.go, which also extends this file's Command() build with the --weft-path bypass flag
 // and its PersistentPreRunE.
 
-// Package fabriccli owns the unified warp↔weft cobra surface for lyx: the flat 16-verb "lyx fabric"
-// tree combining warp↔weft topology verbs and weft content-sync verbs over the fabricengine
-// package.
-// fabric is the sole warp↔weft git-coordination module (see docs/overview.md).
-// Every fabric weft branch carries the uniform "-weft" suffix (fabricengine.RecordsBranchName).
 package fabriccli
 
 import (
@@ -42,20 +37,14 @@ import (
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fabric",
-		Short: "unified warp↔weft git-coordination",
-		Long: `fabric manages the warp↔weft topology and weft content-sync for lyx-managed
-git repositories, unifying worktree pairing with commit/push/pull.
+		Short: "clone a hub, or add, sync, merge and remove its warp+weft worktree pairs",
+		Long: `fabric keeps a hub's code (warp) and records (weft) git repositories paired:
+every warp worktree has a weft worktree beside it, reached through junctions,
+and fabric creates, switches, syncs, merges and tears down both sides together.
 
-It owns worktree pairing, coordinated branch switching with junction re-point,
-reconcile/prune/cleanup of managed pairs, and weft-side status/commit/push/pull/
-sync, all under one module.
-
-Branch scheme: every fabric weft branch is named after the paired warp branch
-plus a fixed suffix (e.g. warp branch "wt-foo" pairs with weft branch
-"wt-foo` + weftname.Suffix + `") — uniform for every pair, including the
-clone-time primary.
-
-fabric is the sole warp↔weft git-coordination module. See docs/overview.md.
+Every weft branch is named after its warp branch plus a fixed suffix (warp
+branch "wt-foo" pairs with weft branch "wt-foo` + weftname.Suffix + `"), the
+clone-time primary included.
 
 Example:
   lyx fabric clone https://github.com/user/repo-weft
@@ -64,78 +53,29 @@ Example:
 		RunE: clihelp.GroupRunE,
 	}
 
-	// clone [--shortname <shortname>] [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]
+	// clone <weft-url> [<warp-url>]
 	var cloneCmd *cobra.Command
 	cloneCmd = &cobra.Command{
-		Use:   "clone [--shortname <shortname>] [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]",
-		Short: "bootstrap a new hub, wiring the entire topology in one shot",
-		Long: `Clone two repositories into a new hub directory (<parent>/<warp-name>-LYXHUB)
-and wire everything: the warp prime, weft prime, _board worktree, lyx-anchor
-subpath, repo-wide config, warp junctions, and per-worktree module configs —
-a single command, no follow-up activation step required. Warp junctions are
-excluded through the warp's .git/info/exclude, never a committed .gitignore.
+		Use:         "clone <weft-url> [<warp-url>]",
+		Short:       "bootstrap a new hub, wiring the entire topology in one shot",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `clone creates a new hub directory, <warp-name>-LYXHUB, holding the warp
+prime (<warp-name>), the weft prime (<warp-name>` + weftname.Suffix + `) and the _board worktree,
+and wires the junctions and configs; no follow-up step is needed.
 
-There are two forms. "lyx fabric clone <weft-url>" derives the warp URL from
-the binding recorded on weft:main. "lyx fabric clone <weft-url> <warp-url>"
-supplies the warp URL explicitly, which is required the first time a weft is
-bound and is a hard error when it disagrees with an existing binding.
+Reach for it to start working on a repository pair on this machine, or with
+--reset to rebuild an existing hub from its remotes.
 
-The binding itself is a plain single-line record, ` + fabricengine.WarpBindingFileName + `,
-kept at the board root and holding the warp URL only. It is committed onto
-weft:main beside the recorded lyx-anchor subpath, written the first time a
-warp URL is supplied for an unbound weft.
+<weft-url> is the records repository. <warp-url> is the code repository: pass
+it, with --shortname, the first time a weft is bound; afterwards it is read
+from the binding recorded on the weft and may be left out.
 
-  <warp-name>            — warp prime (the main working repo); in the
-                           one-argument form its name is derived from the
-                           recorded binding
-  <warp-name>` + weftname.Suffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
-
-Use --shortname <shortname> to give the repo its shortname (2-6 characters
-matching [a-z][a-z0-9]{1,5}). It is required the first time a weft is bound,
-and is recorded in ` + fabricengine.ShortnameFileName + ` beside the warp binding. A weft that
-already records a shortname supplies it, and a differing --shortname is refused. A bound
-weft with no record clones with a warning; record the shortname with
-"lyx fabric shortname <shortname>" or by passing --shortname here.
-
-Use --reset to tear down an existing hub before cloning (idempotent re-clone).
-The teardown is refused unless the target really is a fabric hub — it must hold
-a _board entry or a weft sibling. The hub name is derived rather than typed (in
-the one-argument form, from the binding recorded on the weft), so a directory
-that merely happens to be named <name>-LYXHUB is reported and left alone.
-
-Use --subpath <rel> (default ".") to anchor lyx at a subdirectory of the warp
-repo instead of its root — e.g. --subpath backend for a monorepo where lyx
-only manages the backend/ tree. It must be a path relative to the warp repo
-root that stays inside it: an absolute path, or one escaping via "..", is
-refused before anything is cloned. On a re-clone, the previously recorded
-subpath is adopted from weft:main; an explicit --subpath that disagrees with
-it is a hard error.
-
-Use --force-bootstrap to bypass the weft-candidate guard when bootstrapping a
-brand-new weft remote that is neither empty nor already lyx-anchored (for
-example one created with an auto-generated README), which the guard would
-otherwise refuse. It applies to exactly that situation: it is ignored in the
-one-argument form and whenever a binding is already recorded.
-
-Use --into <dir> to name the directory the new hub is created in, instead of
-the current working directory. A relative value resolves against the current
-working directory; the default, when --into is omitted, is the current
-working directory itself.
-
-The weft prime is immediately checked out onto its suffixed pairing (e.g.
-"main` + weftname.Suffix + `" for default branch "main") — fabric's
-uniform branch scheme applies from the very first pair. When the weft remote
-already carries that suffixed branch (a re-clone of a hub with synced weft
-history), it is adopted as a tracking branch, inheriting the existing weft
-state; otherwise the branch is created fresh at the cloned HEAD. The cloned
-default branch itself remains, unclaimed.
-
-_board is then materialized as a second worktree of the weft repo, on the
-warp's unsuffixed default branch — adopted if the weft remote already carries
-board history, freshly orphan-created otherwise.
-
-Clone wires everything automatically — no follow-up command is needed to
-activate junctions or config.
+--shortname is 2-6 characters matching [a-z][a-z0-9]{1,5}; a weft that
+already records one supplies it, and "lyx fabric shortname" records one later.
+--subpath anchors lyx at a subdirectory of the warp repo, such as backend in a
+monorepo; a re-clone adopts the recorded subpath. --into names the directory
+the hub is created in. --force-bootstrap admits a brand-new weft remote that
+is neither empty nor lyx-anchored, such as one created with a README.
 
 Example:
   lyx fabric clone --shortname mono --subpath backend https://github.com/user/mono-weft https://github.com/user/mono
@@ -164,9 +104,10 @@ Example:
 
 	// add <slug>
 	cmd.AddCommand(&cobra.Command{
-		Use:   "add <slug>",
-		Args:  cobra.MaximumNArgs(1),
-		Short: "create a dual warp+weft worktree pair",
+		Use:         "add <slug>",
+		Args:        cobra.MaximumNArgs(1),
+		Short:       "create a dual warp+weft worktree pair",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Create a new paired warp and weft git worktree for the given slug.
 
 The new weft branch is forked from the HEAD of the worktree you run
@@ -188,9 +129,10 @@ Example:
 
 	// list
 	cmd.AddCommand(&cobra.Command{
-		Use:   "list",
-		Args:  cobra.NoArgs,
-		Short: "list warp worktrees (use 'lyx fabric pairs' for full pair geometry)",
+		Use:         "list",
+		Args:        cobra.NoArgs,
+		Short:       "list warp worktrees (use 'lyx fabric pairs' for full pair geometry)",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `List all warp worktrees registered in the current hub.
 
 This command outputs warp worktree paths only. For the full warp↔weft pair
@@ -199,50 +141,29 @@ use "lyx fabric pairs".`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runList(ctx, out, args) }),
 	})
 
-	// remove [--force] [--remote] <slug>
+	// remove <slug>
 	var removeCmd *cobra.Command
 	removeCmd = &cobra.Command{
-		Use:   "remove [--force] [--remote] <slug>",
-		Args:  cobra.MaximumNArgs(1),
-		Short: "destroy a dual warp+weft worktree pair",
-		Long: `Remove a paired warp and weft git worktree, plus every warp junction
-(_lyx, .lyx), portal junctions, and launchers.
+		Use:         "remove <slug>",
+		Args:        cobra.MaximumNArgs(1),
+		Short:       "destroy a dual warp+weft worktree pair",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `remove tears down a warp+weft worktree pair: both worktrees, the warp
+junctions (_lyx, .lyx), the pair's portal junction and launchers, its reed
+session and its weft branch. The local task branch is deleted too once its
+work is pushed or landed on the parent branch recorded at "lyx fabric add";
+otherwise it is kept, with the reason in code_branch_kept_reason, and the
+command still exits 0.
 
-Before anything is removed, the command waits up to two minutes for the pair's
-loom driver to go quiet and refuses, naming the driver and how to attach, if it
-is still busy. It then ends the pair's reed session, so no strand outlives its
-worktree; abandoned_session names a foreign session reed did not kill.
+Reach for it when a task is landed or abandoned. It waits up to two minutes for
+the pair's loom driver to go quiet, and refuses while the driver stays busy.
 
-By default the command refuses to remove a worktree with uncommitted changes
-on either the warp or weft side. Use --force to remove anyway. Pending run
-records in the weft worktree are committed before the archive tag is pushed,
-so only sibling changes outside the record paths still need --force.
+<slug> names the pair, as given to "lyx fabric add".
 
-A pair whose task worktree was already removed by hand is finished: the command
-does the teardown that remains and reports finished: true and the steps it
-performed in steps. A path at the task worktree's location that is not a
-registered linked worktree is reported in stray_path and never deleted. A slug
-of which nothing remains is an error: pair not found.
-
-<slug> must name a worktree pair, never hub geometry. The hub's prime
-worktree (the warp repository itself), the reserved hub entries (_board,
-_portals, _launchers, _lyx, .lyx), and any name ending in the weft suffix
-are all refused — the same set "lyx fabric add" refuses. When git itself
-declines to remove the worktree, fabric reports git's own reason and deletes
-nothing unless the target is a registered linked worktree of this repo.
-
-The pair's weft branch is deleted locally as before. The pair's local task
-(warp) branch is deleted too when its work is pushed or landed on the parent
-branch recorded when the pair was added; otherwise it is kept, with the reason
-in code_branch_kept_reason, and the command still exits 0. --force never
-overrides that check. Use --remote to
-additionally delete its copy on the weft remote — an irreversible action,
-visible to every other clone. A weft repo with no origin remote configured
-reports the reason in remote_skipped_reason and still exits 0. A failed
-remote deletion exits non-zero, with the reason in remote_branch_error.
---remote also deletes the task branch on the warp repo's origin once its work
-is landed; otherwise the branch is kept, with the reason in
-remote_code_branch_kept_reason, and the command still exits 0.
+A pair with uncommitted changes on either side is refused; --force removes it
+anyway, and never overrides the task branch check. --remote also deletes the
+weft branch on the weft remote, and the landed task branch on the warp origin:
+irreversible, and visible to every other clone.
 
 Example:
   lyx fabric remove my-task
@@ -261,9 +182,10 @@ Example:
 	cmd.AddCommand(removeCmd)
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "checkout [branch]",
-		Args:  cobra.MaximumNArgs(1),
-		Short: "coordinated branch switch across warp+weft with junction re-point",
+		Use:         "checkout [<branch>]",
+		Args:        cobra.MaximumNArgs(1),
+		Short:       "coordinated branch switch across warp+weft with junction re-point",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Switch the warp worktree to <branch> and its weft sibling to the
 suffix-paired weft branch, re-pointing junctions in the same operation.
 
@@ -288,9 +210,10 @@ Example:
 
 	// pairs
 	cmd.AddCommand(&cobra.Command{
-		Use:   "pairs",
-		Args:  cobra.NoArgs,
-		Short: "show full warp↔weft pair geometry with drift and junction-health fields",
+		Use:         "pairs",
+		Args:        cobra.NoArgs,
+		Short:       "show full warp↔weft pair geometry with drift and junction-health fields",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Show every warp↔weft pair's branch, in-sync verdict, junction health, and
 warp-pollution scan.
 
@@ -305,9 +228,10 @@ remedy.`,
 
 	// reconcile
 	cmd.AddCommand(&cobra.Command{
-		Use:   "reconcile",
-		Args:  cobra.NoArgs,
-		Short: "repair a managed pair whose weft side drifted or broke",
+		Use:         "reconcile",
+		Args:        cobra.NoArgs,
+		Short:       "repair a managed pair whose weft side drifted or broke",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Reconcile walks every warp worktree and applies the minimal corrective
 action needed to restore a valid paired topology: recreate a missing weft
 worktree, re-point a broken junction, adopt a raw (non-lyx) warp worktree, or
@@ -336,12 +260,13 @@ warnings.`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runReconcile(ctx, out, args) }),
 	})
 
-	// prune [--apply]
+	// prune
 	var pruneCmd *cobra.Command
 	pruneCmd = &cobra.Command{
-		Use:   "prune [--apply] [--force]",
-		Args:  cobra.NoArgs,
-		Short: "identify and optionally remove stale or orphaned warp↔weft pairs",
+		Use:         "prune",
+		Args:        cobra.NoArgs,
+		Short:       "identify and optionally remove stale or orphaned warp↔weft pairs",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Prune scans for on-disk pair debris in two passes: a registered pair whose
 warp worktree directory is gone (stale), and a weft worktree with no warp
 sibling at all (orphaned).
@@ -385,70 +310,33 @@ Example:
 
 	var cleanupCmd *cobra.Command
 	cleanupCmd = &cobra.Command{
-		Use:   "cleanup [--apply] [--force] [--remote]",
-		Args:  cobra.NoArgs,
-		Short: "delete weft branches whose warp sibling is gone",
-		Long: `cleanup finds weft branches with no corresponding warp worktree sibling.
+		Use:         "cleanup",
+		Args:        cobra.NoArgs,
+		Short:       "delete weft branches whose warp sibling is gone",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `cleanup finds weft branches whose warp worktree sibling is gone, and with
+--apply deletes them from the hub's weft repo.
 
-Flag matrix:
-  (no flags)          dry-run: report orphaned weft branches only.
-  --apply             delete every orphan weft branch (primary weft branch
-                      and checked-out branches stay protected).
-  --force (alone)     report only; --force does not imply --apply, and today
-                      answers no cleanup gate.
-  --remote (alone)    report only; --remote requires --apply to delete
-                      anything, so --remote alone is still a dry run.
-  --apply --remote    delete every orphan weft branch, both locally and on
-                      the weft remote.
+Reach for it after pairs were removed by hand, or to clear weft branches left
+behind on the remote. Without --apply it is a dry run whose "protected"
+verdicts match what --apply would do, so "protected": false means "--apply
+would delete this".
 
-A dry run reports the same protected verdict the matching --apply run would
-act on, so "protected: false" in a dry run means "--apply would delete this",
-and — with --remote — "would attempt the remote copy too". A dry run makes
-no network call and reports no remote-specific verdict.
+A weft branch checked out at a worktree, and the hub's primary weft branch
+(e.g. "main` + weftname.Suffix + `"), are always protected. A weft branch without the
+fabric suffix is reported and never deleted.
 
---remote is independent of --force.
+--remote, with --apply, also deletes each deleted branch's copy on the weft
+remote, irreversibly and visibly to every other clone, and sweeps leftover
+task branches on the warp origin: a fabric-managed branch that is not the
+default branch, not checked out in the hub, has no open pull request and
+carries no work the default branch lacks. Without --apply, --remote reports
+what it would delete. --force answers no cleanup gate.
 
-A weft branch currently checked out at a worktree is always reported as
-protected and never deleted, in every mode — git cannot delete a checked-out
-branch, and its being checked out means the pair is still on disk.
-
-The repo's primary weft branch (the weft pairing of the branch the hub's
-_board worktree is on, e.g. "main-weft") is likewise always protected, in
-every mode. It stays the durable weft line however the prime worktree happens
-to be checked out, so a coordinated checkout onto another branch must not
-promote it to a deletable orphan. If that primary cannot be determined —
-a hub with no readable _board worktree — cleanup refuses to enumerate
-orphans at all rather than sweep on a guess.
-
-The weft repo may also hold weft branches without the fabric suffix (e.g.
-inherited from history predating fabric's uniform naming scheme); those are
-reported but never deleted here, since they are not fabric-managed.
-
-Deletion is local to the hub's weft repo by default. Use --remote to
-additionally delete each deleted branch's copy on the weft remote, an
-irreversible action visible to every other clone. A weft repo with no origin
-remote configured reports the reason once in remote_skipped_reason and still
-exits 0. A remote deletion that fails exits non-zero, with the per-branch
-reason in entries[].remote_error.
-
---remote also sweeps leftover task branches on the warp origin, after the weft
-sweep. A branch is a candidate when it is fabric-managed (the weft origin holds
-its weft branch or an archive/<slug>/* tag), is not origin's default branch, is
-not checked out in a hub worktree, has no open pull request, and carries no work
-the default branch lacks. Every other branch is reported with the reason it was
-kept. The sweep's envelope keys are warp_entries (branch, candidate, deleted,
-reason, error) and warp_skipped_reason; --apply deletes only candidates, leased
-to the tip observed, and a failed deletion exits non-zero with its reason in
-warp_entries[].error. If GitHub cannot be reached (a non-GitHub origin, no token,
-a network error) the task-branch sweep is skipped, every task branch is kept and
-warp_skipped_reason names the cause, while the weft sweep still runs and the exit
-code is unaffected. --force answers no task-branch gate. A --remote dry run makes
-read-only network calls: ls-remote and the open pull request listing.
-
-This is also the one existing-path change this command makes: --apply now
-exits non-zero when a local branch deletion fails, where it previously
-exited 0. A protected entry still exits 0, since protection sets no error at
-all.`,
+Example:
+  lyx fabric cleanup
+  lyx fabric cleanup --apply
+  lyx fabric cleanup --apply --remote`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 			apply, _ := cleanupCmd.Flags().GetBool("apply")
 			force, _ := cleanupCmd.Flags().GetBool("force")
@@ -462,9 +350,10 @@ all.`,
 	cmd.AddCommand(cleanupCmd)
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "unwire",
-		Args:  cobra.NoArgs,
-		Short: "fully deactivate fabric wiring for this worktree",
+		Use:         "unwire",
+		Args:        cobra.NoArgs,
+		Short:       "fully deactivate fabric wiring for this worktree",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `unwire is a full per-warp-worktree deactivation: it removes every warp
 junction present (_lyx, .lyx) and their warp .git/info/exclude entries. It
 leaves every weft-side directory intact — weft-side content is never deleted
@@ -482,9 +371,10 @@ Example:
 	})
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "shortname [<shortname>]",
-		Args:  cobra.MaximumNArgs(1),
-		Short: "print or record the hub's shortname",
+		Use:         "shortname [<shortname>]",
+		Args:        cobra.MaximumNArgs(1),
+		Short:       "print or record the hub's shortname",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Print the hub's shortname, or record one.
 
 With no argument it prints the recorded shortname. With one argument it records the

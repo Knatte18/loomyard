@@ -99,47 +99,29 @@ func setMergeExit(cmd *cobra.Command, out io.Writer, res fabricengine.MergeResul
 // loc is a getter for the same reason: it returns the *lyxcwd.Location PersistentPreRunE resolved, which merge-in reads to ask whether a Webster run is in flight in this worktree.
 func addMergeVerbs(cmd *cobra.Command, fabric func() *fabricengine.Fabric, loc func() *lyxcwd.Location) {
 	mergeInCmd := &cobra.Command{
-		Use:   "merge-in <branch>",
-		Args:  cobra.ExactArgs(1),
-		Short: "merge a branch into this worktree, surfacing conflicts",
-		Long: `merge-in (the engine's MergeIn) is the workflow step that runs in the task
-worktree, before "lyx fabric merge": it merges <branch> into this pair's own
-warp and weft checkouts and surfaces any conflicts here for resolution.
+		Use:         "merge-in <branch>",
+		Args:        cobra.ExactArgs(1),
+		Short:       "merge a branch into this worktree, surfacing conflicts",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `merge-in merges <branch> into this pair's own warp and weft checkouts and
+surfaces any conflicts here for resolution.
 
-Conflicts are a result, not a failure to run again differently: a merge-in
-that conflicts leaves the pair mid-merge, concluded once every conflict is
-resolved, or abandoned with "lyx fabric merge --abort" (the engine's
-MergeAbort).
+Reach for it in the task worktree, before "lyx fabric merge", to bring the
+parent branch in and resolve its conflicts where the work lives.
 
-Resolving takes three steps, and the middle one is not optional:
+A conflict leaves the pair mid-merge. Resolve it in three steps, none optional:
 
   1. edit each path the "conflicts" array listed, removing its markers
   2. lyx fabric merge-stage <those same paths>
-  3. lyx fabric merge --continue   (the engine's MergeContinue)
+  3. lyx fabric merge --continue
 
-Step 2 exists because --continue gates on the git INDEX, not on file content,
-so editing a file is not by itself enough to let the merge conclude. For a path
-under a fabric-managed directory (anything reached through a wired junction,
-such as _lyx/) "git add" cannot do it at all — git refuses to stage through the
-junction — so merge-stage is the only route.
+or abandon it with "lyx fabric merge --abort". A conflict and a hard failure
+both exit 1 with "ok": false; only a conflict result carries the "conflicts"
+array of worktree-relative paths.
 
-A conflict result and a hard failure both exit 1 with "ok": false, so a
-script must not tell them apart by exit status. The discriminator is the
-envelope: a conflict result, and only a conflict result, carries a
-"conflicts" array of worktree-relative paths. If you stage some of those paths
-and not all of them, "merge --continue" refuses with "unresolved conflicts
-remain" and lists the ones still outstanding in an "unresolved" array — a
-separate key, so the discriminator above keeps working. This lifecycle is shared with "lyx fabric merge" — both
-verbs continue and abort the same way — but the two verbs are not symmetric:
-merge-in resolves conflicts in this worktree, merge does not.
-
-While a Webster run is in flight in this worktree (its state file exists and its
-outcome is absent, paused or stuck), a merge-in that moved HEAD, or that
-conflicted, adds a "warnings" array to its envelope. The merge itself always
-proceeds: "lyx webster record-batch" tolerates a clean parent merge commit
-after a fork's commit but refuses a fast-forward past it and a merge whose
-conflicts were resolved by hand.
-An already-up-to-date merge-in and a hard failure carry no "warnings" key.
+While a Webster run is in flight in this worktree (its state file exists and
+its outcome is absent, paused or stuck), a merge-in that moved HEAD or
+conflicted adds a "warnings" array to its envelope; the merge itself proceeds.
 
 Example:
   lyx fabric merge-in my-task
@@ -161,33 +143,34 @@ Example:
 	}
 
 	mergeCmd := &cobra.Command{
-		Use:   "merge (<branch> | --continue | --abort) [--squash] [-m <message>]",
-		Short: "merge a branch into this worktree, or continue/abort a merge",
-		Long: `merge (the engine's Merge) merges <branch> into the target pair this
-worktree opens a handle on — squash-capable, expected conflict-free. It
-synchronizes the target to its own upstream first, and self-aborts to
-"the engine's ErrMergeInRequired" on any conflict: conflict resolution
-belongs in the source branch's own worktree, so run "lyx fabric merge-in"
-there first, then retry "lyx fabric merge" here.
+		Use:         "merge [<branch>]",
+		Short:       "merge a branch into this worktree, or continue/abort a merge",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `merge merges <branch> into the pair this worktree opens, squash-capable and
+expected conflict-free. It brings the target up to date with its own upstream
+first, and aborts itself on any conflict: resolve conflicts in the source
+branch's own worktree with "lyx fabric merge-in", then retry merge here.
 
---continue (the engine's MergeContinue) concludes an in-progress merge once
-every conflict has been resolved in the worktree AND marked resolved with
-"lyx fabric merge-stage" — it gates on the git index, not on file content, so
-editing the files alone leaves it refusing. A refusal for that reason lists the
-paths still outstanding in an "unresolved" array, so you never have to go
-looking for them. --abort (the engine's
-MergeAbort) discards an in-progress merge, restoring both sides to their
-pre-merge state. --continue and --abort are mutually exclusive, and neither
-takes a positional branch argument; --squash applies only to the default
-merge mode and is rejected alongside either of them. -m gives the
-conclude-commit its message, so it applies to the default mode and to
---continue, and is rejected alongside --abort, which has no commit to name.
+Reach for it to bring a branch whose conflicts are already resolved into this
+worktree's pair, or to conclude or abandon a merge left in progress.
+
+Two forms take no <branch>, only one of two mutually exclusive flags:
+
+  merge --continue   concludes an in-progress merge once every conflict is
+                     edited and marked resolved with "lyx fabric merge-stage";
+                     while some remain it refuses and lists them in an
+                     "unresolved" array
+  merge --abort      discards an in-progress merge, restoring both sides to
+                     their pre-merge state
+
+--squash applies to the <branch> form only. -m names the conclude-commit, so
+it applies to the <branch> form and to --continue, never to --abort.
 
 Example:
-  lyx fabric merge-in my-task
   lyx fabric merge my-task --squash
   lyx fabric merge-stage _lyx/raddle/notes.md
-  lyx fabric merge --continue`,
+  lyx fabric merge --continue
+  lyx fabric merge --abort`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			continueFlag, _ := cmd.Flags().GetBool("continue")
 			abortFlag, _ := cmd.Flags().GetBool("abort")
@@ -245,9 +228,10 @@ Example:
 		},
 	}
 	mergeStageCmd := &cobra.Command{
-		Use:   "merge-stage <path>...",
-		Args:  cobra.MinimumNArgs(1),
-		Short: "mark conflicted paths resolved so a merge can continue",
+		Use:         "merge-stage <path>...",
+		Args:        cobra.MinimumNArgs(1),
+		Short:       "mark conflicted paths resolved so a merge can continue",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `merge-stage (the engine's MergeStageResolved) marks conflicted paths as
 resolved, taking the same worktree-relative paths the "conflicts" array of a
 merge-in or merge envelope reported.
