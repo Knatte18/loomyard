@@ -218,12 +218,16 @@ func (c *loomCLI) reportArmFailure(out io.Writer, cmd *cobra.Command, args []str
 	if len(args) > 0 {
 		runID = args[0]
 	}
+	loopID, _ := cmd.Flags().GetString(shedverbs.LoopDetachedFlag)
 	return shedverbs.ReportLoopArmError(out, shedverbs.ArmStop{
 		RunID:          shedrun.ResolveRunID(c.location, runID),
 		StatusPath:     shedrun.StatusFile(c.location, runID),
 		RunLockPath:    shedrun.RunLock(c.location, runID),
 		StatusLockPath: shedrun.StatusLock(c.location, runID),
 		LoopLockPath:   shedrun.LoopLock(c.location, runID),
+		PIDPath:        shedrun.LoopPIDFile(c.location, runID),
+		EnvelopePath:   shedrun.LoopEnvelope(c.location, runID),
+		LoopID:         loopID,
 	}, err)
 }
 

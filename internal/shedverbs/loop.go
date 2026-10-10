@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -23,6 +24,10 @@ import (
 
 // UntilStopFlag is the name of step's flag that runs steps in a loop until a stop.
 const UntilStopFlag = "until-stop"
+
+// LoopDetachedFlag is the name of step's hidden flag that marks the detached loop process itself and carries its loop id.
+// It only selects runLoop in the process the waiter spawned; the loop refuses to step over a dead loop's record whatever process it runs in.
+const LoopDetachedFlag = "loop-detached"
 
 // LoopSpec is the told arming of step's --until-stop mode.
 // Every path is told by the arming module; the loop reads and copies only the paths it is handed.
@@ -42,9 +47,9 @@ type LoopSpec struct {
 	StopFiles func(traceID string) (traceCopy, stderr string)
 	// TraceFiles lists the trace files of the child that ran under traceID, oldest first.
 	TraceFiles func(traceID string) ([]string, error)
-	// Runner starts a child step; nil selects no production value yet and is refused by the arming module.
+	// Runner starts a child step; nil selects the production runner, which ties the child to the loop.
 	Runner ChildRunner
-	// Executable is the program a child runs.
+	// Executable is the program a child runs, and the program the detached loop itself is.
 	Executable string
 	// Now is the loop's clock; nil selects time.Now.
 	Now func() time.Time
@@ -52,6 +57,17 @@ type LoopSpec struct {
 	IdleTimeout time.Duration
 	// Activity reports the newest agent activity of the run, and false when it knows of none.
 	Activity func() (time.Time, bool, error)
+	// Delivered is the path of the delivered record of a loop id, where a retired envelope of that loop lands.
+	Delivered func(loopID string) string
+	// LockGrace is how long a starting loop waits for the loop lock before it gives up; zero selects loopLockGrace.
+	LockGrace time.Duration
+	// Spawn starts the detached loop with the given command line after the executable and returns a channel closed when it exits; nil selects spawnLoop.
+	Spawn func(argv []string) (<-chan struct{}, error)
+	// Watch reports file events in dir for the named entries through the channel it returns, with the function that stops watching; nil selects fswatch.
+	// An error makes the waiter poll on its timer alone.
+	Watch func(dir string, names ...string) (<-chan struct{}, func(), error)
+	// Sleep waits for the given duration, and replaces the waiter's timer wait when set.
+	Sleep func(ctx context.Context, delay time.Duration) error
 }
 
 // ChildRequest is everything a ChildRunner needs to start one child step.
@@ -114,12 +130,48 @@ func (r childResult) ok() bool {
 	return r.full != nil && succeeded
 }
 
-// runLoop runs child steps until one stops the run, prints the loop's one envelope on out and returns the stop step's exit code.
+// runLoop is the detached loop: it holds the loop lock and the named job for its life, records itself in the pid file, runs child steps until one stops the run, writes the loop's one envelope under loopID and prints it on out.
+// It returns the stop step's exit code.
 // argv is the child's command line after the executable, the loop's own without the flag that selects the loop.
 // A transient error gets one immediate re-step; an error or interrupted stop on a run still reading running writes it failed.
-func runLoop(ctx context.Context, spec *Spec, argv []string, out io.Writer) int {
+// A loop that cannot take the lock within the grace period, or that finds the teardown's mark, an undelivered envelope or a dead loop's pid file, returns 1 at once, before any step and without an envelope.
+func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out io.Writer) int {
 	loop := spec.Loop
+	grace := loop.LockGrace
+	if grace == 0 {
+		grace = loopLockGrace
+	}
+	if err := os.MkdirAll(filepath.Dir(loop.LockPath), 0o755); err != nil {
+		logger.Warn("shed: loop could not create its directory", "loop_id", loopID, "error", err.Error())
+		return 1
+	}
+	held, locked, err := lock.AcquireWriteLockWithin(loop.LockPath, grace)
+	if err != nil || !locked {
+		logger.Warn("shed: loop could not take the loop lock, so another loop owns the run", "loop_id", loopID, "error", errorText(err))
+		return 1
+	}
+	defer held.Release()
+
+	if refusal := loopStartRefusal(loop); refusal != "" {
+		logger.Warn("shed: loop refuses to step", "loop_id", loopID, "reason", refusal)
+		return 1
+	}
+	if loop.JobName != "" {
+		release, err := proc.HoldNamedJob(loop.JobName)
+		if err != nil {
+			logger.Warn("shed: loop could not hold its named job", "loop_id", loopID, "job", loop.JobName, "error", err.Error())
+		} else {
+			defer func() { _ = release() }()
+		}
+	}
+
 	first, _ := readStatusFile(spec)
+	pid := LoopPIDRecord{LoopID: loopID, Loop: proc.SelfRecord(), CurrentProducer: first.CurrentProducer, HistoryLength: len(first.History)}
+	if err := WriteLoopPIDRecord(loop.PIDPath, pid); err != nil {
+		logger.Warn("shed: loop could not write its pid file", "loop_id", loopID, "error", err.Error())
+		return 1
+	}
+	logger.Info("shed: loop started", "loop_id", loopID, "pid", pid.Loop.PID)
 	obj := loopObject{FirstProducer: first.CurrentProducer}
 
 	var (
@@ -136,7 +188,12 @@ func runLoop(ctx context.Context, spec *Spec, argv []string, out io.Writer) int 
 		if present {
 			before = current
 			lastKnown = current.CurrentProducer
-			res = runChild(ctx, spec, argv, traceID)
+			res = runChild(ctx, spec, argv, traceID, func(child proc.TreeRecord) {
+				pid.Child, pid.CurrentProducer, pid.HistoryLength = child, current.CurrentProducer, len(current.History)
+				if err := WriteLoopPIDRecord(loop.PIDPath, pid); err != nil {
+					logger.Warn("shed: loop could not update its pid file", "loop_id", loopID, "error", err.Error())
+				}
+			})
 			obj.Steps++
 		} else {
 			res = childResult{traceID: traceID, cause: "status-missing"}
@@ -249,28 +306,51 @@ func runLoop(ctx context.Context, spec *Spec, argv []string, out io.Writer) int 
 	} else {
 		code = output.ErrFields(&buf, errText, loopEnvelope(shortStepErrFields(res.full, res.path), obj))
 	}
-	if err := os.MkdirAll(filepath.Dir(loop.EnvelopePath), 0o755); err == nil {
-		err = os.WriteFile(loop.EnvelopePath, buf.Bytes(), 0o644)
-		if err != nil {
-			logger.Warn("shed: loop could not write its envelope", "path", loop.EnvelopePath, "error", err.Error())
-		}
+	if err := writeLoopEnvelopeFile(loop.EnvelopePath, loopID, buf.Bytes()); err != nil {
+		logger.Warn("shed: loop could not write its envelope", "path", loop.EnvelopePath, "error", err.Error())
+	} else if err := os.Remove(loop.PIDPath); err != nil {
+		logger.Warn("shed: loop could not remove its pid file", "path", loop.PIDPath, "error", err.Error())
 	}
 	_, _ = out.Write(buf.Bytes())
 	return code
+}
+
+// loopStartRefusal names the reason a loop that holds the loop lock must not step, or the empty string when it may.
+// The teardown's mark bars every loop, a pid file with no envelope is a dead loop's record the next waiter reports, and an undelivered envelope is a finished loop's result a waiter has not printed.
+func loopStartRefusal(loop LoopSpec) string {
+	record, hasRecord, err := ReadLoopPIDRecord(loop.PIDPath)
+	if err != nil {
+		return err.Error()
+	}
+	_, hasEnvelope := readLoopEnvelopeFile(loop.EnvelopePath)
+	switch {
+	case hasRecord && record.LoopID == TeardownLoopID:
+		return "the pair's session end put the teardown mark in the pid file"
+	case hasRecord && !hasEnvelope:
+		return "the pid file records a loop that ended without an envelope"
+	case hasEnvelope:
+		return "an undelivered envelope waits for its waiter"
+	}
+	return ""
 }
 
 // runChild runs one child step under a fresh trace id and reads back what it left.
 // The child's own record, <StepsDir>/<traceID>.json, is its full envelope;
 // a child that refused before its step body ran left an error envelope on stdout instead;
 // a child that left neither is reported interrupted for the cause its exit gives.
-func runChild(ctx context.Context, spec *Spec, argv []string, traceID string) childResult {
+// record is told the child's process tree when it starts and the zero record when it has exited.
+func runChild(ctx context.Context, spec *Spec, argv []string, traceID string, record func(proc.TreeRecord)) childResult {
 	loop := spec.Loop
 	var stdout bytes.Buffer
 	stderrPath := ""
 	if loop.StopFiles != nil {
 		_, stderrPath = loop.StopFiles(traceID)
 	}
-	child, err := loop.Runner(ctx, ChildRequest{
+	runner := loop.Runner
+	if runner == nil {
+		runner = procChildRunner
+	}
+	child, err := runner(ctx, ChildRequest{
 		Argv:       append([]string{loop.Executable}, argv...),
 		Env:        childEnvironment(traceID),
 		Stdout:     &stdout,
@@ -280,9 +360,10 @@ func runChild(ctx context.Context, spec *Spec, argv []string, traceID string) ch
 		logger.Warn("shed: loop child did not start", "trace_id", traceID, "error", err.Error())
 		return childResult{traceID: traceID, cause: "start-failed: " + err.Error()}
 	}
-	logger.Info("shed: loop child started", "pid", child.Record().PID, "trace_id", traceID)
+	record(child.Record())
 	waitErr := child.Wait()
 	logger.Info("shed: loop child exited", "pid", child.Record().PID, "trace_id", traceID, "error", errorText(waitErr))
+	record(proc.TreeRecord{})
 	appendLoopLog(loop.LogPath, stdout.Bytes())
 
 	if spec.StepsDir != "" {

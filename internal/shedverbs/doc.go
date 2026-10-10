@@ -37,6 +37,41 @@
 // trace_copy is a copy of the stop step's trace files, which outlives a sweep of the trace directory.
 // A refusal of the --until-stop invocation's own arming goes through ReportLoopArmError, which prints the bootstrap error with a loop object that stopped with no step run.
 //
+// The loop runs detached, and the --until-stop invocation is a waiter on it.
+// The waiter reads the loop lock, the pid file and the envelope file first.
+// A free lock beside the teardown's mark, or beside a pid file and no envelope, runs the dead-loop stop.
+// A held lock beside a pid file is a live loop: the waiter spawns nothing, adopts the loop id the pid file records and waits.
+// A held lock with no pid file is an instant liveness probe or a loop between taking its lock and writing its pid file, so the waiter adopts nothing and reads again on its timer until a pid file appears or the lock reads free.
+// A free lock beside an envelope delivers it while the envelope is current, that is while its loop.current_producer, loop.history_length and loop.state still match the status file, and retires it undelivered otherwise.
+// Anything else spawns a loop and follows it.
+//
+// The spawn mints the loop id with logger.NewTraceID and starts Spec.Loop.Executable with the invocation's own command line plus --until-stop and the hidden --loop-detached=<loop id>.
+// That flag marks the detached process, which re-runs its subtree's pre-run and then runLoop;
+// it selects runLoop and nothing more, and runLoop itself refuses to step over a dead loop's pid file, the teardown's mark or an undelivered envelope, returning at once with no envelope.
+// An arming refusal in that second pre-run reaches ReportLoopArmError with the loop id, which writes the refusal as the loop envelope file instead of printing it, so the waiter prints it.
+//
+// The start handshake: a waiter treats the loop it spawned as starting until the spawned process exits, so a free lock seen before the new loop took it never reads as a gone loop.
+// A loop that cannot take the loop lock within the grace period exits at once, and its waiter, seeing its spawn exited and the lock held, adopts the holder's loop id from the pid file.
+//
+// The loop lock is the liveness record, held for the loop's life, and the pid file is the loop's record for the kill.
+// The pid file holds the loop id, the loop's own pid and start time, and the in-flight child's process tree with the status file's current_producer and history_length when that child started;
+// the loop writes it after taking the lock and removes it only after its envelope is on disk.
+// The envelope file holds the loop id beside the envelope, and a waiter prints only the envelope.
+// A waiter matches files by its adopted loop id: it prints the envelope file only when it carries that id, or the delivered record of that id, which only that loop's envelope ever reaches.
+// Printing an envelope retires it by renaming the file onto the delivered record of its loop id, so the next invocation spawns a fresh loop, a second waiter on the same loop still prints it, and a later loop's delivery lands in its own record.
+// With the lock free, retiring also removes a pid file beside it that names the same loop; the teardown's mark stays.
+//
+// The waiter looks again on a timer that starts at one second, doubles to thirty while nothing changes and returns to one second on a change.
+// A file event in the steps directory, or the exit of its own spawn, only cuts the current wait short, so a loop that dies without touching a file is still seen at the next tick.
+//
+// A loop that is gone without an envelope ends in the dead-loop stop.
+// It kills what is left of the loop's step tree from the pid file's child record, writes the run failed while the status file still reads running, and reports an interrupted stop with cause loop-exited and loop.status_moved from the recorded producer and history length against the status file.
+// It writes that stop as the loop's envelope under the dead loop's id, delivers it and retires the pid file.
+// A record naming no child kills nothing and reports status_moved false.
+// Another holder of the run lock makes the stop busy: nothing is written, the pid file stays and the next invocation retries.
+// A waiter whose own spawn exited before any pid file named it, with the lock free, reports the same stop with loop.detail naming the loop log, and writes no loop envelope.
+// The teardown's mark, which a pair's session end puts in the pid file in place of a loop's record, stops every invocation the same way, writes no envelope and keeps the mark, so no loop runs until the pair is removed.
+//
 // progress has two shapes.
 // The step envelope's progress is compact: step, steps and name, with a zero step or steps and an empty name omitted, and no remaining list.
 // The status envelope's progress keeps the full form including remaining, since the driver names producers from it.

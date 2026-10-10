@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -182,20 +183,26 @@ func capDetail(lines []string) string {
 }
 
 // ArmStop carries what ReportLoopArmError needs to stop a run whose --until-stop invocation failed to arm:
-// the run's id and the paths of its status file and of the three locks that say who owns it.
+// the run's id, the paths of its status file and of the three locks that say who owns it, and the loop's pid and envelope files.
+// LoopID is the id the detached loop process was started with, and is empty for the waiter's own invocation.
 type ArmStop struct {
 	RunID          string
 	StatusPath     string
 	RunLockPath    string
 	StatusLockPath string
 	LoopLockPath   string
+	PIDPath        string
+	EnvelopePath   string
+	LoopID         string
 }
 
 // ReportLoopArmError prints the refusal err raised while a --until-stop step was being armed, and returns the exit code.
 // A KindlessRefusal prints a bare error line.
 // Any other error prints the bootstrap envelope of ReportArmError plus a loop object that stopped on error with no step run.
 // It also writes the status file failed when the file exists and no live loop holds the loop lock.
+// With the lock free and a pid file present it first kills the dead loop's recorded step tree, and it leaves the pid file for the next invocation to report as a dead loop.
 // A held loop lock, or another holder of the run lock, writes nothing and makes the stop busy.
+// With LoopID set and the stop not busy, the envelope is written as the loop envelope file under that id, for the waiter that spawned the loop to print, instead of being printed.
 func ReportLoopArmError(out io.Writer, stop ArmStop, err error) int {
 	var kindless KindlessRefusal
 	if errors.As(err, &kindless) {
@@ -207,6 +214,9 @@ func ReportLoopArmError(out io.Writer, stop ArmStop, err error) int {
 	obj := loopObject{Stop: LoopStopError, Detail: message}
 	if _, present := readStatusAt(stop.StatusPath, stop.StatusLockPath); present {
 		if loopLockFree(stop.LoopLockPath) {
+			if rec, found, readErr := ReadLoopPIDRecord(stop.PIDPath); readErr == nil && found {
+				killStepTree(rec)
+			}
 			failed, writeErr := shedengine.WriteFailedStop(shedengine.FailedStopRequest{
 				StatusPath:     stop.StatusPath,
 				LockPath:       stop.RunLockPath,
@@ -227,7 +237,27 @@ func ReportLoopArmError(out io.Writer, stop ArmStop, err error) int {
 		obj.State = string(after.State)
 	}
 	step := map[string]any{"kind": KindBootstrap, "trace_file": logger.TraceFile()}
-	return output.ErrFields(out, message, loopEnvelope(step, obj))
+	if stop.LoopID == "" || obj.Stop == LoopStopBusy {
+		return output.ErrFields(out, message, loopEnvelope(step, obj))
+	}
+	var buf bytes.Buffer
+	code := output.ErrFields(&buf, message, loopEnvelope(step, obj))
+	if writeErr := writeLoopEnvelopeFile(stop.EnvelopePath, stop.LoopID, buf.Bytes()); writeErr != nil {
+		logger.Warn("shed: arming refusal could not write the loop envelope", "loop_id", stop.LoopID, "error", writeErr.Error())
+		_, _ = out.Write(buf.Bytes())
+	}
+	return code
+}
+
+// killStepTree kills the step tree a dead loop's record names, logs the kill and reports whether anything was killed.
+// The teardown's mark and a record naming no child kill nothing, since a zero group id must never reach a kill.
+func killStepTree(rec LoopPIDRecord) bool {
+	if rec.LoopID == TeardownLoopID || rec.Child.PGID == 0 {
+		return false
+	}
+	killed, err := proc.KillTree(rec.Child)
+	logger.Info("shed: killed the dead loop's step tree", "loop_id", rec.LoopID, "group", rec.Child.PGID, "pid", rec.Child.PID, "killed", killed, "error", errorText(err))
+	return killed
 }
 
 // loopLockFree reports whether no loop holds the loop lock at path.

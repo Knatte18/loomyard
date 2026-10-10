@@ -202,12 +202,16 @@ func (c *shedCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 func reportArmFailure(out io.Writer, cmd *cobra.Command, location *lyxcwd.Location, args []string, err error) int {
 	if untilStop, _ := cmd.Flags().GetBool(shedverbs.UntilStopFlag); cmd.Name() == "step" && untilStop {
 		runID := addressedRunID(args)
+		loopID, _ := cmd.Flags().GetString(shedverbs.LoopDetachedFlag)
 		return shedverbs.ReportLoopArmError(out, shedverbs.ArmStop{
 			RunID:          shedrun.ResolveRunID(location, runID),
 			StatusPath:     shedrun.StatusFile(location, runID),
 			RunLockPath:    shedrun.RunLock(location, runID),
 			StatusLockPath: shedrun.StatusLock(location, runID),
 			LoopLockPath:   shedrun.LoopLock(location, runID),
+			PIDPath:        shedrun.LoopPIDFile(location, runID),
+			EnvelopePath:   shedrun.LoopEnvelope(location, runID),
+			LoopID:         loopID,
 		}, err)
 	}
 	return shedverbs.ReportArmError(out, cmd.Name(), err)

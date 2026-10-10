@@ -16,6 +16,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -34,6 +35,8 @@ type loopFixture struct {
 	stepsDir string
 	spec     *Spec
 	scripts  []childScript
+	// mu guards requests, which a detached loop running beside its waiter appends to.
+	mu       sync.Mutex
 	requests []ChildRequest
 	// traces maps a child's trace id to the trace files the fake lister reports for it.
 	traces map[string][]string
@@ -66,9 +69,14 @@ func newLoopFixture(t *testing.T, scripts ...childScript) *loopFixture {
 		FrictionDir:    filepath.Join(dir, "friction"),
 		Hooks:          Hooks{InterruptPolicyFor: func(row string) string { return "policy-" + row }},
 		Loop: LoopSpec{
-			EnvelopePath: filepath.Join(dir, "loop-envelope.json"),
-			LogPath:      filepath.Join(dir, "loop.log"),
-			Executable:   "lyx-fake",
+			LockPath:     filepath.Join(fx.stepsDir, "loop.lock"),
+			PIDPath:      filepath.Join(fx.stepsDir, "loop.pid"),
+			EnvelopePath: filepath.Join(fx.stepsDir, "loop-envelope.json"),
+			LogPath:      filepath.Join(fx.stepsDir, "loop.log"),
+			Delivered: func(loopID string) string {
+				return filepath.Join(fx.stepsDir, "loop-envelope."+loopID+".delivered.json")
+			},
+			Executable: "lyx-fake",
 			StopFiles: func(traceID string) (string, string) {
 				return filepath.Join(fx.stepsDir, traceID+".trace.log"), filepath.Join(fx.stepsDir, traceID+".stderr.log")
 			},
@@ -82,8 +90,10 @@ func newLoopFixture(t *testing.T, scripts ...childScript) *loopFixture {
 // run is the fixture's ChildRunner: it plays the next script under the trace id the loop put in the child's environment.
 func (fx *loopFixture) run(_ context.Context, req ChildRequest) (Child, error) {
 	fx.t.Helper()
+	fx.mu.Lock()
 	index := len(fx.requests)
 	fx.requests = append(fx.requests, req)
+	fx.mu.Unlock()
 	if index >= len(fx.scripts) {
 		fx.t.Fatalf("the loop started child %d; the test scripted %d", index+1, len(fx.scripts))
 	}
@@ -100,10 +110,18 @@ func traceIDOf(req ChildRequest) string {
 	return ""
 }
 
-// execute runs `step --until-stop` over the fixture and decodes the printed envelope.
+// detachedLoopID is the loop id the fixture's detached half runs under.
+const detachedLoopID = "loop-1"
+
+// detachedArgs is the command line of the detached loop process for loopID.
+func detachedArgs(loopID string) []string {
+	return []string{"--" + UntilStopFlag, "--" + LoopDetachedFlag + "=" + loopID}
+}
+
+// execute runs the detached half of `step --until-stop` over the fixture and decodes the envelope it printed.
 func (fx *loopFixture) execute() (map[string]any, int) {
 	fx.t.Helper()
-	return execEnvelope(fx.t, stepCmd(stepTexts(), fx.spec), []string{"--" + UntilStopFlag})
+	return execEnvelope(fx.t, stepCmd(stepTexts(), fx.spec), detachedArgs(detachedLoopID))
 }
 
 // childIDs lists the trace ids of the children the loop started, in order.
@@ -295,13 +313,13 @@ func TestLoop_RunsUntilStopAndPrintsOneEnvelope(t *testing.T) {
 				t.Errorf("step keys = %v; want the stop step's short envelope %v", stepKeys, wantStep)
 			}
 
-			written, err := os.ReadFile(fx.spec.Loop.EnvelopePath)
-			if err != nil {
-				t.Fatalf("read the loop envelope file: %v", err)
-			}
+			written, found := readLoopEnvelopeFile(fx.spec.Loop.EnvelopePath)
 			var fromFile map[string]any
-			if err := json.Unmarshal(written, &fromFile); err != nil || !reflect.DeepEqual(fromFile, env) {
-				t.Errorf("loop envelope file = %v, %v; want the printed envelope %v", fromFile, err, env)
+			if !found || written.LoopID != detachedLoopID || json.Unmarshal(written.Envelope, &fromFile) != nil || !reflect.DeepEqual(fromFile, env) {
+				t.Errorf("loop envelope file = %+v, found %v; want the printed envelope %v under loop id %s", written, found, env, detachedLoopID)
+			}
+			if _, err := os.Stat(fx.spec.Loop.PIDPath); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("the loop left its pid file behind (stat err %v); it removes it once its envelope is written", err)
 			}
 
 			if _, err := os.Stat(filepath.Join(fx.stepsDir, logger.TraceID()+inflightSuffix)); !errors.Is(err, os.ErrNotExist) {
@@ -534,7 +552,7 @@ func TestLoop_StopDetailAndTraceCopy(t *testing.T) {
 			fx := newLoopFixture(t, continuing("B", 1), stopScript)
 
 			var printed bytes.Buffer
-			clihelp.Execute(stepCmd(stepTexts(), fx.spec), &printed, []string{"--" + UntilStopFlag})
+			clihelp.Execute(stepCmd(stepTexts(), fx.spec), &printed, detachedArgs(detachedLoopID))
 
 			if lines := strings.Split(strings.TrimRight(printed.String(), "\n"), "\n"); len(lines) != 1 {
 				t.Errorf("printed %d lines; want the one envelope and nothing for the successful step", len(lines))
@@ -565,16 +583,32 @@ func TestLoop_StopDetailAndTraceCopy(t *testing.T) {
 	}
 }
 
-func TestLoop_UnarmedSpecRefused(t *testing.T) {
-	fx := newLoopFixture(t)
-	fx.spec.Loop = LoopSpec{}
-
-	env, code := fx.execute()
-
-	if code != 1 || env["kind"] != KindBootstrap || !strings.Contains(fmt.Sprint(env["error"]), "arms no loop; way forward: run the step without --until-stop") {
-		t.Errorf("exit/kind/error = %d/%v/%v; want a bootstrap refusal naming its way forward", code, env["kind"], env["error"])
+func TestLoop_RefusalsBeforeAnyStep(t *testing.T) {
+	tests := []struct {
+		name      string
+		unarm     bool
+		loopID    string
+		wantError string
+		wantKind  any
+	}{
+		{name: "unarmed spec", unarm: true, loopID: detachedLoopID, wantError: "arms no loop; way forward: run the step without --until-stop", wantKind: KindBootstrap},
+		{name: "unusable loop id", loopID: "../escape", wantError: "way forward: run the step with --until-stop alone", wantKind: nil},
 	}
-	if _, present := env["loop"]; present {
-		t.Errorf("envelope %v carries a loop object; an unarmed refusal ran no loop", env)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newLoopFixture(t, continuing("B", 1))
+			if tt.unarm {
+				fx.spec.Loop = LoopSpec{}
+			}
+
+			env, code := execEnvelope(t, stepCmd(stepTexts(), fx.spec), detachedArgs(tt.loopID))
+
+			if code != 1 || env["kind"] != tt.wantKind || !strings.Contains(fmt.Sprint(env["error"]), tt.wantError) {
+				t.Errorf("exit/kind/error = %d/%v/%v; want a refusal of kind %v naming %q", code, env["kind"], env["error"], tt.wantKind, tt.wantError)
+			}
+			if _, present := env["loop"]; present || len(fx.requests) != 0 {
+				t.Errorf("envelope %v and %d children; want no loop object and no child, since the refusal ran no loop", env, len(fx.requests))
+			}
+		})
 	}
 }

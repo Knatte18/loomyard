@@ -287,7 +287,16 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 					clihelp.SetExit(ctx, output.ErrFields(cmd.OutOrStdout(), msg, map[string]any{"kind": KindBootstrap, "trace_file": logger.TraceFile()}))
 					return nil
 				}
-				clihelp.SetExit(ctx, runLoop(ctx, spec, childArgv(cmd, args), cmd.OutOrStdout()))
+				argv := childArgv(cmd, args)
+				if loopID, _ := cmd.Flags().GetString(LoopDetachedFlag); loopID != "" {
+					if !validLoopID(loopID) {
+						clihelp.SetExit(ctx, output.Err(cmd.OutOrStdout(), "shedverbs: --"+LoopDetachedFlag+" takes the loop id its waiter minted; way forward: run the step with --"+UntilStopFlag+" alone"))
+						return nil
+					}
+					clihelp.SetExit(ctx, runLoop(ctx, spec, loopID, argv, cmd.OutOrStdout()))
+					return nil
+				}
+				clihelp.SetExit(ctx, runUntilStop(ctx, spec, argv, cmd.OutOrStdout()))
 				return nil
 			}
 
@@ -363,6 +372,8 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 		},
 	}
 	cmd.Flags().Bool("full", false, "print the full envelope on stdout instead of the short one; the record, exit code and run state are unchanged")
-	cmd.Flags().Bool(UntilStopFlag, false, "run steps one after another until the run halts, errors or reaches a stop condition, and print the one envelope of that stop")
+	cmd.Flags().Bool(UntilStopFlag, false, "run steps one after another in a detached loop until the run halts, errors or reaches a stop condition, and print the one envelope of that stop")
+	cmd.Flags().String(LoopDetachedFlag, "", "marks the detached loop process itself; set only by the waiter that spawns it")
+	_ = cmd.Flags().MarkHidden(LoopDetachedFlag)
 	return cmd
 }

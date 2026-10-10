@@ -10,7 +10,8 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - batten's Run-Shed wait,
 - shuttle's `Wait`,
 - webster's long poll,
-- `lyx shed status --watch`.
+- `lyx shed status --watch`,
+- the `--until-stop` waiter in `internal/shedverbs/loopwait.go`, whose event source is `internal/fswatch` on the run's steps directory and whose timer starts at the one-second floor.
 
 A bounded wait that ends within a minute is outside the rule.
 
