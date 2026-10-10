@@ -383,7 +383,11 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 		return result, true, ferr
 	}
 	// An entry failed with budget remaining: re-prompt the agent and keep polling.
-	if serr := run.sendWithin(gateRepromptText(run.gateFindingsPath)); serr != nil {
+	reprompt := gateRepromptText(run.gateFindingsPath)
+	if render := run.gate[failed].Reprompt; render != nil {
+		reprompt = render(run.gateFindingsPath)
+	}
+	if serr := run.sendWithin(reprompt); serr != nil {
 		if errors.Is(serr, ErrSessionBusy) || errors.Is(serr, ErrSubmissionNotLanded) {
 			// No attempt was spent: keep the writer at the boundary and re-send on a later tick.
 			// The send cleared its own text where it could, but for an engine with the idle reading a box it left occupied fails that re-send busy, until the run deadline ends the loop.

@@ -65,6 +65,10 @@ type GateEntry struct {
 	// A Pending result at a turn boundary holds the run exactly as a PassOnCap entry's does.
 	// Only the parent-review wiring sets it.
 	MayHold bool
+	// Reprompt, when non-nil, renders the re-prompt line the wait loop sends after this entry fails with budget remaining, in place of the default line; nil keeps the default.
+	// It receives the findings file's path.
+	// The line is validated where every send is: a result of several lines, or an empty or whitespace-only line, fails the send and ends the loop with the attempts spent so far.
+	Reprompt func(findingsPath string) string
 }
 
 // GateSpec is the ordered list of gate entries a gated run consults at each arrival — the one value every downstream seam (RunGated, AttachGated, a producer's RunOpts.Gate) carries from the point it is known through to the run loop, per the "one GateSpec at every hop" decision.
@@ -121,9 +125,10 @@ type GateOutcome struct {
 	Reason string
 }
 
-// gateRepromptText returns the single-line re-prompt text Wait sends the agent after a failed gate
+// gateRepromptText returns the default single-line re-prompt text Wait sends the agent after a failed gate
 // attempt, naming findingsPath and instructing the agent to read it, fix every finding, and end its
 // turn. The returned text carries no newline, the one-line shape validateSendText (run.go) requires.
+// An entry whose Reprompt is set supplies its own line instead.
 func gateRepromptText(findingsPath string) string {
 	return fmt.Sprintf("Gate findings recorded at %s — read it, fix every finding, and end your turn.", findingsPath)
 }
