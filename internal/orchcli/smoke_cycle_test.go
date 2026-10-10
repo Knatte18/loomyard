@@ -13,9 +13,7 @@ package orchcli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -32,27 +30,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // smokeRun runs exe with args in dir, bounded by timeout, and returns the combined output and exit code.
 func smokeRun(t *testing.T, exe, dir string, timeout time.Duration, args ...string) (string, int) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, exe, args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if ctx.Err() != nil {
-		t.Fatalf("lyx %v timed out after %s; output so far:\n%s", args, timeout, out)
-	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return string(out), exitErr.ExitCode()
-	}
+	out, code, err := lyxbin.Run(exe, dir, timeout, args...)
 	if err != nil {
-		t.Fatalf("lyx %v: %v; output:\n%s", args, err, out)
+		t.Fatalf("lyx %v: %v", args, err)
 	}
-	return string(out), 0
+	return out, code
 }
 
 // smokeStatus runs `lyx orch status` and decodes its envelope.
@@ -174,12 +162,11 @@ func TestSmokeOrch_OneFullCycle(t *testing.T) {
 			t.Skip("tmux not found on PATH; set LYX_LOOM_TMUX to override")
 		}
 	}
-	_ = tmuxPath
 	llmkit.Claude(t, "LYX_SHUTTLE_CLAUDE")
 
 	exe := lyxbin.Build(t)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	// The soft threshold sits above the hard one, so the manual cycle stays the only trigger.
 	orchCfg := smokeOrchConfig("clear", "bypass", 200000000, 100000000, 300)
 	hubforge.SeedConfig(t, h, map[string]string{
@@ -199,6 +186,7 @@ func TestSmokeOrch_OneFullCycle(t *testing.T) {
 		t.Fatalf("reed geometry: %v", err)
 	}
 	reed := reedengine.New(reedCfg, reedGeom)
+	tmuxkit.KillOnCleanup(t, tmuxPath, reedGeom.SocketKey)
 	shuttleCfg, err := shuttleengine.LoadConfig(prime, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)

@@ -31,7 +31,7 @@ import (
 func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	top := h.Topology
 
@@ -91,7 +91,7 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	top := h.Topology
 
@@ -172,7 +172,7 @@ func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			h := hubforge.NewHub(t, ".")
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 			l := h.Location
 
 			const targetBranch = "checkout-rollback-origin"
@@ -225,7 +225,7 @@ func TestCheckout_WarpSwitchFailureCarriesGitStderr(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "checkout-stderr"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})

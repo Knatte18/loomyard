@@ -15,6 +15,7 @@
 // The command runs with the lease's environment, so GOFLAGS carries the slot's `-p` cap and a nested gate run inherits the held slot, and the slot is released whatever the outcome.
 // A cancelled wait is a returned error with no record.
 // A nil pool runs unslotted with the parent's environment, the form of a standalone run and of a unit test.
+// A verify command never sees gateslot.PrebuiltLyxEnv, slotted or not: Verify strips an inherited value, so the command's own `go test` builds lyx once per test binary.
 // A marker written before it had a state reads as running.
 //
 // The Publish failure record is the one never-tracked file Publish leaves when its plan verify or `publish_verify` fails.

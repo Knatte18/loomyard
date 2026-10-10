@@ -7,7 +7,7 @@ Tests stay fast: Tier 1 is offline and spawns nothing, no test waits out a produ
 | Tier | Tag | Needs | Costs |
 |---|---|---|---|
 | 1 | none | nothing: offline, no spawn | seconds, runs on every `go test ./...` |
-| 2 | `integration` | git, a built `lyx`, subprocesses; no tmux server and no LLM | tens of seconds, runs once per batch and in the plan's full verify |
+| 2 | `integration` | git, a built `lyx`, subprocesses; no tmux server and no LLM, which `tmuxkit.Main` checks at the end of the package | tens of seconds, runs once per batch and in the plan's full verify |
 | 3 | `tmux` | a real tmux server, no LLM | slower, runs at Publish through landing config's `publish_verify`, at the round gate while a Publish failure record is present, and by hand |
 | 4 | `llm` | a real LLM session | billed, compiled by every gate and run by hand only |
 
@@ -22,7 +22,7 @@ Tests stay fast: Tier 1 is offline and spawns nothing, no test waits out a produ
 | Gate | Runs |
 |---|---|
 | Card gate | tier 1 of the card's own packages through `lyx gate test`, then the comment lint |
-| Batch gate | `lyx gate test --tags integration` once per batch over the batch's packages |
+| Batch gate | `lyx gate test --tags integration` once per batch over the batch's packages, each failing on a tmux server socket its end-of-package check finds |
 | Webster-Burler round gate | the comment lint, then the impacted-set command, or the plan's verify wherever the impacted set cannot narrow; the `tmux` and `llm` tiers are compiled by its `go vet` steps and run only as below |
 | Webster-Burler round gate, while a Publish failure record is present | the failing tests the record names, and for a `publish_verify` failure an impacted-set `tmux` pass, to confirm the fix |
 | Webster's gate, Publish, Finalize | the plan's `## verify:` in full: build, vet under each tag, the untagged tier, then the `integration` tier |
@@ -38,6 +38,8 @@ Running it is the operator's call, because an `llm` run is billed, nondeterminis
 
 Every gate build or test run takes a slot of the hub's gate-slot pool, so the hub never runs more at once than its configured count.
 An agent runs a module-wide or `tmux`-tier test only through `lyx gate test`, which takes the slot, and never as a raw `go` run.
+A tagged gate run builds `lyx` once and hands it to every package through the `LYX_PREBUILT_LYX` variable, which `lyxbin` returns instead of building.
+Bound: a forged value misleads only an ungated raw run, since `lyx gate test` sets or strips the variable itself.
 
 ## Only `llm` files reach an LLM
 
@@ -50,10 +52,14 @@ An agent runs a module-wide or `tmux`-tier test only through `lyx gate test`, wh
 
 ## Untagged tests spawn nothing
 
-- No `gitexec.Run` or `RunGit`, `exec.Command` or `CommandContext`, `hubforge.NewHub` or gitkit spawn outside tier-tagged files.
+- No `gitexec.Run` or `RunGit`, `exec.Command` or `CommandContext`, `hubforge.NewHub`, `hubforge.CopyHub`, `hubforge.SharedHub` or gitkit spawn outside tier-tagged files.
 - Every `gitkit` export except `gitkit.HermeticGitEnv` counts as a gitkit spawn, defined once in `cmd/lyx/gitkitspawn_test.go`.
 - Any `lyxbin.` reference, which builds the `lyx` binary, is likewise barred outside tier-tagged files.
 - Every `tmuxkit` export except `tmuxkit.Main` counts as a tmux spawn and is barred outside tier-tagged files, defined once in `cmd/lyx/tmuxkitspawn_test.go`.
+  That covers the `/proc` probes although they spawn nothing, which costs nothing because an untagged test has no process to probe.
+- A file referencing a `tmuxkit` spawn is further constrained to the `tmux` tier: it compiles in neither the untagged nor the `integration` build on any platform, so `tmux`, `llm`, `tmux || llm` and `tmux && !windows` pass while `integration || tmux` fails.
+  An allowlist entry with a reason admits a tier-2 file that uses only the spawn-free `/proc` probes.
+  The scan evaluates the build line under every assignment of its tags other than `tmux` and `llm`, so the host's GOOS plays no part.
 - `time.Sleep(...)` of one second or more in an untagged file is flagged unless allowlisted.
 - Enforced by `cmd/lyx/tierpurity_test.go`.
 

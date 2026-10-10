@@ -48,21 +48,14 @@ var ErrNoCorrespondence = errors.New("fabricengine: no recorded warp<->weft corr
 // it surfaces the typed error and leaves recovery to the caller.
 var ErrStaleSHA = errors.New("fabricengine: stale SHA in correspondence index")
 
-// weftGitDir resolves the git directory backing f.records's worktree via
-// `git rev-parse --git-dir`, absolutized against the weft path when git
-// reports a relative one (the common case for a standard checkout). In a
-// linked worktree this names the per-worktree gitdir, not the shared common
+// weftGitDir resolves the git directory backing f.records's worktree.
+// In a linked worktree this names the per-worktree gitdir, not the shared common
 // dir — deliberately, since the correspondence index is scoped per
 // warp<->weft pair, not shared across every worktree of the same weft clone.
 func (f *Fabric) weftGitDir() (string, error) {
-	stdout, err := gitexec.Run([]string{"rev-parse", "--git-dir"}, f.weftPath)
+	dir, err := f.records.GitDir()
 	if err != nil {
 		return "", fmt.Errorf("fabricengine: resolve weft gitdir in %s: %w", f.weftPath, err)
-	}
-
-	dir := strings.TrimSpace(stdout)
-	if !filepath.IsAbs(dir) {
-		dir = filepath.Join(f.weftPath, dir)
 	}
 	return dir, nil
 }

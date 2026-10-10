@@ -1,8 +1,8 @@
 //go:build integration || tmux
 
 // smoke_helpers_test.go holds the fixtures and subprocess helpers shared by the integration-tier and tmux-tier smoke files:
-// a real wired hub with one pair, the cached built cmd/lyx binary, the run seeds, and the bad-reed-config fixture.
-// It spawns git and builds lyx, so it carries the disjunction of its two users' tags.
+// a real wired hub with one pair, the runner of the built cmd/lyx binary, the run seeds, and the bad-reed-config fixture.
+// It spawns git and runs lyx, so it carries the disjunction of its two users' tags.
 
 package loomcli
 
@@ -16,12 +16,15 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -29,43 +32,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-// smokeLyxBuild caches the one cmd/lyx binary this whole test binary needs, built exactly once
-// regardless of how many tests call sharedLyxBinary -- mirroring hubforge's own bareTemplateOnce
-// pattern for an equally expensive one-time build.
-// lyxbin.Build would delete the binary when the first test ends,
-// so the cache builds into a directory of its own.
-var (
-	smokeLyxBuildOnce sync.Once
-	smokeLyxBuildPath string
-	smokeLyxBuildErr  error
-)
-
-// sharedLyxBinary returns the cached cmd/lyx binary, building it at most once per test binary.
-func sharedLyxBinary(t *testing.T) string {
-	t.Helper()
-	smokeLyxBuildOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "loomcli-smoke-lyx-*")
-		if err != nil {
-			smokeLyxBuildErr = err
-			return
-		}
-		smokeLyxBuildPath, smokeLyxBuildErr = lyxbin.BuildInto(dir, "")
-	})
-	if smokeLyxBuildErr != nil {
-		t.Fatalf("build lyx binary: %v", smokeLyxBuildErr)
-	}
-	return smokeLyxBuildPath
-}
 
 // runLoomCLINoFatal runs exe with args in dir as a real subprocess, bounded by timeout, and returns
 // its combined stdout+stderr and exit code without ever calling a *testing.T method -- the pure seam
 // case (h)'s concurrent invocations need, since t.Fatalf from a non-test goroutine is unsafe. Callers
 // on the test's own goroutine that want fail-fast behaviour check the returned err themselves.
 func runLoomCLINoFatal(exe, dir string, timeout time.Duration, args ...string) (stdout string, exitCode int, err error) {
-	return runLoomCLIWithEnvNoFatal(exe, dir, nil, timeout, args...)
+	return lyxbin.Run(exe, dir, timeout, args...)
 }
 
 // runLoomCLIWithEnvNoFatal is runLoomCLINoFatal with extraEnv appended to the inherited environment of the subprocess alone,
@@ -101,7 +77,7 @@ func runLoomCLIWithEnvNoFatal(exe, dir string, extraEnv []string, timeout time.D
 func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lyxcwd.Location, worktree, slug string) {
 	t.Helper()
 
-	h = hubforge.NewHub(t, ".")
+	h = hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedConfig(t, h, map[string]string{
 		"loom":    fastDeadlineLoomConfig(),
 		"reed":    reedengine.ConfigTemplate(),
@@ -262,7 +238,7 @@ func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lyxcwd.Location)) 
 		t.Fatalf("reed config template drift: no mouse: line found")
 	}
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedConfig(t, h, map[string]string{
 		"loom":    fastDeadlineLoomConfig(),
 		"reed":    strings.Join(lines, "\n"),
@@ -278,6 +254,41 @@ func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lyxcwd.Location)) 
 	}
 	seed(t, loc)
 	return loc, worktree
+}
+
+// waitForFixtureProcessesToExit registers a cleanup that waits for every process whose working directory lies under the test's temp directories to exit.
+// A push into a bare repository leaves a git process of its own there for a moment, which would otherwise write into a directory the temp-dir removal is deleting.
+// It is registered after the fixture, so it runs before the fixture's removal; the wait is best effort and the removal reports what is still left.
+func waitForFixtureProcessesToExit(t *testing.T) {
+	t.Helper()
+	root := filepath.Dir(t.TempDir())
+	t.Cleanup(func() {
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+			running := false
+			for _, pid := range tmuxkit.Pids() {
+				if cwd, ok := tmuxkit.ProcCwd(pid); ok && pid != os.Getpid() && strings.HasPrefix(cwd, root+string(filepath.Separator)) {
+					running = true
+					break
+				}
+			}
+			if !running {
+				return
+			}
+		}
+	})
+}
+
+// hubStampPath returns the hub's build stamp file.
+func hubStampPath(loc *lyxcwd.Location) string {
+	return hubreconcile.Geometry{BoardDir: fabricengine.BoardDir(loc.HubPath)}.StampPath()
+}
+
+// commitRetiredBatcherKey commits a batcher.yaml carrying a retired key into loc's records worktree, the state a hub reconcile after a binary change removes.
+func commitRetiredBatcherKey(t *testing.T, loc *lyxcwd.Location) {
+	t.Helper()
+	batcher, _ := configreg.Lookup("batcher")
+	retired := strings.Replace(batcher.Template(), "orientation: 31400", "master_base: 52000", 1)
+	gitkit.CommitFile(t, fabricengine.RecordsWorktree(loc), configengine.ConfigFileRel("batcher"), retired, "fixture: retired key")
 }
 
 // findWatchdogPIDs returns the pids of every live process whose argv contains an adjacent "reed"

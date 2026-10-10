@@ -31,7 +31,7 @@ import (
 func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPair(t, h, "task")
 	taskRecords := h.PairRecordsSibling("task")
 	gitkit.CommitFile(t, taskRecords, configengine.ConfigFileRel("loom"), "task_setting: changed\n", "task: change loom config")

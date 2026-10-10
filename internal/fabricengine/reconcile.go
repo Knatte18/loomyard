@@ -24,6 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -585,14 +586,10 @@ func createDormantWeftForRawWarp(rec *Mutations, warpLayout *lyxcwd.Location, sl
 		return fmt.Errorf("resolve weft repo root: %w", err)
 	}
 
-	parentWeftOut, err := gitexec.Run(
-		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
-		weftRoot,
-	)
+	parentWeftBranch, err := readBranch(weftRoot)
 	if err != nil {
 		return fmt.Errorf("capture parent weft branch: %w", err)
 	}
-	parentWeftBranch := strings.TrimSpace(parentWeftOut)
 
 	if err := createWeftWorktree(rec, warpLayout, slug, weftBranch, parentWeftBranch); err != nil {
 		return fmt.Errorf("create dormant weft worktree: %w", err)
@@ -633,46 +630,18 @@ func markVanishedMidWalk(repoDir, warpPath string, pr *ReconcilePairResult) bool
 }
 
 // readBranch returns the current branch name for the worktree at dir, reporting "HEAD" for a
-// detached HEAD exactly as `git rev-parse --abbrev-ref HEAD` does.
+// detached HEAD.
 //
-// The rev-parse spelling alone is not enough: it exits 128 on an UNBORN branch (a branch with zero
-// commits), which is the ordinary state of the weft primary immediately after a clone against an
-// empty remote — the documented first-ever-setup path. Reporting that as an error made a
-// just-cloned hub describe itself as out of sync and made Healthy fail loudly at loom preflight
-// until the first sync landed a commit. `git branch --show-current` answers correctly on an unborn
-// branch, so it is consulted as the fallback, and only a genuinely branch-less HEAD falls through
-// to an error.
+// An UNBORN branch (a branch with zero commits) answers its name.
+// It is the ordinary state of the weft primary immediately after a clone against an empty remote, the documented first-ever-setup path.
+// Reporting it as an error would make a just-cloned hub describe itself as out of sync and make Healthy fail loudly at loom preflight until the first sync landed a commit.
 func readBranch(dir string) (string, error) {
-	out, err := gitexec.Run(
-		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
-		dir,
-	)
-	if err == nil {
-		return strings.TrimSpace(out), nil
-	}
-
-	// The first call's *GitError stays bound across the fallback, because both downstream messages
-	// below cite its exit code — this is the merge-rule-carve-outs "prior call" case, not a plain
-	// two-message merge.
-	var gitErr *gitexec.GitError
-	if !errors.As(err, &gitErr) {
+	branch, detached, err := gitrepo.New(dir).HeadRef()
+	if err != nil {
 		return "", fmt.Errorf("read current branch: %w", err)
 	}
-
-	unbornOut, unbornErr := gitexec.Run(
-		[]string{"branch", "--show-current"},
-		dir,
-	)
-	if unbornErr != nil {
-		var unbornGitErr *gitexec.GitError
-		if !errors.As(unbornErr, &unbornGitErr) {
-			return "", fmt.Errorf("read current branch via the unborn-branch fallback: %w", unbornErr)
-		}
-		return "", fmt.Errorf("rev-parse exited %d and the unborn-branch fallback also failed: %w", gitErr.ExitCode, unbornErr)
-	}
-	branch := strings.TrimSpace(unbornOut)
-	if branch == "" {
-		return "", fmt.Errorf("rev-parse exited %d and no current branch is set", gitErr.ExitCode)
+	if detached {
+		return "HEAD", nil
 	}
 	return branch, nil
 }

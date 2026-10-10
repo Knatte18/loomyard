@@ -32,7 +32,7 @@ func spawnStepRunner(t *testing.T, h *hubforge.Hub) func(name string, step func(
 // TestSpawnScenario drives every Spawn check that does not depend on the hub's anchor against one hub at the repo root.
 // Steps run in this order: the prime-touching steps follow the task-pair ones, and the tracked-tasks.json commit on the prime is last, because it leaves the prime's tasks.json tracked.
 func TestSpawnScenario(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	step := spawnStepRunner(t, h)
 
 	if !step("task pair stays clean through exclude with an unrelated gitignore", func(t *testing.T) {

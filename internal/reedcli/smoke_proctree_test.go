@@ -10,17 +10,15 @@
 // Windows, Linux needs no external process to answer any of these
 // questions — the kernel exposes them directly over /proc — so these
 // probes shell out to nothing, not even a POSIX substitute for pwsh.
-// Reimplemented here as a small, self-contained test-harness copy rather
-// than imported from reedengine, since that package's equivalents
-// (parseStatPPID, descendantClosure, matchSocketCmdlines) are unexported and
-// only meaningful bound to an *Engine value. Deliberately a _test.go file
+// Reimplemented here as a small, self-contained test-harness copy rather than imported from reedengine, since that package's equivalents (parseStat, descendantClosure, matchSocketCmdlines) are unexported and only meaningful bound to an *Engine value.
+// Deliberately a _test.go file
 // (not a _linux.go one): its caller functions in smoke_test.go compile on
 // every GOOS (gated only by the `tmux || llm` tag) and runtime.GOOS-branch into this
 // file's functions, so this file must compile everywhere too, and it
 // references hubHolder, which is itself declared in smoke_test.go and so
-// only exists inside the test binary — the os.ReadFile/ReadDir/Readlink
-// calls here are portable Go and simply error (never get called) on a
-// non-Linux GOOS.
+// only exists inside the test binary.
+// The os.ReadFile calls here and the tmuxkit /proc probes are portable Go and simply error (never get called) on a non-Linux GOOS.
+// The pid list, argv and cwd probes come from tmuxkit.
 
 package reedcli
 
@@ -29,22 +27,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-)
 
-// linuxPids returns every numeric entry under /proc.
-func linuxPids() []int {
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return nil
-	}
-	pids := make([]int, 0, len(entries))
-	for _, e := range entries {
-		if pid, err := strconv.Atoi(e.Name()); err == nil {
-			pids = append(pids, pid)
-		}
-	}
-	return pids
-}
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
+)
 
 // linuxProcPPID reads pid's parent pid from /proc/<pid>/stat.
 func linuxProcPPID(pid int) (int, bool) {
@@ -68,45 +53,6 @@ func linuxProcPPID(pid int) (int, bool) {
 	return ppid, true
 }
 
-// linuxProcArgv reads pid's argv from /proc/<pid>/cmdline.
-func linuxProcArgv(pid int) ([]string, bool) {
-	raw, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "cmdline"))
-	if err != nil {
-		return nil, false
-	}
-	trimmed := strings.TrimSuffix(string(raw), "\x00")
-	if trimmed == "" {
-		return nil, true
-	}
-	return strings.Split(trimmed, "\x00"), true
-}
-
-// linuxIsWatchdogDaemon reports whether pid is a `lyx reed watchdog` daemon, the one process an attach leaves running past its harness server: it detaches into its own session and idles out on its own production schedule.
-func linuxIsWatchdogDaemon(pid int) bool {
-	argv, ok := linuxProcArgv(pid)
-	if !ok {
-		return false
-	}
-	for i := 0; i+1 < len(argv); i++ {
-		if argv[i] == "reed" && argv[i+1] == "watchdog" {
-			return true
-		}
-	}
-	return false
-}
-
-// linuxProcCwd reads pid's current working directory via the /proc/<pid>/cwd
-// symlink — trivially available on Linux, unlike Windows where reaching a
-// live process's cwd needs a PEB read via P/Invoke (see hubHolders' Windows
-// script).
-func linuxProcCwd(pid int) (string, bool) {
-	cwd, err := os.Readlink(filepath.Join("/proc", strconv.Itoa(pid), "cwd"))
-	if err != nil {
-		return "", false
-	}
-	return cwd, true
-}
-
 // linuxProcComm reads pid's short executable name from /proc/<pid>/comm.
 func linuxProcComm(pid int) (string, bool) {
 	raw, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "comm"))
@@ -128,7 +74,7 @@ func linuxDescendantClosure(roots []int) []int {
 		return nil
 	}
 	pidToPPID := make(map[int]int)
-	for _, pid := range linuxPids() {
+	for _, pid := range tmuxkit.Pids() {
 		if ppid, ok := linuxProcPPID(pid); ok {
 			pidToPPID[pid] = ppid
 		}
@@ -193,8 +139,8 @@ func linuxArgvHasFlagValue(argv []string, flag, value string) bool {
 // reedengine's serverProcessesOnSocket.
 func linuxTmuxSocketPids(binary, socket string) []int {
 	var out []int
-	for _, pid := range linuxPids() {
-		argv, ok := linuxProcArgv(pid)
+	for _, pid := range tmuxkit.Pids() {
+		argv, ok := tmuxkit.ProcArgv(pid)
 		if !ok {
 			continue
 		}
@@ -212,8 +158,8 @@ func linuxTmuxSocketPids(binary, socket string) []int {
 // class to exempt: any Linux holder this finds is a genuine leak.
 func linuxHubHolders(dir string) []hubHolder {
 	var holders []hubHolder
-	for _, pid := range linuxPids() {
-		cwd, ok := linuxProcCwd(pid)
+	for _, pid := range tmuxkit.Pids() {
+		cwd, ok := tmuxkit.ProcCwd(pid)
 		if !ok {
 			continue
 		}

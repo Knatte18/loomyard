@@ -40,6 +40,16 @@ func TestHermeticGitEnv_QuietAndPinned(t *testing.T) {
 		t.Errorf("core.fsmonitor = %q; want %q", got, "false")
 	}
 
+	cmd = exec.Command("git", "config", "gc.autoDetach")
+	cmd.Dir = dir
+	output, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git config gc.autoDetach: %v; output: %s", err, output)
+	}
+	if got := strings.TrimSpace(string(output)); got != "false" {
+		t.Errorf("gc.autoDetach = %q; want %q", got, "false")
+	}
+
 	cmd = exec.Command("git", "symbolic-ref", "HEAD")
 	cmd.Dir = dir
 	output, err = cmd.CombinedOutput()
@@ -163,6 +173,38 @@ func TestCopiedRepoScenario(t *testing.T) {
 			t.Errorf("second copy has dir/file.txt committed to the first")
 		}
 	})
+}
+
+// TestFixtureGitMarker_ReachesHelperChildren verifies that git spawned by Git carries the fixture marker, read back through git's trace2 env-var events.
+// It sets process environment variables through t.Setenv, so it does not call t.Parallel.
+func TestFixtureGitMarker_ReachesHelperChildren(t *testing.T) {
+	traceDir := t.TempDir()
+	t.Setenv("GIT_TRACE2_EVENT", traceDir)
+	t.Setenv("GIT_TRACE2_ENV_VARS", FixtureGitEnv)
+
+	Git(t, t.TempDir(), "version")
+
+	files, err := os.ReadDir(traceDir)
+	if err != nil {
+		t.Fatalf("read trace dir: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("trace dir holds %d event files; want 1", len(files))
+	}
+	events, err := os.ReadFile(filepath.Join(traceDir, files[0].Name()))
+	if err != nil {
+		t.Fatalf("read event file: %v", err)
+	}
+
+	var found bool
+	for _, line := range strings.Split(string(events), "\n") {
+		if strings.Contains(line, `"event":"def_param"`) && strings.Contains(line, `"param":"`+FixtureGitEnv+`"`) && strings.Contains(line, `"value":"1"`) {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("trace2 events carry no def_param for %s=1:\n%s", FixtureGitEnv, events)
+	}
 }
 
 // TestMustRun_Failure verifies that MustRun calls tb.Fatalf on failure using the subprocess pattern

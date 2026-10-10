@@ -28,7 +28,7 @@ func TestRebuildIndex_EqualsIncrementallyBuiltIndex(t *testing.T) {
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	fabricengine.SeedFabricConfigForTest(t, warpPath)
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
@@ -98,7 +98,7 @@ func TestWeftSHAForWarpSHA_DetachedPathSelfCorrection(t *testing.T) {
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	warpSHA := fabricengine.CommitWarpForTest(t, warpPath, "warp change")
@@ -153,7 +153,7 @@ func staleCorrespondenceFixture(t *testing.T) (f *fabricengine.Fabric, warpSHA s
 	t.Helper()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f = fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	baseWeftSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeRecords())

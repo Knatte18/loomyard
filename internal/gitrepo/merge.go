@@ -227,21 +227,14 @@ func (r *Repo) StageTrackedChanges() error {
 // two-head MERGE_HEAD, while `for-each-ref MERGE_HEAD` and `show-ref MERGE_HEAD` print nothing at all
 // (it is not under refs/). A first-entry-only answer would let `git merge --no-commit <expected> <decoy>`
 // pass an equality test against the expected SHA, which is exactly the octopus a caller must reject.
-// The file itself is the only complete source, and `git rev-parse --git-path MERGE_HEAD` is git's own
-// supported way to locate it — it resolves correctly for a linked worktree, where the file lives under
-// `.git/worktrees/<name>/` rather than beside the repo's own `.git`.
-// The path is printed relative to the git invocation's directory when the repo is the main worktree, so
-// a relative answer is joined onto this Repo's path.
+// The file itself is the only complete source.
+// It lives in the per-worktree git dir, which for a linked worktree is under `.git/worktrees/<name>/` rather than beside the repo's own `.git`, and GitDir names exactly that directory.
 func (r *Repo) MergeHeads() ([]string, error) {
-	stdout, err := r.runChecked("rev-parse", "--git-path", "MERGE_HEAD")
+	gitDir, err := r.GitDir()
 	if err != nil {
-		return nil, fmt.Errorf("gitrepo: rev-parse --git-path MERGE_HEAD in %s: %w", r.path, err)
+		return nil, err
 	}
-
-	mergeHeadPath := strings.TrimSpace(stdout)
-	if !filepath.IsAbs(mergeHeadPath) {
-		mergeHeadPath = filepath.Join(r.path, mergeHeadPath)
-	}
+	mergeHeadPath := filepath.Join(gitDir, "MERGE_HEAD")
 
 	content, err := os.ReadFile(mergeHeadPath)
 	if errors.Is(err, fs.ErrNotExist) {

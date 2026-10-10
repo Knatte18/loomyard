@@ -16,6 +16,24 @@
 // The header line shows the exact command run, tags included.
 // Exit code mirrors the underlying `go test`: 0 on success, 1 if any package failed to build or any test failed.
 //
+// The -resources mode replaces the timing table with a per-package resource table:
+//
+//	go run ./cmd/testtiming -resources [-pkg ./internal/x,./internal/y] [-tags t | -full]
+//
+// It runs the selected packages one at a time, each as its own `go test -json -count=1` child over one package, inside one gate slot when the working directory is in a hub, and under the template's -p cap otherwise.
+// -pkg takes comma-separated package patterns and defaults to every package; -tags and -full pick the tier as in the timing mode.
+// Each package gets a private temp directory its child's TMPDIR, TMP and TEMP point at.
+// The columns are PACKAGE, WALL (child start to exit), CPU, PEAK_MEM, PROCS and LEFTOVER, plus a FAIL mark.
+// CPU and PEAK_MEM come from the child's cgroup when `systemd-run --user --scope` works, read from cpu.stat's usage_usec and memory.peak while the scope lives, and from the child's rusage otherwise, where PEAK_MEM is the largest single process's max RSS and the row carries a rusage mark.
+// PROCS is the delta of the `processes` line of /proc/stat across the child, so it is system-wide and blank where /proc/stat is unreadable.
+// LEFTOVER counts the processes still referencing the package's temp directory through cwd, executable or argv after the child exited; a trailing list names each as `pid argv`.
+// GIT_FIXTURE and GIT_CODE count the git processes the package ran, split on the fixture marker `LYX_FIXTURE_GIT`: git that gitkit's spawn helpers or a hub build started carries it, and all other git is code under test.
+// The census reads git's trace2 event files, one per git process, from a trace directory the child's environment points at, and a second table after the first lists the processes by subcommand with total, fixture and code counts.
+// The split is exact for a serial package and approximate where a hub build overlaps other tests of the same package, so a before-to-after comparison reads the total.
+// The table ends with the one-minute load average at start and at end, so a report reads "quiet machine" as a precondition.
+// The measurements are Linux-first: elsewhere the cgroup and /proc readings are absent and the columns that need them stay blank.
+// -resources together with -redundancy is refused.
+//
 // The -redundancy mode replaces the timing table with a coverage report:
 //
 //	go run ./cmd/testtiming -redundancy [-pkg ./internal/x,./internal/y] [-out report.md] [-tags t]
@@ -50,6 +68,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // testEvent is one line of `go test -json` output (decoded fields only).
@@ -85,11 +105,21 @@ func main() {
 	top := flag.Int("top", 15, "how many of the slowest top-level tests to list")
 	redundancy := flag.Bool("redundancy", false, "per-test coverage redundancy mode: write a markdown report instead of the timing table")
 	out := flag.String("out", defaultRedundancyOut, "with -redundancy: the markdown report to write")
-	pkg := flag.String("pkg", defaultRedundancyPkg, "with -redundancy: the package patterns to measure, comma-separated")
+	pkg := flag.String("pkg", defaultRedundancyPkg, "with -redundancy or -resources: the package patterns to measure, comma-separated")
+	resources := flag.Bool("resources", false, "per-package resource mode: measure wall, CPU, peak memory, processes and leftovers, one package at a time in a gate slot")
 	flag.Parse()
 
-	var err error
-	if *redundancy {
+	err := modeConflict(*redundancy, *resources)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "testtiming:", err)
+		os.Exit(1)
+	}
+	if *resources {
+		var tags string
+		if tags, err = resolveTags(*full, *tagFlag); err == nil {
+			err = runResources(tags, *pkg)
+		}
+	} else if *redundancy {
 		var tags string
 		if tags, err = redundancyTags(*full, *tagFlag); err == nil {
 			err = runRedundancy(tags, *pkg, *out)
@@ -104,6 +134,14 @@ func main() {
 		fmt.Fprintln(os.Stderr, "testtiming:", err)
 		os.Exit(1)
 	}
+}
+
+// modeConflict refuses -resources together with -redundancy, the two modes that replace the timing table.
+func modeConflict(redundancy, resources bool) error {
+	if redundancy && resources {
+		return errors.New("-resources and -redundancy are mutually exclusive: each replaces the timing table")
+	}
+	return nil
 }
 
 // resolveTags turns the -full and -tags flags into the build-tag string, empty for the untagged tier.
@@ -129,7 +167,18 @@ func run(tags string, top int) error {
 	args = append(args, "./...", "-json", "-count=1")
 	cmdline += " ./... -count=1"
 
+	root, err := lyxcwd.Getwd()
+	if err != nil {
+		return fmt.Errorf("read the working directory: %w", err)
+	}
+	env, cleanup, err := prebuildLyx("go", tags, root, os.Environ())
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	cmd := exec.Command("go", args...)
+	cmd.Env = env
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("pipe stdout: %w", err)

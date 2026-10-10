@@ -57,7 +57,7 @@ func TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink(t *testing.T) {
 			t.Parallel()
 
 			const slug = "toctou-write"
-			h := hubforge.NewHub(t, ".")
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 			l := h.Location
 
 			// An out-of-hub directory the launcher writes would land in if containment were bypassed.

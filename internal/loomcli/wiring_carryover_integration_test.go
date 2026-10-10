@@ -22,7 +22,7 @@ import (
 // TestWriteCarryOver_Real_CommitsTheRecordAlone asserts writeCarryOver puts the segment's entry into the decision record and commits that record and nothing else.
 // Another dirty file of the discussion directory stays uncommitted, and writing the same entry again commits nothing.
 func TestWriteCarryOver_Real_CommitsTheRecordAlone(t *testing.T) {
-	hub := hubforge.NewHub(t, ".")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "carryoverrecord"
 	hubforge.AddPair(t, hub, slug)
 	location, err := lyxcwd.ResolveWorktree(hub.PairCodeWorktree(slug))

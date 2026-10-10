@@ -6,7 +6,7 @@
 // remote failure, and the once-per-verb no-origin pre-check across every combination of apply and
 // remote.
 //
-// Every hub here is built through hubforge.NewHub per the hubforge Fabric-Fixture Invariant, using the hub's own RecordsBare field as the weft remote to assert against — this hub's private copy of the weft bare remote,
+// Every hub here is built through hubforge.CopyHub per the hubforge Fabric-Fixture Invariant, using the hub's own RecordsBare field as the weft remote to assert against — this hub's private copy of the weft bare remote,
 // so a test can push an orphan branch to it and then assert the ref is gone.
 //
 // Package fabricengine_test to reuse mustRecordsRepoRoot (add_rollback_adopt_test.go / reconcile_stale_registration_test.go) — every assertion here goes through exported API;
@@ -56,7 +56,7 @@ func TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-remote-both-weft"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 
@@ -93,7 +93,7 @@ func TestCleanup_RemoteFalseLeavesRemoteCopyIntact(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-remote-off-weft"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 
@@ -124,7 +124,7 @@ func TestCleanup_DryRunWithRemoteDeletesNeither(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-dry-remote-weft"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 
@@ -156,7 +156,7 @@ func TestCleanup_NeverPushedOrphanIsIdempotentOnRemote(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-never-pushed-weft"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 
@@ -193,7 +193,7 @@ func TestCleanup_ProtectedEntryUntouchedOnRemote(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-unmanaged-legacy"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 
@@ -228,7 +228,7 @@ func TestCleanup_RemoteFailureIsNonFatal(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-remote-fail-weft"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 
@@ -261,7 +261,7 @@ func TestCleanup_RemoteFailureIsNonFatal(t *testing.T) {
 func TestCleanup_NoOriginUnderApplyAndRemoteSkipsOnceReportsOnce(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 
@@ -301,7 +301,7 @@ func TestCleanup_NoOriginUnderRemoteWithoutApplyIsStillReportedAndDeletesNothing
 	t.Parallel()
 
 	const branch = "cleanup-no-origin-dry-weft"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 
@@ -334,7 +334,7 @@ func TestCleanup_NoOriginWithRemoteFalseReportsNoReason(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-no-origin-remote-off-weft"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 

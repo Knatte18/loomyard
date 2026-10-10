@@ -6,11 +6,18 @@ package reedcli
 
 import (
 	"bytes"
+	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // TestSmokeTeardown runs the teardown claims against one hub, each step bringing up its own session on the prime worktree and ending with that session down, so the next step starts from the same cold state.
@@ -19,9 +26,10 @@ func TestSmokeTeardown(t *testing.T) {
 	t.Parallel()
 	tmuxPath := tmuxBinaryPath(t)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	prime := h.PrimeWorktree()
 	deferHubRelease(t, prime)
+	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLIIn(prime, &buf, []string{"down"})
@@ -87,6 +95,8 @@ func TestSmokeTeardown(t *testing.T) {
 	//
 	// This step's payload is chosen to make exactly that distinction: the pane runs a descendant that TRAPS SIGHUP, so tmux's cascade cannot reap it and only reed's explicit force-kill can.
 	// With the defect present, down returned ok while that descendant stayed alive (reproduced live before the fix); with it fixed, down blocks until the descendant is actually gone.
+	// The immune descendant also forks a late child, immune too, a few seconds after down's snapshot, as a pane shell does when down lands just after a strand's command was typed.
+	// Only the reap of the pane session's remaining members reaches that child, since no snapshot holds it.
 	//
 	// POSIX-only: the payload needs a shell-level SIGHUP trap, which has no Windows equivalent.
 	if !t.Run("DownForceKillsSighupImmunePaneChildren", func(t *testing.T) {
@@ -97,13 +107,25 @@ func TestSmokeTeardown(t *testing.T) {
 
 		// `exec` on the outer sleep keeps the immune child's parent pid stable, so
 		// the child stays inside the pane's descendant closure reed snapshots.
-		immune := `bash -c 'bash -c "trap \"\" HUP; exec sleep 300" & exec sleep 300'`
+		// The immune child marks itself started, outlives the snapshot in its `sleep 5`, then records its late child's pid and waits until reed force-kills it.
+		readyFile := filepath.Join(t.TempDir(), "ready")
+		lateFile := filepath.Join(t.TempDir(), "late.pid")
+		immune := fmt.Sprintf(`bash -c 'bash -c "trap \"\" HUP; : > %s; sleep 5; sleep 300 & echo \$! > %s; wait" & exec sleep 300'`, readyFile, lateFile)
 		addStrandIn(t, prime, immune, "--name", "immune")
 		socket, session := socketAndSessionIn(t, prime)
+		// Without this wait, down can land before the pane shell runs the payload at all,
+		// and the step passes with nothing immune to reap.
+		waitForCondition(t, 10*time.Second, func() bool {
+			_, err := os.Stat(readyFile)
+			return err == nil
+		})
 
 		pids := paneProcessTree(t, tmuxPath, socket, session)
 		if len(pids) == 0 {
 			t.Fatalf("session reported no pane process subtree")
+		}
+		if _, err := os.Stat(lateFile); err == nil {
+			t.Fatalf("late child already forked before down; want it forked after down's snapshot")
 		}
 
 		run(t, prime, "down")
@@ -113,6 +135,17 @@ func TestSmokeTeardown(t *testing.T) {
 			if !processGone(pid) {
 				t.Errorf("pane subtree pid %d still running immediately after down returned; reed's force-kill fallback did not run", pid)
 			}
+		}
+		raw, err := os.ReadFile(lateFile)
+		if err != nil {
+			t.Fatalf("read late child pid: %v; want the immune child to have forked it during down's graceful wait", err)
+		}
+		latePID, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+		if err != nil {
+			t.Fatalf("parse late child pid %q: %v", raw, err)
+		}
+		if !processGone(latePID) {
+			t.Errorf("late pane session member pid %d still running immediately after down returned; reed did not reap the session's members beyond its snapshot", latePID)
 		}
 	}) {
 		return

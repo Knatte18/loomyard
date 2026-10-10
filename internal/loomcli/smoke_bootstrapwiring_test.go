@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
 // plantFrictionNote writes a friction note named name inside loc's Tier 2 friction directory --
@@ -48,7 +49,7 @@ func plantFrictionNote(t *testing.T, loc *lyxcwd.Location, name string) string {
 // Every behavior here is the regression guard for a helper that was correct and unit-tested and still wrong in production, because nothing called it;
 // only a test through the real bootstrap tells the two states apart.
 func TestSmokeStepBootstrapWiring(t *testing.T) {
-	exe := sharedLyxBinary(t)
+	exe := lyxbin.Build(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)

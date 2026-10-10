@@ -105,7 +105,7 @@ type hubStep struct {
 func TestStencilCLI_Scenario(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	worktree := h.PrimeWorktree()
 
 	steps := []hubStep{

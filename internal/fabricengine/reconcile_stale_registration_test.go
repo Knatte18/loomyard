@@ -45,7 +45,7 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 	t.Parallel()
 
 	const slug = "stale-reg-recreate"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	l := h.Location
 	topology := h.Topology
@@ -97,7 +97,7 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	if err := os.RemoveAll(h.PrimeRecords()); err != nil {
@@ -192,7 +192,7 @@ func TestPrune_ApplyRemovesPortalAndLaunchers(t *testing.T) {
 	t.Parallel()
 
 	const slug = "prune-portal-r6"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
@@ -245,7 +245,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 		t.Parallel()
 
 		const slug = "prune-stale-reg-f2"
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		l := h.Location
 		topology := h.Topology
 		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
@@ -286,7 +286,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 		t.Parallel()
 
 		const slug = "prune-stale-reg-f3"
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		l := h.Location
 		topology := h.Topology
 		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
@@ -326,7 +326,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 
@@ -358,7 +358,7 @@ func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 func TestCleanup_NonSuffixedBranchNeverDeleted(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 
@@ -392,7 +392,7 @@ func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	t.Parallel()
 
 	const slug = "cleanup-detached-r5"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
@@ -442,7 +442,7 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 	t.Parallel()
 
 	const slug = "pairinsync-realdir"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
@@ -485,7 +485,7 @@ func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "reconcile-recreated-pair"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
@@ -533,7 +533,7 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "cleanup-dryrun-parity"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
@@ -600,7 +600,7 @@ func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "cleanup-force-reserved"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
@@ -662,7 +662,7 @@ func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
 func TestReconcile_RestoresDeletedPortalAndLaunchers(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	const slug = "portal-repair"
 

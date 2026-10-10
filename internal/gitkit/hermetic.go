@@ -40,7 +40,8 @@ func HermeticGitEnv() {
 			"[maintenance]\n" +
 			"\tauto = false\n" +
 			"[gc]\n" +
-			"\tauto = 0\n"
+			"\tauto = 0\n" +
+			"\tautoDetach = false\n"
 
 		// Fixture-construction precedent (mustGit): errors here are unrecoverable
 		// setup failures, so panic immediately rather than threading an error

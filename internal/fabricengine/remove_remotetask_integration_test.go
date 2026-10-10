@@ -33,7 +33,7 @@ func originHasBranch(t *testing.T, bare, branch string) bool {
 func pushedPair(t *testing.T, slug string) *hubforge.Hub {
 	t.Helper()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	warpBranchCommit(t, h.Location, slug, "work.txt")
 	gitkit.MustRun(t, fabricengine.WorktreePath(h.Location, slug), "git", "push", "origin", slug)
