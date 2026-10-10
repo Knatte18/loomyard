@@ -116,6 +116,10 @@ type loomCLI struct {
 	// read it back to build every shedrun.* path, in place of a hardcoded shedrun.SelfRunID, so a
 	// later card and batch 7's addressing surface can read it too.
 	runID string
+	// recipe is the name of the recipe the run's seed records, read once in armAt right after the run-id (resolveRecipe);
+	// shedrun.RecipeLoom when the run has no seed yet.
+	// The routing, the shed builder, the wiring branch, the landing verify source and the reject rework row all read it.
+	recipe string
 	// routing is the recipe's producer-graph projection armAt loads (loadRouting) and specFor copies
 	// onto the Spec; zero on a hand-populated receiver, which reports no progress.
 	routing shedengine.Routing

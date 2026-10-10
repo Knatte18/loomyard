@@ -18,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -103,7 +102,7 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 		return "", "", bootstrapStageSeed, err
 	}
 	driver := resolveSeedDriver(existingSeed, seedFound)
-	if err := shedrun.WriteSeed(c.location, shedrun.SelfRunID, loomSeedFor(parent, driver)); err != nil {
+	if err := shedrun.WriteSeed(c.location, shedrun.SelfRunID, loomSeedFor(resolveSeedRecipe(existingSeed, seedFound), parent, driver)); err != nil {
 		return "", "", bootstrapStageSeed, err
 	}
 
@@ -173,18 +172,28 @@ func resolveSeedDriver(existing shedrun.Seed, found bool) string {
 	return existing.Driver
 }
 
-// loomSeedFor builds the shedrun.Seed seedAndCommitBootstrap's step 1b writes: loom's fixed recipe,
-// the driver to record (told by the caller, never chosen here -- see resolveSeedDriver), and the
-// run's recorded startup choice of parent branch as its sole param.
+// resolveSeedRecipe reads the recipe seedAndCommitBootstrap's step 1b must write: the already-recorded seed's own Recipe when one exists, shedrun.RecipeLoom otherwise.
+// It is the read, not a choice, so `lyx loom start` never writes a recipe over an existing seed;
+// the recipe of a run is set only by the seeding that created the seed.
+func resolveSeedRecipe(existing shedrun.Seed, found bool) string {
+	if !found {
+		return shedrun.RecipeLoom
+	}
+	return existing.Recipe
+}
+
+// loomSeedFor builds the shedrun.Seed seedAndCommitBootstrap's step 1b writes.
+// The recipe and the driver to record are told by the caller and never chosen here, see resolveSeedRecipe and resolveSeedDriver.
+// The run's recorded startup choice of parent branch is the seed's sole param.
 // It is a pure function, factored out of seedAndCommitBootstrap so its shape is directly testable
 // without driving the whole bootstrap sequence -- WriteSeed itself needs no real fabric, but
 // seedAndCommitBootstrap's own step 1 (fabricengine.ReadOrigin) does, which would otherwise put
 // this value's shape out of a Tier 1 test's reach.
 //
 // parent is the parent branch; the seed records no parent agent, which is resolved from fabric's origin record at use.
-func loomSeedFor(parent string, driver string) shedrun.Seed {
+func loomSeedFor(recipe, parent, driver string) shedrun.Seed {
 	return shedrun.Seed{
-		Recipe: shedrun.RecipeLoom,
+		Recipe: recipe,
 		Driver: driver,
 		Params: map[string]string{"parent": parent},
 	}
@@ -320,8 +329,8 @@ func (c *loomCLI) buildLoomShed() (*shedengine.Shed, error) {
 		c.parentName,
 		driverWaitMark(c.reed.Status, c.reed.SetWaitMark),
 		conflictSessionStopper(c.reed.Status, c.runner.StopStrand),
-		planVerifySource(c.location),
+		c.verifySource(),
 	)
 
-	return loomrecipe.New(c.env, c.shedPaths)
+	return c.newShed()
 }

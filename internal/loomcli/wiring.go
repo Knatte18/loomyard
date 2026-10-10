@@ -282,6 +282,25 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	c.env.PlanIndex = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), hubgeom.GateSlots(location), gateslot.WaitDir(location.AnchorPath()))
 }
 
+// pendingRejectionReader returns the seam that reads location's pending rejection record, with found false when none is recorded.
+// Building it opens nothing: the record is read on each call.
+func pendingRejectionReader(location *lyxcwd.Location) func() (loomshed.PendingRejection, bool, error) {
+	return func() (loomshed.PendingRejection, bool, error) {
+		r, found, err := landingshed.ReadRejection(loomengine.LoomRejectionPath(location))
+		if err != nil || !found {
+			return loomshed.PendingRejection{}, found, err
+		}
+		return loomshed.PendingRejection{PRNumber: r.PRNumber, HeadSHA: r.HeadSHA, RejectedAt: r.RejectedAt, Findings: r.Findings}, true, nil
+	}
+}
+
+// rejectionClearer returns the seam that removes location's pending rejection record.
+func rejectionClearer(location *lyxcwd.Location) func() error {
+	return func() error {
+		return landingshed.RemoveRecord(loomengine.LoomRejectionPath(location))
+	}
+}
+
 // committedAnchoredReader returns the seam that reads an anchor-relative file as committed at HEAD for location, with found false when HEAD has no such file.
 // Building it opens nothing: the fabric is read on each call.
 func committedAnchoredReader(location *lyxcwd.Location) func(anchorRel string) ([]byte, bool, error) {
@@ -514,16 +533,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ArchiveWebster: func(dest string) error {
 			return websterengine.ArchiveRunRecord(websterGeom, dest)
 		},
-		ReadRejection: func() (loomshed.PendingRejection, bool, error) {
-			r, found, err := landingshed.ReadRejection(loomengine.LoomRejectionPath(location))
-			if err != nil || !found {
-				return loomshed.PendingRejection{}, found, err
-			}
-			return loomshed.PendingRejection{PRNumber: r.PRNumber, HeadSHA: r.HeadSHA, RejectedAt: r.RejectedAt, Findings: r.Findings}, true, nil
-		},
-		ClearRejection: func() error {
-			return landingshed.RemoveRecord(loomengine.LoomRejectionPath(location))
-		},
+		ReadRejection:  pendingRejectionReader(location),
+		ClearRejection: rejectionClearer(location),
 		Commit: func() error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, reworkCommitPathspec(location), fmt.Sprintf("loom: rework round for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
@@ -779,6 +790,13 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 		RunID:                   c.runID,
 		MissingStatusWayForward: loomMissingStatusWayForward,
+	}
+
+	// A darn run swaps in the darn recipe's verify source and fills the Darn row's seams; a loom run leaves them nil.
+	if c.recipe == shedrun.RecipeDarn {
+		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, registry); err != nil {
+			return err
+		}
 	}
 
 	c.location = location
