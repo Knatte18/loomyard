@@ -40,4 +40,5 @@ their mechanics are documented there per the [doc-lifecycle convention](../overv
 - `internal/buildinfo` — the ldflags-stamped build channel (`Channel`, `IsDev`), a zero-import leaf so any CLI can read it with no cycle risk;
   the mapping to a stencil mode lives in `stencilstore.ModeFor`
 - `internal/buildvcs` — the running binary's VCS identity (`Identity`, `Running`), a stdlib-only leaf beside `internal/buildinfo`
+- `internal/dotgit` — the one `.git` parser: git dir, common dir, the repository test and the walk-up to a worktree root, a stdlib-only leaf
 - `internal/standalonestate` — pure derivation from an absolute target path to a `hash8` and its per-OS state directory, creating nothing on disk

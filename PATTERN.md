@@ -19,7 +19,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of `configengine.Load` (strict) or `LoadOrTemplate` (degrades to the embedded template). — [background](pattern/PATTERN-config-strictness.md)
 - `PATTERN-binary-change-reconcile` — Reconciling a hub's config after a binary change: only through `hubreconcile.Ensure`, which owns the build stamp and the hub lock.
 - `PATTERN-refusal-way-forward` — Adding a refusal in webster, shed or loom: its message names the way forward, its spec row lands in the same commit, and a test reaches it. — [background](pattern/PATTERN-refusal-way-forward.md)
-- `PATTERN-no-denied-recovery` — Naming a way forward or a step in a refusal, stencil or spec: never a command the agents' settings deny (`git reset --hard`, `git push --force`/`-f`, `rm -rf`); lyx performs that step itself. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
+- `PATTERN-no-denied-recovery` — Naming a way forward or a step in a refusal, stencil or spec: never a command the agents' settings deny; lyx performs that step itself. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
 
 ## Fabric and git
 
@@ -33,8 +33,8 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-batten-bookend` — Creating or destroying a task worktree: the producer never runs from inside it, and session shutdown precedes removal in one row. — [background](pattern/PATTERN-batten-bookend.md)
 - `PATTERN-github-auth` — Calling GitHub: all authentication goes through `internal/githubclient`, and no other production package shells out to `gh`.
 - `PATTERN-agent-filed-issues` — Filing a GitHub issue from lyx: only through `lyx selfreport create`, run by an agent or the operator; no other production package calls `selfreportengine.CreateIssue`. (test)
-- `PATTERN-hub-store-gc` — Hub stores carry `gc.auto=0` and `maintenance.auto=false`: only `fabricengine/housekeeping.go` runs `gc` or writes those keys, and it is no destructive primitive. — [background](pattern/PATTERN-hub-store-gc.md)
-- `PATTERN-gogit-read-helper` — Reading through go-git in `internal/gitrepo`: only through `readGoGit`, the sole caller of `goGit()`, which retries a whole read once after a repack. (test) — [background](pattern/PATTERN-gogit-read-helper.md)
+- `PATTERN-hub-store-gc` — Hub stores carry `gc.auto=0` and `maintenance.auto=false`: only `fabricengine/housekeeping.go` runs `gc` or writes those keys. — [background](pattern/PATTERN-hub-store-gc.md)
+- `PATTERN-gogit-read-helper` — Reading through go-git in `internal/gitrepo`: only through `readGoGit`, the sole caller of `goGit()`. (test) — [background](pattern/PATTERN-gogit-read-helper.md)
 - `PATTERN-gitrepo-client-boundary` — Reading or mutating git state in `internal/gitrepo`: go-git owns local reads, `gitexec` owns remote-authenticating or tree-mutating work. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
 - `PATTERN-gitexec-checked-call` — Running git: use `gitexec.Run`/`runChecked`; the raw `RunGit`/`r.run` forms survive only at pinned `//gitexec:raw` call sites.
 - `PATTERN-never-force-add` — Keeping transients out of the index: each repo's own `.git/info/exclude`; fabric and gitrepo never run `git add -f`.
@@ -55,7 +55,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-verified-tree` — Running a verify command: through `verifytree.Verify` only, never on a dirty tree, skipping only on a record of HEAD's tree. (test) — [background](pattern/PATTERN-verified-tree.md)
 - `PATTERN-gate-slot` — Running a gate build or test: only in a `-p`-capped hub slot of `internal/gateslot`.
 - `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch the active profile's batchifier derives, its kind chosen by `internal/batcher`'s registry and the profile by `batcher.yaml`'s `active:`; the partition is recorded in `state.json` at first init, replaced only by a rebaseline.
-- `PATTERN-review-round` — Running a review and fix round: review on disk before any target is touched, every finding fixed or disputed with evidence its premise is false, converged only on a judge verdict, from round 2 on over a fresh-key fix carried to `## Open risks`. — [background](pattern/PATTERN-review-round.md)
+- `PATTERN-review-round` — Running a review and fix round: review on disk before any target is touched, every finding fixed or disputed with evidence its premise is false, converged only on a judge verdict. — [background](pattern/PATTERN-review-round.md)
 - `PATTERN-sole-parsers` — Reading or writing plan, discussion, summary or recipe files: only `planparser`, `discussionparser`, `summaryparser` and `shedbuild` parse them. (test) — [background](pattern/PATTERN-sole-parsers.md)
 
 ## Agents and prompts
@@ -79,7 +79,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 ## Packages
 
-- `PATTERN-leaf-packages` — Importing into `gitkit`, `modelspec`, `buildinfo`, `standalonestate`, `segmentcolor`, `pattern` or `friction`: each admits a closed import set. — [background](pattern/PATTERN-leaf-packages.md)
+- `PATTERN-leaf-packages` — Importing into `gitkit`, `modelspec`, `buildinfo`, `standalonestate`, `segmentcolor`, `dotgit`, `pattern` or `friction`: each admits a closed import set. — [background](pattern/PATTERN-leaf-packages.md)
 
 ## Build and tooling
 

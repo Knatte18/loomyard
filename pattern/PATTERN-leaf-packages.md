@@ -36,3 +36,9 @@ Imports only the standard library, `lyxdirs`, `stencilstore` and `stencil`.
 Imports only the standard library, `internal/logger`, `internal/stencil` and `internal/stencilstore`.
 - `internal/logger` is admitted because the marker-absent helper logs rather than returning a bool for seven callers to duplicate.
   `internal/friction` already pulls `logger` transitively through `internal/stencilstore`, so the admission widens nothing in practice.
+
+## `internal/dotgit`
+
+Imports only the standard library.
+It is the sole `.git` parser: git dir, common dir, the repository test and the walk-up to a worktree root, in-process and spawning nothing.
+It is its own package because `gitrepo`'s in-package test imports `gitkit`, which reaches `lyxcwd`, so `lyxcwd` importing `gitrepo` would close a cycle.
