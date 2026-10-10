@@ -502,6 +502,7 @@ var wordingClaims = []stencilClaims{
 			"running` snapshot"),
 		wantAll("every recover-batch call blocks to a terminal state, so Merriam runs it backgrounded, ends its turn and acts on the completion notification",
 			"Run `lyx webster recover-batch <NN>` as a **backgrounded** Bash command, end your turn, and act on the command's completion notification",
+			"its output is the terminal digest, exiting non-zero when its `status` is not `done`, or a refusal",
 			"Never run it in the foreground, never poll it and never `sleep`.",
 			"- `recover-batch <NN>` completes with a terminal `status: done`"),
 		wantAll("the bracket sequence, the verbatim prompt forwarding, the backgrounded-fork wait discipline and the recovery ladder are stated in prose",

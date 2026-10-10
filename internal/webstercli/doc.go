@@ -44,4 +44,10 @@
 // warnings carry the findings the archive dropped and any git status failure.
 // moved is false when start could not be moved to and the record was only archived, with reason naming why.
 // When the checkout rewrite fails after the remote moved, the error envelope carries mutations and partial true, and re-running the reset converges.
+//
+// # Recover-batch
+//
+// recover-batch exits non-zero whenever the terminal record it returns for is not done: a stuck or dead digest goes out as an error envelope (`ok` false) carrying the same fields as a done one, the digest fields with recoveries, recovery_retry and warnings.
+// Its message names the way forward, `lyx webster recover-batch NN` once more when recovery_retry is true, else ending the run stuck naming the batch.
+// A done digest and a running snapshot exit 0, and Master reads the digest fields, never the exit code.
 package webstercli

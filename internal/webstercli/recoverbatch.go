@@ -45,6 +45,15 @@ func batchSlugFor(batches []batcher.Batch, batchNumber int) string {
 	return ""
 }
 
+// recoveryNotDoneMessage is the error of a recover-batch call whose terminal digest is not done:
+// the recovery did not recover the batch, and the way forward is one more recovery when the batch has one left, else ending the run stuck.
+func recoveryNotDoneMessage(batchName string, batchNumber int, status string, retry bool) string {
+	if retry {
+		return fmt.Sprintf("webster: batch %s recovery ended %s; way forward: run `lyx webster recover-batch %d` once more", batchName, status, batchNumber)
+	}
+	return fmt.Sprintf("webster: batch %s recovery ended %s and the batch has no recovery left; way forward: end the run stuck, naming batch %s", batchName, status, batchName)
+}
+
 // recoverBatchCmd builds the `recover-batch <nn>` subcommand.
 func (c *websterCLI) recoverBatchCmd() *cobra.Command {
 	var wait time.Duration
@@ -63,7 +72,10 @@ call fabric-commits the batch report and state.json and returns the digest
 envelope, exactly like record-batch's own terminal envelope plus "recoveries",
 the batch's counted recovery spawns, and "recovery_retry", true when the
 recovery is dead, committed work of its own and the batch has a recovery left
-to run. A call that would spawn a third counted recovery refuses with
+to run. A terminal digest whose status is not done (stuck or dead) exits
+non-zero with "ok": false and the same fields, its message naming the way
+forward: "lyx webster recover-batch NN" once more when recovery_retry is
+true, else ending the run stuck naming the batch. A call that would spawn a third counted recovery refuses with
 {"recovery_exhausted": true}. A recovery
 the post-batch checks reject takes the batch terminal failed: the failed
 state and archived report are saved and committed, and the call exits
@@ -307,8 +319,13 @@ Example:
 				}
 
 				fields := digestFields(*result.Digest)
-				fields["recovery_retry"], fields["recoveries"] = websterengine.RecoveryRetry(c.geom, fresh, batchNumber)
+				retry, recoveries := websterengine.RecoveryRetry(c.geom, fresh, batchNumber)
+				fields["recovery_retry"], fields["recoveries"] = retry, recoveries
 				fields["warnings"] = ownerlessRunWarnings(c.geom.ScratchDir, result.Warnings)
+				if result.Digest.Status != websterengine.DigestStatusDone {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, recoveryNotDoneMessage(batchName, batchNumber, result.Digest.Status, retry), fields))
+					return nil
+				}
 				clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
 				return nil
 			}
