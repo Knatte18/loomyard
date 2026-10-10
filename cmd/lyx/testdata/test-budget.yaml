@@ -103,6 +103,7 @@ internal/stencil: 4
 internal/stencilcli: 1
 internal/stencilstore: 18
 internal/summaryparser: 8
+internal/termwindow: 2
 internal/testkit: 2
 internal/testkit/envelope: 6
 internal/testkit/envkit: 4

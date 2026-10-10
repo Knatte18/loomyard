@@ -208,11 +208,11 @@ func TestWire_PauseRequestedReadsBattensOwnStatus(t *testing.T) {
 	}
 }
 
-// TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree asserts the watched-marker seams and the stop-report seam return an error, rather than reporting not held or not found, when the task worktree their files live in is absent.
+// TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree asserts the watched-marker seams, the stop-report seam and the terminal window seam return an error, rather than reporting not held or not found, when the task worktree their files live in is absent.
 func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	t.Parallel()
 
-	c, _ := wiredPrime(t)
+	c, location := wiredPrime(t)
 
 	for name, mark := range map[string]func(context.Context) (bool, error){"RunShed": c.env.InnerRun.MarkWatched, "SeedChild": c.env.SeedChild.MarkWatched} {
 		held, err := mark(context.Background())
@@ -225,6 +225,18 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	}
 	if runs, _, err := c.env.InnerRun.Activity(context.Background()); err == nil || runs != nil || !strings.Contains(err.Error(), "a-slug") {
 		t.Errorf("Activity() runs=%v, error=%v; want the absent-worktree refusal naming the slug", runs, err)
+	}
+
+	// The terminal window seam exists only on a run asked for one, and locates the task worktree before any launcher runs.
+	if c.env.InnerRun.OpenTerminal != nil {
+		t.Errorf("OpenTerminal is set on a run without --open-terminal; want nil")
+	}
+	asked := &battenCLI{openTerminalFlag: true}
+	if err := asked.wire(location, "a-slug"); err != nil {
+		t.Fatalf("wire() error = %v; want nil", err)
+	}
+	if err := asked.env.InnerRun.OpenTerminal(context.Background()); err == nil || !strings.Contains(err.Error(), "a-slug") {
+		t.Errorf("OpenTerminal() error = %v; want the absent-worktree refusal naming the slug", err)
 	}
 }
 

@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/termwindow"
 	"github.com/spf13/cobra"
 )
 
@@ -78,10 +79,17 @@ type battenCLI struct {
 	windowFlag bool
 	// windowOpener, when non-nil, replaces the prime's reed engine as the thing the run verb's --window opens its window through, so the refusals are testable without tmux.
 	windowOpener func(name string, lyxArgs []string) (reedengine.WindowResult, error)
+	// terminalLauncher, when non-nil, replaces termwindow.Resolve as what --window asks for this machine's terminal launcher name, so the envelope is testable on any machine.
+	terminalLauncher func() (string, error)
+	// openTerminalFlag carries "run"'s hidden --open-terminal value, which --window passes to the run it starts.
+	openTerminalFlag bool
 }
 
 // windowNamePrefix starts the name of the window "lyx batten run <slug> --window" opens, ahead of the slug.
 const windowNamePrefix = "batten:"
+
+// openTerminalFlagName names the hidden run flag that makes Run-Shed open a terminal window attached to the task worktree once it spawns the task's run.
+const openTerminalFlagName = "open-terminal"
 
 // battenVerbTexts carries batten's four shedverbs-driven verbs' Use/Short/Long text.
 // run's and status's are lifted verbatim from their original hand-written constructors (run.go,
@@ -111,11 +119,17 @@ its absence: prime hosts many slug-addressed batten runs, so an omitted
 run-id refuses by name rather than defaulting to "self".
 
 With --window, the same run starts in its own tmux window of the prime's reed
-session and the verb returns at once with the window's id and name. The flag only
-chooses where the same "lyx batten run" executes and never changes the run; the
+session and the verb returns at once with the window's id and name; the tmux
 window lives as long as the reed session. A window of that name with a live run
 is reported and nothing is started; a second batten for the slug is refused by
 the run's own lock inside the window and read from batten's own log.
+
+--window also opens one desktop terminal window, titled with the slug, running
+"lyx reed attach" in the task worktree once the run has spawned the task's own
+run there: Konsole on Linux, Windows Terminal into WSL on WSL. The envelope's
+terminal_window field names the launcher, or says no window is opened when this
+machine has none. A run that already opened its terminal window never opens a
+second one.
 
 Example:
   lyx batten run some-slug
@@ -243,7 +257,9 @@ Example:
 	// here.
 	runVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
 	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", shedrun.DriverLLM, "the driver the task worktree's own inner run uses")
-	runVerb.Flags().BoolVar(&c.windowFlag, "window", false, "start the same run in its own tmux window of the prime's reed session and return at once; the flag only chooses where the run executes, and the window lives as long as the reed session")
+	runVerb.Flags().BoolVar(&c.windowFlag, "window", false, "start the same run in its own tmux window of the prime's reed session and return at once, and open a terminal window attached to the task worktree once the run reaches it")
+	runVerb.Flags().BoolVar(&c.openTerminalFlag, openTerminalFlagName, false, "open a terminal window attached to the task worktree once the task's run spawns; --window passes it")
+	_ = runVerb.Flags().MarkHidden(openTerminalFlagName)
 	originalRunE := runVerb.RunE
 	runVerb.RunE = func(cmd *cobra.Command, args []string) error {
 		if !c.windowFlag {
@@ -302,6 +318,8 @@ func (c *battenCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) e
 }
 
 // runInWindow is the run verb's body under --window: it opens the window "batten:<slug>" running "lyx batten run <slug>" (without --window, carrying an explicitly typed --driver or --child-driver through) and prints the window's id and name.
+// When this machine has a terminal launcher, the window's run also gets --open-terminal and the envelope's terminal_window names the launcher;
+// with none, the run goes on without it and terminal_window says no window is opened and why.
 // A slug whose status is done, undecodable or in an unrecognized state is refused before any window opens, with the same refusal a plain run gives;
 // seeding a fresh status stays inside the window's own run.
 // The envelope reports a started window only, never a started batten: a second batten for the slug is refused by the run's own lock inside the window.
@@ -324,6 +342,20 @@ func (c *battenCLI) runInWindow(cmd *cobra.Command) error {
 	if c.childDriverFlagSet {
 		lyxArgs = append(lyxArgs, "--child-driver", c.childDriverFlag)
 	}
+	resolveLauncher := c.terminalLauncher
+	if resolveLauncher == nil {
+		resolveLauncher = func() (string, error) {
+			launcher, err := termwindow.Resolve()
+			return launcher.Name(), err
+		}
+	}
+	launcherName, launcherErr := resolveLauncher()
+	terminalWindow := fmt.Sprintf("opens through %s once the task's run is spawned in the task worktree", launcherName)
+	if launcherErr != nil {
+		terminalWindow = fmt.Sprintf("none opened: %v", launcherErr)
+	} else {
+		lyxArgs = append(lyxArgs, "--"+openTerminalFlagName)
+	}
 
 	open := c.windowOpener
 	if open == nil {
@@ -338,6 +370,8 @@ func (c *battenCLI) runInWindow(cmd *cobra.Command) error {
 	fields := map[string]any{"window_id": res.WindowID, "window_name": res.Name, "existing": res.Existing}
 	if res.Existing {
 		fields["note"] = "already running; nothing started"
+	} else {
+		fields["terminal_window"] = terminalWindow
 	}
 	clihelp.SetExit(ctx, output.Ok(out, fields))
 	return nil
