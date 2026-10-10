@@ -14,4 +14,8 @@
 // Before printing, it writes the full envelope to its per-invocation record under Spec.StepsDir, and the short envelope names that record's path as "envelope_path".
 // The --full flag, or a record that could not be written, makes step print the full envelope instead, byte-identical to the record.
 // The record, the exit code and the run's state are the same with or without --full.
+//
+// progress has two shapes.
+// The step envelope's progress is compact: step, steps and name, with a zero step or steps and an empty name omitted, and no remaining list.
+// The status envelope's progress keeps the full form including remaining, since the driver names producers from it.
 package shedverbs

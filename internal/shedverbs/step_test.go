@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -199,6 +200,9 @@ func TestStepEnvelope_FieldMapping(t *testing.T) {
 			}
 			if got := env["status_file"]; got != "/some/status.json" {
 				t.Errorf("envelope[\"status_file\"] = %v; want %v", got, "/some/status.json")
+			}
+			if got, present := env["progress"]; !present || got != nil {
+				t.Errorf("envelope[\"progress\"] = %v (present=%v); want null for a nil progress", got, present)
 			}
 		})
 	}
@@ -840,8 +844,9 @@ func TestStepCmd_SuccessEnvelopeCarriesIdentityAndProgress(t *testing.T) {
 		if !ok {
 			t.Fatalf("progress = %v; want an object", env["progress"])
 		}
-		if got["step"] != float64(want.Step) || got["steps"] != float64(want.Steps) || got["name"] != want.Name {
-			t.Errorf("progress = %v; want %+v", got, want)
+		wantCompact := map[string]any{"step": float64(want.Step), "steps": float64(want.Steps), "name": want.Name}
+		if !reflect.DeepEqual(got, wantCompact) {
+			t.Errorf("progress = %v; want the compact %v without remaining", got, wantCompact)
 		}
 	})
 

@@ -63,12 +63,16 @@ var StepKinds = []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, K
 //   - scratch_dir: loc.ScratchDir
 //   - trace_id: loc.TraceID
 //   - run_id: loc.RunID
-//   - progress: progress
+//   - progress: the compact form of progress -- step, steps and name, without the remaining steps and without any empty key -- or nil
 //   - parent_notice: res.ParentNotice, present only when it is non-empty (an awaiting halt that carries one)
 //
 // "continue" is derived here, rather than left to the caller, so a thin external supervisor skill
 // never carries its own copy of the State vocabulary -- it only ever branches on this one boolean.
 func StepEnvelope(res shedengine.StepResult, nextPolicy, statusFile, friction string, loc StepLocations, progress *shedengine.Progress) map[string]any {
+	var progressValue any
+	if compact := compactProgress(progress); compact != nil {
+		progressValue = compact
+	}
 	env := map[string]any{
 		"producer":              res.Producer,
 		"outcome":               string(res.Outcome),
@@ -86,12 +90,31 @@ func StepEnvelope(res shedengine.StepResult, nextPolicy, statusFile, friction st
 		"scratch_dir":           loc.ScratchDir,
 		"trace_id":              loc.TraceID,
 		"run_id":                loc.RunID,
-		"progress":              progress,
+		"progress":              progressValue,
 	}
 	if res.ParentNotice != "" {
 		env["parent_notice"] = res.ParentNotice
 	}
 	return env
+}
+
+// compactProgress maps p to the step envelope's progress object: step, steps and name, each omitted when zero or empty.
+// It drops the remaining steps, which only the status envelope carries, and returns nil for a nil p.
+func compactProgress(p *shedengine.Progress) map[string]any {
+	if p == nil {
+		return nil
+	}
+	compact := map[string]any{}
+	if p.Step != 0 {
+		compact["step"] = p.Step
+	}
+	if p.Steps != 0 {
+		compact["steps"] = p.Steps
+	}
+	if p.Name != "" {
+		compact["name"] = p.Name
+	}
+	return compact
 }
 
 // StepLocations carries the keys every step envelope, success or error, reports: trace_file
