@@ -1321,6 +1321,72 @@ func TestWatcher_HeldReloadStepRecordsReasonLogsOncePerChangeAndTypedLogsWait(t 
 	}
 }
 
+func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// mark returns the mark written before the reload starts, and false for none.
+		mark      func(boundary time.Time, pointer string) (ResumeMark, bool)
+		wantTyped bool
+	}{
+		{"a mark after the boundary holding the pointer skips it", func(boundary time.Time, pointer string) (ResumeMark, bool) {
+			return ResumeMark{At: boundary.Add(time.Second), Text: pointer}, true
+		}, false},
+		{"no mark types the pointer", func(time.Time, string) (ResumeMark, bool) { return ResumeMark{}, false }, true},
+		{"a mark older than the boundary types the pointer", func(boundary time.Time, pointer string) (ResumeMark, bool) {
+			return ResumeMark{At: boundary.Add(-time.Second), Text: pointer}, true
+		}, true},
+		{"a mark with other text types the pointer", func(boundary time.Time, _ string) (ResumeMark, bool) {
+			return ResumeMark{At: boundary.Add(time.Second), Text: "something else"}, true
+		}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			e.withSkills()
+			boundary := e.clock.now.Add(time.Second)
+			e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(boundary)}
+			e.s.usage["a"] = 100
+			// A draft in the input box holds the reload until after the hook has delivered.
+			e.s.idle, e.s.reason = false, "a draft is in the input box"
+			e.endTurn("a")
+			pointer, err := RenderReloadPrompt(e.stDir, e.paths.RolePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mark, ok := tt.mark(boundary, pointer); ok {
+				if err := WriteResumeMark(e.paths, mark); err != nil {
+					t.Fatal(err)
+				}
+			}
+			e.s.idle = true
+			e.tick() // the color step
+			e.tick() // the plugins step
+			e.tick() // the pointer step
+
+			wantCalls := []string{reloadPluginsCall}
+			if tt.wantTyped {
+				wantCalls = append(wantCalls, "send:"+pointer)
+				if st := e.state(); st.Phase != PhaseResuming {
+					t.Fatalf("phase = %s, want resuming until a turn end", st.Phase)
+				}
+				e.endTurn("resumed")
+			}
+			if !slices.Equal(e.s.calls, wantCalls) {
+				t.Errorf("calls = %q, want %q", e.s.calls, wantCalls)
+			}
+			if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "" {
+				t.Errorf("state = %+v, want idle with no abort reason", st)
+			}
+			if _, found, err := ReadResumeMark(e.paths); err != nil || found {
+				t.Errorf("mark found = %v, %v after the reload ended; want none", found, err)
+			}
+		})
+	}
+}
+
 func TestWatcher_AutoCompactionReloadsPluginsThenPointer(t *testing.T) {
 	t.Parallel()
 

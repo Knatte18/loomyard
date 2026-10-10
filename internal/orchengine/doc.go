@@ -275,6 +275,14 @@
 //     Bound: a compaction mid-turn whose turn end is followed by another before the watcher reads gets no reload,
 //     and the role pointer reaches the session at its next cycle.
 //
+// The provider's session-start hook can deliver the pointer itself after a compaction:
+// the hidden `lyx orch resume-context` verb renders it from the persisted state through ResumeContext, which renders the role file first in every phase but a resuming one with a pending pointer, and then writes the delivery mark, `resume-mark`.
+// The pointer step reads the mark first.
+// A mark dated at or after State.CompactionBaseline whose text equals the pending pointer means the hook delivered it, so the step types nothing, logs `orch: pointer delivered by the session-start hook` at Info, and ends the phase at once with no abort reason.
+// It does not wait for a turn end, since the one that revealed the boundary was read before the step, and a skip waiting for another could end in `resume timed out`.
+// No mark, an older one or one with other text types the pointer as before, so a hook that never fired costs nothing; a pointer delivered by both ways costs the session one redundant read.
+// Every return to idle clears the mark, so it never carries into the next compaction.
+//
 // Bound: only the two compaction entries skip the skills step and `/clear` keeps it;
 // the pointer step still has the session read its role file.
 // A session that did lose a skill in a compaction misses it until its next `/clear` or restart.
@@ -290,6 +298,7 @@
 //   - watch.lock: held for the watcher's life.
 //   - start.lock: serializes `start`.
 //   - cycle-request: the JSON marker `refresh` and `distill` write and the watcher consumes.
+//   - resume-mark: the JSON delivery mark `resume-context` writes after a successful render and the pointer step reads; removed when the reload ends.
 //   - watch.log: the detached watcher's stdout and stderr.
 //   - handoffs/: one timestamped handoff file per cycle, all kept.
 //   - notices/: one file per queued notice, removed on delivery.

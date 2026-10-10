@@ -357,6 +357,9 @@ func (w *Watcher) toIdle(st State, abortReason string) error {
 		st.LastAbortReason = abortReason
 	}
 	w.newest, w.seen = nil, phaseEvents{}
+	if err := ClearResumeMark(w.paths); err != nil {
+		return err
+	}
 	return w.save(st)
 }
 
@@ -916,6 +919,10 @@ func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 	case ReloadStepRetry:
 		err = w.session.LoadSkills(st.Strand, st.ReloadRetry)
 	default:
+		if mark, delivered := w.hookDelivered(st); delivered {
+			logger.Info("orch: pointer delivered by the session-start hook", "strandGUID", st.Strand, "markAt", mark.At)
+			return w.toIdle(st, "")
+		}
 		err = w.session.Send(st.Strand, st.PendingResume)
 	}
 	if err != nil {
@@ -923,6 +930,18 @@ func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 	}
 	w.logTyped(st, reloadStepName(step))
 	return w.confirm(st)
+}
+
+// hookDelivered returns the delivery mark and true when the session-start hook already delivered the pending pointer:
+// a mark dated at or after the compaction baseline whose text is the pending pointer.
+// An unreadable mark counts as no delivery, so the pointer is typed.
+func (w *Watcher) hookDelivered(st State) (ResumeMark, bool) {
+	mark, found, err := ReadResumeMark(w.paths)
+	if err != nil {
+		logger.Warn("orch: resume mark unreadable; the pointer is typed", "strandGUID", st.Strand, "cause", err)
+		return ResumeMark{}, false
+	}
+	return mark, found && !mark.At.Before(st.CompactionBaseline) && mark.Text == st.PendingResume
 }
 
 // advanceReload persists the move to step, with retry as the skills its retry step loads and its offset taken at the cursor, and goes on to type it when the idle probe passes.

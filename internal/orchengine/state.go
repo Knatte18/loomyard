@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -25,6 +26,7 @@ type Paths struct {
 	WatchLockPath    string // Lock held for the watcher's life.
 	StartLockPath    string // Lock serializing `start`.
 	CycleRequestPath string // Marker file a `refresh` or `distill` request writes.
+	ResumeMarkPath   string // Delivery mark the session-start hook's verb writes after rendering the pointer.
 	HandoffsDir      string // One timestamped handoff file per cycle.
 	NoticesDir       string // One file per queued notice, delivered by the watcher.
 	WatchLogPath     string // Detached watcher's stdout and stderr.
@@ -214,6 +216,48 @@ func CycleRequested(p Paths) (CycleRequest, bool, error) {
 func ClearCycleRequest(p Paths) error {
 	if err := os.Remove(p.CycleRequestPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("orch: clear cycle request: %w", err)
+	}
+	return nil
+}
+
+// ResumeMark is the recorded delivery of the resume pointer by the session-start hook.
+type ResumeMark struct {
+	At   time.Time `json:"at"`   // When the pointer was rendered.
+	Text string    `json:"text"` // The pointer the hook delivered.
+}
+
+// WriteResumeMark writes the delivery mark atomically, so the watcher never reads it half written.
+func WriteResumeMark(p Paths, mark ResumeMark) error {
+	data, err := json.Marshal(mark)
+	if err != nil {
+		return fmt.Errorf("orch: encode resume mark: %w", err)
+	}
+	if err := fsx.AtomicWriteBytes(p.ResumeMarkPath, append(data, '\n')); err != nil {
+		return fmt.Errorf("orch: write resume mark: %w", err)
+	}
+	return nil
+}
+
+// ReadResumeMark returns the delivery mark and whether one exists; an absent mark reads as none.
+func ReadResumeMark(p Paths) (ResumeMark, bool, error) {
+	data, err := os.ReadFile(p.ResumeMarkPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return ResumeMark{}, false, nil
+	}
+	if err != nil {
+		return ResumeMark{}, false, fmt.Errorf("orch: read resume mark: %w", err)
+	}
+	var mark ResumeMark
+	if err := json.Unmarshal(data, &mark); err != nil {
+		return ResumeMark{}, false, fmt.Errorf("orch: parse resume mark: %w", err)
+	}
+	return mark, true, nil
+}
+
+// ClearResumeMark removes the delivery mark; an absent mark is not an error.
+func ClearResumeMark(p Paths) error {
+	if err := os.Remove(p.ResumeMarkPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("orch: clear resume mark: %w", err)
 	}
 	return nil
 }
