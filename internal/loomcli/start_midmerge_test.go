@@ -266,17 +266,20 @@ func TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses(t *testing.T) {
 	tests := []struct {
 		name  string
 		probe func(*lyxcwd.Location) (fabricengine.MidMergeState, error)
-		// wantIn is a substring of the error message, when the probe's failure is canned.
-		wantIn string
+		// wantIn are substrings of the error message, when the failure is canned.
+		wantIn []string
 		// producer is the row the persisted status names as current;
 		// empty writes no status file.
 		producer string
 		// parentErr makes the recorded-parent-branch seam fail.
 		parentErr error
+		// statusUnreadable puts a directory where the status file belongs, so reading it fails without a decode failure.
+		statusUnreadable bool
 	}{
-		{name: "probe error names the failure", probe: (&fakeMidMerge{err: errors.New("boom")}).probe, wantIn: "boom"},
+		{name: "probe error names the failure", probe: (&fakeMidMerge{err: errors.New("boom")}).probe, wantIn: []string{"boom"}},
 		{name: "real probe on a non-pair", probe: fabricengine.MidMerge},
-		{name: "unreadable parent branch at Publish names the failure", probe: (&fakeMidMerge{state: ownLeftoverState}).probe, producer: loomshed.NamePublish, parentErr: errors.New("origin boom"), wantIn: "origin boom"},
+		{name: "unreadable parent branch at Publish names the failure and the way forward", probe: (&fakeMidMerge{state: ownLeftoverState}).probe, producer: loomshed.NamePublish, parentErr: errors.New("origin boom"), wantIn: []string{"origin boom", `"lyx loom start --parent <branch>"`, `re-run "lyx loom start"`}},
+		{name: "unreadable status file names the failure and the retry", probe: (&fakeMidMerge{state: ownLeftoverState}).probe, statusUnreadable: true, wantIn: []string{state.ErrRead.Error(), `re-run "lyx loom start"`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -289,6 +292,11 @@ func TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses(t *testing.T) {
 			if tt.producer != "" {
 				writeTestRunStateAt(t, c, shedengine.StateBlocked, tt.producer)
 			}
+			if tt.statusUnreadable {
+				if err := os.MkdirAll(c.shedPaths.StatusPath, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
 
 			var out bytes.Buffer
 			bl := acquireTestBootstrapLock(t, lockPath)
@@ -298,8 +306,13 @@ func TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses(t *testing.T) {
 				t.Fatal("runDriverSpawnAndWait() = true; want a refusal")
 			}
 			env := decodeMidMergeEnvelope(t, out.String())
-			if env.OK || env.Kind == shedrun.StartMergeInProgressKind || !strings.Contains(env.Error, tt.wantIn) {
-				t.Errorf("envelope = %+v; want a plain error containing %q", env, tt.wantIn)
+			if env.OK || env.Kind == shedrun.StartMergeInProgressKind {
+				t.Errorf("envelope = %+v; want a plain error", env)
+			}
+			for _, s := range tt.wantIn {
+				if !strings.Contains(env.Error, s) {
+					t.Errorf("message %q lacks %q", env.Error, s)
+				}
 			}
 			assertNothingPutToWork(t, c, starter, sender)
 			assertBootstrapLockReleased(t, lockPath)

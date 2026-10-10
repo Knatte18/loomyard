@@ -179,6 +179,12 @@ func (c *loomCLI) currentProducer() (string, error) {
 	return st.CurrentProducer, nil
 }
 
+// parentBranchUnreadableMessage is the refusal for a parked merge-in at Publish or Finalize whose pair's recorded parent branch could not be read, so the merge cannot be told apart from the row's own leftover;
+// retry is the verb the message names for the caller's retry.
+func parentBranchUnreadableMessage(err error, retry string) string {
+	return "loom: could not read the pair's recorded parent branch to tell this parked merge-in from the row's own leftover: " + err.Error() + `; with no fabric origin record, run "lyx loom start --parent <branch>" in the task worktree, which writes it, otherwise fix the file the message names and re-run "` + retry + `"`
+}
+
 // refuseOverUnfinishedMerge probes the pair's merge state and reports whether the verb named retry may proceed.
 // producer is the run's current producer: a parked merge-in of the recorded parent branch at Publish or Finalize is that row's own leftover, which the row aborts and redoes, so it proceeds.
 // The parent branch is read only for a parked merge-in at one of those rows, and a read failure refuses like a probe error.
@@ -199,7 +205,7 @@ func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, 
 			parentBranch, err := c.recordedParentBranch(c.location)
 			if err != nil {
 				_ = bootstrapLock.Release()
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				clihelp.SetExit(ctx, output.Err(out, parentBranchUnreadableMessage(err, retry)))
 				return false
 			}
 			if ownMergeInLeftover(st, producer, parentBranch) {
@@ -317,7 +323,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		producer, err := c.currentProducer()
 		if err != nil {
 			_ = bootstrapLock.Release()
-			clihelp.SetExit(ctx, output.Err(out, err.Error()))
+			clihelp.SetExit(ctx, output.Err(out, "loom: could not read the run's status file to learn its current producer: "+err.Error()+`; re-run "`+retryStart+`", and if the failure persists, fix the file or directory the message names`))
 			return false
 		}
 		if !c.refuseOverUnfinishedMerge(ctx, out, bootstrapLock, retryStart, producer) {
