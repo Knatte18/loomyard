@@ -248,7 +248,9 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | commit-records: park marker failed | the park marker cannot be written | transient | transient, re-run `lyx loom commit-records --park <park>` |
 | start: driver took no lock | the detached driver exits without taking the run lock | transient | `lyx loom start`; the message names the driver log |
 | start: driver not parked | the run is halted at a hand-back and its driver is still writing its stop report and committing its records | transient | retry `lyx loom start` in a few seconds |
-| start: status read failed | `lyx loom start` fails to read the run's status file before it puts a driver to work, for a reason other than a file that does not decode | transient | re-run `lyx loom start`; if the failure persists, fix the file or directory the message names |
+| start: status read failed | `lyx loom start` fails to read the run's status file, for a reason other than a file that does not decode, before it puts a driver to work or while it checks whether a live driver without a park marker is between its stop and its park | transient | re-run `lyx loom start`; if the failure persists, fix the file or directory the message names |
+| start: driver strand directory unreadable | `lyx loom start` cannot list reed's strands to find the driver strand, or cannot remove a retiring driver strand | transient | re-run `lyx loom start` |
+| start/resume: merge state unreadable | `lyx loom start` or `lyx loom resume` cannot probe the pair's merge state before it puts a driver to work | transient | re-run the verb |
 | start/resume: parent branch unreadable | `lyx loom start` or `lyx loom resume` finds a parked fabric `merge-in` at a run whose current producer is Publish or Finalize, and cannot read the pair's recorded parent branch from its fabric origin record | correctness halt | with no origin record, `lyx loom start --parent <branch>` in the task worktree, which writes it; otherwise fix the file the message names and re-run the verb |
 | resume: no status file | `lyx loom resume` finds no status file | correctness halt | run `lyx loom start` in the task worktree to begin the run |
 | resume: awaiting at a Bouncer row with no decision | `lyx loom resume` finds the run awaiting at a review segment's Bouncer row whose latest round carries no pending circling decision | correctness halt | `lyx loom circling accept <slug>` or `lyx loom circling continue <slug>`, then `lyx loom resume` |
@@ -283,7 +285,7 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | producer re-run: superseded strand not removed | a producer row re-run finds a live strand of an earlier run of the same outputs and reed cannot remove it, or a BurlerRound row's half stays live because reed cannot stop it | transient | run "lyx reed remove <guid>", then re-step the row |
 | hub-wide config write refused | `lyx config` writes a `HubWide` module from a task pair's worktree, or from a session whose `LYX_STRAND_NAME` carries a slug; the hub file stays unchanged and no editor opens | correctness halt | the operator or the hub orch runs the same `lyx config` write from the prime worktree |
 | wiring guards | nil deps, an invalid producer list, empty paths | wiring guard | none per row; grouped |
-| raw I/O | `stat`, `mkdir`, `read` or `write` of a status, seed, lock or records file fails | transient | re-run the refused verb; nothing is mutated |
+| raw I/O | `stat`, `mkdir`, `read`, `write` or `remove` of a status, seed, lock, park marker or records file fails | transient | re-run the refused verb; nothing is mutated |
 
 ## gate
 

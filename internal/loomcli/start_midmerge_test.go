@@ -273,7 +273,7 @@ func TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses(t *testing.T) {
 		// statusUnreadable puts a directory where the status file belongs, so reading it fails without a decode failure.
 		statusUnreadable bool
 	}{
-		{name: "probe error names the failure", probe: (&fakeMidMerge{err: errors.New("boom")}).probe, wantIn: []string{"boom"}},
+		{name: "probe error names the failure and the retry", probe: (&fakeMidMerge{err: errors.New("boom")}).probe, wantIn: []string{"boom", `re-run "lyx loom start"`}},
 		{name: "real probe on a non-pair", probe: fabricengine.MidMerge},
 		{name: "unreadable parent branch at Publish names the failure and the way forward", probe: (&fakeMidMerge{state: ownLeftoverState}).probe, producer: loomshed.NamePublish, parentErr: errors.New("origin boom"), wantIn: []string{"origin boom", `"lyx loom start --parent <branch>"`, `re-run "lyx loom start"`}},
 		{name: "unreadable status file names the failure and the retry", probe: (&fakeMidMerge{state: ownLeftoverState}).probe, statusUnreadable: true, wantIn: []string{state.ErrRead.Error(), `re-run "lyx loom start"`}},

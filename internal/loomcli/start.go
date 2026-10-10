@@ -110,10 +110,31 @@ func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID 
 	return run, nil
 }
 
-// runHaltedAtHandBack returns the run's persisted state when it is one a parking driver parks at (awaiting, blocked, paused or failed), and "" otherwise.
-// An absent status file returns "": nothing says the run halted.
-func (c *loomCLI) runHaltedAtHandBack() (shedengine.State, error) {
+// readRunStatus reads the run's status file, reporting found false when the file is absent or does not decode.
+// An undecodable file is logged rather than refused, since the driver's own read gate diagnoses it in the driver log and hand-editing a status file is no way forward.
+func (c *loomCLI) readRunStatus() (shedengine.Status, bool, error) {
 	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	if errors.Is(err, state.ErrDecode) {
+		logger.Warn("loom: the status file does not decode; deferring its diagnosis to the driver", "path", c.shedPaths.StatusPath, "error", err)
+		return shedengine.Status{}, false, nil
+	}
+	return st, found, err
+}
+
+// statusReadFailedMessage is the refusal for a status-file read that failed for a reason other than a file that does not decode.
+func statusReadFailedMessage(err error) string {
+	return "loom: could not read the run's status file: " + err.Error() + `; re-run "` + retryStart + `", and if the failure persists, fix the file or directory the message names`
+}
+
+// rerunMessage is the refusal for a transient failure err that mutated nothing, naming retry as the verb to re-run.
+func rerunMessage(err error, retry string) string {
+	return err.Error() + `; re-run "` + retry + `"`
+}
+
+// runHaltedAtHandBack returns the run's persisted state when it is one a parking driver parks at (awaiting, blocked, paused or failed), and "" otherwise.
+// An absent or undecodable status file returns "": nothing says the run halted.
+func (c *loomCLI) runHaltedAtHandBack() (shedengine.State, error) {
+	st, found, err := c.readRunStatus()
 	if err != nil {
 		return "", err
 	}
@@ -163,13 +184,8 @@ func readRecordedParentBranch(l *lyxcwd.Location) (string, error) {
 }
 
 // currentProducer returns the producer the run's status file names as current, or "" when the run has no status file or the file does not decode.
-// An undecodable file names no producer rather than refusing the spawn, since the spawned driver's own read gate diagnoses it in the driver log.
 func (c *loomCLI) currentProducer() (string, error) {
-	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
-	if errors.Is(err, state.ErrDecode) {
-		logger.Warn("loom: the status file does not decode; deferring its diagnosis to the driver", "path", c.shedPaths.StatusPath, "error", err)
-		return "", nil
-	}
+	st, found, err := c.readRunStatus()
 	if err != nil {
 		return "", err
 	}
@@ -193,7 +209,7 @@ func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, 
 	st, err := c.midMerge(c.location)
 	if err != nil {
 		_ = bootstrapLock.Release()
-		clihelp.SetExit(ctx, output.Err(out, err.Error()))
+		clihelp.SetExit(ctx, output.Err(out, rerunMessage(err, retry)))
 		return false
 	}
 	var msg string
@@ -280,7 +296,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 	probe, runLockFree, err := lock.TryAcquireWriteLock(runLockPath)
 	if err != nil {
 		_ = bootstrapLock.Release()
-		clihelp.SetExit(ctx, output.Err(out, err.Error()))
+		clihelp.SetExit(ctx, output.Err(out, rerunMessage(err, retryStart)))
 		return false
 	}
 	if runLockFree {
@@ -295,7 +311,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 	strands, err := c.driverPaneProbe.Strands()
 	if err != nil {
 		_ = bootstrapLock.Release()
-		clihelp.SetExit(ctx, output.Err(out, err.Error()))
+		clihelp.SetExit(ctx, output.Err(out, rerunMessage(err, retryStart)))
 		return false
 	}
 	driverAction, driverGUID := resolveDriverStrandAction(strands)
@@ -303,7 +319,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		// The detached remover of the old strand no-ops against the fresh strand's new guid.
 		if err := c.driverPaneProbe.RemoveDriverStrand(driverGUID); err != nil {
 			_ = bootstrapLock.Release()
-			clihelp.SetExit(ctx, output.Err(out, err.Error()))
+			clihelp.SetExit(ctx, output.Err(out, rerunMessage(err, retryStart)))
 			return false
 		}
 		driverAction, driverGUID = driverStrandNone, ""
@@ -323,7 +339,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		producer, err := c.currentProducer()
 		if err != nil {
 			_ = bootstrapLock.Release()
-			clihelp.SetExit(ctx, output.Err(out, "loom: could not read the run's status file to learn its current producer: "+err.Error()+`; re-run "`+retryStart+`", and if the failure persists, fix the file or directory the message names`))
+			clihelp.SetExit(ctx, output.Err(out, statusReadFailedMessage(err)))
 			return false
 		}
 		if !c.refuseOverUnfinishedMerge(ctx, out, bootstrapLock, retryStart, producer) {
@@ -333,7 +349,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 	if mustSpawn {
 		if err := os.Remove(markerPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			_ = bootstrapLock.Release()
-			clihelp.SetExit(ctx, output.Err(out, err.Error()))
+			clihelp.SetExit(ctx, output.Err(out, rerunMessage(err, retryStart)))
 			return false
 		}
 		c.vouchForSpawnedResume()
@@ -350,7 +366,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 			handBack, err := c.runHaltedAtHandBack()
 			if err != nil {
 				_ = bootstrapLock.Release()
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				clihelp.SetExit(ctx, output.Err(out, statusReadFailedMessage(err)))
 				return false
 			}
 			if handBack != "" {
