@@ -619,6 +619,32 @@ func TestEnsure_UnreachableBoardRemoteSkipsHubWideConfigAndLeavesStampAbsent(t *
 }
 
 // The logger's output is process-global, so this test does not call t.Parallel.
+func TestEnsure_BoardWithNoRemoteCommitsHubWideConfigAndWritesStamp(t *testing.T) {
+	logs := logcapture.Capture(t)
+
+	h := hubforge.NewHub(t, ".")
+	geom := geometryOf(h)
+	hubforge.SeedFabricConfig(t, h, staleHubWideConfig)
+	gitkit.Git(t, h.BoardDir(), "remote", "remove", "origin")
+	before := commitCount(t, h.BoardDir())
+
+	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+
+	if got := commitCount(t, h.BoardDir()); got != before+1 {
+		t.Errorf("board commits %d -> %d; want the hub-wide commit landed locally", before, got)
+	}
+	assertClean(t, h.BoardDir())
+	if !strings.Contains(logs.String(), "board push failed for a board with no upstream") {
+		t.Errorf("log lacks the no-upstream push Warn:\n%s", logs.String())
+	}
+	if key, found := stampKey(t, geom); !found || key != runningKey() {
+		t.Errorf("stamp = %q (found %v); want the running key, since a board with no upstream can never be pushed", key, found)
+	}
+}
+
+// The logger's output is process-global, so this test does not call t.Parallel.
 func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testing.T) {
 	logs := logcapture.Capture(t)
 

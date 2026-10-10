@@ -130,6 +130,15 @@ func (b *Bolt) Sync(step func() (progressed bool, err error)) error {
 	return coalescePush(filepath.Join(b.path, "board.push.lock"), step)
 }
 
+// HasUpstream reports whether the Bolt's current branch has an upstream configured, read from local config without contacting the remote.
+func (b *Bolt) HasUpstream() (bool, error) {
+	_, err := gitrepo.New(b.path).UpstreamSHA()
+	if errors.Is(err, gitrepo.ErrNoUpstream) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 // BoltSkip names why a pull-first write did not run: Bolt could not be brought up to date.
 // The empty value means Bolt is up to date and the writes ran.
 type BoltSkip string

@@ -34,6 +34,7 @@
 // That skip leaves the stamp absent as well, and so does a failed board push, on every rerun until a push lands the hub-wide commit.
 // A rerun whose unpushed hub-wide commit sits over a moved upstream meets the divergence skip and repeats its Warn;
 // only a resolved `git pull --rebase` in the board dir, or a board push that lands the commit, clears it.
+// A board with no upstream is never skipped: it is written and committed with no pull, and a failed push of it is logged while the stamp is written, so a board with no reachable remote is not re-walked on every start verb.
 //
 // # The pair call
 //
