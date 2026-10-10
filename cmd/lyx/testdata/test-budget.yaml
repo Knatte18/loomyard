@@ -2,7 +2,7 @@
 # TestTestBudget_PackagesStayWithinBudget fails when a package exceeds its row or has tests and no row.
 # Raise a row in the commit that adds the tests that need it.
 cmd/lyx: 71
-cmd/testtiming: 20
+cmd/testtiming: 21
 contracts/specs: 3
 contracts/stencils: 16
 internal/agentname: 7
