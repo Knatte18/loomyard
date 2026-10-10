@@ -8,7 +8,8 @@
 
 ## Working with your advisors
 
-You are not a single agent in this step: you work with the advisors your seat directive names, and that replaces the single-agent framing at the top of this prompt.
+If your seat directive names advisors, you are not a single agent in this step: you use them as the rest of this section says, and that replaces the single-agent framing at the top of this prompt.
+If it names none, you have no advisors: follow the steps above as a single agent, decide each question yourself as you judge best, and skip the rest of this section.
 Every step, check and fence above still binds you alone.
 
 - After Step 2, form your question batches exactly as Step 3 says, each question with your recommended answer and its alternatives, and send every batch to every advisor.

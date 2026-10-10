@@ -243,12 +243,18 @@ var wordingClaims = []stencilClaims{
 	{"loom-template-discussion-chair.md", LoomTemplateDiscussionChair, []claim{
 		{must: `{{template "loom-template-discussion"}}`, why: "the chair includes the discussion stencil whole, so its write surface and gates cannot drift from the single writer's"},
 		{must: `{{template "seat-directive-chair"}}`, why: "the chair includes the chair seat directive"},
+		{must: "If your seat directive names advisors, you are not a single agent in this step", why: "with advisors, the chair's section overrides the single-agent framing the included stencil opens with"},
 		{must: "replaces the single-agent framing at the top of this prompt", why: "the included stencil opens by calling its reader a single agent, and the chair's section overrides that"},
+		{must: "If it names none, you have no advisors: follow the steps above as a single agent, decide each question yourself as you judge best", section: "## Working with your advisors", why: "an empty discussion_advisors list runs the chair alone, deciding each question itself"},
 		{must: "naming the advisor's strand name", section: "## Working with your advisors", why: "the interview record names the advisor whose answer the chair relied on"},
 		{must: "mark a pick that rests on such an answer as advisor-informed, naming the same strand name", section: "## Working with your advisors", why: "the question ledger marks an advisor-informed pick, naming the strand"},
 		{must: "send every batch to every advisor", section: "## Working with your advisors", why: "every advisor sees every question, since each may find a different weakness"},
 		{must: "after weighing every advisor's answer", section: "## Working with your advisors", why: "the chair settles a question on all advisors' answers, not one advisor's area"},
 		{mustNot: "an area of the design", why: "the retired area assignment never returns"},
+	}},
+	{"seat-directive-chair.md", SeatDirectiveChair, []claim{
+		{must: "If you have advisors, use them as below.", why: "the directive covers a chair with advisors"},
+		{must: "If you have none, skip the advisor bullets below and decide each question yourself as you judge best.", why: "the directive covers a chair with no advisors, so seats with an empty list needs no second prompt"},
 	}},
 	{"loom-template-discussion-advisor.md", LoomTemplateDiscussionAdvisor, []claim{
 		{must: "You write only your notes file", why: "the notes file is the advisor's only write"},
