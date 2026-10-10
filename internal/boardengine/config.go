@@ -15,6 +15,7 @@ import (
 	"slices"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -170,4 +171,17 @@ func decodeLabels(key string, node *yaml.Node) ([]Label, error) {
 		return labels, nil
 	}
 	return nil, fmt.Errorf("board.yaml: %s must be a map from label to description, or a list of labels", key)
+}
+
+// OpenHub opens the board of the hub at hubPath.
+// It reads the config from the hub's own board directory and points Path at it, so no worktree link is followed,
+// and applies ApplySkipEnv so render and sync behave as they do for `lyx board`.
+func OpenHub(hubPath string) (*Board, error) {
+	boardDir := fabricengine.BoardDir(hubPath)
+	cfg, err := LoadConfig(boardDir, "board")
+	if err != nil {
+		return nil, err
+	}
+	cfg.Path = boardDir
+	return New(ApplySkipEnv(cfg)), nil
 }
