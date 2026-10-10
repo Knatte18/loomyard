@@ -288,13 +288,22 @@
 //     returns that very SHA, because ObjectStorage's index is built once and
 //     never refreshed. storer.Reindex() fully repairs this, so the fix is not
 //     a re-open. The policy this package implements is reactive rather than
-//     proactive — reindex once and retry only when a pack-directory
-//     fingerprint has changed since the last index build (see
-//     lookupObjectRetrying in gogit.go) — because the trigger set for a
-//     proactive policy cannot be enumerated reliably: the probe observed
-//     `gc --auto` firing after ordinary commits and fetches alike, so any
-//     hand-maintained list of "operations that might repack" goes stale the
-//     moment git's own auto-gc heuristics change.
+//     proactive, and it retries the whole operation: every go-git read runs
+//     through readGoGit in gogit.go, which reruns the read once after a
+//     reindex when it fails with object-not-found and the pack-directory
+//     fingerprint differs from the snapshot taken before the read began.
+//     Wrapping the whole read, not each object lookup, is what covers a Log
+//     walk, a tree diff or Worktree.Status(), which reach objects no
+//     per-lookup wrapper sees. Comparing against that snapshot, not only the
+//     last stored fingerprint, lets a caller that lost a race to a
+//     concurrent reindex still rerun. The read holds the shared lock, and
+//     only the fingerprint check and reindex take the exclusive one, so
+//     readers do not serialize. A genuinely absent object reindexes at most
+//     once while the pack set is unchanged. The policy is reactive because
+//     the trigger set for a proactive one cannot be enumerated reliably: the
+//     probe observed `gc --auto` firing after ordinary commits and fetches
+//     alike, so any hand-maintained list of "operations that might repack"
+//     goes stale the moment git's own auto-gc heuristics change.
 //   - extensions.worktreeConfig makes go-git refuse to open a repo outright,
 //     with its own typed error (checkable via errors.Is against go-git's
 //     sentinel, see goGit's doc). Not set on this repo today and no lyx code

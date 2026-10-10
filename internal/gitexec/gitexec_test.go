@@ -9,9 +9,15 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 // TestRunGit pins RunGit's contract: a successful command returns its stdout with exit 0, a non-zero exit is reported through the exit code and stderr with a nil error, and an exec-level failure (a cwd that does not exist) returns exit -1 with blanked stdout and stderr.
@@ -162,4 +168,110 @@ func TestRun_StdoutOnError(t *testing.T) {
 	if stdout == "" {
 		t.Fatal("expected non-empty stdout containing the diff output")
 	}
+}
+
+// TestRun_RemoteBounds drives the bounds on a remote git command through git's ext:: transport, a remote that accepts and never answers, with no network.
+// Its rows run serially because they set the remote deadline and the kill reporter, which are process-global state.
+// The ext:: command is a shell script, so the test is Unix-only.
+func TestRun_RemoteBounds(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the ext:: remote is a shell script")
+	}
+
+	const deadline = time.Second
+	gitexec.SetRemoteDeadlineForTest(t, deadline)
+
+	var mu sync.Mutex
+	type kill struct {
+		args     []string
+		groupErr error
+	}
+	var kills []kill
+	gitexec.SetKillReporter(func(args []string, pid int, groupErr error) {
+		mu.Lock()
+		defer mu.Unlock()
+		kills = append(kills, kill{args: args, groupErr: groupErr})
+	})
+	t.Cleanup(func() { gitexec.SetKillReporter(nil) })
+
+	scriptDir := t.TempDir()
+	pidFile := filepath.Join(scriptDir, "pid")
+	hang := filepath.Join(scriptDir, "hang.sh")
+	printEnv := filepath.Join(scriptDir, "env.sh")
+	for path, body := range map[string]string{
+		hang:     "#!/bin/sh\necho $$ > " + pidFile + "\nexec sleep 300\n",
+		printEnv: "#!/bin/sh\nenv >&2\nexit 1\n",
+	} {
+		if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+	repoDir := t.TempDir()
+
+	if !t.Run("a hung remote command is killed at the deadline", func(t *testing.T) {
+		args := []string{"-c", "protocol.ext.allow=always", "ls-remote", "ext::" + hang}
+		start := time.Now()
+		_, err := gitexec.Run(args, repoDir)
+		if elapsed := time.Since(start); elapsed > 10*deadline {
+			t.Errorf("Run took %v; want it to return shortly after the %v deadline", elapsed, deadline)
+		}
+
+		var gitErr *gitexec.GitError
+		if !errors.As(err, &gitErr) || gitErr.Timeout != deadline {
+			t.Fatalf("Run error = %v; want a *GitError with Timeout %v", err, deadline)
+		}
+		if !gitexec.IsTransportFailure(err) {
+			t.Errorf("IsTransportFailure(%v) = false; want true for a timed-out remote command", err)
+		}
+
+		mu.Lock()
+		recorded := append([]kill(nil), kills...)
+		mu.Unlock()
+		if len(recorded) != 1 || !reflect.DeepEqual(recorded[0].args, args) || recorded[0].groupErr != nil {
+			t.Errorf("kill reports = %v; want one report for %v with a nil group error", recorded, args)
+		}
+
+		pidText, err := os.ReadFile(pidFile)
+		if err != nil {
+			t.Fatalf("read the ext command's pid: %v", err)
+		}
+		pid, err := strconv.Atoi(strings.TrimSpace(string(pidText)))
+		if err != nil {
+			t.Fatalf("parse the ext command's pid %q: %v", pidText, err)
+		}
+		// The killed child is a zombie until it is reaped, so poll for it to disappear.
+		for end := time.Now().Add(10 * time.Second); proc.IsAlive(pid) && time.Now().Before(end); {
+			time.Sleep(20 * time.Millisecond)
+		}
+		if proc.IsAlive(pid) {
+			t.Errorf("the ext command (pid %d) outlived the process-group kill", pid)
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("a remote command gets the low-speed environment", func(t *testing.T) {
+		_, err := gitexec.Run([]string{"-c", "protocol.ext.allow=always", "ls-remote", "ext::" + printEnv}, repoDir)
+		var gitErr *gitexec.GitError
+		if !errors.As(err, &gitErr) {
+			t.Fatalf("Run error = %v; want a *GitError from the failing ext command", err)
+		}
+		for _, want := range []string{"GIT_HTTP_LOW_SPEED_LIMIT=1000", "GIT_HTTP_LOW_SPEED_TIME=60"} {
+			if !strings.Contains(gitErr.Stderr, want) {
+				t.Errorf("remote command environment lacks %s; stderr: %s", want, gitErr.Stderr)
+			}
+		}
+	}) {
+		return
+	}
+
+	t.Run("a local command is neither bounded nor given the low-speed environment", func(t *testing.T) {
+		stdout, err := gitexec.Run([]string{"-c", "alias.slowenv=!sleep 2 && env", "slowenv"}, repoDir)
+		if err != nil {
+			t.Fatalf("Run error = %v; want a local command to run past the remote deadline", err)
+		}
+		if strings.Contains(stdout, "GIT_HTTP_LOW_SPEED") {
+			t.Errorf("local command environment holds a low-speed variable; stdout: %s", stdout)
+		}
+	})
 }

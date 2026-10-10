@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
@@ -21,6 +22,7 @@ func TestIsTransportFailure(t *testing.T) {
 		"fatal: unable to access 'x': Operation timed out",
 		"connect: Network is unreachable",
 		"fatal: unable to access 'x': Failed to connect to h port 443",
+		"fatal: unable to access 'x': Operation too slow. Less than 1000 bytes/sec transferred the last 60 seconds",
 	}
 	for _, p := range phrases {
 		for _, sub := range []string{"push", "fetch"} {
@@ -47,7 +49,9 @@ func TestIsTransportFailure(t *testing.T) {
 		{"non-ff push with -c", &gitexec.GitError{Args: []string{"-c", "push.autoSetupRemote=true", "push"}, Stderr: "! [rejected] (non-fast-forward)"}, false},
 		{"auth push", &gitexec.GitError{Args: []string{"push"}, Stderr: "fatal: Authentication failed"}, false},
 		{"missing ref fetch", &gitexec.GitError{Args: []string{"fetch", "origin", "nope"}, Stderr: "fatal: couldn't find remote ref nope"}, false},
-		{"pull with phrase", &gitexec.GitError{Args: []string{"pull"}, Stderr: "Connection refused"}, false},
+		{"pull with phrase", &gitexec.GitError{Args: []string{"pull"}, Stderr: "Connection refused"}, true},
+		{"timed-out remote command without a phrase", &gitexec.GitError{Args: []string{"ls-remote", "origin"}, ExitCode: -1, Timeout: time.Minute}, true},
+		{"timed-out local command", &gitexec.GitError{Args: []string{"status"}, ExitCode: -1, Timeout: time.Minute}, false},
 		{"status with phrase", &gitexec.GitError{Args: []string{"status"}, Stderr: "Connection refused"}, false},
 		{"plain error", errors.New("Connection refused"), false},
 		{"nil", nil, false},

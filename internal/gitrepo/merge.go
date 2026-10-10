@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
@@ -283,19 +284,13 @@ func (r *Repo) MergeHeadPresent() (bool, error) {
 // Like ResolveSHA it is a go-git read of on-disk state, so it stays off the gitrepo Client Boundary
 // Invariant's pinned CLI list.
 func (r *Repo) HeadDetached() (bool, error) {
-	repo, err := r.goGit()
-	if err != nil {
-		return false, err
-	}
-
-	r.goGitMu.RLock()
-	defer r.goGitMu.RUnlock()
-
-	head, err := repo.Reference(plumbing.HEAD, false)
-	if err != nil {
-		return false, fmt.Errorf("gitrepo: read HEAD reference in %s: %w", r.path, err)
-	}
-	return head.Type() != plumbing.SymbolicReference, nil
+	return readGoGit(r, func(repo *git.Repository) (bool, error) {
+		head, err := repo.Reference(plumbing.HEAD, false)
+		if err != nil {
+			return false, fmt.Errorf("gitrepo: read HEAD reference in %s: %w", r.path, err)
+		}
+		return head.Type() != plumbing.SymbolicReference, nil
+	})
 }
 
 // MergeFFOnly advances the repo to ref via `git merge --ff-only <ref>`, failing loudly (never
@@ -330,20 +325,12 @@ func (r *Repo) CommitParents(sha string) ([]string, error) {
 		return nil, ErrInvalidSHA
 	}
 
-	repo, err := r.goGit()
-	if err != nil {
-		return nil, err
-	}
-
-	commit, err := lookupObjectRetrying(r, repo, func() (*object.Commit, error) {
+	commit, err := readGoGit(r, func(repo *git.Repository) (*object.Commit, error) {
 		return repo.CommitObject(plumbing.NewHash(sha))
 	})
 	if err != nil {
 		return nil, fmt.Errorf("gitrepo: read commit %s in %s: %w", sha, r.path, err)
 	}
-
-	r.goGitMu.RLock()
-	defer r.goGitMu.RUnlock()
 
 	parents := make([]string, 0, len(commit.ParentHashes))
 	for _, parent := range commit.ParentHashes {
@@ -358,12 +345,7 @@ func (r *Repo) CommitParents(sha string) ([]string, error) {
 // This is a go-git read of on-disk state, so it stays off the gitrepo Client Boundary Invariant's
 // pinned CLI list.
 func (r *Repo) ResolveSHA(ref string) (string, error) {
-	repo, err := r.goGit()
-	if err != nil {
-		return "", err
-	}
-
-	hash, err := lookupObjectRetrying(r, repo, func() (*plumbing.Hash, error) {
+	hash, err := readGoGit(r, func(repo *git.Repository) (*plumbing.Hash, error) {
 		return repo.ResolveRevision(plumbing.Revision(ref))
 	})
 	if err != nil {
@@ -380,12 +362,7 @@ func (r *Repo) CommitTree(sha string) (string, error) {
 		return "", ErrInvalidSHA
 	}
 
-	repo, err := r.goGit()
-	if err != nil {
-		return "", err
-	}
-
-	commit, err := lookupObjectRetrying(r, repo, func() (*object.Commit, error) {
+	commit, err := readGoGit(r, func(repo *git.Repository) (*object.Commit, error) {
 		return repo.CommitObject(plumbing.NewHash(sha))
 	})
 	if err != nil {

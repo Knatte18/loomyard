@@ -332,14 +332,9 @@ func TestParity_UnbornHEAD(t *testing.T) {
 	}
 }
 
-// forcePackIndexFreeze forces repo's go-git handle to build (and freeze) its
-// internal packfile index against whatever packs exist on disk at the
-// moment of the call, by driving one object-lookup miss through the
-// exported SHAExists — the shared setup step every "hard variant"
-// mixed-backend case below builds on: a subsequent commit-then-repack
-// sequence produces a packfile-only object the frozen index predates, so a
-// later read can only resolve it correctly by going through the
-// fingerprint-gated reindex retry (see gogit.go's lookupObjectRetrying).
+// forcePackIndexFreeze forces repo's go-git handle to build (and freeze) its internal packfile index against whatever packs exist on disk at the moment of the call, by driving one object-lookup miss through the exported SHAExists.
+// It is the shared setup step every "hard variant" mixed-backend case below builds on:
+// a subsequent commit-then-repack sequence produces a packfile-only object the frozen index predates, so a later read can only resolve it correctly by going through the whole-read reindex retry of readGoGit.
 func forcePackIndexFreeze(t *testing.T, repo *gitrepo.Repo) {
 	t.Helper()
 
@@ -390,30 +385,85 @@ func TestMixedBackend_PreWarmedHandleSeesCLICommit(t *testing.T) {
 	}
 }
 
-// TestSHAExists_MixedBackend_RepackBetweenCommitAndRead is the hard variant of the mixed-backend
-// interop cases: repo's go-git handle is frozen (via forcePackIndexFreeze) against a pack-less
-// on-disk state, a new commit then lands, and a `git gc` repacks it BEFORE SHAExists ever reads it
-// — the packfile-only-object shape Push's own pull --rebase retry can produce in production, and
-// exactly what the fingerprint-gated reindex exists to survive.
-// Without it, SHAExists' failure-swallowing posture means this would fail silently (report false
-// forever), never loudly.
-func TestSHAExists_MixedBackend_RepackBetweenCommitAndRead(t *testing.T) {
+// TestMixedBackend_RepackBetweenCommitAndRead is the #468 regression, the hard variant of the mixed-backend interop cases:
+// each row's go-git handle is frozen (via forcePackIndexFreeze) against a pack-less on-disk state, a second commit then lands, and `git repack -d` with `git prune-packed` leaves it packfile-only BEFORE the row's one read — the shape Push's own pull --rebase retry can produce in production.
+// Every row builds its own repository and Repo: the first row's retry reindexes the handle it uses, so a shared fixture would let every later row pass even if its method bypassed the whole-read retry.
+// SHAExists' failure-swallowing posture means its row would fail silently (report false forever), never loudly.
+func TestMixedBackend_RepackBetweenCommitAndRead(t *testing.T) {
 	t.Parallel()
 
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
+	tests := []struct {
+		name string
+		// check makes the row's one read against a frozen, now-stale handle, after dirtying the worktree if the read is about it.
+		check func(t *testing.T, dir string, repo *gitrepo.Repo, initSHA, secondSHA string)
+	}{
+		{"SHAExists", func(t *testing.T, dir string, repo *gitrepo.Repo, initSHA, secondSHA string) {
+			if !repo.SHAExists(secondSHA) {
+				t.Errorf("SHAExists(%q) after repack = false; want true", secondSHA)
+			}
+		}},
+		{"UntrackedFiles", func(t *testing.T, dir string, repo *gitrepo.Repo, initSHA, secondSHA string) {
+			writeFile(t, dir, "untracked.txt", "new")
+			got, err := repo.UntrackedFiles()
+			if err != nil {
+				t.Fatalf("UntrackedFiles() error = %v; want nil", err)
+			}
+			requireSameFiles(t, "UntrackedFiles()", got, "untracked.txt")
+		}},
+		{"WorktreeChangedFiles", func(t *testing.T, dir string, repo *gitrepo.Repo, initSHA, secondSHA string) {
+			writeFile(t, dir, "a.txt", "changed")
+			got, err := repo.WorktreeChangedFiles()
+			if err != nil {
+				t.Fatalf("WorktreeChangedFiles() error = %v; want nil", err)
+			}
+			requireSameFiles(t, "WorktreeChangedFiles()", got, "a.txt")
+		}},
+		{"ChangedFilesSince", func(t *testing.T, dir string, repo *gitrepo.Repo, initSHA, secondSHA string) {
+			got, err := repo.ChangedFilesSince(initSHA)
+			if err != nil {
+				t.Fatalf("ChangedFilesSince() error = %v; want nil", err)
+			}
+			requireSameFiles(t, "ChangedFilesSince()", got, "b.txt")
+		}},
+		{"HeadContains", func(t *testing.T, dir string, repo *gitrepo.Repo, initSHA, secondSHA string) {
+			got, err := repo.HeadContains(secondSHA)
+			if err != nil || !got {
+				t.Errorf("HeadContains(%q) = (%v, %v); want (true, nil)", secondSHA, got, err)
+			}
+		}},
+		{"PathRevisions", func(t *testing.T, dir string, repo *gitrepo.Repo, initSHA, secondSHA string) {
+			got, err := repo.PathRevisions("b.txt", 0)
+			if err != nil || !slices.Equal(got, []string{secondSHA}) {
+				t.Errorf("PathRevisions(b.txt) = (%v, %v); want ([%s], nil)", got, err, secondSHA)
+			}
+		}},
+		{"CommitParents", func(t *testing.T, dir string, repo *gitrepo.Repo, initSHA, secondSHA string) {
+			got, err := repo.CommitParents(secondSHA)
+			if err != nil || !slices.Equal(got, []string{initSHA}) {
+				t.Errorf("CommitParents(%q) = (%v, %v); want ([%s], nil)", secondSHA, got, err, initSHA)
+			}
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	forcePackIndexFreeze(t, repo)
+			dir, repo := newRepo(t)
+			writeFile(t, dir, "a.txt", "initial")
+			commitAll(t, dir, "init")
+			initSHA := resolveRevOrFatal(t, dir, "HEAD")
 
-	writeFile(t, dir, "b.txt", "second")
-	commitAll(t, dir, "second commit")
-	sha := resolveRevOrFatal(t, dir, "HEAD")
+			forcePackIndexFreeze(t, repo)
 
-	gitkit.MustRun(t, dir, "git", "gc")
+			writeFile(t, dir, "b.txt", "second")
+			commitAll(t, dir, "second commit")
+			secondSHA := resolveRevOrFatal(t, dir, "HEAD")
 
-	if !repo.SHAExists(sha) {
-		t.Errorf("SHAExists(%q) after repack = false; want true (the fingerprint-gated reindex must recover the now-packed commit)", sha)
+			gitkit.MustRun(t, dir, "git", "repack", "-d")
+			gitkit.MustRun(t, dir, "git", "prune-packed")
+
+			tc.check(t, dir, repo, initSHA, secondSHA)
+		})
 	}
 }
 

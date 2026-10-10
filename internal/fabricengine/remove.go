@@ -137,6 +137,8 @@ type RemoveResult struct {
 // With nothing of the pair left it returns an error wrapping ErrPairNotFound.
 // A sibling branch present only on origin is archived from there and, with remote, deleted there; without remote it stays and the result says so.
 // A path at the task worktree's location that is not a registered linked worktree is reported in StrayPath and never deleted.
+// After a successful teardown, and before it returns, Remove disables auto gc in both hub stores and runs a best-effort foreground `git gc --auto` in each;
+// a failure there is logged and never fails the Remove, and a refused or failed Remove runs none of it.
 func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (res RemoveResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -246,6 +248,10 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 			steps = append(steps, RemoveStepTaskBranchOnOrigin)
 		}
 	}
+
+	// Both worktrees are gone: reclaim the stores' unreferenced objects while lyx is already doing slow work.
+	// A refused or failed Remove returned above and runs no housekeeping.
+	housekeepStores(l)
 
 	strayPath := ""
 	if pair.strayPath {

@@ -92,7 +92,7 @@ func TestBattenPreStep_RefusalKinds(t *testing.T) {
 				})
 			},
 			wantKind:   shedverbs.KindBootstrap,
-			wantSubstr: []string{"delete its run directory", "task branch", "locally and on the remote", "to run it again"},
+			wantSubstr: []string{"delete its run directory", "task branch", "locally and on the remote", "to run it again", "different slug"},
 		},
 	}
 	for _, tt := range tests {

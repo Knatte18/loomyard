@@ -6,13 +6,17 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/spf13/cobra"
@@ -164,16 +168,18 @@ func TestCommand_HelpCarriesNoTeardownGotoExample(t *testing.T) {
 	walk(Command())
 }
 
-// TestRunInWindow covers the run verb's --window body with a fake window opener: the envelope of a fresh and of an already-live window, what the opener is asked for, and the way forward each refusal names.
+// TestRunInWindow covers the run verb's --window body with a fake window opener: the envelope of a fresh and of an already-live window, what the opener is asked for, the way forward each refusal names, and that a done slug is refused before the opener is ever called.
 func TestRunInWindow(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name         string
+		status       shedengine.State
 		driverSet    bool
 		childSet     bool
 		opened       reedengine.WindowResult
 		openErr      error
+		wantNoOpen   bool
 		wantArgs     []string
 		wantExisting bool
 		wantNote     string
@@ -222,6 +228,18 @@ func TestRunInWindow(t *testing.T) {
 			wantArgs: []string{"batten", "run", "some-slug"},
 			wantErr:  []string{"lyx batten status some-slug", "lyx batten run some-slug"},
 		},
+		{
+			name:       "DoneSlugIsRefusedBeforeAnyWindowOpens",
+			status:     shedengine.StateDone,
+			wantNoOpen: true,
+			wantErr:    []string{"has already completed", "delete its run directory", "different slug"},
+		},
+		{
+			name:     "BlockedStatusOpensTheWindowAsBefore",
+			status:   shedengine.StateBlocked,
+			opened:   reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
+			wantArgs: []string{"batten", "run", "some-slug"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -229,33 +247,48 @@ func TestRunInWindow(t *testing.T) {
 
 			var gotName string
 			var gotArgs []string
+			dir := t.TempDir()
 			c := &battenCLI{
+				location:           &lyxcwd.Location{RepoName: "example", HubPath: dir, WorktreeName: "hub-repo", AnchorRel: "."},
 				slug:               "some-slug",
 				driverFlag:         "go",
 				childDriverFlag:    "go",
 				driverFlagSet:      tt.driverSet,
 				childDriverFlagSet: tt.childSet,
+				shedPaths: shedbuild.ShedPaths{
+					StatusPath:     filepath.Join(dir, "status.json"),
+					StatusLockPath: filepath.Join(dir, "status.json.lock"),
+				},
 				windowOpener: func(name string, lyxArgs []string) (reedengine.WindowResult, error) {
 					gotName, gotArgs = name, lyxArgs
 					return tt.opened, tt.openErr
 				},
+			}
+			if tt.status != "" {
+				writeStatus(t, c, shedengine.Status{CurrentProducer: battenrecipe.NameWorktreeTeardown, State: tt.status})
 			}
 			cmd := &cobra.Command{Use: "run", RunE: func(cmd *cobra.Command, args []string) error { return c.runInWindow(cmd) }}
 
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(cmd, &out, []string{})
 
-			if gotName != "batten:some-slug" {
-				t.Errorf("opener asked for window %q, want %q", gotName, "batten:some-slug")
-			}
-			if !slices.Equal(gotArgs, tt.wantArgs) {
-				t.Errorf("opener asked to run %v, want %v", gotArgs, tt.wantArgs)
+			if tt.wantNoOpen {
+				if gotName != "" || gotArgs != nil {
+					t.Errorf("opener was called with window %q and args %v; want it never called", gotName, gotArgs)
+				}
+			} else {
+				if gotName != "batten:some-slug" {
+					t.Errorf("opener asked for window %q, want %q", gotName, "batten:some-slug")
+				}
+				if !slices.Equal(gotArgs, tt.wantArgs) {
+					t.Errorf("opener asked to run %v, want %v", gotArgs, tt.wantArgs)
+				}
 			}
 			var envelope map[string]any
 			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
 				t.Fatalf("envelope %q is not one JSON object: %v", out.String(), err)
 			}
-			if tt.openErr != nil {
+			if tt.openErr != nil || tt.wantNoOpen {
 				if exitCode != 1 || envelope["ok"] != false {
 					t.Fatalf("exit %d, envelope %v; want exit 1 and ok=false", exitCode, envelope)
 				}

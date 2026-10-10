@@ -8,6 +8,8 @@
 // those two it imports -- may name either side of the pair: write "the task worktree", "the pair",
 // and "the hub's prime worktree" instead.
 //
+// "lyx batten run <slug> --window" runs the same status check as a plain run and refuses a done slug before opening anything.
+//
 // The Worktree-Create row opens by claiming the slug's board entry with "running · Worktree-Create", before the pair exists, so the board's run lock starts at the claim.
 // An absent or done entry is skipped, and a board failure only warns: the board is the hub's overview, never the run's bookkeeping.
 // The claim stays when the row then fails, and the stopped run resumes with the same verb.
@@ -295,6 +297,8 @@ func (c *battenCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) e
 }
 
 // runInWindow is the run verb's body under --window: it opens the window "batten:<slug>" running "lyx batten run <slug>" (without --window, carrying an explicitly typed --driver or --child-driver through) and prints the window's id and name.
+// A slug whose status is done, undecodable or in an unrecognized state is refused before any window opens, with the same refusal a plain run gives;
+// seeding a fresh status stays inside the window's own run.
 // The envelope reports a started window only, never a started batten: a second batten for the slug is refused by the run's own lock inside the window.
 func (c *battenCLI) runInWindow(cmd *cobra.Command) error {
 	if clihelp.ShouldAbort(cmd.Context()) {
@@ -302,6 +306,11 @@ func (c *battenCLI) runInWindow(cmd *cobra.Command) error {
 	}
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
+
+	if _, err := c.checkRunStatus(); err != nil {
+		clihelp.SetExit(ctx, output.Err(out, err.Error()))
+		return nil
+	}
 
 	lyxArgs := []string{"batten", "run", c.slug}
 	if c.driverFlagSet {

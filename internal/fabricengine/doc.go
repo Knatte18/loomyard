@@ -1335,6 +1335,15 @@
 // squash; a consumer needing that answer (branch cleanup, archive tagging) needs a source outside
 // git — this is a direct consequence of shipping squash as an option, not a defect in it.
 //
+// **Store housekeeping.** The hub's shared code store and records store hold more unreferenced loose objects than git's auto-gc threshold, so nearly every commit, merge or fetch against them, an agent's or the operator's, would start a detached repack under live steps.
+// `Topology.Add` therefore sets `gc.auto=0` and `maintenance.auto=false` in both stores' shared config once its pre-flight refusals have passed, and `Topology.Remove` sets them again and runs a foreground `git gc --auto` in each store after a successful teardown.
+// `maintenance.auto=false` is what stops git's post-command `git maintenance run --auto`, whose repack tasks under a `geometric` or `incremental` `maintenance.strategy` `gc.auto` does not govern.
+// The removal's gc is best-effort: a failure is logged as a warning and never fails the Remove, and a store another gc already holds is skipped silently until a later removal.
+// It never prunes a worktree's admin entry, so what it deletes is unreachable objects and expired reflog entries past git's own default expiry, nothing `destroy.go`'s gate protects.
+// An existing hub picks the keys up at its next pair create or removal.
+// The keys disable git's automatic gc and maintenance for everyone using the store, the operator's manual git included: lyx's housekeeping is the replacement, a manual `git gc` still works, and maintenance an operator registers with `git maintenance start` stays outside lyx's control.
+// The gc threshold is not operator configuration.
+//
 // **Platform verification: Linux only.**
 // Fabric is written cross-platform, and `internal/fslink` exists because Windows uses directory junctions where other platforms use symlinks,
 // but every hardening round ran on Linux and no line of it has been executed on Windows.

@@ -6,6 +6,8 @@ package gitrepo
 import (
 	"errors"
 	"fmt"
+
+	"github.com/go-git/go-git/v5"
 )
 
 // errRemoteHasNoURLs is wrapped into RemoteURL's error when the named remote exists but its
@@ -17,22 +19,16 @@ var errRemoteHasNoURLs = errors.New("remote has no configured URL")
 // stays outside PATTERN-gitrepo-client-boundary's pinned run/runChecked method list.
 // A remote that exists but carries no configured URL is an error, never an index panic.
 func (r *Repo) RemoteURL(name string) (string, error) {
-	repo, err := r.goGit()
-	if err != nil {
-		return "", err
-	}
+	return readGoGit(r, func(repo *git.Repository) (string, error) {
+		remote, err := repo.Remote(name)
+		if err != nil {
+			return "", fmt.Errorf("gitrepo: read remote %q URL in %s: %w", name, r.path, err)
+		}
 
-	r.goGitMu.RLock()
-	defer r.goGitMu.RUnlock()
-
-	remote, err := repo.Remote(name)
-	if err != nil {
-		return "", fmt.Errorf("gitrepo: read remote %q URL in %s: %w", name, r.path, err)
-	}
-
-	urls := remote.Config().URLs
-	if len(urls) == 0 {
-		return "", fmt.Errorf("gitrepo: read remote %q URL in %s: %w", name, r.path, errRemoteHasNoURLs)
-	}
-	return urls[0], nil
+		urls := remote.Config().URLs
+		if len(urls) == 0 {
+			return "", fmt.Errorf("gitrepo: read remote %q URL in %s: %w", name, r.path, errRemoteHasNoURLs)
+		}
+		return urls[0], nil
+	})
 }
