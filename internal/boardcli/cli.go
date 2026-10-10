@@ -40,7 +40,8 @@ func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:         "board",
 		Short:       "read and write the task-tracker board's tasks and notes",
-		Annotations: map[string]string{clihelp.IndexNoteAnnotation: payloadLegend},
+		// The dash keeps the legend from reading as a continuation of the Short it follows on the index line.
+		Annotations: map[string]string{clihelp.IndexNoteAnnotation: "— " + payloadLegend},
 		Long: `board manages the task-tracker board for the current lyx worktree.
 
 The board is one store: every entry is a task or a note (its kind) and carries labels. Only a task
