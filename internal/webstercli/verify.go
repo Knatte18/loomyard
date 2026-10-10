@@ -24,8 +24,9 @@ const verifyVerbSite = "webster verify"
 // verifyCmd builds the `verify` subcommand.
 func (c *websterCLI) verifyCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "verify",
-		Short: "run the plan's verify command over the worktree, the way the webster verify gate does",
+		Use:         "verify",
+		Short:       "run the plan's verify command over the worktree, the way the webster verify gate does",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `verify parses the plan at _lyx/plan and runs its "## verify:" command over
 the worktree through the same function the webster verify gate, Webster-Burler's
 verify gate and Publish and Finalize call. It is the self-check of those gates.

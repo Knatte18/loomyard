@@ -19,12 +19,14 @@ import (
 // statusCmd builds the `status` subcommand.
 func (c *websterCLI) statusCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "print an instant snapshot of the run's persisted state.json",
+		Use:         "status",
+		Short:       "print an instant snapshot of the run's persisted state.json",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `status reads _lyx/webster/state.json and reports the run's identity, the
 in-flight batch cursor, the plan fingerprint, every batch's own persisted
 record (number, slug, kind, status, terminal, whether a digest is
-persisted), and whether a pause has been requested. It is a plain read --
+persisted, its counted recoveries and whether a dead recovery earns one
+more), and whether a pause has been requested. It is a plain read --
 no fabric commit, no engine spawn, no state.json write -- so it is safe to
 run at any time, including mid-batch, as a navigation refresher for a human
 or Master resuming after a crash.
@@ -70,13 +72,16 @@ Example:
 					batches = append(batches, map[string]any{"number": n, "malformed": true})
 					continue
 				}
+				retry, recoveries := websterengine.RecoveryRetry(c.geom, st, n)
 				batches = append(batches, map[string]any{
-					"number":     n,
-					"slug":       bs.Slug,
-					"kind":       bs.Kind,
-					"status":     bs.Status,
-					"terminal":   bs.Terminal,
-					"has_digest": bs.Digest != nil,
+					"number":         n,
+					"slug":           bs.Slug,
+					"kind":           bs.Kind,
+					"status":         bs.Status,
+					"terminal":       bs.Terminal,
+					"has_digest":     bs.Digest != nil,
+					"recoveries":     recoveries,
+					"recovery_retry": retry,
 				})
 			}
 

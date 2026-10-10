@@ -23,61 +23,39 @@ func (c *websterCLI) resetCmd() *cobra.Command {
 	var to string
 	var batch int
 	cmd := &cobra.Command{
-		Use:   "reset --to start|pre-fix|report-head|last-batch-head|batch-start [--batch NN]",
-		Short: "move the task branch back to a commit the run recorded",
+		Use:         "reset",
+		Short:       "move the task branch back to a commit the run recorded",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `reset moves the task worktree's HEAD, index and tracked files back to a commit
-the run recorded, so a recovery needs no git reset of its own.
---to start is the run's start commit: the oldest recorded batch start, or the
-octopus merge-base of the starts when none is the oldest.
---to pre-fix is the HEAD the verify gate started its fixes from.
---to report-head --batch NN is the head_sha of batch NN's report: the batch is
-begun and not terminal, its report parses, the head descends from the batch's
-start, no later batch is begun and no recovery strand of the batch is live.
---to last-batch-head is the last batch head the run recorded.
---to batch-start --batch NN is batch NN's recorded start commit, refused when a
-later batch recorded a start.
---batch is required for report-head and batch-start and refused for the others.
---to start removes the run's live recovery strands first, so no recovery agent keeps writing into the tree the reset moves; the other targets remove none.
-It refuses, changing nothing, while a run holds the run lock (except --to
-report-head, which Master runs inside its run), during a merge, off
-the task branch, with no recorded target, when the target commit is missing or
-is not an ancestor of HEAD (--to start archives without moving instead, in all
-three cases and when the starts share no common ancestor), while a tracked path the run did not write
-itself is dirty, when the remote task branch holds commits the checkout lacks
-(the refusal lists them and names the git merge --strategy ours step for the run's
-own abandoned commits), and when the remote cannot be read or updated.
-It discards commits above the target on the task branch and uncommitted changes
-to tracked paths the run wrote, and moves the remote task branch back to the
-target so a later push is not rejected; it leaves untracked files, the records side and every
-other branch alone, takes no raw SHA and has no force flag.
-FABRIC_SKIP_PUSH=1 leaves the remote task branch alone.
-It clears the persisted pre-fix head and changes no other webster state, except
-that --to start also archives the run record (state.json and the reports dir
-renamed with a stamp, the rendered prompts cleared) behind a pending-findings
-guard judged against HEAD, so a following "lyx webster run" starts a new run.
-The guard refuses, with the move already made, only on a contract file a fork
-wrote last, a plan path that differs from the recorded plan, or a suspect path
-that differs from HEAD, each naming its clearing step; re-running the reset
-then converges. Every other pending finding is dropped with a warning.
-Otherwise run what the refusal that sent you here says.
-In standalone mode there is no task pair, so it moves HEAD with git's keep form
-instead, touching no remote: an uncommitted change is carried across, and when
-the move would overwrite one the reset refuses, changing nothing, and names each
-such path with the step that clears it; a tracked change outside the run's own
-writes does not refuse there, since keep guards it.
-On success the envelope carries target, sha, mutations (the worktree_reset
-entry, and a remote_branch_updated entry when the remote moved) and partial
-(false). --to start, and every standalone reset, also carries uncommitted (the
-worktree paths left uncommitted outside the run's own state; absent when git
-status fails) and warnings (the findings the
-archive dropped, and the git status failure). --to start also carries moved
-(false when the start could not be moved to and the record was only archived,
-with the reason key naming why).
-When the checkout rewrite fails after the remote moved, the error
-envelope carries mutations and partial true; re-running the reset converges.
+the run recorded, so a recovery needs no git reset of its own. It discards
+commits above the target and uncommitted changes to tracked paths the run
+wrote, and moves the remote task branch back too; untracked files, the records
+side and every other branch are left alone.
+
+Reach for it when a refusal names it as the way forward, or to start a run
+over from its start commit.
+
+--to names the target, one of:
+
+  start            the run's start commit; also removes the run's live
+                   recovery strands and archives the run record, so the
+                   next "lyx webster run" starts a new run
+  pre-fix          the HEAD the verify gate started its fixes from
+  report-head      the head_sha of batch --batch's report
+  last-batch-head  the last batch head the run recorded
+  batch-start      batch --batch's recorded start commit; also clears that
+                   batch's recovery count and recovery start
+
+--batch is required for report-head and batch-start and refused for the
+others. reset takes no raw SHA and has no force flag; FABRIC_SKIP_PUSH=1
+leaves the remote task branch alone. A refusal names its way forward.
+
+The envelope carries target, sha, mutations and partial; --to start and a
+standalone reset add uncommitted and warnings, and --to start adds moved.
 
 Example:
-  lyx webster reset --to start`,
+  lyx webster reset --to start
+  lyx webster reset --to report-head --batch 3`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
@@ -140,7 +118,7 @@ Example:
 			var parent string
 			if !plan.ArchiveOnly && fab != nil {
 				if parent, err = c.parentBranch(); err != nil {
-					return fail(fmt.Sprintf("webster: reset --to %s refused: the parent branch is unknown (%v); way forward: run `lyx fabric reconcile` to repair the pair, then re-run `lyx webster reset --to %s`", target, err, target))
+					return fail(fmt.Sprintf("webster: reset --to %s refused: the parent branch is unknown (%v); way forward: run `lyx fabric reconcile` to repair the pair, then re-run `lyx webster reset --to %s`; a session lyx refuses the verb from reports status: FAILED and the orch runs it", target, err, target))
 				}
 			}
 			if target == websterengine.ResetToStart {
@@ -167,6 +145,12 @@ Example:
 				}
 
 				st.PreFixHead = ""
+				if target == websterengine.ResetToBatchStart {
+					if bs := st.Batches[batch]; bs != nil {
+						bs.Recoveries = 0
+						bs.RecoveryStartSHA = ""
+					}
+				}
 				if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
 					return fail(fmt.Sprintf("webster: the branch was reset to %s but state.json could not be saved: %v; way forward: re-run `lyx webster reset --to %s`", plan.SHA, err, target))
 				}

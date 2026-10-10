@@ -50,9 +50,9 @@ func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 // any other failure, a lock expiry included, is transient.
 func pushFailureWayForward(err error) string {
 	if fabricengine.IsPushRejected(err) {
-		return "merge the remote branch into the local branch in the worktree the error names, or clear what a remote rule objects to, then run lyx fabric push or re-run lyx loom commit-records"
+		return "merge the remote branch into the local branch in the worktree the error names, or clear what a remote rule objects to, then run lyx fabric push or re-run lyx loom commit-records; a session lyx refuses the verb from reports status: FAILED and the orch runs it"
 	}
-	return "transient, run lyx fabric push or re-run lyx loom commit-records"
+	return "transient, run lyx fabric push or re-run lyx loom commit-records; a session lyx refuses the verb from reports status: FAILED and the orch runs it"
 }
 
 // writeParkMarker writes the driver park marker at markerPath, holding reportPath, creating its directory.
@@ -69,8 +69,9 @@ func writeParkMarker(markerPath, reportPath string) error {
 func (c *loomCLI) commitRecordsCmd() *cobra.Command {
 	var park string
 	cmd := &cobra.Command{
-		Use:   "commit-records",
-		Short: "commit and push the run's records: status, reviews, friction notes and drive reports",
+		Use:         "commit-records",
+		Short:       "commit and push the run's records: status, reviews, friction notes and drive reports",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `commit-records commits and pushes the run's records: the status file, the review
 round record, the friction notes under _lyx/loom/friction/ and the drive reports under
 _lyx/shed/<slug>/drive-reports/. The loom driver's end-of-session command runs it after the

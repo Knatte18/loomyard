@@ -468,8 +468,9 @@ func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, run
 // loomPreStep implements the PreStep hook for loom's spec: the early run-lock probe, then step's bootstrap, then reed Up -- today's stepCmd body, in today's order, each returned error paired with its refusal kind.
 //
 // Up stays because the producers under step spawn agents into reed panes.
-// Step never adds or removes the status strand, which `start` ensures on every run,
-// and an unconditional removal would strip the band from a halted run an operator steps by hand.
+// Step never adds or removes the status strand:
+// removal needs the driver, which step must not read,
+// and an unconditional removal would strip the band from a halted go run an operator steps by hand.
 //
 // On success it takes the entry observation (noteCrashResumeAtEntry), after the busy probe, the bootstrap and reed Up and still before shed.Step, so a refused step never spends the handoff voucher and the previous step's completed aftermath matches it rather than reading as a crash.
 //

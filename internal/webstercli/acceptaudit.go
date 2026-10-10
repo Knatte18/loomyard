@@ -21,8 +21,9 @@ const absentContractNext = "re-run `lyx webster run` (in a shed-driven run, re-s
 func (c *websterCLI) acceptAuditCmd() *cobra.Command {
 	var batch int
 	cmd := &cobra.Command{
-		Use:   "accept-audit",
-		Short: "clear the pending run-exit audit findings once their paths are restored",
+		Use:         "accept-audit",
+		Short:       "clear the pending run-exit audit findings once their paths are restored",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `accept-audit clears the run-exit audit findings the last run left pending.
 It checks every suspect path against the last batch head and refuses, changing
 nothing, while any differs or cannot be checked.
@@ -128,7 +129,7 @@ Example:
 // acceptBatch runs `accept-audit --batch n` under the lease the caller holds: accept, save, release, then fabric-sync.
 func (c *websterCLI) acceptBatch(cmd *cobra.Command, st *websterengine.State, n int, release func() error, held *bool) {
 	out := cmd.OutOrStdout()
-	accepted, err := websterengine.AcceptBatchFabricReference(st, c.geom, n, fabricengine.IsReadOnlyCommand)
+	accepted, err := websterengine.AcceptBatchFabricReference(st, c.geom, n, fabricengine.IsReadOnlyCommand, "accept-audit --batch")
 	if err != nil {
 		clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 		return

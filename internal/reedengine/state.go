@@ -41,6 +41,9 @@ type Strand struct {
 	// Segment is the loom segment its spawner named, an opaque display field reed reads only to look up the segment's color.
 	// A strand recorded before the field existed decodes with none.
 	Segment string `json:"segment,omitempty"`
+	// LyxBin is the absolute `lyx` path the strand's pane prelude exported as LYX_BIN at its latest launch, empty when no prelude was composed.
+	// A strand recorded before the field existed decodes with none.
+	LyxBin string `json:"lyxBin,omitempty"`
 	// Color is the palette color Segment resolved to, filled on the strand an add or replace returns.
 	// It is never persisted.
 	Color segmentcolor.Color `json:"-"`

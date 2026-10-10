@@ -26,17 +26,18 @@ import (
 
 // fabricSyncWayForward is the trailing clause of every refusal raised because the fabric sync failed.
 // The state is already saved locally, and fabricSync only commits the scoped _lyx pathspec and never pushes.
-const fabricSyncWayForward = "way forward: the state is saved locally; `lyx fabric commit` commits it, or the next bracket verb's own sync carries it"
+const fabricSyncWayForward = "way forward: the state is saved locally; `lyx fabric commit` commits it, or the next bracket verb's own sync carries it; a session lyx refuses the verb from reports status: FAILED and the orch runs it"
 
 // rebaselineWayForward is the trailing clause of every refusal raised because persisting the plan-fingerprint re-baseline failed.
 const rebaselineWayForward = "way forward: re-run the same verb; the re-baseline is recomputed from the plan on disk"
 
-// beginBatchCmd builds the `begin-batch <NN>` subcommand.
+// beginBatchCmd builds the `begin-batch <nn>` subcommand.
 func (c *websterCLI) beginBatchCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "begin-batch <NN>",
-		Short: "Master's bracket call immediately before forking one batch's implementer",
-		Long: `begin-batch <NN> checks the webster pause flag (refusing with a
+		Use:         "begin-batch <nn>",
+		Short:       "open one batch's bracket before forking its implementer: record its start and render its fork prompt",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
+		Long: `begin-batch <nn> checks the webster pause flag (refusing with a
 "paused": true envelope if "lyx webster pause" was called), refuses loud
 when the batch's report file already exists for a batch state.json records
 (finished work is never silently overwritten -- a stuck batch escalates via

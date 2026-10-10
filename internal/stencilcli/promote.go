@@ -27,8 +27,9 @@ import (
 // validate, and sync.
 func newPromoteCmd(loc func() *lyxcwd.Location) *cobra.Command {
 	return &cobra.Command{
-		Use:   "promote <name>",
-		Short: "Copy a board-copy edit back into this worktree's contracts/stencils/ source tree",
+		Use:         "promote <name>",
+		Short:       "copy a board-copy edit back into this worktree's contracts/stencils/ source tree",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil

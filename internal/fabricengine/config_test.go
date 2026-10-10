@@ -56,7 +56,7 @@ func TestLoadConfig(t *testing.T) {
 		},
 		{
 			name:           "not_initialized",
-			wantErrContain: []string{"not initialized", "lyx fabric reconcile"},
+			wantErrContain: []string{"not initialized", "lyx fabric reconcile", "a session lyx refuses the verb from reports status: FAILED and the orch runs it"},
 		},
 	}
 	for _, tt := range tests {

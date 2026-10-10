@@ -15,6 +15,8 @@ package loomshed
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -391,6 +393,101 @@ func TestNewPlanGate(t *testing.T) {
 		}
 		if strings.Contains(result.Findings, "create-already-exists") {
 			t.Errorf("gate() Findings = %q; want no finding on done card 1", result.Findings)
+		}
+	})
+
+	// A done card is frozen: its batch recorded the card file's hash at begin, and an edit since fails the gate.
+	cardPath := func(anchorPath string) string {
+		return filepath.Join(planparser.PlanDir(anchorPath), "01-first-card.md")
+	}
+	cardHash := func(t *testing.T, anchorPath string) string {
+		t.Helper()
+		data, err := os.ReadFile(cardPath(anchorPath))
+		if err != nil {
+			t.Fatalf("read card file: %v", err)
+		}
+		sum := sha256.Sum256(data)
+		return hex.EncodeToString(sum[:])
+	}
+	appendToCard := func(t *testing.T, anchorPath string) {
+		t.Helper()
+		f, err := os.OpenFile(cardPath(anchorPath), os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			t.Fatalf("open card file: %v", err)
+		}
+		defer f.Close()
+		if _, err := f.WriteString("\nan edit after the batch began\n"); err != nil {
+			t.Fatalf("append to card file: %v", err)
+		}
+	}
+	batchOne := func(terminal bool, status string, hashes map[string]string) *websterengine.State {
+		return &websterengine.State{Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "first-card", Cards: []string{"01-first-card"}, Terminal: terminal, Status: status, CardHashes: hashes},
+		}}
+	}
+
+	for _, tt := range []struct {
+		name string
+		// record builds the run record from the card file's hash before any edit; nil saves no record.
+		record      func(hash string) *websterengine.State
+		edit        bool
+		wantEdited  bool
+		wantPassing bool
+	}{
+		{"EditedDoneCardFails", func(h string) *websterengine.State {
+			return batchOne(true, websterengine.DigestStatusDone, map[string]string{"01-first-card": h})
+		}, true, true, false},
+		{"UneditedDoneCardReportsNothing", func(h string) *websterengine.State {
+			return batchOne(true, websterengine.DigestStatusDone, map[string]string{"01-first-card": h})
+		}, false, false, true},
+		{"EditedInFlightCardReportsNothing", func(h string) *websterengine.State {
+			return batchOne(false, "", map[string]string{"01-first-card": h})
+		}, true, false, true},
+		{"NoRunRecordReportsNothing", nil, true, false, true},
+		{"RecordWithoutHashesReportsNothing", func(string) *websterengine.State {
+			return batchOne(true, websterengine.DigestStatusDone, nil)
+		}, true, false, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			anchorPath := t.TempDir()
+			seedPlanFormatFixture(t, anchorPath, true)
+			if tt.record != nil {
+				saveState(t, anchorPath, tt.record(cardHash(t, anchorPath)))
+			}
+			if tt.edit {
+				appendToCard(t, anchorPath)
+			}
+
+			result, err := NewPlanGate(anchorPath, t.TempDir(), "", planglyph.NewIndex(fabricengine.NewReferenceRule()))()
+			if err != nil {
+				t.Fatalf("gate() error = %v; want nil", err)
+			}
+			if result.Passed != tt.wantPassing {
+				t.Errorf("gate() = %+v; want Passed %v", result, tt.wantPassing)
+			}
+			if got := strings.Contains(result.Findings, "done-card-edited/01-first-card"); got != tt.wantEdited {
+				t.Errorf("gate() Findings = %q; want done-card-edited on card 1: %v", result.Findings, tt.wantEdited)
+			}
+		})
+	}
+
+	t.Run("UnreadableDoneCardIsAReturnedError", func(t *testing.T) {
+		t.Parallel()
+		anchorPath := t.TempDir()
+		seedPlanFormatFixture(t, anchorPath, true)
+		saveState(t, anchorPath, batchOne(true, websterengine.DigestStatusDone, map[string]string{"01-first-card": cardHash(t, anchorPath)}))
+		plan, err := planparser.ParsePlan(planparser.PlanDir(anchorPath))
+		if err != nil {
+			t.Fatalf("ParsePlan: %v", err)
+		}
+		if err := os.Remove(cardPath(anchorPath)); err != nil {
+			t.Fatalf("remove card file: %v", err)
+		}
+
+		findings, err := ValidatePlan(plan, anchorPath, t.TempDir(), planglyph.NewIndex(fabricengine.NewReferenceRule()))
+		if err == nil || findings != nil {
+			t.Errorf("ValidatePlan() = %v, %v; want a returned error and no findings", findings, err)
 		}
 	})
 }

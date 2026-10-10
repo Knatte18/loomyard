@@ -28,8 +28,9 @@ import (
 // attachCmd builds the `attach` subcommand, handing the operator's terminal to tmux attach-session.
 func (c *reedCLI) attachCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "attach",
-		Short: "attach the operator's terminal to the reed session in place",
+		Use:         "attach",
+		Short:       "attach the operator's terminal to the reed session in place",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `attach hands the operator's own stdio over to a tmux attach-session
 child, in place — no new window is spawned (never wt.exe). attach boots
 this worktree's session when none is up, rather than refusing. Every

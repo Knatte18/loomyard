@@ -14,6 +14,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
@@ -31,6 +32,7 @@ func (c *websterCLI) runDeps() websterengine.RunDeps {
 		Batcher:      c.batcher,
 		Geom:         c.geom,
 		RefMatcher:   c.refMatcher,
+		ReadOnly:     fabricengine.IsReadOnlyCommand,
 		FrictionDir:  c.frictionDir,
 		ParentBranch: c.parentBranch,
 	}
@@ -41,8 +43,9 @@ func (c *websterCLI) runCmd() *cobra.Command {
 	var fresh bool
 
 	cmd := &cobra.Command{
-		Use:   "run",
-		Short: "spawn or resume Master and block until the plan reaches a terminal outcome",
+		Use:         "run",
+		Short:       "spawn or resume Master and block until the plan reaches a terminal outcome",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `run takes the webster run-level lock, runs the automatic plan-validation
 gate (including the zero-batch pre-flight refusal), checks the on-disk
 plan's fingerprint against state.json's recorded one (refusing on a mismatch

@@ -511,6 +511,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// the never-matching stand-in: that stand-in is permitted only in standalone, where there is
 		// no wired fabric for the guard to protect, and loom is hub-only.
 		RefMatcher: fabricengine.NewRefScanner(location),
+		// ReadOnly makes a read-only fabric reference a policy warning at the run-exit audit, as webstercli's own wiring does.
+		ReadOnly: fabricengine.IsReadOnlyCommand,
 		// ParentBranch lets the verify gate's fix-commit check accept a clean parent merge made while fixing, as webstercli's own wiring does.
 		ParentBranch: func() (string, error) {
 			return readRecordedParentBranch(location)
@@ -558,6 +560,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		GateSlots:     hubgeom.GateSlots(location),
 		PublishFailure: func() string {
 			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath))
+		},
+		WebsterRecord: func() string {
+			return loomshed.WebsterRecordNote(anchorPath)
 		},
 		StatusPath:         statusPath,
 		StatusLockPath:     statusLockPath,

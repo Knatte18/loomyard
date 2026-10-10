@@ -65,7 +65,7 @@ func TestWayForward(t *testing.T) {
 				}
 				return
 			}
-			if !strings.HasPrefix(got, "; way forward: ") || !strings.Contains(got, tt.want) || !strings.Contains(got, "re-step") {
+			if !strings.HasPrefix(got, "; way forward: ") || !strings.Contains(got, tt.want) || !strings.Contains(got, "re-step") || !strings.HasSuffix(got, "; a session lyx refuses the verb from reports status: FAILED and the orch runs it") {
 				t.Errorf("wayForward() = %q; want a trailing way forward naming %q", got, tt.want)
 			}
 		})

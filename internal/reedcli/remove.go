@@ -115,8 +115,9 @@ func (c *reedCLI) removeCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "remove <guid> | --name <name>",
-		Short: "remove a strand from the reed layout",
+		Use:         "remove [<guid>]",
+		Short:       "remove a strand from the reed layout",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `remove deletes the strand identified by <guid> or by --name (exactly one
 of the two); --name takes a role segment (driver) or a full name
 (shortname:slug:driver). Removing a strand that has children requires --recursive,

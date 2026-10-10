@@ -1,14 +1,13 @@
-// jsonhelp.go implements the --json help renderer and the HelpFunc installer for the clihelp
-// package.
-// When the --json flag is set, any cobra help invocation (lyx --json, lyx <module> --json, lyx
-// <module> <cmd> --help --json) emits structured JSON describing the command's name, short/long
-// description, immediate non-hidden subcommands, and local non-meta flags.
+// jsonhelp.go implements the global --json flag, its help renderer and the HelpFunc installer for the clihelp package.
+// The global --json flag turns every invocation into a help request: lyx --json, lyx <module> --json and lyx <module> <cmd> --json all print structured JSON describing the command's name, short/long description, immediate non-hidden subcommands and local non-meta flags, exit 0, and never run the command.
+// A command that declares its own local --json flag (lyx shed status --json) shadows the global one, so there --json keeps the command's own meaning and the command runs.
 
 package clihelp
 
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -51,8 +50,7 @@ var metaFlags = map[string]bool{
 }
 
 // renderCmdJSON builds the cmdJSON representation of cmd.
-// It collects only non-hidden immediate subcommands (skipping cobra's auto
-// "help" and "completion" commands) and local non-hidden non-meta flags.
+// It collects only non-hidden immediate subcommands (skipping cobra's auto "completion" command) and local non-hidden non-meta flags.
 func renderCmdJSON(cmd *cobra.Command) cmdJSON {
 	result := cmdJSON{
 		Name:  cmd.CommandPath(),
@@ -60,14 +58,13 @@ func renderCmdJSON(cmd *cobra.Command) cmdJSON {
 		Long:  cmd.Long,
 	}
 
-	// Collect non-hidden immediate subcommands, excluding cobra's built-in
-	// "help" and "completion" commands which are infrastructure, not domain.
+	// Collect non-hidden immediate subcommands, excluding cobra's built-in "completion" command which is infrastructure, not domain.
 	for _, child := range cmd.Commands() {
 		if child.Hidden {
 			continue
 		}
 		name := child.Name()
-		if name == "help" || name == "completion" {
+		if name == "completion" {
 			continue
 		}
 		result.Commands = append(result.Commands, cmdChild{
@@ -98,18 +95,62 @@ func renderCmdJSON(cmd *cobra.Command) cmdJSON {
 	return result
 }
 
-// InstallJSONHelp installs a custom HelpFunc on root that renders JSON help when *jsonFlag is true,
-// and delegates to the previously-captured default HelpFunc otherwise.
-// Because cobra's HelpFunc is inherited by all descendants, this single call covers lyx --json, lyx
-// <module> --json, and lyx <module> <cmd> --help --json.
-// Call InstallJSONHelp once during root command construction, before adding subcommands.
-func InstallJSONHelp(root *cobra.Command, jsonFlag *bool) {
+// JSONFlagUsage is the help text of the global --json flag InstallJSONHelp declares.
+const JSONFlagUsage = "print the command's help as structured JSON and exit 0; the command itself never runs"
+
+// jsonHelpValue is the pflag.Value behind the global --json flag.
+// Setting it true also sets the shared --help flag, so cobra takes its help path for the command being executed: help is checked right after flag parsing, before any pre-run hook, argument validation or Run, so no command can run under --json however it is wired.
+type jsonHelpValue struct {
+	json *bool
+	help *bool
+}
+
+// Set parses s as a bool into the --json state and, when it is true, raises the --help flag too.
+func (v *jsonHelpValue) Set(s string) error {
+	b, err := strconv.ParseBool(s)
+	if err != nil {
+		return err
+	}
+	*v.json = b
+	if b {
+		*v.help = true
+	}
+	return nil
+}
+
+// String returns the --json state in pflag's bool notation.
+func (v *jsonHelpValue) String() string {
+	return strconv.FormatBool(*v.json)
+}
+
+// Type reports the flag type pflag shows in usage text.
+func (v *jsonHelpValue) Type() string {
+	return "bool"
+}
+
+// IsBoolFlag lets --json stand without a value, like any bool flag.
+func (v *jsonHelpValue) IsBoolFlag() bool {
+	return true
+}
+
+// InstallJSONHelp declares the global --json flag and a shared --help/-h flag as persistent flags on root, and installs a HelpFunc that renders JSON help when --json is set and delegates to cobra's default renderer otherwise.
+// Every descendant inherits both flags and the HelpFunc, so commands added after this call are covered: under --json, every command, leaf or group, prints its JSON help and exits 0 without running.
+// A descendant that declares its own local json flag shadows the global one, which then stays unset for that command, and the command runs with its own --json meaning.
+// Call InstallJSONHelp once during root command construction.
+func InstallJSONHelp(root *cobra.Command) {
+	var jsonFlag, helpFlag bool
+
+	// The shared --help replaces cobra's per-command default, which cobra only adds when no help flag is inherited;
+	// it is the one the --json value raises.
+	root.PersistentFlags().BoolVarP(&helpFlag, "help", "h", false, "help for this command")
+	root.PersistentFlags().VarPF(&jsonHelpValue{json: &jsonFlag, help: &helpFlag}, "json", "", JSONFlagUsage).NoOptDefVal = "true"
+
 	// Capture the default help function before overriding it so we can delegate
 	// to it on the non-JSON path. root.HelpFunc() returns cobra's built-in renderer.
 	defaultHelp := root.HelpFunc()
 
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		if *jsonFlag {
+		if jsonFlag {
 			// Render the command as JSON and write it to the command's output writer.
 			data, err := json.MarshalIndent(renderCmdJSON(cmd), "", "  ")
 			if err != nil {

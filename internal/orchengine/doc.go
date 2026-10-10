@@ -47,6 +47,10 @@
 // and renders the role file before it types the resume pointer after `/clear`.
 // A render failure is handled where a stencil render failure is: `start` refuses, a note request changes nothing, and a clear that cannot render aborts the cycle.
 //
+// The role file's `## Commands` section carries the operator command index, which every role-file render is handed as a string;
+// a role stencil without the `command_index` marker fails the render naming the stencil.
+// The watcher is told an index source through NewWatcher, calls it before each of its three role-file renders, and returns to idle with the reason when the source or the render fails.
+//
 // DecideStart maps the strand and watcher liveness pair onto the branch `start` takes:
 // already running, spawn a watcher, or relaunch.
 // A dead or absent strand always relaunches.

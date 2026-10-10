@@ -4,6 +4,7 @@
 // addWeftVerbs installs two hidden persistent flags — --weft-path and --warp-path — and a
 // PersistentPreRunE scoped to these nine verb names only — the topology verbs built in fabric.go
 // resolve their own layout per invocation and never touch this file's closure state.
+// The pre-run opens with the sandboxed-role guard of roleguard.go, which covers every subcommand.
 // The PersistentPreRunE splits normal mode (resolve cwd → layout → config → pathspec → Fabric
 // handle) from bypass mode (either hidden path flag injected by the detached push child, push-only
 // gate), driving fabricengine.Fabric's Status/Commit/Pull/Diff/MergeIn/Merge/MergeContinue/
@@ -17,6 +18,9 @@
 package fabriccli
 
 import (
+	"os"
+
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -58,7 +62,18 @@ func addWeftVerbs(cmd *cobra.Command) {
 	cmd.PersistentFlags().String("warp-path", "", "internal: injected absolute warp worktree path for the detached push child")
 	cmd.PersistentFlags().MarkHidden("warp-path") //nolint:errcheck
 
+	fabricCmd := cmd
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		// The role guard runs first, ahead of the topology verbs' early return.
+		// It runs only under a parent: configcli's in-process sync runs Command() as its own root and passes.
+		if fabricCmd.HasParent() && cmd != fabricCmd {
+			if refusal := sandboxedRoleRefusal(cmd, os.Getenv(agentname.StrandNameEnv)); refusal != "" {
+				output.Err(cmd.OutOrStdout(), refusal)
+				clihelp.Abort(cmd.Context(), 1)
+				return nil
+			}
+		}
+
 		if !weftVerbNames[cmd.Name()] {
 			return nil
 		}
@@ -115,9 +130,10 @@ func addWeftVerbs(cmd *cobra.Command) {
 	}
 
 	statusCmd := &cobra.Command{
-		Use:   "status",
-		Args:  cobra.NoArgs,
-		Short: "show unified warp+weft uncommitted-change status",
+		Use:         "status",
+		Args:        cobra.NoArgs,
+		Short:       "show unified warp+weft uncommitted-change status",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Reports every currently-uncommitted path across both sides of the
 warp<->weft pair, each labelled with which side (warp or weft) it changed on.
 
@@ -150,9 +166,10 @@ coexist with merge_in_progress being false here.`,
 	}
 
 	commitCmd := &cobra.Command{
-		Use:   "commit",
-		Args:  cobra.NoArgs,
-		Short: "commit weft changes",
+		Use:         "commit",
+		Args:        cobra.NoArgs,
+		Short:       "commit weft changes",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Stages changes in the configured pathspec and commits them to the weft worktree.
 
 The commit message is always the fixed string "weft sync" — it is not generated
@@ -186,9 +203,10 @@ Related commands:
 	}
 
 	pushCmd := &cobra.Command{
-		Use:   "push",
-		Args:  cobra.NoArgs,
-		Short: "commit weft changes and push both sides (records only in the prime)",
+		Use:         "push",
+		Args:        cobra.NoArgs,
+		Short:       "commit weft changes and push both sides (records only in the prime)",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Commit weft changes exactly as "lyx fabric commit" does, then push the unpushed
 commits of both the warp branch and the weft branch in the same process.
 The push is plain and rebase-free, never a force, and waits for a push already
@@ -252,9 +270,10 @@ Related commands:
 	}
 
 	pullCmd := &cobra.Command{
-		Use:   "pull",
-		Args:  cobra.NoArgs,
-		Short: "pull warp and weft, reconciling a rebased warp",
+		Use:         "pull",
+		Args:        cobra.NoArgs,
+		Short:       "pull warp and weft, reconciling a rebased warp",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Pulls both sides of the pair. Weft is fast-forwarded first via a plain
 git pull — skipped as a no-op on a freshly bootstrapped hub whose weft branch
 has no upstream yet. Warp is then fetched and inspected against its upstream
@@ -293,9 +312,10 @@ tracking ref:
 	}
 
 	syncCmd := &cobra.Command{
-		Use:   "sync",
-		Args:  cobra.NoArgs,
-		Short: "commit weft changes and async-push both sides (records only in the prime)",
+		Use:         "sync",
+		Args:        cobra.NoArgs,
+		Short:       "commit weft changes and async-push both sides (records only in the prime)",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Commit weft changes exactly as "lyx fabric commit" does, then hand the push
 of both the warp branch and the weft branch to a detached child process and
 return immediately — the push happens in the background, coalesced under
@@ -345,8 +365,9 @@ Related commands:
 	}
 
 	diffCmd := &cobra.Command{
-		Use:   "diff <since-warp-sha>",
-		Short: "show unified warp+weft diff since a warp SHA",
+		Use:         "diff <since-warp-sha>",
+		Short:       "show unified warp+weft diff since a warp SHA",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Reports what changed on both sides of the warp<->weft pair since the given
 warp SHA: warp-side changes are <since-warp-sha>..HEAD in the warp repo, and
 weft-side changes are computed against the nearest recorded weft

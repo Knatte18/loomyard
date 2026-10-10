@@ -345,6 +345,7 @@ func TestResetCmd(t *testing.T) {
 			fx := newResetFixture(t, h, "rst-"+tc.target)
 			st := startedAt(fx.base)
 			st.Batches[1].Terminal, st.Batches[1].Status, st.Batches[1].Digest = true, "done", &websterengine.Digest{HeadSHA: fx.base}
+			st.Batches[1].Recoveries, st.Batches[1].RecoveryStartSHA = 2, fx.base
 			fx.saveState(t, st)
 
 			code, envelope := fx.reset(t, tc.args...)
@@ -359,6 +360,18 @@ func TestResetCmd(t *testing.T) {
 			}
 			if _, err := os.Stat(filepath.Join(fx.checkout, "later.txt")); !os.IsNotExist(err) {
 				t.Errorf("later.txt survived reset --to %s (err = %v)", tc.target, err)
+			}
+			loaded, err := websterengine.LoadState(fx.cli.geom.WebsterDir, fx.cli.geom.ScratchDir)
+			if err != nil || loaded == nil {
+				t.Fatalf("LoadState after reset --to %s = %v, %v", tc.target, loaded, err)
+			}
+			// Only the batch-start move gives the batch its recoveries back.
+			wantRecoveries, wantStart := 2, fx.base
+			if tc.target == "batch-start" {
+				wantRecoveries, wantStart = 0, ""
+			}
+			if bs := loaded.Batches[1]; bs.Recoveries != wantRecoveries || bs.RecoveryStartSHA != wantStart {
+				t.Errorf("after reset --to %s Recoveries, RecoveryStartSHA = %d, %q; want %d, %q", tc.target, bs.Recoveries, bs.RecoveryStartSHA, wantRecoveries, wantStart)
 			}
 		}
 	}) {
@@ -572,7 +585,7 @@ func TestResetCmd(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"merge in progress", "lyx fabric merge --abort"}}},
+			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"merge in progress", "lyx fabric merge --abort", refusedVerbClause}}},
 		},
 		{
 			name: "detached head",
@@ -589,6 +602,14 @@ func TestResetCmd(t *testing.T) {
 				fx.cli.parentBranch = func() (string, error) { return fx.branch, nil }
 			},
 			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"parent branch", "git switch <task-branch>"}}},
+		},
+		{
+			name: "unknown parent branch names reconcile",
+			arrange: func(t *testing.T, fx *resetFixture) {
+				fx.saveState(t, startedAt(fx.base))
+				fx.cli.parentBranch = func() (string, error) { return "", errors.New("no origin record") }
+			},
+			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"the parent branch is unknown", "lyx fabric reconcile", refusedVerbClause}}},
 		},
 		{
 			name: "non-pair branch refused by fabric",

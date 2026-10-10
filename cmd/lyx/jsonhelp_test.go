@@ -62,7 +62,7 @@ func commandNames(cmds []helpJSONCmd) map[string]bool {
 	return names
 }
 
-// TestJSONHelp_Schema asserts "--json" help exits 0 and produces valid JSON with the expected schema fields at the root, a verb module, a module with one verb and a leaf verb.
+// TestJSONHelp_Schema asserts "--json" help exits 0 and produces valid JSON with the expected schema fields at the root, a verb module, a module with one verb and a leaf verb, with or without --help.
 // run() rewrites package-global flag state in newRoot, so neither the test nor its rows run in parallel.
 func TestJSONHelp_Schema(t *testing.T) {
 	tests := []struct {
@@ -79,8 +79,13 @@ func TestJSONHelp_Schema(t *testing.T) {
 		{
 			name:         "root lists every module",
 			args:         []string{"--json"},
-			wantCommands: []string{"board", "config", "ide", "reed", "selfreport"},
+			wantCommands: []string{"board", "config", "help", "ide", "reed", "selfreport"},
 			absentFlags:  []string{"--json", "--help"},
+		},
+		{
+			name:         "help lists its index child",
+			args:         []string{"help", "--help", "--json"},
+			wantCommands: []string{"index"},
 		},
 		{
 			name:             "verb module names its subcommands and hides --board-path",
@@ -100,6 +105,13 @@ func TestJSONHelp_Schema(t *testing.T) {
 			wantNoCommands: true,
 			wantFlags:      []string{"--body", "--label"},
 			absentFlags:    []string{"--json", "--help"},
+		},
+		{
+			// Run, selfreport create would refuse its missing title and exit non-zero.
+			name:           "leaf verb under --json alone prints its help and never runs",
+			args:           []string{"selfreport", "create", "--json"},
+			wantNoCommands: true,
+			wantFlags:      []string{"--body", "--label"},
 		},
 	}
 

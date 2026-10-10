@@ -58,7 +58,8 @@ func TestCommitRecordsVerb_ErrorEnvelopes(t *testing.T) {
 	rejected := fmt.Errorf("push side at /wt: %w", gitrepo.ErrPushRejected)
 	const (
 		rejectionWayForward = "way forward: merge the remote branch into the local branch in the worktree the error names"
-		transientWayForward = "way forward: transient, run lyx fabric push or re-run lyx loom commit-records"
+		refusedVerbClause   = "a session lyx refuses the verb from reports status: FAILED and the orch runs it"
+		transientWayForward = "way forward: transient, run lyx fabric push or re-run lyx loom commit-records; " + refusedVerbClause
 		pushFailedPrefix    = "the commit landed locally but the push failed: "
 	)
 	tests := []struct {
@@ -68,7 +69,7 @@ func TestCommitRecordsVerb_ErrorEnvelopes(t *testing.T) {
 	}{
 		{"probe", boom, nil, nil, []string{"probe merge state"}},
 		{"commit", nil, boom, nil, []string{"commit failed"}},
-		{"push rejected", nil, nil, rejected, []string{pushFailedPrefix, rejectionWayForward}},
+		{"push rejected", nil, nil, rejected, []string{pushFailedPrefix, rejectionWayForward, refusedVerbClause}},
 		{"push failed", nil, nil, boom, []string{pushFailedPrefix, transientWayForward}},
 		{"push lock busy", nil, nil, fmt.Errorf("push: %w", fabricengine.ErrPushLockBusy), []string{pushFailedPrefix, transientWayForward}},
 		{"rejected beside another failure", nil, nil, errors.Join(rejected, boom), []string{pushFailedPrefix, rejectionWayForward, "boom", "remote diverged"}},

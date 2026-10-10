@@ -125,7 +125,7 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		return refuse("the discussion check flags the record after the append: %s; %s", strings.Join(renderFindings(findings), "; "), decisionWayFindings)
 	}
 	if err := deps.commit(); err != nil {
-		return refuse("the entry is appended but the commit failed: %s; way forward: run \"lyx fabric commit\" to commit the record", err)
+		return refuse("the entry is appended but the commit failed: %s; way forward: run \"lyx fabric commit\" to commit the record; a session lyx refuses the verb from reports status: FAILED and the orch runs it", err)
 	}
 	return output.Ok(out, map[string]any{
 		"slug":    slug,
@@ -216,8 +216,9 @@ Example:
 	}
 
 	add := &cobra.Command{
-		Use:   "add [slug]",
-		Short: "append one decision to the decision record and commit it",
+		Use:         "add [<slug>]",
+		Short:       "append one decision to the decision record and commit it",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `add appends one entry under an "Added after Discussion" heading, carrying the
 --by label and today's date, to the end of the decision record's Decisions
 section. It re-runs the discussion check over the record, restores the record

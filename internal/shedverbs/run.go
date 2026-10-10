@@ -17,9 +17,10 @@ import (
 // arming module's own resolved values, filled by its PersistentPreRunE before this RunE runs).
 func runCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 	return &cobra.Command{
-		Use:   texts.Run.Use,
-		Short: texts.Run.Short,
-		Long:  texts.Run.Long,
+		Use:         texts.Run.Use,
+		Short:       texts.Run.Short,
+		Long:        texts.Run.Long,
+		Annotations: map[string]string{clihelp.AudienceAnnotation: texts.Run.Audience},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil

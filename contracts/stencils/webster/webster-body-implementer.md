@@ -46,6 +46,13 @@ For EACH card file listed above, in the order listed:
 
 If any card's gate fails, or a test the card broke fails, and you cannot fix it within your self-fix bound (see next section), stop and report `status: FAILED` — do not continue to a later card on top of a broken one.
 
+## The sandbox rule
+
+Never clone the hub's remotes, and never run a mutating `lyx fabric` verb.
+A scratch hub is a Go test fixture over local bare repositories (`hubforge`).
+`lyx fabric` refuses its mutating verbs from your strand; the refusal is the rule's owner.
+When the work itself needs a refused verb, stop and report `status: FAILED`, so the orch runs the verb.
+
 ## The batch gate — once, after the last card
 
 {{.batch_gate}}

@@ -122,6 +122,7 @@ type cardNotDoneInputs struct {
 }
 
 // failCardNotDone takes the batch terminal-failed on cause, an ErrCardNotDone-wrapped error from the post-batch pass.
+// The reasons open with the batch's id and its card list, so a finding keyed on a later card of the batch reads as the batch's own.
 // When a finding is a Delete target that still resolves and an unbegun later card still references it, the reasons also name that reference,
 // and the way forward is the plan edit rather than recover-batch, which would only repeat the same failure.
 func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, error) {
@@ -134,6 +135,12 @@ func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, erro
 	} else {
 		reasons = strings.Split(strings.TrimPrefix(cause.Error(), ErrCardNotDone.Error()+": "), "; ")
 	}
+
+	cardIDs := make([]string, 0, len(in.Cards))
+	for _, c := range in.Cards {
+		cardIDs = append(cardIDs, fmt.Sprintf("%d-%s", c.Number, c.Slug))
+	}
+	reasons = append([]string{fmt.Sprintf("batch %02d-%s holds cards %s", in.Number, in.Slug, strings.Join(cardIDs, ", "))}, reasons...)
 
 	var wayForward string
 	if deleteNotDone {
@@ -175,12 +182,14 @@ func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, erro
 // exempts;
 // Sleeper is the clock seam SettleRetry's bounded wait uses.
 type RecordDeps struct {
-	Batches     []batcher.Batch
-	State       *State
-	Config      Config
-	Engine      shuttleengine.Engine
-	Geom        Geometry
-	RefMatcher  RefMatcher
+	Batches    []batcher.Batch
+	State      *State
+	Config     Config
+	Engine     shuttleengine.Engine
+	Geom       Geometry
+	RefMatcher RefMatcher
+	// ReadOnly classifies a fabric-referencing command as read-only, which makes its finding a policy warning; nil accepts nothing.
+	ReadOnly    func(cmd string) bool
 	OutcomePath string
 	SummaryPath string
 	Sleeper     Sleeper
@@ -361,7 +370,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		if isDispositioned(deps.State, id) {
 			continue
 		}
-		severity, err := ClassifyViolation(v, deps.Geom)
+		severity, err := ClassifyViolation(v, deps.Geom, deps.ReadOnly)
 		if err != nil {
 			return nil, err
 		}
@@ -626,7 +635,7 @@ func auditTerminalFork(deps RecordDeps, bs *BatchState, batchNumber int) (*Recor
 			if isDispositioned(deps.State, id) {
 				continue
 			}
-			severity, err := ClassifyViolation(v, deps.Geom)
+			severity, err := ClassifyViolation(v, deps.Geom, deps.ReadOnly)
 			if err != nil {
 				return nil, err
 			}

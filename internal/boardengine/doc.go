@@ -32,8 +32,7 @@
 // a write of "normal" clears the field, and a write of any other value is refused.
 // Within each README group, a task layer, a Notes type subsection or Done, entries order high, normal, low, then in their order without priority;
 // RenderOrder applies it, so `lyx board list` and `find` follow the same order.
-// The README splits each open group, Running, Ready, a dependency layer or a Notes type subsection, into one table per priority present, in the order high, normal, low,
-// each under a fourth-level heading, `#### High priority`, `#### Normal priority` or `#### Low priority`, one level below the group's `###` heading;
+// The README splits each open group, Running, Ready, a dependency layer or a Notes type subsection, into one table per priority present, in the order high, normal, low, each under a fourth-level heading, `#### High priority`, `#### Normal priority` or `#### Low priority`, one level below the group's `###` heading;
 // a priority with no entry in the group gets no heading and no table, and Done stays one table.
 // Priority is part of an entry's scope, so the run lock refuses a change to it on a run-held entry.
 //
@@ -67,6 +66,7 @@
 // A merge carries the removed entries' issues: the upserted entry's issues are its own followed by each removed entry's, in remove order, without duplicates.
 // Import writes the board first and then comments with a pointer to the entry and closes the issue, and close alone ends a noise issue with a stated reason and touches no entry.
 // boardengine imports nothing GitHub-specific: the caller converts a fetched issue into InboxIssue and makes every network call outside the board lock.
+// An imported or folded body carries the issue's comments after the issue body, the ones the caller kept, oldest first: each is a heading naming its UTC creation date, one level below the body's own heading, followed by the comment verbatim, its author not recorded.
 //
 // # Run lock
 //

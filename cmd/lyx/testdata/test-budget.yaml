@@ -1,7 +1,7 @@
 # Top-level test functions per package, in its _test.go files under every build tag.
 # TestTestBudget_PackagesStayWithinBudget fails when a package exceeds its row or has tests and no row.
 # Raise a row in the commit that adds the tests that need it.
-cmd/lyx: 72
+cmd/lyx: 73
 cmd/testtiming: 21
 contracts/specs: 3
 contracts/stencils: 16
@@ -10,7 +10,7 @@ internal/batcher: 9
 internal/battencli: 58
 internal/battenrecipe: 8
 internal/battenshed: 90
-internal/boardcli: 12
+internal/boardcli: 13
 internal/boardengine: 76
 internal/boardengine/boardtest: 3
 internal/buildinfo: 2
@@ -18,7 +18,7 @@ internal/buildvcs: 2
 internal/burlercli: 19
 internal/burlerengine: 39
 internal/burlermarker: 1
-internal/clihelp: 11
+internal/clihelp: 13
 internal/cliwire: 12
 internal/commentlint: 3
 internal/configcli: 10
@@ -30,7 +30,7 @@ internal/discussionparser: 16
 internal/dotgit: 3
 internal/editdirective: 2
 internal/envsource: 3
-internal/fabriccli: 20
+internal/fabriccli: 21
 internal/fabricengine: 635
 internal/friction: 6
 internal/frictionengine: 15
@@ -44,6 +44,7 @@ internal/githubclient: 11
 internal/gitkit: 9
 internal/gitrepo: 41
 internal/gitrepo/internal/gitoracle: 1
+internal/helpcli: 1
 internal/hubforge: 7
 internal/hubgeom: 11
 internal/hubreconcile: 18
@@ -54,22 +55,22 @@ internal/landingshed: 67
 internal/lock: 4
 internal/logger: 34
 internal/loggerconfig: 3
-internal/loomcli: 193
+internal/loomcli: 195
 internal/loomengine: 41
 internal/loomrecipe: 50
-internal/loomshed: 75
+internal/loomshed: 76
 internal/lyxcwd: 23
 internal/mergeresolve: 17
 internal/modelspec: 11
-internal/orchcli: 25
-internal/orchengine: 131
+internal/orchcli: 26
+internal/orchengine: 133
 internal/output: 4
 internal/pairteardown: 6
 internal/parentdirective: 4
 internal/parentreview: 53
 internal/pattern: 7
 internal/planglyph: 83
-internal/planparser: 85
+internal/planparser: 86
 internal/preflight: 7
 internal/preflightshed: 8
 internal/proc: 17
@@ -80,7 +81,7 @@ internal/reedengine/render: 12
 internal/seatengine: 15
 internal/segmentcolor: 4
 internal/selfreportcli: 3
-internal/selfreportengine: 11
+internal/selfreportengine: 12
 internal/shedadapters: 159
 internal/shedbuild: 13
 internal/shedcheck: 3
@@ -89,7 +90,7 @@ internal/shedengine: 133
 internal/shedrecipe: 102
 internal/shedrun: 22
 internal/shedtransient: 2
-internal/shedverbs: 79
+internal/shedverbs: 80
 internal/shell: 12
 internal/shuttlecli: 22
 internal/shuttleengine: 161
@@ -117,10 +118,10 @@ internal/testkit/stencilkit: 3
 internal/testkit/tmuxkit: 14
 internal/treadleengine: 34
 internal/verifyrun: 4
-internal/verifytree: 6
+internal/verifytree: 7
 internal/vscode: 12
 internal/webstercli: 81
-internal/websterengine: 194
+internal/websterengine: 199
 internal/weftname: 1
 internal/yamlengine: 12
 tools/codestats: 9

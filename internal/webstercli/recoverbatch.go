@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -44,21 +45,26 @@ func batchSlugFor(batches []batcher.Batch, batchNumber int) string {
 	return ""
 }
 
-// recoverBatchCmd builds the `recover-batch <NN>` subcommand.
+// recoverBatchCmd builds the `recover-batch <nn>` subcommand.
 func (c *websterCLI) recoverBatchCmd() *cobra.Command {
 	var wait time.Duration
 
 	cmd := &cobra.Command{
-		Use:   "recover-batch <NN>",
-		Short: "escalate one batch to a cold recovery strand and long-poll it for a terminal digest",
-		Long: `recover-batch <NN> spawns a cold, fresh recovery strand for a batch a fork
+		Use:         "recover-batch <nn>",
+		Short:       "escalate one batch to a cold recovery strand and long-poll it for a terminal digest",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
+		Long: `recover-batch <nn> spawns a cold, fresh recovery strand for a batch a fork
 reported stuck (or never reported at all) -- or, on a re-entrant call,
 attaches to the recovery strand a prior call already spawned. A call that
 spawns the recovery strand first waits for its provider to come up
 (normally seconds), and every call then blocks for up to --wait watching it
 for a terminal classification. A terminal
 call fabric-commits the batch report and state.json and returns the digest
-envelope, exactly like record-batch's own terminal envelope. A recovery
+envelope, exactly like record-batch's own terminal envelope plus "recoveries",
+the batch's counted recovery spawns, and "recovery_retry", true when the
+recovery is dead, committed work of its own and the batch has a recovery left
+to run. A call that would spawn a third counted recovery refuses with
+{"recovery_exhausted": true}. A recovery
 the post-batch checks reject takes the batch terminal failed: the failed
 state and archived report are saved and committed, and the call exits
 non-zero with {"batch_failed": true, "batch": "NN-<slug>", "warnings": [...]};
@@ -171,6 +177,7 @@ Example:
 				Stopper:      c.runner,
 				ShuttleCfg:   c.shuttleCfg,
 				Geom:         c.geom,
+				ReadOnly:     fabricengine.IsReadOnlyCommand,
 				FrictionDir:  c.frictionDir,
 				ParentBranch: c.parentBranch,
 			}
@@ -181,6 +188,14 @@ Example:
 				mutateHeld = false
 				if errors.Is(err, websterengine.ErrRecoveryNeedsFresh) {
 					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"needs_fresh": true}))
+					return nil
+				}
+				if errors.Is(err, websterengine.ErrAuditNotAcceptable) {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"audit_not_acceptable": true}))
+					return nil
+				}
+				if errors.Is(err, websterengine.ErrRecoveryExhausted) {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"recovery_exhausted": true}))
 					return nil
 				}
 				if errors.Is(err, websterengine.ErrRecoveryDeleteReferenced) {
@@ -292,6 +307,7 @@ Example:
 				}
 
 				fields := digestFields(*result.Digest)
+				fields["recovery_retry"], fields["recoveries"] = websterengine.RecoveryRetry(c.geom, fresh, batchNumber)
 				fields["warnings"] = ownerlessRunWarnings(c.geom.ScratchDir, result.Warnings)
 				clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
 				return nil

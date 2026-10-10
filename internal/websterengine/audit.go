@@ -381,16 +381,20 @@ func fabricReferenceCommand(entry string) (string, bool) {
 // A write within another worktree of the task repository, or within that worktree's `_lyx`, is correctness;
 // the innermost worktree holding the write decides, so a worktree enclosing this one never claims a write inside it.
 // A write inside this worktree is correctness when git does not ignore it, and every other parent-write is policy.
-// A fabric-reference is correctness whatever its command:
-// an agent never touches the fabric repo, and a command that reaches it can rewrite run state that a re-run of the cards' verify commands cannot detect.
+// A fabric-reference is policy when readOnly accepts its command, and correctness otherwise:
+// an agent never touches the fabric repo for a write, and a command that reaches it can rewrite run state that a re-run of the cards' verify commands cannot detect.
+// A nil readOnly accepts nothing, and the classifier sees static shape only, so a command behind `bash -c`, a variable or a substitution stays correctness.
 // Every other class is policy.
 // Prefix tests compare link-resolved paths, so a write spelled through a link to the run's `_lyx` still classes as correctness.
 // The error return is only the git probe's or the link resolution's failure.
-func ClassifyViolation(v AuditViolation, geom Geometry) (AuditSeverity, error) {
+func ClassifyViolation(v AuditViolation, geom Geometry, readOnly func(cmd string) bool) (AuditSeverity, error) {
 	switch v.Class {
 	case ClassForkContractWrite, ClassForkPlanWrite, ClassForkStateWrite:
 		return AuditSeverityCorrectness, nil
 	case ClassFabricReference:
+		if readOnly != nil && readOnly(v.Command) {
+			return AuditSeverityPolicy, nil
+		}
 		return AuditSeverityCorrectness, nil
 	case ClassParentWrite:
 	default:
