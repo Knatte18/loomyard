@@ -16,6 +16,10 @@
 // Those cards are history, not targets: a run moved back to the plan review after Webster executed batches has their work in the tree, so their tree-dependent checks are skipped.
 // Every other card, and every card of a plan with no run record, is checked against the tree.
 //
+// A plan gate that passes on informational findings alone records them as a count and a file path in its log line, and writes the findings, one per line, to `<gate>-informational-findings.txt` under the run's told ephemeral scratch directory.
+// A gate told no scratch directory, such as a standalone validate, and a gate whose file cannot be written keep the findings inline in the log line.
+// The blocking path is unchanged: the findings go to the writer and the log line in full.
+//
 // The Webster-Burler round gate (NewVerifyGate) runs less than the plan's `## verify:`.
 // It lints the comments added since the plan verify's last recorded pass, then runs the command impactset derives from that diff through verifytree.Verify, falling back to the plan's own command wherever impactset cannot narrow.
 // The narrowing is impactset's; Webster's gate, Publish and Finalize keep the full plan verify on the tree that lands.

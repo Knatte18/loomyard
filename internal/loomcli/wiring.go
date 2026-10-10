@@ -547,8 +547,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		Cwd:          cwd,
 		AnchorPath:   anchorPath,
 		WorktreeRoot: location.WorktreePath(),
-		VerifyDir:    verifytree.Dir(anchorPath),
-		GateSlots:    hubgeom.GateSlots(location),
+		// RunScratchDir is the directory the step envelope reports as scratch_dir.
+		RunScratchDir: shedrun.ScratchDir(location, c.runID),
+		VerifyDir:     verifytree.Dir(anchorPath),
+		GateSlots:     hubgeom.GateSlots(location),
 		PublishFailure: func() string {
 			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath))
 		},
