@@ -36,6 +36,31 @@ func TestCheckSocketPath(t *testing.T) {
 	}
 }
 
+// TestServerEnviron_MatchesReedServerSpawn pins the kit's copy of reed's environment hygiene to reedengine.CleanClaudeEnv and the three names reed's server spawn also strips.
+func TestServerEnviron_MatchesReedServerSpawn(t *testing.T) {
+	t.Parallel()
+
+	environ := []string{
+		"HOME=/home/x", "CLAUDECODE=1", "CLAUDE_CODE_ENTRYPOINT=cli", "CLAUDE_CODEX=keep",
+		"LYX_TRACE_ID=abc", "LYX_STRAND_NAME=ab:orch", "LYX_PARENT=ab:driver", "LYX_OTHER=keep", "PATH=/bin",
+	}
+
+	got := serverEnviron(environ)
+
+	clean, _ := reedengine.CleanClaudeEnv(environ)
+	var want []string
+	for _, entry := range clean {
+		switch strings.SplitN(entry, "=", 2)[0] {
+		case "LYX_TRACE_ID", "LYX_STRAND_NAME", "LYX_PARENT":
+		default:
+			want = append(want, entry)
+		}
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("serverEnviron = %q; want %q", got, want)
+	}
+}
+
 func TestSetEnv(t *testing.T) {
 	t.Setenv("TMUX", "/outer/tmux,1,0")
 	t.Setenv("TMUX_PANE", "%3")

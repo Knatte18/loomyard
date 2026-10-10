@@ -882,7 +882,13 @@ func (e *Engine) Down() (DownResult, error) {
 // sessionlessSocketHolderPersists reports whether a process holds this engine's
 // socket without any session, persisting across staleSocketGrace (grace prevents
 // reaping a sibling worktree's just-spawned server).
+// A holder whose global user option @lyx_test_server answers "on" is never stale.
+// Only the test kit's tmux config sets that option, on a server it pre-starts and keeps alive with no session; reed's own boots never set it.
+// Bound: an operator config that sets the option disables the reap for its own servers.
 func (e *Engine) sessionlessSocketHolderPersists() bool {
+	if out, err := e.tmux.output("show-options", "-gqv", "@lyx_test_server"); err == nil && strings.TrimSpace(out) == "on" {
+		return false
+	}
 	deadline := time.Now().Add(staleSocketGrace)
 	for {
 		// A socket that lists sessions hosts a healthy shared server — never

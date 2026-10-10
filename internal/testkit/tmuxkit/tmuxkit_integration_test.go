@@ -7,8 +7,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
+	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/agentname"
 )
 
 func requireTmux(t *testing.T) string {
@@ -128,5 +132,59 @@ func TestSweep_KillsServersUnderItsDirectoryOnly(t *testing.T) {
 	}
 	if _, err := os.Lstat(socketPath(other)); err != nil {
 		t.Errorf("the sweep removed a socket file outside its own directory: %v", err)
+	}
+}
+
+// TestSocket_StartsHermeticNonLoginServer pins the pre-started server: it ignores the operator's ~/.tmux.conf, starts non-login panes, outlives its last session, carries the kit's marker and inherits none of the variables a pane may not.
+// It sets HOME and the variables through t.Setenv, which are process-global state, so it does not call t.Parallel.
+func TestSocket_StartsHermeticNonLoginServer(t *testing.T) {
+	tmux := requireTmux(t)
+
+	home := t.TempDir()
+	if err := os.WriteFile(filepath.Join(home, ".tmux.conf"), []byte("set -g @operator_marker leaked\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	leaked := []string{"CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "LYX_TRACE_ID", agentname.StrandNameEnv, agentname.ParentEnv}
+	for _, name := range leaked {
+		t.Setenv(name, "leaked")
+	}
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "sh"
+	}
+
+	key := Socket(t, tmux)
+	run := func(args ...string) string {
+		t.Helper()
+		out, err := exec.Command(tmux, append([]string{"-L", key}, args...)...).Output()
+		if err != nil {
+			t.Fatalf("tmux %v: %v", args, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	for option, want := range map[string]string{
+		"@operator_marker": "",
+		"default-command":  shell,
+		"default-shell":    shell,
+		"exit-empty":       "off",
+		testServerOption:   "on",
+	} {
+		if got := run("show-options", "-gqv", option); got != want {
+			t.Errorf("option %s = %q; want %q", option, got, want)
+		}
+	}
+
+	run("new-session", "-d", "-s", "kit")
+	if got := run("split-window", "-d", "-P", "-F", "#{pane_start_command}", "-t", "kit"); got != shell {
+		t.Errorf("split pane start command = %q; want %q, which a login-shell pane leaves empty", got, shell)
+	}
+
+	for _, line := range strings.Split(run("show-environment", "-g"), "\n") {
+		name, _, _ := strings.Cut(line, "=")
+		if slices.Contains(leaked, name) {
+			t.Errorf("server environment carries %q", line)
+		}
 	}
 }

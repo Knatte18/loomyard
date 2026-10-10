@@ -3,9 +3,12 @@
 // A package's TestMain calls Main, which points `TMUX_TMPDIR` at a private directory, so no test reaches the caller's own tmux server or leaves a socket in the default directory.
 // Socket hands a single test a unique `-L` key and, when the test ends, kills its server and removes its socket file.
 // KillOnCleanup does the same for a key the test did not mint.
+// Both first start a hermetic server on the key from the kit's own tmux config, so no server a test uses reads `~/.tmux.conf`, starts login-shell panes or exits when it has no session.
+// The config marks its servers with the user option `@lyx_test_server`, which reed's stale-holder probe reads to leave such a server alone.
+// Reed starts a server itself, carrying no such config, only after a test's own `down` or `kill-server` on its key, or when a test registers its key after reed's boot.
 //
 // It is the second kit exempt from the Testkit Invariant's `os/exec` ban, after lyxbin.
-// The exemption is bounded to running the `tmux` binary against sockets under the kit's own directory or its own fixture keys.
+// The exemption is bounded to running the `tmux` binary against sockets under the kit's own directory or its own fixture keys, and to starting servers under the kit's own config.
 // A test binary killed by a panic or timeout skips Main's sweep and leaves one `lyx`-prefixed temp directory with its servers;
 // Socket's cleanup still covers ordinary test failures.
 package tmuxkit
@@ -13,6 +16,7 @@ package tmuxkit
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -20,8 +24,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/agentname"
 )
 
 const (
@@ -79,7 +87,7 @@ func sweep(dir string, uid int) {
 	}
 }
 
-// Socket returns a unique `-L` key for one test and registers its teardown in t.Cleanup through KillOnCleanup.
+// Socket returns a unique `-L` key for one test, with a hermetic server already running on it, and registers its teardown in t.Cleanup through KillOnCleanup.
 // tmux is the binary to run.
 func Socket(t *testing.T, tmux string) string {
 	t.Helper()
@@ -92,16 +100,106 @@ func Socket(t *testing.T, tmux string) string {
 	return key
 }
 
-// KillOnCleanup registers in t.Cleanup a `kill-server` on the `-L` key key, then the removal of that key's socket file.
+// KillOnCleanup pre-starts a hermetic server on the `-L` key key, registers the key, and registers in t.Cleanup a `kill-server` on it, then the removal of that key's socket file.
 // It is the helper for a key a test did not mint itself, such as a `reedengine.ServerName` key of a fixture hub.
-// It removes the one path for key under the current `TMUX_TMPDIR`'s per-user directory, never a glob, and only a socket that no longer accepts connections.
+// The server reads the kit's own config instead of `~/.tmux.conf`, starts non-login panes, and survives having no session; a start failure fails the test.
+// The cleanup removes the one path for key under the current `TMUX_TMPDIR`'s per-user directory, never a glob, and only a socket that no longer accepts connections.
 // tmux is the binary to run.
 func KillOnCleanup(t *testing.T, tmux, key string) {
 	t.Helper()
+	registerKey(key)
 	t.Cleanup(func() {
 		_ = exec.Command(tmux, "-L", key, "kill-server").Run()
 		removeDeadSocket(socketPath(key), deadSocketWait)
 	})
+	if err := startServer(tmux, key); err != nil {
+		t.Fatalf("tmuxkit: %v", err)
+	}
+}
+
+const (
+	// configFileName is the kit's tmux config, written once per test binary into the socket directory Main owns.
+	configFileName = "lyx-test-tmux.conf"
+
+	// testServerOption is the tmux user option the kit's config sets to "on", which reed's stale-holder probe reads to tell a pre-started test server from a stale one.
+	testServerOption = "@lyx_test_server"
+)
+
+var (
+	// registryMu guards registeredKeys.
+	registryMu sync.Mutex
+	// registeredKeys holds every `-L` key a test registered with the kit, for the end-of-package check.
+	registeredKeys = map[string]bool{}
+
+	configOnce sync.Once
+	configPath string
+	configErr  error
+)
+
+// registerKey records key as one a test of this package may start a server on.
+func registerKey(key string) {
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	registeredKeys[key] = true
+}
+
+// serverConfig writes the kit's tmux config once per test binary, under the directory Main set `TMUX_TMPDIR` to, and returns its path.
+// The config sets the default shell and an equal default command, so panes start the shell without the login flag; it keeps an empty server alive; and it marks the server as the kit's.
+func serverConfig() (string, error) {
+	configOnce.Do(func() {
+		dir := os.Getenv("TMUX_TMPDIR")
+		if dir == "" {
+			configErr = errors.New("TMUX_TMPDIR unset: the package's TestMain does not run through Main")
+			return
+		}
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "sh"
+		}
+		config := fmt.Sprintf("set -g default-shell %q\nset -g default-command %q\nset -g exit-empty off\nset -g %s on\n", shell, shell, testServerOption)
+		configPath = filepath.Join(dir, configFileName)
+		if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+			configErr = fmt.Errorf("write tmux config: %w", err)
+		}
+	})
+	return configPath, configErr
+}
+
+// startServer starts a tmux server on the `-L` key key from the kit's config, never reading `~/.tmux.conf`, with no session.
+// On a key whose server already runs, the start is a client command that changes nothing.
+// The server is the process every session and pane on the key inherits its environment from, so its environment is the test process's less what reed's own server spawn strips.
+// It does nothing on Windows.
+func startServer(tmux, key string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	config, err := serverConfig()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(tmux, "-f", config, "-L", key, "start-server")
+	cmd.Dir = filepath.Dir(config)
+	cmd.Env = serverEnviron(os.Environ())
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("start tmux server on %q: %w\n%s", key, err, out)
+	}
+	return nil
+}
+
+// serverEnviron returns environ without the variables no pane may inherit from the process that starts the server: Claude's own, and the trace id and agent names of the enclosing strand.
+// The Claude filter is a copy of reedengine.CleanClaudeEnv, which this package cannot import because reedengine's own tests import the kit; a test pins the two together.
+func serverEnviron(environ []string) []string {
+	clean := make([]string, 0, len(environ))
+	for _, entry := range environ {
+		key, _, _ := strings.Cut(entry, "=")
+		switch {
+		case key == "CLAUDECODE", strings.HasPrefix(key, "CLAUDE_CODE_"):
+		case key == "LYX_TRACE_ID", key == agentname.StrandNameEnv, key == agentname.ParentEnv:
+		default:
+			clean = append(clean, entry)
+		}
+	}
+	return clean
 }
 
 // socketPath is the socket file tmux creates for the `-L` key key, resolving the directory from `TMUX_TMPDIR` as tmux does.
