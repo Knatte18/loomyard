@@ -74,7 +74,7 @@ func (run *Run) loopClassification(outcome Outcome) string {
 // loopAgreesWithState reports whether the loop classification and the session state are a pairing the fixed mapping allows:
 // waiting and running read busy, held reads idle-stalled or asking, done reads idle-done, died reads dead.
 // Three further pairings are expected: a pending gate entry waiting beside idle-done once every output exists,
-// and a held or done run beside busy on background work, since the loop has waited out or finished past tasks the turn end still reports.
+// and a held or done run beside busy on background work, since a turn end counted at once, or a plain Stop after a waiting one, leaves the session running tasks the loop no longer waits on.
 func loopAgreesWithState(loop string, state SessionState, gatePending bool) bool {
 	busyOnBackground := state.Name == SessionBusy && state.Cause == SessionCauseBackground
 	switch loop {
