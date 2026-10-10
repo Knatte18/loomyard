@@ -346,52 +346,151 @@ func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 	}
 }
 
-// TestRunCLI_ReconcileBackfillFailureIsNonFatal points the weft remote at an unreachable path so the
-// backfill's push fails after its commit succeeds, then asserts the envelope reports "record_failed"
-// with a non-empty detail while the exit code stays 0 — a failed backfill commit or push is non-fatal,
-// mirroring the board-junction precedent that a convenience repair may never downgrade a reconcile
-// verdict. The exit-code assertion is the point of this test.
-func TestRunCLI_ReconcileBackfillFailureIsNonFatal(t *testing.T) {
-	fixtures := t.TempDir()
-	warpBare := makeCLICloneWarpBare(t, fixtures, "reconcilecli-fail-warp")
-	weftBare := makeCLICloneWeftBare(t, fixtures, "reconcilecli-fail-weft")
+// TestRunCLI_ReconcileBoardFailureFailsTheVerb runs reconcile over a cloned hub whose board commit or push fails, at the hub-wide heal, the warp-binding record or both.
+// Each row asserts a non-zero exit with the envelope kept:
+// it still carries "pairs", the error names the first failure, and each side's detail names its own failure.
+// The exit-code assertion is the point of this test.
+func TestRunCLI_ReconcileBoardFailureFailsTheVerb(t *testing.T) {
+	t.Parallel()
 
-	cloneParent := t.TempDir()
-
-	var cloneOut bytes.Buffer
-	exitCode := fabriccli.RunCLI(&cloneOut, []string{
-		"clone", "--shortname", "tst", "--into", cloneParent, filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
-	})
-	if exitCode != 0 {
-		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, cloneOut.String())
+	// unreachableRemote points the board's origin at a path that does not exist, so every fetch and push fails.
+	unreachableRemote := func(t *testing.T, boardDir, fixtures string) {
+		unreachable := filepath.ToSlash(filepath.Join(fixtures, "does-not-exist.git"))
+		gitkit.MustRun(t, boardDir, "git", "remote", "set-url", "origin", unreachable)
 	}
-	cloneResult := envelope.Decode(t, cloneOut.String())
-	hubPath, _ := cloneResult.Raw["hub"].(string)
-	if hubPath == "" {
-		t.Fatalf("RunCLI(clone) output missing non-empty 'hub' key; got %v", cloneResult)
+	// rejectPushes installs a pre-receive hook in the board's origin that rejects every push, while fetches still succeed.
+	rejectPushes := func(t *testing.T, boardDir, _ string) {
+		origin := strings.TrimSpace(gitOutputCLI(t, boardDir, "remote", "get-url", "origin"))
+		writeFailingHook(t, filepath.Join(filepath.FromSlash(origin), "hooks"), "pre-receive")
+	}
+	// rejectCommits installs a pre-commit hook in the board's repository that rejects every commit.
+	rejectCommits := func(t *testing.T, boardDir, _ string) {
+		hooks := strings.TrimSpace(gitOutputCLI(t, boardDir, "rev-parse", "--path-format=absolute", "--git-path", "hooks"))
+		writeFailingHook(t, hooks, "pre-commit")
 	}
 
-	boardDir := fabricengine.BoardDir(hubPath)
-	gitkit.MustRun(t, boardDir, "git", "rm", fabricengine.WarpBindingFileName)
-	gitkit.MustRun(t, boardDir, "git", "commit", "-m", "test fixture: unbind hub")
-
-	unreachable := filepath.ToSlash(filepath.Join(fixtures, "does-not-exist.git"))
-	gitkit.MustRun(t, boardDir, "git", "remote", "set-url", "origin", unreachable)
-
-	// Proving cwd is a per-call value and not a per-process one is exactly what this test exists to
-	// demonstrate: this reconcile runs against a different directory than the clone above, passed
-	// per-call rather than hoisted to a shared variable.
-	var reconcileOut bytes.Buffer
-	exitCode = fabriccli.RunCLIIn(filepath.Join(hubPath, "reconcilecli-fail-warp"), &reconcileOut, []string{"reconcile"})
-	if exitCode != 0 {
-		t.Fatalf("RunCLI(reconcile) = %d; want 0 (a failed backfill push must be non-fatal)\noutput: %s", exitCode, reconcileOut.String())
+	tests := []struct {
+		name string
+		// staleHubConfig commits a retired key into the board's fabric config, so the heal rewrites it.
+		staleHubConfig bool
+		// unbind commits the warp-binding record's removal, so reconcile records it again.
+		unbind               bool
+		breakBoard           func(t *testing.T, boardDir, fixtures string)
+		wantErr              string
+		wantHubConfigDetail  string
+		wantWarpBindingError string
+	}{
+		{
+			name:                 "unreachable remote skips the heal and fails the recorded binding's push",
+			unbind:               true,
+			breakBoard:           unreachableRemote,
+			wantErr:              "warp binding record failed",
+			wantHubConfigDetail:  "fetching origin",
+			wantWarpBindingError: "commit succeeded but push failed",
+		},
+		{
+			name:                 "rejected push fails the healed config and the present binding",
+			staleHubConfig:       true,
+			breakBoard:           rejectPushes,
+			wantErr:              "hub-wide config committed but push failed",
+			wantHubConfigDetail:  "hub-wide config committed but push failed",
+			wantWarpBindingError: "a previously committed warp binding record could not be pushed",
+		},
+		{
+			name:                "rejected commit fails the healed config",
+			staleHubConfig:      true,
+			breakBoard:          rejectCommits,
+			wantErr:             "pre-commit",
+			wantHubConfigDetail: "pre-commit",
+		},
+		{
+			name:                 "rejected commit fails the recorded binding",
+			unbind:               true,
+			breakBoard:           rejectCommits,
+			wantErr:              "warp binding record failed",
+			wantWarpBindingError: "pre-commit",
+		},
 	}
 
-	result := envelope.RequireOK(t, reconcileOut.String())
-	if binding, _ := result.Raw["warp_binding"].(string); binding != string(fabricengine.WarpBindingOutcomeRecordFailed) {
-		t.Errorf("RunCLI(reconcile) warp_binding = %q; want %q", binding, fabricengine.WarpBindingOutcomeRecordFailed)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fixtures := t.TempDir()
+			warpBare := makeCLICloneWarpBare(t, fixtures, "reconcilecli-fail-warp")
+			weftBare := makeCLICloneWeftBare(t, fixtures, "reconcilecli-fail-weft")
+
+			var cloneOut bytes.Buffer
+			exitCode := fabriccli.RunCLI(&cloneOut, []string{
+				"clone", "--shortname", "tst", "--into", t.TempDir(), filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
+			})
+			if exitCode != 0 {
+				t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, cloneOut.String())
+			}
+			cloneResult := envelope.Decode(t, cloneOut.String())
+			hubPath, _ := cloneResult.Raw["hub"].(string)
+			if hubPath == "" {
+				t.Fatalf("RunCLI(clone) output missing non-empty 'hub' key; got %v", cloneResult)
+			}
+
+			boardDir := fabricengine.BoardDir(hubPath)
+			if tt.staleHubConfig {
+				fabricConfig := configengine.ConfigFile(boardDir, "fabric")
+				current, err := os.ReadFile(fabricConfig)
+				if err != nil {
+					t.Fatalf("read %s: %v", fabricConfig, err)
+				}
+				if err := os.WriteFile(fabricConfig, append(current, []byte("retired_fixture_key: 1\n")...), 0o644); err != nil {
+					t.Fatalf("write %s: %v", fabricConfig, err)
+				}
+				gitkit.MustRun(t, boardDir, "git", "commit", "-am", "test fixture: stale hub-wide config")
+			}
+			if tt.unbind {
+				gitkit.MustRun(t, boardDir, "git", "rm", fabricengine.WarpBindingFileName)
+				gitkit.MustRun(t, boardDir, "git", "commit", "-m", "test fixture: unbind hub")
+			}
+			gitkit.MustRun(t, boardDir, "git", "push", "origin", "HEAD")
+			tt.breakBoard(t, boardDir, fixtures)
+
+			// The reconcile runs against a different directory than the clone above, passed per-call, so cwd is a per-call value and not a per-process one.
+			var reconcileOut bytes.Buffer
+			exitCode = fabriccli.RunCLIIn(filepath.Join(hubPath, "reconcilecli-fail-warp"), &reconcileOut, []string{"reconcile"})
+			if exitCode == 0 {
+				t.Fatalf("RunCLI(reconcile) = 0; want non-zero (a failed board commit or push fails the verb)\noutput: %s", reconcileOut.String())
+			}
+
+			result := envelope.RequireErr(t, reconcileOut.String(), tt.wantErr)
+			if _, ok := result.Raw["pairs"]; !ok {
+				t.Errorf("RunCLI(reconcile) envelope lacks \"pairs\"; want the envelope kept on failure")
+			}
+			hubConfigDetail, _ := result.Raw["hub_config_detail"].(string)
+			if (tt.wantHubConfigDetail == "") != (hubConfigDetail == "") || !strings.Contains(hubConfigDetail, tt.wantHubConfigDetail) {
+				t.Errorf("RunCLI(reconcile) hub_config_detail = %q; want it to contain %q", hubConfigDetail, tt.wantHubConfigDetail)
+			}
+			binding, _ := result.Raw["warp_binding"].(string)
+			bindingDetail, _ := result.Raw["warp_binding_detail"].(string)
+			if tt.wantWarpBindingError == "" {
+				if binding == string(fabricengine.WarpBindingOutcomeRecordFailed) {
+					t.Errorf("RunCLI(reconcile) warp_binding = %q, detail %q; want the binding not failed", binding, bindingDetail)
+				}
+				return
+			}
+			if binding != string(fabricengine.WarpBindingOutcomeRecordFailed) || !strings.Contains(bindingDetail, tt.wantWarpBindingError) {
+				t.Errorf("RunCLI(reconcile) warp_binding = %q, detail %q; want %q naming %q", binding, bindingDetail, fabricengine.WarpBindingOutcomeRecordFailed, tt.wantWarpBindingError)
+			}
+		})
 	}
-	if detail, _ := result.Raw["warp_binding_detail"].(string); detail == "" {
-		t.Errorf("RunCLI(reconcile) warp_binding_detail is empty; want a non-empty push-failure message")
+}
+
+// writeFailingHook writes a git hook named name into hooksDir that exits non-zero.
+func writeFailingHook(t *testing.T, hooksDir, name string) {
+	t.Helper()
+
+	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", hooksDir, err)
+	}
+	hook := filepath.Join(hooksDir, name)
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\necho \"rejected by the test's "+name+" hook\" >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatalf("write %s: %v", hook, err)
 	}
 }

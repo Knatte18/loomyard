@@ -1,7 +1,6 @@
 // layer.go — derived task fields.
 //
-// ComputeLayers assigns each task its README subsection: Running, Ready, a dependency layer or Independent,
-// and RenderOrder orders tasks for output.
+// ComputeLayers assigns each task its README subsection: Running, Ready, a dependency layer or Independent, and RenderOrder orders tasks for output.
 // All computed at read time;
 // never stored.
 
@@ -24,8 +23,7 @@ const (
 // A task a run holds is runningLayer, by IsRunStatus as the run lock decides it.
 // An open task with no open dependency is readyLayer, and every other task is the letter of its depth:
 // A waits only on running or ready tasks, B on something in A, and so on.
-// A dependency on a done task adds no depth, while one on a running task counts as one on a ready task,
-// and cycle detection still follows running tasks.
+// A dependency on a done task adds no depth, while one on a running task counts as one on a ready task, and cycle detection still follows running tasks.
 func ComputeLayers(tasks []Task) (map[string]string, error) {
 	layerMap := make(map[string]string)
 

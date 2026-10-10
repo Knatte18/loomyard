@@ -19,6 +19,8 @@ func TestListSessions(t *testing.T) {
 		hookErr error
 		want    []string
 		wantErr bool
+		// wantNoServer is whether IsNoServer admits the error.
+		wantNoServer bool
 	}{
 		{
 			name: "multi-line listing",
@@ -31,8 +33,20 @@ func TestListSessions(t *testing.T) {
 			want: nil,
 		},
 		{
-			name:    "error",
-			hookErr: errors.New("no server running on socket"),
+			name:         "error",
+			hookErr:      errors.New("no server running on socket"),
+			wantErr:      true,
+			wantNoServer: true,
+		},
+		{
+			name:         "absent socket",
+			hookErr:      errors.New("error connecting to /tmp/tmux-1000/lyx-hub (No such file or directory)"),
+			wantErr:      true,
+			wantNoServer: true,
+		},
+		{
+			name:    "unrelated tmux failure",
+			hookErr: errors.New("error connecting to /tmp/tmux-1000/lyx-hub (Permission denied)"),
 			wantErr: true,
 		},
 		{
@@ -60,6 +74,9 @@ func TestListSessions(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("listSessionsVia() error = nil, want non-nil")
+				}
+				if got := IsNoServer(err); got != tt.wantNoServer {
+					t.Errorf("IsNoServer(%v) = %v; want %v", err, got, tt.wantNoServer)
 				}
 				return
 			}

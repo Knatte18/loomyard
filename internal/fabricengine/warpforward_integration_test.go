@@ -16,7 +16,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -145,38 +147,46 @@ func TestFabricWarp_CurrentBranchErrorsOnDetachedHead(t *testing.T) {
 	}
 }
 
-// TestStencilSource_BuildAncestryFollowsTheRevision pins StencilSource's three source shapes and the ancestry its Build reports.
+// TestStencilSource_BuildAncestryFollowsTheRevision pins StencilSource's source shapes, the ancestry its Build reports and the ordering its Older reports.
 // The ancestry is memoized, so a second call returns the first answer.
 func TestStencilSource_BuildAncestryFollowsTheRevision(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.NewHub(t, ".")
 	prime := h.PrimeWorktree()
+	firstSHA := gitkit.RevParse(t, prime, "HEAD")
+	gitkit.CommitFile(t, prime, "ordering.txt", "second", "second commit")
 	headSHA := gitkit.RevParse(t, prime, "HEAD")
 	absentSHA := strings.Repeat("a", len(headSHA))
 	sourceDir := filepath.Join(prime, "contracts", "stencils")
+	earlier := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	later := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 
 	tests := []struct {
 		name         string
 		sourceDir    string
-		revision     string
+		running      buildvcs.Identity
 		wantDir      string
 		wantNoBuild  bool
 		wantAncestry stencilstore.BuildAncestry
 	}{
-		{name: "empty source dir is the zero source", revision: headSHA, wantNoBuild: true},
+		{name: "empty source dir has no dir and no build", running: buildvcs.Identity{Revision: headSHA}, wantNoBuild: true},
 		{name: "empty revision has no build func", sourceDir: sourceDir, wantDir: sourceDir, wantNoBuild: true},
-		{name: "head sha is in head", sourceDir: sourceDir, revision: headSHA, wantDir: sourceDir, wantAncestry: stencilstore.BuildInHead},
-		{name: "absent sha is not in head", sourceDir: sourceDir, revision: absentSHA, wantDir: sourceDir, wantAncestry: stencilstore.BuildNotInHead},
+		{name: "head sha is in head", sourceDir: sourceDir, running: buildvcs.Identity{Revision: headSHA}, wantDir: sourceDir, wantAncestry: stencilstore.BuildInHead},
+		{name: "absent sha is not in head", sourceDir: sourceDir, running: buildvcs.Identity{Revision: absentSHA}, wantDir: sourceDir, wantAncestry: stencilstore.BuildNotInHead},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			source := fabricengine.StencilSource(prime, tt.sourceDir, tt.revision)
+			source := fabricengine.StencilSource(prime, tt.sourceDir, tt.running)
 			if source.Dir != tt.wantDir {
 				t.Errorf("Source.Dir = %q; want %q", source.Dir, tt.wantDir)
+			}
+			wantWriter := tt.running.Revision != ""
+			if (source.Writer.Revision != "") != wantWriter || (source.Older != nil) != wantWriter {
+				t.Errorf("Source.Writer = %+v, Older set = %v; want both set only for a non-empty revision", source.Writer, source.Older != nil)
 			}
 			if tt.wantNoBuild {
 				if source.Build != nil {
@@ -189,6 +199,30 @@ func TestStencilSource_BuildAncestryFollowsTheRevision(t *testing.T) {
 			}
 			if got := source.Build(); got != tt.wantAncestry {
 				t.Errorf("second Build() = %v; want the memoized %v", got, tt.wantAncestry)
+			}
+		})
+	}
+
+	orderings := []struct {
+		name     string
+		running  buildvcs.Identity
+		recorded stencilstore.Writer
+		want     stencilstore.Ordering
+	}{
+		{"recorded is an ancestor of running", buildvcs.Identity{Revision: headSHA, Time: earlier}, stencilstore.Writer{Revision: firstSHA, Time: later}, stencilstore.RecordedOlder},
+		{"recorded equals running", buildvcs.Identity{Revision: headSHA, Time: later}, stencilstore.Writer{Revision: headSHA, Time: earlier}, stencilstore.RecordedNotOlder},
+		{"recorded is a descendant of running", buildvcs.Identity{Revision: firstSHA, Time: later}, stencilstore.Writer{Revision: headSHA, Time: earlier}, stencilstore.RecordedNotOlder},
+		{"absent recorded with an earlier time", buildvcs.Identity{Revision: headSHA, Time: later}, stencilstore.Writer{Revision: absentSHA, Time: earlier}, stencilstore.RecordedOlder},
+		{"absent recorded with a later time", buildvcs.Identity{Revision: headSHA, Time: earlier}, stencilstore.Writer{Revision: absentSHA, Time: later}, stencilstore.RecordedNotOlder},
+		{"absent recorded with a zero time", buildvcs.Identity{Revision: headSHA, Time: later}, stencilstore.Writer{Revision: absentSHA}, stencilstore.OrderingUnknown},
+	}
+	for _, tt := range orderings {
+		t.Run("older/"+tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			source := fabricengine.StencilSource(prime, "", tt.running)
+			if got := source.Older(tt.recorded); got != tt.want {
+				t.Errorf("Older(%+v) = %v; want %v", tt.recorded, got, tt.want)
 			}
 		})
 	}

@@ -84,8 +84,7 @@ func PathspecNames(baseDir string) ([]string, error) {
 
 // BoardWriteLockFile is the single exported declarer of the board write-lock filename: the lock
 // serialising every write to the board directory, held by internal/boardengine's own critical
-// section (boardCriticalSection, commitDirty) and by this package's stencil-seeding commit verb
-// (CommitSeededStencils).
+// section and by this package's pathspec-scoped board commits and seed-commit drops.
 // internal/boardengine aliases its own writeLockFile constant to this value rather than declaring
 // the literal a second time.
 const BoardWriteLockFile = "board.lock"

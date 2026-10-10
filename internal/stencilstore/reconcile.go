@@ -46,23 +46,50 @@ const (
 	BuildNotInHead BuildAncestry = 2
 )
 
-// Source names the worktree a seed pass compares the board copies against.
+// Ordering is the caller's answer to whether a recorded writer's build is older than the running binary.
+type Ordering int
+
+const (
+	// OrderingUnknown: the ordering could not be read.
+	OrderingUnknown Ordering = 0
+	// RecordedOlder: the recorded writer's build is older than the running binary.
+	RecordedOlder Ordering = 1
+	// RecordedNotOlder: the recorded writer's build is the running binary or newer than it.
+	RecordedNotOlder Ordering = 2
+)
+
+// Source names the worktree a seed pass compares the board copies against, and the binary running it.
 // Dir is the worktree's stencil source tree; empty names none and keeps the drift warning silent.
 // Build reports the worktree's BuildAncestry; nil means unknown.
-// The store runs no git itself, so the caller supplies Build.
+// Writer is the running binary, recorded into the banner of every ModeProduction write.
+// Older orders a recorded writer against the running binary; nil answers OrderingUnknown.
+// The store runs no git itself, so the caller supplies Build and Older.
 type Source struct {
-	Dir   string
-	Build func() BuildAncestry
+	Dir    string
+	Build  func() BuildAncestry
+	Writer Writer
+	Older  func(recorded Writer) Ordering
 }
 
 // Reconcile is the once-per-process seed/refresh pass: for every name in registry.Names() it reads
 // the on-disk file, classifies it against the registry's shipped default, and acts per the
-// edit-detection table (see Classify) and dev/prod Mode.
+// edit-detection table (see Classify) and Mode.
 // It also seeds baseDir/.gitattributes when absent, and, when source.Dir is non-empty, warns on any
 // board-copy-vs-worktree-source drift, consulting source.Build only for a stencil the source is ahead on.
 // It returns the baseDir-relative, slash-separated paths it actually wrote, in registry.Names()
 // order, and writes nothing at all when every file is already correct.
 func Reconcile(baseDir string, registry Registry, mode Mode, source Source) ([]string, error) {
+	return reconcileAll(baseDir, registry, mode, source, false)
+}
+
+// WritesDue reports whether Reconcile under the same arguments would write any file, writing and logging nothing itself.
+func WritesDue(baseDir string, registry Registry, mode Mode, source Source) (bool, error) {
+	due, err := pendingWrites(baseDir, registry, mode, source)
+	return len(due) > 0, err
+}
+
+// reconcileAll is the shared walk behind Reconcile and ForceRefresh; force performs the refresh row whatever the mode or ordering.
+func reconcileAll(baseDir string, registry Registry, mode Mode, source Source, force bool) ([]string, error) {
 	var written []string
 
 	for _, name := range registry.Names() {
@@ -79,7 +106,7 @@ func Reconcile(baseDir string, registry Registry, mode Mode, source Source) ([]s
 		}
 
 		state := Classify(onDisk, exists, shipped)
-		wrote, writeErr := reconcileOne(path, name, state, onDisk, shipped, mode)
+		wrote, writeErr := reconcileOne(path, name, state, onDisk, shipped, mode, source, force)
 		if writeErr != nil {
 			return written, writeErr
 		}
@@ -103,63 +130,162 @@ func Reconcile(baseDir string, registry Registry, mode Mode, source Source) ([]s
 	return written, nil
 }
 
-// reconcileOne applies one registry name's classified state to disk, per Reconcile's per-row
-// requirements, and reports whether it wrote the file.
-func reconcileOne(path, name string, state State, onDisk, shipped []byte, mode Mode) (bool, error) {
+// pendingWrites walks the registry and .gitattributes like reconcileAll, applying the same decision to each file but writing and logging nothing.
+// It returns the baseDir-relative, slash-separated paths a reconcile would write.
+func pendingWrites(baseDir string, registry Registry, mode Mode, source Source) ([]string, error) {
+	var due []string
+
+	for _, name := range registry.Names() {
+		shipped, known := registry.Default(name)
+		if !known {
+			continue
+		}
+
+		onDisk, readErr := os.ReadFile(Path(baseDir, name))
+		exists := readErr == nil
+		if readErr != nil && !os.IsNotExist(readErr) {
+			return due, fmt.Errorf("stencilstore: reconcile stencil %q: %w", name, readErr)
+		}
+
+		if decide(name, Classify(onDisk, exists, shipped), onDisk, shipped, mode, source, false).kind != actionNone {
+			due = append(due, filepath.ToSlash(RelPath(name)))
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join(baseDir, gitattributesName)); os.IsNotExist(err) {
+		due = append(due, gitattributesName)
+	} else if err != nil {
+		return due, fmt.Errorf("stencilstore: stat %s: %w", filepath.Join(baseDir, gitattributesName), err)
+	}
+
+	return due, nil
+}
+
+// actionKind is what one registry name's decision does to its file.
+type actionKind int
+
+const (
+	actionNone actionKind = iota
+	// actionWrite writes the shipped default, stamped.
+	actionWrite
+	// actionRestamp rewrites the on-disk body under a fresh stamp.
+	actionRestamp
+)
+
+// decision is the outcome of classifying one registry name: the action, the content a restamp writes, and the log line the decision owes.
+type decision struct {
+	kind      actionKind
+	restamp   []byte
+	logNotice func()
+}
+
+// writerFor returns the writer a write records: the running binary under ModeProduction, and none under any other mode.
+func writerFor(mode Mode, source Source) Writer {
+	if mode == ModeProduction {
+		return source.Writer
+	}
+	return Writer{}
+}
+
+// decide applies Reconcile's per-row requirements to one classified registry name without touching disk or the log.
+// force performs the refresh row on an untouched stencil whatever the mode or ordering.
+func decide(name string, state State, onDisk, shipped []byte, mode Mode, source Source, force bool) decision {
 	switch state {
 	case StateAbsent:
-		if err := writeStamped(path, shipped, BodyHash(shipped)); err != nil {
-			return false, err
-		}
-		return true, nil
+		return decision{kind: actionWrite}
 
 	case StateUntouched:
 		if BodyHash(shipped) == BodyHash(onDisk) {
-			return false, nil
+			return decision{}
 		}
-		if mode == ModeDev {
+		if force {
+			return decision{kind: actionWrite}
+		}
+		switch mode {
+		case ModeProduction:
+			recorded := ParseWriter(onDisk)
+			if recorded.Revision == "" {
+				return decision{kind: actionWrite}
+			}
+			ordering := OrderingUnknown
+			if source.Older != nil {
+				ordering = source.Older(recorded)
+			}
+			if ordering == RecordedOlder {
+				return decision{kind: actionWrite}
+			}
+			return decision{logNotice: func() {
+				logger.Info("stencilstore: board copy was written by a build that is not older than this binary; left untouched -- run \"lyx stencil sync\" to override", "stencil", name, "recorded", recorded.Revision, "running", source.Writer.Revision)
+			}}
+		case ModeDev:
 			// The remedy is named at the point of failure rather than left for a reader to find,
 			// because without it this warning reads as benign housekeeping while it is in fact
 			// reporting that every producer reading this stencil will run on the OLDER on-disk text.
 			// A dev build refuses to refresh so it never clobbers a board's stencils with whatever
-			// is in a working tree, and the refusal is one-way: an older installed binary running in
-			// prod mode DOES refresh, so it can downgrade a board's stencils and the newer dev build
-			// can then only warn about it, on every single invocation, forever.
-			logger.Warn("stencilstore: dev build does not refresh an untouched stencil; producers will read the OLDER on-disk copy -- run \"lyx stencil sync\" to force-refresh it", "stencil", name, "path", path)
-			return false, nil
+			// is in a working tree.
+			return decision{logNotice: func() {
+				logger.Warn("stencilstore: dev build does not refresh an untouched stencil; producers will read the OLDER on-disk copy -- run \"lyx stencil sync\" to force-refresh it", "stencil", name)
+			}}
+		default:
+			return decision{logNotice: func() {
+				logger.Warn("stencilstore: unstamped build does not refresh an untouched stencil; producers will read the OLDER on-disk copy -- run \"lyx stencil sync\", or deploy with update-plugins.sh", "stencil", name)
+			}}
 		}
-		if err := writeStamped(path, shipped, BodyHash(shipped)); err != nil {
-			return false, err
-		}
-		return true, nil
 
 	case StateReconciled:
-		restamped := ApplyStamp(onDisk, BodyHash(onDisk))
+		restamped := ApplyWriter(ApplyStamp(onDisk, BodyHash(onDisk)), writerFor(mode, source))
 		if string(restamped) == string(onDisk) {
-			return false, nil
+			return decision{}
 		}
-		if err := os.WriteFile(path, restamped, 0o644); err != nil {
-			return false, fmt.Errorf("stencilstore: restamp stencil %q: %w", name, err)
-		}
-		return true, nil
+		return decision{kind: actionRestamp, restamp: restamped}
 
 	case StateEdited:
 		if BodyHash(shipped) != BodyHash(onDisk) {
-			logger.Warn("stencilstore: edited stencil has fallen behind a newer shipped default; see lyx stencil diff", "stencil", name)
+			return decision{logNotice: func() {
+				logger.Warn("stencilstore: edited stencil has fallen behind a newer shipped default; see lyx stencil diff", "stencil", name)
+			}}
 		}
-		return false, nil
+		return decision{}
 
 	default:
-		return false, fmt.Errorf("stencilstore: stencil %q classified as unknown state %v", name, state)
+		return decision{}
 	}
 }
 
-// writeStamped writes shipped, stamped with hash, to path, creating parent directories as needed.
-func writeStamped(path string, shipped []byte, hash string) error {
+// reconcileOne applies one registry name's classified state to disk, per Reconcile's per-row
+// requirements, and reports whether it wrote the file.
+func reconcileOne(path, name string, state State, onDisk, shipped []byte, mode Mode, source Source, force bool) (bool, error) {
+	if state < StateAbsent || state > StateEdited {
+		return false, fmt.Errorf("stencilstore: stencil %q classified as unknown state %v", name, state)
+	}
+
+	d := decide(name, state, onDisk, shipped, mode, source, force)
+	if d.logNotice != nil {
+		d.logNotice()
+	}
+
+	switch d.kind {
+	case actionWrite:
+		if err := writeStamped(path, shipped, BodyHash(shipped), writerFor(mode, source)); err != nil {
+			return false, err
+		}
+		return true, nil
+	case actionRestamp:
+		if err := os.WriteFile(path, d.restamp, 0o644); err != nil {
+			return false, fmt.Errorf("stencilstore: restamp stencil %q: %w", name, err)
+		}
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
+// writeStamped writes shipped, stamped with hash and recording writer, to path, creating parent directories as needed.
+func writeStamped(path string, shipped []byte, hash string, writer Writer) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("stencilstore: create parent directory for %s: %w", path, err)
 	}
-	if err := os.WriteFile(path, ApplyStamp(shipped, hash), 0o644); err != nil {
+	if err := os.WriteFile(path, ApplyWriter(ApplyStamp(shipped, hash), writer), 0o644); err != nil {
 		return fmt.Errorf("stencilstore: write stencil at %s: %w", path, err)
 	}
 	return nil
@@ -279,9 +405,10 @@ func warnPortBackDrift(baseDir string, registry Registry, source Source) {
 	}
 }
 
-// ForceRefresh performs the refresh row even on a stencil a ModeDev pass would leave untouched.
+// ForceRefresh performs the refresh row even on a stencil a ModeDev or ModeUnstamped pass would leave untouched, whatever the recorded writer's ordering.
 // It is the entry point `lyx stencil sync` calls, which is why an explicit sync refreshes even from
 // a -dev-stamped binary.
-func ForceRefresh(baseDir string, registry Registry, source Source) ([]string, error) {
-	return Reconcile(baseDir, registry, ModeProduction, source)
+// mode only decides whether the running binary is recorded as the writer: ModeProduction records it, any other mode leaves no recorded revision.
+func ForceRefresh(baseDir string, registry Registry, mode Mode, source Source) ([]string, error) {
+	return reconcileAll(baseDir, registry, mode, source, true)
 }

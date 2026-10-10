@@ -69,13 +69,13 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	if committed {
 		rec.Append(fabricengine.KindCommitCreated, res.BoardDir, sha)
 	}
-	// Bolt.Push records nothing, and that is deliberate: it returns a bare error and reaches
+	// The push records no branch_pushed entry, and that is deliberate: it reaches
 	// gitrepo.PushCoalesced, which returns nil both when a push landed and when nothing was
 	// unpushed to begin with, so a KindBranchPushed entry here would assert an outcome this call did
 	// not observe. The commit above is already recorded, and branch_pushed is a git-state kind exempt
 	// from the truthfulness oracle's commission direction, so omitting it costs the cross-check
-	// nothing.
-	if err := b.Push(fabricengine.SyncOptions{}); err != nil {
+	// nothing. A seed-commit drop behind the push is recorded in rec as commits_dropped.
+	if err := b.PushRecorded(fabricengine.SyncOptions{}, rec); err != nil {
 		return fabricengine.CloneResult{}, err
 	}
 
