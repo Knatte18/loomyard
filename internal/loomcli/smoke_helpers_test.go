@@ -20,8 +20,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -269,6 +273,19 @@ func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lyxcwd.Location)) 
 	}
 	seed(t, loc)
 	return loc, worktree
+}
+
+// hubStampPath returns the hub's build stamp file.
+func hubStampPath(loc *lyxcwd.Location) string {
+	return hubreconcile.Geometry{BoardDir: fabricengine.BoardDir(loc.HubPath)}.StampPath()
+}
+
+// commitRetiredBatcherKey commits a batcher.yaml carrying a retired key into loc's records worktree, the state a hub reconcile after a binary change removes.
+func commitRetiredBatcherKey(t *testing.T, loc *lyxcwd.Location) {
+	t.Helper()
+	batcher, _ := configreg.Lookup("batcher")
+	retired := strings.Replace(batcher.Template(), "orientation: 31400", "master_base: 52000", 1)
+	gitkit.CommitFile(t, fabricengine.RecordsWorktree(loc), configengine.ConfigFileRel("batcher"), retired, "fixture: retired key")
 }
 
 // findWatchdogPIDs returns the pids of every live process whose argv contains an adjacent "reed"

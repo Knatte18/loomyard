@@ -20,7 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
@@ -174,25 +173,17 @@ func TestLoomStatusAndPauseOnNeverBootstrappedPair(t *testing.T) {
 	}
 }
 
-// hubStampPath returns the hub's build stamp file.
-func hubStampPath(loc *lyxcwd.Location) string {
-	return hubreconcile.Geometry{BoardDir: fabricengine.BoardDir(loc.HubPath)}.StampPath()
-}
-
 // TestLoomResumeReconcilesTheHubConfigBeforeArming asserts only a start verb reconciles a hub whose build has no stamp.
 // Status leaves a retired key in a pair's committed batcher.yaml and writes no stamp.
 // Resume on an unparseable loom.yaml refuses, naming the file and the way forward, and writes no stamp.
-// Resume after the fix removes the key, commits it and writes the stamp whatever its own exit.
+// Resume after the fix removes the key, commits it and writes the stamp, then refuses at reed Up before any server starts: the pair's reed config is bad.
+// The arming half, which needs a good reed config and a tmux server, is TestLoomResumeArmsAfterReconcile.
 func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 	t.Parallel()
 
 	exe := sharedLyxBinary(t)
-	_, loc, worktree, _ := newWiredPairFixture(t)
+	loc, worktree := newBadReedUpFixture(t, commitRetiredBatcherKey)
 	recordsDir := fabricengine.RecordsWorktree(loc)
-
-	batcher, _ := configreg.Lookup("batcher")
-	retired := strings.Replace(batcher.Template(), "orientation: 31400", "master_base: 52000", 1)
-	gitkit.CommitFile(t, recordsDir, configengine.ConfigFileRel("batcher"), retired, "fixture: retired key")
 	batcherPath := configengine.ConfigFile(worktree, "batcher")
 
 	if _, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "status"); err != nil {
@@ -236,6 +227,12 @@ func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 	}
 	if _, err := os.Stat(hubStampPath(loc)); err != nil {
 		t.Errorf("hub build stamp after loom resume: %v; want it written", err)
+	}
+	if pids := findWatchdogPIDs(loc.HubPath); len(pids) != 0 {
+		t.Errorf("watchdog pids after a resume refused at reed Up = %v; want none", pids)
+	}
+	if pids := findDriverPIDs(worktree); len(pids) != 0 {
+		t.Errorf("driver pids after a resume refused at reed Up = %v; want none", pids)
 	}
 }
 
