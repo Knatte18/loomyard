@@ -148,7 +148,7 @@ func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentB
 		},
 		commitsSince: func(base string) ([]string, error) { return commitsSince(geom.WorktreeRoot, base) },
 		verify: func(site verifytree.Site, command string) (verifytree.Result, error) {
-			return verifytree.Verify(context.Background(), paths, site, command, verifytree.Timeout, nil)
+			return verifytree.Verify(context.Background(), paths, site, command, verifytree.Timeout, geom.GateSlots)
 		},
 		readLog: func() (string, error) {
 			data, err := os.ReadFile(paths.Log)
