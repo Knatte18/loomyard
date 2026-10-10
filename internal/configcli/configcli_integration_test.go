@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -62,7 +63,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 
 		var out bytes.Buffer
-		code := dispatch(codeLayout, &out, []string{"loom"}, fakeEdit, injectedSync, nil, false, nil)
+		code := dispatch(codeLayout, &out, []string{"loom"}, fakeEdit, injectedSync, nil, false, nil, nil)
 		if code != 0 {
 			t.Errorf("dispatch() = %d; want 0; output: %s", code, out.String())
 		}
@@ -126,10 +127,55 @@ func TestConfigOverRealHub(t *testing.T) {
 		{module: "board", set: "labels.x=desc", want: "x: desc"},
 		{module: "fabric", set: "branch_prefix=x", want: "branch_prefix: x"},
 	}
+	// A hub-wide write is refused from a pair and from a slug-bearing session, so the writes below run from the prime with no strand name.
+	t.Setenv(agentname.StrandNameEnv, "")
+	primeWorktreePath := h.PrimeWorktree()
+
+	guardRows := []struct {
+		name     string
+		cwd      string
+		strand   string
+		wantCode int
+		wantErr  string
+	}{
+		{name: "task pair is refused naming the prime", cwd: codeWorktreePath, wantCode: 1, wantErr: "prime worktree"},
+		{name: "prime under a slug-bearing strand name is refused", cwd: primeWorktreePath, strand: "ly:" + slug + ":webster", wantCode: 1, wantErr: "task session"},
+		{name: "prime under the hub orch's slug-free name is allowed", cwd: primeWorktreePath, strand: "ly:orch", wantCode: 0},
+	}
+	for _, row := range guardRows {
+		t.Run("hub-wide write guard: "+row.name, func(t *testing.T) {
+			t.Setenv(agentname.StrandNameEnv, row.strand)
+			boardFile := configengine.ConfigFile(boardDir, "board")
+			before, err := os.ReadFile(boardFile)
+			if err != nil {
+				t.Fatalf("read hub board.yaml: %v", err)
+			}
+
+			var out bytes.Buffer
+			if code := RunCLIIn(row.cwd, &out, []string{"board", "--set", "labels.guard=desc"}); code != row.wantCode {
+				t.Fatalf("lyx config board --set = %d; want %d; output: %s", code, row.wantCode, out.String())
+			}
+			after, err := os.ReadFile(boardFile)
+			if err != nil {
+				t.Fatalf("read hub board.yaml: %v", err)
+			}
+			if row.wantCode != 0 {
+				assertJSONErrContains(t, out.String(), row.wantErr)
+				if !bytes.Equal(before, after) {
+					t.Errorf("hub board.yaml changed on a refused write; got %q", after)
+				}
+				return
+			}
+			if !strings.Contains(string(after), "guard: desc") {
+				t.Errorf("hub board.yaml lacks the allowed write; got %q", after)
+			}
+		})
+	}
+
 	for _, row := range rows {
 		t.Run("hub-wide "+row.module+" --set commits in _board", func(t *testing.T) {
 			var out bytes.Buffer
-			if code := RunCLIIn(codeWorktreePath, &out, []string{row.module, "--set", row.set}); code != 0 {
+			if code := RunCLIIn(primeWorktreePath, &out, []string{row.module, "--set", row.set}); code != 0 {
 				t.Fatalf("lyx config %s --set %s = %d; output: %s", row.module, row.set, code, out.String())
 			}
 

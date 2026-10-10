@@ -271,6 +271,7 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | Publish: push rejected by a remote rule | the remote rejects the task branch's push while the remote has no task branch or its task branch holds no commit the local branch lacks, because a remote hook or rule refuses it | correctness halt | clear what the remote's rule objects to, then resume the run with `lyx loom start` |
 | merge conflict session: untracked file | the conflict session left an untracked file, which a merge commit never carries | correctness halt | the merge is aborted and the step stops Stuck naming the files; remove them or commit them as their own change on the task branch, then re-step the row |
 | producer re-run: superseded strand not removed | a producer row re-run finds a live strand of an earlier run of the same outputs and reed cannot remove it, or a BurlerRound row's half stays live because reed cannot stop it | transient | run "lyx reed remove <guid>", then re-step the row |
+| hub-wide config write refused | `lyx config` writes a `HubWide` module from a task pair's worktree, or from a session whose `LYX_STRAND_NAME` carries a slug; the hub file stays unchanged and no editor opens | correctness halt | the operator or the hub orch runs the same `lyx config` write from the prime worktree |
 | wiring guards | nil deps, an invalid producer list, empty paths | wiring guard | none per row; grouped |
 | raw I/O | `stat`, `mkdir`, `read` or `write` of a status, seed, lock or records file fails | transient | re-run the refused verb; nothing is mutated |
 
@@ -289,7 +290,7 @@ Its JSON error envelopes carry the way forward as a trailing `way forward:` clau
 
 ## Out of scope
 
-Landing, batten, orch, fabric, burler and board refusals are not in this table, except the verify-gate, dirty-tree, conflict-session and superseded-strand rows above;
+Landing, batten, orch, fabric, burler and board refusals are not in this table, except the verify-gate, dirty-tree, conflict-session, superseded-strand and hub-wide config write rows above;
 a later audit adds each as its own section.
 Burler's own round errors stay out too, as the strict review parse and the cluster audit already do:
 a skipped handoff, a changed review, and a failed removal or write of the ready marker each name the file concerned in their message and land no row.
