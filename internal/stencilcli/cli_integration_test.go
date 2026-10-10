@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/contracts/specs"
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -110,6 +111,7 @@ func TestStencilCLI_Scenario(t *testing.T) {
 	steps := []hubStep{
 		{"list_after_first_sync", stepListAfterFirstSync},
 		{"second_sync_is_idempotent", stepSecondSyncIsIdempotent},
+		{"unstamped_sync_records_no_writer", stepUnstampedSyncRecordsNoWriter},
 		{"promote_and_diff_all_require_source_tree", stepPromoteAndDiffAllRequireSourceTree},
 		{"promote_requires_matching_source_file", stepPromoteRequiresMatchingSourceFile},
 		{"validate_reports_error_and_warning", stepValidateReportsErrorAndWarning},
@@ -128,6 +130,10 @@ func TestStencilCLI_Scenario(t *testing.T) {
 func stepListAfterFirstSync(t *testing.T, h *hubforge.Hub, worktree string) {
 	if _, code, raw := runCLI(t, worktree, "sync"); code != 0 {
 		t.Fatalf("stencil sync = %d; want 0. output: %s", code, raw)
+	}
+	subjects := strings.Split(gitkit.Git(t, h.BoardDir(), "log", "--format=%s", "-2"), "\n")
+	if len(subjects) != 2 || !strings.HasPrefix(subjects[1], "lyx: sync stencils (") || !strings.HasPrefix(subjects[0], "lyx: sync specs (") {
+		t.Errorf("the board's last two commit subjects = %q; want a labelled sync of stencils then of specs", subjects)
 	}
 
 	env, code, raw := runCLI(t, worktree, "list")
@@ -277,6 +283,18 @@ func stepSecondSyncIsIdempotent(t *testing.T, h *hubforge.Hub, worktree string) 
 	}
 	if committed, _ := env["committed"].(bool); committed {
 		t.Errorf("second consecutive sync committed = true; want false since there was nothing to write")
+	}
+}
+
+// stepUnstampedSyncRecordsNoWriter asserts that a copy the first sync wrote, from this unstamped test binary, carries no `build=` key, so the next production pre-run refreshes it.
+func stepUnstampedSyncRecordsNoWriter(t *testing.T, h *hubforge.Hub, worktree string) {
+	path := stencilstore.Path(fabricengine.StencilsDir(h.Path), stencils.Registry().Names()[0])
+	synced, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.Contains(string(synced), "build=") {
+		t.Errorf("%s carries a build= key after a sync from an unstamped binary; want none", path)
 	}
 }
 

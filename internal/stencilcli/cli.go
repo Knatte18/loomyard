@@ -139,7 +139,7 @@ Examples:
 
 	syncCmd := &cobra.Command{
 		Use:   "sync",
-		Short: "Force-refresh every stencil and deployed spec against the shipped registry, even from a -dev build",
+		Short: "Force-refresh every stencil and deployed spec against the shipped registry, even from a -dev or unstamped build",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -157,6 +157,7 @@ Examples:
 			// mutations/partial pair. Any partially-written state is re-detected and completed by
 			// the next sync via Classify, so this is a reporting gap, not a correctness bug.
 			running := buildvcs.Running()
+			binaryLabel := fabricengine.BinaryLabel()
 			mode := stencilstore.ModeFor(buildinfo.IsDev(), buildinfo.IsProduction(), running.Clean())
 			written, err := stencilstore.ForceRefresh(stencilsDir, stencils.Registry(), mode, fabricengine.StencilSource(l.WorktreePath(), sourceDir, running))
 			if err != nil {
@@ -165,7 +166,7 @@ Examples:
 			}
 
 			rec := fabricengine.NewMutations(filepath.Dir(l.HubPath))
-			res, commitErr := fabricengine.CommitSeededStencils(l.HubPath, fabricengine.StencilsSubtreeRel(), stencilsDir, written, "lyx: seed stencils", rec)
+			res, commitErr := fabricengine.CommitSeededStencils(l.HubPath, fabricengine.StencilsSubtreeRel(), stencilsDir, written, fabricengine.SyncCommitMessage("stencils", binaryLabel), rec)
 			if commitErr != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), commitErr))
 				return nil
@@ -187,7 +188,7 @@ Examples:
 				clihelp.SetExit(cmd.Context(), output.Err(out, specsErr.Error()))
 				return nil
 			}
-			specsRes, specsCommitErr := fabricengine.CommitSeededStencils(l.HubPath, fabricengine.SpecsSubtreeRel(), specsDir, specsWritten, "lyx: seed specs", rec)
+			specsRes, specsCommitErr := fabricengine.CommitSeededStencils(l.HubPath, fabricengine.SpecsSubtreeRel(), specsDir, specsWritten, fabricengine.SyncCommitMessage("specs", binaryLabel), rec)
 			if specsCommitErr != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), specsCommitErr))
 				return nil
