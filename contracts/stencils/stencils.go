@@ -267,6 +267,11 @@ var FrictionTemplateReflection []byte
 //go:embed shed/shed-template-driver.md
 var ShedTemplateDriver []byte
 
+// ShedTemplateDriverGuide is the driver's shipped-default repair guide: the reference the one-shot fork a driver spawns at an error or interrupted stop reads.
+//
+//go:embed shed/shed-template-driver-guide.md
+var ShedTemplateDriverGuide []byte
+
 // ShedTemplateDriverNotify is the driver's shipped-default parent-notification rule for a run no batten watches.
 //
 //go:embed shed/shed-template-driver-notify.md
@@ -365,6 +370,7 @@ var entries = []registryEntry{
 	{"friction-directive-interview", &FrictionDirectiveInterview},
 	{"friction-template-reflection", &FrictionTemplateReflection},
 	{"shed-template-driver", &ShedTemplateDriver},
+	{"shed-template-driver-guide", &ShedTemplateDriverGuide},
 	{"shed-template-driver-notify", &ShedTemplateDriverNotify},
 	{"shed-template-driver-notify-watched", &ShedTemplateDriverNotifyWatched},
 	{"parent-directive-parent", &ParentDirectiveParent},
