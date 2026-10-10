@@ -168,7 +168,8 @@ func findPrime(worktrees []fabricengine.CodeWorktree) (fabricengine.CodeWorktree
 // reconcileHubWide reconciles the hub-wide config at boardDir, seeded from the prime's anchor, and commits what it wrote on the board.
 // The board is pulled first: when it cannot be brought up to date nothing is written and skipped is true.
 // A reconcile or commit failure restores the board's config files to their prior bytes.
-// A push failure after a landed commit is logged and also reports skipped, so the stamp stays absent until the commit is pushed.
+// The board is pushed whether or not this run committed, so a hub-wide commit an earlier run left unpushed is pushed too.
+// A push failure is logged and also reports skipped, so the stamp stays absent until the board is pushed.
 func reconcileHubWide(boardDir, primeAnchor, label string) (skipped bool, err error) {
 	bolt := fabricengine.NewBolt(boardDir)
 	var prior map[string][]byte
@@ -205,11 +206,8 @@ func reconcileHubWide(boardDir, primeAnchor, label string) (skipped bool, err er
 	if res.Skipped != "" {
 		return true, nil
 	}
-	if !res.Committed {
-		return false, nil
-	}
 	if pushErr := bolt.Push(fabricengine.SyncOptions{}); pushErr != nil {
-		logger.Warn("hubreconcile: hub-wide config committed but push failed, so the build stamp stays absent until the board is pushed", "board", boardDir, "error", pushErr)
+		logger.Warn("hubreconcile: board push failed, so the build stamp stays absent until the board is pushed", "board", boardDir, "committed", res.Committed, "error", pushErr)
 		return true, nil
 	}
 	return false, nil

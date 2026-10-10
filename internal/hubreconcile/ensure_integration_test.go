@@ -645,6 +645,17 @@ func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testi
 		t.Fatalf("stamp written although the hub-wide commit was not pushed")
 	}
 
+	// A rerun with nothing new to commit still pushes the earlier commit, so a push still rejected keeps the stamp absent.
+	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
+		t.Fatalf("rerun Ensure: %v", err)
+	}
+	if got := commitCount(t, board); got != before+1 {
+		t.Fatalf("rerun changed the board commits: %d -> %d; want no new commit", before+1, got)
+	}
+	if _, found := stampKey(t, geom); found {
+		t.Fatalf("stamp written on a rerun although the hub-wide commit is still unpushed")
+	}
+
 	if err := os.Remove(rejectPushes); err != nil {
 		t.Fatalf("remove pre-receive hook: %v", err)
 	}

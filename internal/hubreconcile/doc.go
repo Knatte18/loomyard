@@ -16,7 +16,7 @@
 // Under the lock the stamp is read again, and a fresh one returns nil.
 // The walk pulls the board first, reconciles the hub-wide config and commits it on the board under a subject carrying the binary label, then reconciles the prime, then lists the hub's code worktrees again and reconciles each pair not yet walked.
 // It repeats until a listing finds no new pair, so a pair registered while the walk ran is walked before the stamp is written.
-// Each worktree's applied files are committed in that worktree, and the board commit is pushed.
+// Each worktree's applied files are committed in that worktree, and the board is pushed, carrying the hub-wide commit and any an earlier run left unpushed.
 // Worktrees that committed before a failure keep their commits.
 // The failing worktree's, or the board's, config files are restored to their prior bytes, so a retry rewrites and commits them instead of finding them already current.
 // A worktree commit that landed before a later step of it failed, such as recording the commit's correspondence, keeps the written files, since they are already committed.
@@ -31,7 +31,7 @@
 // A mid-merge skip leaves the stamp absent, so the next start verb retries.
 //
 // The hub-wide write is skipped, with nothing written, when the board cannot be brought up to date: the fetch failed, an uncommitted change blocks it, or the board's own commits cannot be replayed onto a moved upstream.
-// That skip leaves the stamp absent as well, and so does a hub-wide commit whose push failed.
+// That skip leaves the stamp absent as well, and so does a failed board push, on every rerun until a push lands the hub-wide commit.
 // A rerun whose unpushed hub-wide commit sits over a moved upstream meets the divergence skip and repeats its Warn;
 // only a resolved `git pull --rebase` in the board dir, or a board push that lands the commit, clears it.
 //
