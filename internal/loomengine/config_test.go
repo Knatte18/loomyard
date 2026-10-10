@@ -85,7 +85,9 @@ func templateConfig() Config {
 		Discussion:               "opus[medium]",
 		DiscussionTimeoutMin:     480,
 		DiscussionInteractive:    false,
-		Plan:                     "opus[medium]",
+		DiscussionProducer:       "single",
+		DiscussionAdvisors:       ModelSpecList{"sonnet[high]"},
+		Plan:                    "opus[medium]",
 		PlanTimeoutMin:           120,
 		Review:                   ModelSpecList{"opus[medium]"},
 		Fix:                      ModelSpecList{"opus[medium]"},
@@ -183,6 +185,41 @@ review_timeout_min: 240
 			name:   "discussion_interactive true",
 			values: map[string]string{"discussion_interactive": "true"},
 			mutate: func(c *Config) { c.DiscussionInteractive = true },
+		},
+		{
+			name:   "discussion_producer seats",
+			values: map[string]string{"discussion_producer": "seats"},
+			mutate: func(c *Config) { c.DiscussionProducer = "seats" },
+		},
+		{
+			name:   "discussion_advisors as an empty string means no advisors",
+			values: map[string]string{"discussion_advisors": `""`},
+			mutate: func(c *Config) { c.DiscussionAdvisors = nil },
+		},
+		{
+			name:   "bare discussion_advisors key is null and means no advisors",
+			values: map[string]string{"discussion_advisors": ""},
+			mutate: func(c *Config) { c.DiscussionAdvisors = nil },
+		},
+		{
+			name:   "discussion_advisors as an empty list means no advisors",
+			values: map[string]string{"discussion_advisors": "[]"},
+			mutate: func(c *Config) { c.DiscussionAdvisors = nil },
+		},
+		{
+			name:   "discussion_advisors as a list of one empty string means no advisors",
+			values: map[string]string{"discussion_advisors": `[""]`},
+			mutate: func(c *Config) { c.DiscussionAdvisors = nil },
+		},
+		{
+			name:   "discussion_advisors as one model-spec",
+			values: map[string]string{"discussion_advisors": "opus[low]"},
+			mutate: func(c *Config) { c.DiscussionAdvisors = ModelSpecList{"opus[low]"} },
+		},
+		{
+			name:   "discussion_advisors as a two-entry list",
+			values: map[string]string{"discussion_advisors": "\n  - sonnet[low]\n  - opus[high]"},
+			mutate: func(c *Config) { c.DiscussionAdvisors = ModelSpecList{"sonnet[low]", "opus[high]"} },
 		},
 		{
 			name:   "empty friction turns Tier 2 off",
@@ -309,6 +346,11 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed fan_review spec", "fan_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"empty fan_review list", "fan_review", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
 		{"unknown fix_start", "fix_start", "sideways", []string{`"parallel"`, `"after-review"`}, ""},
+		{"unknown discussion_producer", "discussion_producer", "sideways", []string{`"single"`, `"seats"`}, ""},
+		{"empty discussion_advisors entry beside another", "discussion_advisors", `["", "sonnet[high]"]`, []string{"entry 1", advisorWayForward}, ""},
+		{"malformed discussion_advisors entry", "discussion_advisors", `["opus[effort"]`, []string{"entry 1", advisorWayForward}, ""},
+		{"unknown discussion_advisors alias", "discussion_advisors", `["sonnet[high]", "ghost"]`, []string{"entry 2", "ghost", advisorWayForward}, ""},
+		{"mapping discussion_advisors value", "discussion_advisors", "\n  model: opus", []string{"line ", advisorWayForward}, ""},
 		{"mapping review value", "review", "\n  model: opus", []string{"a non-empty list of model-specs"}, ""},
 		{"mapping inside a fix list", "fix", "\n  - model: opus", []string{"a non-empty list of model-specs"}, ""},
 		{"malformed judge spec", "judge", `"sonnet[medium"`, nil, ""},
@@ -346,6 +388,17 @@ func TestLoadConfig_Refuses(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a mapping discussion_advisors value names no entry index", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeLoomConfigWithKey(t, dir, "discussion_advisors", "\n  model: opus")
+
+		_, err := LoadConfig(dir, "loom")
+		if err == nil || strings.Contains(err.Error(), "entry") {
+			t.Errorf("LoadConfig() error = %v; want a refusal that names no entry", err)
+		}
+	})
 }
 
 // TestLoadConfig_NotInitialized verifies uninitialized baseDir yields recovery hint.
