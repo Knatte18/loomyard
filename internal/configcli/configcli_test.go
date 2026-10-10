@@ -640,7 +640,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 	rows := []struct {
 		name string
 		// seed is the board dir file's starting bytes; empty means seeded.
-		seed        string
+		seed      string
 		printOnly bool
 		setFlags  []string
 		editor    func(fx hubFixture) configengine.EditorFunc

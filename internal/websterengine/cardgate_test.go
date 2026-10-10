@@ -27,7 +27,7 @@ func gateCard(groups ...planparser.TargetGroup) planparser.Card {
 func TestCardGateCommand(t *testing.T) {
 	t.Parallel()
 
-	plan :=&planparser.Plan{Language: "go"}
+	plan := &planparser.Plan{Language: "go"}
 	const lint = "lyx loom lint-comments"
 
 	t.Run("one step covers each package directory", func(t *testing.T) {
