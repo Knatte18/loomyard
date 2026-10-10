@@ -177,6 +177,8 @@ type watchEnv struct {
 
 	// indexErr, when set, makes the watcher's index source fail; otherwise it serves testIndex.
 	indexErr error
+	// indexCalls counts the watcher's calls to its index source.
+	indexCalls int
 }
 
 func stop(msg string) shuttleengine.Event {
@@ -230,6 +232,7 @@ func (e *watchEnv) noticeLines() []string {
 
 func (e *watchEnv) newWatcher() *Watcher {
 	index := func() (string, error) {
+		e.indexCalls++
 		if e.indexErr != nil {
 			return "", e.indexErr
 		}
@@ -1504,6 +1507,10 @@ func TestWatcher_AutoCompactionReloadGoesIdleWhenTheIndexSourceFails(t *testing.
 	st := e.state()
 	if st.Phase != PhaseIdle || !strings.Contains(st.LastAbortReason, roleStencilName) || !strings.Contains(st.LastAbortReason, errBoom.Error()) {
 		t.Fatalf("state = %+v, want idle with a reason naming the role stencil and the index failure", st)
+	}
+	e.tick()
+	if e.indexCalls != 1 {
+		t.Errorf("index source called %d times, want once: a later tick without a new turn end must not retry the reload", e.indexCalls)
 	}
 	e.assertNoCalls()
 }
