@@ -53,7 +53,7 @@ func ensure(geom Geometry, opts Options, hooks walkHooks) error {
 	}
 	defer func() { _ = hubLock.Release() }()
 
-	revision := revisionLabel(running.Identity)
+	revision := running.Identity.Label()
 
 	if pairCall {
 		return reconcilePair(geom, filepath.Clean(opts.Pair), revision, hooks)
@@ -70,7 +70,7 @@ func ensure(geom Geometry, opts Options, hooks walkHooks) error {
 		return err
 	}
 	if skipped {
-		logger.Info("hubreconcile: a worktree is mid-merge, so the build stamp stays stale and the next start verb retries")
+		logger.Info("hubreconcile: the hub-wide config was not committed and pushed or a worktree is mid-merge, so the build stamp stays stale and the next start verb retries")
 		return nil
 	}
 	return writeStamp(geom.StampPath(), running)
@@ -88,7 +88,7 @@ func readCurrentStamp(path, key string) (s stamp, current bool) {
 }
 
 // walkHub reconciles the hub-wide config, the prime and then every pair, re-listing until no unwalked pair remains.
-// It reports whether any worktree was skipped as mid-merge.
+// It reports whether the hub-wide write was skipped or left unpushed, or any worktree was skipped as mid-merge.
 func walkHub(geom Geometry, revision string, hooks walkHooks) (skipped bool, err error) {
 	worktrees, err := fabricengine.CodeWorktrees(geom.WorktreePath)
 	if err != nil {
@@ -102,7 +102,8 @@ func walkHub(geom Geometry, revision string, hooks walkHooks) (skipped bool, err
 		return false, fmt.Errorf("hubreconcile: no main code worktree among the hub's worktrees listed from %s", geom.WorktreePath)
 	}
 
-	if err := reconcileHubWide(geom.BoardDir, prime.Anchor, revision); err != nil {
+	hubWideSkipped, err := reconcileHubWide(geom.BoardDir, prime.Anchor, fabricengine.BinaryLabel())
+	if err != nil {
 		return false, err
 	}
 	walked := map[string]bool{prime.Path: true}
@@ -110,7 +111,7 @@ func walkHub(geom Geometry, revision string, hooks walkHooks) (skipped bool, err
 	if err != nil {
 		return false, err
 	}
-	skipped = primeSkipped
+	skipped = hubWideSkipped || primeSkipped
 
 	for {
 		worktrees, err := fabricengine.CodeWorktrees(geom.WorktreePath)
@@ -165,43 +166,53 @@ func findPrime(worktrees []fabricengine.CodeWorktree) (fabricengine.CodeWorktree
 }
 
 // reconcileHubWide reconciles the hub-wide config at boardDir, seeded from the prime's anchor, and commits what it wrote on the board.
-// A reconcile or commit failure restores the board's config files to their prior bytes; a push failure is logged and never fatal.
-func reconcileHubWide(boardDir, primeAnchor, revision string) error {
+// The board is pulled first: when it cannot be brought up to date nothing is written and skipped is true.
+// A reconcile or commit failure restores the board's config files to their prior bytes.
+// A push failure after a landed commit is logged and also reports skipped, so the stamp stays absent until the commit is pushed.
+func reconcileHubWide(boardDir, primeAnchor, label string) (skipped bool, err error) {
 	bolt := fabricengine.NewBolt(boardDir)
 	var prior map[string][]byte
-	_, committed, err := bolt.CommitWritten("lyx: reconcile hub-wide config for build "+revision, func() ([]string, error) {
-		var err error
-		prior, err = snapshotConfig(boardDir)
-		if err != nil {
-			return nil, err
-		}
-		results, err := configsync.ReconcileHubWideAt(boardDir, primeAnchor, true)
-		if err != nil {
-			return nil, err
-		}
-		var written []string
-		for _, result := range results {
-			if !result.Applied {
-				continue
+	write := fabricengine.BoltWrite{
+		Message: "lyx: reconcile hub-wide config for build " + label,
+		Write: func() ([]string, error) {
+			var err error
+			prior, err = snapshotConfig(boardDir)
+			if err != nil {
+				return nil, err
 			}
-			logResult(boardDir, result)
-			written = append(written, configengine.ConfigFileRel(result.Module))
-			for _, legacy := range result.MigratedFrom {
-				written = append(written, configengine.ConfigFileRel(legacy))
+			results, err := configsync.ReconcileHubWideAt(boardDir, primeAnchor, true)
+			if err != nil {
+				return nil, err
 			}
-		}
-		return written, nil
-	}, fabricengine.SyncOptions{})
-	if err != nil {
-		return failRestoringConfig(prior, worktreeErrorFor(boardDir, err))
+			var written []string
+			for _, result := range results {
+				if !result.Applied {
+					continue
+				}
+				logResult(boardDir, result)
+				written = append(written, configengine.ConfigFileRel(result.Module))
+				for _, legacy := range result.MigratedFrom {
+					written = append(written, configengine.ConfigFileRel(legacy))
+				}
+			}
+			return written, nil
+		},
 	}
-	if !committed {
-		return nil
+	res, err := bolt.PullThenCommitWritten([]fabricengine.BoltWrite{write}, fabricengine.NewMutations(filepath.Dir(boardDir)))
+	if err != nil {
+		return false, failRestoringConfig(prior, worktreeErrorFor(boardDir, err))
+	}
+	if res.Skipped != "" {
+		return true, nil
+	}
+	if !res.Committed {
+		return false, nil
 	}
 	if pushErr := bolt.Push(fabricengine.SyncOptions{}); pushErr != nil {
-		logger.Warn("hubreconcile: hub-wide config committed but push failed", "board", boardDir, "error", pushErr)
+		logger.Warn("hubreconcile: hub-wide config committed but push failed, so the build stamp stays absent until the board is pushed", "board", boardDir, "error", pushErr)
+		return true, nil
 	}
-	return nil
+	return false, nil
 }
 
 // reconcileWorktree reconciles and commits one code worktree's config.

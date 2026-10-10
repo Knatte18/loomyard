@@ -17,10 +17,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 const retiredKey = "master_base"
@@ -151,16 +153,100 @@ func newStaleHub(t *testing.T, slug string) *hubforge.Hub {
 	return h
 }
 
+// staleHubWideConfig is a fabric config carrying a key the registry no longer knows, so the hub-wide reconcile rewrites it.
+const staleHubWideConfig = "branch_prefix: \"\"\nretired_fixture_key: 1\n"
+
+// logSink is a log writer safe to share with the package's other parallel tests.
+type logSink struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (s *logSink) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.Write(p)
+}
+
+func (s *logSink) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.String()
+}
+
+// captureLogs routes the logger into the returned sink until the test ends.
+// The logger's output is process-global, so a caller does not call t.Parallel.
+func captureLogs(t *testing.T) *logSink {
+	t.Helper()
+
+	sink := &logSink{}
+	logger.SetOutput(sink)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	return sink
+}
+
+// pushBoardFromSecondClone pushes the board's current branch to its origin, then lands a commit on that origin from a second clone, and returns the board's branch name.
+// The board is left behind its upstream by exactly that commit.
+func pushBoardFromSecondClone(t *testing.T, board string) string {
+	t.Helper()
+
+	branch := gitkit.CurrentBranch(t, board)
+	origin := gitkit.Git(t, board, "remote", "get-url", "origin")
+	gitkit.Git(t, board, "push", "-u", "origin", branch)
+	clone := filepath.Join(t.TempDir(), "second")
+	gitkit.Git(t, filepath.Dir(clone), "clone", "--branch", branch, origin, clone)
+	gitkit.CommitFile(t, clone, "moved-upstream.txt", "moved\n", "fixture: upstream moves")
+	gitkit.Git(t, clone, "push", "origin", branch)
+	return branch
+}
+
 func TestEnsure_StaleBuildReconcilesAndCommitsEveryWorktree(t *testing.T) {
 	t.Parallel()
+
+	for _, tc := range []struct {
+		name        string
+		boardBehind bool
+	}{
+		{name: "board up to date"},
+		{name: "board behind its upstream", boardBehind: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runStaleBuildReconcile(t, tc.boardBehind)
+		})
+	}
+}
+
+// runStaleBuildReconcile walks a stale hub and asserts every worktree and the board got one reconcile commit, with the board's pulled from upstream when boardBehind.
+func runStaleBuildReconcile(t *testing.T, boardBehind bool) {
+	t.Helper()
 
 	h := newStaleHub(t, "pair-a")
 	geom := geometryOf(h)
 	pair := h.PairCodeWorktree("pair-a")
+	hubforge.SeedFabricConfig(t, h, staleHubWideConfig)
+	var movedUpstream string
+	if boardBehind {
+		pushBoardFromSecondClone(t, h.BoardDir())
+		movedUpstream = "moved-upstream.txt"
+	}
 	primeBefore, pairBefore := commitCount(t, h.PrimeRecords()), commitCount(t, h.PairRecordsSibling("pair-a"))
 
 	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
 		t.Fatalf("Ensure: %v", err)
+	}
+
+	wantSubject := "lyx: reconcile hub-wide config for build " + fabricengine.BinaryLabel()
+	if got := gitkit.Git(t, h.BoardDir(), "log", "-1", "--format=%s"); got != wantSubject {
+		t.Errorf("hub-wide commit subject = %q; want %q", got, wantSubject)
+	}
+	if movedUpstream != "" {
+		if _, err := os.Stat(filepath.Join(h.BoardDir(), movedUpstream)); err != nil {
+			t.Errorf("the pulled upstream file %s is missing: %v", movedUpstream, err)
+		}
+		if got := gitkit.Git(t, h.BoardDir(), "log", "-2", "--format=%s"); !strings.Contains(got, "fixture: upstream moves") {
+			t.Errorf("hub-wide commit is not on top of the pulled upstream commit; log:\n%s", got)
+		}
 	}
 
 	for name, root := range map[string]string{"prime": h.PrimeWorktree(), "pair": pair} {
@@ -535,12 +621,13 @@ func TestEnsure_UnwiredPairIsLeftUnwrittenAndStampIsWritten(t *testing.T) {
 	}
 }
 
-func TestEnsure_UnreachableBoardRemoteStillCommitsHubWideConfig(t *testing.T) {
-	t.Parallel()
+// The logger's output is process-global, so this test does not call t.Parallel.
+func TestEnsure_UnreachableBoardRemoteSkipsHubWideConfigAndLeavesStampAbsent(t *testing.T) {
+	logs := captureLogs(t)
 
 	h := hubforge.NewHub(t, ".")
 	geom := geometryOf(h)
-	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _extra\nretired_fixture_key: 1\n")
+	hubforge.SeedFabricConfig(t, h, staleHubWideConfig)
 	gitkit.Git(t, h.BoardDir(), "remote", "set-url", "origin", filepath.Join(t.TempDir(), "missing.git"))
 	before := commitCount(t, h.BoardDir())
 
@@ -548,8 +635,65 @@ func TestEnsure_UnreachableBoardRemoteStillCommitsHubWideConfig(t *testing.T) {
 		t.Fatalf("Ensure: %v", err)
 	}
 
-	if got := commitCount(t, h.BoardDir()); got != before+1 {
-		t.Errorf("board commits %d -> %d; want the hub-wide change committed", before, got)
+	if got := commitCount(t, h.BoardDir()); got != before {
+		t.Errorf("board commits %d -> %d; want nothing written while the remote is unreachable", before, got)
+	}
+	assertClean(t, h.BoardDir())
+	if !strings.Contains(logs.String(), "fetch_failed") {
+		t.Errorf("log lacks the fetch-failure Warn:\n%s", logs.String())
+	}
+	if _, found := stampKey(t, geom); found {
+		t.Errorf("stamp written although the hub-wide config was skipped")
+	}
+}
+
+// The logger's output is process-global, so this test does not call t.Parallel.
+func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testing.T) {
+	logs := captureLogs(t)
+
+	h := hubforge.NewHub(t, ".")
+	geom := geometryOf(h)
+	board := h.BoardDir()
+	hubforge.SeedFabricConfig(t, h, staleHubWideConfig)
+	branch := gitkit.CurrentBranch(t, board)
+	gitkit.Git(t, board, "push", "-u", "origin", branch)
+	origin := gitkit.Git(t, board, "remote", "get-url", "origin")
+	rejectPushes := filepath.Join(origin, "hooks", "pre-receive")
+	if err := os.WriteFile(rejectPushes, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatalf("write pre-receive hook: %v", err)
+	}
+	before := commitCount(t, board)
+
+	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
+		t.Fatalf("first Ensure: %v", err)
+	}
+	if got := commitCount(t, board); got != before+1 {
+		t.Fatalf("board commits %d -> %d; want the hub-wide commit landed locally", before, got)
+	}
+	if _, found := stampKey(t, geom); found {
+		t.Fatalf("stamp written although the hub-wide commit was not pushed")
+	}
+
+	if err := os.Remove(rejectPushes); err != nil {
+		t.Fatalf("remove pre-receive hook: %v", err)
+	}
+	clone := filepath.Join(t.TempDir(), "second")
+	gitkit.Git(t, filepath.Dir(clone), "clone", "--branch", branch, origin, clone)
+	gitkit.CommitFile(t, clone, "moved-upstream.txt", "moved\n", "fixture: upstream moves")
+	gitkit.Git(t, clone, "push", "origin", branch)
+
+	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
+		t.Fatalf("second Ensure: %v", err)
+	}
+
+	if got := commitCount(t, board); got != before+1 {
+		t.Errorf("second Ensure changed the board commits: %d -> %d; want no new commit", before+1, got)
+	}
+	if !strings.Contains(logs.String(), "git pull --rebase") {
+		t.Errorf("log lacks the divergence Warn naming git pull --rebase:\n%s", logs.String())
+	}
+	if _, found := stampKey(t, geom); found {
+		t.Errorf("stamp written although the hub-wide commit is still unpushed")
 	}
 }
 
