@@ -328,6 +328,7 @@ func TestWait_GatedFreshRunWithOutstandingShellEvaluatesGateAtOnce(t *testing.T)
 // TestWait_RecordsEndedShells pins that every end of a run with a shell outstanding records it in Result.EndedShells with its time outstanding:
 // an ungated at-once finish logs that the strand removal ended the shell,
 // and a run deadline and a liveness end log that the run ended with the shell outstanding and the strand left to its caller.
+// An ungated at-once finish records every outstanding shell with its own signal, and an awaited shell the wait holds never lands there.
 // It captures the process-global logger, so it does not run in parallel.
 //
 //testtiming:keep pins the ended-shell record and its Info line on the ungated, deadline and liveness ends
@@ -336,23 +337,57 @@ func TestWait_RecordsEndedShells(t *testing.T) {
 	const left = "run ended with background shells outstanding"
 	livenessConfig := gateConfig
 	livenessConfig.LivenessEveryNPolls = 1
+	secondShell := BackgroundTask{Kind: BackgroundShell, ID: "sh-2", Label: "sleep 8888", Signal: SignalPayload}
+	awaitedShell := BackgroundTask{Kind: BackgroundShell, ID: "sh-3", Label: "await-me 03", Signal: SignalTranscript}
 	tests := []struct {
 		name        string
 		cfg         Config
 		touchOutput bool
 		status      []reedengine.StatusResult
 		started     bool
+		// tasks is what the waiting turn end reports outstanding, the transcript-reported shell when nil.
+		tasks []BackgroundTask
+		// gated runs the wait under a passing gate, fresh marks that run as started rather than attached, and awaitedPrefixes are the spec's awaited shell prefixes.
+		gated           bool
+		fresh           bool
+		awaitedPrefixes []string
+		// steps runs one per clock tick, after the tick's sleep, with the events path.
+		steps []func(t *testing.T, eventsPath string)
 		// jump is how far each tick's sleep advances the clock.
 		jump            time.Duration
 		wantOutcome     Outcome
 		wantOutstanding time.Duration
-		wantLog         string
-		wantNoLog       string
+		// wantShells is the expected EndedShells, the first task's entry with wantOutstanding when nil.
+		wantShells []EndedShell
+		// wantNoShells expects EndedShells empty, since a nil wantShells means the default entry.
+		wantNoShells bool
+		wantLog      []string
+		wantNoLog    []string
 	}{
-		{name: "an ungated at-once finish", cfg: gateConfig, touchOutput: true, status: liveStrandStatus(true), wantOutcome: OutcomeDone, wantLog: removed, wantNoLog: left},
-		{name: "the run deadline", cfg: gateConfig, status: liveStrandStatus(true), jump: 40 * time.Minute, wantOutcome: OutcomeTimeout, wantOutstanding: 80 * time.Minute, wantLog: left, wantNoLog: removed},
-		{name: "the liveness check", cfg: livenessConfig, status: liveStrandStatus(false), started: true, wantOutcome: OutcomeDied, wantLog: left, wantNoLog: removed},
+		{name: "an ungated at-once finish", cfg: gateConfig, touchOutput: true, status: liveStrandStatus(true), wantOutcome: OutcomeDone, wantLog: []string{removed}, wantNoLog: []string{left}},
+		{
+			name: "an ungated at-once finish records each outstanding shell with its own signal", cfg: gateConfig, touchOutput: true, status: liveStrandStatus(true),
+			tasks:       []BackgroundTask{transcriptShellTask, secondShell},
+			wantOutcome: OutcomeDone,
+			wantShells: []EndedShell{
+				{Label: "sleep 9999", ID: "sh-1", Signal: SignalTranscript},
+				{Label: "sleep 8888", ID: "sh-2", Signal: SignalPayload},
+			},
+			wantLog: []string{removed}, wantNoLog: []string{left},
+		},
+		{
+			name: "an awaited shell never lands in EndedShells", cfg: gateConfig, touchOutput: true, status: liveStrandStatus(true),
+			tasks: []BackgroundTask{awaitedShell}, gated: true, fresh: true, awaitedPrefixes: []string{"await-me"},
+			steps: []func(t *testing.T, eventsPath string){
+				func(t *testing.T, eventsPath string) { appendEventsLine(t, eventsPath, "STOP:done") },
+			},
+			wantOutcome: OutcomeDone, wantNoShells: true,
+			wantNoLog: []string{removed, left},
+		},
+		{name: "the run deadline", cfg: gateConfig, status: liveStrandStatus(true), jump: 40 * time.Minute, wantOutcome: OutcomeTimeout, wantOutstanding: 80 * time.Minute, wantLog: []string{left}, wantNoLog: []string{removed}},
+		{name: "the liveness check", cfg: livenessConfig, status: liveStrandStatus(false), started: true, wantOutcome: OutcomeDied, wantLog: []string{left}, wantNoLog: []string{removed}},
 	}
+	passingGate := GateSpec{{Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }, Attempts: 1}}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			buf := logcapture.CaptureVerbose(t)
@@ -365,16 +400,33 @@ func TestWait_RecordsEndedShells(t *testing.T) {
 			if err := os.WriteFile(eventsPath, []byte("WAIT:background work\n"), 0o644); err != nil {
 				t.Fatalf("seed events: %v", err)
 			}
-			fx := newFixture(t, &fakeReed{StatusQueue: tt.status}, &waitingEngine{outstanding: []BackgroundTask{transcriptShellTask}}, withConfig(tt.cfg))
+			tasks := tt.tasks
+			if tasks == nil {
+				tasks = []BackgroundTask{transcriptShellTask}
+			}
+			fx := newFixture(t, &fakeReed{StatusQueue: tt.status}, &waitingEngine{outstanding: tasks}, withConfig(tt.cfg))
 			fc := newFakeClock(time.Now())
 			var clk Clock = fc
 			if tt.jump > 0 {
 				clk = &jumpClock{fakeClock: fc, jump: tt.jump}
 			}
-			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+			if len(tt.steps) > 0 {
+				var steps []func()
+				for _, step := range tt.steps {
+					steps = append(steps, func() { step(t, eventsPath) })
+				}
+				clk = &multiStepClock{fakeClock: fc, steps: steps}
+			}
+			opts := []runOpt{
 				withRunDir(runDir),
 				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath, Started: tt.started}),
-				withRunClock(clk, fc.Now().Add(time.Hour)))
+				withRunClock(clk, fc.Now().Add(time.Hour)),
+			}
+			if tt.gated {
+				opts = append(opts, withRunGate(passingGate))
+			}
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour, AwaitedShellPrefixes: tt.awaitedPrefixes}, opts...)
+			run.startedFresh = tt.fresh
 
 			result, err := run.Wait()
 			if err != nil {
@@ -383,12 +435,22 @@ func TestWait_RecordsEndedShells(t *testing.T) {
 			if result.Outcome != tt.wantOutcome {
 				t.Errorf("Outcome = %q, want %q", result.Outcome, tt.wantOutcome)
 			}
-			want := []EndedShell{{Label: "sleep 9999", ID: "sh-1", Signal: SignalTranscript, Outstanding: tt.wantOutstanding}}
+			want := tt.wantShells
+			if want == nil && !tt.wantNoShells {
+				want = []EndedShell{{Label: "sleep 9999", ID: "sh-1", Signal: SignalTranscript, Outstanding: tt.wantOutstanding}}
+			}
 			if !slices.Equal(result.EndedShells, want) {
 				t.Errorf("EndedShells = %+v, want %+v", result.EndedShells, want)
 			}
-			if !strings.Contains(buf.String(), tt.wantLog) || strings.Contains(buf.String(), tt.wantNoLog) {
-				t.Errorf("log should hold %q and not %q; log:\n%s", tt.wantLog, tt.wantNoLog, buf.String())
+			for _, line := range tt.wantLog {
+				if !strings.Contains(buf.String(), line) {
+					t.Errorf("log should hold %q; log:\n%s", line, buf.String())
+				}
+			}
+			for _, line := range tt.wantNoLog {
+				if strings.Contains(buf.String(), line) {
+					t.Errorf("log should not hold %q; log:\n%s", line, buf.String())
+				}
 			}
 		})
 	}

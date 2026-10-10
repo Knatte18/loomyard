@@ -465,6 +465,18 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			check:       requireNoRecordedState,
 		},
 		{
+			name:  "Merriam's start base is unreadable",
+			cards: 1,
+			setup: func(t *testing.T, fx *runFixture) func() {
+				if err := os.Mkdir(filepath.Join(fx.Worktree, "CLAUDE.md"), 0o755); err != nil {
+					t.Fatalf("plant a directory in place of CLAUDE.md: %v", err)
+				}
+				return nil
+			},
+			msgContains: []string{"CLAUDE.md", "way forward: transient, lyx webster run"},
+			check:       requireNoRecordedState,
+		},
+		{
 			name:  "a first init whose batches run a dependency backward",
 			cards: 2,
 			setup: func(t *testing.T, fx *runFixture) func() {
@@ -804,6 +816,8 @@ func TestRun_AutoRebaseline(t *testing.T) {
 			// wantIs is a sentinel the error also wraps.
 			wantIs error
 			want   []string
+			// soleWayForward expects exactly one way-forward clause, ending the message in the re-entry step.
+			soleWayForward bool
 		}{
 			{
 				name:  "a done card's edit",
@@ -909,7 +923,8 @@ func TestRun_AutoRebaseline(t *testing.T) {
 						t.Fatalf("plant a directory in place of CLAUDE.md: %v", err)
 					}
 				},
-				want: []string{"CLAUDE.md", "way forward: transient, " + reStep},
+				want:           []string{"CLAUDE.md", "way forward: transient, " + reStep},
+				soleWayForward: true,
 			},
 		}
 		for _, tc := range cases {
@@ -928,6 +943,17 @@ func TestRun_AutoRebaseline(t *testing.T) {
 				for _, want := range tc.want {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("Run() error = %q; want it to contain %q", err, want)
+					}
+				}
+				if tc.soleWayForward {
+					if got := strings.Count(err.Error(), "way forward:"); got != 1 {
+						t.Errorf("Run() error = %q; want exactly one way forward clause, got %d", err, got)
+					}
+					if !strings.HasSuffix(err.Error(), reStep) {
+						t.Errorf("Run() error = %q; want it to end in the re-entry step %q", err, reStep)
+					}
+					if strings.Contains(err.Error(), "re-run the verb") {
+						t.Errorf("Run() error = %q; want no verb re-run advice", err)
 					}
 				}
 				requireNoManualVerb(t, err)
@@ -1069,6 +1095,27 @@ func TestRun_AutoRebaseline(t *testing.T) {
 		requireReinitialisedRun(t, fx)
 	})
 
+	t.Run("an edit to the Card Index alone accepts no card file", func(t *testing.T) {
+		fx := seed(t, 1, nil)
+		overview := filepath.Join(fx.PlanDir, "00-overview.md")
+		data, err := os.ReadFile(overview)
+		if err != nil {
+			t.Fatalf("read overview: %v", err)
+		}
+		if err := os.WriteFile(overview, []byte(strings.Replace(string(data), "placeholder card 1", "placeholder card 1, reworded", 1)), 0o644); err != nil {
+			t.Fatalf("edit overview: %v", err)
+		}
+		diedMaster(t, fx, "index")
+
+		_, err = autoRun(fx)
+		if !errors.Is(err, websterengine.ErrMasterDied) || !strings.HasPrefix(err.Error(), warningLead) {
+			t.Fatalf("Run() error = %v; want the Master death opening with the rebaseline warning", err)
+		}
+		if !strings.Contains(err.Error(), "accepting no card file") {
+			t.Errorf("Run() error = %q; want the warning to say it accepted no card file", err)
+		}
+	})
+
 	t.Run("an in-flight card's edit is recorded unrendered and a recovery renders it", func(t *testing.T) {
 		fx := seed(t, 1, func(bs *websterengine.BatchState) {
 			bs.Terminal, bs.Status, bs.Digest = false, "", nil
@@ -1079,6 +1126,9 @@ func TestRun_AutoRebaseline(t *testing.T) {
 		_, err := autoRun(fx)
 		if !errors.Is(err, websterengine.ErrMasterDied) || !strings.HasPrefix(err.Error(), warningLead) {
 			t.Fatalf("Run() error = %v; want the Master death opening with the rebaseline warning", err)
+		}
+		if !strings.Contains(err.Error(), "amended in-flight cards: 01-batch1") {
+			t.Errorf("Run() error = %q; want the warning to name the amended in-flight card 01-batch1", err)
 		}
 		st := loadRunState(t, fx)
 		want := []websterengine.AmendedCard{{Card: "01-batch1", Rendered: false}}

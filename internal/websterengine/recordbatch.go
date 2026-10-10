@@ -571,10 +571,32 @@ func failOnCorrectness(deps RecordDeps, bs *BatchState, number int, slug, headSH
 	}
 	for _, cf := range correctness {
 		if cf.Violation.Path == "" {
-			uncheckable = append(uncheckable, fmt.Sprintf("%s: %s", cf.Violation.Class, cf.Violation.Detail))
+			uncheckable = append(uncheckable, pathlessEntry(cf.Violation.Class, cf.Violation.Detail))
 		}
 	}
 	return failFromFindings(deps, bs, number, slug, headSHA, all, nil, nil, suspects, uncheckable, newPaths, warnings)
+}
+
+// pathlessViolationClasses is every class a pathless correctness finding can carry.
+var pathlessViolationClasses = []AuditViolationClass{
+	ClassNestedAgent, ClassFabricReference, ClassNamedSpawn, ClassParentWrite,
+	ClassForkContractWrite, ClassForkPlanWrite, ClassForkStateWrite,
+}
+
+// pathlessEntry renders the Uncheckable entry recorded for a correctness finding that names no path: "<class>: <detail>".
+func pathlessEntry(class AuditViolationClass, detail string) string {
+	return fmt.Sprintf("%s: %s", class, detail)
+}
+
+// pathlessEntryClass reports the class a pathless entry opens with.
+// It is true only for an entry starting with a known class followed by ": ", so a path never matches.
+func pathlessEntryClass(entry string) (AuditViolationClass, bool) {
+	for _, class := range pathlessViolationClasses {
+		if strings.HasPrefix(entry, string(class)+": ") {
+			return class, true
+		}
+	}
+	return "", false
 }
 
 // auditTerminalFork audits the fork transcripts a terminal fork batch has not consumed yet, once and without the settle wait,

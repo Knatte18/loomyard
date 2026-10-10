@@ -64,7 +64,8 @@ These are conversational shorthands; never rename code, files or docs to them un
 ## Watching runs
 
 The operator watches each run in its own terminal window, never in VS Code.
-After starting a run, the hub orchestrator opens one: `setsid -f konsole --workdir <pair> -p tabtitle=<slug> -e bash -lc "lyx reed attach; exec bash"`.
+`lyx batten run <slug> --window` opens it once the task's run is spawned: Konsole on Linux, Windows Terminal into WSL on WSL, titled with the slug and running `lyx reed attach` in the pair.
+Where no launcher is known, its output says no window was opened.
 VS Code opens only when the operator asks for it.
 
 ## Filesystem links
