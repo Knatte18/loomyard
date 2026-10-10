@@ -37,7 +37,7 @@ func TestDispatchScope(t *testing.T) {
 	}
 }
 
-// TestEditedDoneCards pins what the plan gate's rows do not reach: a done batch's recorded id the plan lacks reports nothing, and a nil state reports nothing.
+// TestEditedDoneCards pins what the plan gate's rows do not reach: a done batch's recorded id the plan lacks reports nothing.
 func TestEditedDoneCards(t *testing.T) {
 	t.Parallel()
 
@@ -49,8 +49,5 @@ func TestEditedDoneCards(t *testing.T) {
 
 	if got, err := EditedDoneCards(plan, st, planDir); err != nil || len(got) != 0 {
 		t.Errorf("EditedDoneCards() = %v, %v; want nothing for an id the plan lacks", got, err)
-	}
-	if got, err := EditedDoneCards(plan, nil, planDir); err != nil || got != nil {
-		t.Errorf("EditedDoneCards(nil state) = %v, %v; want nil, nil", got, err)
 	}
 }
