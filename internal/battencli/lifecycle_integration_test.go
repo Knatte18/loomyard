@@ -873,6 +873,7 @@ func stepCreateRow_PairWithoutOriginRecordIsIncomplete(t *testing.T, h *hubforge
 func stepCreateRow_LeftoverBranchIsRewordedForPrime(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-leftover-branch"
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", slug)
+	seedBoardTask(t, h, slug, "loom")
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 		t.Fatal("ReadStatus must not be called: the create row must fail before the poll row ever runs")
@@ -882,6 +883,15 @@ func stepCreateRow_LeftoverBranchIsRewordedForPrime(t *testing.T, h *hubforge.Hu
 	err := c.env.CreateWorktree(context.Background())
 	if err == nil {
 		t.Fatal("CreateWorktree() error = nil; want the leftover-branch refusal")
+	}
+	// The claim written before the pair is created stays on the refused row.
+	board, openErr := boardengine.OpenHub(h.Location.HubPath)
+	if openErr != nil {
+		t.Fatalf("OpenHub: %v", openErr)
+	}
+	task, found, getErr := board.GetTask(slug)
+	if getErr != nil || !found || task.Status == nil || *task.Status != "running · Worktree-Create" {
+		t.Errorf("board entry after the refused row = %+v, found %v, err %v; want status %q", task, found, getErr, "running · Worktree-Create")
 	}
 	// The reworded text names "lyx fabric checkout" only inside its own "never do this" warning, not
 	// as a suggested remedy -- the same distinction TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout

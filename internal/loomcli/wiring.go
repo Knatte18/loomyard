@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -180,16 +181,11 @@ func loomCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusD
 			return err
 		},
 		SetBoardStatus: func(status string) error {
-			board, err := openHubBoard(location)
+			board, err := boardengine.OpenHub(location.HubPath)
 			if err != nil {
 				return err
 			}
-			slug := shedrun.ResolveRunID(location, runID)
-			task, found, err := board.GetTask(slug)
-			if err != nil || !found || (task.Status != nil && *task.Status == "done") {
-				return err
-			}
-			return board.SetStatus(slug, &status)
+			return board.SetRunStatus(shedrun.ResolveRunID(location, runID), status)
 		},
 	}
 }
@@ -200,7 +196,7 @@ func boardStatus(producer, state string) (string, bool) {
 	if state == string(shedengine.StateDone) {
 		return "", false
 	}
-	return state + " · " + producer, true
+	return boardengine.RunStatus(state, producer), true
 }
 
 // newCommitStatusSeam builds the shedengine.Shed.CommitStatus closure from deps.
@@ -474,12 +470,11 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	// AnchorPath semantics and the field set burlerengine.Geometry declares, rather than webster's
 	// (see hubgeom.go's BurlerGeometry doc comment). The two geometry builders are distinct types
 	// with distinct field sets, not interchangeable constructors of the same shape.
-	burlerRemover := burlerengine.NewReedStrandRemover(reedEngine)
-	burlerEngine := burlerengine.New(burlerengine.RunnerShuttle(runner), burlerRemover, hubgeom.BurlerGeometry(location), burlerCfg, websterGeom.StencilsDir, frictionDir)
+	burlerEngine := burlerengine.New(burlerengine.RunnerShuttle(runner), hubgeom.BurlerGeometry(location), burlerCfg, websterGeom.StencilsDir, frictionDir)
 
 	runDeps := websterengine.RunDeps{
 		Starter:    runnerMasterStarter{runner: runner},
-		Reed:       reedEngine,
+		Stopper:    runner,
 		Engine:     claudeEngine,
 		ShuttleCfg: shuttleCfg,
 		Roles:      roles,
@@ -714,9 +709,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// RunRoot is durable: the status seam commits it with every transition.
 		RunRoot: loomengine.LoomReviewsDir(location),
 		Burler:  burlerEngine,
-		// The remover the engine stops a half with, so the producer stops the one live half of a resumed round the same way.
-		BurlerRemover: burlerRemover,
-		Now:           time.Now,
+		Now:     time.Now,
 
 		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
 		Slug:           seedSlug(location.WorktreeName),

@@ -177,6 +177,7 @@ func TestAttach_OutcomeDisposition(t *testing.T) {
 		{"legacy_asking_attaches", "asking", true, true},
 		{"terminal_died", "died", true, false},
 		{"terminal_timeout", "timeout", true, false},
+		{"terminal_stopped_is_respawn_eligible_on_a_live_strand", runOutcomeStopped, true, false},
 		{"running_attaches", runOutcomeRunning, true, true},
 		{"omitted_outcome_is_legacy_upgrade_path", "", false, false},
 		{"unrecognized_outcome", "some-future-value", true, false},
@@ -226,17 +227,21 @@ func TestAttach_RemovesSupersededStrands(t *testing.T) {
 		return reedengine.StrandStatus{GUID: guid, PaneID: "%" + guid, Live: true}
 	}
 	tests := []struct {
-		name          string
-		outcome       string
-		strands       []reedengine.StrandStatus
-		otherOutputs  bool
-		removeErr     error
-		ifLiveOnly    bool
-		wantRemoved   []string
+		name         string
+		outcome      string
+		strands      []reedengine.StrandStatus
+		otherOutputs bool
+		removeErr    error
+		ifLiveOnly   bool
+		wantRemoved  []string
+		// outputMissing leaves the candidate's output file unwritten, so a stop is recorded over it.
+		outputMissing bool
+		wantRecorded  string
 		wantFound     bool
 		wantErrSubstr string
 	}{
-		{name: "terminal_candidate_on_a_live_strand_is_removed", outcome: "done", strands: []reedengine.StrandStatus{live("strand-1")}, wantRemoved: []string{"strand-1"}},
+		{name: "terminal_candidate_on_a_live_strand_is_removed", outcome: "done", strands: []reedengine.StrandStatus{live("strand-1")}, wantRemoved: []string{"strand-1"}, wantRecorded: "done"},
+		{name: "unrecognized_outcome_candidate_is_recorded_stopped_then_removed", outcome: "some-future-value", outputMissing: true, strands: []reedengine.StrandStatus{live("strand-1")}, wantRemoved: []string{"strand-1"}, wantRecorded: runOutcomeStopped},
 		{name: "dead_pane_candidate_removes_nothing", outcome: "died", strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: false}}},
 		{name: "untracked_candidate_removes_nothing", outcome: "timeout"},
 		{name: "other_output_set_strand_survives", outcome: "done", strands: []reedengine.StrandStatus{live("strand-1"), live("strand-other")}, otherOutputs: true, wantRemoved: []string{"strand-1"}},
@@ -265,7 +270,9 @@ func TestAttach_RemovesSupersededStrands(t *testing.T) {
 				})
 			}
 			// Seeded for the attachable row, which reaches Wait and must classify OutcomeDone on its first tick.
-			touchOutputFile(t, outputFile)
+			if !tt.outputMissing {
+				touchOutputFile(t, outputFile)
+			}
 			if err := os.WriteFile(filepath.Join(runDir, eventsFileName), []byte("STOP:done\n"), 0o644); err != nil {
 				t.Fatalf("seed events: %v", err)
 			}
@@ -298,6 +305,15 @@ func TestAttach_RemovesSupersededStrands(t *testing.T) {
 			}
 			if strings.Join(removed, ",") != strings.Join(tt.wantRemoved, ",") {
 				t.Errorf("removed strands = %v; want %v", removed, tt.wantRemoved)
+			}
+			if tt.wantRecorded != "" {
+				record, _, err := loadRunState(runDir)
+				if err != nil {
+					t.Fatalf("loadRunState: %v", err)
+				}
+				if record.Outcome != tt.wantRecorded {
+					t.Errorf("superseded record outcome = %q; want %q", record.Outcome, tt.wantRecorded)
+				}
 			}
 		})
 	}

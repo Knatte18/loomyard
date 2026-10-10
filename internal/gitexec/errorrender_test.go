@@ -6,6 +6,7 @@ package gitexec_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
@@ -59,6 +60,11 @@ func TestGitError_Error(t *testing.T) {
 			name: "DirNotRendered",
 			err:  &gitexec.GitError{Args: []string{"status", "--porcelain"}, Dir: "/tmp/some/worktree/path", ExitCode: 128, Stderr: "fatal: not a git repository"},
 			want: `git status --porcelain: exit 128: fatal: not a git repository`,
+		},
+		{
+			name: "TimedOutRendersDeadlineInPlaceOfExitCode",
+			err:  &gitexec.GitError{Args: []string{"ls-remote", "origin"}, ExitCode: -1, Stderr: " fatal: hung \n", Timeout: 10 * time.Minute},
+			want: `git ls-remote origin: timed out after 10m0s: fatal: hung`,
 		},
 		{
 			name: "MixedVector",

@@ -168,6 +168,7 @@ Example:
 				Config:       c.cfg,
 				Engine:       c.engine,
 				Reed:         c.reed,
+				Stopper:      c.runner,
 				ShuttleCfg:   c.shuttleCfg,
 				Geom:         c.geom,
 				FrictionDir:  c.frictionDir,

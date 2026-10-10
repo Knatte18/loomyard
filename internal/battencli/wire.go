@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -584,6 +585,15 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		ScratchDir: BattenDir(location, slug),
 		PrimeLock:  primeLock,
 		CreateWorktree: func(ctx context.Context) error {
+			// The claim comes first, so the run lock on the board entry starts before the pair exists and survives this row failing.
+			// A board failure only warns: the board is the hub's overview, never the run's bookkeeping.
+			claim := boardengine.RunStatus(string(shedengine.StateRunning), battenrecipe.NameWorktreeCreate)
+			if board, err := boardengine.OpenHub(location.HubPath); err != nil {
+				logger.Warn("battencli: claim board entry failed", "slug", slug, "err", err)
+			} else if err := board.SetRunStatus(slug, claim); err != nil {
+				logger.Warn("battencli: claim board entry failed", "slug", slug, "err", err)
+			}
+
 			cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(location.HubPath))
 			if err != nil {
 				return err

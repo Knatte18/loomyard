@@ -74,10 +74,15 @@ func (run *Run) notifyHeld(held *heldTurnEnd) {
 	if notify == nil || run.spec.Interactive || held.offset <= run.state.NotifiedOffset {
 		return
 	}
+	run.recordMu.Lock()
 	previous := run.state.NotifiedOffset
 	run.state.NotifiedOffset = held.offset
-	if err := saveRunState(run.runDir, run.state); err != nil {
+	err := run.saveState()
+	if err != nil {
 		run.state.NotifiedOffset = previous
+	}
+	run.recordMu.Unlock()
+	if err != nil {
 		logger.Warn("shuttle: persist notified offset failed, skipping this hold notice", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "error", err)
 		return
 	}

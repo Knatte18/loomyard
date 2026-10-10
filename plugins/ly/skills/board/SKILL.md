@@ -94,6 +94,13 @@ Remove every done entry:
 lyx board prune
 ```
 
+## Claimed entries
+
+An entry whose status reads `<state> · <producer>`, such as `running · Webster`, is claimed by a run.
+A claimed entry takes no scope edits: a write that changes anything but its status, or removes it, is refused.
+Record a new finding as a note of its own with `lyx board upsert` and `"kind":"note"`.
+The refusal names the way to unlock an abandoned run's entry.
+
 ## Intake
 
 GitHub is the inbox that `selfreport` files issues to, and the board is the one list.
@@ -116,5 +123,4 @@ lyx board intake close '{"issue":14,"reason":"Duplicate of #12."}'
 A `body` renders as ordinary markdown with semantic line breaks.
 A single newline is a soft break, so structure a body with headings and lists rather than relying on line breaks for layout.
 Never name another task as a dependency in a task's brief or body: put it in `depends_on` with `lyx board set-deps`.
-The README computes After and Before from `depends_on`, drops a finished entry from both, and `prune` strips it, while a dependency written as prose goes stale once that entry lands.
-A relation between notes has no `depends_on`, so it is a sentence in a body.
+The README computes each task's After column and its Ready or layer subsection from `depends_on`, drops a finished entry from After, and `prune` strips it, while a dependency written as prose goes stale once that entry lands.A relation between notes has no `depends_on`, so it is a sentence in a body.

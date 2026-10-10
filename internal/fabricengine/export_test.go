@@ -18,6 +18,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
+// SetGCAutoThresholdForTest sets gcAutoThreshold until the test ends.
+// It changes process-global state, so the calling test must not be parallel.
+func SetGCAutoThresholdForTest(t *testing.T, threshold int) {
+	t.Helper()
+
+	previous := gcAutoThreshold
+	gcAutoThreshold = threshold
+	t.Cleanup(func() { gcAutoThreshold = previous })
+}
+
 // NewPairedFromPathsForTest re-exports newPaired for fabric_test.go's untagged unit test of the
 // newPaired constructor itself, its one remaining consumer: it hands newPaired two empty directories
 // and asserts the warp and weft fields come back non-nil.

@@ -20,7 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
@@ -101,7 +100,7 @@ var ErrPlanDrifted = errors.New("webster: plan re-resolution at begin-batch repo
 // Batches is the execution order, the batchifier's own order read from the recorded partition by ExecutionBatches — predecessorDigestLine's lookup depends on Batches already being in that order;
 // State is the already-loaded run state BeginBatch reads and mutates;
 // Config is the loaded webster.yaml;
-// Reed is the live reed query surface the prior-recovery-strand reclaim consults (a dead-but-live recovery record a fork batch is about to overwrite);
+// Stopper is the seam the prior-recovery-strand reclaim stops a leftover strand through (a dead-but-live recovery record a fork batch is about to overwrite);
 // Geom is the told Geometry BeginBatch reads every path from: WorktreeRoot is the repo checkout HeadSHA is captured from and RenderForkPrompt's promptWorktreeRoot, WebsterDir and ReportsDir are the reports directory,
 // and PromptsDir and StencilsDir feed the prompt write and the fork template's read location.
 type BeginDeps struct {
@@ -109,7 +108,7 @@ type BeginDeps struct {
 	Batches []batcher.Batch
 	State   *State
 	Config  Config
-	Reed    shuttleengine.ReedOps
+	Stopper StrandStopper
 	Geom    Geometry
 
 	// FrictionDir is the told absolute friction directory (see internal/friction), empty when Tier 2
@@ -459,11 +458,11 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// still be genuinely working), stop it before the record below erases
 	// its StrandGUID: an unreclaimed recovery strand would race this batch's
 	// fresh fork on the repo, so this respawn path reclaims the kept strand
-	// first. A plain fork batch's record has an empty
-	// StrandGUID and removeStrandIfLive no-ops on it.
+	// first.
+	// A plain fork batch's record has an empty StrandGUID, which the reclaim skips.
 	if prior, ok := deps.State.Batches[number]; ok && prior != nil && prior.StrandGUID != "" {
-		if err := removeStrandIfLive(deps.Reed, prior.StrandGUID); err != nil {
-			return nil, err
+		if err := deps.Stopper.StopStrand(prior.StrandGUID); err != nil {
+			return nil, fmt.Errorf("websterengine: stop prior recovery strand %s before respawn: %w", prior.StrandGUID, err)
 		}
 	}
 

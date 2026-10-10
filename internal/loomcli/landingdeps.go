@@ -103,7 +103,7 @@ func landingDeps(
 		// MarkTaskDone marks this worktree's board task done once its work has landed.
 		// landingshed itself names no board path.
 		MarkTaskDone: func() error {
-			board, err := openHubBoard(l)
+			board, err := boardengine.OpenHub(l.HubPath)
 			if err != nil {
 				return err
 			}
@@ -191,16 +191,4 @@ func perWorktreeConfigRels() []string {
 		}
 	}
 	return rels
-}
-
-// openHubBoard opens the hub's board the way boardcli does, but with Path pointed at the hub's board rather than a per-worktree link (Hub Containment),
-// and with boardengine.ApplySkipEnv applied so render and sync behave as they do for `lyx board`.
-func openHubBoard(l *lyxcwd.Location) (*boardengine.Board, error) {
-	boardDir := fabricengine.BoardDir(l.HubPath)
-	bc, err := boardengine.LoadConfig(boardDir, "board")
-	if err != nil {
-		return nil, err
-	}
-	bc.Path = boardDir
-	return boardengine.New(boardengine.ApplySkipEnv(bc)), nil
 }

@@ -235,18 +235,6 @@ func TestBurlerRoundEntry_RubricStencil(t *testing.T) {
 		assertErrContains(t, err, "AnchorPath")
 	})
 
-	// A nil BurlerRemover is refused rather than tolerated: it stops the one live half of a resumed round.
-	// A producer built without it respawns beside a still-live half, which is two agents writing one file and, on a fix-scope: source row, two agents committing to one branch.
-	// A wiring slip must fail here, at construction, not silently at the next crash.
-	t.Run("NilBurlerRemoverSeamIsRefused", func(t *testing.T) {
-		env := newTestEnv(t)
-		env.BurlerRemover = nil
-		cfg := minimalBurlerConfig()
-
-		_, err := burlerRoundEntry("review-round", cfg, env)
-		assertErrContains(t, err, "BurlerRemover")
-	})
-
 	// The round probes through its runner, so the row reads no Shuttle.
 	t.Run("NilShuttleSeamIsTolerated", func(t *testing.T) {
 		env := newTestEnv(t)

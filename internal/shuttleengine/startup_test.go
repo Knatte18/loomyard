@@ -413,9 +413,8 @@ func TestStartup_HandleReturned(t *testing.T) {
 	}
 }
 
-// TestStartup_MechanismFailure covers the startup mechanism-failure paths — the status retry cap
-// exhausted with no output files, and reed never tracking the strand at all: a non-nil error that is
-// NOT ErrNotStarted, no teardown, and run.json's Outcome left at running.
+// TestStartup_MechanismFailure covers the startup status-cap paths: the status retry cap exhausted with no output files, and reed never tracking the strand at all.
+// Each returns a non-nil error wrapping both ErrNotStarted and the failure's own sentinel, removes the strand once and finalizes run.json's Outcome to died.
 func TestStartup_MechanismFailure(t *testing.T) {
 	scriptedErr := errors.New("reed status: unavailable")
 	tests := []struct {
@@ -465,11 +464,11 @@ func TestStartup_MechanismFailure(t *testing.T) {
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("StartGated() error = %v; want one wrapping %v", err, tt.wantErr)
 			}
-			if errors.Is(err, ErrNotStarted) {
-				t.Errorf("StartGated() error = %v; want it NOT to wrap ErrNotStarted -- this is a mechanism failure, not a not-ready teardown", err)
+			if !errors.Is(err, ErrNotStarted) {
+				t.Errorf("StartGated() error = %v; want one wrapping ErrNotStarted -- no start error past AddStrand leaves a live strand behind", err)
 			}
-			if len(inner.RemoveStrandCalls) != 0 {
-				t.Errorf("RemoveStrandCalls = %+v; want none -- a mechanism failure tears nothing down", inner.RemoveStrandCalls)
+			if len(inner.RemoveStrandCalls) != 1 {
+				t.Errorf("RemoveStrandCalls = %+v; want exactly one", inner.RemoveStrandCalls)
 			}
 
 			runDir := soleStartupRunDir(t, cfg, anchorPath)
@@ -477,8 +476,8 @@ func TestStartup_MechanismFailure(t *testing.T) {
 			if rerr != nil || !found {
 				t.Fatalf("loadRunState: found=%v err=%v", found, rerr)
 			}
-			if rs.Outcome != runOutcomeRunning {
-				t.Errorf("loadRunState().Outcome = %q; want %q -- a mechanism failure writes no Outcome", rs.Outcome, runOutcomeRunning)
+			if rs.Outcome != string(OutcomeDied) {
+				t.Errorf("loadRunState().Outcome = %q; want %q", rs.Outcome, OutcomeDied)
 			}
 		})
 	}
@@ -623,16 +622,13 @@ func TestStartup_CaptureAlwaysErroringUntilWindowExpires(t *testing.T) {
 
 // TestStartup_RunGatedMappings pins RunGated's mapping of the two startup failures. A not-ready
 // start (errors.Is(err, ErrNotStarted)) is swallowed into a died Result with a nil error, carrying
-// the run's identity. A mechanism failure (never ErrNotStarted) returns the error unchanged,
-// alongside a Result carrying the run's identity fields with an empty Outcome. Either way the gate
-// closure never runs (its counter stays at zero), since finalize never evaluates a gate for a
-// non-Done outcome.
+// the run's identity, and so is the status-cap exit, which tears the run down and wraps ErrNotStarted beside its own sentinel.
+// Either way the gate closure never runs (its counter stays at zero), since finalize never evaluates a gate for a non-Done outcome.
 func TestStartup_RunGatedMappings(t *testing.T) {
 	tests := []struct {
 		name           string
 		status         []reedengine.StatusResult
 		script         []StartupState
-		wantErr        bool
 		wantOutcome    Outcome
 		wantNotStarted bool
 	}{
@@ -647,9 +643,10 @@ func TestStartup_RunGatedMappings(t *testing.T) {
 			wantNotStarted: true,
 		},
 		{
-			name:    "mechanism failure returns the error with an empty outcome",
-			status:  []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "someone-elses-strand", Live: true}}}},
-			wantErr: true,
+			name:           "status-cap exit is a died not-started result with a nil error",
+			status:         []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "someone-elses-strand", Live: true}}}},
+			wantOutcome:    OutcomeDied,
+			wantNotStarted: true,
 		},
 	}
 	for _, tt := range tests {
@@ -668,14 +665,7 @@ func TestStartup_RunGatedMappings(t *testing.T) {
 
 			outputFile := filepath.Join(t.TempDir(), "out.md")
 			result, err := runner.RunGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, gate)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("RunGated() error = nil; want the mechanism-failure error")
-				}
-				if errors.Is(err, ErrNotStarted) {
-					t.Errorf("RunGated() error = %v; want it NOT to wrap ErrNotStarted", err)
-				}
-			} else if err != nil {
+			if err != nil {
 				t.Fatalf("RunGated() error = %v; want nil (a not-ready start is not surfaced as an error)", err)
 			}
 			if result.Outcome != tt.wantOutcome {
@@ -1082,5 +1072,181 @@ func TestStartup_SkillsRefusedWithoutSkillLoader(t *testing.T) {
 	}
 	if _, statErr := os.Stat(fx.RunRoot); !os.IsNotExist(statErr) {
 		t.Errorf("run root exists (%v); want no run directory", statErr)
+	}
+}
+
+// startSendEngine is skillFakeEngine plus the idle reading, an input-box reader and session signals, so start's sends can be made busy or unlandable.
+// IdleSession answers idle for every capture, InputBoxText answers box and runs onRead first, and "START" is a turn start.
+type startSendEngine struct {
+	*skillFakeEngine
+
+	idle   bool
+	box    string
+	onRead func()
+}
+
+func (e *startSendEngine) ContextTokens(Event) ContextReading { return ContextReading{} }
+func (e *startSendEngine) CompactedSince(Event, time.Time) (CompactionBoundary, bool) {
+	return CompactionBoundary{}, false
+}
+func (e *startSendEngine) IdleSession(string) bool                   { return e.idle }
+func (e *startSendEngine) PaneTooShort(string) bool                  { return false }
+func (e *startSendEngine) ClearSessionSequence() []PaneInput         { return nil }
+func (e *startSendEngine) ReloadPluginsSequence() []PaneInput        { return nil }
+func (e *startSendEngine) CompactSessionSequence(string) []PaneInput { return nil }
+func (e *startSendEngine) SubmitSettle() time.Duration               { return 100 * time.Millisecond }
+func (e *startSendEngine) TypeSequence(text string) []PaneInput      { return []PaneInput{{Text: text}} }
+func (e *startSendEngine) InputBoxText(string) (text string, ok bool) {
+	if e.onRead != nil {
+		e.onRead()
+	}
+	return e.box, true
+}
+func (e *startSendEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
+	var signals []SessionSignal
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) == "START" {
+			signals = append(signals, SessionSignal{Kind: SessionSignalTurnStart})
+		}
+	}
+	return signals, len(data)
+}
+
+var (
+	_ SessionCycler       = (*startSendEngine)(nil)
+	_ InputBoxReader      = (*startSendEngine)(nil)
+	_ SessionSignalParser = (*startSendEngine)(nil)
+)
+
+// brokenRunRecordReed is a skillReed that, once a load turn is typed, replaces run.json with a non-empty directory so the next save of the record fails.
+type brokenRunRecordReed struct {
+	*skillReed
+}
+
+func (r *brokenRunRecordReed) SendText(guid, text string, submit bool) error {
+	if err := r.skillReed.SendText(guid, text, submit); err != nil {
+		return err
+	}
+	if !strings.HasPrefix(text, "LOAD:") {
+		return nil
+	}
+	record := filepath.Join(filepath.Dir(r.EventsPath()), runStateFileName)
+	if err := os.Remove(record); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Join(record, "blocker"), 0o755); err != nil {
+		return err
+	}
+	return nil
+}
+
+// TestStartup_SendFailuresTearDown pins that a send failing past AddStrand tears the run down as not started:
+// the error wraps ErrNotStarted and the send's own sentinel, the strand is removed and the record reads died.
+// A prompt that fails ErrSubmissionNotLanded while a turn start lands past the pre-send offset landed late, and start returns the run.
+func TestStartup_SendFailuresTearDown(t *testing.T) {
+	t.Parallel()
+	const prompt = "do the task"
+	tests := []struct {
+		name  string
+		skill bool
+		// idle is what the idle reading answers.
+		idle bool
+		// box is what the input box holds throughout.
+		box string
+		// breakRecord replaces run.json after the load turn, so the prompt-offset persist fails.
+		breakRecord bool
+		// startOnWindowClose appends a turn start once the submit window has closed.
+		startOnWindowClose bool
+		wantIs             []error
+		wantStarted        bool
+		// wantDiedRecord is false when the record itself is made unwritable.
+		wantDiedRecord bool
+	}{
+		{name: "a skill-load send that stays busy", skill: true, idle: false, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
+		{name: "a prompt delivery that does not land", idle: true, box: prompt, wantIs: []error{ErrNotStarted, ErrSubmissionNotLanded}, wantDiedRecord: true},
+		{name: "a prompt-offset persist that fails", skill: true, idle: true, breakRecord: true, wantIs: []error{ErrNotStarted}},
+		{name: "an unlanded prompt followed by a turn start landed late", idle: true, box: prompt, startOnWindowClose: true, wantStarted: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			base := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}, StatusQueue: liveStrandStatus(true)}
+			engine := &startSendEngine{
+				skillFakeEngine: &skillFakeEngine{
+					fakeEngine: &fakeEngine{
+						PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1", PromptLine: prompt},
+						StartupScript: []StartupState{StartupReady},
+					},
+					Timeout: time.Minute,
+					Reports: []SkillLoadReport{{Verified: true, Loaded: []string{"a"}}},
+				},
+				idle: tt.idle,
+				box:  tt.box,
+			}
+			skills := &skillReed{fakeReed: base, Hangs: map[int]bool{}, Dies: map[int]bool{}}
+			var reed ReedOps = skills
+			if tt.breakRecord {
+				reed = &brokenRunRecordReed{skillReed: skills}
+			}
+			clock := newFakeClock(time.Now())
+			fx := newFixture(t, reed, engine, withConfig(fastConfig), withClock(clock))
+			skills.EventsPath = func() string { return filepath.Join(soleStartupRunDir(t, fastConfig, fx.Anchor), eventsFileName) }
+			if tt.startOnWindowClose {
+				start := clock.Now()
+				appended := false
+				engine.onRead = func() {
+					if appended || clock.Now().Sub(start) < submitConfirmTimeout(fastConfig) {
+						return
+					}
+					appended = true
+					f, err := os.OpenFile(skills.EventsPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+					if err != nil {
+						t.Errorf("open events: %v", err)
+						return
+					}
+					defer f.Close()
+					if _, err := f.WriteString("START\n"); err != nil {
+						t.Errorf("append turn start: %v", err)
+					}
+				}
+			}
+			spec := Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}}
+			if tt.skill {
+				spec.Skills = []string{"a"}
+			}
+
+			run, err := fx.Runner.Start(spec)
+
+			if tt.wantStarted {
+				if err != nil || run == nil {
+					t.Fatalf("Start() = %v, %v; want the run started", run, err)
+				}
+				if len(base.RemoveStrandCalls) != 0 {
+					t.Errorf("RemoveStrandCalls = %+v; want none", base.RemoveStrandCalls)
+				}
+				return
+			}
+			if run != nil {
+				t.Errorf("Start() run = %+v; want nil", run)
+			}
+			for _, want := range tt.wantIs {
+				if !errors.Is(err, want) {
+					t.Errorf("Start() error = %v; want one wrapping %v", err, want)
+				}
+			}
+			if len(base.RemoveStrandCalls) != 1 {
+				t.Errorf("RemoveStrandCalls = %+v; want exactly one", base.RemoveStrandCalls)
+			}
+			if !tt.wantDiedRecord {
+				return
+			}
+			rs, found, rerr := loadRunState(soleStartupRunDir(t, fastConfig, fx.Anchor))
+			if rerr != nil || !found {
+				t.Fatalf("loadRunState: found=%v err=%v", found, rerr)
+			}
+			if rs.Outcome != string(OutcomeDied) {
+				t.Errorf("loadRunState().Outcome = %q; want %q", rs.Outcome, OutcomeDied)
+			}
+		})
 	}
 }

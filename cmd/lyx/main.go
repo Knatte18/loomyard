@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configcli"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/gatecli"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/idecli"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomcli"
@@ -40,6 +41,7 @@ import (
 )
 
 func main() {
+	gitexec.SetKillReporter(logGitKill)
 	root := newRoot()
 	// Production path: split stdout and stderr.
 	root.SetOut(os.Stdout)
@@ -48,6 +50,16 @@ func main() {
 	// The exit hook force-opens the durable sink on a non-zero exit for post-mortem inspection, then sweeps an armed sink's directory.
 	notifyExitAndSweep(code)
 	os.Exit(code)
+}
+
+// logGitKill logs the outcome of killing a timed-out remote git command, which gitexec cannot log itself.
+// A non-nil groupErr means git was killed alone, so a descendant such as git-remote-https may outlive it.
+func logGitKill(args []string, pid int, groupErr error) {
+	if groupErr != nil {
+		logger.Warn("gitexec: killed only git after its deadline; a descendant may outlive it", "args", args, "pid", pid, "cause", groupErr)
+		return
+	}
+	logger.Info("gitexec: killed git's process group after its deadline", "args", args, "pid", pid)
 }
 
 // run is the testable seam: it builds a fresh root, merges stdout/stderr, and returns the exit code.

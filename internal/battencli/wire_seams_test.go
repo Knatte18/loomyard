@@ -10,13 +10,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // intentionallyNil maps each shedrecipe.Env field path wire leaves nil to the reason.
@@ -25,10 +30,9 @@ import (
 var intentionallyNil = map[string]string{
 	"Shuttle":                   "loom-only seam, batten drives no agent itself",
 	"Burler":                    "loom-only seam, batten runs no review round",
-	"BurlerRemover":             "loom-only seam, batten runs no review round",
 	"WebsterRun":                "loom-only seam, batten runs no webster",
 	"WebsterDeps.Starter":       "loom-only seam, batten runs no webster",
-	"WebsterDeps.Reed":          "loom-only seam, batten runs no webster",
+	"WebsterDeps.Stopper":       "loom-only seam, batten runs no webster",
 	"WebsterDeps.Engine":        "loom-only seam, batten runs no webster",
 	"WebsterDeps.RefMatcher":    "loom-only seam, batten runs no webster",
 	"WebsterDeps.Geom.Index":    "loom-only seam, batten runs no webster",
@@ -305,5 +309,86 @@ func TestWire_OrchStrandRecordedReadsThePrimesOrchState(t *testing.T) {
 	}
 	if recorded, err := c.env.InnerRun.OrchStrandRecorded(); err != nil || !recorded {
 		t.Errorf("OrchStrandRecorded() = %v, %v with a strand recorded; want true", recorded, err)
+	}
+}
+
+// TestWire_CreateWorktreeClaimsTheBoardEntry asserts the Worktree-Create closure writes the run-status claim before it touches the pair, and that a failed claim only warns.
+// Both rows fail the closure on the absent fabric config, so no pair is created.
+// It sets BOARD_SKIP_GIT and BOARD_SKIP_PUSH and redirects the logger's output, all process-global, so it does not call t.Parallel.
+func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	t.Setenv("BOARD_SKIP_PUSH", "1")
+	logs := logcapture.Capture(t)
+
+	const slug = "claimed"
+	tests := []struct {
+		name string
+		// hub builds the hub and returns its path.
+		hub func(t *testing.T) string
+		// wantStatus is the entry's status after the call; empty when the row has no board config to read it from.
+		wantStatus string
+		wantWarn   bool
+	}{
+		{
+			name: "ClaimSurvivesTheFailedRow",
+			hub: func(t *testing.T) string {
+				hub := boardkit.HubWithBoardConfig(t)
+				board, err := boardengine.OpenHub(hub)
+				if err != nil {
+					t.Fatalf("OpenHub: %v", err)
+				}
+				if _, err := board.UpsertTask(map[string]any{"slug": slug, "kind": "task", "labels": []string{"bug"}}); err != nil {
+					t.Fatalf("seed: %v", err)
+				}
+				return hub
+			},
+			wantStatus: "running · Worktree-Create",
+		},
+		{
+			name: "FailedClaimWarnsAndTheRowContinues",
+			hub: func(t *testing.T) string {
+				hub := t.TempDir()
+				if err := os.MkdirAll(configengine.ConfigDir(fabricengine.BoardDir(hub)), 0o755); err != nil {
+					t.Fatalf("mkdir config dir: %v", err)
+				}
+				return hub
+			},
+			wantWarn: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs.Reset()
+			hub := tt.hub(t)
+			location := &lyxcwd.Location{RepoName: "example", HubPath: hub, WorktreeName: "hub-repo", AnchorRel: "."}
+			c := &battenCLI{}
+			if err := c.wire(location, slug); err != nil {
+				t.Fatalf("wire() error = %v; want nil", err)
+			}
+
+			err := c.env.CreateWorktree(context.Background())
+
+			if err == nil {
+				t.Fatal("CreateWorktree() error = nil; want the absent fabric config to fail the row")
+			}
+			if tt.wantWarn {
+				fabricConfig := configengine.ConfigFile(fabricengine.BoardDir(hub), "fabric")
+				if !strings.Contains(err.Error(), fabricConfig) {
+					t.Errorf("CreateWorktree() error = %q; want it to name %q, the row's own failure", err.Error(), fabricConfig)
+				}
+				if got := logs.String(); !strings.Contains(got, slug) || !strings.Contains(got, "claim board entry failed") {
+					t.Errorf("log = %q; want a warning naming %q", got, slug)
+				}
+				return
+			}
+			board, openErr := boardengine.OpenHub(hub)
+			if openErr != nil {
+				t.Fatalf("OpenHub: %v", openErr)
+			}
+			task, found, getErr := board.GetTask(slug)
+			if getErr != nil || !found || task.Status == nil || *task.Status != tt.wantStatus {
+				t.Errorf("entry = %+v, found %v, err %v; want status %q", task, found, getErr, tt.wantStatus)
+			}
+		})
 	}
 }

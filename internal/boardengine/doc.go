@@ -36,8 +36,15 @@
 //
 // # README
 //
-// Every write renders README.md, with a Tasks section split into dependency layers, a Notes section grouped by type label in the order of the types list with the remainder under Other, and a Done section.
-// Each entry line carries its labels and status, and the After and Before lists come from depends_on.
+// Every write renders README.md, with a Tasks section, a Notes section grouped by type label in the order of the types list with the remainder under Other, and a Done section.
+// Tasks splits into Running, Ready, the dependency layers A, B and on, and Independent for an isolated task.
+// A task a run holds, by IsRunStatus as the run lock decides it, goes under Running and in no layer; Running is omitted when no task runs.
+// Ready holds the open tasks with no open dependency, and is always written, as `_None._` when empty.
+// A dependency on a done task does not count, and one on a running task does, so a task waiting on a run is not Ready.
+// Layer A holds the tasks that wait only on Running or Ready entries, Layer B those that wait on something in Layer A, and so on; ComputeLayers names each task's subsection, and the same name is the layer field of `lyx board list`.
+// Each subsection is one markdown table numbered from 1: the bold title with the brief as a `• ` bullet under it in the same cell, the slug linked to its design doc when the entry has a body, and the labels that are not type labels.
+// Running adds an At column, the run status without the state when the state is `running`, and Ready and the layers add an After column, the open entries named in depends_on.
+// A pipe in a cell is escaped and a line break becomes a space, so an entry is always one row.
 //
 // # Intake
 //
@@ -47,6 +54,19 @@
 // A merge carries the removed entries' issues: the upserted entry's issues are its own followed by each removed entry's, in remove order, without duplicates.
 // Import writes the board first and then comments with a pointer to the entry and closes the issue, and close alone ends a noise issue with a stated reason and touches no entry.
 // boardengine imports nothing GitHub-specific: the caller converts a fetched issue into InboxIssue and makes every network call outside the board lock.
+//
+// # Run lock
+//
+// A run holds a board entry while the entry's status has the run-status form "<state> · <producer>", which RunStatus composes and IsRunStatus recognizes.
+// Nil, empty, "done", "abandoned" and a hand-set word are not run statuses, and lock nothing.
+// A held entry is the scope its run executes, so the write critical section refuses, before the save, any write whose net change on it removes it or touches a field other than status.
+// The net change runs from the entries as loaded under the board file lock to the entries after the whole mutation,
+// so a batch or merge that clears the status early and then edits the entry is still refused, and nothing reaches disk.
+// A status-only net change passes: set-status, a merge's set_status and an upsert that differs only in status.
+// set-status is itself unguarded, so a live run's status can be cleared by hand.
+// Prune passes, since a held entry's dependency on a done entry that the same write removes is not a change; every other depends_on change is refused.
+// The refusal is a *RunLockedError that matches ErrRunLocked through errors.Is.
+// Its message names the entry, its status and both ways forward: a finding goes to a note of its own, and an abandoned run's entry is unlocked by clearing its status once `lyx batten status` shows no run holds it.
 //
 // # Concurrency and sync
 //

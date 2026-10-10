@@ -29,51 +29,43 @@ func (r *Repo) FileAtRevision(rev, relPath string) ([]byte, error) {
 		return nil, ErrInvalidSHA
 	}
 
-	repo, err := r.goGit()
-	if err != nil {
-		return nil, err
-	}
-
-	tree, err := lookupObjectRetrying(r, repo, func() (*object.Tree, error) {
-		return treeForRev(repo, rev)
-	})
-	if err != nil {
-		return nil, fmt.Errorf("gitrepo: resolve tree for %s: %w", rev, err)
-	}
-
-	r.goGitMu.RLock()
-	defer r.goGitMu.RUnlock()
-
-	file, err := tree.File(relPath)
-	if err != nil {
-		if errors.Is(err, object.ErrFileNotFound) {
-			return nil, ErrPathNotAtRevision
+	return readGoGit(r, func(repo *git.Repository) ([]byte, error) {
+		tree, err := treeForRev(repo, rev)
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: resolve tree for %s: %w", rev, err)
 		}
-		return nil, fmt.Errorf("gitrepo: find %s at %s: %w", relPath, rev, err)
-	}
 
-	contents, err := file.Contents()
-	if err != nil {
-		return nil, fmt.Errorf("gitrepo: read %s at %s: %w", relPath, rev, err)
-	}
-	return []byte(contents), nil
+		file, err := tree.File(relPath)
+		if err != nil {
+			if errors.Is(err, object.ErrFileNotFound) {
+				return nil, ErrPathNotAtRevision
+			}
+			return nil, fmt.Errorf("gitrepo: find %s at %s: %w", relPath, rev, err)
+		}
+
+		contents, err := file.Contents()
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: read %s at %s: %w", relPath, rev, err)
+		}
+		return []byte(contents), nil
+	})
 }
+
+// headContainsCommitterSlack is how much older than the target commit's committer time HeadContains lets a walked commit be before it stops walking.
+const headContainsCommitterSlack = 24 * time.Hour
 
 // HeadContains reports whether sha names HEAD's commit or one of its ancestors.
 // An unborn HEAD, and a sha whose commit is absent from the local object store, report false with no error;
 // an invalid sha is ErrInvalidSHA.
 // It reads the object store through go-git and never runs git.
+// The walk goes newest committer time first and stops once a commit's committer time is more than 24 hours older than the target's, so a target absent from HEAD's history costs a bounded read.
+// A descendant of the target whose committer time is more than 24 hours older than the target's, from clock skew on the committing machine, therefore makes it answer false for a commit that is in HEAD.
 func (r *Repo) HeadContains(sha string) (bool, error) {
 	if !validSHA(sha) {
 		return false, ErrInvalidSHA
 	}
 
-	repo, err := r.goGit()
-	if err != nil {
-		return false, err
-	}
-
-	target, err := lookupObjectRetrying(r, repo, func() (*object.Commit, error) {
+	target, err := readGoGit(r, func(repo *git.Repository) (*object.Commit, error) {
 		return commitByHash(repo, sha)
 	})
 	if err != nil {
@@ -83,32 +75,35 @@ func (r *Repo) HeadContains(sha string) (bool, error) {
 		return false, fmt.Errorf("gitrepo: resolve commit %s: %w", sha, err)
 	}
 
-	r.goGitMu.RLock()
-	defer r.goGitMu.RUnlock()
-
-	head, err := repo.Head()
-	if err != nil {
-		if errors.Is(err, plumbing.ErrReferenceNotFound) {
-			return false, nil
+	return readGoGit(r, func(repo *git.Repository) (bool, error) {
+		head, err := repo.Head()
+		if err != nil {
+			if errors.Is(err, plumbing.ErrReferenceNotFound) {
+				return false, nil
+			}
+			return false, fmt.Errorf("gitrepo: read HEAD: %w", err)
 		}
-		return false, fmt.Errorf("gitrepo: read HEAD: %w", err)
-	}
-	commitIter, err := repo.Log(&git.LogOptions{From: head.Hash()})
-	if err != nil {
-		return false, fmt.Errorf("gitrepo: log from HEAD: %w", err)
-	}
-	found := false
-	err = commitIter.ForEach(func(commit *object.Commit) error {
-		if commit.Hash == target.Hash {
-			found = true
-			return storer.ErrStop
+		commitIter, err := repo.Log(&git.LogOptions{From: head.Hash(), Order: git.LogOrderCommitterTime})
+		if err != nil {
+			return false, fmt.Errorf("gitrepo: log from HEAD: %w", err)
 		}
-		return nil
+		oldestWalked := target.Committer.When.Add(-headContainsCommitterSlack)
+		found := false
+		err = commitIter.ForEach(func(commit *object.Commit) error {
+			if commit.Hash == target.Hash {
+				found = true
+				return storer.ErrStop
+			}
+			if commit.Committer.When.Before(oldestWalked) {
+				return storer.ErrStop
+			}
+			return nil
+		})
+		if err != nil {
+			return false, fmt.Errorf("gitrepo: walk HEAD's history: %w", err)
+		}
+		return found, nil
 	})
-	if err != nil {
-		return false, fmt.Errorf("gitrepo: walk HEAD's history: %w", err)
-	}
-	return found, nil
 }
 
 // PathRevisions returns the SHAs of the commits that touched relPath, newest first, capped at limit
@@ -116,38 +111,32 @@ func (r *Repo) HeadContains(sha string) (bool, error) {
 // no history — an unrecoverable base is a normal outcome the caller reports explicitly, not an error
 // condition.
 func (r *Repo) PathRevisions(relPath string, limit int) ([]string, error) {
-	repo, err := r.goGit()
-	if err != nil {
-		return nil, err
-	}
-
-	r.goGitMu.RLock()
-	defer r.goGitMu.RUnlock()
-
-	commitIter, err := repo.Log(&git.LogOptions{
-		FileName: &relPath,
-		Order:    git.LogOrderCommitterTime,
-	})
-	if err != nil {
-		if errors.Is(err, plumbing.ErrReferenceNotFound) {
-			// Unborn HEAD: no commits exist yet, so the path has no history.
-			return nil, nil
+	return readGoGit(r, func(repo *git.Repository) ([]string, error) {
+		commitIter, err := repo.Log(&git.LogOptions{
+			FileName: &relPath,
+			Order:    git.LogOrderCommitterTime,
+		})
+		if err != nil {
+			if errors.Is(err, plumbing.ErrReferenceNotFound) {
+				// Unborn HEAD: no commits exist yet, so the path has no history.
+				return nil, nil
+			}
+			return nil, fmt.Errorf("gitrepo: log for %s: %w", relPath, err)
 		}
-		return nil, fmt.Errorf("gitrepo: log for %s: %w", relPath, err)
-	}
 
-	var revisions []string
-	err = commitIter.ForEach(func(commit *object.Commit) error {
-		if limit > 0 && len(revisions) >= limit {
-			return storer.ErrStop
+		var revisions []string
+		err = commitIter.ForEach(func(commit *object.Commit) error {
+			if limit > 0 && len(revisions) >= limit {
+				return storer.ErrStop
+			}
+			revisions = append(revisions, commit.Hash.String())
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: iterate log for %s: %w", relPath, err)
 		}
-		revisions = append(revisions, commit.Hash.String())
-		return nil
+		return revisions, nil
 	})
-	if err != nil {
-		return nil, fmt.Errorf("gitrepo: iterate log for %s: %w", relPath, err)
-	}
-	return revisions, nil
 }
 
 // FilesInDirAtRevision returns the names of the regular files directly in dir in rev's tree, sorted.
@@ -160,39 +149,31 @@ func (r *Repo) FilesInDirAtRevision(rev, dir string) ([]string, error) {
 		return nil, ErrInvalidSHA
 	}
 
-	repo, err := r.goGit()
-	if err != nil {
-		return nil, err
-	}
-
-	tree, err := lookupObjectRetrying(r, repo, func() (*object.Tree, error) {
-		return treeForRev(repo, rev)
-	})
-	if err != nil {
-		return nil, fmt.Errorf("gitrepo: resolve tree for %s: %w", rev, err)
-	}
-
-	r.goGitMu.RLock()
-	defer r.goGitMu.RUnlock()
-
-	if dir != "" && dir != "." {
-		tree, err = tree.Tree(dir)
+	return readGoGit(r, func(repo *git.Repository) ([]string, error) {
+		tree, err := treeForRev(repo, rev)
 		if err != nil {
-			if errors.Is(err, object.ErrDirectoryNotFound) {
-				return nil, nil
-			}
-			return nil, fmt.Errorf("gitrepo: find directory %s at %s: %w", dir, rev, err)
+			return nil, fmt.Errorf("gitrepo: resolve tree for %s: %w", rev, err)
 		}
-	}
 
-	var names []string
-	for _, entry := range tree.Entries {
-		if entry.Mode.IsRegular() {
-			names = append(names, entry.Name)
+		if dir != "" && dir != "." {
+			tree, err = tree.Tree(dir)
+			if err != nil {
+				if errors.Is(err, object.ErrDirectoryNotFound) {
+					return nil, nil
+				}
+				return nil, fmt.Errorf("gitrepo: find directory %s at %s: %w", dir, rev, err)
+			}
 		}
-	}
-	sort.Strings(names)
-	return names, nil
+
+		var names []string
+		for _, entry := range tree.Entries {
+			if entry.Mode.IsRegular() {
+				names = append(names, entry.Name)
+			}
+		}
+		sort.Strings(names)
+		return names, nil
+	})
 }
 
 // SubjectCommit is a commit found by its subject line.
@@ -207,49 +188,43 @@ type SubjectCommit struct {
 // CommitsWithSubject returns every commit reachable from any branch or tag whose message's first line equals subject, once each however many refs reach it, newest committer time first.
 // No match is an empty slice and no error.
 func (r *Repo) CommitsWithSubject(subject string) ([]SubjectCommit, error) {
-	repo, err := r.goGit()
-	if err != nil {
-		return nil, err
-	}
-
-	r.goGitMu.RLock()
-	defer r.goGitMu.RUnlock()
-
-	tips, err := branchAndTagCommits(repo)
-	if err != nil {
-		return nil, err
-	}
-
-	seen := map[plumbing.Hash]bool{}
-	var found []SubjectCommit
-	for _, tip := range tips {
-		commitIter, err := repo.Log(&git.LogOptions{From: tip})
+	return readGoGit(r, func(repo *git.Repository) ([]SubjectCommit, error) {
+		tips, err := branchAndTagCommits(repo)
 		if err != nil {
-			return nil, fmt.Errorf("gitrepo: log from %s: %w", tip, err)
+			return nil, err
 		}
-		err = commitIter.ForEach(func(commit *object.Commit) error {
-			if seen[commit.Hash] {
+
+		seen := map[plumbing.Hash]bool{}
+		var found []SubjectCommit
+		for _, tip := range tips {
+			commitIter, err := repo.Log(&git.LogOptions{From: tip})
+			if err != nil {
+				return nil, fmt.Errorf("gitrepo: log from %s: %w", tip, err)
+			}
+			err = commitIter.ForEach(func(commit *object.Commit) error {
+				if seen[commit.Hash] {
+					return nil
+				}
+				seen[commit.Hash] = true
+				first, _, _ := strings.Cut(commit.Message, "\n")
+				if strings.TrimRight(first, "\r") == subject {
+					found = append(found, SubjectCommit{SHA: commit.Hash.String(), Committed: commit.Committer.When})
+				}
 				return nil
+			})
+			if err != nil {
+				return nil, fmt.Errorf("gitrepo: iterate log from %s: %w", tip, err)
 			}
-			seen[commit.Hash] = true
-			first, _, _ := strings.Cut(commit.Message, "\n")
-			if strings.TrimRight(first, "\r") == subject {
-				found = append(found, SubjectCommit{SHA: commit.Hash.String(), Committed: commit.Committer.When})
-			}
-			return nil
-		})
-		if err != nil {
-			return nil, fmt.Errorf("gitrepo: iterate log from %s: %w", tip, err)
 		}
-	}
 
-	sort.Slice(found, func(i, j int) bool {
-		if !found[i].Committed.Equal(found[j].Committed) {
-			return found[i].Committed.After(found[j].Committed)
-		}
-		return found[i].SHA < found[j].SHA
+		sort.Slice(found, func(i, j int) bool {
+			if !found[i].Committed.Equal(found[j].Committed) {
+				return found[i].Committed.After(found[j].Committed)
+			}
+			return found[i].SHA < found[j].SHA
+		})
+		return found, nil
 	})
-	return found, nil
 }
 
 // branchAndTagCommits returns the commit every local branch and every tag points at, an annotated tag peeled to its commit.

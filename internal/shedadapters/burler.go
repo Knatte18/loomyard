@@ -67,7 +67,6 @@ var _ BurlerRunner = (*burlerengine.Engine)(nil)
 type BurlerProducer struct {
 	name    string
 	runner  BurlerRunner
-	remover burlerengine.StrandRemover
 	models  burlerengine.RoundModels
 	anchor  string
 	profile burlerengine.Profile
@@ -80,9 +79,6 @@ type BurlerProducer struct {
 type BurlerDeps struct {
 	// Runner drives one round.
 	Runner BurlerRunner
-	// Remover stops the live half of a round that has only one live half, required.
-	// It is the same remover the engine is told, so a half is stopped one way on every path.
-	Remover burlerengine.StrandRemover
 	// Models holds the per-round review and fix model lists; each round runs on the pick for its number.
 	Models burlerengine.RoundModels
 	// AnchorPath is the absolute anchor the round's ready marker is derived under, through burlermarker.Path.
@@ -95,20 +91,12 @@ type BurlerDeps struct {
 // A nil now defaults to time.Now, and the injected clock resolves only the archive filename's
 // same-second collision suffix.
 // profile's ReadyMarkerPath is overwritten per round too, from deps.AnchorPath.
-// It returns a distinct error for each of: a nil runner, a nil remover, an empty name, an empty
+// It returns a distinct error for each of: a nil runner, an empty name, an empty
 // runDir, a runDir that is not absolute per filepath.IsAbs, and an anchor path that is not absolute.
 // NewBurlerProducer never stats, creates, or otherwise touches runDir -- creating it is Call's job.
-//
-// deps.Remover is required rather than optional.
-// A round this producer respawns beside a still-live half produces two concurrent sessions writing the same review or fixer-report file.
-// On a fix-scope: source row, that is two sessions holding commit authority over the same branch.
-// Accepting a nil seam would make that outcome reachable again through a wiring slip, silently, which is exactly how it shipped the first time.
 func NewBurlerProducer(name string, deps BurlerDeps, profile burlerengine.Profile, opts burlerengine.RunOpts, runDir string, now func() time.Time) (*BurlerProducer, error) {
 	if deps.Runner == nil {
 		return nil, fmt.Errorf("shedadapters: %s (%s): runner must not be nil", name, burlerEngineLabel)
-	}
-	if deps.Remover == nil {
-		return nil, fmt.Errorf("shedadapters: %s (%s): remover must not be nil", name, burlerEngineLabel)
 	}
 	if name == "" {
 		return nil, fmt.Errorf("shedadapters: %s (%s): name must not be empty", name, burlerEngineLabel)
@@ -128,7 +116,6 @@ func NewBurlerProducer(name string, deps BurlerDeps, profile burlerengine.Profil
 	return &BurlerProducer{
 		name:    name,
 		runner:  deps.Runner,
-		remover: deps.Remover,
 		models:  deps.Models,
 		anchor:  deps.AnchorPath,
 		profile: profile,
@@ -554,14 +541,14 @@ func (p *BurlerProducer) roundBudgetExempt(round int) bool {
 //
 // With both halves live it calls Resume and maps the result through the same outcome switch as a spawned attempt, except that a died or timeout result falls through to a fresh attempt 1.
 // The bounded retry then applies to that spawn from its own attempt 1, deliberately: the attached round was not this producer's attempt, and counting it would silently halve the retry budget of every resumed round.
-// With exactly one half live that half's strand is removed through the remover and the round respawns, so a live fixer beside a finished review is stopped and re-run rather than attached;
+// With exactly one half live that half is stopped through its handle's Stop and the round respawns, so a live fixer beside a finished review is stopped and re-run rather than attached;
 // its target edits stay in the worktree and the next attempt's reviewer reviews them.
 // With no half live, whatever the other halves' files hold, nothing is removed.
 // The respawn's archive then renames the round's outputs and the engine removes the ready marker.
 //
-// A probe error, a failed removal and a Resume error wrapping burlerengine.ErrHalfNotStopped are returned bare rather than through failureExit:
+// A probe error, a failed stop and a Resume error wrapping burlerengine.ErrHalfNotStopped are returned bare rather than through failureExit:
 // failureExit archives the round's two paths, and a half that may still be live is the one situation where archiving is most dangerous, since it may be mid-write on them.
-// A failed removal wraps ErrHalfNotStopped and ends with the way forward, like the engine's own failed stop.
+// A failed stop wraps ErrHalfNotStopped and ends with the way forward, like the engine's own failed stop.
 func (p *BurlerProducer) probeLiveRound(
 	ctx context.Context,
 	round int,
@@ -592,12 +579,12 @@ func (p *BurlerProducer) probeLiveRound(
 	return "", shedengine.OutputPointer{}, nil, false
 }
 
-// stopLiveHalf removes the strand of the one live half of a round, so the respawn that follows runs beside no live half.
-// A removal that fails is the round's error, wrapping burlerengine.ErrHalfNotStopped and ending with the way forward.
+// stopLiveHalf stops the one live half of a round through its handle's Stop, which records the stop, so the respawn that follows runs beside no live half.
+// A stop that fails is the round's error, wrapping burlerengine.ErrHalfNotStopped and ending with the way forward.
 func (p *BurlerProducer) stopLiveHalf(ctx context.Context, round int, half burlerengine.Handle) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	guid := half.StrandGUID()
 	logger.Warn("shedadapters: stopping the one live half of a burler round before respawning it", "producer", p.name, "engine", burlerEngineLabel, "round", round, "strandGUID", guid)
-	if err := p.remover.RemoveStrandIfLive(guid); err != nil {
+	if err := half.Stop(); err != nil {
 		return p.liveRoundErrorExit(ctx, fmt.Errorf("shedadapters: %s (%s): round %d: %w: strand %s: %v; way forward: run \"lyx reed remove %s\", then re-step the row", p.name, burlerEngineLabel, round, burlerengine.ErrHalfNotStopped, guid, err, guid))
 	}
 	return "", shedengine.OutputPointer{}, nil, false

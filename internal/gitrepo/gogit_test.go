@@ -1,9 +1,8 @@
 //go:build integration
 
-// gogit_test.go covers goGit's open/cache behaviour and
-// lookupObjectRetrying's concurrent-safety from inside package gitrepo, so
+// gogit_test.go covers goGit's open/cache behaviour and readGoGit's concurrent-safety and reindex counting from inside package gitrepo, so
 // it can reach Repo's unexported fields and methods (goGitMu, goGitRepo,
-// goGitOK, goGit, lookupObjectRetrying) directly — the package's only other
+// goGitOK, goGit, reindexCount) directly — the package's only other
 // internal test file is the untagged keyvalidation_test.go; every
 // git-spawning file before this one lived in the external gitrepo_test
 // package. It is reached by the existing TestMain in testmain_test.go
@@ -31,7 +30,6 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -117,10 +115,11 @@ func TestGoGit_FailedOpen_NotCached(t *testing.T) {
 }
 
 // TestGoGit_StandaloneRepo drives goGit through one ordinary, non-worktree checkout.
-// Several goroutines first drive goGit and lookupObjectRetrying at once against the shared Repo — meaningful only under -race — exercising both the found path (a real commit) and the not-found-then-gated-reindex path (a fabricated SHA, which must never actually be found and must never panic or deadlock the shared lock).
+// Several goroutines first drive SHAExists at once against the shared Repo — meaningful only under -race — exercising both the found path (a real commit) and the not-found path (a fabricated SHA, which must never actually be found and must never panic or deadlock the shared lock).
 // A single caller then opens the handle and reads HEAD, and a second call returns the identical cached *git.Repository pointer.
-// The steps run serially in that order and share the Repo's open cache: the concurrent step runs first so it races the first open.
-// The top-level test calls t.Parallel; no step does, because the steps share the Repo.
+// The last two steps each build their own Repo: two goroutines reading one Repo over a stale pack index after a repack both succeed with exactly one reindex, and repeated reads of an absent sha over an unchanged pack set reindex at most once.
+// The first three steps run serially in that order and share the Repo's open cache: the concurrent step runs first so it races the first open.
+// The top-level test calls t.Parallel; no step does.
 func TestGoGit_StandaloneRepo(t *testing.T) {
 	t.Parallel()
 
@@ -132,36 +131,21 @@ func TestGoGit_StandaloneRepo(t *testing.T) {
 
 		const goroutines = 8
 		var wg sync.WaitGroup
-		errs := make([]error, goroutines)
 		founds := make([]bool, goroutines)
 		for i := 0; i < goroutines; i++ {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
 
-				handle, err := repo.goGit()
-				if err != nil {
-					errs[i] = err
-					return
-				}
-
 				sha := head
 				if i%2 == 0 {
 					sha = fabricatedSHA
 				}
-				commit, lookupErr := lookupObjectRetrying(repo, handle, func() (*object.Commit, error) {
-					return handle.CommitObject(plumbing.NewHash(sha))
-				})
-				founds[i] = lookupErr == nil && commit != nil
+				founds[i] = repo.SHAExists(sha)
 			}(i)
 		}
 		wg.Wait()
 
-		for i, err := range errs {
-			if err != nil {
-				t.Errorf("goroutine %d goGit() error = %v; want nil", i, err)
-			}
-		}
 		for i := 0; i < goroutines; i++ {
 			want := i%2 != 0
 			if founds[i] != want {
@@ -184,7 +168,7 @@ func TestGoGit_StandaloneRepo(t *testing.T) {
 		return
 	}
 
-	t.Run("successful open is cached", func(t *testing.T) {
+	if !t.Run("successful open is cached", func(t *testing.T) {
 		first, err := repo.goGit()
 		if err != nil {
 			t.Fatalf("goGit() (first call) error = %v; want nil", err)
@@ -195,6 +179,57 @@ func TestGoGit_StandaloneRepo(t *testing.T) {
 		}
 		if first != second {
 			t.Errorf("goGit() returned different handles across two calls (%p vs %p); want the same cached pointer", first, second)
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("two readers over a stale pack index share one reindex", func(t *testing.T) {
+		dir, staleRepo := newStandaloneRepo(t)
+		if staleRepo.SHAExists("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef") {
+			t.Fatal("SHAExists(fabricated sha) = true; want false")
+		}
+		gitkit.CommitFile(t, dir, "b.txt", "second", "second commit")
+		sha := gitkit.RevParse(t, dir, "HEAD")
+		gitkit.MustRun(t, dir, "git", "repack", "-d")
+		gitkit.MustRun(t, dir, "git", "prune-packed")
+
+		const readers = 2
+		var wg sync.WaitGroup
+		errs := make([]error, readers)
+		for i := 0; i < readers; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				_, errs[i] = staleRepo.CommitParents(sha)
+			}(i)
+		}
+		wg.Wait()
+
+		for i, err := range errs {
+			if err != nil {
+				t.Errorf("reader %d CommitParents() error = %v; want nil (the retry must recover the packed commit)", i, err)
+			}
+		}
+		if staleRepo.reindexCount != 1 {
+			t.Errorf("reindexCount = %d; want 1 (concurrent readers of one stale index share a single reindex)", staleRepo.reindexCount)
+		}
+	}) {
+		return
+	}
+
+	t.Run("repeated reads of an absent sha reindex at most once", func(t *testing.T) {
+		dir, absentRepo := newStandaloneRepo(t)
+		gitkit.MustRun(t, dir, "git", "repack", "-d")
+		gitkit.MustRun(t, dir, "git", "prune-packed")
+
+		for i := 0; i < 3; i++ {
+			if absentRepo.SHAExists("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef") {
+				t.Fatal("SHAExists(fabricated sha) = true; want false")
+			}
+		}
+		if absentRepo.reindexCount > 1 {
+			t.Errorf("reindexCount = %d after repeated absent reads; want at most 1 while the pack set is unchanged", absentRepo.reindexCount)
 		}
 	})
 }

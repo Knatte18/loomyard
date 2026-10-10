@@ -5,6 +5,7 @@
 package claudeengine
 
 import (
+	"regexp"
 	"strings"
 	"time"
 
@@ -12,10 +13,14 @@ import (
 )
 
 var (
-	_ shuttleengine.SessionCycler  = (*Claude)(nil)
-	_ shuttleengine.SkillLoader    = (*Claude)(nil)
-	_ shuttleengine.InputBoxReader = (*Claude)(nil)
+	_ shuttleengine.SessionCycler   = (*Claude)(nil)
+	_ shuttleengine.SkillLoader     = (*Claude)(nil)
+	_ shuttleengine.InputBoxReader  = (*Claude)(nil)
+	_ shuttleengine.InputBoxClearer = (*Claude)(nil)
 )
+
+// pastePlaceholderShape matches the whole input-box reading Claude Code shows for a collapsed paste: `[Pasted text #<n>]` or `[Pasted text #<n> +<m> lines]`.
+var pastePlaceholderShape = regexp.MustCompile(`^\[Pasted text #\d+( \+\d+ lines)?\]$`)
 
 // runningTurnNeedle is Claude's running-turn hint in normalizeCapture form.
 const runningTurnNeedle = "esctointerrupt"
@@ -87,6 +92,19 @@ func (c *Claude) InputBoxText(capture string) (text string, ok bool) {
 // SubmitSettle returns how long after an Enter the input box needs to be redrawn before it is read.
 func (c *Claude) SubmitSettle() time.Duration {
 	return time.Duration(c.submitRedrawSettleMS) * time.Millisecond
+}
+
+// ClearInputSequence returns one C-u, which deletes from the caret to the start of the line.
+// Sent text is one line with the caret at its end, so that empties the box;
+// C-u is neither Escape nor C-c, so it never interrupts a running turn.
+func (c *Claude) ClearInputSequence() []shuttleengine.PaneInput {
+	return []shuttleengine.PaneInput{{Key: "C-u"}}
+}
+
+// PastePlaceholder reports whether boxText, trimmed, is the whole of Claude Code's collapsed-paste placeholder.
+// A draft that merely quotes the placeholder inside other words is not one.
+func (c *Claude) PastePlaceholder(boxText string) bool {
+	return pastePlaceholderShape.MatchString(strings.TrimSpace(boxText))
 }
 
 // inputBoxInterior returns the lines between the input box's rules in capture.

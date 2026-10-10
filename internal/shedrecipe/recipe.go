@@ -112,8 +112,6 @@ type Env struct {
 	Shuttle shedadapters.Shuttle
 	// Burler is the injected shedadapters.BurlerRunner seam.
 	Burler shedadapters.BurlerRunner
-	// BurlerRemover is the strand remover BurlerRound stops the one live half of a resumed round with, the same remover the injected Burler runner is told.
-	BurlerRemover burlerengine.StrandRemover
 	// WebsterRun is the injected shedadapters.WebsterRunner seam.
 	WebsterRun shedadapters.WebsterRunner
 	// WebsterDeps is the already-resolved websterengine.RunDeps value passed through to

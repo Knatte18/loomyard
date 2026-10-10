@@ -8,10 +8,11 @@ import (
 	"strings"
 )
 
-// remoteSubcommands are the git subcommands that talk to a remote, and the only ones IsTransportFailure classifies.
+// remoteSubcommands are the git subcommands that talk to a remote: the ones runCore bounds with a deadline, and the only ones IsTransportFailure classifies.
 var remoteSubcommands = map[string]bool{
 	"push":      true,
 	"fetch":     true,
+	"pull":      true,
 	"ls-remote": true,
 	"clone":     true,
 }
@@ -25,9 +26,10 @@ var transportPhrases = []string{
 	"operation timed out",
 	"network is unreachable",
 	"failed to connect to",
+	"operation too slow",
 }
 
-// IsTransportFailure reports whether err's chain holds a *GitError for a remote operation (push, fetch, ls-remote or clone) that failed to reach the remote.
+// IsTransportFailure reports whether err's chain holds a *GitError for a remote operation (push, fetch, pull, ls-remote or clone) that failed to reach the remote, or that outlived its deadline and was killed.
 // A rejected push, an authentication failure, a missing ref, a local command and an error with no *GitError in its chain are not transport failures.
 // A stderr message in a format not listed in transportPhrases falls back to "not transient", which is today's behaviour.
 func IsTransportFailure(err error) bool {
@@ -37,6 +39,9 @@ func IsTransportFailure(err error) bool {
 	}
 	if !remoteSubcommands[subcommand(gitErr.Args)] {
 		return false
+	}
+	if gitErr.Timeout != 0 {
+		return true
 	}
 	stderr := strings.ToLower(gitErr.Stderr)
 	for _, phrase := range transportPhrases {

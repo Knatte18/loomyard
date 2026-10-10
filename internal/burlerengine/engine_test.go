@@ -1,4 +1,4 @@
-// engine_test.go tables Engine.Run against a same-package fakeShuttle whose handles block until the test releases them and a fakeRemover that ends a removed handle's Wait as died.
+// engine_test.go tables Engine.Run against a same-package fakeShuttle whose handles block until the test releases them or stops them, a stop ending the handle's Wait as died.
 // It covers spec construction for both halves (including the ClusterFan -> Spec.ForkSubagents wiring and the concurrent start) and the cluster audit policy wiring.
 // It covers every shuttleengine.Outcome of either half, the fixer's gate outcomes, the review-parse gate's re-prompts and the marker lifecycle.
 // It covers the round's failure rules (every failure row of join, the start failures and ErrHalfNotStopped).
@@ -72,6 +72,19 @@ type fakeShuttle struct {
 	probeErr map[string]error
 	// probeSpecs holds, per role, the spec ProbeGated was last asked about.
 	probeSpecs map[string]shuttleengine.Spec
+
+	// stopErr makes a handle's Stop fail, for every handle or only the one named by stopErrGuid when that is set.
+	stopErr     error
+	stopErrGuid string
+	// stoppedGUIDs holds the strand guid of every Stop call, in call order.
+	stoppedGUIDs []string
+}
+
+// stopCalls returns the strand guids of the Stop calls so far, in call order.
+func (f *fakeShuttle) stopCalls() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.stoppedGUIDs)
 }
 
 // fakeHandle is one started fake half.
@@ -95,6 +108,20 @@ func (h *fakeHandle) RunDir() string { return h.runDir }
 // stop ends the handle's blocked Wait as died.
 func (h *fakeHandle) stop() {
 	h.stopOnce.Do(func() { close(h.stopped) })
+}
+
+// Stop records the call and, unless the shuttle was told to fail it, ends the handle's Wait as died.
+func (h *fakeHandle) Stop() error {
+	h.shuttle.mu.Lock()
+	h.shuttle.stoppedGUIDs = append(h.shuttle.stoppedGUIDs, h.guid)
+	failed := h.shuttle.stopErr != nil && (h.shuttle.stopErrGuid == "" || h.shuttle.stopErrGuid == h.guid)
+	err := h.shuttle.stopErr
+	h.shuttle.mu.Unlock()
+	if failed {
+		return err
+	}
+	h.stop()
+	return nil
 }
 
 // settled reports whether the handle is no longer blocked: its Wait returned, or it was stopped.
@@ -325,28 +352,6 @@ func (f *fakeShuttle) blocked() []string {
 	return roles
 }
 
-// fakeRemover is a same-package StrandRemover double: it records every guid it is asked to remove, ends the removed handle's Wait as died, and fails when told to.
-type fakeRemover struct {
-	shuttle *fakeShuttle
-	err     error
-	// errGuid, when set, limits err to the removal of that guid.
-	errGuid string
-
-	mu      sync.Mutex
-	removed []string
-}
-
-func (r *fakeRemover) RemoveStrandIfLive(guid string) error {
-	r.mu.Lock()
-	r.removed = append(r.removed, guid)
-	r.mu.Unlock()
-	if r.err != nil && (r.errGuid == "" || r.errGuid == guid) {
-		return r.err
-	}
-	r.shuttle.stop(guid)
-	return nil
-}
-
 // doneRound scripts a round whose reviewer writes review and whose fixer waits for the ready marker, then writes its report.
 func doneRound(review string) *fakeShuttle {
 	return &fakeShuttle{
@@ -380,18 +385,17 @@ func newEngineTestProfile(t *testing.T) (root string, p Profile) {
 	return root, p
 }
 
-// newEngineForTest wires an Engine to shuttle and a fresh fakeRemover over a Geometry rooted at root.
-func newEngineForTest(t *testing.T, root string, shuttle *fakeShuttle) (*Engine, *fakeRemover) {
+// newEngineForTest wires an Engine to shuttle over a Geometry rooted at root.
+func newEngineForTest(t *testing.T, root string, shuttle *fakeShuttle) *Engine {
 	t.Helper()
 	return newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, Config{}, shuttle)
 }
 
 // newEngineWith is newEngineForTest over a told geometry and config.
-func newEngineWith(t *testing.T, geom Geometry, cfg Config, shuttle *fakeShuttle) (*Engine, *fakeRemover) {
+func newEngineWith(t *testing.T, geom Geometry, cfg Config, shuttle *fakeShuttle) *Engine {
 	t.Helper()
 	shuttle.markerPath = filepath.Join(geom.WorktreeRoot, "review.md.ready")
-	remover := &fakeRemover{shuttle: shuttle}
-	return New(shuttle, remover, geom, cfg, newTestStencilsDir(t), ""), remover
+	return New(shuttle, geom, cfg, newTestStencilsDir(t), "")
 }
 
 const (
@@ -420,7 +424,7 @@ func TestEngine_Run_SpecConstruction(t *testing.T) {
 	reviewHold := make(chan struct{})
 	shuttle.review.hold = reviewHold
 	shuttle.fix.onStart = func() { close(reviewHold) }
-	e, _ := newEngineForTest(t, root, shuttle)
+	e := newEngineForTest(t, root, shuttle)
 
 	opts := RunOpts{
 		Review:  ModelChoice{Model: "haiku", Effort: "low", Version: "5"},
@@ -502,7 +506,7 @@ func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
 			shuttle.review.result.ForkAudit = &shuttleengine.ForkAudit{
 				Forks: []shuttleengine.ForkReport{{TranscriptPath: "fork-1", ReportReturned: true}},
 			}
-			e, _ := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, clusterTestConfig, shuttle)
+			e := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, clusterTestConfig, shuttle)
 
 			got, err := e.Run(p, RunOpts{})
 			if err != nil {
@@ -539,7 +543,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 		p.ClusterFan = "standard"
 		shuttle := doneRound(approvedReview)
 		shuttle.review.result.ForkAudit = violatingAudit
-		e, remover := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, clusterTestConfig, shuttle)
+		e := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, clusterTestConfig, shuttle)
 
 		got, err := e.Run(p, RunOpts{})
 		if err == nil {
@@ -551,8 +555,8 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 		if got.ForkAudit != violatingAudit {
 			t.Errorf("Result.ForkAudit = %v; want the raw audit copied through even on a policy failure", got.ForkAudit)
 		}
-		if want := []string{fixRole + "-guid"}; !slices.Equal(remover.removed, want) {
-			t.Errorf("removed strands = %v; want the fixer %v", remover.removed, want)
+		if want := []string{fixRole + "-guid"}; !slices.Equal(shuttle.stopCalls(), want) {
+			t.Errorf("stopped halves = %v; want the fixer %v", shuttle.stopCalls(), want)
 		}
 	})
 
@@ -561,7 +565,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 		p.ClusterFan = "standard"
 		shuttle := doneRound(approvedReview)
 		shuttle.review.result.ForkAudit = cleanAudit
-		e, _ := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, clusterTestConfig, shuttle)
+		e := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, clusterTestConfig, shuttle)
 
 		got, err := e.Run(p, RunOpts{})
 		if err != nil {
@@ -583,7 +587,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 		// Result even though the shuttle "returned" one.
 		shuttle := doneRound(approvedReview)
 		shuttle.review.result.ForkAudit = &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{WriteCalls: 99}}}
-		e, _ := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, clusterTestConfig, shuttle)
+		e := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, clusterTestConfig, shuttle)
 
 		got, err := e.Run(p, RunOpts{})
 		if err != nil {
@@ -701,7 +705,7 @@ func TestEngine_Run_ShuttleOutcomes(t *testing.T) {
 			started := time.Date(2026, 10, 8, 9, 0, 0, 0, time.UTC)
 			tt.shuttle.review.result.StartedAt, tt.shuttle.review.result.EndedAt, tt.shuttle.review.result.Usage = started, started.Add(time.Minute), reviewUsage
 			tt.shuttle.fix.result.StartedAt, tt.shuttle.fix.result.EndedAt, tt.shuttle.fix.result.Usage = started.Add(time.Second), started.Add(2*time.Minute), fixUsage
-			e, _ := newEngineForTest(t, root, tt.shuttle)
+			e := newEngineForTest(t, root, tt.shuttle)
 
 			got, err := e.Run(p, RunOpts{})
 
@@ -788,7 +792,7 @@ func TestEngine_Run_GateOutcomes(t *testing.T) {
 			t.Parallel()
 			root, p := newEngineTestProfile(t)
 			shuttle := doneRound(approvedReview)
-			e, _ := newEngineForTest(t, root, shuttle)
+			e := newEngineForTest(t, root, shuttle)
 			var namesBefore []string
 			for _, entry := range tt.gate {
 				namesBefore = append(namesBefore, entry.Name)
@@ -892,7 +896,7 @@ func TestEngine_Run_ReviewGateRepairsUnparseableReview(t *testing.T) {
 			root, p := newEngineTestProfile(t)
 			shuttle := doneRound(quotedFragmentReview)
 			shuttle.review.rewrites = tt.rewrites
-			e, _ := newEngineForTest(t, root, shuttle)
+			e := newEngineForTest(t, root, shuttle)
 
 			got, err := e.Run(p, RunOpts{})
 
@@ -959,7 +963,7 @@ func TestEngine_Run_MarkerLifecycle(t *testing.T) {
 			reviewHold := make(chan struct{})
 			shuttle.review.hold = reviewHold
 			shuttle.fix.onStart = func() { close(reviewHold) }
-			e, _ := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, clusterTestConfig, shuttle)
+			e := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, clusterTestConfig, shuttle)
 			markerPath := filepath.Join(root, "review.md.ready")
 			if tt.staleMarker {
 				if err := os.WriteFile(markerPath, []byte("stale"), 0o644); err != nil {
@@ -999,14 +1003,14 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 		shuttle *fakeShuttle
 		// fixStart is the round's RunOpts.FixStart; empty is the default.
 		fixStart FixStart
-		// removeErr makes the remover fail every removal, or only that of removeErrGuid when it is set.
-		removeErr     error
-		removeErrGuid string
-		wantOutcome   shuttleengine.Outcome
-		wantErrIs     error
-		wantErrText   string
-		wantRemoved   []string
-		wantStarted   []string
+		// stopErr makes a handle's Stop fail, for every handle or only that of stopErrGuid when it is set.
+		stopErr     error
+		stopErrGuid string
+		wantOutcome shuttleengine.Outcome
+		wantErrIs   error
+		wantErrText string
+		wantStopped []string
+		wantStarted []string
 		// leftLive names a row whose failed stop leaves a half running by design.
 		leftLive bool
 		// editReview, when set, is written over the review file by the fixer before it reports done.
@@ -1022,7 +1026,7 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 				fix:    halfScript{result: done, waitForMarker: true},
 			},
 			wantOutcome: shuttleengine.OutcomeDied,
-			wantRemoved: []string{fixRole + "-guid"},
+			wantStopped: []string{fixRole + "-guid"},
 			wantStarted: []string{reviewRole, fixRole},
 			noVerdict:   true,
 		},
@@ -1034,7 +1038,7 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 				fix:    halfScript{result: done, waitForMarker: true},
 			},
 			wantOutcome: shuttleengine.OutcomeDied,
-			wantRemoved: []string{fixRole + "-guid"},
+			wantStopped: []string{fixRole + "-guid"},
 			wantStarted: []string{reviewRole, fixRole},
 			noVerdict:   true,
 		},
@@ -1071,7 +1075,7 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 				fix:    halfScript{result: done, waitForMarker: true},
 			},
 			wantOutcome: shuttleengine.OutcomeTimeout,
-			wantRemoved: []string{reviewRole + "-guid"},
+			wantStopped: []string{reviewRole + "-guid"},
 			wantStarted: []string{reviewRole},
 			noVerdict:   true,
 		},
@@ -1109,7 +1113,7 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 				fix:    halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}},
 			},
 			wantOutcome: shuttleengine.OutcomeTimeout,
-			wantRemoved: []string{fixRole + "-guid"},
+			wantStopped: []string{fixRole + "-guid"},
 			wantStarted: []string{reviewRole, fixRole},
 			noVerdict:   true,
 		},
@@ -1132,7 +1136,7 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 				fix:    halfScript{startErr: notStarted},
 			},
 			wantOutcome: shuttleengine.OutcomeDied,
-			wantRemoved: []string{reviewRole + "-guid"},
+			wantStopped: []string{reviewRole + "-guid"},
 			wantStarted: []string{reviewRole, fixRole},
 			noVerdict:   true,
 			check: func(t *testing.T, got Result) {
@@ -1148,7 +1152,7 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 				fix:    halfScript{result: done, waitForMarker: true},
 			},
 			wantOutcome: shuttleengine.OutcomeTimeout,
-			wantRemoved: []string{fixRole + "-guid", reviewRole + "-guid"},
+			wantStopped: []string{fixRole + "-guid", reviewRole + "-guid"},
 			wantStarted: []string{reviewRole, fixRole},
 			noVerdict:   true,
 		},
@@ -1159,7 +1163,7 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 				fix:    halfScript{result: done, waitForMarker: true},
 			},
 			wantErrText: "round reached done but its review file is invalid",
-			wantRemoved: []string{fixRole + "-guid"},
+			wantStopped: []string{fixRole + "-guid"},
 			wantStarted: []string{reviewRole, fixRole},
 		},
 		{
@@ -1169,7 +1173,7 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 				fix:    halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}},
 			},
 			wantOutcome: shuttleengine.OutcomeTimeout,
-			wantRemoved: []string{reviewRole + "-guid", fixRole + "-guid"},
+			wantStopped: []string{reviewRole + "-guid", fixRole + "-guid"},
 			wantStarted: []string{reviewRole, fixRole},
 			noVerdict:   true,
 			check: func(t *testing.T, got Result) {
@@ -1185,7 +1189,7 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 				fix:    halfScript{result: done, writes: "nothing fixed"},
 			},
 			wantErrText: "before the review was handed off",
-			wantRemoved: []string{reviewRole + "-guid"},
+			wantStopped: []string{reviewRole + "-guid"},
 			wantStarted: []string{reviewRole, fixRole},
 		},
 		{
@@ -1214,10 +1218,10 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 				review: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}},
 				fix:    halfScript{result: done, waitForMarker: true},
 			},
-			removeErr:   errors.New("reed unreachable"),
+			stopErr:     errors.New("reed unreachable"),
 			wantErrIs:   ErrHalfNotStopped,
 			wantErrText: `way forward: run "lyx reed remove ` + fixRole + `-guid", then re-step the row`,
-			wantRemoved: []string{fixRole + "-guid"},
+			wantStopped: []string{fixRole + "-guid"},
 			wantStarted: []string{reviewRole, fixRole},
 			leftLive:    true,
 		},
@@ -1227,12 +1231,12 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 				review: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}},
 				fix:    halfScript{result: done, waitForMarker: true},
 			},
-			removeErr:     errors.New("reed unreachable"),
-			removeErrGuid: reviewRole + "-guid",
-			wantErrIs:     ErrHalfNotStopped,
-			wantErrText:   `way forward: run "lyx reed remove ` + reviewRole + `-guid", then re-step the row`,
-			wantRemoved:   []string{fixRole + "-guid", reviewRole + "-guid"},
-			wantStarted:   []string{reviewRole, fixRole},
+			stopErr:     errors.New("reed unreachable"),
+			stopErrGuid: reviewRole + "-guid",
+			wantErrIs:   ErrHalfNotStopped,
+			wantErrText: `way forward: run "lyx reed remove ` + reviewRole + `-guid", then re-step the row`,
+			wantStopped: []string{fixRole + "-guid", reviewRole + "-guid"},
+			wantStarted: []string{reviewRole, fixRole},
 		},
 		{
 			name: "a reviewer whose wait failed is stopped too, and the shuttle error is returned",
@@ -1241,7 +1245,7 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 				fix:    halfScript{result: done, waitForMarker: true},
 			},
 			wantErrText: "burler: shuttle run: shuttle: liveness probe failed",
-			wantRemoved: []string{fixRole + "-guid", reviewRole + "-guid"},
+			wantStopped: []string{fixRole + "-guid", reviewRole + "-guid"},
 			wantStarted: []string{reviewRole, fixRole},
 		},
 		{
@@ -1265,7 +1269,7 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 				fix:    halfScript{startErr: notStarted},
 			},
 			wantOutcome: shuttleengine.OutcomeDied,
-			wantRemoved: []string{reviewRole + "-guid"},
+			wantStopped: []string{reviewRole + "-guid"},
 			wantStarted: []string{reviewRole, fixRole},
 			noVerdict:   true,
 			check: func(t *testing.T, got Result) {
@@ -1291,7 +1295,7 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 			},
 			wantErrIs:   plainStartErr,
 			wantErrText: "burler: shuttle run:",
-			wantRemoved: []string{reviewRole + "-guid"},
+			wantStopped: []string{reviewRole + "-guid"},
 			wantStarted: []string{reviewRole, fixRole},
 		},
 		{
@@ -1300,10 +1304,10 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 				review: halfScript{result: done, writes: approvedReview, hold: make(chan struct{})},
 				fix:    halfScript{startErr: plainStartErr},
 			},
-			removeErr:   errors.New("reed unreachable"),
+			stopErr:     errors.New("reed unreachable"),
 			wantErrIs:   ErrHalfNotStopped,
 			wantErrText: `way forward: run "lyx reed remove ` + reviewRole + `-guid", then re-step the row`,
-			wantRemoved: []string{reviewRole + "-guid"},
+			wantStopped: []string{reviewRole + "-guid"},
 			wantStarted: []string{reviewRole, fixRole},
 			leftLive:    true,
 		},
@@ -1320,9 +1324,9 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 					}
 				}
 			}
-			e, remover := newEngineForTest(t, root, tt.shuttle)
-			remover.err = tt.removeErr
-			remover.errGuid = tt.removeErrGuid
+			e := newEngineForTest(t, root, tt.shuttle)
+			tt.shuttle.stopErr = tt.stopErr
+			tt.shuttle.stopErrGuid = tt.stopErrGuid
 
 			got, err := e.Run(p, RunOpts{FixStart: tt.fixStart})
 
@@ -1354,14 +1358,14 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 			if tt.noVerdict && (got.Verdict != "" || len(got.Findings) != 0) {
 				t.Errorf("Result verdict = (%q, %v); want empty", got.Verdict, got.Findings)
 			}
-			if !slices.Equal(remover.removed, tt.wantRemoved) {
-				t.Errorf("removed strands = %v; want %v", remover.removed, tt.wantRemoved)
+			if !slices.Equal(tt.shuttle.stopCalls(), tt.wantStopped) {
+				t.Errorf("stopped halves = %v; want %v", tt.shuttle.stopCalls(), tt.wantStopped)
 			}
 			if !slices.Equal(tt.shuttle.started, tt.wantStarted) {
 				t.Errorf("started halves = %v; want %v", tt.shuttle.started, tt.wantStarted)
 			}
 			if tt.leftLive {
-				for _, guid := range tt.wantRemoved {
+				for _, guid := range tt.wantStopped {
 					tt.shuttle.stop(guid)
 				}
 			} else if blocked := tt.shuttle.blocked(); len(blocked) != 0 {
@@ -1388,7 +1392,7 @@ func TestEngine_Run_MaterializesInstructionFiles(t *testing.T) {
 	// an unrelated file-not-found.
 	worktreeRoot := root
 	anchorPath := filepath.Join(worktreeRoot, "sub", "dir")
-	e, _ := newEngineWith(t, Geometry{WorktreeRoot: worktreeRoot, AnchorPath: anchorPath}, Config{}, shuttle)
+	e := newEngineWith(t, Geometry{WorktreeRoot: worktreeRoot, AnchorPath: anchorPath}, Config{}, shuttle)
 
 	if _, err := e.Run(p, RunOpts{}); err != nil {
 		t.Fatalf("Run() = %v; want nil error", err)
@@ -1482,7 +1486,7 @@ func TestEngine_Run_PatternDirectiveReachesInstruction1(t *testing.T) {
 				}
 			}
 			shuttle := doneRound(approvedReview)
-			e, _ := newEngineWith(t, Geometry{WorktreeRoot: anchorPath, AnchorPath: anchorPath, RepoRoot: root}, Config{}, shuttle)
+			e := newEngineWith(t, Geometry{WorktreeRoot: anchorPath, AnchorPath: anchorPath, RepoRoot: root}, Config{}, shuttle)
 
 			if _, err := e.Run(p, RunOpts{}); err != nil {
 				t.Fatalf("Run() = %v; want nil error", err)
@@ -1528,7 +1532,7 @@ func TestEngine_Run_MaterializeFailure(t *testing.T) {
 	}
 
 	shuttle := doneRound(approvedReview)
-	e, _ := newEngineForTest(t, root, shuttle)
+	e := newEngineForTest(t, root, shuttle)
 
 	_, err := e.Run(p, RunOpts{})
 	if err == nil {
@@ -1578,7 +1582,7 @@ func TestEngine_ProbeRound(t *testing.T) {
 					t.Fatalf("WriteFile(%s) = %v; want nil", name, err)
 				}
 			}
-			e, _ := newEngineForTest(t, root, shuttle)
+			e := newEngineForTest(t, root, shuttle)
 
 			live, err := e.ProbeRound(p, RunOpts{Timeout: time.Minute})
 
@@ -1632,15 +1636,15 @@ func TestEngine_Resume(t *testing.T) {
 		staleMarker bool
 		wantErr     string
 		wantMarker  bool
-		wantRemoved []string
+		wantStopped []string
 		wantVerdict Verdict
 		// onlyReviewerLive makes the fixer's run absent, so the probed round cannot be resumed.
 		onlyReviewerLive bool
 	}{
 		{name: "both attached and joined through the marker", review: halfScript{result: done, writes: approvedReview}, fix: fixerWaiting, wantMarker: true, wantVerdict: VerdictApproved},
 		{name: "stale marker is removed before the attached reviewer is done", review: halfScript{result: done, writes: approvedReview}, fix: fixerWaiting, staleMarker: true, wantMarker: true, wantVerdict: VerdictApproved},
-		{name: "unparseable review writes no marker and stops the fixer", review: halfScript{result: done, writes: malformedReview}, fix: fixerWaiting, staleMarker: true, wantErr: "review file is invalid", wantRemoved: []string{fixRole + "-guid"}},
-		{name: "attached fixer completing before the marker stops the reviewer", review: halfScript{result: done, writes: approvedReview, hold: make(chan struct{})}, fix: halfScript{result: done, writes: "nothing fixed"}, wantErr: "before the review was handed off", wantRemoved: []string{reviewRole + "-guid"}},
+		{name: "unparseable review writes no marker and stops the fixer", review: halfScript{result: done, writes: malformedReview}, fix: fixerWaiting, staleMarker: true, wantErr: "review file is invalid", wantStopped: []string{fixRole + "-guid"}},
+		{name: "attached fixer completing before the marker stops the reviewer", review: halfScript{result: done, writes: approvedReview, hold: make(chan struct{})}, fix: halfScript{result: done, writes: "nothing fixed"}, wantErr: "before the review was handed off", wantStopped: []string{reviewRole + "-guid"}},
 		{name: "a round without both halves live is refused and nothing is stopped", review: halfScript{result: done}, onlyReviewerLive: true, wantErr: "both halves live"},
 	}
 	for _, tt := range tests {
@@ -1648,7 +1652,7 @@ func TestEngine_Resume(t *testing.T) {
 			t.Parallel()
 			root, p := newEngineTestProfile(t)
 			shuttle := &fakeShuttle{review: tt.review, fix: tt.fix, live: map[string]bool{reviewRole: true, fixRole: !tt.onlyReviewerLive}}
-			e, remover := newEngineForTest(t, root, shuttle)
+			e := newEngineForTest(t, root, shuttle)
 			markerPath := filepath.Join(root, "review.md.ready")
 			if tt.staleMarker {
 				if err := os.WriteFile(markerPath, []byte("stale"), 0o644); err != nil {
@@ -1676,8 +1680,8 @@ func TestEngine_Resume(t *testing.T) {
 			if _, statErr := os.Stat(markerPath); (statErr == nil) != tt.wantMarker {
 				t.Errorf("marker exists after the round = %v; want %v", statErr == nil, tt.wantMarker)
 			}
-			if !slices.Equal(remover.removed, tt.wantRemoved) {
-				t.Errorf("removed strands = %v; want %v", remover.removed, tt.wantRemoved)
+			if !slices.Equal(shuttle.stopCalls(), tt.wantStopped) {
+				t.Errorf("stopped halves = %v; want %v", shuttle.stopCalls(), tt.wantStopped)
 			}
 			if len(shuttle.started) != 0 {
 				t.Errorf("Resume started %v; want nothing started", shuttle.started)
