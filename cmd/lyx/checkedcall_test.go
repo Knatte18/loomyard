@@ -33,7 +33,7 @@
 //
 // # Why the walk covers cmd/ too, even though zero production sites live there today
 //
-// Every pinned raw site lives under internal/, in internal/gitrepo and internal/fabricengine; cmd/ carries none.
+// Every pinned raw site lives under internal/, in internal/gitrepo and its oracle; cmd/ carries none.
 // The walk still covers cmd/ because that absence is
 // exactly the fact the pinned-zero design is meant to keep true: a new command package reaching
 // straight for gitexec.RunGit or a bespoke r.run( helper, bypassing gitrepo's own checked pair
@@ -83,7 +83,7 @@ var checkedCallRawTokens = []string{
 // see checkedCallCountDiff.
 var checkedCallPinnedRawSites = map[string]int{
 	"internal/gitrepo":       3, // run's own body, Pull, Fetch
-	"internal/fabricengine":  1, // the branch-exists helper
+	"internal/fabricengine":  0,
 	"internal/lyxcwd":        0,
 	"internal/fabriccli":     0,
 	"internal/websterengine": 0,

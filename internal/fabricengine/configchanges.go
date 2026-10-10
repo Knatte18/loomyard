@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -78,9 +79,5 @@ func ReadConfigChanges(l *lyxcwd.Location, taskBranch, parentBranch string, conf
 
 // revParseBranch resolves refs/heads/<branch> in the repo at dir to its SHA.
 func revParseBranch(dir, branch string) (string, error) {
-	out, err := gitexec.Run([]string{"rev-parse", "--verify", "refs/heads/" + branch}, dir)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(out), nil
+	return gitrepo.New(dir).RefSHA("refs/heads/" + branch)
 }

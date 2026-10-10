@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -98,15 +99,13 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	warpBranch := t.cfg.BranchPrefix + slug
 	weftBranch := RecordsBranchName(warpBranch)
 
-	// rev-parse --verify is a mixed probe: its exit path is an answer ("the branch does not
-	// exist"), recovered via errors.As, while its exec path returns a real error.
-	_, verifyErr := gitexec.Run([]string{"rev-parse", "--verify", "refs/heads/" + warpBranch}, l.WorktreePath())
-	if verifyErr == nil {
-		return AddResult{}, &ErrBranchExists{Branch: warpBranch}
+	// A missing branch is an answer; a failed read is an error.
+	warpBranchExists, existsErr := gitrepo.New(l.WorktreePath()).BranchExists(warpBranch)
+	if existsErr != nil {
+		return AddResult{}, fmt.Errorf("check whether warp branch %q exists: %w", warpBranch, existsErr)
 	}
-	var verifyGitErr *gitexec.GitError
-	if !errors.As(verifyErr, &verifyGitErr) {
-		return AddResult{}, fmt.Errorf("check whether warp branch %q exists: %w", warpBranch, verifyErr)
+	if warpBranchExists {
+		return AddResult{}, &ErrBranchExists{Branch: warpBranch}
 	}
 
 	target := WorktreePath(l, slug)
@@ -321,13 +320,13 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 
 	// (11) Push warp branch (LAST step for warp)
-	pushedTip, err := gitexec.Run([]string{"rev-parse", "refs/heads/" + warpBranch}, l.WorktreePath())
+	pushedTip, err := gitrepo.New(l.WorktreePath()).RefSHA("refs/heads/" + warpBranch)
 	if err != nil {
 		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 		return AddResult{}, fmt.Errorf("read warp branch %q tip: %w", warpBranch, err)
 	}
 	warpPush.pushAttempted = true
-	warpPush.pushedSHA = strings.TrimSpace(pushedTip)
+	warpPush.pushedSHA = pushedTip
 	if err := t.push.pushBranchWithRetry(l.WorktreePath(), warpBranch); err != nil {
 		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 		return AddResult{}, fmt.Errorf("push branch %q failed: %w", warpBranch, err)
