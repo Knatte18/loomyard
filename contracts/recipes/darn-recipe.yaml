@@ -8,10 +8,10 @@
 # gates, so a human is the only thing that can fix them. Darn carries none either: its exhausted
 # gate halts the run for the parent, which resumes it with a fresh verify budget.
 #
-# PR-Gate bounces to Darn, the row that produces the diff it guards. The edge's bound is
-# max_bounces: each traversal is one operator rejection, and a Darn Done ends the gate's bounce
-# episode, so the budget counts consecutive rejections the writer failed to answer rather than
-# rejections over the task's life.
+# PR-Gate bounces to Darn, the row that produces the diff it guards. The edge's max_bounces is the
+# value the status projection and the reject refusal report; a Darn Done ends the gate's episode
+# and a Darn Stuck halts the run, so consecutive rejections never accumulate and the budget is
+# never reached under this recipe.
 
 version: 1
 entry: Preflight

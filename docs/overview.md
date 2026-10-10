@@ -436,7 +436,7 @@ User-facing modules each get one `lyx <module>` namespace:
   A `continue` after a budget escalation runs exactly one more round without spending budget; the next round past the budget needs its own decision.
   A batten-driven run is not resumed by batten on such a decision, since batten's wait reads only PR-Gate approval and rejection records, so it is resumed the same way with `lyx loom resume` in the task worktree.
   `approve` records an operator approval of the open pull request when the run is awaiting (or blocked) at the gate and the local HEAD equals the PR's head, writing `.lyx/loom/approval.json` and removing a pending rejection; resuming with `lyx loom start` then lets `PR-Gate` return Done without a GitHub merge.
-  `reject <review-file>` records the operator's findings (removing a pending approval), and refuses once the `PR-Review` segment's five rejection rounds are spent.
+  `reject <review-file>` records the operator's findings (removing a pending approval), and its refusal once the gate's bounce budget is spent exists but is unreachable under the recipe, whose `PR-Rework` Done ends the gate's episode after every rework.
   `lyx loom start` then routes the run through `PR-Rework`, which starts a new plan generation and re-runs `Plan-Review`, `Webster`, `Webster-Review`, `Describe`, `Publish` and the gate.
   `Plan-Bouncer` skips its judge only for an exempt generation, one whose live cards are all `Prosa` on non-source files.
   Before its session runs, Go archives the live generation into the round's `prior-generation/` directory: the plan (cards, overview, amendments and any `archive-*/` rotation), Webster's run record, and the Plan-Review and Webster-Review run directories.
