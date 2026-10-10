@@ -32,7 +32,7 @@ func TestNames(t *testing.T) {
 	}
 }
 
-// TestModules_SeedOnlyAndHubWideFlags pins the two flags: "models" and "burler" are the two modules carrying an open-ended, operator-owned key set (model aliases; lenses/fans respectively), so they are the only entries with SeedOnly == true, and "fabric" and "board" describe hub-level facts, so they are the only entries with HubWide == true.
+// TestModules_SeedOnlyAndHubWideFlags pins the two flags: "models" and "burler" are the two modules carrying an open-ended, operator-owned key set (model aliases; lenses/fans respectively), so they are the only entries with SeedOnly == true, and "fabric", "board" and "gate" describe hub-level facts, so they are the only entries with HubWide == true.
 //
 //testtiming:keep pins which modules carry the SeedOnly and HubWide flags, which the covering TestFill never asserts
 func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
@@ -42,7 +42,7 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 		if m.SeedOnly != wantSeedOnly {
 			t.Errorf("Modules(): module %q SeedOnly = %v; want %v", m.Name, m.SeedOnly, wantSeedOnly)
 		}
-		wantHubWide := m.Name == "fabric" || m.Name == "board"
+		wantHubWide := m.Name == "fabric" || m.Name == "board" || m.Name == "gate"
 		if m.HubWide != wantHubWide {
 			t.Errorf("Modules(): module %q HubWide = %v; want %v", m.Name, m.HubWide, wantHubWide)
 		}

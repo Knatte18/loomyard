@@ -19,6 +19,12 @@
 // Lease.Env returns the environment for a child that runs inside the slot: GOFLAGS gets `-p=<GoParallel>` appended and InheritEnv names the held slot's lock path.
 // A nested gate run checks Pool.Inherited on that variable and runs inside its parent's slot without acquiring.
 //
+// # Config
+//
+// The hub-wide `gate` config module keeps `slots`, `go_parallel` and `cli_wait_sec` at `<BoardDir>/_lyx/config/gate.yaml`, seeded from template.yaml by the hub-wide reconcile.
+// LoadConfig reads it strictly and refuses any value below 1 naming its key; Config.Limits converts it to the Limits a Pool reads.
+// TemplateConfig decodes the template alone, for a run outside every hub.
+//
 // # Wait records
 //
 // A waiter that has no verifytree marker keeps a Wait record, one uniquely named YAML file in WaitDir under its worktree's anchor root.
