@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -225,6 +226,47 @@ func DoneCards(plan *planparser.Plan, st *State) []planparser.Card {
 		}
 	}
 	return cards
+}
+
+// EditedDoneCards returns, sorted, the NN-slug ids of the cards of every batch st records terminal with status done whose card file under planDir no longer hashes to the CardHashes entry the batch recorded at begin.
+// It hashes the card files as batchCardHashes does and reads the record and those bytes alone, never parsing the plan.
+// A nil state, a record without CardHashes, a batch not terminal done and a recorded id plan lacks each contribute nothing;
+// an unreadable card file is returned as an error.
+//
+// It is what the loom plan gate reads to refuse an edit to a card whose work has landed.
+func EditedDoneCards(plan *planparser.Plan, st *State, planDir string) ([]string, error) {
+	if st == nil {
+		return nil, nil
+	}
+
+	cardsByID := make(map[string]planparser.Card, len(plan.Cards))
+	for _, c := range plan.Cards {
+		cardsByID[cardID(c)] = c
+	}
+
+	var edited []string
+	for _, bs := range st.Batches {
+		if bs == nil || !bs.Terminal || bs.Status != DigestStatusDone {
+			continue
+		}
+		var recorded []planparser.Card
+		for id := range bs.CardHashes {
+			if c, ok := cardsByID[id]; ok {
+				recorded = append(recorded, c)
+			}
+		}
+		now, err := batchCardHashes(batcher.Batch{Cards: recorded}, planDir)
+		if err != nil {
+			return nil, err
+		}
+		for id, hash := range now {
+			if hash != bs.CardHashes[id] {
+				edited = append(edited, id)
+			}
+		}
+	}
+	sort.Strings(edited)
+	return edited, nil
 }
 
 // findBatch returns the batcher.Batch in batches whose identity matches number.

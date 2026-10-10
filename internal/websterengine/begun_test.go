@@ -4,6 +4,8 @@
 package websterengine
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
@@ -34,5 +36,27 @@ func TestDispatchScope(t *testing.T) {
 	begun, forthcoming = DispatchScope(batches, nil)
 	if begun != nil || forthcoming != nil {
 		t.Fatalf("DispatchScope(nil state) = %+v, %+v; want nil, nil", begun, forthcoming)
+	}
+}
+
+// TestEditedDoneCards pins what the plan gate's rows do not reach: an edited card of a batch begun but not done, and a recorded id the plan lacks, report nothing, and a nil state reports nothing.
+func TestEditedDoneCards(t *testing.T) {
+	t.Parallel()
+
+	planDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(planDir, "01-begun.md"), []byte("edited since begin\n"), 0o644); err != nil {
+		t.Fatalf("write card file: %v", err)
+	}
+	plan := &planparser.Plan{Dir: planDir, Cards: []planparser.Card{{Number: 1, Slug: "begun"}}}
+	st := &State{Batches: map[int]*BatchState{
+		1: {Slug: "begun", Cards: []string{"01-begun"}, CardHashes: map[string]string{"01-begun": "recorded-at-begin"}},
+		2: {Slug: "gone", Terminal: true, Status: "done", Cards: []string{"02-gone"}, CardHashes: map[string]string{"02-gone": "recorded-at-begin"}},
+	}}
+
+	if got, err := EditedDoneCards(plan, st, planDir); err != nil || len(got) != 0 {
+		t.Errorf("EditedDoneCards() = %v, %v; want nothing for a begun batch and an id the plan lacks", got, err)
+	}
+	if got, err := EditedDoneCards(plan, nil, planDir); err != nil || got != nil {
+		t.Errorf("EditedDoneCards(nil state) = %v, %v; want nil, nil", got, err)
 	}
 }
