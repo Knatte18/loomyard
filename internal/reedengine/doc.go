@@ -194,9 +194,11 @@
 // launchStrandLocked exports it to the strand's process as LYX_STRAND_NAME, with LYX_PARENT when a parent is told, ahead of the launch command.
 // It also sets the pane title to the full name after `set-option -p allow-set-title off`, so the program in the pane cannot overwrite it.
 // A provider session name is the other mirror, passed by the launch line as `--name`.
-// The resize loop (watchloop.go) polls at a two-second cycle until the window-resized hook is seen installed, then blocks on a file event for the signal file through a FileWatchOpener, whose production value OpenFileWatch wraps internal/fswatch.
+// The resize loop (watchloop.go) polls until the window-resized hook is seen installed, its wait doubling from two seconds to a minute across ticks that change nothing and returning to two seconds on an applied layout, a changed box or a deferral, then blocks on a file event for the signal file through a FileWatchOpener, whose production value OpenFileWatch wraps internal/fswatch.
 // An event stats the signal file, removes it when found and arms a one-shot debounce timer; a failed apply arms a one-shot retry timer on an escalating delay, bounded by the retry cap.
 // When the watcher cannot be opened the loop logs that once and stays in poll mode for good.
+// A resize while a poll-mode watcher is backed off heals at the next tick, up to a minute late.
+// Windows is poll-only, and on POSIX a watcher stays in poll mode when its file watch failed at promotion or until a later attach or apply installs the hook.
 // The hub watchdog daemon runs a name-repair tick (namerepair.go) beside its resize loop: it resets a drifted pane title itself and repairs a drifted provider session name through the SessionNamer seam, which the provider package implements and cliwire fills.
 // The name-repair tick backs off: its wait starts at ten seconds, doubles through NextWakeCadence up to a minute across passes that repair nothing, and returns to ten seconds after a pass that repaired a title or a session name.
 // NextWakeCadence is the one backoff rule the daemon's loops share.
@@ -369,7 +371,7 @@
 //     watch loop (watchloop.go) itself learns its told worktree root is
 //     gone — via errWorktreeRootGone surfacing from a re-apply attempt — it
 //     logs exactly one warning and drops to a sixty-second dormant cadence
-//     rather than the ordinary two-second poll, so a session abandoned by
+//     rather than the ordinary poll, so a session abandoned by
 //     `down` costs one log line instead of a warning every two seconds for
 //     the rest of its life. It automatically returns to whichever mode
 //     (poll or signal) it was in before dormancy, logging exactly one more
@@ -848,15 +850,11 @@
 //     second return value — otherwise a fallback that happens to equal the
 //     last applied box skips forever and one that differs re-applies
 //     forever.
-//   - The watchdog daemon's own stderr is discarded, not watched
+//   - The watchdog daemon's own stderr is watched by no one
 //     (reedcli/watchdog.go): the daemon points the logger's durable sink at
-//     fabricengine.HubLogsDir(hub) FIRST, then rebinds the logger's stderr
-//     half to a discarding writer before it starts polling — the ordering is
-//     what keeps its diagnostics reachable at all, since nothing reads a
-//     detached process's stdio. This is also the long-lived process that
-//     holds the logger's rebound output for its whole life: unlike a
-//     one-shot verb, the daemon's SetOutput call persists for as long as the
-//     process runs.
+//     fabricengine.HubLogsDir(hub) FIRST, before it takes its lock — the
+//     ordering is what keeps its diagnostics reachable at all, since nothing
+//     reads a detached process's stdio.
 //
 // requiredSubcommands (probe.go) still does not grow for the live-geometry
 // rule, the attach chain, or the two option pins: display-message,

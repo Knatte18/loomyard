@@ -25,7 +25,7 @@ import (
 )
 
 // TestWatchState pins the watcher's pure timing contracts against a synthetic clock, each a named step below:
-// the default timing, the per-mode ticker cadence, and watchState's debounce, coalescing and per-event retry-cap behaviour.
+// the default timing, the per-mode ticker cadence, the poll wake's per-outcome rule, and watchState's debounce, coalescing and per-event retry-cap behaviour.
 //
 //testtiming:keep pins the watcher's pure contracts on a synthetic clock: default timing, per-mode ticker cadence, debounce and coalescing of signals, one follow-up for signals during an apply, the escalating retry cap with per-streak reset, deferral costing no budget and a fresh signal re-arming an exhausted streak; its covering tests run this code without asserting it
 func TestWatchState(t *testing.T) {
@@ -35,6 +35,7 @@ func TestWatchState(t *testing.T) {
 	}{
 		{"DefaultTimingMatchesTheSixConstants", watchDefaultTimingMatchesTheSixConstants},
 		{"TickerPeriodForAnswersPerModeCadence", tickerPeriodForAnswersPerModeCadence},
+		{"PollWakeChangedPerOutcome", watchPollWakeChangedPerOutcome},
 		{"SingleSignalWaitsThenApplies", watchStateSingleSignalWaitsThenApplies},
 		{"CoalescesABurstIntoOneApply", watchStateCoalescesABurstIntoOneApply},
 		{"SignalInsideQuietRestartsIt", watchStateSignalInsideQuietRestartsIt},
@@ -57,6 +58,7 @@ func watchDefaultTimingMatchesTheSixConstants(t *testing.T) {
 	got := watchDefaultTiming()
 	want := watchTiming{
 		PollCycle:   watchdogPollCycle,
+		PollCeiling: watchdogPollCeiling,
 		Quiet:       watchdogDebounceQuiet,
 		BaseDelay:   watchdogRetryBaseDelay,
 		MaxAttempts: watchdogMaxAttempts,
@@ -67,6 +69,36 @@ func watchDefaultTimingMatchesTheSixConstants(t *testing.T) {
 	}
 	if got.PollCycle < time.Second || got.Dormant < time.Second {
 		t.Errorf("watchDefaultTiming() periodic cadences = poll %v, dormant %v; want each at or above one second", got.PollCycle, got.Dormant)
+	}
+	if got.PollCeiling < got.PollCycle {
+		t.Errorf("watchDefaultTiming() PollCeiling = %v, want at or above the base %v", got.PollCeiling, got.PollCycle)
+	}
+}
+
+// watchPollWakeChangedPerOutcome pins pollWakeChanged's rule per re-apply outcome:
+// a change returns the poll wait to the base, anything else doubles it.
+func watchPollWakeChangedPerOutcome(t *testing.T) {
+	last := render.Box{W: 100, H: 21}
+	other := render.Box{W: 120, H: 30}
+	tests := []struct {
+		name string
+		res  ReapplyResult
+		err  error
+		want bool
+	}{
+		{"Deferred", ReapplyResult{Deferred: true}, nil, true},
+		{"AppliedLayout", ReapplyResult{Applied: true, Box: last, BoxIsLive: true}, nil, true},
+		{"ChangedLiveBox", ReapplyResult{Box: other, BoxIsLive: true}, nil, true},
+		{"FailedReapply", ReapplyResult{Applied: true, Box: other, BoxIsLive: true}, errors.New("boom"), false},
+		{"UnchangedLiveBox", ReapplyResult{Box: last, BoxIsLive: true}, nil, false},
+		{"DegradedBoxNothingApplied", ReapplyResult{Box: other}, nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := pollWakeChanged(tt.res, tt.err, last); got != tt.want {
+				t.Errorf("pollWakeChanged(%+v, %v, %+v) = %v, want %v", tt.res, tt.err, last, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -364,9 +396,14 @@ func watchStateFreshSignalAfterExhaustedStreakReArms(t *testing.T) {
 // watchdogTestTiming returns a watchTiming whose every duration is a single-digit number of
 // milliseconds, fast enough for an untagged test and small enough that no assertion here needs to
 // wait anywhere near a second.
+//
+// PollCeiling is twice the base, 10 ms, so the poll wait doubles once and stays there.
+// The base plus four ceiling waits, 45 ms, fit well inside the 300 ms windows of the loop tests that stay in poll mode,
+// and the ceiling stays strictly below the dormancy test's 20 ms stability window, so a still-polling loop always shows a tick inside it.
 func watchdogTestTiming() watchTiming {
 	return watchTiming{
 		PollCycle:   5 * time.Millisecond,
+		PollCeiling: 10 * time.Millisecond,
 		Quiet:       5 * time.Millisecond,
 		BaseDelay:   2 * time.Millisecond,
 		MaxAttempts: 3,
@@ -520,20 +557,36 @@ func TestWatchLoop_StaleSignalFileRemovedAtStart(t *testing.T) {
 }
 
 // TestWatchLoop_PollModeByDefault pins that with show-options reporting no hook, the loop issues
-// repeated reapplyLayout cycles at PollCycle and never promotes into signal-mode behaviour.
+// repeated reapplyLayout cycles from PollCycle and never promotes into signal-mode behaviour,
+// and that on a session that never changes the wait backs off to PollCeiling:
+// a fixed PollCycle cadence would issue several times the bounded number of list-panes calls in the window below.
 //
 //testtiming:keep pins the loop repeating reapplyLayout cycles at the poll cadence and probing the hook every cycle while show-options reports no hook, never promoting; its covering tests run this code without asserting it
 func TestWatchLoop_PollModeByDefault(t *testing.T) {
 	e, fake := newWatchLoopTestEngine(t, "on")
 	fake.answer("show-options", "", nil)
 
-	startWatchLoop(t, e, watchdogTestTiming(), newFeedWatch().open)
+	timing := watchdogTestTiming()
+	timing.PollCeiling = 8 * timing.PollCycle
+	startWatchLoop(t, e, timing, newFeedWatch().open)
 
 	if !eventually(t, 300*time.Millisecond, func() bool { return fake.Count("list-panes") >= 3 }) {
 		t.Fatalf("list-panes calls = %d, want at least 3 poll cycles", fake.Count("list-panes"))
 	}
 	if fake.Count("show-options") == 0 {
 		t.Errorf("show-options calls = 0, want poll mode to probe every cycle")
+	}
+
+	// The backed-off schedule fits about six ticks in the window and a fixed cadence about forty,
+	// so the bound fails a regression to a fixed cadence while scheduling latency only lowers the count.
+	const (
+		listPanesPerReapply = 1
+		backedOffTickBound  = 12
+	)
+	before := fake.Count("list-panes")
+	time.Sleep(200 * time.Millisecond)
+	if grown := fake.Count("list-panes") - before; grown > backedOffTickBound*listPanesPerReapply {
+		t.Errorf("list-panes grew by %d in a 200ms window, want at most %d: poll mode must back off", grown, backedOffTickBound*listPanesPerReapply)
 	}
 }
 
@@ -907,7 +960,7 @@ func TestWatchLoop_RecoversFromDormancyToItsPriorMode(t *testing.T) {
 
 // TestWatchLoop_NonSentinelFailureDoesNotGoDormant pins the narrowing itself: a re-apply failure
 // that is NOT errWorktreeRootGone must not drop the loop into dormancy, so the loop keeps
-// re-applying at its existing (poll) cadence exactly as it does today.
+// re-applying at its backed-off poll cadence.
 //
 //testtiming:keep pins a re-apply failure other than errWorktreeRootGone leaving the loop at its poll cadence with no dormancy warning; its covering tests run this code without asserting it
 func TestWatchLoop_NonSentinelFailureDoesNotGoDormant(t *testing.T) {
@@ -926,7 +979,7 @@ func TestWatchLoop_NonSentinelFailureDoesNotGoDormant(t *testing.T) {
 	}
 }
 
-// TestWatchLoop_OpenerFailureStaysInPollMode pins that when the hook is installed but the signal file cannot be watched, the loop logs that once, keeps polling at the poll cadence, and never probes or promotes again.
+// TestWatchLoop_OpenerFailureStaysInPollMode pins that when the hook is installed but the signal file cannot be watched, the loop logs that once, keeps polling at the backed-off poll cadence, and never probes or promotes again.
 //
 //testtiming:keep pins a failed watcher open at promotion leaving the loop in poll mode with exactly one warning and no later probe; its covering tests run this code without asserting it
 func TestWatchLoop_OpenerFailureStaysInPollMode(t *testing.T) {
