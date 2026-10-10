@@ -87,7 +87,11 @@
 //   - create-not-done, delete-not-done, rename-not-done (all blocking) — DoneChecks (donecheck.go):
 //     a Create target that still does not resolve, a Delete target that still does, or a Rename
 //     pair whose old side still resolves or whose new side still does not, after the batch that was
-//     supposed to build, remove, or rename it. glyph-rejected is additionally DoneChecks' own
+//     supposed to build, remove, or rename it.
+//     Each detail carries the lookup: the resolve key looked up beside the card's own spelling, quarry's status, for not_found whether the unit exists, and for ambiguous each candidate's file and build constraint.
+//     An ambiguous answer whose candidates sit in files no single build environment selects together counts as resolved, so a Create or a Rename new side over such a member lands;
+//     the Delete direction and a Rename old side keep blocking on any surviving declaration.
+//     glyph-rejected is additionally DoneChecks' own
 //     fail-closed arm for a done-check answer outside quarry's four-value status vocabulary,
 //     mirroring the Create inversion's.
 package planglyph
