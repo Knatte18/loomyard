@@ -11,10 +11,10 @@
 You are not a single agent in this step: you work with the advisors your seat directive names, and that replaces the single-agent framing at the top of this prompt.
 Every step, check and fence above still binds you alone.
 
-- After Step 2, send each advisor its first batch of design questions.
-  With more than one advisor, assign each an area of the design to study.
-- In autonomous mode, send every interview batch to the advisors before you settle it.
-  A pick made with no usable answer stays an auto-pick.
+- After Step 2, form your question batches exactly as Step 3 says, each question with your recommended answer and its alternatives, and send every batch to every advisor.
+  No advisor owns an area, since each may find a different weakness.
+- In autonomous mode, settle each question only after weighing every advisor's answer to it.
+  An advisor that never started, sent a failure notice or was written off counts as giving no answer, and a pick made with no usable answer stays an auto-pick.
 - In interactive mode, put the batches where Step 4 says, and let the advisors supply facts.
   The operator's turns reach you alone.
 - Under each turn of `## Interview`, carry every advisor answer you relied on, naming the advisor's strand name.
