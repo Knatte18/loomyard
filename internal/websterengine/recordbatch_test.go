@@ -1531,6 +1531,40 @@ func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))); !os.IsNotExist(statErr) {
 		t.Errorf("report still at its live path (stat err %v); want it archived", statErr)
 	}
+
+	t.Run("ReasonsOpenWithTheBatchAndItsCards", func(t *testing.T) {
+		fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+			{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+		})
+		writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+		creating := func(number int, slug, target string) planparser.Card {
+			return planparser.Card{
+				Number: number, Slug: slug, Title: slug, Intent: slug,
+				TargetGroups: []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{target}}},
+			}
+		}
+		// Card 3 of the batch never landed its Create, and the unbegun cards 4 and 5 have no work in the tree either.
+		batch := []planparser.Card{creating(1, "json-flag", "internal/foo#Landed"), creating(2, "second", "internal/foo#Landed"), creating(3, "proc-group-kill", "internal/foo#NeverLanded")}
+		unbegun := []planparser.Card{creating(4, "later-a", "internal/foo#LaterA"), creating(5, "later-b", "internal/foo#LaterB")}
+		fx.Deps.Plan.Cards = append(append([]planparser.Card(nil), batch...), unbegun...)
+		fx.Deps.Batches = []batcher.Batch{{Cards: batch}, {Cards: unbegun[:1]}, {Cards: unbegun[1:]}}
+		writeWorktreeFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Landed() {}\n")
+
+		if _, err := websterengine.RecordBatch(fx.Deps, 1); !errors.Is(err, websterengine.ErrBatchFailed) {
+			t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrBatchFailed)", err)
+		}
+		reasons := fx.Deps.State.Batches[1].Digest.Reasons
+		if len(reasons) == 0 || reasons[0] != "batch 01-json-flag holds cards 1-json-flag, 2-second, 3-proc-group-kill" {
+			t.Fatalf("reasons = %q; want them to open with the batch and its three cards", reasons)
+		}
+		joined := strings.Join(reasons, "; ")
+		if !strings.Contains(joined, "NeverLanded") {
+			t.Errorf("reasons = %q; want the finding on the batch's third card", reasons)
+		}
+		if strings.Contains(joined, "LaterA") || strings.Contains(joined, "LaterB") {
+			t.Errorf("reasons = %q; want no finding on the unbegun cards", reasons)
+		}
+	})
 }
 
 // deleteReferencedBatches returns two batches, card 1 (json-flag) that deletes internal/foo#Gone and the unbegun card 2 (later) that edits internal/foo/user.go, and writes both files into worktree: impl.go still declares Gone, and user.go calls it on line 4 when referenced is true.
