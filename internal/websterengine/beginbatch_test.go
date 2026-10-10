@@ -289,8 +289,54 @@ func TestBeginBatch_Refusals(t *testing.T) {
 					1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead"},
 				}
 			},
-			wantText:    []string{"terminal with status dead", "way forward: the recovery of batch 1 is exhausted, so end the run stuck naming the batch"},
-			wantNotText: []string{"record-batch", "recover-batch"},
+			wantText:    []string{"terminal with status dead", "way forward: the recovery of batch 1 is dead and earns no retry, so end the run stuck naming the batch"},
+			wantNotText: []string{"record-batch", "recover-batch", "exhausted"},
+		},
+		{
+			name: "a report over a dead recovery at the cap with an unrendered amendment ends the run stuck without exhausted",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				seedReport(t, fx)
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+					1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 2, AmendedCards: []websterengine.AmendedCard{{Card: "01-json-flag"}}},
+				}
+			},
+			wantText:    []string{"terminal with status dead", "end the run stuck naming the batch"},
+			wantNotText: []string{"exhausted", "record-batch", "recover-batch"},
+		},
+		{
+			name: "a report over a stuck fork record at the cap names the exhausted routes",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				seedReport(t, fx)
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+					1: {Slug: "json-flag", Kind: "fork", Terminal: true, Status: "stuck", Recoveries: 2},
+				}
+			},
+			wantIs:      websterengine.ErrRecoveryExhausted,
+			wantText:    []string{"exhausted", "end the run stuck naming the batch", "lyx webster reset --to batch-start --batch 01"},
+			wantNotText: []string{"record-batch"},
+		},
+		{
+			name: "a report over a failed fork record at the cap with an unrendered amendment names recover-batch",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				seedReport(t, fx)
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+					1: {Slug: "json-flag", Kind: "fork", Terminal: true, Status: "failed", Recoveries: 2, AmendedCards: []websterengine.AmendedCard{{Card: "01-json-flag"}}},
+				}
+			},
+			wantText:    []string{"terminal with status failed", "way forward: `lyx webster recover-batch 1`"},
+			wantNotText: []string{"exhausted", "record-batch"},
+		},
+		{
+			name: "a report over a dead recovery at the cap names the exhausted routes",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				seedReport(t, fx)
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+					1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 2},
+				}
+			},
+			wantIs:      websterengine.ErrRecoveryExhausted,
+			wantText:    []string{"exhausted", "end the run stuck naming the batch", "lyx webster reset --to batch-start --batch 01"},
+			wantNotText: []string{"record-batch"},
 		},
 		{
 			name: "a report over a terminal dead recovery that committed names recover-batch once more",

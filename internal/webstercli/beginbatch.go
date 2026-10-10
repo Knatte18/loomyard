@@ -40,7 +40,8 @@ func (c *websterCLI) beginBatchCmd() *cobra.Command {
 "paused": true envelope if "lyx webster pause" was called), refuses loud
 when the batch's report file already exists for a batch state.json records
 (finished work is never silently overwritten -- a stuck batch escalates via
-recover-batch), archives a report that has no begin-batch record and goes on
+recover-batch; a refusal over a batch whose recoveries are exhausted carries
+"recovery_exhausted": true), archives a report that has no begin-batch record and goes on
 (the envelope's archived_report names it), records
 the batch's start-SHA in state.json, renders and writes that batch's fork
 prompt (carrying the previous batch's own persisted digest), and returns the
@@ -133,6 +134,10 @@ Example:
 				}
 				if errors.Is(err, websterengine.ErrPlanDrifted) {
 					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"plan_drifted": true}))
+					return nil
+				}
+				if errors.Is(err, websterengine.ErrRecoveryExhausted) {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"recovery_exhausted": true}))
 					return nil
 				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
