@@ -137,7 +137,7 @@ type Env struct {
 	// registry.
 	Landing landingshed.Deps
 	// ParentReview is a whole-struct passthrough handed to parentreview.NewGate unchanged, following Env.Landing's precedent.
-	// Only the "parent-review" gate and the DiscussionWrite entry read it.
+	// Only the "parent-review" gate and the entries that wrap a discussion producer read it.
 	ParentReview parentreview.GateConfig
 	// Now is the injected clock. Nil is legal and defaults to time.Now inside the underlying
 	// constructors.
@@ -152,7 +152,7 @@ type Env struct {
 	// It arrives as a closure for the same reason DiscussionSpec does: building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly.
 	DiscussionTable shedadapters.TableSource
 	// CommitDiscussion is the injected closure that commits the discussion output directory,
-	// invoked by the DiscussionWrite entry's commit decorator on a Done outcome.
+	// invoked by the commit decorator of every entry that wraps a discussion producer on a Done outcome.
 	CommitDiscussion func() error
 	// DescribeSpec is the injected shedadapters.SpecSource the Describe entry evaluates once per
 	// Call. It arrives as a closure rather than as recipe Config because building the Spec needs a
