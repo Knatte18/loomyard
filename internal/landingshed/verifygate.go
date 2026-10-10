@@ -43,10 +43,10 @@ type failureRecorder struct {
 
 // recordFailure writes the Publish failure record for a verify of the given kind that ended in result.
 // A result that is not a failed run, a timeout and a shell that could not start write none, since none of them names a failing test.
-// A write failure is logged and changes nothing else.
-func (g verifyGate) recordFailure(kind verifytree.FailureKind, result verifytree.Result) {
+// It reports whether it wrote the record: a write failure is logged, reported as false and changes nothing else.
+func (g verifyGate) recordFailure(kind verifytree.FailureKind, result verifytree.Result) bool {
 	if g.recorder == nil || result.Status != verifytree.StatusFailed || result.TimedOut || result.ExitCode < 0 {
-		return
+		return false
 	}
 	failure := verifytree.PublishFailure{Kind: kind, MergeCommit: g.recorder.mergeCommit}
 	if g.recorder.head != nil {
@@ -63,7 +63,9 @@ func (g verifyGate) recordFailure(kind verifytree.FailureKind, result verifytree
 	}
 	if err := verifytree.WritePublishFailure(g.paths, failure); err != nil {
 		logger.Warn("landingshed: could not write the publish failure record", "kind", kind, "cause", err)
+		return false
 	}
+	return true
 }
 
 // clearFailure removes the Publish failure record of an earlier failed verify.
@@ -165,8 +167,8 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (s
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
 	}
-	g.recordFailure(verifytree.FailureKindPlanVerify, result)
-	return g.verdict(result, "verify", producer, parentBranch)
+	recorded := g.recordFailure(verifytree.FailureKindPlanVerify, result)
+	return g.verdict(result, "verify", producer, parentBranch, recorded)
 }
 
 // checkPublishVerify runs publishCommand, landing config's `publish_verify`, for producer after the plan's verify passed.
@@ -192,13 +194,14 @@ func (g verifyGate) checkPublishVerify(ctx context.Context, producer, parentBran
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
 	}
-	g.recordFailure(verifytree.FailureKindPublishVerify, result)
-	return g.verdict(result, "publish_verify", producer, parentBranch)
+	recorded := g.recordFailure(verifytree.FailureKindPublishVerify, result)
+	return g.verdict(result, "publish_verify", producer, parentBranch, recorded)
 }
 
 // verdict maps a verify result to the producer's decision, naming the command's config source as what.
 // It returns a non-empty Stuck reason for a dirty tree or a failed command, an error for an unknown status, and ("", nil) when the producer may proceed.
-func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBranch string) (string, error) {
+// recorded says the failure record was written; a failed command with an exit code then names the Webster-Burler goto as its way forward, and otherwise asks to fix forward on the task branch.
+func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBranch string, recorded bool) (string, error) {
 	switch result.Status {
 	case verifytree.StatusPassed:
 		logger.Info("landingshed: post-merge "+what+" passed", "producer", producer, "parentBranch", parentBranch)
@@ -212,6 +215,9 @@ func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBran
 		}
 		if result.ExitCode < 0 {
 			return fmt.Sprintf("%s could not start after merging parent branch %q: %s; output: %s", what, parentBranch, result.Detail, g.paths.Log), nil
+		}
+		if recorded {
+			return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s; way forward: run \"lyx loom goto --to Webster-Burler\", then \"lyx loom resume\", in the task worktree; the Webster-Review round reads the Publish failure record and its gate runs the failing tests", what, parentBranch, result.ExitCode, g.paths.Log), nil
 		}
 		return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s; fix forward on the task branch, then resume", what, parentBranch, result.ExitCode, g.paths.Log), nil
 	default:

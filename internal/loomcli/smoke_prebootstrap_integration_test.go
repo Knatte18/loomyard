@@ -205,9 +205,13 @@ func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 		t.Fatalf("loom status wrote the build stamp; only a start verb reconciles")
 	}
 
+	// The reconcile commit fires a detached push that would outlive the test and race TempDir's removal of the bare remote;
+	// the test asserts the commit, never the push.
+	skipPush := []string{"FABRIC_SKIP_PUSH=1"}
+
 	loom, _ := configreg.Lookup("loom")
 	gitkit.CommitFile(t, recordsDir, configengine.ConfigFileRel("loom"), "a: [unclosed\n", "fixture: broken loom.yaml")
-	out, exit, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "resume")
+	out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipPush, 60*time.Second, "loom", "resume")
 	if err != nil {
 		t.Fatalf("loom resume on a broken loom.yaml: %v; output: %s", err, out)
 	}
@@ -224,7 +228,7 @@ func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 	}
 	gitkit.CommitFile(t, recordsDir, configengine.ConfigFileRel("loom"), loom.Template(), "fixture: fixed loom.yaml")
 
-	if out, _, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "resume"); err != nil {
+	if out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipPush, 60*time.Second, "loom", "resume"); err != nil {
 		t.Fatalf("loom resume: %v; output: %s", err, out)
 	}
 

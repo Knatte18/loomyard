@@ -111,16 +111,17 @@ type realClock struct{}
 func (realClock) Now() time.Time        { return time.Now() }
 func (realClock) Sleep(d time.Duration) { time.Sleep(d) }
 
-// defaultPollIntervalMS is the template.yaml default poll interval.
-const defaultPollIntervalMS = 500
+// pollFloor is the shortest poll interval; a configured value below it is floored to it.
+const pollFloor = time.Second
 
-// pollInterval returns Wait's tick interval, flooring non-positive values
-// to the template default to prevent busy-spinning.
+// pollInterval returns Wait's tick interval, flooring a value below pollFloor (non-positive included) to pollFloor to prevent busy-spinning.
+// It floors silently; LoadConfig logs the one warning.
 func pollInterval(cfg Config) time.Duration {
-	if cfg.PollIntervalMS <= 0 {
-		return defaultPollIntervalMS * time.Millisecond
+	interval := time.Duration(cfg.PollIntervalMS) * time.Millisecond
+	if interval < pollFloor {
+		return pollFloor
 	}
-	return time.Duration(cfg.PollIntervalMS) * time.Millisecond
+	return interval
 }
 
 // maxEventsReadRetries bounds consecutive event-read failures before reporting a mechanism failure.
@@ -471,13 +472,11 @@ func startupTickCap(startupTimeout, interval time.Duration) int {
 //
 // Probe cadence: awaitStartup calls checkLivenessTick once per probe interval, where the probe
 // interval is pollInterval(cfg) times LivenessEveryNPolls (floored to 1 exactly as Wait floors it),
-// so it probes, and replays any trust-gate dismissal, at the same cadence Wait does (every 5s under
-// the shipped template's poll_interval_ms: 500 and liveness_every_n_polls: 10) and never faster.
+// so it probes, and replays any trust-gate dismissal, at the same cadence Wait does (every 10s under
+// the shipped template's poll_interval_ms: 1000 and liveness_every_n_polls: 10) and never faster.
 // awaitStartup has no events file to poll between probes, so it sleeps the whole probe interval at
-// once rather than ticking at the poll interval. This is deliberate: checkLivenessTick replays the
-// trust-dismiss sequence on every probe whose capture still shows a gate, and probing every 500ms
-// would let a capture taken before the provider redraws after the first Enter drive a second key
-// into the next gate — the stray-keypress hazard the capture-driven dismissal exists to prevent;
+// once rather than ticking at the poll interval.
+// This is deliberate: checkLivenessTick replays the trust-dismiss sequence on every probe whose capture still shows a gate, and probing at every poll would let a capture taken before the provider redraws after the first Enter drive a second key into the next gate — the stray-keypress hazard the capture-driven dismissal exists to prevent;
 // matching Wait's cadence keeps awaitStartup on the one cadence already proven live for producers.
 //
 // Manual live-substrate verification recipe: docs/reference/claude-trust-dialog-repro.md.
@@ -719,10 +718,14 @@ func (run *Run) recordWaiting(ev Event, offset int64) {
 	}
 }
 
-// shellWaitBound returns how long a non-awaited shell may stay outstanding at a turn end,
-// flooring a non-positive hand-built value to the template default as pollInterval does.
+// shellWaitBound returns how long a non-awaited shell may stay outstanding at a turn end.
 func (run *Run) shellWaitBound() time.Duration {
-	minutes := run.runner.cfg.BackgroundShellWaitMin
+	return ShellWaitBound(run.runner.cfg)
+}
+
+// ShellWaitBound returns how long a turn end waits on an outstanding transcript-reported background shell, cfg.BackgroundShellWaitMin, flooring a non-positive hand-built value to the template default as pollInterval does.
+func ShellWaitBound(cfg Config) time.Duration {
+	minutes := cfg.BackgroundShellWaitMin
 	if minutes <= 0 {
 		minutes = defaultBackgroundShellWaitMin
 	}
@@ -734,12 +737,30 @@ const defaultBackgroundShellWaitMin = 10
 
 // awaitedShell reports whether the shell's label starts with one of the spec's awaited prefixes.
 func (run *Run) awaitedShell(task BackgroundTask) bool {
-	for _, prefix := range run.spec.AwaitedShellPrefixes {
-		if strings.HasPrefix(task.Label, prefix) {
+	return awaitedLabel(task.Label, run.spec.AwaitedShellPrefixes)
+}
+
+// awaitedLabel reports whether label starts with one of prefixes.
+func awaitedLabel(label string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(label, prefix) {
 			return true
 		}
 	}
 	return false
+}
+
+// ShellWaitExpires reports whether a waiting turn end with outstanding tasks counts as a turn end once ShellWaitBound has passed, the rule expiredTurnEnd applies to an ungated run:
+// true when every task is a background shell that neither the turn-end payload reported nor a label in awaitedPrefixes names.
+// A fork, an awaited shell or a payload-reported shell keeps the turn waiting however long it runs, bounded only by the caller's own timeout.
+// An empty list reports false: a turn end with nothing outstanding is a plain turn end, not a waiting one.
+func ShellWaitExpires(tasks []BackgroundTask, awaitedPrefixes []string) bool {
+	for _, task := range tasks {
+		if task.Kind != BackgroundShell || payloadShell(task) || awaitedLabel(task.Label, awaitedPrefixes) {
+			return false
+		}
+	}
+	return len(tasks) > 0
 }
 
 // payloadShell reports whether the task is a background shell the provider's turn-end payload reported, which is live work and never expires.

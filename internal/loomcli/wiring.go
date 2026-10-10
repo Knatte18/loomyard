@@ -494,14 +494,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		RefMatcher: fabricengine.NewRefScanner(location),
 		// ParentBranch lets the verify gate's fix-commit check accept a clean parent merge made while fixing, as webstercli's own wiring does.
 		ParentBranch: func() (string, error) {
-			origin, found, err := fabricengine.ReadOrigin(location)
-			if err != nil {
-				return "", err
-			}
-			if !found {
-				return "", fmt.Errorf("the pair has no fabric origin record")
-			}
-			return origin.ParentBranch, nil
+			return readRecordedParentBranch(location)
 		},
 	}
 

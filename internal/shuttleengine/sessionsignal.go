@@ -22,6 +22,9 @@ const (
 	SessionSignalIdleNotice SessionSignalKind = "idle_notice"
 	// SessionSignalSessionEnd: the provider reported the session ended.
 	SessionSignalSessionEnd SessionSignalKind = "session_end"
+	// SessionSignalSessionStart: the provider started or resumed the session, or restarted its context after a compaction.
+	// It says nothing about what the session is doing, so a session fold does not move on it.
+	SessionSignalSessionStart SessionSignalKind = "session_start"
 )
 
 // SessionSignal is one provider hook line read as a session fact.
@@ -40,6 +43,8 @@ type SessionSignal struct {
 	Reason string
 	// EndsProcess is true when a session end's reason ends the provider's process; the provider decides which reasons do.
 	EndsProcess bool
+	// Source is a session start's source, such as startup or compact; empty on every other kind.
+	Source string
 	// Event is true when ParseEvents also yields an event from the same line.
 	Event bool
 	// Raw is the exact hook payload line the signal was read from.

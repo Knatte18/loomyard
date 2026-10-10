@@ -127,6 +127,19 @@ func NumberRole(role string, held []string) string {
 	}
 }
 
+// MatchesRole reports whether role is base itself or a numbered form NumberRole forms from it: base-N with N >= 2.
+func MatchesRole(role, base string) bool {
+	if role == base {
+		return true
+	}
+	suffix, ok := strings.CutPrefix(role, base+"-")
+	if !ok {
+		return false
+	}
+	n, err := strconv.Atoi(suffix)
+	return err == nil && n >= 2 && strconv.Itoa(n) == suffix
+}
+
 // Resolve reads a --name-style query: a bare role segment is formed under (shortname, slug);
 // a query containing ":" is parsed as a full name and refused when its shortname or slug differ.
 func Resolve(shortname, slug, query string) (Name, error) {

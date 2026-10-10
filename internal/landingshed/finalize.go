@@ -67,6 +67,9 @@ type Finalize struct {
 	// gate is the post-merge verify gate every catch-up merge-in is followed by.
 	// A zero value carries no command, so struct-literal tests run without a gate.
 	gate verifyGate
+	// premerge clears the merge-in a previous attempt left parked.
+	// A zero value runs no probe, so struct-literal tests run without it.
+	premerge preMerge
 }
 
 var _ shedengine.ShedProducer = (*Finalize)(nil)
@@ -115,6 +118,7 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 		deps:     deps,
 		resolver: res,
 		gate:     newVerifyGate(deps),
+		premerge: newPreMerge(deps),
 		parentOpener: func() (parentMerger, error) {
 			h, err := deps.OpenParentFabric()
 			if err != nil {
@@ -231,8 +235,8 @@ func (fz *Finalize) configChangeNotice() string {
 		line = fmt.Sprintf("loom: the config changes of task branch %q could not be read: %v; diff its config files against the parent branch %q by hand",
 			fz.deps.TaskBranch, err, fz.deps.ParentBranch)
 	case len(changes.Files) > 0:
-		line = fmt.Sprintf("loom: task branch %q changed per-worktree config files since it forked from %q: %s (base %s, tip %s); landing does not carry them to the parent branch, so re-apply each change meant for the parent on the parent's copy of the same file",
-			fz.deps.TaskBranch, fz.deps.ParentBranch, strings.Join(changes.Files, ", "), changes.Base, changes.Tip)
+		line = fmt.Sprintf("loom: task branch %q changed per-worktree config files since it forked from %q: %s (base %s, tip %s, parent tip %s); landing does not carry them to the parent branch, so re-apply each change meant for the parent on the parent's copy of the same file",
+			fz.deps.TaskBranch, fz.deps.ParentBranch, strings.Join(changes.Files, ", "), changes.Base, changes.Tip, changes.ParentTip)
 	default:
 		return ""
 	}
@@ -343,7 +347,11 @@ func (fz *Finalize) closePullRequest(ctx context.Context, parentHandle parentMer
 // so every merge-in, the first and the retry after the parent moved again, is committed and verified before the parent-side merge.
 // A gate failure or a dirty tree returns before the parent opener, the parent-side merge, the board update, the push and the pull-request close.
 func (fz *Finalize) mergeInStep(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	reason, err := fz.gate.clean(finalizeName, "before the merge-in")
+	reason, err := fz.premerge.clear(finalizeName, fz.deps.ParentBranch)
+	if outcome, out, err, stop := fz.gateStop(ctx, reason, err); stop {
+		return outcome, out, err, true
+	}
+	reason, err = fz.gate.clean(finalizeName, "before the merge-in")
 	if outcome, out, err, stop := fz.gateStop(ctx, reason, err); stop {
 		return outcome, out, err, true
 	}

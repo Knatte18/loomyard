@@ -26,6 +26,9 @@ func TestMidMerge_CleanPair_None(t *testing.T) {
 	if got.Kind != fabricengine.MidMergeNone || len(got.Conflicts) != 0 || got.Conflicts == nil {
 		t.Errorf("MidMerge() = %+v; want MidMergeNone with empty non-nil Conflicts", got)
 	}
+	if got.Verb != "" || got.Source != "" || got.SourceSHA != "" || got.StartSHA != "" {
+		t.Errorf("MidMerge() identity = %+v; want empty on a clean pair", got)
+	}
 	assertMergeBlocked(t, h.Location, false)
 }
 
@@ -35,6 +38,8 @@ func TestMidMerge_FabricParkedWithConflicts_Parked(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
 	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
+	wantStartSHA := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
+	wantSourceSHA := gitkit.RevParse(t, h.PrimeWorktree(), "feature")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -53,6 +58,9 @@ func TestMidMerge_FabricParkedWithConflicts_Parked(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.Conflicts, res.Conflicts) {
 		t.Errorf("MidMerge().Conflicts = %v; want MergeIn's own %v", got.Conflicts, res.Conflicts)
+	}
+	if got.Verb != "merge-in" || got.Source != "feature" || got.StartSHA != wantStartSHA || got.SourceSHA != wantSourceSHA {
+		t.Errorf("MidMerge() identity = (%q, %q, start %q, source %q); want (merge-in, feature, start %q, source %q)", got.Verb, got.Source, got.StartSHA, got.SourceSHA, wantStartSHA, wantSourceSHA)
 	}
 	assertMergeBlocked(t, h.Location, true)
 }
@@ -123,6 +131,9 @@ func TestMidMerge_ForeignState_EverySideAndShape(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got.Conflicts, want) {
 				t.Errorf("MidMerge().Conflicts = %#v; want %#v", got.Conflicts, want)
+			}
+			if got.Verb != "" || got.Source != "" || got.SourceSHA != "" || got.StartSHA != "" {
+				t.Errorf("MidMerge() identity = %+v; want empty on foreign state", got)
 			}
 			assertMergeBlocked(t, h.Location, true)
 		})

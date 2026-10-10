@@ -270,6 +270,7 @@ github.com/Knatte18/loomyard/
 ├── internal/buildvcs/            the running binary's VCS identity, a stdlib-only leaf
 ├── internal/standalonestate/     target-path-to-hash8-and-state-directory derivation, a stdlib-only leaf
 ├── internal/segmentcolor/        the loom segments, lyx's color palette and its tmux colors, a stdlib-only leaf
+├── internal/fswatch/             the one file-change event source over fsnotify, a leaf
 ├── internal/configengine/        shared config resolution
 ├── internal/gitexec/             shared git operations
 ├── internal/gitrepo/             typed Repo over one local git checkout: go-git for local reads, gitexec for remote-auth/mutation
@@ -393,6 +394,7 @@ User-facing modules each get one `lyx <module>` namespace:
   A live driver over a run halted at a hand-back with no park marker yet is still writing its stop report, so `start` refuses with the retryable kind `driver_not_parked`;
   batten's Inner-Run retries it, at most once per `notice_probe_s`, without recording the approval as acted on.
   When `start` would spawn or resume a driver over a pair with an unfinished merge it refuses with the non-retryable kind `merge_in_progress`, listing the conflicted paths under `conflicts` and naming the remedy.
+  A run whose current producer is Publish or Finalize is let through over a parked fabric `merge-in` of its own parent branch, since that row aborts and redoes it; `lyx loom resume` makes the same exception.
   `lyx loom resume` wakes a halted run's live, parked driver through the same branch, and a run awaiting at a review segment's Bouncer row with a pending circling decision takes that branch too, since its driver's step re-calls the Bouncer, which acts on the decision;
   it never spawns a driver, adds a strand or brings reed up, while `start` still resumes as before;
   it reads the driver strand from reed's sessionless directory, and refuses every other state with its way forward, as the loom section of [refusal-spec.md](../contracts/specs/refusal-spec.md) lists.
@@ -409,7 +411,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `pause` requests a pause at the next producer boundary.
   `validate-discussion` runs the same checks Discussion-Write's and Discussion-Burler's own gates run, standalone, exiting 0 on a clean gate and 1 otherwise, with findings in the failure envelope so a writer agent can self-check before handing off.
   `decision add [<slug>] --by parent|operator --title <t> --decision <d> --rationale <r>` appends one design call made after the Discussion to the decision record under an `Added after Discussion` heading, re-runs the discussion check (restoring the record on a finding) and commits the record.
-  It is refused while Discussion-Write is running, checks no caller identity and resumes nothing.
+  It is refused while Discussion-Write is running, refuses a named session other than the run's recorded parent (the operator's own unnamed shell always passes) and resumes nothing.
   `validate-plan` runs the same checks Plan-Write's and Plan-Burler's own gates run, standalone, with the same exit-code and findings-envelope contract, over the current worktree's plan instead of its discussion.
   `validate-plan --rework` runs the check `PR-Rework`'s own gate runs: the format-only checks over the whole new plan, plus a check that its `first_card` equals the card number the session was told.
   `validate-description` runs the same checks the `Describe` row's `description` gate runs over `_lyx/landing/summary.md`, standalone, with the same exit-code and findings-envelope contract.

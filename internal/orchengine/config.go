@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"gopkg.in/yaml.v3"
 )
 
-// Template defaults, which the accessors floor a non-positive value back to.
+// Template defaults; the accessors floor a non-positive value back to them, except the poll interval, which pollFloor floors.
 const (
 	defaultThresholdTokens     = 400000
 	defaultSoftThresholdTokens = 300000
@@ -22,6 +23,12 @@ const (
 	defaultHandoffTimeoutS     = 600
 	defaultPollIntervalMS      = 2000
 )
+
+// pollFloor is the shortest watcher tick interval; a configured value below it is floored to it.
+const pollFloor = time.Second
+
+// Fails to compile when the template default falls below pollFloor, since the template would then load with a warning.
+const _ = uint(defaultPollIntervalMS*time.Millisecond - pollFloor)
 
 // The accepted cycle_mode values.
 const (
@@ -78,6 +85,10 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		return Config{}, fmt.Errorf("orch config: permission_mode %q is not accepted; set permission_mode: bypass or remove the key", cfg.PermissionMode)
 	}
 
+	if time.Duration(cfg.PollIntervalMS)*time.Millisecond < pollFloor {
+		logger.Warn("orch config: poll_interval_ms is below the floor and is raised to it", "key", "poll_interval_ms", "value", cfg.PollIntervalMS, "floor_ms", pollFloor.Milliseconds())
+	}
+
 	return cfg, nil
 }
 
@@ -130,10 +141,12 @@ func (c Config) HandoffTimeout() time.Duration {
 	return time.Duration(c.HandoffTimeoutS) * time.Second
 }
 
-// PollInterval returns the watcher's tick interval, flooring a non-positive value to the template default so a zero can never busy-spin.
+// PollInterval returns the watcher's tick interval, flooring a value below pollFloor, non-positive included, to pollFloor so a zero can never busy-spin.
+// It floors silently; LoadConfig logs the one warning.
 func (c Config) PollInterval() time.Duration {
-	if c.PollIntervalMS <= 0 {
-		return defaultPollIntervalMS * time.Millisecond
+	interval := time.Duration(c.PollIntervalMS) * time.Millisecond
+	if interval < pollFloor {
+		return pollFloor
 	}
-	return time.Duration(c.PollIntervalMS) * time.Millisecond
+	return interval
 }

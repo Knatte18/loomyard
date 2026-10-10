@@ -169,10 +169,13 @@
 // and a skipped skill never fails or hangs it.
 // Then PromptLine goes out through the verified send path.
 // Every verified send first waits for an idle session, for at most `send_ready_timeout_s` and never past the run's deadline, and types nothing until then.
-// For an engine with the optional SessionCycler idle reading the pane must classify ready and idle,
-// and for one that also parses session signals no turn start may be left unmatched by a later turn end;
-// an unmatched turn start releases after the pane has read idle on every poll for turnStartIdleOverride, or at once when the engine reports that turn interrupted.
-// A session that stays busy fails the send with ErrSessionBusy, naming the reading and ending with the pane's last lines.
+// For an engine with the optional SessionCycler idle reading, every poll takes the readiness reading, built on the hook-derived session state.
+// The reading is ready on idle-done, idle-stalled of any cause, asking at an awaited turn end and busy on background work, provided no turn start is unmatched and the input box, where the engine reads one, is blank;
+// it is held, with a reason, on a running turn, a question awaiting an answer, a dead process, an unmatched turn start, a draft in the box and a pane too short.
+// A ready reading lets the send type even when the pane still shows the running-turn needle or no box.
+// An unmatched turn start releases after the pane has read idle on every poll for turnStartIdleOverride, or at once when the engine reports that turn interrupted.
+// When the session state is unknown, the reading falls back to the pane, which must classify ready and idle, and for an engine that parses session signals no turn start may be left unmatched by a later turn end; the cause is logged at Debug.
+// A session that stays held fails the send with ErrSessionBusy, naming the reading and ending with the pane's last lines.
 // Run.Send and the gated wait loop's own send each hold the run's send lock for the whole idle wait, typing and delivery check, so an in-process send and a gate re-prompt on one run type one after the other, never at once; the lock skips no idle wait, delivery check or gate evaluation.
 // An engine without the idle reading keeps the not-ready refusal alone.
 // That path confirms a send is submitted, not only that its text appeared in the pane, for an engine that implements the optional InputBoxReader capability, inside a window of `submit_confirm_timeout_s` from the moment typing begins.
@@ -216,6 +219,7 @@
 // The prefixes are caller data, which Spec.validate does not inspect.
 // A shell once waited out stays expired for the rest of the run, so a later turn end listing it again ends at once.
 // Result.ExpiredShells names the waited-out shells' labels in expiry order, and each expiry is logged as a warning.
+// ShellWaitBound and ShellWaitExpires export that bound and which outstanding lists it applies to, so a reader that replays an events file without Waiting on the Run, such as webster's recovery classification, waits on the same shells for the same time.
 //
 // Wait shows its three Go-side waits, a gate entry's closure (`gate <entry name>`), the background-shell wait above (`background shells`) and a held turn end (`held`), in two places:
 // a WaitMarker file, `wait.yaml` in the run's own directory, carrying the label, the start time and the pid of the process running Wait,
@@ -239,9 +243,15 @@
 // an engine without it, and a run with no turn end yet, are judged by the events file alone.
 // Like ReadWaitMarker it reads files only, so a process that runs no shuttle may call it.
 //
-// Session state, in shadow mode: no consumer acts on it.
+// Session state has two consumers: Runner.SessionIdle and the verified send's idle wait, which gate on the readiness reading built from it.
+// The reading is ready or held, or unknown when the state is, and an unknown reading falls back to the pane probe.
+// Runner.SessionIdle answers IdleProbe.Idle for a ready reading and, for a held one, IdleProbe.Reason, with TooShort set when the reason is the short pane;
+// the runner keeps one turn-start hold per strand guid, so the orch watcher's probes keep one hold across its ticks as a send keeps one across its polls.
+// A ready reading beside a pane that shows the needle or no box still answers idle, and logs the disagreement with the pane's last lines at Debug.
+// Wait's own shadow logging below stays display only.
 // The optional SessionSignalParser capability reads the events file's hook lines as provider-neutral signals with hook-side times:
-// a turn start, a turn end (with its outstanding background tasks), an API-error turn end, an ask, an idle notice and a session end.
+// a turn start, a turn end (with its outstanding background tasks), an API-error turn end, an ask, an idle notice, a session end and a session start (with its source).
+// The fold does not move on a session start: the reading stays as it was, and the time of the newest one is read through RunSessionState.SessionStartAt, zero when none.
 // SessionFold reduces the signals in file order, with facts the caller reads, to one state: busy, idle-done, idle-stalled, asking, dead or unknown, with a cause, a since time and the history of states passed through.
 // Precedence, first that applies: a process-ending session end; a process proven dead; liveness left unproven; an unreadable events file; no signal at all; otherwise the state the signals give.
 // A turn end reads busy while it reports background tasks, idle-done when the run's output files exist, asking for an interactive run, and idle-stalled otherwise.

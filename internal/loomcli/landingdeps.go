@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
@@ -19,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -48,6 +50,7 @@ func landingDeps(
 	cfg landingshed.Config,
 	parentName string,
 	verifyWaitMark func(label string, start time.Time) error,
+	stopConflictSession func() (string, error),
 ) landingshed.Deps {
 	return landingshed.Deps{
 		ParentName:      parentName,
@@ -91,8 +94,21 @@ func landingDeps(
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{shedrun.StatusRel(l, shedrun.SelfRunID)}, fmt.Sprintf("loom: status checkpoint for %s", seedSlug(l.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
-		ApprovalPath:  loomengine.LoomApprovalPath(l),
-		RejectionPath: loomengine.LoomRejectionPath(l),
+		// The pre-merge step probes the pair's merge state, aborts the row's own parked merge-in and stops the run's conflict sessions first.
+		MergeState: func() (fabricengine.MidMergeState, error) {
+			return fabricengine.MidMerge(l)
+		},
+		AbortMerge: func() error {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return err
+			}
+			_, err = f.MergeAbort()
+			return err
+		},
+		StopConflictSession: stopConflictSession,
+		ApprovalPath:        loomengine.LoomApprovalPath(l),
+		RejectionPath:       loomengine.LoomRejectionPath(l),
 		TaskHead: func() (string, error) {
 			f, err := fabricengine.Open(l)
 			if err != nil {
@@ -179,6 +195,36 @@ func driverWaitMark(
 			return nil
 		}
 		return setMark(strand.GUID, label, start)
+	}
+}
+
+// conflictSessionStopper returns the seam landingshed stops the run's conflict sessions through, built over two seams so a test needs no tmux:
+// status reads reed's strand table and stop ends one strand by guid.
+// The table is read at call time, and every live, non-retiring strand whose role is the conflict role or a numbered form of it is stopped.
+// The first stop that fails ends the pass and is returned with that strand's guid;
+// a failed table read is returned with an empty guid, and a pass that stops every match, or finds none, returns an empty guid and nil.
+func conflictSessionStopper(
+	status func() (reedengine.StatusResult, error),
+	stop func(guid string) error,
+) func() (string, error) {
+	return func() (string, error) {
+		result, err := status()
+		if err != nil {
+			return "", err
+		}
+		for _, strand := range result.Strands {
+			if !strand.Live || strand.Retiring {
+				continue
+			}
+			name, err := agentname.Parse(strand.Name)
+			if err != nil || !agentname.MatchesRole(name.Role, mergeresolve.ConflictRole) {
+				continue
+			}
+			if err := stop(strand.GUID); err != nil {
+				return strand.GUID, err
+			}
+		}
+		return "", nil
 	}
 }
 

@@ -17,6 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/spf13/cobra"
 )
 
@@ -268,5 +270,73 @@ func TestOrchStrands_MatchesFullAndLegacyNames(t *testing.T) {
 	got := orchStrands(strands)
 	if len(got) != 2 || got[0].GUID != "g1" || got[1].GUID != "g2" {
 		t.Errorf("orchStrands = %+v; want g1 and g2 only", got)
+	}
+}
+
+func TestResumeContext_PrintsHookJSONPerPhaseAndFailsWithoutMark(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		state orchengine.State
+		// breakStencil removes the reload stencil, so a render of the idle pointer fails.
+		breakStencil bool
+		want         func(c *orchCLI) string
+		wantErr      bool
+	}{
+		{name: "resuming prints the pending pointer", state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseResuming, PendingResume: "read the note"},
+			want: func(*orchCLI) string { return "read the note" }},
+		{name: "compacting prints the resume prompt", state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseCompacting, LastHandoff: "/h/note.md"},
+			want: func(c *orchCLI) string {
+				text, err := orchengine.RenderResumePrompt(c.stencilsDir, c.paths.RolePath, "/h/note.md")
+				if err != nil {
+					t.Fatal(err)
+				}
+				return text
+			}},
+		{name: "idle prints the reload prompt", state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle},
+			want: func(c *orchCLI) string {
+				text, err := orchengine.RenderReloadPrompt(c.stencilsDir, c.paths.RolePath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return text
+			}},
+		{name: "a missing stencil is a JSON error and writes no mark", state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle}, breakStencil: true, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := newTestCLI(t, &fakeStrands{})
+			c.paths.ResumeMarkPath = filepath.Join(c.paths.Dir, "resume-mark")
+			c.paths.RolePath = filepath.Join(c.paths.Dir, "role.md")
+			c.stencilsDir = stencilkit.Seed(t)
+			if err := orchengine.SaveState(c.paths, tt.state); err != nil {
+				t.Fatal(err)
+			}
+			if tt.breakStencil {
+				if err := os.Remove(stencilstore.Path(c.stencilsDir, "orch-template-reload")); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			code, env := runVerb(t, c.resumeContextCmd())
+
+			_, markFound, err := orchengine.ReadResumeMark(c.paths)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.wantErr {
+				if code != 1 || env["ok"] != false || markFound {
+					t.Errorf("exit = %d, env = %v, mark found = %v; want a JSON error and no mark", code, env, markFound)
+				}
+				return
+			}
+			hookOutput, _ := env["hookSpecificOutput"].(map[string]any)
+			if code != 0 || hookOutput["hookEventName"] != "SessionStart" || hookOutput["additionalContext"] != tt.want(c) || !markFound {
+				t.Errorf("exit = %d, env = %v, mark found = %v; want the SessionStart context %q and a mark", code, env, markFound, tt.want(c))
+			}
+		})
 	}
 }

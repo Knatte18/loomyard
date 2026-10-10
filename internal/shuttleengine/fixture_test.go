@@ -12,19 +12,19 @@ import (
 // defaultConfig is the Config most tests that never poll use.
 var defaultConfig = Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
 
-// fastConfig is defaultConfig with a poll interval and liveness cadence small enough that a scripted probe sequence runs at no real wall-clock cost.
+// fastConfig is defaultConfig with the floor poll interval and a liveness probe on every poll; newFixture's fake clock makes a scripted probe sequence cost no real wall-clock time.
 // Its RunTimeoutMin is generous enough that Spec.validate's zero-Timeout default never binds the run deadline before a test's own scripted startup outcome does;
 // a zero result would put run.deadline at start time, which the startup step's own run-deadline check would hit after the very first pending probe.
-var fastConfig = Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1}
+var fastConfig = Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1000, LivenessEveryNPolls: 1}
 
-// shortStartupConfig is fastConfig with a one-second startup deadline and a poll interval long enough that a single fake-clock sleep crosses it.
-var shortStartupConfig = Config{StartupTimeoutS: 1, RunTimeoutMin: 5, PollIntervalMS: 600, LivenessEveryNPolls: 1}
+// shortStartupConfig is fastConfig with a one-second startup deadline, which a single fake-clock sleep of the poll interval reaches.
+var shortStartupConfig = Config{StartupTimeoutS: 1, RunTimeoutMin: 5, PollIntervalMS: 1000, LivenessEveryNPolls: 1}
 
 // sparseProbeConfig is fastConfig with a liveness probe only every hundredth poll.
-var sparseProbeConfig = Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 100}
+var sparseProbeConfig = Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1000, LivenessEveryNPolls: 100}
 
 // gateConfig is fastConfig with a liveness cadence no gate test reaches, so a gate's scripted STOP and pane sequence alone decides the outcome.
-var gateConfig = Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000}
+var gateConfig = Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1000, LivenessEveryNPolls: 1_000_000}
 
 // fixture is a Runner over a fresh temp worktree.
 // Anchor is a real subpath of Worktree, never the same value, so a swapped NewRunner argument pair fails a test rather than passing.
@@ -56,7 +56,8 @@ func withConfig(cfg Config) fixtureOpt {
 	return func(s *fixtureSettings) { s.cfg = cfg }
 }
 
-// withClock sets the Runner's clock seam.
+// withClock sets the Runner's clock seam, a fake clock whose Sleep advances it otherwise;
+// a test that needs the wall clock passes realClock{}.
 func withClock(clk Clock) fixtureOpt {
 	return func(s *fixtureSettings) { s.clk = clk }
 }
@@ -74,7 +75,7 @@ func withSeparateRunDir() fixtureOpt {
 
 func newFixture(t *testing.T, reed ReedOps, engine Engine, opts ...fixtureOpt) *fixture {
 	t.Helper()
-	s := fixtureSettings{cfg: defaultConfig}
+	s := fixtureSettings{cfg: defaultConfig, clk: newFakeClock(time.Now())}
 	for _, opt := range opts {
 		opt(&s)
 	}
@@ -87,9 +88,7 @@ func newFixture(t *testing.T, reed ReedOps, engine Engine, opts ...fixtureOpt) *
 		s.cfg.RunDir = t.TempDir()
 	}
 	fx.Runner = NewRunner(reed, engine, fx.Anchor, fx.Worktree, s.cfg)
-	if s.clk != nil {
-		fx.Runner.SetClock(s.clk)
-	}
+	fx.Runner.SetClock(s.clk)
 	fx.DotLyx = filepath.Join(fx.Anchor, lyxdirs.DotLyxDirName)
 	fx.RunRoot = runDirRoot(s.cfg, fx.Anchor)
 	if s.guid != "" {

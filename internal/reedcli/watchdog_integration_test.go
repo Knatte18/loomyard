@@ -25,9 +25,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // watchdogIntegrationTmux resolves the configured multiplexer binary, skipping the calling test when
@@ -75,15 +77,18 @@ func watchdogIntegrationEngine(t *testing.T, worktreeRoot string) *reedengine.En
 
 // watchdogTestCycle is the discovery cycle the compressed timing runs at, and watchdogTestWait the bound a test gives a discovery-dependent condition:
 // many cycles, so a slow tmux round trip never flakes it, while a condition that holds returns at the first poll.
+// watchdogSignalTestBase is the base cadence of the loop that proves the discover signal wakes a backed-off loop.
 const (
-	watchdogTestCycle = 200 * time.Millisecond
-	watchdogTestWait  = 10 * time.Second
+	watchdogTestCycle      = 200 * time.Millisecond
+	watchdogTestWait       = 10 * time.Second
+	watchdogSignalTestBase = 100 * time.Millisecond
 )
 
-// compressedWatchdogTiming returns a watchdogTiming whose discovery cycle is sub-second while IdleCycles and OrphanGoneCycles keep their production values, so a test still proves the consecutive-cycle rules and only waits less.
+// compressedWatchdogTiming returns a watchdogTiming whose discovery cycle is sub-second and never backs off, while IdleCycles and OrphanGoneCycles keep their production values, so a test still proves the consecutive-cycle rules and only waits less.
 func compressedWatchdogTiming() watchdogTiming {
 	return watchdogTiming{
 		DiscoveryCycle:   watchdogTestCycle,
+		DiscoveryCeiling: watchdogTestCycle,
 		IdleCycles:       watchdogHubIdleCycles,
 		OrphanGoneCycles: watchdogOrphanGoneCycles,
 	}
@@ -250,6 +255,49 @@ func TestWatchdogDaemon(t *testing.T) {
 		return
 	}
 
+	// BootSignalWakesBackedOffDiscovery runs a discovery loop whose cadence has backed off over a live prime session, then boots the pair's session through reed and asserts the loop enters it before its next unsignalled cycle, which only the discover signal the boot touches can explain.
+	// The loop is in-process on its own context, so the shared loop of the steps below is untouched.
+	if !t.Run("BootSignalWakesBackedOffDiscovery", func(t *testing.T) {
+		logs := logcapture.Capture(t)
+		logger.SetVerbosity(2)
+
+		primeEng := watchdogIntegrationEngine(t, prime)
+		timing := watchdogTiming{
+			DiscoveryCycle:   watchdogSignalTestBase,
+			DiscoveryCeiling: 30 * time.Second,
+			IdleCycles:       watchdogHubIdleCycles,
+			OrphanGoneCycles: watchdogOrphanGoneCycles,
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() {
+			done <- runWatchdogLoop(ctx, h.Path, tmuxPath, primeEng.ShellPath(), timing, reedengine.OpenFileWatch)
+		}()
+		defer func() {
+			cancel()
+			<-done
+		}()
+
+		entered := func(session string) bool {
+			for _, line := range strings.Split(logs.String(), "\n") {
+				if strings.Contains(line, "reed: watchdog entered session") && strings.Contains(line, session) {
+					return true
+				}
+			}
+			return false
+		}
+		waitForCondition(t, watchdogTestWait, func() bool { return entered(primeEng.SessionName()) })
+		// The prime's entry resets the cadence to the base, so the unsignalled cycles after it fall 63 and then 127 bases later.
+		// The pair boots past the 63rd and must be entered before the 120th, which no unsignalled cycle can do.
+		primeEnteredAt := time.Now()
+		time.Sleep(70 * watchdogSignalTestBase)
+
+		pairEng := watchdogIntegrationEngine(t, pair)
+		waitForCondition(t, time.Until(primeEnteredAt.Add(120*watchdogSignalTestBase)), func() bool { return entered(pairEng.SessionName()) })
+	}) {
+		return
+	}
+
 	// The next steps share one discovery loop over two sessions.
 	// The first of them boots the engines and starts the loop; the loop and the engines outlive the step that created them, so their teardown is registered on the scenario rather than on that step.
 	scenario := t
@@ -273,7 +321,7 @@ func TestWatchdogDaemon(t *testing.T) {
 		eng2 = bootWatchdogEngine(t, pair)
 		scenario.Cleanup(func() { _, _ = eng2.Down() })
 		go func() {
-			loopDone <- runWatchdogLoop(loopCtx, h.Path, tmuxPath, eng1.ShellPath(), compressedWatchdogTiming())
+			loopDone <- runWatchdogLoop(loopCtx, h.Path, tmuxPath, eng1.ShellPath(), compressedWatchdogTiming(), reedengine.OpenFileWatch)
 		}()
 
 		// Both sessions must be discovered within a couple of discovery cycles.
