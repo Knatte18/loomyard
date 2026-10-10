@@ -8,6 +8,7 @@ package landingshed
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,9 +66,10 @@ func TestVerifyGate_RealVerifytreeScenario(t *testing.T) {
 			t.Fatalf("command ran %d time(s); want %d", got, want)
 		}
 	}
-	requireLogHas := func(t *testing.T, want string) {
+	// requireLogHas reads the n-th run's own log; the cancelled first step's run opens the first one.
+	requireLogHas := func(t *testing.T, n int, want string) {
 		t.Helper()
-		got, err := os.ReadFile(gate.paths.Log)
+		got, err := os.ReadFile(filepath.Join(gate.paths.Dir, fmt.Sprintf("verify-%d.log", n)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -94,7 +96,7 @@ func TestVerifyGate_RealVerifytreeScenario(t *testing.T) {
 			t.Fatalf("resumed check = (%q, %v); want (\"\", nil)", reason, err)
 		}
 		requireRuns(t, 1)
-		requireLogHas(t, "verify-ok")
+		requireLogHas(t, 2, "verify-ok")
 	}) {
 		return
 	}
@@ -118,7 +120,8 @@ func TestVerifyGate_RealVerifytreeScenario(t *testing.T) {
 			t.Fatalf("check over a new tree with a failing command = (%q, %v); want a failure reason", reason, err)
 		}
 		requireRuns(t, 2)
-		requireLogHas(t, "verify-broken")
+		requireLogHas(t, 3, "verify-broken")
+		requireLogHas(t, 2, "verify-ok")
 	}) {
 		return
 	}

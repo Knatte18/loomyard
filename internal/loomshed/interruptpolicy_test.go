@@ -19,6 +19,7 @@ func TestInterruptPolicyFor(t *testing.T) {
 		{"batchifier reinvoke", NameBatchifier, InterruptPolicyReinvoke},
 		{"bouncer reinvoke", NameDiscussionBouncer, InterruptPolicyReinvoke},
 		{"burler reinvoke", NameDiscussionBurler, InterruptPolicyReinvoke},
+		{"darn reinvoke", NameDarn, InterruptPolicyReinvoke},
 		{"empty name", "", ""},
 		{"unknown name", "Not-A-Real-Row", ""},
 	}

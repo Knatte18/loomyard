@@ -113,6 +113,19 @@ func (c *loomCLI) resolveRunID(location *lyxcwd.Location, verb string, args []st
 	return shedverbs.KindlessRefusal{Err: errors.New(shedrun.MissingSeedMessage("loom", runID, existing, `run "lyx loom start" first to bootstrap this task`))}
 }
 
+// resolveRecipe records on c the recipe the addressed run's seed names, shedrun.RecipeLoom when the run has no seed yet.
+// It runs once, right after resolveRunID, so every verb, the lightweight ones included, reads the same recipe.
+// Only the seed's recipe is read here; the driver choice stays with the verb that selects the driving surface.
+func (c *loomCLI) resolveRecipe(location *lyxcwd.Location) error {
+	seed, found, err := shedrun.ReadSeed(location, c.runID)
+	if err != nil {
+		return err
+	}
+	c.recipe = resolveSeedRecipe(seed, found)
+
+	return nil
+}
+
 // arm resolves cwd into a *lyxcwd.Location and delegates to armAt with the raw positional args,
 // which resolveRunID resolves into a run-id exactly as it always has. It is loom's own subtree
 // entry point: every "lyx loom <verb>" invocation reaches Arm, never ArmAt directly, so its own
@@ -159,6 +172,9 @@ func (c *loomCLI) armAt(location *lyxcwd.Location, verb string, args []string) (
 	if err := c.resolveRunID(location, verb, args); err != nil {
 		return shedverbs.Spec{}, err
 	}
+	if err := c.resolveRecipe(location); err != nil {
+		return shedverbs.Spec{}, err
+	}
 
 	cwd := location.AnchorPath()
 	if verbUsesLightweightWiring(verb) {
@@ -174,15 +190,11 @@ func (c *loomCLI) armAt(location *lyxcwd.Location, verb string, args []string) (
 	return c.specFor(verb), nil
 }
 
-// loadRouting projects loom's recipe routing onto c.routing, with MaxBounces taken from c.shedPaths
+// loadRouting projects the run's recipe routing onto c.routing, with MaxBounces taken from c.shedPaths
 // so status reports the same bounce budget the engine enforces. It runs after wiring, which is what
 // fills c.shedPaths, and is the one place the routing can return an error; specFor only copies it.
 func (c *loomCLI) loadRouting() error {
-	budget, err := c.reviewBudget()
-	if err != nil {
-		return err
-	}
-	routing, err := loomrecipe.Routing(budget)
+	routing, err := c.recipeRouting()
 	if err != nil {
 		return err
 	}
@@ -191,6 +203,38 @@ func (c *loomCLI) loadRouting() error {
 	c.routing = routing
 
 	return nil
+}
+
+// recipeRouting returns the routing of the run's recipe: the darn recipe's for a darn run, loom's, with the review bounce budget applied, otherwise.
+func (c *loomCLI) recipeRouting() (shedengine.Routing, error) {
+	if c.recipe == shedrun.RecipeDarn {
+		return loomrecipe.DarnRouting()
+	}
+
+	budget, err := c.reviewBudget()
+	if err != nil {
+		return shedengine.Routing{}, err
+	}
+
+	return loomrecipe.Routing(budget)
+}
+
+// newShed builds the shed of the run's recipe over c.env and c.shedPaths.
+func (c *loomCLI) newShed() (*shedengine.Shed, error) {
+	if c.recipe == shedrun.RecipeDarn {
+		return loomrecipe.NewDarn(c.env, c.shedPaths)
+	}
+
+	return loomrecipe.New(c.env, c.shedPaths)
+}
+
+// verifySource returns the verify source of the run's recipe: darn.yaml's for a darn run, the plan's otherwise.
+func (c *loomCLI) verifySource() verifySource {
+	if c.recipe == shedrun.RecipeDarn {
+		return darnVerifySource(c.location)
+	}
+
+	return planVerifySource(c.location)
 }
 
 // reviewBudget returns the review bounce budget the routing projection reports.
@@ -274,7 +318,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 	case "step":
 		spec.BuildShed = c.buildLoomShed
 	case "run":
-		spec.BuildShed = func() (*shedengine.Shed, error) { return loomrecipe.New(c.env, c.shedPaths) }
+		spec.BuildShed = c.newShed
 	}
 
 	return spec
@@ -368,6 +412,7 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 		c.parentName,
 		driverWaitMark(c.reed.Status, c.reed.SetWaitMark),
 		conflictSessionStopper(c.reed.Status, c.runner.StopStrand),
+		c.verifySource(),
 	)
 
 	// Ensure the friction directory before the run starts, and never clear it here: run requires

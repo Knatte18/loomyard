@@ -1,4 +1,4 @@
-// dirtiness.go holds the package's sole `git status --porcelain` probe.
+// dirtiness.go holds the package's `git status --porcelain` probes: the dirtiness check and the tracked dirty-path listing.
 //
 // Every call site in this package used to hand-roll its own `git status --porcelain` invocation —
 // eight of them, four passing `--untracked-files=no` and four not — with each site free to reinvent
@@ -20,6 +20,7 @@ package fabricengine
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -66,4 +67,27 @@ func worktreeDirty(scope dirtyScope, dir string) (dirty bool, detail string, err
 
 	trimmed := strings.TrimSpace(stdout)
 	return trimmed != "", trimmed, nil
+}
+
+// trackedDirtyPaths returns the tracked uncommitted paths of the checkout at dir, as absolute paths under dir.
+// It reads the same scope worktreeDirty(scopeTracked, dir) does, in the NUL-separated form that quotes nothing, so a path with a space or a non-ASCII character comes back verbatim.
+// A rename or copy entry names its destination and is followed by a record holding its source, which is skipped.
+func trackedDirtyPaths(dir string) ([]string, error) {
+	stdout, err := gitexec.Run([]string{"status", "--porcelain", "-z", "--untracked-files=no"}, dir)
+	if err != nil {
+		return nil, fmt.Errorf("check for uncommitted changes in %s: %w", dir, err)
+	}
+	var paths []string
+	records := strings.Split(stdout, "\x00")
+	for i := 0; i < len(records); i++ {
+		record := records[i]
+		if len(record) < 4 {
+			continue
+		}
+		paths = append(paths, filepath.Join(dir, filepath.FromSlash(record[3:])))
+		if strings.ContainsAny(record[:2], "RC") {
+			i++
+		}
+	}
+	return paths, nil
 }

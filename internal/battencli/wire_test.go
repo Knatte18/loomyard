@@ -253,16 +253,25 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 	if !errors.Is(err, battenshed.ErrUnsupportedChildRecipe) {
 		t.Fatalf("WriteSeed(batten) error = %v; want it to wrap ErrUnsupportedChildRecipe", err)
 	}
-	if !strings.Contains(err.Error(), shedrun.RecipeLoom) {
-		t.Errorf("WriteSeed(batten) error = %q; want it to name the one recipe a child may run", err)
+	for _, admitted := range []string{shedrun.RecipeLoom, shedrun.RecipeDarn} {
+		if !strings.Contains(err.Error(), admitted) {
+			t.Errorf("WriteSeed(batten) error = %q; want it to name the admitted recipe %q", err, admitted)
+		}
 	}
 
-	err = c.env.SeedChild.WriteSeed(context.Background(), shedrun.RecipeLoom, shedrun.DriverGo)
-	if errors.Is(err, battenshed.ErrUnsupportedChildRecipe) || errors.Is(err, battenshed.ErrUnknownRecipe) {
-		t.Fatalf("WriteSeed(loom) error = %v; want a loom child admitted past the recipe checks", err)
+	err = c.env.SeedChild.WriteSeed(context.Background(), "no-such-recipe", shedrun.DriverGo)
+	if !errors.Is(err, battenshed.ErrUnknownRecipe) {
+		t.Errorf("WriteSeed(unknown) error = %v; want it to wrap ErrUnknownRecipe", err)
 	}
-	if err == nil || !strings.Contains(err.Error(), "not present") {
-		t.Errorf("WriteSeed(loom) error = %v; want the absent-pair refusal, proving the recipe check ran first", err)
+
+	for _, admitted := range []string{shedrun.RecipeLoom, shedrun.RecipeDarn} {
+		err = c.env.SeedChild.WriteSeed(context.Background(), admitted, shedrun.DriverGo)
+		if errors.Is(err, battenshed.ErrUnsupportedChildRecipe) || errors.Is(err, battenshed.ErrUnknownRecipe) {
+			t.Fatalf("WriteSeed(%s) error = %v; want the child admitted past the recipe checks", admitted, err)
+		}
+		if err == nil || !strings.Contains(err.Error(), "not present") {
+			t.Errorf("WriteSeed(%s) error = %v; want the absent-pair refusal, proving the recipe check ran first", admitted, err)
+		}
 	}
 }
 

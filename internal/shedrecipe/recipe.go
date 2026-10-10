@@ -55,6 +55,11 @@ type Env struct {
 	RunScratchDir string
 	// VerifyDir is the told verify directory, read by the gate resolver's "verify" gate.
 	VerifyDir string
+	// VerifyCommand is the told verify-command source, read at each arrival by the gate resolver's "verify" gate, which requires it.
+	VerifyCommand func() (string, error)
+	// VerifyMergeBase is the told reader of the task branch's merge base with the parent branch, read by the gate resolver's "verify" gate.
+	// Nil selects the gate's round form; set selects its whole-diff form.
+	VerifyMergeBase func() (string, error)
 	// GateSlots is the hub gate-slot pool every Go-side verify a row runs acquires from, read by the gate resolver's "verify" gate.
 	// Nil where no hub is wired, which runs the verify unslotted.
 	GateSlots *gateslot.Pool
@@ -202,6 +207,14 @@ type Env struct {
 	// Rework is a whole-struct passthrough to loomshed.NewPRRework, following Env.Landing's own precedent:
 	// the producer has behaviour of its own -- the generation archive, the round record and the rejection removal -- that per-seam fakes must be able to substitute individually.
 	Rework loomshed.PRReworkDeps
+	// DarnSpec is the injected Spec factory the DarnWrite entry evaluates once per Call, with the token texts the producer tells that session.
+	// It arrives as a closure for the reason ReworkSpec does.
+	DarnSpec func(loomshed.DarnTold) (shuttleengine.Spec, error)
+	// DarnVerifyAttempts is the verify gate's attempt budget of the darn recipe, which `darn.yaml`'s verify_attempts supplies.
+	// internal/loomrecipe alone reads it, stamping it onto the Darn row at every build.
+	DarnVerifyAttempts int
+	// Darn is a whole-struct passthrough to loomshed.NewDarnWrite, for the reason Rework is.
+	Darn loomshed.DarnDeps
 	// PlanIndex is the code index the "plan" and "rework-plan" gates resolve plan refs against.
 	// It arrives as an interface so this package, and the recipe packages built on it, link no tree-sitter grammar.
 	PlanIndex planindex.Index

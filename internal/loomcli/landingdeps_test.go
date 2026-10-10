@@ -52,6 +52,7 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		"parent-session",
 		func(string, time.Time) error { return nil },
 		func() (string, error) { return "", nil },
+		planVerifySource(loc),
 	)
 
 	if deps.ParentName != "parent-session" {

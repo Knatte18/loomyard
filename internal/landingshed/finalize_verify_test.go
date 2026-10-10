@@ -5,6 +5,7 @@ package landingshed
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -124,8 +125,8 @@ func TestFinalizeVerify_Fail(t *testing.T) {
 	fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
 	writeVerifyLog(t, fx.gate, "verify output")
 	reason := requireFinalizeReason(t, shedfake.RequireOutcome(t, fx.fz, shedengine.Stuck))
-	if !strings.Contains(reason, "exit code 1") || !strings.Contains(reason, fx.gate.paths.Log) {
-		t.Errorf("reason %q lacks the exit code or the log path", reason)
+	if log := filepath.Join(fx.gate.paths.Dir, "verify-1.log"); !strings.Contains(reason, "exit code 1") || !strings.Contains(reason, log) {
+		t.Errorf("reason %q lacks the exit code or the log path %s", reason, log)
 	}
 	if _, ok, _ := verifytree.ReadPublishFailure(fx.gate.paths); ok {
 		t.Error("Finalize wrote a Publish failure record")

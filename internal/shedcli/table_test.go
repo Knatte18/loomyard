@@ -26,7 +26,7 @@ const tableScanMinFiles = 3
 // four-name contract is the simpler, equally authoritative source.
 var allGenericVerbs = []string{"run", "step", "status", "pause", "goto"}
 
-// TestRecipes_KeySet asserts recipes' key set is exactly {"batten", "loom"} and equals shedrun.RecipeNames(), so the vocabulary internal/shedrun declares and the arming table internal/shedcli declares cannot silently drift apart.
+// TestRecipes_KeySet asserts recipes' key set is exactly {"batten", "darn", "loom"} and equals shedrun.RecipeNames(), so the vocabulary internal/shedrun declares and the arming table internal/shedcli declares cannot silently drift apart.
 //
 //testtiming:keep pins the table's key set against both literal and the shedrun vocabulary, which its covering test does not
 func TestRecipes_KeySet(t *testing.T) {
@@ -35,7 +35,7 @@ func TestRecipes_KeySet(t *testing.T) {
 		name string
 		want []string
 	}{
-		{"exactly loom and batten", []string{"batten", "loom"}},
+		{"exactly batten, darn and loom", []string{"batten", "darn", "loom"}},
 		{"matches the shedrun vocabulary", shedrun.RecipeNames()},
 	}
 	for _, tt := range tests {
@@ -66,6 +66,7 @@ func TestRecipes_Entries(t *testing.T) {
 		wantSeedRule      bool
 	}{
 		{"loom", loomcli.BootstrapVerb, false},
+		{"darn", loomcli.BootstrapVerb, false},
 		{"batten", battencli.BootstrapVerb, true},
 	}
 	for _, tt := range tests {

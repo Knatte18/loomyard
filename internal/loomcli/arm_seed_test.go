@@ -123,3 +123,42 @@ func TestResolveRunID_StatusFilePresentWithNoSeedTakesTheSameRefusal(t *testing.
 		t.Fatal("resolveRunID(\"pause\", nil) = nil; want a refusal -- a status file exists with no seed beside it")
 	}
 }
+
+// TestResolveRecipe asserts resolveRecipe records the recipe the addressed run's seed names, loom when the run has no seed, and leaves the seed unwritten.
+func TestResolveRecipe(t *testing.T) {
+	tests := []struct {
+		name   string
+		seed   *shedrun.Seed
+		want   string
+		runID  string
+		seeded string
+	}{
+		{name: "no seed takes loom", want: shedrun.RecipeLoom, runID: shedrun.SelfRunID},
+		{name: "loom seed", seed: &shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}, want: shedrun.RecipeLoom, runID: shedrun.SelfRunID, seeded: shedrun.SelfRunID},
+		{name: "darn seed", seed: &shedrun.Seed{Recipe: shedrun.RecipeDarn, Driver: shedrun.DriverGo}, want: shedrun.RecipeDarn, runID: shedrun.SelfRunID, seeded: shedrun.SelfRunID},
+		{name: "the addressed run-id's seed is read", seed: &shedrun.Seed{Recipe: shedrun.RecipeDarn, Driver: shedrun.DriverGo}, want: shedrun.RecipeDarn, runID: "other", seeded: "other"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+			if tt.seed != nil {
+				if err := shedrun.WriteSeed(loc, tt.seeded, *tt.seed); err != nil {
+					t.Fatalf("shedrun.WriteSeed() = %v; want nil", err)
+				}
+			}
+			c := &loomCLI{runID: tt.runID}
+
+			if err := c.resolveRecipe(loc); err != nil {
+				t.Fatalf("resolveRecipe() = %v; want nil", err)
+			}
+			if c.recipe != tt.want {
+				t.Errorf("recipe = %q; want %q", c.recipe, tt.want)
+			}
+			if tt.seed == nil {
+				if _, found, err := shedrun.ReadSeed(loc, tt.runID); err != nil || found {
+					t.Errorf("ReadSeed after resolveRecipe = (found=%v, err=%v); want (false, nil) -- nothing written", found, err)
+				}
+			}
+		})
+	}
+}

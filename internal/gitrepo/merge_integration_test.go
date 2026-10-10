@@ -95,6 +95,18 @@ func TestMergePrimitives(t *testing.T) {
 				t.Fatalf("MergeStart(--squash, false) error = %v; want errors.Is(err, ErrInvalidSHA)", err)
 			}
 		}},
+		{"MergeBase of two diverged branches is their fork commit", func(t *testing.T) {
+			toBase(t)
+			branch := conflict(t, "shared.txt")
+
+			got, err := repo.MergeBase(resolveForTest(t, repo, branch), requireCurrentSHA(t, repo))
+			if err != nil {
+				t.Fatalf("MergeBase(%s, main) error = %v; want nil", branch, err)
+			}
+			if got != baseSHA {
+				t.Errorf("MergeBase(%s, main) = %s; want the fork commit %s", branch, got, baseSHA)
+			}
+		}},
 		{"ConflictedFiles and MergeHeads return an empty non-nil slice on a clean tree", func(t *testing.T) {
 			toBase(t)
 

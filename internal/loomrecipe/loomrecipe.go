@@ -58,11 +58,8 @@ import (
 // is the only place in the tree where both copies are visible at once, so no other layer can make
 // this check.
 func New(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error) {
-	if env.StatusPath != paths.StatusPath {
-		return nil, fmt.Errorf("loomrecipe: env.StatusPath %q != paths.StatusPath %q", env.StatusPath, paths.StatusPath)
-	}
-	if env.StatusLockPath != paths.StatusLockPath {
-		return nil, fmt.Errorf("loomrecipe: env.StatusLockPath %q != paths.StatusLockPath %q", env.StatusLockPath, paths.StatusLockPath)
+	if err := checkStatusPaths(env, paths); err != nil {
+		return nil, err
 	}
 
 	if err := checkReviewBudget("ReviewMaxBounces", env.ReviewMaxBounces); err != nil {
@@ -87,6 +84,18 @@ func New(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error
 	applyReviewBudget(shed.Producers, segments, env.ReviewMaxBounces)
 
 	return shed, nil
+}
+
+// checkStatusPaths refuses an env whose status and status-lock paths differ from paths' copies of them.
+func checkStatusPaths(env shedrecipe.Env, paths shedbuild.ShedPaths) error {
+	if env.StatusPath != paths.StatusPath {
+		return fmt.Errorf("loomrecipe: env.StatusPath %q != paths.StatusPath %q", env.StatusPath, paths.StatusPath)
+	}
+	if env.StatusLockPath != paths.StatusLockPath {
+		return fmt.Errorf("loomrecipe: env.StatusLockPath %q != paths.StatusLockPath %q", env.StatusLockPath, paths.StatusLockPath)
+	}
+
+	return nil
 }
 
 // applyDiscussionProducer runs the Discussion-Write row on the seat-table engine when seats is true, and leaves recipe alone otherwise.

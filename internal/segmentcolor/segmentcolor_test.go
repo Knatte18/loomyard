@@ -56,7 +56,7 @@ func TestParseColor(t *testing.T) {
 
 func TestClosedSets(t *testing.T) {
 	t.Parallel()
-	wantSegments := []Segment{"coordinator", "discussion", "plan", "webster", "review", "describe", "landing"}
+	wantSegments := []Segment{"coordinator", "discussion", "plan", "webster", "review", "describe", "landing", "darn"}
 	if got := Segments(); !slices.Equal(got, wantSegments) {
 		t.Errorf("Segments() = %v, want %v", got, wantSegments)
 	}
