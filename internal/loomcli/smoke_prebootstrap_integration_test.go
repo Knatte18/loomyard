@@ -183,6 +183,12 @@ func hubStampPath(loc *lyxcwd.Location) string {
 // Status leaves a retired key in a pair's committed batcher.yaml and writes no stamp.
 // Resume on an unparseable loom.yaml refuses, naming the file and the way forward, and writes no stamp.
 // Resume after the fix removes the key, commits it and writes the stamp whatever its own exit.
+//
+// No run has reproduced a flake in this test.
+// Twenty repeats of the test alone passed, and so did twenty more under a busy loop on every core twice over.
+// Each repeat finished in a small fraction of the 30 and 60 second subprocess bounds, so a cold `lyx` timing out is ruled out.
+// `sharedLyxBinary` builds into a directory outside the test's own, but nothing removes it while the test binary runs, so the binary cannot vanish under a repeat.
+// The test shares no state with the others beyond that binary, and it sets FABRIC_SKIP_PUSH for the commit's detached push.
 func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 	t.Parallel()
 
