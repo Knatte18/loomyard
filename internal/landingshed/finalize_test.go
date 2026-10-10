@@ -379,7 +379,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 
 // TestFinalize_ConfigChangeNotice pins the one notice Finalize queues about the task's config changes: at Done only, one line carrying what the operator needs to re-apply them, a read error reported instead of stopping, and neither a failing nor an absent Notify changing the verdict.
 func TestFinalize_ConfigChangeNotice(t *testing.T) {
-	changed := fabricengine.ConfigChanges{Files: []string{"loom.yaml", "shuttle.yaml"}, Base: "base111", Tip: "tip222"}
+	changed := fabricengine.ConfigChanges{Files: []string{"loom.yaml", "shuttle.yaml"}, Base: "base111", Tip: "tip222", ParentTip: "parent333"}
 	tests := []struct {
 		name        string
 		changes     fabricengine.ConfigChanges
@@ -395,7 +395,7 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 			name:         "changed files queue one notice naming the branch, files, SHAs and the re-apply instruction",
 			changes:      changed,
 			wantOutcome:  shedengine.Done,
-			wantInNotice: []string{"loom:", `"task-branch"`, "loom.yaml", "shuttle.yaml", "base111", "tip222", "does not carry them", "re-apply"},
+			wantInNotice: []string{"loom:", `"task-branch"`, "loom.yaml", "shuttle.yaml", "base111", "tip222", "parent tip parent333", "does not carry them", "re-apply"},
 		},
 		{
 			name:        "an empty diff queues none",

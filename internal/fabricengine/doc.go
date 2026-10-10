@@ -528,7 +528,7 @@
 // origin is never touched.
 //
 // **Config changes.**
-// `ReadConfigChanges` (configchanges.go) diffs a task's weft branch against its fork point from the parent's weft branch and reports which of the config files its caller names changed, as `ConfigChanges`.
+// `ReadConfigChanges` (configchanges.go) intersects the diff of a task's weft branch against its fork point from the parent's weft branch with its diff against the parent's current tip, and reports which of the config files its caller names are in both, as `ConfigChanges`.
 // It is read-only and writes nothing;
 // the caller supplies the anchor-relative file set, because the config registry imports this package.
 //
