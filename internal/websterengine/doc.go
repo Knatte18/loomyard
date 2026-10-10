@@ -366,8 +366,7 @@
 // Only an operator's shorter --wait can return a running snapshot.
 // A recovery strand's turn end with no report classifies dead/asking only when it is the strand's newest turn signal and nothing keeps it waiting (TurnEndedAfter):
 // a later turn start is the strand working again, and a plain turn end counts only after it has stood a few seconds, because a background shell that finished just before the turn ended starts the next turn through its completion notification (issue #498).
-// A turn end left waiting on background work follows Master's background-shell rule through shuttle's ShellWaitBound and ShellWaitExpires:
-// one waiting only on transcript-reported shells counts after `background_shell_wait_min`, and one waiting on a fork or a payload-reported shell never counts, so recovery_timeout_min bounds it.
+// A turn end left waiting on any task, a shell of either signal or a fork, never counts, so recovery_timeout_min bounds that strand and a report present before it classifies done.
 // This mirrors classify.go's dead/timeout/stuck classification.
 //
 // # digest persistence carries batch context forward

@@ -388,7 +388,7 @@ func recoverAtReportHead(t *testing.T, fx *recoverFixture, clk *recoverFakeClock
 // TestRecoverBatch_SecondCall asserts how a re-entrant second call classifies a recovery strand the first call spawned:
 // a landed report attaches (never re-spawns) and persists the done digest, a report disagreeing with the worktree or a HEAD moved by anything but a clean parent merge is refused and leaves the batch non-terminal,
 // the recovery timeout is measured from the recorded SpawnedAt across calls, and the default wait budget ends a silent strand dead inside one call but returns at a report that landed.
-// Over real Claude hook lines, a turn end counts dead/asking only when no later turn start follows it, it has stood past the settle, and no background shell keeps it waiting under Master's background-shell bound.
+// Over real Claude hook lines, a turn end counts dead/asking only when no later turn start follows it, it has stood past the settle, and nothing keeps it waiting.
 func TestRecoverBatch_SecondCall(t *testing.T) {
 	t.Parallel()
 
@@ -670,8 +670,8 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			check: checkRecoveryRunning,
 		},
 		{
-			// A shell only the transcript reports counts as a turn end once background_shell_wait_min has passed, as in Master's wait.
-			name: "a turn end waiting on a transcript-reported shell is dead once background_shell_wait_min has passed",
+			// A shell only the transcript reports keeps the strand running past background_shell_wait_min, like a payload-reported one: no shell expires, recovery_timeout_min bounds it.
+			name: "a turn end waiting on a transcript-reported shell keeps the strand running past background_shell_wait_min",
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
 				fx.Deps.Engine = claudeengine.New()
 				transcript := filepath.Join(t.TempDir(), "session.jsonl")
@@ -683,7 +683,22 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 				appendClaudeHook(t, fx, "Stop", clk.now.Add(-11*time.Minute), map[string]any{"transcript_path": transcript})
 				return secondCall{}
 			},
-			check: checkRecoveryAsking,
+			check: checkRecoveryRunning,
+		},
+		{
+			name: "a report present beside a turn end with a shell outstanding classifies done",
+			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
+				fx.Deps.Engine = claudeengine.New()
+				appendClaudeHook(t, fx, "Stop", clk.now, map[string]any{"background_tasks": []any{
+					map[string]any{"id": "bgate0001", "type": "shell", "status": "running", "command": "lyx gate test ./x"},
+				}})
+				return secondCall{head: seedReportAtHead(t, fx)}
+			},
+			check: func(t *testing.T, fx *recoverFixture, a attempt) {
+				if a.second.Running || a.second.Digest == nil || a.second.Digest.Status != websterengine.DigestStatusDone {
+					t.Fatalf("second call = %+v; want a done digest from the report", a.second)
+				}
+			},
 		},
 		{
 			name: "a plain turn end that has stood past the settle is dead asking",

@@ -641,7 +641,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 			return Digest{}, false, fmt.Errorf("webster: stat batch report %s: %w", reportPath, statErr)
 		}
 
-		turnEnded, err := TurnEndedAfter(bs.EventsPath, bs.EventsOffset, deps.Engine, TurnEndRead{Now: clk.Now(), ShellWait: shuttleengine.ShellWaitBound(deps.ShuttleCfg)})
+		turnEnded, err := TurnEndedAfter(bs.EventsPath, bs.EventsOffset, deps.Engine, TurnEndRead{Now: clk.Now()})
 		if err != nil {
 			return Digest{}, false, err
 		}
