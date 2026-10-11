@@ -1,4 +1,4 @@
-// proc.go holds the kit's read-only /proc probes: the process list, a process's argv, cwd, executable and session id, and the recognizer for a reed watchdog daemon.
+// proc.go holds the kit's read-only /proc probes: the process list, a process's argv, cwd, executable, session id, parent pid, state letter and command name, and the recognizer for a reed watchdog daemon.
 // Each probe reports nothing where /proc does not exist.
 
 package tmuxkit
@@ -49,21 +49,31 @@ func ProcExe(pid int) (string, bool) {
 	return readProcLink(pid, "exe")
 }
 
-// procSession reads pid's session id, field 6 of /proc/<pid>/stat.
+// procStatFields returns the fields of /proc/<pid>/stat after the command name: state, ppid, pgrp, session and on.
+// The command name in field 2 may hold spaces or parentheses, so the fields are counted after the last ')'.
 // The bool is false when the process is gone or its stat cannot be parsed.
-func procSession(pid int) (int, bool) {
+func procStatFields(pid int) ([]string, bool) {
 	raw, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
 	if err != nil {
-		return 0, false
+		return nil, false
 	}
-	// The command name in field 2 may hold spaces or parentheses, so count fields after the last ')': state, ppid, pgrp, session.
 	stat := string(raw)
 	end := strings.LastIndexByte(stat, ')')
 	if end < 0 {
-		return 0, false
+		return nil, false
 	}
 	fields := strings.Fields(stat[end+1:])
 	if len(fields) < 4 {
+		return nil, false
+	}
+	return fields, true
+}
+
+// procSession reads pid's session id, field 6 of /proc/<pid>/stat.
+// The bool is false when the process is gone or its stat cannot be parsed.
+func procSession(pid int) (int, bool) {
+	fields, ok := procStatFields(pid)
+	if !ok {
 		return 0, false
 	}
 	session, err := strconv.Atoi(fields[3])
@@ -71,6 +81,40 @@ func procSession(pid int) (int, bool) {
 		return 0, false
 	}
 	return session, true
+}
+
+// ProcPPID reads pid's parent pid, field 4 of /proc/<pid>/stat.
+// The bool is false when the process is gone or its stat cannot be parsed.
+func ProcPPID(pid int) (int, bool) {
+	fields, ok := procStatFields(pid)
+	if !ok {
+		return 0, false
+	}
+	ppid, err := strconv.Atoi(fields[1])
+	if err != nil {
+		return 0, false
+	}
+	return ppid, true
+}
+
+// ProcState reads pid's state letter, field 3 of /proc/<pid>/stat.
+// The bool is false when the process is gone or its stat cannot be parsed.
+func ProcState(pid int) (string, bool) {
+	fields, ok := procStatFields(pid)
+	if !ok {
+		return "", false
+	}
+	return fields[0], true
+}
+
+// ProcComm reads pid's command name from /proc/<pid>/comm, without its trailing newline.
+// The bool is false when the process is gone or unreadable.
+func ProcComm(pid int) (string, bool) {
+	raw, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "comm"))
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimSuffix(string(raw), "\n"), true
 }
 
 func readProcLink(pid int, name string) (string, bool) {
