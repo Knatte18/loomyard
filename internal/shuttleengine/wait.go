@@ -31,7 +31,7 @@
 // an ungated run's Done finalizes exactly as before the gate existed, unaware the gate exists at all.
 // A gated Done instead evaluates the gate's entries through run.evaluateGate() and, when an entry failed with its own budget remaining, sends a one-line re-prompt naming the findings file and keeps polling rather than finalizing -- the bounded re-prompt loop the "one GateSpec at every hop" and "attempts counts re-prompts actually sent" plan decisions describe.
 // A gated Done is also the writer's turn boundary, and a PassOnCap entry may answer pending there:
-// the loop sends the entry's carried text (only at a boundary), keeps polling, and re-evaluates on every poll tick with no new arrival while the writer is idle, so a verdict recorded meanwhile is read without a new arrival.
+// the loop sends the entry's carried text (only at a boundary), keeps polling, and re-evaluates with no new arrival while the writer is idle at most once per gateRecheckEvery, so a verdict recorded meanwhile is read without a new arrival.
 // Both paths run through handleGatedBoundary, and the run deadline and liveness checks keep running throughout, never extended by the wait.
 // For an engine with the idle reading and session signals, a boundary is confirmed idle in fact before the gate sends:
 // a turn start left unmatched by a later turn end clears the boundary, the loop keeps polling and reads the pane every tick,
@@ -115,6 +115,10 @@ func (realClock) Sleep(d time.Duration) { time.Sleep(d) }
 
 // pollFloor is the shortest poll interval; a configured value below it is floored to it.
 const pollFloor = time.Second
+
+// gateRecheckEvery is the shortest spacing between two gate evaluations the wait loop starts with no new arrival.
+// A verdict read this much later costs nothing, and each evaluation re-reads the entries' files.
+const gateRecheckEvery = 5 * time.Second
 
 // pollInterval returns Wait's tick interval, flooring a value below pollFloor (non-positive included) to pollFloor to prevent busy-spinning.
 // It floors silently; LoadConfig logs the one warning.
@@ -308,7 +312,8 @@ func (run *Run) Wait() (Result, error) {
 				}
 			} else if (run.gatePending || run.unsentReprompt) && run.gateAtBoundary {
 				// No new arrival, an entry is pending or a re-prompt is unsent, and the writer is idle: re-evaluate, so a verdict recorded since is read without waiting for the writer to speak.
-				if run.boundaryIdle() {
+				// A pending entry is re-read at most once per gateRecheckEvery; an unsent re-prompt is retried every tick, since that re-sends a re-prompt and reads no verdict.
+				if (run.unsentReprompt || run.gateRecheckDue()) && run.boundaryIdle() {
 					if result, finished, ferr := run.handleGatedBoundary(); finished {
 						return result, ferr
 					}
@@ -363,6 +368,11 @@ func (run *Run) Wait() (Result, error) {
 	}
 }
 
+// gateRecheckDue reports whether gateRecheckEvery has passed since the last gate evaluation, which is always so before the first.
+func (run *Run) gateRecheckDue() bool {
+	return run.lastGateEvalAt.IsZero() || run.clock.Now().Sub(run.lastGateEvalAt) >= gateRecheckEvery
+}
+
 // gateEntryError builds a gate-contract violation error for the named entry.
 // It is not an Errorf call on purpose: evaluateGate's returns are infrastructure faults wrapped by their callers with "shuttle: gate: %w", not negative verdicts on whether the run finished.
 func gateEntryError(name, problem string) error {
@@ -370,7 +380,7 @@ func gateEntryError(name, problem string) error {
 }
 
 // handleGatedBoundary evaluates the gate list from its first entry at a turn boundary and reports whether Wait finishes with the returned Result and error.
-// It is reached from a gated Done arrival and from a poll tick with no new arrival while an entry is pending and the writer is idle.
+// It is reached from a gated Done arrival and from a poll tick with no new arrival while an entry is pending, the writer is idle and gateRecheckEvery has passed since the last evaluation.
 // Run.Interrupt is never used here: the gate fires at a turn boundary, when there is no in-progress turn to interrupt.
 // No new deadline is introduced and run.deadline is never extended: the loop runs under the deadline Start already set from spec.Timeout,
 // so a timeout mid-wait still reaches classifyDeadlineExpiry, which classifies OutcomeDone when the files are present and therefore still runs the gate one final time through finalize.
@@ -383,6 +393,7 @@ func gateEntryError(name, problem string) error {
 // a failed pending send logs one Warn naming the entry, the error and the closure's way-forward, leaves the entry pending and the writer at the boundary, and never ends the loop.
 // The memo is cleared after a pending result, so the next evaluation, and a finalize after it, read the closures afresh.
 func (run *Run) handleGatedBoundary() (Result, bool, error) {
+	run.lastGateEvalAt = run.clock.Now()
 	verdict, gerr := run.evaluateGate(false)
 	if gerr != nil {
 		return run.identity(), true, fmt.Errorf("shuttle: gate: %w", gerr)

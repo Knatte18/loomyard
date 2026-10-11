@@ -182,8 +182,20 @@ func TestGatePending_RejectAfterPendingRepromptsOnce(t *testing.T) {
 		GateResult{Passed: false, Findings: "the parent rejected it"},
 		GateResult{Passed: true},
 	)
+	// The idle tick one poll after the pending evaluation sits inside the throttle window, so it reads nothing;
+	// the STOP:turn2 arrival two fake-clock seconds in is still inside the window and evaluates at once.
+	idleTickReadsNothing := func(*pendingFixture) {
+		if calls != 1 {
+			t.Errorf("gate ran %d times by the idle tick, want 1 (the throttle window skips it)", calls)
+		}
+	}
+	arrivalEvaluates := func(*pendingFixture) {
+		if calls != 2 {
+			t.Errorf("gate ran %d times after the arrival, want 2 (a new arrival evaluates inside the window)", calls)
+		}
+	}
 	f := newPendingFixture(t, GateSpec{{Name: "parent-review", Gate: gate, Attempts: 2, PassOnCap: true}}, nil,
-		noStep, appendArrival("STOP:turn2"))
+		idleTickReadsNothing, appendArrival("STOP:turn2"), arrivalEvaluates)
 	findingsPath := filepath.Join(f.run.runDir, gateFindingsFileName)
 	f.reed.CaptureQueue = repromptCaptureSequence(findingsPath, 1)
 
@@ -203,7 +215,7 @@ func TestGatePending_RejectAfterPendingRepromptsOnce(t *testing.T) {
 	}
 }
 
-//testtiming:keep pins that a verdict recorded between idle ticks is read at the next tick and not masked by the pending state
+//testtiming:keep pins that a verdict recorded between idle ticks is read at the first throttled recheck and not masked by the pending state
 func TestGatePending_VerdictBetweenTicksIsNotMasked(t *testing.T) {
 	var calls int
 	recorded := false
@@ -221,8 +233,8 @@ func TestGatePending_VerdictBetweenTicksIsNotMasked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Wait() error: %v", err)
 	}
-	if calls != 3 {
-		t.Errorf("gate ran %d times, want 3: the verdict recorded between ticks must be read at the next one", calls)
+	if calls != 2 {
+		t.Errorf("gate ran %d times, want 2: the Done evaluation, then the verdict read at the first throttled recheck", calls)
 	}
 	wantStates(t, result.Gate, GateEntryPassed)
 }
@@ -230,9 +242,9 @@ func TestGatePending_VerdictBetweenTicksIsNotMasked(t *testing.T) {
 // TestAttachGated_Pending covers a pending gate over a resumed run whose events file already holds a
 // Done: the replayed Done is the first gated arrival, and with a carried Send text it sends once and
 // is then released by the deadline, whose finalize reads Final; without one, the gate re-evaluates
-// on every poll tick until a verdict arrives.
+// on the throttled cadence, no sooner than gateRecheckEvery apart, until a verdict arrives.
 //
-//testtiming:keep pins a pending gate over a resumed run: the replayed Done evaluates once and sends the carried text, and a bare pending re-evaluates on every poll tick
+//testtiming:keep pins a pending gate over a resumed run: the replayed Done evaluates once and sends the carried text, and a bare pending re-evaluates on the throttled cadence rather than every poll tick
 func TestAttachGated_Pending(t *testing.T) {
 	tests := []struct {
 		name string
@@ -254,7 +266,8 @@ func TestAttachGated_Pending(t *testing.T) {
 			} else {
 				engine = &fakeEngine{}
 			}
-			fx := newFixture(t, reed, engine, withConfig(fastConfig), withSeparateRunDir())
+			clk := newFakeClock(time.Now())
+			fx := newFixture(t, reed, engine, withConfig(fastConfig), withSeparateRunDir(), withClock(clk))
 			runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 			seedPresentReedState(t, dotLyxDir)
 			if tt.sendText != "" {
@@ -273,6 +286,7 @@ func TestAttachGated_Pending(t *testing.T) {
 			}
 
 			var gateCalls, finalCalls int
+			var evalTimes []time.Time
 			var entry GateEntry
 			if tt.sendText != "" {
 				// The writer is mid-turn after the send, so only the deadline releases the run.
@@ -281,7 +295,11 @@ func TestAttachGated_Pending(t *testing.T) {
 					Final: scriptedPending(&finalCalls, GateResult{Passed: true}),
 				}
 			} else {
-				entry = GateEntry{Gate: scriptedPending(&gateCalls, GateResult{Pending: true}, GateResult{Pending: true}, GateResult{Passed: true})}
+				script := scriptedPending(&gateCalls, GateResult{Pending: true}, GateResult{Pending: true}, GateResult{Passed: true})
+				entry = GateEntry{Gate: func() (GateResult, error) {
+					evalTimes = append(evalTimes, clk.Now())
+					return script()
+				}}
 			}
 			entry.Name, entry.Attempts, entry.PassOnCap = "parent-review", 3, true
 
@@ -292,7 +310,12 @@ func TestAttachGated_Pending(t *testing.T) {
 			wantStates(t, result.Gate, GateEntryPassed)
 			if tt.sendText == "" {
 				if gateCalls != 3 {
-					t.Errorf("gate ran %d times, want 3 (replayed Done, then one per poll tick with no new arrival)", gateCalls)
+					t.Errorf("gate ran %d times, want 3 (replayed Done, then one per throttled recheck with no new arrival)", gateCalls)
+				}
+				for i := 1; i < len(evalTimes); i++ {
+					if gap := evalTimes[i].Sub(evalTimes[i-1]); gap < gateRecheckEvery {
+						t.Errorf("evaluation %d came %v after the previous, want at least %v", i+1, gap, gateRecheckEvery)
+					}
 				}
 				return
 			}
