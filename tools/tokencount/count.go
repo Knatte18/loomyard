@@ -106,6 +106,7 @@ func covered(set []Interval, window Interval) time.Duration {
 	return total
 }
 
+// max2 returns the later of a and b.
 func max2(a, b time.Time) time.Time {
 	if b.After(a) {
 		return b
@@ -113,6 +114,7 @@ func max2(a, b time.Time) time.Time {
 	return a
 }
 
+// min2 returns the earlier of a and b.
 func min2(a, b time.Time) time.Time {
 	if b.Before(a) {
 		return b
