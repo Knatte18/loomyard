@@ -118,24 +118,35 @@ func ReadSeed(l *lyxcwd.Location, runID string) (Seed, bool, error) {
 		return Seed{}, false, fmt.Errorf("shedrun: read seed for run %q: %w", runID, err)
 	}
 
+	seed, err := ParseSeed(data)
+	if err != nil {
+		return Seed{}, false, fmt.Errorf("shedrun: seed for run %q: %w", runID, err)
+	}
+	return seed, true, nil
+}
+
+// ParseSeed decodes data, the bytes of a seed.json a caller read elsewhere, such as from a git tree.
+// It decodes strictly so an unknown key is an error.
+// It defaults an absent or empty Driver to DriverGo, and validates the decoded Driver and every Params key being non-empty.
+func ParseSeed(data []byte) (Seed, error) {
 	seed, err := decodeSeed(data)
 	if err != nil {
-		return Seed{}, false, fmt.Errorf("shedrun: decode seed for run %q: %w", runID, err)
+		return Seed{}, fmt.Errorf("decode: %w", err)
 	}
 
 	if seed.Driver == "" {
 		seed.Driver = DriverGo
 	}
 	if err := ValidateDriver(seed.Driver); err != nil {
-		return Seed{}, false, fmt.Errorf("shedrun: seed for run %q: %w", runID, err)
+		return Seed{}, err
 	}
 	for key := range seed.Params {
 		if key == "" {
-			return Seed{}, false, fmt.Errorf("shedrun: seed for run %q: params key must not be empty", runID)
+			return Seed{}, errors.New("params key must not be empty")
 		}
 	}
 
-	return seed, true, nil
+	return seed, nil
 }
 
 // decodeSeed strictly decodes data as a Seed, rejecting an unknown JSON key.
