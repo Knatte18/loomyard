@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -138,18 +139,22 @@ func TestWire_DarnRecipe(t *testing.T) {
 }
 
 // TestArmAt_RenamesRetiredDarnRows pins that arming any verb over a darn run carries a status file still naming the writer row's former name onto Darn-Write, and leaves a loom run's file alone.
+// A live driver holding the run lock keeps the old name, and the verb still arms.
 func TestArmAt_RenamesRetiredDarnRows(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		recipe string
-		want   string
+		name        string
+		recipe      string
+		holdRunLock bool
+		want        string
 	}{
-		{shedrun.RecipeDarn, loomshed.NameDarnWrite},
-		{shedrun.RecipeLoom, "Darn"},
+		{name: "darn", recipe: shedrun.RecipeDarn, want: loomshed.NameDarnWrite},
+		{name: "loom", recipe: shedrun.RecipeLoom, want: "Darn"},
+		{name: "darn with a live driver", recipe: shedrun.RecipeDarn, holdRunLock: true, want: "Darn"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.recipe, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			loc := hubLocation(t, "pair", ".")
 			if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: tt.recipe, Driver: shedrun.DriverGo}); err != nil {
@@ -162,6 +167,14 @@ func TestArmAt_RenamesRetiredDarnRows(t *testing.T) {
 			seed := shedengine.Status{CurrentProducer: "Darn", State: shedengine.StateBlocked, History: []shedengine.HistoryEntry{{Producer: "Darn", Outcome: shedengine.Stuck}}}
 			if err := state.WriteJSON(statusPath, statusLock, seed); err != nil {
 				t.Fatalf("state.WriteJSON() = %v; want nil", err)
+			}
+			if tt.holdRunLock {
+				runLock := shedrun.RunLock(loc, shedrun.SelfRunID)
+				held, locked, err := lock.TryAcquireWriteLock(runLock)
+				if err != nil || !locked {
+					t.Fatalf("TryAcquireWriteLock(%q) = _, %v, %v; want held", runLock, locked, err)
+				}
+				t.Cleanup(func() { _ = held.Release() })
 			}
 
 			c := &loomCLI{}
