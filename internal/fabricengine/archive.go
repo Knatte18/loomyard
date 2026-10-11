@@ -71,7 +71,11 @@ func archiveWeftTip(rec *Mutations, l *lyxcwd.Location, slug, weftBranch string)
 		return "", "", fmt.Errorf("archive tag %q already exists at %s, not the weft tip %s", tag, existing, tip)
 	}
 
-	if _, err := gitexec.Run([]string{"push", originRemoteName, tagRef}, weftRoot); err != nil {
+	pushTag := func() error {
+		_, err := gitexec.Run([]string{"push", originRemoteName, tagRef}, weftRoot)
+		return err
+	}
+	if err := gitrepo.PushWithRetry(pushTag, tagRef, nil); err != nil {
 		return "", "", fmt.Errorf("push archive tag %q to %q: %w", tag, originRemoteName, err)
 	}
 	rec.Append(KindTagPushed, weftRoot, tag)
