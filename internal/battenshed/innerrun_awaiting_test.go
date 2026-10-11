@@ -297,49 +297,114 @@ func TestInnerRun_AwaitingSpawnErrorWritesNoMarkerAndRetries(t *testing.T) {
 	}
 }
 
-// TestInnerRun_AwaitingNotParkedRetriesWithoutMarkerThenResumes asserts a resume the child's driver refuses as not parked yet leaves the decision unacted, is retried inside the wait at most once per notice probe, and is acted on once the driver parks.
-func TestInnerRun_AwaitingNotParkedRetriesWithoutMarkerThenResumes(t *testing.T) {
+// TestInnerRun_AwaitingRefusedResumeRetriesWithoutMarkerThenResumes asserts a resume the child's driver refuses, as not parked yet or as a busy pane, leaves the decision unacted, is retried inside the wait at most once per notice probe, and is acted on once the driver takes it.
+// A busy pane reports the draft and the remedy and queues one orch notice per stall, which never carries the refusal's draft text.
+func TestInnerRun_AwaitingRefusedResumeRetriesWithoutMarkerThenResumes(t *testing.T) {
+	const draft = "half-typed operator draft"
+	busy := fmt.Errorf("%w: the input box holds a draft: %s", ErrChildDriverBusy, draft)
+	notParked := fmt.Errorf("%w: exit status 1", ErrChildNotParked)
+	tests := []struct {
+		name string
+		// refusals answers the spawn attempts in order, nil for a landed resume, and the last answer repeats.
+		refusals []error
+		// secondStall switches to a new decision once the first resume landed, so the next resume is refused as a new stall.
+		secondStall  bool
+		checks       int
+		wantAttempts []time.Duration
+		wantReason   string
+		wantNotices  int
+	}{
+		{
+			name:         "not parked",
+			refusals:     []error{notParked, notParked, nil},
+			checks:       8,
+			wantAttempts: []time.Duration{0, 30 * time.Second, 60 * time.Second},
+			wantReason:   "not parked",
+		},
+		{
+			name:         "busy pane",
+			refusals:     []error{busy, busy, nil},
+			checks:       8,
+			wantAttempts: []time.Duration{0, 30 * time.Second, 60 * time.Second},
+			wantReason:   "clear the draft in the driver's pane and batten resumes it",
+			wantNotices:  1,
+		},
+		{
+			name:         "a second stall after the resume landed queues a second notice",
+			refusals:     []error{busy, busy, nil, busy, nil},
+			secondStall:  true,
+			checks:       11,
+			wantAttempts: []time.Duration{0, 30 * time.Second, 60 * time.Second, 70 * time.Second, 100 * time.Second},
+			wantReason:   "clear the draft in the driver's pane and batten resumes it",
+			wantNotices:  2,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testInnerRunRefusedResume(t, draft, tt.refusals, tt.secondStall, tt.checks, tt.wantAttempts, tt.wantReason, tt.wantNotices)
+		})
+	}
+}
+
+func testInnerRunRefusedResume(t *testing.T, draft string, refusals []error, secondStall bool, checks int, wantAttempts []time.Duration, wantReason string, wantNotices int) {
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	_, _, deps := newInnerRunDeps(t, nil, nil, awaitingStatus(), clock)
 	clock.watchReason(scratchDir)
 	deps.NoticeProbe = 30 * time.Second
+	decisionAt := "2026-01-01T10:00:00Z"
 	deps.ReadDecision = func() (ChildDecision, bool, error) {
-		return ChildDecision{Kind: DecisionApprove, At: "2026-01-01T10:00:00Z", HeadSHA: "abc"}, true, nil
+		return ChildDecision{Kind: DecisionApprove, At: decisionAt, HeadSHA: "abc"}, true, nil
 	}
-	// The child's driver parks after the second attempt: the fake refuses until then.
+	var busyNotices []string
+	deps.Notify = func(_ context.Context, line string) (bool, error) {
+		if strings.Contains(line, "driver pane busy") {
+			busyNotices = append(busyNotices, line)
+		}
+		return true, nil
+	}
+	deps.AttachDir = func() (string, error) { return "/wt/task", nil }
+	// The child's driver takes the resume once the scripted refusals end.
 	var attempts []time.Duration
 	start := clock.Now()
 	deps.Spawn = func(ctx context.Context) error {
 		attempts = append(attempts, clock.Now().Sub(start))
-		if len(attempts) <= 2 {
-			return fmt.Errorf("%w: exit status 1", ErrChildNotParked)
-		}
-		return nil
+		return refusals[min(len(attempts), len(refusals))-1]
 	}
 	producer := NewInnerRun("innerrun", "myslug", deps, 10*time.Second, scratchDir, testGrace)
 
-	// A check every 10s; the decision is retried at 30s and at 60s, and the call ends at check 8.
-	clock.pauseAtSleep = 8
+	// A check every 10s; a refused decision is retried once per notice probe.
+	clock.pauseAtSleep = checks
 	actedBeforeCheck6 := true
 	clock.onSleep = func(call int) {
 		if call == 6 {
 			_, statErr := os.Stat(decisionActedFile(scratchDir, "innerrun"))
 			actedBeforeCheck6 = statErr == nil
 		}
+		if secondStall && call == 7 {
+			decisionAt = "2026-01-01T11:00:00Z"
+		}
 	}
 	outcome, ptr, err := producer.Call(context.Background())
 	if err != nil || outcome != shedengine.Stuck || !ptr.BudgetExempt {
 		t.Fatalf("Call() = %v %+v %v; want an exempt Stuck", outcome, ptr, err)
 	}
-	if want := []time.Duration{0, 30 * time.Second, 60 * time.Second}; !slices.Equal(attempts, want) {
-		t.Errorf("resume attempts at %v; want %v, one per notice probe", attempts, want)
+	if !slices.Equal(attempts, wantAttempts) {
+		t.Errorf("resume attempts at %v; want %v, one per notice probe", attempts, wantAttempts)
 	}
 	if actedBeforeCheck6 {
-		t.Error("decision-acted marker written before the driver parked; want it absent while the resume is refused")
+		t.Error("decision-acted marker written before the driver took the resume; want it absent while the resume is refused")
 	}
-	if !strings.Contains(clock.reasons[0], "not parked") {
-		t.Errorf("wait reason while refused = %q; want it to name the unparked driver", clock.reasons[0])
+	if !strings.Contains(clock.reasons[0], wantReason) {
+		t.Errorf("wait reason while refused = %q; want it to contain %q", clock.reasons[0], wantReason)
+	}
+	if len(busyNotices) != wantNotices {
+		t.Errorf("driver-busy notices = %d; want %d", len(busyNotices), wantNotices)
+	}
+	for _, line := range busyNotices {
+		if strings.Contains(line, draft) {
+			t.Errorf("notice %q carries the refusal's draft text", line)
+		}
 	}
 	if !strings.Contains(clock.lastReason(), "resume was delivered") {
 		t.Errorf("wait reason after the resume = %q; want it to say the resume was delivered", clock.lastReason())

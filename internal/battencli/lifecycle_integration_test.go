@@ -290,6 +290,7 @@ func TestBattenIntegration_Rows(t *testing.T) {
 		{"MarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent", stepMarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent},
 		{"StopReport_ReadsTheParkMarkersContentAndTime", stepStopReport_ReadsTheParkMarkersContentAndTime},
 		{"TaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution", stepTaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution},
+		{"Status_FlagsAHaltedBattenOverADoneChild", stepStatusFlagsAHaltedBattenOverADoneChild},
 		{"DirtyPrime_CreateRowBlocksBeforeAnythingCreated", stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated},
 	}
 	for _, step := range steps {
@@ -1380,5 +1381,51 @@ func stepTaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution(t *testing.T, h *hu
 	}
 	if absentErr == nil || !strings.Contains(absentErr.Error(), "is not present at") {
 		t.Errorf("AttachDir() error = %v with the pair gone from disk; want the absent-worktree refusal", absentErr)
+	}
+}
+
+// stepStatusFlagsAHaltedBattenOverADoneChild pins the status surface over a real pair: a failed batten status beside a done child status carries child_done_batten_halted naming the run that closes the pair, and the key is omitted once the child status file is gone.
+func stepStatusFlagsAHaltedBattenOverADoneChild(t *testing.T, h *hubforge.Hub) {
+	slug := "batten-status-child-done"
+	hubforge.AddPair(t, h, slug)
+	c := wireForHub(t, h, slug, nil)
+	c.location, c.slug = h.Location, slug
+	seedEntryStatus(t, c, battenrecipe.NameRunShed, shedengine.StateFailed, nil)
+
+	task, err := taskWorktreeLocation(h.Location, slug)
+	if err != nil {
+		t.Fatalf("resolve task location: %v", err)
+	}
+	childStatus, childLock := shedrun.StatusFile(task, shedrun.SelfRunID), shedrun.StatusLock(task, shedrun.SelfRunID)
+	if err := os.MkdirAll(filepath.Dir(childLock), 0o755); err != nil {
+		t.Fatalf("mkdir child status lock dir: %v", err)
+	}
+	if err := state.WriteJSON(childStatus, childLock, shedengine.Status{State: shedengine.StateDone}); err != nil {
+		t.Fatalf("write child status: %v", err)
+	}
+
+	statusEnvelope := func() map[string]any {
+		t.Helper()
+		var out bytes.Buffer
+		if exitCode := clihelp.Execute(battenVerbCommand(c, "status"), &out, []string{slug}); exitCode != 0 {
+			t.Fatalf("status() exit code = %d; want 0; output: %s", exitCode, out.String())
+		}
+		var envelope map[string]any
+		if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+			t.Fatalf("decode envelope: %v; output: %s", err, out.String())
+		}
+		return envelope
+	}
+
+	flag, _ := statusEnvelope()[childDoneFlagKey].(string)
+	if !strings.Contains(flag, `"lyx batten run `+slug+`"`) {
+		t.Errorf("status envelope %s = %q; want it to name \"lyx batten run %s\"", childDoneFlagKey, flag, slug)
+	}
+
+	if err := os.Remove(childStatus); err != nil {
+		t.Fatalf("remove child status: %v", err)
+	}
+	if _, present := statusEnvelope()[childDoneFlagKey]; present {
+		t.Errorf("status envelope carries %s with the child status file gone; want it omitted", childDoneFlagKey)
 	}
 }

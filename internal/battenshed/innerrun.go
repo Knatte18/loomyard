@@ -157,6 +157,8 @@ type innerRunProducer struct {
 	// watched is the last answer of deps.MarkWatched, whether this batten holds the batten-watched marker, and watchedAnswer how it was reached.
 	watched       bool
 	watchedAnswer watchedAnswer
+	// driverBusyNoticed is whether the orch was noticed of the current stall on a busy driver pane; a resume that lands clears it.
+	driverBusyNoticed bool
 	// episode is the child's current state episode and the delivery of its notices, across Calls.
 	episode    noticeEpisode
 	scratchDir string
@@ -272,6 +274,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 //   - awaiting first revives a dead driver strand once per episode; with no decision record it reports the hand-off;
 //   - awaiting with a decision not yet acted on spawns the child's driver again (the child's own bootstrap resumes an approved or rejected run), records the decision in the decision-acted marker only once the spawn succeeded, and goes on waiting until the child leaves awaiting;
 //     a spawn refused with ErrChildNotParked records nothing and is retried at most once per noticeProbe until the driver parks or the state changes;
+//     one refused with ErrChildDriverBusy is retried the same way and queues one orch notice per stall;
 //   - awaiting with a decision already acted on and the child's history length unchanged since that resume does not spawn, and reports that the resume was delivered and the child's driver has not re-stepped yet;
 //   - awaiting with a decision already acted on and the child's history longer (or an old-layout marker) does not spawn, and reports the recovery of deciding again;
 //   - done records the first-sight time in the done-seen marker and returns Done once the driver strand is gone or driverExitGrace has elapsed since first sight, and otherwise reports the wait for the driver to finish its stop report;
@@ -500,6 +503,9 @@ type childWait struct {
 	// and notParkedLogged whether that refusal was logged already.
 	resumeRetryAt   time.Time
 	notParkedLogged bool
+	// busyLogged is whether a refusal for a busy driver pane was logged already, and busyReason the report of the last such refusal, empty while the last refusal was not a busy one.
+	busyLogged bool
+	busyReason string
 }
 
 // waitEnd is how a wait ended: the verdict, pointer and error Call returns.
@@ -792,6 +798,10 @@ func (p *innerRunProducer) awaitingStep(ctx context.Context, w *childWait) *wait
 
 	notParkedReason := fmt.Sprintf("the %s at %s is not acted on yet: the child's driver has not parked; retrying the resume", decision.Kind, decision.At)
 	if now := p.deps.Now(); now.Before(w.resumeRetryAt) {
+		if w.busyReason != "" {
+			p.report(w, w.busyReason)
+			return nil
+		}
 		p.report(w, notParkedReason)
 		return nil
 	}
@@ -806,6 +816,7 @@ func (p *innerRunProducer) awaitingStep(ctx context.Context, w *childWait) *wait
 		if errors.Is(spawnErr, ErrChildNotParked) {
 			// The child's driver is between its stop and its park, so the decision stays unacted and the resume is retried at most once per noticeProbe.
 			w.resumeRetryAt = p.deps.Now().Add(p.noticeProbe)
+			w.busyReason = ""
 			if !w.notParkedLogged {
 				w.notParkedLogged = true
 				logger.Info("battenshed: child driver has not parked yet; retrying the resume until it does", "producer", p.name, "slug", p.slug, "error", spawnErr)
@@ -813,8 +824,22 @@ func (p *innerRunProducer) awaitingStep(ctx context.Context, w *childWait) *wait
 			p.report(w, notParkedReason)
 			return nil
 		}
+		if errors.Is(spawnErr, ErrChildDriverBusy) {
+			// A draft or an active operator in the parked driver's pane only delays the resume: the decision stays unacted and the resume is retried at most once per noticeProbe.
+			w.resumeRetryAt = p.deps.Now().Add(p.noticeProbe)
+			w.busyReason = fmt.Sprintf("the %s at %s is not acted on yet: the child's driver pane holds a draft or the operator is typing in it; clear the draft in the driver's pane and batten resumes it (%s)", decision.Kind, decision.At, oneLine(spawnErr.Error(), noticeErrorMax))
+			if !w.busyLogged {
+				w.busyLogged = true
+				logger.Info("battenshed: child driver pane is busy; retrying the resume until it is clear", "producer", p.name, "slug", p.slug, "error", spawnErr)
+			}
+			p.noticeDriverBusy(ctx, w)
+			p.report(w, w.busyReason)
+			return nil
+		}
 		return hardEnd(fmt.Errorf("battenshed: %s: resume decided inner shed run (resuming this run retries the spawn): %w", p.name, spawnErr))
 	}
+	p.driverBusyNoticed = false
+	w.busyReason = ""
 	recordSpawnConfirmed(p.name, p.slug, p.scratchDir, SpawnConfirmedFile(p.scratchDir, p.name))
 	p.openTerminalOnce(ctx)
 	if err := os.MkdirAll(p.scratchDir, 0o755); err != nil {

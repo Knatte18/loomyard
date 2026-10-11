@@ -135,6 +135,15 @@
 // A passing probe clears a State.Stuck that a hold wrote and only that, so `lyx orch status` shows the hold in the idle phase too, and a Stuck written by anything else is never overwritten by a hold.
 // State.StuckByHold records that a hold wrote it, so a restarted watcher clears it too.
 //
+// A typed step can still be held after its idle probe passed: shuttle's pre-write guard reads the box, the operator's activity and readiness again at the write, and refuses with an error wrapping `shuttleengine.ErrSessionBusy`.
+// That refusal means nothing was typed.
+// Every typed step routes its error through one watcher helper, which logs `orch: injection held by the session` at Info once per change of reason and answers held;
+// a held step returns no error, so the tick counts nothing toward the consecutive-error limit, and it leaves its phase, `PhaseInjected` and a notice file as they are, so the next tick types the same text again.
+// In the idle phase the reason is also recorded in State.Stuck with State.StuckBySend, unless a Stuck that no hold and no send wrote is already there.
+// A hold's passing probe leaves a send's reason alone; only a later send that passes clears it.
+// A color that was held stays pending, and a held reload color step does not advance to the plugins step.
+// A cycle phase held for good is still marked stuck by the handoff timeout.
+//
 // Session.SessionState reads the orch session's state from its shuttle run record, which is interactive with a never-written sentinel output, so its turn ends read `asking`.
 // The watcher only logs it: after a successful probe that is not too short, a probe that reads idle beside the state `busy`, or not idle beside `idle-done`, `idle-stalled` or `asking`, logs `orch: session state disagrees with the idle probe` at Warn.
 // A disagreement is logged once and again only after either side changes, the last pair being watcher memory and not State.

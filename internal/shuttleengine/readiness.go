@@ -12,6 +12,8 @@ import (
 const (
 	// readinessReasonPaneTooShort is the held reason of a pane too short to draw the input box.
 	readinessReasonPaneTooShort = "the pane is too short to show the input box"
+	// readinessReasonNoInputBox is the held reason of a pane whose input box an engine able to read one finds nowhere on screen, as when a menu or picker is open.
+	readinessReasonNoInputBox = "no input box is on screen; a menu or picker may be open"
 	// sessionCauseReleasedTurn is the cause of the idle-stalled state a turn start reads as once its hold released.
 	sessionCauseReleasedTurn = "released-turn"
 )
@@ -36,6 +38,8 @@ type boxReading struct {
 	text string
 	// tooShort is true when the pane is too short to draw the box.
 	tooShort bool
+	// reader is true when the engine can read an input box at all, so read false then means the capture shows none.
+	reader bool
 }
 
 // readBox reads the input box out of capture.
@@ -45,7 +49,7 @@ func readBox(engine Engine, capture string) boxReading {
 	if !ok {
 		return boxReading{}
 	}
-	var box boxReading
+	box := boxReading{reader: true}
 	box.text, box.read = reader.InputBoxText(capture)
 	if cycler, ok := engine.(SessionCycler); ok {
 		box.tooShort = cycler.PaneTooShort(capture)
@@ -55,7 +59,7 @@ func readBox(engine Engine, capture string) boxReading {
 
 // judgeReadiness turns a session state, whether a turn start is still unmatched and the box reading into a readiness.
 // A finished or stalled session, one waiting on input at a turn end and one busy only on background work are ready, provided no turn start is unmatched and the box, where one is read, is blank.
-// A running turn, a question awaiting an answer and a dead process are held, as are a pane too short, an unmatched turn start and a draft in the box.
+// A running turn, a question awaiting an answer and a dead process are held, as are a pane too short, a pane showing no input box to an engine that reads one, an unmatched turn start and a draft in the box.
 // An unknown state is neither: the caller falls back to the pane.
 func judgeReadiness(state SessionState, unmatched bool, box boxReading) readiness {
 	switch state.Name {
@@ -78,6 +82,8 @@ func judgeReadiness(state SessionState, unmatched bool, box boxReading) readines
 	switch {
 	case box.tooShort:
 		return readiness{reason: readinessReasonPaneTooShort}
+	case box.reader && !box.read:
+		return readiness{reason: readinessReasonNoInputBox}
 	case unmatched:
 		return readiness{reason: "a turn start has no turn end"}
 	case box.read && strings.TrimSpace(box.text) != "":

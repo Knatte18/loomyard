@@ -132,17 +132,23 @@ func TestRepairNames_PaneTitle(t *testing.T) {
 	}
 }
 
-// TestRepairNames_SessionName pins that a drifted session name is renamed by typing the namer's rename text then Enter
-// into an idle pane, logged, after exactly one drift query for the strand's session, while a busy pane or an absent drift types nothing.
+// TestRepairNames_SessionName pins that a drifted session name is renamed by one paste-submit of the namer's rename text.
+// The rename goes into an idle pane with no active operator, logged, after exactly one drift query for the strand's session.
+// A busy pane, an active operator or an absent drift types nothing, and an unreadable client list does not hold the rename.
 func TestRepairNames_SessionName(t *testing.T) {
+	activeClient := "%1 " + strconv.FormatInt(time.Now().Unix(), 10) + "\n"
 	tests := []struct {
 		name       string
 		namer      fakeNamer
+		clients    string
+		clientsErr error
 		wantRename bool
 	}{
-		{"RenamedOnIdlePane", fakeNamer{drift: true, idle: true}, true},
-		{"BusyPaneTypesNothing", fakeNamer{drift: true, idle: false}, false},
-		{"NoDriftTypesNothing", fakeNamer{drift: false, idle: true}, false},
+		{name: "RenamedOnIdlePane", namer: fakeNamer{drift: true, idle: true}, wantRename: true},
+		{name: "BusyPaneTypesNothing", namer: fakeNamer{drift: true, idle: false}},
+		{name: "NoDriftTypesNothing", namer: fakeNamer{drift: false, idle: true}},
+		{name: "ActiveOperatorTypesNothing", namer: fakeNamer{drift: true, idle: true}, clients: activeClient},
+		{name: "UnreadableClientListStillRenames", namer: fakeNamer{drift: true, idle: true}, clientsErr: errors.New("list-clients failed"), wantRename: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -150,6 +156,7 @@ func TestRepairNames_SessionName(t *testing.T) {
 			e, fake := newRepairTestEngine(t,
 				[]Strand{repairStrand("g1", "tc:s:worker", "%1", "sess-1")},
 				[]LivePane{{ID: "%1", Title: "tc:s:worker"}})
+			fake.answer("list-clients", tt.clients, tt.clientsErr)
 			namer := tt.namer
 
 			repaired, err := e.repairNames(&namer)
@@ -160,10 +167,10 @@ func TestRepairNames_SessionName(t *testing.T) {
 				t.Errorf("repairNames repaired = %v, want %v", repaired, tt.wantRename)
 			}
 
-			keys := fake.ArgvFor("send-keys")
+			pastes := fake.ArgvFor("set-buffer")
 			if !tt.wantRename {
-				if len(keys) != 0 {
-					t.Errorf("send-keys calls = %v, want none", keys)
+				if len(pastes) != 0 {
+					t.Errorf("set-buffer calls = %v, want none", pastes)
 				}
 				return
 			}
@@ -171,14 +178,21 @@ func TestRepairNames_SessionName(t *testing.T) {
 			if len(namer.queries) != 1 || namer.queries[0] != wantQuery {
 				t.Errorf("drift queries = %v, want [%v]", namer.queries, wantQuery)
 			}
-			if len(keys) != 2 {
-				t.Fatalf("send-keys calls = %v, want the literal text then Enter", keys)
+			if len(pastes) != 1 {
+				t.Fatalf("set-buffer calls = %v, want exactly one paste-submit invocation", pastes)
 			}
-			if keys[0][3] != "-l" || !strings.Contains(keys[0][4], "/rename tc:s:worker") {
-				t.Errorf("first send-keys = %v, want the literal rename text", keys[0])
+			argv := pastes[0]
+			if !containsArg(argv, "paste-buffer") || !containsArg(argv, "-p") || !containsArg(argv, "-d") {
+				t.Errorf("paste-submit argv = %v, want paste-buffer -p -d", argv)
 			}
-			if keys[1][len(keys[1])-1] != "Enter" {
-				t.Errorf("second send-keys = %v, want Enter", keys[1])
+			if argv[len(argv)-1] != "Enter" || !containsArg(argv, "send-keys") {
+				t.Errorf("paste-submit argv = %v, want it to end in send-keys Enter", argv)
+			}
+			if !containsArg(argv, "/rename tc:s:worker") {
+				t.Errorf("paste-submit argv = %v, want the rename text", argv)
+			}
+			if keys := fake.ArgvFor("send-keys"); len(keys) != 0 {
+				t.Errorf("separate send-keys calls = %v, want none, the whole write is one invocation", keys)
 			}
 			if !strings.Contains(logs.String(), "reed: repaired session name") {
 				t.Errorf("log = %q, want the session repair line", logs.String())

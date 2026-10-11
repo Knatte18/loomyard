@@ -29,6 +29,9 @@ type Config struct {
 
 	Watchdog string `yaml:"watchdog"`
 
+	// OperatorQuietS is the seconds since an attached client's last activity on a strand's pane within which lyx types nothing into that pane.
+	OperatorQuietS int `yaml:"operator_quiet_s"`
+
 	TmuxConf string `yaml:"tmux_conf"`
 
 	Selvage SelvageConfig `yaml:"selvage"`

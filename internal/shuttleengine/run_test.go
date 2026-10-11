@@ -995,7 +995,7 @@ func (c *boxTestClock) Sleep(d time.Duration) {
 // A capture is idle when it starts with "IDLE".
 // "START" is a turn start and "STOP:<message>" a turn end.
 // Every turn start reads interrupted when interrupted is set.
-// A box reading starting with "[Pasted" is a placeholder.
+
 type clearableBoxEngine struct {
 	*inputBoxEngine
 
@@ -1023,9 +1023,6 @@ func (e *clearableBoxEngine) CompactSessionSequence(string) []PaneInput {
 	return nil
 }
 func (e *clearableBoxEngine) ClearInputSequence() []PaneInput { return []PaneInput{{Key: "C-u"}} }
-func (e *clearableBoxEngine) PastePlaceholder(box string) bool {
-	return strings.HasPrefix(box, "[Pasted")
-}
 func (e *clearableBoxEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
 	var signals []SessionSignal
 	for _, line := range strings.Split(string(data), "\n") {
@@ -1219,25 +1216,17 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			wantKeys: keys("Escape", "Enter", "Enter"),
 		},
 		{
-			name: "a doubled copy is cleared to empty", text: longText,
-			idle: true, confirmS: 1,
-			boxes:   join(settled(longText), []inputBoxAnswer{box(longText + " " + longText), box(longText + " " + longText), box(longText + " " + longText), box("")}),
-			wantErr: "was cleared", wantNotLand: true,
-			wantKeys: keys("Escape", "Enter", "Enter", "C-u"),
+			// The box merely contains the sent text's first 48 characters, which no longer count as the sent text.
+			name: "a longer draft containing a long sent text's start is not held", text: longText,
+			boxes:    join(settled(longText), []inputBoxAnswer{box(longText + " " + longText)}),
+			wantKeys: keys("Escape", "Enter"),
 		},
 		{
-			name: "a needle-long prefix is cleared to empty", text: longText,
-			idle: true, confirmS: 1,
-			boxes:   join(settled(longText), []inputBoxAnswer{box(longText[:70]), box(longText[:70]), box(longText[:70]), box("")}),
-			wantErr: "was cleared", wantNotLand: true,
-			wantKeys: keys("Escape", "Enter", "Enter", "C-u"),
-		},
-		{
-			name: "a paste placeholder is cleared to empty", text: longText,
+			name: "a paste placeholder is left in place by the clear", text: longText,
 			idle: true, captures: []string{"IDLE"},
 			boxes:   []inputBoxAnswer{box(placeholder), box("")},
-			wantErr: "never appeared", wantNotLand: true,
-			wantKeys: keys("Escape", "Escape", "C-u"),
+			wantErr: "not this send's", wantNotLand: true,
+			wantKeys: keys("Escape", "Escape"),
 		},
 		{
 			name: "a foreign draft gets no clear key", text: shortText,
@@ -1364,6 +1353,184 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			}
 		})
 	}
+
+	// The paste path: an engine with TextPaster is written to through one reed paste-submit, never typed keys.
+	const shortPasted = "run the suite"
+	const longPasted = "please review the whole change set carefully"
+	pasteTests := []struct {
+		name string
+		text string
+		// pasteSubmits is the engine's PasteSubmits answer.
+		pasteSubmits bool
+		// swallowFor is how long after the start the pane swallows an Enter.
+		swallowFor time.Duration
+		// active scripts the operator-activity answers, the idle wait's own reading first.
+		active []bool
+		// scripted, when set, replaces the tui pane with a fixed idle capture and these input-box answers.
+		scripted []inputBoxAnswer
+		wantErr  string
+		wantIs   []error
+		// wantNotLand is whether the error wraps ErrSubmissionNotLanded.
+		wantNotLand bool
+		wantKeys    []string
+		wantSubmit  bool
+	}{
+		{name: "one paste-submit and no typed keys", text: shortPasted, pasteSubmits: true, wantSubmit: true},
+		{name: "a swallowed Enter leaves the exact text and gets one guarded Enter", text: shortPasted, pasteSubmits: true, swallowFor: ms(50), wantKeys: keys("Enter"), wantSubmit: true},
+		{name: "a long text's placeholder box gets the guarded Enter", text: longPasted, pasteSubmits: true, swallowFor: ms(50), wantKeys: keys("Enter"), wantSubmit: true},
+		{
+			name: "a placeholder box for a short text is a foreign draft", text: shortPasted, pasteSubmits: true,
+			scripted: []inputBoxAnswer{box(pastePlaceholder)},
+			wantErr:  "not this send's", wantIs: []error{ErrSessionBusy}, wantSubmit: true,
+		},
+		{
+			name: "an active operator before the guarded Enter gets no Enter that read", text: shortPasted, pasteSubmits: true, swallowFor: ms(50),
+			active:   []bool{false, true, false},
+			wantKeys: keys("Enter"), wantSubmit: true,
+		},
+		{
+			name: "the sent text beside a draft fails without a key", text: shortPasted, pasteSubmits: true,
+			scripted: []inputBoxAnswer{box("my own draft " + shortPasted)},
+			wantErr:  "my own draft", wantIs: []error{ErrSentTextInDraft, ErrSessionBusy}, wantSubmit: true,
+		},
+		{
+			name: "a foreign draft fails without a key and quotes the draft", text: shortPasted, pasteSubmits: true,
+			scripted: []inputBoxAnswer{box("somebody else's draft")},
+			wantErr:  "somebody else's draft", wantIs: []error{ErrSessionBusy}, wantSubmit: true,
+		},
+		{
+			name: "a box that stays unreadable through the window fails without a key", text: shortPasted, pasteSubmits: true,
+			scripted: []inputBoxAnswer{{"", false}},
+			wantErr:  "unreadable", wantIs: []error{ErrSubmissionNotLanded}, wantNotLand: true, wantSubmit: true,
+		},
+		{name: "a paste without the Enter settles, then sends the guarded Enter", text: shortPasted, wantKeys: keys("Enter")},
+	}
+	for _, tt := range pasteTests {
+		t.Run("paste: "+tt.name, func(t *testing.T) {
+			t.Parallel()
+			clock := newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))
+			base := &fakeReed{StatusQueue: liveStrandStatus(true), ActiveQueue: tt.active}
+			var reed ReedOps
+			var engine Engine
+			if tt.scripted != nil {
+				base.CaptureQueue = []string{"IDLE"}
+				reed = base
+				engine = &scriptedPasteEngine{
+					clearableBoxEngine: &clearableBoxEngine{inputBoxEngine: &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: tt.scripted, settle: ms(100)}},
+					pasteSubmits:       tt.pasteSubmits,
+				}
+			} else {
+				reed = &tuiReed{fakeReed: base, clock: clock, swallowEnterUntil: clock.Now().Add(tt.swallowFor)}
+				engine = &pasteEngine{tuiEngine: newTUIEngine(), pasteSubmits: tt.pasteSubmits}
+			}
+			cfg := Config{SubmitSettleMS: 100, SubmitConfirmTimeoutS: 30, SendReadyTimeoutS: 60}
+			run := newFixture(t, reed, engine, withConfig(cfg)).newRun(Spec{}, withRunEvents(""), withRunClock(clock, clock.Now().Add(time.Hour)))
+
+			err := run.Send(tt.text)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Send() error: %v, want the paste confirmed", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Send() error = %v, want it to name %q", err, tt.wantErr)
+			}
+			for _, want := range tt.wantIs {
+				if !errors.Is(err, want) {
+					t.Errorf("Send() error = %v, want it to wrap %v", err, want)
+				}
+			}
+			if got := errors.Is(err, ErrSubmissionNotLanded); got != tt.wantNotLand {
+				t.Errorf("errors.Is(err, ErrSubmissionNotLanded) = %v, want %v (err %v)", got, tt.wantNotLand, err)
+			}
+			if len(base.SendTextCalls) != 0 {
+				t.Errorf("SendText calls = %+v, want none on the paste path", base.SendTextCalls)
+			}
+			if len(base.PasteSubmitCalls) != 1 || base.PasteSubmitCalls[0].Text != tt.text || base.PasteSubmitCalls[0].Submit != tt.wantSubmit {
+				t.Errorf("PasteSubmit calls = %+v, want one of %q with submit %v", base.PasteSubmitCalls, tt.text, tt.wantSubmit)
+			}
+			var gotKeys []string
+			for _, call := range base.SendKeyCalls {
+				gotKeys = append(gotKeys, call.Key)
+			}
+			if !reflect.DeepEqual(gotKeys, tt.wantKeys) {
+				t.Errorf("keys = %v, want %v", gotKeys, tt.wantKeys)
+			}
+		})
+	}
+
+	// The retry of a paste that may have left its text in the box: the pending-send record decides whether the second send types.
+	const retriedText = "run the suite"
+	retryTests := []struct {
+		name string
+		// firstBox is the box the first send ends on; wantRecord is whether that failure records the text.
+		firstBox   inputBoxAnswer
+		wantRecord bool
+		// turnStarted appends a turn start to the events file between the sends.
+		turnStarted bool
+		// retryText is the text of the second send.
+		retryText string
+		// wantPastes is how many pastes both sends made together.
+		wantPastes int
+	}{
+		{name: "a landed send leaves no record", firstBox: box(""), retryText: retriedText, wantPastes: 2},
+		{
+			name:     "text left in the draft with a turn started since types nothing on the retry",
+			firstBox: box("my own draft " + retriedText), wantRecord: true, turnStarted: true, retryText: retriedText, wantPastes: 1,
+		},
+		{
+			name:     "text left in the draft and cleared by the operator is pasted again",
+			firstBox: box("my own draft " + retriedText), wantRecord: true, retryText: retriedText, wantPastes: 2,
+		},
+		{
+			name:     "a send not landed after an unreadable box with a turn started since types nothing on the retry",
+			firstBox: inputBoxAnswer{"", false}, wantRecord: true, turnStarted: true, retryText: retriedText, wantPastes: 1,
+		},
+		{
+			name:     "a record for another text is cleared and the retry pastes",
+			firstBox: box("my own draft " + retriedText), wantRecord: true, turnStarted: true, retryText: "a different request", wantPastes: 2,
+		},
+	}
+	for _, tt := range retryTests {
+		t.Run("retry: "+tt.name, func(t *testing.T) {
+			t.Parallel()
+			clock := newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))
+			base := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"IDLE"}}
+			boxEngine := &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: []inputBoxAnswer{tt.firstBox}, settle: ms(100)}
+			engine := &scriptedPasteEngine{clearableBoxEngine: &clearableBoxEngine{inputBoxEngine: boxEngine}, pasteSubmits: true}
+			cfg := Config{SubmitSettleMS: 100, SubmitConfirmTimeoutS: 30, SendReadyTimeoutS: 60}
+			run := newFixture(t, base, engine, withConfig(cfg)).newRun(Spec{}, withRunEvents(""), withRunClock(clock, clock.Now().Add(time.Hour)))
+
+			_ = run.Send(retriedText)
+			_, recorded, err := loadPendingSend(run.runDir)
+			if err != nil {
+				t.Fatalf("loadPendingSend() error: %v", err)
+			}
+			if recorded != tt.wantRecord {
+				t.Fatalf("pending send recorded = %v after the first send, want %v", recorded, tt.wantRecord)
+			}
+
+			if tt.turnStarted {
+				f, err := os.OpenFile(run.state.EventsPath, os.O_APPEND|os.O_WRONLY, 0o644)
+				if err != nil {
+					t.Fatalf("open events: %v", err)
+				}
+				defer f.Close()
+				if _, err := f.WriteString("START\nSTOP:done\n"); err != nil {
+					t.Fatalf("append turn: %v", err)
+				}
+			}
+			boxEngine.boxes = []inputBoxAnswer{box("")}
+			if err := run.Send(tt.retryText); err != nil {
+				t.Fatalf("retry Send() error: %v, want the retry confirmed", err)
+			}
+			if len(base.PasteSubmitCalls) != tt.wantPastes {
+				t.Errorf("PasteSubmit calls = %+v, want %d", base.PasteSubmitCalls, tt.wantPastes)
+			}
+			if _, stillRecorded, _ := loadPendingSend(run.runDir); stillRecorded {
+				t.Error("pending send still recorded after the retry, want it cleared")
+			}
+		})
+	}
 }
 
 //testtiming:keep pins the pane scan's count and lines-below at the unit level, including a needle straddling a wrap boundary, which the delivery table reaches only through Send
@@ -1416,6 +1583,9 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		// reader also gives it an input-box reader, for a row that fails before anything is typed.
 		reading, reader bool
 		viaRunner       bool
+		// activeQueue and activityErr script the fake reed's operator-activity answers.
+		activeQueue []bool
+		activityErr error
 		// frozen gives the run a clock that never advances, so only the poll count can end the wait.
 		frozen bool
 		// wantTypedBetween is the window the first typed key lands in; ignored when wantBusy is set.
@@ -1433,6 +1603,10 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		{name: "unmatched turn start is released by an interrupt report", events: "START\n", reading: true, interrupted: true},
 		{name: "unmatched turn start against a busy pane fails busy with the reading's reason", events: "START\n", reading: true, idleAfter: never, busyFrame: "working", wantBusy: []string{"a turn is running"}},
 		{name: "draft in the box fails busy with the reading's reason", events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the input box holds a draft", "a half-typed draft"}},
+		{name: "an active operator holds the write until it goes quiet", activeQueue: []bool{true, true, true, false}, wantTypedMin: time.Second, wantTypedMax: 3 * time.Second},
+		{name: "an operator active through the whole window fails busy naming the activity", activeQueue: []bool{true}, wantBusy: []string{"the operator typed in this pane within the last 5 s"}},
+		{name: "an unreadable activity query still holds on a draft", activityErr: errors.New("list-clients failed"), events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the input box holds a draft", "a half-typed draft"}},
+		{name: "an unreadable activity query holds nothing over an empty box", activityErr: errors.New("list-clients failed"), events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: time.Millisecond, busyFrame: "IDLE\n❯ "},
 		{name: "turn end after the turn start releases at once", events: "START\nSTOP:done\n"},
 		{name: "api error turn end counts as a turn end", events: "START\nAPIERR\n"},
 		{name: "a hook turn end beside a pane needle types at once", events: "START\nSTOP:done\n", reading: true, idleAfter: time.Second, busyFrame: "working (esc to interrupt)\n❯ "},
@@ -1443,7 +1617,7 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 			buf := logcapture.Capture(t)
 			clock := newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))
 			start := clock.Now()
-			reed := &idleReed{fakeReed: &fakeReed{StatusQueue: liveStrandStatus(true)}, clock: clock, busyFrame: tt.busyFrame}
+			reed := &idleReed{fakeReed: &fakeReed{StatusQueue: liveStrandStatus(true), ActiveQueue: tt.activeQueue, ActivityErr: tt.activityErr}, clock: clock, busyFrame: tt.busyFrame}
 			if tt.idleAfter > 0 {
 				reed.idleAt = start.Add(tt.idleAfter)
 			}

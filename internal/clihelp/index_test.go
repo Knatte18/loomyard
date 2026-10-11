@@ -115,9 +115,9 @@ func TestRenderIndex_FormsAndFiltering(t *testing.T) {
 			"",
 		}, "\n")},
 	}
+	// The subtests share root, whose flag sets cobra merges lazily on first read, so they run serially.
 	for _, tt := range tests {
 		t.Run(tt.audience, func(t *testing.T) {
-			t.Parallel()
 			if got := RenderIndex(root, tt.audience); got != tt.want {
 				t.Errorf("RenderIndex(%q) =\n%s\nwant\n%s", tt.audience, got, tt.want)
 			}

@@ -609,6 +609,7 @@ const maxStatusHistoryEntries = 20
 // and Worktree-Teardown carry no on_stuck, so their reason is the persisted error, and this
 // extra is kept for the Run-Shed block through the budget arm, whose error stays the fixed budget
 // literal.
+// A batten run that stopped before its teardown while its child loom run is done also carries childDoneFlagKey, naming the step that closes it.
 func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, error) {
 	history, truncated := recentHistory(st.History)
 	extras := map[string]any{
@@ -628,7 +629,42 @@ func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, er
 	if session, found := readAbandonedSession(scratchDir); found {
 		extras["abandonedSession"] = session
 	}
+	child, childFound := c.readChildStatus()
+	if flag, flagged := haltedOverDoneChild(c.slug, st, child, childFound); flagged {
+		extras[childDoneFlagKey] = flag
+	}
 	return extras, nil
+}
+
+// childDoneFlagKey is the status envelope key that flags a batten run stopped before its teardown over a child loom run that is done.
+const childDoneFlagKey = "child_done_batten_halted"
+
+// haltedOverDoneChild returns the flag text and true when batten's own state st is failed, blocked or paused while the child loom run's status child, read when childFound, is done.
+// The flag names the batten run that closes the pair, which runs Worktree-Teardown.
+func haltedOverDoneChild(slug string, st, child shedengine.Status, childFound bool) (string, bool) {
+	switch st.State {
+	case shedengine.StateFailed, shedengine.StateBlocked, shedengine.StatePaused:
+	default:
+		return "", false
+	}
+	if !childFound || child.State != shedengine.StateDone {
+		return "", false
+	}
+	return fmt.Sprintf("batten is %s while its child loom run is done; run \"lyx batten run %s\" from the prime, which runs Worktree-Teardown", st.State, slug), true
+}
+
+// readChildStatus reads the task worktree's own loom run status.
+// Every failure to read it, an absent pair or status file included, answers found false, since failing to read the child must never change batten's own status answer.
+func (c *battenCLI) readChildStatus() (shedengine.Status, bool) {
+	task, err := taskWorktreeLocation(c.location, c.slug)
+	if err != nil {
+		return shedengine.Status{}, false
+	}
+	child, found, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(task, shedrun.SelfRunID), shedrun.StatusLock(task, shedrun.SelfRunID))
+	if err != nil || !found {
+		return shedengine.Status{}, false
+	}
+	return child, true
 }
 
 // readAbandonedSession reads back the record battenshed's teardown row writes when session shutdown

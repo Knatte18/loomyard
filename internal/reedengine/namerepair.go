@@ -172,12 +172,15 @@ func (e *Engine) repairSessionName(namer SessionNamer, s Strand) bool {
 		logger.Debug("reed: session busy, deferring session name repair", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID)
 		return false
 	}
-	if err := e.tmux.run("send-keys", "-t", s.PaneID, "-l", sendKeysLiteralArg(namer.RenameText(s.Name))); err != nil {
-		logger.Warn("reed: could not type the session rename", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "err", err)
+	active, quiet, err := e.operatorActiveLocked(s.PaneID)
+	if err != nil {
+		logger.Warn("reed: operator activity unreadable, not holding the session rename", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "err", err)
+	} else if active {
+		logger.Debug("reed: operator active, deferring session name repair", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "quiet", quiet)
 		return false
 	}
-	if err := e.tmux.run("send-keys", "-t", s.PaneID, "Enter"); err != nil {
-		logger.Warn("reed: could not submit the session rename", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "err", err)
+	if err := e.pasteSubmitLocked(s.PaneID, namer.RenameText(s.Name), true); err != nil {
+		logger.Warn("reed: could not type the session rename", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "err", err)
 		return false
 	}
 	logger.Info("reed: repaired session name", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "name", s.Name)

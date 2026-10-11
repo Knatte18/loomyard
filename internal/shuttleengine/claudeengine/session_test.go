@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -130,8 +131,8 @@ func TestCompactSessionSequence(t *testing.T) {
 		focus string
 		want  []shuttleengine.PaneInput
 	}{
-		{"focus", "the open plan", []shuttleengine.PaneInput{{Text: "/compact the open plan", SettleMS: defaultSubmitSettleMS}, {Key: "Enter"}}},
-		{"empty", "", []shuttleengine.PaneInput{{Text: "/compact", SettleMS: defaultSubmitSettleMS}, {Key: "Enter"}}},
+		{"focus", "the open plan", []shuttleengine.PaneInput{{Text: "/compact the open plan"}, {Key: "Enter"}}},
+		{"empty", "", []shuttleengine.PaneInput{{Text: "/compact"}, {Key: "Enter"}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -149,7 +150,7 @@ func TestReloadPluginsSequence(t *testing.T) {
 	t.Parallel()
 
 	got := New().ReloadPluginsSequence()
-	want := []shuttleengine.PaneInput{{Text: "/reload-plugins", SettleMS: defaultSubmitSettleMS}, {Key: "Enter"}}
+	want := []shuttleengine.PaneInput{{Text: "/reload-plugins"}, {Key: "Enter"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ReloadPluginsSequence = %#v; want %#v", got, want)
 	}
@@ -168,26 +169,35 @@ func TestClearInputSequence(t *testing.T) {
 func TestPastePlaceholder(t *testing.T) {
 	t.Parallel()
 
+	long := strings.Repeat("x", PasteCollapseMinChars)
+	longWithLines := strings.Repeat("a line of the request\n", 40) + long
 	tests := []struct {
 		name string
 		box  string
+		text string
 		want bool
 	}{
-		{"bare placeholder", "[Pasted text #1]", true},
-		{"placeholder with line count", "[Pasted text #12 +40 lines]", true},
-		{"placeholder with surrounding space", "  [Pasted text #3 +2 lines] ", true},
-		{"draft quoting the placeholder", "see [Pasted text #1] above", false},
-		{"typed text", "hello", false},
-		{"empty reading", "", false},
+		{"bare placeholder", "[Pasted text #1]", long, true},
+		{"placeholder with line count", "[Pasted text #12 +40 lines]", longWithLines, true},
+		{"placeholder with surrounding space", "  [Pasted text #3 +0 lines] ", long, true},
+		{"a short text is never collapsed", "[Pasted text #1]", long[:PasteCollapseMinChars-1], false},
+		{"line count differing from the text's newlines", "[Pasted text #12 +39 lines]", longWithLines, false},
+		{"draft quoting the placeholder", "see [Pasted text #1] above", long, false},
+		{"typed text", "hello", long, false},
+		{"empty reading", "", long, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := New().PastePlaceholder(tt.box); got != tt.want {
-				t.Errorf("PastePlaceholder(%q) = %v; want %v", tt.box, got, tt.want)
+			if got := New().OwnPastePlaceholder(tt.box, tt.text); got != tt.want {
+				t.Errorf("OwnPastePlaceholder(%q, %d chars) = %v; want %v", tt.box, len(tt.text), got, tt.want)
 			}
 		})
+	}
+
+	if !New().PasteSubmits() {
+		t.Error("PasteSubmits() = false, want true")
 	}
 }
 
@@ -195,7 +205,7 @@ func TestClearSessionSequence(t *testing.T) {
 	t.Parallel()
 
 	got := New().ClearSessionSequence()
-	want := []shuttleengine.PaneInput{{Text: "/clear", SettleMS: defaultSubmitSettleMS}, {Key: "Enter"}}
+	want := []shuttleengine.PaneInput{{Text: "/clear"}, {Key: "Enter"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ClearSessionSequence = %#v; want %#v", got, want)
 	}

@@ -102,6 +102,7 @@ Finalize syncs the task branch with main, squashes it onto main, marks the board
 
 ## After landing
 
+First read `lyx batten status <slug>`; when its state is not done, run `lyx batten run <slug>` from the prime and confirm with `lyx batten status <slug>` that it reaches done, which runs Worktree-Teardown.
 Batten's teardown removes the pair.
 From the prime: pull and amend the board entries the run superseded.
 Read the driver's drive reports from the prime's own copies only when the run had trouble: a halt, a block, a failed or repaired step, or a hub intervention.
