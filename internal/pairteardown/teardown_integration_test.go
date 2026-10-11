@@ -198,12 +198,8 @@ func waitForPID(t *testing.T, path string) int {
 
 // processGone reports whether pid names no process, or one that has exited and awaits its reaper.
 func processGone(pid int) bool {
-	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
-	if err != nil {
-		return true
-	}
-	_, afterName, _ := strings.Cut(string(data), ") ")
-	return strings.HasPrefix(afterName, "Z")
+	state, ok := tmuxkit.ProcState(pid)
+	return !ok || state == "Z"
 }
 
 // TestRun_TeardownScenario runs the composite's real-substrate checks over one hub.

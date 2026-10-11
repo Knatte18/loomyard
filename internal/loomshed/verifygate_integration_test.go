@@ -14,6 +14,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/impactset"
+	"github.com/Knatte18/loomyard/internal/pattern"
+	"github.com/Knatte18/loomyard/internal/patternlint"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
@@ -47,7 +49,7 @@ func TestVerifyGate_Scenario(t *testing.T) {
 	}
 	runGate := func(t *testing.T) (passed bool, findings string) {
 		t.Helper()
-		got, err := NewVerifyGate(worktree, verifyDir, "Webster-Burler gate", func() (string, error) { return told, nil }, nil, nil)()
+		got, err := NewVerifyGate(worktree, verifyDir, "Webster-Burler gate", func() (string, error) { return told, nil }, nil, false, nil)()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -131,9 +133,10 @@ func (f roundGateFixture) commitFiles(t *testing.T, files map[string]string) str
 	return gitkit.Git(t, f.worktree, "rev-parse", "HEAD")
 }
 
-func (f roundGateFixture) runGate(t *testing.T) (passed bool, findings string) {
+// runGate runs the round form of the gate once, told the fixture's command and the given merge base reader, which may be nil.
+func (f roundGateFixture) runGate(t *testing.T, mergeBase func() (string, error)) (passed bool, findings string) {
 	t.Helper()
-	got, err := NewVerifyGate(f.worktree, f.verifyDir, "Webster-Burler gate", func() (string, error) { return f.planCommand, nil }, nil, nil)()
+	got, err := NewVerifyGate(f.worktree, f.verifyDir, "Webster-Burler gate", func() (string, error) { return f.planCommand, nil }, mergeBase, false, nil)()
 	if err != nil {
 		t.Fatalf("gate() error = %v; want nil", err)
 	}
@@ -142,7 +145,7 @@ func (f roundGateFixture) runGate(t *testing.T) (passed bool, findings string) {
 
 // wholeDiffGate runs the whole-diff form of the gate once, told the fixture's command and the given merge base reader.
 func (f roundGateFixture) wholeDiffGate(command, mergeBase func() (string, error)) (shuttleengine.GateResult, error) {
-	return NewVerifyGate(f.worktree, f.verifyDir, "Darn gate", command, mergeBase, nil)()
+	return NewVerifyGate(f.worktree, f.verifyDir, "Darn gate", command, mergeBase, true, nil)()
 }
 
 func (f roundGateFixture) planRanCount(t *testing.T) int {
@@ -178,7 +181,7 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 	paths := verifytree.NewPaths(f.worktree, f.verifyDir)
 
 	if !t.Run("runs the plan's command and passes the lint with no recorded pass", func(t *testing.T) {
-		if passed, findings := f.runGate(t); !passed {
+		if passed, findings := f.runGate(t, nil); !passed {
 			t.Fatalf("gate() findings = %q; want a pass", findings)
 		}
 		if got := f.planRanCount(t); got != 1 {
@@ -198,7 +201,7 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 		if err != nil || derivation.Command == "" {
 			t.Fatalf("Derive() = %+v, %v; want a derived command", derivation, err)
 		}
-		if passed, findings := f.runGate(t); !passed {
+		if passed, findings := f.runGate(t, nil); !passed {
 			t.Fatalf("gate() findings = %q; want a pass", findings)
 		}
 		if got := f.planRanCount(t); got != 1 {
@@ -217,7 +220,7 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 
 	if !t.Run("skips on a second arrival at the same tree", func(t *testing.T) {
 		logsBefore := verifyLogs(t, f.verifyDir)
-		if passed, findings := f.runGate(t); !passed {
+		if passed, findings := f.runGate(t, nil); !passed {
 			t.Fatalf("gate() findings = %q; want a pass", findings)
 		}
 		if logs := verifyLogs(t, f.verifyDir); len(logs) != len(logsBefore) {
@@ -243,7 +246,7 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 			}
 		})
 
-		if passed, findings := f.runGate(t); !passed {
+		if passed, findings := f.runGate(t, nil); !passed {
 			t.Fatalf("gate() findings = %q; want a pass", findings)
 		}
 		want := derivation.Command + " && go test -tags tmux -run '^TestB$' example.com/m/b && go test -tags tmux " + strings.Join(derivation.Packages, " ")
@@ -313,6 +316,7 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 			{"CommandError", func() (string, error) { return "", errors.New("command source down") }, baseOf(planPass.Commit), "command source down"},
 			{"EmptyCommand", func() (string, error) { return "", nil }, baseOf(planPass.Commit), "empty command"},
 			{"MergeBaseError", toldCommand, func() (string, error) { return "", errors.New("merge base unreadable") }, "merge base unreadable"},
+			{"NilReader", toldCommand, nil, "no merge base reader"},
 		}
 		for _, tt := range tests {
 			got, err := f.wholeDiffGate(tt.command, tt.mergeBase)
@@ -333,7 +337,7 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 
 	if !t.Run("fails with the file and line of a misplaced marker", func(t *testing.T) {
 		f.commitFiles(t, map[string]string{"a/a_test.go": "package a\n\nimport \"testing\"\n\n//lyx:guard\nvar misplaced = 1\n\nfunc TestA(t *testing.T) {}\n"})
-		passed, findings := f.runGate(t)
+		passed, findings := f.runGate(t, nil)
 		if passed || !strings.Contains(findings, "a/a_test.go:5") || !strings.Contains(findings, "directly above") {
 			t.Errorf("gate() passed = %v, findings = %q; want a failure naming a/a_test.go:5 and the way to place the marker", passed, findings)
 		}
@@ -347,7 +351,7 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 			"a/a.go":      "package a\n\n// Wrapped comment that breaks in the\n// middle of a sentence.\nfunc Wrapped() {}\n",
 		})
 		logsBefore := verifyLogs(t, f.verifyDir)
-		passed, findings := f.runGate(t)
+		passed, findings := f.runGate(t, nil)
 		if passed || !strings.Contains(findings, "a/a.go:3") {
 			t.Errorf("gate() passed = %v, findings = %q; want a failure naming a/a.go:3", passed, findings)
 		}
@@ -363,12 +367,72 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 		return
 	}
 
+	f.commitFiles(t, map[string]string{"a/a.go": "package a\n\n// Wrapped comment now breaks at the end of a sentence.\n// Each sentence has its own line.\nfunc Wrapped() {}\n"})
+	overview := func(size int) string { return strings.Repeat("o", size-1) + "\n" }
+	head := func(t *testing.T) string { return gitkit.Git(t, f.worktree, "rev-parse", "HEAD") }
+
+	if !t.Run("round form told the merge base fails a branch that grew the overview past the line before any command runs", func(t *testing.T) {
+		parent := head(t)
+		f.commitFiles(t, map[string]string{"PATTERN.md": overview(pattern.HeadroomBytes + 100), "b/b.go": "package b\n\nconst Changed = 4\n"})
+		logsBefore, ranBefore := verifyLogs(t, f.verifyDir), f.planRanCount(t)
+
+		passed, findings := f.runGate(t, baseOf(parent))
+		if passed {
+			t.Fatal("gate() passed; want a failure for the grown overview")
+		}
+		for _, want := range []string{"cut 100 bytes", patternlint.WayForward, "re-step the row"} {
+			if !strings.Contains(findings, want) {
+				t.Errorf("Findings = %q; want it to contain %q", findings, want)
+			}
+		}
+		if logs := verifyLogs(t, f.verifyDir); len(logs) != len(logsBefore) || f.planRanCount(t) != ranBefore {
+			t.Errorf("verify logs = %q, plan ran %d times; want no command to have run", logs, f.planRanCount(t))
+		}
+
+		f.commitFiles(t, map[string]string{"PATTERN.md": overview(pattern.HeadroomBytes)})
+		latest, ok := verifytree.LatestPass(paths, f.planCommand)
+		if !ok {
+			t.Fatal("no recorded pass of the plan's command")
+		}
+		derivation, err := impactset.Derive(f.worktree, latest.Commit)
+		if err != nil || derivation.Command == "" {
+			t.Fatalf("Derive() = %+v, %v; want a derived command", derivation, err)
+		}
+		if passed, findings := f.runGate(t, baseOf(parent)); !passed {
+			t.Fatalf("gate() findings = %q; want a pass once the growth is cut", findings)
+		}
+		if pass, ok := verifytree.LatestPass(paths, derivation.Command); !ok || pass.Commit != head(t) {
+			t.Errorf("LatestPass(derived command) = %+v, %v; want a pass at %s, the round form kept", pass, ok, head(t))
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("round form passes a branch that did not grow the overview, and one that never grew a merged-in overview above the line", func(t *testing.T) {
+		f.commitFiles(t, map[string]string{"PATTERN.md": overview(pattern.HeadroomBytes + 500)})
+		parent := head(t)
+		f.commitFiles(t, map[string]string{"b/b.go": "package b\n\nconst Changed = 5\n"})
+		if passed, findings := f.runGate(t, baseOf(parent)); !passed {
+			t.Fatalf("gate() findings = %q; want a pass for a branch that left the overview alone", findings)
+		}
+
+		f.commitFiles(t, map[string]string{"PATTERN.md": overview(pattern.HeadroomBytes + 530)})
+		passed, findings := f.runGate(t, baseOf(parent))
+		if passed || !strings.Contains(findings, "cut 30 bytes") {
+			t.Errorf("gate() passed = %v, findings = %q; want a failure naming only the branch's own 30 bytes", passed, findings)
+		}
+		if passed, findings := f.runGate(t, nil); !passed {
+			t.Errorf("gate() told no reader: findings = %q; want a pass, the headroom lint skipped", findings)
+		}
+	}) {
+		return
+	}
+
 	t.Run("refuses a dirty tree", func(t *testing.T) {
-		f.commitFiles(t, map[string]string{"a/a.go": "package a\n\n// Wrapped comment now breaks at the end of a sentence.\n// Each sentence has its own line.\nfunc Wrapped() {}\n"})
 		if err := os.WriteFile(filepath.Join(f.worktree, "stray.txt"), []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if passed, findings := f.runGate(t); passed || !strings.Contains(findings, "stray.txt") {
+		if passed, findings := f.runGate(t, nil); passed || !strings.Contains(findings, "stray.txt") {
 			t.Errorf("gate() passed = %v, findings = %q; want a failure naming stray.txt", passed, findings)
 		}
 	})

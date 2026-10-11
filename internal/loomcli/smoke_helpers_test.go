@@ -14,7 +14,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -291,86 +290,53 @@ func commitRetiredBatcherKey(t *testing.T, loc *lyxcwd.Location) {
 	gitkit.CommitFile(t, fabricengine.RecordsWorktree(loc), configengine.ConfigFileRel("batcher"), retired, "fixture: retired key")
 }
 
-// findWatchdogPIDs returns the pids of every live process whose argv contains an adjacent "reed"
-// followed by "watchdog" pair AND a "--hub-path" argument equal to hubPath -- the /proc-native way to
-// find the per-hub watchdog daemon a bootstrap spawned, mirroring findDriverPIDs' own shape and the
-// same find-then-proc.KillPID pattern this file's cleanup already applies to driver pids. A lone
-// "watchdog" argv element is not a sufficient discriminator, for the identical reason a lone "run" is
-// not for the driver: "watchdog" is this verb's own unique name today, but matching on the adjacent
-// verb pair plus the --hub-path value it was told is what keeps this scan specific to THIS fixture's
-// own daemon rather than a sibling fixture's, since the daemon is a detached, per-hub process this
-// test's own cwd does not identify the way a driver's cwd does. Linux only, mirroring
-// findDriverPIDs; returns nil on any other GOOS.
+// findWatchdogPIDs returns the pids of every live process that is a reed watchdog daemon and whose argv carries a "--hub-path" argument equal to hubPath.
+// It finds the per-hub watchdog daemon a bootstrap spawned, for the same find-then-proc.KillPID pattern this file's cleanup applies to driver pids.
+// The daemon is a detached, per-hub process that the test's own cwd does not identify the way a driver's cwd does, so the --hub-path value it was told is what keeps this scan specific to this fixture's own daemon rather than a sibling fixture's.
+// Linux only; returns nil on any other GOOS.
 func findWatchdogPIDs(hubPath string) []int {
 	if runtime.GOOS != "linux" {
 		return nil
 	}
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return nil
-	}
 	var pids []int
-	for _, e := range entries {
-		pid, err := strconv.Atoi(e.Name())
-		if err != nil {
+	for _, pid := range tmuxkit.Pids() {
+		argv, ok := tmuxkit.ProcArgv(pid)
+		if !ok || !tmuxkit.IsWatchdog(argv) {
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join("/proc", e.Name(), "cmdline"))
-		if err != nil {
-			continue
-		}
-		argv := strings.Split(strings.TrimRight(string(raw), "\x00"), "\x00")
-		var isWatchdog, matchesHub bool
 		for i, arg := range argv {
-			if i+1 < len(argv) && arg == "reed" && argv[i+1] == "watchdog" {
-				isWatchdog = true
-			}
 			if arg == "--hub-path" && i+1 < len(argv) && argv[i+1] == hubPath {
-				matchesHub = true
+				pids = append(pids, pid)
+				break
 			}
-		}
-		if isWatchdog && matchesHub {
-			pids = append(pids, pid)
 		}
 	}
 	return pids
 }
 
-// findDriverPIDs returns the pids of every live process whose current working directory is worktree
-// and whose argv contains an adjacent "loom" followed by "run" pair -- the /proc-native way to find
-// the detached "lyx loom run" process a bootstrap spawned, since it inherits its parent's cwd and its
-// own argv is fixed. A lone "run" argv element is not a sufficient discriminator: "run" is also a verb
-// on shuttle, burler, and webster, so it would over-match any such process sharing the worktree cwd;
-// the adjacent-pair requirement is what makes this specific to the loom driver. Linux only, mirroring
-// internal/reedcli's own /proc-native probes; returns nil on any other GOOS.
-// A process whose parent also matches is dropped: between fork and exec the driver's own child,
-// such as a git call, still carries the driver's argv and cwd, and is not a second driver.
+// findDriverPIDs returns the pids of every live process whose current working directory is worktree and whose argv contains an adjacent "loom" followed by "run" pair.
+// It finds the detached "lyx loom run" process a bootstrap spawned, since it inherits its parent's cwd and its own argv is fixed.
+// A lone "run" argv element is not a sufficient discriminator: "run" is also a verb on shuttle, burler, and webster, so it would over-match any such process sharing the worktree cwd.
+// Linux only; returns nil on any other GOOS.
+// A process whose parent also matches is dropped: between fork and exec the driver's own child, such as a git call, still carries the driver's argv and cwd, and is not a second driver.
 func findDriverPIDs(worktree string) []int {
 	if runtime.GOOS != "linux" {
 		return nil
 	}
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return nil
-	}
 	parents := map[int]int{}
-	for _, e := range entries {
-		pid, err := strconv.Atoi(e.Name())
-		if err != nil {
+	for _, pid := range tmuxkit.Pids() {
+		cwd, ok := tmuxkit.ProcCwd(pid)
+		if !ok || cwd != worktree {
 			continue
 		}
-		cwd, err := os.Readlink(filepath.Join("/proc", e.Name(), "cwd"))
-		if err != nil || cwd != worktree {
+		argv, ok := tmuxkit.ProcArgv(pid)
+		if !ok {
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join("/proc", e.Name(), "cmdline"))
-		if err != nil {
-			continue
-		}
-		argv := strings.Split(strings.TrimRight(string(raw), "\x00"), "\x00")
 		for i := 0; i+1 < len(argv); i++ {
 			if argv[i] == "loom" && argv[i+1] == "run" {
-				parents[pid] = parentPID(pid)
+				// A parent that cannot be read answers 0, which no matching process has as its pid.
+				parents[pid], _ = tmuxkit.ProcPPID(pid)
 				break
 			}
 		}
@@ -382,26 +348,4 @@ func findDriverPIDs(worktree string) []int {
 		}
 	}
 	return pids
-}
-
-// parentPID returns pid's parent pid from /proc/<pid>/stat, or 0 when it cannot be read.
-// The comm field may hold spaces and parentheses, so the fields are counted from the last ')'.
-func parentPID(pid int) int {
-	raw, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
-	if err != nil {
-		return 0
-	}
-	rest := string(raw)
-	if i := strings.LastIndex(rest, ")"); i >= 0 {
-		rest = rest[i+1:]
-	}
-	fields := strings.Fields(rest)
-	if len(fields) < 2 {
-		return 0
-	}
-	ppid, err := strconv.Atoi(fields[1])
-	if err != nil {
-		return 0
-	}
-	return ppid
 }

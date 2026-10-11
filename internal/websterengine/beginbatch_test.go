@@ -456,7 +456,7 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 				}
 			},
 			number: 1,
-			want:   []string{"  - `lyx gate test ./internal/alpha`\n  - `lyx loom lint-comments`"},
+			want:   []string{"  - `lyx gate test ./internal/alpha`\n  - `lyx loom lint-comments`\n  - `lyx loom lint-pattern`"},
 		},
 	}
 	for _, tt := range tests {

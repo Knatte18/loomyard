@@ -69,16 +69,16 @@ func budgetViolations(counts, budget map[string]int) []string {
 		allowed, hasRow := budget[pkg]
 		switch {
 		case !hasRow:
-			violations = append(violations, fmt.Sprintf("%s: %d top-level tests and no budget row", pkg, count))
+			violations = append(violations, fmt.Sprintf("%s: %d top-level tests and no budget row; add a row for %s with %d to cmd/lyx/%s", pkg, count, pkg, count, testBudgetFile))
 		case count > allowed:
-			violations = append(violations, fmt.Sprintf("%s: %d top-level tests, over its budget of %d", pkg, count, allowed))
+			violations = append(violations, fmt.Sprintf("%s: %d top-level tests, over its budget of %d; set its row in cmd/lyx/%s to %d", pkg, count, allowed, testBudgetFile, count))
 		}
 	}
 	sort.Strings(violations)
 	return violations
 }
 
-// TestBudgetViolations pins the comparison over in-memory sources: a package over budget fails with its count and budget, a package with tests and no row fails, a package under budget or a row without tests passes, and a test in a `tmux` or `llm` file counts.
+// TestBudgetViolations pins the comparison over in-memory sources: a package over budget fails with its count, its budget and the row value to set, a package with tests and no row fails naming the row to add, a package under budget or a row without tests passes, and a test in a `tmux` or `llm` file counts.
 func TestBudgetViolations(t *testing.T) {
 	t.Parallel()
 
@@ -89,8 +89,8 @@ func TestBudgetViolations(t *testing.T) {
 		budget  map[string]int
 		want    []string
 	}{
-		{"over budget", map[string]string{"a/a_test.go": tests}, map[string]int{"a": 1}, []string{"a: 2 top-level tests, over its budget of 1"}},
-		{"no row", map[string]string{"a/a_test.go": tests}, map[string]int{}, []string{"a: 2 top-level tests and no budget row"}},
+		{"over budget", map[string]string{"a/a_test.go": tests}, map[string]int{"a": 1}, []string{"a: 2 top-level tests, over its budget of 1; set its row in cmd/lyx/testdata/test-budget.yaml to 2"}},
+		{"no row", map[string]string{"a/a_test.go": tests}, map[string]int{}, []string{"a: 2 top-level tests and no budget row; add a row for a with 2 to cmd/lyx/testdata/test-budget.yaml"}},
 		{"at budget", map[string]string{"a/a_test.go": tests}, map[string]int{"a": 2}, nil},
 		{"under budget", map[string]string{"a/a_test.go": tests}, map[string]int{"a": 5}, nil},
 		{"row without tests", map[string]string{"a/a.go": "package a\n"}, map[string]int{"gone": 3}, nil},
@@ -102,7 +102,7 @@ func TestBudgetViolations(t *testing.T) {
 				"a/c_llm_test.go":  "//go:build llm\n\npackage a\n\nfunc TestC(t *testing.T) {}\n",
 			},
 			map[string]int{"a": 2},
-			[]string{"a: 3 top-level tests, over its budget of 2"},
+			[]string{"a: 3 top-level tests, over its budget of 2; set its row in cmd/lyx/testdata/test-budget.yaml to 3"},
 		},
 	}
 	for _, tc := range cases {
@@ -122,7 +122,7 @@ func TestBudgetViolations(t *testing.T) {
 }
 
 // TestTestBudget_PackagesStayWithinBudget fails when a package's top-level test count exceeds its row in the budget file, or when a package with tests has no row.
-// Raise a row in the commit that adds the tests that need it.
+// A violation names the row value to set, and the edit lands in the commit that adds the tests that need it.
 //
 //lyx:guard
 func TestTestBudget_PackagesStayWithinBudget(t *testing.T) {
@@ -148,6 +148,6 @@ func TestTestBudget_PackagesStayWithinBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, violation := range budgetViolations(counts, budget) {
-		t.Errorf("%s; raise its row in cmd/lyx/%s in the commit that adds the tests", violation, testBudgetFile)
+		t.Errorf("%s; the edit lands in the commit that adds the tests", violation)
 	}
 }

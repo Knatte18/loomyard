@@ -53,7 +53,7 @@ A scratch hub is a Go test fixture over local bare repositories (`hubforge`).
 `lyx fabric` refuses its mutating verbs from your strand; the refusal is the rule's owner.
 When the work itself needs a refused verb, stop and report `status: FAILED`, so the orch runs the verb.
 
-The card gate steps, the batch gate steps, `lyx loom lint-comments` and `lyx quarry resolve` are always allowed from any strand, and none of them is a fabric reference.
+The card gate steps, the batch gate steps, `lyx loom lint-comments`, `lyx loom lint-pattern` and `lyx quarry resolve` are always allowed from any strand, and none of them is a fabric reference.
 The sandbox ban covers mutating `lyx fabric` verbs only.
 
 ## The batch gate — once, after the last card

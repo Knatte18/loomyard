@@ -28,13 +28,16 @@ func TestCardGateCommand(t *testing.T) {
 	t.Parallel()
 
 	plan := &planparser.Plan{Language: "go"}
-	const lint = "lyx loom lint-comments"
+	const (
+		lintComments = "lyx loom lint-comments"
+		lintPattern  = "lyx loom lint-pattern"
+	)
 
 	t.Run("one step covers each package directory", func(t *testing.T) {
 		t.Parallel()
 		root := t.TempDir()
 		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"internal/a/a.go#", "internal/b/b.go#Run"}})
-		want := []string{"lyx gate test ./internal/a ./internal/b", lint}
+		want := []string{"lyx gate test ./internal/a ./internal/b", lintComments, lintPattern}
 		if got := cardGateCommand(plan, card, root); !slices.Equal(got, want) {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
@@ -48,18 +51,18 @@ func TestCardGateCommand(t *testing.T) {
 			planparser.TargetGroup{Type: planparser.CardTypeDelete, Refs: []string{"internal/gone/g.go#"}},
 			planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"internal/kept/k.go#"}},
 		)
-		want := []string{"lyx gate test ./internal/kept", lint}
+		want := []string{"lyx gate test ./internal/kept", lintComments, lintPattern}
 		if got := cardGateCommand(plan, card, root); !slices.Equal(got, want) {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
 	})
 
-	t.Run("directory with no Go files runs the lint alone", func(t *testing.T) {
+	t.Run("directory with no Go files runs the two lints alone", func(t *testing.T) {
 		t.Parallel()
 		root := t.TempDir()
 		writeGateFile(t, root, "contracts/stencils/x.md")
 		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeProsa, Refs: []string{"contracts/stencils/x.md"}})
-		want := []string{lint}
+		want := []string{lintComments, lintPattern}
 		if got := cardGateCommand(plan, card, root); !slices.Equal(got, want) {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
@@ -70,7 +73,7 @@ func TestCardGateCommand(t *testing.T) {
 		root := t.TempDir()
 		writeGateFile(t, root, "testdata/helper.go")
 		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeProsa, Refs: []string{"testdata/notes.md"}})
-		want := []string{"lyx gate test ./testdata", lint}
+		want := []string{"lyx gate test ./testdata", lintComments, lintPattern}
 		if got := cardGateCommand(plan, card, root); !slices.Equal(got, want) {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
@@ -79,7 +82,7 @@ func TestCardGateCommand(t *testing.T) {
 	t.Run("worktree root package is spelled dot", func(t *testing.T) {
 		t.Parallel()
 		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"main.go"}})
-		want := []string{"lyx gate test .", lint}
+		want := []string{"lyx gate test .", lintComments, lintPattern}
 		if got := cardGateCommand(plan, card, t.TempDir()); !slices.Equal(got, want) {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
@@ -98,24 +101,24 @@ func TestCardGateCommand(t *testing.T) {
 				name:  "directory inside an on-disk module beside a root directory",
 				disk:  []string{"nested/go.mod"},
 				cards: []planparser.Card{numberedGateCard(1, gateEdit("internal/a/a.go#", "nested/pkg/p.go#"))},
-				want:  []string{"lyx gate test ./internal/a", "lyx gate test -C nested ./pkg", lint},
+				want:  []string{"lyx gate test ./internal/a", "lyx gate test -C nested ./pkg", lintComments, lintPattern},
 			},
 			{
 				name:  "the module's own directory is spelled dot",
 				disk:  []string{"nested/go.mod"},
 				cards: []planparser.Card{numberedGateCard(1, gateEdit("nested/main.go#"))},
-				want:  []string{"lyx gate test -C nested .", lint},
+				want:  []string{"lyx gate test -C nested .", lintComments, lintPattern},
 			},
 			{
 				name:  "one step per module in first-seen order",
 				disk:  []string{"m1/go.mod", "m2/go.mod"},
 				cards: []planparser.Card{numberedGateCard(1, gateEdit("m2/a/a.go#", "m1/b/b.go#", "m2/c/c.go#"))},
-				want:  []string{"lyx gate test -C m2 ./a ./c", "lyx gate test -C m1 ./b", lint},
+				want:  []string{"lyx gate test -C m2 ./a ./c", "lyx gate test -C m1 ./b", lintComments, lintPattern},
 			},
 			{
 				name:  "module created by this card",
 				cards: []planparser.Card{numberedGateCard(1, gateCreate("newmod/go.mod", "newmod/pkg/p.go#"))},
-				want:  []string{"lyx gate test -C newmod ./pkg", lint},
+				want:  []string{"lyx gate test -C newmod ./pkg", lintComments, lintPattern},
 			},
 			{
 				name: "module created by an earlier card",
@@ -124,7 +127,7 @@ func TestCardGateCommand(t *testing.T) {
 					numberedGateCard(2, gateEdit("newmod/pkg/p.go#")),
 				},
 				index: 1,
-				want:  []string{"lyx gate test -C newmod ./pkg", lint},
+				want:  []string{"lyx gate test -C newmod ./pkg", lintComments, lintPattern},
 			},
 			{
 				name: "module created by a later card stays a root argument",
@@ -132,7 +135,7 @@ func TestCardGateCommand(t *testing.T) {
 					numberedGateCard(1, gateEdit("newmod/pkg/p.go#")),
 					numberedGateCard(2, gateCreate("newmod/go.mod")),
 				},
-				want: []string{"lyx gate test ./newmod/pkg", lint},
+				want: []string{"lyx gate test ./newmod/pkg", lintComments, lintPattern},
 			},
 			{
 				name: "module moved by a Rename pair",
@@ -145,7 +148,7 @@ func TestCardGateCommand(t *testing.T) {
 					},
 					gateEdit("moved/pkg/p.go#"),
 				)},
-				want: []string{"lyx gate test -C moved ./pkg", lint},
+				want: []string{"lyx gate test -C moved ./pkg", lintComments, lintPattern},
 			},
 		}
 		for _, tt := range tests {
@@ -190,8 +193,10 @@ func TestRenderCardGates_OneBulletPerCardWithAStepSubBulletEach(t *testing.T) {
 	want := "- `_lyx/plan/01-gate.md`:\n" +
 		"  - `lyx gate test ./internal/a`\n" +
 		"  - `lyx loom lint-comments`\n" +
+		"  - `lyx loom lint-pattern`\n" +
 		"- `_lyx/plan/02-docs.md`:\n" +
-		"  - `lyx loom lint-comments`"
+		"  - `lyx loom lint-comments`\n" +
+		"  - `lyx loom lint-pattern`"
 	if got != want {
 		t.Errorf("renderCardGates() =\n%s\nwant\n%s", got, want)
 	}

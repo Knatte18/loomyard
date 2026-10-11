@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 const (
@@ -239,12 +240,11 @@ func runGate(t *testing.T, run gateRun) (int, string) {
 
 // processGone reports whether pid has ended; a zombie nobody reaped counts as ended.
 func processGone(pid int) bool {
-	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
-	if err != nil {
+	state, ok := tmuxkit.ProcState(pid)
+	if !ok {
 		return !proc.IsAlive(pid)
 	}
-	stat := string(data)
-	return stat[strings.LastIndexByte(stat, ')')+2] == 'Z'
+	return state == "Z"
 }
 
 func TestGateTest_Scenario(t *testing.T) {

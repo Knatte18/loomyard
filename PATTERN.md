@@ -9,33 +9,33 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-lyxdirs-single-declarer` — Naming `_lyx` or `.lyx` in a path: only `internal/lyxdirs` declares those literals, and no other production file spells them.
 - `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked content lives under `_lyx`, anything never tracked under `.lyx` at the mirrored subpath. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-hub-containment` — Linking hub-level containers: `_board`, `_portals` and `_launchers` are reachable from the hub only, never junctioned into a worktree. — [background](pattern/PATTERN-hub-containment.md)
-- `PATTERN-hub-wide-config` — Adding or reading a config module that describes a hub-level fact: it is marked `HubWide` in `configreg` and read and written only at `<BoardDir>/_lyx/config/`, never in a worktree's `_lyx/config/`.
+- `PATTERN-hub-wide-config` — Adding or reading a hub-level config module: mark it `HubWide` in `configreg`; read and write it only at `<BoardDir>/_lyx/config/`. — [background](pattern/PATTERN-hub-wide-config.md)
 - `PATTERN-hub-suffix` — Touching hub naming: `-LYXHUB` is the sole hub container suffix, and no code parses, trims or recognises the retired `-HUB`. (test) — [background](pattern/PATTERN-hub-suffix.md)
 
 ## CLI
 
 - `PATTERN-cli-cobra` — Adding a CLI module: a cobra subtree under one root in `cmd/lyx/main.go`, with `Command`, `RunCLI`, `audience`, `Short` and JSON errors. (test) — [background](pattern/PATTERN-cli-cobra.md)
-- `PATTERN-cliwire-sole-wiring` — Wiring a standalone-capable CLI: `internal/cliwire` alone resolves target dir, repository root and state; a module declares a descriptor. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
+- `PATTERN-cliwire-sole-wiring` — Wiring a standalone-capable CLI: `internal/cliwire` alone resolves target dir, repo root and state. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
 - `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of `configengine.Load` (strict) or `LoadOrTemplate` (degrades to the embedded template). — [background](pattern/PATTERN-config-strictness.md)
 - `PATTERN-binary-change-reconcile` — Reconciling a hub's config after a binary change: only through `hubreconcile.Ensure`, which owns the build stamp and the hub lock.
-- `PATTERN-refusal-way-forward` — Adding a refusal in webster, shed or loom: its message names the way forward, its spec row lands in the same commit, and a test reaches it. — [background](pattern/PATTERN-refusal-way-forward.md)
-- `PATTERN-no-denied-recovery` — Naming a way forward or a step in a refusal, stencil or spec: never a command the agents' settings deny; lyx performs that step itself. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
+- `PATTERN-refusal-way-forward` — Adding a webster, shed or loom refusal: name the way forward, land its spec row with it, add a test. — [background](pattern/PATTERN-refusal-way-forward.md)
+- `PATTERN-no-denied-recovery` — Naming a step in a refusal, stencil or spec: never a command the agents' settings deny; lyx does it. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
 
 ## Fabric and git
 
 - `PATTERN-fabric-vocabulary` — Naming the wired composite: "fabric"; warp and weft only where the two sides must be told apart, and `host` is retired. (test) — [background](pattern/PATTERN-fabric-vocabulary.md)
 - `PATTERN-fabric-git` — Running git on warp or weft: only `internal/fabricengine`, in-process, never raw git. — [background](pattern/PATTERN-fabric-git.md)
-- `PATTERN-fabric-destruction-chokepoint` — Destroying anything in fabric: only `internal/fabricengine/destroy.go`, checking containment, ownership, dirtiness, force in that order. — [background](pattern/PATTERN-fabric-destruction-chokepoint.md)
+- `PATTERN-fabric-destruction-chokepoint` — Destroying anything in fabric: only `internal/fabricengine/destroy.go`. — [background](pattern/PATTERN-fabric-destruction-chokepoint.md)
 - `PATTERN-fabric-write-containment` — Writing under `_launchers` or `_portals` from `fabricengine`: through an `os.Root` rooted at the hub, never raw `os.MkdirAll`, `os.WriteFile` or `fslink`.
-- `PATTERN-push-both-sides` — Pushing a run's records side from Go: in a task pair the code branch goes with it, rebase-free, under fabric's absorbing push lock, and never left to an agent; the prime's pushes stay records-only, its code branch being the operator's.
+- `PATTERN-push-both-sides` — Pushing run records from Go: a pair's code branch goes along, rebase-free under fabric's lock, never by an agent; the prime sends records only. — [background](pattern/PATTERN-push-both-sides.md)
 - `PATTERN-mutation-record` — Adding a mutating fabric verb: it accumulates a `*Mutations` record and its result embeds `MutationRecord` under a fixed envelope key set. — [background](pattern/PATTERN-mutation-record.md)
 - `PATTERN-pair-teardown` — Tearing down a pair: only through `internal/pairteardown`, which ends the pair's reed session before any worktree is removed. (test) — [background](pattern/PATTERN-pair-teardown.md)
 - `PATTERN-batten-bookend` — Creating or destroying a task worktree: the producer never runs from inside it, and session shutdown precedes removal in one row. — [background](pattern/PATTERN-batten-bookend.md)
 - `PATTERN-github-auth` — Calling GitHub: all authentication goes through `internal/githubclient`, and no other production package shells out to `gh`.
 - `PATTERN-agent-filed-issues` — Filing a GitHub issue from lyx: only through `lyx selfreport create`, run by an agent or the operator; no other production package calls `selfreportengine.CreateIssue`. (test)
-- `PATTERN-hub-store-gc` — Hub stores carry `gc.auto=0` and `maintenance.auto=false`: only `fabricengine/housekeeping.go` sets them or runs `gc`, skipped while another pair's session is live. — [background](pattern/PATTERN-hub-store-gc.md)
-- `PATTERN-gogit-read-helper` — Reading through go-git in `internal/gitrepo`: only through `readGoGit`, the sole caller of `goGit()`, which retries a whole read once after a repack. (test) — [background](pattern/PATTERN-gogit-read-helper.md)
-- `PATTERN-gitrepo-client-boundary` — Reading or mutating git state in `internal/gitrepo`: go-git and the `dotgit` geometry read own local reads, `gitexec` remote-authenticating or tree-mutating work. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
+- `PATTERN-hub-store-gc` — Hub stores carry `gc.auto=0` and `maintenance.auto=false`: only `fabricengine/housekeeping.go` sets them or runs `gc`. — [background](pattern/PATTERN-hub-store-gc.md)
+- `PATTERN-gogit-read-helper` — Reading through go-git in `internal/gitrepo`: only through `readGoGit`, the sole caller of `goGit()`. (test) — [background](pattern/PATTERN-gogit-read-helper.md)
+- `PATTERN-gitrepo-client-boundary` — Git in `internal/gitrepo`: local reads via go-git and `dotgit`, the rest via `gitexec`. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
 - `PATTERN-gitexec-checked-call` — Running git: use `gitexec.Run`/`runChecked`; the raw `RunGit`/`r.run` forms survive only at pinned `//gitexec:raw` call sites.
 - `PATTERN-never-force-add` — Keeping transients out of the index: each repo's own `.git/info/exclude`; fabric and gitrepo never run `git add -f`.
 
@@ -43,39 +43,39 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 - `PATTERN-shed-producer-seam` — Importing into `internal/shedengine`: only stdlib, `state` and `lock`, and its status and lock paths are caller-supplied.
 - `PATTERN-shed-recipe-registry` — Registering a shed producer: one `map[string]Constructor` in `internal/shedrecipe`, reached through `Lookup`/`Names`, with no `init()`, no `Register`, no `lyxcwd`.
-- `PATTERN-shed-verb-set` — Adding a run, step, status, pause or goto verb: the generic bodies live in `internal/shedverbs` only, which derives no path, imports only its allowlist and closes the step kinds at six. (test) — [background](pattern/PATTERN-shed-verb-set.md)
-- `PATTERN-shed-run-directory` — Touching run directories or `seed.json`: `internal/shedrun` is the sole declarer of the `shed` segment, the run-id vocabulary and the `Seed` codec. — [background](pattern/PATTERN-shed-run-directory.md)
-- `PATTERN-transient-stop` — Marking a failure transient: the mark is declared in `internal/shedengine` and set only at a producer or step-bootstrap boundary, never on a verdict. — [background](pattern/PATTERN-transient-stop.md)
-- `PATTERN-failure-stop-visible` — Stopping a `--until-stop` loop on a failure with no other run-lock holder: the status file is non-running before its waiter returns. (test) — [background](pattern/PATTERN-failure-stop-visible.md)
-- `PATTERN-driver-choice-single-site` — Reading a recorded seed driver: once per recipe, in its own bootstrap verb, selecting the driving surface and nothing else. (test) — [background](pattern/PATTERN-driver-choice-single-site.md)
+- `PATTERN-shed-verb-set` — Adding a run, step, status, pause or goto verb: the generic bodies live in `internal/shedverbs` only. (test) — [background](pattern/PATTERN-shed-verb-set.md)
+- `PATTERN-shed-run-directory` — Touching run directories or `seed.json`: `internal/shedrun` alone declares their paths, ids and `Seed`. — [background](pattern/PATTERN-shed-run-directory.md)
+- `PATTERN-transient-stop` — Marking a failure transient: the `internal/shedengine` mark, set only at a producer or step-bootstrap boundary. — [background](pattern/PATTERN-transient-stop.md)
+- `PATTERN-failure-stop-visible` — An `--until-stop` failure as sole lock holder: status is non-running before the waiter returns. (test) — [background](pattern/PATTERN-failure-stop-visible.md)
+- `PATTERN-driver-choice-single-site` — Reading a seed driver: once per recipe, in its bootstrap verb, for the surface only. (test) — [background](pattern/PATTERN-driver-choice-single-site.md)
 - `PATTERN-treadle-runner-seam` — Importing into `internal/treadleengine`: never `burlerengine` or an `internal/*cli` package, and only its allowlist, not `lyxcwd`.
 - `PATTERN-plan-generation` — Archiving a plan: `_lyx/plan/`'s top-level files hold exactly one generation, and a retired one lives under `round-<N>/prior-generation/`. — [background](pattern/PATTERN-plan-generation.md)
-- `PATTERN-ref-shape-registry` — Classifying a plan ref or `plan:` handle: `internal/planparser` is the sole declarer, and every decision routes through its kind-policy ledger. (test) — [background](pattern/PATTERN-ref-shape-registry.md)
-- `PATTERN-glyph-conversion-chokepoint` — Converting between glyphs and paths: only `glyph.Self`, `Glyph.UnitPath`, `glyph.Parse` and `Glyph.String`, never trimming, regex or disk reads. — [background](pattern/PATTERN-glyph-conversion-chokepoint.md)
+- `PATTERN-ref-shape-registry` — Classifying a plan ref or `plan:` handle: `internal/planparser` alone declares and decides. (test) — [background](pattern/PATTERN-ref-shape-registry.md)
+- `PATTERN-glyph-conversion-chokepoint` — Converting glyphs and paths: only `glyph`'s `Self`, `UnitPath`, `Parse` and `String`. — [background](pattern/PATTERN-glyph-conversion-chokepoint.md)
 - `PATTERN-gate-self-check-parity` — Adding a mechanical gate: its closure and its CLI self-check verb call the same package function, and both land in one task. — [background](pattern/PATTERN-gate-self-check-parity.md)
 - `PATTERN-verified-tree` — Running a verify command: through `verifytree.Verify` only, never on a dirty tree, skipping only on a record of HEAD's tree. (test) — [background](pattern/PATTERN-verified-tree.md)
 - `PATTERN-gate-slot` — Running a gate build or test: only in a `-p`-capped hub slot of `internal/gateslot`.
-- `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch the active `batcher.yaml` profile derives through `internal/batcher`'s registry, recorded in `state.json` at first init. — [background](pattern/PATTERN-batcher-registry.md)
-- `PATTERN-review-round` — Running a review and fix round: review on disk before any target is touched, every finding fixed or disputed with evidence, converged on a judge verdict. — [background](pattern/PATTERN-review-round.md)
-- `PATTERN-sole-parsers` — Reading or writing plan, discussion, summary or recipe files: only `planparser`, `discussionparser`, `summaryparser` and `shedbuild` parse them. (test) — [background](pattern/PATTERN-sole-parsers.md)
+- `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch the active `batcher.yaml` profile derives via `internal/batcher`. — [background](pattern/PATTERN-batcher-registry.md)
+- `PATTERN-review-round` — Review and fix round: review on disk before any edit, fix or dispute each finding with evidence, end on a verdict. — [background](pattern/PATTERN-review-round.md)
+- `PATTERN-sole-parsers` — Parsing plan, discussion, summary or recipe: only `planparser`, `discussionparser`, `summaryparser`, `shedbuild`. (test) — [background](pattern/PATTERN-sole-parsers.md)
 
 ## Agents and prompts
 
 - `PATTERN-agent-name` — Forming or parsing an agent name: only `internal/agentname`, formed once by reed; the spawning module owns its role names. — [background](pattern/PATTERN-agent-name.md)
-- `PATTERN-stencil-ownership` — Reading a producer prompt or normative spec: from a told absolute directory at call time through `internal/stencilstore`, never embedded bytes. — [background](pattern/PATTERN-stencil-ownership.md)
+- `PATTERN-stencil-ownership` — Reading a prompt or spec: at call time via `internal/stencilstore` from a told directory, never embedded. — [background](pattern/PATTERN-stencil-ownership.md)
 - `PATTERN-producer-pointer-rule` — Writing an instruction file: it points at another producer's format contract and never duplicates or paraphrases it.
 - `PATTERN-friction-capture` — Halting a loom run or refusing in webster: a Go-authored friction note is written, and none is archived before a reflection covers it. (test) — [background](pattern/PATTERN-friction-capture.md)
 - `PATTERN-completion-signal` — Finalizing a negative "did this run finish" answer in `internal/shuttleengine`: consult `allOutputFilesExist` first. (test) — [background](pattern/PATTERN-completion-signal.md)
-- `PATTERN-shuttle-provider-seam` — Referencing a provider: its specifics live only under `internal/shuttleengine/claudeengine`, never in `shuttleengine` or `reedengine`. — [background](pattern/PATTERN-shuttle-provider-seam.md)
-- `PATTERN-shuttle-stop` — Stopping a shuttle run's strand from Go outside `internal/shuttleengine`: only through shuttle's stop verb, which settles the run's record first. (test) — [background](pattern/PATTERN-shuttle-stop.md)
+- `PATTERN-shuttle-provider-seam` — Referencing a provider: its specifics live only under `internal/shuttleengine/claudeengine`. — [background](pattern/PATTERN-shuttle-provider-seam.md)
+- `PATTERN-shuttle-stop` — Stopping a shuttle run's strand from Go outside `internal/shuttleengine`: only through shuttle's stop verb. (test) — [background](pattern/PATTERN-shuttle-stop.md)
 - `PATTERN-orch-pane-single-writer` — Typing into the orch session from Go: only the orch watcher does it, idle-gated; another module queues a notice through `orchengine` instead.
 - `PATTERN-shell-mechanics-seam` — Building a pane-shell command string: only through `internal/shell`, which imports the standard library alone.
-- `PATTERN-pane-binary-resolution` — Creating a strand pane or a detached `lyx` window in reed: it resolves `lyx` to the spawning binary through the one chokepoint in `panebin.go`. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
+- `PATTERN-pane-binary-resolution` — Creating a strand pane or detached `lyx` window in reed: resolve `lyx` via `panebin.go` only. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
 - `PATTERN-role-skills-typed` — Loading a skill into a spawned session: the spawning module names it on the launch spec and lyx types it; no stencil asks an agent to load a skill. (test)
 - `PATTERN-parent-directive` — Writing a spawned role's top-level stencil: it renders the parent directive, and no stencil tells an agent to ask the operator. (test) — [background](pattern/PATTERN-parent-directive.md)
-- `PATTERN-edit-directive` — Writing a spawned role's opening stencil: it renders the edit directive through `internal/editdirective`, and the `edit-directive` stencil is the no-script edit rule's only statement; the orch stencils are exempt. (test)
-- `PATTERN-spawn-color` — Coloring a spawned session: its spawning module names a segment on the launch spec, reed tints its bar button and border, and lyx types the provider's color command; no stencil asks an agent to set a color.
-- `PATTERN-wait-mark-display-only` — Marking a wait on screen: the `@lyx_wait` and `@lyx_wait_start` pane options are set only through reed's `SetWaitMark`, by `shuttleengine` and the landing verify callback, and no Go decision reads them.
+- `PATTERN-edit-directive` — Writing a spawned role's opening stencil: it renders the edit directive through `internal/editdirective`; the orch stencils are exempt. (test) — [background](pattern/PATTERN-edit-directive.md)
+- `PATTERN-spawn-color` — Coloring a spawned session: its spawning module names a segment on the launch spec, and no stencil asks an agent to set a color. — [background](pattern/PATTERN-spawn-color.md)
+- `PATTERN-wait-mark-display-only` — Marking a wait on screen: set `@lyx_wait` and `@lyx_wait_start` only through reed's `SetWaitMark`; no Go decision reads them. — [background](pattern/PATTERN-wait-mark-display-only.md)
 - `PATTERN-spawn-observability` — Starting a real OS process from a `lyx` command: log the spawn, and the teardown where it waits, via `internal/logger`. — [background](pattern/PATTERN-spawn-observability.md)
 
 ## Daemons and waits
@@ -84,7 +84,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 ## Packages
 
-- `PATTERN-leaf-packages` — Importing into `gitkit`, `modelspec`, `buildinfo`, `standalonestate`, `segmentcolor`, `dotgit`, `pattern`, `friction` or `fswatch`: each admits a closed import set. — [background](pattern/PATTERN-leaf-packages.md)
+- `PATTERN-leaf-packages` — Importing into a leaf package: each admits a closed import set, the packages and sets named in the background. — [background](pattern/PATTERN-leaf-packages.md)
 
 ## Build and tooling
 
@@ -95,13 +95,13 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 ## Testing
 
 - `PATTERN-test-economy` — Writing a test: it pins behavior at a module's public surface and covers something no existing test covers, else it extends an existing test. — [background](pattern/PATTERN-test-economy.md)
-- `PATTERN-test-speed` — Writing a test: it sits in the lowest of four tiers its substrate needs, only `llm` files reach an LLM, clocks are injectable, and `t.Parallel` runs unless a comment names global state. (test) — [background](pattern/PATTERN-test-speed.md)
-- `PATTERN-test-isolation` — Testing a package: a package that spawns git runs under `gitkit.HermeticGitEnv()`, and one with an `integration`, `tmux` or `llm` test file runs through `tmuxkit.Main`. (test) — [background](pattern/PATTERN-test-isolation.md)
-- `PATTERN-testkit` — Sharing test support between packages: one kit under `internal/testkit/<kit>/`, imported only from tests, never duplicated or placed under the faked package. (test) — [background](pattern/PATTERN-testkit.md)
-- `PATTERN-hubforge-fixtures` — Building a hub fixture, where no fake or in-memory fixture can test the behavior: `internal/hubforge` through `fabriccli.CloneAndWire`, never hand-assembled and never wrapped in a test-local type. — [background](pattern/PATTERN-hubforge-fixtures.md)
+- `PATTERN-test-speed` — Writing a test: lowest fitting tier of four, `llm` files alone reach an LLM, inject clocks, `t.Parallel` by default. (test) — [background](pattern/PATTERN-test-speed.md)
+- `PATTERN-test-isolation` — Testing a package: git spawners use `gitkit.HermeticGitEnv()`; tagged packages run through `tmuxkit.Main`. (test) — [background](pattern/PATTERN-test-isolation.md)
+- `PATTERN-testkit` — Sharing test support between packages: one kit under `internal/testkit/<kit>/`, imported only from tests, never duplicated. (test) — [background](pattern/PATTERN-testkit.md)
+- `PATTERN-hubforge-fixtures` — A hub fixture no fake can test: `hubforge` via `fabriccli.CloneAndWire`, never hand-assembled or wrapped. — [background](pattern/PATTERN-hubforge-fixtures.md)
 
 ## Docs
 
 - `PATTERN-markdown-link-integrity` — Linking in a `.md` file under `docs/`: every inline link resolves, file part and `#anchor`. (test) — [background](pattern/PATTERN-markdown-link-integrity.md)
-- `PATTERN-comment-line-breaks` — Writing a Go comment: semantic line breaks, one sentence per line, checked by `lyx loom lint-comments` alone and never a review finding. (test) — [background](pattern/PATTERN-comment-line-breaks.md)
-- `PATTERN-documentation-lifecycle` — Deciding which docs are kept or deleted: no design doc for unbuilt work is kept in the repo, and a built design lives in its package's `doc.go`, see [overview](docs/overview.md#documentation-lifecycle).
+- `PATTERN-comment-line-breaks` — Writing a Go comment: one sentence per line, checked by `lyx loom lint-comments` alone. (test) — [background](pattern/PATTERN-comment-line-breaks.md)
+- `PATTERN-documentation-lifecycle` — Deciding which docs are kept or deleted: keep no design doc for unbuilt work; a built design lives in its package's `doc.go`. — [background](pattern/PATTERN-documentation-lifecycle.md)

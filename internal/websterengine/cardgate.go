@@ -84,10 +84,10 @@ func (s gateScope) steps(tags string) []string {
 	return steps
 }
 
-// cardGateCommand returns the gate for card as its ordered steps: `lyx gate test` over the card's own packages, one step per module, then the comment line-break lint.
-// A card with no surviving package directory runs only the lint.
+// cardGateCommand returns the gate for card as its ordered steps: `lyx gate test` over the card's own packages, one step per module, then the comment line-break lint and the PATTERN headroom lint.
+// A card with no surviving package directory runs only the two lints.
 func cardGateCommand(plan *planparser.Plan, card planparser.Card, worktree string) []string {
-	return append(gateScopeOf(plan, []planparser.Card{card}, worktree).steps(""), "lyx loom lint-comments")
+	return append(gateScopeOf(plan, []planparser.Card{card}, worktree).steps(""), "lyx loom lint-comments", "lyx loom lint-pattern")
 }
 
 // moduleRelative returns dir relative to module, "." for the module directory itself.

@@ -13,7 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -443,18 +443,13 @@ func TestSmokeOrch_CompactCycle(t *testing.T) {
 
 // killTreeProcs kills every process whose command line names dir or whose working directory is under it, so a detached loom run and its agents, which a test provoked, never outlive it.
 func killTreeProcs(dir string) {
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return
-	}
-	for _, entry := range entries {
-		pid, err := strconv.Atoi(entry.Name())
-		if err != nil || pid == os.Getpid() {
+	for _, pid := range tmuxkit.Pids() {
+		if pid == os.Getpid() {
 			continue
 		}
-		cmdline, _ := os.ReadFile(filepath.Join("/proc", entry.Name(), "cmdline"))
-		cwd, _ := os.Readlink(filepath.Join("/proc", entry.Name(), "cwd"))
-		if bytes.Contains(cmdline, []byte(dir)) || cwd == dir || strings.HasPrefix(cwd, dir+string(filepath.Separator)) {
+		argv, _ := tmuxkit.ProcArgv(pid)
+		cwd, _ := tmuxkit.ProcCwd(pid)
+		if slices.ContainsFunc(argv, func(arg string) bool { return strings.Contains(arg, dir) }) || cwd == dir || strings.HasPrefix(cwd, dir+string(filepath.Separator)) {
 			_ = proc.KillPID(pid)
 		}
 	}

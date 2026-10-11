@@ -72,7 +72,7 @@
 // Within one fork's batch, each card lands as its own commit (BatchState.CardSHAs records the ordered per-card SHA trail — one element under the identity batcher, more once a grouping batchifier ships), and each card's own optional `verify:` runs and must pass before that card's commit.
 // After the last card the fork runs the batch gate once, over the batch's packages with `-tags integration`;
 // Go never runs it, and Webster's plan-level verify gate catches a fork that skips it.
-// A card's own gate, which begin-batch and recover-batch render into the fork's prompt, is `lyx gate test` over the card's own package directories, one step per module (a directory inside a nested module is tested inside it with `lyx gate test -C <module>` and module-relative paths), one step per line, and ends with `lyx loom lint-comments`, the comment line-break lint.
+// A card's own gate, which begin-batch and recover-batch render into the fork's prompt, is `lyx gate test` over the card's own package directories, one step per module (a directory inside a nested module is tested inside it with `lyx gate test -C <module>` and module-relative paths), one step per line, and ends with `lyx loom lint-comments`, the comment line-break lint, then `lyx loom lint-pattern`, the PATTERN headroom lint.
 //
 // record-batch and recover-batch apply one merge-only rule when they cross-check the consumed report's `head_sha` against the worktree's HEAD,
 // so a parent merge-in landing between a fork's commit and the report's consumption cannot wedge the run.
