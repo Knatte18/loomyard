@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -156,8 +157,10 @@ func renderNotice(n noticeLine) string {
 }
 
 // pairRelative strips the pair directory prefix from every path in text that lies under it.
+// The prefix is stripped only where it starts a path, so a longer path that merely contains the pair directory is left whole.
 func pairRelative(text, pairDir string) string {
-	return strings.ReplaceAll(text, pairDir+string(filepath.Separator), "")
+	pathUnderPair := regexp.MustCompile(`(^|[^\w./\\~-])` + regexp.QuoteMeta(pairDir+string(filepath.Separator)))
+	return pathUnderPair.ReplaceAllString(text, "${1}")
 }
 
 // reasonLabel returns the label a notice puts on the child's reason: "error" for a failed or blocked child, which needs a fix, and "waiting" for any other state, whose reason names what it waits on.

@@ -202,7 +202,7 @@ func TestRenderNotice(t *testing.T) {
 
 	since := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	long := shedengine.Status{State: shedengine.StateFailed, CurrentProducer: "Publish", Error: "boom\nsecond\x1b[0m line " + strings.Repeat("x", 300), History: make([]shedengine.HistoryEntry, 7)}
-	awaiting := shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: "PR-Gate", Error: "the pull request awaits review: /wt/task/_lyx/review.md", History: make([]shedengine.HistoryEntry, 3)}
+	awaiting := shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: "PR-Gate", Error: "the pull request awaits review: /wt/task/_lyx/review.md, beside /other/wt/task/x", History: make([]shedengine.HistoryEntry, 3)}
 	done := shedengine.Status{State: shedengine.StateDone}
 	tests := []struct {
 		name string
@@ -224,8 +224,8 @@ func TestRenderNotice(t *testing.T) {
 		{
 			name: "AnAwaitingChildIsWaitingNotAnError",
 			line: noticeLine{slug: "task", condition: haltText(awaiting), status: awaiting, since: since, pairDir: "/wt/task"},
-			want: []string{"task: awaiting at PR-Gate;", "waiting: the pull request awaits review: _lyx/review.md"},
-			deny: []string{"error:", "/wt/task"},
+			want: []string{"task: awaiting at PR-Gate;", "waiting: the pull request awaits review: _lyx/review.md, beside /other/wt/task/x;"},
+			deny: []string{"error:", " /wt/task"},
 		},
 		{
 			name: "ADoneNoticeCarriesNoReportAndNoReason",
