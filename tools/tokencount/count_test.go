@@ -386,7 +386,7 @@ func TestCountRun(t *testing.T) {
 	if err := (Report{Runs: []RunTally{afterBound}}).WriteMarkdown(&boundedReport); err != nil {
 		t.Fatal(err)
 	}
-	if want := "2 session transcripts were left out: they started before the slug's previous run ended, at 2026-01-02T12:00:00Z.\n"; !strings.Contains(boundedReport.String(), want) {
+	if want := "Session transcripts left out: 2; they started before the slug's previous run ended, at 2026-01-02T12:00:00Z.\n"; !strings.Contains(boundedReport.String(), want) {
 		t.Errorf("bounded report lacks %q:\n%s", want, boundedReport.String())
 	}
 

@@ -123,8 +123,8 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	for _, c := range []struct {
 		name, part, want string
 	}{
-		{"finished run", donePart, "1 session transcripts were left out: they started before the slug's previous run ended, at 2026-01-01T09:00:00Z.\n"},
-		{"in-flight run", livePart, "1 session transcripts were left out: they started before the slug's previous run ended, at 2026-01-01T12:00:00Z.\n"},
+		{"finished run", donePart, "Session transcripts left out: 1; they started before the slug's previous run ended, at 2026-01-01T09:00:00Z.\n"},
+		{"in-flight run", livePart, "Session transcripts left out: 1; they started before the slug's previous run ended, at 2026-01-01T12:00:00Z.\n"},
 	} {
 		if !strings.Contains(c.part, c.want) || !strings.Contains(c.part, "| burler | 1 |") {
 			t.Errorf("%s section lacks %q beside one counted session:\n%s", c.name, c.want, c.part)

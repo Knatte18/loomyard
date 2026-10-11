@@ -950,7 +950,7 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 		}
 		writeTable(w, run.Roles, times, charge)
 		if run.LeftOut > 0 {
-			fmt.Fprintf(w, "%d session transcripts were left out: they started before the slug's previous run ended, at %s.\n\n", run.LeftOut, run.Bound.Format(time.RFC3339))
+			fmt.Fprintf(w, "Session transcripts left out: %d; they started before the slug's previous run ended, at %s.\n\n", run.LeftOut, run.Bound.Format(time.RFC3339))
 		}
 		if run.Shed != nil {
 			writeProducers(w, run.Producers(), run.Span.Duration())
