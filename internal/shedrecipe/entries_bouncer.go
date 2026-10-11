@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -198,6 +199,7 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		bounces = func() (int, int, bool, error) { return env.SegmentBounces(name) }
 	}
 
+	rowModel := burlerengine.ModelChoice{Model: model, Effort: effort, Version: version}
 	bouncerCfg := shedadapters.BouncerConfig{
 		Name:          name,
 		RunDir:        runDir,
@@ -214,9 +216,7 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		PublishFailure:  env.PublishFailure,
 		WebsterRecord:   env.WebsterRecord,
 		RubricStencil:   rubricStencil,
-		Model:           model,
-		Effort:          effort,
-		Version:         version,
+		Models:          shedadapters.BouncerModels{Seed: rowModel, Judge: rowModel},
 		ClusterExcludes: clusterExcludes,
 		Shuttle:         env.Shuttle,
 		Approve:         approve,

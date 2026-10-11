@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -48,6 +49,13 @@ var (
 	bouncerJudgeSkills = []string{"scribe:prose"}
 	bouncerSeedSkills  = []string{"scribe:prose"}
 )
+
+// BouncerModels holds the already-resolved model pair of each pass a Bouncer spawns.
+// An empty pair defers to the provider default.
+type BouncerModels struct {
+	Seed  burlerengine.ModelChoice
+	Judge burlerengine.ModelChoice
+}
 
 // BouncerConfig configures one Bouncer instance.
 type BouncerConfig struct {
@@ -83,11 +91,9 @@ type BouncerConfig struct {
 	WebsterRecord func() string
 	// RubricStencil is the stencilstore name of the rubric this Bouncer's judge applies.
 	RubricStencil string
-	// Model, Effort, and Version are an already-resolved triple threaded verbatim into
-	// shuttleengine.Spec, resolved at the caller's own config-load time.
-	Model   string
-	Effort  string
-	Version string
+	// Models holds the already-resolved seed and judge pairs, threaded verbatim into the shuttleengine.Spec of each pass.
+	// They are resolved at the caller's own config-load time.
+	Models BouncerModels
 	// Shuttle is the seam this Bouncer drives its seed and judge calls through.
 	Shuttle Shuttle
 	// Approve is the injected closure the loop owner marks the reviewed artifacts approved
@@ -225,7 +231,7 @@ func NewBouncer(cfg BouncerConfig) (*Bouncer, error) {
 			return nil, fmt.Errorf("shedadapters: NewBouncer: AnchorPath %q is not absolute when CarryOver is set", cfg.AnchorPath)
 		}
 	}
-	// Model, Effort, and Version are accepted empty and defer to the provider default.
+	// Each pair's Model, Effort, and Version are accepted empty and defer to the provider default.
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
@@ -912,9 +918,9 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 	spec := shuttleengine.Spec{
 		Prompt:      string(prompt),
 		OutputFiles: []string{focusPathValue},
-		Model:       b.cfg.Model,
-		Effort:      b.cfg.Effort,
-		Version:     b.cfg.Version,
+		Model:       b.cfg.Models.Seed.Model,
+		Effort:      b.cfg.Models.Seed.Effort,
+		Version:     b.cfg.Models.Seed.Version,
 		Role:        bouncerSeedRole,
 		Segment:     segmentcolor.Review,
 		Round:       "1",
@@ -1043,9 +1049,9 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 	spec := shuttleengine.Spec{
 		Prompt:      string(prompt),
 		OutputFiles: outputs,
-		Model:       b.cfg.Model,
-		Effort:      b.cfg.Effort,
-		Version:     b.cfg.Version,
+		Model:       b.cfg.Models.Judge.Model,
+		Effort:      b.cfg.Models.Judge.Effort,
+		Version:     b.cfg.Models.Judge.Version,
 		Role:        bouncerJudgeRole,
 		Segment:     segmentcolor.Review,
 		Round:       strconv.Itoa(n),

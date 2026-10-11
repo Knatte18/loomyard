@@ -137,7 +137,7 @@
 // collision suffix the same way.
 // MultiLLMProducer is told a seatengine.Table and an already-constructed SeatRunner, and takes the same injected clock for the same purpose.
 // NewMultiLLMProducerSourced is told a TableSource instead of a table: the source builds the table once per Call, so stencils and directives are read at call time.
-// Bouncer's own told inputs are RunDir, StencilsDir, the resolved (Model, Effort, Version) triple,
+// Bouncer's own told inputs are RunDir, StencilsDir, the resolved seed and judge pairs,
 // and the report-name convention as a function. NewBouncer is the package's one validating,
 // error-returning constructor, in contrast with the two
 // that return a bare pointer: NewSingleLLMProducer, whose Spec is validated downstream by

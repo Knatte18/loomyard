@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -266,6 +267,13 @@ func TestBouncer_JudgeCall_Verdicts(t *testing.T) {
 
 			if len(shuttle.GotSpec.OutputFiles) != 3 {
 				t.Errorf("recorded Spec.OutputFiles has %d entries; want 3", len(shuttle.GotSpec.OutputFiles))
+			}
+			judge := cfg.Models.Judge
+			if got := (burlerengine.ModelChoice{Model: shuttle.GotSpec.Model, Effort: shuttle.GotSpec.Effort, Version: shuttle.GotSpec.Version}); got != judge {
+				t.Errorf("recorded spec model = %+v; want the judge pair %+v", got, judge)
+			}
+			if judge == cfg.Models.Seed {
+				t.Errorf("fixture judge pair equals the seed pair %+v; want them distinct", judge)
 			}
 			for _, path := range []string{verdictPath(cfg.RunDir, 1), ledgerPath(cfg.RunDir, 1), focusPath(cfg.RunDir, 2)} {
 				if _, err := os.Stat(path); err != nil {
