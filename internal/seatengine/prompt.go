@@ -146,7 +146,7 @@ func composeSeatPrompt(stencilsDir string, seat Seat, values map[string]string, 
 }
 
 // seatSpec returns the shuttle spec that runs seat with prompt.
-// Only the chair is interactive; only an advisor keeps its pane and holds its turn end quietly.
+// Only the chair is interactive; only an advisor keeps its pane, and an advisor holds its turn end quietly unless it is Required.
 // The seat's gate rides the start call, not the spec.
 func seatSpec(table Table, seat Seat, prompt string) shuttleengine.Spec {
 	isChair := seat.Name == RoleChair
@@ -158,7 +158,7 @@ func seatSpec(table Table, seat Seat, prompt string) shuttleengine.Spec {
 		Version:       seat.Version,
 		ForkSubagents: seat.ForkSubagents,
 		Interactive:   isChair && table.Interactive,
-		QuietHold:     !isChair,
+		QuietHold:     !isChair && !seat.Required,
 		KeepPane:      !isChair,
 		Segment:       table.Segment,
 		Role:          SeatRole(table.RolePrefix, seat.Name),

@@ -148,6 +148,10 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 	if chairSpec.ForkSubagents || !advisorSpec.ForkSubagents || chairSpec.Round != "r7" || advisorSpec.Round != "r7" {
 		t.Errorf("spec ForkSubagents/Round = chair %v/%q, advisor %v/%q, want the seat's flag and the table's round", chairSpec.ForkSubagents, chairSpec.Round, advisorSpec.ForkSubagents, advisorSpec.Round)
 	}
+	requiredSpec := seatSpec(table, Seat{Name: AdvisorName(1), Required: true}, "")
+	if requiredSpec.QuietHold || !requiredSpec.KeepPane {
+		t.Errorf("required advisor spec QuietHold/KeepPane = %v/%v, want false/true", requiredSpec.QuietHold, requiredSpec.KeepPane)
+	}
 	if advisorSpec.Interactive || !advisorSpec.KeepPane || !advisorSpec.QuietHold {
 		t.Errorf("advisor spec Interactive/KeepPane/QuietHold = %v/%v/%v, want false/true/true", advisorSpec.Interactive, advisorSpec.KeepPane, advisorSpec.QuietHold)
 	}

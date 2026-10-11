@@ -72,6 +72,7 @@ func (e *Engine) probeSeat(table Table, seat Seat) (Handle, bool, error) {
 // The chair is told again that each found advisor is up, since the line may not have landed before the interruption.
 // An advisor the probe did not find is never restarted, and the chair is told of it once:
 // an advisor whose outputs all exist is finished, any other has ended.
+// A found required advisor is watched with the same Accept rule as in a fresh run, and a required advisor the probe did not find ends the step at once: the chair is stopped, no line is queued, and the advisor's result carries EndedStep with no terminal result.
 // A notice sent before the interruption may land again, which costs the chair nothing.
 // A LiveTable without a live chair is an error, and nothing is stopped or started.
 func (e *Engine) Resume(table Table, live LiveTable) (Result, error) {
@@ -88,6 +89,7 @@ func (e *Engine) Resume(table Table, live LiveTable) (Result, error) {
 	logger.Info("seatengine: resuming a live table", "chairStrand", live.Chair.StrandGUID(), "liveAdvisors", len(live.Advisors))
 
 	sender := newNoticeSender(e.absolute(table.Chair().Outputs), e.noticeRetry)
+	ender := newStepEnder()
 	var advisors []*seatRun
 	for _, seat := range table.Seats {
 		if seat.Name == RoleChair {
@@ -96,15 +98,20 @@ func (e *Engine) Resume(table Table, live LiveTable) (Result, error) {
 		outputs := e.absolute(seat.Outputs)
 		if handle, found := live.Advisors[seat.Name]; found {
 			sender.queue(advisorUpNotice(names[seat.Name]))
-			advisors = append(advisors, newSeatRun(seat, names[seat.Name], handle, outputs, sender))
+			advisors = append(advisors, newSeatRun(seat, names[seat.Name], handle, outputs, sender, ender))
 			continue
 		}
-		lost := &seatRun{seat: seat, name: names[seat.Name], notice: resumeNotice(names[seat.Name], outputs)}
-		sender.queue(lost.notice)
+		lost := &seatRun{seat: seat, name: names[seat.Name]}
 		advisors = append(advisors, lost)
+		if seat.Required {
+			ender.end(lost)
+			continue
+		}
+		lost.notice = resumeNotice(names[seat.Name], outputs)
+		sender.queue(lost.notice)
 	}
 	sender.start(live.Chair)
-	return e.join(table, live.Chair, advisors, sender)
+	return e.join(table, live.Chair, advisors, sender, ender)
 }
 
 // resumeNotice returns the one-line notice that tells the chair advisor name is not running any more at resume.

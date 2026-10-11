@@ -75,6 +75,12 @@ type Seat struct {
 	Gate shuttleengine.GateSpec
 	// ForkSubagents authorizes the seat's session to spawn in-session fork subagents; the engine audits none.
 	ForkSubagents bool
+	// Required marks an advisor the step depends on: any end of its run that Accept does not accept ends the step, and its held turn end still notifies the parent.
+	// The chair is never Required.
+	Required bool
+	// Accept judges a Required advisor's terminal result once it ended done with its gate passed; an error ends the step.
+	// Only a Required advisor carries one.
+	Accept func(shuttleengine.Result) error
 }
 
 // Table is the ordered set of seats one step runs, with the settings they share.
@@ -122,7 +128,7 @@ func (t Table) Outputs() []string {
 // The table has exactly one chair, and its other seats are named AdvisorName(1), AdvisorName(2) and so on in table order.
 // Every seat has an output, no two seats share an output path, and every advisor output is one of the chair's inputs.
 // The role prefix and every seat's formed role are valid agent-name roles.
-// The chair seat carries no gate, since the chair's gate is the table's.
+// The chair seat carries no gate, since the chair's gate is the table's, and is neither Required nor given an Accept hook; Accept belongs to a Required advisor.
 // Every seat's stencil is readable from stencilsDir, as is every block it includes, and an included block includes nothing.
 // A table or seat value neither collides with a reserved marker nor is blank, except a table value named in Optional, which may be blank; an Optional name may not be a reserved marker.
 func (t Table) Validate(stencilsDir string) error {
@@ -143,8 +149,8 @@ func (t Table) Validate(stencilsDir string) error {
 		}
 	}
 	for _, seat := range t.Seats {
-		if seat.Name == RoleChair && len(seat.Gate) > 0 {
-			return fmt.Errorf("seatengine: seat %q: carries a gate, but the chair's gate is the table's", seat.Name)
+		if err := validateSeatRoles(seat); err != nil {
+			return err
 		}
 		if err := validateValues(fmt.Sprintf("seat %q", seat.Name), seat.Values); err != nil {
 			return err
@@ -152,6 +158,25 @@ func (t Table) Validate(stencilsDir string) error {
 		if err := validateStencil(stencilsDir, seat); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// validateSeatRoles checks the fields only some seats may carry: no gate, Required or Accept on the chair, and Accept only on a Required advisor.
+func validateSeatRoles(seat Seat) error {
+	if seat.Name == RoleChair {
+		switch {
+		case len(seat.Gate) > 0:
+			return fmt.Errorf("seatengine: seat %q: carries a gate, but the chair's gate is the table's", seat.Name)
+		case seat.Required:
+			return fmt.Errorf("seatengine: seat %q: is marked required, but only an advisor can be", seat.Name)
+		case seat.Accept != nil:
+			return fmt.Errorf("seatengine: seat %q: carries an accept hook, but only a required advisor can", seat.Name)
+		}
+		return nil
+	}
+	if seat.Accept != nil && !seat.Required {
+		return fmt.Errorf("seatengine: seat %q: carries an accept hook but is not required", seat.Name)
 	}
 	return nil
 }

@@ -68,6 +68,13 @@ func TestTable_Validate(t *testing.T) {
 	}{
 		{name: "an accepted table"},
 		{name: "a gate on the chair seat", mutate: func(tb *Table) { tb.Seats[0].Gate = shuttleengine.GateSpec{{Name: "g", Attempts: 1}} }, wantErr: `seat "chair": carries a gate`},
+		{name: "a required chair", mutate: func(tb *Table) { tb.Seats[0].Required = true }, wantErr: `seat "chair": is marked required`},
+		{name: "an accept hook on the chair", mutate: func(tb *Table) { tb.Seats[0].Accept = func(shuttleengine.Result) error { return nil } }, wantErr: `seat "chair": carries an accept hook`},
+		{name: "an accept hook on an advisor that is not required", mutate: func(tb *Table) { tb.Seats[1].Accept = func(shuttleengine.Result) error { return nil } }, wantErr: `seat "advisor-1": carries an accept hook but is not required`},
+		{name: "a required advisor with an accept hook", mutate: func(tb *Table) {
+			tb.Seats[1].Required = true
+			tb.Seats[1].Accept = func(shuttleengine.Result) error { return nil }
+		}},
 		{name: "an advisor gate and fork authorization on any seat", mutate: func(tb *Table) {
 			tb.Seats[1].Gate = shuttleengine.GateSpec{{Name: "g", Attempts: 1}}
 			tb.Seats[0].ForkSubagents, tb.Seats[1].ForkSubagents = true, true

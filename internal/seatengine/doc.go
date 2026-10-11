@@ -10,6 +10,8 @@
 // A Seat names its stencil, its model choice, the files it reads (Inputs) and writes (Outputs), its skills and its own marker values.
 // An advisor Seat may also carry its own Gate, which adds a check to that advisor's run, and ForkSubagents, which authorizes the seat's session to spawn in-session fork subagents.
 // The engine audits no fork, so the caller that sets ForkSubagents owns the fork audit.
+// An advisor may be Required, with an Accept hook that judges its terminal result: a step then depends on that advisor's accepted output before its chair goes on.
+// A required advisor's held turn end still notifies the parent, where every other advisor holds quietly.
 // The chair seat is named RoleChair; the advisors are named AdvisorName(1), AdvisorName(2) and so on, in table order.
 // A seat's strand role is SeatRole(prefix, name), so a spec never spells a role as a literal.
 //
@@ -47,6 +49,7 @@
 // A chair that fails to start starts no advisor and returns the error, which wraps shuttleengine.ErrNotStarted when the provider never came up.
 // Once each advisor's start ends, the chair is told in one line that the advisor is up, or that it did not start; seat-directive-chair tells the chair to send an advisor nothing before its up line.
 // An advisor that fails to start is recorded on its SeatResult and the step goes on without it.
+// A required advisor that fails to start ends the step instead: no later advisor starts and the chair is stopped.
 // An advisor whose misnamed strand could not be stopped ends the run: the chair and every started advisor are stopped and the error is returned.
 //
 // # The notice sender
@@ -55,6 +58,7 @@
 // Each started advisor is waited on from the moment its up line is queued, so an advisor's ending never reaches the chair before its up line.
 // An advisor that reaches done queues nothing, since it stays reachable and the chair reads its file.
 // An advisor that dies, times out or whose wait errors queues one line for the chair.
+// A required advisor queues no line, neither an ending nor a not-started one, since its end stops the chair.
 // One goroutine per chair types the queued lines through the chair's handle, one at a time, so two lines are never interleaved.
 // It retries a busy or unlanded send after the engine's notice interval until the line lands, the chair's outputs all exist or the sender is stopped, and logs a line that never lands rather than failing the step.
 //
@@ -63,6 +67,12 @@
 // Run waits on the chair, stops the sender, then stops every started advisor, a kept done one included, before it returns.
 // A chair whose wait errored carries no terminal outcome and may still be running, so it is stopped as well.
 // A stop that fails is an error wrapping ErrSeatNotStopped whose message names the way forward; it is never retried and the seat is not waited for.
+// A required advisor ends the step before the chair does on every end Accept has not accepted: a run that is not done, done with its seat gate failed (Accept is not called), a wait error, an Accept error, or a failed start.
+// The advisor's own waiting goroutine calls Accept once, with the terminal result, for a run that ended done with its gate passed.
+// Ending the step, the engine stops the notice sender, stops the chair and waits for its result, stops every started advisor, the required one included, and sets EndedStep on that advisor's SeatResult.
+// SeatResult then also carries the advisor's terminal Result, its WaitErr and its AcceptErr.
+// A required advisor that was accepted stays kept until the chair ends, as every done advisor does, and the chair's end decides the step.
+// Only a required advisor can end the step before the chair, and only through its own end or its own Accept.
 // The result carries the chair's outcome, gate and NotStarted as shuttle reported them: the engine judges nothing about finishing itself (PATTERN-completion-signal).
 //
 // # Probe before archive
@@ -79,6 +89,7 @@
 // The chair is told again that each found advisor is up, since that line may not have landed before the interruption.
 // The chair is told of each such advisor once: one whose outputs all exist is finished and the line says its output stands and the seat no longer answers, any other has ended and the line says so as a mid-step death does.
 // A notice sent before the interruption may land again, which costs the chair nothing.
+// A found required advisor is watched with the same Accept rule, and a required advisor the probe did not find ends the step at once with EndedStep set and no terminal result.
 //
 // # Imports
 //

@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -381,5 +382,131 @@ func TestEngine_Run_FailedStopReturnsTheWayForwardUnretried(t *testing.T) {
 	}
 	if end.result.Chair.Outcome != shuttleengine.OutcomeDone {
 		t.Errorf("chair outcome = %q, want the result still returned", end.result.Chair.Outcome)
+	}
+}
+
+func TestEngine_Run_RequiredAdvisorEndsTheStep(t *testing.T) {
+	t.Parallel()
+	waitErr, acceptErr, startErr := errors.New("wait failed"), errors.New("output rejected"), errors.New("no pane")
+	died := shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}
+	failedGate := shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: false}}
+	done := shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+	tests := []struct {
+		name        string
+		advisor     shuttleengine.Result
+		waitErr     error
+		acceptErr   error
+		startErr    error
+		resume      bool
+		stopErr     error
+		wantAccepts int
+		wantNoStop  bool
+		// acceptedThenChairEnds releases the advisor done and accepted, and ends the chair afterwards.
+		acceptedThenChairEnds bool
+	}{
+		{name: "the advisor is done and accepted, then the chair ends", advisor: done, wantAccepts: 1, acceptedThenChairEnds: true},
+		{name: "the advisor died", advisor: died},
+		{name: "the advisor timed out", advisor: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}},
+		{name: "the advisor's wait errored", advisor: shuttleengine.Result{}, waitErr: waitErr},
+		{name: "the advisor is done with its gate failed", advisor: failedGate},
+		{name: "the accept hook errored", advisor: done, acceptErr: acceptErr, wantAccepts: 1},
+		{name: "the advisor failed to start", startErr: startErr, wantNoStop: true},
+		{name: "the resume did not find the advisor", resume: true, wantNoStop: true},
+		{name: "the advisor cannot be stopped", advisor: died, stopErr: errors.New("pane gone")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shuttle := newFakeShuttle(t)
+			if tt.startErr != nil {
+				shuttle.startErrs = map[string]error{role(AdvisorName(1)): tt.startErr}
+			}
+			if tt.stopErr != nil {
+				shuttle.stopErrs = map[string]error{role(AdvisorName(1)): tt.stopErr}
+			}
+			engine, geom := engineFixture(t, shuttle)
+			table := engineTable(geom.WorktreeRoot, 1)
+			var mu sync.Mutex
+			var accepted []shuttleengine.Result
+			table.Seats[1].Required = true
+			acceptCalled := make(chan struct{}, 2)
+			table.Seats[1].Accept = func(result shuttleengine.Result) error {
+				mu.Lock()
+				defer mu.Unlock()
+				accepted = append(accepted, result)
+				acceptCalled <- struct{}{}
+				return tt.acceptErr
+			}
+
+			var chair *fakeHandle
+			var ended <-chan engineEnd
+			if tt.resume {
+				chair = shuttle.newHandle(role(RoleChair))
+				channel := make(chan engineEnd, 1)
+				go func() {
+					result, err := engine.Resume(table, LiveTable{Chair: chair})
+					channel <- engineEnd{result, err}
+				}()
+				ended = channel
+			} else {
+				ended = runAsync(engine, table)
+				shuttle.awaitStarts(2)
+				chair = shuttle.handle(role(RoleChair))
+				if tt.startErr == nil {
+					shuttle.handle(role(AdvisorName(1))).release(tt.advisor, tt.waitErr)
+				}
+			}
+			if tt.acceptedThenChairEnds {
+				select {
+				case <-acceptCalled:
+				case <-time.After(fakeWait):
+					t.Fatal("Accept was not called")
+				}
+				advisor := shuttle.handle(role(AdvisorName(1)))
+				if stops := advisor.stopCount(); stops != 0 {
+					t.Errorf("advisor stopped %d times before the chair ended, want none", stops)
+				}
+				chair.release(done, nil)
+				end := await(t, ended)
+				mu.Lock()
+				defer mu.Unlock()
+				if end.err != nil || end.result.Advisors[0].EndedStep || advisor.stopCount() != 1 || len(accepted) != 1 || !reflect.DeepEqual(accepted[0], done) {
+					t.Errorf("Run() error = %v, EndedStep = %v, advisor stops = %d, Accept calls = %v; want nil, false, 1 and one call with the done result", end.err, end.result.Advisors[0].EndedStep, advisor.stopCount(), accepted)
+				}
+				return
+			}
+			end := await(t, ended)
+
+			if tt.stopErr != nil {
+				if !errors.Is(end.err, ErrSeatNotStopped) || !strings.Contains(end.err.Error(), "way forward") {
+					t.Fatalf("error = %v, want ErrSeatNotStopped with its way forward", end.err)
+				}
+			} else if end.err != nil {
+				t.Fatalf("error = %v, want nil", end.err)
+			}
+			if chair.stopCount() != 1 {
+				t.Errorf("chair stopped %d times, want once", chair.stopCount())
+			}
+			if !tt.wantNoStop && shuttle.handle(role(AdvisorName(1))).stopCount() != 1 {
+				t.Errorf("advisor stopped %d times, want once", shuttle.handle(role(AdvisorName(1))).stopCount())
+			}
+			got := end.result.Advisors[0]
+			if !got.EndedStep || got.Notified || (got.StartError != "") != (tt.startErr != nil) {
+				t.Errorf("advisor result = %+v, want EndedStep, no notice, and a start error only for a failed start", got)
+			}
+			if got.Result.Outcome != tt.advisor.Outcome || got.Result.Gate != tt.advisor.Gate || !errors.Is(got.WaitErr, tt.waitErr) || !errors.Is(got.AcceptErr, tt.acceptErr) {
+				t.Errorf("advisor result = %+v, want the result %+v, wait error %v and accept error %v", got, tt.advisor, tt.waitErr, tt.acceptErr)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if len(accepted) != tt.wantAccepts {
+				t.Errorf("accept calls = %d, want %d", len(accepted), tt.wantAccepts)
+			}
+			for len(chair.sent) > 0 {
+				if line := <-chair.sent; line != advisorUpNotice("ly:task:"+role(AdvisorName(1))) {
+					t.Errorf("a line beyond the up line reached the chair: %q", line)
+				}
+			}
+		})
 	}
 }
