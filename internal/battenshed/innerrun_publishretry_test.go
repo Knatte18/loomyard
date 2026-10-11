@@ -174,6 +174,7 @@ func (h *retryHarness) wantOneNotice(want ...string) {
 // TestInnerRun_PublishRetrySendsTheChildToItsTargetAndResumesItOnce asserts a matching record sends the child to its target and resumes it, with no notice for the halt or the paused state,
 // and that a second Publish halt in the run gets the blocked notice saying the retry already ran, with no second goto.
 func TestInnerRun_PublishRetrySendsTheChildToItsTargetAndResumesItOnce(t *testing.T) {
+	t.Parallel()
 	h := newRetryHarness(t)
 
 	if path := h.call(); !strings.Contains(path, "automatic Publish verify retry: sent the child to "+retryTarget) {
@@ -205,6 +206,7 @@ func TestInnerRun_PublishRetrySendsTheChildToItsTargetAndResumesItOnce(t *testin
 // TestInnerRun_PublishRetryDeclinesRecordsThatDoNotMatchTheHalt asserts a halt gets no goto and the blocked notice when its record does not belong to it.
 // A record is declined when it is missing, at another HEAD, from an earlier halt, written in the same second as the entry before the halting attempt, lacking its target or write time, or unreadable.
 // It also asserts a record written in the same second as the halting entry is retried.
+// It stays serial: logcapture.Capture replaces the process-global logger output.
 func TestInnerRun_PublishRetryDeclinesRecordsThatDoNotMatchTheHalt(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -256,7 +258,9 @@ func TestInnerRun_PublishRetryDeclinesRecordsThatDoNotMatchTheHalt(t *testing.T)
 // The busy pane also sends the driver-busy notice once, and past the cap the notice for the child's actual state carries the last refusal.
 // It also asserts a restart with an old marker does not reset the cap, and a later Publish halt after the cap gets the blocked notice and no goto.
 func TestInnerRun_PublishRetryRetriesRefusalsUntilTheyLandOrTheCapIsReached(t *testing.T) {
+	t.Parallel()
 	t.Run("RefusalsAreRetriedUntilTheyLand", func(t *testing.T) {
+		t.Parallel()
 		h := newRetryHarness(t)
 		h.gotoErrs = []error{ErrChildRunBusy, ErrChildRunBusy, nil}
 		h.clock.pauseAtSleep = 100
@@ -278,6 +282,7 @@ func TestInnerRun_PublishRetryRetriesRefusalsUntilTheyLandOrTheCapIsReached(t *t
 	})
 
 	t.Run("PastTheCapTheNoticeCarriesTheLastRefusal", func(t *testing.T) {
+		t.Parallel()
 		h := newRetryHarness(t)
 		h.gotoErrs = []error{ErrChildRunBusy}
 		h.clock.pauseAtSleep = 20
@@ -289,6 +294,7 @@ func TestInnerRun_PublishRetryRetriesRefusalsUntilTheyLandOrTheCapIsReached(t *t
 	})
 
 	t.Run("ARestartDoesNotResetTheCap", func(t *testing.T) {
+		t.Parallel()
 		h := newRetryHarness(t)
 		h.writeMarker(publishRetryStarted, h.clock.Now().Add(-publishRetryCap-time.Minute))
 		h.gotoErrs = []error{ErrChildRunBusy}
@@ -300,6 +306,7 @@ func TestInnerRun_PublishRetryRetriesRefusalsUntilTheyLandOrTheCapIsReached(t *t
 	})
 
 	t.Run("ALaterPublishHaltAfterTheCapGetsTheBlockedNoticeAndNoGoto", func(t *testing.T) {
+		t.Parallel()
 		h := newRetryHarness(t)
 		h.writeMarker(publishRetryCapped, h.clock.Now().Add(-time.Hour))
 
@@ -311,6 +318,7 @@ func TestInnerRun_PublishRetryRetriesRefusalsUntilTheyLandOrTheCapIsReached(t *t
 
 // TestInnerRun_PublishRetryDoesNotRetryAGotoRefusedForAnotherReason asserts a goto refused for an unknown target is tried once, caps the retry and sends the blocked notice with the refusal.
 func TestInnerRun_PublishRetryDoesNotRetryAGotoRefusedForAnotherReason(t *testing.T) {
+	t.Parallel()
 	h := newRetryHarness(t)
 	h.gotoErrs = []error{errors.New(`goto target "Webster" names no producer in the list`)}
 	h.clock.pauseAtSleep = 3
@@ -323,7 +331,9 @@ func TestInnerRun_PublishRetryDoesNotRetryAGotoRefusedForAnotherReason(t *testin
 
 // TestInnerRun_PublishRetryContinuesFromTheMarkerAfterARestart asserts a batten restarted after the goto and before the resume resumes the child, and one restarted after `started` and before the goto repeats the goto.
 func TestInnerRun_PublishRetryContinuesFromTheMarkerAfterARestart(t *testing.T) {
+	t.Parallel()
 	t.Run("AfterTheGotoItResumes", func(t *testing.T) {
+		t.Parallel()
 		h := newRetryHarness(t)
 		h.writeMarker(publishRetryGotoDone, h.clock.Now())
 		h.pausedAtTarget()
@@ -337,6 +347,7 @@ func TestInnerRun_PublishRetryContinuesFromTheMarkerAfterARestart(t *testing.T) 
 	})
 
 	t.Run("BeforeTheGotoItRepeatsTheGoto", func(t *testing.T) {
+		t.Parallel()
 		h := newRetryHarness(t)
 		h.writeMarker(publishRetryStarted, h.clock.Now())
 		h.record = nil
