@@ -36,7 +36,7 @@ import (
 )
 
 const (
-	reviewWayNoOpen   = `way forward: only Discussion-Write's parent-review gate opens a request; "lyx loom status <run>" shows whether the run has reached it`
+	reviewWayNoOpen   = `way forward: only Discussion-Write's parent-review gate opens a request; %s shows whether the run has reached it`
 	reviewWaySettled  = `way forward: the round is settled and the run proceeds on its own; nothing more to submit, except that a run halted at the reject cap proceeds only after "lyx loom review approve <slug>"`
 	reviewWayExpired  = `way forward: the run already passed on its wait bound and Discussion-Review still reviews the discussion; nothing more to submit`
 	reviewWaySlugForm = `pass the task's slug as listed by "lyx board list"`
@@ -96,11 +96,21 @@ func reviewStoreFor(target *lyxcwd.Location) parentreview.Store {
 	}
 }
 
-// reviewStoreErr maps a store error onto an envelope whose message ends in a way-forward clause.
-func reviewStoreErr(out io.Writer, verb string, err error) int {
+// reviewStatusWay names the command that shows a run's state.
+// With a slug the verb runs from the prime, where `lyx loom status` cannot address another worktree's run, so it names `lyx batten status <slug>`;
+// with none only a task worktree addressing itself reaches a verb, and `lyx loom status` reads its own run.
+func reviewStatusWay(slug string, bySlug bool) string {
+	if bySlug {
+		return fmt.Sprintf(`"lyx batten status %s" run from the prime`, slug)
+	}
+	return `"lyx loom status"`
+}
+
+// reviewStoreErr maps a store error onto an envelope whose message ends in a way-forward clause; statusWay names the command that shows the run's state.
+func reviewStoreErr(out io.Writer, verb, statusWay string, err error) int {
 	switch {
 	case errors.Is(err, parentreview.ErrNoOpenRequest):
-		return output.Err(out, fmt.Sprintf("loom: review %s: no open review request; %s", verb, reviewWayNoOpen))
+		return output.Err(out, fmt.Sprintf("loom: review %s: no open review request; %s", verb, fmt.Sprintf(reviewWayNoOpen, statusWay)))
 	case errors.Is(err, parentreview.ErrVerdictRecorded):
 		return output.Err(out, fmt.Sprintf("loom: review %s: a verdict is already recorded for this round; %s", verb, reviewWaySettled))
 	case errors.Is(err, parentreview.ErrExpired):
@@ -113,16 +123,16 @@ func reviewStoreErr(out io.Writer, verb string, err error) int {
 }
 
 // reviewNotifyVerb adds one waiting notify to the latest open request.
-func reviewNotifyVerb(out io.Writer, store parentreview.Store, slug string) int {
+func reviewNotifyVerb(out io.Writer, store parentreview.Store, slug, statusWay string) int {
 	if err := store.AddNotify(); err != nil {
-		return reviewStoreErr(out, "notify", err)
+		return reviewStoreErr(out, "notify", statusWay, err)
 	}
 	return output.Ok(out, map[string]any{"slug": slug, "action": "notify"})
 }
 
 // reviewDeliveredVerb stamps delivery on the latest open request, or records failedReason when it is non-empty.
 // A round that already carries a verdict records nothing and succeeds, reporting the round settled.
-func reviewDeliveredVerb(out io.Writer, store parentreview.Store, slug, failedReason string) int {
+func reviewDeliveredVerb(out io.Writer, store parentreview.Store, slug, statusWay, failedReason string) int {
 	err := store.RecordDelivered(failedReason)
 	if errors.Is(err, parentreview.ErrVerdictRecorded) {
 		return output.Ok(out, map[string]any{
@@ -133,7 +143,7 @@ func reviewDeliveredVerb(out io.Writer, store parentreview.Store, slug, failedRe
 		})
 	}
 	if err != nil {
-		return reviewStoreErr(out, "delivered", err)
+		return reviewStoreErr(out, "delivered", statusWay, err)
 	}
 	return output.Ok(out, map[string]any{"slug": slug, "action": "delivered", "failed": failedReason != ""})
 }
@@ -143,38 +153,38 @@ type reviewStatusReader func() (shedengine.Status, bool, error)
 
 // reviewApproveVerb records an approve verdict, copying reviewFile when given.
 // When the latest round carries a reject it takes the supersede path instead, which lifts a run halted at the reject cap.
-func reviewApproveVerb(out io.Writer, store parentreview.Store, slug, reviewFile string, readStatus reviewStatusReader) int {
+func reviewApproveVerb(out io.Writer, store parentreview.Store, slug, statusWay, reviewFile string, readStatus reviewStatusReader) int {
 	latest, found, err := store.Latest()
 	if err != nil {
-		return reviewStoreErr(out, "approve", err)
+		return reviewStoreErr(out, "approve", statusWay, err)
 	}
 	if found && latest.Verdict != nil && latest.Verdict.Kind == parentreview.VerdictReject {
-		return reviewSupersedeVerb(out, store, slug, reviewFile, readStatus)
+		return reviewSupersedeVerb(out, store, slug, statusWay, reviewFile, readStatus)
 	}
 	if err := store.RecordVerdict(parentreview.VerdictApprove, reviewFile); err != nil {
-		return reviewStoreErr(out, "approve", err)
+		return reviewStoreErr(out, "approve", statusWay, err)
 	}
 	return output.Ok(out, map[string]any{"slug": slug, "action": "approve"})
 }
 
 // reviewSupersedeVerb replaces the cap's reject with a superseding approve.
 // The halted state is its only gate: the run's status is blocked, the store is at the cap and the latest round is the cap's reject.
-func reviewSupersedeVerb(out io.Writer, store parentreview.Store, slug, reviewFile string, readStatus reviewStatusReader) int {
+func reviewSupersedeVerb(out io.Writer, store parentreview.Store, slug, statusWay, reviewFile string, readStatus reviewStatusReader) int {
 	if reviewFile != "" {
-		return output.Err(out, fmt.Sprintf("loom: review approve: --review is refused when approving over a reject, since the cap's review file is kept; %s", reviewWayNotAtCap("re-run \"lyx loom review approve\" without --review")))
+		return output.Err(out, fmt.Sprintf("loom: review approve: --review is refused when approving over a reject, since the cap's review file is kept; %s", reviewWayNotAtCap("re-run \"lyx loom review approve\" without --review", statusWay)))
 	}
 	st, found, err := readStatus()
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("loom: review approve: read the run status: %s", err.Error()))
 	}
 	if !found || st.State != shedengine.StateBlocked {
-		return output.Err(out, "loom: review approve: approve supersedes a reject only on a run halted at the reject cap, and this run is not blocked; "+reviewWayNotAtCap(""))
+		return output.Err(out, "loom: review approve: approve supersedes a reject only on a run halted at the reject cap, and this run is not blocked; "+reviewWayNotAtCap("", statusWay))
 	}
 	if err := store.SupersedeCapReject(); err != nil {
 		if errors.Is(err, parentreview.ErrNotAtCap) {
-			return output.Err(out, "loom: review approve: the latest round's reject is not the cap's; "+reviewWayNotAtCap(""))
+			return output.Err(out, "loom: review approve: the latest round's reject is not the cap's; "+reviewWayNotAtCap("", statusWay))
 		}
-		return reviewStoreErr(out, "approve", err)
+		return reviewStoreErr(out, "approve", statusWay, err)
 	}
 	return output.Ok(out, map[string]any{
 		"slug":       slug,
@@ -184,18 +194,18 @@ func reviewSupersedeVerb(out io.Writer, store parentreview.Store, slug, reviewFi
 	})
 }
 
-// reviewWayNotAtCap is the way-forward clause for a supersede refusal; lead, when set, names the step to take first.
-func reviewWayNotAtCap(lead string) string {
+// reviewWayNotAtCap is the way-forward clause for a supersede refusal; lead, when set, names the step to take first, and statusWay names the command that shows the run's state.
+func reviewWayNotAtCap(lead, statusWay string) string {
 	if lead != "" {
 		lead += "; "
 	}
-	return `way forward: ` + lead + `"lyx loom status <slug>" shows the run's state; below the cap the gate re-prompts the writer itself, and the next round's request is approved normally`
+	return `way forward: ` + lead + statusWay + ` shows the run's state; below the cap the gate re-prompts the writer itself, and the next round's request is approved normally`
 }
 
 // reviewRejectVerb records a reject verdict with the findings in reviewFile.
-func reviewRejectVerb(out io.Writer, store parentreview.Store, slug, reviewFile string) int {
+func reviewRejectVerb(out io.Writer, store parentreview.Store, slug, statusWay, reviewFile string) int {
 	if err := store.RecordVerdict(parentreview.VerdictReject, reviewFile); err != nil {
-		return reviewStoreErr(out, "reject", err)
+		return reviewStoreErr(out, "reject", statusWay, err)
 	}
 	return output.Ok(out, map[string]any{"slug": slug, "action": "reject"})
 }
@@ -220,6 +230,7 @@ type reviewState struct {
 	store      parentreview.Store
 	readStatus reviewStatusReader
 	slug       string
+	statusWay  string
 	cwd        string
 }
 
@@ -251,7 +262,8 @@ func (s *reviewState) preRun(cmd *cobra.Command, args []string) error {
 		clihelp.Abort(ctx, 1)
 		return nil
 	}
-	target, err := resolveReviewTarget("review", cmd.Name(), location, reviewSlugArg(cmd.Name(), args), defaultReviewTargetDeps())
+	slugArg := reviewSlugArg(cmd.Name(), args)
+	target, err := resolveReviewTarget("review", cmd.Name(), location, slugArg, defaultReviewTargetDeps())
 	if err != nil {
 		output.Err(out, err.Error())
 		clihelp.Abort(ctx, 1)
@@ -259,6 +271,7 @@ func (s *reviewState) preRun(cmd *cobra.Command, args []string) error {
 	}
 	s.cwd = cwd
 	s.slug = target.WorktreeName
+	s.statusWay = reviewStatusWay(target.WorktreeName, slugArg != "")
 	s.store = reviewStoreFor(target)
 	statusPath := shedrun.StatusFile(target, shedrun.SelfRunID)
 	statusLock := shedrun.StatusLock(target, shedrun.SelfRunID)
@@ -311,7 +324,7 @@ Example:
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), reviewNotifyVerb(cmd.OutOrStdout(), st.store, st.slug))
+			clihelp.SetExit(cmd.Context(), reviewNotifyVerb(cmd.OutOrStdout(), st.store, st.slug, st.statusWay))
 			return nil
 		},
 	}
@@ -334,7 +347,7 @@ Example:
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), reviewDeliveredVerb(cmd.OutOrStdout(), st.store, st.slug, failed))
+			clihelp.SetExit(cmd.Context(), reviewDeliveredVerb(cmd.OutOrStdout(), st.store, st.slug, st.statusWay, failed))
 			return nil
 		},
 	}
@@ -362,7 +375,7 @@ Example:
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), reviewApproveVerb(cmd.OutOrStdout(), st.store, st.slug, st.resolveFile(approveFile), st.readStatus))
+			clihelp.SetExit(cmd.Context(), reviewApproveVerb(cmd.OutOrStdout(), st.store, st.slug, st.statusWay, st.resolveFile(approveFile), st.readStatus))
 			return nil
 		},
 	}
@@ -386,7 +399,7 @@ Example:
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), reviewRejectVerb(cmd.OutOrStdout(), st.store, st.slug, st.resolveFile(args[len(args)-1])))
+			clihelp.SetExit(cmd.Context(), reviewRejectVerb(cmd.OutOrStdout(), st.store, st.slug, st.statusWay, st.resolveFile(args[len(args)-1])))
 			return nil
 		},
 	}

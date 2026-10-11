@@ -207,6 +207,16 @@ func TestParentReviewExchange_RewriteReviewedThenCapRejectHalts(t *testing.T) {
 	f.shuttle.script = func(gates shuttleengine.GateSpec) shuttleengine.Result {
 		f.writeDiscussion("")
 
+		// Before any request opens, the refusal names the status command the caller can reach: by slug from the prime, bare in the task worktree.
+		code, out := f.verb(primeCwd, "review", "notify", f.slug)
+		if msg := envelope.Decode(t, out).Error; code == 0 || !strings.Contains(msg, "lyx batten status "+f.slug) || !strings.Contains(msg, "from the prime") {
+			t.Fatalf("review notify from the prime = (%d, %q); want a refusal naming lyx batten status %s run from the prime", code, out, f.slug)
+		}
+		code, out = f.verb(taskCwd, "review", "notify")
+		if msg := envelope.Decode(t, out).Error; code == 0 || !strings.Contains(msg, "lyx loom status") || strings.Contains(msg, "lyx batten status") {
+			t.Fatalf("review notify in the task worktree = (%d, %q); want a refusal naming lyx loom status alone", code, out)
+		}
+
 		// Arrival 1: the discussion passes, the request opens and the delivery prompt names the parent and the request.
 		first := arrive(t, gates)
 		round := f.latest()
@@ -221,7 +231,7 @@ func TestParentReviewExchange_RewriteReviewedThenCapRejectHalts(t *testing.T) {
 		}
 
 		// Status shows the wait while the request is open.
-		code, out := f.verb(taskCwd, "status")
+		code, out = f.verb(taskCwd, "status")
 		var status map[string]any
 		if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &status); err != nil || code != 0 {
 			t.Fatalf("status = (%d, %q); want a JSON envelope and exit 0", code, out)
