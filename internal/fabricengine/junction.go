@@ -556,8 +556,9 @@ func unseedJunctionRecords(rec *Mutations, container string, junctions []WarpJun
 //
 // Returns (false, nil) without touching the file if the exclude file does not
 // exist, or if no matching line was found — both are legitimate no-op cases.
-// With dryRun set, nothing is written and nothing is appended to rec.
-// The stripped content is still computed, and changed reports whether it differs from the original.
+// With dryRun set, the exclude file is not written and nothing is appended to rec.
+// The stripped content is still computed under the exclude lock, and changed reports whether it differs from the original;
+// taking that lock still creates the info directory and the lock file when they are absent, and waits behind a concurrent exclude writer.
 // rec is the calling verb's own recorder; it records KindFileWritten at the exclude file's own
 // resolved path via Append only when the rewrite reports changed.
 func unseedGitExclude(rec *Mutations, l *lyxcwd.Location, slug string, names []string, dryRun bool) (changed bool, err error) {

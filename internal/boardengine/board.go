@@ -293,7 +293,8 @@ func (b *Board) Promote(idOrSlug any) (Task, error) {
 
 // Prune removes every done entry under the write lock and returns the removed slugs;
 // the render that follows drops their design docs.
-// With apply false it is a read-only dry run: the slugs a pruning run would remove are reported, and the store is neither saved nor rendered.
+// With apply false it is a dry run: the slugs a pruning run would remove are reported, and the store is neither saved nor rendered.
+// A dry run still takes the board write lock, creating the board directory and the lock file when they are absent.
 func (b *Board) Prune(apply bool) ([]string, error) {
 	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
 		removed := store.Prune()
@@ -326,7 +327,8 @@ func (b *Board) Find(text string, labels []string) ([]BriefTask, error) {
 
 // RetireLegacy ends the pre-upgrade compatibility window under the write lock and returns the base names of the legacy files present, tasks file first.
 // It refuses when neither legacy file exists, whatever apply is.
-// With apply false it is a read-only dry run: the names are reported and nothing is saved, rendered or deleted.
+// With apply false it is a dry run: the names are reported and nothing is saved, rendered or deleted.
+// A dry run still takes the board write lock, creating the board directory and the lock file when they are absent.
 // With apply true the load folds the last done marks and board.json is saved with legacy_done still in place.
 // The legacy files and their swap locks are then deleted, and only after that is legacy_done dropped and board.json saved again.
 // A crash or a failed deletion therefore leaves the surviving legacy files beside an intact legacy_done, so a reload folds no mark twice and retire-legacy can be rerun.

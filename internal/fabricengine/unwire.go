@@ -47,8 +47,9 @@ type UnwireVerbResult struct {
 
 // Unwire reverses every warp junction wired for the worktree at cwd and their warp
 // `.git/info/exclude` entries — a full per-warp-worktree deactivation.
-// With apply false it is a read-only dry run:
+// With apply false it is a dry run:
 // nothing is removed, and the result reports the junctions and exclude lines an applied run would remove, with Applied false.
+// A dry run still takes the exclude-file lock, creating the info directory and the lock file when they are absent.
 // The junction name-set is enumerated from a full on-disk scan, removing every fabric-owned
 // junction present on disk, including stale ones absent from the repo-wide pathspec.
 // Ownership is decided by where a link resolves (see scanOnDiskJunctionNames): a hand-authored
