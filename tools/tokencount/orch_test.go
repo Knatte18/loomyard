@@ -29,7 +29,8 @@ func TestCountOrch(t *testing.T) {
 	const model = "claude-opus-5-5"
 	projects := t.TempDir()
 
-	// run-a is active 10:00-12:00, run-b 11:00-12:00 and run-c 13:00-14:00, each with one message of 1M output tokens.
+	// run-a is active 10:00-12:00, run-b 11:00-12:00 and run-c 13:00-14:00, each with one message of 1M output tokens;
+	// each window is over the stall cap, so the run's time is all idle.
 	windows := map[string][2]string{"run-a": {"10:00", "12:00"}, "run-b": {"11:00", "12:00"}, "run-c": {"13:00", "14:00"}}
 	var runs []RunTally
 	for _, slug := range []string{"run-a", "run-b", "run-c"} {
@@ -129,10 +130,10 @@ func TestCountOrch(t *testing.T) {
 	// Each output token weighs 5, so the runs' burler rows weigh 5M each and the orch rows five times their charged tokens;
 	// the shares divide by a total that holds the orch row.
 	for _, want := range []string{
-		"| burler | 3 | 3000000 | 0 | 0 | 0 | 15.0M | 20.0% | 4h0m0s | 100.0% | $60.00 | claude-opus-5-5: 3 |\n| idle | | | | | | | | 0s | 0.0% | | |\n| orch | | | | | | 60.0M | 80.0% | | | $240.00 | |\n",
+		"| burler | 3 | 3000000 | 0 | 0 | 0 | 15.0M | 20.0% | 0s | 0.0% | $60.00 | claude-opus-5-5: 3 |\n| idle | | | | | | | | 4h0m0s | 100.0% | | |\n| orch | | | | | | 60.0M | 80.0% | | | $240.00 | |\n",
 		"Total weight 75.0M;",
 		"## run-a\n\n| role |",
-		"| burler | 1 | 1000000 | 0 | 0 | 0 | 5.0M | 33.3% | 2h0m0s | 100.0% | $20.00 | claude-opus-5-5: 1 |\n| idle | | | | | | | | 0s | 0.0% | | |\n| orch | | | | | | 10.0M | 66.7% | | | $40.00 | |\n",
+		"| burler | 1 | 1000000 | 0 | 0 | 0 | 5.0M | 33.3% | 0s | 0.0% | $20.00 | claude-opus-5-5: 1 |\n| idle | | | | | | | | 2h0m0s | 100.0% | | |\n| orch | | | | | | 10.0M | 66.7% | | | $40.00 | |\n",
 		"| orch | 2 | 3 | 6.0M | $120.00 |",
 		"| orch+sub | 2 | 2 | 9.0M | $180.00 |",
 		"| total | 4 | 5 | 15.0M | $300.00 |",

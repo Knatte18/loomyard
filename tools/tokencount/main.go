@@ -100,6 +100,9 @@
 // The time and time share columns give a role's working time and its percentage of the table's span.
 // Time is turn time: a session works from a user or assistant line until the line that ends its turn.
 // That is an assistant line whose stop_reason is set and not tool_use, a user line holding an interrupt marker, or a user line holding a <local-command-stdout> output.
+// A turn-start line is a user line holding text and no tool result, other than a line that ends a turn and other than a compaction's summary line.
+// The interval into a turn-start line is idle, since a crash and --resume leave the gap before the resume's prompt, and so is an interval longer than the 30-minute stall cap, three times the harness's ten-minute cap on a foreground Bash call.
+// Either makes the whole interval idle, never a clipped part of it.
 // A role's time is the union of its transcripts' working intervals clipped to the span, a sub-agent's transcripts counting under <role>+sub.
 // The idle row is the span minus the union of every working interval of the run, orch sessions left out, so it holds parent review, gate-slot waits, a parked driver and Go-only work.
 // The orch row's time cells are blank, and the "All runs" table sums each run's figures per role, idle and span, with no union across runs.

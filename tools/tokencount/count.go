@@ -122,10 +122,15 @@ func min2(a, b time.Time) time.Time {
 	return a
 }
 
-// turnPoint is one user or assistant line's timestamp and whether the line ends its session's turn.
+// stallCap is the longest interval counted as working time, three times the harness's ten-minute cap on a foreground Bash call;
+// a longer interval is a stall such as a suspended host and counts as idle whole.
+const stallCap = 30 * time.Minute
+
+// turnPoint is one user or assistant line's timestamp and whether the line ends or starts its session's turn.
 type turnPoint struct {
-	At   time.Time
-	Ends bool
+	At     time.Time
+	Ends   bool
+	Starts bool
 }
 
 // endsTurn reports whether a line ends its session's turn: an assistant line whose stop reason is not tool_use, or a user line that interrupts the turn or holds a local command's output.
@@ -146,14 +151,42 @@ func endsTurn(l line) bool {
 	return false
 }
 
-// workingIntervals returns the interval from each point to the next, in timestamp order, except after a point that ends the turn.
+// startsTurn reports whether a line starts a turn: a user line holding text and no tool result, other than a line that ends a turn or a compaction summary.
+func startsTurn(l line) bool {
+	if l.Type != "user" || l.Message == nil || l.IsCompactSummary || endsTurn(l) {
+		return false
+	}
+	var text string
+	if json.Unmarshal(l.Message.Content, &text) == nil {
+		return true
+	}
+	var items []struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(l.Message.Content, &items) != nil {
+		return false
+	}
+	hasText := false
+	for _, item := range items {
+		switch item.Type {
+		case "tool_result":
+			return false
+		case "text":
+			hasText = true
+		}
+	}
+	return hasText
+}
+
+// workingIntervals returns the interval from each point to the next, in timestamp order, except after a point that ends the turn, into a point that starts a turn, or longer than stallCap.
 func workingIntervals(points []turnPoint) []Interval {
 	ordered := slices.Clone(points)
 	sort.SliceStable(ordered, func(a, b int) bool { return ordered[a].At.Before(ordered[b].At) })
 	var working []Interval
 	for i := 0; i+1 < len(ordered); i++ {
-		if !ordered[i].Ends {
-			working = append(working, Interval{ordered[i].At, ordered[i+1].At})
+		next := ordered[i+1]
+		if !ordered[i].Ends && !next.Starts && next.At.Sub(ordered[i].At) <= stallCap {
+			working = append(working, Interval{ordered[i].At, next.At})
 		}
 	}
 	return working
@@ -269,7 +302,9 @@ type line struct {
 	CustomTitle string `json:"customTitle"`
 	UUID        string `json:"uuid"`
 	Timestamp   string `json:"timestamp"`
-	Message     *struct {
+	// IsCompactSummary marks the user line that holds a compaction's summary.
+	IsCompactSummary bool `json:"isCompactSummary"`
+	Message          *struct {
 		ID         string          `json:"id"`
 		Model      string          `json:"model"`
 		StopReason string          `json:"stop_reason"`
@@ -716,7 +751,7 @@ func (run *RunTally) countFile(path, role string, seen map[string]bool, fork *Fo
 		}
 		run.observeTime(l)
 		if at, ok := lineTime(l); ok {
-			points = append(points, turnPoint{at, endsTurn(l)})
+			points = append(points, turnPoint{at, endsTurn(l), startsTurn(l)})
 		}
 		if l.Type != "assistant" || l.Message == nil || l.Message.Usage == nil {
 			return
@@ -841,6 +876,7 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 	writeTable(w, total, totalTimes, orchTotal)
 	fmt.Fprintf(w, "Total weight %.1fM; %d repeated transcript lines skipped.\n\n", grand/1e6, duplicates)
 	fmt.Fprintln(w, "Time is turn time: a session works from a user or assistant line until the line that ends its turn.")
+	fmt.Fprintf(w, "An interval into a line that starts a turn, or longer than the stall cap of %s, is idle.\n", stallCap)
 	fmt.Fprintln(w, "Idle is the time no session of the run is in a turn, which holds parent review, PR-Gate, gate-slot waits, a parked driver and Go-only work such as verify and push.")
 	fmt.Fprintln(w, "Time shares can sum past 100% where sessions overlap, a `+sub` row overlapping its parent.")
 	fmt.Fprintln(w, "The union of working time plus idle is the span.")

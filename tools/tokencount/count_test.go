@@ -143,6 +143,33 @@ func TestRunTimeByRole(t *testing.T) {
 		}
 	}
 
+	// An interval into a turn-start line, or longer than the stall cap, is idle whole; the rest of a session still counts.
+	done := jsonString(t, "done")
+	compactSummary := `{"type":"user","isCompactSummary":true,"timestamp":"2026-01-01T00:05:00Z","message":{"role":"user","content":` + jsonString(t, "summary") + `}}`
+	for _, c := range []struct {
+		name  string
+		lines []string
+		work  time.Duration
+		idle  time.Duration
+	}{
+		{"prompt an hour after a tool_use", []string{stamped("2026-01-01T00:00:00Z", toolUse), userAt(t, "2026-01-01T01:00:00Z", "p"), stamped("2026-01-01T01:01:00Z", endTurn)}, min, 60 * min},
+		{"prompt an hour after a tool_result", []string{toolResult("2026-01-01T00:00:00Z", done), userAt(t, "2026-01-01T01:00:00Z", "p"), stamped("2026-01-01T01:01:00Z", endTurn)}, min, 60 * min},
+		{"tool_result 32 hours after its tool_use", []string{stamped("2026-01-01T00:00:00Z", toolUse), toolResult("2026-01-02T08:00:00Z", done), stamped("2026-01-02T08:01:00Z", endTurn)}, min, 32 * 60 * min},
+		{"assistant line an hour after a tool_result", []string{toolResult("2026-01-01T00:00:00Z", done), stamped("2026-01-01T01:00:00Z", endTurn)}, 0, 60 * min},
+		{"tool_result 20 minutes after its tool_use", []string{stamped("2026-01-01T00:00:00Z", toolUse), toolResult("2026-01-01T00:20:00Z", done), stamped("2026-01-01T00:21:00Z", endTurn)}, 21 * min, 0},
+		{"interrupt marker under the cap", []string{stamped("2026-01-01T00:00:00Z", toolUse), userAt(t, "2026-01-01T00:10:00Z", "[Request interrupted by user]")}, 10 * min, 0},
+		{"user text a second after a tool_result", []string{toolResult("2026-01-01T00:00:00Z", done), userAt(t, "2026-01-01T00:00:01Z", "queued"), stamped("2026-01-01T00:00:30Z", endTurn)}, 29 * time.Second, time.Second},
+		{"compact summary after its command", []string{userAt(t, "2026-01-01T00:00:00Z", "<command-name>/compact</command-name>"), compactSummary, stamped("2026-01-01T00:06:00Z", endTurn)}, 6 * min, 0},
+	} {
+		got := build(t, map[string][]string{"a.jsonl": append([]string{title("burler")}, c.lines...)})
+		if w := got.RoleTime("burler"); w != c.work {
+			t.Errorf("%s: RoleTime(burler) = %v; want %v", c.name, w, c.work)
+		}
+		if i := got.Idle(); i != c.idle {
+			t.Errorf("%s: Idle() = %v; want %v", c.name, i, c.idle)
+		}
+	}
+
 	// Two runs whose working intervals overlap in wall-clock time sum per role and in idle, and share the summed span.
 	one := build(t, map[string][]string{"a.jsonl": {title("burler"), userAt(t, "2026-01-01T00:00:00Z", "x"), stamped("2026-01-01T00:02:00Z", endTurn), userAt(t, "2026-01-01T00:04:00Z", "y")}})
 	two := build(t, map[string][]string{"a.jsonl": {title("burler"), userAt(t, "2026-01-01T00:01:00Z", "x"), stamped("2026-01-01T00:03:00Z", endTurn), userAt(t, "2026-01-01T00:05:00Z", "y")}})
@@ -155,6 +182,7 @@ func TestRunTimeByRole(t *testing.T) {
 		"| burler | 2 | 2 | 0 | 0 | 2 | 0.0M | 100.0% | 4m0s | 50.0% |",
 		"| idle | | | | | | | | 4m0s | 50.0% | | |",
 		"Time is turn time:",
+		"An interval into a line that starts a turn, or longer than the stall cap of 30m0s, is idle.",
 		"The union of working time plus idle is the span.",
 	} {
 		if !strings.Contains(all, want) {
