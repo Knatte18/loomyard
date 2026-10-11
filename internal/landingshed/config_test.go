@@ -57,6 +57,9 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	if cfg.CoAuthoredBy != "Claude <noreply@anthropic.com>" {
 		t.Errorf("cfg.CoAuthoredBy = %q; want %q", cfg.CoAuthoredBy, "Claude <noreply@anthropic.com>")
 	}
+	if cfg.Deploy != "" {
+		t.Errorf("cfg.Deploy = %q; want empty", cfg.Deploy)
+	}
 }
 
 // TestLoadConfig_InvalidKeys verifies a hand-edited landing.yaml with an ungrammatical model-spec or an empty co_authored_by fails loud at load time, naming the key, rather than being silently carried into the spawn site that reads it.
@@ -107,17 +110,20 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_PublishVerify verifies the publish_verify key loads as written, and that a landing.yaml without it loads the template's empty value.
-func TestLoadConfig_PublishVerify(t *testing.T) {
+// TestLoadConfig_OptionalStringKeys verifies each optional string landing key loads as written, and that a landing.yaml without it loads the template's empty value.
+func TestLoadConfig_OptionalStringKeys(t *testing.T) {
 	t.Parallel()
 
-	const withoutKey = "require_pr_to_base: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
+	const withoutKeys = "require_pr_to_base: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
 		"describe: sonnet[medium]\ndescribe_timeout_min: 30\nco_authored_by: Claude <noreply@anthropic.com>\n"
 	cases := []struct {
 		name, contents, want string
+		field                func(Config) string
 	}{
-		{"key set", withoutKey + "publish_verify: go test -tags tmux ./...\n", "go test -tags tmux ./..."},
-		{"key absent", withoutKey, ""},
+		{"publish_verify set", withoutKeys + "publish_verify: go test -tags tmux ./...\n", "go test -tags tmux ./...", func(c Config) string { return c.PublishVerify }},
+		{"publish_verify absent", withoutKeys, "", func(c Config) string { return c.PublishVerify }},
+		{"deploy set", withoutKeys + "deploy: ./update-plugins.sh\n", "./update-plugins.sh", func(c Config) string { return c.Deploy }},
+		{"deploy absent", withoutKeys, "", func(c Config) string { return c.Deploy }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -129,8 +135,8 @@ func TestLoadConfig_PublishVerify(t *testing.T) {
 			if err != nil {
 				t.Fatalf("LoadConfig() = _, %v; want nil error", err)
 			}
-			if cfg.PublishVerify != tc.want {
-				t.Errorf("cfg.PublishVerify = %q; want %q", cfg.PublishVerify, tc.want)
+			if got := tc.field(cfg); got != tc.want {
+				t.Errorf("%s = %q; want %q", tc.name, got, tc.want)
 			}
 		})
 	}
