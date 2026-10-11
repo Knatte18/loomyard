@@ -331,3 +331,128 @@ func TestAttachGated_Pending(t *testing.T) {
 		})
 	}
 }
+
+// TestGatePending_ExpiryProbeEndsMidTurnWait covers a MayHold entry's Expired probe.
+// It is called only while the writer is off the boundary.
+// It ends the run done within gateRecheckEvery of turning true.
+// Finalize then reads the verdict through the entries' Final closures.
+func TestGatePending_ExpiryProbeEndsMidTurnWait(t *testing.T) {
+	const deadlineStep = 40
+	tests := []struct {
+		name string
+		// noBoundary replaces the seeded turn end with a line the fake engine ignores, so the loop never sees a boundary, as after a driver restart mid-turn.
+		noBoundary bool
+		// bareHold makes the parent-review entry pend without a Send, so the writer stays at the idle boundary.
+		bareHold bool
+		// firstFailsAtFinalize makes the must-pass entry fail on every evaluation after the first.
+		firstFailsAtFinalize bool
+		// turnsTrueAtTick is the tick after whose sleep the probe answers true; 0 means it never does and the deadline ends the run.
+		turnsTrueAtTick int
+		probeErr        error
+		wantProbed      bool
+		wantStates      []GateEntryState
+		wantPassed      bool
+		wantFinalCalls  int
+	}{
+		{name: "pending send moved the writer off the boundary", turnsTrueAtTick: 12, wantProbed: true,
+			wantStates: []GateEntryState{GateEntryPassed, GateEntryPassed}, wantPassed: true, wantFinalCalls: 1},
+		{name: "first entry failing at finalize leaves the second not reached", firstFailsAtFinalize: true, turnsTrueAtTick: 12, wantProbed: true,
+			wantStates: []GateEntryState{GateEntryFailed, GateEntryNotReached}},
+		{name: "no boundary seen", noBoundary: true, turnsTrueAtTick: 12, wantProbed: true,
+			wantStates: []GateEntryState{GateEntryPassed, GateEntryPassed}, wantPassed: true, wantFinalCalls: 1},
+		{name: "probe that stays false ends at the deadline", wantProbed: true,
+			wantStates: []GateEntryState{GateEntryPassed, GateEntryPassed}, wantPassed: true, wantFinalCalls: 1},
+		{name: "writer pending at the idle boundary is never probed", bareHold: true,
+			wantStates: []GateEntryState{GateEntryPassed, GateEntryPassed}, wantPassed: true, wantFinalCalls: 1},
+		{name: "probe error warns and keeps polling", probeErr: errors.New("probe broke"), wantProbed: true,
+			wantStates: []GateEntryState{GateEntryPassed, GateEntryPassed}, wantPassed: true, wantFinalCalls: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logged interface{ String() string }
+			if tt.probeErr != nil {
+				logged = logcapture.CaptureVerbose(t)
+			}
+			var firstCalls, finalCalls, probeCalls int
+			expired := false
+			var turnedAt time.Time
+			first := func() (GateResult, error) {
+				firstCalls++
+				if tt.firstFailsAtFinalize && firstCalls > 1 {
+					return GateResult{Findings: "the discussion broke"}, nil
+				}
+				return GateResult{Passed: true}, nil
+			}
+			hold := GateResult{Pending: true, Send: pendingSendText}
+			if tt.bareHold {
+				hold = GateResult{Pending: true}
+			}
+			second := func() (GateResult, error) { return hold, nil }
+			final := func() (GateResult, error) {
+				finalCalls++
+				return GateResult{Passed: true}, nil
+			}
+			probe := func() (bool, error) {
+				probeCalls++
+				if tt.probeErr != nil {
+					return false, tt.probeErr
+				}
+				return expired, nil
+			}
+
+			steps := make([]func(*pendingFixture), deadlineStep)
+			for i := range steps {
+				steps[i] = noStep
+			}
+			if tt.turnsTrueAtTick > 0 {
+				steps[tt.turnsTrueAtTick-1] = func(f *pendingFixture) {
+					expired = true
+					turnedAt = f.fc.Now()
+				}
+			}
+			steps[deadlineStep-1] = func(f *pendingFixture) { f.fc.Sleep(2 * time.Hour) }
+			spec := GateSpec{
+				{Name: "discussion", Gate: first, Attempts: 3},
+				{Name: "parent-review", Gate: second, Final: final, Expired: probe, Attempts: 3, MayHold: true},
+			}
+			f := newPendingFixture(t, spec, sendCaptures(pendingSendText), steps...)
+			if tt.noBoundary {
+				if err := os.WriteFile(f.eventsPath, []byte("START\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			result, err := f.run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if result.Outcome != OutcomeDone {
+				t.Fatalf("Outcome = %q, want done", result.Outcome)
+			}
+			wantStates(t, result.Gate, tt.wantStates...)
+			if result.Gate.Passed != tt.wantPassed {
+				t.Errorf("Gate.Passed = %v, want %v", result.Gate.Passed, tt.wantPassed)
+			}
+			if finalCalls != tt.wantFinalCalls {
+				t.Errorf("Final ran %d times, want %d", finalCalls, tt.wantFinalCalls)
+			}
+			if (probeCalls > 0) != tt.wantProbed {
+				t.Errorf("probe ran %d times, want it called: %v", probeCalls, tt.wantProbed)
+			}
+			if tt.turnsTrueAtTick > 0 {
+				if lag := result.EndedAt.Sub(turnedAt); lag > gateRecheckEvery {
+					t.Errorf("run ended %v after the probe turned true, want within %v", lag, gateRecheckEvery)
+				}
+			} else if f.fc.Now().Before(f.run.deadline) {
+				t.Errorf("run ended at %v, before its deadline %v, with a probe that never turned true", f.fc.Now(), f.run.deadline)
+			}
+			if logged != nil {
+				for _, want := range []string{"parent-review", "probe broke"} {
+					if !strings.Contains(logged.String(), want) {
+						t.Errorf("Warn output lacks %q: %s", want, logged.String())
+					}
+				}
+			}
+		})
+	}
+}

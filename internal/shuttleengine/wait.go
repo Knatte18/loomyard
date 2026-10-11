@@ -38,7 +38,10 @@
 // and the boundary is restored when the engine reports that turn interrupted or the pane has read idle for turnStartIdleOverride.
 // Every gate send goes through sendWithin, so its idle wait and submit window end by the run deadline.
 // A re-prompt that fails busy or unlanded spends no attempt and is re-sent on a later tick, bounded by the run deadline.
-// The other three finalize call sites in this file (the events-unreadable/status-retry mechanism-failure exits via finishedDespiteMechanismFailure, the liveness-tick exit, and the deadline exit) are left untouched:
+// A gated run off the boundary, mid-turn or attached with no boundary seen, also asks each entry's read-only Expired probe once per gateRecheckEvery;
+// the first entry whose wait bound has run out finalizes the run done, so the bound ends the wait even when the writer never ends its turn.
+// That finalize call is a positive outcome, so it needs no allOutputFilesExist check.
+// The other finalize call sites in this file (the events-unreadable/status-retry mechanism-failure exits via finishedDespiteMechanismFailure, the liveness-tick exit, and the deadline exit) are left untouched:
 // each is reached precisely because the session is gone, the clock ran out, or the bookkeeping broke, so no Send is attempted there and finalize's own evaluation reports Attempts as it stands.
 //
 // # Completion Signal Invariant
@@ -323,6 +326,15 @@ func (run *Run) Wait() (Result, error) {
 				if result, finished, ferr := run.handleGatedBoundary(); finished {
 					return result, ferr
 				}
+			} else if len(run.gate) != 0 && !run.gateAtBoundary && run.gateRecheckDue() {
+				// Nothing arrived and the writer is off the boundary, mid-turn or with no boundary seen since an attach:
+				// ask the entries' read-only probes whether a wait bound has run out, which the writer's own turn end would otherwise never show.
+				run.lastGateEvalAt = run.clock.Now()
+				if name, expired := run.probeExpiry(); expired {
+					logger.Info("shuttle: gate: entry wait expired off the boundary, finalizing", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", name)
+					run.gateVerdict = nil
+					return run.finalize(OutcomeDone)
+				}
 			}
 		}
 
@@ -371,6 +383,25 @@ func (run *Run) Wait() (Result, error) {
 // gateRecheckDue reports whether gateRecheckEvery has passed since the last gate evaluation, which is always so before the first.
 func (run *Run) gateRecheckDue() bool {
 	return run.lastGateEvalAt.IsZero() || run.clock.Now().Sub(run.lastGateEvalAt) >= gateRecheckEvery
+}
+
+// probeExpiry calls the Expired probe of every entry that has one and is not off, in list order, and returns the name of the first entry whose probe reports expired.
+// A probe error logs a Warn naming the entry and counts as not expired, so the loop keeps polling under its deadline and liveness checks.
+func (run *Run) probeExpiry() (string, bool) {
+	for _, entry := range run.gate {
+		if entry.Attempts <= 0 || entry.Expired == nil {
+			continue
+		}
+		expired, err := entry.Expired()
+		if err != nil {
+			logger.Warn("shuttle: gate: expiry probe failed, treating the entry as not expired", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", entry.Name, "error", err)
+			continue
+		}
+		if expired {
+			return entry.Name, true
+		}
+	}
+	return "", false
 }
 
 // gateEntryError builds a gate-contract violation error for the named entry.

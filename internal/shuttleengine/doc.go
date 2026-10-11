@@ -249,6 +249,9 @@
 // A pending answer holds the run at a turn boundary without re-prompting or counting a failure:
 // the wait loop sends the entry's carried text once, keeps polling, and re-evaluates with no new arrival while the writer is idle at most once per gateRecheckEvery.
 // The deadline and liveness checks keep running, and a deadline or liveness finalize evaluates each entry's optional Final closure in place of Gate, reporting the entry waiting.
+// An entry may also carry GateEntry.Expired, a read-only probe of whether its wait has run out.
+// While the writer is off the boundary, mid-turn or attached with no boundary seen, the loop calls each probe once per gateRecheckEvery and finalizes the run done on the first that reports expired,
+// so the bound ends the wait even when the writer never ends its turn; finalize then reads the entries once in list order through each Final, and a must-pass entry that fails first still fails the gate.
 //
 // A turn end that leaves background work outstanding (EventWaiting) is judged by the output files, one rule for a shell of either signal and for a fork.
 // An ungated run with every output file present finishes Done at that turn end, whatever is outstanding.
