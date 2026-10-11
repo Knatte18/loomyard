@@ -462,8 +462,10 @@
 // risking a blanket sweep on a broken read.
 //
 // `Unwire` (unwire.go) is the per-worktree full deactivation that replaced the deleted `lyx init
-// --undo`: it removes every fabric junction actually present on disk (not just the ones the current
-// wired name-set names) and their warp `.git/info/exclude` entries, but never deletes weft-side
+// --undo`:
+// with its `apply` parameter set it removes every fabric junction actually present on disk (not just the ones the current wired name-set names) and their warp `.git/info/exclude` entries;
+// without it nothing is removed and the result reports what an applied run would remove.
+// Either way it never deletes weft-side
 // content — `_lyx` and `.lyx` are both preserved — and never touches the repo-wide
 // `weft:main` records, which survive so a later `lyx fabric reconcile` re-wires the worktree from the
 // same anchor and pathspec.

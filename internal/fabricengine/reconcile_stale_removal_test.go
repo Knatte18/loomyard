@@ -508,7 +508,7 @@ func TestUnwire_PreservesUserSymlinkAtAnchor(t *testing.T) {
 		t.Fatalf("create user symlink: %v", err)
 	}
 
-	result, err := fabricengine.Unwire(anchorDir)
+	result, err := fabricengine.Unwire(anchorDir, true)
 	if err != nil {
 		t.Fatalf("Unwire: %v", err)
 	}

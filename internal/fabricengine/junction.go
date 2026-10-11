@@ -417,7 +417,7 @@ func UnwireJunctions(l *lyxcwd.Location, slug string, names []string) (res Unwir
 		return UnwireResult{JunctionsRemoved: removed}, err
 	}
 
-	changed, err := unseedGitExclude(rec, l, slug, names)
+	changed, err := unseedGitExclude(rec, l, slug, names, false)
 	if err != nil {
 		return UnwireResult{JunctionsRemoved: removed}, err
 	}
@@ -556,9 +556,12 @@ func unseedJunctionRecords(rec *Mutations, container string, junctions []WarpJun
 //
 // Returns (false, nil) without touching the file if the exclude file does not
 // exist, or if no matching line was found — both are legitimate no-op cases.
+// With dryRun set, nothing is written and nothing is appended to rec.
+// The stripped content is still computed, and changed reports whether it differs from the original.
 // rec is the calling verb's own recorder; it records KindFileWritten at the exclude file's own
 // resolved path via Append only when the rewrite reports changed.
-func unseedGitExclude(rec *Mutations, l *lyxcwd.Location, slug string, names []string) (changed bool, err error) {
+func unseedGitExclude(rec *Mutations, l *lyxcwd.Location, slug string, names []string, dryRun bool) (changed bool, err error) {
+	wouldChange := false
 	excludePath, changed, err := mutateGitExclude(WorktreePath(l, slug), func(content string) (string, error) {
 		// The sibling census runs INSIDE the lock, so the answer it gives cannot be invalidated by a
 		// concurrent wire in another worktree between the census and the write it feeds.
@@ -586,10 +589,18 @@ func unseedGitExclude(rec *Mutations, l *lyxcwd.Location, slug string, names []s
 			}
 			kept = append(kept, line)
 		}
-		return strings.Join(kept, "\n"), nil
+		stripped := strings.Join(kept, "\n")
+		if dryRun {
+			wouldChange = stripped != content
+			return content, nil
+		}
+		return stripped, nil
 	})
 	if err != nil {
 		return false, err
+	}
+	if dryRun {
+		return wouldChange, nil
 	}
 	if changed {
 		rec.Append(KindFileWritten, excludePath, "")
