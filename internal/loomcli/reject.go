@@ -46,10 +46,10 @@ type rejectDeps struct {
 	writeRejection func(landingshed.Rejection) error
 	// routing is the run's recipe's routing, read for the PR-Gate bounce budget.
 	routing shedengine.Routing
-	// reworkRow is the recipe's row that answers a rejection: PR-Rework in loom, Darn in darn.
+	// reworkRow is the recipe's row that answers a rejection: PR-Rework in loom, Darn-Write in darn.
 	reworkRow string
 	// rejectionPending reports whether a rejection record is pending.
-	// Only a run blocked at the Darn row reads it.
+	// Only a run blocked at the Darn-Write row reads it.
 	rejectionPending func() (bool, error)
 	// now supplies the rejection time.
 	now func() time.Time
@@ -71,14 +71,14 @@ func rejectVerb(ctx context.Context, out io.Writer, d rejectDeps, reviewFile str
 	if !atGate && !atRework {
 		return output.Err(out, fmt.Sprintf("loom: reject: the run is not awaiting or blocked at %s, nor blocked at %s (state %q, producer %q)", loomshed.NamePRGate, d.reworkRow, st.State, st.CurrentProducer))
 	}
-	// A Darn row that halted on its own gate has no pull request yet, so only a pending rejection gives a rejection something to replace.
-	if atRework && d.reworkRow == loomshed.NameDarn {
+	// A Darn-Write row that halted on its own gate has no pull request yet, so only a pending rejection gives a rejection something to replace.
+	if atRework && d.reworkRow == loomshed.NameDarnWrite {
 		pending, err := d.rejectionPending()
 		if err != nil {
 			return output.Err(out, "loom: reject: read the pending rejection: "+err.Error())
 		}
 		if !pending {
-			return output.Err(out, fmt.Sprintf("loom: reject: the run is blocked at %s with no rejection pending, so it has no pull request to reject; fix the cause the status names, then run \"lyx loom resume\"", loomshed.NameDarn))
+			return output.Err(out, fmt.Sprintf("loom: reject: the run is blocked at %s with no rejection pending, so it has no pull request to reject; fix the cause the status names, then run \"lyx loom resume\"", loomshed.NameDarnWrite))
 		}
 	}
 	if atGate {
@@ -158,9 +158,9 @@ rework row (the rework session stopped; a new rejection replaces the pending
 one). In the loom recipe the rework row is PR-Rework: the next "lyx loom start"
 sends the findings to it, and it archives the built plan generation into the
 round and plans a new one, then re-runs the main line. In the darn recipe the
-rework row is Darn: the next "lyx loom start" spawns a fresh Darn session
-that is told the findings, and a run blocked at Darn needs a pending rejection
-for a new one to replace.
+rework row is Darn-Write: the next "lyx loom start" spawns a fresh Darn-Write
+session that is told the findings, and a run blocked at Darn-Write needs a
+pending rejection for a new one to replace.
 
 It refuses unless the pull request is open, the local task HEAD equals the
 pull request's head commit, and the review file is readable and non-empty.

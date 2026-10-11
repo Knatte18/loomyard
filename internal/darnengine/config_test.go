@@ -36,11 +36,11 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		{
 			name: "template defaults", contents: ConfigTemplate(), seed: true,
-			want: Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 3},
+			want: Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 1},
 		},
 		{
 			name: "review off", seed: true,
-			contents: strings.Replace(ConfigTemplate(), "review_max_bounces: 3", "review_max_bounces: 0", 1),
+			contents: strings.Replace(ConfigTemplate(), "review_max_bounces: 1", "review_max_bounces: 0", 1),
 			want:     Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 0},
 		},
 		{

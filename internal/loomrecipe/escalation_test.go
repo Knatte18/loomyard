@@ -1,11 +1,15 @@
-// escalation_test.go drives a real Discussion-Review segment through a spent review budget:
+// escalation_test.go drives a real Discussion-Review segment, and a darn run's Darn-Review perch, through a spent review budget:
 // the Bouncer escalates to the parent instead of blocking, a budget continue grants exactly one more round, and an accept settles the segment.
 
 package loomrecipe
 
 import (
 	"context"
+	"errors"
+	"io/fs"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -54,6 +58,87 @@ func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.Burler
 		return st
 	}
 	return shed, filepath.Join(env.RunRoot, "discussion"), env.Burler.(*shedfake.BurlerRunner), readStatus
+}
+
+// haltingProducer is a fake row that counts its calls and returns Stuck with no on_stuck to bounce to, so a run halts on reaching it.
+type haltingProducer struct{ calls int }
+
+func (p *haltingProducer) Call(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	p.calls++
+	return shedengine.Stuck, shedengine.OutputPointer{Reason: "halting fake"}, nil
+}
+
+// TestEscalation_DarnPerchBudgetSpentEscalatesThenAcceptReachesDescribe drives a darn run's Darn-Review perch past darn.yaml's default budget of 1, with no decision record on disk:
+// the Bouncer escalates to the parent with a rendered brief instead of blocking, writes no decision record, and an accept settles the perch onto Describe.
+func TestEscalation_DarnPerchBudgetSpentEscalatesThenAcceptReachesDescribe(t *testing.T) {
+	env, paths := testEnv(t)
+	// A round's review path must sit under the anchor.
+	env.RunRoot = filepath.Join(env.AnchorPath, "reviews")
+	if err := os.MkdirAll(env.RunRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := loomshed.Seed(env.StatusPath, env.StatusLockPath, "fixture-slug", "fixture-parent"); err != nil {
+		t.Fatalf("Seed(): %v", err)
+	}
+	blockBouncerJudge(env)
+	env.SegmentBounces = func(row string) (int, int, bool, error) {
+		st, found, err := state.ReadJSONStrict[shedengine.Status](env.StatusPath, env.StatusLockPath)
+		if err != nil || !found {
+			return 0, 0, false, err
+		}
+		routing, err := DarnRouting(env.DarnReviewMaxBounces)
+		if err != nil {
+			return 0, 0, false, err
+		}
+		count, budget, inSegment := routing.Bounces(row, st.History)
+		return count, budget, inSegment, nil
+	}
+
+	shed, err := NewDarn(env, paths)
+	if err != nil {
+		t.Fatalf("NewDarn() error = %v; want nil", err)
+	}
+	describe := &haltingProducer{}
+	for i := range shed.Producers {
+		switch shed.Producers[i].Name {
+		case loomshed.NamePreflight, loomshed.NameDarnWrite:
+			shed.Producers[i].Producer = fakeAlwaysDoneProducer{}
+		case loomshed.NameDescribe:
+			shed.Producers[i].Producer = describe
+		}
+	}
+	runDir := filepath.Join(env.RunRoot, "darn")
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != shedengine.RunAwaiting || result.HaltedProducer != loomshed.NameDarnBouncer {
+		t.Fatalf("Run() = %q at %q (reason %q); want %q at %q", result.Outcome, result.HaltedProducer, result.Reason, shedengine.RunAwaiting, loomshed.NameDarnBouncer)
+	}
+	if !strings.Contains(result.Reason, "(cause: budget)") || !strings.Contains(result.Reason, "brief at ") {
+		t.Errorf("Run() reason = %q; want the budget cause and the rendered brief's path", result.Reason)
+	}
+	if st, _, err := state.ReadJSONStrict[shedengine.Status](env.StatusPath, env.StatusLockPath); err != nil || st.ParentNotice == "" {
+		t.Errorf("status ParentNotice = %q, %v; want the Bouncer's one-line notice", st.ParentNotice, err)
+	}
+	if _, err := os.Stat(env.DecisionRecordPath); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Stat(decision record) = %v; want not-exist, since a darn run has none", err)
+	}
+
+	if _, cause, err := shedadapters.RecordCirclingDecision(runDir, shedadapters.CirclingAccept); err != nil || cause != shedadapters.EscalationBudget {
+		t.Fatalf("RecordCirclingDecision(accept) = _, %q, %v; want %q, nil", cause, err, shedadapters.EscalationBudget)
+	}
+	result, err = shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run() after accept error = %v; want nil", err)
+	}
+	if result.HaltedProducer != loomshed.NameDescribe || describe.calls != 1 {
+		t.Errorf("Run() after accept halted at %q with Describe called %d times; want it to settle the perch and run Describe once", result.HaltedProducer, describe.calls)
+	}
+	if _, err := os.Stat(env.DecisionRecordPath); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Stat(decision record) after accept = %v; want not-exist", err)
+	}
 }
 
 // countStuck reports how many of history's entries are producer's Stuck entries, and how many of those are budget-exempt.

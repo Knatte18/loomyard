@@ -40,7 +40,7 @@ const (
 	decisionByParent   = "parent"
 	decisionByOperator = "operator"
 
-	decisionWayNoRecord  = `way forward: the record exists once Discussion-Write has written it; "lyx loom status <slug>" shows whether the run has reached that row, and "lyx loom start" begins or resumes the run`
+	decisionWayNoRecord  = `way forward: the record exists once Discussion-Write has written it; "lyx loom status <slug>" shows whether the run has reached that row, and "lyx loom start" begins or resumes the run; a darn run never has one, so name the call in your report to the run's parent instead`
 	decisionWayWriter    = `way forward: Discussion-Write owns the record while it runs; message the Discussion-Write session with the decision instead, or re-run once the row has handed off`
 	decisionWayNoHeading = `way forward: restore the "## Decisions" heading in the decision record, then re-run the verb`
 	decisionWayRetry     = `way forward: re-run "lyx loom decision add"; nothing is appended`

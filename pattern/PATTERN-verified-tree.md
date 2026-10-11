@@ -7,7 +7,7 @@ Every verify site runs the told verify command through `verifytree.Verify`: the 
 - No site verifies a dirty tree: `Verify` refuses one with its paths before running anything.
 - Records are per command, each entry with its tree and its commit; a skip requires an entry of the same command naming HEAD's tree.
 - The record is written only by `Verify`, and only after a pass; no prompt names its path.
-- The sites are the webster gate, the Webster-Burler gate, the Darn gate, Publish, Finalize and `lyx webster verify`.
+- The sites are the webster gate, the Webster-Burler gate, the Darn-Write and Darn-Burler gates, Publish, Finalize and `lyx webster verify`.
 - Publish also runs landing config's `publish_verify`, when set, through `Verify` after the told verify, with `BaseCommand` set to the told verify command; Finalize never runs it.
 - The Webster-Burler gate runs the derived round command through `Verify`, with `BaseCommand` set to the told verify command so its pass keeps the entry the next round diffs from.
 - Each run that spawns its command writes its own `verify-<n>.log` in the verify directory and names it on its result, so no later verify overwrites an earlier run's log.

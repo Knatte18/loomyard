@@ -158,6 +158,68 @@ func TestDescribeSpec_EmptyFieldIsError(t *testing.T) {
 	}
 }
 
+// TestDarnDescribeSpec pins the darn Describe spec: it fills the darn stencil with every told value under the describe keys, and refuses an empty required field by name.
+func TestDarnDescribeSpec(t *testing.T) {
+	t.Parallel()
+	const darnStencilFixture = "{{.parent_directive}}\n{{.edit_directive}}\nslug={{.slug}}\nreviews={{.review_dir}}\nout={{.description_path}}\ntask={{.task_branch}}\nparent={{.parent_branch}}\n"
+	newInputs := func(t *testing.T) DarnDescribeInputs {
+		t.Helper()
+		stencilsDir := t.TempDir()
+		stencilkit.SeedInto(t, stencilsDir)
+		if err := os.WriteFile(filepath.Join(stencilsDir, "landing", "landing-template-describe-darn.md"), []byte(darnStencilFixture), 0o644); err != nil {
+			t.Fatalf("WriteFile(darn describe stencil) = %v; want nil", err)
+		}
+		return DarnDescribeInputs{
+			StencilsDir:     stencilsDir,
+			ReviewDir:       "/x/reviews/darn",
+			DescriptionPath: "/x/landing/summary.md",
+			TaskBranch:      "task-branch",
+			ParentBranch:    "parent-branch",
+			Slug:            "my-slug",
+		}
+	}
+	cfg := Config{Describe: "claude:sonnet[effort=high]", DescribeTimeoutMin: 7}
+
+	t.Run("composes from the darn stencil", func(t *testing.T) {
+		t.Parallel()
+		in := newInputs(t)
+		spec, err := DarnDescribeSpec(in, cfg, modelspec.Registry{})
+		if err != nil {
+			t.Fatalf("DarnDescribeSpec = _, %v; want nil error", err)
+		}
+		if spec.Model != "sonnet" || spec.Role != "describe" || spec.Segment != segmentcolor.Describe || spec.Timeout != 7*time.Minute {
+			t.Errorf("spec model, role, segment, timeout = %q, %q, %q, %v; want sonnet, describe, %q, 7m", spec.Model, spec.Role, spec.Segment, spec.Timeout, segmentcolor.Describe)
+		}
+		if len(spec.OutputFiles) != 1 || spec.OutputFiles[0] != in.DescriptionPath {
+			t.Errorf("spec.OutputFiles = %v; want [%q]", spec.OutputFiles, in.DescriptionPath)
+		}
+		for _, v := range []string{"reviews=" + in.ReviewDir, "out=" + in.DescriptionPath, "task=" + in.TaskBranch, "parent=" + in.ParentBranch, "slug=" + in.Slug, "Edit or Write"} {
+			if !strings.Contains(spec.Prompt, v) {
+				t.Errorf("prompt %q does not contain %q", spec.Prompt, v)
+			}
+		}
+	})
+
+	fields := map[string]func(*DarnDescribeInputs){
+		"StencilsDir":     func(in *DarnDescribeInputs) { in.StencilsDir = "" },
+		"ReviewDir":       func(in *DarnDescribeInputs) { in.ReviewDir = "" },
+		"DescriptionPath": func(in *DarnDescribeInputs) { in.DescriptionPath = "" },
+		"TaskBranch":      func(in *DarnDescribeInputs) { in.TaskBranch = "" },
+		"ParentBranch":    func(in *DarnDescribeInputs) { in.ParentBranch = "" },
+		"Slug":            func(in *DarnDescribeInputs) { in.Slug = "" },
+	}
+	for name, blank := range fields {
+		t.Run("empty "+name, func(t *testing.T) {
+			t.Parallel()
+			in := newInputs(t)
+			blank(&in)
+			if _, err := DarnDescribeSpec(in, cfg, modelspec.Registry{}); err == nil || !strings.Contains(err.Error(), name) {
+				t.Errorf("DarnDescribeSpec with empty %s = _, %v; want an error naming the field", name, err)
+			}
+		})
+	}
+}
+
 func TestDescribeSpec_UnparsableModelSpecIsError(t *testing.T) {
 	in := newDescribeInputs(t)
 	_, err := DescribeSpec(in, Config{Describe: "", DescribeTimeoutMin: 1}, modelspec.Registry{})

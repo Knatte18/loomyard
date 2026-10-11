@@ -1,23 +1,29 @@
 # darn-recipe.yaml is the darn task recipe: one gated writer reads the board entry, edits, tests and
-# commits, the Darn-Review perch reviews the committed diff, then Publish, PR-Gate and Finalize land
-# it. It is embedded into the binary by the sibling recipes.go rather than read from disk. The row
-# names below are the durable on-disk identities pinned against internal/loomshed's Name* constants
-# -- a rename here without a matching constant rename breaks resume for any in-flight task.
+# commits, the Darn-Review perch reviews the committed diff, Describe rewrites the change
+# description from the final diff, then Publish, PR-Gate and Finalize land it. It is embedded into
+# the binary by the sibling recipes.go rather than read from disk. The row names below are the
+# durable on-disk identities pinned against internal/loomshed's Name* constants -- a rename here
+# without a matching constant rename breaks resume for any in-flight task, unless internal/loomrecipe
+# maps the retired name onto its successor, as it maps the writer row's former name, Darn.
 #
 # Preflight, Publish and Finalize carry no on_stuck: nothing in the list produces what each of them
-# gates, so a human is the only thing that can fix them. Darn carries none either: its exhausted
-# gate halts the run for the parent, which resumes it with a fresh verify budget.
+# gates, so a human is the only thing that can fix them. Darn-Write and Describe carry none either:
+# an exhausted writer gate halts the run for the parent, which resumes it with a fresh budget.
 #
 # Darn-Bouncer and Darn-Burler are the Darn-Review perch, wired like loom's Webster-Review pair:
 # each names the other in on_stuck under one shared segment label. The segment's rows declare no
 # max_bounces: their budget is darn.yaml's review_max_bounces, applied by internal/loomrecipe, and a
-# budget of 0 turns the perch off by routing Darn's Done straight to Publish. The perch's judge,
-# reviewer and fixer models are loom.yaml's Webster-Review keys, the other committed-diff review.
+# budget of 0 turns the perch off by routing Darn-Write's Done straight to Publish, past Describe, so
+# the writer's own description stands. The perch's judge, reviewer and fixer models are loom.yaml's
+# Webster-Review keys, the other committed-diff review.
 #
-# PR-Gate bounces to Darn, the row that produces the diff it guards. The edge's max_bounces is the
-# value the status projection and the reject refusal report; a Darn Done ends the gate's episode
-# and a Darn Stuck halts the run, so consecutive rejections never accumulate and the budget is
-# never reached under this recipe.
+# Describe follows the perch because Darn-Burler can change the code after the writer described it.
+#
+# PR-Gate bounces to Darn-Write, the row that produces the diff it guards, so a rework passes the
+# perch and Describe again before Publish refreshes the open pull request. The edge's max_bounces is
+# the value the status projection and the reject refusal report; a Darn-Write Done ends the gate's
+# episode and a Darn-Write Stuck halts the run, so consecutive rejections never accumulate and the
+# budget is never reached under this recipe.
 
 version: 1
 entry: Preflight
@@ -27,9 +33,9 @@ terminals:
 producers:
   - name: Preflight
     engine: Preflight
-    on_done: Darn
+    on_done: Darn-Write
 
-  - name: Darn
+  - name: Darn-Write
     engine: DarnWrite
     segment: PR-Review
     # internal/loomrecipe rewrites this edge to Publish when darn.yaml's review_max_bounces is 0.
@@ -37,7 +43,7 @@ producers:
     config:
       # gates holds this row's handoff until it is mechanically valid: each entry names a gate and
       # re-prompts the live session up to its attempts times. The verify gate's attempts here is a
-      # placeholder: the builder stamps the verify budget from darn.yaml at every build.
+      # placeholder: the builder stamps darn.yaml's verify_attempts at every build.
       gates:
         - name: verify
           attempts: 3
@@ -48,7 +54,7 @@ producers:
     engine: Bouncer
     segment: Darn-Review
     on_stuck: Darn-Burler
-    on_done: Publish
+    on_done: Describe
     config:
       run_subdir: darn
       # The subject under review is the committed diff, which artifact_paths cannot name; the key is
@@ -73,7 +79,8 @@ producers:
       # directory.
       run_subdir: darn
       # The verify gate runs darn.yaml's verify command on the committed tree after each round and
-      # re-prompts the round session with the findings until it passes.
+      # re-prompts the round session with the findings until it passes. Its attempts here is a
+      # placeholder: the builder stamps darn.yaml's verify_attempts at every build.
       gates:
         - name: verify
           attempts: 3
@@ -98,6 +105,15 @@ producers:
         tool-use: true
         # No cluster-fan key: fork reviewers may run no git, and the subject exists only through git.
 
+  # Describe writes the change description from the final diff, replacing the writer's own.
+  - name: Describe
+    engine: Describe
+    on_done: Publish
+    config:
+      gates:
+        - name: description
+          attempts: 3
+
   - name: Publish
     engine: Publish
     on_done: PR-Gate
@@ -109,7 +125,7 @@ producers:
     engine: PRGate
     segment: PR-Review
     max_bounces: 5
-    on_stuck: Darn
+    on_stuck: Darn-Write
     on_done: Finalize
 
   - name: Finalize

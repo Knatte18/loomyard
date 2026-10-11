@@ -112,44 +112,108 @@ func DescribeSpec(in DescribeInputs, cfg Config, reg modelspec.Registry) (shuttl
 		}
 	}
 
+	spec, err := describeSessionSpec(describeStencilName, in.StencilsDir, in.ParentName, in.DescriptionPath, map[string]string{
+		"slug":                 in.Slug,
+		"decision_record_path": in.DecisionRecordPath,
+		"run_record_paths":     runRecordBullets(in),
+		"description_path":     in.DescriptionPath,
+		"task_branch":          in.TaskBranch,
+		"parent_branch":        in.ParentBranch,
+	}, cfg, reg)
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("landingshed: DescribeSpec: %w", err)
+	}
+
+	return spec, nil
+}
+
+// darnDescribeStencilName is the registered name of the darn recipe's Describe prompt.
+const darnDescribeStencilName = "landing-template-describe-darn"
+
+// DarnDescribeInputs carries the told values one Describe session of a darn run needs. Every field but ParentName is required.
+type DarnDescribeInputs struct {
+	// StencilsDir is the absolute directory the landing stencils are read from.
+	StencilsDir string
+	// ParentName is the name of the session the Describe session escalates to.
+	// Optional: empty renders the no-parent variant of the parent directive.
+	ParentName string
+	// ReviewDir is the review perch's run directory, read only for the findings of a round the review passed unconverged.
+	ReviewDir string
+	// DescriptionPath is the file the agent writes: the change description.
+	DescriptionPath string
+	// TaskBranch is the branch whose diff the description covers.
+	TaskBranch string
+	// ParentBranch is the branch the task lands on.
+	ParentBranch string
+	// Slug is the task's slug, the key for `lyx board get`.
+	Slug string
+}
+
+// DarnDescribeSpec builds the shuttleengine.Spec for the Describe session of a darn run, which describes the diff from the board entry with no decision record or run record to read.
+// It is DescribeSpec's twin in every other respect: the model and timeout come from cfg's describe keys, the role, segment and skills are the same, and an empty required field is an error naming it.
+func DarnDescribeSpec(in DarnDescribeInputs, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
+	required := []struct{ name, value string }{
+		{"StencilsDir", in.StencilsDir},
+		{"ReviewDir", in.ReviewDir},
+		{"DescriptionPath", in.DescriptionPath},
+		{"TaskBranch", in.TaskBranch},
+		{"ParentBranch", in.ParentBranch},
+		{"Slug", in.Slug},
+	}
+	for _, r := range required {
+		if r.value == "" {
+			return shuttleengine.Spec{}, fmt.Errorf("landingshed: DarnDescribeSpec: %s is empty", r.name)
+		}
+	}
+
+	spec, err := describeSessionSpec(darnDescribeStencilName, in.StencilsDir, in.ParentName, in.DescriptionPath, map[string]string{
+		"slug":             in.Slug,
+		"review_dir":       in.ReviewDir,
+		"description_path": in.DescriptionPath,
+		"task_branch":      in.TaskBranch,
+		"parent_branch":    in.ParentBranch,
+	}, cfg, reg)
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("landingshed: DarnDescribeSpec: %w", err)
+	}
+
+	return spec, nil
+}
+
+// describeSessionSpec builds a Describe session's Spec from the stencil registered as stencilName, filled with markers plus the parent and edit directives.
+// The session writes descriptionPath, its one output file, under cfg's describe model and timeout.
+func describeSessionSpec(stencilName, stencilsDir, parentName, descriptionPath string, markers map[string]string, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
 	parsed, err := modelspec.Parse(cfg.Describe)
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("landingshed: DescribeSpec: describe model-spec: %w", err)
+		return shuttleengine.Spec{}, fmt.Errorf("describe model-spec: %w", err)
 	}
 	resolved, err := reg.Resolve(parsed)
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("landingshed: DescribeSpec: describe model-spec: %w", err)
+		return shuttleengine.Spec{}, fmt.Errorf("describe model-spec: %w", err)
 	}
 
-	template, err := stencilstore.Read(in.StencilsDir, describeStencilName)
+	template, err := stencilstore.Read(stencilsDir, stencilName)
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("landingshed: DescribeSpec: %w", err)
+		return shuttleengine.Spec{}, err
 	}
-	directive, err := parentdirective.Directive(in.StencilsDir, in.ParentName, false)
+	directive, err := parentdirective.Directive(stencilsDir, parentName, false)
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("landingshed: DescribeSpec: %w", err)
+		return shuttleengine.Spec{}, err
 	}
-	editDirective, err := editdirective.Directive(in.StencilsDir)
+	editDirective, err := editdirective.Directive(stencilsDir)
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("landingshed: DescribeSpec: %w", err)
+		return shuttleengine.Spec{}, err
 	}
-	prompt, err := stencil.Fill(template, map[string]string{
-		parentdirective.MarkerName: directive,
-		editdirective.MarkerName:   editDirective,
-		"slug":                     in.Slug,
-		"decision_record_path":     in.DecisionRecordPath,
-		"run_record_paths":         runRecordBullets(in),
-		"description_path":         in.DescriptionPath,
-		"task_branch":              in.TaskBranch,
-		"parent_branch":            in.ParentBranch,
-	})
+	markers[parentdirective.MarkerName] = directive
+	markers[editdirective.MarkerName] = editDirective
+	prompt, err := stencil.Fill(template, markers)
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("landingshed: DescribeSpec: fill describe prompt: %w", err)
+		return shuttleengine.Spec{}, fmt.Errorf("fill describe prompt: %w", err)
 	}
 
 	return shuttleengine.Spec{
 		Prompt:      string(prompt),
-		OutputFiles: []string{in.DescriptionPath},
+		OutputFiles: []string{descriptionPath},
 		Model:       resolved.Model,
 		Effort:      resolved.Params["effort"],
 		Version:     resolved.Params["version"],

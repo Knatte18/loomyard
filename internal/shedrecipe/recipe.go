@@ -215,7 +215,7 @@ type Env struct {
 	// It arrives as a closure for the reason ReworkSpec does.
 	DarnSpec func(loomshed.DarnTold) (shuttleengine.Spec, error)
 	// DarnVerifyAttempts is the verify gate's attempt budget of the darn recipe, which `darn.yaml`'s verify_attempts supplies.
-	// internal/loomrecipe alone reads it, stamping it onto the Darn row at every build.
+	// internal/loomrecipe alone reads it, stamping it onto the verify gates of the Darn-Write and Darn-Burler rows at every build.
 	DarnVerifyAttempts int
 	// DarnReviewMaxBounces is the bounce budget of the darn recipe's Darn-Review perch, which `darn.yaml`'s review_max_bounces supplies; 0 runs no review.
 	// internal/loomrecipe alone reads it.
