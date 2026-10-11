@@ -247,6 +247,8 @@ var wordingClaims = []stencilClaims{
 		{must: "{{.support_log_path}}", section: discussionFenceSection, why: "the fence names the output files by marker, so the permitted set cannot drift from the paths Step 5 writes"},
 		{must: "lyx loom review delivered", section: discussionFenceSection, why: "the fence carves out the parent-review delivered verb"},
 		{must: "parent-review entry to `## Review rounds`", section: discussionFenceSection, why: "the fence carves out the parent-review round entry"},
+		{must: "{{.twill_directive}}", section: "## Step 4 — How to get answers", why: "the twill lens review sits with the answer-gathering step, ahead of the files Step 5 writes"},
+		{must: "{{.twill_write_scope}}", section: discussionFenceSection, why: "the ready marker joins the write scope inside the fence"},
 	}, attackSurfaceClaims...)},
 	{"loom-template-discussion-chair.md", LoomTemplateDiscussionChair, []claim{
 		{must: `{{template "loom-template-discussion"}}`, why: "the chair includes the discussion stencil whole, so its write surface and gates cannot drift from the single writer's"},
@@ -284,6 +286,36 @@ var wordingClaims = []stencilClaims{
 		{must: "followed only as far as its own text goes", why: "a focus entry is followed only as far as its text goes"},
 		{must: "`## Focus departures`", why: "departures are reported under their heading"},
 	}},
+	{"twill-directive.md", TwillDirective, joinClaims([]claim{
+		{must: `subagent_type: "fork"`, why: "every lens runs as a fork that inherits the writer's context"},
+		{must: "never pass a `name`", why: "a named fork would be a separate session without the writer's context"},
+		{must: "in one message", why: "the forks run in parallel, spawned together"},
+		{must: "lyx shuttle await {{.ready_marker}}", why: "a fork waits for the ready marker through the shared wait verb"},
+		{must: "`timeout` at 300000", why: "the wait's cap exceeds the default Bash tool timeout, so the fork raises it"},
+		{must: "`ready: false`, run the same command again in a turn that does nothing else", why: "a turn that does only the wait keeps the prompt cache warm"},
+		{must: "15 times in a row", why: "a fork gives up on a record that never arrives"},
+		{must: "at most 6 further tool calls", why: "a fork reviews from its inherited context and spends few calls"},
+		{must: "one line per such call", why: "each extra call is accounted for in the report"},
+		{must: "never calls the Agent tool", why: "only the writer spawns"},
+		{must: "only as your final message", why: "a fork's findings return as its final message, never a file"},
+		{must: "only after the self-check passes", why: "the marker releases the forks on a record that already passes"},
+		{must: "one fork pass per", anyCase: true, why: "the lens review runs once per writer spawn"},
+		{must: "never spawns again", why: "a relaunched writer has lost its forks and does not respawn them"},
+		{must: "no report", why: "a fork that returned nothing is named in the disposition"},
+		{must: "{{.rubric_path}}", why: "the rubric is read before the spawn so every fork inherits it"},
+		{must: "{{.lens_list}}", why: "the lenses arrive through their marker"},
+		{must: "{{.format_step}}", why: "the host names the step that writes the files"},
+		{must: "{{.self_check_step}}", why: "the host names the step that runs the self-check"},
+		{must: "{{.self_check_command}}", why: "the host names the self-check command"},
+		{must: "{{.disposition_place}}", why: "the host names where the lens review is recorded"},
+		{must: "{{.reviewed_files}}", why: "the host names the files a fork reviews"},
+	}, hostNeutralClaims())},
+	{"twill-write-scope.md", TwillWriteScope, joinClaims([]claim{
+		{must: "{{.ready_marker}}", why: "the marker path arrives through its marker"},
+		{must: "parent directory", why: "the writer creates the marker's parent directory"},
+		{must: "those two files", why: "the paragraph extends the do-not-repair rule's two files with the marker"},
+		{must: "nobody commits", why: "the marker is untracked state"},
+	}, hostNeutralClaims())},
 	{"burler-step-2-review.md", BurlerStep2Review, []claim{
 		{must: "## Focus departures", why: "the review format has a Focus departures section"},
 		{must: "Cluster rules", why: "instruction 2 carries the Cluster rules section the composed cluster block fills"},
@@ -668,6 +700,16 @@ var wordingClaims = []stencilClaims{
 		{mustNot: "At every escalation", why: "the generic escalation line is the unwatched rule's"},
 		{must: "record a failed send as a line in the report rather than retrying it", why: "a failed send is recorded, not retried, under both rules"},
 	}},
+}
+
+// hostNeutralClaims bars every host-specific name from a twill stencil, matched in any case, so another host can render it with its own values.
+func hostNeutralClaims() []claim {
+	phrases := []string{"decision record", "support log", "decision-record.md", "support-log.md", "_lyx/discussion", "Step 5", "Step 6", "validate-discussion", "## Interview", "Discussion"}
+	claims := wantNone("a twill stencil is host-neutral: every host value arrives through a marker", phrases...)
+	for i := range claims {
+		claims[i].anyCase = true
+	}
+	return claims
 }
 
 // focusEntryClaims is what both Bouncer stencils say about a focus entry.

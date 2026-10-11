@@ -80,6 +80,9 @@
 // A batch of several new events is classified by its last event, so only its last held turn end is notified.
 // It stays provider-invariant, per the Shuttle Provider-Seam Invariant.
 //
+// AwaitAny is the shared wait: it stats the told paths once a second until one exists or the cap elapses, and watches no directory.
+// It is the poll every capped keep-cache-warm wait verb runs on, and DefaultAwaitCap is the cap those verbs default to.
+//
 // # Stop verb
 //
 // Run.Stop and Runner.StopStrand (the guid form, for a caller holding no handle) end a run's strand after recording the stop in run.json.

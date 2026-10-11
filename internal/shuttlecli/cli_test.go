@@ -183,6 +183,7 @@ func TestRunCLI_PositionalArgValidation(t *testing.T) {
 		{"SendOnlyGuid", []string{"send", "guid-1"}},
 		{"SendTooManyArgs", []string{"send", "guid-1", "text", "extra"}},
 		{"StateStrayArgument", []string{"state", "stray"}},
+		{"AwaitNoArgs", []string{"await"}},
 	}
 
 	for _, tt := range tests {
@@ -197,6 +198,117 @@ func TestRunCLI_PositionalArgValidation(t *testing.T) {
 			}
 			if !strings.Contains(out.String(), `"ok":false`) {
 				t.Errorf("RunCLI(%v) output missing ok:false envelope; got: %q", tt.args, out.String())
+			}
+		})
+	}
+}
+
+// TestAwaitVerb runs await from a temp directory outside any git repository and asserts its answer, exit code and envelope for each way a watched path can exist, be absent or be unreadable, and that the verb writes nothing.
+// A live poll waits out no interval here; the engine's poll test pins it.
+func TestAwaitVerb(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// seed names the files that exist before the verb runs.
+		seed []string
+		args []string
+		// wantPath is the name under the directory the envelope's path carries on a ready answer.
+		wantPath string
+		// wantWatched are the names under the directory the envelope lists as watched.
+		wantWatched []string
+		wantReady   bool
+		wantErr     bool
+		// wantEntries are the names the directory holds afterwards.
+		wantEntries []string
+	}{
+		{
+			name:        "existing path is ready at once",
+			seed:        []string{"a"},
+			args:        []string{"a"},
+			wantPath:    "a",
+			wantWatched: []string{"a"},
+			wantReady:   true,
+			wantEntries: []string{"a"},
+		},
+		{
+			name:        "the second path alone existing is the one named",
+			seed:        []string{"b"},
+			args:        []string{"a", "b"},
+			wantPath:    "b",
+			wantWatched: []string{"a", "b"},
+			wantReady:   true,
+			wantEntries: []string{"b"},
+		},
+		{
+			name:        "absent path answers not ready after the cap",
+			args:        []string{"a", "--cap", "50ms"},
+			wantWatched: []string{"a"},
+		},
+		{
+			name:    "path under a regular file is a stat error",
+			seed:    []string{"blocker"},
+			args:    []string{filepath.Join("blocker", "a"), "--cap", "50ms"},
+			wantErr: true,
+			// the directory still holds the blocker alone.
+			wantEntries: []string{"blocker"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			for _, name := range tt.seed {
+				if err := os.WriteFile(filepath.Join(dir, name), nil, 0o644); err != nil {
+					t.Fatalf("seed %q: %v", name, err)
+				}
+			}
+
+			var out bytes.Buffer
+			code := RunCLIIn(dir, &out, append([]string{"await"}, tt.args...))
+
+			var envelope map[string]any
+			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+				t.Fatalf("envelope %q is not JSON: %v", out.String(), err)
+			}
+			if tt.wantErr {
+				if code != 1 || envelope["ok"] != false {
+					t.Errorf("await = exit %d, envelope %v; want exit 1, ok false", code, envelope)
+				}
+			} else {
+				if code != 0 || envelope["ok"] != true || envelope["ready"] != tt.wantReady {
+					t.Fatalf("await = exit %d, envelope %v; want exit 0, ok true, ready %v", code, envelope, tt.wantReady)
+				}
+				if tt.wantReady {
+					if envelope["path"] != filepath.Join(dir, tt.wantPath) {
+						t.Errorf("path = %v; want %q", envelope["path"], filepath.Join(dir, tt.wantPath))
+					}
+				} else if envelope["message"] != "none of the watched paths exists yet; call this command again" {
+					t.Errorf("message = %v; want the call-again message", envelope["message"])
+				}
+				watched, _ := envelope["watched"].([]any)
+				if len(watched) != len(tt.wantWatched) {
+					t.Fatalf("watched = %v; want %v under %q", watched, tt.wantWatched, dir)
+				}
+				for i, name := range tt.wantWatched {
+					if watched[i] != filepath.Join(dir, name) {
+						t.Errorf("watched[%d] = %v; want %q", i, watched[i], filepath.Join(dir, name))
+					}
+				}
+			}
+
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatalf("ReadDir() error = %v", err)
+			}
+			var got []string
+			for _, entry := range entries {
+				got = append(got, entry.Name())
+			}
+			if strings.Join(got, ",") != strings.Join(tt.wantEntries, ",") {
+				t.Errorf("directory entries = %v; want %v (the verb writes nothing)", got, tt.wantEntries)
 			}
 		})
 	}

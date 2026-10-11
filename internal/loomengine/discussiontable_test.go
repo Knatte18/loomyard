@@ -98,7 +98,7 @@ func TestDiscussionTable(t *testing.T) {
 				if table.RolePrefix != discussionRole || table.Segment != segmentcolor.Discussion || table.Timeout != 480*time.Minute || table.Interactive != interactive {
 					t.Errorf("table prefix/segment/timeout/interactive = %q/%q/%s/%v; want %q/%q/480m0s/%v", table.RolePrefix, table.Segment, table.Timeout, table.Interactive, discussionRole, segmentcolor.Discussion, interactive)
 				}
-				if want := []string{"pattern_directive", "friction_directive"}; !slices.Equal(table.Optional, want) {
+				if want := []string{"pattern_directive", "friction_directive", "twill_directive", "twill_write_scope"}; !slices.Equal(table.Optional, want) {
 					t.Errorf("table.Optional = %v; want %v", table.Optional, want)
 				}
 				if len(table.Seats) != 1+advisors {
@@ -165,6 +165,16 @@ func TestDiscussionTable(t *testing.T) {
 					if strings.Contains(prompt, "{{") || strings.Contains(prompt, "scribe:") || strings.Contains(prompt, "--auto") || unboundedAskOperator(prompt) {
 						t.Errorf("%s prompt carries an unrendered marker, a skill name, --auto or an ask-the-operator sentence:\n%s", seat, prompt)
 					}
+				}
+				chairPrompt := prompts[seatengine.RoleChair]
+				if strings.Contains(strings.ToLower(chairPrompt), "twill") {
+					t.Errorf("chair prompt carries twill text; want none")
+				}
+				if want := "- `" + DiscussionSupportLog(layout) + "`\n\nTwo narrow carve-outs"; !strings.Contains(chairPrompt, want) {
+					t.Errorf("chair prompt does not hold the support-log bullet, one blank line, then the carve-outs")
+				}
+				if !strings.Contains(chairPrompt, "\n\n## Step 5") || strings.Contains(chairPrompt, "\n\n\n## Step 5") {
+					t.Errorf("chair prompt does not hold exactly one blank line before Step 5")
 				}
 			})
 		}
