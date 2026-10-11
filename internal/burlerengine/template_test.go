@@ -1,6 +1,6 @@
-// template_test.go proves each of the shipped round-prompt assets actually fills through stencil with its own required marker subset, that the three optional directives of instruction 1 render cleanly empty and placed ahead of its first work instruction, and that composePrompt reads a round prompt from disk at call time.
-// The assets' load-bearing statements and the orchestrator's exclusion of downstream bodies are pinned from a full composePrompt render in prompt_test.go (PATTERN-review-round's machine half).
-// The assets are read from the top-level stencils package's exported embedded defaults (stencils.BurlerTemplateReviewOrchestrator etc.) rather than this package's own now-deleted package-private vars — a cross-package import, not a rename, since composePrompt itself reads its prompts from disk at call time via stencilstore.Read (see prompt.go).
+// template_test.go proves each of the shipped half-prompt assets actually fills through stencil with its own required marker subset, that the two optional directives of the explore step render cleanly empty and placed ahead of its first work instruction, and that the compose functions read a half prompt from disk at call time.
+// The assets' load-bearing statements and the seat stencils' exclusion of downstream bodies are pinned from full compose renders in prompt_test.go (PATTERN-review-round's machine half).
+// The assets are read from the top-level stencils package's exported embedded defaults (stencils.BurlerTemplateReviewer etc.) rather than this package's own now-deleted package-private vars — a cross-package import, not a rename, since the compose functions themselves read their prompts from disk at call time via stencilstore.Read (see prompt.go).
 
 package burlerengine
 
@@ -21,30 +21,6 @@ func requireContains(t *testing.T, text, needle string) {
 	t.Helper()
 	if !strings.Contains(text, needle) {
 		t.Errorf("output does not contain %q", needle)
-	}
-}
-
-// reviewOrchestratorMarkerValues returns a values map with every one of the reviewer orchestrator's required top-level markers set to a non-empty placeholder.
-func reviewOrchestratorMarkerValues() map[string]string {
-	return map[string]string{
-		"instruction_1_path": "/tmp/instruction-1-explore.md",
-		"instruction_2_path": "/tmp/instruction-2-review.md",
-		"review_path":        "/tmp/review.md",
-		"chair_name":         "tst:slug:burler-chair",
-		"edit_directive":     "edit directive placeholder",
-	}
-}
-
-// fixOrchestratorMarkerValues returns a values map with every one of the fixer orchestrator's required top-level markers set to a non-empty placeholder.
-func fixOrchestratorMarkerValues() map[string]string {
-	return map[string]string{
-		"instruction_1_path": "/tmp/instruction-1-explore.md",
-		"review_format_path": "/tmp/instruction-2-review.md",
-		"instruction_3_path": "/tmp/instruction-3-fix.md",
-		"review_path":        "/tmp/review.md",
-		"ready_marker_path":  "/tmp/review.md.ready",
-		"advisor_names":      "tst:slug:burler-advisor-1",
-		"edit_directive":     "edit directive placeholder",
 	}
 }
 
@@ -89,43 +65,20 @@ func fixStepMarkerValues() map[string]string {
 	}
 }
 
-// instruction1MarkerValues returns a values map with every one of instruction 1's four required top-level markers set to a non-empty placeholder, plus pattern_directive, friction_directive and focus_directive — the three optional markers, filled via stencil.FillOptional — set to a placeholder too, so tests can delete one key at a time to prove stencil.FillOptional's per-marker error.
+// instruction1MarkerValues returns a values map with every one of the explore step's four required top-level markers set to a non-empty placeholder, plus pattern_directive and focus_directive — the two optional markers, filled via stencil.FillOptional — set to a placeholder too, so tests can delete one key at a time to prove stencil.FillOptional's per-marker error.
 func instruction1MarkerValues() map[string]string {
 	return map[string]string{
-		"pattern_directive":  "## Constraints — do this before you judge or change anything\n\n- Read the overview.",
-		"friction_directive": "## Friction note — optional, only if something went wrong",
-		"focus_directive":    "## Focus directive for this round",
-		"target":             "target placeholder",
-		"fasit":              "fasit placeholder",
-		"rubric":             "rubric placeholder",
-		"tool_use_rules":     "tool-use placeholder",
+		"pattern_directive": "## Constraints — do this before you judge anything\n\n- Read the overview.",
+		"focus_directive":   "## Focus directive for this round",
+		"target":            "target placeholder",
+		"fasit":             "fasit placeholder",
+		"rubric":            "rubric placeholder",
+		"tool_use_rules":    "tool-use placeholder",
 	}
 }
 
-// instruction2MarkerValues returns a values map with every one of
-// instruction 2's three required top-level markers set to a non-empty
-// placeholder.
-func instruction2MarkerValues() map[string]string {
-	return map[string]string{
-		"cluster_rules": "cluster-rules placeholder",
-		"review_path":   "/tmp/review.md",
-		"prior_rounds":  "prior-rounds placeholder",
-	}
-}
-
-// instruction3MarkerValues returns a values map with every one of
-// instruction 3's three required top-level markers set to a non-empty
-// placeholder.
-func instruction3MarkerValues() map[string]string {
-	return map[string]string{
-		"fix_scope_rules":   "fix-scope placeholder",
-		"review_path":       "/tmp/review.md",
-		"fixer_report_path": "/tmp/fixer-report.md",
-	}
-}
-
-// TestTemplate_FillsWithAllMarkers asserts each of the embedded assets fills through stencil when supplied its own full marker set (required markers plus, for instruction 1, the optional pattern_directive, friction_directive and focus_directive), and fails — naming the marker — when any single REQUIRED marker for that asset is absent.
-// pattern_directive, friction_directive and focus_directive are deliberately excluded from instruction 1's deletion sweep:
+// TestTemplate_FillsWithAllMarkers asserts each of the embedded assets fills through stencil when supplied its own full marker set (required markers plus, for the explore step, the optional pattern_directive and focus_directive), and fails — naming the marker — when any single REQUIRED marker for that asset is absent.
+// pattern_directive and focus_directive are deliberately excluded from the explore step's deletion sweep:
 // they are the optional markers across the assets, so deleting any of them must not error.
 func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	tests := []struct {
@@ -135,20 +88,6 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 		optional        []string
 		requiredMarkers []string
 	}{
-		{
-			name:            "review orchestrator",
-			template:        stencils.BurlerTemplateReviewOrchestrator,
-			values:          reviewOrchestratorMarkerValues(),
-			optional:        []string{"parent_directive"},
-			requiredMarkers: []string{"instruction_1_path", "instruction_2_path", "review_path", "chair_name"},
-		},
-		{
-			name:            "fix orchestrator",
-			template:        stencils.BurlerTemplateFixOrchestrator,
-			values:          fixOrchestratorMarkerValues(),
-			optional:        []string{"parent_directive"},
-			requiredMarkers: []string{"instruction_1_path", "review_format_path", "instruction_3_path", "review_path", "ready_marker_path", "advisor_names"},
-		},
 		{
 			name:            "reviewer seat",
 			template:        stencils.BurlerTemplateReviewer,
@@ -182,23 +121,11 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 			values:   map[string]string{},
 		},
 		{
-			name:            "instruction 1 (explore)",
+			name:            "explore step",
 			template:        stencils.BurlerStep1Explore,
 			values:          instruction1MarkerValues(),
-			optional:        []string{"pattern_directive", "friction_directive", "focus_directive"},
+			optional:        []string{"pattern_directive", "focus_directive"},
 			requiredMarkers: []string{"target", "fasit", "rubric", "tool_use_rules"},
-		},
-		{
-			name:            "instruction 2 (review)",
-			template:        stencils.BurlerStep2Review,
-			values:          instruction2MarkerValues(),
-			requiredMarkers: []string{"cluster_rules", "review_path", "prior_rounds"},
-		},
-		{
-			name:            "instruction 3 (fix)",
-			template:        stencils.BurlerStep3Fix,
-			values:          instruction3MarkerValues(),
-			requiredMarkers: []string{"fix_scope_rules", "review_path", "fixer_report_path"},
 		},
 	}
 
@@ -234,19 +161,18 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	}
 }
 
-// TestTemplate_OptionalDirectives asserts pattern_directive, friction_directive and focus_directive each behave as an optional marker on instruction 1: an empty value renders cleanly with no leftover `{{`, no orphan heading and, for pattern_directive, no stray blank-line block where the directive would have sat, and a non-empty value places the directive block ahead of the first work instruction ("## What to review (the target)").
-// A marker-free template (the literal {{.friction_directive}} stripped from the shipped bytes) still fills cleanly while a non-empty directive value is supplied -- the composer's optional-marker guarantee runs one direction only (see stencil.FillOptional's own doc comment), so a marker's absence from the template must never be an error.
+// TestTemplate_OptionalDirectives asserts pattern_directive and focus_directive each behave as an optional marker on the explore step: an empty value renders cleanly with no leftover `{{`, no orphan heading and, for pattern_directive, no stray blank-line block where the directive would have sat, and a non-empty value places the directive block ahead of the first work instruction ("## What to review (the target)").
+// The fix step's friction_directive renders an empty value cleanly too.
 func TestTemplate_OptionalDirectives(t *testing.T) {
 	t.Parallel()
 
-	optional := []string{"pattern_directive", "friction_directive", "focus_directive"}
+	optional := []string{"pattern_directive", "focus_directive"}
 	tests := []struct {
 		marker            string
 		orphanHeading     string
 		noStrayBlankBlock bool
 	}{
 		{marker: "pattern_directive", orphanHeading: "## Constraints", noStrayBlankBlock: true},
-		{marker: "friction_directive"},
 		{marker: "focus_directive", orphanHeading: "## Focus directive"},
 	}
 
@@ -304,35 +230,24 @@ func TestTemplate_OptionalDirectives(t *testing.T) {
 		}
 	})
 
-	t.Run("marker-free template still fills while a directive value is supplied", func(t *testing.T) {
-		t.Parallel()
-		markerFree := strings.ReplaceAll(string(stencils.BurlerStep1Explore), "{{.friction_directive}}", "")
-		values := instruction1MarkerValues()
-		if _, err := stencil.FillOptional([]byte(markerFree), values, optional); err != nil {
-			t.Fatalf("stencil.FillOptional() on a marker-free template = %v; want nil", err)
-		}
-	})
 }
 
-// TestComposePrompt_ReadsEditedStencilFromDisk proves composePrompt reads a round prompt from stencilsDir on every call rather than from any compiled-in default: overwriting burler/burler-step-2-review.md on disk with a modified body, after building stencilsDir from the shipped defaults, must have that modified text — not the shipped default's own text — reach the composed instruction 2 file.
+// TestComposePrompt_ReadsEditedStencilFromDisk proves composeReviewPrompt reads a half prompt from stencilsDir on every call rather than from any compiled-in default: overwriting burler/burler-step-review.md on disk with a modified body, after building stencilsDir from the shipped defaults, must have that modified text — not the shipped default's own text — reach the composed review step file.
 // This pins the runtime-read-not-embed Shared Decision at the burlerengine call site.
 //
-//testtiming:keep pins that an edited on-disk instruction-2 body reaches the composed instruction 2 file, which the cluster test covering its blocks never edits
+//testtiming:keep pins that an edited on-disk review-step body reaches the composed review step file, which the cluster test covering its blocks never edits
 func TestComposePrompt_ReadsEditedStencilFromDisk(t *testing.T) {
 	p := newComposableProfile(t)
 	stencilsDir := newTestStencilsDir(t)
 
 	const modifiedMarker = "MODIFIED-BY-TEST: this line does not exist in the shipped default"
-	edited := append(append([]byte{}, stencils.BurlerStep2Review...), []byte("\n"+modifiedMarker+"\n")...)
-	path := filepath.Join(stencilsDir, "burler", "burler-step-2-review.md")
+	edited := append(append([]byte{}, stencils.BurlerStepReview...), []byte("\n"+modifiedMarker+"\n")...)
+	path := filepath.Join(stencilsDir, "burler", "burler-step-review.md")
 	if err := os.WriteFile(path, edited, 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 	}
 
-	prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
-	if err != nil {
-		t.Fatalf("composePrompt() = %v; want nil error", err)
-	}
+	prompt := composeReview(t, stencilsDir, &p, "")
 
-	requireContains(t, prompts.Files[2].Content, modifiedMarker)
+	requireContains(t, prompt.Files[reviewStepFile].Content, modifiedMarker)
 }

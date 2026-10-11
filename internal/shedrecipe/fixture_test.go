@@ -72,7 +72,7 @@ func newTestEnv(t *testing.T) Env {
 		StatusLockPath: filepath.Join(dir, "status.json.lock"),
 		StencilsDir:    mustMkdir("stencils"),
 		SpecsDir:       mustMkdir("specs"),
-		// Inside the anchor, as in production: the round's ready marker is derived from a review path under the run root and must lie inside the anchor.
+		// Inside the anchor, as in production.
 		RunRoot:            mustMkdir("anchor/run-root"),
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
 		SupportLogPath:     filepath.Join(dir, "support-log.md"),

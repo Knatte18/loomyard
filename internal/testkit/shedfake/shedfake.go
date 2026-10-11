@@ -1,10 +1,10 @@
-// Package shedfake fakes the shed-layer seams: the shuttle, the burler runner, the burler half runner, the seat runner, the merge shuttle and the webster run seams, plus the producer Call helpers.
+// Package shedfake fakes the shed-layer seams: the shuttle, the burler half runner, the seat runner, the merge shuttle and the webster run seams, plus the producer Call helpers.
 //
-// Shuttle satisfies shedadapters.Shuttle and frictionengine.Shuttle, BurlerRunner satisfies shedadapters.BurlerRunner, BurlerHalfRunner satisfies shedadapters.BurlerHalfRunner, SeatRunner satisfies shedadapters.SeatRunner, and MergeShuttle satisfies mergeresolve.Shuttle, all structurally, so no consumer package is imported here and shedadapters' and landingshed's in-package tests can use the kit.
+// Shuttle satisfies shedadapters.Shuttle and frictionengine.Shuttle, BurlerHalfRunner satisfies shedadapters.BurlerHalfRunner, SeatRunner satisfies shedadapters.SeatRunner, and MergeShuttle satisfies mergeresolve.Shuttle, all structurally, so no consumer package is imported here and shedadapters' and landingshed's in-package tests can use the kit.
 // Every fake exposes fields and optional func overrides, and none asserts anything.
 // CallOK and RequireOutcome are the only assertions the kit makes.
 //
-// internal/burlerengine's in-package tests keep their own Shuttle fake, because this kit imports burlerengine for BurlerRunner's types.
+// internal/burlerengine's in-package tests keep their own Shuttle fake, because this kit imports burlerengine for BurlerHalfRunner's types.
 package shedfake
 
 import (
@@ -149,81 +149,6 @@ func evalGateList(gate shuttleengine.GateSpec) (bool, error) {
 		}
 	}
 	return true, nil
-}
-
-// BurlerRunner is a fake burler runner: Results[i] and Errs[i] answer the (i+1)th Run, and once either slice is exhausted its last entry repeats.
-// ProbeRound and Resume answer their own scripted slices the same way, and unscripted answer a round with neither half live.
-type BurlerRunner struct {
-	mu sync.Mutex
-
-	Results []burlerengine.Result
-	Errs    []error
-
-	// LiveRounds and ProbeErrs script ProbeRound; ResumeResults and ResumeErrs script Resume.
-	LiveRounds    []burlerengine.LiveRound
-	ProbeErrs     []error
-	ResumeResults []burlerengine.Result
-	ResumeErrs    []error
-	// ProbeCalls and ResumeCalls count the invocations, GotProbeOpts holds every RunOpts handed to ProbeRound and GotLive every LiveRound handed to Resume.
-	ProbeCalls   int
-	ResumeCalls  int
-	GotProbeOpts []burlerengine.RunOpts
-	GotLive      []burlerengine.LiveRound
-
-	// GotProfiles and GotOpts hold every Profile and RunOpts handed to Run, in order, and Calls counts the invocations.
-	GotProfiles []burlerengine.Profile
-	GotOpts     []burlerengine.RunOpts
-	Calls       int
-
-	// DuringRun runs from inside Run, before it answers, with the zero-based index of the invocation.
-	DuringRun func(callIndex int)
-}
-
-// Run records p and opts, runs DuringRun, then answers the scripted entry for this invocation.
-func (f *BurlerRunner) Run(p burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.Result, error) {
-	f.mu.Lock()
-	i := f.Calls
-	f.Calls++
-	f.GotProfiles = append(f.GotProfiles, p)
-	f.GotOpts = append(f.GotOpts, opts)
-	f.mu.Unlock()
-	if f.DuringRun != nil {
-		f.DuringRun(i)
-	}
-
-	var result burlerengine.Result
-	if i < len(f.Results) {
-		result = f.Results[i]
-	} else if len(f.Results) > 0 {
-		result = f.Results[len(f.Results)-1]
-	}
-	var err error
-	if i < len(f.Errs) {
-		err = f.Errs[i]
-	} else if len(f.Errs) > 0 {
-		err = f.Errs[len(f.Errs)-1]
-	}
-	return result, err
-}
-
-// ProbeRound counts the call, records opts and answers the scripted LiveRound and error for this invocation.
-func (f *BurlerRunner) ProbeRound(_ burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.LiveRound, error) {
-	f.mu.Lock()
-	i := f.ProbeCalls
-	f.ProbeCalls++
-	f.GotProbeOpts = append(f.GotProbeOpts, opts)
-	f.mu.Unlock()
-	return scripted(f.LiveRounds, i), scripted(f.ProbeErrs, i)
-}
-
-// Resume counts the call, records live and answers the scripted Result and error for this invocation.
-func (f *BurlerRunner) Resume(_ burlerengine.Profile, _ burlerengine.RunOpts, live burlerengine.LiveRound) (burlerengine.Result, error) {
-	f.mu.Lock()
-	i := f.ResumeCalls
-	f.ResumeCalls++
-	f.GotLive = append(f.GotLive, live)
-	f.mu.Unlock()
-	return scripted(f.ResumeResults, i), scripted(f.ResumeErrs, i)
 }
 
 // BurlerHalfRunner is a fake burler half runner: ReviewResults[i] and ReviewErrs[i] answer the (i+1)th Review, FixResults[i] and FixErrs[i] the (i+1)th Fix, and once either slice is exhausted its last entry repeats.

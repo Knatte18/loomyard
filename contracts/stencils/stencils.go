@@ -95,30 +95,10 @@ var LoomTemplateParentReviewDelivery []byte
 //go:embed loom/loom-template-parent-review-brief.md
 var LoomTemplateParentReviewBrief []byte
 
-// BurlerTemplateReviewOrchestrator is burler's shipped-default reviewer seat stencil, the required advisor of a round's seat table.
-//
-//go:embed burler/burler-template-review-orchestrator.md
-var BurlerTemplateReviewOrchestrator []byte
-
-// BurlerTemplateFixOrchestrator is burler's shipped-default fixer seat stencil, the chair of a round's seat table.
-//
-//go:embed burler/burler-template-fix-orchestrator.md
-var BurlerTemplateFixOrchestrator []byte
-
 // BurlerStep1Explore is burler's shipped-default step-1 (explore) instruction prompt.
 //
 //go:embed burler/burler-step-1-explore.md
 var BurlerStep1Explore []byte
-
-// BurlerStep2Review is burler's shipped-default step-2 (review) instruction prompt.
-//
-//go:embed burler/burler-step-2-review.md
-var BurlerStep2Review []byte
-
-// BurlerStep3Fix is burler's shipped-default step-3 (fix) instruction prompt.
-//
-//go:embed burler/burler-step-3-fix.md
-var BurlerStep3Fix []byte
 
 // BurlerTemplateReviewer is burler's shipped-default reviewer seat stencil, the one seat of the review half's table.
 //
@@ -417,11 +397,7 @@ var entries = []registryEntry{
 	{"loom-template-prior-plan", &LoomTemplatePriorPlan},
 	{"loom-template-parent-review-delivery", &LoomTemplateParentReviewDelivery},
 	{"loom-template-parent-review-brief", &LoomTemplateParentReviewBrief},
-	{"burler-template-review-orchestrator", &BurlerTemplateReviewOrchestrator},
-	{"burler-template-fix-orchestrator", &BurlerTemplateFixOrchestrator},
 	{"burler-step-1-explore", &BurlerStep1Explore},
-	{"burler-step-2-review", &BurlerStep2Review},
-	{"burler-step-3-fix", &BurlerStep3Fix},
 	{"burler-template-reviewer", &BurlerTemplateReviewer},
 	{"burler-template-fixer", &BurlerTemplateFixer},
 	{"burler-step-review", &BurlerStepReview},
@@ -488,8 +464,6 @@ var roleOpeningStencils = map[string][]string{
 	"rework":              {"loom-template-rework"},
 	"webster-master":      {"webster-template-master"},
 	"webster-recovery":    {"webster-prefix-recovery"},
-	"burler-advisor-1":    {"burler-template-review-orchestrator"},
-	"burler-chair":        {"burler-template-fix-orchestrator"},
 	"burler-review-chair": {"burler-template-reviewer"},
 	"burler-fix-chair":    {"burler-template-fixer"},
 	"conflict":            {"landing-template-conflict"},

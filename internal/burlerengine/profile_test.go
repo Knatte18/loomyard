@@ -1,5 +1,5 @@
-// profile_test.go table-drives Profile.validate over the happy path and every fail-loud rule
-// documented on validate: field-emptiness, path existence, FixScope legality, ClusterFan's
+// profile_test.go table-drives Profile.validateReview and Profile.validateFix over the happy path and every fail-loud rule
+// documented on them: field-emptiness, path existence, FixScope legality, ClusterFan's
 // fan-resolution gate, and in-place absolute-path resolution for both relative and already-absolute
 // entries.
 
@@ -35,11 +35,8 @@ func testClusterFanConfig() Config {
 	}
 }
 
-// newValidProfileFixture creates a temp worktree root with every file
-// validate requires to exist (a target file, a target directory, a fasit
-// file, and a pair of prior-round files) and returns the root plus a
-// Profile that passes validate unmodified — each test mutates a copy of
-// this base to exercise one rule at a time.
+// newValidProfileFixture creates a temp worktree root with every file validateReview requires to exist (a target file, a target directory, a fasit file, and a pair of prior-round files).
+// It returns the root plus a Profile that passes validateReview unmodified — each test mutates a copy of this base to exercise one rule at a time.
 func newValidProfileFixture(t *testing.T) (root string, base Profile) {
 	t.Helper()
 	root = t.TempDir()
@@ -60,7 +57,6 @@ func newValidProfileFixture(t *testing.T) (root string, base Profile) {
 		ToolUse:           false,
 		ReviewPath:        "review.md",
 		FixerReportPath:   "fixer-report.md",
-		ReadyMarkerPath:   "review.md.ready",
 		PriorReviews:      []string{"prior-review.md"},
 		PriorFixerReports: []string{"prior-fixer.md"},
 	}
@@ -76,7 +72,7 @@ func writeFixtureFile(t *testing.T, root, name, content string) {
 	}
 }
 
-// TestProfile_Validate table-drives validate over the happy paths and every fail-loud rule.
+// TestProfile_Validate table-drives validateReview and validateFix over the happy paths and every fail-loud rule.
 // The two path-resolution rows also assert, through check, that every path field is rewritten in place to a cleaned absolute path: relative entries are joined onto worktreeRoot per entry, and an already-absolute entry outside worktreeRoot survives unchanged apart from filepath.Clean.
 func TestProfile_Validate(t *testing.T) {
 	t.Parallel()
@@ -92,7 +88,7 @@ func TestProfile_Validate(t *testing.T) {
 		wantErr   bool
 		errSubstr string
 		check     func(t *testing.T, root string, got Profile)
-		// fix drives validateFix instead of validate.
+		// fix drives validateFix instead of validateReview.
 		fix bool
 	}{
 		{
@@ -173,9 +169,6 @@ func TestProfile_Validate(t *testing.T) {
 				}
 				if want := filepath.Join(root, "fixer-report.md"); got.FixerReportPath != want {
 					t.Errorf("FixerReportPath = %q; want %q", got.FixerReportPath, want)
-				}
-				if want := filepath.Join(root, "review.md.ready"); got.ReadyMarkerPath != want {
-					t.Errorf("ReadyMarkerPath = %q; want %q", got.ReadyMarkerPath, want)
 				}
 			},
 		},
@@ -373,14 +366,6 @@ func TestProfile_Validate(t *testing.T) {
 			errSubstr: "profile.FixerReportPath must not be empty",
 		},
 		{
-			name: "readymarkerpath empty",
-			mutate: func(t *testing.T, root string, p *Profile) {
-				p.ReadyMarkerPath = ""
-			},
-			wantErr:   true,
-			errSubstr: "profile.ReadyMarkerPath must not be empty",
-		},
-		{
 			// B1: a same-path pair must be rejected — the shuttle file
 			// contract's two output-file entries would both be satisfied by
 			// one write, silently collapsing the two-artifact contract into
@@ -419,7 +404,7 @@ func TestProfile_Validate(t *testing.T) {
 			if tt.fix {
 				err = p.validateFix(root)
 			} else {
-				err = p.validate(root, cfg)
+				err = p.validateReview(root, cfg)
 			}
 
 			if tt.wantErr {
@@ -541,7 +526,7 @@ func TestProfileValidate_ClusterExclude(t *testing.T) {
 			p.ClusterExclude = tt.excludeLenses
 			p.ClusterExcludeHeld = tt.heldLenses
 
-			err := p.validate(root, cfg)
+			err := p.validateReview(root, cfg)
 
 			if tt.wantErr {
 				if err == nil {

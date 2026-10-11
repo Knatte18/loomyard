@@ -351,5 +351,5 @@ Its JSON error envelopes carry the way forward as a trailing `way forward:` clau
 Landing, batten, orch, fabric, burler and board refusals are not in this table, except the verify-gate, dirty-tree, conflict-session, superseded-strand and hub-wide config write rows above;
 a later audit adds each as its own section.
 Burler's own round errors stay out too, as the strict review parse and the cluster audit already do:
-a skipped handoff, a changed review, and a failed removal or write of the ready marker each name the file concerned in their message and land no row.
+a changed review and a failed write of the acceptance record each name the file concerned in their message and land no row.
 The fast-forward merge-in limit is out of scope too, since its message already names a git recourse.

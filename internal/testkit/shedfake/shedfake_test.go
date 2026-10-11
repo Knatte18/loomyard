@@ -133,50 +133,6 @@ func TestShuttle_RunFnReplacesScriptedAnswer(t *testing.T) {
 	}
 }
 
-func TestBurlerRunner_LastEntryRepeats(t *testing.T) {
-	first, last := errors.New("first"), errors.New("last")
-	f := &BurlerRunner{
-		Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}, {Outcome: shuttleengine.OutcomeTimeout}},
-		Errs:    []error{first, nil, last},
-	}
-	var seen []int
-	f.DuringRun = func(i int) { seen = append(seen, i) }
-
-	wantOutcomes := []shuttleengine.Outcome{shuttleengine.OutcomeDone, shuttleengine.OutcomeTimeout, shuttleengine.OutcomeTimeout, shuttleengine.OutcomeTimeout}
-	wantErrs := []error{first, nil, last, last}
-	for i := range wantOutcomes {
-		res, err := f.Run(burlerengine.Profile{Rubric: "r"}, burlerengine.RunOpts{})
-		if res.Outcome != wantOutcomes[i] || !errors.Is(err, wantErrs[i]) {
-			t.Errorf("call %d = %q, %v; want %q, %v", i, res.Outcome, err, wantOutcomes[i], wantErrs[i])
-		}
-	}
-	if f.Calls != 4 || len(f.GotProfiles) != 4 || len(f.GotOpts) != 4 {
-		t.Errorf("Calls %d, GotProfiles %d, GotOpts %d; want 4 each", f.Calls, len(f.GotProfiles), len(f.GotOpts))
-	}
-	if len(seen) != 4 || seen[0] != 0 || seen[3] != 3 {
-		t.Errorf("DuringRun indices = %v; want 0..3", seen)
-	}
-
-	// ProbeRound and Resume script the same way, and unscripted answer a round with neither half live.
-	live := burlerengine.LiveRound{Review: burlerengine.LiveHalf{State: burlerengine.HalfLive}}
-	probing := &BurlerRunner{LiveRounds: []burlerengine.LiveRound{live}, ProbeErrs: []error{nil, first}, ResumeResults: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-	for i, wantErr := range []error{nil, first, first} {
-		got, err := probing.ProbeRound(burlerengine.Profile{}, burlerengine.RunOpts{Round: "1"})
-		if got != live || !errors.Is(err, wantErr) {
-			t.Errorf("ProbeRound call %d = %+v, %v; want %+v, %v", i, got, err, live, wantErr)
-		}
-	}
-	res, err := probing.Resume(burlerengine.Profile{}, burlerengine.RunOpts{}, live)
-	if res.Outcome != shuttleengine.OutcomeDone || err != nil || probing.ProbeCalls != 3 || len(probing.GotProbeOpts) != 3 || probing.ResumeCalls != 1 || probing.GotLive[0] != live {
-		t.Errorf("Resume() = %+v, %v with ProbeCalls %d, ResumeCalls %d, GotLive %+v; want done, nil, 3, 1, [%+v]", res, err, probing.ProbeCalls, probing.ResumeCalls, probing.GotLive, live)
-	}
-	unscripted := &BurlerRunner{}
-	if got, err := unscripted.ProbeRound(burlerengine.Profile{}, burlerengine.RunOpts{}); got != (burlerengine.LiveRound{}) || err != nil {
-		t.Errorf("unscripted ProbeRound() = %+v, %v; want the zero LiveRound and nil", got, err)
-	}
-
-}
-
 func TestSeatRunner_LastEntryRepeatsAndFnsOverride(t *testing.T) {
 	first, last := errors.New("first"), errors.New("last")
 	table := seatengine.Table{RolePrefix: "multi"}

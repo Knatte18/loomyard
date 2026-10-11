@@ -49,11 +49,8 @@ type Profile struct {
 	clusterLenses      []Lens
 	ReviewPath         string
 	FixerReportPath    string
-	// ReadyMarkerPath is the told path of the file the engine writes once the reviewer's review is accepted and the fixer waits on.
-	// The caller derives it with burlermarker.Path; the engine derives no path.
-	ReadyMarkerPath   string
-	PriorReviews      []string
-	PriorFixerReports []string
+	PriorReviews       []string
+	PriorFixerReports  []string
 	// FocusDirective is an optional path to this round's focus directive file, kept apart from PriorReviews.
 	// It is steering input the reviewer reads before forming findings, and is never subject to the prior-rounds clean-room rule.
 	FocusDirective string
@@ -83,21 +80,7 @@ type RunOpts struct {
 	Gate shuttleengine.GateSpec
 }
 
-// validate normalizes p in place and reports a fail-loud error if not runnable as a whole round.
-// It runs validateReview, then requires the ready marker path.
-func (p *Profile) validate(worktreeRoot string, cfg Config) error {
-	p.ReadyMarkerPath = resolvePath(worktreeRoot, p.ReadyMarkerPath)
-	if err := p.validateReview(worktreeRoot, cfg); err != nil {
-		return err
-	}
-	if p.ReadyMarkerPath == "" {
-		return fmt.Errorf("burler: profile.ReadyMarkerPath must not be empty")
-	}
-	return nil
-}
-
-// validateReview normalizes p in place and reports a fail-loud error if the review half is not runnable:
-// everything validate checks except the ready marker.
+// validateReview normalizes p in place and reports a fail-loud error if the review half is not runnable.
 // Checks run in fixed order; the first failure is returned.
 func (p *Profile) validateReview(worktreeRoot string, cfg Config) error {
 	// Resolve all path fields to absolute first.

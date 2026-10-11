@@ -215,6 +215,15 @@ func TestBurlerReviewProducer_Call_RoundScan(t *testing.T) {
 			wantArchived: map[string]int{"round-1-review.md": 1},
 		},
 		{
+			name: "a review and fixer report with no acceptance record are archived and reviewed again",
+			setup: func(t *testing.T, runDir string) {
+				writeRoundFile(t, roundReviewPath(runDir, 1))
+				writeRoundFile(t, roundFixerReportPath(runDir, 1))
+			},
+			wantRound:    1,
+			wantArchived: map[string]int{"round-1-review.md": 1, "round-1-fixer-report.md": 1},
+		},
+		{
 			name: "an acceptance record with no review is archived",
 			setup: func(t *testing.T, runDir string) {
 				writeAcceptedRound(t, runDir, 1, "d1")

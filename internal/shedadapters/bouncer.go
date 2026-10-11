@@ -109,7 +109,7 @@ type BouncerConfig struct {
 	// Now is the injected clock resolving only the archive filename's same-second collision
 	// suffix.
 	Now func() time.Time
-	// ClusterExcludes is a told value: true exactly when the BurlerRound row this Bouncer's OnStuck
+	// ClusterExcludes is a told value: true exactly when the Burler review row this Bouncer's OnStuck
 	// names runs a cluster fan the judge's exclude_lenses can trim.
 	// Only then does the judge prompt ask for exclude_lenses, and the seed prompt never does;
 	// the zero value asks the judge for focus alone.

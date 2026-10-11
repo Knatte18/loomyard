@@ -243,9 +243,8 @@ github.com/Knatte18/loomyard/
 ├── internal/treadleengine/       generalized round-loop engine (judge/gate/round-spawn/cap/pause/lock)
 ├── internal/shedengine/          generic outer phase-FSM: walks one flat producer list, honoring resume, crash-recovery, and pause at producer granularity
 ├── internal/shedtransient/       the one translation from lower-level failure classifications into the shed engine's transient mark
-├── internal/burlermarker/        the one derivation of a burler round's machine-local ready marker path from its review path
 ├── internal/seatengine/          the seat runner: starts, joins, probes, resumes and stops a chair and its advisors over shuttle, each seat in its own strand
-├── internal/shedadapters/        the five Shed engine adapters (SingleLLMProducer, Webster, the burler round producer, MultiLLMProducer, and the Bouncer) over shuttle/websterengine/burlerengine/seatengine
+├── internal/shedadapters/        the Shed engine adapters (SingleLLMProducer, Webster, the Burler review and fix row producers, MultiLLMProducer, and the Bouncer) over shuttle/websterengine/burlerengine/seatengine
 ├── internal/shedcheck/           authoring-time structural checker over an assembled OnDone/OnStuck producer graph
 ├── internal/loomcli/             loom's cobra module: the session bootstrap, arming `internal/shedverbs`' generic driver, status, and pause verb bodies
 ├── internal/parentreview/        the parent-review round store and gate closures behind `lyx loom review`, over told directories
@@ -482,9 +481,9 @@ User-facing modules each get one `lyx <module>` namespace:
   The Planner producer, the same way (`contracts/stencils/loom/loom-template-plan.md`), composed by `internal/loomengine`'s `prompt.go` + `plan.go`.
   See the `internal/loomengine` and `internal/loomcli` package documentation.
 - **shed** — the generic outer phase-FSM `loom` and the eventual `Hardener` are each built on: a Go engine that walks one flat, ordered producer list, honoring resume, crash-recovery, and pause uniformly at producer granularity, with no predefined slots (`internal/shedengine`).
-  The five shipped engine adapters — `SingleLLMProducer` over `shuttle`, the `Webster` adapter, the burler round producer, `MultiLLMProducer` over `seatengine`, and the Bouncer (the generic review-gate producer rather than a wrapper over an engine) — live in one package, `internal/shedadapters`, alongside their shared context and archive helpers.
+  The shipped engine adapters — `SingleLLMProducer` over `shuttle`, the `Webster` adapter, the Burler review row and fix row producers, `MultiLLMProducer` over `seatengine`, and the Bouncer (the generic review-gate producer rather than a wrapper over an engine) — live in one package, `internal/shedadapters`, alongside their shared context and archive helpers.
   No `lyx shed` verb of its own by design — a product's own CLI constructs a `Shed` with its own producer list and calls `Run`, and a bare verb would be a command with no list to walk.
-  The skeleton (the loop, the status file, the `ShedProducer` interface) is ✅ **implemented**; the five engine adapters (`SingleLLMProducer`, the `Webster` adapter, the burler round producer, `MultiLLMProducer`, and the Bouncer) are ✅ **implemented** too, shipped as `internal/shedadapters`.
+  The skeleton (the loop, the status file, the `ShedProducer` interface) is ✅ **implemented**; the engine adapters (`SingleLLMProducer`, the `Webster` adapter, the Burler review row and fix row producers, `MultiLLMProducer`, and the Bouncer) are ✅ **implemented** too, shipped as `internal/shedadapters`.
   `internal/shedcheck` is the shipped structural checker over an assembled producer list, enforced by a `go test` invariant over loom's own list rather than called from any production constructor — see its own package documentation for the finding kinds it reports.
   The Shed recipe group's engine registry (piece 1 of that group) is ✅ **implemented** too, as `internal/shedrecipe`; its `registry` map literal declares every engine name a recipe row may use.
   The recipe file format and the loader/builder shipped too, as `internal/shedbuild`, and loom's own conversion to a recipe file has now shipped as well: `contracts/recipes/loom-recipe.yaml` plus `internal/loomrecipe`, which assembles it into the `*shedengine.Shed` `internal/loomcli` runs.
@@ -497,13 +496,13 @@ User-facing modules each get one `lyx <module>` namespace:
   The driver re-launches the loop once after a deployed `lyx`, and a loom-launched driver parks at a hand-back until `lyx loom start` resumes it.
   `internal/shedrun` is the sole declarer of the `shed` run-directory path segment (`_lyx/shed/<run-id>/` durable, `.lyx/shed/<run-id>/` ephemeral), the run-id vocabulary (including the default literal `self`), and the `seed.json` contract — the closed `recipe`/`driver` vocabularies and the sole `ReadSeed`/`WriteSeed`/`List` reader-writer, consumed by `loomcli`, `battencli`, and `shedcli` alike. See [PATTERN-shed-run-directory](../pattern/PATTERN-shed-run-directory.md).
   See the `internal/shedengine`, `internal/shedadapters`, `internal/shedcheck`, `internal/shedrecipe`, `internal/shedbuild`, `internal/shedverbs`, `internal/shedcli`, `internal/shedrun`, and `internal/loomrecipe` package documentation, and [the recipe format](../contracts/specs/shed-recipe-spec.md).
-- **burler** — one review+fix round: two agents, a fixer as chair and a reviewer as its required advisor on one seat table of the seats engine, no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
+- **burler** — one review+fix round: two fresh sessions, a reviewer and then a fixer, each the chair of its own one-seat table on the seats engine, no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
   `loom.yaml`'s `discussion_fan` and `plan_fan` turn the lens fan on for Discussion-Review and Plan-Review, off by default.
-  The fixer, the chair, starts first, the reviewer writes the review while the fixer orients, and the fixer waits on a Go-written ready marker before it validates and fixes the findings, disputing one only with evidence that its premise is false or that every fix makes the target worse, and fixing a real finding with its own change when the proposed one is wrong.
+  The reviewer writes the review, Go accepts it and records its digest, and only then does a fixer start; it validates and fixes the findings, disputing one only with evidence that its premise is false or that every fix makes the target worse, and fixing a real finding with its own change when the proposed one is wrong.
   Profile-driven: `{overlay, source}` fix-scope, tool-use; `loom.yaml`'s `review` and `fix` keys pick each seat's model per round.
   Cluster review fans the reviewer out into N fork-subagent reviewers by naming a fan (`cluster-fan`) from the seed-only `burler.yaml` lens/fan library — never on by default.
   Strict frontmatter verdict parse;
-  debug CLI `lyx burler run`, and the read-only review-gate self-check `lyx burler validate-review <review-file>`; the fixer waits on a round's review-ready marker with `lyx shuttle await`. ✅ Implemented.
+  debug CLI `lyx burler run`, and the read-only review-gate self-check `lyx burler validate-review <review-file>`. ✅ Implemented.
   See the `internal/burlerengine` package documentation.
 - **hardener** — **DRAFT / concept.**
   Behavior-based reviewer that *runs* a live-substrate module (needs a sandbox repo) to harden it before merge;
@@ -628,11 +627,11 @@ See [PATTERN-told-geometry](../pattern/PATTERN-told-geometry.md) for the rule.
 loom wants a plan-reviewer for worktree `feature-x`:
 
 1. `loom` → its Plan-Review segment's `Bouncer` — "review this plan against the discussion until clean."
-2. the segment's `Burler`-round producer → `burler.Run(profile, priorFiles)` — "run one review+fix round."
-3. `burler` → runs one seat table on the seats engine, the fixer as chair and the reviewer as its required advisor, each a shuttle run — "run one reviewer agent and one fixer agent."
+2. the segment's Burler review row → `burler.Review(profile, opts)`, then its Burler fix row → `burler.Fix(profile, opts, digest)` — "run one review, then one fix."
+3. `burler` → runs a one-seat table on the seats engine per half, each a shuttle run — "run one reviewer agent, then one fixer agent."
 4. `shuttle` → `reed.AddStrand{ cmd:"claude …", worktree:"feature-x", display:{anchor:below-parent, focus:true} }`.
 5. `reed` records the strand in `.lyx/reed.json`, runs the command via `proc` in a pane, re-renders the layout (`layout = rules(strands)`), and applies it.
-6. The `Stop` hook fires → reed notes the edge → shuttle reads the output file → returns to burler → the reviewer's review is accepted and burler writes the ready marker the waiting fixer is released by → the fixer writes its fixer-report → burler returns the verdict → the segment's `Bouncer` reads it, decides another round or exit → on a `CONVERGED` verdict returns `Done` → loom advances.
+6. The `Stop` hook fires → reed notes the edge → shuttle reads the output file → returns to burler → the reviewer's review is accepted and the review row records its digest → the fix row spawns the fixer, which writes its fixer-report → the segment's `Bouncer` reads it, decides another round or exit → on a `CONVERGED` verdict returns `Done` → loom advances.
 
 ### The disambiguating test
 
