@@ -842,6 +842,16 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// Binding runs after the done-checks above, so a card that already failed create-not-done is
 	// never bound, and applies its whole batch of substitutions in this one RewriteRefs call.
 	bindFindings, bindOutcomes, bindErr := delta.BindHandles(in.Plan, in.Geom.PlanDir, in.Cards)
+	// The trace is logged before the restamp below, so a restamp failure still reports the bind that landed;
+	// it names the reason the pass decided over the outcomes BindHandles computed, which a missing glyph language or delta makes meaningless.
+	if bindErr == nil {
+		if _, languageSet := in.Plan.GlyphLanguage(); !languageSet {
+			bindOutcomes = failedBindOutcomes(in.Cards, func(planparser.Card) planindex.BindReason { return bindLanguageNone })
+		} else if deltaErr != nil {
+			bindOutcomes = failedBindOutcomes(in.Cards, func(planparser.Card) planindex.BindReason { return bindDeltaUnavailable })
+		}
+		logBindOutcomes(in.Number, bindOutcomes)
+	}
 	// BindHandles' plan-wide RewriteRefs lands on disk BEFORE it reports either a finding or an
 	// error — the substitutions come from delta.Created while a bind-count-mismatch comes from a
 	// card whose handle matched nothing, so one call routinely does both — which is why the
@@ -854,13 +864,6 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	if bindErr != nil {
 		return nil, bindErr
 	}
-	// The trace names the reason the pass decided over the outcomes BindHandles computed, which a missing glyph language or delta makes meaningless.
-	if _, languageSet := in.Plan.GlyphLanguage(); !languageSet {
-		bindOutcomes = failedBindOutcomes(in.Cards, func(planparser.Card) planindex.BindReason { return bindLanguageNone })
-	} else if deltaErr != nil {
-		bindOutcomes = failedBindOutcomes(in.Cards, func(planparser.Card) planindex.BindReason { return bindDeltaUnavailable })
-	}
-	logBindOutcomes(in.Number, bindOutcomes)
 	var bindBlocking []string
 	for _, f := range bindFindings {
 		bindBlocking = append(bindBlocking, f.Error())
