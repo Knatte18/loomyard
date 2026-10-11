@@ -747,6 +747,23 @@ func (r *tuiReed) SendText(guid, text string, submit bool) error {
 	return r.fakeReed.SendText(guid, text, submit)
 }
 
+// PasteSubmit puts text into the box as one paste and submits it unless the Enter is swallowed.
+// A text of pasteCollapseRunes or more characters collapses into the placeholder, as Claude Code does.
+func (r *tuiReed) PasteSubmit(guid, text string, submit bool) error {
+	if r.typedAt.IsZero() {
+		r.typedAt = r.clock.Now()
+	}
+	if len([]rune(text)) >= pasteCollapseRunes {
+		r.box += pastePlaceholder
+	} else {
+		r.box += text
+	}
+	if submit && !r.clock.Now().Before(r.swallowEnterUntil) {
+		r.submitBox()
+	}
+	return r.fakeReed.PasteSubmit(guid, text, submit)
+}
+
 func (r *tuiReed) SendKey(guid, key string) error {
 	switch key {
 	case "C-u":
@@ -791,6 +808,48 @@ func (e *tuiEngine) InputBoxText(capture string) (string, bool) {
 	}
 	return strings.TrimSpace(capture[caret+len("❯ "):]), true
 }
+
+const (
+	// pasteCollapseRunes is the length from which a fake pane collapses a paste into pastePlaceholder.
+	pasteCollapseRunes = 20
+	pastePlaceholder   = "[Pasted text #1]"
+)
+
+// ownPastePlaceholder reports whether boxText is the placeholder a fake pane makes of a paste of text.
+func ownPastePlaceholder(boxText, text string) bool {
+	return boxText == pastePlaceholder && len([]rune(text)) >= pasteCollapseRunes
+}
+
+// pasteEngine is a tuiEngine that takes pastes, answering PasteSubmits from pasteSubmits.
+type pasteEngine struct {
+	*tuiEngine
+
+	pasteSubmits bool
+}
+
+func (e *pasteEngine) PasteSubmits() bool { return e.pasteSubmits }
+
+func (e *pasteEngine) OwnPastePlaceholder(boxText, text string) bool {
+	return ownPastePlaceholder(boxText, text)
+}
+
+// scriptedPasteEngine is a clearableBoxEngine, whose input-box answers a test scripts, that takes pastes.
+type scriptedPasteEngine struct {
+	*clearableBoxEngine
+
+	pasteSubmits bool
+}
+
+func (e *scriptedPasteEngine) PasteSubmits() bool { return e.pasteSubmits }
+
+func (e *scriptedPasteEngine) OwnPastePlaceholder(boxText, text string) bool {
+	return ownPastePlaceholder(boxText, text)
+}
+
+var (
+	_ TextPaster = (*pasteEngine)(nil)
+	_ TextPaster = (*scriptedPasteEngine)(nil)
+)
 
 // newTUIEngine returns a tuiEngine whose pane starts ready and whose redraw settle is 100 ms.
 func newTUIEngine() *tuiEngine {

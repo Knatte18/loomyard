@@ -300,15 +300,96 @@ func windowClosed(clock Clock, closeAt time.Time) bool {
 	return !closeAt.IsZero() && !clock.Now().Before(closeAt)
 }
 
+// ErrSentTextInDraft marks a pasted send whose text was found in the input box beside other text: the operator's draft and the send have merged.
+// It wraps ErrSessionBusy, so a caller that retries a busy session retries this too.
+// Nothing was submitted, cleared or edited.
+var ErrSentTextInDraft = fmt.Errorf("%w: the sent text sits in the operator's draft", ErrSessionBusy)
+
+// pasteVerified writes text into the pane as one paste through reed and confirms it was submitted.
+// The paste carries its trailing Enter when the provider's Enter submits a paste; otherwise the box is settled first, so the guarded Enter lands on a redrawn box.
+// The send's window opens before the paste and is cut to the send's deadline.
+func pasteVerified(sc sendContext, paster TextPaster, reader InputBoxReader, text string) error {
+	closeAt := sc.clock.Now().Add(submitConfirmTimeout(sc.cfg))
+	if !sc.deadline.IsZero() && sc.deadline.Before(closeAt) {
+		closeAt = sc.deadline
+	}
+	if windowClosed(sc.clock, closeAt) {
+		return withPaneTail(fmt.Errorf("%w: the submit window, cut to the send's deadline, had closed before the paste; nothing was pasted", ErrSubmissionNotLanded), "", sc)
+	}
+	normalized := normalizePaneText(text)
+	sentAt := eventsSize(sc.eventsPath)
+	if err := sc.reed.PasteSubmit(sc.guid, text, paster.PasteSubmits()); err != nil {
+		return fmt.Errorf("shuttle: paste text: %w", err)
+	}
+	if !paster.PasteSubmits() {
+		if err := awaitSettledBox(sc, reader, closeAt); err != nil {
+			return failUnlanded(sc, reader, normalized, err)
+		}
+	}
+	return confirmPasted(sc, paster, reader, text, sentAt, closeAt)
+}
+
+// confirmPasted reads the input box after a paste, first reader.SubmitSettle() later and then at a doubling interval up to confirmBackoffCap, cut to end at closeAt.
+// A turn start past sentAt, or an empty box, means the paste landed.
+// A box holding exactly the sent text, or the provider's placeholder for it, means the Enter did not take, and the guarded Enter is sent and the box read again.
+// No readable box sends nothing and is read again.
+// The sent text beside other text fails with ErrSentTextInDraft, and any other text fails with ErrSessionBusy quoting the box; neither sends a key.
+// A window that ends on an exact match or on no readable box fails with ErrSubmissionNotLanded.
+func confirmPasted(sc sendContext, paster TextPaster, reader InputBoxReader, text string, sentAt int64, closeAt time.Time) error {
+	normalized := normalizePaneText(text)
+	settle := reader.SubmitSettle()
+	interval := settle
+	maxReads := windowPollCap(submitConfirmTimeout(sc.cfg), idlePollInitial)
+	for read := 1; ; read++ {
+		wait := min(interval, closeAt.Sub(sc.clock.Now()))
+		sc.clock.Sleep(max(wait, settle))
+		if turnStartedSince(sc.engine, sc.eventsPath, sentAt) {
+			return nil
+		}
+		if boxText, readable := readInputBox(sc, reader); readable {
+			box := normalizePaneText(boxText)
+			switch {
+			case box == "":
+				return nil
+			case box == normalized || paster.OwnPastePlaceholder(boxText, text):
+				if _, err := guardedEnter(sc); err != nil {
+					return err
+				}
+			case strings.Contains(box, normalized):
+				return withPaneTail(fmt.Errorf("%w: the input box holds %q", ErrSentTextInDraft, strings.TrimSpace(boxText)), "", sc)
+			default:
+				return withPaneTail(fmt.Errorf("%w: the input box holds text that is not this send's: %q", ErrSessionBusy, strings.TrimSpace(boxText)), "", sc)
+			}
+		}
+		if windowClosed(sc.clock, closeAt) || read >= maxReads {
+			reason := fmt.Errorf("%w: the pasted text is still pending, or its box unreadable, after %d read(s) within the %s submit window", ErrSubmissionNotLanded, read, submitConfirmTimeout(sc.cfg))
+			return failUnlanded(sc, reader, normalized, reason)
+		}
+		interval = min(max(2*interval, idlePollInitial), confirmBackoffCap)
+	}
+}
+
+// guardedEnter sends Enter into the strand's pane unless an operator was active there within the quiet window, asked immediately before the key.
+// sent is false for a held Enter, which is no error; the caller reads the box again.
+func guardedEnter(sc sendContext) (sent bool, err error) {
+	if operatorActivityHold(sc.reed, sc.guid) != "" {
+		return false, nil
+	}
+	if err := sc.reed.SendKey(sc.guid, "Enter"); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // settleAndConfirm runs the box path of a delivered send: wait for the input box to settle, send the Enter and confirm the submission.
 // A send that did not land is handed to failUnlanded, which returns nil when the submission landed late.
-func settleAndConfirm(sc sendContext, reader InputBoxReader, normalized, needle string, sentAt int64, closeAt time.Time) error {
+func settleAndConfirm(sc sendContext, reader InputBoxReader, normalized string, sentAt int64, closeAt time.Time) error {
 	err := awaitSettledBox(sc, reader, closeAt)
 	if err == nil {
-		err = confirmSubmitted(sc, reader, normalized, needle, sentAt, closeAt)
+		err = confirmSubmitted(sc, reader, normalized, sentAt, closeAt)
 	}
 	if errors.Is(err, ErrSubmissionNotLanded) {
-		return failUnlanded(sc, reader, normalized, needle, err)
+		return failUnlanded(sc, reader, normalized, err)
 	}
 	return err
 }
@@ -316,8 +397,8 @@ func settleAndConfirm(sc sendContext, reader InputBoxReader, normalized, needle 
 // failUnlanded turns an ErrSubmissionNotLanded reason into the send's result.
 // An empty box means the submission landed late and the send succeeds;
 // otherwise the error carries clearUnlandedText's note and ends with the pane's last lines.
-func failUnlanded(sc sendContext, reader InputBoxReader, normalized, needle string, reason error) error {
-	landed, note := clearUnlandedText(sc, reader, normalized, needle)
+func failUnlanded(sc sendContext, reader InputBoxReader, normalized string, reason error) error {
+	landed, note := clearUnlandedText(sc, reader, normalized)
 	if landed {
 		return nil
 	}
@@ -360,8 +441,8 @@ func awaitSettledBox(sc sendContext, reader InputBoxReader, closeAt time.Time) e
 // A read taken while the window is open that shows the box still holding the sent text sends one more Enter;
 // a read at or after closeAt, or after the window's Enter count, sends none and ends the loop, so every Enter is followed by exactly one read.
 // The submission is confirmed when the box no longer holds the sent text, or when the engine's session signals show a turn start past offset sentAt.
-// normalized is the whole sent text normalized by normalizePaneText and needle its leading sendNeedleRunes characters.
-func confirmSubmitted(sc sendContext, reader InputBoxReader, normalized, needle string, sentAt int64, closeAt time.Time) error {
+// normalized is the whole sent text normalized by normalizePaneText.
+func confirmSubmitted(sc sendContext, reader InputBoxReader, normalized string, sentAt int64, closeAt time.Time) error {
 	settle := reader.SubmitSettle()
 	interval := settle
 	maxEnters := windowPollCap(submitConfirmTimeout(sc.cfg), idlePollInitial)
@@ -371,7 +452,7 @@ func confirmSubmitted(sc sendContext, reader InputBoxReader, normalized, needle 
 		}
 		wait := min(interval, closeAt.Sub(sc.clock.Now()))
 		sc.clock.Sleep(max(wait, settle))
-		if turnStartedSince(sc.engine, sc.eventsPath, sentAt) || !inputBoxHoldsSentText(sc.reed, reader, sc.guid, normalized, needle) {
+		if turnStartedSince(sc.engine, sc.eventsPath, sentAt) || !inputBoxHoldsSentText(sc.reed, reader, sc.guid, normalized) {
 			return nil
 		}
 		if windowClosed(sc.clock, closeAt) || enter >= maxEnters {
@@ -383,10 +464,10 @@ func confirmSubmitted(sc sendContext, reader InputBoxReader, normalized, needle 
 
 // clearUnlandedText looks at the input box once after a send that did not land.
 // An empty box means the submission landed late, so landed is true.
-// For an engine with both the idle reading and InputBoxClearer, a box that shows this send's own text is cleared and read again;
+// For an engine with both the idle reading and InputBoxClearer, a box that holds exactly this send's own text is cleared and read again;
 // a box holding anything else gets no key.
 // note says what was found or done, and names a box the clear did not empty.
-func clearUnlandedText(sc sendContext, reader InputBoxReader, normalized, needle string) (landed bool, note string) {
+func clearUnlandedText(sc sendContext, reader InputBoxReader, normalized string) (landed bool, note string) {
 	boxText, ok := readInputBox(sc, reader)
 	if !ok {
 		return false, ""
@@ -400,7 +481,7 @@ func clearUnlandedText(sc sendContext, reader InputBoxReader, normalized, needle
 	if !idleReading || !canClear {
 		return false, ""
 	}
-	if !isOwnText(box, normalized, needle) && !clearer.PastePlaceholder(boxText) {
+	if box != normalized {
 		return false, "the input box holds text that is not this send's, left in place"
 	}
 	if err := playInputs(sc.reed, sc.guid, clearer.ClearInputSequence()); err != nil {
@@ -410,18 +491,6 @@ func clearUnlandedText(sc sendContext, reader InputBoxReader, normalized, needle
 		return false, fmt.Sprintf("the input box still holds %q after the clear", after)
 	}
 	return false, "the unlanded text was cleared from the input box"
-}
-
-// isOwnText reports whether box, a normalized input-box reading, is one or more copies of the normalized sent text, the last of which may be a prefix at least as long as needle.
-func isOwnText(box, normalized, needle string) bool {
-	for box != "" {
-		rest, found := strings.CutPrefix(box, normalized)
-		if !found {
-			return len([]rune(box)) >= len([]rune(needle)) && strings.HasPrefix(normalized, box)
-		}
-		box = rest
-	}
-	return true
 }
 
 // readInputBox returns the engine's reading of the strand's input box; ok is false when the capture failed or shows no readable box.

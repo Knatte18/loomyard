@@ -199,9 +199,17 @@
 // The submission is confirmed when the box no longer holds the sent text, or when the engine's session signals show a turn start past the file's size before the send.
 // A send that does not land fails with ErrSubmissionNotLanded, naming why and ending with the pane's last lines.
 // An empty box then means the submission landed late and the send succeeds;
-// otherwise, for an engine with both the idle reading and the optional InputBoxClearer capability, a box that shows this send's own text, or the provider's collapsed paste placeholder, is cleared and read again;
+// otherwise, for an engine with both the idle reading and the optional InputBoxClearer capability, a box that holds exactly this send's own text, re-read just before the key, is cleared and read again;
 // a box holding anything else gets no key, and a box the clear did not empty is named in the error.
+// The text counts as held only when the box reads exactly the sent text, normalized, so a box that merely contains its leading part is never taken for it.
 // An engine without the capability keeps the appearance-only check.
+// An engine that also implements the optional TextPaster capability, with the box reader and the idle reading, is written to through pasteVerified instead.
+// It issues one reed paste-submit, with no Escape and no typed keys, carrying the trailing Enter when `PasteSubmits` is true; with it false, the box is settled first and the Enter goes out as the guarded one below.
+// The box is then read first `submit_redraw_settle_ms` after the paste and at a doubling interval up to confirmBackoffCap, and each read decides:
+// a turn start past the file's size before the send, or an empty box, means the paste landed;
+// a box holding exactly the sent text, or the provider's own placeholder for it, means the Enter did not take, and the guarded Enter, sent only when no operator was active in the pane just before the key, goes out and the box is read again;
+// no readable box sends nothing and is read again, and a window that ends that way, or on an exact match, fails with ErrSubmissionNotLanded;
+// the sent text beside other text fails with ErrSentTextInDraft, which wraps ErrSessionBusy, and any other text fails with ErrSessionBusy quoting the box; neither sends a key.
 // The run's events offset is the events file's size at the moment before the prompt is sent.
 // That lies past every load turn end, the retry's included, and past any line appended after them.
 // run.json records that offset as `promptOffset` before the prompt goes out,
@@ -259,7 +267,7 @@
 // The reading is ready or held, or unknown when the state is, and an unknown reading falls back to the pane probe.
 // Runner.SessionIdle answers IdleProbe.Idle for a ready reading and, for a held one, IdleProbe.Reason, with TooShort set when the reason is the short pane;
 // the runner keeps one turn-start hold per strand guid, so the orch watcher's probes keep one hold across its ticks as a send keeps one across its polls.
-// A ready reading beside a pane that shows the needle or no box still answers idle, and logs the disagreement with the pane's last lines at Debug.
+// A ready reading beside a pane that shows the needle still answers idle, and logs the disagreement with the pane's last lines at Debug.
 // Wait's own shadow logging below stays display only.
 // The optional SessionSignalParser capability reads the events file's hook lines as provider-neutral signals with hook-side times:
 // a turn start, a turn end (with its outstanding background tasks), an API-error turn end, an ask, an idle notice, a session end and a session start (with its source).

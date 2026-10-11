@@ -995,7 +995,7 @@ func (c *boxTestClock) Sleep(d time.Duration) {
 // A capture is idle when it starts with "IDLE".
 // "START" is a turn start and "STOP:<message>" a turn end.
 // Every turn start reads interrupted when interrupted is set.
-// A box reading starting with "[Pasted" is a placeholder.
+
 type clearableBoxEngine struct {
 	*inputBoxEngine
 
@@ -1023,9 +1023,6 @@ func (e *clearableBoxEngine) CompactSessionSequence(string) []PaneInput {
 	return nil
 }
 func (e *clearableBoxEngine) ClearInputSequence() []PaneInput { return []PaneInput{{Key: "C-u"}} }
-func (e *clearableBoxEngine) PastePlaceholder(box string) bool {
-	return strings.HasPrefix(box, "[Pasted")
-}
 func (e *clearableBoxEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
 	var signals []SessionSignal
 	for _, line := range strings.Split(string(data), "\n") {
@@ -1219,25 +1216,17 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			wantKeys: keys("Escape", "Enter", "Enter"),
 		},
 		{
-			name: "a doubled copy is cleared to empty", text: longText,
-			idle: true, confirmS: 1,
-			boxes:   join(settled(longText), []inputBoxAnswer{box(longText + " " + longText), box(longText + " " + longText), box(longText + " " + longText), box("")}),
-			wantErr: "was cleared", wantNotLand: true,
-			wantKeys: keys("Escape", "Enter", "Enter", "C-u"),
+			// The box merely contains the sent text's first 48 characters, which no longer count as the sent text.
+			name: "a longer draft containing a long sent text's start is not held", text: longText,
+			boxes:    join(settled(longText), []inputBoxAnswer{box(longText + " " + longText)}),
+			wantKeys: keys("Escape", "Enter"),
 		},
 		{
-			name: "a needle-long prefix is cleared to empty", text: longText,
-			idle: true, confirmS: 1,
-			boxes:   join(settled(longText), []inputBoxAnswer{box(longText[:70]), box(longText[:70]), box(longText[:70]), box("")}),
-			wantErr: "was cleared", wantNotLand: true,
-			wantKeys: keys("Escape", "Enter", "Enter", "C-u"),
-		},
-		{
-			name: "a paste placeholder is cleared to empty", text: longText,
+			name: "a paste placeholder is left in place by the clear", text: longText,
 			idle: true, captures: []string{"IDLE"},
 			boxes:   []inputBoxAnswer{box(placeholder), box("")},
-			wantErr: "never appeared", wantNotLand: true,
-			wantKeys: keys("Escape", "Escape", "C-u"),
+			wantErr: "not this send's", wantNotLand: true,
+			wantKeys: keys("Escape", "Escape"),
 		},
 		{
 			name: "a foreign draft gets no clear key", text: shortText,
@@ -1361,6 +1350,110 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			}
 			if tt.wantAbsent != "" && strings.Contains(err.Error(), tt.wantAbsent) {
 				t.Errorf("error %q names %q, want only the pane's last 15 non-blank lines", err, tt.wantAbsent)
+			}
+		})
+	}
+
+	// The paste path: an engine with TextPaster is written to through one reed paste-submit, never typed keys.
+	const shortPasted = "run the suite"
+	const longPasted = "please review the whole change set carefully"
+	pasteTests := []struct {
+		name string
+		text string
+		// pasteSubmits is the engine's PasteSubmits answer.
+		pasteSubmits bool
+		// swallowFor is how long after the start the pane swallows an Enter.
+		swallowFor time.Duration
+		// active scripts the operator-activity answers, the idle wait's own reading first.
+		active []bool
+		// scripted, when set, replaces the tui pane with a fixed idle capture and these input-box answers.
+		scripted []inputBoxAnswer
+		wantErr  string
+		wantIs   []error
+		// wantNotLand is whether the error wraps ErrSubmissionNotLanded.
+		wantNotLand bool
+		wantKeys    []string
+		wantSubmit  bool
+	}{
+		{name: "one paste-submit and no typed keys", text: shortPasted, pasteSubmits: true, wantSubmit: true},
+		{name: "a swallowed Enter leaves the exact text and gets one guarded Enter", text: shortPasted, pasteSubmits: true, swallowFor: ms(50), wantKeys: keys("Enter"), wantSubmit: true},
+		{name: "a long text's placeholder box gets the guarded Enter", text: longPasted, pasteSubmits: true, swallowFor: ms(50), wantKeys: keys("Enter"), wantSubmit: true},
+		{
+			name: "a placeholder box for a short text is a foreign draft", text: shortPasted, pasteSubmits: true,
+			scripted: []inputBoxAnswer{box(pastePlaceholder)},
+			wantErr:  "not this send's", wantIs: []error{ErrSessionBusy}, wantSubmit: true,
+		},
+		{
+			name: "an active operator before the guarded Enter gets no Enter that read", text: shortPasted, pasteSubmits: true, swallowFor: ms(50),
+			active:   []bool{false, true, false},
+			wantKeys: keys("Enter"), wantSubmit: true,
+		},
+		{
+			name: "the sent text beside a draft fails without a key", text: shortPasted, pasteSubmits: true,
+			scripted: []inputBoxAnswer{box("my own draft " + shortPasted)},
+			wantErr:  "my own draft", wantIs: []error{ErrSentTextInDraft, ErrSessionBusy}, wantSubmit: true,
+		},
+		{
+			name: "a foreign draft fails without a key and quotes the draft", text: shortPasted, pasteSubmits: true,
+			scripted: []inputBoxAnswer{box("somebody else's draft")},
+			wantErr:  "somebody else's draft", wantIs: []error{ErrSessionBusy}, wantSubmit: true,
+		},
+		{
+			name: "a box that stays unreadable through the window fails without a key", text: shortPasted, pasteSubmits: true,
+			scripted: []inputBoxAnswer{{"", false}},
+			wantErr:  "unreadable", wantIs: []error{ErrSubmissionNotLanded}, wantNotLand: true, wantSubmit: true,
+		},
+		{name: "a paste without the Enter settles, then sends the guarded Enter", text: shortPasted, wantKeys: keys("Enter")},
+	}
+	for _, tt := range pasteTests {
+		t.Run("paste: "+tt.name, func(t *testing.T) {
+			t.Parallel()
+			clock := newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))
+			base := &fakeReed{StatusQueue: liveStrandStatus(true), ActiveQueue: tt.active}
+			var reed ReedOps
+			var engine Engine
+			if tt.scripted != nil {
+				base.CaptureQueue = []string{"IDLE"}
+				reed = base
+				engine = &scriptedPasteEngine{
+					clearableBoxEngine: &clearableBoxEngine{inputBoxEngine: &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: tt.scripted, settle: ms(100)}},
+					pasteSubmits:       tt.pasteSubmits,
+				}
+			} else {
+				reed = &tuiReed{fakeReed: base, clock: clock, swallowEnterUntil: clock.Now().Add(tt.swallowFor)}
+				engine = &pasteEngine{tuiEngine: newTUIEngine(), pasteSubmits: tt.pasteSubmits}
+			}
+			cfg := Config{SubmitSettleMS: 100, SubmitConfirmTimeoutS: 30, SendReadyTimeoutS: 60}
+			run := newFixture(t, reed, engine, withConfig(cfg)).newRun(Spec{}, withRunEvents(""), withRunClock(clock, clock.Now().Add(time.Hour)))
+
+			err := run.Send(tt.text)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Send() error: %v, want the paste confirmed", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Send() error = %v, want it to name %q", err, tt.wantErr)
+			}
+			for _, want := range tt.wantIs {
+				if !errors.Is(err, want) {
+					t.Errorf("Send() error = %v, want it to wrap %v", err, want)
+				}
+			}
+			if got := errors.Is(err, ErrSubmissionNotLanded); got != tt.wantNotLand {
+				t.Errorf("errors.Is(err, ErrSubmissionNotLanded) = %v, want %v (err %v)", got, tt.wantNotLand, err)
+			}
+			if len(base.SendTextCalls) != 0 {
+				t.Errorf("SendText calls = %+v, want none on the paste path", base.SendTextCalls)
+			}
+			if len(base.PasteSubmitCalls) != 1 || base.PasteSubmitCalls[0].Text != tt.text || base.PasteSubmitCalls[0].Submit != tt.wantSubmit {
+				t.Errorf("PasteSubmit calls = %+v, want one of %q with submit %v", base.PasteSubmitCalls, tt.text, tt.wantSubmit)
+			}
+			var gotKeys []string
+			for _, call := range base.SendKeyCalls {
+				gotKeys = append(gotKeys, call.Key)
+			}
+			if !reflect.DeepEqual(gotKeys, tt.wantKeys) {
+				t.Errorf("keys = %v, want %v", gotKeys, tt.wantKeys)
 			}
 		})
 	}
