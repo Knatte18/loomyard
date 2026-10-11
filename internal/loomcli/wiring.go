@@ -35,6 +35,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -462,6 +463,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
+	// ReworkSpec resolves again per Call; this resolution fails an unknown rework alias before round 1.
+	if _, err := loomengine.ResolveRework(loomCfg, registry); err != nil {
+		return err
+	}
 
 	reedGeom, err := hubgeom.ReedGeometry(location)
 	if err != nil {
@@ -756,7 +761,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
 		Slug:           seedSlug(location.WorktreeName),
-		SegmentBounces: segmentBounces(statusPath, statusLockPath, loomCfg.ReviewMaxBounces),
+		SegmentBounces: segmentBounces(statusPath, statusLockPath, func() (shedengine.Routing, error) { return loomrecipe.Routing(loomCfg.ReviewMaxBounces) }),
 
 		ReviewMaxBounces:         loomCfg.ReviewMaxBounces,
 		DiscussionSeats:          loomCfg.DiscussionProducer == loomengine.DiscussionProducerSeats,
@@ -769,6 +774,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			loomshed.NameDiscussionBurler: reviewSettings.Discussion,
 			loomshed.NamePlanBurler:       reviewSettings.Plan,
 			loomshed.NameWebsterBurler:    reviewSettings.Webster,
+			// The darn recipe's Darn-Review perch reviews a committed diff as Webster-Review does, so it takes that segment's models.
+			loomshed.NameDarnBurler: reviewSettings.Webster,
 		},
 		// A segment's fan reaches both of its rows from one key, so its Bouncer and its round agree by construction.
 		// Webster-Review stays solo: its forks may run no git and its subject exists only through git.
@@ -779,9 +786,12 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			loomshed.NamePlanBurler:        loomCfg.PlanFan,
 		},
 
-		JudgeModel:   judgeSettings.Model,
-		JudgeEffort:  judgeSettings.Effort,
-		JudgeVersion: judgeSettings.Version,
+		RowBouncerModels: map[string]shedadapters.BouncerModels{
+			loomshed.NameDiscussionBouncer: shedadapters.BouncerModels(judgeSettings.Discussion),
+			loomshed.NamePlanBouncer:       shedadapters.BouncerModels(judgeSettings.Plan),
+			loomshed.NameWebsterBouncer:    shedadapters.BouncerModels(judgeSettings.Webster),
+			loomshed.NameDarnBouncer:       shedadapters.BouncerModels(judgeSettings.Webster),
+		},
 
 		// Landing is deliberately left unfilled here, for a different reason than the four above:
 		// Env.Landing is assembled in run.go, immediately before loomrecipe.New, because
@@ -844,8 +854,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 // segmentBounces returns the Env.SegmentBounces seam over the status file at statusPath, locked by statusLockPath.
 // The history is read on each call, never at wire time, because it grows during the run; an absent status file reports not-in-segment.
-// reviewMaxBounces is the budget loomrecipe.New applies to the review rows, so the reported budget is the one Shed blocks on.
-func segmentBounces(statusPath, statusLockPath string, reviewMaxBounces int) func(row string) (int, int, bool, error) {
+// routing projects the run's recipe with the review budget its builder applies, so the reported budget is the one Shed blocks on.
+func segmentBounces(statusPath, statusLockPath string, routing func() (shedengine.Routing, error)) func(row string) (int, int, bool, error) {
 	return func(row string) (int, int, bool, error) {
 		st, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
 		// A run directory not yet created fails the lock open with not-exist; that is an absent status file too.
@@ -855,11 +865,11 @@ func segmentBounces(statusPath, statusLockPath string, reviewMaxBounces int) fun
 		if err != nil || !found {
 			return 0, 0, false, nil
 		}
-		routing, err := loomrecipe.Routing(reviewMaxBounces)
+		projected, err := routing()
 		if err != nil {
 			return 0, 0, false, err
 		}
-		count, budget, inSegment := routing.Bounces(row, st.History)
+		count, budget, inSegment := projected.Bounces(row, st.History)
 		return count, budget, inSegment, nil
 	}
 }

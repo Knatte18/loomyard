@@ -181,9 +181,12 @@ func TestBouncer_Circling_AcceptCallsCarryOverBeforeSettling(t *testing.T) {
 	seams := &circlingSeams{}
 	recorder := &carryOverRecorder{err: errors.New("record malformed")}
 	var settledAtCall []bool
-	b, cfg, _ := circlingBouncer(t, func(cfg *BouncerConfig) {
+	b, cfg, _ := layoutCirclingBouncer(t, 2, 2, func(cfg *BouncerConfig) {
 		seams.install(cfg)
 		recorder.install(cfg)
+	}, func(dir string) {
+		writeEvidenceLedger(t, dir, 1, evidenceEntry{"alpha", "open", "design", "MEDIUM"})
+		writeEvidenceLedger(t, dir, 2, evidenceEntry{"alpha", "open", "design", "MEDIUM"}, evidenceEntry{"beta", "open", "design", "BLOCKING"})
 	})
 	recorder.onCall = func() {
 		_, _, settled, _, err := readCirclingDecision(cfg.RunDir, 2)
@@ -217,7 +220,10 @@ func TestBouncer_Circling_AcceptCallsCarryOverBeforeSettling(t *testing.T) {
 		Closing:         discussionparser.CarryOverAccepted,
 		ReviewPath:      "run/round-2-report.md",
 		FixerReportPath: "run/round-2-fixer-report.md",
-		Findings:        []discussionparser.CarryOverFinding{{Key: "alpha", Class: "design", Severity: "MEDIUM", Rounds: []int{1, 2}}},
+		Findings: []discussionparser.CarryOverFinding{
+			{Key: "alpha", Class: "design", Severity: "MEDIUM", Rounds: []int{1, 2}},
+			{Key: "beta", Class: "design", Severity: "BLOCKING", Rounds: []int{2}},
+		},
 	}
 	if !reflect.DeepEqual(recorder.entries[1], want) {
 		t.Errorf("carry-over entry = %+v; want %+v", recorder.entries[1], want)
@@ -308,7 +314,7 @@ func TestBouncer_CirclingGuard(t *testing.T) {
 			checkpoint: 2, round: 2,
 			ledgers: func(t *testing.T, dir string) {
 				writeEvidenceLedger(t, dir, 1, gating("alpha"))
-				writeEvidenceLedger(t, dir, 2, gating("beta"))
+				writeEvidenceLedger(t, dir, 2, evidenceEntry{"alpha", "resolved", "", ""}, gating("beta"))
 			},
 			want: shedengine.Stuck,
 		},
@@ -337,7 +343,7 @@ func TestBouncer_CirclingGuard(t *testing.T) {
 			checkpoint: 2, round: 2,
 			ledgers: func(t *testing.T, dir string) {
 				writeEvidenceLedger(t, dir, 1, gating("alpha"))
-				writeEvidenceLedger(t, dir, 2, gating("beta"), gating("gamma"), gating("delta"))
+				writeEvidenceLedger(t, dir, 2, evidenceEntry{"alpha", "resolved", "", ""}, gating("beta"), gating("gamma"), gating("delta"))
 			},
 			want: shedengine.Stuck,
 		},

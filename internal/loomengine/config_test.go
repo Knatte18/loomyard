@@ -233,6 +233,18 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.Friction = "" },
 		},
 		{
+			name: "judge, seed and rework override keys set",
+			values: map[string]string{
+				"seed": "haiku[low]", "discussion_judge": "opus[low]", "plan_judge": "opus[high]", "webster_judge": "sonnet[low]",
+				"discussion_seed": "haiku[medium]", "plan_seed": "haiku[high]", "webster_seed": "sonnet[high]", "rework": "opus[low]",
+			},
+			mutate: func(c *Config) {
+				c.Seed, c.Rework = "haiku[low]", "opus[low]"
+				c.DiscussionJudge, c.PlanJudge, c.WebsterJudge = "opus[low]", "opus[high]", "sonnet[low]"
+				c.DiscussionSeed, c.PlanSeed, c.WebsterSeed = "haiku[medium]", "haiku[high]", "sonnet[high]"
+			},
+		},
+		{
 			name:   "valid driver spec",
 			values: map[string]string{"driver": "opus[effort=high]"},
 			mutate: func(c *Config) { c.Driver = "opus[effort=high]" },
@@ -370,6 +382,14 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"mapping review value", "review", "\n  model: opus", []string{"a non-empty list of model-specs"}, ""},
 		{"mapping inside a fix list", "fix", "\n  - model: opus", []string{"a non-empty list of model-specs"}, ""},
 		{"malformed judge spec", "judge", `"sonnet[medium"`, nil, ""},
+		{"malformed seed spec", "seed", `"opus[effort"`, nil, ""},
+		{"malformed discussion_judge spec", "discussion_judge", `"opus[effort"`, nil, ""},
+		{"malformed plan_judge spec", "plan_judge", `"opus[effort"`, nil, ""},
+		{"malformed webster_judge spec", "webster_judge", `"opus[effort"`, nil, ""},
+		{"malformed discussion_seed spec", "discussion_seed", `"opus[effort"`, nil, ""},
+		{"malformed plan_seed spec", "plan_seed", `"opus[effort"`, nil, ""},
+		{"malformed webster_seed spec", "webster_seed", `"opus[effort"`, nil, ""},
+		{"malformed rework spec", "rework", `"opus[effort"`, nil, ""},
 		{"malformed friction spec", "friction", `"opus[effort"`, nil, ""},
 		{"malformed driver spec", "driver", `"opus[effort"`, nil, ""},
 		{"zero parent_review_wait_min", "parent_review_wait_min", "0", []string{"attempts: 0"}, ""},

@@ -10,6 +10,7 @@ package shedbuild
 import (
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 )
@@ -75,6 +76,7 @@ func TestBuild_EveryRegisteredEngineBuilds(t *testing.T) {
 	writeStencilFile(t, env.StencilsDir, bouncerRubricStencil, "Rubric body with no markers.\n")
 
 	configByEngine := engineMinimalConfig(singleLLMStencil, bouncerRubricStencil)
+	env.RowBouncerModels = map[string]shedadapters.BouncerModels{"Row-Bouncer": {}}
 
 	for _, name := range shedrecipe.Names() {
 		name := name

@@ -118,14 +118,14 @@ func TestBouncer_ConvergedSettle_CallsCarryOverBeforeApproveAndCommit(t *testing
 			judged: []evidenceEntry{
 				{"eps", "open", "design", ""},
 				{"alpha", "open", "design", "MEDIUM"},
-				{"beta", "open", "scope", "BLOCKING"},
+				{"beta", "open", "scope", "MEDIUM"},
 				{"gamma", "open", "design", "LOW"},
 				{"delta", "open", "", ""},
 				{"zeta", "resolved", "design", "MEDIUM"},
 			},
 			want: []discussionparser.CarryOverFinding{
 				{Key: "alpha", Class: "design", Severity: "MEDIUM", Rounds: []int{1, 2}},
-				{Key: "beta", Class: "scope", Severity: "BLOCKING", Rounds: []int{2}},
+				{Key: "beta", Class: "scope", Severity: "MEDIUM", Rounds: []int{2}},
 				{Key: "delta", Class: "unlabelled", Severity: "unlabelled", Rounds: []int{1, 2}},
 				{Key: "eps", Class: "design", Severity: "unlabelled", Rounds: []int{2}},
 			},

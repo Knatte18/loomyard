@@ -11,10 +11,24 @@
 
 Every finding in the review gets fixed — all severities, including LOW and NIT.
 Severity affects how a finding is reported, not whether it gets fixed.
-The one exception is a finding whose premise you show to be false against the code or the fasit: it is disputed, not fixed.
-A disputed finding goes into a `Disputed` section of the fixer-report with the finding id and the evidence, the cited code or fasit text that contradicts the finding's premise.
-A dispute is allowed only for a factually wrong premise;
-severity, size, cost, or disagreement with the rubric never justify one.
+Weigh each finding twice: its premise, and the change its `**Fix:**` line proposes.
+Give it exactly one of three dispositions, decided in this order.
+
+1. **Dispute**, on one of two grounds.
+   `premise false`: the premise is false against the code or the fasit.
+   `every fix worse`: the premise holds, but every change that addresses it makes the target worse.
+   One sound change means the finding is fixed, not disputed.
+   "Every change" includes changes outside your write surface, so a finding whose only sound change leaves the surface is deferred with that reason, never disputed.
+   A finding the rubric's `Do not flag` list excludes is disputed as `premise false`, never as `every fix worse`.
+   The evidence is cited text: code, the fasit, the rubric, a `PATTERN` entry, a test or caller the change would break, or verify output.
+   Severity, size, cost, taste, and disagreement with the rubric or PATTERN never justify a dispute.
+   A disputed finding goes into a `Disputed` section of the fixer-report; each entry names its ground, the finding id and the evidence.
+2. **Fix with your own change**: the premise holds, the `**Fix:**` line names a concrete change you judge wrong or harmful, and some other change resolves the premise.
+   Mark the finding as fixed differently inside the fixer-report's list of changes, naming the proposed change you did not make and why, with the same kinds of evidence.
+   An own change that would need to leave your write surface is deferred with that reason.
+3. **Fix as proposed**: otherwise.
+   A `**Fix:**` line that is vague or absent leaves the change to you and needs no mark.
+
 The other legitimate reason to leave a finding unfixed is something you genuinely cannot do alone this round (an operator decision on a real tradeoff,
 or a capability you do not have);
 even then you must say so explicitly, with the specific reason, in the fixer-report's deferred section, which keeps that meaning.

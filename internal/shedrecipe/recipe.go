@@ -118,11 +118,10 @@ type Env struct {
 	// The Bouncer entry requires it positive and passes it to shedadapters.BouncerConfig.CirclingCheckpoint.
 	ReviewCirclingCheckpoint int
 
-	// JudgeModel, JudgeEffort and JudgeVersion are the run-wide default every Bouncer row falls back to when its own model/effort/version key is absent.
+	// RowBouncerModels is the resolved seed and judge pair of each Bouncer row, keyed by row name as RowReviewModels and RowClusterFans are.
+	// A Bouncer row with no entry is a construction error.
 	// BurlerRound rows keep reading the Review* fields above.
-	JudgeModel   string
-	JudgeEffort  string
-	JudgeVersion string
+	RowBouncerModels map[string]shedadapters.BouncerModels
 
 	// Shuttle is the injected shedadapters.Shuttle seam, an already-constructed engine (or a
 	// factory over one).
@@ -218,6 +217,9 @@ type Env struct {
 	// DarnVerifyAttempts is the verify gate's attempt budget of the darn recipe, which `darn.yaml`'s verify_attempts supplies.
 	// internal/loomrecipe alone reads it, stamping it onto the Darn row at every build.
 	DarnVerifyAttempts int
+	// DarnReviewMaxBounces is the bounce budget of the darn recipe's Darn-Review perch, which `darn.yaml`'s review_max_bounces supplies; 0 runs no review.
+	// internal/loomrecipe alone reads it.
+	DarnReviewMaxBounces int
 	// Darn is a whole-struct passthrough to loomshed.NewDarnWrite, for the reason Rework is.
 	Darn loomshed.DarnDeps
 	// PlanIndex is the code index the "plan" and "rework-plan" gates resolve plan refs against.

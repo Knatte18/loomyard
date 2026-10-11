@@ -10,7 +10,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -20,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/verifytree"
+	"gopkg.in/yaml.v3"
 )
 
 // reworkRowFor returns the name of the row that answers an operator rejection in recipe: the Darn row for the darn recipe, PR-Rework otherwise.
@@ -111,6 +114,28 @@ func darnDeps(l *lyxcwd.Location, runID, verifyDir string) loomshed.DarnDeps {
 	}
 }
 
+// darnReviewBudget returns darn.yaml's review_max_bounces for the routing projection.
+// The full wiring has already loaded darn.yaml into c.darnCfg; the lightweight wiring loads no config, so it reads the hub-wide file here.
+// An unreadable file degrades to the template's default with a warning, because the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
+func (c *loomCLI) darnReviewBudget() (int, error) {
+	if c.darnCfg != nil {
+		return c.darnCfg.ReviewMaxBounces, nil
+	}
+
+	cfg, err := darnengine.LoadConfig(fabricengine.BoardDir(c.location.HubPath), "darn")
+	if err == nil {
+		return cfg.ReviewMaxBounces, nil
+	}
+	logger.Warn("loom: could not read darn.yaml for the review bounce budget; reporting the template default", "error", err)
+
+	var template darnengine.Config
+	if err := yaml.Unmarshal([]byte(darnengine.ConfigTemplate()), &template); err != nil {
+		return 0, err
+	}
+
+	return template.ReviewMaxBounces, nil
+}
+
 // wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe.
 // It loads the hub-wide darn.yaml strictly and reads its verify command once, so start, run, step and resume refuse an absent or empty command before any row builds.
 func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, frictionDir string, registry modelspec.Registry) error {
@@ -127,6 +152,12 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 	c.env.VerifyMergeBase = pairMergeBase(location)
 	c.env.VerifyWholeDiff = true
 	c.env.DarnVerifyAttempts = cfg.VerifyAttempts
+	c.env.DarnReviewMaxBounces = cfg.ReviewMaxBounces
+	c.darnCfg = &cfg
+	// The Darn-Review perch's CIRCLING Reason names the budget the darn routing applies, not loom's.
+	c.env.SegmentBounces = segmentBounces(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func() (shedengine.Routing, error) {
+		return loomrecipe.DarnRouting(cfg.ReviewMaxBounces)
+	})
 	c.env.Darn = darnDeps(location, c.runID, c.env.VerifyDir)
 	c.env.DarnSpec = func(told loomshed.DarnTold) (shuttleengine.Spec, error) {
 		return darnengine.DarnSpec(darnengine.DarnInputs{
