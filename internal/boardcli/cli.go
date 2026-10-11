@@ -38,8 +38,8 @@ func Command() *cobra.Command {
 	var config boardengine.Config
 
 	cmd := &cobra.Command{
-		Use:         "board",
-		Short:       "read and write the task-tracker board's tasks and notes",
+		Use:   "board",
+		Short: "read and write the task-tracker board's tasks and notes",
 		// The dash keeps the legend from reading as a continuation of the Short it follows on the index line.
 		Annotations: map[string]string{
 			clihelp.IndexNoteAnnotation:         "— " + payloadLegend,

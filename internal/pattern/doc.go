@@ -61,7 +61,7 @@
 // The overview is a thin list of entry lines, grouped under `##` topic headings.
 // An entry line is one line:
 //
-//	- `PATTERN-<name>` — <when it applies>: <what it requires>. (test) — [background](pattern/PATTERN-<name>.md)
+//   - `PATTERN-<name>` — <when it applies>: <what it requires>. (test) — [background](pattern/PATTERN-<name>.md)
 //
 // The name matches `PATTERN-[a-z0-9-]+` and is unique in the overview.
 // `(test)` marks a rule a test enforces, and is left out for a rule held by review alone.

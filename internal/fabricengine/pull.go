@@ -374,4 +374,3 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 
 	return result, nil
 }
-

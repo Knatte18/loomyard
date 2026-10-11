@@ -779,7 +779,9 @@ func TestUntilStop_LoserWaitsOnWinner(t *testing.T) {
 
 	t.Run("a loop that cannot be started is refused with its way forward", func(t *testing.T) {
 		w := newWaitWorld(t)
-		w.spec.Loop.Spawn = func([]string) (<-chan struct{}, error) { return nil, errors.New("shedverbs: start the loop: no such file") }
+		w.spec.Loop.Spawn = func([]string) (<-chan struct{}, error) {
+			return nil, errors.New("shedverbs: start the loop: no such file")
+		}
 
 		env, code := w.wait()
 
