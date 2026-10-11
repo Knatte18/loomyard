@@ -1,5 +1,5 @@
-// Package battenshed owns the four task-worktree batten producers: creating the task worktree,
-// seeding its own inner run, running that run inside it to a terminal state, and tearing it down.
+// Package battenshed owns the task-worktree batten producers: creating the task worktree,
+// seeding its own inner run, running that run inside it to a terminal state, landing it into the prime, and tearing it down.
 // Any producer list may name them by reference, the same way internal/landingshed frames its own
 // two producers.
 //
@@ -95,6 +95,17 @@
 //
 // The two producers that hold the hub's prime lock, Worktree-Create and Worktree-Teardown, wait for a contended lock instead of halting on the first try:
 // they poll it every two seconds for up to ten minutes, stop at once when the context is cancelled, and return Stuck only when the bound is spent (primelockwait.go).
+//
+// The Land row lands a child whose Run-Shed returned Done, in this order, each step idempotent so a resume re-runs the row from the top:
+// it takes the hub-level land lock for its whole body, polling a contended one from one second doubling to thirty with no time limit;
+// it checks the prime, where a child whose parent branch is not the prime's branch skips the pull and deploy and a prime with uncommitted tracked paths is waited on for ten minutes;
+// it pulls the prime under the prime lock and releases that lock at once, since batten never pushes the prime;
+// outside the prime lock it runs the landing config's hub-wide `deploy` command in the prime, for a parent branch in `require_pr_to_base` only, with a thirty-minute timeout and its output in the row's deploy log;
+// it writes the ready snapshot before pruning the board, so the tasks the prune made ready are named exactly once across a restart; and it queues one notice naming them.
+// The two locks differ in what they hold: the land lock serialises whole landings, the prime lock only the pull.
+// A failed step is Stuck naming it, with one failure notice per episode.
+// A pause seen during the land-lock or dirty-prime wait halts the row blocked with no notice, rather than paused, since the row has no on_stuck route to yield through;
+// shed's blocked persist leaves the pause flag set, so the way back is `lyx batten goto <slug> --to Land`, which clears it, then `lyx batten run <slug>`.
 //
 // The rows after Run-Shed send the orch a failure notice through a row notifier (rownotice.go): Worktree-Teardown on every failure it returns, and the Land row on the same terms.
 // A notice goes once per failure episode, an episode being one entry of the row from its predecessor's Done or from a halt at that row, told apart by the length of batten's own status history;

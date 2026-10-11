@@ -28,6 +28,7 @@ const rowNoticeFailurePrefix = "failure "
 // ClearRunMarkers removes them all where batten seeds a fresh status.
 var runMarkerSuffixes = []string{
 	rowNoticeFileSuffix,
+	readySnapshotFileSuffix,
 }
 
 // ClearRunMarkers removes every file in scratchDir whose name ends in a suffix of runMarkerSuffixes.

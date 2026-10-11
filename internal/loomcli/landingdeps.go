@@ -179,7 +179,7 @@ func planVerifySource(l *lyxcwd.Location) verifySource {
 			return plan.Verify, nil
 		},
 		failedWayForward: `run "lyx loom goto --to Webster-Burler", then "lyx loom resume", in the task worktree; the Webster-Review round reads the Publish failure record and its gate runs the failing tests`,
-		failureTarget: loomshed.NameWebsterBurler,
+		failureTarget:    loomshed.NameWebsterBurler,
 	}
 }
 

@@ -26,7 +26,7 @@ type verifyGate struct {
 	command          func() (string, error)
 	failedWayForward string
 	failureTarget    string
-	waitMark        func(label string, start time.Time) error
+	waitMark         func(label string, start time.Time) error
 	paths            verifytree.Paths
 	dirty            func(worktree string) ([]string, error)
 	verify           func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error)
