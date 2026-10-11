@@ -48,6 +48,47 @@ func fixOrchestratorMarkerValues() map[string]string {
 	}
 }
 
+// reviewerMarkerValues returns a values map with every one of the reviewer seat stencil's required top-level markers set to a non-empty placeholder.
+func reviewerMarkerValues() map[string]string {
+	return map[string]string{
+		"instruction_1_path": "/tmp/instruction-1-explore.md",
+		"instruction_2_path": "/tmp/instruction-2-review.md",
+		"review_path":        "/tmp/review.md",
+		"edit_directive":     "edit directive placeholder",
+	}
+}
+
+// fixerMarkerValues returns a values map with every one of the fixer seat stencil's required top-level markers set to a non-empty placeholder.
+func fixerMarkerValues() map[string]string {
+	return map[string]string{
+		"review_path":          "/tmp/review.md",
+		"review_format_path":   "/tmp/review-format.md",
+		"instruction_fix_path": "/tmp/instruction-fix.md",
+		"edit_directive":       "edit directive placeholder",
+	}
+}
+
+// reviewStepMarkerValues returns a values map with every one of the review step's required top-level markers set to a non-empty placeholder.
+func reviewStepMarkerValues() map[string]string {
+	return map[string]string{
+		"cluster_rules":      "cluster-rules placeholder",
+		"review_path":        "/tmp/review.md",
+		"review_format_path": "/tmp/review-format.md",
+		"prior_rounds":       "prior-rounds placeholder",
+	}
+}
+
+// fixStepMarkerValues returns a values map with every one of the fix step's top-level markers set to a non-empty placeholder, friction_directive, its one optional marker, included.
+func fixStepMarkerValues() map[string]string {
+	return map[string]string{
+		"friction_directive": "## Friction note placeholder",
+		"work":               "work placeholder",
+		"fix_scope_rules":    "fix-scope placeholder",
+		"review_path":        "/tmp/review.md",
+		"fixer_report_path":  "/tmp/fixer-report.md",
+	}
+}
+
 // instruction1MarkerValues returns a values map with every one of instruction 1's four required top-level markers set to a non-empty placeholder, plus pattern_directive, friction_directive and focus_directive — the three optional markers, filled via stencil.FillOptional — set to a placeholder too, so tests can delete one key at a time to prove stencil.FillOptional's per-marker error.
 func instruction1MarkerValues() map[string]string {
 	return map[string]string{
@@ -107,6 +148,38 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 			values:          fixOrchestratorMarkerValues(),
 			optional:        []string{"parent_directive"},
 			requiredMarkers: []string{"instruction_1_path", "review_format_path", "instruction_3_path", "review_path", "ready_marker_path", "advisor_names"},
+		},
+		{
+			name:            "reviewer seat",
+			template:        stencils.BurlerTemplateReviewer,
+			values:          reviewerMarkerValues(),
+			optional:        []string{"parent_directive"},
+			requiredMarkers: []string{"instruction_1_path", "instruction_2_path", "review_path"},
+		},
+		{
+			name:            "fixer seat",
+			template:        stencils.BurlerTemplateFixer,
+			values:          fixerMarkerValues(),
+			optional:        []string{"parent_directive"},
+			requiredMarkers: []string{"review_path", "review_format_path", "instruction_fix_path"},
+		},
+		{
+			name:            "review step",
+			template:        stencils.BurlerStepReview,
+			values:          reviewStepMarkerValues(),
+			requiredMarkers: []string{"cluster_rules", "review_path", "review_format_path", "prior_rounds"},
+		},
+		{
+			name:            "fix step",
+			template:        stencils.BurlerStepFix,
+			values:          fixStepMarkerValues(),
+			optional:        []string{"friction_directive"},
+			requiredMarkers: []string{"work", "fix_scope_rules", "review_path", "fixer_report_path"},
+		},
+		{
+			name:     "review format",
+			template: stencils.BurlerReviewFormat,
+			values:   map[string]string{},
 		},
 		{
 			name:            "instruction 1 (explore)",
@@ -217,6 +290,19 @@ func TestTemplate_OptionalDirectives(t *testing.T) {
 			})
 		})
 	}
+
+	t.Run("fix step renders an empty friction directive cleanly", func(t *testing.T) {
+		t.Parallel()
+		values := fixStepMarkerValues()
+		values["friction_directive"] = ""
+		got, err := stencil.FillOptional(stencils.BurlerStepFix, values, []string{"friction_directive"})
+		if err != nil {
+			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
+		}
+		if strings.Contains(string(got), "{{") {
+			t.Errorf("rendered output contains leftover {{: %q", got)
+		}
+	})
 
 	t.Run("marker-free template still fills while a directive value is supplied", func(t *testing.T) {
 		t.Parallel()

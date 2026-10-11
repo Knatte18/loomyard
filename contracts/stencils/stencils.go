@@ -120,6 +120,31 @@ var BurlerStep2Review []byte
 //go:embed burler/burler-step-3-fix.md
 var BurlerStep3Fix []byte
 
+// BurlerTemplateReviewer is burler's shipped-default reviewer seat stencil, the one seat of the review half's table.
+//
+//go:embed burler/burler-template-reviewer.md
+var BurlerTemplateReviewer []byte
+
+// BurlerTemplateFixer is burler's shipped-default fixer seat stencil, the one seat of the fix half's table.
+//
+//go:embed burler/burler-template-fixer.md
+var BurlerTemplateFixer []byte
+
+// BurlerStepReview is burler's shipped-default review instruction prompt of the review half.
+//
+//go:embed burler/burler-step-review.md
+var BurlerStepReview []byte
+
+// BurlerReviewFormat is burler's shipped-default review-file format, the one format both halves point at.
+//
+//go:embed burler/burler-review-format.md
+var BurlerReviewFormat []byte
+
+// BurlerStepFix is burler's shipped-default fix instruction prompt of the fix half.
+//
+//go:embed burler/burler-step-fix.md
+var BurlerStepFix []byte
+
 // BurlerFocusDirective is burler's shipped-default focus-directive block: the text a round's focus file reaches the explore step through, filled with the file's path.
 //
 //go:embed burler/burler-focus-directive.md
@@ -397,6 +422,11 @@ var entries = []registryEntry{
 	{"burler-step-1-explore", &BurlerStep1Explore},
 	{"burler-step-2-review", &BurlerStep2Review},
 	{"burler-step-3-fix", &BurlerStep3Fix},
+	{"burler-template-reviewer", &BurlerTemplateReviewer},
+	{"burler-template-fixer", &BurlerTemplateFixer},
+	{"burler-step-review", &BurlerStepReview},
+	{"burler-review-format", &BurlerReviewFormat},
+	{"burler-step-fix", &BurlerStepFix},
 	{"burler-focus-directive", &BurlerFocusDirective},
 	{"bouncer-template-seed", &BouncerTemplateSeed},
 	{"bouncer-template-judge", &BouncerTemplateJudge},
@@ -450,24 +480,26 @@ var entries = []registryEntry{
 // roleOpeningStencils maps each spawned role other than the orch to the stencils that open its session.
 // Each carries both the parent directive marker and the edit directive marker, which parentdirective_test.go enforces.
 var roleOpeningStencils = map[string][]string{
-	"driver":             {"shed-template-driver"},
-	"discussion":         {"loom-template-discussion"},
-	"discussion-chair":   {"loom-template-discussion-chair"},
-	"discussion-advisor": {"loom-template-discussion-advisor"},
-	"plan":               {"loom-template-plan"},
-	"rework":             {"loom-template-rework"},
-	"webster-master":     {"webster-template-master"},
-	"webster-recovery":   {"webster-prefix-recovery"},
-	"burler-advisor-1":   {"burler-template-review-orchestrator"},
-	"burler-chair":       {"burler-template-fix-orchestrator"},
-	"conflict":           {"landing-template-conflict"},
-	"bouncer-judge":      {"bouncer-template-judge"},
-	"bouncer-seed":       {"bouncer-template-seed"},
-	"treadle-targeting":  {"treadle-template-targeting"},
-	"treadle-judge":      {"treadle-template-judge-circling", "treadle-template-judge-milestone"},
-	"friction":           {"friction-template-reflection"},
-	"describe":           {"landing-template-describe", "landing-template-describe-darn"},
-	"darn":               {"darn-template-write"},
+	"driver":              {"shed-template-driver"},
+	"discussion":          {"loom-template-discussion"},
+	"discussion-chair":    {"loom-template-discussion-chair"},
+	"discussion-advisor":  {"loom-template-discussion-advisor"},
+	"plan":                {"loom-template-plan"},
+	"rework":              {"loom-template-rework"},
+	"webster-master":      {"webster-template-master"},
+	"webster-recovery":    {"webster-prefix-recovery"},
+	"burler-advisor-1":    {"burler-template-review-orchestrator"},
+	"burler-chair":        {"burler-template-fix-orchestrator"},
+	"burler-review-chair": {"burler-template-reviewer"},
+	"burler-fix-chair":    {"burler-template-fixer"},
+	"conflict":            {"landing-template-conflict"},
+	"bouncer-judge":       {"bouncer-template-judge"},
+	"bouncer-seed":        {"bouncer-template-seed"},
+	"treadle-targeting":   {"treadle-template-targeting"},
+	"treadle-judge":       {"treadle-template-judge-circling", "treadle-template-judge-milestone"},
+	"friction":            {"friction-template-reflection"},
+	"describe":            {"landing-template-describe", "landing-template-describe-darn"},
+	"darn":                {"darn-template-write"},
 }
 
 // askOperatorPhrases is the closed list of phrases that tell an agent to put a question to the operator in its pane.

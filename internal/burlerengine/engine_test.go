@@ -267,9 +267,9 @@ func (h *fakeHandle) evaluateGate() (*shuttleengine.GateOutcome, error) {
 	return outcome, nil
 }
 
-// scriptFor is the halfScript of the seat spec's role names.
+// scriptFor is the halfScript of the seat spec's role names: the review script for the old round's reviewer and the review half's chair, the fix script for every other seat.
 func (f *fakeShuttle) scriptFor(spec shuttleengine.Spec) halfScript {
-	if spec.Role == reviewRole {
+	if spec.Role == reviewRole || spec.Role == reviewHalfRole {
 		return f.review
 	}
 	return f.fix
@@ -426,6 +426,9 @@ const (
 
 	reviewRole = burlerRolePrefix + "-" + seatengine.RoleAdvisor + "-1"
 	fixRole    = burlerRolePrefix + "-" + seatengine.RoleChair
+
+	reviewHalfRole = reviewRolePrefix + "-" + seatengine.RoleChair
+	fixHalfRole    = fixRolePrefix + "-" + seatengine.RoleChair
 )
 
 // clusterTestConfig is a one-lens, one-fan config, so a cluster profile resolves to exactly one fork.

@@ -359,7 +359,27 @@
 // The reviewer's gate spec is the review entry (ReviewGateEntry) alone, and the caller's own entries gate the fixer.
 // While the round's own review file does not parse, the entry re-prompts the reviewer in its own session with the parse error, its quoting hint and the file to rewrite.
 // It re-prompts at most reviewGateAttempts times and then lets the run through, so a file still invalid after the budget fails at the strict parse in the handoff.
-// The gate (through CheckReviewFile) and that parse both reach ParseReview.
+// The gate (through CheckReviewFile) and that parse both reach ParseCurrentReview, the strict parse of the current round's review:
+// ParseReview plus a non-empty `fix` on every finding, `verdict` and `findings` as the frontmatter's only top-level keys, and one `### [SEVERITY]` prose block per finding matching the frontmatter's count per severity.
+// ParseReview stays tolerant of `fix`, so a prior round's review written before the key existed still hydrates and still feeds a Bouncer's evidence.
 // `lyx burler validate-review <review-file>` is the gate's self-check verb:
 // it runs CheckReviewFile read-only and needs no hub, mode or git repository.
+//
+// # The two halves
+//
+// Beside Run, which drives both agents of one round as a two-seat table, the engine drives each half on its own.
+// Engine.Review runs one fresh reviewer session as the chair of a one-seat table (role prefix reviewRolePrefix, strand role burler-review-chair) and accepts the review through acceptReview:
+// the cluster audit for a fanned round, then ParseCurrentReview.
+// Its ReviewResult carries the verdict, the findings and the Digest, the hex SHA-256 of the accepted bytes.
+// Engine.Fix runs one fresh fixer session as the chair of a one-seat table (role prefix fixRolePrefix, strand role burler-fix-chair) over a review whose bytes hash to the digest it is told.
+// It reads the review through acceptedReview first, so a review edited after acceptance is ErrReviewChanged and never reaches a fixer, and the same check runs again after a done fixer.
+// A review with findings of any severity, a NIT included, spawns the fixer.
+// A review with none runs the round's gates once through checkGates:
+// when they pass, Fix writes a normal fixer report saying nothing was fixed and returns a skipped OutcomeDone with no session;
+// when one fails, the fixer is spawned with the failing gates' findings in a gate-findings file as its work, since a gate exhausted in a round leaves its gate-failed edits in the target and the re-review of that round may find nothing.
+// A gate closure that errors is returned wrapped with nothing spawned.
+// Neither half waits on, messages or knows of the other, and no ready marker rides between them: the fix half spawns only once the caller holds the review's digest.
+// The fixer's files hold the review, the review-file format and the fix step; it carries no rubric, fasit, PATTERN directive, focus file, prior rounds or explore step,
+// so `premise false` means false against the code it reads.
+// Each half has its own ProbeReview/ResumeReview and ProbeFix/ResumeFix over the half's one seat, which attach to a live session as ProbeRound and Resume do for a round.
 package burlerengine

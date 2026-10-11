@@ -92,7 +92,53 @@ func TestProfile_Validate(t *testing.T) {
 		wantErr   bool
 		errSubstr string
 		check     func(t *testing.T, root string, got Profile)
+		// fix drives validateFix instead of validate.
+		fix bool
 	}{
+		{
+			name: "fix half accepts a profile with no fasit or rubric",
+			fix:  true,
+			mutate: func(t *testing.T, root string, p *Profile) {
+				p.Fasit = FileSet{}
+				p.Rubric = ""
+			},
+		},
+		{
+			name: "fix half refuses an empty fixer report path",
+			fix:  true,
+			mutate: func(t *testing.T, root string, p *Profile) {
+				p.FixerReportPath = ""
+			},
+			wantErr:   true,
+			errSubstr: "profile.FixerReportPath must not be empty",
+		},
+		{
+			name: "fix half refuses identical review and fixer report paths",
+			fix:  true,
+			mutate: func(t *testing.T, root string, p *Profile) {
+				p.FixerReportPath = p.ReviewPath
+			},
+			wantErr:   true,
+			errSubstr: "must not be the same path",
+		},
+		{
+			name: "fix half refuses an illegal fix scope",
+			fix:  true,
+			mutate: func(t *testing.T, root string, p *Profile) {
+				p.FixScope = "markdown"
+			},
+			wantErr:   true,
+			errSubstr: "profile.FixScope must be",
+		},
+		{
+			name: "fix half refuses a missing target path",
+			fix:  true,
+			mutate: func(t *testing.T, root string, p *Profile) {
+				p.Target.Paths = []string{"does-not-exist.txt"}
+			},
+			wantErr:   true,
+			errSubstr: "profile.Target.Paths entry",
+		},
 		{
 			name:    "valid profile",
 			mutate:  func(t *testing.T, root string, p *Profile) {},
@@ -369,7 +415,12 @@ func TestProfile_Validate(t *testing.T) {
 			root, p := newValidProfileFixture(t)
 			tt.mutate(t, root, &p)
 
-			err := p.validate(root, cfg)
+			var err error
+			if tt.fix {
+				err = p.validateFix(root)
+			} else {
+				err = p.validate(root, cfg)
+			}
 
 			if tt.wantErr {
 				if err == nil {

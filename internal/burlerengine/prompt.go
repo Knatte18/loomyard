@@ -149,6 +149,170 @@ func composePrompt(stencilsDir string, p *Profile, patternDirective, frictionDir
 	}, nil
 }
 
+// halfPrompt is what composing one half's prompt yields: the marker values of the half's seat stencil and the instruction files to write.
+type halfPrompt struct {
+	Values map[string]string
+	Files  []instructionFile
+}
+
+// reviewFilePaths are the absolute paths the review half's three instruction files are written to.
+type reviewFilePaths struct {
+	Explore string
+	Review  string
+	Format  string
+}
+
+// reviewFilesIn returns the review half's instruction file paths for the instruction directory dir.
+func reviewFilesIn(dir string) reviewFilePaths {
+	return reviewFilePaths{
+		Explore: filepath.Join(dir, "instruction-1-explore.md"),
+		Review:  filepath.Join(dir, "instruction-2-review.md"),
+		Format:  filepath.Join(dir, "review-format.md"),
+	}
+}
+
+// fixFilePaths are the absolute paths the fix half's two instruction files are written to.
+type fixFilePaths struct {
+	Format string
+	Fix    string
+}
+
+// fixFilesIn returns the fix half's instruction file paths for the instruction directory dir.
+func fixFilesIn(dir string) fixFilePaths {
+	return fixFilePaths{
+		Format: filepath.Join(dir, "review-format.md"),
+		Fix:    filepath.Join(dir, "instruction-fix.md"),
+	}
+}
+
+// reviewSeatValues returns the stencil marker values of the reviewer seat for p, naming the instruction files at paths.
+func reviewSeatValues(p *Profile, paths reviewFilePaths) map[string]string {
+	return map[string]string{
+		"instruction_1_path": paths.Explore,
+		"instruction_2_path": paths.Review,
+		"review_path":        p.ReviewPath,
+	}
+}
+
+// fixSeatValues returns the stencil marker values of the fixer seat for p, naming the instruction files at paths.
+func fixSeatValues(p *Profile, paths fixFilePaths) map[string]string {
+	return map[string]string{
+		"review_path":          p.ReviewPath,
+		"review_format_path":   paths.Format,
+		"instruction_fix_path": paths.Fix,
+	}
+}
+
+// renderReviewFormat renders the review-file format stencil, which carries no marker, into the file content both halves point at.
+func renderReviewFormat(stencilsDir string) (string, error) {
+	template, err := stencilstore.Read(stencilsDir, "burler-review-format")
+	if err != nil {
+		return "", err
+	}
+	format, err := stencil.Fill(template, nil)
+	if err != nil {
+		return "", fmt.Errorf("burler: compose prompt: %w", err)
+	}
+	return string(format), nil
+}
+
+// composeReviewPrompt builds the review half's prompt for p: the explore step with no friction directive, the review step and the review-file format.
+// patternDirective is the caller-resolved PATTERN directive for the explore step.
+// The reviewer's files hold no fixer-side text; p is assumed already validated by validateReview.
+func composeReviewPrompt(stencilsDir string, p *Profile, patternDirective string, paths reviewFilePaths) (halfPrompt, error) {
+	exploreTemplate, err := stencilstore.Read(stencilsDir, "burler-step-1-explore")
+	if err != nil {
+		return halfPrompt{}, err
+	}
+	focusDirective, err := focusDirectiveBlock(stencilsDir, p.FocusDirective)
+	if err != nil {
+		return halfPrompt{}, err
+	}
+	warnIfFocusMarkerAbsent(exploreTemplate, "burler-step-1-explore", focusDirective)
+	explore, err := stencil.FillOptional(exploreTemplate, map[string]string{
+		"pattern_directive": patternDirective,
+		friction.MarkerName: "",
+		focusMarkerName:     focusDirective,
+		"target":            formatFileSet(p.Target),
+		"fasit":             formatFileSet(p.Fasit),
+		"rubric":            p.Rubric,
+		"tool_use_rules":    toolUseRules(p.ToolUse),
+	}, []string{"pattern_directive", friction.MarkerName, focusMarkerName})
+	if err != nil {
+		return halfPrompt{}, fmt.Errorf("burler: compose prompt: %w", err)
+	}
+
+	reviewTemplate, err := stencilstore.Read(stencilsDir, "burler-step-review")
+	if err != nil {
+		return halfPrompt{}, err
+	}
+	review, err := stencil.Fill(reviewTemplate, map[string]string{
+		"cluster_rules":      clusterRulesBlock(p),
+		"review_path":        p.ReviewPath,
+		"review_format_path": paths.Format,
+		"prior_rounds":       priorRoundsBlock(p),
+	})
+	if err != nil {
+		return halfPrompt{}, fmt.Errorf("burler: compose prompt: %w", err)
+	}
+
+	format, err := renderReviewFormat(stencilsDir)
+	if err != nil {
+		return halfPrompt{}, err
+	}
+	return halfPrompt{
+		Values: reviewSeatValues(p, paths),
+		Files: []instructionFile{
+			{Path: paths.Explore, Content: string(explore)},
+			{Path: paths.Review, Content: string(review)},
+			{Path: paths.Format, Content: format},
+		},
+	}, nil
+}
+
+// composeFixPrompt builds the fix half's prompt for p: the review-file format and the fix step.
+// frictionDirective is the caller-resolved Tier 2 note directive, empty when Tier 2 is off, and work is the fix step's statement of what to fix (see fixWork).
+// The fixer's files hold no rubric, fasit, PATTERN directive, focus file, prior rounds or explore step; p is assumed already validated by validateFix.
+func composeFixPrompt(stencilsDir string, p *Profile, frictionDirective, work string, paths fixFilePaths) (halfPrompt, error) {
+	fixTemplate, err := stencilstore.Read(stencilsDir, "burler-step-fix")
+	if err != nil {
+		return halfPrompt{}, err
+	}
+	friction.WarnIfMarkerAbsent(fixTemplate, "burler-step-fix", frictionDirective)
+	fix, err := stencil.FillOptional(fixTemplate, map[string]string{
+		friction.MarkerName: frictionDirective,
+		"work":              work,
+		"fix_scope_rules":   fixScopeRules(p),
+		"review_path":       p.ReviewPath,
+		"fixer_report_path": p.FixerReportPath,
+	}, []string{friction.MarkerName})
+	if err != nil {
+		return halfPrompt{}, fmt.Errorf("burler: compose prompt: %w", err)
+	}
+
+	format, err := renderReviewFormat(stencilsDir)
+	if err != nil {
+		return halfPrompt{}, err
+	}
+	return halfPrompt{
+		Values: fixSeatValues(p, paths),
+		Files: []instructionFile{
+			{Path: paths.Format, Content: format},
+			{Path: paths.Fix, Content: string(fix)},
+		},
+	}, nil
+}
+
+// fixWork returns the fix step's required work statement.
+// With no gate-findings path the review's findings are the work;
+// with one, the review holds no findings but the round's gates failed, so the work is what that file names.
+func fixWork(reviewPath, gateFindingsPath string) string {
+	if gateFindingsPath == "" {
+		return fmt.Sprintf("Fix every finding of the review at `%s`.", reviewPath)
+	}
+	return fmt.Sprintf("The review at `%s` holds no findings, but the round's gates failed on the target as it stands. Fix what the gate findings in `%s` name.", reviewPath, gateFindingsPath)
+}
+
 // focusDirectiveBlock renders the focus-directive stencil for focusPath, the value injected as the explore step's optional focus_directive marker.
 // An empty focusPath returns "" without reading anything:
 // the round has no directive, and the marker renders as nothing.
@@ -228,10 +392,10 @@ func fixScopeRules(p *Profile) string {
 			"what/why>`. Never push."
 	case FixScopeOverlay:
 		return fmt.Sprintf(
-			"Write surface: exactly the target paths plus the fixer-report (`%s`) — "+
+			"Write surface: exactly the target paths%s plus the fixer-report (`%s`) — "+
 				"nothing else — and you run no git commands at all; the loop owner commits "+
 				"these files at the round boundary.",
-			p.FixerReportPath)
+			namedTargetPaths(p.Target.Paths), p.FixerReportPath)
 	default:
 		// validate rejects every other value before composePrompt is ever
 		// called; this branch is unreachable in practice and exists only so
@@ -239,6 +403,18 @@ func fixScopeRules(p *Profile) string {
 		// fix-scope block if that invariant is ever violated.
 		return fmt.Sprintf("burler: internal error: unknown FixScope %q", p.FixScope)
 	}
+}
+
+// namedTargetPaths returns paths as a parenthesised, backtick-wrapped list led by a space, or "" when there are none.
+func namedTargetPaths(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	quoted := make([]string, len(paths))
+	for i, path := range paths {
+		quoted[i] = "`" + path + "`"
+	}
+	return " (" + strings.Join(quoted, ", ") + ")"
 }
 
 // toolUseRules returns the evidence-gathering prose of the explore and review steps for toolUse: true

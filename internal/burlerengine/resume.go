@@ -32,6 +32,8 @@ type LiveHalf struct {
 	// Handle is the live run, set only when State is HalfLive.
 	// Its StrandGUID names the strand a caller stops when it will not resume the round.
 	Handle Handle
+	// table is what the seats engine's probe found, which a half's Resume hands back to it; it is nil unless the half was probed live by ProbeReview or ProbeFix.
+	table *seatengine.LiveTable
 }
 
 // LiveRound is what ProbeRound found of a round's two halves.
@@ -79,6 +81,27 @@ func (e *Engine) ProbeRound(p Profile, opts RunOpts) (LiveRound, error) {
 		return LiveRound{}, err
 	}
 	return live, nil
+}
+
+// probeHalf reports the state of the one-seat table's chair, without waiting on it:
+// live when the seats engine's probe finds a live run, done when it finds none and outputPath exists, and gone otherwise.
+// A seat that could not be stopped is returned wrapped in ErrHalfNotStopped.
+func (e *Engine) probeHalf(table seatengine.Table, outputPath string) (LiveHalf, error) {
+	found, err := e.seats.Probe(table)
+	if errors.Is(err, seatengine.ErrSeatNotStopped) {
+		return LiveHalf{}, fmt.Errorf("%w: %w", ErrHalfNotStopped, err)
+	}
+	if err != nil {
+		return LiveHalf{}, err
+	}
+	half, err := classifyHalf(found.Chair, outputPath)
+	if err != nil {
+		return LiveHalf{}, err
+	}
+	if half.State == HalfLive {
+		half.table = &found
+	}
+	return half, nil
 }
 
 // classifyHalf classifies one half by its probed handle, nil for a seat the probe did not find, and failing a live run by its output file.

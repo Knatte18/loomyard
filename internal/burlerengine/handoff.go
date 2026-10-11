@@ -4,6 +4,8 @@ package burlerengine
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -29,11 +31,16 @@ type reviewHandoff struct {
 	warnings []string
 }
 
-// reviewReady is the one step from the reviewer's done outcome to the ready marker.
-// For a cluster round it audits the reviewer's forks, then it parses the review file strictly, and only then writes the marker, creating its parent directory.
-// Any failure before the write leaves no marker, so the fixer is never released over a review that was not accepted.
-// released is set immediately before the marker write begins, so it is true whenever the marker can be seen on disk.
-func reviewReady(p *Profile, reviewer shuttleengine.Result, released *atomic.Bool) (reviewHandoff, error) {
+// reviewDigest returns the hex SHA-256 of a review file's bytes, the identity the fix half checks the review against.
+func reviewDigest(content []byte) string {
+	sum := sha256.Sum256(content)
+	return hex.EncodeToString(sum[:])
+}
+
+// acceptReview accepts the review a done reviewer left at p.ReviewPath.
+// For a cluster round it audits the reviewer's forks, then it parses the review file strictly with ParseCurrentReview.
+// It touches nothing on disk.
+func acceptReview(p *Profile, reviewer shuttleengine.Result) (reviewHandoff, error) {
 	var handoff reviewHandoff
 	if p.ClusterFan != "" {
 		warnings, err := auditClusterRound(reviewer.ForkAudit, len(p.clusterLenses))
@@ -52,6 +59,18 @@ func reviewReady(p *Profile, reviewer shuttleengine.Result, released *atomic.Boo
 		return reviewHandoff{}, fmt.Errorf("burler: round reached done but its review file is invalid: %w", err)
 	}
 	handoff.content, handoff.verdict, handoff.findings = content, verdict, findings
+	return handoff, nil
+}
+
+// reviewReady is the one step from the reviewer's done outcome to the ready marker.
+// It accepts the review through acceptReview, and only then writes the marker, creating its parent directory.
+// Any failure before the write leaves no marker, so the fixer is never released over a review that was not accepted.
+// released is set immediately before the marker write begins, so it is true whenever the marker can be seen on disk.
+func reviewReady(p *Profile, reviewer shuttleengine.Result, released *atomic.Bool) (reviewHandoff, error) {
+	handoff, err := acceptReview(p, reviewer)
+	if err != nil {
+		return reviewHandoff{}, err
+	}
 
 	if err := os.MkdirAll(filepath.Dir(p.ReadyMarkerPath), 0o755); err != nil {
 		return reviewHandoff{}, fmt.Errorf("burler: create the ready marker directory for %q: %w", p.ReadyMarkerPath, err)
