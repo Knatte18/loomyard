@@ -363,7 +363,7 @@ func testInnerRunRefusedResume(t *testing.T, draft string, refusals []error, sec
 		}
 		return true, nil
 	}
-	deps.AttachDir = func() (string, error) { return "/wt/task", nil }
+	deps.PairDir = func() (string, error) { return "/wt/task", nil }
 	// The child's driver takes the resume once the scripted refusals end.
 	var attempts []time.Duration
 	start := clock.Now()
@@ -402,6 +402,9 @@ func testInnerRunRefusedResume(t *testing.T, draft string, refusals []error, sec
 		t.Errorf("driver-busy notices = %d; want %d", len(busyNotices), wantNotices)
 	}
 	for _, line := range busyNotices {
+		if want := noticePrefix + " myslug: awaiting at Publish; driver pane busy"; !strings.HasPrefix(line, want) {
+			t.Errorf("notice %q; want it to lead with %q", line, want)
+		}
 		if strings.Contains(line, draft) {
 			t.Errorf("notice %q carries the refusal's draft text", line)
 		}

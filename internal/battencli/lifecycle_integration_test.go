@@ -282,7 +282,7 @@ func TestBattenIntegration_Rows(t *testing.T) {
 		{"RecordsPrimeRefusal", stepRecordsPrimeRefusal},
 		{"Teardown_ReEntryAfterCompletedRemovalIsDone", stepTeardown_ReEntryAfterCompletedRemovalIsDone},
 		{"Teardown_SiblingDirtOutsideRecordPathsRefusesShutdown", stepTeardown_SiblingDirtOutsideRecordPathsRefusesShutdown},
-		{"AttachDirNamesTheTaskWorktree", stepAttachDirNamesTheTaskWorktree},
+		{"PairDirNamesTheTaskWorktree", stepPairDirNamesTheTaskWorktree},
 		{"AwaitingApprovalResumeDoneTeardown_ArchivesTheRunRecords", stepAwaitingApprovalResumeDoneTeardown_ArchivesTheRunRecords},
 		{"AwaitingRejectionResumesTheChildOnce", stepAwaitingRejectionResumesTheChildOnce},
 		{"SeedChild_IgnoresPrimesCommittedBattenRecords", stepSeedChild_IgnoresPrimesCommittedBattenRecords},
@@ -1224,23 +1224,23 @@ func stepTeardown_SiblingDirtOutsideRecordPathsRefusesShutdown(t *testing.T, h *
 	}
 }
 
-// stepAttachDirNamesTheTaskWorktree pins the InnerRun.AttachDir seam to the task worktree's own anchor, resolved on Call over a real pair.
-func stepAttachDirNamesTheTaskWorktree(t *testing.T, h *hubforge.Hub) {
-	slug := "batten-attach-dir"
+// stepPairDirNamesTheTaskWorktree pins the InnerRun.PairDir seam to the task worktree's own anchor, resolved on Call over a real pair.
+func stepPairDirNamesTheTaskWorktree(t *testing.T, h *hubforge.Hub) {
+	slug := "batten-pair-dir"
 	hubforge.AddPair(t, h, slug)
 
 	c := wireForHub(t, h, slug, nil)
 
-	got, err := c.env.InnerRun.AttachDir()
+	got, err := c.env.InnerRun.PairDir()
 	if err != nil {
-		t.Fatalf("AttachDir() error = %v; want nil", err)
+		t.Fatalf("PairDir() error = %v; want nil", err)
 	}
 	taskLocation, err := taskWorktreeLocation(h.Location, slug)
 	if err != nil {
 		t.Fatalf("resolve task location: %v", err)
 	}
 	if got != taskLocation.AnchorPath() {
-		t.Errorf("AttachDir() = %q; want %q", got, taskLocation.AnchorPath())
+		t.Errorf("PairDir() = %q; want %q", got, taskLocation.AnchorPath())
 	}
 }
 
@@ -1346,9 +1346,9 @@ func stepTaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution(t *testing.T, h *hu
 	hubforge.AddPair(t, h, slug)
 	c := wireForHub(t, h, slug, nil)
 
-	wantDir, err := c.env.InnerRun.AttachDir()
+	wantDir, err := c.env.InnerRun.PairDir()
 	if err != nil {
-		t.Fatalf("AttachDir() error = %v; want nil", err)
+		t.Fatalf("PairDir() error = %v; want nil", err)
 	}
 
 	worktreePath := fabricengine.WorktreePath(h.Location, slug)
@@ -1359,8 +1359,8 @@ func stepTaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution(t *testing.T, h *hu
 	if _, err := taskWorktreeLocation(h.Location, slug); err == nil {
 		t.Fatal("taskWorktreeLocation() with the pair's .git hidden = nil error; want git's resolution to fail")
 	}
-	if got, err := c.env.InnerRun.AttachDir(); err != nil || got != wantDir {
-		t.Errorf("AttachDir() = %q, %v with git unable to resolve the pair; want %q from the first resolution", got, err, wantDir)
+	if got, err := c.env.InnerRun.PairDir(); err != nil || got != wantDir {
+		t.Errorf("PairDir() = %q, %v with git unable to resolve the pair; want %q from the first resolution", got, err, wantDir)
 	}
 	if _, found, err := c.env.InnerRun.ReadDecision(); err != nil || found {
 		t.Errorf("ReadDecision() found=%v, %v with git unable to resolve the pair; want none, nil", found, err)
@@ -1375,12 +1375,12 @@ func stepTaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution(t *testing.T, h *hu
 	if err := os.Rename(worktreePath, worktreePath+".moved"); err != nil {
 		t.Fatal(err)
 	}
-	_, absentErr := c.env.InnerRun.AttachDir()
+	_, absentErr := c.env.InnerRun.PairDir()
 	if err := os.Rename(worktreePath+".moved", worktreePath); err != nil {
 		t.Fatal(err)
 	}
 	if absentErr == nil || !strings.Contains(absentErr.Error(), "is not present at") {
-		t.Errorf("AttachDir() error = %v with the pair gone from disk; want the absent-worktree refusal", absentErr)
+		t.Errorf("PairDir() error = %v with the pair gone from disk; want the absent-worktree refusal", absentErr)
 	}
 }
 

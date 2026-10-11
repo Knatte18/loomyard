@@ -159,14 +159,14 @@ func TestWire_NotifyWritesNothingWithoutAnOrchStrand(t *testing.T) {
 	}
 }
 
-func TestWire_AttachDirRefusesAnAbsentTaskWorktreeByName(t *testing.T) {
+func TestWire_PairDirRefusesAnAbsentTaskWorktreeByName(t *testing.T) {
 	t.Parallel()
 
 	c, _ := wiredPrime(t)
 
-	_, err := c.env.InnerRun.AttachDir()
+	_, err := c.env.InnerRun.PairDir()
 	if err == nil || !strings.Contains(err.Error(), "a-slug") {
-		t.Errorf("AttachDir() error = %v; want the absent-worktree refusal naming the slug", err)
+		t.Errorf("PairDir() error = %v; want the absent-worktree refusal naming the slug", err)
 	}
 }
 

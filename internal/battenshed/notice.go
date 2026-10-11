@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -127,8 +128,9 @@ type noticeLine struct {
 	// since is when the child's current state episode began.
 	since time.Time
 	// report is the report clause of a parked stop's state-changed notice, empty for every other notice.
-	report    string
-	attachDir string
+	report string
+	// pairDir is the task worktree directory every path in the notice is rendered relative to.
+	pairDir string
 }
 
 // reportClause renders the report clause of a parked stop's notice: the stop report's path, or that none exists yet.
@@ -139,19 +141,42 @@ func reportClause(path string, found bool) string {
 	return "report " + oneLine(path, noticePathMax)
 }
 
-// renderNotice renders one notice line: the prefix, the slug, the condition, the child's state and error if any, when the state began, the child's history length, the report clause if any, and the attach command.
+// renderNotice renders one notice line: the prefix, the slug, the condition, the child's reason labelled by its state if any, when the state began, the child's history length and the report clause if any.
+// Every path under the pair directory is rendered relative to it, since the slug already names the pair.
 func renderNotice(n noticeLine) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s %s: %s; child state %s", noticePrefix, n.slug, n.condition, n.status.State)
+	fmt.Fprintf(&b, "%s %s: %s", noticePrefix, n.slug, pairRelative(n.condition, n.pairDir))
 	if n.status.Error != "" {
-		fmt.Fprintf(&b, ", error: %s", oneLine(n.status.Error, noticeErrorMax))
+		fmt.Fprintf(&b, "; %s: %s", reasonLabel(n.status.State), oneLine(pairRelative(n.status.Error, n.pairDir), noticeErrorMax))
 	}
 	fmt.Fprintf(&b, "; since %s; history %d", n.since.UTC().Format(time.RFC3339), len(n.status.History))
 	if n.report != "" {
-		fmt.Fprintf(&b, "; %s", n.report)
+		fmt.Fprintf(&b, "; %s", pairRelative(n.report, n.pairDir))
 	}
-	fmt.Fprintf(&b, "; cd %s && lyx reed attach", n.attachDir)
 	return b.String()
+}
+
+// pairRelative strips the pair directory prefix from every path in text that lies under it.
+// The prefix is stripped only where it starts a path, so a longer path that merely contains the pair directory is left whole.
+func pairRelative(text, pairDir string) string {
+	pathUnderPair := regexp.MustCompile(`(^|[^\w./\\~-])` + regexp.QuoteMeta(pairDir+string(filepath.Separator)))
+	return pathUnderPair.ReplaceAllString(text, "${1}")
+}
+
+// reasonLabel returns the label a notice puts on the child's reason: "error" for a failed or blocked child, which needs a fix, and "waiting" for any other state, whose reason names what it waits on.
+func reasonLabel(state shedengine.State) string {
+	if state == shedengine.StateFailed || state == shedengine.StateBlocked {
+		return "error"
+	}
+	return "waiting"
+}
+
+// haltText renders what the child's state says happened: the state and, when known, the row it stopped at, for example "awaiting at PR-Gate".
+func haltText(status shedengine.Status) string {
+	if status.CurrentProducer == "" {
+		return string(status.State)
+	}
+	return string(status.State) + " at " + status.CurrentProducer
 }
 
 // noticeKey renders the episode key of one condition: the condition, the child's state and the stamp that tells its episodes apart.
@@ -285,12 +310,12 @@ func (p *innerRunProducer) noticeStep(ctx context.Context, w *childWait, final b
 		}
 		report = clause
 	}
-	attachDir, err := p.deps.AttachDir()
+	pairDir, err := p.deps.PairDir()
 	if err != nil {
-		logger.Warn("battenshed: notice skipped; attach directory unresolved", "producer", p.name, "slug", p.slug, "error", err)
+		logger.Warn("battenshed: notice skipped; pair directory unresolved", "producer", p.name, "slug", p.slug, "error", err)
 		return
 	}
-	line := renderNotice(noticeLine{slug: p.slug, condition: p.conditionText(finding), status: status, since: p.episode.since, report: report, attachDir: attachDir})
+	line := renderNotice(noticeLine{slug: p.slug, condition: conditionText(finding, status), status: status, since: p.episode.since, report: report, pairDir: pairDir})
 	if p.deliver(ctx, key, condition, line, final) {
 		kept = append(kept, key)
 	}
@@ -304,12 +329,13 @@ func (p *innerRunProducer) noticeDriverBusy(ctx context.Context, w *childWait) {
 	if !p.notices || p.driverBusyNoticed {
 		return
 	}
-	attachDir, err := p.deps.AttachDir()
+	pairDir, err := p.deps.PairDir()
 	if err != nil {
-		logger.Warn("battenshed: notice skipped; attach directory unresolved", "producer", p.name, "slug", p.slug, "error", err)
+		logger.Warn("battenshed: notice skipped; pair directory unresolved", "producer", p.name, "slug", p.slug, "error", err)
 		return
 	}
-	line := renderNotice(noticeLine{slug: p.slug, condition: noticeDriverBusyCondition, status: w.status, since: p.episode.since, attachDir: attachDir})
+	condition := haltText(w.status) + "; " + noticeDriverBusyCondition
+	line := renderNotice(noticeLine{slug: p.slug, condition: condition, status: w.status, since: p.episode.since, pairDir: pairDir})
 	key := noticeKey(noticeDriverBusyCondition, w.status.State, p.episode.since.UnixNano())
 	if p.deliver(ctx, key, noticeDriverBusyCondition, line, false) {
 		p.driverBusyNoticed = true
@@ -511,8 +537,8 @@ func (p *innerRunProducer) deliver(ctx context.Context, key, condition, line str
 	return false
 }
 
-// conditionText renders the condition as the words a notice carries.
-func (p *innerRunProducer) conditionText(finding noticeFinding) string {
+// conditionText renders the condition as the words a notice carries; a state change reads as what the child's new state says happened.
+func conditionText(finding noticeFinding, status shedengine.Status) string {
 	if finding.text != "" {
 		return finding.text
 	}
@@ -520,7 +546,7 @@ func (p *innerRunProducer) conditionText(finding noticeFinding) string {
 	case noticeDriverDead:
 		return "driver strand is dead while the child is running"
 	default:
-		return "child left running"
+		return haltText(status)
 	}
 }
 
