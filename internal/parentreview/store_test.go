@@ -200,6 +200,22 @@ func TestRecordVerdict(t *testing.T) {
 	if err := s.RecordVerdict(VerdictReject, writeFile(t, "  \n")); !errors.Is(err, ErrEmptyReviewFile) {
 		t.Fatalf("reject empty file: %v", err)
 	}
+	for name, path := range map[string]string{
+		"missing":    filepath.Join(t.TempDir(), "missing.md"),
+		"whitespace": writeFile(t, "  \n"),
+		"unreadable": t.TempDir(),
+	} {
+		if err := s.RecordVerdict(VerdictApprove, path); !errors.Is(err, ErrEmptyReviewFile) {
+			t.Fatalf("approve %s file: %v", name, err)
+		}
+		r, _, _ := s.Latest()
+		if r.Verdict != nil {
+			t.Fatalf("approve %s file recorded verdict %+v", name, r.Verdict)
+		}
+		if _, err := os.Stat(r.ReviewPath()); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("approve %s file left review.md: %v", name, err)
+		}
+	}
 	if err := s.RecordVerdict(VerdictReject, writeFile(t, "fix it")); err != nil {
 		t.Fatal(err)
 	}

@@ -210,6 +210,9 @@ func TestReviewVerbs_ReviewFileMissingOrEmpty(t *testing.T) {
 		{"reject empty", func(s parentreview.Store, out *bytes.Buffer) int { return reviewRejectVerb(out, s, "task", empty) }},
 		{"reject missing", func(s parentreview.Store, out *bytes.Buffer) int { return reviewRejectVerb(out, s, "task", missing) }},
 		{"reject none", func(s parentreview.Store, out *bytes.Buffer) int { return reviewRejectVerb(out, s, "task", "") }},
+		{"approve empty", func(s parentreview.Store, out *bytes.Buffer) int {
+			return reviewApproveVerb(out, s, "task", empty, fakeRunStatus(shedengine.StateRunning))
+		}},
 		{"approve missing", func(s parentreview.Store, out *bytes.Buffer) int {
 			return reviewApproveVerb(out, s, "task", missing, fakeRunStatus(shedengine.StateRunning))
 		}},

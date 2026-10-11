@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -106,7 +105,7 @@ func reviewStoreErr(out io.Writer, verb string, err error) int {
 		return output.Err(out, fmt.Sprintf("loom: review %s: a verdict is already recorded for this round; %s", verb, reviewWaySettled))
 	case errors.Is(err, parentreview.ErrExpired):
 		return output.Err(out, fmt.Sprintf("loom: review %s: the review request expired; %s", verb, reviewWayExpired))
-	case errors.Is(err, parentreview.ErrEmptyReviewFile), errors.Is(err, fs.ErrNotExist):
+	case errors.Is(err, parentreview.ErrEmptyReviewFile):
 		return output.Err(out, fmt.Sprintf("loom: review %s: the review file is missing or empty; way forward: write the review to a non-empty file and re-run \"lyx loom review %s\" with its path", verb, verb))
 	default:
 		return output.Err(out, fmt.Sprintf("loom: review %s: %s", verb, err.Error()))

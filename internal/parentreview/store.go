@@ -46,7 +46,7 @@ var (
 	ErrExpired = errors.New("parentreview: review request expired")
 	// ErrVerdictRecorded means the round already carries a verdict.
 	ErrVerdictRecorded = errors.New("parentreview: verdict already recorded")
-	// ErrEmptyReviewFile means a reject came without a readable, non-empty review file.
+	// ErrEmptyReviewFile means a reject, or an approve carrying a review file, came without a readable, non-empty one.
 	ErrEmptyReviewFile = errors.New("parentreview: review file missing or empty")
 	// ErrNotAtCap means the latest round is not the cap's reject, so there is nothing to supersede.
 	ErrNotAtCap = errors.New("parentreview: latest round is not the cap's reject")
@@ -537,7 +537,7 @@ func (s Store) AddNotify() error {
 }
 
 // RecordVerdict records an approve or reject on the latest open request, copying reviewPath to review.md when given.
-// A reject needs a readable, non-empty review file.
+// A reject needs a readable, non-empty review file, and so does an approve that is given one; an approve with no path copies nothing.
 func (s Store) RecordVerdict(kind, reviewPath string) error {
 	if kind != VerdictApprove && kind != VerdictReject {
 		return fmt.Errorf("parentreview: unknown verdict kind %q", kind)
@@ -549,10 +549,7 @@ func (s Store) RecordVerdict(kind, reviewPath string) error {
 	var data []byte
 	if reviewPath != "" {
 		data, err = os.ReadFile(reviewPath)
-		if err != nil && kind == VerdictApprove {
-			return fmt.Errorf("parentreview: read review file: %w", err)
-		}
-		if kind == VerdictReject && (err != nil || len(strings.TrimSpace(string(data))) == 0) {
+		if err != nil || len(strings.TrimSpace(string(data))) == 0 {
 			return ErrEmptyReviewFile
 		}
 	} else if kind == VerdictReject {
