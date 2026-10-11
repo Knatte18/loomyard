@@ -88,7 +88,7 @@ internal/shedcheck: 3
 internal/shedcli: 17
 internal/shedengine: 134
 internal/shedrecipe: 102
-internal/shedrun: 22
+internal/shedrun: 23
 internal/shedtransient: 2
 internal/shedverbs: 80
 internal/shell: 12
@@ -132,5 +132,5 @@ tools/godocreflow: 6
 tools/internal/devbin: 1
 tools/mdreflow: 3
 tools/sandbox: 28
-tools/tokencount: 12
+tools/tokencount: 16
 tools/wordswap: 3

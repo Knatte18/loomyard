@@ -1,5 +1,5 @@
 @echo off
-REM Launcher for the token count: writes the markdown report to .scratch\token-usage-by-role.md
+REM Launcher for the token and time count: writes the markdown report to .scratch\token-usage-by-role.md
 REM and prints where it landed.
 REM One fixed path, overwritten every run rather than accumulating a timestamped file per
 REM count — the run's own date and time and the counted slugs live inside the report.
