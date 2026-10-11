@@ -25,6 +25,7 @@
 //
 // The finding types and ErrQuarryUnavailable are declared in internal/planindex, which links no tree-sitter;
 // this package aliases them, so errors.Is matches under either name.
+// The index also serves KickstartPack (pack.go), which resolves the member glyphs a batch's cards name in one call and returns them with the refs that did not resolve, so a caller that never links quarry gets a batch's pack through planindex.Index.
 // NewIndex returns the real planindex.Index, which a package that calls the code index receives from the CLI layer instead of importing planglyph (index.go).
 //
 // Every resolve-backed Finding.Check ID this package can raise, the canonical list a caller checks
