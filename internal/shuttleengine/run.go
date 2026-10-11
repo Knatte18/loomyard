@@ -1006,61 +1006,11 @@ func playInputs(reed ReedOps, guid string, inputs []PaneInput) error {
 	return nil
 }
 
-const (
-	// colorSettleAttempts caps the pane reads typeColor makes while waiting for the color command to be consumed.
-	colorSettleAttempts = 12
-	// colorSettleInterval is the pause between two of those reads.
-	colorSettleInterval = 250 * time.Millisecond
-)
-
-// typeColor plays the engine's color command for color into sc's pane,
-// then waits, at most colorSettleAttempts reads, until the provider has consumed it:
-// the pane classifies StartupReady and the input box (for an engine that implements InputBoxReader) no longer holds the command.
-// A pane showing no readable box counts as not holding it, as in the verified send's confirmation.
-// Without the wait the command can still sit in the box when the next step demands an idle, input-ready provider.
-// A command still in the box after the last read is submitted through confirmSubmitted's Enters, within one submit window.
-// Only a failed play is returned: an unconsumed command is logged, since the color is display only.
+// typeColor sends the engine's color command for color into sc's pane through the guarded send path.
+// A provider with no command for color types nothing and returns nil.
+// A held or unconfirmed send returns its error, wrapping ErrSessionBusy when the session or its box was not free.
 func typeColor(sc sendContext, color segmentcolor.Color) error {
-	reed, engine, guid := sc.reed, sc.engine, sc.guid
-	inputs := engine.ColorSequence(color)
-	if len(inputs) == 0 {
-		return nil
-	}
-	sentAt := eventsSize(sc.eventsPath)
-	if err := playInputs(reed, guid, inputs); err != nil {
-		return err
-	}
-	var command strings.Builder
-	for _, in := range inputs {
-		command.WriteString(in.Text)
-	}
-	normalized := normalizePaneText(command.String())
-	reader, hasReader := engine.(InputBoxReader)
-	holding := false
-	for attempt := 0; attempt < colorSettleAttempts; attempt++ {
-		if attempt > 0 {
-			inputSleep(colorSettleInterval)
-		}
-		capture, err := reed.CapturePane(guid)
-		if err != nil {
-			continue
-		}
-		holding = hasReader && boxHoldsSentText(reader, capture, normalized)
-		if !holding && engine.Startup(capture) == StartupReady {
-			return nil
-		}
-	}
-	if !holding {
-		logger.Warn("shuttle: the segment color command was not confirmed consumed", "strandGUID", guid, "color", color, "attempts", colorSettleAttempts)
-		return nil
-	}
-	closeAt := sc.clock.Now().Add(submitConfirmTimeout(sc.cfg))
-	if err := confirmSubmitted(sc, reader, normalized, sentAt, closeAt); err != nil {
-		logger.Warn("shuttle: the segment color command stayed in the input box", "strandGUID", guid, "color", color, "error", err)
-		return nil
-	}
-	logger.Warn("shuttle: the segment color command lingered in the input box and was submitted again", "strandGUID", guid, "color", color, "attempts", colorSettleAttempts)
-	return nil
+	return sendSequence(sc, sc.engine.ColorSequence(color))
 }
 
 // sendVerifyPositionMarginLines is how much closer to the bottom of the capture an occurrence must

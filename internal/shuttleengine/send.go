@@ -342,6 +342,37 @@ func settleAndConfirmPasted(sc sendContext, paster TextPaster, reader InputBoxRe
 	return confirmPasted(sc, paster, reader, text, sentAt, closeAt)
 }
 
+// sequenceText joins the Text of a choreography's steps, ignoring its keys and pauses.
+func sequenceText(inputs []PaneInput) string {
+	var text strings.Builder
+	for _, in := range inputs {
+		text.WriteString(in.Text)
+	}
+	return text.String()
+}
+
+// sendSequence sends a choreography into sc's pane as one guarded write.
+// An empty choreography, a provider's no-command answer, returns nil before the guard, with no idle wait, no activity query and no paste.
+// An engine that takes pastes sends the choreography's text as a verified send, so a slash command is pasted once and confirmed by the box reading empty.
+// Any other engine waits for an idle session and then plays its own keys.
+// A held write returns an error wrapping ErrSessionBusy and writes nothing.
+func sendSequence(sc sendContext, inputs []PaneInput) error {
+	if len(inputs) == 0 {
+		return nil
+	}
+	if _, pastes := sc.engine.(TextPaster); pastes {
+		if _, readsBox := sc.engine.(InputBoxReader); readsBox {
+			if _, cycles := sc.engine.(SessionCycler); cycles {
+				return sendVerified(sc, sequenceText(inputs))
+			}
+		}
+	}
+	if err := awaitIdleSession(sc); err != nil {
+		return err
+	}
+	return playInputs(sc.reed, sc.guid, inputs)
+}
+
 // retryLanded reports whether the pending-send record of an earlier failed send of this same text shows the text went out, so the retry types nothing.
 // The record is cleared whatever it says.
 // It reads as landed when the events file holds a turn start past the recorded offset, which is the text going out with the draft or with an Enter the operator pressed.

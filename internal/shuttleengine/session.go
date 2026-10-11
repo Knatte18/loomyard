@@ -170,48 +170,42 @@ func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 	return probe, nil
 }
 
-// ClearSession plays the provider's clear-session key choreography into the live pane of the run identified by guid.
-// It skips requireReadyAgentPane on purpose: right after a clear the pane may briefly show no ready marker,
-// and the caller has already probed idleness itself.
+// sendSessionSequence sends the sequence that sequenceFor returns for the cycler into the live pane of the run identified by guid, through the guarded send path.
+func (r *Runner) sendSessionSequence(guid string, sequenceFor func(SessionCycler) []PaneInput) error {
+	cycler, err := r.sessionCycler()
+	if err != nil {
+		return err
+	}
+	state, runDir, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
+		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	sc := r.newSendContext(state, runDir)
+	sc.hold = r.holdFor(guid)
+	return sendSequence(sc, sequenceFor(cycler))
+}
+
+// ClearSession sends the provider's clear-session command into the live pane of the run identified by guid.
+// Like every verified send it waits for an idle session first and fails with ErrSessionBusy if the session or its input box stays held, typing nothing.
 func (r *Runner) ClearSession(guid string) error {
 	if r.toldErr != nil {
 		return r.toldErr
 	}
-	cycler, err := r.sessionCycler()
-	if err != nil {
-		return err
-	}
-	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
-		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
-	}
-	if err := requireLiveStrand(r.reed, guid); err != nil {
-		return err
-	}
-	return playInputs(r.reed, guid, cycler.ClearSessionSequence())
+	return r.sendSessionSequence(guid, SessionCycler.ClearSessionSequence)
 }
 
-// ReloadPlugins plays the provider's reload-plugins key choreography into the live pane of the run identified by guid.
-// Like ClearSession it skips requireReadyAgentPane, since the caller has already probed idleness itself.
+// ReloadPlugins sends the provider's reload-plugins command into the live pane of the run identified by guid.
+// Like ClearSession it fails with ErrSessionBusy while the session or its input box is held.
 func (r *Runner) ReloadPlugins(guid string) error {
 	if r.toldErr != nil {
 		return r.toldErr
 	}
-	cycler, err := r.sessionCycler()
-	if err != nil {
-		return err
-	}
-	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
-		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
-	}
-	if err := requireLiveStrand(r.reed, guid); err != nil {
-		return err
-	}
-	return playInputs(r.reed, guid, cycler.ReloadPluginsSequence())
+	return r.sendSessionSequence(guid, SessionCycler.ReloadPluginsSequence)
 }
 
-// TypeColor plays the provider's color command for color into the live pane of the run identified by guid, for a caller that colors the session itself.
+// TypeColor sends the provider's color command for color into the live pane of the run identified by guid, for a caller that colors the session itself.
 // A provider with no color command, or none for color, types nothing.
-// Like start's color step it waits out the command before returning, and an unconfirmed color is only logged.
+// Like every verified send it fails with ErrSessionBusy while the session or its input box is held, so the caller may retry.
 func (r *Runner) TypeColor(guid string, color segmentcolor.Color) error {
 	if r.toldErr != nil {
 		return r.toldErr
@@ -220,31 +214,20 @@ func (r *Runner) TypeColor(guid string, color segmentcolor.Color) error {
 	if err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	if err := requireLiveStrand(r.reed, guid); err != nil {
-		return err
-	}
-	return typeColor(r.newSendContext(state, runDir), color)
+	sc := r.newSendContext(state, runDir)
+	sc.hold = r.holdFor(guid)
+	return typeColor(sc, color)
 }
 
-// CompactSession plays the provider's compact-session key choreography, keeping what focus names, into the live pane of the run identified by guid.
-// Like ClearSession it skips requireReadyAgentPane, since the caller has already probed idleness itself.
-// It refuses a focus containing a newline, since the focus is typed as one line.
+// CompactSession sends the provider's compact-session command, keeping what focus names, into the live pane of the run identified by guid.
+// Like ClearSession it fails with ErrSessionBusy while the session or its input box is held.
+// It refuses a focus containing a newline, since the focus is sent as one line.
 func (r *Runner) CompactSession(guid, focus string) error {
 	if r.toldErr != nil {
 		return r.toldErr
 	}
-	cycler, err := r.sessionCycler()
-	if err != nil {
-		return err
-	}
 	if strings.ContainsAny(focus, "\r\n") {
 		return fmt.Errorf("shuttle: compact focus for strand %q spans several lines; it is typed as one line, so join it into one", guid)
 	}
-	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
-		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
-	}
-	if err := requireLiveStrand(r.reed, guid); err != nil {
-		return err
-	}
-	return playInputs(r.reed, guid, cycler.CompactSessionSequence(focus))
+	return r.sendSessionSequence(guid, func(cycler SessionCycler) []PaneInput { return cycler.CompactSessionSequence(focus) })
 }

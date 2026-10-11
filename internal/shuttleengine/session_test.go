@@ -3,6 +3,7 @@
 package shuttleengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -23,6 +24,11 @@ type cyclerEngine struct {
 	clear    []PaneInput
 	captures []string
 	foci     []string
+}
+
+// readyCyclerEngine returns a cyclerEngine whose pane starts ready and reads idle.
+func readyCyclerEngine() *cyclerEngine {
+	return &cyclerEngine{fakeEngine: fakeEngine{StartupScript: []StartupState{StartupReady}}, idle: true}
 }
 
 func (e *cyclerEngine) ContextTokens(Event) ContextReading { return ContextReading{} }
@@ -289,33 +295,139 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 	})
 }
 
+// slashPasteEngine is a paste-path engine whose session commands and color are one slash-command line each.
+// noColor makes it answer no color command.
+type slashPasteEngine struct {
+	*scriptedPasteEngine
+
+	noColor bool
+}
+
+func (e *slashPasteEngine) ProcessLiveness(string) Liveness { return LivenessAlive }
+
+func (e *slashPasteEngine) ClearSessionSequence() []PaneInput {
+	return []PaneInput{{Text: "/clear", Submit: true}}
+}
+
+func (e *slashPasteEngine) ReloadPluginsSequence() []PaneInput {
+	return []PaneInput{{Text: "/reload-plugins", Submit: true}}
+}
+
+func (e *slashPasteEngine) CompactSessionSequence(focus string) []PaneInput {
+	return []PaneInput{{Text: "/compact " + focus, Submit: true}}
+}
+
+func (e *slashPasteEngine) ColorSequence(color segmentcolor.Color) []PaneInput {
+	if e.noColor {
+		return nil
+	}
+	return []PaneInput{{Text: "/color " + string(color), Submit: true}}
+}
+
+// newSlashPasteRunner returns a runner over a live strand "strand-1" on a paste-path engine whose input box reads box and whose pane shows an operator active or not, and the reed it drives.
+func newSlashPasteRunner(t *testing.T, box string, active, noColor bool) (*Runner, *fakeReed) {
+	t.Helper()
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"IDLE"}, ActiveQueue: []bool{active}}
+	boxes := &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: []inputBoxAnswer{{box, true}}, settle: 100 * time.Millisecond}
+	engine := &slashPasteEngine{scriptedPasteEngine: &scriptedPasteEngine{clearableBoxEngine: &clearableBoxEngine{inputBoxEngine: boxes}, pasteSubmits: true}, noColor: noColor}
+	cfg := Config{SubmitSettleMS: 100, SubmitConfirmTimeoutS: 30, SendReadyTimeoutS: 60}
+	fx := newFixture(t, reed, engine, withConfig(cfg), withStrand("strand-1"))
+	// A finished turn of a session whose process is alive makes the hook-derived session state known, so the idle wait reads the input box.
+	if err := os.WriteFile(fx.EventsPath, []byte("START\nSTOP:done\n"), 0o644); err != nil {
+		t.Fatalf("write events: %v", err)
+	}
+	record := RunState{RunID: "run-1", StrandGUID: "strand-1", SessionID: "session-1", EventsPath: fx.EventsPath}
+	if err := saveRunState(filepath.Dir(fx.EventsPath), record); err != nil {
+		t.Fatalf("saveRunState: %v", err)
+	}
+	return fx.Runner, reed
+}
+
+// checkPastedSessionCommand drives call, one of Runner's session commands or its color step, over a paste-path engine in three states of the pane the caller's own idle probe would have passed.
+// An empty box gets the command as one paste-submit of wantText and no typed text.
+// A box holding a draft and an operator active in the pane each hold the command: it fails wrapping ErrSessionBusy and writes nothing.
+func checkPastedSessionCommand(t *testing.T, wantText string, call func(*Runner) error) {
+	t.Helper()
+	tests := []struct {
+		name     string
+		box      string
+		active   bool
+		wantHeld bool
+	}{
+		{name: "an empty box pastes the command once"},
+		{name: "a drafted box holds the command", box: "a half-written draft", wantHeld: true},
+		{name: "an active operator holds the command", active: true, wantHeld: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			runner, reed := newSlashPasteRunner(t, tt.box, tt.active, false)
+			err := call(runner)
+			if len(reed.SendTextCalls) != 0 {
+				t.Errorf("SendText calls = %+v, want none on the paste path", reed.SendTextCalls)
+			}
+			if tt.wantHeld {
+				if !errors.Is(err, ErrSessionBusy) {
+					t.Errorf("error = %v, want one wrapping ErrSessionBusy", err)
+				}
+				if len(reed.PasteSubmitCalls) != 0 {
+					t.Errorf("PasteSubmit calls = %+v, want none for a held command", reed.PasteSubmitCalls)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("error = %v, want the command confirmed", err)
+			}
+			if len(reed.PasteSubmitCalls) != 1 || reed.PasteSubmitCalls[0].Text != wantText {
+				t.Errorf("PasteSubmit calls = %+v, want one of %q", reed.PasteSubmitCalls, wantText)
+			}
+		})
+	}
+}
+
 func TestRunner_ClearSession_PlaysScriptedSequence(t *testing.T) {
-	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-	engine := &cyclerEngine{clear: []PaneInput{{Key: "Escape"}, {Text: "/clear", Submit: true}}}
+	t.Parallel()
+
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"IDLE"}}
+	engine := readyCyclerEngine()
+	engine.clear = []PaneInput{{Key: "Escape"}, {Text: "/clear", Submit: true}}
 	runner := newFixture(t, reed, engine, withStrand("strand-1")).Runner
 
 	if err := runner.ClearSession("strand-1"); err != nil {
 		t.Fatalf("ClearSession: %v", err)
 	}
-	want := []string{"Status", "SendKey:Escape", "SendText:/clear"}
-	if !reflect.DeepEqual(reed.CallLog, want) {
-		t.Errorf("CallLog = %v, want %v", reed.CallLog, want)
+	if got, want := sentCalls(reed), []string{"SendKey:Escape", "SendText:/clear"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("sent calls = %v, want %v", got, want)
 	}
+
+	checkPastedSessionCommand(t, "/clear", func(r *Runner) error { return r.ClearSession("strand-1") })
+}
+
+// sentCalls returns the keys and texts reed was asked to write, in order.
+func sentCalls(reed *fakeReed) []string {
+	var sent []string
+	for _, call := range reed.CallLog {
+		if strings.HasPrefix(call, "SendKey:") || strings.HasPrefix(call, "SendText:") {
+			sent = append(sent, call)
+		}
+	}
+	return sent
 }
 
 func TestRunner_ReloadPlugins_PlaysSequenceOnALiveShuttleStrand(t *testing.T) {
 	t.Parallel()
 
-	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-	runner := newFixture(t, reed, &cyclerEngine{}, withStrand("strand-1")).Runner
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"IDLE"}}
+	runner := newFixture(t, reed, readyCyclerEngine(), withStrand("strand-1")).Runner
 
 	if err := runner.ReloadPlugins("strand-1"); err != nil {
 		t.Fatalf("ReloadPlugins: %v", err)
 	}
-	want := []string{"Status", "SendText:/reload-plugins"}
-	if !reflect.DeepEqual(reed.CallLog, want) {
-		t.Errorf("CallLog = %v, want %v", reed.CallLog, want)
+	if got, want := sentCalls(reed), []string{"SendText:/reload-plugins"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("sent calls = %v, want %v", got, want)
 	}
+
+	checkPastedSessionCommand(t, "/reload-plugins", func(r *Runner) error { return r.ReloadPlugins("strand-1") })
 
 	refusedReed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	refused := newFixture(t, refusedReed, &cyclerEngine{}, withStrand("strand-1")).Runner
@@ -327,99 +439,25 @@ func TestRunner_ReloadPlugins_PlaysSequenceOnALiveShuttleStrand(t *testing.T) {
 	}
 }
 
-// TestRunner_TypeColor_PlaysTheSequenceAndWaitsItOut plays the engine's color sequence into a live shuttle strand and drives the wait that follows through an engine with the InputBoxReader capability.
-// A box empty at once ends the wait on the first read,
-// a command lingering in the input box is waited out without an extra key,
-// and one that never leaves the box is submitted again by Enters each followed by one read until the submit window closes, and only logged, never failing the call.
-// Start's color step shares the same helper.
+// TestRunner_TypeColor_PlaysTheSequenceAndWaitsItOut sends the engine's color command into a live shuttle strand through the guarded send path.
+// A pasted `/color <name>` is confirmed by the empty box, and a held color returns an error wrapping ErrSessionBusy so the caller may retry.
+// A color with no command returns nil with no paste, even beside an active operator, so no idle wait or activity query runs for it.
 // An unknown strand is refused before reed is touched.
-// It is not parallel: each row replaces the package-level inputSleep and captures the global logger.
 func TestRunner_TypeColor_PlaysTheSequenceAndWaitsItOut(t *testing.T) {
-	const command = "COLOR:green"
-	const settle = 300 * time.Millisecond
-	poll := []string{"Sleep:" + colorSettleInterval.String(), "CapturePane"}
-	enterThenRead := []string{"SendKey:Enter", "CapturePane"}
-	join := func(parts ...[]string) []string {
-		var out []string
-		for _, part := range parts {
-			out = append(out, part...)
-		}
-		return out
-	}
-	repeat := func(part []string, n int) []string {
-		var out []string
-		for range n {
-			out = append(out, part...)
-		}
-		return out
-	}
-	prefix := []string{"Status", "SendText:" + command, "CapturePane"}
+	t.Parallel()
 
-	tests := []struct {
-		name    string
-		boxes   []inputBoxAnswer
-		wantLog []string
-		// wantEnterReads is whether wantLog is followed by one or more enterThenRead pairs, their count set by the submit window.
-		wantEnterReads bool
-		wantWarn       string
-	}{
-		{
-			name:    "empty box ends the wait at once",
-			boxes:   []inputBoxAnswer{{"", true}},
-			wantLog: prefix,
-		},
-		{
-			name:    "lingering command is waited out",
-			boxes:   []inputBoxAnswer{{command, true}, {command, true}, {"", true}},
-			wantLog: join(prefix, poll, poll),
-		},
-		{
-			name:           "command that never leaves the box only logs",
-			boxes:          []inputBoxAnswer{{command, true}},
-			wantLog:        join(prefix, repeat(poll, colorSettleAttempts-1)),
-			wantEnterReads: true,
-			wantWarn:       "the segment color command stayed in the input box",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			logs := logcapture.Capture(t)
-			reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-			orig := inputSleep
-			inputSleep = func(d time.Duration) {
-				reed.mu.Lock()
-				defer reed.mu.Unlock()
-				reed.CallLog = append(reed.CallLog, "Sleep:"+d.String())
-			}
-			t.Cleanup(func() { inputSleep = orig })
-			engine := &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: tt.boxes, settle: settle}
-			runner := newFixture(t, reed, engine, withStrand("strand-1"), withClock(newFakeClock(time.Unix(0, 0)))).Runner
+	checkPastedSessionCommand(t, "/color green", func(r *Runner) error { return r.TypeColor("strand-1", segmentcolor.Green) })
 
-			if err := runner.TypeColor("strand-1", segmentcolor.Green); err != nil {
-				t.Fatalf("TypeColor: %v, want nil since the color is display only", err)
-			}
-			gotLog := reed.CallLog
-			if tt.wantEnterReads && len(gotLog) > len(tt.wantLog) {
-				enterReads := gotLog[len(tt.wantLog):]
-				if len(enterReads)%len(enterThenRead) != 0 || !reflect.DeepEqual(enterReads, repeat(enterThenRead, len(enterReads)/len(enterThenRead))) {
-					t.Errorf("CallLog after the polls = %v, want only %v pairs", enterReads, enterThenRead)
-				}
-				gotLog = gotLog[:len(tt.wantLog)]
-			} else if tt.wantEnterReads {
-				t.Errorf("CallLog = %v, want %v followed by %v pairs", gotLog, tt.wantLog, enterThenRead)
-			}
-			if !reflect.DeepEqual(gotLog, tt.wantLog) {
-				t.Errorf("CallLog = %v, want %v", gotLog, tt.wantLog)
-			}
-			got := logs.String()
-			if tt.wantWarn == "" && strings.Contains(got, "segment color command") {
-				t.Errorf("log = %q, want no color warning", got)
-			}
-			if tt.wantWarn != "" && !strings.Contains(got, tt.wantWarn) {
-				t.Errorf("log = %q, want it to name %q", got, tt.wantWarn)
-			}
-		})
-	}
+	t.Run("a color with no command types nothing and asks nothing", func(t *testing.T) {
+		t.Parallel()
+		runner, reed := newSlashPasteRunner(t, "a half-written draft", true, true)
+		if err := runner.TypeColor("strand-1", segmentcolor.Green); err != nil {
+			t.Errorf("TypeColor() = %v, want nil", err)
+		}
+		if len(reed.PasteSubmitCalls) != 0 || len(reed.CallLog) != 0 {
+			t.Errorf("reed touched: pastes %+v, calls %v", reed.PasteSubmitCalls, reed.CallLog)
+		}
+	})
 
 	refusedReed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	refused := newFixture(t, refusedReed, &fakeEngine{}, withStrand("strand-1")).Runner
@@ -432,8 +470,10 @@ func TestRunner_TypeColor_PlaysTheSequenceAndWaitsItOut(t *testing.T) {
 }
 
 func TestRunner_CompactSession_PlaysSequenceForFocus(t *testing.T) {
-	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-	engine := &cyclerEngine{}
+	t.Parallel()
+
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"IDLE"}}
+	engine := readyCyclerEngine()
 	runner := newFixture(t, reed, engine, withStrand("strand-1")).Runner
 
 	if err := runner.CompactSession("strand-1", "the plan"); err != nil {
@@ -442,10 +482,11 @@ func TestRunner_CompactSession_PlaysSequenceForFocus(t *testing.T) {
 	if !reflect.DeepEqual(engine.foci, []string{"the plan"}) {
 		t.Errorf("focus passed to the engine = %v, want [the plan]", engine.foci)
 	}
-	want := []string{"Status", "SendText:/compact the plan"}
-	if !reflect.DeepEqual(reed.CallLog, want) {
-		t.Errorf("CallLog = %v, want %v", reed.CallLog, want)
+	if got, want := sentCalls(reed), []string{"SendText:/compact the plan"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("sent calls = %v, want %v", got, want)
 	}
+
+	checkPastedSessionCommand(t, "/compact the plan", func(r *Runner) error { return r.CompactSession("strand-1", "the plan") })
 }
 
 func TestRunner_CompactSession_RefusesMultiLineFocus(t *testing.T) {
