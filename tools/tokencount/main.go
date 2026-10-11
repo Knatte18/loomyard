@@ -122,6 +122,23 @@ import (
 // repositoryFlag is the name of the one flag naming the repository that holds the archive tags, plan commits and webster records.
 const repositoryFlag = "weft"
 
+// resolveHub makes the hub flag's value absolute and clean: empty is the current worktree's parent, and a relative path joins onto wd.
+// It refuses a hub other than that parent when weft is empty, because the default weft would then read another hub's records.
+func resolveHub(hub, wd, weft string) (string, error) {
+	parent := filepath.Clean(filepath.Dir(wd))
+	switch {
+	case hub == "":
+		hub = parent
+	case !filepath.IsAbs(hub):
+		hub = filepath.Join(wd, hub)
+	}
+	hub = filepath.Clean(hub)
+	if hub != parent && weft == "" {
+		return "", fmt.Errorf("-hub %s is not the current directory's parent %s, which is the hub this run assumes; the default weft would read another hub's records, so -%s must name that hub's weft repository", hub, parent, repositoryFlag)
+	}
+	return hub, nil
+}
+
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "tokencount:", err)
@@ -145,8 +162,9 @@ func run(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if *hub == "" {
-		*hub = filepath.Dir(wd)
+	*hub, err = resolveHub(*hub, wd, *weft)
+	if err != nil {
+		return err
 	}
 	if *projects == "" {
 		home, err := os.UserHomeDir()
@@ -156,18 +174,19 @@ func run(args []string, stdout io.Writer) error {
 		*projects = filepath.Join(home, ".claude", "projects")
 	}
 	slugs := fs.Args()
-	if *weft == "" && (len(slugs) == 0 || *calibrate != "") {
+	if *weft == "" {
 		loc, err := lyxcwd.Resolve(wd)
 		if err != nil {
 			return err
 		}
 		*weft = fabricengine.RecordsWorktree(loc)
 	}
+	fabric := gitrepo.New(*weft)
+	finished, err := finishedRuns(*weft)
+	if err != nil {
+		return err
+	}
 	if len(slugs) == 0 {
-		finished, err := finishedRuns(*weft)
-		if err != nil {
-			return err
-		}
 		slugs, err = recentRuns(*projects, *hub, filepath.Base(wd), finished, *last)
 		if err != nil {
 			return err
@@ -183,6 +202,20 @@ func run(args []string, stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
+		// Teardown removes a finished run's worktree, so one that still exists is in flight and its archive tags belong to an older run of the slug.
+		_, err = os.Stat(filepath.Join(*hub, slug))
+		if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if os.IsNotExist(err) {
+			record, err := readShedRecord(fabric, slug, finished[slug])
+			if err != nil {
+				return err
+			}
+			if record != nil {
+				r.useShedRecord(*record)
+			}
+		}
 		report.Runs = append(report.Runs, r)
 	}
 	orch, err := CountOrch(projectDir(*projects, wd), report.Runs)
@@ -197,7 +230,6 @@ func run(args []string, stdout io.Writer) error {
 		if *configDir == "" {
 			*configDir = wd
 		}
-		fabric := gitrepo.New(*weft)
 		c, err := Calibrate(report.Runs, *calibrate, *configDir, fabric, gitrepo.New(wd))
 		if err != nil {
 			return err
@@ -219,7 +251,7 @@ func run(args []string, stdout io.Writer) error {
 		defer f.Close()
 		w = f
 	}
-	fmt.Fprintf(w, "# Token usage by role\n\nGenerated %s for %s.\n\n", time.Now().Format("2006-01-02 15:04"), strings.Join(slugs, ", "))
+	fmt.Fprintf(w, "# Token usage and time by role\n\nGenerated %s for %s.\n\n", time.Now().Format("2006-01-02 15:04"), strings.Join(slugs, ", "))
 	if err := report.WriteMarkdown(w); err != nil {
 		return err
 	}
