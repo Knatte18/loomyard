@@ -108,6 +108,16 @@ lenses:
     gap-filling findings" and "The completeness-before-leanness test". Seek
     what does not belong in the decision record rather than what is missing
     from it. Report anything else you notice too — emphasis, never exclusion.
+  premises: |
+    Focus on the record's premises: every claim it makes about existing code,
+    config or behaviour matches what the code does, including one hop past
+    what the record cites, such as the caller, the config key or the spawned
+    process a cited piece leans on. Report anything else you notice too —
+    emphasis, never exclusion.
+  board-fit: |
+    Focus on the record against every other board entry: planned work it
+    duplicates or contradicts, and a dependency it leaves unnamed. Report
+    anything else you notice too — emphasis, never exclusion.
   decision-coverage: |
     Focus on the plan against the decision record: apply the Plan-Review
     rubric's "Fidelity to the answer key". Report anything else you notice
@@ -151,3 +161,10 @@ fans:
     - card-structure
     - verify-tests
     - pattern-fit
+  twill-discussion:
+    - premises
+    - goal-scope
+    - board-fit
+    - pattern-fit
+    - scenarios
+    - leanness
