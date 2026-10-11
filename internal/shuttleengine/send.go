@@ -34,17 +34,19 @@ const (
 
 // sendContext is what one verified send needs: the pane it types into, the run's record, directory and events file, the config and the clock its timed waits read.
 // A zero deadline means none, and a nil hold starts the idle wait's turn-start hold afresh.
+// startsNoTurn marks a send whose text starts no turn, such as a slash command, so no turn start reads as its landing.
 type sendContext struct {
-	reed       ReedOps
-	engine     Engine
-	guid       string
-	state      RunState
-	runDir     string
-	eventsPath string
-	cfg        Config
-	clock      Clock
-	deadline   time.Time
-	hold       *turnStartHold
+	reed         ReedOps
+	engine       Engine
+	guid         string
+	state        RunState
+	runDir       string
+	eventsPath   string
+	cfg          Config
+	clock        Clock
+	deadline     time.Time
+	hold         *turnStartHold
+	startsNoTurn bool
 }
 
 // newSendContext returns the context of a verified send into run's own pane.
@@ -363,6 +365,7 @@ func sendSequence(sc sendContext, inputs []PaneInput) error {
 	if _, pastes := sc.engine.(TextPaster); pastes {
 		if _, readsBox := sc.engine.(InputBoxReader); readsBox {
 			if _, cycles := sc.engine.(SessionCycler); cycles {
+				sc.startsNoTurn = true
 				return sendVerified(sc, sequenceText(inputs))
 			}
 		}
@@ -376,6 +379,7 @@ func sendSequence(sc sendContext, inputs []PaneInput) error {
 // retryLanded reports whether the pending-send record of an earlier failed send of this same text shows the text went out, so the retry types nothing.
 // The record is cleared whatever it says.
 // It reads as landed when the events file holds a turn start past the recorded offset, which is the text going out with the draft or with an Enter the operator pressed.
+// A text that starts no turn never reads as landed, since a turn start past the offset is some other turn.
 // A record for another text, an unreadable record and one that cannot be cleared read as not landed, the last two logged at Warn, so a broken file never wedges a strand.
 func retryLanded(sc sendContext, text string) bool {
 	pending, found, err := loadPendingSend(sc.runDir)
@@ -393,7 +397,7 @@ func retryLanded(sc sendContext, text string) bool {
 		logger.Warn("shuttle: pending send not cleared, sending as usual", "strandGUID", sc.guid, "error", err)
 		return false
 	}
-	return pending.Text == text && turnStartedSince(sc.engine, sc.eventsPath, pending.EventsOffset)
+	return pending.Text == text && !sc.startsNoTurn && turnStartedSince(sc.engine, sc.eventsPath, pending.EventsOffset)
 }
 
 // confirmPasted reads the input box after a paste, first reader.SubmitSettle() later and then at a doubling interval up to confirmBackoffCap, cut to end at closeAt.

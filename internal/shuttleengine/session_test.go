@@ -325,7 +325,7 @@ func (e *slashPasteEngine) ColorSequence(color segmentcolor.Color) []PaneInput {
 }
 
 // newSlashPasteRunner returns a runner over a live strand "strand-1" on a paste-path engine whose input box reads box and whose pane shows an operator active or not, and the reed it drives.
-func newSlashPasteRunner(t *testing.T, box string, active, noColor bool) (*Runner, *fakeReed) {
+func newSlashPasteRunner(t *testing.T, box string, active, noColor bool) (*Runner, *fakeReed, string) {
 	t.Helper()
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"IDLE"}, ActiveQueue: []bool{active}}
 	boxes := &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: []inputBoxAnswer{{box, true}}, settle: 100 * time.Millisecond}
@@ -340,28 +340,36 @@ func newSlashPasteRunner(t *testing.T, box string, active, noColor bool) (*Runne
 	if err := saveRunState(filepath.Dir(fx.EventsPath), record); err != nil {
 		t.Fatalf("saveRunState: %v", err)
 	}
-	return fx.Runner, reed
+	return fx.Runner, reed, filepath.Dir(fx.EventsPath)
 }
 
 // checkPastedSessionCommand drives call, one of Runner's session commands or its color step, over a paste-path engine in three states of the pane the caller's own idle probe would have passed.
 // An empty box gets the command as one paste-submit of wantText and no typed text.
 // A box holding a draft and an operator active in the pane each hold the command: it fails wrapping ErrSessionBusy and writes nothing.
+// A pending record of the command with a turn started since is another turn, so the command is still pasted.
 func checkPastedSessionCommand(t *testing.T, wantText string, call func(*Runner) error) {
 	t.Helper()
 	tests := []struct {
 		name     string
 		box      string
 		active   bool
+		pending  bool
 		wantHeld bool
 	}{
 		{name: "an empty box pastes the command once"},
 		{name: "a drafted box holds the command", box: "a half-written draft", wantHeld: true},
 		{name: "an active operator holds the command", active: true, wantHeld: true},
+		{name: "a pending record of the command with a turn started since pastes it afresh", pending: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			runner, reed := newSlashPasteRunner(t, tt.box, tt.active, false)
+			runner, reed, runDir := newSlashPasteRunner(t, tt.box, tt.active, false)
+			if tt.pending {
+				if err := savePendingSend(runDir, pendingSend{Text: wantText}); err != nil {
+					t.Fatalf("savePendingSend: %v", err)
+				}
+			}
 			err := call(runner)
 			if len(reed.SendTextCalls) != 0 {
 				t.Errorf("SendText calls = %+v, want none on the paste path", reed.SendTextCalls)
@@ -450,7 +458,7 @@ func TestRunner_TypeColor_PlaysTheSequenceAndWaitsItOut(t *testing.T) {
 
 	t.Run("a color with no command types nothing and asks nothing", func(t *testing.T) {
 		t.Parallel()
-		runner, reed := newSlashPasteRunner(t, "a half-written draft", true, true)
+		runner, reed, _ := newSlashPasteRunner(t, "a half-written draft", true, true)
 		if err := runner.TypeColor("strand-1", segmentcolor.Green); err != nil {
 			t.Errorf("TypeColor() = %v, want nil", err)
 		}
