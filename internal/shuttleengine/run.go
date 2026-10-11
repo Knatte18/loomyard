@@ -231,6 +231,9 @@ type Result struct {
 	// it is false on every other return, including a died or timeout outcome reached in Wait.
 	// RunGated folds that branch into (result, nil), so this field is how a caller tells a never-ready start from an agent that died mid-run.
 	NotStarted bool
+	// StartError is the text of the error start returned on RunGated's not-started branch, which names the cause and ends with the pane's last lines;
+	// it is empty on every other return.
+	StartError string
 	// EndedShells holds each background shell outstanding when the run ended, whatever ended it, in the order its turn end listed them.
 	EndedShells []EndedShell
 	// StartedAt is the run's creation time from its state, zero when the record's time does not parse.
@@ -282,6 +285,9 @@ type Run struct {
 	// not-ready teardown (abandonStartup) it is saved to startupCaptureFileName inside the run
 	// directory as the diagnosis artifact a later operator or attach reads.
 	lastStartupCapture string
+	// dismissed reports that this run played a startup-gate dismissal that sent a key, and dismissedAt is when, on the run's clock.
+	dismissed   bool
+	dismissedAt time.Time
 
 	// waitingTasks is the outstanding list of the latest EventWaiting, cleared by any later non-waiting event and when expiredTurnEnd counts the turn end at once.
 	waitingTasks []BackgroundTask
@@ -741,12 +747,14 @@ func (r *Runner) Run(spec Spec) (Result, error) {
 // contract that the burler round producer's one-retry ladder depends on
 // (TestBurlerProducer_Call_DiedThenDoneSucceedsWithRetry), so a caller that already branches on
 // Result.Outcome sees the same shape whether the run died at startup or later in Wait's own loop.
+// The folded result carries the start error's text in StartError, so the cause is not lost with the error.
 // Any other non-nil err (a pre-strand failure from start itself) is
 // returned unchanged, alongside whatever identity result carries.
 func (r *Runner) RunGated(spec Spec, gate GateSpec) (Result, error) {
 	run, result, err := r.start(spec, gate)
 	if errors.Is(err, ErrNotStarted) {
 		result.NotStarted = true
+		result.StartError = err.Error()
 		return result, nil
 	}
 	if err != nil {
@@ -996,19 +1004,27 @@ func requireLiveStrand(reed ReedOps, guid string) error {
 // playInputs plays inputs into guid's pane through reed in order, with
 // SettleMS honored after each step to allow pauses between steps.
 func playInputs(reed ReedOps, guid string, inputs []PaneInput) error {
+	_, err := playInputsSent(reed, guid, inputs)
+	return err
+}
+
+// playInputsSent is playInputs, returning as well how many inputs were delivered before it returned, so a play whose first input failed reports 0.
+func playInputsSent(reed ReedOps, guid string, inputs []PaneInput) (int, error) {
+	sent := 0
 	for _, in := range inputs {
 		if in.Key != "" {
 			if err := reed.SendKey(guid, in.Key); err != nil {
-				return fmt.Errorf("shuttle: send key %q: %w", in.Key, err)
+				return sent, fmt.Errorf("shuttle: send key %q: %w", in.Key, err)
 			}
 		} else if err := reed.SendText(guid, in.Text, in.Submit); err != nil {
-			return fmt.Errorf("shuttle: send text: %w", err)
+			return sent, fmt.Errorf("shuttle: send text: %w", err)
 		}
+		sent++
 		if in.SettleMS > 0 {
 			inputSleep(time.Duration(in.SettleMS) * time.Millisecond)
 		}
 	}
-	return nil
+	return sent, nil
 }
 
 // typeColor sends the engine's color command for color into sc's pane through the guarded send path.

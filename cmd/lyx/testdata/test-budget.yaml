@@ -94,7 +94,7 @@ internal/shedverbs: 80
 internal/shell: 12
 internal/shuttlecli: 23
 internal/shuttleengine: 161
-internal/shuttleengine/claudeengine: 103
+internal/shuttleengine/claudeengine: 104
 internal/standalonegeom: 7
 internal/standalonestate: 6
 internal/state: 8

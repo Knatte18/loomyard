@@ -35,6 +35,10 @@ const boxRuleChars = "─╭╮╰╯│"
 // boxInteriorChars are stripped from a line between the rules before judging it blank: the caret and side bars, on top of whitespace.
 const boxInteriorChars = gateCaretMarker + "│>"
 
+// shellEOLMark is zsh's PROMPT_EOL_MARK, which the pane's login shell prints before reed's launch line starts Claude.
+// A pane resize can leave it on the row Claude later draws its box on, so Claude never received it as input.
+const shellEOLMark = "%"
+
 // boxMinRows is the fewest pane rows Claude's input box needs: the top rule, the caret line, the bottom rule and the footer under it.
 const boxMinRows = 4
 
@@ -58,6 +62,11 @@ func (c *Claude) PaneTooShort(capture string) bool {
 // A capture carries no styling, so any non-empty box classifies as not idle and the watcher skips the poll and retries;
 // the greyed prompt suggestion no longer appears in a shuttle-launched session, since every settings file switches it off.
 // And a transcript line quoting "esc to interrupt" anywhere in the capture classifies as not idle, because the running-turn hint is matched over the whole capture.
+//
+// A box holding only a lone `%` reads idle: that is the shell's end-of-line mark left on screen, never input.
+// Bound: an operator draft of exactly `%` typed outside reed's quiet window reads as empty, so a paste can merge with it.
+// The operator-activity hold still runs before every write behind the pre-write guard,
+// but the session idle probe's fallback for a strand with no run reads the box with no operator-activity hold, so there a lone `%` reads idle with no operator check.
 func (c *Claude) IdleSession(capture string) bool {
 	if strings.Contains(normalizeCapture(capture), runningTurnNeedle) {
 		return false
@@ -65,6 +74,9 @@ func (c *Claude) IdleSession(capture string) bool {
 	interior, ok := inputBoxInterior(capture)
 	if !ok {
 		return false
+	}
+	if holdsOnlyEOLMark(interior) {
+		return true
 	}
 	for _, line := range interior {
 		if !isBlankBoxInterior(line) {
@@ -78,10 +90,16 @@ func (c *Claude) IdleSession(capture string) bool {
 // ok is false when capture shows no input box.
 // The box is located exactly as IdleSession locates it,
 // so a running turn over an empty box answers ok true with empty text.
+// A box holding only a lone `%`, the shell's end-of-line mark left on screen, answers empty text too.
+// Bound: an operator draft of exactly `%` typed outside reed's quiet window reads as empty, so a paste can merge with it;
+// the pre-write guard's operator-activity hold still runs before every write.
 func (c *Claude) InputBoxText(capture string) (text string, ok bool) {
 	interior, ok := inputBoxInterior(capture)
 	if !ok {
 		return "", false
+	}
+	if holdsOnlyEOLMark(interior) {
+		return "", true
 	}
 	var parts []string
 	for _, line := range interior {
@@ -191,6 +209,16 @@ func isBoxRule(line string) bool {
 		}
 	}
 	return true
+}
+
+// holdsOnlyEOLMark reports whether interior, once the caret, side bars and whitespace are stripped from every line, holds exactly shellEOLMark across all lines together.
+func holdsOnlyEOLMark(interior []string) bool {
+	stripper := strings.NewReplacer(gateCaretMarker, "", "│", "")
+	var remaining strings.Builder
+	for _, line := range interior {
+		remaining.WriteString(strings.Join(strings.Fields(stripper.Replace(line)), ""))
+	}
+	return remaining.String() == shellEOLMark
 }
 
 // isBlankBoxInterior reports whether line holds nothing but the caret, side bars and whitespace.
