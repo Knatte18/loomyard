@@ -2,8 +2,10 @@ package parentreview
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -773,4 +775,103 @@ func TestGate_KeepAlive(t *testing.T) {
 		c.t = c.t.Add(30 * time.Minute)
 		wantHold(t, mustEval(t, gate))
 	})
+}
+
+// snapshotTree records every directory and file under each root, files with their content.
+func snapshotTree(t *testing.T, roots ...string) map[string]string {
+	t.Helper()
+	snap := map[string]string{}
+	for _, root := range roots {
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				if errors.Is(err, fs.ErrNotExist) {
+					return nil
+				}
+				return err
+			}
+			if d.IsDir() {
+				snap[path] = "dir"
+				return nil
+			}
+			data, err := os.ReadFile(path)
+			snap[path] = string(data)
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return snap
+}
+
+func TestExpiryProbe(t *testing.T) {
+	tests := []struct {
+		name     string
+		reviewer string
+		setup    func(t *testing.T, s Store, c *clock)
+		want     bool
+	}{
+		{name: "no reviewer", setup: func(t *testing.T, s Store, c *clock) { openOne(t, s); c.t = c.t.Add(2 * time.Hour) }},
+		{name: "no round", reviewer: "hub:orch", setup: func(*testing.T, Store, *clock) {}},
+		{name: "open request before the bound", reviewer: "hub:orch", setup: func(t *testing.T, s Store, c *clock) {
+			openOne(t, s)
+			c.t = c.t.Add(59 * time.Minute)
+		}},
+		{name: "approve past the bound", reviewer: "hub:orch", setup: func(t *testing.T, s Store, c *clock) {
+			openOne(t, s)
+			if err := s.RecordVerdict(VerdictApprove, ""); err != nil {
+				t.Fatal(err)
+			}
+			c.t = c.t.Add(2 * time.Hour)
+		}},
+		{name: "reject past the bound", reviewer: "hub:orch", setup: func(t *testing.T, s Store, c *clock) {
+			openOne(t, s)
+			if err := s.RecordVerdict(VerdictReject, writeFile(t, "fix it")); err != nil {
+				t.Fatal(err)
+			}
+			c.t = c.t.Add(2 * time.Hour)
+		}},
+		{name: "expired request", reviewer: "hub:orch", setup: func(t *testing.T, s Store, c *clock) {
+			openOne(t, s)
+			if err := s.MarkExpired(); err != nil {
+				t.Fatal(err)
+			}
+			c.t = c.t.Add(2 * time.Hour)
+		}},
+		{name: "superseded request", reviewer: "hub:orch", setup: func(t *testing.T, s Store, c *clock) {
+			r := openOne(t, s)
+			if err := s.setRequestState(r.Number, StateSuperseded); err != nil {
+				t.Fatal(err)
+			}
+			c.t = c.t.Add(2 * time.Hour)
+		}},
+		{name: "open request with no verdict at the bound", reviewer: "hub:orch", want: true, setup: func(t *testing.T, s Store, c *clock) {
+			openOne(t, s)
+			c.t = c.t.Add(time.Hour)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, c := newStore(t)
+			tt.setup(t, s, c)
+			before := snapshotTree(t, s.Root, s.LockDir)
+
+			expired, err := NewExpiryProbe(GateConfig{Store: s, Reviewer: tt.reviewer, WaitBound: time.Hour})()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if expired != tt.want {
+				t.Errorf("expired = %v, want %v", expired, tt.want)
+			}
+			after := snapshotTree(t, s.Root, s.LockDir)
+			if !reflect.DeepEqual(before, after) {
+				t.Errorf("probe changed the exchange's files:\nbefore %v\nafter  %v", before, after)
+			}
+			for path := range after {
+				if filepath.Base(path) == deliveryFile {
+					t.Errorf("probe left %s behind", path)
+				}
+			}
+		})
+	}
 }

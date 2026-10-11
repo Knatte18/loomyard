@@ -33,7 +33,7 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // "verify" requires the absolute env.WorktreeRoot and env.VerifyDir and a non-nil env.VerifyCommand, takes the optional env.VerifyMergeBase and env.VerifyWholeDiff, and returns loomshed.NewVerifyGate over them, with the site label "<row name> gate";
 // env.VerifyWholeDiff alone selects the whole-diff form, and env.VerifyMergeBase is the base of the headroom lint, or of both lints in that form;
 // "parent-review" requires the absolute Env.ParentReview.Store.Root, Store.LockDir, DecisionRecord and SupportLog, a non-empty Slug and both render seams, and returns parentreview.NewGate's closure pair, the second being the entry's Final closure;
-// it is must-pass and may hold the run, its "attempts" is the reject cap told to the gate, and a "pass_on_cap" key on it is refused;
+// it is must-pass and may hold the run, its "attempts" is the reject cap told to the gate, a "pass_on_cap" key on it is refused, and it carries an expiry probe the wait loop calls off the boundary;
 // any other value is an error naming the key and all six legal values.
 // A name may appear once per list, and "parent-review" must be the last element, since a must-pass entry after a pending review would read as not reached at a deadline.
 //
@@ -107,11 +107,11 @@ func resolveGateEntry(entry, row string, index int, elem Config, env Env) (shutt
 		if _, present := elem["pass_on_cap"]; present {
 			return shuttleengine.GateEntry{}, wrap(fmt.Errorf("%q is refused on %q; way forward: drop the key, and raise %q for more review rounds", "pass_on_cap", parentReviewGateName, "attempts"))
 		}
-		closure, final, err := resolveParentReviewClosure(entry, attempts, env)
+		closure, final, expired, err := resolveParentReviewClosure(entry, attempts, env)
 		if err != nil {
 			return shuttleengine.GateEntry{}, err
 		}
-		return shuttleengine.GateEntry{Name: name, Gate: closure, Final: final, Attempts: attempts, MayHold: true}, nil
+		return shuttleengine.GateEntry{Name: name, Gate: closure, Final: final, Expired: expired, Attempts: attempts, MayHold: true}, nil
 	}
 
 	passOnCap, err := configBool(elem, "pass_on_cap", false)
@@ -128,45 +128,45 @@ func resolveGateEntry(entry, row string, index int, elem Config, env Env) (shutt
 // parentReviewGateName is the one gate name whose entry may hold the run and whose cap its own store counts.
 const parentReviewGateName = "parent-review"
 
-// resolveParentReviewClosure checks the Env fields the "parent-review" gate needs and returns parentreview.NewGate's pair,
-// with attempts told to the gate as its reject cap.
+// resolveParentReviewClosure checks the Env fields the "parent-review" gate needs.
+// It returns parentreview.NewGate's pair and the read-only expiry probe, with attempts told to the gate as its reject cap.
 //
 // The cap and the entry's own Attempts are the same value, which is what keeps the engine's in-memory failure count behind the store's rejected-round count.
 // The only non-terminal failure the closure returns consumes one distinct rejected round, so the in-memory count is at most Cap-1 when the cap's reject arrives;
 // that reject then fails terminal, so the engine's own budget never ends the run.
 // A later non-terminal failure added to the closure breaks this.
 // The entry itself is never the engine's PassOnCap, since the gate's own store, not the engine's in-memory count, decides the let-through.
-func resolveParentReviewClosure(entry string, attempts int, env Env) (shuttleengine.Gate, shuttleengine.Gate, error) {
+func resolveParentReviewClosure(entry string, attempts int, env Env) (gate, final shuttleengine.Gate, expired func() (bool, error), err error) {
 	pr := env.ParentReview
 	pr.Cap = attempts
 	if err := requireAbsRoot(entry, "ParentReview.Store.Root", pr.Store.Root); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if err := requireAbsRoot(entry, "ParentReview.Store.LockDir", pr.Store.LockDir); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if err := requireNonEmpty(entry, "ParentReview.Slug", pr.Slug); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if err := requireSeam(entry, "ParentReview.RenderDelivery", pr.RenderDelivery); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if err := requireSeam(entry, "ParentReview.RenderBrief", pr.RenderBrief); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if err := requireAbsRoot(entry, "ParentReview.DecisionRecord", pr.DecisionRecord); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if err := requireAbsRoot(entry, "ParentReview.SupportLog", pr.SupportLog); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if pr.KeepAlive > 0 {
 		if err := requireSeam(entry, "ParentReview.RenderKeepAlive", pr.RenderKeepAlive); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
-	gate, final := parentreview.NewGate(pr)
-	return gate, final, nil
+	gate, final = parentreview.NewGate(pr)
+	return gate, final, parentreview.NewExpiryProbe(pr), nil
 }
 
 // resolvePlainGateClosure resolves the five validator names that carry no Final closure.

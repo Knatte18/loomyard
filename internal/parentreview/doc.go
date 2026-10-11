@@ -15,5 +15,9 @@
 // While a delivered request waits with no verdict, the gate pings the idle writer every GateConfig.KeepAlive, inside the writer's prompt-cache lifetime.
 // It pings at most three times per round, so a late reject resumes the writer on a warm cache.
 // A ping spends no gate prompt and no waiting notify, and a zero KeepAlive turns pings off.
+// NewExpiryProbe is the gate's read-only companion.
+// It answers whether the latest round's request is open, has no verdict and is older than GateConfig.WaitBound.
+// It reads the round without its lock and writes nothing, so the wait loop can call it while the writer is mid-turn.
+// Only the gate and final closures mark a request expired, when they next read the round.
 // Verbs, the gate closure and status act on the latest round only.
 package parentreview

@@ -214,6 +214,31 @@ func (s Store) Latest() (Round, bool, error) {
 	return r, true, nil
 }
 
+// peekLatest returns the highest-numbered round's request and verdict, or false when there is no round.
+// It takes no round lock and creates no directory, so a caller on a polling cadence leaves the exchange untouched; the Delivery stays zero.
+func (s Store) peekLatest() (Round, bool, error) {
+	n, err := s.latestNumber()
+	if err != nil || n == 0 {
+		return Round{}, false, err
+	}
+	r := Round{Number: n, Dir: s.roundDir(n)}
+	req, found, err := readHeldJSON[Request](filepath.Join(r.Dir, requestFile))
+	if err != nil {
+		return Round{}, false, err
+	}
+	if found {
+		r.Request = &req
+	}
+	v, found, err := readHeldJSON[Verdict](filepath.Join(r.Dir, verdictFile))
+	if err != nil {
+		return Round{}, false, err
+	}
+	if found {
+		r.Verdict = &v
+	}
+	return r, true, nil
+}
+
 // BeginRound marks the latest round superseded when it is still open with no verdict, then creates the next round directory empty.
 func (s Store) BeginRound() (Round, error) {
 	n, err := s.latestNumber()

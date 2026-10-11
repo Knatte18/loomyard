@@ -64,6 +64,7 @@ The vocabulary is `discussion`, `plan`, `rework-plan`, `description`, `verify` a
 `Env.VerifyWholeDiff` selects the whole-diff form and the round form is the default.
 `Env.VerifyMergeBase`, when set, is the base of the headroom lint, which runs before the comment lint, or of both lints under the whole-diff form, which requires it.
 `parent-review` waits for the run's parent to review the discussion, so it can return a pending result that the wait loop holds without stalling its liveness and deadline checks, and it carries a `Final` closure that `finalize` evaluates in its place.
+It also carries an expiry probe the wait loop calls off the boundary, a read-only check that the latest round's request is open, has no verdict and is older than the wait bound.
 The entry is must-pass and may hold the run, and its `attempts` is the reject cap: the gate fails terminally at that many rejected rounds, halting the run `blocked` until the parent approves.
 A `pass_on_cap` key on the element is a construction error.
 The gate's own store counts the rejects, so the engine's own pass-on-cap never applies to this entry.

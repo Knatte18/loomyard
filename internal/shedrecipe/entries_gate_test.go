@@ -201,8 +201,8 @@ func TestResolveGateSpec_ParentReviewResolvesMustPassMayHold(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveGateSpec() error = %v; want nil", err)
 	}
-	if len(spec) != 2 || spec[1].Name != "parent-review" || spec[1].Gate == nil || spec[1].Final == nil || spec[1].PassOnCap || !spec[1].MayHold || spec[1].Attempts != 3 {
-		t.Fatalf("resolveGateSpec() = %+v; want parent-review last as a must-pass MayHold entry with Gate and Final set and Attempts 3", spec)
+	if len(spec) != 2 || spec[1].Name != "parent-review" || spec[1].Gate == nil || spec[1].Final == nil || spec[1].Expired == nil || spec[1].PassOnCap || !spec[1].MayHold || spec[1].Attempts != 3 {
+		t.Fatalf("resolveGateSpec() = %+v; want parent-review last as a must-pass MayHold entry with Gate, Final and Expired set and Attempts 3", spec)
 	}
 }
 
@@ -256,8 +256,8 @@ func TestResolveGateSpec_OtherNamesCarryNoFinal(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: resolveGateSpec() error = %v", name, err)
 		}
-		if spec[0].Final != nil {
-			t.Errorf("%s: Final is set; want nil", name)
+		if spec[0].Final != nil || spec[0].Expired != nil {
+			t.Errorf("%s: Final or Expired is set; want both nil", name)
 		}
 	}
 }

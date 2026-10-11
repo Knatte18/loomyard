@@ -196,6 +196,26 @@ func (c *closures) gate() (shuttleengine.GateResult, error) {
 	return c.pending(""), nil
 }
 
+// NewExpiryProbe returns the entry's read-only expiry probe over cfg.
+// It answers true once the latest round's request is open, carries no verdict and is at least WaitBound old on the store's clock, and false otherwise.
+// It sends, counts and writes nothing, and it marks no request expired: only the gate and final closures do, when they next read the round.
+func NewExpiryProbe(cfg GateConfig) func() (bool, error) {
+	g := &closures{cfg: cfg}
+	return func() (bool, error) {
+		if cfg.Reviewer == "" {
+			return false, nil
+		}
+		r, ok, err := cfg.Store.peekLatest()
+		if err != nil || !ok {
+			return false, err
+		}
+		if r.Request == nil || r.Request.State != StateOpen || r.Verdict != nil {
+			return false, nil
+		}
+		return g.now().Sub(r.Request.OpenedAt) >= cfg.WaitBound, nil
+	}
+}
+
 // pingDue reports whether a keep-alive is due: pings are on, delivery is recorded, fewer than maxKeepAlives are counted, and KeepAlive has passed since the latest of delivery, last prompt and last ping.
 func (c *closures) pingDue(d Delivery, now time.Time) bool {
 	if c.cfg.KeepAlive <= 0 || d.DeliveredAt.IsZero() || d.Pings >= maxKeepAlives {
