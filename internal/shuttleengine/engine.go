@@ -233,6 +233,13 @@ type InputBoxClearer interface {
 	ClearInputSequence() []PaneInput
 }
 
+// StrayInputReader is an optional capability beside Engine: the provider's judgment of whether its input box holds a lone stray character.
+// The judgment is the provider's, since what a stray character looks like on screen is provider knowledge.
+type StrayInputReader interface {
+	// StrayInput reports whether capture shows the provider idle but for an input box holding exactly one stray-character candidate, and returns that character.
+	StrayInput(capture string) (text string, ok bool)
+}
+
 // TextPaster is an optional capability beside Engine: a provider that takes text as one bracketed paste.
 // An engine with it, InputBoxReader and SessionCycler is written to through reed's paste-submit instead of typed keys.
 type TextPaster interface {

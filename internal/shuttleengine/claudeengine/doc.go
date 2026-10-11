@@ -130,6 +130,8 @@
 // ClearInputSequence is one `C-u`, which deletes from the caret to the start of the line and so empties a one-line draft without interrupting a running turn.
 // OwnPastePlaceholder recognises the `[Pasted text #<n>]` or `[Pasted text #<n> +<m> lines]` form Claude Code collapses a pasted draft into, which a box reading cannot otherwise match against the pasted text.
 // It answers true only for a text of at least `PasteCollapseMinChars` characters, whose newline count equals `m` when the placeholder shows one.
+// The box reading takes a box holding only a lone `%`, the shell's end-of-line mark, as empty.
+// StrayInput is the judgment beside that rule: a box holding exactly one character that is neither a letter, a digit nor whitespace, with no running turn on screen, is a stray-character candidate and the character is returned; the lone `%` is never one.
 //
 // Beside the clear sequence (`/clear`) and the compact sequence (`/compact`), the engine realizes skill loading, in skillload.go.
 // A spec that names skills starts on an empty input box: the launch line carries no prompt pointer, and the pointer comes back as Launch.PromptLine for shuttle to send after the skills.
