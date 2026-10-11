@@ -1,6 +1,7 @@
 // bar.go declares the tmux format strings of reed's two-line status bar and the strand pane-border title.
 // The strings are built from tmux 3.6's own default status-format shape (list mode, the #{W:}, #{P:} and #{S:} loops, the < and > markers).
 // They read strands only through the pane user options @strand and @strand_color and the window user option @lyx_strands, never through the current window.
+// A window carrying the window user option @lyx_hidden gets no button.
 
 package reedengine
 
@@ -32,9 +33,9 @@ const (
 	windowButtonFormat = "#[range=window|#{window_index} #{?window_active,list=focus bg=white fg=black bold," + unlitButtonStyle + "}] #{window_name} #[norange list=on default] "
 
 	// statusFormatButtons is status-format[0]: the VIEW button, then every strand of every window carrying @lyx_strands, in pane order.
-	// Then, when the session has more than one window, it holds one button per window without @lyx_strands.
+	// Then, when the session has more than one window, it holds one button per window carrying neither @lyx_strands nor @lyx_hidden.
 	statusFormatButtons = listPrologueFormat + viewButtonFormat +
-		"#{W:#{?#{@lyx_strands},#{P:#{?#{@strand}," + strandButtonFormat + ",}},#{?#{>:#{session_windows},1}," + windowButtonFormat + ",}}}"
+		"#{W:#{?#{@lyx_strands},#{P:#{?#{@strand}," + strandButtonFormat + ",}},#{?#{&&:#{>:#{session_windows},1},#{!=:#{@lyx_hidden},1}}," + windowButtonFormat + ",}}}"
 
 	// sessionButtonFormat and currentSessionButtonFormat are one session button each, a session range.
 	// The current session shows its full name lit, every other session its name cut to 12 characters.
