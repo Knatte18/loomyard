@@ -14,8 +14,10 @@ Every step, check and fence above still binds you alone.
 
 - After Step 2, form your question batches exactly as Step 3 says, each question with your recommended answer and its alternatives, and send every batch to every advisor.
   No advisor owns an area, since each may find a different weakness.
+- Ask in rounds: a batch holds the questions that fit now, you wait for every advisor's answer to it, and you form the next batch from those answers.
+  Never send every question at once.
 - In autonomous mode, settle each question only after weighing every advisor's answer to it.
-  An advisor that never started, sent a failure notice or was written off counts as giving no answer, and a pick made with no usable answer stays an auto-pick.
+  An advisor that did not start, sent a failure notice or was written off counts as giving no answer, and a pick made with no usable answer stays an auto-pick.
 - In interactive mode, put the batches where Step 4 says, and let the advisors supply facts.
   The operator's turns reach you alone.
 - Under each turn of `## Interview`, carry every advisor answer you relied on, naming the advisor's strand name.

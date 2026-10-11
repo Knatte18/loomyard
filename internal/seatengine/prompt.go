@@ -42,9 +42,9 @@ func joinLines(items []string) string {
 }
 
 // seatValues returns the value map seat's stencil is filled from: the table's values, then the seat's own, then every reserved marker.
-// names is strandNames' answer, and failed lists the strand names of advisors that never started.
+// names is strandNames' answer.
 // A chair's parent directive names the run's parent; an advisor's names the chair and is never interactive.
-func seatValues(geom Geometry, table Table, seat Seat, names map[string]string, failed []string) (map[string]string, error) {
+func seatValues(geom Geometry, table Table, seat Seat, names map[string]string) (map[string]string, error) {
 	values := make(map[string]string, len(table.Values)+len(seat.Values)+len(reservedMarkers))
 	maps.Copy(values, table.Values)
 	maps.Copy(values, seat.Values)
@@ -68,17 +68,12 @@ func seatValues(geom Geometry, table Table, seat Seat, names map[string]string, 
 			advisors = append(advisors, names[other.Name])
 		}
 	}
-	failedAdvisors := failed
-	if seat.Name != RoleChair {
-		failedAdvisors = nil
-	}
 
 	values[parentdirective.MarkerName] = parent
 	values[editdirective.MarkerName] = edit
 	values["seat_name"] = names[seat.Name]
 	values["chair_name"] = names[RoleChair]
 	values["advisor_names"] = joinLines(advisors)
-	values["failed_advisors"] = joinLines(failedAdvisors)
 	values["inputs"] = joinLines(seat.Inputs)
 	values["outputs"] = joinLines(seat.Outputs)
 	values["output_files"] = joinLines(seat.Outputs)
@@ -96,7 +91,6 @@ func seatValues(geom Geometry, table Table, seat Seat, names map[string]string, 
 
 // Prompts returns the prompt every seat of table reads at a fresh start, keyed by seat name, and starts nothing.
 // It validates table against geom.StencilsDir, so a table that would be refused at start is refused here.
-// No advisor is counted as failed, so a chair's failed-advisors list reads as empty.
 func Prompts(geom Geometry, table Table) (map[string]string, error) {
 	if err := table.Validate(geom.StencilsDir); err != nil {
 		return nil, err
@@ -107,7 +101,7 @@ func Prompts(geom Geometry, table Table) (map[string]string, error) {
 	}
 	prompts := make(map[string]string, len(table.Seats))
 	for _, seat := range table.Seats {
-		values, err := seatValues(geom, table, seat, names, nil)
+		values, err := seatValues(geom, table, seat, names)
 		if err != nil {
 			return nil, err
 		}

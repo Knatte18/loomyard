@@ -23,7 +23,7 @@ var ErrSeatNotStopped = errors.New("seatengine: a seat could not be stopped")
 // Name is the seat's name in the table.
 // StrandGUID and RunDir are empty for an advisor that never started, and StartError then holds why.
 // Outcome is the advisor's own terminal outcome, empty while it has none.
-// Notified reports whether the chair was told, from Go, that the advisor ended.
+// Notified reports whether the chair was told, from Go, that the advisor ended or never started.
 type SeatResult struct {
 	Name       string
 	StrandGUID string
@@ -54,7 +54,7 @@ func New(shuttle Shuttle, geom Geometry) *Engine {
 	return &Engine{shuttle: shuttle, geom: geom, noticeRetry: defaultNoticeRetry}
 }
 
-// seatRun is one started advisor: its handle, and what its goroutine recorded when its wait ended.
+// seatRun is one advisor: its handle, and what its goroutine recorded when its wait ended, or why it never started.
 type seatRun struct {
 	seat   Seat
 	name   string
@@ -118,10 +118,10 @@ func (e *Engine) absolute(paths []string) []string {
 }
 
 // Run starts table's seats fresh and returns once the chair has ended.
-// It starts the advisors in table order and the chair last, so the chair's prompt can name an advisor that never started.
+// It starts the chair first, then the advisors in table order, and tells the chair of each advisor once its start ends: up, or never started.
+// A chair that fails to start starts no advisor and returns the error, which wraps shuttleengine.ErrNotStarted when the provider never came up.
 // An advisor that fails to start is recorded and the step goes on without it.
-// An advisor whose misnamed strand could not be stopped is still live, so Run stops every started advisor and returns the error.
-// A chair that fails to start stops every started advisor and returns the error, which wraps shuttleengine.ErrNotStarted when the provider never came up.
+// An advisor whose misnamed strand could not be stopped is still live, so Run stops the chair and every started advisor and returns the error.
 // The result carries the chair's outcome, gate and NotStarted as shuttle reported them; the engine judges nothing about finishing itself.
 // A seat that cannot be stopped is an error wrapping ErrSeatNotStopped.
 func (e *Engine) Run(table Table) (Result, error) {
@@ -132,47 +132,43 @@ func (e *Engine) Run(table Table) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	chairSeat := table.Chair()
-	chairOutputs := e.absolute(chairSeat.Outputs)
+	chairOutputs := e.absolute(table.Chair().Outputs)
+	chair, err := e.startSeat(table, table.Chair(), names)
+	if err != nil {
+		return Result{ChairOutputs: chairOutputs}, err
+	}
 	sender := newNoticeSender(chairOutputs, e.noticeRetry)
+	sender.start(chair)
 
 	var advisors []*seatRun
-	var failed []string
 	for _, seat := range table.Seats {
 		if seat.Name == RoleChair {
 			continue
 		}
-		outputs := e.absolute(seat.Outputs)
-		handle, err := e.startSeat(table, seat, names, nil)
+		name := names[seat.Name]
+		handle, err := e.startSeat(table, seat, names)
 		if errors.Is(err, ErrSeatNotStopped) {
 			sender.stop()
-			stopErr := stopAdvisors(advisors)
+			stopErr := errors.Join(stopSeat(chair), stopAdvisors(advisors))
 			return Result{ChairOutputs: chairOutputs, Advisors: snapshot(advisors, sender)}, errors.Join(err, stopErr)
 		}
 		if err != nil {
 			logger.Warn("seatengine: advisor did not start", "seat", seat.Name, "error", err)
-			failed = append(failed, names[seat.Name])
-			advisors = append(advisors, &seatRun{seat: seat, name: names[seat.Name], startError: err.Error()})
+			failed := &seatRun{seat: seat, name: name, startError: err.Error(), notice: advisorNotStartedNotice(name)}
+			sender.queue(failed.notice)
+			advisors = append(advisors, failed)
 			continue
 		}
-		advisors = append(advisors, newSeatRun(seat, names[seat.Name], handle, outputs, sender))
+		sender.queue(advisorUpNotice(name))
+		advisors = append(advisors, newSeatRun(seat, name, handle, e.absolute(seat.Outputs), sender))
 	}
-
-	chair, err := e.startSeat(table, chairSeat, names, failed)
-	if err != nil {
-		sender.stop()
-		stopErr := stopAdvisors(advisors)
-		return Result{ChairOutputs: chairOutputs, Advisors: snapshot(advisors, sender)}, errors.Join(err, stopErr)
-	}
-	sender.start(chair)
 	return e.join(table, chair, advisors, sender)
 }
 
 // startSeat composes seat's prompt and spec, starts it, and checks it took the strand name its peers address it by.
 // The chair starts with the table's gate and an advisor ungated.
-// failed lists the strand names of advisors that never started, for the chair's prompt.
-func (e *Engine) startSeat(table Table, seat Seat, names map[string]string, failed []string) (Handle, error) {
-	values, err := seatValues(e.geom, table, seat, names, failed)
+func (e *Engine) startSeat(table Table, seat Seat, names map[string]string) (Handle, error) {
+	values, err := seatValues(e.geom, table, seat, names)
 	if err != nil {
 		return nil, err
 	}

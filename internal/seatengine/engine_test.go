@@ -35,11 +35,17 @@ func TestEngine_Run_ChairEndStopsEverySeat(t *testing.T) {
 				table := engineTable(geom.WorktreeRoot, advisors)
 
 				ended := runAsync(engine, table)
-				wantStarts := []string{role(AdvisorName(1)), role(AdvisorName(2)), role(RoleChair)}[2-advisors:]
+				wantStarts := []string{role(RoleChair), role(AdvisorName(1)), role(AdvisorName(2))}[:advisors+1]
 				if got := shuttle.awaitStarts(advisors + 1); !slices.Equal(got, wantStarts) {
 					t.Fatalf("start order = %v, want %v", got, wantStarts)
 				}
-				shuttle.handle(role(RoleChair)).release(tt.result, tt.waitErr)
+				chair := shuttle.handle(role(RoleChair))
+				for n := 1; n <= advisors; n++ {
+					if line, want := receive(t, chair), advisorUpNotice("ly:task:multi-advisor-"+string(rune('0'+n))); line != want {
+						t.Errorf("notice %d = %q, want %q", n, line, want)
+					}
+				}
+				chair.release(tt.result, tt.waitErr)
 				end := await(t, ended)
 
 				if tt.waitErr == nil && end.err != nil {
@@ -68,8 +74,8 @@ func TestEngine_Run_ChairEndStopsEverySeat(t *testing.T) {
 				if chairStops, want := shuttle.handle(role(RoleChair)).stopCount(), map[bool]int{true: 1, false: 0}[tt.waitErr != nil]; chairStops != want {
 					t.Errorf("chair stopped %d times, want %d", chairStops, want)
 				}
-				if shuttle.handle(role(RoleChair)).attemptCount() != 0 {
-					t.Error("a notice was typed into the chair, want none")
+				if attempts := chair.attemptCount(); attempts != advisors {
+					t.Errorf("chair took %d send attempts, want one up line per advisor (%d)", attempts, advisors)
 				}
 
 				if got := len(shuttle.gates[role(RoleChair)]); got != 1 {
@@ -79,9 +85,6 @@ func TestEngine_Run_ChairEndStopsEverySeat(t *testing.T) {
 					t.Error("an advisor started gated, want ungated")
 				}
 				prompt := shuttle.spec(role(RoleChair)).Prompt
-				if !strings.Contains(prompt, "Advisors that never started: (none)") {
-					t.Errorf("chair prompt = %q, want no failed advisor", prompt)
-				}
 				if advisors == 0 && !strings.Contains(prompt, "Your advisors, by strand name: (none)") {
 					t.Errorf("chair prompt = %q, want no advisors named", prompt)
 				}
@@ -90,16 +93,17 @@ func TestEngine_Run_ChairEndStopsEverySeat(t *testing.T) {
 	}
 }
 
-func TestEngine_Run_StartFailureEndingTheRunStopsTheStartedAdvisors(t *testing.T) {
+func TestEngine_Run_StartFailureEndingTheRunStopsEveryStartedSeat(t *testing.T) {
 	t.Parallel()
 	chairRole := role(RoleChair)
 	lastAdvisorRole := role(AdvisorName(2))
 	tests := []struct {
-		name      string
-		shuttle   func(*fakeShuttle)
-		wantIs    error
-		wantText  string
-		chairStop int
+		name            string
+		shuttle         func(*fakeShuttle)
+		wantIs          error
+		wantText        string
+		chairStop       int
+		advisorsStarted bool
 	}{
 		{name: "the provider never came up", shuttle: func(f *fakeShuttle) { f.startErrs = map[string]error{chairRole: shuttleengine.ErrNotStarted} }, wantIs: shuttleengine.ErrNotStarted},
 		{name: "another start error", shuttle: func(f *fakeShuttle) { f.startErrs = map[string]error{chairRole: errors.New("no pane")} }, wantText: "no pane"},
@@ -111,7 +115,7 @@ func TestEngine_Run_StartFailureEndingTheRunStopsTheStartedAdvisors(t *testing.T
 		{name: "an advisor's held strand name and a failed stop", shuttle: func(f *fakeShuttle) {
 			f.strandNames = map[string]string{lastAdvisorRole: "ly:task:multi-advisor-2-2"}
 			f.stopErrs = map[string]error{lastAdvisorRole: errors.New("pane gone")}
-		}, wantIs: ErrSeatNotStopped, wantText: `lyx reed remove guid-multi-advisor-2"`},
+		}, wantIs: ErrSeatNotStopped, wantText: `lyx reed remove guid-multi-advisor-2"`, chairStop: 1, advisorsStarted: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -133,8 +137,12 @@ func TestEngine_Run_StartFailureEndingTheRunStopsTheStartedAdvisors(t *testing.T
 				t.Errorf("Run() error = %v, want it to contain %q", end.err, tt.wantText)
 			}
 			for n := 1; n <= 2; n++ {
-				if stops := shuttle.handle(role(AdvisorName(n))).stopCount(); stops != 1 {
-					t.Errorf("advisor %d stopped %d times, want once", n, stops)
+				advisor, started := shuttle.handles[role(AdvisorName(n))]
+				if started != tt.advisorsStarted {
+					t.Fatalf("advisor %d started = %v, want %v", n, started, tt.advisorsStarted)
+				}
+				if started && advisor.stopCount() != 1 {
+					t.Errorf("advisor %d stopped %d times, want once", n, advisor.stopCount())
 				}
 			}
 			if _, started := shuttle.handles[chairRole]; started != (tt.chairStop > 0) {
@@ -142,7 +150,7 @@ func TestEngine_Run_StartFailureEndingTheRunStopsTheStartedAdvisors(t *testing.T
 			}
 			if tt.chairStop > 0 {
 				if stops := shuttle.handle(chairRole).stopCount(); stops != tt.chairStop {
-					t.Errorf("misnamed chair stopped %d times, want %d", stops, tt.chairStop)
+					t.Errorf("chair stopped %d times, want %d", stops, tt.chairStop)
 				}
 			}
 		})
@@ -170,23 +178,23 @@ func TestEngine_Run_AdvisorStartFailureIsRecordedAndNamedToTheChair(t *testing.T
 
 			ended := runAsync(engine, engineTable(geom.WorktreeRoot, 2))
 			shuttle.awaitStarts(3)
-			shuttle.handle(role(RoleChair)).release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
+			chair := shuttle.handle(role(RoleChair))
+			lines := []string{receive(t, chair), receive(t, chair)}
+			want := []string{advisorNotStartedNotice("ly:task:multi-advisor-1"), advisorUpNotice("ly:task:multi-advisor-2")}
+			if !slices.Equal(lines, want) {
+				t.Errorf("notices = %q, want %q", lines, want)
+			}
+			chair.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
 			end := await(t, ended)
 
 			if end.err != nil {
 				t.Fatalf("Run() error = %v, want nil", end.err)
 			}
-			if got := end.result.Advisors[0]; !strings.Contains(got.StartError, tt.wantError) || got.StrandGUID != "" || got.Notified {
-				t.Errorf("failed advisor result = %+v, want the start error %q and no strand", got, tt.wantError)
+			if got := end.result.Advisors[0]; !strings.Contains(got.StartError, tt.wantError) || got.StrandGUID != "" || !got.Notified {
+				t.Errorf("failed advisor result = %+v, want the start error %q, no strand and Notified", got, tt.wantError)
 			}
-			if got := end.result.Advisors[1]; got.StartError != "" || got.StrandGUID == "" {
-				t.Errorf("second advisor result = %+v, want it started", got)
-			}
-			if prompt := shuttle.spec(role(RoleChair)).Prompt; !strings.Contains(prompt, "Advisors that never started: ly:task:multi-advisor-1\n") {
-				t.Errorf("chair prompt = %q, want the failed advisor named", prompt)
-			}
-			if shuttle.handle(role(RoleChair)).attemptCount() != 0 {
-				t.Error("a notice was typed into the chair, want none for an advisor that never started")
+			if got := end.result.Advisors[1]; got.StartError != "" || got.StrandGUID == "" || got.Notified {
+				t.Errorf("second advisor result = %+v, want it started and no ending notice", got)
 			}
 			if stops := shuttle.handle(role(AdvisorName(2))).stopCount(); stops != 1 {
 				t.Errorf("second advisor stopped %d times, want once", stops)
@@ -206,8 +214,8 @@ func TestEngine_Run_AdvisorDeathSendsOneNoticeOnceTheChairTakesIt(t *testing.T) 
 		alwaysBusy   bool
 		wantAttempts int
 	}{
-		{name: "an idle chair", wantAttempts: 1},
-		{name: "a busy chair delays the line", chairBusy: []error{shuttleengine.ErrSessionBusy, shuttleengine.ErrSubmissionNotLanded}, wantAttempts: 3},
+		{name: "an idle chair", wantAttempts: 2},
+		{name: "a busy chair delays the lines", chairBusy: []error{shuttleengine.ErrSessionBusy, shuttleengine.ErrSubmissionNotLanded}, wantAttempts: 4},
 		{name: "a chair that stays busy does not block the join", alwaysBusy: true},
 	}
 	for _, tt := range tests {
@@ -229,6 +237,9 @@ func TestEngine_Run_AdvisorDeathSendsOneNoticeOnceTheChairTakesIt(t *testing.T) 
 					time.Sleep(time.Millisecond)
 				}
 			} else {
+				if line, want := receive(t, chair), advisorUpNotice("ly:task:multi-advisor-1"); line != want {
+					t.Errorf("first notice = %q, want %q", line, want)
+				}
 				line := receive(t, chair)
 				for _, want := range []string{"Advisor ly:task:multi-advisor-1 ended (died)", "no longer answers", geom.WorktreeRoot} {
 					if !strings.Contains(line, want) {
@@ -255,7 +266,7 @@ func TestEngine_Run_AdvisorDeathSendsOneNoticeOnceTheChairTakesIt(t *testing.T) 
 	}
 }
 
-func TestEngine_Run_AdvisorsEndingTogetherOrBeforeTheChairExists(t *testing.T) {
+func TestEngine_Run_AdvisorsEndingTogetherOrAsTheyStart(t *testing.T) {
 	t.Parallel()
 	chairRole := role(RoleChair)
 	died := shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}
@@ -270,8 +281,16 @@ func TestEngine_Run_AdvisorsEndingTogetherOrBeforeTheChairExists(t *testing.T) {
 		shuttle.handle(role(AdvisorName(2))).release(died, nil)
 
 		chair := shuttle.handle(chairRole)
-		lines := []string{receive(t, chair), receive(t, chair)}
+		var lines []string
+		for range 4 {
+			if line := receive(t, chair); !strings.HasSuffix(line, "is up and takes your questions.") {
+				lines = append(lines, line)
+			}
+		}
 		slices.Sort(lines)
+		if len(lines) != 2 {
+			t.Fatalf("ending lines = %q, want two beside the two up lines", lines)
+		}
 		for n, line := range lines {
 			if want := "Advisor ly:task:multi-advisor-" + string(rune('1'+n)) + " ended (died)"; strings.Count(line, "\n") != 0 || !strings.HasPrefix(line, want) {
 				t.Errorf("line %d = %q, want one whole line starting %q", n, line, want)
@@ -281,21 +300,20 @@ func TestEngine_Run_AdvisorsEndingTogetherOrBeforeTheChairExists(t *testing.T) {
 		await(t, ended)
 	})
 
-	t.Run("an advisor ending while the chair starts is told once the chair exists", func(t *testing.T) {
+	t.Run("an advisor ending as it starts is told after its up line", func(t *testing.T) {
 		t.Parallel()
 		shuttle := newFakeShuttle(t)
-		hold := make(chan struct{})
-		shuttle.holdStart = map[string]chan struct{}{chairRole: hold}
 		engine, geom := engineFixture(t, shuttle)
 		ended := runAsync(engine, engineTable(geom.WorktreeRoot, 1))
-		shuttle.awaitStarts(1)
+		shuttle.awaitStarts(2)
 		shuttle.handle(role(AdvisorName(1))).release(died, nil)
-		close(hold)
-		shuttle.awaitStarts(1)
 
 		chair := shuttle.handle(chairRole)
+		if line, want := receive(t, chair), advisorUpNotice("ly:task:multi-advisor-1"); line != want {
+			t.Errorf("first notice = %q, want %q", line, want)
+		}
 		if line := receive(t, chair); !strings.HasPrefix(line, "Advisor ly:task:multi-advisor-1 ended (died)") {
-			t.Errorf("notice = %q, want the advisor's ending", line)
+			t.Errorf("second notice = %q, want the advisor's ending", line)
 		}
 		chair.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
 		if end := await(t, ended); !end.result.Advisors[0].Notified {
@@ -310,6 +328,8 @@ func TestEngine_Run_DoneAdvisorSendsNothingAndIsKeptUntilTheChairEnds(t *testing
 	engine, geom := engineFixture(t, shuttle)
 	ended := runAsync(engine, engineTable(geom.WorktreeRoot, 1))
 	shuttle.awaitStarts(2)
+	chair := shuttle.handle(role(RoleChair))
+	receive(t, chair)
 	advisor := shuttle.handle(role(AdvisorName(1)))
 	advisor.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
 
@@ -321,7 +341,7 @@ func TestEngine_Run_DoneAdvisorSendsNothingAndIsKeptUntilTheChairEnds(t *testing
 	if advisor.stopCount() != 0 {
 		t.Error("a done advisor was stopped before the chair ended, want it kept")
 	}
-	shuttle.handle(role(RoleChair)).release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
+	chair.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
 	end := await(t, ended)
 
 	if end.err != nil || advisor.stopCount() != 1 {
@@ -330,8 +350,8 @@ func TestEngine_Run_DoneAdvisorSendsNothingAndIsKeptUntilTheChairEnds(t *testing
 	if got := end.result.Advisors[0]; got.Outcome != shuttleengine.OutcomeDone || got.Notified {
 		t.Errorf("advisor result = %+v, want done and no notice", got)
 	}
-	if shuttle.handle(role(RoleChair)).attemptCount() != 0 {
-		t.Error("a notice was typed into the chair, want none for a done advisor")
+	if attempts := chair.attemptCount(); attempts != 1 {
+		t.Errorf("chair took %d send attempts, want the up line alone for a done advisor", attempts)
 	}
 }
 

@@ -50,12 +50,15 @@ func TestEngine_ProbeAndResume_AttachToALiveChair(t *testing.T) {
 		result, err := engine.Resume(table, found)
 		ended <- engineEnd{result, err}
 	}()
-	lines := []string{receive(t, chair), receive(t, chair)}
-	if !strings.Contains(lines[0], "Advisor ly:task:multi-advisor-2 finished before this step was resumed") || !strings.Contains(lines[0], keptOutput) {
-		t.Errorf("finished advisor notice = %q, want the finished wording and its output", lines[0])
+	lines := []string{receive(t, chair), receive(t, chair), receive(t, chair)}
+	if want := advisorUpNotice("ly:task:multi-advisor-1"); lines[0] != want {
+		t.Errorf("live advisor notice = %q, want %q", lines[0], want)
 	}
-	if !strings.Contains(lines[1], "Advisor ly:task:multi-advisor-3 ended and no longer answers") {
-		t.Errorf("ended advisor notice = %q, want the ended wording", lines[1])
+	if !strings.Contains(lines[1], "Advisor ly:task:multi-advisor-2 finished before this step was resumed") || !strings.Contains(lines[1], keptOutput) {
+		t.Errorf("finished advisor notice = %q, want the finished wording and its output", lines[1])
+	}
+	if !strings.Contains(lines[2], "Advisor ly:task:multi-advisor-3 ended and no longer answers") {
+		t.Errorf("ended advisor notice = %q, want the ended wording", lines[2])
 	}
 	chair.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
 	end := await(t, ended)
