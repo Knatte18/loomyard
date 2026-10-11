@@ -117,6 +117,7 @@ var wordingClaims = []stencilClaims{
 	}, attackSurfaceClaims...)},
 	{"loom-rubric-plan-review.md", LoomRubricPlanReview, append([]claim{
 		{must: "independently reviewable unit", why: "granularity is one card per independently reviewable unit"},
+		{must: "lists only a test-file path while its `Intent` changes a named existing test, fake or helper", why: "an Edit card that hides a changed test member behind a test-file path is a finding"},
 		{must: "part of a module's public surface", why: "granularity gives a public-surface symbol its own card"},
 		{mustNot: "reviewable/testable", why: "granularity no longer turns on testability"},
 		{must: "`PATTERN-test-economy`", why: "a redundant planned test is a finding, grounded by the rule"},
@@ -185,6 +186,8 @@ var wordingClaims = []stencilClaims{
 		wantAll("a hub-wide refusal goes to the parent, never the operator", "is the parent's to resolve, never the operator's"),
 	)},
 	{"loom-template-plan.md", LoomTemplatePlan, joinClaims(wantAll("the card-granularity contract reaches the agent", "What a card is", "independently committable", "Carries the coverage for the behavior it introduces", "`PATTERN-test-economy`", "no substitute for test coverage"),
+		wantAll("an existing test member is named as a glyph, a new test function takes a plan: handle and a new test file a Create path",
+			"A card names an existing test function, fake or helper it changes as a member glyph", "A new test function in an existing file is a `**Create:**` declaration with a `plan:` handle", "A new test file is a `**Create:**` path"),
 		wantNone("the old bundle-a-test wording cannot return", "Bundles its own test", "not a substitute for a bundled test"),
 		wantAll("a reworded message's asserting tests join the card's targets", "greps the repository for the old text", "every test asserting it joins that card's targets"),
 		wantAll("root: resolution rules reach the agent", "`root:` is optional", "`<root>/<path>`", "worktree-root-relative"),
