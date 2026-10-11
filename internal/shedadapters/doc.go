@@ -98,6 +98,11 @@
 //     A recorded decision is acted on first, whatever the budget:
 //     a continue maps to Stuck, marked BudgetExempt exactly when the escalation's cause is budget, so a continue after a budget escalation spends no budget;
 //     a pending accept settles its record and maps to Done after Approve and Commit, for either cause.
+//     Auto-accept: a Bouncer told BouncerConfig.AutoAccept settles a spent budget as an accept instead of escalating.
+//     It fires for the budget cause alone, also over a CIRCLING verdict, and only on a harvest, the judge having written the verdict in this call, over a round with no decision and no escalation record.
+//     It records the round's decision file as an accept with cause budget and `automatic: true`, then takes the path a recorded parent accept takes (carry-over, settled record, Approve, Commit, Done),
+//     writing no escalation record and no parent notice; settling the record keeps its `automatic` value, which a parent's accept never sets.
+//     A replay of an earlier round's CONTINUE, a CIRCLING below the budget, an already escalated round, a recorded decision and an unknown or errored Bounces seam behave as with the flag false, which is the default.
 //     Carry-over: a Bouncer told a CarryOver seam, with the Segment its entry is filed under and the AnchorPath its paths are relative to, calls it on every Done that settles a judged round.
 //     The seam is called with discussionparser.CarryOverConverged before Approve on a CONVERGED settle,
 //     and with CarryOverAccepted before the settle write of a pending accept, so a failed write leaves the accept pending and its re-call retries.

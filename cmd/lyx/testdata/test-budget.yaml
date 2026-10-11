@@ -82,7 +82,7 @@ internal/seatengine: 17
 internal/segmentcolor: 4
 internal/selfreportcli: 3
 internal/selfreportengine: 12
-internal/shedadapters: 175
+internal/shedadapters: 176
 internal/shedbuild: 13
 internal/shedcheck: 3
 internal/shedcli: 17
