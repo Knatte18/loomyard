@@ -311,7 +311,19 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | producer re-run: superseded strand not removed | a producer row re-run finds a live strand of an earlier run of the same outputs and reed cannot remove it, or a BurlerRound row's half stays live because reed cannot stop it | transient | run "lyx reed remove <guid>", then re-step the row |
 | hub-wide config write refused | `lyx config` writes a `HubWide` module from a task pair's worktree, or from a session whose `LYX_STRAND_NAME` carries a slug; the hub file stays unchanged and no editor opens | correctness halt | the operator or the hub orch runs the same `lyx config` write from the prime worktree |
 | wiring guards | nil deps, an invalid producer list, empty paths | wiring guard | none per row; grouped |
-| raw I/O | `stat`, `mkdir`, `read`, `write` or `remove` of a status, seed, lock, park marker or records file fails | transient | re-run the refused verb; nothing is mutated |
+| card verbs: plan does not parse | `lyx loom insert-card` or `remove-card` cannot parse the plan | correctness halt | fix the file the message names so `lyx loom validate-plan` parses it, then re-run the verb |
+| card verbs: Card Index and card files disagree | `lyx loom insert-card` or `remove-card` finds the Card Index, the card files and the card headings out of step | correctness halt | run `lyx loom validate-plan` and fix its `index-file-mismatch` and `card-numbering` findings, then re-run the verb |
+| card verbs: position out of range | the position is not an integer, or lies outside `first_card` to the last card (plus one for `insert-card`) | correctness halt | pass a position from `first_card` to the last card, or one past it for `insert-card` |
+| card verbs: position at or before the last begun card | the position is at or before the last card of any batch webster has begun, a batch begun and not yet terminal included | correctness halt | a begun card is frozen, so insert or remove after the card the message names |
+| remove-card: only card | `lyx loom remove-card` names the plan's only card | correctness halt | insert the replacement card first, then remove |
+| insert-card: invalid slug | the slug is not lowercase letters and digits joined by single hyphens | correctness halt | pass lowercase letters and digits joined by single hyphens |
+| insert-card: invalid intent | the `--intent` is empty or spans more than one line | correctness halt | pass a non-empty one-line `--intent` |
+| card verbs: renumber journal present | `lyx loom insert-card` or `remove-card` finds the journal an interrupted call left | correctness halt | run `lyx loom restore-renumber`, then re-run the verb |
+| card verbs: reversal failed | a renumber failed and undoing it failed too, so the journal is kept | correctness halt | run `lyx loom restore-renumber` |
+| restore-renumber: no journal | `lyx loom restore-renumber` finds no journal | correctness halt | nothing to restore; `lyx loom insert-card` or `lyx loom remove-card` is the verb to run |
+| restore-renumber: journal invalid | the journal does not decode, or names a path outside the plan directory's top-level card and overview files | correctness halt | delete the named journal file, then run `lyx loom validate-plan`, whose findings name any card left inconsistent |
+| restore-renumber: restore failed partway | a file operation of the restore fails and the journal is kept | transient | re-run `lyx loom restore-renumber` |
+| raw I/O | `stat`, `mkdir`, `read`, `write`, `rename` or `remove` of a status, seed, lock, park marker or records file, of the plan directory's card and overview files or of the renumber journal fails, or the card verbs' run-record read or webster lease fails | transient | re-run the refused verb; nothing is mutated |
 
 ## gate
 

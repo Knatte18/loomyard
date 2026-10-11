@@ -82,6 +82,11 @@ type RenumberResult struct {
 var (
 	// ErrRenumberInput marks a position, slug or intent the renumber refuses.
 	ErrRenumberInput = errors.New("planparser: invalid renumber input")
+	// ErrRenumberPosition, ErrRenumberOnlyCard, ErrRenumberSlug and ErrRenumberIntent each name which input was refused, and each is an ErrRenumberInput.
+	ErrRenumberPosition = fmt.Errorf("%w: position", ErrRenumberInput)
+	ErrRenumberOnlyCard = fmt.Errorf("%w: only card", ErrRenumberInput)
+	ErrRenumberSlug     = fmt.Errorf("%w: slug", ErrRenumberInput)
+	ErrRenumberIntent   = fmt.Errorf("%w: intent", ErrRenumberInput)
 	// ErrRenumberPlanInconsistent marks a plan whose Card Index, card files or card headings disagree.
 	ErrRenumberPlanInconsistent = errors.New("planparser: plan is inconsistent")
 	// ErrRenumberJournalExists marks a journal left by an earlier renumber that was never completed or restored.
@@ -113,14 +118,14 @@ func InsertCard(ops RenumberIO, planDir, journalPath string, number int, slug, i
 
 	first, last := cardRange(plan)
 	if number < first || number > last+1 {
-		return nil, fmt.Errorf("%w: position %d is outside the plan's cards %d to %d; choose a position from %d to %d", ErrRenumberInput, number, first, last, first, last+1)
+		return nil, fmt.Errorf("%w: %d is outside the plan's cards %d to %d; choose a position from %d to %d", ErrRenumberPosition, number, first, last, first, last+1)
 	}
 	if !cardSlugRe.MatchString(slug) {
-		return nil, fmt.Errorf("%w: slug %q must be lowercase letters and digits joined by single hyphens", ErrRenumberInput, slug)
+		return nil, fmt.Errorf("%w: %q must be lowercase letters and digits joined by single hyphens", ErrRenumberSlug, slug)
 	}
 	intent = strings.TrimSpace(intent)
 	if intent == "" || strings.ContainsAny(intent, "\r\n") {
-		return nil, fmt.Errorf("%w: the intent must be one non-empty line", ErrRenumberInput)
+		return nil, fmt.Errorf("%w: the intent must be one non-empty line", ErrRenumberIntent)
 	}
 
 	var moved []MovedCard
@@ -152,10 +157,10 @@ func RemoveCard(ops RenumberIO, planDir, journalPath string, number int) (*Renum
 
 	first, last := cardRange(plan)
 	if len(plan.Cards) == 1 {
-		return nil, fmt.Errorf("%w: the plan has one card, and a plan cannot be left without a card; replace the plan instead", ErrRenumberInput)
+		return nil, fmt.Errorf("%w: the plan has one card, and a plan cannot be left without a card; insert the replacement card first, then remove this one", ErrRenumberOnlyCard)
 	}
 	if number < first || number > last {
-		return nil, fmt.Errorf("%w: position %d is outside the plan's cards %d to %d; choose a position from %d to %d", ErrRenumberInput, number, first, last, first, last)
+		return nil, fmt.Errorf("%w: %d is outside the plan's cards %d to %d; choose a position from %d to %d", ErrRenumberPosition, number, first, last, first, last)
 	}
 
 	var removed string
