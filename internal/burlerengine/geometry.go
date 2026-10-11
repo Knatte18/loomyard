@@ -27,4 +27,8 @@ type Geometry struct {
 	// ParentName is the told parent agent name the round prompt renders its parent directive from.
 	// An empty name renders the directive's no-parent variant.
 	ParentName string
+	// Shortname and Slug are the hub shortname and the task slug the round's agent names are formed from.
+	// An empty Slug gives the two-segment name form.
+	Shortname string
+	Slug      string
 }
