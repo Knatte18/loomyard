@@ -1,6 +1,6 @@
 // start_test.go drives shuttle's real start path with Claude's own box and session readings over a fake reed.
 
-package claudeengine_test
+package claudeengine
 
 import (
 	"os"
@@ -11,7 +11,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
@@ -23,7 +22,7 @@ func (c *virtualClock) Sleep(d time.Duration) { c.now = c.now.Add(d) }
 
 // cannedLaunchEngine is Claude with a canned Prepare, so every box and session reading is Claude's own.
 type cannedLaunchEngine struct {
-	*claudeengine.Claude
+	*Claude
 }
 
 func (cannedLaunchEngine) Prepare(string, shuttleengine.Spec, shuttleengine.Config) (shuttleengine.Launch, error) {
@@ -47,7 +46,7 @@ func TestStart_LoneEOLMarkBoxTakesStartupSends(t *testing.T) {
 		return strand, nil
 	}
 
-	claude := claudeengine.New()
+	claude := New()
 	cfg := shuttleengine.Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1, RunTimeoutMin: 60, StartupTimeoutS: 30, BackgroundShellWaitMin: 10}
 	runner := shuttleengine.NewRunner(reed, cannedLaunchEngine{claude}, worktree, worktree, cfg)
 	runner.SetClock(&virtualClock{now: time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)})
