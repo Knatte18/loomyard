@@ -8,13 +8,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// bouncerEntry is the Constructor for the "Bouncer" registry row: it validates cfg and env, joins and creates the run directory a segment's Bouncer and BurlerRound rows share, resolves artifact_paths against env.AnchorPath, resolves the optional commit_seam key to one of env.CommitPlan or env.CommitDiscussion, resolves the optional approve_seam key to env.ApprovePlan and nothing else, resolves the optional skip_seam key to env.SkipPlanReview, reads the optional carry_over key, the segment name that selects env.CarryOver, reads the optional boolean cluster_excludes key (default false) telling the judge whether its partner round has a cluster fan, and returns shedadapters.NewBouncer(cfg).
+// bouncerEntry is the Constructor for the "Bouncer" registry row: it validates cfg and env, joins and creates the run directory a segment's Bouncer and BurlerRound rows share, resolves artifact_paths against env.AnchorPath, takes the row's seed and judge models from env.RowBouncerModels, resolves the optional commit_seam key to one of env.CommitPlan or env.CommitDiscussion, resolves the optional approve_seam key to env.ApprovePlan and nothing else, resolves the optional skip_seam key to env.SkipPlanReview, reads the optional carry_over key, the segment name that selects env.CarryOver, reads the optional boolean cluster_excludes key (default false) telling the judge whether its partner round has a cluster fan, and returns shedadapters.NewBouncer(cfg).
 func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -25,18 +24,6 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		return nil, err
 	}
 	rubricStencil, err := configString(cfg, "rubric_stencil", true)
-	if err != nil {
-		return nil, err
-	}
-	model, err := configString(cfg, "model", false)
-	if err != nil {
-		return nil, err
-	}
-	effort, err := configString(cfg, "effort", false)
-	if err != nil {
-		return nil, err
-	}
-	version, err := configString(cfg, "version", false)
 	if err != nil {
 		return nil, err
 	}
@@ -62,24 +49,16 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	}
 	// A fan the wiring names for this row asks the judge for exclude_lenses exactly as the row's own cluster_excludes key does.
 	clusterExcludes = clusterExcludes || env.RowClusterFans[name] != ""
-	// A row setting model/effort/version overrides the Env value; a row omitting it takes the Env
-	// value; both absent leaves the provider default. An empty Config value and an absent key are
-	// the same thing here -- configString with required false returns "" for both -- and that is
-	// deliberate: there is no meaningful "explicitly empty" model.
-	if model == "" {
-		model = env.JudgeModel
-	}
-	if effort == "" {
-		effort = env.JudgeEffort
-	}
-	if version == "" {
-		version = env.JudgeVersion
-	}
 	// There is deliberately no "report_name" key: BouncerConfig.ReportName is pinned below, not
 	// recipe-authorable, so a "report_name" entry in cfg is rejected here as unrecognised rather
 	// than silently ignored.
-	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "model", "effort", "version", "commit_seam", "approve_seam", "skip_seam", "carry_over", "cluster_excludes"); err != nil {
+	// The same holds for "model", "effort" and "version": a Bouncer pass's model comes from env.RowBouncerModels alone.
+	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "commit_seam", "approve_seam", "skip_seam", "carry_over", "cluster_excludes"); err != nil {
 		return nil, err
+	}
+	models, ok := env.RowBouncerModels[name]
+	if !ok {
+		return nil, fmt.Errorf("shedrecipe: Bouncer: row %q has no entry in Env.RowBouncerModels; the wiring must fill one per Bouncer row", name)
 	}
 
 	// commit_seam and approve_seam are two independent optional config keys: commit_seam names
@@ -199,7 +178,6 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		bounces = func() (int, int, bool, error) { return env.SegmentBounces(name) }
 	}
 
-	rowModel := burlerengine.ModelChoice{Model: model, Effort: effort, Version: version}
 	bouncerCfg := shedadapters.BouncerConfig{
 		Name:          name,
 		RunDir:        runDir,
@@ -216,7 +194,7 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		PublishFailure:  env.PublishFailure,
 		WebsterRecord:   env.WebsterRecord,
 		RubricStencil:   rubricStencil,
-		Models:          shedadapters.BouncerModels{Seed: rowModel, Judge: rowModel},
+		Models:          models,
 		ClusterExcludes: clusterExcludes,
 		Shuttle:         env.Shuttle,
 		Approve:         approve,

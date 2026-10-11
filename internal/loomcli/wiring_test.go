@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -834,15 +835,38 @@ func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]s
 // plan_review lands in the Plan-Burler row's RowReviewModels entry alone, and the Discussion-Burler row keeps the run-wide models.
 // The Webster-Burler row takes the template's webster_review (one sonnet entry of effort high) with the run-wide fix models.
 // fix_start lands in Env.FixStart.
+// plan_judge, seed and webster_seed land in each Bouncer row's RowBouncerModels entry.
 func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	t.Parallel()
 
 	loc := hubLocation(t, "pair", ".")
-	seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"plan_review": "opus[effort=low]", "fix_start": "after-review"})
+	seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{
+		"plan_review": "opus[effort=low]", "fix_start": "after-review",
+		"plan_judge": "opus[effort=high]", "seed": "haiku[effort=low]", "webster_seed": "opus[effort=low]",
+	})
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	// Each Bouncer row takes its segment's resolved pair: the template's judge is sonnet of effort medium.
+	wantBouncerModels := map[string]shedadapters.BouncerModels{
+		loomshed.NameDiscussionBouncer: {
+			Seed:  burlerengine.ModelChoice{Model: "haiku", Effort: "low"},
+			Judge: burlerengine.ModelChoice{Model: "sonnet", Effort: "medium"},
+		},
+		loomshed.NamePlanBouncer: {
+			Seed:  burlerengine.ModelChoice{Model: "haiku", Effort: "low"},
+			Judge: burlerengine.ModelChoice{Model: "opus", Effort: "high"},
+		},
+		loomshed.NameWebsterBouncer: {
+			Seed:  burlerengine.ModelChoice{Model: "opus", Effort: "low"},
+			Judge: burlerengine.ModelChoice{Model: "sonnet", Effort: "medium"},
+		},
+	}
+	if !reflect.DeepEqual(c.env.RowBouncerModels, wantBouncerModels) {
+		t.Errorf("RowBouncerModels = %+v; want %+v", c.env.RowBouncerModels, wantBouncerModels)
 	}
 
 	plan := c.env.RowReviewModels[loomshed.NamePlanBurler]

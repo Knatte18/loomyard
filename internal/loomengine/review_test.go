@@ -98,25 +98,95 @@ func TestResolveReview(t *testing.T) {
 	}
 }
 
-// TestResolveJudge verifies ResolveJudge resolves the template's judge value to the sonnet model with effort medium.
+// TestResolveJudge verifies ResolveJudge resolves each segment's judge and seed through the fallback order: a segment's judge key, else judge; a segment's seed key, else seed, else the segment's resolved judge.
 func TestResolveJudge(t *testing.T) {
-	cfg := Config{Judge: "sonnet[medium]"}
+	t.Parallel()
+	// segmentModels is the seed and judge model of one segment, in discussion, plan, webster order.
+	type segmentModels struct{ seed, judge string }
+	tests := []struct {
+		name string
+		cfg  Config
+		want [3]segmentModels
+	}{
+		{
+			name: "all keys empty resolves every pass to judge",
+			cfg:  Config{Judge: "sonnet[medium]"},
+			want: [3]segmentModels{{"sonnet", "sonnet"}, {"sonnet", "sonnet"}, {"sonnet", "sonnet"}},
+		},
+		{
+			name: "seed moves every seed",
+			cfg:  Config{Judge: "sonnet[medium]", Seed: "haiku"},
+			want: [3]segmentModels{{"haiku", "sonnet"}, {"haiku", "sonnet"}, {"haiku", "sonnet"}},
+		},
+		{
+			name: "plan_judge alone moves plan's judge and seed together",
+			cfg:  Config{Judge: "sonnet[medium]", PlanJudge: "opus"},
+			want: [3]segmentModels{{"sonnet", "sonnet"}, {"opus", "opus"}, {"sonnet", "sonnet"}},
+		},
+		{
+			name: "plan_judge with seed keeps plan's seed off the judge",
+			cfg:  Config{Judge: "sonnet[medium]", PlanJudge: "opus", Seed: "haiku"},
+			want: [3]segmentModels{{"haiku", "sonnet"}, {"haiku", "opus"}, {"haiku", "sonnet"}},
+		},
+		{
+			name: "plan_judge with plan_seed keeps plan's seed off the judge",
+			cfg:  Config{Judge: "sonnet[medium]", PlanJudge: "opus", PlanSeed: "haiku"},
+			want: [3]segmentModels{{"sonnet", "sonnet"}, {"haiku", "opus"}, {"sonnet", "sonnet"}},
+		},
+		{
+			name: "webster_seed alone moves only webster's seed",
+			cfg:  Config{Judge: "sonnet[medium]", WebsterSeed: "haiku"},
+			want: [3]segmentModels{{"sonnet", "sonnet"}, {"sonnet", "sonnet"}, {"haiku", "sonnet"}},
+		},
+		{
+			name: "plan_seed beats seed for plan alone",
+			cfg:  Config{Judge: "sonnet[medium]", Seed: "haiku", PlanSeed: "opus"},
+			want: [3]segmentModels{{"haiku", "sonnet"}, {"opus", "sonnet"}, {"haiku", "sonnet"}},
+		},
+		{
+			name: "discussion_judge and webster_judge move their own segments",
+			cfg:  Config{Judge: "sonnet[medium]", DiscussionJudge: "opus", WebsterJudge: "haiku"},
+			want: [3]segmentModels{{"opus", "opus"}, {"sonnet", "sonnet"}, {"haiku", "haiku"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			reg, err := modelspec.LoadRegistry(t.TempDir())
+			if err != nil {
+				t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+			}
 
-	reg, err := modelspec.LoadRegistry(t.TempDir())
-	if err != nil {
-		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+			settings, err := ResolveJudge(tt.cfg, reg)
+			if err != nil {
+				t.Fatalf("ResolveJudge(...) = _, %v; want nil error", err)
+			}
+			got := [3]BouncerModels{settings.Discussion, settings.Plan, settings.Webster}
+			for i, segment := range []string{"discussion", "plan", "webster"} {
+				if !strings.Contains(got[i].Seed.Model, tt.want[i].seed) {
+					t.Errorf("ResolveJudge(...).%s seed model = %q; want a %s model", segment, got[i].Seed.Model, tt.want[i].seed)
+				}
+				if !strings.Contains(got[i].Judge.Model, tt.want[i].judge) {
+					t.Errorf("ResolveJudge(...).%s judge model = %q; want a %s model", segment, got[i].Judge.Model, tt.want[i].judge)
+				}
+			}
+		})
 	}
 
-	settings, err := ResolveJudge(cfg, reg)
-	if err != nil {
-		t.Fatalf("ResolveJudge(...) = _, %v; want nil error", err)
-	}
-	if !strings.Contains(settings.Model, "sonnet") {
-		t.Errorf("ResolveJudge(...).Model = %q; want a sonnet model", settings.Model)
-	}
-	if settings.Effort != "medium" {
-		t.Errorf("ResolveJudge(...).Effort = %q; want %q", settings.Effort, "medium")
-	}
+	t.Run("effort of the judge key reaches the pair", func(t *testing.T) {
+		t.Parallel()
+		reg, err := modelspec.LoadRegistry(t.TempDir())
+		if err != nil {
+			t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+		}
+		settings, err := ResolveJudge(Config{Judge: "sonnet[medium]"}, reg)
+		if err != nil {
+			t.Fatalf("ResolveJudge(...) = _, %v; want nil error", err)
+		}
+		if settings.Plan.Judge.Effort != "medium" || settings.Plan.Seed.Effort != "medium" {
+			t.Errorf("ResolveJudge(...).Plan = %+v; want effort medium on both passes", settings.Plan)
+		}
+	})
 }
 
 // TestResolveReviewAndJudge_MalformedSpec verifies an ungrammatical review, fix, judge or rework model-spec returns an error naming its role, rather than being silently carried into a producer's spawn site, and that a bad later review entry or a bad fix entry also names its entry index and the way forward.
@@ -162,6 +232,69 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 			name: "judge",
 			role: "judge",
 			cfg:  Config{Judge: "sonnet[medium"},
+			resolve: func(cfg Config, reg modelspec.Registry) error {
+				_, err := ResolveJudge(cfg, reg)
+				return err
+			},
+		},
+		{
+			name: "seed",
+			role: "seed",
+			cfg:  Config{Judge: "sonnet[medium]", Seed: "haiku[medium"},
+			resolve: func(cfg Config, reg modelspec.Registry) error {
+				_, err := ResolveJudge(cfg, reg)
+				return err
+			},
+		},
+		{
+			name: "discussion_judge",
+			role: "discussion_judge",
+			cfg:  Config{Judge: "sonnet[medium]", DiscussionJudge: "opus[medium"},
+			resolve: func(cfg Config, reg modelspec.Registry) error {
+				_, err := ResolveJudge(cfg, reg)
+				return err
+			},
+		},
+		{
+			name: "plan_judge",
+			role: "plan_judge",
+			cfg:  Config{Judge: "sonnet[medium]", PlanJudge: "opus[medium"},
+			resolve: func(cfg Config, reg modelspec.Registry) error {
+				_, err := ResolveJudge(cfg, reg)
+				return err
+			},
+		},
+		{
+			name: "webster_judge",
+			role: "webster_judge",
+			cfg:  Config{Judge: "sonnet[medium]", WebsterJudge: "opus[medium"},
+			resolve: func(cfg Config, reg modelspec.Registry) error {
+				_, err := ResolveJudge(cfg, reg)
+				return err
+			},
+		},
+		{
+			name: "discussion_seed",
+			role: "discussion_seed",
+			cfg:  Config{Judge: "sonnet[medium]", DiscussionSeed: "opus[medium"},
+			resolve: func(cfg Config, reg modelspec.Registry) error {
+				_, err := ResolveJudge(cfg, reg)
+				return err
+			},
+		},
+		{
+			name: "plan_seed",
+			role: "plan_seed",
+			cfg:  Config{Judge: "sonnet[medium]", PlanSeed: "opus[medium"},
+			resolve: func(cfg Config, reg modelspec.Registry) error {
+				_, err := ResolveJudge(cfg, reg)
+				return err
+			},
+		},
+		{
+			name: "webster_seed",
+			role: "webster_seed",
+			cfg:  Config{Judge: "sonnet[medium]", WebsterSeed: "opus[medium"},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveJudge(cfg, reg)
 				return err

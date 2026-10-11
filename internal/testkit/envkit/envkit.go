@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -167,6 +168,11 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		Burler:             &shedfake.BurlerRunner{},
 		Seats:              &shedfake.SeatRunner{},
 		Models:             modelspec.Registry{"opus": {Engine: "claude", Model: "claude-opus-test"}},
+		RowBouncerModels: map[string]shedadapters.BouncerModels{
+			loomshed.NameDiscussionBouncer: {},
+			loomshed.NamePlanBouncer:       {},
+			loomshed.NameWebsterBouncer:    {},
+		},
 		WebsterRun: func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
 			return websterengine.RunResult{}, nil
 		},

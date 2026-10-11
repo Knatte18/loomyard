@@ -13,7 +13,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -219,25 +221,34 @@ func TestBouncerEntry_ReportNamePinning(t *testing.T) {
 	}
 }
 
-// TestBouncerEntry_EnvJudgeFallback covers the three fallback outcomes for bouncerEntry's model/effort/version resolution:
-// a row omitting the keys takes env.JudgeModel/JudgeEffort/JudgeVersion, never the Review* values;
-// a row setting all three overrides the Env values;
-// both absent leaves all three empty (the provider default).
+// TestBouncerEntry_EnvJudgeFallback covers where a Bouncer row's models come from:
+// the row takes its env.RowBouncerModels entry's seed triple on the seed spawn and its judge triple on the judge spawn, never the Review* values and never another row's entry.
 // shedadapters.BouncerConfig's cfg field is unexported and this is a
-// different package, so the resolved triple is asserted through behaviour instead: one Call is
+// different package, so the triples are asserted through behaviour instead: one Call is
 // driven against the entry's producer with the shedfake.Shuttle already on newTestEnv's Env, and the
 // recorded shuttleengine.Spec's Model, Effort, and Version are asserted.
 func TestBouncerEntry_EnvJudgeFallback(t *testing.T) {
-	// callAndCaptureSpec constructs a Bouncer entry from cfg and env, drives the seed-pass Call --
-	// the first Call on a fresh run directory spawns unconditionally -- and returns the recorded
-	// shuttleengine.Spec.
-	callAndCaptureSpec := func(t *testing.T, cfg Config, env Env) shuttleengine.Spec {
-		t.Helper()
-		writeStencil(t, env.StencilsDir, "bouncer-template-seed", "seed template, no markers\n")
+	seed := burlerengine.ModelChoice{Model: "seed-model", Effort: "seed-effort", Version: "seed-version"}
+	judge := burlerengine.ModelChoice{Model: "judge-model", Effort: "judge-effort", Version: "judge-version"}
 
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+	// callAndCaptureSpec constructs the "review-bounce" Bouncer entry over an Env carrying distinct seed and judge triples.
+	// It optionally writes round 1's review report so the Call judges instead of seeding, and returns the one recorded shuttleengine.Spec.
+	callAndCaptureSpec := func(t *testing.T, writeReport bool) shuttleengine.Spec {
+		t.Helper()
+		env := newTestEnv(t)
+		env.RowBouncerModels["review-bounce"] = shedadapters.BouncerModels{Seed: seed, Judge: judge}
+		writeStencil(t, env.StencilsDir, "bouncer-template-seed", "seed template, no markers\n")
+		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
+
+		producer, err := bouncerEntry("review-bounce", minimalBouncerConfig(t, env), env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		if writeReport {
+			reportPath := filepath.Join(env.RunRoot, "review-segment", "round-1-review.md")
+			if err := os.WriteFile(reportPath, []byte("a review\n"), 0o644); err != nil {
+				t.Fatalf("write round-1-review.md: %v", err)
+			}
 		}
 		if _, _, err := producer.Call(context.Background()); err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
@@ -245,67 +256,32 @@ func TestBouncerEntry_EnvJudgeFallback(t *testing.T) {
 
 		fake := env.Shuttle.(*shedfake.Shuttle)
 		if len(fake.Specs) != 1 {
-			t.Fatalf("len(fake.Specs) = %d; want 1 (the seed spawn)", len(fake.Specs))
+			t.Fatalf("len(fake.Specs) = %d; want 1", len(fake.Specs))
 		}
 		return fake.Specs[0]
 	}
 
-	t.Run("RowOmitsTakesEnvValues", func(t *testing.T) {
-		env := newTestEnv(t)
-		env.JudgeModel = "env-model"
-		env.JudgeEffort = "env-effort"
-		env.JudgeVersion = "env-version"
-		cfg := minimalBouncerConfig(t, env)
-
-		spec := callAndCaptureSpec(t, cfg, env)
-		if spec.Model != "env-model" {
-			t.Errorf("spec.Model = %q; want %q", spec.Model, "env-model")
-		}
-		if spec.Effort != "env-effort" {
-			t.Errorf("spec.Effort = %q; want %q", spec.Effort, "env-effort")
-		}
-		if spec.Version != "env-version" {
-			t.Errorf("spec.Version = %q; want %q", spec.Version, "env-version")
-		}
-	})
-
-	t.Run("RowSetsOverridesEnvValues", func(t *testing.T) {
-		env := newTestEnv(t)
-		env.JudgeModel = "env-model"
-		env.JudgeEffort = "env-effort"
-		env.JudgeVersion = "env-version"
-		cfg := minimalBouncerConfig(t, env)
-		cfg["model"] = "row-model"
-		cfg["effort"] = "row-effort"
-		cfg["version"] = "row-version"
-
-		spec := callAndCaptureSpec(t, cfg, env)
-		if spec.Model != "row-model" {
-			t.Errorf("spec.Model = %q; want %q", spec.Model, "row-model")
-		}
-		if spec.Effort != "row-effort" {
-			t.Errorf("spec.Effort = %q; want %q", spec.Effort, "row-effort")
-		}
-		if spec.Version != "row-version" {
-			t.Errorf("spec.Version = %q; want %q", spec.Version, "row-version")
-		}
-	})
-
-	t.Run("BothAbsentLeavesProviderDefault", func(t *testing.T) {
-		env := newTestEnv(t)
-		cfg := minimalBouncerConfig(t, env)
-
-		spec := callAndCaptureSpec(t, cfg, env)
-		if spec.Model != "" {
-			t.Errorf("spec.Model = %q; want \"\"", spec.Model)
-		}
-		if spec.Effort != "" {
-			t.Errorf("spec.Effort = %q; want \"\"", spec.Effort)
-		}
-		if spec.Version != "" {
-			t.Errorf("spec.Version = %q; want \"\"", spec.Version)
-		}
-	})
+	tests := []struct {
+		name        string
+		writeReport bool
+		wantRole    string
+		want        burlerengine.ModelChoice
+	}{
+		{"SeedSpawnTakesTheRowsSeedTriple", false, "bouncer-seed", seed},
+		{"JudgeSpawnTakesTheRowsJudgeTriple", true, "bouncer-judge", judge},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec := callAndCaptureSpec(t, tt.writeReport)
+			if spec.Role != tt.wantRole {
+				t.Fatalf("spec.Role = %q; want %q", spec.Role, tt.wantRole)
+			}
+			got := burlerengine.ModelChoice{Model: spec.Model, Effort: spec.Effort, Version: spec.Version}
+			if got != tt.want {
+				t.Errorf("spec model = %+v; want %+v", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestBouncerEntry_ReportNameKeyRejected(t *testing.T) {
@@ -318,6 +294,24 @@ func TestBouncerEntry_ReportNameKeyRejected(t *testing.T) {
 }
 
 func TestBouncerEntry_ConstructionFailures(t *testing.T) {
+	t.Run("NoRowBouncerModelsEntry", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := minimalBouncerConfig(t, env)
+		_, err := bouncerEntry("unwired-row", cfg, env)
+		assertErrContains(t, err, "unwired-row")
+		assertErrContains(t, err, "Env.RowBouncerModels")
+	})
+
+	for _, key := range []string{"model", "effort", "version"} {
+		t.Run("RetiredKey_"+key, func(t *testing.T) {
+			env := newTestEnv(t)
+			cfg := minimalBouncerConfig(t, env)
+			cfg[key] = "x"
+			_, err := bouncerEntry("review-bounce", cfg, env)
+			assertErrContains(t, err, key)
+		})
+	}
+
 	t.Run("MissingArtifactPaths", func(t *testing.T) {
 		env := newTestEnv(t)
 		writeStencil(t, env.StencilsDir, "bouncer-rubric", "BLOCKING: a bug.\n")

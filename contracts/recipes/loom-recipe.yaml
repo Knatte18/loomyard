@@ -108,9 +108,8 @@ producers:
       # carry_over names this row's own segment: the Bouncer files the round's still-open findings
       # under it in the decision record's Open risks section, and a test pins it equal to segment.
       carry_over: Discussion-Review
-      # No model/effort/version key: the absence is what makes this row take the run-wide
-      # Env.Review* values loom.yaml supplies, rather than a recipe-literal, untunable-without-a-
-      # rebuild model.
+      # No model/effort/version key: the row refuses them as unknown keys, and loom.yaml's judge,
+      # seed and per-segment judge and seed keys are the only source of this row's passes' models.
 
   - name: Discussion-Burler
     engine: BurlerRound
@@ -196,9 +195,8 @@ producers:
       # carry_over names this row's own segment: the Bouncer files the round's still-open findings
       # under it in the decision record's Open risks section, and a test pins it equal to segment.
       carry_over: Plan-Review
-      # No model/effort/version key: the absence is what makes this row take the run-wide
-      # Env.Review* values loom.yaml supplies, rather than a recipe-literal, untunable-without-a-
-      # rebuild model.
+      # No model/effort/version key: the row refuses them as unknown keys, and loom.yaml's judge,
+      # seed and per-segment judge and seed keys are the only source of this row's passes' models.
 
   - name: Plan-Burler
     engine: BurlerRound
@@ -290,9 +288,8 @@ producers:
       # carry_over names this row's own segment: the Bouncer files the round's still-open findings
       # under it in the decision record's Open risks section, and a test pins it equal to segment.
       carry_over: Webster-Review
-      # No model/effort/version key: the absence is what makes this row take the run-wide
-      # Env.Review* values loom.yaml supplies, rather than a recipe-literal, untunable-without-a-
-      # rebuild model.
+      # No model/effort/version key: the row refuses them as unknown keys, and loom.yaml's judge,
+      # seed and per-segment judge and seed keys are the only source of this row's passes' models.
 
   - name: Webster-Burler
     engine: BurlerRound
