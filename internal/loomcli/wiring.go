@@ -549,7 +549,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	}
 
 	// A pair run records its parent branch in the origin record, so the record file's presence tells the headroom lint its merge base.
-	// The check only stats, because reading the record would create the weft lock directory and seed the weft exclude.
+	// The check only stats, because reading the record would create the records-side lock directory and seed its exclude.
 	var verifyMergeBase func() (string, error)
 	if _, err := os.Stat(fabricengine.OriginRecordPath(location)); err == nil {
 		verifyMergeBase = pairMergeBase(location)
