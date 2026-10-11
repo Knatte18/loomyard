@@ -31,6 +31,10 @@ const (
 	hookEventPermissionRequest = "PermissionRequest"
 )
 
+// SessionStartupPayloadFixture is the payload line Claude's SessionStart hook records when a fresh session starts.
+// A stubbed provider standing in for claude appends it to the run's events file so the run reads the session start a real launch records.
+const SessionStartupPayloadFixture = `{"hook_event_name":"` + hookEventSessionStart + `","source":"startup"}`
+
 // askUserQuestionToolName is the tool whose PreToolUse payload is an ask.
 const askUserQuestionToolName = "AskUserQuestion"
 
