@@ -24,7 +24,8 @@ A separate reviewer session is writing the review of the target while you orient
    It is read-only and returns at its own cap, so a reply that is not ready yet means: run it again.
 3. **Validate.**
    Read the review at `{{.review_path}}`, whose format is described in `{{.review_format_path}}`.
-   Check each finding against the code and the fasit.
+   Check each finding's premise against the code and the fasit and, separately, the change its `**Fix:**` line proposes.
+   `{{.instruction_3_path}}` says what to do with each result.
 4. **Fix.**
    Read and execute `{{.instruction_3_path}}`: the fix-everything rule, your write surface and the fixer-report.
 

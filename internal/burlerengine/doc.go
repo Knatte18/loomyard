@@ -130,9 +130,13 @@
 // Leaving low-severity findings unfixed "because they're just nits" is a known failure mode:
 // unfixed nits re-surface or silently vanish across rounds instead of ever closing, so round count goes up instead of down.
 // Two exceptions exist.
-// A finding whose premise the fixer shows false against the code or the fasit is disputed with evidence in the fixer-report's Disputed section.
+// A finding is disputed, with cited evidence in the fixer-report's Disputed section, on one of two grounds:
+// its premise is false against the code or the fasit, or the premise holds but every change that addresses it makes the target worse.
+// One sound change means the finding is fixed, not disputed, and a finding whose only sound change leaves the fixer's write surface is deferred.
+// When the premise holds and the proposed change is wrong, the fixer fixes with its own change and marks the finding as fixed differently in the fixer-report's list of changes.
 // Severity, size, cost or disagreement with the rubric never justify a dispute, and a dispute never converges a segment on its own.
-// Something the round genuinely cannot do alone is named explicitly, with its reason, in the deferred section.
+// Something the round genuinely cannot do alone is named explicitly, with its reason, in the deferred section, which keeps that meaning.
+// A reviewer that re-raises a disputed finding answers the dispute's evidence in that finding's Issue.
 //
 // # Finding class
 //

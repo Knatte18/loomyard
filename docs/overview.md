@@ -493,7 +493,7 @@ User-facing modules each get one `lyx <module>` namespace:
   See the `internal/shedengine`, `internal/shedadapters`, `internal/shedcheck`, `internal/shedrecipe`, `internal/shedbuild`, `internal/shedverbs`, `internal/shedcli`, `internal/shedrun`, and `internal/loomrecipe` package documentation, and [the recipe format](../contracts/specs/shed-recipe-spec.md).
 - **burler** — one review+fix round: two agents, a reviewer then a fixer, no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
   `loom.yaml`'s `discussion_fan` and `plan_fan` turn the lens fan on for Discussion-Review and Plan-Review, off by default.
-  The reviewer writes the review while the fixer orients, and the fixer waits on a Go-written ready marker before it validates and fixes the findings, disputing one only with evidence that its premise is false.
+  The reviewer writes the review while the fixer orients, and the fixer waits on a Go-written ready marker before it validates and fixes the findings, disputing one only with evidence that its premise is false or that every fix makes the target worse, and fixing a real finding with its own change when the proposed one is wrong.
   Profile-driven: `{overlay, source}` fix-scope, tool-use; `loom.yaml`'s `review` and `fix` keys pick each half's model per round.
   Cluster review fans the reviewer out into N fork-subagent reviewers by naming a fan (`cluster-fan`) from the seed-only `burler.yaml` lens/fan library — never on by default.
   Strict frontmatter verdict parse;

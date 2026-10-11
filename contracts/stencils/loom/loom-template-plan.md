@@ -22,7 +22,7 @@ Read `{{.decision_record_path}}`.
 This is your **sole** input — never read the support log or the board.
 If the file is missing or empty, STOP and report that rather than inventing scope.
 
-An entry between `<!-- lyx:carry-over … -->` marker lines in `## Open risks` lists review findings whose fix in the record no fresh reviewer has seen.
+An entry between `<!-- lyx:carry-over … -->` marker lines in `## Open risks` lists review findings the closing round's fixer fixed or disputed, unseen by a fresh reviewer; the entry's fixer report says which.
 Check each one against the code while you explore, and never plan an entry as scope.
 
 A scope addition that arrives after the Discussion is a design call the parent records.

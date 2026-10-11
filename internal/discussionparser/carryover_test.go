@@ -61,7 +61,7 @@ func TestWriteCarryOver_RendersConvergedAndAcceptedEntries(t *testing.T) {
 		want  string
 	}{
 		{"converged", converged, openMarker + "\n" +
-			"- Plan-Review, round 2: converged; each finding below was addressed by the round's fixer, and no fresh reviewer has seen the fix.\n" +
+			"- Plan-Review, round 2: converged; each finding below was fixed or disputed by the round's fixer, and no fresh reviewer has seen the result; the fixer report says which.\n" +
 			"  Review: reviews/round-2/review.md; fixer report: reviews/round-2/fixer-report.md.\n" +
 			"  - cache-key (class design, severity MEDIUM, open in rounds 1, 2)\n" + closeMarker},
 		{"accepted", accepted, openMarker + "\n" +

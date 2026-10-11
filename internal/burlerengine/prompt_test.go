@@ -379,6 +379,7 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 		requireContains(t, got, p.PriorFixerReports[0])
 		requireContains(t, got, "OWN findings first")
 		requireContains(t, got, "deferred and disputed items")
+		requireContains(t, got, "why the dispute's evidence does not hold")
 	})
 }
 
