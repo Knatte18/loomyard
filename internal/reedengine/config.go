@@ -29,6 +29,8 @@ type Config struct {
 
 	Watchdog string `yaml:"watchdog"`
 
+	TmuxConf string `yaml:"tmux_conf"`
+
 	Selvage SelvageConfig `yaml:"selvage"`
 
 	// SegmentColors maps a loom segment key to a palette color name.

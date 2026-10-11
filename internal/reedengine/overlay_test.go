@@ -8,6 +8,7 @@ package reedengine
 
 import (
 	"errors"
+	"runtime"
 	"slices"
 	"testing"
 )
@@ -71,6 +72,13 @@ func TestListSessions(t *testing.T) {
 			if captured := fake.CapturedFor("list-sessions"); !captured[0] {
 				t.Fatalf("list-sessions called with capture=false, want true (list-sessions always captures)")
 			}
+			wantArgv := []string{"list-sessions", "-f", "#{||:#{!=:#{@lyx_tmux_conf_claimed},sourced},#{@lyx_reed_session}}", "-F", "#{session_name}"}
+			if runtime.GOOS == "windows" {
+				wantArgv = []string{"list-sessions", "-F", "#{session_name}"}
+			}
+			if gotArgv := fake.LastArgv("list-sessions"); !slices.Equal(gotArgv, wantArgv) {
+				t.Fatalf("list-sessions argv = %q, want %q", gotArgv, wantArgv)
+			}
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("listSessionsVia() error = nil, want non-nil")
@@ -90,6 +98,23 @@ func TestListSessions(t *testing.T) {
 				if got[i] != tt.want[i] {
 					t.Errorf("listSessionsVia()[%d] = %q; want %q", i, got[i], tt.want[i])
 				}
+			}
+		})
+	}
+
+	// Both halves of the filter split are pinned on every host: the reed-session filter off Windows, none on Windows.
+	argvRows := []struct {
+		name string
+		goos string
+		want []string
+	}{
+		{"argv on linux filters to reed sessions", "linux", []string{"list-sessions", "-f", "#{||:#{!=:#{@lyx_tmux_conf_claimed},sourced},#{@lyx_reed_session}}", "-F", "#{session_name}"}},
+		{"argv on windows lists every session", "windows", []string{"list-sessions", "-F", "#{session_name}"}},
+	}
+	for _, tt := range argvRows {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := listSessionsArgv(tt.goos, "#{session_name}"); !slices.Equal(got, tt.want) {
+				t.Errorf("listSessionsArgv(%q) = %q, want %q", tt.goos, got, tt.want)
 			}
 		})
 	}

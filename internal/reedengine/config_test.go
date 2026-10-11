@@ -76,6 +76,10 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.Mouse != "on" {
 		t.Errorf("Mouse = %q, want %q", cfg.Mouse, "on")
 	}
+	// The package runs under tmuxkit.Main, which unsets LYX_REED_TMUX_CONF, so an operator's own value cannot reach this.
+	if cfg.TmuxConf != "" {
+		t.Errorf("TmuxConf = %q, want empty", cfg.TmuxConf)
+	}
 	if !maps.Equal(cfg.SegmentColors, wantSegmentColors) {
 		t.Errorf("SegmentColors = %v, want %v", cfg.SegmentColors, wantSegmentColors)
 	}
@@ -129,6 +133,7 @@ func TestLoadConfig_MissingSegmentColorsTakeTemplateDefaults(t *testing.T) {
 func TestLoadConfig_EnvOverride(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("LYX_REED_TMUX", `D:\tools\tmux.exe`)
+	t.Setenv("LYX_REED_TMUX_CONF", "/home/operator/tmux.conf")
 	seedLyxConfig(t, tmpDir, "reed", reedengine.ConfigTemplate())
 
 	cfg, err := reedengine.LoadConfig(tmpDir, "reed")
@@ -137,6 +142,10 @@ func TestLoadConfig_EnvOverride(t *testing.T) {
 	}
 	if cfg.Tmux != `D:\tools\tmux.exe` {
 		t.Errorf("Tmux = %q, want env override", cfg.Tmux)
+	}
+	// Loading applies no validation, so the value arrives verbatim.
+	if cfg.TmuxConf != "/home/operator/tmux.conf" {
+		t.Errorf("TmuxConf = %q, want env override", cfg.TmuxConf)
 	}
 }
 

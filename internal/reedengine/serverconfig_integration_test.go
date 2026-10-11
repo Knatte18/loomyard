@@ -16,6 +16,49 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
+// newHubEngine builds the engine of the worktree directory named worktree under hubDir: its seeded reed.yaml loaded and passed to configure, and the geometry of a hub-mode worktree.
+// It registers no key with the kit, and skips the test when the configured multiplexer binary is absent.
+func newHubEngine(t *testing.T, hubDir, worktree string, configure func(cfg *Config)) *Engine {
+	t.Helper()
+	worktreeDir := filepath.Join(hubDir, worktree)
+	if err := os.MkdirAll(worktreeDir, 0o755); err != nil {
+		t.Fatalf("mkdir worktree dir: %v", err)
+	}
+	seedReedConfig(t, worktreeDir)
+	cfg, err := LoadConfig(worktreeDir, "reed")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if configure != nil {
+		configure(&cfg)
+	}
+	if _, err := exec.LookPath(cfg.Tmux); err != nil {
+		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
+	}
+	geom := Geometry{
+		SocketKey:     ServerName(hubDir),
+		SessionName:   SessionName(worktreeDir),
+		AnchorPath:    worktreeDir,
+		PaneCwd:       worktreeDir,
+		WorktreeRoot:  worktreeDir,
+		LogsDir:       filepath.Join(hubDir, "logs"),
+		HubPath:       hubDir,
+		WorktreeName:  filepath.Base(worktreeDir),
+		NameShortname: "tc",
+		NameSlug:      "tslug",
+	}
+	return New(cfg, geom)
+}
+
+// bootOwnServer runs Up on e and returns its error.
+// The key is registered with the kit only after the boot, so the server is reed's own and not the kit's pre-started one.
+func bootOwnServer(t *testing.T, e *Engine) error {
+	t.Helper()
+	_, err := e.Up()
+	tmuxkit.KillOnCleanup(t, e.cfg.Tmux, e.Socket())
+	return err
+}
+
 // TestBoot_ReadsNoOperatorConfigAndStartsNonLoginPanes boots reed under a HOME whose `.tmux.conf` sets a marker option and creates a session of its own.
 // The key is registered with the kit only after the boot, so reed starts the server itself; a probe or spawn that read the config would leave the marker set or the config's session alive.
 // It reads no operator config, pins the resolved shell on the session, and a pane split into the session starts that shell, which a login-shell pane would not report.
@@ -30,38 +73,11 @@ func TestBoot_ReadsNoOperatorConfigAndStartsNonLoginPanes(t *testing.T) {
 		}
 		t.Setenv("HOME", home)
 
-		hubDir := t.TempDir()
-		worktreeDir := filepath.Join(hubDir, "worktree")
-		if err := os.MkdirAll(worktreeDir, 0o755); err != nil {
-			t.Fatalf("mkdir worktree dir: %v", err)
-		}
-		seedReedConfig(t, worktreeDir)
-		cfg, err := LoadConfig(worktreeDir, "reed")
-		if err != nil {
-			t.Fatalf("LoadConfig: %v", err)
-		}
-		if _, err := exec.LookPath(cfg.Tmux); err != nil {
-			t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
-		}
-		geom := Geometry{
-			SocketKey:     ServerName(hubDir),
-			SessionName:   SessionName(worktreeDir),
-			AnchorPath:    worktreeDir,
-			PaneCwd:       worktreeDir,
-			WorktreeRoot:  worktreeDir,
-			LogsDir:       filepath.Join(hubDir, "logs"),
-			HubPath:       hubDir,
-			WorktreeName:  filepath.Base(worktreeDir),
-			NameShortname: "tc",
-			NameSlug:      "tslug",
-		}
-		e := New(cfg, geom)
+		e := newHubEngine(t, t.TempDir(), "worktree", nil)
+		cfg := e.cfg
 
-		_, upErr := e.Up()
-		// Registered only after the boot, so the server is reed's own and not the kit's pre-started one.
-		tmuxkit.KillOnCleanup(t, cfg.Tmux, geom.SocketKey)
-		if upErr != nil {
-			t.Fatalf("Up(): %v", upErr)
+		if err := bootOwnServer(t, e); err != nil {
+			t.Fatalf("Up(): %v", err)
 		}
 
 		marker, err := e.tmux.output("show-options", "-gqv", "@operator_marker")

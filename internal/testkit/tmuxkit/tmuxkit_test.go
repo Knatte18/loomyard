@@ -66,6 +66,7 @@ func TestServerEnviron_MatchesReedServerSpawn(t *testing.T) {
 func TestSetEnv(t *testing.T) {
 	t.Setenv("TMUX", "/outer/tmux,1,0")
 	t.Setenv("TMUX_PANE", "%3")
+	t.Setenv("LYX_REED_TMUX_CONF", "/operator/tmux.conf")
 	t.Setenv("TMUX_TMPDIR", "/elsewhere")
 	// TMP and TEMP are the Windows temp variables; setting them first has t.Setenv restore them.
 	for _, name := range []string{"TMPDIR", "TMP", "TEMP"} {
@@ -96,7 +97,7 @@ func TestSetEnv(t *testing.T) {
 			t.Errorf("t.TempDir() = %q, want it under %q", got, dir)
 		}
 	})
-	for _, name := range []string{"TMUX", "TMUX_PANE"} {
+	for _, name := range []string{"TMUX", "TMUX_PANE", "LYX_REED_TMUX_CONF"} {
 		if v, ok := os.LookupEnv(name); ok {
 			t.Errorf("%s still set to %q", name, v)
 		}

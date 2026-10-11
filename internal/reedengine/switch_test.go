@@ -4,6 +4,7 @@ package reedengine
 
 import (
 	"errors"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -50,6 +51,11 @@ func TestNextSessionID(t *testing.T) {
 
 func TestSwitchClientVia_IssuesOnlyTheThreeCommands(t *testing.T) {
 	t.Parallel()
+	// The listing is filtered to the sessions that count as reed's everywhere but Windows, spelled out here rather than built through listSessionsArgv.
+	wantList := []string{"list-sessions", "-f", "#{||:#{!=:#{@lyx_tmux_conf_claimed},sourced},#{@lyx_reed_session}}", "-F", "#{session_id} #{session_name}"}
+	if runtime.GOOS == "windows" {
+		wantList = []string{"list-sessions", "-F", "#{session_id} #{session_name}"}
+	}
 	tests := []struct {
 		name     string
 		listing  string
@@ -66,7 +72,7 @@ func TestSwitchClientVia_IssuesOnlyTheThreeCommands(t *testing.T) {
 			current: "$2\n",
 			next:    true,
 			wantArgv: [][]string{
-				{"list-sessions", "-F", "#{session_id} #{session_name}"},
+				wantList,
 				{"display-message", "-p", "-c", "/dev/pts/3", "#{session_id}"},
 				{"switch-client", "-c", "/dev/pts/3", "-t", "$10"},
 			},
@@ -77,7 +83,7 @@ func TestSwitchClientVia_IssuesOnlyTheThreeCommands(t *testing.T) {
 			current: "$0\n",
 			next:    false,
 			wantArgv: [][]string{
-				{"list-sessions", "-F", "#{session_id} #{session_name}"},
+				wantList,
 				{"display-message", "-p", "-c", "/dev/pts/3", "#{session_id}"},
 				{"switch-client", "-c", "/dev/pts/3", "-t", "$2"},
 			},
@@ -87,14 +93,14 @@ func TestSwitchClientVia_IssuesOnlyTheThreeCommands(t *testing.T) {
 			listing: "$0 alpha\n",
 			next:    true,
 			wantArgv: [][]string{
-				{"list-sessions", "-F", "#{session_id} #{session_name}"},
+				wantList,
 			},
 		},
 		{
 			name:     "UnreachableSocket",
 			listErr:  errors.New("no server running"),
 			next:     true,
-			wantArgv: [][]string{{"list-sessions", "-F", "#{session_id} #{session_name}"}},
+			wantArgv: [][]string{wantList},
 			wantErr:  "list sessions",
 		},
 		{
@@ -103,7 +109,7 @@ func TestSwitchClientVia_IssuesOnlyTheThreeCommands(t *testing.T) {
 			curErr:  errors.New("can't find client"),
 			next:    true,
 			wantArgv: [][]string{
-				{"list-sessions", "-F", "#{session_id} #{session_name}"},
+				wantList,
 				{"display-message", "-p", "-c", "/dev/pts/3", "#{session_id}"},
 			},
 			wantErr: `client "/dev/pts/3"`,
@@ -114,7 +120,7 @@ func TestSwitchClientVia_IssuesOnlyTheThreeCommands(t *testing.T) {
 			current: "$9\n",
 			next:    true,
 			wantArgv: [][]string{
-				{"list-sessions", "-F", "#{session_id} #{session_name}"},
+				wantList,
 				{"display-message", "-p", "-c", "/dev/pts/3", "#{session_id}"},
 			},
 			wantErr: "$9",
