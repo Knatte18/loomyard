@@ -7,6 +7,7 @@ Text lyx types into an agent pane never merges with, submits or wipes an operato
 - Shuttle's pre-write guard stands in front of every such write.
   One fresh reading takes three facts: the session is ready, no operator was active in the pane within `operator_quiet_s`, and the input box is empty and readable.
   A write the guard holds fails wrapping `ErrSessionBusy` and writes nothing, and the caller retries later.
+  The provider's box reading defines empty, and Claude's reads a lone `%`, the shell's end-of-line mark left on screen, as empty, so an operator draft of exactly `%` typed outside `operator_quiet_s` reads as empty and a write can merge with it.
 - The watchdog's `/rename` name repair has no shuttle run; it stands behind reed's own activity check and goes out as the same paste-submit.
 - An Enter of lyx's own goes only into a box holding exactly the sent text, or the provider's placeholder for exactly that text.
   A box holding anything else, the sent text beside a draft included, gets no key.

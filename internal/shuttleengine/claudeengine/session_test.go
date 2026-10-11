@@ -58,6 +58,10 @@ func TestIdleSession(t *testing.T) {
 			capture: "╭" + rule + "╮\n│ ❯          │\n╰" + rule + "╯\n",
 			want:    true,
 		},
+		{"lone percent mark in the box", readPaneFixture(t, "pane-idle-eol-mark.txt"), true},
+		{"boxed side bars around a lone percent mark", "╭" + rule + "╮\n│ ❯     %   │\n╰" + rule + "╯\n", true},
+		{"percent beside other text is a draft", rule + "\n❯ 100% done\n" + rule + "\n  ? for shortcuts\n", false},
+		{"any other lone character is a draft", rule + "\n❯ #\n" + rule + "\n  ? for shortcuts\n", false},
 	}
 	c := &Claude{}
 	for _, tt := range tests {
@@ -87,6 +91,10 @@ func TestInputBoxText(t *testing.T) {
 		{"boxed side bars", "╭" + rule + "╮\n│ ❯ hello     │\n╰" + rule + "╯\n", "hello", true},
 		{"permission prompt has no box", readPaneFixture(t, "pane-permission-prompt.txt"), "", false},
 		{"no input box", "● some transcript\n", "", false},
+		{"lone percent mark in the box", readPaneFixture(t, "pane-idle-eol-mark.txt"), "", true},
+		{"boxed side bars around a lone percent mark", "╭" + rule + "╮\n│ ❯     %   │\n╰" + rule + "╯\n", "", true},
+		{"percent beside other text", rule + "\n❯ 100% done\n" + rule + "\n  ? for shortcuts\n", "100% done", true},
+		{"any other lone character", rule + "\n❯ #\n" + rule + "\n  ? for shortcuts\n", "#", true},
 	}
 	c := &Claude{}
 	for _, tt := range tests {

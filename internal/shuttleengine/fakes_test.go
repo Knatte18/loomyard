@@ -511,6 +511,8 @@ type skillReed struct {
 	Dies       map[int]bool
 	// ColorErr, when set, fails every "COLOR:<name>" typed, after the call is recorded.
 	ColorErr error
+	// Screen, when set, is the first line of every capture, ahead of the sent texts.
+	Screen string
 
 	loads int
 	dead  bool
@@ -562,6 +564,9 @@ func (r *skillReed) CapturePane(guid string) (string, error) {
 	r.fakeReed.mu.Lock()
 	defer r.fakeReed.mu.Unlock()
 	var b strings.Builder
+	if r.Screen != "" {
+		b.WriteString(r.Screen + "\n")
+	}
 	for _, call := range r.fakeReed.SendTextCalls {
 		b.WriteString(call.Text + "\n")
 	}

@@ -140,11 +140,17 @@ func TestSingleLLMProducer_OutcomeDiedAndTimeout(t *testing.T) {
 
 // TestSingleLLMProducer_NotStartedWrapsErrNotStarted pins that a died outcome the shuttle reports as never-ready wraps ErrNotStarted,
 // and an ordinary died outcome does not.
+// The never-ready failure also carries the start error's text.
 func TestSingleLLMProducer_NotStartedWrapsErrNotStarted(t *testing.T) {
+	const startError = "the pane showed a login prompt"
 	for _, notStarted := range []bool{true, false} {
 		dir := t.TempDir()
 		spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
-		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, RunDir: dir, NotStarted: notStarted}}
+		result := shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, RunDir: dir, NotStarted: notStarted}
+		if notStarted {
+			result.StartError = startError
+		}
+		shuttle := &shedfake.Shuttle{Result: result}
 		p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 		logcapture.Capture(t)
 
@@ -154,6 +160,9 @@ func TestSingleLLMProducer_NotStartedWrapsErrNotStarted(t *testing.T) {
 		}
 		if got := errors.Is(err, shuttleengine.ErrNotStarted); got != notStarted {
 			t.Errorf("NotStarted=%v: errors.Is(err, ErrNotStarted) = %v; want %v (err %q)", notStarted, got, notStarted, err)
+		}
+		if got := strings.Contains(err.Error(), startError); got != notStarted {
+			t.Errorf("NotStarted=%v: error contains the start error = %v; want %v (err %q)", notStarted, got, notStarted, err)
 		}
 	}
 }

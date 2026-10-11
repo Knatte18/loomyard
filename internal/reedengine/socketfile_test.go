@@ -10,16 +10,28 @@ import (
 	"testing"
 )
 
-// listenUnixSocket listens on the socket path dir/key.
+// listenUnixSocket listens on the socket path dir/key and removes the file on close.
 // A unix socket path is limited to about 104 bytes, so callers keep dir short.
-func listenUnixSocket(t *testing.T, dir, key string, unlinkOnClose bool) *net.UnixListener {
+func listenUnixSocket(t *testing.T, dir, key string) *net.UnixListener {
 	t.Helper()
 	l, err := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(dir, key), Net: "unix"})
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	l.SetUnlinkOnClose(unlinkOnClose)
 	return l
+}
+
+// bindStaleUnixSocket leaves a socket file at dir/key that refuses every stream connection.
+// It binds a datagram socket, which never listens, so a child forked by a parallel test that inherits the fd before its exec cannot make the path answer a `Dial` as a closed listener's inherited copy would.
+func bindStaleUnixSocket(t *testing.T, dir, key string) {
+	t.Helper()
+	conn, err := net.ListenUnixgram("unixgram", &net.UnixAddr{Name: filepath.Join(dir, key), Net: "unixgram"})
+	if err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+	if err := conn.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
 }
 
 // TestBootSocketPath pins the socket path rules the boot refusal rests on: the limit per GOOS, the pure length check, and the base's symlinks being resolved before measuring.
@@ -86,18 +98,14 @@ func TestRemoveSocketFileOnceGone(t *testing.T) {
 		wantExists bool
 	}{
 		{
-			name: "stale socket is removed",
-			setup: func(t *testing.T, dir, key string) {
-				if err := listenUnixSocket(t, dir, key, false).Close(); err != nil {
-					t.Fatalf("close: %v", err)
-				}
-			},
+			name:       "stale socket is removed",
+			setup:      bindStaleUnixSocket,
 			wantExists: false,
 		},
 		{
 			name: "socket still answering after the wait stays with no error",
 			setup: func(t *testing.T, dir, key string) {
-				l := listenUnixSocket(t, dir, key, true)
+				l := listenUnixSocket(t, dir, key)
 				t.Cleanup(func() { _ = l.Close() })
 			},
 			wantExists: true,
@@ -130,26 +138,20 @@ func TestRemoveStaleSocket(t *testing.T) {
 		t.Skip("psmux keeps no socket file")
 	}
 
-	listen := listenUnixSocket
-
 	tests := []struct {
 		name       string
 		setup      func(t *testing.T, dir, key string)
 		wantExists bool
 	}{
 		{
-			name: "stale socket is removed",
-			setup: func(t *testing.T, dir, key string) {
-				if err := listen(t, dir, key, false).Close(); err != nil {
-					t.Fatalf("close: %v", err)
-				}
-			},
+			name:       "stale socket is removed",
+			setup:      bindStaleUnixSocket,
 			wantExists: false,
 		},
 		{
 			name: "socket with a live listener is kept",
 			setup: func(t *testing.T, dir, key string) {
-				l := listen(t, dir, key, true)
+				l := listenUnixSocket(t, dir, key)
 				t.Cleanup(func() { _ = l.Close() })
 			},
 			wantExists: true,

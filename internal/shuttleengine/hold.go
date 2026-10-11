@@ -17,7 +17,7 @@ const (
 	holdNoticeSettle = 45 * time.Second
 	// holdNoticeMaxDeferral is the longest a Spec.HoldDeferral run defers a held turn end's notice whatever the predicate reports.
 	// It is long enough for a peer to answer an ordinary batch and short enough that a wedged peer hides a stall well inside a review or discussion table's timeout.
-	holdNoticeMaxDeferral = 20 * time.Minute
+	holdNoticeMaxDeferral = 10 * time.Minute
 )
 
 const (

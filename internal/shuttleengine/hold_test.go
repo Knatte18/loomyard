@@ -158,8 +158,8 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 			sleepJump: 5 * time.Minute, timeout: 2 * time.Hour,
 			deferral: func(*testing.T, func() time.Duration) func() bool { return func() bool { return true } },
 			check: func(t *testing.T, got heldRun) {
-				if len(got.notices) != 1 || got.noticeElapsed[0] < holdNoticeMaxDeferral || got.noticeElapsed[0] >= holdNoticeMaxDeferral+5*time.Minute {
-					t.Errorf("notices = %d at %v, want one at the first tick at or past %v", len(got.notices), got.noticeElapsed, holdNoticeMaxDeferral)
+				if len(got.notices) != 1 || got.noticeElapsed[0] < 10*time.Minute || got.noticeElapsed[0] >= 15*time.Minute {
+					t.Errorf("notices = %d at %v, want one at the first tick at or past %v", len(got.notices), got.noticeElapsed, 10*time.Minute)
 				}
 			},
 		},
