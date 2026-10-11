@@ -2299,6 +2299,7 @@ func TestWatcher_LogsDisagreementBetweenIdleProbeAndSessionState(t *testing.T) {
 		{name: "a not-idle probe beside asking warns once across two ticks", idleSeq: []bool{false, false}, state: shuttleengine.SessionAsking, notices: 2, wantWarn: 1},
 		{name: "a not-idle probe beside idle-done warns", idleSeq: []bool{false}, state: shuttleengine.SessionIdleDone, notices: 1, wantWarn: 1},
 		{name: "a not-idle probe beside idle-stalled warns", idleSeq: []bool{false}, state: shuttleengine.SessionIdleStalled, notices: 1, wantWarn: 1},
+		{name: "a not-idle probe beside idle-fresh warns", idleSeq: []bool{false}, state: shuttleengine.SessionIdleFresh, notices: 1, wantWarn: 1},
 		{name: "an idle probe beside idle-done agrees", idleSeq: []bool{true}, state: shuttleengine.SessionIdleDone, notices: 1},
 		{name: "a not-idle probe beside busy agrees", idleSeq: []bool{false}, state: shuttleengine.SessionBusy, notices: 1},
 		{name: "a too-short pane is not compared", idleSeq: []bool{false}, tooShort: true, state: shuttleengine.SessionIdleStalled, notices: 1},

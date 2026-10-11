@@ -149,6 +149,101 @@ func TestStartup_TrustPromptThenReady(t *testing.T) {
 	}
 }
 
+// TestStartup_NeedsSessionStartLine covers the startup criterion of a launch that records session starts: a ready pane starts the run only once the events file also holds a session-start line.
+// A missing line and an unreadable events file each time the start out naming themselves and the events path, a gate on screen is dismissed whatever the file holds, and a launch that does not declare the recording starts on the pane alone.
+func TestStartup_NeedsSessionStartLine(t *testing.T) {
+	tests := []struct {
+		name    string
+		records bool
+		script  []StartupState
+		// events seeds the events file; eventsIsDir makes the events path a directory instead.
+		events      string
+		eventsIsDir bool
+		wantStarted bool
+		// wantEnter asserts the gate was dismissed with Enter.
+		wantEnter bool
+		// wantErr is a substring of the start error, empty for none; wantNoErr is one it must not hold.
+		wantErr   string
+		wantNoErr string
+		// wantNamesEvents asserts the start error names the events path.
+		wantNamesEvents bool
+		// death scripts the registry's liveness reading across the startup ticks.
+		death *deathScript
+	}{
+		{name: "a ready pane with no session-start line is not started", records: true, script: []StartupState{StartupReady}, wantErr: "no session-start line in the events file", wantNamesEvents: true},
+		{name: "an unreadable events file is not started and says so", records: true, script: []StartupState{StartupReady}, eventsIsDir: true, wantErr: "could not be read for a session-start line", wantNamesEvents: true},
+		{
+			name: "a process read alive after its session-start line that dies before the pane is ready fails the start as died", records: true, script: []StartupState{StartupPending},
+			events: "SESSIONSTART:startup\n", death: &deathScript{liveness: LivenessAlive, steps: []deathStep{{liveness: LivenessDead}}}, wantErr: `outcome "died"`,
+		},
+		{name: "a session-start line and a ready pane start the run", records: true, script: []StartupState{StartupReady}, events: "SESSIONSTART:startup\n", wantStarted: true},
+		{name: "a gate on screen is dismissed beside a session-start line, then the ready pane starts the run", records: true, script: []StartupState{StartupTrustPrompt, StartupReady}, events: "SESSIONSTART:startup\n", wantStarted: true, wantEnter: true},
+		{name: "a session-start line of an earlier launch with a pane not yet ready is not started", records: true, script: []StartupState{StartupPending}, events: "SESSIONSTART:startup\n", wantNoErr: "session-start line"},
+		{name: "a launch that does not record session starts starts on the pane alone", script: []StartupState{StartupReady}, wantStarted: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			reed := &fakeReed{
+				StatusQueue:  []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}},
+				CaptureQueue: []string{"gate"},
+			}
+			engine := &sessionFakeEngine{}
+			if tt.death != nil {
+				engine.liveness = tt.death.liveness
+			}
+			engine.StartupScript = tt.script
+			engine.PrepareLaunch = Launch{Cmd: "cmd", SessionID: "session-1", RecordsSessionStarts: tt.records}
+			engine.PrepareHook = func(runDir string) {
+				eventsPath := filepath.Join(runDir, eventsFileName)
+				if tt.eventsIsDir {
+					if err := os.Mkdir(eventsPath, 0o755); err != nil {
+						t.Errorf("mkdir events path: %v", err)
+					}
+					return
+				}
+				if tt.events != "" {
+					if err := os.WriteFile(eventsPath, []byte(tt.events), 0o644); err != nil {
+						t.Errorf("write events: %v", err)
+					}
+				}
+			}
+			seedStartupFakes(reed, &engine.fakeEngine)
+			runner := newFixture(t, reed, engine, withConfig(shortStartupConfig)).Runner
+			if tt.death != nil {
+				runner.clock = &multiStepClock{fakeClock: newFakeClock(time.Now()), steps: tt.death.stepsOn(t, engine, "")}
+			}
+
+			run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}}, GateSpec{})
+			if tt.wantStarted {
+				if err != nil || run == nil {
+					t.Fatalf("StartGated() = %v, %v; want a started run", run, err)
+				}
+			} else {
+				if run != nil || !errors.Is(err, ErrNotStarted) {
+					t.Fatalf("StartGated() = %v, %v; want no run and an error wrapping ErrNotStarted", run, err)
+				}
+				if tt.wantErr != "" && !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error = %v; want it to contain %q", err, tt.wantErr)
+				}
+				if tt.wantNamesEvents && !strings.Contains(err.Error(), eventsFileName) {
+					t.Errorf("error = %v; want it to name the events path %q", err, eventsFileName)
+				}
+				if tt.wantNoErr != "" && strings.Contains(err.Error(), tt.wantNoErr) {
+					t.Errorf("error = %v; want it not to contain %q", err, tt.wantNoErr)
+				}
+			}
+			foundEnter := false
+			for _, call := range reed.SendKeyCalls {
+				foundEnter = foundEnter || call.Key == "Enter"
+			}
+			if foundEnter != tt.wantEnter {
+				t.Errorf("Enter sent = %v; want %v", foundEnter, tt.wantEnter)
+			}
+		})
+	}
+}
+
 // TestStartup_ReadyProbeTiming covers the ready paths' timing on the virtual clock.
 // Ready on the first probe is the fast path: no dismissal ever attempted and no Sleep call before the handle is returned.
 // Otherwise the startup step probes every poll interval while the pane redraws and backs off to the dismissal gap (here 10 s) while it does not.
@@ -1029,7 +1124,16 @@ func skillStartFixtureWith(t *testing.T, strand reedengine.Strand, spec Spec, re
 		configure(reed, engine)
 	}
 	fc := newFakeClock(time.Now())
-	fx := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc))
+	var used Engine = engine
+	if engine.HookState {
+		engine.PrepareHook = func(runDir string) {
+			if err := os.WriteFile(filepath.Join(runDir, eventsFileName), []byte("SESSIONSTART:startup\n"), 0o644); err != nil {
+				t.Errorf("seed the events file: %v", err)
+			}
+		}
+		used = &hookStateSkillEngine{skillFakeEngine: engine}
+	}
+	fx := newFixture(t, reed, used, withConfig(fastConfig), withClock(fc))
 	reed.EventsPath = func() string { return filepath.Join(soleStartupRunDir(t, fastConfig, fx.Anchor), eventsFileName) }
 	spec.Prompt = "x"
 	spec.OutputFiles = []string{filepath.Join(t.TempDir(), "out.md")}
@@ -1082,6 +1186,8 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 		elapsed    string
 		// afterClassify, when set, runs with the events file's path after each load turn is classified.
 		afterClassify func(t *testing.T, eventsPath string)
+		// hookState starts the run over an engine reading hook state, whose events file holds only a SessionStart(startup) line beside a busy-looking pane.
+		hookState bool
 	}{
 		{
 			name:       "every skill loads in one turn before the prompt",
@@ -1165,6 +1271,15 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 			elapsed:   atLeastTimeout,
 		},
 		{
+			name:       "a session start alone sends the load into a pane the pane fallback refuses",
+			spec:       Spec{Skills: []string{"a"}},
+			reports:    []SkillLoadReport{loaded("a")},
+			wantTyped:  "LOAD:a|do the task",
+			wantOffset: true,
+			elapsed:    zero,
+			hookState:  true,
+		},
+		{
 			name:      "pane that dies during a load turn is a died startup",
 			spec:      Spec{Skills: []string{"a", "b"}},
 			dies:      []int{0},
@@ -1178,6 +1293,7 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 			buf := logcapture.Capture(t)
 			run, reed, elapsed, err := skillStartFixtureWith(t, reedengine.Strand{GUID: "strand-1"}, tt.spec, tt.reports, tt.hangs, tt.dies, func(reed *skillReed, engine *skillFakeEngine) {
 				reed.Screen = "the ready screen"
+				engine.HookState = tt.hookState
 				if tt.afterClassify != nil {
 					engine.OnClassify = func() { tt.afterClassify(t, reed.EventsPath()) }
 				}

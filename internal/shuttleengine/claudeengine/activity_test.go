@@ -79,7 +79,17 @@ func TestTurnEndActivity(t *testing.T) {
 		siblingRun = `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_quick","name":"Bash"}]}}`
 		siblingEnd = `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_quick"}]}}`
 		gateEnd    = `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_gate"}]}}`
+
+		// A parallel batch is one message, msg_batch, written as one entry per call.
+		batchFirst    = `{"type":"assistant","message":{"id":"msg_batch","content":[{"type":"tool_use","id":"toolu_first","name":"Bash"}]}}`
+		batchLast     = `{"type":"assistant","message":{"id":"msg_batch","content":[{"type":"tool_use","id":"toolu_last","name":"Bash"}]}}`
+		batchLastEnd  = `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_last"}]}}`
+		batchFirstEnd = `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_first"}]}}`
+		olderCall     = `{"type":"assistant","message":{"id":"msg_older","content":[{"type":"tool_use","id":"toolu_older","name":"Bash"}]}}`
+		finalText     = `{"type":"assistant","message":{"id":"msg_final","content":[{"type":"text","text":"done"}]}}`
 	)
+	// batchPadding is an entry of msg_batch longer than the first backward read, so an entry written before it lies outside that read.
+	batchPadding := `{"type":"assistant","message":{"id":"msg_batch","content":[{"type":"text","text":"` + strings.Repeat("x", initialReadChunk) + `"}]}}`
 	forkTests := []struct {
 		name      string
 		fork      []string
@@ -90,6 +100,10 @@ func TestTurnEndActivity(t *testing.T) {
 		{"a pending call written within the ceiling reads now", []string{forkCall}, now.Add(-bashMaxTimeout / 2), now},
 		{"a pending call followed by a sibling's result still reads now", []string{forkCall, siblingRun, siblingEnd}, now.Add(-time.Minute), now},
 		{"a pending call written beyond the ceiling reads its write time", []string{forkCall}, now.Add(-bashMaxTimeout - time.Minute), now.Add(-bashMaxTimeout - time.Minute)},
+		{"a parallel batch whose earlier call is pending and whose last call is answered reads now", []string{batchFirst, batchLast, batchLastEnd}, now.Add(-time.Minute), now},
+		{"a pending call in a batch entry before the first read's window reads now", []string{batchFirst, batchPadding, batchLast, batchLastEnd}, now.Add(-time.Minute), now},
+		{"a fully answered newest message reads its write time whatever older messages hold", []string{olderCall, batchFirst, batchLast, batchLastEnd, batchFirstEnd}, now.Add(-time.Minute), now.Add(-time.Minute)},
+		{"a transcript with no tool use reads its write time", []string{finalText}, now.Add(-time.Minute), now.Add(-time.Minute)},
 		{"a fork whose calls all have results, older than the main transcript, leaves the main time", []string{forkCall, gateEnd}, written.Add(-time.Hour), written},
 	}
 	for _, tt := range forkTests {

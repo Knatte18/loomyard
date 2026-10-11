@@ -144,6 +144,18 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 			wantChanges: []string{"busy/turn running", "idle-stalled/no-output held", "busy/turn running", "idle-done/done done"},
 		},
 		{
+			name:   "a held turn end followed by a clear start reads idle-fresh beside the held loop without a disagreement",
+			events: "START\n", liveness: LivenessAlive, timeout: time.Hour,
+			script: func(appendLine func(string), touchOutput func(), _ func(), _ func(string)) []func() {
+				return []func(){
+					func() { appendLine("STOP:what now?") },
+					func() { appendLine("SESSIONSTART:clear") },
+					func() { touchOutput(); appendLine("STOP:finished") },
+				}
+			},
+			wantChanges: []string{"busy/turn running", "idle-stalled/no-output held", "idle-fresh/session-start held", "idle-done/done done"},
+		},
+		{
 			name:   "done beside busy on background work is expected",
 			events: "WAIT:background work\n", outstanding: shadowPayloadShell, liveness: LivenessAlive, outputsAtStart: true, timeout: time.Hour,
 			wantChanges: []string{"busy/background done"},
