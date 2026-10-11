@@ -198,9 +198,12 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 			PriorWork:         told.PriorWork,
 		}, cfg, registry)
 	}
-	reviewSubdir, _, err := loomrecipe.BouncerRunSubdir(loomshed.NameDarnBouncer)
+	reviewSubdir, isBouncer, err := loomrecipe.BouncerRunSubdir(loomshed.NameDarnBouncer)
 	if err != nil {
 		return err
+	}
+	if !isBouncer {
+		return fmt.Errorf("loom: the embedded darn recipe's %s row is not a Bouncer with a run_subdir, so this lyx build is broken", loomshed.NameDarnBouncer)
 	}
 	// DescribeSpec opens the fabric lazily, for the reason the loom DescribeSpec gives.
 	c.env.DescribeSpec = func() (shuttleengine.Spec, error) {
