@@ -205,10 +205,14 @@ func (c *loomCLI) loadRouting() error {
 	return nil
 }
 
-// recipeRouting returns the routing of the run's recipe: the darn recipe's for a darn run, loom's, with the review bounce budget applied, otherwise.
+// recipeRouting returns the routing of the run's recipe, with its review bounce budget applied: the darn recipe's for a darn run, loom's otherwise.
 func (c *loomCLI) recipeRouting() (shedengine.Routing, error) {
 	if c.recipe == shedrun.RecipeDarn {
-		return loomrecipe.DarnRouting()
+		budget, err := c.darnReviewBudget()
+		if err != nil {
+			return shedengine.Routing{}, err
+		}
+		return loomrecipe.DarnRouting(budget)
 	}
 
 	budget, err := c.reviewBudget()

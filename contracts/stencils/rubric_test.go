@@ -1,4 +1,4 @@
-// rubric_test.go pins the marker allowlist the two Bouncer stencils' {{.rubric}} interpolation depends on for all three rubrics:
+// rubric_test.go pins the marker allowlist the two Bouncer stencils' {{.rubric}} interpolation depends on for every rubric:
 // a rubric may carry the specs_dir, stencils_dir, publish_failure and webster_record markers and nothing else, and only the Webster-Review rubric renders the Publish failure note and only the Plan-Review rubric renders the webster run record -- the old no-marker-at-all rule relaxed to the same shape rather than deleted, because a third marker is still invisible to the fill at the value-interpolation site and must still fail loudly.
 // It additionally pins that the markers render successfully through the production render helper and that both review rubrics name their writer's deployed stencil path.
 // The rubrics' wording is pinned in claims_test.go.
@@ -20,8 +20,8 @@ import (
 // A marker outside this set would sit inside the marker VALUE the Bouncer and Burler prompts interpolate the rubric as, invisible to the fill's required-marker check at the template actually being executed, so it must fail here exactly as loudly as the old no-marker-at-all rule made it fail.
 var rubricMarkerAllowlist = map[string]bool{"specs_dir": true, "stencils_dir": true, "publish_failure": true, "webster_record": true}
 
-// TestLoomRubrics asserts, for each of the three stencil-sourced rubrics:
-//   - its top-level marker set is a subset of rubricMarkerAllowlist, the same allowed set for all three -- an asymmetric rule across the three is how the next author loses the invariant;
+// TestLoomRubrics asserts, for each stencil-sourced rubric:
+//   - its top-level marker set is a subset of rubricMarkerAllowlist, the same allowed set for every rubric -- an asymmetric rule across them is how the next author loses the invariant;
 //   - it renders successfully through internal/shedadapters.ReadRubric given a non-empty specs directory, the production render path every Bouncer and Burler rubric read travels.
 //     A marker-set check alone cannot see this failure mode: a bare "{{" an author writes in prose has no marker name to inspect and becomes a runtime parse-template error only once the rubric is actually filled;
 //   - a review rubric's rendered text names its writer stencil's deployed path as the registry lays it out, so the named path is pinned to stencilstore.Path rather than to a hand-typed string.
@@ -38,6 +38,7 @@ func TestLoomRubrics(t *testing.T) {
 		{"loom-rubric-discussion-review", LoomRubricDiscussionReview, "loom-template-discussion"},
 		{"loom-rubric-plan-review", LoomRubricPlanReview, "loom-template-plan"},
 		{"loom-rubric-webster-review", LoomRubricWebsterReview, ""},
+		{"loom-rubric-darn-review", LoomRubricDarnReview, ""},
 	}
 
 	for _, tt := range tests {

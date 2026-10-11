@@ -77,7 +77,7 @@ func New(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error
 		return nil, fmt.Errorf("loomrecipe: %w", err)
 	}
 
-	segments, err := reviewSegments()
+	segments, err := reviewSegments(recipes.LoomRecipe)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +128,7 @@ func Routing(reviewMaxBounces int) (shedengine.Routing, error) {
 		return shedengine.Routing{}, fmt.Errorf("loomrecipe: %w", err)
 	}
 
-	segments, err := reviewSegments()
+	segments, err := reviewSegments(recipes.LoomRecipe)
 	if err != nil {
 		return shedengine.Routing{}, err
 	}
@@ -146,9 +146,9 @@ func checkReviewBudget(name string, budget int) error {
 	return nil
 }
 
-// reviewSegments returns the segments of the embedded loom recipe that hold a Bouncer row.
-func reviewSegments() (map[string]bool, error) {
-	recipe, err := shedbuild.Parse(recipes.LoomRecipe)
+// reviewSegments returns the segments of the recipe source that hold a Bouncer row.
+func reviewSegments(source []byte) (map[string]bool, error) {
+	recipe, err := shedbuild.Parse(source)
 	if err != nil {
 		return nil, fmt.Errorf("loomrecipe: %w", err)
 	}

@@ -1,8 +1,8 @@
 // Package darnengine owns the darn recipe's hub-wide configuration and the verify command every darn verify reads.
 //
-// `darn.yaml` is a hub-wide config module with four keys: `writer`, the model-spec of the darn writer's session; `writer_timeout_min`, its wall-clock budget in minutes; `verify`, the shell command the darn verify gate, Publish and Finalize run in the task worktree; and `verify_attempts`, how many times the verify gate re-prompts the writer's session before it halts the run for the parent.
+// `darn.yaml` is a hub-wide config module with these keys: `writer`, the model-spec of the darn writer's session; `writer_timeout_min`, its wall-clock budget in minutes; `verify`, the shell command the darn verify gate, Publish and Finalize run in the task worktree; `verify_attempts`, how many times the verify gate re-prompts the writer's session before it halts the run for the parent; and `review_max_bounces`, the bounce budget of the Darn-Review perch that reviews the writer's committed diff before Publish, where 0 runs no review.
 // `verify` runs any shell command in the task worktree, which is why the module is hub-wide: a task cannot weaken it through its own tree, and `lyx config darn --set` writes it from the prime.
-// LoadConfig loads the file strictly and validates the `writer` model-spec at load time, leaving `verify` and `verify_attempts` to their readers.
+// LoadConfig loads the file strictly and validates the `writer` model-spec at load time, leaving `verify`, `verify_attempts` and `review_max_bounces` to their readers.
 // VerifyCommand loads the file at each call and returns the `verify` value; a missing file and an empty value are errors that name the way forward, so no verify skips.
 //
 // DarnSpec composes the darn writer's session from a DarnInputs the caller tells it, the resolved Config and a model registry.

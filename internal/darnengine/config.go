@@ -42,11 +42,13 @@ type Config struct {
 	Verify string `yaml:"verify"`
 	// VerifyAttempts is how many times the verify gate re-prompts the writer's session before it halts the run.
 	VerifyAttempts int `yaml:"verify_attempts"`
+	// ReviewMaxBounces is the bounce budget of the Darn-Review perch that reviews the writer's diff before Publish; 0 runs no review.
+	ReviewMaxBounces int `yaml:"review_max_bounces"`
 }
 
 // LoadConfig loads and unmarshals the darn module's configuration from baseDir.
 // It is strict: an absent file is an error.
-// It validates the writer key's model-spec grammar at load time and leaves verify and verify_attempts to their readers.
+// It validates the writer key's model-spec grammar at load time and leaves verify, verify_attempts and review_max_bounces to their readers.
 func LoadConfig(baseDir, module string) (Config, error) {
 	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {

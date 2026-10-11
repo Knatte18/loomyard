@@ -65,6 +65,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if c.env.DarnVerifyAttempts != 5 {
 			t.Errorf("c.env.DarnVerifyAttempts = %d; want 5", c.env.DarnVerifyAttempts)
 		}
+		if c.env.DarnReviewMaxBounces != 3 || c.darnCfg == nil {
+			t.Errorf("c.env.DarnReviewMaxBounces = %d, c.darnCfg nil = %v; want the template's 3 and the loaded config", c.env.DarnReviewMaxBounces, c.darnCfg == nil)
+		}
 		if command, err := c.env.VerifyCommand(); err != nil || command != "go test ./..." {
 			t.Errorf("c.env.VerifyCommand() = %q, %v; want %q, nil", command, err, "go test ./...")
 		}
@@ -149,7 +152,7 @@ func TestRecipeRouting(t *testing.T) {
 	for _, tt := range tests {
 		t.Run("recipe "+tt.recipe, func(t *testing.T) {
 			t.Parallel()
-			c := &loomCLI{recipe: tt.recipe}
+			c := &loomCLI{recipe: tt.recipe, darnCfg: &darnengine.Config{ReviewMaxBounces: 3}}
 			c.cfg.ReviewMaxBounces = 3
 			routing, err := c.recipeRouting()
 			if err != nil {

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -83,6 +84,9 @@ type loomCLI struct {
 	// landing-config-loads-in-wire decision, so an unreconciled hub's absent-config error reaches
 	// the operator's own terminal on every verb, not only inside run's detached driver log.
 	landingCfg landingshed.Config
+	// darnCfg is the hub-wide darn.yaml configuration wireDarn loaded for a darn run;
+	// nil for a loom run and under the lightweight wiring, which leave the routing projection to read darn.yaml itself.
+	darnCfg *darnengine.Config
 	// suppressWatchdogSpawn, initialised from testing.Testing(), makes spawnWatchdog's call a no-op
 	// under a test binary. It exists to enforce the Live-Substrate Spawn Observability invariant's
 	// "never re-exec os.Executable() under go test" clause -- without it, every test reaching the
