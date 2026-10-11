@@ -168,9 +168,24 @@ func signalFromPayload(hookName string, fields map[string]any) (shuttleengine.Se
 		}, true
 	case hookEventSessionStart:
 		source, _ := fields["source"].(string)
-		return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalSessionStart, Source: source}, true
+		return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalSessionStart, Source: sessionStartSource(source)}, true
 	}
 	return shuttleengine.SessionSignal{}, false
+}
+
+// sessionStartSource maps a SessionStart payload's source string to the provider-neutral source, or the empty source for any other string.
+func sessionStartSource(source string) shuttleengine.SessionStartSource {
+	switch source {
+	case "startup":
+		return shuttleengine.SessionStartStartup
+	case "resume":
+		return shuttleengine.SessionStartResume
+	case "clear":
+		return shuttleengine.SessionStartClear
+	case "compact":
+		return shuttleengine.SessionStartCompact
+	}
+	return ""
 }
 
 // apiErrorText returns a StopFailure payload's text from error, else error_details, else last_assistant_message.

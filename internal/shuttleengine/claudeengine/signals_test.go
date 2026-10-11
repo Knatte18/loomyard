@@ -153,7 +153,12 @@ func TestParseSessionSignals(t *testing.T) {
 		{
 			name:   "session_start_is_a_signal_carrying_its_source",
 			chunks: []string{signalStamp("SessionStart", stampTime) + signalPayload(t, "SessionStart", map[string]any{"source": "compact"})},
-			want:   []shuttleengine.SessionSignal{{Kind: shuttleengine.SessionSignalSessionStart, At: at, SessionID: "sess-1", Source: "compact"}},
+			want:   []shuttleengine.SessionSignal{{Kind: shuttleengine.SessionSignalSessionStart, At: at, SessionID: "sess-1", Source: shuttleengine.SessionStartCompact}},
+		},
+		{
+			name:   "unknown_session_start_source_reads_the_empty_source",
+			chunks: []string{signalPayload(t, "SessionStart", map[string]any{"source": "something_new"})},
+			want:   []shuttleengine.SessionSignal{{Kind: shuttleengine.SessionSignalSessionStart, SessionID: "sess-1"}},
 		},
 		{
 			name: "two_stamps_pair_each_payload_with_its_own_hook",
