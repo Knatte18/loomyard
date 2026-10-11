@@ -56,6 +56,109 @@ func TestResolveLivePaneID(t *testing.T) {
 	}
 }
 
+// TestPasteSubmitArgv pins the exact command list of a paste with and without the trailing Enter.
+func TestPasteSubmitArgv(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		text   string
+		submit bool
+		want   []string
+	}{
+		{
+			name: "plain text with Enter", text: "hello world", submit: true,
+			want: []string{
+				"set-buffer", "-b", "buf", "--", "hello world",
+				";", "paste-buffer", "-p", "-d", "-b", "buf", "-t", "%7",
+				";", "send-keys", "-t", "%7", "Enter",
+			},
+		},
+		{
+			name: "plain text without Enter", text: "hello world", submit: false,
+			want: []string{
+				"set-buffer", "-b", "buf", "--", "hello world",
+				";", "paste-buffer", "-p", "-d", "-b", "buf", "-t", "%7",
+			},
+		},
+		{
+			name: "dash-leading text follows the double dash", text: "-n flag", submit: false,
+			want: []string{
+				"set-buffer", "-b", "buf", "--", "-n flag",
+				";", "paste-buffer", "-p", "-d", "-b", "buf", "-t", "%7",
+			},
+		},
+		{
+			name: "text ending in a semicolon escapes the final one", text: "run a;", submit: false,
+			want: []string{
+				"set-buffer", "-b", "buf", "--", `run a\;`,
+				";", "paste-buffer", "-p", "-d", "-b", "buf", "-t", "%7",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := pasteSubmitArgv("%7", "buf", tt.text, tt.submit); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("pasteSubmitArgv = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestPasteSubmit pins that a write is one tmux invocation with no send-keys -l, and that an unresolvable strand fails before any invocation.
+func TestPasteSubmit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		guid    string
+		wantErr string
+	}{
+		{name: "a live strand is pasted in one invocation", guid: "a"},
+		{name: "an unknown strand fails before any invocation", guid: "missing", wantErr: `unknown strand "missing"`},
+		{name: "a hidden strand fails before any invocation", guid: "hidden", wantErr: "is hidden"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := newTestEngine(t)
+			fake := installIfAbsentTmux(t, e, "%7 0 0 100 20 4321\n")
+			st := &ReedState{Strands: []Strand{
+				{GUID: "a", PaneID: "%7", Display: render.Display{Anchor: render.AnchorBelowParent}},
+				{GUID: "hidden", Display: render.Display{Anchor: render.AnchorHidden}},
+			}}
+			if err := SaveState(e.stateDir(), st); err != nil {
+				t.Fatalf("SaveState: %v", err)
+			}
+
+			err := e.PasteSubmit(tt.guid, "hello", true)
+			pastes := fake.ArgvFor("set-buffer")
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("PasteSubmit error = %v; want it to contain %q", err, tt.wantErr)
+				}
+				if len(pastes) != 0 {
+					t.Errorf("set-buffer calls = %v; want none", pastes)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("PasteSubmit: %v", err)
+			}
+			if len(pastes) != 1 {
+				t.Fatalf("set-buffer invocations = %d; want 1", len(pastes))
+			}
+			if !strings.HasPrefix(pastes[0][2], "lyx-inject-") {
+				t.Errorf("buffer name = %q; want the lyx-inject- prefix", pastes[0][2])
+			}
+			if sends := fake.ArgvFor("send-keys"); len(sends) != 0 {
+				t.Errorf("separate send-keys calls = %v; want none, the Enter rides the paste invocation", sends)
+			}
+		})
+	}
+}
+
 // TestSetWaitMark pins the exact tmux argument lists of a set and a clear, and the unknown-guid refusal.
 func TestSetWaitMark(t *testing.T) {
 	t.Parallel()

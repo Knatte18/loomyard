@@ -206,6 +206,9 @@
 // When the watcher cannot be opened the loop logs that once and stays in poll mode for good.
 // A resize while a poll-mode watcher is backed off heals at the next tick, up to a minute late.
 // Windows is poll-only, and on POSIX a watcher stays in poll mode when its file watch failed at promotion or until a later attach or apply installs the hook.
+// PasteSubmit is the pane-write transport op: one tmux invocation fills a fresh named buffer (`lyx-inject-` plus 8 hex characters) with the text, pastes it as a bracketed paste, deletes the buffer, and, when asked, sends Enter behind it.
+// The paste and the Enter reach the pane in one command list, so nothing the operator types lands between them, and the operator's automatic paste-buffer stack is never touched.
+// A text longer than tmux's message limit fails the whole invocation and pastes nothing; every text lyx injects is one short line.
 // The hub watchdog daemon runs a name-repair tick (namerepair.go) beside its resize loop: it resets a drifted pane title itself and repairs a drifted provider session name through the SessionNamer seam, which the provider package implements and cliwire fills.
 // The name-repair tick backs off: its wait starts at ten seconds, doubles through NextWakeCadence up to a minute across passes that repair nothing, and returns to ten seconds after a pass that repaired a title or a session name.
 // NextWakeCadence is the one backoff rule the daemon's loops share.

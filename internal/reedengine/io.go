@@ -1,4 +1,4 @@
-// io.go implements the pane-transport engine ops shuttle drives directly: SendText/SendKey write
+// io.go implements the pane-transport engine ops shuttle drives directly: SendText/SendKey/PasteSubmit write
 // into a strand's live pane,
 // and CapturePane reads its current screen contents back.
 // None of these three reconciles, re-renders, or persists — they are pure transport/query wrapped
@@ -15,8 +15,11 @@
 package reedengine
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -110,6 +113,70 @@ func (e *Engine) SendText(guid, text string, submit bool) error {
 		}
 		return nil
 	})
+}
+
+// PasteSubmit pastes text into guid's live pane as one bracketed paste and, when submit is true, sends Enter right behind it.
+// The paste and the Enter reach the pane in one tmux invocation, so nothing the operator types lands between them.
+// A text longer than tmux's message limit fails the whole invocation and pastes nothing.
+// It does not reconcile, re-render, or persist — pure transport.
+func (e *Engine) PasteSubmit(guid, text string, submit bool) error {
+	return e.withOpLock(func() error {
+		if err := e.requireSessionLocked(); err != nil {
+			return err
+		}
+
+		st, err := e.loadOrInitStateLocked()
+		if err != nil {
+			return err
+		}
+
+		paneID, err := e.resolvePaneInThisSessionLocked(st, guid)
+		if err != nil {
+			return err
+		}
+
+		return e.pasteSubmitLocked(paneID, text, submit)
+	})
+}
+
+// pasteSubmitLocked pastes text into paneID through a fresh named tmux buffer, so the operator's automatic paste-buffer stack is untouched.
+// The caller holds the op lock and has resolved paneID.
+func (e *Engine) pasteSubmitLocked(paneID, text string, submit bool) error {
+	buffer, err := injectBufferName()
+	if err != nil {
+		return err
+	}
+	if err := e.tmux.run(pasteSubmitArgv(paneID, buffer, text, submit)...); err != nil {
+		return fmt.Errorf("paste text: %w", err)
+	}
+	return nil
+}
+
+// pasteSubmitArgv returns the tmux command list that fills buffer with text, pastes it into paneID and deletes the buffer, then sends Enter when submit is true.
+// The commands are joined by the literal one-character ";" element chainedAttachArgv documents.
+// A text ending in ";" gets that final character written as `\;`, which tmux turns back into a literal ";" instead of reading a separator.
+// The "--" keeps a dash-leading text from being read as a flag, and -p makes tmux send a bracketed paste when the pane's application enabled it.
+func pasteSubmitArgv(paneID, buffer, text string, submit bool) []string {
+	if strings.HasSuffix(text, ";") {
+		text = strings.TrimSuffix(text, ";") + `\;`
+	}
+	argv := []string{
+		"set-buffer", "-b", buffer, "--", text,
+		";", "paste-buffer", "-p", "-d", "-b", buffer, "-t", paneID,
+	}
+	if submit {
+		argv = append(argv, ";", "send-keys", "-t", paneID, "Enter")
+	}
+	return argv
+}
+
+// injectBufferName returns a fresh tmux buffer name, "lyx-inject-" plus 8 lowercase hex characters.
+func injectBufferName() (string, error) {
+	var raw [4]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", fmt.Errorf("name paste buffer: %w", err)
+	}
+	return "lyx-inject-" + hex.EncodeToString(raw[:]), nil
 }
 
 // SendKey sends a named key (e.g. "Enter") into guid's live pane.
