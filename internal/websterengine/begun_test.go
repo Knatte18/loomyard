@@ -37,6 +37,35 @@ func TestDispatchScope(t *testing.T) {
 	}
 }
 
+func TestLastBegunCard(t *testing.T) {
+	tests := []struct {
+		name string
+		st   *State
+		want int
+	}{
+		{"nil state", nil, 0},
+		{"no records", &State{Batches: map[int]*BatchState{}}, 0},
+		{"record with cards", &State{Batches: map[int]*BatchState{
+			1: {Cards: []string{"01-a", "02-b", "03-c"}},
+		}}, 3},
+		{"record without cards falls back to its key", &State{Batches: map[int]*BatchState{
+			4: {Slug: "old"},
+		}}, 4},
+		{"done record beside a later non-terminal one", &State{Batches: map[int]*BatchState{
+			1: {Cards: []string{"01-a"}, Terminal: true, Status: "done"},
+			2: {Cards: []string{"02-b"}},
+		}}, 2},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := LastBegunCard(tc.st); got != tc.want {
+				t.Fatalf("LastBegunCard = %d; want %d", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestEditedDoneCards pins what the plan gate's rows do not reach: a done batch's recorded id the plan lacks reports nothing.
 func TestEditedDoneCards(t *testing.T) {
 	t.Parallel()

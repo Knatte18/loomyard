@@ -55,7 +55,7 @@ internal/landingshed: 67
 internal/lock: 4
 internal/logger: 34
 internal/loggerconfig: 3
-internal/loomcli: 195
+internal/loomcli: 197
 internal/loomengine: 42
 internal/loomrecipe: 50
 internal/loomshed: 76
@@ -70,7 +70,7 @@ internal/parentdirective: 4
 internal/parentreview: 53
 internal/pattern: 8
 internal/planglyph: 84
-internal/planparser: 86
+internal/planparser: 90
 internal/preflight: 7
 internal/preflightshed: 8
 internal/proc: 17
@@ -123,7 +123,7 @@ internal/verifyrun: 4
 internal/verifytree: 7
 internal/vscode: 12
 internal/webstercli: 81
-internal/websterengine: 199
+internal/websterengine: 200
 internal/weftname: 1
 internal/yamlengine: 13
 tools/codestats: 9
