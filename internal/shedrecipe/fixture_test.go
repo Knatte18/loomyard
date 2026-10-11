@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -139,6 +140,25 @@ func newTestEnv(t *testing.T) Env {
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(context.Context) (string, error) { return "", nil },
 			Remove:   func(context.Context) error { return nil },
+		},
+		Land: battenshed.LandDeps{
+			ParentBranch: func() (string, error) { return "main", nil },
+			PrimeBranch:  func() (string, error) { return "main", nil },
+			PrimeDirty:   func() ([]string, error) { return nil, nil },
+			Pull:         func(context.Context) error { return nil },
+			Landing:      func() (battenshed.LandingSettings, error) { return battenshed.LandingSettings{}, nil },
+			RunDeploy: func(context.Context, string, string, time.Duration) (battenshed.DeployResult, error) {
+				return battenshed.DeployResult{}, nil
+			},
+			ReadyTasks:     func() ([]string, error) { return nil, nil },
+			PruneBoard:     func() error { return nil },
+			PauseRequested: func() (bool, error) { return false, nil },
+			LandLock: battenshed.PrimeLock{
+				Path: filepath.Join(dir, "land.lock"),
+				Acquire: func() (func() error, bool, error) {
+					return func() error { return nil }, true, nil
+				},
+			},
 		},
 		PrimeLock: battenshed.PrimeLock{
 			Path: filepath.Join(dir, "prime.lock"),

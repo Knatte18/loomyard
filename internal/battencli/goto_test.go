@@ -27,7 +27,10 @@ func writeGotoStatus(t *testing.T, dir, row string, st shedengine.State) string 
 }
 
 func TestPreGoto(t *testing.T) {
-	const teardown = "Worktree-Teardown"
+	const (
+		teardown = "Worktree-Teardown"
+		land     = "Land"
+	)
 	tests := []struct {
 		name        string
 		target      string
@@ -40,6 +43,9 @@ func TestPreGoto(t *testing.T) {
 		{name: "OwnRowTeardownAdmitted", target: teardown, ownRow: teardown, childState: shedengine.StateRunning},
 		{name: "MissingChildRefused", target: teardown, ownRow: "Run-Shed", wantRefused: true},
 		{name: "BackwardAdmittedUnread", target: "Run-Shed", ownRow: "Run-Shed", childState: ""},
+		{name: "LandChildRunningRefused", target: land, ownRow: "Run-Shed", childState: shedengine.StateRunning, wantRefused: true},
+		{name: "LandChildDoneAdmitted", target: land, ownRow: "Run-Shed", childState: shedengine.StateDone},
+		{name: "LandOwnRowLandAdmitted", target: land, ownRow: land, childState: shedengine.StateRunning},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

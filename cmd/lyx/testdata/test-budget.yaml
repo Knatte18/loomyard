@@ -7,9 +7,9 @@ contracts/specs: 3
 contracts/stencils: 16
 internal/agentname: 7
 internal/batcher: 9
-internal/battencli: 59
-internal/battenrecipe: 8
-internal/battenshed: 90
+internal/battencli: 62
+internal/battenrecipe: 9
+internal/battenshed: 103
 internal/boardcli: 13
 internal/boardengine: 76
 internal/boardengine/boardtest: 3
@@ -41,7 +41,7 @@ internal/gateslot: 11
 internal/gitexec: 7
 internal/githubclient: 11
 internal/gitkit: 9
-internal/gitrepo: 41
+internal/gitrepo: 44
 internal/gitrepo/internal/gitoracle: 1
 internal/helpcli: 1
 internal/hubforge: 7

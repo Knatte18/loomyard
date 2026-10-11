@@ -263,6 +263,8 @@ type Env struct {
 	// Env.Landing's own precedent for the same reason as InnerRun: it has behaviour of its own that
 	// per-seam fakes must be able to substitute individually.
 	Teardown battenshed.TeardownDeps
+	// Land is a whole-struct passthrough to battenshed.NewLand, for the reason Teardown is.
+	Land battenshed.LandDeps
 	// PrimeLock is the told hub-scoped advisory lock WorktreeCreate and WorktreeTeardown both
 	// acquire, read by those two bookend entries only.
 	PrimeLock battenshed.PrimeLock

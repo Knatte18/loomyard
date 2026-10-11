@@ -69,9 +69,13 @@ func (e abortedRebaseError) Unwrap() error { return ErrPullRebaseFailed }
 // push.autoSetupRemote=true so first push establishes tracking.
 // A rebase that failed and was aborted returns an error satisfying errors.Is(err, ErrPullRebaseFailed).
 func (r *Repo) pushWithRebaseRetry() error {
-	_, err := r.runChecked("-c", "push.autoSetupRemote=true", "push")
+	err := r.pushPlainWithRetry()
 	if err == nil {
 		return nil
+	}
+	// An exhausted retry is a plain push failure: its "remote rejected" lines contain a rebaseRetryTriggers substring, and a retryable refusal must never trigger the rebase.
+	if errors.Is(err, ErrPushRetriesExhausted) {
+		return fmt.Errorf("gitrepo: git push: %w", err)
 	}
 
 	var gitErr *gitexec.GitError
@@ -104,21 +108,35 @@ func (r *Repo) pushWithRebaseRetry() error {
 		return abortedRebaseError{message: fmt.Sprintf("gitrepo: git pull --rebase: %s", rebaseGitErr.Stderr)}
 	}
 
-	_, err = r.runChecked("-c", "push.autoSetupRemote=true", "push")
+	err = r.pushPlainWithRetry()
 	if err != nil {
 		return fmt.Errorf("gitrepo: git push (retry after rebase): %w", err)
 	}
 	return nil
 }
 
+// pushPlainWithRetry runs the plain push through PushWithRetry for the checked-out branch.
+// A branch that cannot be read leaves the ref empty, so nothing is retried.
+func (r *Repo) pushPlainWithRetry() error {
+	branch, _ := r.CurrentBranch()
+	return PushWithRetry(func() error {
+		_, err := r.runChecked("-c", "push.autoSetupRemote=true", "push")
+		return err
+	}, branch, r.pushSleep)
+}
+
 // PushRebaseFree runs git push without rebasing, establishing upstream via
 // push.autoSetupRemote=true.
 // Returns ErrPushRejected on divergence.
+// A remote "(failed)" or "cannot lock ref" refusal is retried a bounded number of times, and an exhausted retry wraps ErrPushRetriesExhausted rather than mapping to ErrPushRejected.
 // Lock-free.
 func (r *Repo) PushRebaseFree() error {
-	_, err := r.runChecked("-c", "push.autoSetupRemote=true", "push")
+	err := r.pushPlainWithRetry()
 	if err == nil {
 		return nil
+	}
+	if errors.Is(err, ErrPushRetriesExhausted) {
+		return fmt.Errorf("gitrepo: git push: %w", err)
 	}
 	// ErrPushRejected is a sentinel consumers match with errors.Is, so it is
 	// returned bare rather than wrapped with %w — a wrapper here would break
