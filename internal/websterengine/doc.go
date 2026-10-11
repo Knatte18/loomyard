@@ -103,6 +103,20 @@
 // for the rest of the plan's life, invisible to drift detection too, since
 // its reference index keys on the ref as the card spells it.
 //
+// The pass traces every plan: handle the batch's cards own, so the bind rate is countable by grep.
+// Each handle gets one Info line, `webster: handle bind`, with the keys batch, card, handle, outcome (`bound` or `failed`),
+// and glyph on a bound line or reason on a failed one.
+// The six reasons are:
+//   - no-delta-match: the batch's delta created nothing the handle expects;
+//   - sibling-unmatched: the handle matched, but another handle of its card did not, so the card bound none;
+//   - card-not-done: the done-checks reported findings for the handle's card;
+//   - batch-not-done: the done-checks failed another card of the batch, so the pass never bound this one;
+//   - delta-unavailable: quarry could not answer for the delta, which replaces whatever the empty delta computed;
+//   - language-none: the plan opts out of glyphs, which replaces any other reason.
+//
+// A pass logs no bind line when the verb fails before binding: no index wired, a done-checks error, a delta error other than quarry being unavailable, or a bind error.
+// The trace adds no finding, no refusal and no state.
+//
 // This is also why a recovery BatchState inherits the stuck fork's own
 // StartSHA rather than re-capturing the head at recovery-spawn time: the
 // pass computes its delta from that SHA, and a fork frequently commits part

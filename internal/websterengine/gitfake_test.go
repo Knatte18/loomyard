@@ -67,6 +67,10 @@ type fakeIndex struct {
 	// delta and deltaErr are what Delta returns.
 	delta    quarry.GitDeltaAnswer
 	deltaErr error
+	// doneErr, when set, is what DoneChecks returns instead of the real index's answer.
+	doneErr error
+	// bindErr, when set, is what the returned delta's BindHandles returns.
+	bindErr error
 	// deltaRanges records the commit range of every Delta call, in order.
 	deltaRanges []deltaRange
 }
@@ -85,7 +89,14 @@ func newFakeIndex() *fakeIndex {
 
 func (i *fakeIndex) Delta(_, fromSHA, toSHA string) (planindex.Delta, error) {
 	i.deltaRanges = append(i.deltaRanges, deltaRange{from: fromSHA, to: toSHA})
-	return fakeDelta{answer: i.delta}, i.deltaErr
+	return fakeDelta{answer: i.delta, bindErr: i.bindErr}, i.deltaErr
+}
+
+func (i *fakeIndex) DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) ([]planindex.Finding, error) {
+	if i.doneErr != nil {
+		return nil, i.doneErr
+	}
+	return i.Index.DoneChecks(plan, cards, worktreeRoot)
 }
 
 // indexOver returns the index a fixture over git runs on: a fakeIndex, returned twice so the caller can steer it, when git is a fake, and the real index, with a nil fakeIndex, when git is nil and the repository on disk answers.
@@ -100,9 +111,14 @@ func indexOver(git websterengine.Git) (*fakeIndex, planindex.Index) {
 // fakeDelta is a fixed quarry answer behind planindex.Delta, consumed by the real checks.
 type fakeDelta struct {
 	answer quarry.GitDeltaAnswer
+	// bindErr, when set, is what BindHandles returns, with no findings and no outcomes.
+	bindErr error
 }
 
 func (d fakeDelta) BindHandles(plan *planparser.Plan, planDir string, cards []planparser.Card) ([]planindex.Finding, []planindex.BindOutcome, error) {
+	if d.bindErr != nil {
+		return nil, nil, d.bindErr
+	}
 	return planglyph.BindHandles(plan, planDir, d.answer, cards)
 }
 
