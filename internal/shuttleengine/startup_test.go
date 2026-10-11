@@ -41,6 +41,8 @@ var _ Clock = (*frozenClock)(nil)
 // need to script a bounded run of transient reed.Status failures.
 type flakyStatusReed struct {
 	*fakeReed
+	// passFirst is how many Status calls answer from the embedded reed before the failures begin.
+	passFirst int
 	failFirst int
 	calls     int
 	err       error
@@ -48,7 +50,7 @@ type flakyStatusReed struct {
 
 func (r *flakyStatusReed) Status() (reedengine.StatusResult, error) {
 	r.calls++
-	if r.calls <= r.failFirst {
+	if r.calls > r.passFirst && r.calls <= r.passFirst+r.failFirst {
 		return reedengine.StatusResult{}, r.err
 	}
 	return r.fakeReed.Status()
@@ -232,8 +234,10 @@ func TestStartup_PaneNotLiveMidStartup(t *testing.T) {
 		keepPane        bool
 		// wantCapture asserts startup-capture.txt holds the last successful capture.
 		wantCapture bool
+		// wantTail asserts the error ends with the last capture's lines.
+		wantTail bool
 	}{
-		{name: "pane goes not-live", wantCapture: true},
+		{name: "pane goes not-live", wantCapture: true, wantTail: true},
 		{name: "a failing strand removal is reported", removeStrandErr: removeErr},
 		{name: "KeepPane does not apply", keepPane: true},
 	}
@@ -280,6 +284,9 @@ func TestStartup_PaneNotLiveMidStartup(t *testing.T) {
 			}
 			if _, statErr := os.Stat(runDir); statErr != nil {
 				t.Errorf("run dir removed; want it kept: %v", statErr)
+			}
+			if tt.wantTail && !strings.HasSuffix(err.Error(), "The pane's last lines:\n"+lastCapture) {
+				t.Errorf("StartGated() error = %v; want it to end with the pane's last lines %q", err, lastCapture)
 			}
 			if tt.wantCapture {
 				capture, rerr := os.ReadFile(filepath.Join(runDir, startupCaptureFileName))
@@ -433,6 +440,18 @@ func TestStartup_MechanismFailure(t *testing.T) {
 			wantErr: scriptedErr,
 		},
 		{
+			name: "status errors after a pending capture exhaust the retry cap",
+			build: func() (ReedOps, *fakeReed) {
+				inner := &fakeReed{
+					AddStrandResult: reedengine.Strand{GUID: "strand-1"},
+					StatusQueue:     []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}},
+					CaptureQueue:    []string{"still booting..."},
+				}
+				return &flakyStatusReed{fakeReed: inner, passFirst: 1, failFirst: maxStatusRetries, err: scriptedErr}, inner
+			},
+			wantErr: scriptedErr,
+		},
+		{
 			name: "reed never tracks the strand",
 			build: func() (ReedOps, *fakeReed) {
 				inner := &fakeReed{
@@ -466,6 +485,9 @@ func TestStartup_MechanismFailure(t *testing.T) {
 			}
 			if !errors.Is(err, ErrNotStarted) {
 				t.Errorf("StartGated() error = %v; want one wrapping ErrNotStarted -- no start error past AddStrand leaves a live strand behind", err)
+			}
+			if strings.Contains(err.Error(), "The pane's last lines:") {
+				t.Errorf("StartGated() error = %v; want no pane tail on a mechanism failure", err)
 			}
 			if len(inner.RemoveStrandCalls) != 1 {
 				t.Errorf("RemoveStrandCalls = %+v; want exactly one", inner.RemoveStrandCalls)
@@ -612,6 +634,9 @@ func TestStartup_CaptureAlwaysErroringUntilWindowExpires(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no pane capture was saved") {
 		t.Errorf("StartGated() error = %v; want it to say no pane capture was saved", err)
+	}
+	if strings.Contains(err.Error(), "The pane's last lines:") {
+		t.Errorf("StartGated() error = %v; want no pane tail when no capture succeeded", err)
 	}
 
 	runDir := soleStartupRunDir(t, cfg, anchorPath)
@@ -1040,6 +1065,7 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			buf := logcapture.Capture(t)
 			run, reed, elapsed, err := skillStartFixtureWith(t, reedengine.Strand{GUID: "strand-1"}, tt.spec, tt.reports, tt.hangs, tt.dies, func(reed *skillReed, engine *skillFakeEngine) {
+				reed.Screen = "the ready screen"
 				if tt.afterClassify != nil {
 					engine.OnClassify = func() { tt.afterClassify(t, reed.EventsPath()) }
 				}
@@ -1047,6 +1073,10 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 			if tt.wantDied {
 				if !errors.Is(err, ErrNotStarted) {
 					t.Fatalf("Start() error = %v; want one wrapping ErrNotStarted", err)
+				}
+				// The provider was ready before the pane died, so the recorded ready screen is no diagnosis.
+				if len(tt.dies) > 0 && strings.Contains(err.Error(), "The pane's last lines:") {
+					t.Errorf("Start() error = %v; want no pane tail after a ready start", err)
 				}
 			} else if err != nil {
 				t.Fatalf("Start() error = %v", err)
@@ -1212,8 +1242,10 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 		wantStarted bool
 		// wantDiedRecord is false when the record itself is made unwritable.
 		wantDiedRecord bool
+		// wantOneTail asserts the pane's last lines appear once in the error: the cause carries them and the teardown adds none.
+		wantOneTail bool
 	}{
-		{name: "a skill-load send that stays busy", skill: true, idle: false, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
+		{name: "a skill-load send that stays busy", skill: true, idle: false, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantOneTail: true},
 		{name: "a prompt delivery that does not land", idle: true, box: prompt, wantIs: []error{ErrNotStarted, ErrSubmissionNotLanded}, wantDiedRecord: true},
 		{name: "a skill load held past the send window by an active operator", skill: true, idle: true, active: []bool{true}, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
 		{name: "a prompt delivery held past the send window by an active operator", idle: true, active: []bool{true}, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
@@ -1294,6 +1326,11 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 			}
 			if len(base.RemoveStrandCalls) != 1 {
 				t.Errorf("RemoveStrandCalls = %+v; want exactly one", base.RemoveStrandCalls)
+			}
+			if tt.wantOneTail {
+				if got := strings.Count(err.Error(), "The pane's last lines:"); got != 1 {
+					t.Errorf("Start() error has the pane's last lines %d times; want once: %v", got, err)
+				}
 			}
 			if !tt.wantDiedRecord {
 				return

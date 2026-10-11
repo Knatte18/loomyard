@@ -267,6 +267,11 @@ func paneTail(reed ReedOps, guid string) string {
 	if err != nil {
 		return fmt.Sprintf("(the final pane capture failed: %v)", err)
 	}
+	return captureTail(capture)
+}
+
+// captureTail returns the last paneTailLines non-blank lines of capture, each right-trimmed and joined by newlines.
+func captureTail(capture string) string {
 	var lines []string
 	for _, line := range strings.Split(capture, "\n") {
 		if strings.TrimSpace(line) != "" {

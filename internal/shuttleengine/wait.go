@@ -580,6 +580,11 @@ func (run *Run) awaitStartup() (Result, error) {
 // the capture was saved, and whether the strand removal itself succeeded — carrying reed's own error
 // text and an operator remedy when it did not, since a strand abandonStartup could not remove is the
 // one residual an operator must clear by hand.
+//
+// The error ends with ". The pane's last lines:" and the last startup capture's tail when all three hold:
+// cause is nil, the provider never reached StartupReady (run.state.Started is false), and a startup capture was recorded.
+// Every other teardown reports a cause that already carries its own screen or a mechanism failure with none,
+// or a pane that died after it was ready, whose last capture is the ready screen from before the death.
 func (run *Run) abandonStartup(outcome Outcome, cause error) (Result, error) {
 	captureNote := "no pane capture was saved"
 	if run.lastStartupCapture != "" {
@@ -607,6 +612,10 @@ func (run *Run) abandonStartup(outcome Outcome, cause error) (Result, error) {
 		logger.Warn("shuttle: start failed before the provider took its first input; strand torn down", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", string(outcome), "cause", cause)
 		format += ": %w"
 		args = append(args, cause)
+	}
+	if cause == nil && !run.state.Started && run.lastStartupCapture != "" {
+		format += ". The pane's last lines:\n%s"
+		args = append(args, captureTail(run.lastStartupCapture))
 	}
 
 	return result, fmt.Errorf(format, args...)
