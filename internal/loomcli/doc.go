@@ -14,6 +14,10 @@
 // a second invocation while a driver runs ensures the substrate instead.
 //
 // A live loom driver parked at a hand-back is resumed by typing one line into its pane, and start refuses after a bounded wait when that pane is not ready, since the driver may be busy having resumed on its own.
+// A pane that holds a draft, an active operator or another busy reading is refused with the retryable kind `driver_busy`, the park marker kept, and the message names the draft and the way forward;
+// a resume line that never appeared stays a non-retryable refusal.
+// The stop-report path in the resume line is picked once per park and kept in a resume-report file beside the park marker, keyed to the marker's content, so every rerun against one park types the identical line;
+// a landed resume or a fresh spawn removes the file.
 // A live loom driver over a run halted at a hand-back (awaiting, blocked, paused or failed) that has not yet written its park marker is still writing its stop report, so start refuses with the kind `driver_not_parked`;
 // a live driver over a running run is left working.
 // Before spawning or resuming a driver, start refuses with the kind `merge_in_progress` over an unfinished merge, naming the conflicted paths and the remedy, the fabric verbs for a fabric merge and git for one fabric did not start.
@@ -48,9 +52,28 @@
 //   - awaiting at any other row: refused, naming `lyx loom approve` or `lyx loom reject`, after which a batten run watching the child resumes it, or `lyx batten run <slug>` from the prime when none does.
 //   - running: a no-op success when the driver is live or holds the run lock, and refused as a halted run otherwise.
 //   - halted with the run lock held, or with a live driver and no park marker: refused with the kind `driver_not_parked`, to retry shortly.
-//   - halted with a live driver and a park marker: resumed, refused with `merge_in_progress` over an unfinished merge under start's Publish and Finalize exception.
+//   - halted with a live driver and a park marker: resumed, refused with `merge_in_progress` over an unfinished merge under start's Publish and Finalize exception, and with `driver_busy` when the driver's pane would not take the resume line.
 //   - halted with no live driver: refused over an unfinished merge with `merge_in_progress`, otherwise naming `lyx batten run <slug>` from the prime and then resume for a dead strand, and `lyx loom start` for a retiring strand or none.
 //
 // The driver strand is read from reed's directory, which still lists a session that died with the machine, never from the run's seed.
 // A resume line that cannot be delivered is refused, naming `lyx loom status` and a re-run of resume.
+//
+// # Plan card verbs
+//
+// `lyx loom insert-card <position> <slug> --intent <intent>`, `lyx loom remove-card <position>` and `lyx loom restore-renumber` are the sanctioned way to add or drop one card of the plan and renumber the cards after it.
+// A renumber moves each later card's file name prefix, heading number, explicit `Commit:` prefix and Card Index number, and writes a heading-only stub for an inserted card, which the agent fills with Edit or Write.
+// The success envelope carries `plan_dir`, `moved`, `created` or `removed`, and `prose_mentions`, the lines that name a moved card by its old number; they are never rewritten, so the agent checks each by hand.
+// `restore-renumber` reports `plan_dir`, `journal`, `restored` and `removed`.
+//
+// Each verb takes webster's state-mutation lease first and releases it before it prints, so no begin-batch records a batch between the bound check and the renumber.
+// `insert-card` and `remove-card` refuse a position at or before the last card of any batch webster has begun, terminal or not, since a begun card is frozen.
+// They touch only the current generation's card files and the Card Index of the overview, never an archive, a prior generation, the overview's frontmatter or any other section, and they never commit, approve or set `approved:`.
+//
+// Every call writes a journal under the plan's never-tracked mirror before it changes the plan directory, and removes it as its last step.
+// A failure undoes the call; one whose undo fails keeps the journal, and `restore-renumber` completes the undo from it.
+// The restore writes back whole pre-call files, the overview included, and removes every created name whatever it holds by then, so it discards any edit made to the journaled files since the interrupted call.
+// A journal naming anything but the overview or a card file at the top level of the plan directory is refused before any file is written.
+//
+// The three verbs read only the resolved anchor, so they join the lightweight wiring and are not held up by an unrelated module's config.
+// `renumberRefusal` words every refusal with its way forward; the rows are in `contracts/specs/refusal-spec.md`.
 package loomcli

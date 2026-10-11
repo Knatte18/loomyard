@@ -97,11 +97,12 @@ Never widen the scope through rejects: a reject names a defect in the task's own
 A small defect in that goal is fixed on the task branch; new hardening goes on the board as its own entry.
 Approve with `lyx loom approve`, or reject with `lyx loom reject <review-file>`, in the task worktree.
 Batten reads the decision and resumes the child itself.
-In a darn run the same reject sends the findings to a fresh `Darn` spawn.
+In a darn run the same reject sends the findings to a fresh `Darn-Write` spawn.
 Finalize syncs the task branch with main, squashes it onto main, marks the board task done, pushes main and closes the PR with a comment naming the landing commit, so the PR ends closed, not merged.
 
 ## After landing
 
+First read `lyx batten status <slug>`; when its state is not done, run `lyx batten run <slug>` from the prime and confirm with `lyx batten status <slug>` that it reaches done, which runs Worktree-Teardown.
 Batten's teardown removes the pair.
 From the prime: pull and amend the board entries the run superseded.
 Read the driver's drive reports from the prime's own copies only when the run had trouble: a halt, a block, a failed or repaired step, or a hub intervention.

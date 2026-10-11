@@ -1,11 +1,12 @@
-// paths.go declares the shed run-directory path constructors: the durable paths under _lyx (the run directory, its seed and status files, and the drive-reports directory), the ephemeral paths under .lyx (including the driver park marker), the anchor-relative paths for fabric commit pathspecs (including the run-records root), and one hub-scoped ephemeral lock that sits one level above any single run-id.
-// Every constructor is a plain filepath.Join onto the given *lyxcwd.Location's AnchorPath(), per the Cwd Resolution Invariant -- none of them calls os.Getwd or any git command.
+// paths.go declares the shed run-directory path constructors: the durable paths under _lyx (the run directory, its seed and status files, and the drive-reports directory), the ephemeral paths under .lyx (including the driver park marker), the anchor-relative paths for fabric commit pathspecs (including the run-records root), the tree-relative seed and status paths a git tree read takes, and one hub-scoped ephemeral lock that sits one level above any single run-id.
+// Every constructor that returns an absolute path joins onto the given *lyxcwd.Location's AnchorPath(), per the Cwd Resolution Invariant; the *Rel constructors and TreeRunFileRels return relative paths; none of them calls os.Getwd or any git command.
 
 package shedrun
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"path"
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -36,6 +37,16 @@ const BattenWatchedFileName = "batten-watched"
 // That refusal is retryable: the driver is still writing its stop report and committing its records, and parks within seconds.
 // It is exported so battencli recognises the refusal by this one declared value rather than by its message text.
 const StartNotParkedKind = "driver_not_parked"
+
+// StartDriverBusyKind is the envelope "kind" of the `lyx loom start` and `lyx loom resume` refusal for a parked driver whose pane would not take the resume line:
+// shuttle held the send on a draft, an active operator or another busy reading.
+// That refusal is retryable once the draft is cleared or sent.
+// It is exported so battencli recognises the refusal by this one declared value rather than by its message text.
+const StartDriverBusyKind = "driver_busy"
+
+// ResumeReportFileName is the filename of the resume-report file, whose path ResumeReport returns.
+// The file holds the park marker's content on its first line and, on its second, the stop-report path the resume branch picked for that park.
+const ResumeReportFileName = "driver-resume-report"
 
 // StartMergeInProgressKind is the envelope "kind" of the `lyx loom start` refusal for a start that would spawn or resume a driver over a pair carrying an unfinished merge.
 // That refusal is NOT retryable: the operator must resolve, conclude or abort the merge first.
@@ -100,6 +111,12 @@ func ParkMarker(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), ParkMarkerFileName)
 }
 
+// ResumeReport returns the path to the ephemeral resume-report file, ResumeReportFileName under ScratchDir(l, runID), beside the park marker.
+// It keeps the stop-report path the resume branch picked for the current park, so every rerun against that park types the same resume line.
+func ResumeReport(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), ResumeReportFileName)
+}
+
 // BattenWatchedMarker returns the path to the ephemeral batten-watched marker, BattenWatchedFileName under ScratchDir(l, runID).
 func BattenWatchedMarker(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), BattenWatchedFileName)
@@ -141,6 +158,18 @@ func DriveReportsRel(l *lyxcwd.Location, runID string) string {
 // The path is anchor-relative, the same shape SeedRel and StatusRel return, suitable as a fabricengine commit's relPaths.
 func RunsRootRel() string {
 	return filepath.Join(lyxdirs.LyxDirName, shedDirName)
+}
+
+// TreeRunFileRels returns the slash-separated, tree-relative paths of a run's seed.json and status.json, as a git tree read takes them.
+// It validates runID and applies no "self" alias and no legacy directory fallback, since a tree read from git has no disk to resolve against.
+// A runID that fails validation returns that error and empty paths.
+func TreeRunFileRels(runID string) (seedRel, statusRel string, err error) {
+	if err := ValidateRunID(runID); err != nil {
+		return "", "", err
+	}
+	return path.Join(lyxdirs.LyxDirName, shedDirName, runID, "seed.json"),
+		path.Join(lyxdirs.LyxDirName, shedDirName, runID, "status.json"),
+		nil
 }
 
 // PrimeRunLock returns the path to the hub-scoped ephemeral advisory lock that sits one level above

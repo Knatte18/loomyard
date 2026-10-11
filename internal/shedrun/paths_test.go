@@ -103,6 +103,10 @@ func TestParkMarker(t *testing.T) {
 			if err != nil || strings.HasPrefix(rel, "..") {
 				t.Errorf("ParkMarker(l, %q) = %q; want it under the .lyx tree", runID, got)
 			}
+			report := ResumeReport(l, runID)
+			if report == got || filepath.Dir(report) != filepath.Dir(got) || filepath.Dir(report) != ScratchDir(l, runID) {
+				t.Errorf("ResumeReport(l, %q) = %q; want a file beside %q under the scratch directory", runID, report, got)
+			}
 		})
 	}
 }
@@ -122,6 +126,19 @@ func TestRunsRootRel(t *testing.T) {
 		if !strings.HasPrefix(got, prefix) {
 			t.Errorf("%s(l, %q) = %q; want it strictly under %q", name, "x", got, root)
 		}
+	}
+
+	for runID, want := range map[string][2]string{
+		"x":    {"_lyx/shed/x/seed.json", "_lyx/shed/x/status.json"},
+		"self": {"_lyx/shed/self/seed.json", "_lyx/shed/self/status.json"},
+	} {
+		seedRel, statusRel, err := TreeRunFileRels(runID)
+		if err != nil || seedRel != want[0] || statusRel != want[1] {
+			t.Errorf("TreeRunFileRels(%q) = %q, %q, %v; want %q, %q, nil", runID, seedRel, statusRel, err, want[0], want[1])
+		}
+	}
+	if seedRel, statusRel, err := TreeRunFileRels("a/b"); err == nil || seedRel != "" || statusRel != "" {
+		t.Errorf("TreeRunFileRels(%q) = %q, %q, %v; want empty paths and an error", "a/b", seedRel, statusRel, err)
 	}
 }
 

@@ -23,6 +23,11 @@ var LandingTemplateConflict []byte
 //go:embed landing/landing-template-describe.md
 var LandingTemplateDescribe []byte
 
+// LandingTemplateDescribeDarn is the darn recipe's Describe producer's shipped-default prompt.
+//
+//go:embed landing/landing-template-describe-darn.md
+var LandingTemplateDescribeDarn []byte
+
 // DarnTemplateWrite is the darn writer's shipped-default prompt: the whole instruction set of the one session that makes a board entry's change.
 //
 //go:embed darn/darn-template-write.md
@@ -353,6 +358,7 @@ type registryEntry struct {
 var entries = []registryEntry{
 	{"landing-template-conflict", &LandingTemplateConflict},
 	{"landing-template-describe", &LandingTemplateDescribe},
+	{"landing-template-describe-darn", &LandingTemplateDescribeDarn},
 	{"darn-template-write", &DarnTemplateWrite},
 	{"loom-template-discussion", &LoomTemplateDiscussion},
 	{"loom-template-discussion-chair", &LoomTemplateDiscussionChair},
@@ -436,7 +442,7 @@ var roleOpeningStencils = map[string][]string{
 	"treadle-targeting":  {"treadle-template-targeting"},
 	"treadle-judge":      {"treadle-template-judge-circling", "treadle-template-judge-milestone"},
 	"friction":           {"friction-template-reflection"},
-	"describe":           {"landing-template-describe"},
+	"describe":           {"landing-template-describe", "landing-template-describe-darn"},
 	"darn":               {"darn-template-write"},
 }
 

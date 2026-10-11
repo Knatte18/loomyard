@@ -825,9 +825,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		MissingStatusWayForward: loomMissingStatusWayForward,
 	}
 
-	// A darn run swaps in the darn recipe's verify source and fills the Darn row's seams; a loom run leaves them nil.
+	// A darn run swaps in the darn recipe's verify source and Describe spec and fills the Darn-Write row's seams; a loom run leaves them nil.
 	if c.recipe == shedrun.RecipeDarn {
-		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, registry); err != nil {
+		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, landingCfg, registry); err != nil {
 			return err
 		}
 	}

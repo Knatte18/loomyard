@@ -70,7 +70,7 @@ var nilLegal = map[string]bool{
 	"InnerRun.Awake":                                   true,
 	"InnerRun.OpenTerminal":                            true,
 	"InnerRun.Notify":                                  true,
-	"InnerRun.AttachDir":                               true,
+	"InnerRun.PairDir":                                 true,
 	"PrimeLock.Sleep":                                  true,
 	"SegmentBounces":                                   true,
 	"RowReviewModels":                                  true,
@@ -211,7 +211,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		},
 		Rework:               ReworkDeps(t, dir),
 		DarnVerifyAttempts:   3,
-		DarnReviewMaxBounces: 3,
+		DarnReviewMaxBounces: 1,
 		DarnSpec: func(loomshed.DarnTold) (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
 				Prompt:      "test darn prompt",

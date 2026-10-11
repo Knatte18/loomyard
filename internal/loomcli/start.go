@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/spf13/cobra"
 )
@@ -347,16 +348,22 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		}
 	}
 	if mustSpawn {
-		if err := os.Remove(markerPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			_ = bootstrapLock.Release()
-			clihelp.SetExit(ctx, output.Err(out, rerunMessage(err, retryStart)))
-			return false
+		for _, stale := range []string{markerPath, shedrun.ResumeReport(c.location, shedrun.ResolveRunID(c.location, c.runID))} {
+			if err := os.Remove(stale); err != nil && !errors.Is(err, os.ErrNotExist) {
+				_ = bootstrapLock.Release()
+				clihelp.SetExit(ctx, output.Err(out, rerunMessage(err, retryStart)))
+				return false
+			}
 		}
 		c.vouchForSpawnedResume()
 	} else if driverAction == driverStrandLive {
 		if parkedLive {
 			if _, err := c.resumeParkedDriver(driverGUID, retryStart); err != nil {
 				_ = bootstrapLock.Release()
+				if errors.Is(err, shuttleengine.ErrSessionBusy) {
+					clihelp.SetExit(ctx, output.ErrFields(out, driverBusyMessage(err, retryStart), map[string]any{"kind": shedrun.StartDriverBusyKind}))
+					return false
+				}
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return false
 			}

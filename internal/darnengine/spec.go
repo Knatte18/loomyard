@@ -98,7 +98,7 @@ func DarnSpec(in DarnInputs, cfg Config, reg modelspec.Registry) (shuttleengine.
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("darn: DarnSpec: %w", err)
 	}
-	frictionDirective, err := friction.Directive(friction.NotePath(in.FrictionDir, "Darn"), in.StencilsDir, friction.RoleImplementer)
+	frictionDirective, err := friction.Directive(friction.NotePath(in.FrictionDir, "Darn-Write"), in.StencilsDir, friction.RoleImplementer)
 	if err != nil {
 		logger.Warn("darn: friction directive failed, continuing without one", "role", darnRole, "stencil", darnStencilName, "error", err)
 		frictionDirective = ""

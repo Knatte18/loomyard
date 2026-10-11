@@ -206,7 +206,15 @@
 // When the watcher cannot be opened the loop logs that once and stays in poll mode for good.
 // A resize while a poll-mode watcher is backed off heals at the next tick, up to a minute late.
 // Windows is poll-only, and on POSIX a watcher stays in poll mode when its file watch failed at promotion or until a later attach or apply installs the hook.
+// PasteSubmit is the pane-write transport op: one tmux invocation fills a fresh named buffer (`lyx-inject-` plus 8 hex characters) with the text, pastes it as a bracketed paste, deletes the buffer, and, when asked, sends Enter behind it.
+// The paste and the Enter reach the pane in one command list, so nothing the operator types lands between them, and the operator's automatic paste-buffer stack is never touched.
+// A text longer than tmux's message limit fails the whole invocation and pastes nothing; every text lyx injects is one short line.
+// A failed invocation stops before the paste's own delete, so a best-effort `delete-buffer` of its own removes the buffer.
+// OperatorActive is the operator-activity query: it lists the session's attached clients with their active pane and last-activity epoch second, and answers whether any client is on the strand's pane with activity within the quiet window, plus that window.
+// The window is the reed.yaml key `operator_quiet_s` (seconds, default 5; a zero or negative value takes the default, as does a materialized reed.yaml lacking the key until `lyx config reconcile` writes it).
+// No attached client, or clients on other panes only, answer not active, and a failed listing is returned as the error for the caller to decide on.
 // The hub watchdog daemon runs a name-repair tick (namerepair.go) beside its resize loop: it resets a drifted pane title itself and repairs a drifted provider session name through the SessionNamer seam, which the provider package implements and cliwire fills.
+// The session-name repair types the rename only into an idle pane with no active operator, and does it with one paste-submit under the op lock it already holds; an active operator defers the repair to the next tick, and an unreadable client list does not hold it.
 // The name-repair tick backs off: its wait starts at ten seconds, doubles through NextWakeCadence up to a minute across passes that repair nothing, and returns to ten seconds after a pass that repaired a title or a session name.
 // NextWakeCadence is the one backoff rule the daemon's loops share.
 // The discover signal is the hub-level file named DiscoverSignalFileName, at the path Geometry.DiscoverSignalPath tells.
@@ -230,8 +238,22 @@
 // A running server ignores the flag, and every other engine call keeps its argv.
 // The skip covers the operator's whole `~/.tmux.conf` on reed's per-hub servers only, every option, key binding and hook in it, and leaves the operator's own servers alone.
 // It takes effect at a hub server's next start, so a server an older lyx started keeps the operator's config until it exits.
-// Reed sets every option it depends on itself, and no `reed.yaml` key carries an operator tmux setting;
-// an operator who wants one sources it by hand into the running server, where it lasts until that server exits.
+// The hermetic default stands unless the `reed.yaml` key `tmux_conf` (variable `LYX_REED_TMUX_CONF`) names a tmux config file; empty, it sources nothing.
+// A non-empty value is refused on a POSIX boot unless it names an absolute path to an existing regular file free of whitespace and the characters `* ? [ \ ' " ; # { } $`, the error naming the key, the variable and the path.
+// The file is sourced once per server start, by the boot that started the server.
+// Every POSIX boot reads the server's identity (`#{pid} #{start_time}`) before its spawn and again once its session is up, and the boot is the candidate for the source when the two differ.
+// A candidate claims the server with the server option `@lyx_tmux_conf_claimed` in an `if-shell` check that waits on nothing, so exactly one of two concurrent candidates sources; the winner sets the option to `sourced`, or to `empty` when no file is named.
+// The claim and the source run before reed's own option pins, so reed's values win over the file's.
+// What the file cannot pass is the session and server lifetime: the spawn pins the new session `destroy-unattached off` and tags it `@lyx_reed_session`, and the guard ends by pinning `destroy-unattached` globally and `exit-unattached` on the server `off`.
+// The guard invocation's exit status is only a warning, written to the booting command's stderr and logged with the path and tmux's own message, because one status carries the claim, the source and both pins.
+// The decisions are separate read-back round trips: the boot fails when its session is gone, naming the key, the variable, the path and the command to remove from the file (an untargeted `set destroy-unattached on`, a `kill-session`), or when either pin does not read `off`.
+// Nothing re-sources the file into a running server, so a changed value takes effect at the server's next start, and a starter whose boot ends between spawn and guard leaves the server unclaimed and file-less until then.
+// Only sessions that count as reed's are seen by reed.
+// On a server whose claim is `sourced`, a session counts when it carries `@lyx_reed_session`; on any other server, every session counts, so Windows and servers started before the claim existed behave as before.
+// Every session read applies the rule: `list-sessions -f` through listSessionsArgv in Go (the watchdog's discovery, the pair teardown, the last-session check that ends the server, the session-less holder and zombie checks, the recorded-session classification and the next/previous session switch), and the same condition in the status bar's session row.
+// Teardown therefore ends the server, and any session the file created with it, when no reed session remains, and so does a boot refused because the file ended its session.
+// The bound: such a session is hidden from reed and lives until the server ends.
+// Windows parses the key and does none of it: psmux reads its own config at start, and the filter flag is never passed to its `list-sessions`.
 //
 // Pane enumeration: listPanes (overlay.go) always runs
 //

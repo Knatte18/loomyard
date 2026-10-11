@@ -40,9 +40,9 @@ type Config struct {
 	// Verify is the shell command the darn verify gate, Publish and Finalize run in the task worktree.
 	// It runs any shell command in the task worktree, which is why the module is hub-wide.
 	Verify string `yaml:"verify"`
-	// VerifyAttempts is how many times the verify gate re-prompts the writer's session before it halts the run.
+	// VerifyAttempts is how many times a verify gate, the writer's or a Darn-Review fix round's, re-prompts its session before it halts the run.
 	VerifyAttempts int `yaml:"verify_attempts"`
-	// ReviewMaxBounces is the bounce budget of the Darn-Review perch that reviews the writer's diff before Publish; 0 runs no review.
+	// ReviewMaxBounces is the bounce budget of the Darn-Review perch that reviews the writer's diff before Publish; 0 runs neither the review nor Describe.
 	ReviewMaxBounces int `yaml:"review_max_bounces"`
 }
 

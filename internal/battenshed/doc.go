@@ -25,11 +25,16 @@
 // A sleep under a minute still counts as idle, and the subtraction can delay a notice and never raise one earlier.
 // Limits: a run whose pid is dead is not read, a run that keeps writing or hangs in a live wait is never quiet, and both notices are informational.
 // A marker under the row's scratch directory records the notices sent, and only those queued, so a batten restart sends the notices not yet sent and never one already sent.
+// A state-changed notice names what happened, the child's state and the row it stopped at, for example `awaiting at PR-Gate`.
+// The child's reason is labelled `error:` for a failed or blocked child and `waiting:` for any other state.
 // Every notice carries `since` and `history`, and a notice for a parked stop (blocked, paused, failed, awaiting) carries the driver's stop report, or `report none yet`.
+// Every path under the task pair is rendered relative to it, since the slug already names the pair, and a notice carries no attach command.
 // A parked stop's notice waits for the driver's stop report, for the driver strand to end, or for three minutes after `since`, whichever comes first, and an older report never qualifies.
 // An awaiting child whose status carries a parent notice, while this batten holds the watched marker, is left to its driver's relay:
 // its notice goes when the driver strand has ended, or three minutes passed with no report, or ten minutes passed since the report with no decision record.
 // A done child's notice goes on the first check that sees it, and the Done return makes one last attempt of a notice still pending.
+// A resume the child refuses because its parked driver's pane holds a draft, an active operator or another busy reading (a spawn error wrapping ErrChildDriverBusy) is retried like a not-parked one, without a deadline, until the resume lands, the child leaves awaiting or batten is paused or stopped.
+// Its wait reason names the draft and the remedy, and one notice per stall tells the orch to clear the draft in the driver's pane; the notice never carries the refusal's text, which quotes another pane, and a landed resume re-arms it.
 // Delivery: the Notify seam reports whether the line was queued; with no orch strand recorded it is not called, one Warn is logged per episode and the strand is asked about again once per notice_probe_s;
 // a Notify error or an unqueued line is retried at most once per notice_probe_s and at most three times, then dropped with a Warn.
 // Control flow is unchanged: a notice is informational, a delivery failure is only warned about, and the outcomes, halts and waits are the same with or without it.
