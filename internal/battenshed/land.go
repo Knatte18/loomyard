@@ -31,8 +31,6 @@ const (
 	primeDirtyPollInterval = 5 * time.Second
 	// deployTimeout is how long the deploy command may run.
 	deployTimeout = 30 * time.Minute
-	// pausedReasonPrefix leads the reason of a Stuck that honours a pause request, which sends no notice.
-	pausedReasonPrefix = "pause honoured"
 	// readyMarkerLine is the row-notice marker line recording that the ready notice was queued.
 	readyMarkerLine = "ready"
 )
@@ -121,13 +119,24 @@ func NewLand(name, slug string, deps LandDeps, primeLock PrimeLock, scratchDir s
 }
 
 // stop returns the Stuck verdict for a failed step, or the cancelled-during-run error when ctx ended first.
-// It records the reason and queues the failure notice, except for a pause, which the operator asked for.
+// It records the reason and queues the failure notice.
 func (p *landProducer) stop(ctx context.Context, step, reason string) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	return p.stuck(ctx, step, reason, true)
+}
+
+// pause returns the Stuck verdict for a pause request honoured while waiting, or the cancelled-during-run error when ctx ended first.
+// It records the reason and queues no notice, since the operator asked for the pause.
+func (p *landProducer) pause(ctx context.Context, reason string) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	return p.stuck(ctx, "", reason, false)
+}
+
+// stuck records reason and returns the Stuck verdict, queueing the failure notice for step only when notify is set.
+func (p *landProducer) stuck(ctx context.Context, step, reason string, notify bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if cerr := cancelErr(ctx, p.name); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
 	}
 	reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
-	if !strings.HasPrefix(reason, pausedReasonPrefix) {
+	if notify {
 		p.notifier.failed(ctx, step, reason)
 	}
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
@@ -142,7 +151,7 @@ func (p *landProducer) failure(ctx context.Context, step string, err error) (she
 // Shed's blocked persist leaves the pause flag set, so the way forward clears it with a goto before the run re-enters the row.
 func (p *landProducer) pausedReason(what string) string {
 	return fmt.Sprintf("%s: a pause was requested while waiting for %s; batten stays blocked at %s, so run \"lyx batten goto %s --to %s\" and then \"lyx batten run %s\"",
-		pausedReasonPrefix, what, p.name, p.slug, p.name, p.slug)
+		"pause honoured", what, p.name, p.slug, p.name, p.slug)
 }
 
 // Call implements shedengine.ShedProducer.
@@ -153,11 +162,14 @@ func (p *landProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine
 		return "", shedengine.OutputPointer{}, err
 	}
 
-	release, reason, err := p.acquireLandLock(ctx)
+	release, reason, paused, err := p.acquireLandLock(ctx)
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
 	if release == nil {
+		if paused {
+			return p.pause(ctx, reason)
+		}
 		return p.stop(ctx, "land lock", reason)
 	}
 	defer func() {
@@ -181,9 +193,12 @@ func (p *landProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine
 	if parent != primeBranch {
 		logger.Info("battenshed: parent branch is not the prime's branch; skipping pull and deploy", "producer", p.name, "slug", p.slug, "parent", parent, "prime", primeBranch)
 	} else {
-		reason, err := p.waitCleanPrime(ctx)
+		reason, paused, err := p.waitCleanPrime(ctx)
 		if err != nil {
 			return "", shedengine.OutputPointer{}, err
+		}
+		if paused {
+			return p.pause(ctx, reason)
 		}
 		if reason != "" {
 			return p.stop(ctx, "prime check", reason)
@@ -289,75 +304,75 @@ func (p *landProducer) pullAndDeploy(ctx context.Context, parent string) (step, 
 
 // acquireLandLock takes the land lock, polling a contended one from landLockPollBase doubling to landLockPollCeiling with no time limit.
 // A non-nil release means the lock is held and the caller must call it exactly once.
-// A non-empty stuckReason is a pause honoured between two polls, or a failure to read the pause flag or to acquire.
+// A non-empty stuckReason is a pause honoured between two polls, or a failure to read the pause flag or to acquire; paused tells the pause from the failures.
 // A non-nil err is the cancelled-during-run diagnosis.
-func (p *landProducer) acquireLandLock(ctx context.Context) (release func() error, stuckReason string, err error) {
+func (p *landProducer) acquireLandLock(ctx context.Context) (release func() error, stuckReason string, paused bool, err error) {
 	lock := p.deps.LandLock
 	poll := landLockPollBase
 	for attempt := 0; ; attempt++ {
 		rel, ok, acquireErr := lock.Acquire()
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
-			return nil, "", cerr
+			return nil, "", false, cerr
 		}
 		if acquireErr != nil {
-			return nil, fmt.Sprintf("land lock failed: acquire %q: %s", lock.Path, acquireErr.Error()), nil
+			return nil, fmt.Sprintf("land lock failed: acquire %q: %s", lock.Path, acquireErr.Error()), false, nil
 		}
 		if ok {
-			return rel, "", nil
+			return rel, "", false, nil
 		}
 		if attempt == 0 {
 			logger.Info("battenshed: land lock contended, waiting", "producer", p.name, "path", lock.Path, "slug", p.slug)
 		}
-		paused, pauseErr := p.deps.PauseRequested()
+		pauseRequested, pauseErr := p.deps.PauseRequested()
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
-			return nil, "", cerr
+			return nil, "", false, cerr
 		}
 		if pauseErr != nil {
-			return nil, fmt.Sprintf("land lock failed: read the pause flag: %s", pauseErr.Error()), nil
+			return nil, fmt.Sprintf("land lock failed: read the pause flag: %s", pauseErr.Error()), false, nil
 		}
-		if paused {
-			return nil, p.pausedReason("the land lock"), nil
+		if pauseRequested {
+			return nil, p.pausedReason("the land lock"), true, nil
 		}
 		p.deps.Sleep(ctx, poll)
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
-			return nil, "", cerr
+			return nil, "", false, cerr
 		}
 		poll = min(poll*2, landLockPollCeiling)
 	}
 }
 
 // waitCleanPrime waits, for at most primeDirtyWaitBound, until the prime has no uncommitted tracked paths.
-// A non-empty stuckReason is a pause honoured, a failed read, or the bound spent naming the paths.
+// A non-empty stuckReason is a pause honoured, a failed read, or the bound spent naming the paths; paused tells the pause from the failures.
 // A non-nil err is the cancelled-during-run diagnosis.
-func (p *landProducer) waitCleanPrime(ctx context.Context) (stuckReason string, err error) {
+func (p *landProducer) waitCleanPrime(ctx context.Context) (stuckReason string, paused bool, err error) {
 	deadline := p.deps.Now().Add(primeDirtyWaitBound)
 	for {
 		dirty, readErr := p.deps.PrimeDirty()
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
-			return "", cerr
+			return "", false, cerr
 		}
 		if readErr != nil {
-			return fmt.Sprintf("prime check failed: read the prime's uncommitted paths: %s", readErr.Error()), nil
+			return fmt.Sprintf("prime check failed: read the prime's uncommitted paths: %s", readErr.Error()), false, nil
 		}
 		if len(dirty) == 0 {
-			return "", nil
+			return "", false, nil
 		}
 		if !p.deps.Now().Before(deadline) {
-			return fmt.Sprintf("prime check failed: the prime still has uncommitted tracked paths after %s: %s; way forward: commit or discard them, then run \"lyx batten run %s\" from the prime", primeDirtyWaitBound, strings.Join(dirty, ", "), p.slug), nil
+			return fmt.Sprintf("prime check failed: the prime still has uncommitted tracked paths after %s: %s; way forward: commit or discard them, then run \"lyx batten run %s\" from the prime", primeDirtyWaitBound, strings.Join(dirty, ", "), p.slug), false, nil
 		}
-		paused, pauseErr := p.deps.PauseRequested()
+		pauseRequested, pauseErr := p.deps.PauseRequested()
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
-			return "", cerr
+			return "", false, cerr
 		}
 		if pauseErr != nil {
-			return fmt.Sprintf("prime check failed: read the pause flag: %s", pauseErr.Error()), nil
+			return fmt.Sprintf("prime check failed: read the pause flag: %s", pauseErr.Error()), false, nil
 		}
-		if paused {
-			return p.pausedReason("a clean prime"), nil
+		if pauseRequested {
+			return p.pausedReason("a clean prime"), true, nil
 		}
 		p.deps.Sleep(ctx, primeDirtyPollInterval)
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
-			return "", cerr
+			return "", false, cerr
 		}
 	}
 }
