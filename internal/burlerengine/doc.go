@@ -84,16 +84,11 @@
 //
 // # How the round starts
 //
-// RunOpts.FixStart chooses when the fixer starts.
-// FixStartParallel, the default and the empty value, starts the reviewer and then the fixer at once, and the fixer waits for the ready marker.
-// FixStartAfterReview starts the reviewer alone, waits for it, and starts the fixer only once the reviewer's review was accepted and the marker written, so the fixer's first await returns at once.
-// A reviewer that ends without an accepted review starts no fixer, and the round reports the reviewer's outcome or error.
-// Both orders skip no gate, and the reviewer-before-fixer ordering and the marker handoff are the same.
-// An unknown value is an error from Run.
+// Run starts the reviewer and then the fixer at once, and the fixer waits for the ready marker.
 //
 // # How the round ends
 //
-// decideRound is the one place the round's failure rules live, reached from join in the parallel order and from Run directly in the after-review order.
+// decideRound is the one place the round's failure rules live, reached from join.
 // join waits on both halves, and the first half to end decides which rules apply:
 //   - The reviewer ends in anything but done, or its handoff fails: the fixer is stopped and the round returns the reviewer's outcome (died, timeout) with a nil error, or the audit or strict-parse error.
 //   - The fixer dies or times out while the reviewer runs: the reviewer is stopped and the round returns the fixer's outcome.

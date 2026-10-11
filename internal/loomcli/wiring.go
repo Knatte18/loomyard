@@ -773,7 +773,6 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 		ReviewModels:  reviewSettings.Models,
 		ReviewTimeout: reviewSettings.Timeout,
-		FixStart:      reviewSettings.FixStart,
 		RowReviewModels: map[string]burlerengine.RoundModels{
 			loomshed.NameDiscussionBurler: reviewSettings.Discussion,
 			loomshed.NamePlanBurler:       reviewSettings.Plan,

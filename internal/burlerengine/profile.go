@@ -81,9 +81,6 @@ type RunOpts struct {
 	// and from every profile test's comparison, while RunOpts already carries Model, Effort,
 	// Timeout, Round, and NoteID, which is exactly what a gate is.
 	Gate shuttleengine.GateSpec
-	// FixStart chooses when the round's fixer starts.
-	// The empty value means FixStartParallel; any other unknown value is an error from Engine.Run.
-	FixStart FixStart
 }
 
 // FixStart is when a round's fixer starts relative to its reviewer.
