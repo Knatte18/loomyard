@@ -319,4 +319,7 @@
 // RunGated's not-ready result carries the start error's text in Result.StartError.
 // The startup probe starts at the poll interval and backs off to the dismissal gap (the poll interval times liveness_every_n_polls) while the pane does not change.
 // Startup-gate dismissals are at least one dismissal gap apart.
+// A launch that declares Launch.RecordsSessionStarts, recorded as RunState.RecordsSessionStarts, starts only once the events file holds a session-start line of any source beside the ready pane;
+// until both hold the run stays not started and the startup error names the missing line or the unreadable events file, while gate detection and dismissal run as for any run.
+// An engine that leaves the flag false, and a record an older binary wrote, start on the pane alone.
 package shuttleengine

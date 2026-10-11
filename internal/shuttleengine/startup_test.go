@@ -149,6 +149,87 @@ func TestStartup_TrustPromptThenReady(t *testing.T) {
 	}
 }
 
+// TestStartup_NeedsSessionStartLine covers the startup criterion of a launch that records session starts: a ready pane starts the run only once the events file also holds a session-start line.
+// A missing line and an unreadable events file each time the start out naming themselves and the events path, a gate on screen is dismissed whatever the file holds, and a launch that does not declare the recording starts on the pane alone.
+func TestStartup_NeedsSessionStartLine(t *testing.T) {
+	tests := []struct {
+		name    string
+		records bool
+		script  []StartupState
+		// events seeds the events file; eventsIsDir makes the events path a directory instead.
+		events      string
+		eventsIsDir bool
+		wantStarted bool
+		// wantEnter asserts the gate was dismissed with Enter.
+		wantEnter bool
+		// wantErr is a substring of the start error, empty for none; wantNoErr is one it must not hold.
+		wantErr   string
+		wantNoErr string
+	}{
+		{name: "a ready pane with no session-start line is not started", records: true, script: []StartupState{StartupReady}, wantErr: "no session-start line in the events file"},
+		{name: "an unreadable events file is not started and says so", records: true, script: []StartupState{StartupReady}, eventsIsDir: true, wantErr: "could not be read for a session-start line"},
+		{name: "a session-start line and a ready pane start the run", records: true, script: []StartupState{StartupReady}, events: "SESSIONSTART:startup\n", wantStarted: true},
+		{name: "a gate on screen is dismissed beside a session-start line, then the ready pane starts the run", records: true, script: []StartupState{StartupTrustPrompt, StartupReady}, events: "SESSIONSTART:startup\n", wantStarted: true, wantEnter: true},
+		{name: "a session-start line of an earlier launch with a pane not yet ready is not started", records: true, script: []StartupState{StartupPending}, events: "SESSIONSTART:startup\n", wantNoErr: "session-start line"},
+		{name: "a launch that does not record session starts starts on the pane alone", script: []StartupState{StartupReady}, wantStarted: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			reed := &fakeReed{
+				StatusQueue:  []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}},
+				CaptureQueue: []string{"gate"},
+			}
+			engine := &sessionFakeEngine{}
+			engine.StartupScript = tt.script
+			engine.PrepareLaunch = Launch{Cmd: "cmd", SessionID: "session-1", RecordsSessionStarts: tt.records}
+			engine.PrepareHook = func(runDir string) {
+				eventsPath := filepath.Join(runDir, eventsFileName)
+				if tt.eventsIsDir {
+					if err := os.Mkdir(eventsPath, 0o755); err != nil {
+						t.Errorf("mkdir events path: %v", err)
+					}
+					return
+				}
+				if tt.events != "" {
+					if err := os.WriteFile(eventsPath, []byte(tt.events), 0o644); err != nil {
+						t.Errorf("write events: %v", err)
+					}
+				}
+			}
+			seedStartupFakes(reed, &engine.fakeEngine)
+			runner := newFixture(t, reed, engine, withConfig(shortStartupConfig)).Runner
+
+			run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}}, GateSpec{})
+			if tt.wantStarted {
+				if err != nil || run == nil {
+					t.Fatalf("StartGated() = %v, %v; want a started run", run, err)
+				}
+			} else {
+				if run != nil || !errors.Is(err, ErrNotStarted) {
+					t.Fatalf("StartGated() = %v, %v; want no run and an error wrapping ErrNotStarted", run, err)
+				}
+				if tt.wantErr != "" && !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error = %v; want it to contain %q", err, tt.wantErr)
+				}
+				if tt.wantErr != "" && !strings.Contains(err.Error(), eventsFileName) {
+					t.Errorf("error = %v; want it to name the events path %q", err, eventsFileName)
+				}
+				if tt.wantNoErr != "" && strings.Contains(err.Error(), tt.wantNoErr) {
+					t.Errorf("error = %v; want it not to contain %q", err, tt.wantNoErr)
+				}
+			}
+			foundEnter := false
+			for _, call := range reed.SendKeyCalls {
+				foundEnter = foundEnter || call.Key == "Enter"
+			}
+			if foundEnter != tt.wantEnter {
+				t.Errorf("Enter sent = %v; want %v", foundEnter, tt.wantEnter)
+			}
+		})
+	}
+}
+
 // TestStartup_ReadyProbeTiming covers the ready paths' timing on the virtual clock.
 // Ready on the first probe is the fast path: no dismissal ever attempted and no Sleep call before the handle is returned.
 // Otherwise the startup step probes every poll interval while the pane redraws and backs off to the dismissal gap (here 10 s) while it does not.

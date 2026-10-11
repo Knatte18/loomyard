@@ -92,6 +92,7 @@
 // No recording hook prints to standard output, so the `PermissionRequest` recording answers no request and leaves Claude's own dialog to decide it.
 // The one exception is the second command of the `compact` `SessionStart` entry, which Spec.ContextAfterCompaction sets: it runs after the recording command and verbatim, and its output joins the session's context after every compaction.
 // SessionStartContext renders the additional-context JSON such a command prints.
+// Prepare declares the launch as recording session starts, so startup waits for the `startup` line beside the ready pane.
 // Two accepted races follow from the append order.
 // Hooks that fire at once can interleave their stamps ahead of both payloads, which the pairing by hook name absorbs;
 // and a reader can see a payload without its newline, or a stamp without its payload, which the parser leaves unconsumed until the line completes.

@@ -44,6 +44,8 @@ type Launch struct {
 	// PromptLine, when set, means the engine left the prompt pointer off Cmd:
 	// shuttle delivers this text as a turn once the spec's skills are loaded.
 	PromptLine string
+	// RecordsSessionStarts declares that the launch writes a session-start line into the run's events file when the provider's session begins, so startup waits for that line beside the ready pane.
+	RecordsSessionStarts bool
 }
 
 // PaneInput is one step of provider-specific key choreography sent to a pane via reed's send-keys.

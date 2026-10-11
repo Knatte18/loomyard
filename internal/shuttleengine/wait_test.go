@@ -756,7 +756,10 @@ func TestRun_Wait_StartupWindow(t *testing.T) {
 		wantOutcome   Outcome
 		// wantTrustDismissed asserts an Enter was sent and the engine saw gateCapture.
 		wantTrustDismissed bool
+		// recordsSessionStarts marks the record as one whose launch recorded session starts, so a ready pane needs a session-start line the never-created events file lacks.
+		recordsSessionStarts bool
 	}{
+		{name: "ready pane without a session-start line on a recording launch", startupScript: []StartupState{StartupReady}, recordsSessionStarts: true, wantOutcome: OutcomeDied},
 		{name: "trust prompt that never clears", startupScript: []StartupState{StartupTrustPrompt}, wantOutcome: OutcomeDied},
 		{name: "pane capture fails every probe", captureErr: errors.New("capture pane: no such pane"), wantOutcome: OutcomeDied},
 		{name: "still booting", startupScript: []StartupState{StartupPending}, wantOutcome: OutcomeDied},
@@ -793,7 +796,7 @@ func TestRun_Wait_StartupWindow(t *testing.T) {
 			// reached StartupReady.
 			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
 				withRunDir(runDir),
-				withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Started: false}),
+				withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Started: false, RecordsSessionStarts: tt.recordsSessionStarts}),
 				withRunClock(fc, fc.Now().Add(10*time.Minute)))
 
 			result, err := run.Wait()

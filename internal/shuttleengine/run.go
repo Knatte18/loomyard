@@ -285,6 +285,8 @@ type Run struct {
 	// not-ready teardown (abandonStartup) it is saved to startupCaptureFileName inside the run
 	// directory as the diagnosis artifact a later operator or attach reads.
 	lastStartupCapture string
+	// startupHookReason is why the latest startup probe held a ready pane back for want of a session-start line, empty when it held nothing back.
+	startupHookReason string
 	// dismissed reports that this run played a startup-gate dismissal that sent a key, and dismissedAt is when, on the run's clock.
 	dismissed   bool
 	dismissedAt time.Time
@@ -506,6 +508,8 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		CreatedAt:    time.Now().UTC().Format(time.RFC3339),
 		Outcome:      runOutcomeRunning,
 		PID:          os.Getpid(),
+
+		RecordsSessionStarts: launch.RecordsSessionStarts,
 	}
 	if err := saveRunState(runDir, state); err != nil {
 		// The strand registered and its pane is already launching, but

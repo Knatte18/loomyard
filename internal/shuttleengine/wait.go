@@ -598,6 +598,7 @@ func (run *Run) awaitStartup() (Result, error) {
 // text and an operator remedy when it did not, since a strand abandonStartup could not remove is the
 // one residual an operator must clear by hand.
 //
+// When cause is nil and the run never started, the error also carries the reason the last startup probe held a ready pane back for want of a session-start line, if it recorded one.
 // The error ends with ". The pane's last lines:" and the last startup capture's tail when all three hold:
 // cause is nil, the provider never reached StartupReady (run.state.Started is false), and a startup capture was recorded.
 // Every other teardown reports a cause that already carries its own screen or a mechanism failure with none,
@@ -629,6 +630,10 @@ func (run *Run) abandonStartup(outcome Outcome, cause error) (Result, error) {
 		logger.Warn("shuttle: start failed before the provider took its first input; strand torn down", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", string(outcome), "cause", cause)
 		format += ": %w"
 		args = append(args, cause)
+	}
+	if cause == nil && !run.state.Started && run.startupHookReason != "" {
+		format += "; %s"
+		args = append(args, run.startupHookReason)
 	}
 	if cause == nil && !run.state.Started && run.lastStartupCapture != "" {
 		format += ". The pane's last lines:\n%s"
@@ -993,6 +998,10 @@ func allOutputFilesExist(files []string) bool {
 // Any play that sent at least one input starts the gap, failed partway or not; an empty sequence or a first input that failed does not.
 // Bound: the throttle only removes key presses and never adds one, and the startup deadline and the tick cap still end a gate that never clears.
 // Run.Wait's own startup probe already runs at least one gap apart, so the throttle never holds a dismissal there.
+//
+// For a record with RecordsSessionStarts, a ready pane marks the run started only once the events file also holds a session-start line.
+// Until then the tick stays not started, records the reason on the run for abandonStartup and answers as a still-booting pane does; gate detection and dismissal run as for any run.
+// Bound: a session-start line an earlier launch of the same run left satisfies the line half, and the pane half still gates it.
 func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Outcome, error) {
 	status, err := run.runner.reed.Status()
 	if err != nil {
@@ -1039,6 +1048,20 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 
 	switch run.runner.engine.Startup(capture) {
 	case StartupReady:
+		if run.state.RecordsSessionStarts {
+			recorded, readErr := sessionStartRecorded(run.runner.engine, run.state.EventsPath)
+			switch {
+			case readErr != nil:
+				run.startupHookReason = fmt.Sprintf("the events file %s could not be read for a session-start line: %v", run.state.EventsPath, readErr)
+			case !recorded:
+				run.startupHookReason = fmt.Sprintf("no session-start line in the events file %s", run.state.EventsPath)
+			default:
+				run.startupHookReason = ""
+			}
+			if run.startupHookReason != "" {
+				break
+			}
+		}
 		*started = true
 		// Persisted immediately, not left for finalize: this is the one fact a killed driver must
 		// not lose, since it is what tells a LATER Attach apart a genuinely booted, mid-turn pane
@@ -1076,6 +1099,29 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 	// StartupPending and a trust prompt that has not yet cleared are both "still not ready", and
 	// share the one deadline that governs the whole startup window.
 	return run.classifyStartupWindow(startupDeadline), nil
+}
+
+// sessionStartRecorded reports whether the events file holds a session-start signal of any source, read from the file's start.
+// An absent file reads false with no error and an unreadable one returns the read error; an engine without SessionSignalParser reads false.
+func sessionStartRecorded(engine Engine, eventsPath string) (bool, error) {
+	parser, ok := engine.(SessionSignalParser)
+	if !ok {
+		return false, nil
+	}
+	data, err := os.ReadFile(eventsPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	signals, _ := parser.ParseSessionSignals(data)
+	for _, signal := range signals {
+		if signal.Kind == SessionSignalSessionStart {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // classifyStartupWindow reports the run's outcome once startupDeadline has passed on a run whose

@@ -556,6 +556,9 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	if launch.SessionID == "" {
 		t.Error("Launch.SessionID is empty")
 	}
+	if !launch.RecordsSessionStarts {
+		t.Error("Launch.RecordsSessionStarts = false; want true, since the settings record every session start")
+	}
 	if !strings.Contains(launch.Cmd, launch.SessionID) {
 		t.Errorf("Launch.Cmd = %q; want it to embed SessionID %q", launch.Cmd, launch.SessionID)
 	}
