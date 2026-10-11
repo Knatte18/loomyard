@@ -28,6 +28,10 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"seat-directive-advisor", SeatDirectiveAdvisor, []string{"chair_name", "output_files", "seat_name"}},
 		{"twill-directive", TwillDirective, []string{"disposition_place", "format_step", "lens_list", "ready_marker", "reviewed_files", "rubric_path", "self_check_command", "self_check_step"}},
 		{"twill-write-scope", TwillWriteScope, []string{"ready_marker"}},
+		{"webster-fragment-locate-quarry", WebsterFragmentLocateQuarry, nil},
+		{"webster-fragment-locate-pack", WebsterFragmentLocatePack, []string{"specs_dir"}},
+		{"webster-fragment-pack-section", WebsterFragmentPackSection, []string{"pack_entries", "pack_unresolved"}},
+		{"webster-fragment-pack-empty", WebsterFragmentPackEmpty, nil},
 		{"loom-template-discussion-chair", LoomTemplateDiscussionChair, nil},
 		{"loom-template-discussion-advisor", LoomTemplateDiscussionAdvisor, []string{"decision_record_path", "edit_directive", "output_files", "parent_directive", "pattern_directive", "slug", "support_log_path"}},
 	}

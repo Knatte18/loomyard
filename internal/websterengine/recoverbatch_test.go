@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -788,14 +789,19 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 // Here the recovery reports done over a Create card whose target never appeared in the tree.
 // The mechanical pass must refuse it and take the batch terminal failed with its report archived, exactly as record-batch does, so the next recover-batch spawns a fresh strand.
 func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing.T) {
+	logs := captureLogs(t)
+	logger.SetVerbosity(1)
+	t.Cleanup(func() { logger.SetVerbosity(0) })
+
 	fx := newRecoverFixture(t)
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
 
-	// The batch's card declares a Create target that the recovery never lands.
+	// The batch's card declares a Create target that the recovery never lands, and a plan: handle it never binds.
 	card := planparser.Card{
 		Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag",
 		Targets:      []string{"internal/never/there.go#"},
 		TargetGroups: []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"internal/never/there.go#"}}},
+		Declarations: []planparser.CardDeclaration{{Handle: "plan:internal/never#There", Decl: "func There()"}},
 	}
 	fx.Deps.Plan.Cards = []planparser.Card{card}
 	fx.Deps.Batches[0].Cards = []planparser.Card{card}
@@ -827,6 +833,9 @@ func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing
 	}
 	if fx.Deps.State.CurrentBatch != 0 {
 		t.Errorf("State.CurrentBatch = %d; want 0", fx.Deps.State.CurrentBatch)
+	}
+	if want := "batch=1 card=1 handle=plan:internal/never#There outcome=failed reason=card-not-done"; !strings.Contains(logs.String(), want) {
+		t.Errorf("logs = %q; want the recovery's bind line %q", logs.String(), want)
 	}
 
 	// The next recover-batch spawns a fresh strand rather than re-attaching to the finished one.

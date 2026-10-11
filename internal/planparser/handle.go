@@ -77,6 +77,24 @@ func NewHandle(glyphID string) string {
 	return HandlePrefix + glyphID
 }
 
+// OwnedHandles returns every plan: handle a card's own Declarations AND Rename pairs declare, in body order.
+// They are a Create declaration's own Handle, plus any Rename pair whose New side is still handle-shaped.
+// A file-rename pair's New side is already a self glyph, never a handle, and is skipped here, since there is nothing to bind.
+//
+// Folding a Rename pair's New side in alongside Create declarations is what closes the gap a Rename-only card fell into before this fix (crucible round sonnet-xhigh-r8, PG-2): a card carrying no Create group has an empty Declarations, so a bind keyed on Declarations alone skipped it entirely, and its own New-side handle never lost its "plan:" prefix — permanently invisible to collectGlyphTargets, which excludes anything plan:-prefixed by construction, for every later card that legitimately referenced the renamed symbol.
+func OwnedHandles(c Card) []string {
+	handles := make([]string, 0, len(c.Declarations)+len(c.Pairs))
+	for _, d := range c.Declarations {
+		handles = append(handles, d.Handle)
+	}
+	for _, p := range c.Pairs {
+		if IsHandleRef(p.New) {
+			handles = append(handles, p.New)
+		}
+	}
+	return handles
+}
+
 // HandleMember returns the member-name portion of a plan: handle — the substring after its first
 // "#" — and whether one was found. Local string work over loomyard's own plan: token, never glyph
 // grammar, so the Glyph Conversion Chokepoint is untouched. Port of

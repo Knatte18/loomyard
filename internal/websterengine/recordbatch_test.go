@@ -26,12 +26,15 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
+	"github.com/Knatte18/quarry/quarry"
 )
 
 // recordFakeSleeper is a Sleeper that never actually blocks — it only
@@ -2122,5 +2125,160 @@ func TestRecordBatch_MergeInProgressRefusedThenSucceeds(t *testing.T) {
 	}
 	if got := fx.Deps.State.Batches[1].CardSHAs; len(got) != 1 || got[0] != fx.HeadSHA {
 		t.Errorf("CardSHAs = %v; want [%s]", got, fx.HeadSHA)
+	}
+}
+
+// TestRecordBatch_BindTrace asserts the exact set of `webster: handle bind` lines a terminal pass writes.
+// It writes one per plan: handle the batch's cards own, with the outcome and the glyph or reason, and none when the verb fails before binding.
+// It lowers the process-global log threshold to Info, so it does not call t.Parallel.
+func TestRecordBatch_BindTrace(t *testing.T) {
+	logger.SetVerbosity(1)
+	t.Cleanup(func() { logger.SetVerbosity(0) })
+
+	handleCard := func(number int, slug string, members ...string) plankit.Card {
+		targets := make([]string, len(members))
+		for i, member := range members {
+			targets[i] = "plan:internal/foo#" + member + "` -> `func " + member + "()"
+		}
+		return plankit.Card{Number: number, Slug: slug, Groups: []plankit.Group{{Label: "Create", Targets: targets}}}
+	}
+	bound := func(card int, member string) string {
+		return fmt.Sprintf("batch=1 card=%d handle=plan:internal/foo#%s outcome=bound glyph=internal/foo#%s", card, member, member)
+	}
+	failed := func(card int, member string, reason planindex.BindReason) string {
+		return fmt.Sprintf("batch=1 card=%d handle=plan:internal/foo#%s outcome=failed reason=%s", card, member, reason)
+	}
+
+	cases := []struct {
+		name     string
+		language string
+		cards    []plankit.Card
+		// batchSize is how many leading cards batch 1 holds.
+		batchSize int
+		// created are the members the delta created.
+		created []string
+		prepare func(fx *recordFixture)
+		want    []string
+	}{
+		{
+			name:      "all handles bound",
+			cards:     []plankit.Card{handleCard(1, "json-flag", "Bar", "Baz")},
+			batchSize: 1,
+			created:   []string{"Bar", "Baz"},
+			want:      []string{bound(1, "Bar"), bound(1, "Baz")},
+		},
+		{
+			name:      "a card whose only handle is unmatched",
+			cards:     []plankit.Card{handleCard(1, "json-flag", "Bar")},
+			batchSize: 1,
+			want:      []string{failed(1, "Bar", planindex.BindNoDeltaMatch)},
+		},
+		{
+			name:      "an unmatched handle fails its matched sibling",
+			cards:     []plankit.Card{handleCard(1, "json-flag", "Bar", "Baz")},
+			batchSize: 1,
+			created:   []string{"Bar"},
+			want:      []string{failed(1, "Bar", planindex.BindSiblingUnmatched), failed(1, "Baz", planindex.BindNoDeltaMatch)},
+		},
+		{
+			name:      "a not-done card and its done batch-mate",
+			cards:     []plankit.Card{handleCard(1, "json-flag", "Bar"), handleCard(2, "second", "Missing")},
+			batchSize: 2,
+			created:   []string{"Bar"},
+			want:      []string{failed(1, "Bar", "batch-not-done"), failed(2, "Missing", "card-not-done")},
+		},
+		{
+			name:      "an unavailable delta fails every handle once",
+			cards:     []plankit.Card{handleCard(1, "json-flag", "Bar", "Baz")},
+			batchSize: 1,
+			prepare: func(fx *recordFixture) {
+				fx.Index.deltaErr = fmt.Errorf("%w: delta is unavailable", planglyph.ErrQuarryUnavailable)
+			},
+			want: []string{failed(1, "Bar", "delta-unavailable"), failed(1, "Baz", "delta-unavailable")},
+		},
+		{
+			name:      "a plan without a glyph language",
+			language:  "none",
+			cards:     []plankit.Card{handleCard(1, "json-flag", "Bar", "Baz")},
+			batchSize: 1,
+			want:      []string{failed(1, "Bar", "language-none"), failed(1, "Baz", "language-none")},
+		},
+		{
+			name:      "a card with no handles",
+			cards:     []plankit.Card{{Number: 1, Slug: "json-flag"}},
+			batchSize: 1,
+		},
+		{
+			name:      "no index wired",
+			cards:     []plankit.Card{handleCard(1, "json-flag", "Bar")},
+			batchSize: 1,
+			prepare:   func(fx *recordFixture) { fx.Deps.Geom.Index = nil },
+		},
+		{
+			name:      "a done-checks error",
+			cards:     []plankit.Card{handleCard(1, "json-flag", "Bar")},
+			batchSize: 1,
+			prepare:   func(fx *recordFixture) { fx.Index.doneErr = errors.New("done-checks exploded") },
+		},
+		{
+			name:      "a delta error that is not quarry being unavailable",
+			cards:     []plankit.Card{handleCard(1, "json-flag", "Bar")},
+			batchSize: 1,
+			prepare:   func(fx *recordFixture) { fx.Index.deltaErr = errors.New("git exploded") },
+		},
+		{
+			name:      "a bind error",
+			cards:     []plankit.Card{handleCard(1, "json-flag", "Bar")},
+			batchSize: 1,
+			created:   []string{"Bar"},
+			prepare:   func(fx *recordFixture) { fx.Index.bindErr = errors.New("bind exploded") },
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := captureLogs(t)
+			fx := newRecordFixture(t, []shuttleengine.ForkAudit{oneForkAudit()})
+			writeWorktreeFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Bar() {}\n\nfunc Baz() {}\n")
+
+			language := tt.language
+			if language == "" {
+				language = "go"
+			}
+			planDir := t.TempDir()
+			plankit.Write(t, planDir, plankit.Plan{Approved: true, Language: language, Framing: "framing", Cards: tt.cards})
+			plan, err := planparser.ParsePlan(planDir)
+			if err != nil {
+				t.Fatalf("ParsePlan() error = %v", err)
+			}
+			fx.Deps.Geom.PlanDir = planDir
+			fx.Deps.Plan = plan
+			fx.Deps.Batches = []batcher.Batch{{Cards: plan.Cards[:tt.batchSize]}}
+			if err := websterengine.RestampPlanBaseline(fx.Deps.State, planDir, fx.Deps.Geom.WebsterDir); err != nil {
+				t.Fatalf("RestampPlanBaseline() error = %v", err)
+			}
+			for _, member := range tt.created {
+				fx.Index.delta.Created = append(fx.Index.delta.Created, quarry.Symbol{ID: "internal/foo#" + member})
+			}
+			if tt.prepare != nil {
+				tt.prepare(fx)
+			}
+			writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+			// Whether the verb records or refuses is other tests' subject; only the trace is asserted here.
+			_, _ = websterengine.RecordBatch(fx.Deps, 1)
+
+			var got []string
+			for _, line := range strings.Split(logs.String(), "\n") {
+				if _, fields, found := strings.Cut(line, `msg="webster: handle bind" `); found {
+					got = append(got, fields[strings.Index(fields, "batch="):])
+				}
+			}
+			slices.Sort(got)
+			want := slices.Clone(tt.want)
+			slices.Sort(want)
+			if !slices.Equal(got, want) {
+				t.Errorf("handle bind lines = %q; want %q", got, want)
+			}
+		})
 	}
 }

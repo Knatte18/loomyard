@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -495,6 +496,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		State:     deps.State,
 		Batch:     bs,
 		Geom:      deps.Geom,
+		Number:    batchNumber,
 		Cards:     batch.Cards,
 		Completed: completedCards(deps.Batches, deps.State, batchNumber),
 		StartSHA:  bs.StartSHA,
@@ -734,11 +736,47 @@ type postBatchInputs struct {
 	State     *State
 	Batch     *BatchState
 	Geom      Geometry
+	Number    int
 	Cards     []planparser.Card
 	Completed []planparser.Card
 	StartSHA  string
 	HeadSHA   string
 	Label     string
+}
+
+// The bind reasons postBatchChecks decides itself, beside the two the index reports.
+const (
+	// bindCardNotDone marks a handle of a card the done-checks reported findings for.
+	bindCardNotDone planindex.BindReason = "card-not-done"
+	// bindBatchNotDone marks a handle of a card whose batch-mate failed the done-checks, so the pass never bound it.
+	bindBatchNotDone planindex.BindReason = "batch-not-done"
+	// bindDeltaUnavailable marks a handle the pass could not bind because the batch's delta was unavailable.
+	bindDeltaUnavailable planindex.BindReason = "delta-unavailable"
+	// bindLanguageNone marks a handle of a plan whose language opts out of glyphs.
+	bindLanguageNone planindex.BindReason = "language-none"
+)
+
+// failedBindOutcomes returns one failed outcome per plan: handle the cards own, in card and body order.
+// reasonFor picks the reason of each card's handles.
+func failedBindOutcomes(cards []planparser.Card, reasonFor func(planparser.Card) planindex.BindReason) []planindex.BindOutcome {
+	var outcomes []planindex.BindOutcome
+	for _, c := range cards {
+		for _, handle := range planparser.OwnedHandles(c) {
+			outcomes = append(outcomes, planindex.BindOutcome{Card: c.Number, Handle: handle, Reason: reasonFor(c)})
+		}
+	}
+	return outcomes
+}
+
+// logBindOutcomes writes one Info line per handle outcome, so the bind rate is countable by grep.
+func logBindOutcomes(batch int, outcomes []planindex.BindOutcome) {
+	for _, o := range outcomes {
+		if o.Reason == "" {
+			logger.Info("webster: handle bind", "batch", batch, "card", o.Card, "handle", o.Handle, "outcome", "bound", "glyph", o.Glyph)
+			continue
+		}
+		logger.Info("webster: handle bind", "batch", batch, "card", o.Card, "handle", o.Handle, "outcome", "failed", "reason", string(o.Reason))
+	}
 }
 
 // postBatchChecks runs the mechanical pass every terminal batch owes, whichever verb takes it
@@ -770,13 +808,21 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 		return nil, err
 	}
 	notDone := &cardNotDoneError{}
+	notDoneCards := map[string]bool{}
 	for _, f := range doneFindings {
 		notDone.reasons = append(notDone.reasons, f.Error())
+		notDoneCards[f.Card] = true
 		if f.Check == "delete-not-done" {
 			notDone.deleteNotDone = true
 		}
 	}
 	if len(notDone.reasons) > 0 {
+		logBindOutcomes(in.Number, failedBindOutcomes(in.Cards, func(c planparser.Card) planindex.BindReason {
+			if notDoneCards[c.ID()] {
+				return bindCardNotDone
+			}
+			return bindBatchNotDone
+		}))
 		return nil, notDone
 	}
 
@@ -795,7 +841,17 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 
 	// Binding runs after the done-checks above, so a card that already failed create-not-done is
 	// never bound, and applies its whole batch of substitutions in this one RewriteRefs call.
-	bindFindings, bindErr := delta.BindHandles(in.Plan, in.Geom.PlanDir, in.Cards)
+	bindFindings, bindOutcomes, bindErr := delta.BindHandles(in.Plan, in.Geom.PlanDir, in.Cards)
+	// The trace is logged before the restamp below, so a restamp failure still reports the bind that landed;
+	// it names the reason the pass decided over the outcomes BindHandles computed, which a missing glyph language or delta makes meaningless.
+	if bindErr == nil {
+		if _, languageSet := in.Plan.GlyphLanguage(); !languageSet {
+			bindOutcomes = failedBindOutcomes(in.Cards, func(planparser.Card) planindex.BindReason { return bindLanguageNone })
+		} else if deltaErr != nil {
+			bindOutcomes = failedBindOutcomes(in.Cards, func(planparser.Card) planindex.BindReason { return bindDeltaUnavailable })
+		}
+		logBindOutcomes(in.Number, bindOutcomes)
+	}
 	// BindHandles' plan-wide RewriteRefs lands on disk BEFORE it reports either a finding or an
 	// error — the substitutions come from delta.Created while a bind-count-mismatch comes from a
 	// card whose handle matched nothing, so one call routinely does both — which is why the

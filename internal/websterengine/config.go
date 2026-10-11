@@ -41,6 +41,9 @@ type Config struct {
 	RecoveryTimeoutMin int `yaml:"recovery_timeout_min"`
 	// VerifyGateAttempts is the number of attempts the plan-level verify gate on Merriam's strand gives Merriam before the gate stops the run.
 	VerifyGateAttempts int `yaml:"verify_gate_attempts"`
+	// KickstartPack true renders the batch's resolved member glyphs into the fork prompt;
+	// false renders the fork prompt as it was before the pack.
+	KickstartPack bool `yaml:"kickstart_pack"`
 }
 
 // LoadConfig loads configuration from the webster module's config file, validates role model-spec

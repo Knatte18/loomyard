@@ -192,6 +192,26 @@ var WebsterPrefixRecovery []byte
 //go:embed webster/webster-body-implementer.md
 var WebsterBodyImplementer []byte
 
+// WebsterFragmentLocateQuarry is webster's shipped-default quarry locate fragment, filled into the shared implementer-job body's locate marker when the fork has no kick-start pack and for every recovery prompt.
+//
+//go:embed webster/webster-fragment-locate-quarry.md
+var WebsterFragmentLocateQuarry []byte
+
+// WebsterFragmentLocatePack is webster's shipped-default pack locate fragment, filled into the shared implementer-job body's locate marker when the fork prompt carries a kick-start pack.
+//
+//go:embed webster/webster-fragment-locate-pack.md
+var WebsterFragmentLocatePack []byte
+
+// WebsterFragmentPackSection is webster's shipped-default kick-start pack section, filled into the shared implementer-job body's kickstart_pack marker.
+//
+//go:embed webster/webster-fragment-pack-section.md
+var WebsterFragmentPackSection []byte
+
+// WebsterFragmentPackEmpty is webster's shipped-default empty-pack line, filled into the pack section when the batch's cards name no member glyph.
+//
+//go:embed webster/webster-fragment-pack-empty.md
+var WebsterFragmentPackEmpty []byte
+
 // OrchTemplateStart is orch's shipped-default fresh-launch prompt.
 //
 //go:embed orch/orch-template-start.md
@@ -390,6 +410,10 @@ var entries = []registryEntry{
 	{"webster-prefix-fork", &WebsterPrefixFork},
 	{"webster-prefix-recovery", &WebsterPrefixRecovery},
 	{"webster-body-implementer", &WebsterBodyImplementer},
+	{"webster-fragment-locate-quarry", &WebsterFragmentLocateQuarry},
+	{"webster-fragment-locate-pack", &WebsterFragmentLocatePack},
+	{"webster-fragment-pack-section", &WebsterFragmentPackSection},
+	{"webster-fragment-pack-empty", &WebsterFragmentPackEmpty},
 	{"orch-template-start", &OrchTemplateStart},
 	{"orch-template-handoff", &OrchTemplateHandoff},
 	{"orch-template-resume", &OrchTemplateResume},
