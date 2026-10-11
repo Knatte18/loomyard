@@ -155,6 +155,16 @@ func (r *seatRun) accept(result shuttleengine.Result) bool {
 	return err == nil
 }
 
+// ended reports whether the advisor's watch goroutine has returned.
+func (r *seatRun) ended() bool {
+	select {
+	case <-r.done:
+		return true
+	default:
+		return false
+	}
+}
+
 // markEnded records that this advisor's end ended the step.
 func (r *seatRun) markEnded() {
 	r.mu.Lock()
@@ -207,11 +217,13 @@ func (e *Engine) Run(table Table) (Result, error) {
 		return Result{}, err
 	}
 	chairOutputs := e.absolute(table.Chair().Outputs)
-	chair, err := e.startSeat(table, table.Chair(), names)
+	sender := newNoticeSender(chairOutputs, e.noticeRetry)
+	work := &advisorWork{}
+	work.bindSender(sender)
+	chair, err := e.startSeat(table, table.Chair(), names, work)
 	if err != nil {
 		return Result{ChairOutputs: chairOutputs}, err
 	}
-	sender := newNoticeSender(chairOutputs, e.noticeRetry)
 	sender.start(chair)
 
 	ender := newStepEnder()
@@ -224,7 +236,7 @@ func (e *Engine) Run(table Table) (Result, error) {
 			break
 		}
 		name := names[seat.Name]
-		handle, err := e.startSeat(table, seat, names)
+		handle, err := e.startSeat(table, seat, names, work)
 		if errors.Is(err, ErrSeatNotStopped) {
 			sender.stop()
 			stopErr := errors.Join(stopSeat(chair), stopAdvisors(advisors))
@@ -243,14 +255,17 @@ func (e *Engine) Run(table Table) (Result, error) {
 			continue
 		}
 		sender.queue(advisorUpNotice(name))
-		advisors = append(advisors, newSeatRun(seat, name, handle, e.absolute(seat.Outputs), sender, ender))
+		started := newSeatRun(seat, name, handle, e.absolute(seat.Outputs), sender, ender)
+		work.add(started)
+		advisors = append(advisors, started)
 	}
 	return e.join(table, chair, advisors, sender, ender)
 }
 
 // startSeat composes seat's prompt and spec, starts it, and checks it took the strand name its peers address it by.
 // The chair starts with the table's gate and an advisor with its seat's own.
-func (e *Engine) startSeat(table Table, seat Seat, names map[string]string) (Handle, error) {
+// The chair's spec defers its held-turn notice while work reports advisor work outstanding; an advisor's spec defers nothing.
+func (e *Engine) startSeat(table Table, seat Seat, names map[string]string, work *advisorWork) (Handle, error) {
 	values, err := seatValues(e.geom, table, seat, names)
 	if err != nil {
 		return nil, err
@@ -259,7 +274,11 @@ func (e *Engine) startSeat(table Table, seat Seat, names map[string]string) (Han
 	if err != nil {
 		return nil, err
 	}
-	handle, err := e.shuttle.StartGated(seatSpec(table, seat, prompt), seatGate(table, seat))
+	spec := seatSpec(table, seat, prompt)
+	if seat.Name == RoleChair {
+		spec.HoldDeferral = work.outstanding
+	}
+	handle, err := e.shuttle.StartGated(spec, seatGate(table, seat))
 	if err != nil {
 		return nil, fmt.Errorf("seatengine: seat %q: start: %w", seat.Name, err)
 	}

@@ -510,3 +510,106 @@ func TestEngine_Run_RequiredAdvisorEndsTheStep(t *testing.T) {
 		})
 	}
 }
+
+func TestEngine_Run_ChairHoldDeferral(t *testing.T) {
+	t.Parallel()
+	midTurn := shuttleengine.RunSessionState{State: shuttleengine.SessionState{Name: shuttleengine.SessionBusy, Cause: shuttleengine.SessionCauseTurn}}
+	tests := []struct {
+		name string
+		// upLineStuck keeps the chair's session busy, so no up line lands.
+		upLineStuck bool
+		// act scripts the advisor after its up line landed.
+		act        func(advisor *fakeHandle)
+		wantDefers bool
+		resume     bool
+	}{
+		{name: "an advisor mid-turn defers", act: func(a *fakeHandle) { a.setSession(midTurn, nil) }, wantDefers: true},
+		{name: "an advisor whose up line has not landed defers", upLineStuck: true, wantDefers: true},
+		{name: "idle advisors with landed up lines do not defer", act: func(a *fakeHandle) {}},
+		{name: "an advisor that ended done never defers", act: func(a *fakeHandle) {
+			a.setSession(midTurn, nil)
+			a.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
+		}},
+		{name: "an advisor that timed out never defers", act: func(a *fakeHandle) {
+			a.setSession(midTurn, nil)
+			a.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}, nil)
+		}},
+		{name: "a session-state error does not defer", act: func(a *fakeHandle) { a.setSession(midTurn, errors.New("unreadable")) }},
+		{name: "an attached chair defers on the advisors the probe found", resume: true, act: func(a *fakeHandle) { a.setSession(midTurn, nil) }, wantDefers: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shuttle := newFakeShuttle(t)
+			if tt.upLineStuck {
+				shuttle.alwaysBusy = map[string]bool{role(RoleChair): true}
+			}
+			engine, geom := engineFixture(t, shuttle)
+			table := engineTable(geom.WorktreeRoot, 1)
+
+			var chair, advisor *fakeHandle
+			var predicate func() bool
+			var ended <-chan engineEnd
+			if tt.resume {
+				chair, advisor = shuttle.newHandle(role(RoleChair)), shuttle.newHandle(role(AdvisorName(1)))
+				shuttle.live = map[string]*fakeHandle{role(RoleChair): chair, role(AdvisorName(1)): advisor}
+				found, err := engine.Probe(table)
+				if err != nil {
+					t.Fatalf("Probe() = %v", err)
+				}
+				if probed := shuttle.probeSpec(role(AdvisorName(1))); probed.HoldDeferral != nil {
+					t.Error("the probed advisor spec carries a hold deferral, want none")
+				}
+				predicate = shuttle.probeSpec(role(RoleChair)).HoldDeferral
+				channel := make(chan engineEnd, 1)
+				go func() {
+					result, err := engine.Resume(table, found)
+					channel <- engineEnd{result, err}
+				}()
+				ended = channel
+			} else {
+				ended = runAsync(engine, table)
+				shuttle.awaitStarts(2)
+				chair, advisor = shuttle.handle(role(RoleChair)), shuttle.handle(role(AdvisorName(1)))
+				if started := shuttle.spec(role(AdvisorName(1))); started.HoldDeferral != nil {
+					t.Error("the advisor spec carries a hold deferral, want none")
+				}
+				predicate = shuttle.spec(role(RoleChair)).HoldDeferral
+			}
+			if predicate == nil {
+				t.Fatal("the chair spec carries no hold deferral")
+			}
+			// With no advisor counted the predicate is false, so it holding with the advisor mid-turn proves the advisor is counted.
+			advisor.setSession(midTurn, nil)
+			awaitCondition(t, "the advisor to be counted", predicate)
+			if !tt.upLineStuck {
+				receive(t, chair)
+				advisor.setSession(shuttleengine.RunSessionState{}, nil)
+				awaitCondition(t, "the up line to land", func() bool { return !predicate() })
+			}
+			if tt.act != nil {
+				tt.act(advisor)
+			}
+			if !tt.wantDefers {
+				awaitCondition(t, "the deferral to end", func() bool { return !predicate() })
+			}
+			if got := predicate(); got != tt.wantDefers {
+				t.Errorf("hold deferral = %v, want %v", got, tt.wantDefers)
+			}
+			chair.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
+			await(t, ended)
+		})
+	}
+}
+
+// awaitCondition polls cond until it holds, failing the test when it does not within fakeWait.
+func awaitCondition(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(fakeWait)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}

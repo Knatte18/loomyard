@@ -78,7 +78,7 @@ internal/quarrycli: 7
 internal/reedcli: 38
 internal/reedengine: 247
 internal/reedengine/render: 12
-internal/seatengine: 16
+internal/seatengine: 17
 internal/segmentcolor: 4
 internal/selfreportcli: 3
 internal/selfreportengine: 12

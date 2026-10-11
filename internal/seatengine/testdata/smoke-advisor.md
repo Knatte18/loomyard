@@ -6,5 +6,6 @@
 
 ## Your task
 
-Write your output file now: one line, `Advisor ready`.
-Then wait for the chair's question and answer it with `SendMessage`, in one word.
+Do nothing yet: wait for the chair's question, which arrives as a message.
+Answer it with `SendMessage`, in one word.
+Only after you have sent the answer, write your output file: one line, `Advisor answered`.

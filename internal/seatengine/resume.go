@@ -12,9 +12,11 @@ import (
 
 // LiveTable is what Probe found of a table's seats.
 // Chair is the chair's unwaited run, nil when the chair is not live, and Advisors holds the live advisors' runs keyed by seat name.
+// work is the advisor work the probe wired into the chair's hold deferral, nil for a LiveTable the probe did not build.
 type LiveTable struct {
 	Chair    Handle
 	Advisors map[string]Handle
+	work     *advisorWork
 }
 
 // Probe reports which of table's seats have a live run, without waiting on any.
@@ -28,7 +30,8 @@ func (e *Engine) Probe(table Table) (LiveTable, error) {
 		return LiveTable{}, err
 	}
 
-	chairHandle, chairFound, err := e.probeSeat(table, table.Chair())
+	work := &advisorWork{}
+	chairHandle, chairFound, err := e.probeSeat(table, table.Chair(), work.outstanding)
 	if err != nil {
 		return LiveTable{}, err
 	}
@@ -37,7 +40,7 @@ func (e *Engine) Probe(table Table) (LiveTable, error) {
 		if seat.Name == RoleChair {
 			continue
 		}
-		handle, found, err := e.probeSeat(table, seat)
+		handle, found, err := e.probeSeat(table, seat, nil)
 		if err != nil {
 			return LiveTable{}, err
 		}
@@ -47,7 +50,7 @@ func (e *Engine) Probe(table Table) (LiveTable, error) {
 	}
 
 	if chairFound {
-		return LiveTable{Chair: chairHandle, Advisors: advisors}, nil
+		return LiveTable{Chair: chairHandle, Advisors: advisors, work: work}, nil
 	}
 	var stopErr error
 	for _, seat := range table.Seats {
@@ -59,8 +62,11 @@ func (e *Engine) Probe(table Table) (LiveTable, error) {
 }
 
 // probeSeat probes the shuttle for a live run of seat, under the gate the seat starts with.
-func (e *Engine) probeSeat(table Table, seat Seat) (Handle, bool, error) {
-	handle, found, err := e.shuttle.ProbeGated(seatSpec(table, seat, ""), seatGate(table, seat))
+// holdDeferral is the chair's held-turn deferral, which an attached chair needs in its spec as a fresh one has it; an advisor is probed with none.
+func (e *Engine) probeSeat(table Table, seat Seat, holdDeferral func() bool) (Handle, bool, error) {
+	spec := seatSpec(table, seat, "")
+	spec.HoldDeferral = holdDeferral
+	handle, found, err := e.shuttle.ProbeGated(spec, seatGate(table, seat))
 	if err != nil {
 		return nil, false, fmt.Errorf("seatengine: probe seat %q: %w", seat.Name, err)
 	}
@@ -72,6 +78,8 @@ func (e *Engine) probeSeat(table Table, seat Seat) (Handle, bool, error) {
 // The chair is told again that each found advisor is up, since the line may not have landed before the interruption.
 // An advisor the probe did not find is never restarted, and the chair is told of it once:
 // an advisor whose outputs all exist is finished, any other has ended.
+// The chair's hold deferral reads the work Probe wired into it, which Resume binds to its sender and adds every found advisor to, so an attached chair defers as a fresh one does;
+// a LiveTable built without Probe carries no work, and the attached chair then has nothing new to read.
 // A found required advisor is watched with the same Accept rule as in a fresh run, and a required advisor the probe did not find ends the step at once: the chair is stopped, no line is queued, and the advisor's result carries EndedStep with no terminal result.
 // A notice sent before the interruption may land again, which costs the chair nothing.
 // A LiveTable without a live chair is an error, and nothing is stopped or started.
@@ -89,6 +97,11 @@ func (e *Engine) Resume(table Table, live LiveTable) (Result, error) {
 	logger.Info("seatengine: resuming a live table", "chairStrand", live.Chair.StrandGUID(), "liveAdvisors", len(live.Advisors))
 
 	sender := newNoticeSender(e.absolute(table.Chair().Outputs), e.noticeRetry)
+	work := live.work
+	if work == nil {
+		work = &advisorWork{}
+	}
+	work.bindSender(sender)
 	ender := newStepEnder()
 	var advisors []*seatRun
 	for _, seat := range table.Seats {
@@ -98,7 +111,9 @@ func (e *Engine) Resume(table Table, live LiveTable) (Result, error) {
 		outputs := e.absolute(seat.Outputs)
 		if handle, found := live.Advisors[seat.Name]; found {
 			sender.queue(advisorUpNotice(names[seat.Name]))
-			advisors = append(advisors, newSeatRun(seat, names[seat.Name], handle, outputs, sender, ender))
+			attached := newSeatRun(seat, names[seat.Name], handle, outputs, sender, ender)
+			work.add(attached)
+			advisors = append(advisors, attached)
 			continue
 		}
 		lost := &seatRun{seat: seat, name: names[seat.Name]}

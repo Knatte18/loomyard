@@ -36,7 +36,7 @@
 // # The shuttle seam
 //
 // Shuttle is the seam the engine starts and probes its seats through, handle-shaped because the engine holds several live runs at once and sends into the chair's while it waits:
-// StartGated and ProbeGated return a Handle, the seat's unwaited run.
+// StartGated and ProbeGated return a Handle, the seat's unwaited run, which also reads its own session state through SessionState.
 // RunnerShuttle adapts a shuttleengine.Runner to it, and *shuttleengine.Run satisfies Handle.
 //
 // # Running a table fresh
@@ -45,6 +45,11 @@
 // The chair is the step's main agent: whoever talks to a producer running seats talks to the chair, and it holds the gate, the operator's channel and the step's outcome.
 // Each seat's prompt is its stencil filled, with the blocks it includes, from a value map holding the table's values, the seat's own and every reserved marker.
 // The chair starts with the table's gate and is the only interactive seat; an advisor starts with its seat's gate, ungated when it has none, keeps its pane and holds a turn end quietly.
+// The chair's held-turn notice to the parent is deferred while advisor work is outstanding, so the chair's planned wait on its advisors does not reach the parent as a stall notice.
+// The chair's spec carries a HoldDeferral predicate, backed by the advisors started so far and the notice sender:
+// it holds while an advisor whose run has not ended either has an up line the sender has not landed or reads mid-turn through Handle.SessionState (busy, cause turn).
+// An advisor whose run ended never counts, a timed-out one included, and a reading that errors counts as not mid-turn; no advisor's spec carries a predicate.
+// The settle interval and the maximum deferral are shuttle's, so a chair held while every counted advisor is idle notifies once after the settle interval, and never later than the maximum deferral whatever its advisors do.
 // A started seat whose strand took a different name than expected, which is reed numbering a name an earlier strand still holds, is stopped and reported as a start error naming the holder and the way forward.
 // A chair that fails to start starts no advisor and returns the error, which wraps shuttleengine.ErrNotStarted when the provider never came up.
 // Once each advisor's start ends, the chair is told in one line that the advisor is up, or that it did not start; seat-directive-chair tells the chair to send an advisor nothing before its up line.
@@ -89,6 +94,8 @@
 // The chair is told again that each found advisor is up, since that line may not have landed before the interruption.
 // The chair is told of each such advisor once: one whose outputs all exist is finished and the line says its output stands and the seat no longer answers, any other has ended and the line says so as a mid-step death does.
 // A notice sent before the interruption may land again, which costs the chair nothing.
+// Probe passes the chair's probe the same hold-deferral predicate and keeps the advisor work it reads on the LiveTable it returns; Resume binds its sender to that work and adds every found advisor, so an attached chair defers as a fresh one does.
+// A LiveTable built without Probe carries no work.
 // A found required advisor is watched with the same Accept rule, and a required advisor the probe did not find ends the step at once with EndedStep set and no terminal result.
 //
 // # Imports
