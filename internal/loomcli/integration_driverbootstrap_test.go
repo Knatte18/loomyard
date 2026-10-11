@@ -46,7 +46,7 @@ import (
 
 // integrationWriteStubDriverScript writes a POSIX shell script standing in for the claude binary this file's one spawn launches.
 // The driver spec names no skill, so the claude engine's launch line carries the prompt pointer as an argument, from which the script takes the prompt.md path and extracts the drive report path driverPrompt quoted into that file.
-// The script prints claudeengine's own idle-input-box fixture at start and again after the one line it reads.
+// The script records a session start through stubRecordSessionStart, then prints claudeengine's own idle-input-box fixture at start and again after the one line it reads.
 // Shuttle's startup step blocks Start until it sees a ready marker, and the color step waits for a ready pane,
 // so a script that skipped the fixture would make every call here time out instead of returning fast.
 // The one typed line is the `/color` command shuttle types for the driver's colored segment.
@@ -57,6 +57,7 @@ func integrationWriteStubDriverScript(t *testing.T, settleDelay time.Duration) s
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "stub-claude.sh")
 	script := fmt.Sprintf(`#!/bin/sh
+%s
 prompt_file=
 while [ $# -gt 0 ]; do
   case $1 in *prompt.md*) prompt_file=$(printf '%%s' "$1" | grep -o '[^ "]*prompt\.md' | head -1) ;; esac
@@ -73,7 +74,7 @@ if [ -n "$report" ]; then
   printf 'stub driver report\n' > "$report"
 fi
 exit 0
-`, claudeengine.IdleInputBoxFixture, settleDelay)
+`, stubRecordSessionStart, claudeengine.IdleInputBoxFixture, settleDelay)
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatalf("write stub driver script: %v", err)
 	}

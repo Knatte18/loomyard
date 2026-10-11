@@ -223,6 +223,10 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 			wantLog: "released an unmatched turn start",
 		},
 		{name: "a session start after a turn end leaves it idle", probes: []probe{{events: turnEnded + "SESSIONSTART\n", capture: idleFrame, want: IdleProbe{Idle: true}}}},
+		{name: "idle-fresh with an empty box is ready", probes: []probe{{events: "SESSIONSTART:startup\n", capture: idleFrame, want: IdleProbe{Idle: true}}}},
+		{name: "idle-fresh with a draft is held with its reason", probes: []probe{{events: "SESSIONSTART:clear\n", capture: "IDLE\n❯ half a draft", want: IdleProbe{Reason: `the input box holds a draft: "half a draft"`}, wantReason: "draft"}}},
+		{name: "idle-fresh with a pane too short is held and reported too short", tooShort: true, probes: []probe{{events: "SESSIONSTART:startup\n", capture: "IDLE", want: IdleProbe{TooShort: true, Reason: readinessReasonPaneTooShort}, wantReason: "too short"}}},
+		{name: "idle-fresh with no readable box is held", probes: []probe{{events: "SESSIONSTART:resume\n", capture: "no box here", want: IdleProbe{Reason: readinessReasonNoInputBox}, wantReason: "no input box"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -305,6 +309,42 @@ type slashPasteEngine struct {
 
 func (e *slashPasteEngine) ProcessLiveness(string) Liveness { return LivenessAlive }
 
+// ParseSessionSignals adds the "SESSIONSTART:<source>" lines, after the scripted engine's own signals.
+func (e *slashPasteEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
+	signals, end := e.scriptedPasteEngine.ParseSessionSignals(data)
+	for _, line := range strings.Split(string(data), "\n") {
+		if source, found := strings.CutPrefix(strings.TrimSpace(line), "SESSIONSTART:"); found {
+			signals = append(signals, SessionSignal{Kind: SessionSignalSessionStart, Source: SessionStartSource(source)})
+		}
+	}
+	return signals, end
+}
+
+// pasteLineReed is a fakeReed that appends line to the events file after every paste, as the provider's hook does when a pasted command restarts the session.
+// An empty line appends nothing.
+type pasteLineReed struct {
+	*fakeReed
+
+	eventsPath string
+	line       string
+}
+
+func (r *pasteLineReed) PasteSubmit(guid, text string, submit bool) error {
+	err := r.fakeReed.PasteSubmit(guid, text, submit)
+	if r.line == "" {
+		return err
+	}
+	file, openErr := os.OpenFile(r.eventsPath, os.O_APPEND|os.O_WRONLY, 0o644)
+	if openErr != nil {
+		return openErr
+	}
+	defer file.Close()
+	if _, writeErr := file.WriteString(r.line + "\n"); writeErr != nil {
+		return writeErr
+	}
+	return err
+}
+
 func (e *slashPasteEngine) ClearSessionSequence() []PaneInput {
 	return []PaneInput{{Text: "/clear", Submit: true}}
 }
@@ -324,14 +364,37 @@ func (e *slashPasteEngine) ColorSequence(color segmentcolor.Color) []PaneInput {
 	return []PaneInput{{Text: "/color " + string(color), Submit: true}}
 }
 
+// parserlessPasteEngine is a paste-path engine with no SessionSignalParser: it exposes only the Engine, TextPaster, InputBoxReader and SessionCycler capabilities of the engine it wraps.
+type parserlessPasteEngine struct {
+	Engine
+	TextPaster
+	InputBoxReader
+	SessionCycler
+}
+
 // newSlashPasteRunner returns a runner over a live strand "strand-1" on a paste-path engine whose input box reads box and whose pane shows an operator active or not, and the reed it drives.
 func newSlashPasteRunner(t *testing.T, box string, active, noColor bool) (*Runner, *fakeReed, string) {
 	t.Helper()
+	runner, reed, runDir, _ := newSlashPasteRunnerAppending(t, box, active, noColor, "", false)
+	return runner, reed, runDir
+}
+
+// newSlashPasteRunnerAppending is newSlashPasteRunner with every paste appending pasteLine to the events file, and returns the runner's clock as well.
+// parserless hides the engine's session-signal parsing behind parserlessPasteEngine.
+func newSlashPasteRunnerAppending(t *testing.T, box string, active, noColor bool, pasteLine string, parserless bool) (*Runner, *fakeReed, string, *fakeClock) {
+	t.Helper()
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"IDLE"}, ActiveQueue: []bool{active}}
+	appending := &pasteLineReed{fakeReed: reed, line: pasteLine}
+	clock := newFakeClock(time.Now())
 	boxes := &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: []inputBoxAnswer{{box, true}}, settle: 100 * time.Millisecond}
-	engine := &slashPasteEngine{scriptedPasteEngine: &scriptedPasteEngine{clearableBoxEngine: &clearableBoxEngine{inputBoxEngine: boxes}, pasteSubmits: true}, noColor: noColor}
+	slash := &slashPasteEngine{scriptedPasteEngine: &scriptedPasteEngine{clearableBoxEngine: &clearableBoxEngine{inputBoxEngine: boxes}, pasteSubmits: true}, noColor: noColor}
+	var engine Engine = slash
+	if parserless {
+		engine = parserlessPasteEngine{Engine: slash, TextPaster: slash, InputBoxReader: slash, SessionCycler: slash}
+	}
 	cfg := Config{SubmitSettleMS: 100, SubmitConfirmTimeoutS: 30, SendReadyTimeoutS: 60}
-	fx := newFixture(t, reed, engine, withConfig(cfg), withStrand("strand-1"))
+	fx := newFixture(t, appending, engine, withConfig(cfg), withStrand("strand-1"), withClock(clock))
+	appending.eventsPath = fx.EventsPath
 	// A finished turn of a session whose process is alive makes the hook-derived session state known, so the idle wait reads the input box.
 	if err := os.WriteFile(fx.EventsPath, []byte("START\nSTOP:done\n"), 0o644); err != nil {
 		t.Fatalf("write events: %v", err)
@@ -340,7 +403,50 @@ func newSlashPasteRunner(t *testing.T, box string, active, noColor bool) (*Runne
 	if err := saveRunState(filepath.Dir(fx.EventsPath), record); err != nil {
 		t.Fatalf("saveRunState: %v", err)
 	}
-	return fx.Runner, reed, filepath.Dir(fx.EventsPath)
+	return fx.Runner, reed, filepath.Dir(fx.EventsPath), clock
+}
+
+// checkLandingStartConfirmation drives call, a session command that restarts the session with the source landing, over a paste-path engine whose box reads empty after the paste.
+// A session-start line of landing appended by the paste confirms the send at its first read.
+// A line of other, or none, leaves the send waiting out the whole submit window before the empty box confirms it.
+// A line of landing already in the events file before the send is older than the pre-send offset and is waited out too.
+// An engine that parses no session signals confirms on the empty box at once.
+func checkLandingStartConfirmation(t *testing.T, landing, other SessionStartSource, call func(*Runner) error) {
+	t.Helper()
+	window := submitConfirmTimeout(Config{SubmitConfirmTimeoutS: 30})
+	tests := []struct {
+		name       string
+		priorLine  string
+		pasteLine  string
+		parserless bool
+		wantWait   bool
+	}{
+		{name: "a session start of the matching source confirms the send at once", pasteLine: "SESSIONSTART:" + string(landing)},
+		{name: "a session start of the other source is waited out", pasteLine: "SESSIONSTART:" + string(other), wantWait: true},
+		{name: "no session start confirms on the empty box once the window closes", wantWait: true},
+		{name: "a session start of the matching source before the send is waited out", priorLine: "SESSIONSTART:" + string(landing), wantWait: true},
+		{name: "an engine that parses no session signals confirms on the empty box at once", parserless: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			runner, _, runDir, clock := newSlashPasteRunnerAppending(t, "", false, false, tt.pasteLine, tt.parserless)
+			if tt.priorLine != "" {
+				appendEventsLine(t, filepath.Join(runDir, eventsFileName), tt.priorLine)
+			}
+			start := clock.Now()
+			if err := call(runner); err != nil {
+				t.Fatalf("error = %v, want the command confirmed", err)
+			}
+			waited := clock.Now().Sub(start)
+			if tt.wantWait && waited < window {
+				t.Errorf("waited %s, want at least the %s submit window", waited, window)
+			}
+			if !tt.wantWait && waited >= window {
+				t.Errorf("waited %s, want less than the %s submit window", waited, window)
+			}
+		})
+	}
 }
 
 // checkPastedSessionCommand drives call, one of Runner's session commands or its color step, over a paste-path engine in three states of the pane the caller's own idle probe would have passed.
@@ -409,6 +515,7 @@ func TestRunner_ClearSession_PlaysScriptedSequence(t *testing.T) {
 	}
 
 	checkPastedSessionCommand(t, "/clear", func(r *Runner) error { return r.ClearSession("strand-1") })
+	checkLandingStartConfirmation(t, SessionStartClear, SessionStartCompact, func(r *Runner) error { return r.ClearSession("strand-1") })
 }
 
 // sentCalls returns the keys and texts reed was asked to write, in order.
@@ -495,6 +602,7 @@ func TestRunner_CompactSession_PlaysSequenceForFocus(t *testing.T) {
 	}
 
 	checkPastedSessionCommand(t, "/compact the plan", func(r *Runner) error { return r.CompactSession("strand-1", "the plan") })
+	checkLandingStartConfirmation(t, SessionStartCompact, SessionStartClear, func(r *Runner) error { return r.CompactSession("strand-1", "the plan") })
 }
 
 func TestRunner_CompactSession_RefusesMultiLineFocus(t *testing.T) {

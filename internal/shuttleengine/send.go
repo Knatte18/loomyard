@@ -35,6 +35,7 @@ const (
 // sendContext is what one verified send needs: the pane it types into, the run's record, directory and events file, the config and the clock its timed waits read.
 // A zero deadline means none, and a nil hold starts the idle wait's turn-start hold afresh.
 // startsNoTurn marks a send whose text starts no turn, such as a slash command, so no turn start reads as its landing.
+// landingStart is the session-start source whose line confirms a send that starts no turn; it is empty for every other send.
 type sendContext struct {
 	reed         ReedOps
 	engine       Engine
@@ -47,6 +48,7 @@ type sendContext struct {
 	deadline     time.Time
 	hold         *turnStartHold
 	startsNoTurn bool
+	landingStart SessionStartSource
 }
 
 // newSendContext returns the context of a verified send into run's own pane.
@@ -125,8 +127,9 @@ func awaitIdleSession(sc sendContext) error {
 	}
 	interval := idlePollInitial
 	maxPolls := windowPollCap(sendReadyTimeout(sc.cfg), idlePollInitial)
+	stray := &strayClear{}
 	for poll := 1; ; poll++ {
-		busy := busyReading(sc, cycler, hold)
+		busy := busyReading(sc, cycler, hold, stray)
 		if busy == "" {
 			return nil
 		}
@@ -143,12 +146,28 @@ func awaitIdleSession(sc sendContext) error {
 // The readiness reading decides: a ready reading returns "" and a held one its reason.
 // An unknown reading falls back to the pane, logging its cause at Debug.
 // Operator activity is asked last, and only once the rest of the reading passed, so each poll is one fresh reading of readiness, box and activity.
-func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold) string {
+//
+// A lone stray-character candidate in the box, on the hook reading held only for that draft or on the pane reading ready but not idle, is cleared once per stray, behind a full guard reading;
+// see clearStrayCharacter.
+// Once stray records a clear, every reading of the attempt is a post-clear reading, and a box still holding exactly the recorded character reads as empty.
+// Every pane-reading hold whose box reads non-empty quotes the box.
+func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold, stray *strayClear) string {
 	capture, err := sc.reed.CapturePane(sc.guid)
 	if err != nil {
 		return fmt.Sprintf("the pane could not be captured: %v", err)
 	}
 	reading := sessionReadiness(sc, cycler, hold, capture)
+	if reading.draft != "" {
+		character, isCandidate := strayCandidate(sc.engine, capture)
+		switch {
+		case isCandidate && character == reading.draft && stray.cleared && character == stray.character:
+			reading = readiness{ready: true}
+		case isCandidate && character == reading.draft && !stray.cleared:
+			if busy, handled := clearStrayCharacter(sc, cycler, hold, stray, character); handled {
+				return busy
+			}
+		}
+	}
 	switch {
 	case reading.ready:
 		return operatorActivityHold(sc.reed, sc.guid)
@@ -159,20 +178,81 @@ func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold) stri
 
 	ready := sc.engine.Startup(capture) == StartupReady
 	paneIdle := ready && cycler.IdleSession(capture)
+	var character string
+	isCandidate := false
+	if ready && !paneIdle {
+		character, isCandidate = strayCandidate(sc.engine, capture)
+	}
+	residue := isCandidate && stray.cleared && character == stray.character
+	if residue {
+		paneIdle = true
+	}
 
 	var unmatched string
 	if turnStart, found := unmatchedTurnStart(sc.engine, sc.eventsPath); found && hold.holds(sc.engine, turnStart, paneIdle, sc.clock.Now()) {
 		unmatched = fmt.Sprintf("a turn start at %s has no turn end", turnStart.At.Format(time.RFC3339))
 	}
+	if isCandidate && !stray.cleared && unmatched == "" {
+		if busy, handled := clearStrayCharacter(sc, cycler, hold, stray, character); handled {
+			return busy
+		}
+	}
 	switch {
 	case !ready:
-		return "the pane shows no input-ready provider"
+		return withBoxQuote("the pane shows no input-ready provider", sc.engine, capture)
 	case !paneIdle:
-		return "the pane is not idle"
+		return withBoxQuote("the pane is not idle", sc.engine, capture)
 	case unmatched != "":
-		return unmatched
+		return withBoxQuote(unmatched, sc.engine, capture)
 	}
 	return operatorActivityHold(sc.reed, sc.guid)
+}
+
+// strayClear is the stray-character state of one send attempt's idle wait: the zero value has cleared nothing.
+// After a clear, cleared is true and character is the one that was found, which a box still holding reads as residue.
+type strayClear struct {
+	cleared   bool
+	character string
+}
+
+// strayCandidate returns the stray-character candidate the engine reads in capture; ok is false for an engine without StrayInputReader and for a capture with none.
+func strayCandidate(engine Engine, capture string) (character string, ok bool) {
+	reader, canRead := engine.(StrayInputReader)
+	if !canRead {
+		return "", false
+	}
+	return reader.StrayInput(capture)
+}
+
+// clearStrayCharacter handles a stray-character candidate found before any clear of this attempt.
+// handled is false for an engine that cannot clear a box and read it afterwards, and the caller holds on the draft as for any other.
+// Otherwise an active operator holds the send, quoting the box;
+// else the clear plays right after this reading with no wait or other key between, stray records the character, the box settles for SubmitSettle, and a second full reading is taken.
+// That post-clear reading is the write's guard reading, and busy is what it returns.
+func clearStrayCharacter(sc sendContext, cycler SessionCycler, hold *turnStartHold, stray *strayClear, character string) (busy string, handled bool) {
+	clearer, canClear := sc.engine.(InputBoxClearer)
+	reader, canRead := sc.engine.(InputBoxReader)
+	if !canClear || !canRead {
+		return "", false
+	}
+	if activity := operatorActivityHold(sc.reed, sc.guid); activity != "" {
+		return fmt.Sprintf("%s; the input box holds %q", activity, character), true
+	}
+	if err := playInputs(sc.reed, sc.guid, clearer.ClearInputSequence()); err != nil {
+		return fmt.Sprintf("clearing the stray character %q failed: %v", character, err), true
+	}
+	stray.cleared, stray.character = true, character
+	sc.clock.Sleep(reader.SubmitSettle())
+	return busyReading(sc, cycler, hold, stray), true
+}
+
+// withBoxQuote returns reason followed by the input box's text when the engine reads a non-empty box in capture.
+func withBoxQuote(reason string, engine Engine, capture string) string {
+	box := readBox(engine, capture)
+	if text := strings.TrimSpace(box.text); box.read && text != "" {
+		return fmt.Sprintf("%s; the input box holds %q", reason, text)
+	}
+	return reason
 }
 
 // operatorActivityHold asks reed once whether an attached client was active in the strand's pane within the quiet window, and returns the reason a write is held for it, or "" when none.
@@ -407,6 +487,8 @@ func retryLanded(sc sendContext, text string) bool {
 
 // confirmPasted reads the input box after a paste, first reader.SubmitSettle() later and then at a doubling interval up to confirmBackoffCap, cut to end at closeAt.
 // A turn start past sentAt, or an empty box, means the paste landed.
+// A send with a landingStart, to an engine that parses session signals, instead lands on a session start of that source past sentAt, and an empty box does not end its reads while the window and the read cap allow more;
+// when they run out with none, the box read decides as for any send.
 // A box holding exactly the sent text, or the provider's placeholder for it, means the Enter did not take, and the guarded Enter is sent and the box read again.
 // No readable box sends nothing and is read again.
 // The sent text beside other text fails with ErrSentTextInDraft, and any other text fails with ErrSessionBusy quoting the box; neither sends a key.
@@ -422,11 +504,18 @@ func confirmPasted(sc sendContext, paster TextPaster, reader InputBoxReader, tex
 		if turnStartedSince(sc.engine, sc.eventsPath, sentAt) {
 			return nil
 		}
+		_, parsesSignals := sc.engine.(SessionSignalParser)
+		awaitsLanding := sc.landingStart != "" && parsesSignals
+		if awaitsLanding && sessionStartedSince(sc.engine, sc.eventsPath, sentAt, sc.landingStart) {
+			return nil
+		}
 		if boxText, readable := readInputBox(sc, reader); readable {
 			box := normalizePaneText(boxText)
 			switch {
 			case box == "":
-				return nil
+				if !awaitsLanding || windowClosed(sc.clock, closeAt) || read >= maxReads {
+					return nil
+				}
 			case box == normalized || paster.OwnPastePlaceholder(boxText, text):
 				if _, err := guardedEnter(sc); err != nil {
 					return err
@@ -601,6 +690,26 @@ func turnStartedSince(engine Engine, eventsPath string, offset int64) bool {
 	signals, _ := parser.ParseSessionSignals(data[offset:])
 	for _, signal := range signals {
 		if signal.Kind == SessionSignalTurnStart {
+			return true
+		}
+	}
+	return false
+}
+
+// sessionStartedSince reports whether the events file holds a session-start signal of source past byte offset.
+// An engine without SessionSignalParser and an unreadable file read as no.
+func sessionStartedSince(engine Engine, eventsPath string, offset int64, source SessionStartSource) bool {
+	parser, ok := engine.(SessionSignalParser)
+	if !ok {
+		return false
+	}
+	data, err := os.ReadFile(eventsPath)
+	if err != nil || offset > int64(len(data)) {
+		return false
+	}
+	signals, _ := parser.ParseSessionSignals(data[offset:])
+	for _, signal := range signals {
+		if signal.Kind == SessionSignalSessionStart && signal.Source == source {
 			return true
 		}
 	}

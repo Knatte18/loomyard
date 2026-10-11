@@ -69,7 +69,7 @@ func stampPrintf(hookEventName, quotedEventsPath string) string {
 }
 
 // TestBuildSettings_RecordingHooks pins the recording hooks every document carries: one command entry per event with no tool matcher, each appending a stamp line and then the payload to the events path in its POSIX form.
-// Stop keeps the payload append's exit status, and the four other hooks end in `; true` so they exit 0 whatever the append does.
+// Stop keeps the payload append's exit status, and the other hooks end in `; true` so they exit 0 whatever the append does.
 // A run directory path containing a literal apostrophe (an unusual but legal Windows path character, e.g. a worktree named "operator's-box") must not break out of the hooks' single-quoted shell argument: the embedded quote is escaped via the standard sh idiom rather than passed through raw.
 //
 //testtiming:keep pins the recording hooks' exact commands and their single-quote escaping, which its covering test does not assert
@@ -103,6 +103,8 @@ func TestBuildSettings_RecordingHooks(t *testing.T) {
 				{"StopFailure", stampPrintf("StopFailure", tt.quoted) + "; " + payload + "; true"},
 				{"Notification", stampPrintf("Notification", tt.quoted) + "; " + payload + "; true"},
 				{"SessionEnd", stampPrintf("SessionEnd", tt.quoted) + "; " + payload + "; true"},
+				{"SessionStart", stampPrintf("SessionStart", tt.quoted) + "; " + payload + "; true"},
+				{"PermissionRequest", stampPrintf("PermissionRequest", tt.quoted) + "; " + payload + "; true"},
 			} {
 				entries := hooksFor(doc, hook.event)
 				if len(entries) != 1 {
@@ -128,51 +130,58 @@ func TestBuildSettings_RecordingHooks(t *testing.T) {
 	}
 }
 
-// TestBuildSettings_SessionStartHook pins the SessionStart entry: absent for an empty command, otherwise one entry with the compaction matcher whose two commands are the recording command ending in `; true` and then the given command verbatim.
+// TestBuildSettings_SessionStartHook pins the SessionStart entries: every source is recorded exactly once.
+// An empty command gives one recording entry with no matcher; otherwise the sources but compaction record in one entry, and the compaction entry runs the recording command ending in `; true` and then the given command verbatim.
 func TestBuildSettings_SessionStartHook(t *testing.T) {
 	t.Parallel()
 
 	const quoted = `'/c/run/events.jsonl'`
 	const command = "lyx orch resume-context"
-	t.Run("empty_command_renders_no_entry", func(t *testing.T) {
-		t.Parallel()
-		data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, false, false, "")
-		if err != nil {
-			t.Fatalf("buildSettings() error: %v", err)
-		}
-		if entries := hooksFor(parseSettings(t, data), "SessionStart"); entries != nil {
-			t.Errorf("SessionStart hooks = %v; want none", entries)
-		}
-	})
-	t.Run("set_command_renders_two_commands_under_the_compaction_matcher", func(t *testing.T) {
-		t.Parallel()
-		data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, false, false, command)
-		if err != nil {
-			t.Fatalf("buildSettings() error: %v", err)
-		}
-		entries := hooksFor(parseSettings(t, data), "SessionStart")
-		if len(entries) != 1 {
-			t.Fatalf("SessionStart hooks = %v; want exactly one entry", entries)
-		}
-		entry, _ := entries[0].(map[string]any)
-		if entry["matcher"] != "compact" {
-			t.Errorf("SessionStart matcher = %v; want %q", entry["matcher"], "compact")
-		}
-		inner, _ := entry["hooks"].([]any)
-		want := []string{
-			stampPrintf("SessionStart", quoted) + "; cat >> " + quoted + " && printf '\\n' >> " + quoted + "; true",
+	recording := stampPrintf("SessionStart", quoted) + "; cat >> " + quoted + " && printf '\\n' >> " + quoted + "; true"
+	tests := []struct {
+		name         string
+		command      string
+		wantMatchers []string
+		wantCommands [][]string
+	}{
+		{"empty_command_records_every_source_in_one_entry", "", []string{""}, [][]string{{recording}}},
+		{
+			"set_command_splits_compaction_from_the_other_sources",
 			command,
-		}
-		if len(inner) != len(want) {
-			t.Fatalf("SessionStart commands = %v; want %d", inner, len(want))
-		}
-		for i, w := range want {
-			cmd, _ := inner[i].(map[string]any)
-			if got, _ := cmd["command"].(string); got != w {
-				t.Errorf("SessionStart command %d = %q; want %q", i, got, w)
+			[]string{"startup|resume|clear", "compact"},
+			[][]string{{recording}, {recording, command}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, false, false, tt.command)
+			if err != nil {
+				t.Fatalf("buildSettings() error: %v", err)
 			}
-		}
-	})
+			entries := hooksFor(parseSettings(t, data), "SessionStart")
+			if len(entries) != len(tt.wantMatchers) {
+				t.Fatalf("SessionStart hooks = %v; want %d entries", entries, len(tt.wantMatchers))
+			}
+			for i, raw := range entries {
+				entry, _ := raw.(map[string]any)
+				matcher, _ := entry["matcher"].(string)
+				if matcher != tt.wantMatchers[i] {
+					t.Errorf("entry %d matcher = %q; want %q", i, matcher, tt.wantMatchers[i])
+				}
+				inner, _ := entry["hooks"].([]any)
+				if len(inner) != len(tt.wantCommands[i]) {
+					t.Fatalf("entry %d commands = %v; want %d", i, inner, len(tt.wantCommands[i]))
+				}
+				for j, want := range tt.wantCommands[i] {
+					cmd, _ := inner[j].(map[string]any)
+					if got, _ := cmd["command"].(string); got != want {
+						t.Errorf("entry %d command %d = %q; want %q", i, j, got, want)
+					}
+				}
+			}
+		})
+	}
 }
 
 // TestSessionStartContext pins the exact additional-context JSON a session-start hook prints, with the text escaped.
@@ -546,6 +555,9 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 
 	if launch.SessionID == "" {
 		t.Error("Launch.SessionID is empty")
+	}
+	if !launch.RecordsSessionStarts {
+		t.Error("Launch.RecordsSessionStarts = false; want true, since the settings record every session start")
 	}
 	if !strings.Contains(launch.Cmd, launch.SessionID) {
 		t.Errorf("Launch.Cmd = %q; want it to embed SessionID %q", launch.Cmd, launch.SessionID)

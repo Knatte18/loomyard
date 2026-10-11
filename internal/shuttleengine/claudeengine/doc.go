@@ -75,19 +75,24 @@
 // An unreadable transcript makes the whole reading unknown, and a missing `subagents/` directory is zero forks.
 //
 // The session-signal parse (SessionSignalParser) reads the same events file as ParseEvents but yields a separate stream, in signals.go, and leaves ParseEvents unchanged.
-// A `Stop` line is a turn end with its outstanding tasks read exactly as ParseEvents reads them, a `StopFailure` an API-error turn end, a `UserPromptSubmit` a turn start, a `PreToolUse` for `AskUserQuestion` an ask, a `Notification` of type permission prompt or elicitation dialog an ask and `idle_prompt` an idle notice (any other type is skipped), a `SessionEnd` a session end with its reason, and a `SessionStart` a session start carrying the payload's `source`.
+// A `Stop` line is a turn end with its outstanding tasks read exactly as ParseEvents reads them, a `StopFailure` an API-error turn end, a `UserPromptSubmit` a turn start, a `PreToolUse` for `AskUserQuestion` an ask, a `PermissionRequest` an ask by its hook name alone, a `Notification` by the fixed table `notificationSignalKinds` (`permission_prompt`, `elicitation_dialog` and `elicitation_url_dialog` are asks, `idle_prompt` is an idle notice, and `agent_needs_input`, `elicitation_response` and any other type are skipped), a `SessionEnd` a session end with its reason, and a `SessionStart` a session start carrying the payload's `source` mapped to a provider-neutral one: `startup`, `resume`, `clear` and `compact` to their constants, and any other or missing string to the empty source.
+// The session fold reads a `resume` or `clear` start as an idle-fresh session, and a `startup` start too unless a turn is running; a `compact` start moves nothing.
 // A `SessionEnd` reason of `logout`, `prompt_input_exit` or `other` ends the process; `clear`, `resume` and an unknown reason do not.
 // A recording hook writes a stamp line `{"lyx_stamp":"<hook>","lyx_at":"<RFC 3339 UTC>"}` before its payload, and the parser gives a payload the time of the nearest preceding untaken stamp naming its hook.
 // A payload with no such stamp, or whose stamp's time is empty or malformed, reads a zero time.
 // The count the parser reports as consumed stops before the trailing run of stamp lines with no payload after them, so an incremental reader sees each stamp with its payload at its next read.
 // A transcript-fallback turn end's tasks are read from the transcript at parse time, so the same line parsed again later can read fewer.
 //
-// The events file holds, per recording hook (Stop, UserPromptSubmit, StopFailure, Notification, SessionEnd, SessionStart for a run whose spec sets a context-after-compaction command and, in an interactive run, the AskUserQuestion record), a stamp line and then the hook's payload line.
-// The hook command is plain POSIX `sh`, `date`, `cat` and `printf`: one `printf` writes the stamp, `;` joins it to the unchanged payload append so a failed stamp never blocks the payload, and the four newer hooks end in `; true` so they exit 0 whatever the append does.
+// The events file holds, per recording hook (Stop, UserPromptSubmit, StopFailure, Notification, SessionEnd, SessionStart, PermissionRequest and, in an interactive run, the AskUserQuestion record), a stamp line and then the hook's payload line.
+// The hook command is plain POSIX `sh`, `date`, `cat` and `printf`: one `printf` writes the stamp, `;` joins it to the unchanged payload append so a failed stamp never blocks the payload, and every hook but Stop ends in `; true` so it exits 0 whatever the append does.
 // A failed `date` leaves the stamp's time empty, which the parser reads as no time.
-// No recording hook prints to standard output.
-// The one exception is the second command of the `SessionStart` entry, which Spec.ContextAfterCompaction sets: the entry carries the `compact` matcher, records the event with the recording command and then runs that command verbatim, whose output joins the session's context after every compaction.
+// Every `SessionStart` source is recorded exactly once.
+// A run without a context-after-compaction command records them in one entry with no matcher;
+// a run with one records the sources but `compact` in an entry matching `startup|resume|clear`, and `compact` in its own entry.
+// No recording hook prints to standard output, so the `PermissionRequest` recording answers no request and leaves Claude's own dialog to decide it.
+// The one exception is the second command of the `compact` `SessionStart` entry, which Spec.ContextAfterCompaction sets: it runs after the recording command and verbatim, and its output joins the session's context after every compaction.
 // SessionStartContext renders the additional-context JSON such a command prints.
+// Prepare declares the launch as recording session starts, so startup waits for the `startup` line beside the ready pane.
 // Two accepted races follow from the append order.
 // Hooks that fire at once can interleave their stamps ahead of both payloads, which the pairing by hook name absorbs;
 // and a reader can see a payload without its newline, or a stamp without its payload, which the parser leaves unconsumed until the line completes.
@@ -96,6 +101,8 @@
 // The activity reading (ActivityReader) takes the session's last activity, its forks included, and walks the main transcript backwards for the newest main-chain assistant entry that ends a turn or carries Claude Code's `isApiErrorMessage` marker.
 // The last activity is the later of the main transcript's last write and the newest fork reading under the `subagents/` directory beside it:
 // a fork's last write time, or the reading clock's now when the fork holds a tool call with no result and was last written no more than `bashMaxTimeout` ago.
+// The pending-call reading looks at the fork's newest tool-calling message only, read backward from the transcript's end:
+// a message is every assistant entry sharing one message id, and it is pending when any of its calls has no result after it, so an unanswered call in an older message no longer counts.
 // A held foreground call writes nothing, so the pending-call reading keeps a Master waiting on a working fork from reading quiet;
 // a fork stopped mid-call reads active for at most that ceiling past its last write, which a live call never outlasts.
 // The API-error part reads the main transcript only.
@@ -121,8 +128,11 @@
 // No sequence opens with an Escape: prompt suggestion is off in every shuttle-launched session, so an Escape guarded nothing and could complete a double-Esc or interrupt a turn.
 // ComposeSend is the text step and the Enter, TypeSequence the text step alone, and the session commands and the color command are their text and an Enter with no pause between them.
 // ClearInputSequence is one `C-u`, which deletes from the caret to the start of the line and so empties a one-line draft without interrupting a running turn.
+// It serves sent text and a lone stray-character candidate alike, since both are one line with the caret at its end.
 // OwnPastePlaceholder recognises the `[Pasted text #<n>]` or `[Pasted text #<n> +<m> lines]` form Claude Code collapses a pasted draft into, which a box reading cannot otherwise match against the pasted text.
 // It answers true only for a text of at least `PasteCollapseMinChars` characters, whose newline count equals `m` when the placeholder shows one.
+// The box reading takes a box holding only a lone `%`, the shell's end-of-line mark, as empty.
+// StrayInput is the judgment beside that rule: a box holding exactly one character that is neither a letter, a digit nor whitespace, with no running turn on screen, is a stray-character candidate and the character is returned; the lone `%` is never one.
 //
 // Beside the clear sequence (`/clear`) and the compact sequence (`/compact`), the engine realizes skill loading, in skillload.go.
 // A spec that names skills starts on an empty input box: the launch line carries no prompt pointer, and the pointer comes back as Launch.PromptLine for shuttle to send after the skills.

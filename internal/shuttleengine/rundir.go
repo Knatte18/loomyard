@@ -123,6 +123,9 @@ type RunState struct {
 	// PID is the pid of the process that waits on the run: Start records the starting process, and an attach rewrites it to the attaching process.
 	// Zero for a record an older binary wrote, which therefore never counts as live.
 	PID int `json:"pid,omitempty"`
+	// RecordsSessionStarts is the launch's declaration that it writes a session-start line, copied from the launch.
+	// Startup then needs that line beside the ready pane; a record an older binary wrote decodes false and keeps pane-only startup.
+	RecordsSessionStarts bool `json:"recordsSessionStarts,omitempty"`
 }
 
 // createRunDir mints a fresh run id, creates <root>/<runID>, and returns

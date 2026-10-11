@@ -109,6 +109,42 @@ func TestInputBoxText(t *testing.T) {
 	}
 }
 
+func TestStrayInput(t *testing.T) {
+	t.Parallel()
+
+	rule := "────────────────────────────────"
+	box := func(text string) string { return rule + "\n❯ " + text + "\n" + rule + "\n  ? for shortcuts\n" }
+	tests := []struct {
+		name     string
+		capture  string
+		wantText string
+		wantOK   bool
+	}{
+		{"plus sign", box("+"), "+", true},
+		{"hyphen", box("-"), "-", true},
+		{"greater-than sign", box(">"), ">", true},
+		{"a letter", box("a"), "", false},
+		{"a digit", box("7"), "", false},
+		{"the lone percent mark", readPaneFixture(t, "pane-idle-eol-mark.txt"), "", false},
+		{"two characters", box("++"), "", false},
+		{"a character beside a word", box("+ ok"), "", false},
+		{"an empty box", box(""), "", false},
+		{"a running turn over a lone character", "● working\n  esc to interrupt\n" + box("+"), "", false},
+		{"no input box", "● some transcript\n", "", false},
+	}
+	c := &Claude{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			text, ok := c.StrayInput(tt.capture)
+			if text != tt.wantText || ok != tt.wantOK {
+				t.Errorf("StrayInput = (%q, %v); want (%q, %v)", text, ok, tt.wantText, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestPaneTooShort(t *testing.T) {
 	tests := []struct {
 		name    string

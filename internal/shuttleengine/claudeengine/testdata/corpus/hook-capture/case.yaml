@@ -1,0 +1,51 @@
+# Every hook line of one interactive session's life: startup, a typed turn, a permission request, /clear, /compact, /exit, a resumed launch and a kill.
+source:
+  transcript: ~/.claude/projects/-tmp-hook-capture-worktree/22222222-2222-4222-8222-222222222222.jsonl
+  session_id: 11111111-1111-4111-8111-111111111111
+  run: TestSmokeTurnsHookCapture, an interactive Haiku run in prompt permission mode
+date: 2026-10-11
+claude_code_version: 2.1.296
+what_went_wrong: >-
+  Nothing: the case records which hook lines Claude writes for each event and in what order, so the parser and the fold have real lines to read.
+  The session ids and paths are scrubbed to fixed values; session 1 is the launched session and resumed one, session 2 the one /clear started.
+events_reconstructed: false
+events_note: >-
+  The real events file's payload lines, stamp lines dropped, in file order.
+  The transcript is the session the last turn end names, trimmed to its AGAIN turn, the /compact command and the compact boundary.
+session_start_startup_order: >-
+  SessionStart(startup) lands on its own, before the first UserPromptSubmit in file order, with its stamp in the same second as the first ready pane.
+  Pane readings of the first launch, by time: 16:49:33.148 pending, 16:49:33.379 trust gate on screen, 16:49:34.289 pending, 16:49:34.980 first ready (StartupReady).
+  The SessionStart(startup) stamp reads 16:49:34Z, the first UserPromptSubmit's the same second.
+  The resumed launch types no turn and still writes SessionStart(resume), so no typed turn is what starts the recording.
+  The blocker clause for a startup line that does not land on its own does not apply.
+registry_after_session_start_startup: >-
+  An entry named 1066564.json holds pid 1066564, sessionId 11111111-1111-4111-8111-111111111111, procStart 25414719, kind interactive, name tst:strand, status busy.
+registry_after_exit: >-
+  No entry names the session, since Claude removes it on a normal /exit.
+registry_after_kill: >-
+  No entry names the session.
+  The kill, a reed strand removal, still wrote SessionEnd with reason other before the process went.
+gated: false
+skills: []
+turn_ends:
+  - reading: held
+    outputs_exist: false
+  - reading: held
+    outputs_exist: false
+  - reading: held
+    outputs_exist: false
+states:
+  - {state: idle-fresh, cause: session-start}
+  - {state: busy, cause: turn}
+  - {state: idle-stalled, cause: no-output}
+  - {state: busy, cause: turn}
+  - {state: asking, cause: ask}
+  - {state: idle-stalled, cause: no-output}
+  - {state: unknown, cause: clear}
+  - {state: idle-fresh, cause: session-start}
+  - {state: busy, cause: turn}
+  - {state: idle-stalled, cause: no-output}
+  - {state: idle-stalled, cause: no-output}
+  - {state: dead, cause: prompt_input_exit}
+  - {state: idle-fresh, cause: session-start}
+  - {state: dead, cause: other}

@@ -23,8 +23,24 @@ const (
 	// SessionSignalSessionEnd: the provider reported the session ended.
 	SessionSignalSessionEnd SessionSignalKind = "session_end"
 	// SessionSignalSessionStart: the provider started or resumed the session, or restarted its context after a compaction.
-	// It says nothing about what the session is doing, so a session fold does not move on it.
+	// A session fold reads a resume, a clear and a startup beside no running turn as an idle session with an empty context, and leaves its state alone on any other source.
 	SessionSignalSessionStart SessionSignalKind = "session_start"
+)
+
+// SessionStartSource is why a provider started a session's context.
+// The empty source stands for a missing or unrecognised one.
+type SessionStartSource string
+
+// Sources a session start can carry.
+const (
+	// SessionStartStartup: the provider launched a new session.
+	SessionStartStartup SessionStartSource = "startup"
+	// SessionStartResume: the provider resumed an existing session.
+	SessionStartResume SessionStartSource = "resume"
+	// SessionStartClear: the session's context was cleared.
+	SessionStartClear SessionStartSource = "clear"
+	// SessionStartCompact: the session's context was restarted after a compaction.
+	SessionStartCompact SessionStartSource = "compact"
 )
 
 // SessionSignal is one provider hook line read as a session fact.
@@ -43,8 +59,8 @@ type SessionSignal struct {
 	Reason string
 	// EndsProcess is true when a session end's reason ends the provider's process; the provider decides which reasons do.
 	EndsProcess bool
-	// Source is a session start's source, such as startup or compact; empty on every other kind.
-	Source string
+	// Source is a session start's SessionStartSource; empty on every other kind and on a start whose source the provider could not name.
+	Source SessionStartSource
 	// Event is true when ParseEvents also yields an event from the same line.
 	Event bool
 	// Raw is the exact hook payload line the signal was read from.

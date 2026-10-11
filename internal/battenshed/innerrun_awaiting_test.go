@@ -298,7 +298,7 @@ func TestInnerRun_AwaitingSpawnErrorWritesNoMarkerAndRetries(t *testing.T) {
 }
 
 // TestInnerRun_AwaitingRefusedResumeRetriesWithoutMarkerThenResumes asserts a resume the child's driver refuses, as not parked yet or as a busy pane, leaves the decision unacted, is retried inside the wait at most once per notice probe, and is acted on once the driver takes it.
-// A busy pane reports the draft and the remedy and queues one orch notice per stall, which never carries the refusal's draft text.
+// A busy pane reports the draft and the remedy and queues one orch notice per stall, which quotes the refusal's draft text.
 func TestInnerRun_AwaitingRefusedResumeRetriesWithoutMarkerThenResumes(t *testing.T) {
 	const draft = "half-typed operator draft"
 	busy := fmt.Errorf("%w: the input box holds a draft: %s", ErrChildDriverBusy, draft)
@@ -405,8 +405,8 @@ func testInnerRunRefusedResume(t *testing.T, draft string, refusals []error, sec
 		if want := noticePrefix + " myslug: awaiting at Publish; driver pane busy"; !strings.HasPrefix(line, want) {
 			t.Errorf("notice %q; want it to lead with %q", line, want)
 		}
-		if strings.Contains(line, draft) {
-			t.Errorf("notice %q carries the refusal's draft text", line)
+		if !strings.Contains(line, draft) {
+			t.Errorf("notice %q; want it to quote the refusal's draft text %q", line, draft)
 		}
 	}
 	if !strings.Contains(clock.lastReason(), "resume was delivered") {

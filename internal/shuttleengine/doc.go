@@ -168,6 +168,9 @@
 // A held or failed color is logged and never fails the launch, since the color is display only.
 // Runner.TypeColor sends the same sequence into a live shuttle strand for a caller that colors its own session, and returns a held color's error, wrapping ErrSessionBusy, so the caller may retry.
 // Runner.ClearSession, Runner.CompactSession and Runner.ReloadPlugins send their slash commands through the same path, so a draft in the box or an active operator holds them with ErrSessionBusy instead of a caller's earlier idle probe letting them type.
+// Runner.ClearSession and Runner.CompactSession confirm on the session-start line their command makes the provider write, of source clear and compact, past the events offset taken before the paste;
+// an empty box does not confirm them early, and when the submit window closes with no such line the box read decides as for any send, so an engine that records no session starts confirms on the empty box at the window's end.
+// An engine without SessionSignalParser confirms them on the empty box at once, as any other send.
 // A provider with no command for the request types nothing and asks nothing.
 // The palette-to-command mapping is provider grammar and lives in the engine.
 //
@@ -185,7 +188,7 @@
 // Then PromptLine goes out through the verified send path.
 // Every verified send first waits for an idle session, for at most `send_ready_timeout_s` and never past the run's deadline, and types nothing until then.
 // For an engine with the optional SessionCycler idle reading, every poll takes the readiness reading, built on the hook-derived session state.
-// The reading is ready on idle-done, idle-stalled of any cause, asking at an awaited turn end and busy on background work, provided no turn start is unmatched and the input box, where the engine reads one, is blank;
+// The reading is ready on idle-done, idle-stalled of any cause, idle-fresh, asking at an awaited turn end and busy on background work, provided no turn start is unmatched and the input box, where the engine reads one, is blank;
 // it is held, with a reason, on a running turn, a question awaiting an answer, a dead process, an unmatched turn start, a draft in the box, a pane too short and a pane showing no input box to an engine that reads one, as when a menu or picker is open.
 // A ready reading lets the send type even when the pane still shows the running-turn needle.
 // The pre-write guard is the last step of every poll: once the rest of the reading passed, shuttle asks reed once whether an attached client was active in the pane within `operator_quiet_s`, and holds the write while one was.
@@ -194,6 +197,12 @@
 // Runner.SessionIdle applies the same hold after a ready reading, so the orch watcher's probe reports an active operator with its reason.
 // An unmatched turn start releases after the pane has read idle on every poll for turnStartIdleOverride, or at once when the engine reports that turn interrupted.
 // When the session state is unknown, the reading falls back to the pane, which must classify ready and idle, and for an engine that parses session signals no turn start may be left unmatched by a later turn end; the cause is logged at Debug.
+// A fallback hold whose box reads non-empty quotes the box.
+// Stray character: for an engine with StrayInputReader, InputBoxClearer and InputBoxReader, a box holding exactly one stray-character candidate is cleared once per send attempt.
+// It counts on the hook reading held only for that draft, and on the pane reading that is ready but not idle.
+// An active operator holds the send instead, quoting the box; otherwise the clear plays right after that reading, the box settles for `SubmitSettle`, and a second full reading is the write's guard reading.
+// From the clear on, every reading of the attempt is a post-clear reading: a box still holding exactly the cleared character reads as empty, so the send goes out, and anything else holds as a draft with no second clear.
+// A character that survives is submitted at the head of the message, and the post-paste confirm keeps its exact-text reading, so it fails with ErrSentTextInDraft.
 // A session that stays held fails the send with ErrSessionBusy, naming the reading and ending with the pane's last lines.
 // Run.Send and the gated wait loop's own send each hold the run's send lock for the whole idle wait, typing and delivery check, so an in-process send and a gate re-prompt on one run type one after the other, never at once; the lock skips no idle wait, delivery check or gate evaluation.
 // An engine without the idle reading keeps the not-ready refusal and the operator-activity hold, with no wait: either fails the send at once.
@@ -285,11 +294,15 @@
 // Wait's own shadow logging below stays display only.
 // The optional SessionSignalParser capability reads the events file's hook lines as provider-neutral signals with hook-side times:
 // a turn start, a turn end (with its outstanding background tasks), an API-error turn end, an ask, an idle notice, a session end and a session start (with its source).
-// The fold does not move on a session start: the reading stays as it was, and the time of the newest one is read through RunSessionState.SessionStartAt, zero when none.
-// SessionFold reduces the signals in file order, with facts the caller reads, to one state: busy, idle-done, idle-stalled, asking, dead or unknown, with a cause, a since time and the history of states passed through.
+// The time of the newest session start is read through RunSessionState.SessionStartAt, zero when none.
+// A session start of source resume or clear sets idle-fresh with cause session-start, and so does one of source startup unless the derived state is a running turn;
+// a compaction start, one with the empty source and a startup beside a running turn leave the state and the newest signal as they were, so an automatic compaction inside a turn keeps it busy.
+// SessionFold reduces the signals in file order, with facts the caller reads, to one state: busy, idle-done, idle-stalled, idle-fresh, asking, dead or unknown, with a cause, a since time and the history of states passed through.
 // Precedence, first that applies: a process-ending session end; a process proven dead; liveness left unproven; an unreadable events file; no signal at all; otherwise the state the signals give.
 // A turn end reads busy while it reports background tasks, idle-done when the run's output files exist, asking for an interactive run, and idle-stalled otherwise.
 // The transcript's API-error marker turns the newest turn end into an API-error stall, and the interrupt marker turns a turn that is still open into an interrupt stall.
+// The interrupt marker also releases an ask with cause ask, whichever signal raised it, to the same interrupt stall when the marker's time is not before the ask's, or either time is zero; an awaiting-input ask from a turn end is not released.
+// A granted permission writes neither a turn signal nor a marker, so an ask holds every send until the next turn signal or an interrupt marker.
 // Output files are consulted first only among the output-derived states, so dead and unknown outrank idle-done and a finished run can read dead:
 // the first consumer that acts on dead applies PATTERN-completion-signal's output check before acting.
 // The facts and their sources: the record gives Interactive and the output files (a run that declares none has none that exist), taken once per read;
@@ -302,7 +315,7 @@
 // Each tick, and once more just before a classified outcome is finalized, it logs every state change at Info as `shuttle: session state` with the loop's classification: running, waiting, held, done or died.
 // The session state is a shadow reading the loop never acts on.
 // It logs `shuttle: session state disagrees` at Warn once per disagreement, again only after either side changed, when the pair is outside the fixed mapping, and the line carries `stands=loop`:
-// waiting and running read busy, held reads idle-stalled or asking, done reads idle-done, died reads dead.
+// waiting and running read busy, held reads idle-stalled, idle-fresh or asking, done reads idle-done, died reads dead.
 // Two pairings are expected and log nothing: a gate wait with every output present beside idle-done, and done beside busy on background work.
 // The loop never branches on the state; an engine without the parser, an unreadable events file or a failed fact read logs once at Debug and changes no verdict, notice, wait mark or return.
 //
@@ -313,4 +326,13 @@
 // RunGated's not-ready result carries the start error's text in Result.StartError.
 // The startup probe starts at the poll interval and backs off to the dismissal gap (the poll interval times liveness_every_n_polls) while the pane does not change.
 // Startup-gate dismissals are at least one dismissal gap apart.
+// A launch that declares Launch.RecordsSessionStarts, recorded as RunState.RecordsSessionStarts, starts only once the events file holds a session-start line of any source beside the ready pane;
+// until both hold the run stays not started and the startup error names the missing line or the unreadable events file, while gate detection and dismissal run as for any run.
+// An engine that leaves the flag false, and a record an older binary wrote, start on the pane alone.
+//
+// Process death: for an engine with both SessionSignalParser and SessionProber, every liveness tick of Wait and of the startup step, once the strand reads live, asks whether the provider's process is gone behind the pane's shell.
+// It is gone when the registry reads the newest session id dead and this wait read that id alive at an earlier tick;
+// it is also gone when the events file ends, past its size at the wait's first liveness tick, in a process-ending session end and the registry does not read the id alive.
+// An unproven reading, a session end at or before that first-tick size and a session end beside an alive reading end nothing, so an earlier launch's end never fails a resumed launch.
+// A gone session ends the run died, or done when every output file exists, the way a dead pane does; a startup that finds it fails as died.
 package shuttleengine

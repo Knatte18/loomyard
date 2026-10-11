@@ -145,7 +145,7 @@
 // A cycle phase held for good is still marked stuck by the handoff timeout.
 //
 // Session.SessionState reads the orch session's state from its shuttle run record, which is interactive with a never-written sentinel output, so its turn ends read `asking`.
-// The watcher only logs it: after a successful probe that is not too short, a probe that reads idle beside the state `busy`, or not idle beside `idle-done`, `idle-stalled` or `asking`, logs `orch: session state disagrees with the idle probe` at Warn.
+// The watcher only logs it: after a successful probe that is not too short, a probe that reads idle beside the state `busy`, or not idle beside `idle-done`, `idle-stalled`, `idle-fresh` or `asking`, logs `orch: session state disagrees with the idle probe` at Warn.
 // A disagreement is logged once and again only after either side changes, the last pair being watcher memory and not State.
 // A state that cannot be read is logged at Debug, and no probe result, cycle, delivery or State write depends on the state.
 // The same read logs the hook's session-start event as `orch: session start signal read` at Info, once per new time.

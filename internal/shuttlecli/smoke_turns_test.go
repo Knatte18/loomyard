@@ -2,6 +2,7 @@
 
 // smoke_turns_test.go provokes the hard turn-end cases against a REAL claude in a REAL tmux pane:
 // a long background shell, a background shell finishing mid-turn, a Monitor, a fork, a message sent mid-turn, a skill load and a compact.
+// One more scenario records every hook line of a session's whole life.
 // Each test drives shuttleengine.Runner directly and reads the run's events file through claudeengine's ParseEvents while Wait runs,
 // so a scenario whose agent has background work running checks that the Stop payload lists exactly what is running.
 // A failing scenario keeps its events file and transcript in a directory under the OS temp dir that it logs,
@@ -16,11 +17,14 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -232,7 +236,7 @@ func (w *turnWatch) keepOnFailure() {
 	w.mu.Lock()
 	data := w.events
 	w.mu.Unlock()
-	dir, err := os.MkdirTemp("", "lyx-turn-scenario-")
+	dir, err := makeKeepDir("lyx-turn-scenario-")
 	if err != nil {
 		w.t.Logf("keep evidence: %v", err)
 		return
@@ -470,4 +474,273 @@ func TestSmokeTurnsSessionHooks(t *testing.T) {
 	if !slices.Equal(names, want) || history[0].Cause != shuttleengine.SessionCauseTurn || history[2].Cause != sessionEnd.Reason {
 		t.Fatalf("history = %+v; want %v with the turn cause first and the session end's reason %q last", history, want, sessionEnd.Reason)
 	}
+}
+
+// hookLines returns the payload lines of events whose hook_event_name is hook, and whose source is source when source is not empty.
+func hookLines(events []byte, hook, source string) []map[string]any {
+	var lines []map[string]any
+	for _, line := range bytes.Split(events, []byte("\n")) {
+		var fields map[string]any
+		if json.Unmarshal(line, &fields) != nil || fields["hook_event_name"] != hook {
+			continue
+		}
+		if source != "" && fields["source"] != source {
+			continue
+		}
+		lines = append(lines, fields)
+	}
+	return lines
+}
+
+// awaitHook polls the run's events file until it holds at least n payload lines of hook (of source, when not empty).
+// It keeps polling after Wait returns, since a session that exited ends its run as died and the scenario goes on from there.
+func (w *turnWatch) awaitHook(hook, source string, n int) {
+	w.t.Helper()
+	deadline := time.Now().Add(turnScenarioTimeout)
+	for {
+		w.poll()
+		w.mu.Lock()
+		events := w.events
+		w.mu.Unlock()
+		if len(hookLines(events, hook, source)) >= n {
+			return
+		}
+		if time.Now().After(deadline) {
+			w.t.Fatalf("no %d %s lines (source %q) within %s", n, hook, source, turnScenarioTimeout)
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+// registryEntries returns the content of every file in Claude's session registry that names sessionID, or "none".
+func registryEntries(t *testing.T, sessionID string) string {
+	t.Helper()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("home dir: %v", err)
+	}
+	paths, _ := filepath.Glob(filepath.Join(home, ".claude", "sessions", "*.json"))
+	var found []string
+	for _, path := range paths {
+		if data, err := os.ReadFile(path); err == nil && bytes.Contains(data, []byte(sessionID)) {
+			found = append(found, filepath.Base(path)+": "+string(bytes.TrimSpace(data)))
+		}
+	}
+	if len(found) == 0 {
+		return "none"
+	}
+	return fmt.Sprint(found)
+}
+
+// paneSampler records each change of the strand's pane reading, with the time it was seen, until stopped.
+type paneSampler struct {
+	mu       sync.Mutex
+	readings []string
+	stop     chan struct{}
+	done     chan struct{}
+}
+
+// startPaneSampler samples the first live strand's pane every 200ms, classified by Claude's startup reading.
+func startPaneSampler(reed *reedengine.Engine) *paneSampler {
+	s := &paneSampler{stop: make(chan struct{}), done: make(chan struct{})}
+	parser := claudeengine.New()
+	go func() {
+		defer close(s.done)
+		last := ""
+		for {
+			select {
+			case <-s.stop:
+				return
+			case <-time.After(200 * time.Millisecond):
+			}
+			status, err := reed.Status()
+			if err != nil {
+				continue
+			}
+			for _, strand := range status.Strands {
+				if !strand.Live {
+					continue
+				}
+				capture, err := reed.CapturePane(strand.GUID)
+				if err != nil {
+					continue
+				}
+				reading := fmt.Sprintf("startup=%v", parser.Startup(capture))
+				if reading != last {
+					last = reading
+					s.note(reading)
+				}
+				break
+			}
+		}
+	}()
+	return s
+}
+
+// note appends one timestamped reading.
+func (s *paneSampler) note(reading string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.readings = append(s.readings, time.Now().UTC().Format("15:04:05.000")+" "+reading)
+}
+
+// finish stops the sampler and returns its readings.
+func (s *paneSampler) finish() []string {
+	close(s.stop)
+	<-s.done
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.readings
+}
+
+// TestSmokeTurnsHookCapture records the real hook corpus of one run's session: startup, a typed turn, a permission request, /clear, /compact and /exit, then a resumed launch that is killed.
+// Every hook line lands in the run's one events file.
+// The test keeps the events file, the transcript and its readings in a directory it logs;
+// the readings are the pane readings with their times and Claude's session registry entry after startup, /exit and the kill.
+// The claudeengine corpus case hook-capture is promoted from that directory by hand.
+func TestSmokeTurnsHookCapture(t *testing.T) {
+	hub := newTurnHub(t)
+	sampler := startPaneSampler(hub.reed)
+	output := filepath.Join(hub.prime, "turns-hook-capture-never-written.txt")
+	written := filepath.Join(hub.prime, "turns-hook-capture-permission.txt")
+	// An ask rule outranks the operator's own allow rules, so writing this one file raises a permission request whatever their settings say.
+	askRule := `{"permissions":{"ask":["Edit(/` + written + `)"]}}`
+	if err := os.MkdirAll(filepath.Join(hub.prime, ".claude"), 0o755); err != nil {
+		t.Fatalf("create .claude: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(hub.prime, ".claude", "settings.local.json"), []byte(askRule), 0o644); err != nil {
+		t.Fatalf("write the ask rule: %v", err)
+	}
+	evidence := []string{}
+	w := startTurnScenario(t, hub, shuttleengine.Spec{
+		Prompt:         "Reply with one short line saying READY, and write no file.",
+		OutputFiles:    []string{output},
+		Model:          smokeClaudeModel,
+		Interactive:    true,
+		KeepPane:       true,
+		PermissionMode: "prompt",
+	})
+	sampler.note("runner.Start returned")
+	guid := w.run.StrandGUID()
+	t.Cleanup(func() {
+		if t.Failed() {
+			if capture, err := hub.reed.CapturePane(guid); err == nil {
+				t.Logf("pane at the failure:\n%s", capture)
+			}
+		}
+		_ = hub.runner.StopStrand(guid)
+	})
+
+	w.awaitHook("SessionStart", "startup", 1)
+	w.mu.Lock()
+	sessionID, _ := hookLines(w.events, "SessionStart", "startup")[0]["session_id"].(string)
+	w.mu.Unlock()
+	evidence = append(evidence, "registry after SessionStart(startup): "+registryEntries(t, sessionID))
+
+	typeLine := func(text string) {
+		t.Helper()
+		time.Sleep(3 * time.Second)
+		if err := hub.reed.SendText(guid, text, true); err != nil {
+			t.Fatalf("send %q: %v", text, err)
+		}
+	}
+
+	w.awaitHook("Stop", "", 1)
+	// The operator's own settings may start the session in a mode that approves a write unasked; cycle with shift+tab until the status line shows none.
+	for range 6 {
+		capture, err := hub.reed.CapturePane(guid)
+		if err != nil || !strings.Contains(capture, " on (shift+tab to cycle)") {
+			break
+		}
+		if err := hub.reed.SendKey(guid, "BTab"); err != nil {
+			t.Fatalf("cycle the permission mode: %v", err)
+		}
+		time.Sleep(time.Second)
+	}
+	typeLine(fmt.Sprintf("Use the Write tool to create %s containing hello, then reply with one short line saying DONE.", written))
+	w.awaitHook("PermissionRequest", "", 1)
+	time.Sleep(2 * time.Second)
+	if capture, err := hub.reed.CapturePane(guid); err == nil {
+		evidence = append(evidence, "pane at the permission request:\n"+capture)
+	}
+	if err := hub.reed.SendKey(guid, "Enter"); err != nil {
+		t.Fatalf("approve the permission request: %v", err)
+	}
+	w.awaitHook("Stop", "", 2)
+
+	typeLine("/clear")
+	w.awaitHook("SessionStart", "clear", 1)
+	typeLine("Reply with one short line saying AGAIN.")
+	w.awaitHook("Stop", "", 3)
+	typeLine("/compact")
+	w.awaitHook("SessionStart", "compact", 1)
+
+	typeLine("/exit")
+	w.awaitSignal(shuttleengine.SessionSignalSessionEnd, true)
+	time.Sleep(2 * time.Second)
+	evidence = append(evidence, "registry after /exit: "+registryEntries(t, sessionID))
+
+	// The pane is back at its shell after /exit, so reed's own resume sees it alive and relaunches nothing; type the strand's recorded resume command into it.
+	cwd, err := lyxcwd.Getwd()
+	if err != nil {
+		t.Fatalf("lyxcwd.Getwd: %v", err)
+	}
+	layout, err := lyxcwd.Resolve(cwd)
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve: %v", err)
+	}
+	reedState, err := reedengine.LoadState(filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName))
+	if err != nil || reedState == nil {
+		t.Fatalf("load reed state: %v", err)
+	}
+	for _, strand := range reedState.Strands {
+		if strand.GUID != guid {
+			continue
+		}
+		resumeCmd := strand.ResumeCmd
+		if resumeCmd == "" {
+			resumeCmd = strand.Cmd
+		}
+		if err := hub.reed.SendText(guid, resumeCmd, true); err != nil {
+			t.Fatalf("send the resume command: %v", err)
+		}
+	}
+	w.awaitHook("SessionStart", "resume", 1)
+	if err := hub.runner.StopStrand(guid); err != nil {
+		t.Fatalf("StopStrand: %v", err)
+	}
+	time.Sleep(3 * time.Second)
+	w.poll()
+	evidence = append(evidence, "registry after the kill: "+registryEntries(t, sessionID))
+
+	readings := sampler.finish()
+	dir, err := makeKeepDir("lyx-hook-capture-")
+	if err != nil {
+		t.Fatalf("keep evidence: %v", err)
+	}
+	w.mu.Lock()
+	events := w.events
+	w.mu.Unlock()
+	if err := os.WriteFile(filepath.Join(dir, "events.jsonl"), events, 0o644); err != nil {
+		t.Fatalf("keep events: %v", err)
+	}
+	stops := hookLines(events, "Stop", "")
+	if transcriptPath, _ := stops[len(stops)-1]["transcript_path"].(string); transcriptPath != "" {
+		if transcript, err := os.ReadFile(transcriptPath); err == nil {
+			_ = os.WriteFile(filepath.Join(dir, "transcript.jsonl"), transcript, 0o644)
+		}
+	}
+	report := "pane readings:\n" + fmt.Sprint(readings) + "\n\n" + fmt.Sprint(evidence) + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "readings.txt"), []byte(report), 0o644); err != nil {
+		t.Fatalf("keep readings: %v", err)
+	}
+	t.Logf("kept the hook capture's events, transcript and readings in %s", dir)
+}
+
+// keepDirEnv, when set, names the directory under which a scenario keeps its evidence instead of the OS temp dir, which a gate run removes with its package.
+const keepDirEnv = "LYX_TURN_KEEP_DIR"
+
+// makeKeepDir creates a fresh evidence directory named by prefix under keepDirEnv's directory, or the OS temp dir when it is unset.
+func makeKeepDir(prefix string) (string, error) {
+	return os.MkdirTemp(os.Getenv(keepDirEnv), prefix)
 }
