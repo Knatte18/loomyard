@@ -34,7 +34,9 @@ const (
 	NamePublish           = "Publish"
 	NamePRGate            = "PR-Gate"
 	NamePRRework          = "PR-Rework"
-	NameDarn              = "Darn"
+	NameDarnWrite         = "Darn-Write"
+	NameDarnBouncer       = "Darn-Bouncer"
+	NameDarnBurler        = "Darn-Burler"
 	NameFinalize          = "Finalize"
 	NameFrictionReflect   = "Friction-Reflect"
 )

@@ -1,4 +1,4 @@
-// wiring_darn_test.go covers the wiring a darn run adds to wire: the darn seams, the verify source and attempts, the early refusal of an empty verify command, the routing per recipe, and the Darn row's status and failure-record seams.
+// wiring_darn_test.go covers the wiring a darn run adds to wire: the darn seams, the verify source and attempts, the early refusal of an empty verify command, the routing per recipe, the rename of retired darn rows when a verb arms, and the Darn-Write row's status and failure-record seams.
 // Every test is Tier 1: wire resolves no cwd and spawns no process over a hand-built hub.
 
 package loomcli
@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -65,11 +66,14 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if c.env.DarnVerifyAttempts != 5 {
 			t.Errorf("c.env.DarnVerifyAttempts = %d; want 5", c.env.DarnVerifyAttempts)
 		}
+		if c.env.DarnReviewMaxBounces != 1 || c.darnCfg == nil {
+			t.Errorf("c.env.DarnReviewMaxBounces = %d, c.darnCfg nil = %v; want the template's 1 and the loaded config", c.env.DarnReviewMaxBounces, c.darnCfg == nil)
+		}
 		if command, err := c.env.VerifyCommand(); err != nil || command != "go test ./..." {
 			t.Errorf("c.env.VerifyCommand() = %q, %v; want %q, nil", command, err, "go test ./...")
 		}
-		if got := c.verifySource().failedWayForward; !strings.Contains(got, `"lyx loom goto --to Darn"`) {
-			t.Errorf("verifySource().failedWayForward = %q; want it to route back to the Darn row", got)
+		if got := c.verifySource().failedWayForward; !strings.Contains(got, `"lyx loom goto --to Darn-Write"`) {
+			t.Errorf("verifySource().failedWayForward = %q; want it to route back to the Darn-Write row", got)
 		}
 	})
 
@@ -134,6 +138,60 @@ func TestWire_DarnRecipe(t *testing.T) {
 	})
 }
 
+// TestArmAt_RenamesRetiredDarnRows pins that arming any verb over a darn run carries a status file still naming the writer row's former name onto Darn-Write, and leaves a loom run's file alone.
+// A live driver holding the run lock keeps the old name, and the verb still arms.
+func TestArmAt_RenamesRetiredDarnRows(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		recipe      string
+		holdRunLock bool
+		want        string
+	}{
+		{name: "darn", recipe: shedrun.RecipeDarn, want: loomshed.NameDarnWrite},
+		{name: "loom", recipe: shedrun.RecipeLoom, want: "Darn"},
+		{name: "darn with a live driver", recipe: shedrun.RecipeDarn, holdRunLock: true, want: "Darn"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			loc := hubLocation(t, "pair", ".")
+			if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: tt.recipe, Driver: shedrun.DriverGo}); err != nil {
+				t.Fatalf("shedrun.WriteSeed() = %v; want nil", err)
+			}
+			statusPath, statusLock := shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID)
+			if err := os.MkdirAll(filepath.Dir(statusLock), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			seed := shedengine.Status{CurrentProducer: "Darn", State: shedengine.StateBlocked, History: []shedengine.HistoryEntry{{Producer: "Darn", Outcome: shedengine.Stuck}}}
+			if err := state.WriteJSON(statusPath, statusLock, seed); err != nil {
+				t.Fatalf("state.WriteJSON() = %v; want nil", err)
+			}
+			if tt.holdRunLock {
+				runLock := shedrun.RunLock(loc, shedrun.SelfRunID)
+				held, locked, err := lock.TryAcquireWriteLock(runLock)
+				if err != nil || !locked {
+					t.Fatalf("TryAcquireWriteLock(%q) = _, %v, %v; want held", runLock, locked, err)
+				}
+				t.Cleanup(func() { _ = held.Release() })
+			}
+
+			c := &loomCLI{}
+			if _, err := c.armAt(loc, "status", nil); err != nil {
+				t.Fatalf("armAt(status) = %v; want nil", err)
+			}
+			got, _, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLock)
+			if err != nil {
+				t.Fatalf("read status = %v; want nil", err)
+			}
+			if got.CurrentProducer != tt.want || got.History[0].Producer != tt.want {
+				t.Errorf("CurrentProducer, History[0].Producer = %q, %q; want both %q", got.CurrentProducer, got.History[0].Producer, tt.want)
+			}
+		})
+	}
+}
+
 func TestRecipeRouting(t *testing.T) {
 	t.Parallel()
 
@@ -142,14 +200,14 @@ func TestRecipeRouting(t *testing.T) {
 		wantRow string
 		absent  string
 	}{
-		{shedrun.RecipeLoom, loomshed.NamePRRework, loomshed.NameDarn},
-		{"", loomshed.NamePRRework, loomshed.NameDarn},
-		{shedrun.RecipeDarn, loomshed.NameDarn, loomshed.NamePRRework},
+		{shedrun.RecipeLoom, loomshed.NamePRRework, loomshed.NameDarnWrite},
+		{"", loomshed.NamePRRework, loomshed.NameDarnWrite},
+		{shedrun.RecipeDarn, loomshed.NameDarnWrite, loomshed.NamePRRework},
 	}
 	for _, tt := range tests {
 		t.Run("recipe "+tt.recipe, func(t *testing.T) {
 			t.Parallel()
-			c := &loomCLI{recipe: tt.recipe}
+			c := &loomCLI{recipe: tt.recipe, darnCfg: &darnengine.Config{ReviewMaxBounces: 3}}
 			c.cfg.ReviewMaxBounces = 3
 			routing, err := c.recipeRouting()
 			if err != nil {
@@ -176,16 +234,16 @@ func TestLatestDarnOutcome(t *testing.T) {
 		want      loomshed.DarnOutcome
 	}{
 		{name: "absent status file"},
-		{name: "no Darn entry", status: &shedengine.Status{History: []shedengine.HistoryEntry{{Producer: loomshed.NamePreflight, Outcome: shedengine.Done}}}},
+		{name: "no Darn-Write entry", status: &shedengine.Status{History: []shedengine.HistoryEntry{{Producer: loomshed.NamePreflight, Outcome: shedengine.Done}}}},
 		{
-			name:      "latest Darn entry of a run that moved on carries no reason",
-			status:    &shedengine.Status{CurrentProducer: loomshed.NamePublish, State: shedengine.StateRunning, Error: "stale", History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarn, Outcome: shedengine.Stuck}, {Producer: loomshed.NameDarn, Outcome: shedengine.Done}}},
+			name:      "latest Darn-Write entry of a run that moved on carries no reason",
+			status:    &shedengine.Status{CurrentProducer: loomshed.NamePublish, State: shedengine.StateRunning, Error: "stale", History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck}, {Producer: loomshed.NameDarnWrite, Outcome: shedengine.Done}}},
 			wantFound: true,
 			want:      loomshed.DarnOutcome{Outcome: shedengine.Done},
 		},
 		{
-			name:      "halted at Darn carries the status error",
-			status:    &shedengine.Status{CurrentProducer: loomshed.NameDarn, State: shedengine.StateBlocked, Error: "verify gate failed", History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarn, Outcome: shedengine.Stuck}}},
+			name:      "halted at Darn-Write carries the status error",
+			status:    &shedengine.Status{CurrentProducer: loomshed.NameDarnWrite, State: shedengine.StateBlocked, Error: "verify gate failed", History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck}}},
 			wantFound: true,
 			want:      loomshed.DarnOutcome{Outcome: shedengine.Stuck, Reason: "verify gate failed"},
 		},

@@ -626,6 +626,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		DiscussionSpec: func() (shuttleengine.Spec, error) {
 			return loomengine.DiscussionSpec(location, websterGeom.StencilsDir, c.parentName, loomCfg, registry, seedSlug(location.WorktreeName), !loomCfg.DiscussionInteractive)
 		},
+		// PrepareDiscussionSpawn removes a ready marker an earlier writer spawn left, whichever producer is configured, since removing an absent marker is a no-op.
+		PrepareDiscussionSpawn: func() error {
+			return loomengine.RemoveDiscussionReadyMarker(location)
+		},
 		// DiscussionTable is evaluated per Call for the same stencil-ownership reason as DiscussionSpec.
 		// It is wired whatever discussion_producer holds; only a row built on DiscussionSeats evaluates it.
 		DiscussionTable: func() (seatengine.Table, error) {
@@ -757,7 +761,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
 		Slug:           seedSlug(location.WorktreeName),
-		SegmentBounces: segmentBounces(statusPath, statusLockPath, loomCfg.ReviewMaxBounces),
+		SegmentBounces: segmentBounces(statusPath, statusLockPath, func() (shedengine.Routing, error) { return loomrecipe.Routing(loomCfg.ReviewMaxBounces) }),
 
 		ReviewMaxBounces:         loomCfg.ReviewMaxBounces,
 		DiscussionSeats:          loomCfg.DiscussionProducer == loomengine.DiscussionProducerSeats,
@@ -770,6 +774,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			loomshed.NameDiscussionBurler: reviewSettings.Discussion,
 			loomshed.NamePlanBurler:       reviewSettings.Plan,
 			loomshed.NameWebsterBurler:    reviewSettings.Webster,
+			// The darn recipe's Darn-Review perch reviews a committed diff as Webster-Review does, so it takes that segment's models.
+			loomshed.NameDarnBurler: reviewSettings.Webster,
 		},
 		// A segment's fan reaches both of its rows from one key, so its Bouncer and its round agree by construction.
 		// Webster-Review stays solo: its forks may run no git and its subject exists only through git.
@@ -784,6 +790,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			loomshed.NameDiscussionBouncer: shedadapters.BouncerModels(judgeSettings.Discussion),
 			loomshed.NamePlanBouncer:       shedadapters.BouncerModels(judgeSettings.Plan),
 			loomshed.NameWebsterBouncer:    shedadapters.BouncerModels(judgeSettings.Webster),
+			loomshed.NameDarnBouncer:       shedadapters.BouncerModels(judgeSettings.Webster),
 		},
 
 		// Landing is deliberately left unfilled here, for a different reason than the four above:
@@ -815,9 +822,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		MissingStatusWayForward: loomMissingStatusWayForward,
 	}
 
-	// A darn run swaps in the darn recipe's verify source and fills the Darn row's seams; a loom run leaves them nil.
+	// A darn run swaps in the darn recipe's verify source and Describe spec and fills the Darn-Write row's seams; a loom run leaves them nil.
 	if c.recipe == shedrun.RecipeDarn {
-		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, registry); err != nil {
+		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, landingCfg, registry); err != nil {
 			return err
 		}
 	}
@@ -847,8 +854,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 // segmentBounces returns the Env.SegmentBounces seam over the status file at statusPath, locked by statusLockPath.
 // The history is read on each call, never at wire time, because it grows during the run; an absent status file reports not-in-segment.
-// reviewMaxBounces is the budget loomrecipe.New applies to the review rows, so the reported budget is the one Shed blocks on.
-func segmentBounces(statusPath, statusLockPath string, reviewMaxBounces int) func(row string) (int, int, bool, error) {
+// routing projects the run's recipe with the review budget its builder applies, so the reported budget is the one Shed blocks on.
+func segmentBounces(statusPath, statusLockPath string, routing func() (shedengine.Routing, error)) func(row string) (int, int, bool, error) {
 	return func(row string) (int, int, bool, error) {
 		st, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
 		// A run directory not yet created fails the lock open with not-exist; that is an absent status file too.
@@ -858,11 +865,11 @@ func segmentBounces(statusPath, statusLockPath string, reviewMaxBounces int) fun
 		if err != nil || !found {
 			return 0, 0, false, nil
 		}
-		routing, err := loomrecipe.Routing(reviewMaxBounces)
+		projected, err := routing()
 		if err != nil {
 			return 0, 0, false, err
 		}
-		count, budget, inSegment := routing.Bounces(row, st.History)
+		count, budget, inSegment := projected.Bounces(row, st.History)
 		return count, budget, inSegment, nil
 	}
 }

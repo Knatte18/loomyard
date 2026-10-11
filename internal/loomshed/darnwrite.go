@@ -1,4 +1,4 @@
-// darnwrite.go implements the Darn row's producer: it wraps the gated darn writer session and does everything Go owns around it.
+// darnwrite.go implements the Darn-Write row's producer: it wraps the gated darn writer session and does everything Go owns around it.
 // That is the two token texts the session is told, the commit of the landing directory after the session, and the removal of the pending rejection a spawn answered.
 
 package loomshed
@@ -11,8 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// darnResumeWayForward is appended to the Reason of a Darn session whose gate failed.
-const darnResumeWayForward = "way forward: run \"lyx loom resume\" in the task worktree, which re-spawns Darn with a fresh verify budget"
+// darnResumeWayForward is appended to the Reason of a Darn-Write session whose gate failed.
+const darnResumeWayForward = "way forward: run \"lyx loom resume\" in the task worktree, which re-spawns Darn-Write with a fresh verify budget"
 
 // DarnTold carries the two token texts the producer decides for one darn writer spawn, each empty when it has nothing to tell.
 type DarnTold struct {
@@ -22,7 +22,7 @@ type DarnTold struct {
 	PriorWork string
 }
 
-// DarnOutcome is the latest Darn history entry as the producer reads it.
+// DarnOutcome is the latest Darn-Write history entry as the producer reads it.
 type DarnOutcome struct {
 	// Outcome is the entry's outcome.
 	Outcome shedengine.Outcome
@@ -38,7 +38,7 @@ type DarnDeps struct {
 	ClearRejection func() error
 	// Commit commits the landing directory.
 	Commit func() error
-	// LatestOutcome returns the latest Darn history entry of the run; found is false when the row has no entry yet.
+	// LatestOutcome returns the latest Darn-Write history entry of the run; found is false when the row has no entry yet.
 	LatestOutcome func() (DarnOutcome, bool, error)
 	// PublishFailure returns the path of the Publish failure record; found is false when none is present.
 	PublishFailure func() (string, bool, error)
@@ -53,7 +53,7 @@ type darnWrite struct {
 
 var _ shedengine.ShedProducer = (*darnWrite)(nil)
 
-// NewDarnWrite returns the Darn producer identified as name.
+// NewDarnWrite returns the Darn-Write producer identified as name.
 // Each Call builds its session from session, handing it the token texts the producer decides.
 func NewDarnWrite(name string, session func(DarnTold) shedengine.ShedProducer, deps DarnDeps) shedengine.ShedProducer {
 	return &darnWrite{name: name, session: session, deps: deps}

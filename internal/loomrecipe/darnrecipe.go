@@ -1,5 +1,5 @@
-// darnrecipe.go implements NewDarn and DarnRouting, the builder and routing projection of the embedded darn recipe.
-// The recipe's verify budget is not declared in it: NewDarn stamps the budget `darn.yaml` supplies onto the Darn row's verify gate at every build.
+// darnrecipe.go implements NewDarn and DarnRouting, the builder and routing projection of the embedded darn recipe, and DarnRetiredRows, the row renames a darn run is carried across.
+// Neither of the recipe's budgets is declared in it: NewDarn stamps the verify budget `darn.yaml` supplies onto the verify gates of Darn-Write and Darn-Burler, and both apply its review budget to the Darn-Review perch, at every call.
 
 package loomrecipe
 
@@ -13,12 +13,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
-// verifyGateName is the gate entry of the Darn row whose attempts the verify budget sets.
+// verifyGateName is the gate entry whose attempts the verify budget sets.
 const verifyGateName = "verify"
 
-// NewDarn parses recipes.DarnRecipe, stamps env.DarnVerifyAttempts onto the Darn row's verify gate, builds it against env, and returns the assembled *shedengine.Shed.
-// It makes the status-path coherence checks New makes, then refuses an env.DarnVerifyAttempts below 1 before any row builds.
-// The recipe has no review segment, so no review budget applies.
+// darnVerifyGatedRows are the darn recipe's rows whose verify gate runs darn.yaml's verify command.
+var darnVerifyGatedRows = []string{loomshed.NameDarnWrite, loomshed.NameDarnBurler}
+
+// DarnRetiredRows maps each row name a darn run's status file may still carry from an earlier recipe onto the row that replaced it.
+func DarnRetiredRows() map[string]string {
+	return map[string]string{"Darn": loomshed.NameDarnWrite}
+}
+
+// NewDarn parses recipes.DarnRecipe, stamps env.DarnVerifyAttempts onto the verify gates of Darn-Write and Darn-Burler, builds it against env, applies env.DarnReviewMaxBounces to the Darn-Review perch, and returns the assembled *shedengine.Shed.
+// A review budget of 0 routes Darn-Write's Done straight to Publish, so neither the perch nor Describe runs.
+// It makes the status-path coherence checks New makes, then refuses an env.DarnVerifyAttempts below 1 and an env.DarnReviewMaxBounces below 0 before any row builds.
 func NewDarn(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error) {
 	if err := checkStatusPaths(env, paths); err != nil {
 		return nil, err
@@ -26,29 +34,44 @@ func NewDarn(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, e
 	if err := checkVerifyAttempts(env.DarnVerifyAttempts); err != nil {
 		return nil, err
 	}
+	if err := checkDarnReviewBudget(env.DarnReviewMaxBounces); err != nil {
+		return nil, err
+	}
 
 	parsed, err := shedbuild.Parse(recipes.DarnRecipe)
 	if err != nil {
 		return nil, fmt.Errorf("loomrecipe: %w", err)
 	}
-	if err := applyVerifyAttempts(&parsed, loomshed.NameDarn, env.DarnVerifyAttempts); err != nil {
-		return nil, err
+	for _, row := range darnVerifyGatedRows {
+		if err := applyVerifyAttempts(&parsed, row, env.DarnVerifyAttempts); err != nil {
+			return nil, err
+		}
 	}
 
 	shed, err := shedbuild.NewShedFrom(parsed, env, paths)
 	if err != nil {
 		return nil, fmt.Errorf("loomrecipe: %w", err)
 	}
+	if err := applyDarnReviewBudget(shed.Producers, env.DarnReviewMaxBounces); err != nil {
+		return nil, err
+	}
 
 	return shed, nil
 }
 
-// DarnRouting projects the embedded darn recipe's routing without building any engine.
-// It reads no verify budget, so a caller that never builds a Shed is never refused by it.
-func DarnRouting() (shedengine.Routing, error) {
+// DarnRouting projects the embedded darn recipe's routing without building any engine, with reviewMaxBounces applied to the Darn-Review perch as NewDarn applies it.
+// A reviewMaxBounces below 0 is refused.
+func DarnRouting(reviewMaxBounces int) (shedengine.Routing, error) {
+	if err := checkDarnReviewBudget(reviewMaxBounces); err != nil {
+		return shedengine.Routing{}, err
+	}
+
 	routing, err := shedbuild.RoutingOf(recipes.DarnRecipe)
 	if err != nil {
 		return shedengine.Routing{}, fmt.Errorf("loomrecipe: %w", err)
+	}
+	if err := applyDarnReviewBudget(routing.Producers, reviewMaxBounces); err != nil {
+		return shedengine.Routing{}, err
 	}
 
 	return routing, nil
@@ -59,6 +82,35 @@ func checkVerifyAttempts(attempts int) error {
 	if attempts < 1 {
 		return fmt.Errorf("loomrecipe: verify_attempts = %d; want at least 1; way forward: run \"lyx config darn --set verify_attempts=<n>\" from the prime, then \"lyx loom resume\"", attempts)
 	}
+
+	return nil
+}
+
+// checkDarnReviewBudget refuses a darn review bounce budget below 0.
+func checkDarnReviewBudget(budget int) error {
+	if budget < 0 {
+		return fmt.Errorf("loomrecipe: darn review_max_bounces = %d; want 0 or more; way forward: run \"lyx config darn --set review_max_bounces=<n>\" from the prime, then \"lyx loom resume\"", budget)
+	}
+
+	return nil
+}
+
+// applyDarnReviewBudget sets MaxBounces to budget on every row of the darn recipe's review segments, or, for a budget of 0, routes Darn-Write's Done to Publish so neither a review row nor Describe is reached.
+func applyDarnReviewBudget(producers []shedengine.ProducerDef, budget int) error {
+	if budget == 0 {
+		for i := range producers {
+			if producers[i].Name == loomshed.NameDarnWrite {
+				producers[i].OnDone = loomshed.NamePublish
+			}
+		}
+		return nil
+	}
+
+	segments, err := reviewSegments(recipes.DarnRecipe)
+	if err != nil {
+		return err
+	}
+	applyReviewBudget(producers, segments, budget)
 
 	return nil
 }

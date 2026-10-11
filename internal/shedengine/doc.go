@@ -67,6 +67,11 @@
 // the missing-producer refusal, which lists every valid producer name, and the budget-exhausted reason, whose ReasonBounceBudgetExhausted stays its exact prefix.
 // Every refusal's way forward is tabulated in contracts/specs/refusal-spec.md, which this documentation links rather than restates.
 //
+// # Row renames
+//
+// Row names are durable resume identities, so a product that renames a row carries in-flight runs across with RenameProducers.
+// It rewrites each retired name in current_producer, pause_before, pause_after and every history entry's producer, under the run lock, and leaves a file that names no retired row untouched.
+//
 // # Field ownership and the stop conditions
 //
 // current_producer, state, error, activity and history are Shed-owned and rewritten on every persist.

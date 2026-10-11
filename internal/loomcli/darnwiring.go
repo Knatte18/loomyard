@@ -1,4 +1,4 @@
-// darnwiring.go holds the wiring only a darn run needs: the verify source and whole-diff form the darn recipe tells its verify gate and landing producers, the Darn row's seams, and the writer's Spec source.
+// darnwiring.go holds the wiring only a darn run needs: the verify source and whole-diff form the darn recipe tells its verify gate and landing producers, the Darn-Write row's seams, the writer's and Describe's Spec sources, and the rename of retired darn rows in a run's status file.
 // A loom run leaves all of it unwired, but shares the merge base reader `pairMergeBase` builds.
 
 package loomcli
@@ -7,10 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -20,18 +24,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/verifytree"
+	"gopkg.in/yaml.v3"
 )
 
-// reworkRowFor returns the name of the row that answers an operator rejection in recipe: the Darn row for the darn recipe, PR-Rework otherwise.
+// reworkRowFor returns the name of the row that answers an operator rejection in recipe: the Darn-Write row for the darn recipe, PR-Rework otherwise.
 func reworkRowFor(recipe string) string {
 	if recipe == shedrun.RecipeDarn {
-		return loomshed.NameDarn
+		return loomshed.NameDarnWrite
 	}
 
 	return loomshed.NamePRRework
 }
 
-// darnVerifySource returns the darn recipe's verify source: darn.yaml's verify command, and the Darn route back to a fix.
+// darnVerifySource returns the darn recipe's verify source: darn.yaml's verify command, and the Darn-Write route back to a fix.
 // command reads the hub-wide file each time it is called, never at construction, so an edit between steps is seen;
 // a missing file and an empty value are errors naming the way forward.
 func darnVerifySource(l *lyxcwd.Location) verifySource {
@@ -39,7 +44,7 @@ func darnVerifySource(l *lyxcwd.Location) verifySource {
 		command: func() (string, error) {
 			return darnengine.VerifyCommand(fabricengine.BoardDir(l.HubPath))
 		},
-		failedWayForward: `run "lyx loom goto --to Darn", then "lyx loom resume", in the task worktree; the Darn spawn renders the Publish failure record and its gate runs the failing tests`,
+		failedWayForward: `run "lyx loom goto --to Darn-Write", then "lyx loom resume", in the task worktree; the Darn-Write spawn renders the Publish failure record and its gate runs the failing tests`,
 	}
 }
 
@@ -59,9 +64,9 @@ func pairMergeBase(l *lyxcwd.Location) func() (string, error) {
 	}
 }
 
-// latestDarnOutcome returns the latest Darn history entry of the status file at statusPath, locked by statusLockPath.
-// Reason is the status file's error while the run is halted at the Darn row, and empty otherwise.
-// An absent status file and a history with no Darn entry report not found.
+// latestDarnOutcome returns the latest Darn-Write history entry of the status file at statusPath, locked by statusLockPath.
+// Reason is the status file's error while the run is halted at the Darn-Write row, and empty otherwise.
+// An absent status file and a history with no Darn-Write entry report not found.
 func latestDarnOutcome(statusPath, statusLockPath string) (loomshed.DarnOutcome, bool, error) {
 	st, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
 	// A run directory not yet created fails the lock open with not-exist; that is an absent status file too.
@@ -72,12 +77,12 @@ func latestDarnOutcome(statusPath, statusLockPath string) (loomshed.DarnOutcome,
 		return loomshed.DarnOutcome{}, false, nil
 	}
 	for i := len(st.History) - 1; i >= 0; i-- {
-		if st.History[i].Producer != loomshed.NameDarn {
+		if st.History[i].Producer != loomshed.NameDarnWrite {
 			continue
 		}
 		latest := loomshed.DarnOutcome{Outcome: st.History[i].Outcome}
 		halted := st.State == shedengine.StateBlocked || st.State == shedengine.StateAwaiting || st.State == shedengine.StateFailed
-		if halted && st.CurrentProducer == loomshed.NameDarn {
+		if halted && st.CurrentProducer == loomshed.NameDarnWrite {
 			latest.Reason = st.Error
 		}
 		return latest, true, nil
@@ -86,7 +91,7 @@ func latestDarnOutcome(statusPath, statusLockPath string) (loomshed.DarnOutcome,
 	return loomshed.DarnOutcome{}, false, nil
 }
 
-// darnDeps assembles the Darn row's seams for location and the run addressed by runID.
+// darnDeps assembles the Darn-Write row's seams for location and the run addressed by runID.
 // Every closure reads or writes on demand and opens nothing at build time.
 func darnDeps(l *lyxcwd.Location, runID, verifyDir string) loomshed.DarnDeps {
 	paths := verifytree.NewPaths(l.WorktreePath(), verifyDir)
@@ -111,9 +116,55 @@ func darnDeps(l *lyxcwd.Location, runID, verifyDir string) loomshed.DarnDeps {
 	}
 }
 
-// wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe.
+// renameRetiredDarnRows rewrites each retired darn row name the run's status file carries onto the row's current name, so a run parked under an old name resumes.
+// A live driver holding the run lock is left alone with a warning, since that driver runs the binary that wrote the old name; a later verb renames once it has stopped.
+func (c *loomCLI) renameRetiredDarnRows() error {
+	renamed, err := shedengine.RenameProducers(shedengine.RenameRequest{
+		StatusPath:     c.shedPaths.StatusPath,
+		LockPath:       c.shedPaths.LockPath,
+		StatusLockPath: c.shedPaths.StatusLockPath,
+		Renames:        loomrecipe.DarnRetiredRows(),
+		RunID:          c.runID,
+	})
+	if errors.Is(err, shedengine.ErrShedBusy) {
+		logger.Warn("loom: a live driver holds the run lock; left the retired darn row names in its status file", "status", c.shedPaths.StatusPath)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if renamed {
+		logger.Info("loom: renamed retired darn rows in the status file", "status", c.shedPaths.StatusPath)
+	}
+
+	return nil
+}
+
+// darnReviewBudget returns darn.yaml's review_max_bounces for the routing projection.
+// The full wiring has already loaded darn.yaml into c.darnCfg; the lightweight wiring loads no config, so it reads the hub-wide file here.
+// An unreadable file degrades to the template's default with a warning, because the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
+func (c *loomCLI) darnReviewBudget() (int, error) {
+	if c.darnCfg != nil {
+		return c.darnCfg.ReviewMaxBounces, nil
+	}
+
+	cfg, err := darnengine.LoadConfig(fabricengine.BoardDir(c.location.HubPath), "darn")
+	if err == nil {
+		return cfg.ReviewMaxBounces, nil
+	}
+	logger.Warn("loom: could not read darn.yaml for the review bounce budget; reporting the template default", "error", err)
+
+	var template darnengine.Config
+	if err := yaml.Unmarshal([]byte(darnengine.ConfigTemplate()), &template); err != nil {
+		return 0, err
+	}
+
+	return template.ReviewMaxBounces, nil
+}
+
+// wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe, and replaces the loom DescribeSpec with the darn one, which reads no decision record or run record.
 // It loads the hub-wide darn.yaml strictly and reads its verify command once, so start, run, step and resume refuse an absent or empty command before any row builds.
-func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, frictionDir string, registry modelspec.Registry) error {
+func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, frictionDir string, landingCfg landingshed.Config, registry modelspec.Registry) error {
 	boardDir := fabricengine.BoardDir(location.HubPath)
 	cfg, err := darnengine.LoadConfig(boardDir, "darn")
 	if err != nil {
@@ -127,6 +178,12 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 	c.env.VerifyMergeBase = pairMergeBase(location)
 	c.env.VerifyWholeDiff = true
 	c.env.DarnVerifyAttempts = cfg.VerifyAttempts
+	c.env.DarnReviewMaxBounces = cfg.ReviewMaxBounces
+	c.darnCfg = &cfg
+	// The Darn-Review perch's CIRCLING Reason names the budget the darn routing applies, not loom's.
+	c.env.SegmentBounces = segmentBounces(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func() (shedengine.Routing, error) {
+		return loomrecipe.DarnRouting(cfg.ReviewMaxBounces)
+	})
 	c.env.Darn = darnDeps(location, c.runID, c.env.VerifyDir)
 	c.env.DarnSpec = func(told loomshed.DarnTold) (shuttleengine.Spec, error) {
 		return darnengine.DarnSpec(darnengine.DarnInputs{
@@ -140,6 +197,33 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 			RejectionFindings: told.RejectionFindings,
 			PriorWork:         told.PriorWork,
 		}, cfg, registry)
+	}
+	reviewSubdir, isBouncer, err := loomrecipe.BouncerRunSubdir(loomshed.NameDarnBouncer)
+	if err != nil {
+		return err
+	}
+	if !isBouncer {
+		return fmt.Errorf("loom: the embedded darn recipe's %s row is not a Bouncer with a run_subdir, so this lyx build is broken", loomshed.NameDarnBouncer)
+	}
+	// DescribeSpec opens the fabric lazily, for the reason the loom DescribeSpec gives.
+	c.env.DescribeSpec = func() (shuttleengine.Spec, error) {
+		handle, err := fabricengine.Open(location)
+		if err != nil {
+			return shuttleengine.Spec{}, err
+		}
+		taskBranch, parentBranch, err := landingBranches(handle, location)
+		if err != nil {
+			return shuttleengine.Spec{}, err
+		}
+		return landingshed.DarnDescribeSpec(landingshed.DarnDescribeInputs{
+			StencilsDir:     stencilsDir,
+			ParentName:      c.parentName,
+			ReviewDir:       filepath.Join(loomengine.LoomReviewsDir(location), reviewSubdir),
+			DescriptionPath: summaryparser.Path(loomengine.LandingDir(location)),
+			TaskBranch:      taskBranch,
+			ParentBranch:    parentBranch,
+			Slug:            seedSlug(location.WorktreeName),
+		}, landingCfg, registry)
 	}
 
 	return nil

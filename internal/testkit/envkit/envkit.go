@@ -173,14 +173,16 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			loomshed.NameDiscussionBouncer: {},
 			loomshed.NamePlanBouncer:       {},
 			loomshed.NameWebsterBouncer:    {},
+			loomshed.NameDarnBouncer:       {},
 		},
 		WebsterRun: func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
 			return websterengine.RunResult{}, nil
 		},
-		WebsterDeps:    shedfake.WebsterSeams(),
-		CommitWebster:  func() error { return nil },
-		Landing:        LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
-		DiscussionSpec: specOver("test discussion prompt", "discussion-output.md"),
+		WebsterDeps:            shedfake.WebsterSeams(),
+		CommitWebster:          func() error { return nil },
+		Landing:                LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
+		DiscussionSpec:         specOver("test discussion prompt", "discussion-output.md"),
+		PrepareDiscussionSpawn: func() error { return nil },
 		DiscussionTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "discussion",
@@ -207,8 +209,9 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				OutputFiles: []string{filepath.Join(dir, "rework-coverage.md")},
 			}, nil
 		},
-		Rework:             ReworkDeps(t, dir),
-		DarnVerifyAttempts: 3,
+		Rework:               ReworkDeps(t, dir),
+		DarnVerifyAttempts:   3,
+		DarnReviewMaxBounces: 1,
 		DarnSpec: func(loomshed.DarnTold) (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
 				Prompt:      "test darn prompt",

@@ -3,28 +3,19 @@
 package burlercli
 
 import (
-	"errors"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/spf13/cobra"
 )
 
 // awaitReviewVerb is the cobra name of the await-review verb.
 // resolvePersistentPreRun skips hub, mode and engine wiring for it, since the verb polls one told path.
 const awaitReviewVerb = "await-review"
-
-// awaitPollInterval is the fixed pause between two stats of the marker.
-const awaitPollInterval = 200 * time.Millisecond
-
-// defaultAwaitCap is the --cap default: under the 5-minute prompt-cache TTL, so every re-run keeps the fixer's cache warm.
-// The fixer runs the command with a Bash tool timeout above the cap (300000 ms), as its stencil tells it.
-const defaultAwaitCap = 250 * time.Second
 
 // awaitReviewCmd builds `lyx burler await-review <marker-path>`.
 // It prints ok with ready true and the absolute marker path as soon as the marker exists,
@@ -63,34 +54,20 @@ Example:
 				marker = filepath.Join(cwd, marker)
 			}
 
-			deadline := time.Now().Add(awaitCap)
-			for {
-				_, err := os.Stat(marker)
-				if err == nil {
-					output.Ok(out, map[string]any{"ready": true, "marker": marker})
-					return nil
-				}
-				if !errors.Is(err, fs.ErrNotExist) {
-					output.Err(out, err.Error())
-					clihelp.Abort(ctx, 1)
-					return nil
-				}
-
-				remaining := time.Until(deadline)
-				if remaining <= 0 {
-					output.Ok(out, map[string]any{"ready": false, "marker": marker, "message": "the review is not ready yet; call this command again"})
-					return nil
-				}
-				select {
-				case <-ctx.Done():
-					output.Err(out, ctx.Err().Error())
-					clihelp.Abort(ctx, 1)
-					return nil
-				case <-time.After(min(awaitPollInterval, remaining)):
-				}
+			_, ready, err := shuttleengine.AwaitAny(ctx, []string{marker}, awaitCap)
+			if err != nil {
+				output.Err(out, err.Error())
+				clihelp.Abort(ctx, 1)
+				return nil
 			}
+			if !ready {
+				output.Ok(out, map[string]any{"ready": false, "marker": marker, "message": "the review is not ready yet; call this command again"})
+				return nil
+			}
+			output.Ok(out, map[string]any{"ready": true, "marker": marker})
+			return nil
 		},
 	}
-	cmd.Flags().DurationVar(&awaitCap, "cap", defaultAwaitCap, "longest time one call waits before answering ready false")
+	cmd.Flags().DurationVar(&awaitCap, "cap", shuttleengine.DefaultAwaitCap, "longest time one call waits before answering ready false")
 	return cmd
 }

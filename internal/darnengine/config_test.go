@@ -23,7 +23,7 @@ func seedDarnConfig(t *testing.T, baseDir, contents string) {
 	}
 }
 
-// TestLoadConfig covers the template's defaults, a writer that fails the model-spec grammar, and a base directory with no darn.yaml.
+// TestLoadConfig covers the template's defaults, a review budget of 0, a writer that fails the model-spec grammar, and a base directory with no darn.yaml.
 func TestLoadConfig(t *testing.T) {
 	t.Parallel()
 
@@ -36,7 +36,12 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		{
 			name: "template defaults", contents: ConfigTemplate(), seed: true,
-			want: Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3},
+			want: Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 1},
+		},
+		{
+			name: "review off", seed: true,
+			contents: strings.Replace(ConfigTemplate(), "review_max_bounces: 1", "review_max_bounces: 0", 1),
+			want:     Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 0},
 		},
 		{
 			name: "invalid writer spec", seed: true,

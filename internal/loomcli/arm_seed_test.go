@@ -46,6 +46,8 @@ func TestResolveRunID(t *testing.T) {
 		{name: "lint-comments never refuses", verb: "lint-comments"},
 		{name: "lint-pattern never refuses", verb: "lint-pattern"},
 		{name: "reject's review file is not a run-id", verb: "reject", args: []string{"review.md"}, wantRunID: shedrun.SelfRunID},
+		{name: "insert-card's position is not a run-id", verb: "insert-card", args: []string{"3", "slug"}, wantRunID: shedrun.SelfRunID},
+		{name: "remove-card's position is not a run-id", verb: "remove-card", args: []string{"3"}, wantRunID: shedrun.SelfRunID},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

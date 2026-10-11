@@ -160,6 +160,9 @@ type Env struct {
 	// from importing directly. It is named per-producer rather than carried in a generic keyed
 	// map because Env already carries per-producer named fields.
 	DiscussionSpec shedadapters.SpecSource
+	// PrepareDiscussionSpawn is the injected closure every fresh Discussion-Write spawn runs after the attach probe and before the spawn, read by the DiscussionWrite entry.
+	// It arrives as a closure for the same reason DiscussionSpec does.
+	PrepareDiscussionSpawn func() error
 	// DiscussionTable is the injected shedadapters.TableSource the DiscussionSeats entry evaluates once per Call.
 	// It arrives as a closure for the same reason DiscussionSpec does: building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly.
 	DiscussionTable shedadapters.TableSource
@@ -212,8 +215,11 @@ type Env struct {
 	// It arrives as a closure for the reason ReworkSpec does.
 	DarnSpec func(loomshed.DarnTold) (shuttleengine.Spec, error)
 	// DarnVerifyAttempts is the verify gate's attempt budget of the darn recipe, which `darn.yaml`'s verify_attempts supplies.
-	// internal/loomrecipe alone reads it, stamping it onto the Darn row at every build.
+	// internal/loomrecipe alone reads it, stamping it onto the verify gates of the Darn-Write and Darn-Burler rows at every build.
 	DarnVerifyAttempts int
+	// DarnReviewMaxBounces is the bounce budget of the darn recipe's Darn-Review perch, which `darn.yaml`'s review_max_bounces supplies; 0 runs no review.
+	// internal/loomrecipe alone reads it.
+	DarnReviewMaxBounces int
 	// Darn is a whole-struct passthrough to loomshed.NewDarnWrite, for the reason Rework is.
 	Darn loomshed.DarnDeps
 	// PlanIndex is the code index the "plan" and "rework-plan" gates resolve plan refs against.

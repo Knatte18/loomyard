@@ -543,6 +543,33 @@ func TestWire_DiscussionSpecEvaluatesToExpectedShape(t *testing.T) {
 			if strings.Contains(spec.Prompt, "{{") {
 				t.Errorf("spec.Prompt contains an unrendered {{ marker: %q", spec.Prompt)
 			}
+
+			// PrepareDiscussionSpawn is the one caller of RemoveDiscussionReadyMarker.
+			marker := loomengine.DiscussionReadyMarker(loc)
+			if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+				t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(marker), err)
+			}
+			if err := os.WriteFile(marker, nil, 0o644); err != nil {
+				t.Fatalf("WriteFile(%q) = %v; want nil", marker, err)
+			}
+			if err := c.env.PrepareDiscussionSpawn(); err != nil {
+				t.Errorf("c.env.PrepareDiscussionSpawn() = %v; want nil", err)
+			}
+			if _, err := os.Stat(marker); !os.IsNotExist(err) {
+				t.Errorf("Stat(%q) = %v after PrepareDiscussionSpawn; want the marker removed", marker, err)
+			}
+			if err := c.env.PrepareDiscussionSpawn(); err != nil {
+				t.Errorf("c.env.PrepareDiscussionSpawn() with the marker absent = %v; want nil", err)
+			}
+			if err := os.RemoveAll(filepath.Dir(marker)); err != nil {
+				t.Fatalf("RemoveAll(%q) = %v; want nil", filepath.Dir(marker), err)
+			}
+			if err := os.WriteFile(filepath.Dir(marker), nil, 0o644); err != nil {
+				t.Fatalf("WriteFile(%q) = %v; want nil", filepath.Dir(marker), err)
+			}
+			if err := c.env.PrepareDiscussionSpawn(); err == nil {
+				t.Error("c.env.PrepareDiscussionSpawn() with a regular file where the marker's directory belongs = nil; want the removal error")
+			}
 		})
 	}
 }
@@ -678,6 +705,9 @@ func TestVerbUsesLightweightWiring(t *testing.T) {
 		{"ValidatePlan", "validate-plan", true},
 		{"LintComments", "lint-comments", true},
 		{"LintPattern", "lint-pattern", true},
+		{"InsertCard", "insert-card", true},
+		{"RemoveCard", "remove-card", true},
+		{"RestoreRenumber", "restore-renumber", true},
 		{"Run", "run", false},
 		{"Start", "start", false},
 		{"Step", "step", false},
@@ -836,7 +866,7 @@ func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]s
 // plan_review lands in the Plan-Burler row's RowReviewModels entry alone, and the Discussion-Burler row keeps the run-wide models.
 // The Webster-Burler row takes the template's webster_review (one sonnet entry of effort high) with the run-wide fix models.
 // fix_start lands in Env.FixStart.
-// plan_judge, seed and webster_seed land in each Bouncer row's RowBouncerModels entry.
+// plan_judge, seed and webster_seed land in each Bouncer row's RowBouncerModels entry, the darn recipe's Darn-Bouncer taking Webster-Bouncer's.
 func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	t.Parallel()
 
@@ -862,6 +892,11 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			Judge: burlerengine.ModelChoice{Model: "opus", Effort: "high"},
 		},
 		loomshed.NameWebsterBouncer: {
+			Seed:  burlerengine.ModelChoice{Model: "opus", Effort: "low"},
+			Judge: burlerengine.ModelChoice{Model: "sonnet", Effort: "medium"},
+		},
+		// The darn recipe's Darn-Review perch takes Webster-Review's pair.
+		loomshed.NameDarnBouncer: {
 			Seed:  burlerengine.ModelChoice{Model: "opus", Effort: "low"},
 			Judge: burlerengine.ModelChoice{Model: "sonnet", Effort: "medium"},
 		},

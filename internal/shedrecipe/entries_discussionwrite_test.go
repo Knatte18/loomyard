@@ -7,6 +7,7 @@ package shedrecipe
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,6 +36,18 @@ func TestDiscussionWriteEntry_ConstructionFailures(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "DiscussionWrite") || !strings.Contains(err.Error(), "DiscussionSpec") {
 			t.Errorf("discussionWriteEntry() error = %v; want it to name entry %q and field %q", err, "DiscussionWrite", "DiscussionSpec")
+		}
+	})
+
+	t.Run("NilPrepareDiscussionSpawn", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.PrepareDiscussionSpawn = nil
+		_, err := discussionWriteEntry("Row", Config{}, env)
+		if err == nil {
+			t.Fatalf("discussionWriteEntry() error = nil; want non-nil when Env.PrepareDiscussionSpawn is nil")
+		}
+		if !strings.Contains(err.Error(), "DiscussionWrite") || !strings.Contains(err.Error(), "PrepareDiscussionSpawn") {
+			t.Errorf("discussionWriteEntry() error = %v; want it to name entry %q and field %q", err, "DiscussionWrite", "PrepareDiscussionSpawn")
 		}
 	})
 
@@ -243,6 +256,61 @@ func TestDiscussionWriteEntry_ParentReviewBeginRound(t *testing.T) {
 		_, _, _ = p.Call(context.Background())
 		if hasRound(t, env) {
 			t.Error("round exists after an attach; want BeginRound not to run")
+		}
+	})
+	t.Run("PrepareDiscussionSpawnRunsOnFreshSpawnOnly", func(t *testing.T) {
+		tests := []struct {
+			name      string
+			attach    bool
+			attempts  int
+			wantCalls int
+		}{
+			{"fresh spawn with a parent-review gate", false, 3, 1},
+			{"fresh spawn without a parent-review gate", false, 0, 1},
+			{"attach with a parent-review gate", true, 3, 0},
+			{"attach without a parent-review gate", true, 0, 0},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				env := parentReviewEnv(t)
+				calls := 0
+				env.PrepareDiscussionSpawn = func() error {
+					calls++
+					return nil
+				}
+				fake := env.Shuttle.(*shedfake.Shuttle)
+				if tt.attach {
+					fake.AttachFound = true
+					fake.AttachResult = shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}
+				} else {
+					fake.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+				}
+				p, err := discussionWriteEntry("Row", parentReviewCfg(tt.attempts), env)
+				if err != nil {
+					t.Fatalf("discussionWriteEntry() error = %v", err)
+				}
+				_, _, _ = p.Call(context.Background())
+				if calls != tt.wantCalls {
+					t.Errorf("PrepareDiscussionSpawn ran %d times; want %d", calls, tt.wantCalls)
+				}
+			})
+		}
+	})
+	t.Run("PrepareDiscussionSpawnErrorStopsTheSpawn", func(t *testing.T) {
+		env := parentReviewEnv(t)
+		env.PrepareDiscussionSpawn = func() error { return errors.New("marker locked") }
+		fake := env.Shuttle.(*shedfake.Shuttle)
+		fake.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+		p, err := discussionWriteEntry("Row", parentReviewCfg(3), env)
+		if err != nil {
+			t.Fatalf("discussionWriteEntry() error = %v", err)
+		}
+		_, _, err = p.Call(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "marker locked") {
+			t.Errorf("Call() error = %v; want it to carry the closure's error", err)
+		}
+		if len(fake.Specs) != 0 || hasRound(t, env) {
+			t.Errorf("spawned %d specs and round = %v after a failed preparation; want neither", len(fake.Specs), hasRound(t, env))
 		}
 	})
 	t.Run("DisabledEntryDoesNotBeginRound", func(t *testing.T) {
