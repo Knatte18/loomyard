@@ -32,7 +32,7 @@ Read only these sources, and use read-only git for the diff:
 
 ## What to write
 
-Write exactly one file, `{{.description_path}}`, in the format of the final-summary spec (`final-summary-spec.md`):
+Write exactly one file, `{{.description_path}}`, in the format of the final-summary spec (`loom-final-summary-spec.md`):
 
 1. A first line `# <title>`, the title at most 72 characters.
 2. A body for the reader described above, covering:

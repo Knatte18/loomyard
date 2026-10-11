@@ -95,7 +95,7 @@ Two doc classes, opposite lifecycles:
 - **Module designs** for **planned, not-yet-built** modules live in their board entry's body;
   when the module lands, the entry's design moves into the package's `doc.go` and the implementation and tests become the source of truth.
   A module's purpose and key design rationale then live in its Go package header comment, next to the code it documents.
-- **Durable Go-to-Go contract docs** (`contracts/specs/`) pin cross-module schemas a real consumer honors — they are **kept**, not deleted on landing: `loom-status-spec.md`, `webster-spec.md`, `llm-model-spec.md`, `final-summary-spec.md`, `loom-plan-spec.md`. LLM-facing producer format contracts (what `Discussion-Write`/`Plan-Write` must write) live in the producer's own stencil under `contracts/stencils/`, not as a separate doc — see the Documentation Lifecycle's stencil-vs-doc split.
+- **Durable Go-to-Go contract docs** (`contracts/specs/`) pin cross-module schemas a real consumer honors — they are **kept**, not deleted on landing: `loom-status-spec.md`, `webster-spec.md`, `llm-model-spec.md`, `loom-final-summary-spec.md`, `loom-plan-spec.md`. LLM-facing producer format contracts (what `Discussion-Write`/`Plan-Write` must write) live in the producer's own stencil under `contracts/stencils/`, not as a separate doc — see the Documentation Lifecycle's stencil-vs-doc split.
 
 The other durable documentation is this `overview.md` (principles, naming, the module and shared-lib map, the records contract,
 and this lifecycle convention).
@@ -388,7 +388,7 @@ User-facing modules each get one `lyx <module>` namespace:
 - **discussionparser** — the sole reader of `_lyx/discussion/`'s on-disk format (the decision record's required sections and the support log's existence);
   it takes told absolute paths and declares no location of its own — deliberately unlike `planparser`, because `loomengine`'s accessors take a `*lyxcwd.Location`, which this stdlib-only leaf may not import.
   Consumed by `loomshed.NewDiscussionGate` (the Discussion-Write and Discussion-Burler rows' own gates) and by the `lyx loom validate-discussion` verb (`internal/discussionparser`). ✅ Implemented.
-- **summaryparser** — the sole declarer of the final-summary artifact's filename and the sole parser of its format (see [final-summary-spec.md](../contracts/specs/final-summary-spec.md));
+- **summaryparser** — the sole declarer of the final-summary artifact's filename and the sole parser of its format (see [loom-final-summary-spec.md](../contracts/specs/loom-final-summary-spec.md));
   it takes told paths and declares no directory of its own, and is stdlib-only so neither consumer depends on a producer.
   Consumed by `internal/landingshed`'s `Publish` and `Finalize`, by `internal/websterengine`, by the `description` gate on loom's `Describe` row, and by the `lyx loom validate-description` verb (`internal/summaryparser`). ✅ Implemented.
 - **batcher** — the batchifier registry that groups a plan's flat card list into webster's execution batches, through named profiles in `batcher.yaml` picked by its `active:` key (template default: the `cautious` profile, the cost batchifier; an empty value resolves to identity, one card per batch); its own standalone configreg module, separate from webster's (`internal/batcher`). ✅ Implemented.
@@ -666,7 +666,7 @@ See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook and [sandb
   a durable convention doc, kept rather than deleted, moved here by the 2026-08-29 designs audit.
 - [webster-spec.md](../contracts/specs/webster-spec.md) — webster's cross-module contract: the `_lyx/webster/` boundary, `outcome.yaml`, and `summary.md`'s writer-side additions (as-built;
   kept as a durable contract doc, not deleted on landing).
-- [final-summary-spec.md](../contracts/specs/final-summary-spec.md) — the producer-agnostic final-summary artifact contract: its format, its validation, and its two consumers, `internal/landingshed`'s `Publish` and `Finalize` (as-built;
+- [loom-final-summary-spec.md](../contracts/specs/loom-final-summary-spec.md) — the producer-agnostic final-summary artifact contract: its format, its validation, and its two consumers, `internal/landingshed`'s `Publish` and `Finalize` (as-built;
   kept as a durable contract doc, not deleted on landing).
 - `internal/reedengine` package documentation — the window to the world: tmux overlay + strand bookkeeping + render (as-built;
   module doc deleted per the documentation lifecycle).

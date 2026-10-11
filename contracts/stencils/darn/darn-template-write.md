@@ -49,7 +49,7 @@ When both are `(none)`, this is the first spawn and the branch holds no work of 
 
 ## Step 4 — Write the change description
 
-Write the change description to `{{.description_path}}`, in the format the final-summary spec defines at `{{.specs_dir}}/final-summary-spec.md`.
+Write the change description to `{{.description_path}}`, in the format the final-summary spec defines at `{{.specs_dir}}/loom/loom-final-summary-spec.md`.
 Read that spec for the format; it is authoritative and this prompt does not restate it.
 Write the description for a reviewer who knows the codebase but has not seen this session, and never describe the session's own process.
 
