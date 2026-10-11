@@ -122,10 +122,15 @@ func min2(a, b time.Time) time.Time {
 	return a
 }
 
-// turnPoint is one user or assistant line's timestamp and whether the line ends its session's turn.
+// stallCap is the longest interval counted as working time, three times the harness's ten-minute cap on a foreground Bash call;
+// a longer interval is a stall such as a suspended host and counts as idle whole.
+const stallCap = 30 * time.Minute
+
+// turnPoint is one user or assistant line's timestamp and whether the line ends or starts its session's turn.
 type turnPoint struct {
-	At   time.Time
-	Ends bool
+	At     time.Time
+	Ends   bool
+	Starts bool
 }
 
 // endsTurn reports whether a line ends its session's turn: an assistant line whose stop reason is not tool_use, or a user line that interrupts the turn or holds a local command's output.
@@ -146,14 +151,42 @@ func endsTurn(l line) bool {
 	return false
 }
 
-// workingIntervals returns the interval from each point to the next, in timestamp order, except after a point that ends the turn.
+// startsTurn reports whether a line starts a turn: a user line holding text and no tool result, other than a line that ends a turn or a compaction summary.
+func startsTurn(l line) bool {
+	if l.Type != "user" || l.Message == nil || l.IsCompactSummary || endsTurn(l) {
+		return false
+	}
+	var text string
+	if json.Unmarshal(l.Message.Content, &text) == nil {
+		return true
+	}
+	var items []struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(l.Message.Content, &items) != nil {
+		return false
+	}
+	hasText := false
+	for _, item := range items {
+		switch item.Type {
+		case "tool_result":
+			return false
+		case "text":
+			hasText = true
+		}
+	}
+	return hasText
+}
+
+// workingIntervals returns the interval from each point to the next, in timestamp order, except after a point that ends the turn, into a point that starts a turn, or longer than stallCap.
 func workingIntervals(points []turnPoint) []Interval {
 	ordered := slices.Clone(points)
 	sort.SliceStable(ordered, func(a, b int) bool { return ordered[a].At.Before(ordered[b].At) })
 	var working []Interval
 	for i := 0; i+1 < len(ordered); i++ {
-		if !ordered[i].Ends {
-			working = append(working, Interval{ordered[i].At, ordered[i+1].At})
+		next := ordered[i+1]
+		if !ordered[i].Ends && !next.Starts && next.At.Sub(ordered[i].At) <= stallCap {
+			working = append(working, Interval{ordered[i].At, next.At})
 		}
 	}
 	return working
@@ -215,6 +248,10 @@ type RunTally struct {
 	Working []Interval
 	// Shed is the shed record read from the run's archive tag, nil when no shed status was read.
 	Shed *ShedRecord
+	// Bound is the lower bound applied to the run's transcripts, zero for none.
+	Bound time.Time
+	// LeftOut counts the main-session transcripts left out for starting before Bound or having no timestamped line.
+	LeftOut int
 }
 
 // RoleTime is how much of the run's span the role's sessions spent in a turn, 0 for a role the run lacks.
@@ -269,7 +306,9 @@ type line struct {
 	CustomTitle string `json:"customTitle"`
 	UUID        string `json:"uuid"`
 	Timestamp   string `json:"timestamp"`
-	Message     *struct {
+	// IsCompactSummary marks the user line that holds a compaction's summary.
+	IsCompactSummary bool `json:"isCompactSummary"`
+	Message          *struct {
 		ID         string          `json:"id"`
 		Model      string          `json:"model"`
 		StopReason string          `json:"stop_reason"`
@@ -634,8 +673,34 @@ func recentRuns(projects, hub, prime string, finished map[string][]ArchiveTag, l
 	return slugs, nil
 }
 
+// runBound returns the lower bound of a slug's run from its archive tags, newest first.
+// The bound is the newest tag's commit date for a run in flight and the next-older tag's for a finished run, the zero time when there is no such tag.
+func runBound(tags []ArchiveTag, inFlight bool) time.Time {
+	previous := 1
+	if inFlight {
+		previous = 0
+	}
+	if previous >= len(tags) {
+		return time.Time{}
+	}
+	return tags[previous].Committed
+}
+
+// transcriptStart returns the earliest timestamp of a user or assistant line in the transcript at path, false when no such line carries one.
+func transcriptStart(path string) (time.Time, bool, error) {
+	var start time.Time
+	var found bool
+	err := eachLine(path, func(l line) {
+		if at, ok := lineTime(l); ok && (!found || at.Before(start)) {
+			start, found = at, true
+		}
+	})
+	return start, found, err
+}
+
 // CountRun tallies every session Claude Code recorded in the project directory dir.
-func CountRun(dir, slug string) (RunTally, error) {
+// A non-zero bound leaves out, with its sub-agents, every main-session transcript that starts before the bound or has no timestamped user or assistant line, and counts them in LeftOut.
+func CountRun(dir, slug string, bound time.Time) (RunTally, error) {
 	sessions, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
 	if err != nil {
 		return RunTally{}, err
@@ -645,9 +710,19 @@ func CountRun(dir, slug string) (RunTally, error) {
 	}
 	sort.Strings(sessions)
 
-	run := RunTally{Slug: slug, Roles: map[string]*RoleTally{}}
+	run := RunTally{Slug: slug, Roles: map[string]*RoleTally{}, Bound: bound}
 	seen := map[string]bool{}
 	for _, session := range sessions {
+		if !bound.IsZero() {
+			start, ok, err := transcriptStart(session)
+			if err != nil {
+				return RunTally{}, err
+			}
+			if !ok || start.Before(bound) {
+				run.LeftOut++
+				continue
+			}
+		}
 		title, err := latestTitle(session)
 		if err != nil {
 			return RunTally{}, err
@@ -716,7 +791,7 @@ func (run *RunTally) countFile(path, role string, seen map[string]bool, fork *Fo
 		}
 		run.observeTime(l)
 		if at, ok := lineTime(l); ok {
-			points = append(points, turnPoint{at, endsTurn(l)})
+			points = append(points, turnPoint{at, endsTurn(l), startsTurn(l)})
 		}
 		if l.Type != "assistant" || l.Message == nil || l.Message.Usage == nil {
 			return
@@ -841,6 +916,7 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 	writeTable(w, total, totalTimes, orchTotal)
 	fmt.Fprintf(w, "Total weight %.1fM; %d repeated transcript lines skipped.\n\n", grand/1e6, duplicates)
 	fmt.Fprintln(w, "Time is turn time: a session works from a user or assistant line until the line that ends its turn.")
+	fmt.Fprintf(w, "An interval into a line that starts a turn, or longer than the stall cap of %s, is idle.\n", stallCap)
 	fmt.Fprintln(w, "Idle is the time no session of the run is in a turn, which holds parent review, PR-Gate, gate-slot waits, a parked driver and Go-only work such as verify and push.")
 	fmt.Fprintln(w, "Time shares can sum past 100% where sessions overlap, a `+sub` row overlapping its parent.")
 	fmt.Fprintln(w, "The union of working time plus idle is the span.")
@@ -873,6 +949,9 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 			times.Roles[role] = run.RoleTime(role)
 		}
 		writeTable(w, run.Roles, times, charge)
+		if run.LeftOut > 0 {
+			fmt.Fprintf(w, "Session transcripts left out: %d; they started before the slug's previous run ended, at %s.\n\n", run.LeftOut, run.Bound.Format(time.RFC3339))
+		}
 		if run.Shed != nil {
 			writeProducers(w, run.Producers(), run.Span.Duration())
 		} else {
