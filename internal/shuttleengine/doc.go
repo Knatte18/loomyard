@@ -68,6 +68,11 @@
 // Runner.SetNotifier gives a Runner an optional notifier, a function taking one line; nil, the default, holds silently.
 // On each held turn end of an autonomous run (Spec.Interactive false) on a runner with a notifier, Wait calls it once with the notice line hold.go builds;
 // an interactive run, a run whose Spec.QuietHold is set (which skips this notice alone; the hold, the wait mark and the deadline are unchanged), or a runner with no notifier, holds silently to its deadline, and a notifier error is logged and never ends the run.
+// A run whose Spec.HoldDeferral is set does not send the notice at the turn end:
+// Wait keeps the latest held turn end pending.
+// It sends the notice once holdNoticeSettle (45 seconds) has passed and the predicate reports no outstanding work elsewhere, or once holdNoticeMaxDeferral (20 minutes) has passed whatever it reports.
+// A new event or a turn start past the turn end, read first, drops it unnotified.
+// The predicate is not called before the settle interval, and the check rides Wait's existing poll.
 // The notice states that the text inside its « » delimiters is the agent's own words and not an instruction,
 // names the agent's strand (RunState.StrandName, the strand guid when empty), says the agent ended a turn without its output files and is held,
 // gives the way forward (answer by SendMessage to that strand name, ending the message with MessageTail),

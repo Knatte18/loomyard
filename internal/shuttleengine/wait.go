@@ -254,6 +254,7 @@ func (run *Run) Wait() (Result, error) {
 		run.syncShellWait()
 		if err == nil && (run.eventsRead || run.turnStartRead) {
 			run.endHeldWait()
+			run.pendingHold = nil
 		}
 		if err != nil {
 			eventsFailures++
@@ -275,7 +276,12 @@ func (run *Run) Wait() (Result, error) {
 				if !run.turnStartRead {
 					run.beginHeldWait(held.offset)
 				}
-				run.notifyHeld(held)
+				switch {
+				case run.spec.HoldDeferral == nil:
+					run.notifyHeld(held)
+				case !run.turnStartRead:
+					run.pendingHold, run.pendingHoldAt = held, run.clock.Now()
+				}
 			} else if outcome != "" && (outcome != OutcomeDone || len(run.gate) == 0) {
 				// Not a gated Done: finalize exactly as this branch always has.
 				return run.finalize(outcome)
@@ -304,6 +310,7 @@ func (run *Run) Wait() (Result, error) {
 			}
 		}
 
+		run.settleDeferredHold()
 		run.logSessionState("", tick%livenessEvery == 0)
 
 		if tick%livenessEvery == 0 {
