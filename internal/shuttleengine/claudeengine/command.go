@@ -166,6 +166,16 @@ func resolvePromptCacheTTL(role string, cfg shuttleengine.Config) (string, error
 	return cfg.ClaudePromptCacheTTL, nil
 }
 
+// PromptCacheLifetime returns the prompt-cache TTL Prepare puts on the pane line for spec's role, parsed as a duration.
+// A resolution error is returned unchanged, with its shuttle.yaml advice.
+func (c *Claude) PromptCacheLifetime(spec shuttleengine.Spec, cfg shuttleengine.Config) (time.Duration, error) {
+	ttl, err := resolvePromptCacheTTL(spec.Role, cfg)
+	if err != nil {
+		return 0, err
+	}
+	return time.ParseDuration(ttl)
+}
+
 // envFileKey is the variable Claude Code reads to find a file whose content it runs in the Bash tool's shell before each command.
 // It rides the pane line for the same reason forkSubagentEnvKey does.
 const envFileKey = "CLAUDE_ENV_FILE"

@@ -159,6 +159,11 @@ func (e *Engine) ColorSequence(color segmentcolor.Color) []shuttleengine.PaneInp
 	return nil
 }
 
+// PromptCacheLifetime answers zero and no error, so no test-built gate keeps a session warm.
+func (e *Engine) PromptCacheLifetime(spec shuttleengine.Spec, cfg shuttleengine.Config) (time.Duration, error) {
+	return 0, nil
+}
+
 // AuditForks answers AuditForksFn, else AuditErr, else Audit.
 func (e *Engine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
 	if e.AuditForksFn != nil {
