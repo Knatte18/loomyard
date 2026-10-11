@@ -119,7 +119,7 @@ func TestResolveJudge(t *testing.T) {
 	}
 }
 
-// TestResolveReviewAndJudge_MalformedSpec verifies an ungrammatical review, fix or judge model-spec returns an error naming its role, rather than being silently carried into a producer's spawn site, and that a bad later review entry or a bad fix entry also names its entry index and the way forward.
+// TestResolveReviewAndJudge_MalformedSpec verifies an ungrammatical review, fix, judge or rework model-spec returns an error naming its role, rather than being silently carried into a producer's spawn site, and that a bad later review entry or a bad fix entry also names its entry index and the way forward.
 func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -164,6 +164,15 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 			cfg:  Config{Judge: "sonnet[medium"},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveJudge(cfg, reg)
+				return err
+			},
+		},
+		{
+			name: "rework",
+			role: "rework",
+			cfg:  Config{Rework: "sonnet[medium"},
+			resolve: func(cfg Config, reg modelspec.Registry) error {
+				_, err := ResolveRework(cfg, reg)
 				return err
 			},
 		},

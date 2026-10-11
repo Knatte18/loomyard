@@ -346,7 +346,7 @@ type Config struct {
 	PlanSeed              string        `yaml:"plan_seed"`
 	WebsterSeed           string        `yaml:"webster_seed"`
 	Rework                string        `yaml:"rework"`
-	ReviewTimeoutMin     int           `yaml:"review_timeout_min"`
+	ReviewTimeoutMin      int           `yaml:"review_timeout_min"`
 	Friction              string        `yaml:"friction"`
 	FrictionTimeoutMin    int           `yaml:"friction_timeout_min"`
 	Driver                string        `yaml:"driver"`
