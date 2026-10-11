@@ -25,6 +25,7 @@
 // The verbs, the reed and shuttle wiring, and the strand-identity rules live in internal/orchcli.
 // This package holds what sits behind the seam: the config, the stencil renders, the persisted state, `start`'s two decisions, and the watcher.
 // It is told every path through Paths and derives none (Told-Geometry Invariant).
+// MigrateConfig raises the module's below-floor poll_interval_ms to its floor for lyx config reconcile.
 //
 // # Start prompt order
 //
