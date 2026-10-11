@@ -73,6 +73,9 @@ type Delivery struct {
 	LastPromptAt   time.Time `json:"last_prompt_at"`
 	WaitingNotifys int       `json:"waiting_notifies"`
 	CapWarned      bool      `json:"cap_warned"`
+	// Pings counts the keep-alives carried and LastPingAt stamps the latest; a delivery.json written before keep-alives decodes with both zero.
+	Pings      int       `json:"pings"`
+	LastPingAt time.Time `json:"last_ping_at"`
 }
 
 // Verdict is verdict.json.
@@ -382,6 +385,22 @@ func (s Store) RecordPrompt(fromNotify bool) error {
 			d.Prompts++
 		}
 		d.LastPromptAt = now
+	})
+}
+
+// RecordPing records one carried keep-alive on the latest round: it bumps the ping count and stamps the last-ping time, touching no prompt count, last-prompt time or waiting notify.
+func (s Store) RecordPing() error {
+	r, ok, err := s.Latest()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNoOpenRequest
+	}
+	now := s.now()
+	return s.updateDelivery(r.Number, func(d *Delivery) {
+		d.Pings++
+		d.LastPingAt = now
 	})
 }
 

@@ -20,6 +20,8 @@ const (
 	maxGatePrompts = 3
 	// promptThrottle is the minimum gap between two gate-driven prompts.
 	promptThrottle = time.Minute
+	// maxKeepAlives is the per-round cap on keep-alive pings; after the last, the writer's prompt cache is left to expire.
+	maxKeepAlives = 3
 )
 
 // GateConfig is the told input of NewGate.
@@ -50,6 +52,10 @@ type GateConfig struct {
 	RenderDelivery func(briefPath string) (string, error)
 	// RenderBrief renders the reviewer brief written beside the request.
 	RenderBrief func() (string, error)
+	// KeepAlive is the gap between keep-alive pings to the idle writer while a delivered request waits, kept inside the writer's prompt-cache lifetime; zero turns pings off.
+	KeepAlive time.Duration
+	// RenderKeepAlive renders the one-line keep-alive prompt for ping number ping; required when KeepAlive is positive.
+	RenderKeepAlive func(ping int) (string, error)
 }
 
 // NewGate returns the entry's per-arrival closure and its final-verdict closure over cfg.
@@ -125,6 +131,7 @@ func (c *closures) terminal(r Round, rejected int, atCap bool, afterStart string
 // With PassAtCap, a reject at the cap is treated as one below it, except that once consumed it passes instead of opening a round.
 // An expired request passes, and an open request with no verdict waits, notifies and prompts;
 // while ReviewerLive reports the reviewer not live it only waits, carrying no prompt and leaving the prompt count and waiting notifies untouched.
+// Once delivery is recorded, a due keep-alive ping is carried after the prompt cases, at most maxKeepAlives per round.
 func (c *closures) gate() (shuttleengine.GateResult, error) {
 	passed := shuttleengine.GateResult{Passed: true}
 	if c.noReviewer() {
@@ -194,8 +201,43 @@ func (c *closures) gate() (shuttleengine.GateResult, error) {
 			return shuttleengine.GateResult{}, err
 		}
 		logger.Warn("parent review notice still not delivered; gate re-sending stopped", "slug", c.cfg.Slug, "reviewer", c.cfg.Reviewer, "request", r.RequestPath())
+	case c.pingDue(d, now):
+		return c.ping(r)
 	}
 	return c.pending(""), nil
+}
+
+// pingDue reports whether a keep-alive is due: pings are on, delivery is recorded, fewer than maxKeepAlives are counted, and KeepAlive has passed since the latest of delivery, last prompt and last ping.
+func (c *closures) pingDue(d Delivery, now time.Time) bool {
+	if c.cfg.KeepAlive <= 0 || d.DeliveredAt.IsZero() || d.Pings >= maxKeepAlives {
+		return false
+	}
+	last := d.DeliveredAt
+	if d.LastPromptAt.After(last) {
+		last = d.LastPromptAt
+	}
+	if d.LastPingAt.After(last) {
+		last = d.LastPingAt
+	}
+	return now.Sub(last) >= c.cfg.KeepAlive
+}
+
+// ping records one keep-alive and returns pending carrying its text.
+// The ping counts toward the cap whether or not its send lands.
+// Its send-failure way forward asks for nothing, since a re-sent notice would reach a reviewer who already has it.
+func (c *closures) ping(r Round) (shuttleengine.GateResult, error) {
+	text, err := c.cfg.RenderKeepAlive(r.Delivery.Pings + 1)
+	if err != nil {
+		return shuttleengine.GateResult{}, err
+	}
+	if err := c.cfg.Store.RecordPing(); err != nil {
+		return shuttleengine.GateResult{}, err
+	}
+	return shuttleengine.GateResult{
+		Pending:              true,
+		Send:                 text,
+		SendFailedWayForward: "nothing needs doing: the review is still pending, and the next keep-alive retries while the round's cap allows",
+	}, nil
 }
 
 // open writes the request for the latest round and carries its first prompt.

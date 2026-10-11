@@ -154,6 +154,11 @@ func resolveParentReviewClosure(entry string, attempts int, passOnCap bool, env 
 	if err := requireAbsRoot(entry, "ParentReview.SupportLog", pr.SupportLog); err != nil {
 		return nil, nil, err
 	}
+	if pr.KeepAlive > 0 {
+		if err := requireSeam(entry, "ParentReview.RenderKeepAlive", pr.RenderKeepAlive); err != nil {
+			return nil, nil, err
+		}
+	}
 	gate, final := parentreview.NewGate(pr)
 	return gate, final, nil
 }

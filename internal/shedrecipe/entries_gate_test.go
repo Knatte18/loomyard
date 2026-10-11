@@ -288,6 +288,10 @@ func TestResolveGateSpec_ParentReviewMissingEnv(t *testing.T) {
 		{"ParentReview.Slug", func(e *Env) { e.ParentReview.Slug = "" }},
 		{"ParentReview.RenderDelivery", func(e *Env) { e.ParentReview.RenderDelivery = nil }},
 		{"ParentReview.RenderBrief", func(e *Env) { e.ParentReview.RenderBrief = nil }},
+		{"ParentReview.RenderKeepAlive", func(e *Env) {
+			e.ParentReview.KeepAlive = time.Minute
+			e.ParentReview.RenderKeepAlive = nil
+		}},
 		{"ParentReview.DecisionRecord", func(e *Env) { e.ParentReview.DecisionRecord = "" }},
 		{"ParentReview.SupportLog", func(e *Env) { e.ParentReview.SupportLog = "relative.md" }},
 	}

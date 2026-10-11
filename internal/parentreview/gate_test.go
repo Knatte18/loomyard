@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -692,4 +693,175 @@ func TestSupersedingApprovePasses(t *testing.T) {
 			}
 		})
 	}
+}
+
+// newKeepAliveGate returns a gate with a one-minute KeepAlive whose renderer echoes the ping number; a nil live means the reviewer is always live.
+func newKeepAliveGate(t *testing.T, s Store, live func() (bool, error)) shuttleengine.Gate {
+	t.Helper()
+	gate, _ := NewGate(GateConfig{
+		Store:           s,
+		Slug:            "x",
+		Reviewer:        "hub:orch",
+		DecisionRecord:  "d.md",
+		SupportLog:      "s.md",
+		WaitBound:       time.Hour,
+		Cap:             testCap,
+		KeepAlive:       time.Minute,
+		ReviewerLive:    live,
+		RenderDelivery:  func(p string) (string, error) { return "review " + p, nil },
+		RenderBrief:     func() (string, error) { return "brief", nil },
+		RenderKeepAlive: func(n int) (string, error) { return "ping " + strconv.Itoa(n), nil },
+	})
+	return gate
+}
+
+// wantPing asserts res carries keep-alive number n with a way forward that asks for no re-send.
+func wantPing(t *testing.T, res shuttleengine.GateResult, n int) {
+	t.Helper()
+	if !res.Pending || res.Send != "ping "+strconv.Itoa(n) {
+		t.Fatalf("want pending carrying ping %d, got %+v", n, res)
+	}
+	if strings.Contains(res.SendFailedWayForward, "lyx loom review notify") {
+		t.Fatalf("a ping's way-forward = %q; want none that re-sends the notice", res.SendFailedWayForward)
+	}
+}
+
+// deliveredKeepAliveGate opens a round, carries its prompt and records the delivery, so the gate is waiting on the review.
+func deliveredKeepAliveGate(t *testing.T, live func() (bool, error)) (Store, *clock, shuttleengine.Gate) {
+	t.Helper()
+	s, c := newStore(t)
+	gate := newKeepAliveGate(t, s, live)
+	wantCarry(t, mustEval(t, gate))
+	if err := s.RecordDelivered(""); err != nil {
+		t.Fatal(err)
+	}
+	return s, c, gate
+}
+
+func TestGate_KeepAlive(t *testing.T) {
+	t.Parallel()
+
+	t.Run("pings once per interval, three per round, then stays quiet", func(t *testing.T) {
+		t.Parallel()
+		s, c, gate := deliveredKeepAliveGate(t, nil)
+		before := latest(t, s).Delivery
+		c.t = c.t.Add(30 * time.Second)
+		wantHold(t, mustEval(t, gate))
+		c.t = c.t.Add(30 * time.Second)
+		for n := 1; n <= maxKeepAlives; n++ {
+			wantPing(t, mustEval(t, gate), n)
+			wantHold(t, mustEval(t, gate))
+			c.t = c.t.Add(time.Minute)
+		}
+		c.t = c.t.Add(10 * time.Minute)
+		wantHold(t, mustEval(t, gate))
+		after := latest(t, s).Delivery
+		if after.Pings != maxKeepAlives {
+			t.Errorf("pings = %d, want %d", after.Pings, maxKeepAlives)
+		}
+		if after.Prompts != before.Prompts || !after.LastPromptAt.Equal(before.LastPromptAt) || after.WaitingNotifys != before.WaitingNotifys {
+			t.Errorf("delivery after pings = %+v, want prompts, last-prompt time and waiting notifies as before (%+v)", after, before)
+		}
+	})
+
+	t.Run("a fresh gate over the same store resumes the count and clock", func(t *testing.T) {
+		t.Parallel()
+		s, c, gate := deliveredKeepAliveGate(t, nil)
+		for n := 1; n <= maxKeepAlives; n++ {
+			c.t = c.t.Add(time.Minute)
+			wantPing(t, mustEval(t, gate), n)
+		}
+		c.t = c.t.Add(time.Minute)
+		wantHold(t, mustEval(t, newKeepAliveGate(t, s, nil)))
+	})
+
+	t.Run("waits on the stored clock when restarted mid-interval", func(t *testing.T) {
+		t.Parallel()
+		s, c, gate := deliveredKeepAliveGate(t, nil)
+		c.t = c.t.Add(time.Minute)
+		wantPing(t, mustEval(t, gate), 1)
+		c.t = c.t.Add(30 * time.Second)
+		restarted := newKeepAliveGate(t, s, nil)
+		wantHold(t, mustEval(t, restarted))
+		c.t = c.t.Add(30 * time.Second)
+		wantPing(t, mustEval(t, restarted), 2)
+	})
+
+	t.Run("a waiting notify carries the delivery prompt ahead of a due ping", func(t *testing.T) {
+		t.Parallel()
+		s, c, gate := deliveredKeepAliveGate(t, nil)
+		if err := s.AddNotify(); err != nil {
+			t.Fatal(err)
+		}
+		c.t = c.t.Add(time.Minute)
+		wantCarry(t, mustEval(t, gate))
+		if got := latest(t, s).Delivery.Pings; got != 0 {
+			t.Errorf("pings = %d after a notify prompt, want 0", got)
+		}
+	})
+
+	t.Run("no ping while delivery is unrecorded", func(t *testing.T) {
+		t.Parallel()
+		s, c := newStore(t)
+		gate := newKeepAliveGate(t, s, nil)
+		wantCarry(t, mustEval(t, gate))
+		c.t = c.t.Add(time.Minute)
+		if res := mustEval(t, gate); strings.HasPrefix(res.Send, "ping") {
+			t.Fatalf("got %+v before delivery was recorded; want no ping", res)
+		}
+		if got := latest(t, s).Delivery.Pings; got != 0 {
+			t.Errorf("pings = %d, want 0", got)
+		}
+	})
+
+	t.Run("no ping while the reviewer is not live", func(t *testing.T) {
+		t.Parallel()
+		live := true
+		s, c, gate := deliveredKeepAliveGate(t, func() (bool, error) { return live, nil })
+		live = false
+		c.t = c.t.Add(time.Minute)
+		wantHold(t, mustEval(t, gate))
+		if got := latest(t, s).Delivery.Pings; got != 0 {
+			t.Errorf("pings = %d, want 0", got)
+		}
+	})
+
+	t.Run("no ping after a verdict", func(t *testing.T) {
+		t.Parallel()
+		s, c, gate := deliveredKeepAliveGate(t, nil)
+		if err := s.RecordVerdict(VerdictReject, writeFile(t, "fix this")); err != nil {
+			t.Fatal(err)
+		}
+		c.t = c.t.Add(time.Minute)
+		if res := mustEval(t, gate); strings.HasPrefix(res.Send, "ping") {
+			t.Fatalf("got %+v after a verdict; want no ping", res)
+		}
+		if got := latest(t, s).Delivery.Pings; got != 0 {
+			t.Errorf("pings = %d, want 0", got)
+		}
+	})
+
+	t.Run("no ping after expiry", func(t *testing.T) {
+		t.Parallel()
+		s, c, gate := deliveredKeepAliveGate(t, nil)
+		c.t = c.t.Add(2 * time.Hour)
+		if !mustEval(t, gate).Passed {
+			t.Fatal("an expired request must pass")
+		}
+		if got := latest(t, s).Delivery.Pings; got != 0 {
+			t.Errorf("pings = %d, want 0", got)
+		}
+	})
+
+	t.Run("a zero KeepAlive never pings", func(t *testing.T) {
+		t.Parallel()
+		s, c := newStore(t)
+		gate, _ := newGates(t, s, "hub:orch")
+		wantCarry(t, mustEval(t, gate))
+		if err := s.RecordDelivered(""); err != nil {
+			t.Fatal(err)
+		}
+		c.t = c.t.Add(30 * time.Minute)
+		wantHold(t, mustEval(t, gate))
+	})
 }
