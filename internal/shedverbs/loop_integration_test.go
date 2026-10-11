@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 	"github.com/spf13/cobra"
 )
 
@@ -112,10 +113,8 @@ func waitUntil(t *testing.T, limit time.Duration, what string, cond func() bool)
 
 // processEnded reports whether pid no longer runs; a zombie that nothing has reaped yet counts as ended.
 func processEnded(pid int) bool {
-	if data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat"); err == nil {
-		stat := string(data)
-		fields := strings.Fields(stat[strings.LastIndexByte(stat, ')')+1:])
-		return len(fields) > 0 && fields[0] == "Z"
+	if state, ok := tmuxkit.ProcState(pid); ok {
+		return state == "Z"
 	}
 	return !proc.IsAlive(pid)
 }

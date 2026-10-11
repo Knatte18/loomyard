@@ -1,66 +1,21 @@
 //go:build tmux || llm
 
-// smoke_proctree_test.go provides the /proc-native process-tree probes the
-// smoke harness uses on Linux — the direct analogue of the Windows helpers'
-// Get-CimInstance Win32_Process scripts (paneProcessTree, panePaneSubtree,
-// tmuxSocketPids, pidClosure, hubHolders, serverProcCountForSession in
-// smoke_test.go), and structurally identical to
-// internal/reedengine/proctree_linux.go's approach: read /proc/<pid>/stat for
-// ppid, /proc/<pid>/cmdline for argv, /proc/<pid>/cwd for cwd. Unlike
-// Windows, Linux needs no external process to answer any of these
-// questions — the kernel exposes them directly over /proc — so these
-// probes shell out to nothing, not even a POSIX substitute for pwsh.
-// Reimplemented here as a small, self-contained test-harness copy rather than imported from reedengine, since that package's equivalents (parseStat, descendantClosure, matchSocketCmdlines) are unexported and only meaningful bound to an *Engine value.
-// Deliberately a _test.go file
-// (not a _linux.go one): its caller functions in smoke_test.go compile on
-// every GOOS (gated only by the `tmux || llm` tag) and runtime.GOOS-branch into this
-// file's functions, so this file must compile everywhere too, and it
-// references hubHolder, which is itself declared in smoke_test.go and so
-// only exists inside the test binary.
-// The os.ReadFile calls here and the tmuxkit /proc probes are portable Go and simply error (never get called) on a non-Linux GOOS.
-// The pid list, argv and cwd probes come from tmuxkit.
+// smoke_proctree_test.go provides the process-tree probes the smoke harness uses on Linux.
+// They are the analogue of the Windows helpers' Get-CimInstance Win32_Process scripts (paneProcessTree, panePaneSubtree, tmuxSocketPids, pidClosure, hubHolders, serverProcCountForSession in smoke_test.go).
+// Every read of the kernel's process table goes through the tmuxkit probes for the pid list, parent pid, argv, cwd and comm, so this file opens nothing under /proc itself and shells out to nothing.
+// It is a small, self-contained test-harness copy rather than an import from reedengine, since that package's equivalents (parseStat, descendantClosure, matchSocketCmdlines) are unexported and only meaningful bound to an *Engine value.
+// It is deliberately a _test.go file, not a _linux.go one:
+// its caller functions in smoke_test.go compile on every GOOS (gated only by the `tmux || llm` tag) and runtime.GOOS-branch into this file's functions, so this file must compile everywhere too, and it references hubHolder, which is itself declared in smoke_test.go and so only exists inside the test binary.
+// The tmuxkit probes are portable Go and simply report nothing on a non-Linux GOOS.
 
 package reedcli
 
 import (
-	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
-
-// linuxProcPPID reads pid's parent pid from /proc/<pid>/stat.
-func linuxProcPPID(pid int) (int, bool) {
-	raw, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
-	if err != nil {
-		return 0, false
-	}
-	stat := string(raw)
-	idx := strings.LastIndex(stat, ")")
-	if idx == -1 {
-		return 0, false
-	}
-	fields := strings.Fields(stat[idx+1:])
-	if len(fields) < 2 {
-		return 0, false
-	}
-	ppid, err := strconv.Atoi(fields[1])
-	if err != nil {
-		return 0, false
-	}
-	return ppid, true
-}
-
-// linuxProcComm reads pid's short executable name from /proc/<pid>/comm.
-func linuxProcComm(pid int) (string, bool) {
-	raw, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "comm"))
-	if err != nil {
-		return "", false
-	}
-	return strings.TrimSpace(string(raw)), true
-}
 
 // linuxDescendantClosure expands roots to roots-plus-their-transitive-
 // descendants by building a pid->ppid map from every /proc/<pid>/stat entry,
@@ -75,7 +30,7 @@ func linuxDescendantClosure(roots []int) []int {
 	}
 	pidToPPID := make(map[int]int)
 	for _, pid := range tmuxkit.Pids() {
-		if ppid, ok := linuxProcPPID(pid); ok {
+		if ppid, ok := tmuxkit.ProcPPID(pid); ok {
 			pidToPPID[pid] = ppid
 		}
 	}
@@ -166,7 +121,7 @@ func linuxHubHolders(dir string) []hubHolder {
 		if cwd != dir && !strings.HasPrefix(cwd, dir+string(filepath.Separator)) {
 			continue
 		}
-		name, _ := linuxProcComm(pid)
+		name, _ := tmuxkit.ProcComm(pid)
 		holders = append(holders, hubHolder{pid: pid, name: name})
 	}
 	return holders

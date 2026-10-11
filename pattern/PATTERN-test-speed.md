@@ -21,9 +21,9 @@ Tests stay fast: Tier 1 is offline and spawns nothing, no test waits out a produ
 
 | Gate | Runs |
 |---|---|
-| Card gate | tier 1 of the card's own packages through `lyx gate test`, then the comment lint |
+| Card gate | tier 1 of the card's own packages through `lyx gate test`, then the comment lint and the headroom lint |
 | Batch gate | `lyx gate test --tags integration` once per batch over the batch's packages, each failing on a tmux server socket its end-of-package check finds |
-| Webster-Burler round gate | the comment lint, then the impacted-set command, or the plan's verify wherever the impacted set cannot narrow; the `tmux` and `llm` tiers are compiled by its `go vet` steps and run only as below |
+| Webster-Burler round gate | the headroom lint when told a merge base, then the comment lint, then the impacted-set command, or the plan's verify wherever the impacted set cannot narrow; the `tmux` and `llm` tiers are compiled by its `go vet` steps and run only as below |
 | Webster-Burler round gate, while a Publish failure record is present | the failing tests the record names, and for a `publish_verify` failure an impacted-set `tmux` pass, to confirm the fix |
 | Webster's gate, Publish, Finalize | the plan's `## verify:` in full: build, vet under each tag, the untagged tier, then the `integration` tier |
 | Publish, after the plan verify | landing config's `publish_verify`, where the repo sets it: the `tmux` tier |
@@ -97,7 +97,7 @@ Bound: a forged value misleads only an ungated raw run, since `lyx gate test` se
 
 - Each package has a budget: the most top-level `func Test…` functions its `_test.go` files may hold, counted under every build tag.
 - The budgets live in `cmd/lyx/testdata/test-budget.yaml`, one row per package directory, pinned at the `test-tiers` after-state.
-- `cmd/lyx/testbudget_test.go` fails, naming the package, its count and its budget, when a package exceeds its row or has tests and no row.
+- `cmd/lyx/testbudget_test.go` fails, naming the package, its count and its budget, when a package exceeds its row or has tests and no row, and names the value to set the row to.
   A count below the budget passes, and so does a row whose package has no tests left.
 - A raise is a one-line edit in the same commit as the tests that need it, so the guard forces a visible, reviewed decision and blocks nothing else.
 - Wall time is not pinned, and the count is not compared with `cmd/testtiming`'s `TESTS` column.

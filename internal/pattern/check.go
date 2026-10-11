@@ -20,6 +20,9 @@ const (
 	// MaxOverviewBytes caps the overview's size.
 	MaxOverviewBytes = 16 * 1024
 
+	// HeadroomBytes is the line a branch's own growth of the overview must not cross, 5% below the cap.
+	HeadroomBytes = MaxOverviewBytes * 95 / 100
+
 	// MaxEntryLineChars caps one entry line's length in characters.
 	MaxEntryLineChars = 320
 
@@ -43,6 +46,9 @@ const (
 	KindUnresolvedLink   = "unresolved-link"
 	KindWrongLink        = "wrong-link"
 	KindOrphanBackground = "orphan-background"
+
+	// KindOverviewHeadroom is reported by Headroom, never by Check.
+	KindOverviewHeadroom = "overview-headroom"
 )
 
 var (
@@ -76,7 +82,7 @@ func Check(root fs.FS) []Finding {
 	}
 
 	if len(data) > MaxOverviewBytes {
-		add(KindOversizeOverview, overviewFileName, 0, "overview is %d bytes, over the %d cap", len(data), MaxOverviewBytes)
+		add(KindOversizeOverview, overviewFileName, 0, "overview is %d bytes, %d over the %d cap", len(data), len(data)-MaxOverviewBytes, MaxOverviewBytes)
 	}
 	if strings.TrimSpace(string(data)) == "" {
 		add(KindEmptyOverview, overviewFileName, 0, "overview is empty or whitespace-only")

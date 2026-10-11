@@ -72,6 +72,12 @@
 // Check enforces the shape on an fs.FS holding the root, and the real file is checked under `go test`.
 // It caps the overview at MaxOverviewBytes and an entry line at MaxEntryLineChars,
 // and reports an entry that continues onto a second line, an empty overview and an overview with no entry.
+// MaxOverviewBytes is a hard cap that Check enforces on any tree, and its finding names the bytes over it.
+// HeadroomBytes is a line 5% below the cap, and Headroom binds growth to it:
+// Given the overview at a base and at the head, it fails when the head is longer than both the base and the line.
+// It names the smallest cut that passes: the head size minus the larger of the base size and the line.
+// The line binds a branch's own change, so a base already above it is told to cut only the branch's growth.
+// A merged tree answers only to the cap.
 // PATTERN text states rules for the code only:
 // it never says how an agent, a run, a stencil or a workflow uses it.
 // Nothing in the render path calls Check, so Directive inlines a malformed overview verbatim.
