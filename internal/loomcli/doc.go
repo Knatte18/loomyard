@@ -14,6 +14,10 @@
 // a second invocation while a driver runs ensures the substrate instead.
 //
 // A live loom driver parked at a hand-back is resumed by typing one line into its pane, and start refuses after a bounded wait when that pane is not ready, since the driver may be busy having resumed on its own.
+// A pane that holds a draft, an active operator or another busy reading is refused with the retryable kind `driver_busy`, the park marker kept, and the message names the draft and the way forward;
+// a resume line that never appeared stays a non-retryable refusal.
+// The stop-report path in the resume line is picked once per park and kept in a resume-report file beside the park marker, keyed to the marker's content, so every rerun against one park types the identical line;
+// a landed resume or a fresh spawn removes the file.
 // A live loom driver over a run halted at a hand-back (awaiting, blocked, paused or failed) that has not yet written its park marker is still writing its stop report, so start refuses with the kind `driver_not_parked`;
 // a live driver over a running run is left working.
 // Before spawning or resuming a driver, start refuses with the kind `merge_in_progress` over an unfinished merge, naming the conflicted paths and the remedy, the fabric verbs for a fabric merge and git for one fabric did not start.
@@ -48,7 +52,7 @@
 //   - awaiting at any other row: refused, naming `lyx loom approve` or `lyx loom reject`, after which a batten run watching the child resumes it, or `lyx batten run <slug>` from the prime when none does.
 //   - running: a no-op success when the driver is live or holds the run lock, and refused as a halted run otherwise.
 //   - halted with the run lock held, or with a live driver and no park marker: refused with the kind `driver_not_parked`, to retry shortly.
-//   - halted with a live driver and a park marker: resumed, refused with `merge_in_progress` over an unfinished merge under start's Publish and Finalize exception.
+//   - halted with a live driver and a park marker: resumed, refused with `merge_in_progress` over an unfinished merge under start's Publish and Finalize exception, and with `driver_busy` when the driver's pane would not take the resume line.
 //   - halted with no live driver: refused over an unfinished merge with `merge_in_progress`, otherwise naming `lyx batten run <slug>` from the prime and then resume for a dead strand, and `lyx loom start` for a retiring strand or none.
 //
 // The driver strand is read from reed's directory, which still lists a session that died with the machine, never from the run's seed.
