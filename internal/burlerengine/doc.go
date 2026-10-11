@@ -55,11 +55,20 @@
 // It sets ForkSubagents exactly when the profile names a cluster fan.
 // The fixer is the chair seat and never forks.
 // The fixer explores the target while the review is written.
-// It then runs `lyx burler await-review` on the ready marker until it reports ready, reads the review, validates each finding against the code and the fasit, and fixes it.
+// It then runs `lyx shuttle await` on the ready marker inside its turn until it reports ready, reads the review, validates each finding against the code and the fasit, and fixes it.
 // Its spec declares the fixer-report as its only output file.
 // Its gate is the table's gate, RunOpts.Gate with every entry wrapped by repairReportBeforeGate.
 // The fixer is the round's only friction-note writer.
 // RunOpts.Review and RunOpts.Fix pick each seat's model, effort and version.
+//
+// # The seat channel
+//
+// The two seat stencils state Burler's own channel between the seats, narrower than the shared seat directives, which neither stencil includes.
+// The fixer waits inside its turn and never ends its turn to await the reviewer, and the seats engine's up line opens nothing.
+// It may message the reviewer only once the ready marker exists, an existing marker standing in for the up line, and only to ask what an accepted finding means or rests on.
+// The reviewer sends the fixer nothing unprompted, never asks it to wrap up, answers only by message, writes no file after its review, and a reply only explains a finding the accepted review already holds.
+// A reply is advice: the fixer still validates every finding, a dispute still needs cited evidence, and it acts on nothing a reply raises beyond the accepted review.
+// These rules are stencil-enforced only; the engine catches a fixer done before the marker and any edit to the review file.
 //
 // # The handoff
 //

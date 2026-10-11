@@ -30,6 +30,7 @@ func reviewOrchestratorMarkerValues() map[string]string {
 		"instruction_1_path": "/tmp/instruction-1-explore.md",
 		"instruction_2_path": "/tmp/instruction-2-review.md",
 		"review_path":        "/tmp/review.md",
+		"chair_name":         "tst:slug:burler-chair",
 		"edit_directive":     "edit directive placeholder",
 	}
 }
@@ -42,6 +43,7 @@ func fixOrchestratorMarkerValues() map[string]string {
 		"instruction_3_path": "/tmp/instruction-3-fix.md",
 		"review_path":        "/tmp/review.md",
 		"ready_marker_path":  "/tmp/review.md.ready",
+		"advisor_names":      "tst:slug:burler-advisor-1",
 		"edit_directive":     "edit directive placeholder",
 	}
 }
@@ -97,14 +99,14 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 			template:        stencils.BurlerTemplateReviewOrchestrator,
 			values:          reviewOrchestratorMarkerValues(),
 			optional:        []string{"parent_directive"},
-			requiredMarkers: []string{"instruction_1_path", "instruction_2_path", "review_path"},
+			requiredMarkers: []string{"instruction_1_path", "instruction_2_path", "review_path", "chair_name"},
 		},
 		{
 			name:            "fix orchestrator",
 			template:        stencils.BurlerTemplateFixOrchestrator,
 			values:          fixOrchestratorMarkerValues(),
 			optional:        []string{"parent_directive"},
-			requiredMarkers: []string{"instruction_1_path", "review_format_path", "instruction_3_path", "review_path", "ready_marker_path"},
+			requiredMarkers: []string{"instruction_1_path", "review_format_path", "instruction_3_path", "review_path", "ready_marker_path", "advisor_names"},
 		},
 		{
 			name:            "instruction 1 (explore)",

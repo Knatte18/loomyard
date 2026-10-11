@@ -90,12 +90,12 @@ var LoomTemplateParentReviewDelivery []byte
 //go:embed loom/loom-template-parent-review-brief.md
 var LoomTemplateParentReviewBrief []byte
 
-// BurlerTemplateReviewOrchestrator is burler's shipped-default reviewer orchestrator prompt.
+// BurlerTemplateReviewOrchestrator is burler's shipped-default reviewer seat stencil, the required advisor of a round's seat table.
 //
 //go:embed burler/burler-template-review-orchestrator.md
 var BurlerTemplateReviewOrchestrator []byte
 
-// BurlerTemplateFixOrchestrator is burler's shipped-default fixer orchestrator prompt.
+// BurlerTemplateFixOrchestrator is burler's shipped-default fixer seat stencil, the chair of a round's seat table.
 //
 //go:embed burler/burler-template-fix-orchestrator.md
 var BurlerTemplateFixOrchestrator []byte

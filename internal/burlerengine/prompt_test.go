@@ -254,7 +254,7 @@ func TestComposePrompt_MinimalProfile(t *testing.T) {
 	requireContains(t, reviewer, testRoundFilePaths.Review)
 	requireContains(t, fixer, testRoundFilePaths.FixerExplore)
 	requireContains(t, fixer, testRoundFilePaths.Fix)
-	requireContains(t, fixer, "lyx burler await-review "+p.ReadyMarkerPath)
+	requireContains(t, fixer, "lyx shuttle await "+p.ReadyMarkerPath)
 	requireContains(t, fixer, testRoundFilePaths.Review)
 	requireNotContains(t, reviewer, p.ReadyMarkerPath)
 
