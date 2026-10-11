@@ -132,7 +132,8 @@ func TestOpenWindow(t *testing.T) {
 				return
 			}
 			wantArgv := []string{"new-window", "-d", "-P", "-F", "#{window_id}", "-t", exactSessionWindowTarget(e.SessionName()), "-n", name, wantCommand,
-				";", "set-option", "-w", "-t", exactSessionWindowTarget(e.SessionName()) + "=" + name, "remain-on-exit", "off"}
+				";", "set-option", "-w", "-t", exactSessionWindowTarget(e.SessionName()) + "=" + name, "remain-on-exit", "off",
+				";", "set-option", "-w", "-t", exactSessionWindowTarget(e.SessionName()) + "=" + name, "@lyx_hidden", "1"}
 			if !slices.Equal(newCalls[0], wantArgv) {
 				t.Errorf("new-window argv = %v, want %v", newCalls[0], wantArgv)
 			}

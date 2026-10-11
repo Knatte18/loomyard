@@ -18,7 +18,7 @@ This list holds every `lyx` command you may use, and `lyx <command> --help` give
 ## The run loop
 
 1. Start the run from the prime with `lyx batten run <slug> --window`.
-   It starts the batten run in its own tmux window of your reed session and returns at once, so the session's window list then names every run in flight.
+   It starts the batten run in its own tmux window of your reed session and returns at once; that window gets no status-bar button, so watch the run with `lyx batten status <slug>`.
    Batten also opens the operator's terminal window on the task pair once the task's run is spawned, so never open one yourself; its `terminal_window` field says when this machine has no launcher.
    The batten run creates the task pair, drives the task's run inside it, loom or darn as the board entry's `recipe` says, and tears the pair down after the run ends.
    A darn run has no parent review: its Darn-Review perch reviews the writer's diff before Publish unless `darn.yaml`'s `review_max_bounces` is 0, and PR-Gate is the operator's review point, where a reject re-spawns the darn writer with the findings.

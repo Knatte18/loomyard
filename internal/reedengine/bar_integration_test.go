@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
-// barFixture is a session with Selvage, two strand panes (alpha in the review segment, beta in plan), a second window and a second session, with a client attached.
+// barFixture is a session with Selvage, two strand panes (alpha in the review segment, beta in plan), a second window, a window carrying @lyx_hidden and a second session, with a client attached.
 type barFixture struct {
 	e                         *Engine
 	client                    string
@@ -42,6 +42,12 @@ func newBarFixture(t *testing.T) *barFixture {
 	}
 	if err := e.tmux.run("new-window", "-d", "-t", exactSessionWindowTarget(e.SessionName()), "-n", "extra"); err != nil {
 		t.Fatalf("new-window: %v", err)
+	}
+	if err := e.tmux.run("new-window", "-d", "-t", exactSessionWindowTarget(e.SessionName()), "-n", "hidden"); err != nil {
+		t.Fatalf("new-window hidden: %v", err)
+	}
+	if err := e.tmux.run("set-option", "-w", "-t", exactSessionWindowTarget(e.SessionName())+"=hidden", "@lyx_hidden", "1"); err != nil {
+		t.Fatalf("set-option @lyx_hidden: %v", err)
 	}
 	if err := e.tmux.run("new-session", "-d", "-s", "a-very-long-session-name"); err != nil {
 		t.Fatalf("new-session: %v", err)
@@ -103,6 +109,9 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 	}
 	if !strings.Contains(line, "range=window|1 bg=colour236 fg=white] extra ") {
 		t.Errorf("line 1 = %q, want the non-current window button unlit", line)
+	}
+	if strings.Contains(line, " hidden ") {
+		t.Errorf("line 1 = %q, want no button for the window carrying @lyx_hidden", line)
 	}
 
 	// Zooming alpha unlights VIEW and lights exactly alpha's button.
