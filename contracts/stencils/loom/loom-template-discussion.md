@@ -8,6 +8,8 @@
      Every marker below is a top-level {{.X}} substitution;
      stencil.FillOptional requires the four original markers non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). pattern_directive and friction_directive are the two optional markers: each is filled via stencil.FillOptional and renders as nothing when its own tier is inactive (PATTERN for pattern_directive, Tier 2 for friction_directive).
      parent_directive is a third optional marker, rendered by internal/parentdirective.
+     twill_directive and twill_write_scope are two more optional markers, rendered by internal/twilldirective through internal/loomengine;
+     each sits on the line that would otherwise be blank, so an empty value leaves the blank line and the prompt's bytes unchanged.
      edit_directive is a required marker, rendered unconditionally by internal/editdirective.
      The literal `{` / `}` characters around {{.slug}} in the board-read example below are ordinary JSON punctuation, not template syntax — only `{{` begins a template action. -->
 
@@ -75,7 +77,7 @@ Apply YAGNI: do not design for a hypothetical requirement nobody asked for.
 ## Step 4 — How to get answers
 
 {{.mode_rules}}
-
+{{.twill_directive}}
 ## Step 5 — Write the two output files
 
 Once the design is settled, write BOTH of the following files.
@@ -160,7 +162,7 @@ You are a **design** agent. The only files you create or modify in this session 
 
 - `{{.decision_record_path}}`
 - `{{.support_log_path}}`
-
+{{.twill_write_scope}}
 Two narrow carve-outs apply, each only when the gate's message asks for it:
 
 - running `lyx loom review delivered` when a delivery prompt asks;

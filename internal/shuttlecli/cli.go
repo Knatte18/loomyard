@@ -5,6 +5,8 @@
 // invocation, into a receiver every verb (run.go, interrupt.go, send.go, state.go) closes over, so no
 // subcommand re-resolves geometry, config, or engine construction itself.
 // The verbs are run, interrupt, send and the read-only state, which lists the session state of each running run.
+// The read-only await, the capped wait on one or more files, is implemented in await.go.
+// await is the verb that skips the resolution, so it runs the same with no hub, git repository, config or engine.
 
 package shuttlecli
 
@@ -34,6 +36,7 @@ type shuttleCLI struct {
 // Command returns the cobra command tree for the shuttle module.
 // The parent command carries a PersistentPreRunE that resolves geometry and engines, skipping
 // resolution when the group command itself is invoked (no git repo required).
+// The await verb skips it too, since it stats told paths and needs no geometry, config or engine.
 func Command() *cobra.Command {
 	c := &shuttleCLI{}
 
@@ -54,7 +57,7 @@ provider specifics.`,
 			// listing or unknown-subcommand error path via GroupRunE), skip
 			// cwd/layout/config/engine resolution so that neither path
 			// requires a git repository to be present.
-			if cmd.Name() == "shuttle" {
+			if cmd.Name() == "shuttle" || cmd.Name() == awaitVerb {
 				return nil
 			}
 
@@ -108,7 +111,7 @@ provider specifics.`,
 		},
 	}
 
-	parent.AddCommand(c.runCmd(), c.interruptCmd(), c.sendCmd(), c.stateCmd())
+	parent.AddCommand(c.runCmd(), c.interruptCmd(), c.sendCmd(), c.stateCmd(), c.awaitCmd())
 
 	return parent
 }

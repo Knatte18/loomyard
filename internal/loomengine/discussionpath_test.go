@@ -49,6 +49,9 @@ func TestDiscussionPaths(t *testing.T) {
 			if got, want := DiscussionSupportLog(l), filepath.Join(wantDir, "support-log.md"); got != want {
 				t.Errorf("DiscussionSupportLog() = %q; want %q", got, want)
 			}
+			if got, want := DiscussionReadyMarker(l), filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "discussion", "decision-record.md.ready"); got != want {
+				t.Errorf("DiscussionReadyMarker() = %q; want %q", got, want)
+			}
 			if got, want := DiscussionAdvisorNotes(l, 2), filepath.Join(wantDir, "advisor-2.md"); got != want {
 				t.Errorf("DiscussionAdvisorNotes(2) = %q; want %q", got, want)
 			}

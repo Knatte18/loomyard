@@ -26,6 +26,8 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"orch-template-role", OrchTemplateRole, []string{"command_index"}},
 		{"seat-directive-chair", SeatDirectiveChair, []string{"advisor_names", "inputs", "output_files"}},
 		{"seat-directive-advisor", SeatDirectiveAdvisor, []string{"chair_name", "output_files", "seat_name"}},
+		{"twill-directive", TwillDirective, []string{"disposition_place", "format_step", "lens_list", "ready_marker", "reviewed_files", "rubric_path", "self_check_command", "self_check_step"}},
+		{"twill-write-scope", TwillWriteScope, []string{"ready_marker"}},
 		{"loom-template-discussion-chair", LoomTemplateDiscussionChair, nil},
 		{"loom-template-discussion-advisor", LoomTemplateDiscussionAdvisor, []string{"decision_record_path", "edit_directive", "output_files", "parent_directive", "pattern_directive", "slug", "support_log_path"}},
 	}
