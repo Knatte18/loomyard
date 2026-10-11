@@ -32,6 +32,8 @@ func TestCheck(t *testing.T) {
 		want []string // "kind:subject"
 		// wantLine is the line of the one expected finding; zero leaves it unasserted.
 		wantLine int
+		// wantMessage is the message of the one expected finding; empty leaves it unasserted.
+		wantMessage string
 	}{
 		{
 			name: "bad name",
@@ -58,6 +60,8 @@ func TestCheck(t *testing.T) {
 			name: "oversize overview",
 			fsys: fstest.MapFS{"PATTERN.md": &fstest.MapFile{Data: []byte(entryLine("PATTERN-a", "") + "\n" + strings.Repeat("\n", MaxOverviewBytes))}},
 			want: []string{KindOversizeOverview + ":PATTERN.md"},
+			wantMessage: fmt.Sprintf("overview is %d bytes, %d over the %d cap",
+				len(entryLine("PATTERN-a", ""))+1+MaxOverviewBytes, len(entryLine("PATTERN-a", ""))+1, MaxOverviewBytes),
 		},
 		{
 			name: "empty overview",
@@ -120,6 +124,9 @@ func TestCheck(t *testing.T) {
 			}
 			if tt.wantLine != 0 && findings[0].Line != tt.wantLine {
 				t.Errorf("finding line = %d, want %d", findings[0].Line, tt.wantLine)
+			}
+			if tt.wantMessage != "" && findings[0].Message != tt.wantMessage {
+				t.Errorf("finding message = %q, want %q", findings[0].Message, tt.wantMessage)
 			}
 		})
 	}
