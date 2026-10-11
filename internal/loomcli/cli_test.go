@@ -177,6 +177,39 @@ func loomVerbCommand(c *loomCLI, verb string) *cobra.Command {
 	panic("loomVerbCommand: no shedverbs command named " + verb)
 }
 
+// TestLoomVerbHelp_NamesBothSeedingRoutes asserts the step and run help name "lyx loom start" and the driverless seed, the seed before the first "lyx loom step",
+// and that step's help does not claim it bootstraps exactly as start does.
+func TestLoomVerbHelp_NamesBothSeedingRoutes(t *testing.T) {
+	t.Parallel()
+	const driverlessSeed = "lyx shed seed self --recipe loom --driver go --param parent=<parent-branch>"
+	tests := []struct {
+		verb       string
+		wantAbsent string
+		wantExtra  string
+	}{
+		{verb: "step", wantAbsent: `exactly as "lyx loom start" does`, wantExtra: "refuses without one"},
+		{verb: "run"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.verb, func(t *testing.T) {
+			t.Parallel()
+			long := strings.Join(strings.Fields(loomVerbCommand(&loomCLI{}, tt.verb).Long), " ")
+			wants := []string{"lyx loom start", driverlessSeed, "parent_branch", "lyx loom step", tt.wantExtra}
+			for _, want := range wants {
+				if !strings.Contains(long, want) {
+					t.Errorf("%s help lacks %q:\n%s", tt.verb, want, long)
+				}
+			}
+			if seed, step := strings.Index(long, driverlessSeed), strings.Index(long, "lyx loom step"); seed < 0 || step < seed {
+				t.Errorf("%s help names \"lyx loom step\" at %d before the driverless seed at %d", tt.verb, step, seed)
+			}
+			if tt.wantAbsent != "" && strings.Contains(long, tt.wantAbsent) {
+				t.Errorf("%s help still holds %q", tt.verb, tt.wantAbsent)
+			}
+		})
+	}
+}
+
 // TestVerbRefusals covers the run verb's seed-missing pre-flight, the pause verb's absent-file
 // refusal, and the status verb's !found refusal. All three are driven directly against the leaf
 // command shedverbs.Verbs returns for a hand-populated *loomCLI -- never through the full
@@ -188,11 +221,14 @@ func TestVerbRefusals(t *testing.T) {
 		name       string
 		verb       string
 		wantRemedy string
+		// wantAlso, when set, is a second remedy the output must hold.
+		wantAlso string
 	}{
 		{
 			name:       "Run_SeedMissing",
 			verb:       "run",
 			wantRemedy: `lyx loom start`,
+			wantAlso:   `lyx loom step`,
 		},
 		{
 			name:       "Pause_AbsentFile",
@@ -227,6 +263,9 @@ func TestVerbRefusals(t *testing.T) {
 			}
 			if !strings.Contains(out.String(), tt.wantRemedy) {
 				t.Errorf("%s: output missing remedy %q; got: %q", tt.name, tt.wantRemedy, out.String())
+			}
+			if tt.wantAlso != "" && !strings.Contains(out.String(), tt.wantAlso) {
+				t.Errorf("%s: output missing remedy %q; got: %q", tt.name, tt.wantAlso, out.String())
 			}
 		})
 	}

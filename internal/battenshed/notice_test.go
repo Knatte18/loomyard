@@ -320,11 +320,15 @@ func TestNotice_DeadDriverWhileRunning(t *testing.T) {
 	h := newNoticeHarness(t)
 	p := h.producer()
 	h.alive = false
+	h.setStatus(shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Write"})
 
 	h.call(p)
 	h.call(p)
-	if len(h.notified) != 1 || !strings.Contains(h.notified[0], "driver strand is dead") || !strings.Contains(h.notified[0], "since ") || !strings.Contains(h.notified[0], "history 0") {
-		t.Fatalf("notified = %v; want exactly one dead-driver notice with its since and history", h.notified)
+	if len(h.notified) != 1 || !strings.Contains(h.notified[0], "running at Plan-Write; driver strand is dead") || !strings.Contains(h.notified[0], "since ") || !strings.Contains(h.notified[0], "history 0") {
+		t.Fatalf("notified = %v; want exactly one dead-driver notice leading with the child's state and row, with its since and history", h.notified)
+	}
+	if strings.Contains(h.notified[0], "while the child is running") {
+		t.Fatalf("notified = %v; want the state to say the child is running, not the condition", h.notified)
 	}
 }
 
@@ -332,6 +336,7 @@ func TestNotice_QuietOnlyForRunningChildWithLiveDriver(t *testing.T) {
 	t.Run("IdleAgentsGiveOneAfterTheWindow", func(t *testing.T) {
 		h := newNoticeHarness(t)
 		p := h.producer()
+		h.setStatus(shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Write"})
 		h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now()}, {Producer: "t:task:review", LastActivity: h.clock.Now().Add(-time.Hour)}}
 		h.clock.advance(44 * time.Minute)
 		h.call(p)
@@ -341,8 +346,8 @@ func TestNotice_QuietOnlyForRunningChildWithLiveDriver(t *testing.T) {
 		h.clock.advance(time.Minute)
 		h.call(p)
 		h.call(p)
-		if len(h.notified) != 1 || !strings.Contains(h.notified[0], "agents idle for 45m") {
-			t.Fatalf("notified = %v; want exactly one quiet notice measured from the newest run", h.notified)
+		if len(h.notified) != 1 || !strings.Contains(h.notified[0], "running at Plan-Write; agents idle for 45m") || strings.Contains(h.notified[0], "while the child is running") {
+			t.Fatalf("notified = %v; want exactly one quiet notice leading with the child's state and row, measured from the newest run", h.notified)
 		}
 	})
 
@@ -542,6 +547,7 @@ func TestSleepGap(t *testing.T) {
 func TestNotice_APIErrorStall(t *testing.T) {
 	h := newNoticeHarness(t)
 	p := h.producer()
+	h.setStatus(shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Write"})
 	stall := func() {
 		h.runs = []AgentActivity{
 			{Producer: "t:task:impl", LastActivity: h.clock.Now(), APIError: true, APIErrorText: "overloaded\nplease retry"},
@@ -558,8 +564,8 @@ func TestNotice_APIErrorStall(t *testing.T) {
 	h.clock.advance(5 * time.Second)
 	h.call(p)
 	h.call(p)
-	if len(h.notified) != 1 || !strings.Contains(h.notified[0], "agent t:task:impl hit an API error: overloaded please retry") {
-		t.Fatalf("notified = %v; want exactly one api-error notice naming the producer and the one-line error", h.notified)
+	if len(h.notified) != 1 || !strings.Contains(h.notified[0], "running at Plan-Write; agent t:task:impl hit an API error: overloaded please retry") || strings.Contains(h.notified[0], "while the child is running") {
+		t.Fatalf("notified = %v; want exactly one api-error notice leading with the child's state and row, naming the producer and the one-line error", h.notified)
 	}
 
 	// Activity ends the episode, and a later stall is a new notice that outranks quiet however long it stands.

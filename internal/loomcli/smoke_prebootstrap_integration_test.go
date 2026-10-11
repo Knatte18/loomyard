@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
@@ -309,5 +310,49 @@ func TestLoomFailedReedUpRefuses(t *testing.T) {
 		t.Run("start refuses and spawns nothing", func(t *testing.T) {
 			requireStartRefusal(t, loc, worktree)
 		})
+	})
+
+	t.Run("wrong-parent seed", func(t *testing.T) {
+		loc, worktree := newBadReedUpFixture(t, func(t *testing.T, loc *lyxcwd.Location) {
+			t.Helper()
+			seed := shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo, Params: map[string]string{"parent": "wrong-branch"}}
+			if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, seed); err != nil {
+				t.Fatalf("WriteSeed(wrong-parent seed): %v", err)
+			}
+		})
+		recorded, found, err := fabricengine.ReadOrigin(loc)
+		if err != nil || !found {
+			t.Fatalf("ReadOrigin: found=%v err=%v", found, err)
+		}
+
+		out, exit, err := runLoomCLINoFatal(exe, worktree, verbTimeout, "loom", "step")
+		if err != nil {
+			t.Fatalf("lyx loom step: %v; output: %s", err, out)
+		}
+		if exit != 1 {
+			t.Fatalf("lyx loom step exit = %d; want 1; output: %s", exit, out)
+		}
+		var env map[string]any
+		for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+			var candidate map[string]any
+			if json.Unmarshal([]byte(line), &candidate) == nil {
+				env = candidate
+			}
+		}
+		if env == nil || env["kind"] != "unseeded" {
+			t.Errorf("envelope kind = %v; want \"unseeded\"; output: %s", env["kind"], out)
+		}
+		message, _ := env["error"].(string)
+		for _, want := range []string{
+			"rm " + shedrun.SeedFile(loc, shedrun.SelfRunID),
+			"lyx shed seed self --recipe loom --driver go --param parent=" + recorded.ParentBranch,
+		} {
+			if !strings.Contains(message, want) {
+				t.Errorf("step error lacks %q; got: %s", want, message)
+			}
+		}
+		if strings.Contains(message, "keep the existing seed") {
+			t.Errorf("step error still offers to keep the existing seed; got: %s", message)
+		}
 	})
 }

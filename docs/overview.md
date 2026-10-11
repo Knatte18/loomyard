@@ -542,7 +542,8 @@ User-facing modules each get one `lyx <module>` namespace:
   uncommitted content in the task worktree itself keeps fabric's refusal, and neither is ever `--force`.
   A fresh pair's records branch starts without its parent's `_lyx/shed/` run records, which fabric's `add` drops in the pair's first records commit, so a child never sees prime's batten records or any other run's.
   `Worktree-Create` and `Worktree-Teardown` wait for a prime lock another run holds, polling every 2 s for up to 10 min, and halt `blocked` only once that wait runs out.
-  `step` drives exactly one producer forward from the run's persisted current producer, seeding a fresh run first when none is persisted yet — the same single-producer primitive `lyx loom step` is.
+  `step` drives exactly one producer forward from the run's persisted current producer, seeding a fresh run first when none is persisted yet.
+  `lyx loom step` is the single-producer primitive of the same shape over a run that is already seeded.
   `run` and `step` carry `--driver` (batten's own, `go`-only: batten has no bootstrap verb, so `llm` is refused by name) and `--child-driver` (the driver the task worktree's own inner run uses, `llm` by default or `go`); both are recorded into the run's write-once seed at first seeding, and an explicitly typed flag that disagrees with an already-seeded run is refused rather than silently dropped.
   `Run-Shed` waits on its child inside its own call rather than bouncing once per poll: it checks the child's status file every `poll_interval_s` (2 s) and returns only for a state change, an arm event, a pause or a failed status stat, each a budget-exempt `Stuck` that is its own history entry.
   Anything costing a process or a multiplexer round trip runs at most once per `notice_probe_s` (30 s).

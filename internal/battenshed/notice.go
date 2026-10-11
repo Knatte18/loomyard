@@ -395,7 +395,7 @@ func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (notic
 		stamp := activityStamp{nanos: newest.UnixNano(), known: true}
 		w.observeClocks(now.UnixNano(), awake, stamp)
 		if idle := w.awakeSince(now, newest); p.noticeQuiet > 0 && !reading.waitLive && idle >= p.noticeQuiet {
-			text := fmt.Sprintf("no agent activity readable for %s while the child is running", idle.Round(time.Second))
+			text := fmt.Sprintf("no agent activity readable for %s", idle.Round(time.Second))
 			return noticeFinding{condition: noticeQuiet, stamp: stamp.nanos, text: text}, stamp
 		}
 		return noticeFinding{}, stamp
@@ -417,7 +417,7 @@ func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (notic
 		}
 	}
 	if idle := w.awakeSince(now, newest); p.noticeQuiet > 0 && !reading.waitLive && idle >= p.noticeQuiet {
-		text := fmt.Sprintf("agents idle for %s while the child is running", idle.Round(time.Second))
+		text := fmt.Sprintf("agents idle for %s", idle.Round(time.Second))
 		p.logSessionStatesAtNotice(reading.runs, noticeQuiet)
 		return noticeFinding{condition: noticeQuiet, stamp: stamp.nanos, text: text}, stamp
 	}
@@ -537,17 +537,17 @@ func (p *innerRunProducer) deliver(ctx context.Context, key, condition, line str
 	return false
 }
 
-// conditionText renders the condition as the words a notice carries; a state change reads as what the child's new state says happened.
+// conditionText renders the condition as the words a notice carries.
+// A state change reads as what the child's state says happened; every other condition leads with that state, then `; `, then its own text.
 func conditionText(finding noticeFinding, status shedengine.Status) string {
-	if finding.text != "" {
-		return finding.text
+	text := finding.text
+	if finding.condition == noticeDriverDead {
+		text = "driver strand is dead"
 	}
-	switch finding.condition {
-	case noticeDriverDead:
-		return "driver strand is dead while the child is running"
-	default:
+	if text == "" {
 		return haltText(status)
 	}
+	return haltText(status) + "; " + text
 }
 
 // saveEpisode writes keys to the marker unless they equal old.

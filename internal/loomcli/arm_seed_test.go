@@ -33,13 +33,17 @@ func TestResolveRunID(t *testing.T) {
 		verb        string
 		args        []string
 		wantRefusal bool
+		// wantDriverless is whether the refusal's remedy also names the driverless seed route, which only run and step on self offer.
+		wantDriverless bool
 		// wantRunID, when set, is the run-id the receiver is left addressing.
 		wantRunID string
 	}{
-		{name: "run refuses", verb: "run", wantRefusal: true},
-		{name: "step refuses", verb: "step", wantRefusal: true},
+		{name: "run refuses", verb: "run", wantRefusal: true, wantDriverless: true},
+		{name: "step refuses", verb: "step", wantRefusal: true, wantDriverless: true},
+		{name: "step on another run-id refuses with the start remedy alone", verb: "step", args: []string{"other"}, wantRefusal: true},
 		{name: "status refuses", verb: "status", wantRefusal: true},
 		{name: "pause refuses", verb: "pause", wantRefusal: true},
+		{name: "goto refuses", verb: "goto", wantRefusal: true},
 		{name: "start never refuses", verb: "start"},
 		{name: "validate-discussion never refuses", verb: "validate-discussion"},
 		{name: "validate-plan never refuses", verb: "validate-plan"},
@@ -68,8 +72,18 @@ func TestResolveRunID(t *testing.T) {
 			if err == nil {
 				t.Fatalf("resolveRunID(%q) = nil; want a refusal (no seed exists)", tt.verb)
 			}
-			if !strings.Contains(err.Error(), shedrun.SelfRunID) {
-				t.Errorf("resolveRunID(%q) error = %q; want it to name the addressed run-id %q", tt.verb, err.Error(), shedrun.SelfRunID)
+			if !strings.Contains(err.Error(), c.runID) {
+				t.Errorf("resolveRunID(%q) error = %q; want it to name the addressed run-id %q", tt.verb, err.Error(), c.runID)
+			}
+			if !strings.Contains(err.Error(), "lyx loom start") {
+				t.Errorf("resolveRunID(%q) error = %q; want it to name \"lyx loom start\"", tt.verb, err.Error())
+			}
+			const driverlessSeed = "lyx shed seed self --recipe loom --driver go --param parent=<parent-branch>"
+			if got := strings.Contains(err.Error(), driverlessSeed) && strings.Contains(err.Error(), "lyx loom step"); got != tt.wantDriverless {
+				t.Errorf("resolveRunID(%q) error = %q; names the driverless route = %v, want %v", tt.verb, err.Error(), got, tt.wantDriverless)
+			}
+			if !tt.wantDriverless && strings.Contains(err.Error(), "lyx shed seed") {
+				t.Errorf("resolveRunID(%q) error = %q; want no \"lyx shed seed\" route", tt.verb, err.Error())
 			}
 			// The pre-existing-worktree case shedrun.MissingSeedMessage documents.
 			if !strings.Contains(err.Error(), "no run is seeded yet") {

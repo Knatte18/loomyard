@@ -103,6 +103,9 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 	}
 	driver := resolveSeedDriver(existingSeed, seedFound)
 	if err := shedrun.WriteSeed(c.location, shedrun.SelfRunID, loomSeedFor(resolveSeedRecipe(existingSeed, seedFound), parent, driver)); err != nil {
+		if errors.Is(err, shedrun.ErrDisagreeingSeed) {
+			err = disagreeingSeedRefusal(shedrun.SeedFile(c.location, shedrun.SelfRunID), existingSeed, parent)
+		}
 		return "", "", bootstrapStageSeed, err
 	}
 
@@ -155,6 +158,13 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 	}
 
 	return parent, driver, bootstrapStageNone, nil
+}
+
+// disagreeingSeedRefusal renders the refusal for an existing seed at seedPath whose recipe, driver or params differ from the seed the bootstrap writes for the recorded parent.
+// It wraps shedrun.ErrDisagreeingSeed and ends in a way forward that clears the one file and re-seeds with the existing recipe and driver and the recorded parent, so following it cannot loop on the same refusal.
+func disagreeingSeedRefusal(seedPath string, existing shedrun.Seed, parent string) error {
+	return fmt.Errorf("%w: loom: the seed at %s records recipe %q, driver %q and params %v, which disagree with the recorded parent branch %q; way forward: rm %s, then lyx shed seed self --recipe %s --driver %s --param parent=%s",
+		shedrun.ErrDisagreeingSeed, seedPath, existing.Recipe, existing.Driver, existing.Params, parent, seedPath, existing.Recipe, existing.Driver, parent)
 }
 
 // resolveSeedDriver reads the effective driver seedAndCommitBootstrap's step 1b must write: the
