@@ -159,6 +159,43 @@ func TestPasteSubmit(t *testing.T) {
 	}
 }
 
+// TestActiveClientOnPane pins which client lines count as an active operator, and the quiet-window floor of a hand-built Config.
+// The floor sits here rather than in config_test.go because that file is an external test package and cannot reach operatorQuiet.
+func TestActiveClientOnPane(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(1787000100, 0)
+	quiet := 5 * time.Second
+
+	tests := []struct {
+		name    string
+		clients string
+		want    bool
+	}{
+		{"a client on the pane active 1 s ago is active", "%7 1787000099\n", true},
+		{"a client on the pane active 6 s ago is not", "%7 1787000094\n", false},
+		{"a client on another pane is not", "%8 1787000099\n", false},
+		{"an empty list is not", "", false},
+		{"a malformed line is skipped", "garbage\n%7 notanumber\n%7 1787000099\n", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := activeClientOnPane(tt.clients, "%7", now, quiet); got != tt.want {
+				t.Errorf("activeClientOnPane(%q) = %v; want %v", tt.clients, got, tt.want)
+			}
+		})
+	}
+
+	for _, seconds := range []int{0, -1} {
+		if got := operatorQuiet(Config{OperatorQuietS: seconds}); got != 5*time.Second {
+			t.Errorf("operatorQuiet(%d) = %v; want 5s", seconds, got)
+		}
+	}
+	if got := operatorQuiet(Config{OperatorQuietS: 9}); got != 9*time.Second {
+		t.Errorf("operatorQuiet(9) = %v; want 9s", got)
+	}
+}
+
 // TestSetWaitMark pins the exact tmux argument lists of a set and a clear, and the unknown-guid refusal.
 func TestSetWaitMark(t *testing.T) {
 	t.Parallel()

@@ -179,6 +179,72 @@ func injectBufferName() (string, error) {
 	return "lyx-inject-" + hex.EncodeToString(raw[:]), nil
 }
 
+// OperatorActive reports whether an attached client has been active on guid's live pane within the configured quiet window, and that window.
+// It is read-only: no reconcile, re-render, or persist.
+// A failed client listing is returned as the error, and a caller decides whether to hold its write on it.
+func (e *Engine) OperatorActive(guid string) (active bool, quiet time.Duration, err error) {
+	err = e.withOpLock(func() error {
+		if err := e.requireSessionLocked(); err != nil {
+			return err
+		}
+
+		st, err := e.loadOrInitStateLocked()
+		if err != nil {
+			return err
+		}
+
+		paneID, err := e.resolvePaneInThisSessionLocked(st, guid)
+		if err != nil {
+			return err
+		}
+
+		active, quiet, err = e.operatorActiveLocked(paneID)
+		return err
+	})
+	return active, quiet, err
+}
+
+// operatorActiveLocked is OperatorActive over an already-resolved paneID, for a caller that holds the op lock.
+func (e *Engine) operatorActiveLocked(paneID string) (active bool, quiet time.Duration, err error) {
+	quiet = operatorQuiet(e.cfg)
+	out, err := e.tmux.output("list-clients", "-t", exactSessionTarget(e.SessionName()), "-F", "#{pane_id} #{client_activity}")
+	if err != nil {
+		return false, quiet, fmt.Errorf("list clients: %w", err)
+	}
+	return activeClientOnPane(out, paneID, time.Now(), quiet), quiet, nil
+}
+
+// activeClientOnPane reports whether any line of clients, one "<pane_id> <client_activity epoch seconds>" per client, names paneID with an activity later than now minus quiet.
+// A malformed line is skipped.
+func activeClientOnPane(clients, paneID string, now time.Time, quiet time.Duration) bool {
+	threshold := now.Add(-quiet).Unix()
+	for _, line := range strings.Split(clients, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 || fields[0] != paneID {
+			continue
+		}
+		activity, err := strconv.ParseInt(fields[1], 10, 64)
+		if err != nil {
+			continue
+		}
+		if activity > threshold {
+			return true
+		}
+	}
+	return false
+}
+
+// defaultOperatorQuietS is the quiet window, in seconds, a Config without a positive operator_quiet_s takes.
+const defaultOperatorQuietS = 5
+
+// operatorQuiet returns cfg's operator quiet window, floored to the default for a zero or negative value.
+func operatorQuiet(cfg Config) time.Duration {
+	if cfg.OperatorQuietS <= 0 {
+		return defaultOperatorQuietS * time.Second
+	}
+	return time.Duration(cfg.OperatorQuietS) * time.Second
+}
+
 // SendKey sends a named key (e.g. "Enter") into guid's live pane.
 // Like SendText, it is pure transport with no reconcile, re-render, or persist.
 func (e *Engine) SendKey(guid, key string) error {
