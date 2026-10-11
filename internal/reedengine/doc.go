@@ -240,7 +240,12 @@
 // The guard invocation's exit status is only a warning, written to the booting command's stderr and logged with the path and tmux's own message, because one status carries the claim, the source and both pins.
 // The decisions are separate read-back round trips: the boot fails when its session is gone, naming the key, the variable, the path and the command to remove from the file (an untargeted `set destroy-unattached on`, a `kill-session`), or when either pin does not read `off`.
 // Nothing re-sources the file into a running server, so a changed value takes effect at the server's next start, and a starter whose boot ends between spawn and guard leaves the server unclaimed and file-less until then.
-// Windows parses the key and does none of it: psmux reads its own config at start.
+// Only sessions that count as reed's are seen by reed.
+// On a server whose claim is `sourced`, a session counts when it carries `@lyx_reed_session`; on any other server, every session counts, so Windows and servers started before the claim existed behave as before.
+// Every session read applies the rule: `list-sessions -f` through listSessionsArgv in Go (the watchdog's discovery, the pair teardown, the last-session check that ends the server, the session-less holder and zombie checks, the recorded-session classification and the next/previous session switch), and the same condition in the status bar's session row.
+// Teardown therefore ends the server, and any session the file created with it, when no reed session remains.
+// The bound: such a session is hidden from reed and lives until the server ends.
+// Windows parses the key and does none of it: psmux reads its own config at start, and the filter flag is never passed to its `list-sessions`.
 //
 // Pane enumeration: listPanes (overlay.go) always runs
 //

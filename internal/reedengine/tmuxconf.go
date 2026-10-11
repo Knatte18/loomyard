@@ -118,3 +118,16 @@ func (e *Engine) guardBootSessionLocked(identityBefore, confPath string) error {
 	}
 	return nil
 }
+
+// reedSessionFilter is the tmux format that is true for a session that counts as reed's.
+// On a server whose starter sourced an operator file (claim `sourced`), only a session carrying the reed tag counts; on any other server every session does, so a server that sourced nothing, or started before the claim existed, keeps listing everything.
+const reedSessionFilter = "#{||:#{!=:#{" + tmuxConfClaimedOption + "},sourced},#{" + reedSessionOption + "}}"
+
+// listSessionsArgv is the list-sessions invocation that prints format once per session that counts as reed's.
+// Off Windows it filters with reedSessionFilter; on Windows it lists every session, since no Windows boot claims a server and the multiplexer's support for the filter flag is unverified.
+func listSessionsArgv(goos, format string) []string {
+	if goos == "windows" {
+		return []string{"list-sessions", "-F", format}
+	}
+	return []string{"list-sessions", "-f", reedSessionFilter, "-F", format}
+}

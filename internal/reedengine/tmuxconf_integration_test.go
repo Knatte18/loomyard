@@ -1,6 +1,7 @@
-//go:build tmux && !windows
+//go:build tmux && linux
 
 // tmuxconf_integration_test.go proves against a real tmux server what an operator tmux config named by `tmux_conf` can and cannot change on a server reed starts.
+// It is linux-only because the status bar's session row is expanded for a client attached through the pty harness.
 
 package reedengine
 
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
@@ -216,6 +218,36 @@ func TestBoot_TmuxConf(t *testing.T) {
 		}
 		if !strings.Contains(warnings.String(), conf) {
 			t.Errorf("warnOut = %q, want it to carry %q", warnings.String(), conf)
+		}
+	})
+
+	t.Run("FileCreatedSessionIsHiddenAndNeverKeepsTheServerAlive", func(t *testing.T) {
+		conf := writeTmuxConf(t, "new-session -d -s operator")
+		e, _ := tmuxConfEngine(t, t.TempDir(), "worktree", conf)
+		if err := bootOwnServer(t, e); err != nil {
+			t.Fatalf("Up(): %v", err)
+		}
+		listed, err := ListSessions(e.cfg.Tmux, e.Socket())
+		if err != nil {
+			t.Fatalf("ListSessions: %v", err)
+		}
+		if len(listed) != 1 || listed[0] != e.SessionName() {
+			t.Errorf("ListSessions = %v, want only %q", listed, e.SessionName())
+		}
+		// The session loop needs a client to expand against: tmux's server exits on `#{S:}` without one.
+		startInPTY(t, append([]string{e.cfg.Tmux}, e.AttachArgv(120, 30)...), 120, 30)
+		waitForClientAttached(t, e, 15*time.Second)
+		client := strings.TrimSpace(mustTmuxOutput(t, e, "list-clients", "-F", "#{client_name}"))
+		bar := mustTmuxOutput(t, e, "display-message", "-c", client, "-p", "#{T:status-format[1]}")
+		if !strings.Contains(bar, e.SessionName()) || strings.Contains(bar, "operator") {
+			t.Errorf("status-format[1] = %q, want a button for %q and none for the file-created session", bar, e.SessionName())
+		}
+
+		if _, err := e.Down(); err != nil {
+			t.Fatalf("Down(): %v", err)
+		}
+		if _, err := ListSessions(e.cfg.Tmux, e.Socket()); !IsNoServer(err) {
+			t.Errorf("ListSessions after Down error = %v, want no server running", err)
 		}
 	})
 

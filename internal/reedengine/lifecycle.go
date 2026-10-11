@@ -486,7 +486,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 			break
 		}
 
-		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err == nil && strings.TrimSpace(out) != "" {
+		if out, err := e.tmux.output(listSessionsArgv(runtime.GOOS, "#{session_name}")...); err == nil && strings.TrimSpace(out) != "" {
 			logger.Warn("reed: tmux server up but session did not materialize", "socket", e.Socket(), "session", session, "attempt", attempt)
 			return false, nil, fmt.Errorf("tmux server is up but session %q did not materialize within %s", session, bootAttemptTimeout)
 		}
@@ -902,7 +902,7 @@ func (e *Engine) Down() (DownResult, error) {
 		// debug-logging batch — the same sessionless-holder reasoning the
 		// pre-boot check applies regardless).
 		var serverErr error
-		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err != nil || strings.TrimSpace(out) == "" {
+		if out, err := e.tmux.output(listSessionsArgv(runtime.GOOS, "#{session_name}")...); err != nil || strings.TrimSpace(out) == "" {
 			logger.Info("reed: tearing down tmux server", "socket", e.Socket(), "serverPID", serverPID)
 			// Best-effort — the more significant "server did not confirm
 			// gone" outcome is already covered at Warn by ensureServerGoneLocked
@@ -978,7 +978,7 @@ func (e *Engine) sessionlessSocketHolderPersists() bool {
 	for {
 		// A socket that lists sessions hosts a healthy shared server — never
 		// in scope for reaping, no matter what else is pending.
-		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err == nil && strings.TrimSpace(out) != "" {
+		if out, err := e.tmux.output(listSessionsArgv(runtime.GOOS, "#{session_name}")...); err == nil && strings.TrimSpace(out) != "" {
 			return false
 		}
 		if len(e.serverProcessesOnSocket()) == 0 {

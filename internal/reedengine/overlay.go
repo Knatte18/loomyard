@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 
@@ -130,9 +131,8 @@ func exactSessionWindowTarget(session string) string {
 // sessions BEFORE it has built any Engine for any of them — there is nothing yet to bind a method
 // call to; every other exported method hangs off *Engine and is bound to one session.
 // TmuxCmd.run and TmuxCmd.output stay unexported; this is
-// the one seam this package opens for that discovery, built on the identical
-// `tmux -L <socket> list-sessions -F '#{session_name}'` invocation five call sites in this
-// package already issue.
+// the one seam this package opens for that discovery.
+// Off Windows it lists only the sessions that count as reed's (reedSessionFilter): on a server whose starter sourced an operator tmux config, a session the file created is not listed.
 //
 // Telling ListSessions the binary rather than having it load a config keeps the Told-Geometry
 // Invariant intact from this side too: every session on one hub socket shares one tmux binary, so
@@ -164,7 +164,7 @@ func IsNoServer(err error) bool {
 // binary/socket strings — the split exists so a test can drive the parsing half through TmuxCmd's
 // execHook seam directly, without a live server.
 func listSessionsVia(cmd TmuxCmd) ([]string, error) {
-	out, err := cmd.output("list-sessions", "-F", "#{session_name}")
+	out, err := cmd.output(listSessionsArgv(runtime.GOOS, "#{session_name}")...)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +273,7 @@ func endSessionByNameVia(cmd TmuxCmd, shellPath, socketKey, sessionName string) 
 
 	// Tidy the server as Engine.Down does: an empty or failed list-sessions means no healthy sibling session remains.
 	// kill-server leaves the socket file behind, so it is removed once the server stops answering.
-	if out, err := cmd.output("list-sessions", "-F", "#{session_name}"); err != nil || strings.TrimSpace(out) == "" {
+	if out, err := cmd.output(listSessionsArgv(runtime.GOOS, "#{session_name}")...); err != nil || strings.TrimSpace(out) == "" {
 		logger.Info("reed: tearing down tmux server after ending session by name", "socket", socketKey, "session", sessionName)
 		if err := cmd.run("kill-server"); err != nil {
 			logger.Debug("reed: best-effort kill-server failed", "socket", socketKey, "err", err)
