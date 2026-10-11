@@ -210,12 +210,14 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 ## loom
 
 `lyx loom` drives the same shed verbs, so the shed section's rows apply to it unchanged, with `lyx loom` in place of `lyx shed`,
-except that loom's own seed is written by `lyx loom start`, which the seed-missing and status-missing rows below name instead.
+except that loom's own seed is written by `lyx loom start`, or without a driver by `lyx shed seed self --recipe loom --driver go --param parent=<parent-branch>`, which the `run` and `step` rows below name; the seed-missing and status-missing rows below name these routes instead of `lyx shed seed <run-id>`.
 The `validate-*` verbs' findings envelopes are each verb's verdict on its artifact, not refusals, so they have no row here.
 
 | Refusal | Trigger | Class | Way forward |
 |---|---|---|---|
-| seed missing | a loom verb addresses a run-id with no seed | correctness halt | run "lyx loom start" first to bootstrap this task |
+| seed missing: run or step on self | `lyx loom run` or `lyx loom step` addresses `self` with no seed | correctness halt | run "lyx loom start" first to bootstrap this task, or seed it without a driver with "lyx shed seed self --recipe loom --driver go --param parent=<parent-branch>" (<parent-branch> is the pair's recorded parent branch) and then run "lyx loom step" |
+| seed missing | `lyx loom status`, `pause` or `goto`, or `run` or `step` addressing another run-id, finds no seed at that run-id | correctness halt | run "lyx loom start" first to bootstrap this task |
+| run: status file missing | `lyx loom run` finds a seed and no status file, as after a driverless seed before any `step` | correctness halt | run "lyx loom start", or "lyx loom step" after a driverless seed, first to seed the status file |
 | status file missing | `lyx loom status` or `lyx loom approve` finds no status file | correctness halt | run "lyx loom start" first to bootstrap this task |
 | start/resume: hub config reconcile failed | a start verb's walk of the hub's config fails on a config file or a commit | correctness halt | fix the named file (or run `lyx config <module>` on it), then re-run this command |
 | start/resume: hub reconcile lock busy | another command holds the hub's reconcile lock past the wait | transient | re-run this command once it finishes |

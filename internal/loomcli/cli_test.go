@@ -221,11 +221,14 @@ func TestVerbRefusals(t *testing.T) {
 		name       string
 		verb       string
 		wantRemedy string
+		// wantAlso, when set, is a second remedy the output must hold.
+		wantAlso string
 	}{
 		{
 			name:       "Run_SeedMissing",
 			verb:       "run",
 			wantRemedy: `lyx loom start`,
+			wantAlso:   `lyx loom step`,
 		},
 		{
 			name:       "Pause_AbsentFile",
@@ -260,6 +263,9 @@ func TestVerbRefusals(t *testing.T) {
 			}
 			if !strings.Contains(out.String(), tt.wantRemedy) {
 				t.Errorf("%s: output missing remedy %q; got: %q", tt.name, tt.wantRemedy, out.String())
+			}
+			if tt.wantAlso != "" && !strings.Contains(out.String(), tt.wantAlso) {
+				t.Errorf("%s: output missing remedy %q; got: %q", tt.name, tt.wantAlso, out.String())
 			}
 		})
 	}

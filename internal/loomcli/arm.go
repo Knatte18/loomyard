@@ -107,10 +107,15 @@ func (c *loomCLI) resolveRunID(location *lyxcwd.Location, verb string, args []st
 	if err != nil {
 		return err
 	}
+	// A driverless seed gives status, pause and goto nothing to act on, and the bootstrap's seed-agreement check reads and writes only the self seed, so only run and step on self name that route.
+	remedy := `run "lyx loom start" first to bootstrap this task`
+	if (verb == "run" || verb == "step") && runID == shedrun.SelfRunID {
+		remedy = `run "lyx loom start" first to bootstrap this task, or seed it without a driver with "lyx shed seed self --recipe loom --driver go --param parent=<parent-branch>" (<parent-branch> is the pair's recorded parent branch) and then run "lyx loom step"`
+	}
 	// Rendered through shedrun.MissingSeedMessage, the shared renderer batch 1 card 3 declares, so
 	// this refusal words identically to battencli's own.
 	// KindlessRefusal keeps it kind-less on step too, since resolvePersistentPreRun reports it through shedverbs.ReportArmError.
-	return shedverbs.KindlessRefusal{Err: errors.New(shedrun.MissingSeedMessage("loom", runID, existing, `run "lyx loom start" first to bootstrap this task`))}
+	return shedverbs.KindlessRefusal{Err: errors.New(shedrun.MissingSeedMessage("loom", runID, existing, remedy))}
 }
 
 // resolveRecipe records on c the recipe the addressed run's seed names, shedrun.RecipeLoom when the run has no seed yet.
@@ -363,10 +368,10 @@ func ArmAt(location *lyxcwd.Location, verb string, runID string) (shedverbs.Spec
 // today's order, each step's error becoming a returned error the generic body reports on the
 // error envelope exactly as run's own inline handling did.
 func (c *loomCLI) loomPreRun(ctx context.Context) error {
-	// The status-file existence refusal, naming "lyx loom start" as the remedy: only that verb
-	// may seed, because only it owns the commit-before-precondition ordering the bootstrap needs.
+	// The status-file existence refusal, naming "lyx loom start" and "lyx loom step" as the remedies.
+	// The shared bootstrap of those two verbs seeds the status file, because it owns the commit-before-precondition ordering that seeding needs.
 	if _, err := os.Stat(c.shedPaths.StatusPath); err != nil {
-		return errors.New("loom: no status file at " + c.shedPaths.StatusPath + "; run \"lyx loom start\" first to bootstrap this task")
+		return errors.New("loom: no status file at " + c.shedPaths.StatusPath + "; run \"lyx loom start\", or \"lyx loom step\" after a driverless seed, first to seed the status file")
 	}
 	// The status file must be THIS task's own, for the same reason "lyx loom start" checks: a
 	// worktree forked from a task worktree inherits the old task's `_lyx` state, and the phase
