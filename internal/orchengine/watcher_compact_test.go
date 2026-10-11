@@ -634,3 +634,23 @@ func TestCycleRequest_RestartedWatcherMeasuresFromRequestTime(t *testing.T) {
 		t.Errorf("state = %+v, want the restarted watcher to time out from the request time", st)
 	}
 }
+
+func TestCompact_HeldCompactStaysUnconfirmedAndRetypesOnTheNextTick(t *testing.T) {
+	t.Parallel()
+
+	e := newCompactEnv(t)
+	e.injectHandoff()
+	e.s.compactErr = errHeld
+	e.finishNote()
+	if st := e.state(); st.Phase != PhaseCompacting || st.PhaseInjected {
+		t.Fatalf("state = %+v, want compacting with the /compact unconfirmed after a held send", st)
+	}
+	e.assertCompactCalls(1)
+
+	e.s.compactErr = nil
+	e.tick()
+	e.assertCompactCalls(2)
+	if st := e.state(); !st.PhaseInjected {
+		t.Errorf("state = %+v, want the /compact confirmed by the retry", st)
+	}
+}
