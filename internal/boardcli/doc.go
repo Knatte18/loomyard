@@ -5,6 +5,10 @@
 //   - `promote`, `prune`, `find`, `labels` and `retire-legacy`, plus the `rerender` and `sync` maintenance verbs, are built in `Command`.
 //   - `intake` (list, import, close) comes from `intakeCommand`.
 //
+// `prune` and `retire-legacy` are read-only dry runs without `--apply`.
+// Each prints the fields an applied run prints, filled with what it would change, plus `"applied": false`;
+// `prune` prints `removed` and `retire-legacy` prints `legacy_files`.
+//
 // A `PersistentPreRunE` resolves configuration once: it loads the hub's `<hub>/_board/_lyx/config/board.yaml` through `boardengine.LoadConfig`, whatever worktree the verb runs in, and derives the board data dir from the worktree layout.
 // The hidden `--board-path` flag overrides the data dir for the detached sync child and skips both,
 // so the config is path-only.

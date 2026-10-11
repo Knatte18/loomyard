@@ -320,7 +320,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"## Done\n" +
 				"\n" +
-				"Finished, awaiting `lyx board prune`.\n" +
+				"Finished, awaiting `lyx board prune --apply`.\n" +
 				"\n" +
 				"| # | Entry | Slug | Labels |\n" +
 				"| --- | --- | --- | --- |\n" +

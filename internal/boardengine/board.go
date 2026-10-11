@@ -293,9 +293,14 @@ func (b *Board) Promote(idOrSlug any) (Task, error) {
 
 // Prune removes every done entry under the write lock and returns the removed slugs;
 // the render that follows drops their design docs.
-func (b *Board) Prune() ([]string, error) {
+// With apply false it is a read-only dry run: the slugs a pruning run would remove are reported, and the store is neither saved nor rendered.
+func (b *Board) Prune(apply bool) ([]string, error) {
 	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
-		return store.Prune(), nil
+		removed := store.Prune()
+		if !apply {
+			return noWrite{result: removed}, nil
+		}
+		return removed, nil
 	}, nil)
 	if err != nil {
 		return nil, err
@@ -319,23 +324,34 @@ func (b *Board) Find(text string, labels []string) ([]BriefTask, error) {
 	return store.Find(text, labels), nil
 }
 
-// RetireLegacy ends the pre-upgrade compatibility window under the write lock.
-// It refuses when neither legacy file exists;
-// otherwise the load folds the last done marks and board.json is saved with legacy_done still in place.
+// RetireLegacy ends the pre-upgrade compatibility window under the write lock and returns the base names of the legacy files present, tasks file first.
+// It refuses when neither legacy file exists, whatever apply is.
+// With apply false it is a read-only dry run: the names are reported and nothing is saved, rendered or deleted.
+// With apply true the load folds the last done marks and board.json is saved with legacy_done still in place.
 // The legacy files and their swap locks are then deleted, and only after that is legacy_done dropped and board.json saved again.
 // A crash or a failed deletion therefore leaves the surviving legacy files beside an intact legacy_done, so a reload folds no mark twice and retire-legacy can be rerun.
-func (b *Board) RetireLegacy() error {
+func (b *Board) RetireLegacy(apply bool) ([]string, error) {
+	legacyNames := []string{legacyTasksFile, legacyNotesFile}
 	legacyPaths := []string{
 		filepath.Join(b.boardPath, legacyTasksFile),
 		filepath.Join(b.boardPath, legacyNotesFile),
 	}
 	var retired *Store
-	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
-		if !fileExists(legacyPaths[0]) && !fileExists(legacyPaths[1]) {
+	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
+		var present []string
+		for i, path := range legacyPaths {
+			if fileExists(path) {
+				present = append(present, legacyNames[i])
+			}
+		}
+		if len(present) == 0 {
 			return nil, fmt.Errorf("nothing to retire: neither %s nor %s exists in the board directory", legacyTasksFile, legacyNotesFile)
 		}
+		if !apply {
+			return noWrite{result: present}, nil
+		}
 		retired = store
-		return nil, nil
+		return present, nil
 	}, func() error {
 		for _, path := range legacyPaths {
 			for _, p := range []string{path, path + swapLockSuffix} {
@@ -350,5 +366,8 @@ func (b *Board) RetireLegacy() error {
 		}
 		return nil
 	})
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return result.([]string), nil
 }

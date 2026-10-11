@@ -141,27 +141,32 @@ Example:
 		}),
 	}
 
+	var pruneApply bool
 	pruneCmd := &cobra.Command{
 		Use:         "prune",
 		Short:       "remove every done task, clearing finished work off the board",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Remove every task whose status is done, strip the removed slugs from the remaining
-tasks' depends_on, and print the removed slugs. Takes no payload.
+		Long: `Without --apply, prune is a read-only dry run: it prints the slugs it would remove and changes nothing.
+With --apply it removes every task whose status is done, strips the removed slugs from the remaining
+tasks' depends_on, and prints the removed slugs. Takes no payload. The output carries "applied": true
+or false.
 
 Example:
-  lyx board prune`,
+  lyx board prune
+  lyx board prune --apply`,
 		Args: cobra.NoArgs,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			removed, err := b.Prune()
+			removed, err := b.Prune(pruneApply)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
 			if removed == nil {
 				removed = []string{}
 			}
-			return output.Ok(out, map[string]any{"removed": removed})
+			return output.Ok(out, map[string]any{"removed": removed, "applied": pruneApply})
 		}),
 	}
+	pruneCmd.Flags().BoolVar(&pruneApply, "apply", false, "remove the done tasks (default is dry-run/report)")
 
 	var findText bool
 	var findLabels []string
@@ -192,24 +197,30 @@ Examples:
 	findCmd.Flags().BoolVar(&findText, "text", false, "print the compact one-line-per-task listing instead of JSON")
 	findCmd.Flags().StringArrayVar(&findLabels, "label", nil, "keep only entries carrying this label; repeatable, all must match")
 
+	var retireLegacyApply bool
 	retireLegacyCmd := &cobra.Command{
 		Use:         "retire-legacy",
 		Short:       "delete the legacy tasks.json and notes.json files once no pre-upgrade lyx reads them",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `End the compatibility window with a pre-upgrade lyx: fold any last done marks from the
-legacy files into board.json, then delete tasks.json and notes.json. Errors when neither file
-exists. Takes no payload.
+		Long: `Without --apply, retire-legacy is a read-only dry run: it prints the legacy files it would delete
+under legacy_files and changes nothing.
+With --apply it ends the compatibility window with a pre-upgrade lyx: it folds any last done marks
+from the legacy files into board.json, then deletes tasks.json and notes.json. Errors when neither
+file exists. Takes no payload. The output carries "applied": true or false.
 
 Example:
-  lyx board retire-legacy`,
+  lyx board retire-legacy
+  lyx board retire-legacy --apply`,
 		Args: cobra.NoArgs,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if err := b.RetireLegacy(); err != nil {
+			legacyFiles, err := b.RetireLegacy(retireLegacyApply)
+			if err != nil {
 				return outputError(out, err.Error())
 			}
-			return outputSuccess(out)
+			return output.Ok(out, map[string]any{"legacy_files": legacyFiles, "applied": retireLegacyApply})
 		}),
 	}
+	retireLegacyCmd.Flags().BoolVar(&retireLegacyApply, "apply", false, "delete the legacy files (default is dry-run/report)")
 
 	rerenderCmd := &cobra.Command{
 		Use:         "rerender",
