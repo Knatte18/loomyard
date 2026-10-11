@@ -135,7 +135,7 @@ var wordingClaims = []stencilClaims{
 		{must: "no graded blast radius to summarise", why: "Rename carries no ImpactSummary because there is no graded blast radius"},
 		{must: "support-log.md", why: "support-log.md is outside this review entirely"},
 		{must: "findings.md", why: "the live generation's findings join the answer key"},
-		{must: "is not part of the answer key", why: "a carry-over entry in the record's Open risks is an unreviewed fix, not a requirement the plan must carry"},
+		{must: "is not part of the answer key", why: "a carry-over entry in the record's Open risks lists findings the closing round's fixer fixed or disputed and no fresh reviewer has seen, not a requirement the plan must carry"},
 		{must: "record.json` carries a `class`", why: "the live generation's round needs a class"},
 		{must: "`first_card`", why: "the live generation's round matches first_card"},
 		{must: "the decision record alone is the answer key", why: "generation 0 falls back to the decision record alone"},
@@ -168,7 +168,7 @@ var wordingClaims = []stencilClaims{
 		{must: "Raise each failing test named above as a BLOCKING finding", why: "a failing test of a Publish failure record is a BLOCKING finding"},
 	}},
 	{"loom-template-rework.md", LoomTemplateRework, []claim{
-		{must: "never plan an entry as scope", why: "a carry-over entry in the record's Open risks lists unreviewed fixes, never scope for a rework generation"},
+		{must: "never plan an entry as scope", why: "a carry-over entry in the record's Open risks lists findings the closing round's fixer fixed or disputed and no fresh reviewer has seen, never scope for a rework generation"},
 	}},
 	{"landing-template-describe.md", LandingTemplateDescribe, []claim{
 		{must: "one item to check by hand", why: "a Plan-Review or Webster-Review carry-over finding reaches the reviewer as a manual-check item"},
@@ -247,6 +247,8 @@ var wordingClaims = []stencilClaims{
 		{must: "{{.support_log_path}}", section: discussionFenceSection, why: "the fence names the output files by marker, so the permitted set cannot drift from the paths Step 5 writes"},
 		{must: "lyx loom review delivered", section: discussionFenceSection, why: "the fence carves out the parent-review delivered verb"},
 		{must: "parent-review entry to `## Review rounds`", section: discussionFenceSection, why: "the fence carves out the parent-review round entry"},
+		{must: "{{.twill_directive}}", section: "## Step 4 — How to get answers", why: "the twill lens review sits with the answer-gathering step, ahead of the files Step 5 writes"},
+		{must: "{{.twill_write_scope}}", section: discussionFenceSection, why: "the ready marker joins the write scope inside the fence"},
 	}, attackSurfaceClaims...)},
 	{"loom-template-discussion-chair.md", LoomTemplateDiscussionChair, []claim{
 		{must: `{{template "loom-template-discussion"}}`, why: "the chair includes the discussion stencil whole, so its write surface and gates cannot drift from the single writer's"},
@@ -284,6 +286,36 @@ var wordingClaims = []stencilClaims{
 		{must: "followed only as far as its own text goes", why: "a focus entry is followed only as far as its text goes"},
 		{must: "`## Focus departures`", why: "departures are reported under their heading"},
 	}},
+	{"twill-directive.md", TwillDirective, joinClaims([]claim{
+		{must: `subagent_type: "fork"`, why: "every lens runs as a fork that inherits the writer's context"},
+		{must: "never pass a `name`", why: "a named fork would be a separate session without the writer's context"},
+		{must: "in one message", why: "the forks run in parallel, spawned together"},
+		{must: "lyx shuttle await {{.ready_marker}}", why: "a fork waits for the ready marker through the shared wait verb"},
+		{must: "`timeout` at 300000", why: "the wait's cap exceeds the default Bash tool timeout, so the fork raises it"},
+		{must: "`ready: false`, run the same command again in a turn that does nothing else", why: "a turn that does only the wait keeps the prompt cache warm"},
+		{must: "15 times in a row", why: "a fork gives up on a record that never arrives"},
+		{must: "at most 6 further tool calls", why: "a fork reviews from its inherited context and spends few calls"},
+		{must: "one line per such call", why: "each extra call is accounted for in the report"},
+		{must: "never calls the Agent tool", why: "only the writer spawns"},
+		{must: "only as your final message", why: "a fork's findings return as its final message, never a file"},
+		{must: "only after the self-check passes", why: "the marker releases the forks on a record that already passes"},
+		{must: "one fork pass per", anyCase: true, why: "the lens review runs once per writer spawn"},
+		{must: "never spawns again", why: "a relaunched writer has lost its forks and does not respawn them"},
+		{must: "no report", why: "a fork that returned nothing is named in the disposition"},
+		{must: "{{.rubric_path}}", why: "the rubric is read before the spawn so every fork inherits it"},
+		{must: "{{.lens_list}}", why: "the lenses arrive through their marker"},
+		{must: "{{.format_step}}", why: "the host names the step that writes the files"},
+		{must: "{{.self_check_step}}", why: "the host names the step that runs the self-check"},
+		{must: "{{.self_check_command}}", why: "the host names the self-check command"},
+		{must: "{{.disposition_place}}", why: "the host names where the lens review is recorded"},
+		{must: "{{.reviewed_files}}", why: "the host names the files a fork reviews"},
+	}, hostNeutralClaims())},
+	{"twill-write-scope.md", TwillWriteScope, joinClaims([]claim{
+		{must: "{{.ready_marker}}", why: "the marker path arrives through its marker"},
+		{must: "parent directory", why: "the writer creates the marker's parent directory"},
+		{must: "those two files", why: "the paragraph extends the do-not-repair rule's two files with the marker"},
+		{must: "nobody commits", why: "the marker is untracked state"},
+	}, hostNeutralClaims())},
 	{"burler-step-2-review.md", BurlerStep2Review, []claim{
 		{must: "## Focus departures", why: "the review format has a Focus departures section"},
 		{must: "Cluster rules", why: "instruction 2 carries the Cluster rules section the composed cluster block fills"},
@@ -304,11 +336,17 @@ var wordingClaims = []stencilClaims{
 		{must: "with the Bash tool's `timeout` set to 300000", why: "the wait verb's cap exceeds the default Bash tool timeout, so the fixer raises it"},
 		{must: "you edit no file and run no mutating git command", section: "## Sequencing rule", why: "the fixer touches nothing until the review is ready"},
 		{must: "you never write the review file", why: "the review is the reviewer's file"},
+		{must: "and, separately, the change its `**Fix:**` line proposes", why: "Validate checks each finding's premise and its proposed change, and instruction 3 decides what follows"},
 	}},
 	{"burler-step-3-fix.md", BurlerStep3Fix, []claim{
-		{must: "`Disputed` section", why: "a finding with a false premise is disputed in the fixer-report, not fixed"},
-		{must: "the finding id and the evidence", why: "a dispute carries the finding id and the evidence that contradicts the premise"},
-		{must: "only for a factually wrong premise", why: "severity, size, cost or rubric disagreement never justify a dispute"},
+		{must: "`Disputed` section", why: "a disputed finding is recorded in the fixer-report, not fixed"},
+		{must: "the finding id and the evidence", why: "a dispute carries the finding id and the evidence that supports its ground"},
+		{must: "`premise false`: the premise is false against the code or the fasit", why: "a dispute is allowed when the finding's premise is false"},
+		{must: "`every fix worse`: the premise holds, but every change that addresses it makes the target worse", why: "a dispute is allowed when no change addressing a true premise improves the target"},
+		{must: "One sound change means the finding is fixed, not disputed", why: "the every-fix ground is bounded: a single sound change makes the finding a fix"},
+		{must: "never justify a dispute", why: "severity, size, cost, taste and rubric disagreement never justify a dispute"},
+		{must: "each entry names its ground, the finding id and the evidence", why: "each Disputed entry states which of the two grounds it rests on"},
+		{must: "Mark the finding as fixed differently inside the fixer-report's list of changes", why: "a fix with the fixer's own change is marked in the changes list, naming the proposed change it did not make"},
 		{must: "not whether it gets fixed", why: "every finding is fixed, severity decides only the order"},
 		{must: "never push", why: "the fixer commits to code source and never pushes"},
 		{must: "nothing fixed", why: "the fixer report states when nothing was fixed"},
@@ -566,7 +604,7 @@ var wordingClaims = []stencilClaims{
 		wantNone(orchNoScribeHandoffWhy, "scribe:handoff"),
 		[]claim{
 			{must: "creates the task pair, drives the task's run inside it, loom or darn as the board entry's `recipe` says, and tears the pair down", why: "the batten run owns the pair's creation and teardown, and drives whichever recipe the entry names"},
-			{must: "a reject re-spawns the darn writer with the findings", why: "a darn run's one review point is PR-Gate"},
+			{must: "a reject re-spawns the darn writer with the findings", why: "a darn run's PR-Gate reject goes back to the darn writer"},
 			{must: "`lyx batten run <slug> --window`", why: "a run is started in its own window of the orch's reed session"},
 			{mustNot: "setsid nohup", why: "the window, not a detached shell process, keeps a started run alive and listed"},
 			{must: "Batten reads the decision and resumes the child itself", why: "batten resumes the child after a PR-Gate decision"},
@@ -660,6 +698,16 @@ var wordingClaims = []stencilClaims{
 		{mustNot: "At every escalation", why: "the generic escalation line is the unwatched rule's"},
 		{must: "record a failed send as a line in the report rather than retrying it", why: "a failed send is recorded, not retried, under both rules"},
 	}},
+}
+
+// hostNeutralClaims bars every host-specific name from a twill stencil, matched in any case, so another host can render it with its own values.
+func hostNeutralClaims() []claim {
+	phrases := []string{"decision record", "support log", "decision-record.md", "support-log.md", "_lyx/discussion", "Step 5", "Step 6", "validate-discussion", "## Interview", "Discussion"}
+	claims := wantNone("a twill stencil is host-neutral: every host value arrives through a marker", phrases...)
+	for i := range claims {
+		claims[i].anyCase = true
+	}
+	return claims
 }
 
 // focusEntryClaims is what both Bouncer stencils say about a focus entry.

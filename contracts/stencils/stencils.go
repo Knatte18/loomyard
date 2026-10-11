@@ -70,6 +70,11 @@ var LoomRubricPlanReview []byte
 //go:embed loom/loom-rubric-webster-review.md
 var LoomRubricWebsterReview []byte
 
+// LoomRubricDarnReview is the Darn-Review rubric, read by both rows of the darn recipe's Darn-Review perch.
+//
+//go:embed loom/loom-rubric-darn-review.md
+var LoomRubricDarnReview []byte
+
 // LoomTemplatePriorPlan is the prior-plan block appended to the end of the Plan prompt on a respawn.
 //
 //go:embed loom/loom-template-prior-plan.md
@@ -317,6 +322,16 @@ var ParentDirectiveNone []byte
 //go:embed edit/edit-directive.md
 var EditDirective []byte
 
+// TwillDirective is the twill directive's shipped default: the host-neutral procedure that has a writer review its finished record through fork lenses.
+//
+//go:embed twill/twill-directive.md
+var TwillDirective []byte
+
+// TwillWriteScope is the twill write-scope paragraph's shipped default: the addition to a writer's write scope for the ready marker.
+//
+//go:embed twill/twill-write-scope.md
+var TwillWriteScope []byte
+
 // SeatDirectiveChair is the chair seat block's shipped default: the channel rules a multi-seat step's chair works under, pulled into a seat stencil as an include.
 //
 //go:embed seat/seat-directive-chair.md
@@ -347,6 +362,7 @@ var entries = []registryEntry{
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
 	{"loom-rubric-webster-review", &LoomRubricWebsterReview},
+	{"loom-rubric-darn-review", &LoomRubricDarnReview},
 	{"loom-template-prior-plan", &LoomTemplatePriorPlan},
 	{"loom-template-parent-review-delivery", &LoomTemplateParentReviewDelivery},
 	{"loom-template-parent-review-brief", &LoomTemplateParentReviewBrief},
@@ -395,6 +411,8 @@ var entries = []registryEntry{
 	{"parent-directive-operator-ban", &ParentDirectiveOperatorBan},
 	{"parent-directive-none", &ParentDirectiveNone},
 	{"edit-directive", &EditDirective},
+	{"twill-directive", &TwillDirective},
+	{"twill-write-scope", &TwillWriteScope},
 	{"seat-directive-chair", &SeatDirectiveChair},
 	{"seat-directive-advisor", &SeatDirectiveAdvisor},
 }

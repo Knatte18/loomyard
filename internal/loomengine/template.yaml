@@ -1,7 +1,7 @@
 discussion: opus[medium]  # model-spec for the discussion-phase interview agent (see contracts/specs/llm-model-spec.md)
 discussion_timeout_min: 480  # minutes the discussion agent's shuttle run is allowed to run (an autonomous agent exploring a codebase and writing two files can legitimately run long; this is a deadline, not a wait)
 discussion_interactive: false  # true runs the discussion-phase agent as an interview in its pane and requires an operator to be present; false, the default, is today's autonomous behaviour, because a task spawned unattended must not silently wait for a human
-discussion_producer: single  # producer the Discussion-Write row runs: single, the default, runs the single-agent writer; seats runs a chair with the advisors below
+discussion_producer: single  # producer the Discussion-Write row runs: single, the default, runs the single-agent writer; seats runs a chair with the advisors below; twill runs the single-agent writer, which forks itself once per lens of the twill-discussion fan in burler.yaml to review its record before it finishes
 discussion_advisors: ["sonnet[high]"]  # model-specs of the advisors a seats chair consults, one advisor per entry; read only when discussion_producer is seats, and an empty list runs the chair alone, deciding each question itself
 plan: opus[medium]  # model-spec for the plan-phase producer agent (see contracts/specs/llm-model-spec.md)
 plan_timeout_min: 120  # minutes the plan agent's shuttle run is allowed to run (a shorter ceiling than the discussion run)

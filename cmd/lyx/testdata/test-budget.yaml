@@ -56,7 +56,7 @@ internal/lock: 4
 internal/logger: 34
 internal/loggerconfig: 3
 internal/loomcli: 197
-internal/loomengine: 41
+internal/loomengine: 42
 internal/loomrecipe: 50
 internal/loomshed: 76
 internal/lyxcwd: 23
@@ -118,6 +118,7 @@ internal/testkit/shuttlefake: 8
 internal/testkit/stencilkit: 3
 internal/testkit/tmuxkit: 15
 internal/treadleengine: 34
+internal/twilldirective: 3
 internal/verifyrun: 4
 internal/verifytree: 7
 internal/vscode: 12
