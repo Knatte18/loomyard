@@ -82,7 +82,7 @@ internal/seatengine: 17
 internal/segmentcolor: 4
 internal/selfreportcli: 3
 internal/selfreportengine: 12
-internal/shedadapters: 160
+internal/shedadapters: 175
 internal/shedbuild: 13
 internal/shedcheck: 3
 internal/shedcli: 17
@@ -113,7 +113,7 @@ internal/testkit/logcapture: 5
 internal/testkit/lyxbin: 5
 internal/testkit/plankit: 4
 internal/testkit/scankit: 10
-internal/testkit/shedfake: 9
+internal/testkit/shedfake: 10
 internal/testkit/shuttlefake: 8
 internal/testkit/stencilkit: 3
 internal/testkit/tmuxkit: 15

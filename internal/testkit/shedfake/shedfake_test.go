@@ -3,7 +3,9 @@ package shedfake
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
@@ -346,5 +348,77 @@ func TestCallOK_AndRequireOutcome_PassingPath(t *testing.T) {
 	}
 	if got := RequireOutcome(t, p, shedengine.Done); got.Path != "out.md" {
 		t.Errorf("RequireOutcome() pointer = %+v; want Path out.md", got)
+	}
+}
+
+func TestBurlerHalfRunner_LastEntryRepeats(t *testing.T) {
+	first, last := errors.New("first"), errors.New("last")
+	f := &BurlerHalfRunner{
+		ReviewResults: []burlerengine.ReviewResult{{Outcome: shuttleengine.OutcomeDone, Digest: "d1"}, {Outcome: shuttleengine.OutcomeTimeout}},
+		ReviewErrs:    []error{first, nil, last},
+		FixResults:    []burlerengine.FixResult{{Outcome: shuttleengine.OutcomeDone}, {Outcome: shuttleengine.OutcomeDied}},
+		FixErrs:       []error{nil, last},
+	}
+	var reviewSeen, fixSeen []int
+	f.DuringReview = func(i int) { reviewSeen = append(reviewSeen, i) }
+	f.DuringFix = func(i int) { fixSeen = append(fixSeen, i) }
+
+	wantOutcomes := []shuttleengine.Outcome{shuttleengine.OutcomeDone, shuttleengine.OutcomeTimeout, shuttleengine.OutcomeTimeout, shuttleengine.OutcomeTimeout}
+	wantErrs := []error{first, nil, last, last}
+	for i := range wantOutcomes {
+		res, err := f.Review(burlerengine.Profile{Rubric: "r"}, burlerengine.RunOpts{Round: "1"})
+		if res.Outcome != wantOutcomes[i] || !errors.Is(err, wantErrs[i]) {
+			t.Errorf("Review call %d = %q, %v; want %q, %v", i, res.Outcome, err, wantOutcomes[i], wantErrs[i])
+		}
+	}
+	for i, wantOutcome := range []shuttleengine.Outcome{shuttleengine.OutcomeDone, shuttleengine.OutcomeDied, shuttleengine.OutcomeDied} {
+		res, err := f.Fix(burlerengine.Profile{Rubric: "r"}, burlerengine.RunOpts{Round: "1"}, fmt.Sprintf("digest-%d", i))
+		if res.Outcome != wantOutcome || (i > 0) != errors.Is(err, last) {
+			t.Errorf("Fix call %d = %q, %v; want %q", i, res.Outcome, err, wantOutcome)
+		}
+	}
+	if f.ReviewCalls != 4 || len(f.GotReviewProfiles) != 4 || len(f.GotReviewOpts) != 4 || f.FixCalls != 3 || len(f.GotFixProfiles) != 3 || len(f.GotFixOpts) != 3 {
+		t.Errorf("ReviewCalls %d, FixCalls %d with their recorded profiles and opts; want 4 and 3", f.ReviewCalls, f.FixCalls)
+	}
+	if want := []string{"digest-0", "digest-1", "digest-2"}; !slices.Equal(f.GotFixDigests, want) {
+		t.Errorf("GotFixDigests = %v; want %v", f.GotFixDigests, want)
+	}
+	if len(reviewSeen) != 4 || reviewSeen[3] != 3 || len(fixSeen) != 3 || fixSeen[2] != 2 {
+		t.Errorf("DuringReview indices = %v, DuringFix indices = %v; want 0..3 and 0..2", reviewSeen, fixSeen)
+	}
+
+	// The probes and resumes script the same way, and unscripted probes answer a half that is gone.
+	live := burlerengine.LiveHalf{State: burlerengine.HalfLive}
+	probing := &BurlerHalfRunner{
+		LiveReviews: []burlerengine.LiveHalf{live}, ProbeReviewErrs: []error{nil, first},
+		ResumeReviewResults: []burlerengine.ReviewResult{{Outcome: shuttleengine.OutcomeDone}},
+		LiveFixes:           []burlerengine.LiveHalf{live}, ProbeFixErrs: []error{nil, first},
+		ResumeFixResults: []burlerengine.FixResult{{Outcome: shuttleengine.OutcomeDone}},
+	}
+	for i, wantErr := range []error{nil, first, first} {
+		if got, err := probing.ProbeReview(burlerengine.Profile{}, burlerengine.RunOpts{Round: "1"}); got != live || !errors.Is(err, wantErr) {
+			t.Errorf("ProbeReview call %d = %+v, %v; want %+v, %v", i, got, err, live, wantErr)
+		}
+		if got, err := probing.ProbeFix(burlerengine.Profile{}, burlerengine.RunOpts{Round: "1"}); got != live || !errors.Is(err, wantErr) {
+			t.Errorf("ProbeFix call %d = %+v, %v; want %+v, %v", i, got, err, live, wantErr)
+		}
+	}
+	if res, err := probing.ResumeReview(burlerengine.Profile{}, burlerengine.RunOpts{}, live); res.Outcome != shuttleengine.OutcomeDone || err != nil {
+		t.Errorf("ResumeReview() = %+v, %v; want done and nil", res, err)
+	}
+	if res, err := probing.ResumeFix(burlerengine.Profile{}, burlerengine.RunOpts{}, "digest", live); res.Outcome != shuttleengine.OutcomeDone || err != nil {
+		t.Errorf("ResumeFix() = %+v, %v; want done and nil", res, err)
+	}
+	if probing.ProbeReviewCalls != 3 || probing.ProbeFixCalls != 3 || probing.ResumeReviewCalls != 1 || probing.ResumeFixCalls != 1 ||
+		len(probing.GotProbeReviewOpts) != 3 || len(probing.GotProbeFixOpts) != 3 || len(probing.GotLiveReviews) != 1 || len(probing.GotLiveFixes) != 1 ||
+		len(probing.GotResumeFixOpts) != 1 || !slices.Equal(probing.GotResumeFixDigests, []string{"digest"}) {
+		t.Errorf("probe and resume counts or records are off: %+v", probing)
+	}
+	unscripted := &BurlerHalfRunner{}
+	if got, err := unscripted.ProbeReview(burlerengine.Profile{}, burlerengine.RunOpts{}); got != (burlerengine.LiveHalf{}) || err != nil {
+		t.Errorf("unscripted ProbeReview() = %+v, %v; want the zero LiveHalf and nil", got, err)
+	}
+	if got, err := unscripted.ProbeFix(burlerengine.Profile{}, burlerengine.RunOpts{}); got != (burlerengine.LiveHalf{}) || err != nil {
+		t.Errorf("unscripted ProbeFix() = %+v, %v; want the zero LiveHalf and nil", got, err)
 	}
 }

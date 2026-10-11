@@ -329,6 +329,7 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | restore-renumber: no journal | `lyx loom restore-renumber` finds no journal | correctness halt | nothing to restore; `lyx loom insert-card` or `lyx loom remove-card` is the verb to run |
 | restore-renumber: journal invalid | the journal does not decode, or names a path outside the plan directory's top-level card and overview files | correctness halt | delete the named journal file, then run `lyx loom validate-plan`, whose findings name any card left inconsistent |
 | restore-renumber: restore failed partway | a file operation of the restore fails and the journal is kept | transient | re-run `lyx loom restore-renumber` |
+| fix: round has no accepted review | a review segment's fix row finds no acceptance record for the next round, or a record with no review beside it, as after a goto into the fix row; or the review changed after it was accepted, which the fix row archives with its fixer report and record | correctness halt | run "lyx loom goto --to <review row>", then "lyx loom resume", in the task worktree, with the review row the message names |
 | raw I/O | `stat`, `mkdir`, `read`, `write`, `rename` or `remove` of a status, seed, lock, park marker or records file, of the plan directory's card and overview files or of the renumber journal fails, or the card verbs' run-record read or webster lease fails | transient | re-run the refused verb; nothing is mutated |
 
 ## gate

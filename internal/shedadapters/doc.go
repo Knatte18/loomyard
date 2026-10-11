@@ -296,6 +296,31 @@
 // reproduced live before the probe was added, and neither run could continue without an operator
 // deleting a pane by hand.
 //
+// # The review row and the fix row
+//
+// BurlerReviewProducer and BurlerFixProducer split a review segment's round into two Shed rows, each driving one half of a burlerengine round through BurlerHalfRunner.
+// Neither returns Done: a finished half is a routine Stuck hand-off, the review row's to the fix row and the fix row's to the segment's Bouncer.
+// The round's acceptance record, round-<n>-acceptance.md in the run directory, joins the round's review and fixer report as one of its paths.
+// It holds the round and the hex SHA-256 of the accepted review in YAML frontmatter, and only the review row writes it, after the review passed the strict parse.
+// A record that is absent or does not parse reads as absent.
+//
+// The review row resolves the round as BurlerProducer does, from the highest complete round, and hands on BudgetExempt without spawning in two cases:
+// the highest complete round has no recorded verdict, and the next round's review already carries an acceptance record, so a restart with the fixer pending resumes at the fix row.
+// Otherwise it probes for a live reviewer before archiving anything, resumes one it finds, and spawns at most two attempts, the second only after a died or timed-out first.
+// An accepted review writes its record, merges the half's usage into the round's usage record and hands on with the review as the pointer's path.
+// Every other end, a gate or strict-parse failure included, is a hard error that archives the round's review, fixer report and acceptance record;
+// a reviewer that could not be stopped returns bare, with nothing archived.
+// A review with no record beside it is an orphan and is reviewed again.
+//
+// The fix row hands on an unjudged highest round the same way, and otherwise requires the next round's acceptance record and review.
+// Without them it is a hard error whose way forward is a goto to the review row and a resume, since the review row's hand-on never produces that state:
+// its inputs are a goto into the fix row with no accepted review, and a resume after the fix row archived a review that changed since acceptance.
+// It probes for a live fixer first and resumes it against the recorded digest, then spawns at most two attempts under that digest.
+// A finished fix, a skipped empty review included, merges the fix half's usage and hands on BudgetExempt with the review as the pointer's path.
+// A finished fix whose gate failed archives the review, fixer report and acceptance record and returns a counted Stuck with an empty path, so the Bouncer's next round reviews afresh.
+// A review that changed after acceptance archives the same three and ends with the same way forward.
+// Any other failure archives the fixer report alone, keeping the accepted review and its record so a resume re-spawns the fixer without re-running the reviewer.
+//
 // # Limitations
 //
 // Neither SingleLLMProducer nor WebsterProducer installs a mid-run cancellation bridge, so a cancel
