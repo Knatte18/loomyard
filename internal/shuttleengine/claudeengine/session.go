@@ -6,8 +6,10 @@ package claudeengine
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -17,10 +19,12 @@ var (
 	_ shuttleengine.SkillLoader     = (*Claude)(nil)
 	_ shuttleengine.InputBoxReader  = (*Claude)(nil)
 	_ shuttleengine.InputBoxClearer = (*Claude)(nil)
+	_ shuttleengine.TextPaster      = (*Claude)(nil)
 )
 
 // pastePlaceholderShape matches the whole input-box reading Claude Code shows for a collapsed paste: `[Pasted text #<n>]` or `[Pasted text #<n> +<m> lines]`.
-var pastePlaceholderShape = regexp.MustCompile(`^\[Pasted text #\d+( \+\d+ lines)?\]$`)
+// The first capture group is the line count when the placeholder shows one.
+var pastePlaceholderShape = regexp.MustCompile(`^\[Pasted text #\d+(?: \+(\d+) lines)?\]$`)
 
 // runningTurnNeedle is Claude's running-turn hint in normalizeCapture form.
 const runningTurnNeedle = "esctointerrupt"
@@ -101,10 +105,32 @@ func (c *Claude) ClearInputSequence() []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{{Key: "C-u"}}
 }
 
-// PastePlaceholder reports whether boxText, trimmed, is the whole of Claude Code's collapsed-paste placeholder.
+// pasteSubmitsOnEnter is whether an Enter right after a bracketed paste's end submits the pasted text in Claude Code.
+// A live check pins it; false makes shuttle paste without the Enter and send the first Enter as a guarded one.
+const pasteSubmitsOnEnter = true
+
+// PasteCollapseMinChars is the length from which Claude Code collapses a pasted text into a placeholder in its input box.
+const PasteCollapseMinChars = 800
+
+// PasteSubmits reports whether an Enter right after the paste end submits the pasted text.
+func (c *Claude) PasteSubmits() bool { return pasteSubmitsOnEnter }
+
+// OwnPastePlaceholder reports whether boxText, trimmed, is the whole of the collapsed-paste placeholder a paste of text produces.
+// The text must reach PasteCollapseMinChars characters, and a placeholder showing `+<m> lines` must count m as the newlines in text.
 // A draft that merely quotes the placeholder inside other words is not one.
-func (c *Claude) PastePlaceholder(boxText string) bool {
-	return pastePlaceholderShape.MatchString(strings.TrimSpace(boxText))
+func (c *Claude) OwnPastePlaceholder(boxText, text string) bool {
+	if utf8.RuneCountInString(text) < PasteCollapseMinChars {
+		return false
+	}
+	match := pastePlaceholderShape.FindStringSubmatch(strings.TrimSpace(boxText))
+	if match == nil {
+		return false
+	}
+	if match[1] == "" {
+		return true
+	}
+	lines, err := strconv.Atoi(match[1])
+	return err == nil && lines == strings.Count(text, "\n")
 }
 
 // inputBoxInterior returns the lines between the input box's rules in capture.
@@ -180,39 +206,36 @@ func isBlankBoxInterior(line string) bool {
 	return true
 }
 
-// ClearSessionSequence returns /clear typed and submitted, with no leading Escape.
+// ClearSessionSequence returns /clear and its Enter, with no leading Escape.
 // The caller has just proved the input box empty, so there is nothing to clear,
 // and an Escape landing right after another Escape opens Claude's rewind menu instead.
-// The text and the Enter are two paced steps,
-// so the Enter lands outside the typing burst.
+// There is no pause between the text and the Enter: the paste path submits them in one tmux invocation.
 func (c *Claude) ClearSessionSequence() []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{
-		{Text: "/clear", SettleMS: c.submitSettleMS},
+		{Text: "/clear"},
 		{Key: "Enter"},
 	}
 }
 
-// CompactSessionSequence returns /compact typed and submitted, followed by focus when it is non-empty, with no leading Escape because the caller has just proved the input box empty.
-// The text and the Enter are two paced steps,
-// so the Enter lands outside the typing burst.
+// CompactSessionSequence returns /compact and its Enter, followed by focus when it is non-empty, with no leading Escape because the caller has just proved the input box empty.
+// There is no pause between the text and the Enter: the paste path submits them in one tmux invocation.
 func (c *Claude) CompactSessionSequence(focus string) []shuttleengine.PaneInput {
 	text := "/compact"
 	if focus != "" {
 		text += " " + focus
 	}
 	return []shuttleengine.PaneInput{
-		{Text: text, SettleMS: c.submitSettleMS},
+		{Text: text},
 		{Key: "Enter"},
 	}
 }
 
-// ReloadPluginsSequence returns /reload-plugins typed and submitted, with no leading Escape for the same reason as ClearSessionSequence.
+// ReloadPluginsSequence returns /reload-plugins and its Enter, with no leading Escape for the same reason as ClearSessionSequence.
 // The command rebuilds the skill list the Skill tool reads and ends no turn.
-// The text and the Enter are two paced steps,
-// so the Enter lands outside the typing burst.
+// There is no pause between the text and the Enter: the paste path submits them in one tmux invocation.
 func (c *Claude) ReloadPluginsSequence() []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{
-		{Text: "/reload-plugins", SettleMS: c.submitSettleMS},
+		{Text: "/reload-plugins"},
 		{Key: "Enter"},
 	}
 }
