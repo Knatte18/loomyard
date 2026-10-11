@@ -75,6 +75,8 @@ var pathRules = []pathRule{
 	{name: "battencli.StatusFile", class: classDurable, path: func(l *lyxcwd.Location) string { return battencli.StatusFile(l, "slug") }},
 
 	{name: "websterengine.ScratchDir", class: classTransient, mirrors: "websterengine.Dir", path: func(l *lyxcwd.Location) string { return websterengine.ScratchDir(l.AnchorPath()) }},
+	{name: "planparser.PlanScratchDir", class: classTransient, mirrors: "planparser.PlanDir", path: func(l *lyxcwd.Location) string { return planparser.PlanScratchDir(l.AnchorPath()) }},
+	{name: "planparser.RenumberJournalPath", class: classTransient, path: func(l *lyxcwd.Location) string { return planparser.RenumberJournalPath(l.AnchorPath()) }},
 	{name: "websterengine.PromptsDir", class: classTransient, path: func(l *lyxcwd.Location) string { return websterengine.PromptsDir(l.AnchorPath()) }},
 	{name: "gateslot.WaitDir", class: classTransient, path: func(l *lyxcwd.Location) string { return gateslot.WaitDir(l.AnchorPath()) }},
 	{name: "verifytree.Dir", class: classTransient, path: func(l *lyxcwd.Location) string { return verifytree.Dir(l.AnchorPath()) }},

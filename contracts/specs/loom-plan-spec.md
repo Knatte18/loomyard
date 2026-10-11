@@ -257,6 +257,9 @@ Cards are numbered flat across the whole plan — no batch-scoped restart, no `N
 Numbers run from the overview's `first_card:` (default `1`) upward with no gap, so a rework generation can continue the numbering of the generation it retires.
 The per-card file prefix `NN` (zero-padded) must equal the heading `N`.
 
+A card is inserted or removed with `lyx loom insert-card` or `lyx loom remove-card`, which move every later card by one in file name prefix, heading number, explicit `Commit:` prefix and Card Index number.
+They report lines that name a moved number in prose, and never rewrite them.
+
 The **default commit subject is `N: <name>`** — the card heading's `<name>`;
 there is no separate `<short what>` seed.
 An explicit `**Commit:**` overrides the default but must start with the card's own `N: ` prefix — the `commit-subject-mismatch` check enforces this, because a pinned message that breaks the `N:` shape would corrupt the git-log resume trail the numbering scheme exists to give.

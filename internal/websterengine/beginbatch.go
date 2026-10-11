@@ -228,6 +228,31 @@ func DoneCards(plan *planparser.Plan, st *State) []planparser.Card {
 	return cards
 }
 
+// LastBegunCard returns the highest card number among the cards of every batch record st holds, terminal or not, and 0 when there is none.
+// A record's cards are its own card ids, and a record written before those ids existed names the single card numbered by its key.
+// It reads the records alone, so it needs no batchifier: it is the bound of the begun set, whose cards are frozen, not of the done set.
+// A nil state returns 0.
+func LastBegunCard(st *State) int {
+	if st == nil {
+		return 0
+	}
+
+	last := 0
+	for number, bs := range st.Batches {
+		if bs == nil {
+			continue
+		}
+		if len(bs.Cards) == 0 {
+			last = max(last, number)
+			continue
+		}
+		for _, id := range bs.Cards {
+			last = max(last, cardNumberInt(id))
+		}
+	}
+	return last
+}
+
 // EditedDoneCards returns, sorted, the NN-slug ids of the cards of every batch st records terminal with status done whose card file under planDir no longer hashes to the CardHashes entry the batch recorded at begin.
 // It hashes the card files as batchCardHashes does and reads the record and those bytes alone, never parsing the plan.
 // A nil state, a record without CardHashes, a batch not terminal done and a recorded id plan lacks each contribute nothing;
