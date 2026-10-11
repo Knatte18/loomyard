@@ -21,14 +21,14 @@ const tmuxConfForbiddenChars = `*?[\'";#{}$`
 
 // tmuxConfPath validates the `tmux_conf` value and returns the path to source.
 // An empty raw returns the empty string.
-// A leading `~/` expands to home; the result must be an absolute path to an existing regular file holding no whitespace and none of the characters tmux would reinterpret.
+// A leading `~/` expands to a non-empty home, and stays unexpanded, so refused as not absolute, when home is empty; the result must be an absolute path to an existing regular file holding no whitespace and none of the characters tmux would reinterpret.
 // Every error names the key `tmux_conf`, the variable tmuxConfEnv and the path.
 func tmuxConfPath(raw, home string) (string, error) {
 	if raw == "" {
 		return "", nil
 	}
 	path := raw
-	if strings.HasPrefix(path, "~/") {
+	if home != "" && strings.HasPrefix(path, "~/") {
 		path = home + path[1:]
 	}
 	refuse := func(reason string) (string, error) {

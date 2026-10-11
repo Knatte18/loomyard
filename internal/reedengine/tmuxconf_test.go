@@ -32,11 +32,13 @@ func TestTmuxConfPath(t *testing.T) {
 	tests := []struct {
 		name    string
 		raw     string
+		noHome  bool
 		want    string
 		wantErr string
 	}{
 		{name: "EmptyValue", raw: "", want: ""},
 		{name: "HomeExpansion", raw: "~/tmux.conf", want: plain},
+		{name: "HomeExpansionWithoutHome", raw: "~/tmux.conf", noHome: true, wantErr: "~/tmux.conf"},
 		{name: "AbsoluteRegularFile", raw: plain, want: plain},
 		{name: "RelativePath", raw: "tmux.conf", wantErr: "tmux.conf"},
 		{name: "MissingFile", raw: filepath.Join(dir, "missing.conf"), wantErr: filepath.Join(dir, "missing.conf")},
@@ -48,7 +50,11 @@ func TestTmuxConfPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := tmuxConfPath(tt.raw, dir)
+			home := dir
+			if tt.noHome {
+				home = ""
+			}
+			got, err := tmuxConfPath(tt.raw, home)
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Fatalf("tmuxConfPath(%q) error = %v, want none", tt.raw, err)
