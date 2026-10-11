@@ -54,6 +54,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -123,6 +124,81 @@ func RecoveryTemplate(stencilsDir string) ([]byte, error) {
 	return composeRecoveryTemplate(stencilsDir)
 }
 
+// readFragment returns the text of the fragment stencil name from stencilsDir, without its banner or trailing newlines,
+// so it fills a marker that sits at the end of a line.
+func readFragment(stencilsDir, name string) (string, error) {
+	raw, err := stencilstore.Read(stencilsDir, name)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(stencil.StripLeadingComment(string(raw)), "\r\n"), nil
+}
+
+// renderLocate returns the text filled into the body's locate marker:
+// the pack fragment, with specsDir filled in, for a non-nil pack, and the quarry fragment otherwise.
+func renderLocate(stencilsDir, specsDir string, pack *planindex.Pack) (string, error) {
+	if pack == nil {
+		return readFragment(stencilsDir, "webster-fragment-locate-quarry")
+	}
+	raw, err := stencilstore.Read(stencilsDir, "webster-fragment-locate-pack")
+	if err != nil {
+		return "", err
+	}
+	filled, err := stencil.Fill(raw, map[string]string{"specs_dir": specsDir})
+	if err != nil {
+		return "", fmt.Errorf("fill the pack locate fragment: %w", err)
+	}
+	return strings.TrimRight(string(filled), "\r\n"), nil
+}
+
+// renderPackSection renders the kick-start pack section from stencilsDir:
+// one bullet per resolved member glyph with a sub-bullet per declaration, and one bullet per unresolved ref with its reason.
+// A pack that names no member glyph at all, resolved or unresolved, lists the empty-pack line in place of the entries.
+func renderPackSection(stencilsDir string, pack planindex.Pack) (string, error) {
+	raw, err := stencilstore.Read(stencilsDir, "webster-fragment-pack-section")
+	if err != nil {
+		return "", err
+	}
+
+	namesMemberGlyph := len(pack.Resolved) > 0
+	for _, u := range pack.Unresolved {
+		if !planparser.IsHandleRef(u.Ref) {
+			namesMemberGlyph = true
+		}
+	}
+	var entries string
+	if namesMemberGlyph {
+		var lines []string
+		for _, e := range pack.Resolved {
+			lines = append(lines, fmt.Sprintf("- `%s`", e.Glyph))
+			for _, d := range e.Declarations {
+				lines = append(lines, fmt.Sprintf("  - `%s:%d-%d` — %s", d.File, d.Start, d.End, d.Signature))
+			}
+		}
+		entries = strings.Join(lines, "\n")
+	} else {
+		entries, err = readFragment(stencilsDir, "webster-fragment-pack-empty")
+		if err != nil {
+			return "", err
+		}
+	}
+
+	unresolved := "none"
+	if len(pack.Unresolved) > 0 {
+		lines := make([]string, len(pack.Unresolved))
+		for i, u := range pack.Unresolved {
+			lines[i] = fmt.Sprintf("- `%s` — %s", u.Ref, u.Reason)
+		}
+		unresolved = strings.Join(lines, "\n")
+	}
+
+	filled, err := stencil.Fill(raw, map[string]string{"pack_entries": entries, "pack_unresolved": unresolved})
+	if err != nil {
+		return "", fmt.Errorf("fill the pack section: %w", err)
+	}
+	return strings.TrimRight(string(filled), "\r\n"), nil
+}
+
 // noPrecedingBatchDigest is the literal sentinel RenderForkPrompt and
 // RenderRecoveryPrompt render into {{.prev_digest}} when prevDigest is
 // empty: the first executed batch has no preceding batch, and a
@@ -159,11 +235,27 @@ func renderCardPointers(cards []planparser.Card, planDirDisplay string) string {
 // cardGates is the caller-rendered per-card gate step list (renderCardGates), filled into the body's required card_gates marker.
 // batchGate is the caller-rendered batch package list and gate (renderBatchGate), filled into the body's required batch_gate marker.
 // outcomePath and summaryPath are Merriam's two contract files, filled into the fork prefix's outcome_path and summary_path markers so the fork is told never to write them.
+// pack is the batch's kick-start pack, or nil to render the prompt without one:
+// a non-nil pack swaps the quarry locate fragment for the pack locate fragment and fills the pack section, a nil one fills the quarry fragment and leaves the section empty.
 // The plan is not a parameter, per the fork-context-hygiene rule.
-func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir, outcomePath, summaryPath string, selfFixCap int, notePath string) ([]byte, error) {
+func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir, outcomePath, summaryPath string, selfFixCap int, notePath string, pack *planindex.Pack) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
+	}
+
+	locate, err := renderLocate(stencilsDir, specsDir, pack)
+	if err != nil {
+		return nil, fmt.Errorf("webster: render fork locate step: %w", err)
+	}
+	var packSection string
+	if pack != nil {
+		section, err := renderPackSection(stencilsDir, *pack)
+		if err != nil {
+			return nil, fmt.Errorf("webster: render kick-start pack: %w", err)
+		}
+		// The marker ends a line of the body, so the section brings its own blank-line separation and an empty fill leaves no byte.
+		packSection = "\n\n" + section
 	}
 
 	directive, err := friction.Directive(notePath, stencilsDir, friction.RoleImplementer)
@@ -183,6 +275,8 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 		"specs_dir":         specsDir,
 		"outcome_path":      outcomePath,
 		"summary_path":      summaryPath,
+		"locate":            locate,
+		"kickstart_pack":    packSection,
 		friction.MarkerName: directive,
 	}
 	template, err := composeForkTemplate(stencilsDir)
@@ -190,7 +284,7 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 		return nil, fmt.Errorf("webster: read fork template: %w", err)
 	}
 	friction.WarnIfMarkerAbsent(template, "webster-prefix-fork", directive)
-	prompt, err := stencil.FillOptional(template, values, []string{friction.MarkerName})
+	prompt, err := stencil.FillOptional(template, values, []string{"kickstart_pack", friction.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill fork template: %w", err)
 	}
@@ -231,6 +325,11 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		uncommittedLine = "none"
 	}
 
+	locate, err := renderLocate(stencilsDir, specsDir, nil)
+	if err != nil {
+		return nil, fmt.Errorf("webster: render recovery locate step: %w", err)
+	}
+
 	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleImplementer)
 	if err != nil {
 		return nil, fmt.Errorf("webster: recovery prompt directive: %w", err)
@@ -264,6 +363,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		"uncommitted_paths": uncommittedLine,
 		"pattern_directive": directive,
 		"specs_dir":         specsDir,
+		"locate":            locate,
 		friction.MarkerName: frictionDirective,
 
 		parentdirective.MarkerName: parentDirective,
@@ -274,7 +374,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		return nil, fmt.Errorf("webster: read recovery template: %w", err)
 	}
 	friction.WarnIfMarkerAbsent(template, "webster-prefix-recovery", frictionDirective)
-	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", "failure_digest", "uncommitted_paths", friction.MarkerName, parentdirective.MarkerName})
+	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", "failure_digest", "uncommitted_paths", "kickstart_pack", friction.MarkerName, parentdirective.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill recovery template: %w", err)
 	}
