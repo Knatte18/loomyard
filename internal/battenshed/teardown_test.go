@@ -5,7 +5,6 @@
 package battenshed
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
@@ -303,9 +302,7 @@ func TestWorktreeTeardown_CancelledDuringLockWait(t *testing.T) {
 //
 // It redirects the process-global logger output to read the Warn.
 func TestWorktreeTeardown_FailureNoticeOncePerEpisode(t *testing.T) {
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	logs := logcapture.Capture(t)
 
 	var notices []string
 	historyLen := 4
@@ -355,8 +352,8 @@ func TestWorktreeTeardown_FailureNoticeOncePerEpisode(t *testing.T) {
 	if len(notices) != 3 {
 		t.Errorf("notices after the history became unreadable = %d; want 3", len(notices))
 	}
-	if !strings.Contains(buf.String(), "batten history unreadable for the row notice") {
-		t.Errorf("log = %q; want the unreadable-history Warn", buf.String())
+	if !strings.Contains(logs.String(), "batten history unreadable for the row notice") {
+		t.Errorf("log = %q; want the unreadable-history Warn", logs.String())
 	}
 
 	historyErr = nil
