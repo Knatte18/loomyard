@@ -183,6 +183,12 @@ func (c *loomCLI) armAt(location *lyxcwd.Location, verb string, args []string) (
 		return shedverbs.Spec{}, err
 	}
 
+	if c.recipe == shedrun.RecipeDarn {
+		if err := c.renameRetiredDarnRows(); err != nil {
+			return shedverbs.Spec{}, err
+		}
+	}
+
 	if err := c.loadRouting(); err != nil {
 		return shedverbs.Spec{}, err
 	}

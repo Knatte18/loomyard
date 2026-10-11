@@ -1,4 +1,4 @@
-// darnwrite_test.go exercises the Darn row's producer at Tier 1: a fake session and in-memory seams recording the order of their calls.
+// darnwrite_test.go exercises the Darn-Write row's producer at Tier 1: a fake session and in-memory seams recording the order of their calls.
 
 package loomshed
 
@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// darnFixture is one Darn producer setup: seams that log their calls and a fake session reporting a fixed verdict.
+// darnFixture is one Darn-Write producer setup: seams that log their calls and a fake session reporting a fixed verdict.
 type darnFixture struct {
 	deps    DarnDeps
 	events  []string
@@ -183,7 +183,7 @@ func TestDarnWrite_Call(t *testing.T) {
 			if tc.mutate != nil {
 				tc.mutate(f)
 			}
-			outcome, pointer, err := NewDarnWrite("Darn", f.session, f.deps).Call(context.Background())
+			outcome, pointer, err := NewDarnWrite(NameDarnWrite, f.session, f.deps).Call(context.Background())
 
 			if tc.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
@@ -218,7 +218,7 @@ func TestDarnWrite_CancelledContextRefusesBeforeAnySeam(t *testing.T) {
 	f := newDarnFixture()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, _, err := NewDarnWrite("Darn", f.session, f.deps).Call(ctx); err == nil || !errors.Is(err, context.Canceled) {
+	if _, _, err := NewDarnWrite(NameDarnWrite, f.session, f.deps).Call(ctx); err == nil || !errors.Is(err, context.Canceled) {
 		t.Fatalf("Call() error = %v; want context.Canceled", err)
 	}
 	if len(f.events) != 0 {

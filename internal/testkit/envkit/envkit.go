@@ -210,7 +210,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		},
 		Rework:               ReworkDeps(t, dir),
 		DarnVerifyAttempts:   3,
-		DarnReviewMaxBounces: 3,
+		DarnReviewMaxBounces: 1,
 		DarnSpec: func(loomshed.DarnTold) (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
 				Prompt:      "test darn prompt",
