@@ -100,6 +100,8 @@
 // The activity reading (ActivityReader) takes the session's last activity, its forks included, and walks the main transcript backwards for the newest main-chain assistant entry that ends a turn or carries Claude Code's `isApiErrorMessage` marker.
 // The last activity is the later of the main transcript's last write and the newest fork reading under the `subagents/` directory beside it:
 // a fork's last write time, or the reading clock's now when the fork holds a tool call with no result and was last written no more than `bashMaxTimeout` ago.
+// The pending-call reading looks at the fork's newest tool-calling message only, read backward from the transcript's end:
+// a message is every assistant entry sharing one message id, and it is pending when any of its calls has no result after it, so an unanswered call in an older message no longer counts.
 // A held foreground call writes nothing, so the pending-call reading keeps a Master waiting on a working fork from reading quiet;
 // a fork stopped mid-call reads active for at most that ceiling past its last write, which a live call never outlasts.
 // The API-error part reads the main transcript only.
