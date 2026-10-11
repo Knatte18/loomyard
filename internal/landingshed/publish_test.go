@@ -270,6 +270,14 @@ func TestPublish_StuckBeforePullRequest(t *testing.T) {
 			wantPushCalled:     true,
 		},
 		{
+			name:               "exhausted push retries are a push failure, not a rejected push",
+			pushErr:            fmt.Errorf("gitrepo: git push: %w", gitrepo.ErrPushRetriesExhausted),
+			resolved:           resolved,
+			wantReason:         "push failed: gitrepo: git push: gitrepo: push retries exhausted",
+			wantResolverCalled: true,
+			wantPushCalled:     true,
+		},
+		{
 			name:    "push rejected has its own reason naming the remote tip, the count and the resume",
 			pushErr: gitrepo.ErrPushRejected,
 			mutate: func(d *Deps) {

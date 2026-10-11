@@ -1,5 +1,5 @@
-// paths.go declares the five prime-anchored lifecycle path constructors: BattenDir, StatusFile,
-// RunLock, StatusLock, and PrimeRunLock. Each is a thin forwarding layer over the corresponding
+// paths.go declares the prime-anchored lifecycle path constructors: BattenDir, StatusFile,
+// RunLock, StatusLock, PrimeRunLock, and LandLock. Each is a thin forwarding layer over the corresponding
 // shedrun constructor, keyed on the given run-id -- battencli owns no path-derivation logic of its
 // own, per the Shed Run-Directory Invariant's sole-declarer claim over the "shed" segment.
 //
@@ -47,4 +47,9 @@ func StatusLock(l *lyxcwd.Location, runID string) string {
 // caller while shedrun declares it.
 func PrimeRunLock(l *lyxcwd.Location) string {
 	return shedrun.PrimeRunLock(l)
+}
+
+// LandLock returns the path to the hub-scoped advisory lock one landing holds for its whole body: shedrun.LandLock(l).
+func LandLock(l *lyxcwd.Location) string {
+	return shedrun.LandLock(l)
 }

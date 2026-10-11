@@ -133,6 +133,14 @@ func stepAwaitingApprovalResumeDoneTeardown_ArchivesTheRunRecords(t *testing.T, 
 
 	step, err = shed.Step(ctx)
 	if err != nil {
+		t.Fatalf("Step (Land): %v", err)
+	}
+	if step.Producer != battenrecipe.NameLand || step.Outcome != shedengine.Done {
+		t.Fatalf("land step = producer %q outcome %q reason %q; want %q Done", step.Producer, step.Outcome, step.Reason, battenrecipe.NameLand)
+	}
+
+	step, err = shed.Step(ctx)
+	if err != nil {
 		t.Fatalf("Step (Worktree-Teardown): %v", err)
 	}
 	if step.Producer != battenrecipe.NameWorktreeTeardown || step.Outcome != shedengine.Done || step.State != shedengine.StateDone {

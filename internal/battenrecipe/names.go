@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 )
 
-// The four batten recipe row names. These are durable on-disk identities that resume depends
+// The batten recipe row names. These are durable on-disk identities that resume depends
 // on: a rename here without a matching rename in contracts/recipes/batten-recipe.yaml breaks
 // resume for any in-flight run, and this package's own coverage guard pins the two against each
 // other.
@@ -34,6 +34,9 @@ const (
 	// or batten run in flight, so this durable identity's old value is abandoned rather than
 	// migrated.
 	NameRunShed = "Run-Shed"
+	// NameLand is the row that lands a finished child into the prime: pull, deploy, board prune and the ready notice.
+	// It runs between Run-Shed and Worktree-Teardown and carries no on_stuck, so a failed step halts batten blocked there.
+	NameLand = "Land"
 	// NameWorktreeTeardown is the row that tears the task worktree down.
 	NameWorktreeTeardown = "Worktree-Teardown"
 )

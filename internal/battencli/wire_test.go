@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -296,6 +297,7 @@ func TestChildSpawnError(t *testing.T) {
 	longOutput := strings.Repeat("x", maxChildOutputInError+50)
 	notParkedLine := `{"error":"loom: the driver has not parked yet","kind":"` + shedrun.StartNotParkedKind + `","ok":false}`
 	driverBusyLine := `{"error":"loom: the input box holds a draft","kind":"` + shedrun.StartDriverBusyKind + `","ok":false}`
+	shedBusyLine := `{"error":"shedengine: another run holds the run lock","kind":"` + shedengine.ShedBusyKind + `","ok":false}`
 
 	tests := []struct {
 		name          string
@@ -304,6 +306,7 @@ func TestChildSpawnError(t *testing.T) {
 		wantNil       bool
 		wantNotParked bool
 		wantBusy      bool
+		wantRunBusy   bool
 		wantSubstr    []string
 	}{
 		{
@@ -312,6 +315,13 @@ func TestChildSpawnError(t *testing.T) {
 			childOutput: driverBusyLine,
 			wantBusy:    true,
 			wantSubstr:  []string{"exit status 1", "holds a draft"},
+		},
+		{
+			name:        "shed_busy_refusal_wraps_the_run_busy_sentinel",
+			runErr:      runErr,
+			childOutput: shedBusyLine,
+			wantRunBusy: true,
+			wantSubstr:  []string{"exit status 1", "run lock"},
 		},
 		{
 			name:        "a_busy_kind_on_a_success_envelope_wraps_neither",
@@ -405,6 +415,9 @@ func TestChildSpawnError(t *testing.T) {
 			}
 			if errors.Is(got, battenshed.ErrChildDriverBusy) != tt.wantBusy {
 				t.Errorf("childSpawnError(...) = %v; errors.Is(ErrChildDriverBusy) = %v, want %v", got, !tt.wantBusy, tt.wantBusy)
+			}
+			if errors.Is(got, battenshed.ErrChildRunBusy) != tt.wantRunBusy {
+				t.Errorf("childSpawnError(...) = %v; errors.Is(ErrChildRunBusy) = %v, want %v", got, !tt.wantRunBusy, tt.wantRunBusy)
 			}
 			for _, want := range tt.wantSubstr {
 				if !strings.Contains(got.Error(), want) {

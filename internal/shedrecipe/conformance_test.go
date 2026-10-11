@@ -77,6 +77,7 @@ func minimalEntries() map[string]minimalEntry {
 		},
 		"WorktreeCreate":   {newTestEnv, emptyConfig},
 		"InnerRun":         {newTestEnv, emptyConfig},
+		"Land":             {newTestEnv, emptyConfig},
 		"SeedChild":        {newTestEnvWithSeedChild, emptyConfig},
 		"WorktreeTeardown": {newTestEnv, emptyConfig},
 	}

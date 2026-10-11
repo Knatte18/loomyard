@@ -511,8 +511,9 @@
 // A rollback deletes the local branches this `Add` created, a weft branch taken from origin included, and never restores the deleted remote weft branch: its content is reachable from the archive tag.
 // It also deletes the warp branch this `Add` pushed from origin, but only when the pre-flight probe found it absent there, step 11's push was attempted, and origin still holds it at the commit that push carried; a branch origin already had is never touched.
 // A fast-forward `Add` made to a pre-existing local weft branch is not rewound.
-// `Add`'s two branch pushes retry a push the server refuses with a bare `(failed)` on the pushed ref, in 4 attempts in total with exponential backoff;
-// every other push failure returns on the first attempt.
+// Every plain fabric push retries a push the server refuses on the pushed ref with a bare `(failed)` or a remote `cannot lock ref`, through gitrepo's bounded retry with exponential backoff;
+// `Add`'s two branch pushes and the archive tag push included, and every other push failure returns on the first attempt.
+// The coalesced push logs a Warn and leaves the commits unpushed once the attempts run out.
 // `SkipPush`/`SkipGit` skip every probe and the replacement: the pair is then live only by a local weft branch,
 // and the warp branch forks from `HEAD`.
 //

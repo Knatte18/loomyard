@@ -181,6 +181,12 @@ func PrimeRunLock(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, shedDirName, "run.lock")
 }
 
+// LandLock returns the path to the hub-scoped ephemeral advisory lock one landing holds for its whole body, beside PrimeRunLock and built the same way:
+// the given *lyxcwd.Location's AnchorPath() joined with lyxdirs.DotLyxDirName, shedDirName, and "land.lock".
+func LandLock(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, shedDirName, "land.lock")
+}
+
 // LoopLock returns the path to the loop's liveness lock, loop.lock under StepsDir(l, runID), which the detached loop holds for its whole life.
 func LoopLock(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(StepsDir(l, runID), "loop.lock")

@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -58,6 +59,9 @@ type Repo struct {
 	geometryOnce  sync.Once
 	geometryValue dotgit.Geometry
 	geometryErr   error
+
+	// pushSleep replaces the production backoff sleep of the plain push primitives; nil in every handle New returns, set only by this package's tests.
+	pushSleep func(time.Duration)
 }
 
 // New returns a Repo wrapping the git checkout at path. It performs no I/O.

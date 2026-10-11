@@ -3,6 +3,7 @@
 package shedverbs
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -62,6 +63,10 @@ func gotoCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				MissingStatusWayForward: spec.MissingStatusWayForward,
 			})
 			if err != nil {
+				if errors.Is(err, shedengine.ErrShedBusy) {
+					clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), map[string]any{"kind": shedengine.ShedBusyKind}))
+					return nil
+				}
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}

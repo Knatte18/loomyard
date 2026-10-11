@@ -23,6 +23,7 @@ var planVerifySites = []string{
 // verifyRunAllowed names the files outside internal/verifytree that may call verifyrun.Run, each with its reason.
 var verifyRunAllowed = map[string]string{
 	"internal/websterengine/cardverify.go": "reruns a card's own **Verify:** command, which is not a plan-verify site",
+	"internal/battencli/land.go":           "runs the landing config's deploy command in the prime after a pull, which verifies no tree",
 }
 
 const retiredMarkerName = "verify-pending"

@@ -40,6 +40,9 @@ type Config struct {
 	// PublishVerify is the shell command Publish runs in the task worktree after the plan's verify passes.
 	// Empty runs nothing; Finalize never runs it.
 	PublishVerify string `yaml:"publish_verify"`
+	// Deploy is the shell command batten's Land row runs in the prime after a landing into the prime's branch.
+	// Empty runs nothing.
+	Deploy string `yaml:"deploy"`
 }
 
 // LoadConfig loads and unmarshals configuration for the landing module.

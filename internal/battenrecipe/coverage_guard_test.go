@@ -15,13 +15,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
-// battenRowEngines maps each of New's four row names to the engine name backing it. The
+// battenRowEngines maps each of New's row names to the engine name backing it. The
 // row-name side is keyed off this package's own Name* constants, per the
 // row-name-authority-stays-with-the-go-constants Shared Decision.
 var battenRowEngines = map[string]string{
 	NameWorktreeCreate:   "WorktreeCreate",
 	NameSeedChild:        "SeedChild",
 	NameRunShed:          "InnerRun",
+	NameLand:             "Land",
 	NameWorktreeTeardown: "WorktreeTeardown",
 }
 

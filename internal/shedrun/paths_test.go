@@ -72,6 +72,8 @@ func TestPathConstructors(t *testing.T) {
 			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "drive-reports") }},
 		{"PrimeRunLock", PrimeRunLock,
 			func(l *lyxcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lyx", "shed", "run.lock") }},
+		{"LandLock", LandLock,
+			func(l *lyxcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lyx", "shed", "land.lock") }},
 		{"SeedRel", func(l *lyxcwd.Location) string { return SeedRel(l, "self") },
 			func(l *lyxcwd.Location) string { return filepath.Join("_lyx", "shed", worktreeName, "seed.json") }},
 		{"StatusRel", func(l *lyxcwd.Location) string { return StatusRel(l, "self") },
@@ -164,13 +166,17 @@ func TestDriveReportsRel(t *testing.T) {
 	}
 }
 
-// TestLocksAreDistinct pins that a run's RunLock and StatusLock never share a file, which shedengine.Shed's own validation rejects outright (a shared file would hang on the first persist rather than fail), and that PrimeRunLock is a distinct hub-scoped lock from any single run-id's locks.
+// TestLocksAreDistinct pins that a run's RunLock and StatusLock never share a file, which shedengine.Shed's own validation rejects outright (a shared file would hang on the first persist rather than fail), and that PrimeRunLock and LandLock are distinct hub-scoped locks from each other and from any single run-id's locks.
 //
-//testtiming:keep pins that RunLock, StatusLock and PrimeRunLock never share a file, which its covering tests do not
+//testtiming:keep pins that RunLock, StatusLock, PrimeRunLock and LandLock never share a file, which its covering tests do not
 func TestLocksAreDistinct(t *testing.T) {
 	t.Parallel()
 	l := syntheticLocation(t)
 	prime := PrimeRunLock(l)
+	land := LandLock(l)
+	if prime == land {
+		t.Errorf("PrimeRunLock(l) == LandLock(l) = %q; must differ", prime)
+	}
 	for _, runID := range []string{"self", "abc123", "run-two", "another-run-id"} {
 		t.Run(runID, func(t *testing.T) {
 			t.Parallel()
@@ -182,6 +188,9 @@ func TestLocksAreDistinct(t *testing.T) {
 			}
 			if prime == StatusLock(l, runID) {
 				t.Errorf("PrimeRunLock(l) == StatusLock(l, %q) = %q; must differ", runID, prime)
+			}
+			if land == RunLock(l, runID) || land == StatusLock(l, runID) {
+				t.Errorf("LandLock(l) = %q; must differ from RunLock and StatusLock of %q", land, runID)
 			}
 			if got := LoopLock(l, runID); got == RunLock(l, runID) || got == StatusLock(l, runID) {
 				t.Errorf("LoopLock(l, %q) = %q; must differ from RunLock and StatusLock", runID, got)

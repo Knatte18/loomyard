@@ -1,7 +1,7 @@
-// entries_batten.go implements the four batten registry entries: worktreeCreateEntry,
-// innerRunEntry, seedChildEntry, and worktreeTeardownEntry. They are grouped into their own file
+// entries_batten.go implements the batten registry entries, the ones that build a producer of the task-worktree lifecycle.
+// They are grouped into their own file
 // rather than folded into entries_simple.go because they share the
-// Env.Slug/Env.ScratchDir/Env.PrimeLock validation shape that entries_simple.go's nine entries do
+// Env.Slug/Env.ScratchDir/Env.PrimeLock validation shape that entries_simple.go's entries do
 // not have.
 
 package shedrecipe
@@ -198,4 +198,51 @@ func seedChildEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 		return nil, err
 	}
 	return battenshed.NewSeedChild(name, env.Slug, env.SeedChild, env.ScratchDir), nil
+}
+
+// landEntry is the Constructor for the "Land" registry row: it rejects any Config key.
+// It validates Env.Slug, Env.ScratchDir, Env.PrimeLock.Acquire, Env.PrimeLock.Path, Env.Land.LandLock.Acquire, Env.Land.LandLock.Path and the Env.Land seams ParentBranch, PrimeBranch, PrimeDirty, Pull, Landing, RunDeploy, ReadyTasks, PruneBoard and PauseRequested.
+// It returns battenshed.NewLand(name, env.Slug, env.Land, env.PrimeLock, env.ScratchDir).
+// It does not validate Env.Land.Sleep, Env.Land.Now or Env.Land.Notices, whose nil values are legitimate defaults.
+func landEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+	if err := configRejectUnknown(cfg); err != nil {
+		return nil, err
+	}
+	if err := requireNonEmpty("Land", "Slug", env.Slug); err != nil {
+		return nil, err
+	}
+	if err := requireAbsRoot("Land", "ScratchDir", env.ScratchDir); err != nil {
+		return nil, err
+	}
+	if err := requireSeam("Land", "PrimeLock.Acquire", env.PrimeLock.Acquire); err != nil {
+		return nil, err
+	}
+	if err := requireAbsRoot("Land", "PrimeLock.Path", env.PrimeLock.Path); err != nil {
+		return nil, err
+	}
+	if err := requireSeam("Land", "Land.LandLock.Acquire", env.Land.LandLock.Acquire); err != nil {
+		return nil, err
+	}
+	if err := requireAbsRoot("Land", "Land.LandLock.Path", env.Land.LandLock.Path); err != nil {
+		return nil, err
+	}
+	for _, seam := range []struct {
+		field string
+		value any
+	}{
+		{"Land.ParentBranch", env.Land.ParentBranch},
+		{"Land.PrimeBranch", env.Land.PrimeBranch},
+		{"Land.PrimeDirty", env.Land.PrimeDirty},
+		{"Land.Pull", env.Land.Pull},
+		{"Land.Landing", env.Land.Landing},
+		{"Land.RunDeploy", env.Land.RunDeploy},
+		{"Land.ReadyTasks", env.Land.ReadyTasks},
+		{"Land.PruneBoard", env.Land.PruneBoard},
+		{"Land.PauseRequested", env.Land.PauseRequested},
+	} {
+		if err := requireSeam("Land", seam.field, seam.value); err != nil {
+			return nil, err
+		}
+	}
+	return battenshed.NewLand(name, env.Slug, env.Land, env.PrimeLock, env.ScratchDir), nil
 }

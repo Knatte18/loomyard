@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
@@ -293,5 +294,76 @@ func TestWorktreeTeardown_CancelledDuringLockWait(t *testing.T) {
 	}
 	if len(rec.calls) != 0 {
 		t.Errorf("calls = %v; want none after cancellation", rec.calls)
+	}
+}
+
+// TestWorktreeTeardown_FailureNoticeOncePerEpisode asserts a failing row queues one notice naming the failed step and the way forward.
+// It queues none on a re-entry at the same batten history length, a new one after the length grows, a new one with a Warn when the history cannot be read, and none for a cancelled context.
+//
+// It redirects the process-global logger output to read the Warn.
+func TestWorktreeTeardown_FailureNoticeOncePerEpisode(t *testing.T) {
+	logs := logcapture.Capture(t)
+
+	var notices []string
+	historyLen := 4
+	var historyErr error
+	shutdownCtxCancel := func() {}
+	deps := TeardownDeps{
+		Shutdown: func(context.Context) (string, error) {
+			shutdownCtxCancel()
+			return "", errors.New("session would not end")
+		},
+		Remove: func(context.Context) error { return nil },
+		Notices: RowNoticeDeps{
+			Notify: func(_ context.Context, line string) (bool, error) {
+				notices = append(notices, line)
+				return true, nil
+			},
+			BattenHistoryLen: func() (int, error) { return historyLen, historyErr },
+		},
+	}
+	var released bool
+	lock := fakePrimeLock("/lock/path", true, nil, nil, &released)
+	producer := NewWorktreeTeardown("teardown", "myslug", deps, lock, t.TempDir())
+
+	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
+	if len(notices) != 1 {
+		t.Fatalf("notices after the first failure = %v; want exactly one", notices)
+	}
+	for _, want := range []string{"[batten notice] myslug: teardown failed at session shutdown: ", "session would not end", `way forward: fix the cause, then run "lyx batten run myslug" from the prime`} {
+		if !strings.Contains(notices[0], want) {
+			t.Errorf("notice = %q; want it to contain %q", notices[0], want)
+		}
+	}
+
+	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
+	if len(notices) != 1 {
+		t.Errorf("notices after a re-entry at the same history length = %d; want 1", len(notices))
+	}
+
+	historyLen++
+	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
+	if len(notices) != 2 {
+		t.Errorf("notices after the history grew = %d; want 2", len(notices))
+	}
+
+	historyErr = errors.New("status unreadable")
+	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
+	if len(notices) != 3 {
+		t.Errorf("notices after the history became unreadable = %d; want 3", len(notices))
+	}
+	if !strings.Contains(logs.String(), "batten history unreadable for the row notice") {
+		t.Errorf("log = %q; want the unreadable-history Warn", logs.String())
+	}
+
+	historyErr = nil
+	historyLen++
+	ctx, cancel := context.WithCancel(context.Background())
+	shutdownCtxCancel = cancel
+	if _, _, err := producer.Call(ctx); err == nil {
+		t.Error("Call() error = nil; want the cancelled-context diagnosis")
+	}
+	if len(notices) != 3 {
+		t.Errorf("notices after a cancelled context = %d; want 3", len(notices))
 	}
 }

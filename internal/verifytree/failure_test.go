@@ -35,6 +35,8 @@ func TestPublishFailureRecord(t *testing.T) {
 			LogPath:     filepath.Join(p.Dir, "verify-3.log"),
 			Head:        "abc123",
 			MergeCommit: "def456",
+			Target:      "Webster-Burler",
+			WrittenAt:   "2026-01-02T03:04:05Z",
 		}
 		if err := WritePublishFailure(p, want); err != nil {
 			t.Fatalf("WritePublishFailure: %v", err)

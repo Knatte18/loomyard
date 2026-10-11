@@ -45,6 +45,7 @@ func darnVerifySource(l *lyxcwd.Location) verifySource {
 			return darnengine.VerifyCommand(fabricengine.BoardDir(l.HubPath))
 		},
 		failedWayForward: `run "lyx loom goto --to Darn-Write", then "lyx loom resume", in the task worktree; the Darn-Write spawn renders the Publish failure record and its gate runs the failing tests`,
+		failureTarget:    loomshed.NameDarnWrite,
 	}
 }
 

@@ -55,18 +55,27 @@ func headOrEmpty(path string) (string, error) {
 	return "", err
 }
 
-// pushRebaseFreeLogged runs a rebase-free push, mapping rejection to a warning
+// pushRebaseFreeLogged runs a rebase-free push, mapping rejection or an exhausted retry to a warning
 // and nil return (commits left unpushed per fabric's contract); other errors propagate.
 func pushRebaseFreeLogged(path string) error {
-	err := gitrepo.New(path).PushRebaseFree()
-	if err == nil {
+	return unpushedOutcome(path, gitrepo.New(path).PushRebaseFree())
+}
+
+// unpushedOutcome maps the result of a rebase-free push of path to fabric's contract.
+// A diverged remote and a remote that kept refusing the push both log a Warn and return nil, leaving the commits unpushed for a later push; any other error is returned.
+func unpushedOutcome(path string, err error) error {
+	switch {
+	case err == nil:
 		return nil
-	}
-	if errors.Is(err, gitrepo.ErrPushRejected) {
+	case errors.Is(err, gitrepo.ErrPushRejected):
 		logger.Warn("fabricengine: push rejected, remote diverged; commits left unpushed", "path", path)
 		return nil
+	case errors.Is(err, gitrepo.ErrPushRetriesExhausted):
+		logger.Warn("fabricengine: remote kept refusing the push; commits left unpushed for a later push", "path", path, "error", err)
+		return nil
+	default:
+		return err
 	}
-	return err
 }
 
 // CoalescePushBothAt pushes both warp and weft under fabric's absorbing push lock, looping until

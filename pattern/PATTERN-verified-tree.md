@@ -15,6 +15,7 @@ Every verify site runs the told verify command through `verifytree.Verify`: the 
 - Publish alone leaves a failure record in the verify directory when its plan verify or `publish_verify` fails with a non-zero exit: the failing kind, the failing tests, the failing run's own log, HEAD and the merge-in commit.
   A Publish that passes both verifies removes it before its push, and Finalize and the other sites neither write nor remove it.
 - `internal/websterengine/cardverify.go` reruns a card's own `**Verify:**` command through `verifyrun` directly and is no plan-verify site.
+- `internal/battencli/land.go` runs the landing config's `deploy` command through `verifyrun` directly and is no plan-verify site: it verifies no tree.
 
 ## Enforcement
 

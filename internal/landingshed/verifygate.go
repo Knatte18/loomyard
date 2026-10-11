@@ -25,6 +25,7 @@ const dirtyPathsShown = 10
 type verifyGate struct {
 	command          func() (string, error)
 	failedWayForward string
+	failureTarget    string
 	waitMark         func(label string, start time.Time) error
 	paths            verifytree.Paths
 	dirty            func(worktree string) ([]string, error)
@@ -49,7 +50,13 @@ func (g verifyGate) recordFailure(kind verifytree.FailureKind, result verifytree
 	if g.recorder == nil || result.Status != verifytree.StatusFailed || result.TimedOut || result.ExitCode < 0 {
 		return false
 	}
-	failure := verifytree.PublishFailure{Kind: kind, LogPath: result.Log, MergeCommit: g.recorder.mergeCommit}
+	failure := verifytree.PublishFailure{
+		Kind:        kind,
+		LogPath:     result.Log,
+		MergeCommit: g.recorder.mergeCommit,
+		Target:      g.failureTarget,
+		WrittenAt:   g.now().UTC().Format(time.RFC3339),
+	}
 	if g.recorder.head != nil {
 		head, err := g.recorder.head()
 		if err != nil {
@@ -85,6 +92,7 @@ func newVerifyGate(deps Deps) verifyGate {
 	return verifyGate{
 		command:          deps.VerifyCommand,
 		failedWayForward: deps.VerifyFailedWayForward,
+		failureTarget:    deps.VerifyFailureTarget,
 		waitMark:         deps.VerifyWaitMark,
 		paths:            verifytree.NewPaths(deps.WorktreeRoot, deps.VerifyDir),
 		dirty:            verifytree.DirtyPaths,

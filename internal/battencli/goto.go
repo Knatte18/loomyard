@@ -1,4 +1,4 @@
-// goto.go declares batten's PreGoto hook: it keeps Worktree-Teardown unreachable from any failure path, the rule the batten recipe's header states, by admitting a goto onto that row only once the child run is done.
+// goto.go declares batten's PreGoto hook: it keeps Worktree-Teardown unreachable from any failure path, the rule the batten recipe's header states, by admitting a goto onto that row, or onto Land, only once the child run is done.
 
 package battencli
 
@@ -25,14 +25,15 @@ func (c *battenCLI) battenPreGoto(_ context.Context, target string) error {
 	return preGoto(target, c.slug, c.shedPaths.StatusPath, childStatus)
 }
 
-// preGoto admits every target other than Worktree-Teardown unread.
-// Worktree-Teardown is admitted only when the batten run's own current row is already Worktree-Teardown, or when the child run's status reads done.
+// preGoto admits every target other than Land and Worktree-Teardown unread.
+// Either of those two is admitted only when the batten run's own current row is already that row, or when the child run's status reads done.
+// The first term admits the way forward of a pause honoured in Land, a goto onto Land with batten blocked there.
 // A child status that cannot be located or read counts as not done.
 func preGoto(target, slug, ownStatusPath string, childStatus func() (string, error)) error {
-	if target != battenrecipe.NameWorktreeTeardown {
+	if target != battenrecipe.NameWorktreeTeardown && target != battenrecipe.NameLand {
 		return nil
 	}
-	if own, ok := readStatusFile(ownStatusPath); ok && own.CurrentProducer == battenrecipe.NameWorktreeTeardown {
+	if own, ok := readStatusFile(ownStatusPath); ok && own.CurrentProducer == target {
 		return nil
 	}
 	childState := "absent"
@@ -44,7 +45,7 @@ func preGoto(target, slug, ownStatusPath string, childStatus func() (string, err
 			}
 		}
 	}
-	return fmt.Errorf("batten goto: Worktree-Teardown is reachable only once the child run is done (child state %q); way forward: \"lyx batten step %s\" drives Run-Shed until the child run finishes, and \"lyx batten status %s\" shows where it is", childState, slug, slug)
+	return fmt.Errorf("batten goto: %s is reachable only once the child run is done (child state %q); way forward: \"lyx batten step %s\" drives Run-Shed until the child run finishes, and \"lyx batten status %s\" shows where it is", target, childState, slug, slug)
 }
 
 // readStatusFile decodes a status file without taking its lock;
