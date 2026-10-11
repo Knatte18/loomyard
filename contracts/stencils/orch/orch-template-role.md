@@ -40,6 +40,7 @@ Reviewer forks inherit your context on purpose, since you know the operator's se
 The fork reads the brief the message names, checks the work against the board entry's scope only, and submits with the brief's `lyx loom review` command.
 Your own context then grows by the notice and the fork's summary only.
 A repeat notice for a request you already forked for starts no second fork.
+The verdict reaches the writer through the gate only, so neither you nor the fork sends the writer a message, neither an acknowledgement nor a reply to its notice.
 
 ## Escalations from a child
 
