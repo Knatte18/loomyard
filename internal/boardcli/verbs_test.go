@@ -108,10 +108,20 @@ func stepPrune(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"gone","title":"Gone","labels":["bug"]}`)
 	runJSON(t, 0, "set-status", `{"slug":"gone","status":"done"}`)
 
+	// A bare prune is a dry run: it reports the done entry and leaves it listed.
 	result := runJSON(t, 0, "prune")
 	removed, _ := result["removed"].([]any)
-	if len(removed) != 1 || removed[0] != "gone" {
-		t.Fatalf("removed = %v, want [gone]", result["removed"])
+	if len(removed) != 1 || removed[0] != "gone" || result["applied"] != false {
+		t.Fatalf("dry run: removed = %v applied = %v, want [gone] false", result["removed"], result["applied"])
+	}
+	if got := slugsOf(t, runJSON(t, 0, "list")); len(got) != 2 {
+		t.Fatalf("after dry run: slugs = %v, want both entries still listed", got)
+	}
+
+	result = runJSON(t, 0, "prune", "--apply")
+	removed, _ = result["removed"].([]any)
+	if len(removed) != 1 || removed[0] != "gone" || result["applied"] != true {
+		t.Fatalf("removed = %v applied = %v, want [gone] true", result["removed"], result["applied"])
 	}
 
 	if got := slugsOf(t, runJSON(t, 0, "list")); len(got) != 1 || got[0] != "keep" {
@@ -119,7 +129,7 @@ func stepPrune(t *testing.T, f *cliFixture) {
 	}
 
 	// A second prune has nothing to remove and reports an empty array.
-	result = runJSON(t, 0, "prune")
+	result = runJSON(t, 0, "prune", "--apply")
 	if removed, ok := result["removed"].([]any); !ok || len(removed) != 0 {
 		t.Fatalf("second prune: removed = %v, want []", result["removed"])
 	}
@@ -214,18 +224,34 @@ func stepRetireLegacy(t *testing.T, f *cliFixture) {
 
 	// A board with no legacy files refuses.
 	mustUpsert(t, `{"slug":"x","title":"X","labels":["bug"]}`)
-	result := runJSON(t, 1, "retire-legacy")
-	if ok, _ := result["ok"].(bool); ok {
-		t.Fatalf("expected refusal without legacy files, got %v", result)
+	for _, args := range [][]string{{"retire-legacy"}, {"retire-legacy", "--apply"}} {
+		result := runJSON(t, 1, args...)
+		if ok, _ := result["ok"].(bool); ok {
+			t.Fatalf("%v: expected refusal without legacy files, got %v", args, result)
+		}
 	}
 
-	// Seeded legacy files are removed.
+	// Seeded legacy files are reported by a bare run and left on disk.
 	for _, name := range []string{"tasks.json", "notes.json"} {
 		if err := os.WriteFile(filepath.Join(boardDir, name), []byte(`[]`), 0o644); err != nil {
 			t.Fatalf("seed %s: %v", name, err)
 		}
 	}
-	runJSON(t, 0, "retire-legacy")
+	dry := runJSON(t, 0, "retire-legacy")
+	if files, _ := dry["legacy_files"].([]any); len(files) != 2 || files[0] != "tasks.json" || files[1] != "notes.json" || dry["applied"] != false {
+		t.Fatalf("dry run: legacy_files = %v applied = %v, want [tasks.json notes.json] false", dry["legacy_files"], dry["applied"])
+	}
+	for _, name := range []string{"tasks.json", "notes.json"} {
+		if _, err := os.Stat(filepath.Join(boardDir, name)); err != nil {
+			t.Fatalf("%s removed by a dry run: %v", name, err)
+		}
+	}
+
+	// --apply reports them again and removes them.
+	applied := runJSON(t, 0, "retire-legacy", "--apply")
+	if files, _ := applied["legacy_files"].([]any); len(files) != 2 || applied["applied"] != true {
+		t.Fatalf("retire-legacy --apply: legacy_files = %v applied = %v, want two files and true", applied["legacy_files"], applied["applied"])
+	}
 	for _, name := range []string{"tasks.json", "notes.json"} {
 		if _, err := os.Stat(filepath.Join(boardDir, name)); !os.IsNotExist(err) {
 			t.Fatalf("%s still present after retire-legacy (stat err: %v)", name, err)
