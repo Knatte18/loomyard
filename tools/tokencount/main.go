@@ -23,6 +23,13 @@
 // <session>.jsonl per session, and a session's sub-agents (the Webster master's forks)
 // in <session>/subagents/*.jsonl.
 //
+// A slug's earlier runs share its worktree path, so they share its project directory, and a run counts only the transcripts that started after the slug's previous run.
+// The run's lower bound is the commit date of the slug's newest archive tag for a run in flight, whose worktree <hub>/<slug> exists.
+// For a finished run it is the commit date of the next-older tag, and the bound is absent when the slug has no such tag, which counts every transcript.
+// A main-session transcript is judged by the earliest timestamp of its user and assistant lines, and one with no such line is left out when a bound exists.
+// A left-out transcript adds nothing to tokens, cost, working intervals, the session count, the Webster forks, the Merriam starts, the run's begin-batch base or its transcript window, and neither do its sub-agents.
+// The run's section reports how many were left out and the bound's date, and no flag turns the filter off.
+//
 // A session's role is the part after the last colon of its latest custom-title line,
 // which lyx sets to the strand name (ly:<slug>:burler), with a trailing -N dropped, so
 // burler-2 counts as burler. A sub-agent counts under its parent's role with "+sub"
@@ -100,6 +107,9 @@
 // The time and time share columns give a role's working time and its percentage of the table's span.
 // Time is turn time: a session works from a user or assistant line until the line that ends its turn.
 // That is an assistant line whose stop_reason is set and not tool_use, a user line holding an interrupt marker, or a user line holding a <local-command-stdout> output.
+// A turn-start line is a user line holding text and no tool result, other than a line that ends a turn and other than a compaction's summary line.
+// The interval into a turn-start line is idle, since a crash and --resume leave the gap before the resume's prompt, and so is an interval longer than the 30-minute stall cap, three times the harness's ten-minute cap on a foreground Bash call.
+// Either makes the whole interval idle, never a clipped part of it.
 // A role's time is the union of its transcripts' working intervals clipped to the span, a sub-agent's transcripts counting under <role>+sub.
 // The idle row is the span minus the union of every working interval of the run, orch sessions left out, so it holds parent review, gate-slot waits, a parked driver and Go-only work.
 // The orch row's time cells are blank, and the "All runs" table sums each run's figures per role, idle and span, with no union across runs.
@@ -218,16 +228,17 @@ func run(args []string, stdout io.Writer) error {
 
 	report := Report{}
 	for _, slug := range slugs {
-		r, err := CountRun(projectDir(*projects, filepath.Join(*hub, slug)), slug)
+		// Teardown removes a finished run's worktree, so one that still exists is in flight and its archive tags belong to an older run of the slug.
+		_, statErr := os.Stat(filepath.Join(*hub, slug))
+		if statErr != nil && !os.IsNotExist(statErr) {
+			return statErr
+		}
+		inFlight := statErr == nil
+		r, err := CountRun(projectDir(*projects, filepath.Join(*hub, slug)), slug, runBound(finished[slug], inFlight))
 		if err != nil {
 			return err
 		}
-		// Teardown removes a finished run's worktree, so one that still exists is in flight and its archive tags belong to an older run of the slug.
-		_, err = os.Stat(filepath.Join(*hub, slug))
-		if err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		if os.IsNotExist(err) {
+		if !inFlight {
 			record, err := readShedRecord(fabric, slug, finished[slug])
 			if err != nil {
 				return err

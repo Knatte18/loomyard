@@ -130,6 +130,8 @@ var wordingClaims = []stencilClaims{
 		{must: "count as covered by a command run inside that module (`go -C <module>`)", why: "a nested module's packages are covered by a command run inside the module"},
 		{must: "proposes only a fix that every check in the validation-checks section of `{{.specs_dir}}/loom/loom-plan-spec.md` admits", why: "a proposed fix is bound to the gate's checks, by pointer to the spec"},
 		{must: "it still reports the defect and names the check that constrains the fix", why: "no admissible fix leaves the defect reportable and names the constraining check"},
+		{must: "`redundant-package-target`", section: "## Proposed fixes", why: "a fix that adds or pairs targets is pointed at the package-redundancy check rather than restating it"},
+		{must: "`redundant-file-target`", section: "## Proposed fixes", why: "a fix that adds or pairs targets is pointed at the file-redundancy check rather than restating it"},
 		{must: "`delete-target-gone` fires only at Webster's dispatch", why: "anything this round's own gate already checks is not flagged, and the one check the gate never runs is named"},
 		{must: "Dependency edges are derived, never authored", why: "dependency edges are derived, never authored"},
 		{must: "no graded blast radius to summarise", why: "Rename carries no ImpactSummary because there is no graded blast radius"},

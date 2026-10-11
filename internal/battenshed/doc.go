@@ -26,6 +26,7 @@
 // Limits: a run whose pid is dead is not read, a run that keeps writing or hangs in a live wait is never quiet, and both notices are informational.
 // A marker under the row's scratch directory records the notices sent, and only those queued, so a batten restart sends the notices not yet sent and never one already sent.
 // A state-changed notice names what happened, the child's state and the row it stopped at, for example `awaiting at PR-Gate`.
+// Every notice names the child's state and current row, and a quiet, an api-error and a driver-dead notice follow them with their own text, for example `running at Plan-Write; agents idle for 25m0s`.
 // The child's reason is labelled `error:` for a failed or blocked child and `waiting:` for any other state.
 // Every notice carries `since` and `history`, and a notice for a parked stop (blocked, paused, failed, awaiting) carries the driver's stop report, or `report none yet`.
 // Every path under the task pair is rendered relative to it, since the slug already names the pair, and a notice carries no attach command.
