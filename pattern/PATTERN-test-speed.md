@@ -97,7 +97,7 @@ Bound: a forged value misleads only an ungated raw run, since `lyx gate test` se
 
 - Each package has a budget: the most top-level `func Test…` functions its `_test.go` files may hold, counted under every build tag.
 - The budgets live in `cmd/lyx/testdata/test-budget.yaml`, one row per package directory, pinned at the `test-tiers` after-state.
-- `cmd/lyx/testbudget_test.go` fails, naming the package, its count and its budget, when a package exceeds its row or has tests and no row.
+- `cmd/lyx/testbudget_test.go` fails, naming the package, its count and its budget, when a package exceeds its row or has tests and no row, and names the value to set the row to.
   A count below the budget passes, and so does a row whose package has no tests left.
 - A raise is a one-line edit in the same commit as the tests that need it, so the guard forces a visible, reviewed decision and blocks nothing else.
 - Wall time is not pinned, and the count is not compared with `cmd/testtiming`'s `TESTS` column.
