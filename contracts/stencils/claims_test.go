@@ -160,7 +160,7 @@ var wordingClaims = []stencilClaims{
 		{must: "`first_card`", why: "the rework branch finds the live round by first_card"},
 		{must: "`head_sha`", why: "the rework range starts at the rejected head"},
 		{must: "git log --first-parent --no-merges", why: "the rework range excludes mid-run merges"},
-		{must: "Plan-Write`'s and `Plan-Burler`'s own gates", why: "anything the plan's own gates already check is not flagged"},
+		{must: "Plan-Write`'s and `Plan-Burler-Fix`'s own gates", why: "anything the plan's own gates already check is not flagged"},
 		{must: "measuring stick and never the subject", why: "the plan is the measuring stick and never the subject"},
 		{must: "_lyx/reviews/webster/", why: "this segment's own round artifacts are never the subject"},
 		{must: "target repository's own conventions", why: "comment-convention compliance checks the target repository's own conventions"},

@@ -1,7 +1,7 @@
-<!-- This is the Darn-Review rubric. It is read by both rows of the darn recipe's Darn-Review perch:
+<!-- This is the Darn-Review rubric. It is read by the Bouncer row and the review row of the darn recipe's Darn-Review perch:
      the Darn-Bouncer row interpolates it as bouncer-template-seed.md's and
-     bouncer-template-judge.md's rubric marker value, and the Darn-Burler row interpolates it
-     the same way into internal/burlerengine's own round prompt.
+     bouncer-template-judge.md's rubric marker value, and the Darn-Burler-Review row interpolates it
+     the same way into internal/burlerengine's own review prompt.
      It is a marker VALUE, never a template -- it carries no top-level stencil markers of its own, and
      internal/stencil's StripLeadingComment removes this leading comment before either consumer ever
      sees it. -->

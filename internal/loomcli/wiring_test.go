@@ -862,8 +862,8 @@ func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]s
 }
 
 // TestWire_ReviewKeysReachTheEnv verifies the loom.yaml keys that tune a review round reach the Env:
-// plan_review lands in the Plan-Burler rows' RowReviewModels entries alone, and the Discussion-Burler rows keep the run-wide models.
-// The Webster-Burler rows take the template's webster_review (one sonnet entry of effort high) with the run-wide fix models.
+// plan_review lands in the Plan-Burler-* rows' RowReviewModels entries alone, and the Discussion-Burler-* rows keep the run-wide models.
+// The Webster-Burler-* rows take the template's webster_review (one sonnet entry of effort high) with the run-wide fix models.
 // plan_judge, seed and webster_seed land in each Bouncer row's RowBouncerModels entry, the darn recipe's Darn-Bouncer taking Webster-Bouncer's.
 func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	t.Parallel()

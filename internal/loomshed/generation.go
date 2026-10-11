@@ -78,7 +78,7 @@ func committedRounds(deps PRReworkDeps) ([]committedRound, error) {
 // The live generation's round is the highest committed round whose record carries a class and whose first_card equals the live overview's first_card (absent means 1);
 // with none, the live plan is generation 0 and never skips.
 // It reports true only when that round's record is classed exempt and ReviewExempt agrees over both the live committed cards and the working-tree cards.
-// The working tree counts because a Plan-Burler round commits nothing: its edits land only through the approve-and-commit a skip would run, unreviewed.
+// The working tree counts because a Plan-Burler-Fix round commits nothing: its edits land only through the approve-and-commit a skip would run, unreviewed.
 // An error means the committed plan, a committed record or the working-tree plan could not be read or decoded; the Bouncer then reviews for real.
 //
 // The inputs are not Go-only: the rework session writes the overview's first_card, and status commits sweep the rework directory,

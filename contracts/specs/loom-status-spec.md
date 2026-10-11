@@ -67,7 +67,7 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
   `pause_after` fires when the named producer returns a routed running outcome, pausing at the routed row, and stays recorded across a halting outcome or a producer error.
   A fired condition pauses the run with the reason `paused before <target>, as requested` or `paused after <target>, as requested` and clears both keys.
 - **`history[]` is budget-bearing, not only a log.**
-  Its one-entry-per-producer-call rule (see the schema block above) is no longer merely an audit trail: it is the sole storage of every producer's per-producer, episode-scoped bounce budget, derived by counting a producer's own `stuck` entries since its own most recent `done` entry, the most recent `done` by a producer of the same segment (a Burler-round row never returns `done`, so its review segment's Bouncer passing ends its episode), or the most recent `goto` entry into its segment (into the producer itself when it has no segment).
+  Its one-entry-per-producer-call rule (see the schema block above) is no longer merely an audit trail: it is the sole storage of every producer's per-producer, episode-scoped bounce budget, derived by counting a producer's own `stuck` entries since its own most recent `done` entry, the most recent `done` by a producer of the same segment (a Burler review or fix row never returns `done`, so its review segment's Bouncer passing ends its episode), or the most recent `goto` entry into its segment (into the producer itself when it has no segment).
   It must never be truncated or compacted — doing so would silently hand every producer a fresh budget with nothing here to warn a future retention task that it just did.
   The unconditional append this depends on is the same one the fresh-start check below already relies on;
   see that check for why a `stuck` entry is appended on every `stuck` route, including a budget-exhausted block.
@@ -91,7 +91,7 @@ Among the others, the first one with a live pid wins.
 
 The value is one line.
 A gate wait renders `<producer>: <site> waiting for a gate slot <elapsed>`, one clause per live record, oldest first and joined with `; `, then `(holders: <worktree> <site>, ...)` once, for example `Plan-Write: lyx gate test ./internal/foo waiting for a gate slot 2m (holders: /hub/other lyx gate test ./internal/bar)`.
-A running verify or shuttle wait renders `<producer>: <what> running <elapsed> (<detail>)`, for example `Webster-Burler: verify running 6m (attempt 2; go test -tags integration ./...)`.
+A running verify or shuttle wait renders `<producer>: <what> running <elapsed> (<detail>)`, for example `Webster-Burler-Fix: verify running 6m (attempt 2; go test -tags integration ./...)`.
 A verify still waiting for a gate slot renders `<producer>: verify waiting for a gate slot <elapsed> (<site>; holders: <worktree> <site>, ...)`, elapsed measured from the wait start.
 A holders clause is dropped when no slot is held or the holders cannot be read.
 The parent-review wait keeps its existing `parent review: ` form, naming the reviewer, when the request opened and whether the notice was delivered (or why it was not).
