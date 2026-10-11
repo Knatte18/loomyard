@@ -601,7 +601,7 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", nil)
 			return promptCheck{text: text, err: err,
-				contains:   []string{testCardGates, testBatchGate, testOutcomePath, testSummaryPath},
+				contains:    []string{testCardGates, testBatchGate, testOutcomePath, testSummaryPath},
 				notContains: []string{"{{.card_gates}}", "{{.batch_gate}}", "this card's package's unit tests"}}
 		}},
 		{"recovery carries the card gates and no leftover marker", func(t *testing.T) promptCheck {
