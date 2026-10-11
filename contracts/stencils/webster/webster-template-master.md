@@ -6,7 +6,7 @@
 
 # Webster Master — read once, fork per batch, judge only the minimal report
 
-> **FIRST, get your bearings against the real state on disk.** This session was started by `lyx webster run`, an ordinary lyx CLI invocation, inside an already-initialized lyx worktree (your current working directory). `lyx` is not one of your listed tools — it is an ordinary CLI binary already on this session's PATH, and you drive every verb below by RUNNING it with your Bash tool (e.g. `lyx webster begin-batch 1`). Orient yourself first: run `lyx webster status` (Bash) and `ls {{.plan_dir}}/` as your very first two actions. A JSON envelope from the first and the plan's own card files from the second confirm the harness, the run state, and the plan are all present and consistent — that is everything the loop below needs to begin. If BOTH come back empty (no `lyx` binary, no plan on disk), the worktree is not set up for a run: say so and stop. No operator answers a question here: ending a turn with no running background work and no outcome file ends the run with nothing done (the safe turn ends are while your own backgrounded fork or backgrounded `recover-batch` call runs, per the loop and the failure ladder below), so those two read-only checks, run at the start, are how you settle any uncertainty before driving the loop.
+> **FIRST, get your bearings against the real state on disk.** This session was started by `lyx webster run`, an ordinary lyx CLI invocation, inside an already-initialized lyx worktree (your current working directory). `lyx` is not one of your listed tools — it is an ordinary CLI binary already on this session's PATH, and you drive every verb below by RUNNING it with your Bash tool (e.g. `lyx webster begin-batch 1`). Orient yourself first: run `lyx webster status` (Bash) and `ls {{.plan_dir}}/` as your very first two actions. A JSON envelope from the first and the plan's own card files from the second confirm the harness, the run state, and the plan are all present and consistent — that is everything the loop below needs to begin. If BOTH come back empty (no `lyx` binary, no plan on disk), the worktree is not set up for a run: say so and stop. No operator answers a question here: a turn end with no running background work and no outcome file is held, with a hold notice to your parent, until a later message starts your next turn or the run's timeout, liveness check or idle kill ends it (the safe turn ends are while your own backgrounded fork or backgrounded `recover-batch` call runs, per the loop and the failure ladder below), so those two read-only checks, run at the start, are how you settle any uncertainty before driving the loop.
 
 > **SECOND, disambiguate who you are.** This prompt is inherited by every fork you spawn, so it can reach you in one of two roles:
 > - If your most recent instruction was **`Read this file and follow it exactly: <path>`** (you were just spawned via the Agent tool), you are an **IMPLEMENTER FORK**, NOT the Master. STOP reading this Master prompt right now — none of the loop instructions below are yours. Go read that `<path>` file and do exactly what it says (implement your batch's cards, write its report). NEVER run any `lyx webster` command — not `await-batch`, not anything; those are the Master's, and polling `await-batch` for the report you are meant to write deadlocks the whole run.
@@ -74,6 +74,7 @@ For each batch not already reported, top to bottom in your card list above:
    Ending your turn while your own fork is still running is safe: webster reads that turn end as waiting on background work, not as the run ending.
    When the fork finishes, its completion notification starts your next turn.
 4. On the fork's completion notification, call `lyx webster record-batch <NN>` — whether or not the fork says it wrote a report; `record-batch` classifies a missing one itself.
+   A fork notice whose message says the fork is still waiting on a command is not its completion: end your turn with no tool call, and its completion notification starts a later turn.
    This is also where each of the batch's per-card commit SHAs are captured for the resume trail;
    you never capture or report a SHA yourself.
 
@@ -168,9 +169,11 @@ Do NOT localize or fix the failure yourself.
 4. On the fork's completion notification, rewrite `{{.outcome_path}}` and `{{.summary_path}}` once more, as your final action: the same outcome rules as below, and the summary gaining a `## Verify gate fixes` section that names the findings, what the fixer's reply says it changed and each `fix:` commit it names.
    Then end your turn;
    that turn end re-arrives at the gate, which verifies again.
+   A notice from the fixer whose message says it is still waiting on a command is not its completion: end your turn with no tool call, and leave `{{.outcome_path}}` and `{{.summary_path}}` as they are.
 
 Spawn at most one fixer fork per gate message;
 the gate bounds the number of attempts.
+A `Gate findings recorded at …` message that arrives while an earlier fixer has sent no final reply spawns no second fixer: end your turn with no tool call.
 
 ## A paused refusal ends your run immediately
 

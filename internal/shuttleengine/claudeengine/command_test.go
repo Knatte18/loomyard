@@ -16,12 +16,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// The leading CLAUDE_ENV_FILE assignment and the default 5m CLAUDE_CODE_PROMPT_CACHE_TTL assignment every launch and resume line carries, per dialect, for the env file paths the tests below thread through.
+// The leading CLAUDE_ENV_FILE assignment, the BASH_MAX_TIMEOUT_MS assignment and the default 5m CLAUDE_CODE_PROMPT_CACHE_TTL assignment every launch and resume line carries, per dialect, for the env file paths the tests below thread through.
 const (
 	pwshEnvFilePath  = `C:\run\bash-env.sh`
 	posixEnvFilePath = "/run/bash-env.sh"
-	pwshEnvLead      = `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '5m'; `
-	posixEnvLead     = `CLAUDE_ENV_FILE='/run/bash-env.sh' CLAUDE_CODE_PROMPT_CACHE_TTL='5m' `
+	pwshEnvLead      = `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:BASH_MAX_TIMEOUT_MS = '3600000'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '5m'; `
+	posixEnvLead     = `CLAUDE_ENV_FILE='/run/bash-env.sh' BASH_MAX_TIMEOUT_MS='3600000' CLAUDE_CODE_PROMPT_CACHE_TTL='5m' `
 )
 
 func TestClaudeBinary(t *testing.T) {
@@ -68,7 +68,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			settingsPath:   `C:\run\settings.json`,
 			sessionID:      "abc-123",
 			promptCacheTTL: "1h",
-			want:           `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '1h'; & 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions`,
+			want:           `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:BASH_MAX_TIMEOUT_MS = '3600000'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '1h'; & 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions`,
 		},
 		{
 			name:         "autonomous_no_model",
@@ -438,7 +438,7 @@ func TestBuildResumeCmd(t *testing.T) {
 			"fork_mode_on", "", "", "", true, true, "5m",
 			pwshEnvLead + `$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME"`,
 		},
-		{"prompt_cache_ttl_one_hour", "", "", "", true, false, "1h", `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '1h'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME"`},
+		{"prompt_cache_ttl_one_hour", "", "", "", true, false, "1h", `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:BASH_MAX_TIMEOUT_MS = '3600000'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '1h'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -59,6 +59,10 @@
 // The subagent bucket (`CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL`) is left at Claude Code's default,
 // and a `FORCE_PROMPT_CACHING_5M` in Claude Code's own environment still wins.
 //
+// Both lines also carry `BASH_MAX_TIMEOUT_MS`, the ceiling on the Bash tool's `timeout` parameter, set to one hour from `bashMaxTimeout`.
+// `BASH_DEFAULT_TIMEOUT_MS` is left at Claude Code's default, so only a call with an explicit `timeout` runs past the default.
+// No call stays in the foreground past the ceiling: at the ceiling the Bash tool ends the call or moves it to the background.
+//
 // The context reading comes from the transcript a Stop payload names, read backwards from its end in doubling chunks.
 // The latest main-chain assistant usage entry or compaction boundary is the reading, whichever sits later in the file;
 // a boundary reading carries its `postTokens` and timestamp and is marked compacted.
@@ -89,7 +93,12 @@
 // and a reader can see a payload without its newline, or a stamp without its payload, which the parser leaves unconsumed until the line completes.
 // The stamp's time is taken when the hook starts, so it can precede the payload's append by the length of the hook's own run.
 //
-// The activity reading (ActivityReader) takes the transcript's last write time and walks it backwards for the newest main-chain assistant entry that ends a turn or carries Claude Code's `isApiErrorMessage` marker.
+// The activity reading (ActivityReader) takes the session's last activity, its forks included, and walks the main transcript backwards for the newest main-chain assistant entry that ends a turn or carries Claude Code's `isApiErrorMessage` marker.
+// The last activity is the later of the main transcript's last write and the newest fork reading under the `subagents/` directory beside it:
+// a fork's last write time, or the reading clock's now when the fork holds a tool call with no result and was last written no more than `bashMaxTimeout` ago.
+// A held foreground call writes nothing, so the pending-call reading keeps a Master waiting on a working fork from reading quiet;
+// a fork stopped mid-call reads active for at most that ceiling past its last write, which a live call never outlasts.
+// The API-error part reads the main transcript only.
 // A session whose newest such entry carries the marker stands on an API error, and the entry's final text is the error's text;
 // a sidechain entry never counts, and a later normal turn end clears the error.
 // Every failure degrades to the zero reading.
@@ -137,7 +146,7 @@
 // a `go test` whose `-tags` value names `tmux` or `llm`;
 // and any command naming the slot-inheritance variable or the strand-name variable, each spelled into the pattern from its constant.
 // `go` must stand in command position directly before the subcommand, so `go test ./internal/x` and `lyx gate test ./...` pass.
-// The steer names `lyx gate test` as the route, run as a background Bash call.
+// The steer is the gate rule: it names `lyx gate test` run in the foreground with the Bash tool's `timeout` at the ceiling, every other check in the foreground, and no `cd` into the session's own working directory.
 // It is a guardrail, not a barrier: its hook sees static text only, so a run hidden behind a script, `bash -c`, a `cd` plus a relative pattern it does not cover, or a shell variable passes, as does any raw package-scoped `go test`,
 // and a matching spelling inside a quoted argument, a commit message or a `grep` is falsely denied.
 //
