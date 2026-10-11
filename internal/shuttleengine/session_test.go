@@ -409,12 +409,14 @@ func newSlashPasteRunnerAppending(t *testing.T, box string, active, noColor bool
 // checkLandingStartConfirmation drives call, a session command that restarts the session with the source landing, over a paste-path engine whose box reads empty after the paste.
 // A session-start line of landing appended by the paste confirms the send at its first read.
 // A line of other, or none, leaves the send waiting out the whole submit window before the empty box confirms it.
+// A line of landing already in the events file before the send is older than the pre-send offset and is waited out too.
 // An engine that parses no session signals confirms on the empty box at once.
 func checkLandingStartConfirmation(t *testing.T, landing, other SessionStartSource, call func(*Runner) error) {
 	t.Helper()
 	window := submitConfirmTimeout(Config{SubmitConfirmTimeoutS: 30})
 	tests := []struct {
 		name       string
+		priorLine  string
 		pasteLine  string
 		parserless bool
 		wantWait   bool
@@ -422,12 +424,16 @@ func checkLandingStartConfirmation(t *testing.T, landing, other SessionStartSour
 		{name: "a session start of the matching source confirms the send at once", pasteLine: "SESSIONSTART:" + string(landing)},
 		{name: "a session start of the other source is waited out", pasteLine: "SESSIONSTART:" + string(other), wantWait: true},
 		{name: "no session start confirms on the empty box once the window closes", wantWait: true},
+		{name: "a session start of the matching source before the send is waited out", priorLine: "SESSIONSTART:" + string(landing), wantWait: true},
 		{name: "an engine that parses no session signals confirms on the empty box at once", parserless: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			runner, _, _, clock := newSlashPasteRunnerAppending(t, "", false, false, tt.pasteLine, tt.parserless)
+			runner, _, runDir, clock := newSlashPasteRunnerAppending(t, "", false, false, tt.pasteLine, tt.parserless)
+			if tt.priorLine != "" {
+				appendEventsLine(t, filepath.Join(runDir, eventsFileName), tt.priorLine)
+			}
 			start := clock.Now()
 			if err := call(runner); err != nil {
 				t.Fatalf("error = %v, want the command confirmed", err)
