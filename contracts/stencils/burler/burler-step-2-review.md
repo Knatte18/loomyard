@@ -25,14 +25,17 @@ findings:
     class: design
     location: path/to/file.go:42
     summary: one-line description of the defect
+    fix: the exact change to make, and where
 ---
 ```
 
 Frontmatter rules, all strict:
 
+- The frontmatter's top-level keys are `verdict` and `findings` only.
 - `verdict` is exactly `APPROVED` or `BLOCKING` — no other spelling.
 - `findings` is a list;
-  every entry has a non-empty `id`, `severity`, `class`, `location`, and `summary`.
+  every entry has a non-empty `id`, `severity`, `class`, `location`, `summary`, and `fix`.
+- `fix` is the exact change to make and where, written so a fixer that has not seen your work can apply it from the review alone.
 - `severity` is exactly one of `BLOCKING`, `MEDIUM`, `LOW`, `NIT`.
 - `class` is exactly one of `design`, `scope`, `decision`, `consistency`, lowercase.
   - `design`: the design itself is wrong, or a decision is missing or rests on a false premise.
@@ -52,7 +55,9 @@ Frontmatter rules, all strict:
   Never invent a finding to pad the list.
 - In a cluster round, each finding also carries an `origin:` key — `lens:<name>` for a finding kept from a named fork, or `handler` for one you found yourself.
 
-Below the closing `---`, write prose: one `### [SEVERITY] <title>` block per finding, each carrying `**Location:**`, `**Issue:**`, and `**Fix:**` lines.
+Below the closing `---`, write prose: exactly one `### [SEVERITY] <title>` block per finding, each carrying `**Location:**` and `**Issue:**` lines.
+The change lives in the finding's `fix` key; no prose `**Fix:**` line restates it.
+A `## Rejected` section, if you write one, lists its items as bullets and never as `### [SEVERITY]` headings.
 
 When you departed from a focus directive this round, add a `## Focus departures` section below the frontmatter, after the finding blocks.
 Write one entry per departed directive, quoting the directive and giving your reason for departing.

@@ -369,6 +369,11 @@ func TestValidateReviewVerb_AgreesWithTheReviewGate(t *testing.T) {
 			wantErr: "must open with a \"---\"",
 		},
 		{
+			name:    "finding without a fix",
+			content: "---\nverdict: BLOCKING\nfindings:\n  - id: b-1\n    severity: BLOCKING\n    class: design\n    location: file.go:1\n    summary: broken\n---\n### [BLOCKING] broken\n",
+			wantErr: "missing a non-empty fix",
+		},
+		{
 			name:    "missing file",
 			missing: true,
 			wantErr: "read review file",

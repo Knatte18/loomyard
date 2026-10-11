@@ -47,7 +47,7 @@ func reviewReady(p *Profile, reviewer shuttleengine.Result, released *atomic.Boo
 	if err != nil {
 		return reviewHandoff{}, fmt.Errorf("burler: read review file %q: %w", p.ReviewPath, err)
 	}
-	verdict, findings, err := ParseReview(content)
+	verdict, findings, err := ParseCurrentReview(content)
 	if err != nil {
 		return reviewHandoff{}, fmt.Errorf("burler: round reached done but its review file is invalid: %w", err)
 	}

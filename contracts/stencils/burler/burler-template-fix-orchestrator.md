@@ -29,7 +29,7 @@ Your reviewer, by strand name: {{.advisor_names}}
    You wait inside your turn: never end your turn to await the reviewer, and a line from lyx saying the reviewer is up opens nothing.
 3. **Validate.**
    Read the review at `{{.review_path}}`, whose format is described in `{{.review_format_path}}`.
-   Check each finding's premise against the code and the fasit and, separately, the change its `**Fix:**` line proposes.
+   Check each finding's premise against the code and the fasit and, separately, the change its `fix` key proposes.
    `{{.instruction_3_path}}` says what to do with each result.
 4. **Fix.**
    Read and execute `{{.instruction_3_path}}`: the fix-everything rule, your write surface and the fixer-report.

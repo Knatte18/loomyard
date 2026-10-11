@@ -420,8 +420,8 @@ func newEngineWith(t *testing.T, geom Geometry, cfg Config, shuttle *fakeShuttle
 const (
 	approvedReview = "---\nverdict: APPROVED\n---\nlooks good\n"
 	blockingReview = "---\nverdict: BLOCKING\nfindings:\n" +
-		"  - id: F1\n    severity: BLOCKING\n    class: design\n    location: target.txt:1\n    summary: colors do not match\n" +
-		"---\nfound a mismatch\n"
+		"  - id: F1\n    severity: BLOCKING\n    class: design\n    location: target.txt:1\n    summary: colors do not match\n    fix: change the color in target.txt:1\n" +
+		"---\n### [BLOCKING] colors do not match\n**Location:** target.txt:1\n**Issue:** found a mismatch\n"
 	malformedReview = "not frontmatter at all\n"
 
 	reviewRole = burlerRolePrefix + "-" + seatengine.RoleAdvisor + "-1"

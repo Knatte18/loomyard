@@ -330,6 +330,10 @@ var wordingClaims = []stencilClaims{
 		{must: "`scope`", why: "the review format names the scope class"},
 		{must: "`decision`", why: "the review format names the decision class"},
 		{must: "`consistency`", why: "the review format names the consistency class"},
+		{must: "top-level keys are `verdict` and `findings` only", why: "a findings list under a misspelled key is refused by the strict parse"},
+		{must: "`fix` is the exact change to make and where", why: "every finding carries its fix so the fixer acts on the review alone"},
+		{must: "no prose `**Fix:**` line restates it", why: "the fix lives in the key only"},
+		{must: "never as `### [SEVERITY]` headings", why: "a Rejected section would otherwise count as extra finding blocks"},
 	}},
 	{"burler-template-review-orchestrator.md", BurlerTemplateReviewOrchestrator, []claim{
 		{must: "never edit, create, or delete a target file", why: "the reviewer never touches a target file"},
@@ -354,7 +358,7 @@ var wordingClaims = []stencilClaims{
 		{must: "with the Bash tool's `timeout` set to 300000", why: "the wait verb's cap exceeds the default Bash tool timeout, so the fixer raises it"},
 		{must: "you edit no file and run no mutating git command", section: "## Sequencing rule", why: "the fixer touches nothing until the review is ready"},
 		{must: "you never write the review file", why: "the review is the reviewer's file"},
-		{must: "and, separately, the change its `**Fix:**` line proposes", why: "Validate checks each finding's premise and its proposed change, and instruction 3 decides what follows"},
+		{must: "and, separately, the change its `fix` key proposes", why: "Validate checks each finding's premise and its proposed change, and instruction 3 decides what follows"},
 	}},
 	{"burler-step-3-fix.md", BurlerStep3Fix, []claim{
 		{must: "`Disputed` section", why: "a disputed finding is recorded in the fixer-report, not fixed"},

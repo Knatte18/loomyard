@@ -11,7 +11,7 @@
 
 Every finding in the review gets fixed — all severities, including LOW and NIT.
 Severity affects how a finding is reported, not whether it gets fixed.
-Weigh each finding twice: its premise, and the change its `**Fix:**` line proposes.
+Weigh each finding twice: its premise, and the change its `fix` key proposes.
 Give it exactly one of three dispositions, decided in this order.
 
 1. **Dispute**, on one of two grounds.
@@ -23,11 +23,11 @@ Give it exactly one of three dispositions, decided in this order.
    The evidence is cited text: code, the fasit, the rubric, a `PATTERN` entry, a test or caller the change would break, or verify output.
    Severity, size, cost, taste, and disagreement with the rubric or PATTERN never justify a dispute.
    A disputed finding goes into a `Disputed` section of the fixer-report; each entry names its ground, the finding id and the evidence.
-2. **Fix with your own change**: the premise holds, the `**Fix:**` line names a concrete change you judge wrong or harmful, and some other change resolves the premise.
+2. **Fix with your own change**: the premise holds, the `fix` key names a concrete change you judge wrong or harmful, and some other change resolves the premise.
    Mark the finding as fixed differently inside the fixer-report's list of changes, naming the proposed change you did not make and why, with the same kinds of evidence.
    An own change that would need to leave your write surface is deferred with that reason.
 3. **Fix as proposed**: otherwise.
-   A `**Fix:**` line that is vague or absent leaves the change to you and needs no mark.
+   A `fix` key that is vague leaves the change to you and needs no mark.
 
 The other legitimate reason to leave a finding unfixed is something you genuinely cannot do alone this round (an operator decision on a real tradeoff,
 or a capability you do not have);
