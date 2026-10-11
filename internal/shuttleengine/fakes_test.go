@@ -55,6 +55,18 @@ type fakeReed struct {
 	// WaitMarkCalls records every SetWaitMark call, kept out of CallLog so the tests that pin the exact call sequence stay as they are.
 	WaitMarkCalls []waitMarkCall
 	WaitMarkErr   error
+
+	PasteSubmitCalls []struct {
+		GUID   string
+		Text   string
+		Submit bool
+	}
+	PasteSubmitErr error
+
+	// ActiveQueue is consumed FIFO by OperatorActive, last value sticks, an empty queue reads not active.
+	// OperatorActive stays out of CallLog, like SetWaitMark.
+	ActiveQueue []bool
+	ActivityErr error
 }
 
 // waitMarkCall is one recorded SetWaitMark call;
@@ -121,6 +133,35 @@ func (m *fakeReed) SendKey(guid, key string) error {
 	m.CallLog = append(m.CallLog, "SendKey:"+key)
 	m.SendKeyCalls = append(m.SendKeyCalls, struct{ GUID, Key string }{guid, key})
 	return m.SendKeyErr
+}
+
+func (m *fakeReed) PasteSubmit(guid, text string, submit bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.CallLog = append(m.CallLog, fmt.Sprintf("paste:%s:%s:%t", guid, text, submit))
+	m.PasteSubmitCalls = append(m.PasteSubmitCalls, struct {
+		GUID   string
+		Text   string
+		Submit bool
+	}{guid, text, submit})
+	return m.PasteSubmitErr
+}
+
+func (m *fakeReed) OperatorActive(string) (bool, time.Duration, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	const quiet = 5 * time.Second
+	if m.ActivityErr != nil {
+		return false, quiet, m.ActivityErr
+	}
+	if len(m.ActiveQueue) == 0 {
+		return false, quiet, nil
+	}
+	active := m.ActiveQueue[0]
+	if len(m.ActiveQueue) > 1 {
+		m.ActiveQueue = m.ActiveQueue[1:]
+	}
+	return active, quiet, nil
 }
 
 func (m *fakeReed) SetWaitMark(guid, label string, _ time.Time) error {
