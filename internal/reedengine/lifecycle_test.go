@@ -66,6 +66,29 @@ func TestUp_BootValidation(t *testing.T) {
 			wantErr:   "key shell",
 		},
 		{
+			name: "TmuxConfRelative",
+			setup: func(t *testing.T) {
+				if runtime.GOOS == "windows" {
+					t.Skip("Windows parses tmux_conf and validates nothing")
+				}
+			},
+			configure: func(cfg *Config) {
+				cfg.Shell = "sh"
+				cfg.TmuxConf = "tmux.conf"
+			},
+			wantErr: "tmux_conf",
+		},
+		{
+			name: "TmuxConfUnvalidatedOnWindows",
+			setup: func(t *testing.T) {
+				if runtime.GOOS != "windows" {
+					t.Skip("only Windows leaves tmux_conf unvalidated")
+				}
+			},
+			configure: func(cfg *Config) { cfg.TmuxConf = "tmux.conf" },
+			notErr:    "tmux_conf",
+		},
+		{
 			name:      "SegmentColorOutsidePalette",
 			configure: func(cfg *Config) { cfg.SegmentColors = map[string]string{"review": "crimson"} },
 			wantErr:   `segment_colors.review: color "crimson" is not in the palette`,

@@ -277,28 +277,41 @@ func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err err
 }
 
 // preflightBootHost refuses, before any tmux round trip, a socket path over the OS limit (naming `TMUX_TMPDIR`) and a configured shell that does not resolve (naming the `shell` key).
-// It returns the resolved shell path the boot pins on the session.
-// On Windows it checks nothing and returns the empty string: psmux keeps no socket file, and the boot keeps its current shell handling.
-func (e *Engine) preflightBootHost() (shellPath string, err error) {
+// It also refuses a non-empty `tmux_conf` that does not name a usable file (naming the `tmux_conf` key).
+// It returns the resolved shell path the boot pins on the session and the validated tmux config path, empty when none is configured.
+// On Windows it checks nothing and returns empty strings: psmux keeps no socket file, the boot keeps its current shell handling, and `tmux_conf` is parsed but never validated or sourced.
+func (e *Engine) preflightBootHost() (shellPath, tmuxConf string, err error) {
 	if runtime.GOOS == "windows" {
-		return "", nil
+		return "", "", nil
 	}
 	if err := checkSocketPathLength(resolvedSocketDir(), e.Socket(), unixSocketPathLimit(runtime.GOOS)); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return resolveShellPath(e.cfg.Shell)
+	shellPath, err = resolveShellPath(e.cfg.Shell)
+	if err != nil {
+		return "", "", err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = ""
+	}
+	tmuxConf, err = tmuxConfPath(e.cfg.TmuxConf, home)
+	if err != nil {
+		return "", "", err
+	}
+	return shellPath, tmuxConf, nil
 }
 
 // ensureServerAndSessionLocked ensures this hub's tmux server and this
 // worktree's session exist. Reports booted=true on fresh spawn; validates
-// capability, debug_log, mouse, watchdog and segment colors before any tmux round trip.
+// capability, debug_log, mouse, watchdog, segment colors and tmux_conf before any tmux round trip.
 func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
 	debugArgs, mouse, err := e.validateBootConfig()
 	if err != nil {
 		return false, nil, err
 	}
 
-	shellPath, err := e.preflightBootHost()
+	shellPath, _, err := e.preflightBootHost()
 	if err != nil {
 		return false, nil, err
 	}

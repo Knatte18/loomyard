@@ -232,6 +232,7 @@
 // It takes effect at a hub server's next start, so a server an older lyx started keeps the operator's config until it exits.
 // Reed sets every option it depends on itself, and no `reed.yaml` key carries an operator tmux setting;
 // an operator who wants one sources it by hand into the running server, where it lasts until that server exits.
+// A non-empty `tmux_conf` is refused on a POSIX boot unless it names an absolute path to an existing regular file free of whitespace and the characters `* ? [ \ ' " ; # { } $`, the error naming the key, the variable `LYX_REED_TMUX_CONF` and the path.
 //
 // Pane enumeration: listPanes (overlay.go) always runs
 //
