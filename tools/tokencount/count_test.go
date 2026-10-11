@@ -76,7 +76,7 @@ func TestRunTimeByRole(t *testing.T) {
 		for name, lines := range sessions {
 			writeLines(t, filepath.Join(dir, name), lines...)
 		}
-		run, err := CountRun(dir, "r")
+		run, err := CountRun(dir, "r", time.Time{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -248,7 +248,7 @@ func TestCountRun(t *testing.T) {
 	)
 	writeLines(t, filepath.Join(dir, "c.jsonl"), assistant("m4", "haiku", 1, 0))
 
-	run, err := CountRun(dir, "my-task")
+	run, err := CountRun(dir, "my-task", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +280,7 @@ func TestCountRun(t *testing.T) {
 		bashUse(t, "refused", "lyx webster begin-batch 1"),
 		toolResultFor("refused", "2026-01-02T02:00:00Z", jsonString(t, `{"ok":false,"error":"paused"}`)),
 	)
-	bare, err := CountRun(noBase, "no-base")
+	bare, err := CountRun(noBase, "no-base", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +330,7 @@ func TestCountRun(t *testing.T) {
 		readUse("v1", "ends", "/p/prompt.md", 100),
 		toolResultFor("ends", "2026-01-02T04:00:01Z", jsonString(t, "prompt")),
 	)
-	withMerriams, err := CountRun(merriams, "merriams")
+	withMerriams, err := CountRun(merriams, "merriams", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,6 +344,50 @@ func TestCountRun(t *testing.T) {
 		return got.Session == want.Session && got.Started.Equal(want.Started) && got.StartContext == want.StartContext && got.NoStart == want.NoStart
 	}) {
 		t.Errorf("Merriams = %+v, want %+v", withMerriams.Merriams, wantMerriams)
+	}
+
+	// A bound leaves out a webster session that starts before it, with its fork, and a session with no timestamped line.
+	boundedDir := projectDir(projects, "/hub/bounded")
+	bound := time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)
+	writeLines(t, filepath.Join(boundedDir, "e-webster.jsonl"),
+		`{"type":"custom-title","customTitle":"ly:bounded:webster"}`,
+		launch("2026-01-02T10:00:00Z", "/p/prompt.md"),
+		bashUse(t, "old", "lyx webster begin-batch 1"),
+		toolResultFor("old", "2026-01-02T10:01:00Z", jsonString(t, `{"batch":"01-alpha","start_sha":"old0000"}`)),
+		timedAssistant("old1", "opus", "2026-01-02T10:02:00Z", 50),
+	)
+	writeLines(t, filepath.Join(boundedDir, "e-webster", "subagents", "agent-old.jsonl"),
+		toolResult("2026-01-02T10:03:00Z", jsonString(t, "- `_lyx/plan/01-alpha.md`")),
+		timedAssistant("oldfork", "opus", "2026-01-02T10:04:00Z", 7),
+	)
+	writeLines(t, filepath.Join(boundedDir, "n-none.jsonl"),
+		`{"type":"custom-title","customTitle":"ly:bounded:burler"}`,
+		assistant("none1", "sonnet", 9, 0),
+	)
+	writeLines(t, filepath.Join(boundedDir, "l-later.jsonl"),
+		`{"type":"custom-title","customTitle":"ly:bounded:burler"}`,
+		userAt(t, "2026-01-02T13:00:00Z", "go"),
+		timedAssistant("late1", "sonnet", "2026-01-02T13:05:00Z", 4),
+	)
+	afterBound, err := CountRun(boundedDir, "bounded", bound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(afterBound.Roles) != 1 || afterBound.Roles["burler"] == nil || afterBound.Roles["burler"].Usage != (Usage{Output: 4}) || afterBound.Roles["burler"].Sessions != 1 {
+		t.Errorf("bounded roles = %+v; want only the later session's burler usage", afterBound.Roles)
+	}
+	if len(afterBound.Forks) != 0 || len(afterBound.Merriams) != 0 || afterBound.BaseSHA != "" {
+		t.Errorf("bounded run holds forks %+v, Merriams %+v, BaseSHA %q; want none from the left-out session", afterBound.Forks, afterBound.Merriams, afterBound.BaseSHA)
+	}
+	if want := time.Date(2026, 1, 2, 13, 0, 0, 0, time.UTC); !afterBound.First.Equal(want) || afterBound.LeftOut != 2 || !afterBound.Bound.Equal(bound) {
+		t.Errorf("bounded First = %v, LeftOut = %d, Bound = %v; want %v, 2, %v", afterBound.First, afterBound.LeftOut, afterBound.Bound, want, bound)
+	}
+	var boundedReport bytes.Buffer
+	if err := (Report{Runs: []RunTally{afterBound}}).WriteMarkdown(&boundedReport); err != nil {
+		t.Fatal(err)
+	}
+	if want := "2 session transcripts were left out: they started before the slug's previous run ended, at 2026-01-02T12:00:00Z.\n"; !strings.Contains(boundedReport.String(), want) {
+		t.Errorf("bounded report lacks %q:\n%s", want, boundedReport.String())
 	}
 
 	wantForks := []ForkTally{
@@ -396,7 +440,7 @@ func TestCountRun(t *testing.T) {
 
 func TestCountRunWithoutSessions(t *testing.T) {
 	t.Parallel()
-	if _, err := CountRun(projectDir(t.TempDir(), "/hub/none"), "none"); err == nil {
+	if _, err := CountRun(projectDir(t.TempDir(), "/hub/none"), "none", time.Time{}); err == nil {
 		t.Fatal("CountRun found sessions in an empty projects directory")
 	}
 }
@@ -601,7 +645,7 @@ func TestShedRecordSpanAndProducers(t *testing.T) {
 			userAt(t, clock("10:08:00"), "again"),
 			stamped(clock("10:10:00"), `"end_turn"`),
 		)
-		run, err := CountRun(dir, "r")
+		run, err := CountRun(dir, "r", time.Time{})
 		if err != nil {
 			t.Fatal(err)
 		}

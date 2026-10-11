@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // timedAssistant is an assistant transcript line at ts with no input and output tokens of usage.
@@ -40,7 +41,7 @@ func TestCountOrch(t *testing.T) {
 			`{"type":"user","timestamp":"2026-01-02T`+windows[slug][0]+`:00Z","message":{"role":"user","content":"go"}}`,
 			timedAssistant(slug+"-m", model, "2026-01-02T"+windows[slug][1]+":00Z", 1_000_000),
 		)
-		run, err := CountRun(dir, slug)
+		run, err := CountRun(dir, slug, time.Time{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -191,7 +192,7 @@ func TestEstimatedCost(t *testing.T) {
 		timedAssistant("priced", "claude-sonnet-5-5", "2026-01-02T10:00:00Z", 1_000_000),
 		timedAssistant("unpriced", "claude-future-9", "2026-01-02T10:01:00Z", 1_000_000),
 	)
-	run, err := CountRun(dir, "mixed")
+	run, err := CountRun(dir, "mixed", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}

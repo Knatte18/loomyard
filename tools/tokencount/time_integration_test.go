@@ -75,19 +75,30 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(hub, "live"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, slug := range []string{"done", "live"} {
+	// The done slug's counted transcript starts after its older tag's date and the live slug's after its newest tag's date;
+	// the solo slug has one tag and no worktree, so no bound.
+	// An earlier transcript of each bounded slug starts before that date and is left out.
+	for slug, hour := range map[string]string{"done": "10", "live": "13", "solo": "08"} {
+		at := func(minute string) string { return "2026-01-01T" + hour + ":" + minute + ":00Z" }
 		writeLines(t, filepath.Join(projectDir(projects, filepath.Join(hub, slug)), "a.jsonl"),
 			`{"type":"custom-title","customTitle":"ly:`+slug+`:burler"}`,
-			userAt(t, "2026-01-01T10:00:00Z", "go"),
-			stamped("2026-01-01T10:02:00Z", `"end_turn"`),
-			userAt(t, "2026-01-01T10:08:00Z", "again"),
-			stamped("2026-01-01T10:10:00Z", `"end_turn"`),
+			userAt(t, at("00"), "go"),
+			stamped(at("02"), `"end_turn"`),
+			userAt(t, at("08"), "again"),
+			stamped(at("10"), `"end_turn"`),
 		)
 	}
+	for slug, started := range map[string]string{"done": "2026-01-01T08:00:00Z", "live": "2026-01-01T11:00:00Z"} {
+		writeLines(t, filepath.Join(projectDir(projects, filepath.Join(hub, slug)), "earlier.jsonl"),
+			`{"type":"custom-title","customTitle":"ly:`+slug+`:burler"}`,
+			userAt(t, started, "earlier run"),
+		)
+	}
+	gitkit.Git(t, records, "tag", "archive/solo/eeeeeee", older)
 
 	reportPath := filepath.Join(t.TempDir(), "report.md")
 	var stdout bytes.Buffer
-	args := []string{"-hub", hub, "-projects", projects, "-" + repositoryFlag, records, "-out", reportPath, "done", "live"}
+	args := []string{"-hub", hub, "-projects", projects, "-" + repositoryFlag, records, "-out", reportPath, "done", "live", "solo"}
 	if err := run(args, &stdout); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -100,11 +111,26 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 		t.Errorf("report lacks the title:\n%s", report)
 	}
 	_, afterDone, _ := strings.Cut(report, "## done\n")
-	donePart, livePart, _ := strings.Cut(afterDone, "## live\n")
+	donePart, afterLive, _ := strings.Cut(afterDone, "## live\n")
+	livePart, soloPart, _ := strings.Cut(afterLive, "## solo\n")
 	if !strings.Contains(donePart, "| Publish | 1 | 9m0s | 7m0s | 64.3% |") || strings.Contains(donePart, "OldProducer") {
 		t.Errorf("finished run lacks the newest tag's Producers table:\n%s", donePart)
 	}
 	if !strings.Contains(livePart, "No shed status was read") || strings.Contains(livePart, "### Producers") {
 		t.Errorf("in-flight run = %q; want the no-status line and no Producers table", livePart)
+	}
+	// The finished run's bound is its older tag's date, the in-flight run's its newest tag's, and a one-tag slug has none.
+	for _, c := range []struct {
+		name, part, want string
+	}{
+		{"finished run", donePart, "1 session transcripts were left out: they started before the slug's previous run ended, at 2026-01-01T09:00:00Z.\n"},
+		{"in-flight run", livePart, "1 session transcripts were left out: they started before the slug's previous run ended, at 2026-01-01T12:00:00Z.\n"},
+	} {
+		if !strings.Contains(c.part, c.want) || !strings.Contains(c.part, "| burler | 1 |") {
+			t.Errorf("%s section lacks %q beside one counted session:\n%s", c.name, c.want, c.part)
+		}
+	}
+	if strings.Contains(soloPart, "left out") || !strings.Contains(soloPart, "| burler | 1 |") {
+		t.Errorf("one-tag run = %q; want its transcript counted and no left-out line", soloPart)
 	}
 }
