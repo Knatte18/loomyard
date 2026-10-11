@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -45,6 +46,7 @@ func plantFrictionNote(t *testing.T, loc *lyxcwd.Location, name string) string {
 // TestSmokeStepBootstrapWiring drives `lyx loom step` over one go-seeded pair, in this order:
 // a genuine first seed, the handoff voucher that step left, then a re-entry over the same task.
 // Each step builds on the state the one before left.
+// A last subtest drives a second go-seeded pair whose seed names a wrong parent, through the refusal and its way forward.
 //
 // Every behavior here is the regression guard for a helper that was correct and unit-tested and still wrong in production, because nothing called it;
 // only a test through the real bootstrap tells the two states apart.
@@ -128,6 +130,38 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 
 		if _, statErr := os.Stat(resumePath); statErr != nil {
 			t.Errorf("friction note written during this task is gone after a re-entry (stat err=%v); want it kept -- only a genuine first seed clears", statErr)
+		}
+	})
+
+	// The way forward the disagreeing-seed refusal names must lead to a driven producer: a go seed with a wrong parent refuses `step`, and removing it and re-seeding with the recorded parent lets `step` dispatch Preflight.
+	// It builds its own pair, since the pair above holds a seed that agrees.
+	t.Run("wrong-parent seed is cleared and re-seeded", func(t *testing.T) {
+		_, loc, worktree, _ := newWiredPairFixture(t)
+		registerBootstrapTeardown(t, loc, worktree)
+		recorded, found, err := fabricengine.ReadOrigin(loc)
+		if err != nil || !found {
+			t.Fatalf("ReadOrigin: found=%v err=%v", found, err)
+		}
+		wrong := shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo, Params: map[string]string{"parent": "wrong-branch"}}
+		if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, wrong); err != nil {
+			t.Fatalf("WriteSeed(wrong-parent seed): %v", err)
+		}
+
+		stdout, exit, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "step")
+		if err != nil || exit != 1 {
+			t.Fatalf("loom step over a wrong-parent seed = exit %d, err %v; want exit 1; output: %s", exit, err, stdout)
+		}
+
+		if err := os.Remove(shedrun.SeedFile(loc, shedrun.SelfRunID)); err != nil {
+			t.Fatalf("remove the wrong-parent seed: %v", err)
+		}
+		stdout, exit, err = runLoomCLINoFatal(exe, worktree, 60*time.Second, "shed", "seed", "self", "--recipe", "loom", "--driver", "go", "--param", "parent="+recorded.ParentBranch)
+		if err != nil || exit != 0 {
+			t.Fatalf("lyx shed seed after the rm = exit %d, err %v; output: %s", exit, err, stdout)
+		}
+		stdout, exit, err = runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "step")
+		if err != nil || exit != 0 {
+			t.Fatalf("loom step after the re-seed = exit %d, err %v; want it to dispatch Preflight; output: %s", exit, err, stdout)
 		}
 	})
 }
