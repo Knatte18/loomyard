@@ -58,15 +58,17 @@ The row drives `Env.Seats`, and a nil seam is a construction error.
 
 A gate-capable row's `gates` key selects validators by name from a closed vocabulary, in order, each element carrying its own `attempts` budget (0 means off) and an optional `pass_on_cap`.
 An absent key is ungated, while an empty list, a duplicate name, or a negative budget is a construction error.
+`parent-review` must be the last element of its list, else construction fails.
 The vocabulary is `discussion`, `plan`, `rework-plan`, `description`, `verify` and `parent-review`.
 `verify` lints the comments, then runs the verify command the wiring tells in `Env.VerifyCommand`, which it requires.
 `Env.VerifyWholeDiff` selects the whole-diff form and the round form is the default.
 `Env.VerifyMergeBase`, when set, is the base of the headroom lint, which runs before the comment lint, or of both lints under the whole-diff form, which requires it.
 `parent-review` waits for the run's parent to review the discussion, so it can return a pending result that the wait loop holds without stalling its liveness and deadline checks, and it carries a `Final` closure that `finalize` evaluates in its place.
-The entry is must-pass and may hold the run, and its `attempts` is the reject cap: the gate fails terminally at that many rejected rounds.
-With `pass_on_cap: true` the cap's reject instead goes to the writer like any other, and the rewrite after it passes without another round, so `attempts: 1` gives one parent review whose findings the writer addresses before the row below reviews in detail.
+It also carries an expiry probe the wait loop calls off the boundary, a read-only check that the latest round's request is open, has no verdict and is older than the wait bound.
+The entry is must-pass and may hold the run, and its `attempts` is the reject cap: the gate fails terminally at that many rejected rounds, halting the run `blocked` until the parent approves.
+A `pass_on_cap` key on the element is a construction error.
 The gate's own store counts the rejects, so the engine's own pass-on-cap never applies to this entry.
-It reads `Env.ParentReview`, and a Discussion-Write row with an enabled `parent-review` entry opens a new review round on each fresh spawn, except that the latest round is kept after a reject or a superseding approve so the gate can read it.
+It reads `Env.ParentReview`, and a Discussion-Write row with an enabled `parent-review` entry opens a new review round on each fresh spawn, except that the latest round is kept when it holds no request, or after a reject or a superseding approve so the gate can read it.
 
 ## The recipe loader/builder
 

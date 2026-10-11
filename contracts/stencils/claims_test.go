@@ -252,9 +252,17 @@ var wordingClaims = []stencilClaims{
 		{must: "{{.support_log_path}}", section: discussionFenceSection, why: "the fence names the output files by marker, so the permitted set cannot drift from the paths Step 5 writes"},
 		{must: "lyx loom review delivered", section: discussionFenceSection, why: "the fence carves out the parent-review delivered verb"},
 		{must: "parent-review entry to `## Review rounds`", section: discussionFenceSection, why: "the fence carves out the parent-review round entry"},
+		{must: "**A keep-alive prompt** asks only that you end your turn", section: "## Messages the gate may send after you end your turn", why: "the messages section names the keep-alive, which changes nothing"},
 		{must: "{{.twill_directive}}", section: "## Step 4 — How to get answers", why: "the twill lens review sits with the answer-gathering step, ahead of the files Step 5 writes"},
 		{must: "{{.twill_write_scope}}", section: discussionFenceSection, why: "the ready marker joins the write scope inside the fence"},
 	}, attackSurfaceClaims...)},
+	{"loom-template-parent-review-brief.md", LoomTemplateParentReviewBrief, []claim{
+		{must: "send the writer no message, neither an acknowledgement nor a reply to its notice", section: "## Submit the verdict", why: "D4: a reply starts a writer turn the wait loop did not start"},
+	}},
+	{"loom-template-parent-review-keepalive.md", LoomTemplateParentReviewKeepalive, []claim{
+		{must: "end your turn", why: "a keep-alive asks only that the writer end its turn"},
+		{must: "change nothing", why: "a keep-alive changes nothing in the discussion"},
+	}},
 	{"loom-template-discussion-chair.md", LoomTemplateDiscussionChair, []claim{
 		{must: `{{template "loom-template-discussion"}}`, why: "the chair includes the discussion stencil whole, so its write surface and gates cannot drift from the single writer's"},
 		{must: `{{template "seat-directive-chair"}}`, why: "the chair includes the chair seat directive"},
@@ -683,6 +691,7 @@ var wordingClaims = []stencilClaims{
 			{mustNot: "`lyx fabric remove", why: "batten's teardown removes the pair"},
 			{mustNot: "squash-merges", why: "Finalize squashes onto main and closes the PR"},
 			{mustNot: "start the run again", why: "batten resumes the child itself"},
+			{must: "neither you nor the fork sends the writer a message, neither an acknowledgement nor a reply to its notice", section: "## Parent-review", why: "D4: a reply starts a writer turn the wait loop did not start"},
 		},
 		inSection("## Messaging", []claim{
 			{must: `with "` + shuttleengine.MessageTail + `"`, why: "every message to a working agent ends with the message tail"},

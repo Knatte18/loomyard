@@ -50,6 +50,11 @@ type GateEntry struct {
 	// Final, when non-nil, is the closure finalize evaluates in place of Gate, so a pending-capable entry is read at the final verdict without its opening and consuming transitions.
 	// Only a PassOnCap or MayHold entry may set it: a non-nil Final on any other entry is a returned gate error at evaluation, so Final can never let a must-pass entry through.
 	Final Gate
+	// Expired, when non-nil, is a read-only probe reporting whether the entry's wait has run out; nil means none.
+	// It sends, counts and writes nothing, and only an entry whose Attempts is above zero is probed.
+	// The loop calls it only while the writer is not at an idle boundary, where the entry's own closure handles its expiry,
+	// so a wait bound ends the run even when the writer never ends its turn.
+	Expired func() (bool, error)
 	// Attempts is the entry's re-prompt budget: how many consecutive failures re-prompt the agent before the entry gives up.
 	// 0 means the entry is off: it is skipped at every arrival, whatever its PassOnCap.
 	Attempts int
