@@ -76,12 +76,16 @@ func (index) Delta(worktree, fromSHA, toSHA string) (planindex.Delta, error) {
 	return batchDelta{answer: answer}, err
 }
 
+func (index) KickstartPack(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) (planindex.Pack, error) {
+	return KickstartPack(plan, cards, worktreeRoot)
+}
+
 // batchDelta is one batch's quarry delta behind planindex.Delta.
 type batchDelta struct {
 	answer quarry.GitDeltaAnswer
 }
 
-func (d batchDelta) BindHandles(plan *planparser.Plan, planDir string, cards []planparser.Card) ([]Finding, error) {
+func (d batchDelta) BindHandles(plan *planparser.Plan, planDir string, cards []planparser.Card) ([]Finding, []planindex.BindOutcome, error) {
 	return BindHandles(plan, planDir, d.answer, cards)
 }
 

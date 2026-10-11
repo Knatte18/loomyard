@@ -126,7 +126,7 @@ func TestRealGitDelta(t *testing.T) {
 		if got == nil {
 			t.Fatal("Index.Delta returned a nil delta; want the empty delta")
 		}
-		findings, bindErr := got.BindHandles(&planparser.Plan{}, f.root, nil)
+		findings, _, bindErr := got.BindHandles(&planparser.Plan{}, f.root, nil)
 		if bindErr != nil || len(findings) != 0 {
 			t.Errorf("BindHandles on the empty delta = (%+v, %v); want no findings and no error", findings, bindErr)
 		}

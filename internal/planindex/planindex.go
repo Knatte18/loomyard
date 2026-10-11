@@ -43,6 +43,55 @@ func (f Finding) Error() string {
 	return fmt.Sprintf("%s/%s[%s]: %s", f.Check, f.Card, f.Severity, f.Detail)
 }
 
+// PackDeclaration is one declaration of a resolved member: its file, its line span and its verbatim signature.
+type PackDeclaration struct {
+	File      string
+	Start     int
+	End       int
+	Signature string
+}
+
+// PackEntry is one member glyph a batch's cards name, with every declaration the code index resolved it to.
+type PackEntry struct {
+	Glyph        string
+	Declarations []PackDeclaration
+}
+
+// PackUnresolved is one ref of a batch's cards the code index could not resolve, with the reason in plain words.
+type PackUnresolved struct {
+	Ref    string
+	Reason string
+}
+
+// BindReason is the closed set of reasons a plan handle failed to bind.
+type BindReason string
+
+const (
+	// BindNoDeltaMatch marks a handle whose expected glyph the batch's delta created or renamed nothing to.
+	BindNoDeltaMatch BindReason = "no-delta-match"
+	// BindSiblingUnmatched marks a handle that matched the delta while another handle of its card did not, so the card bound none of them.
+	BindSiblingUnmatched BindReason = "sibling-unmatched"
+)
+
+// BindOutcome is what happened to one plan handle a card owns.
+// Exactly one of Glyph and Reason is set: Glyph when the handle bound, Reason when it did not.
+type BindOutcome struct {
+	// Card is the owning card's number.
+	Card int
+	// Handle is the handle as the card spells it.
+	Handle string
+	// Glyph is the glyph the handle bound to, empty when it failed.
+	Glyph string
+	// Reason is why the handle failed to bind, empty when it bound.
+	Reason BindReason
+}
+
+// Pack is a batch's kick-start pack: the member glyphs its cards name, resolved, and the refs that did not resolve, each in the order the cards name them.
+type Pack struct {
+	Resolved   []PackEntry
+	Unresolved []PackUnresolved
+}
+
 // Index is the code index a plan gate calls.
 // An infrastructure failure of the index is an error wrapping ErrQuarryUnavailable, distinct from any finding.
 type Index interface {
@@ -63,12 +112,16 @@ type Index interface {
 	// Delta reads the git delta of the range fromSHA..toSHA in worktree.
 	// On an ErrQuarryUnavailable error the returned Delta is the empty delta, never nil.
 	Delta(worktree, fromSHA, toSHA string) (Delta, error)
+	// KickstartPack resolves the member glyphs the cards' targets and Uses name against the tree at worktreeRoot, and lists the plan: handles and the refs that did not resolve beside them.
+	// A plan whose language opts out of glyphs yields an empty Pack.
+	// On an ErrQuarryUnavailable error the returned Pack resolves nothing and lists every ref as unresolved, so a caller degrades instead of refusing.
+	KickstartPack(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) (Pack, error)
 }
 
 // Delta is the git delta of one batch, read once and consumed by every check that needs it.
 type Delta interface {
-	// BindHandles binds the plan handles of cards to the symbols the delta created.
-	BindHandles(plan *planparser.Plan, planDir string, cards []planparser.Card) ([]Finding, error)
+	// BindHandles binds the plan handles of cards to the symbols the delta created, and reports the outcome of each handle beside the findings.
+	BindHandles(plan *planparser.Plan, planDir string, cards []planparser.Card) ([]Finding, []BindOutcome, error)
 	// ScopeGuard reports the delta's changes outside the targets the cards declare.
 	ScopeGuard(cards []planparser.Card) []Finding
 	// DetectDrift reports the plan references the delta invalidates among the cards not in completed.

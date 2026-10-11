@@ -1,5 +1,5 @@
 // shed.go reads a finished run's archived shed seed and status from its newest archive tag.
-// It sets the run's span from them and splits that span by shed history entry into the Producers table.
+// It decides from them whether the run is a full loom run, sets the run's span and splits that span by shed history entry into the Producers table.
 
 package main
 
@@ -8,10 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"slices"
 	"sort"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -34,6 +38,8 @@ type ShedRecord struct {
 	Tag ArchiveTag
 	// Older is the commit date of the slug's next-older tag, zero when the slug has one tag.
 	Older time.Time
+	// Recipe is the seed's recipe, empty when the seed is absent.
+	Recipe string
 	// StartedAt is the seed's started_at, zero when the seed or the field is absent.
 	StartedAt time.Time
 	// Entries are the status's history entries in recorded order.
@@ -106,12 +112,38 @@ func readShedRecord(trees ArchiveTrees, slug string, tags []ArchiveTag) (*ShedRe
 	if err != nil {
 		return nil, fail("seed.json", err)
 	}
+	record.Recipe = seed.Recipe
 	if seed.StartedAt != "" {
 		if record.StartedAt, err = time.Parse(time.RFC3339, seed.StartedAt); err != nil {
 			return nil, fail("seed.json", err)
 		}
 	}
 	return record, nil
+}
+
+// inFlight reports whether the slug's worktree under hub exists.
+// Teardown removes a finished run's worktree, so one that still exists is in flight and its archive tags belong to an older run of the slug.
+func inFlight(hub, slug string) (bool, error) {
+	_, err := os.Stat(filepath.Join(hub, slug))
+	if err != nil && !os.IsNotExist(err) {
+		return false, err
+	}
+	return err == nil, nil
+}
+
+// fullLoomRun reports whether the slug's latest run went through the whole loom lifecycle:
+// its worktree under hub is torn down, and the shed record at its newest archive tag, tags being ordered newest first, names the loom recipe and holds a Finalize entry.
+// A run stopped partway, such as a bench pair parked after Discussion-Write or an abandoned run, is not one.
+func fullLoomRun(trees ArchiveTrees, hub, slug string, tags []ArchiveTag) (bool, error) {
+	running, err := inFlight(hub, slug)
+	if err != nil || running {
+		return false, err
+	}
+	record, err := readShedRecord(trees, slug, tags)
+	if err != nil || record == nil || record.Recipe != shedrun.RecipeLoom {
+		return false, err
+	}
+	return slices.ContainsFunc(record.Entries, func(entry ShedEntry) bool { return entry.Producer == loomshed.NameFinalize }), nil
 }
 
 // useShedRecord stores rec and sets the run's span from it.

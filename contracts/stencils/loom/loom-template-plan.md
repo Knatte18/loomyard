@@ -148,6 +148,10 @@ An implementation card lists the implementation's member glyphs under `**Edit:**
 A `**Create:**` test file, after the implementation's `**Edit:**`, appears only for a surface no existing test file covers.
 
 `**Edit:**` lists the member glyphs the card changes, and a file path only for a file with no symbol to name: a test file the card adds tests to, a non-Go file, or a whole file the card creates or deletes.
+A card names an existing test function, fake or helper it changes as a member glyph, for example `internal/x#TestFoo` or `internal/x#fakeClock`.
+A plain test-file path stays only for a test file the card adds tests to without changing an existing member.
+A new test function in an existing file is a `**Create:**` declaration with a `plan:` handle.
+A new test file is a `**Create:**` path.
 Listing a file or a package beside a member of it on one card is refused: `redundant-package-target` and `redundant-file-target` in `{{.specs_dir}}/loom/loom-plan-spec.md` say what counts and the way forward.
 
 A card that changes a member's parameters, results, type parameters or receiver writes that `**Edit:**` bullet with the re-sign arrow, `` `<glyph>` -> `<new declaration head>` ``, the head written like a `Create` head.

@@ -19,7 +19,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -977,5 +979,147 @@ func TestBeginBatch_WayForward_UnknownBatch(t *testing.T) {
 
 	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
 		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
+	}
+}
+
+// TestBeginBatch_KickstartPack asserts what begin-batch builds into the fork prompt file when kickstart_pack is on, off or inapplicable.
+// It also asserts that the pack reaches no other part of the result, and the one trace line each call logs.
+// It lowers the process-global log threshold to Info, so it does not call t.Parallel.
+func TestBeginBatch_KickstartPack(t *testing.T) {
+	logger.SetVerbosity(1)
+	t.Cleanup(func() { logger.SetVerbosity(0) })
+
+	const quarryLocate = "Locate them with one `lyx quarry resolve <glyph>...` call"
+	const packHeading = "## Kick-start pack"
+	resolvedBaz := []string{
+		packHeading,
+		"- `internal/foo#Baz`",
+		"  - `internal/foo/impl.go:3-3` — func Baz()",
+	}
+
+	cases := []struct {
+		name     string
+		language string
+		// withHandle adds a Create group declaring the draft handle plan:internal/foo#Barr beside card 1's Edit group.
+		withHandle bool
+		off        bool
+		prepare    func(index *fakeIndex)
+		// wantPrompt and wantNotPrompt are needles the prompt file has and lacks.
+		wantPrompt    []string
+		wantNotPrompt []string
+		// wantLog are the needles the captured log has.
+		wantLog []string
+	}{
+		{
+			name:          "switch on lists the resolved member glyph",
+			wantPrompt:    resolvedBaz,
+			wantNotPrompt: []string{quarryLocate},
+			wantLog:       []string{"batch=1 kickstart_pack=on resolved=1 unresolved=0"},
+		},
+		{
+			name:          "switch off renders the quarry locate step",
+			off:           true,
+			wantPrompt:    []string{quarryLocate},
+			wantNotPrompt: []string{packHeading},
+			wantLog:       []string{"batch=1 kickstart_pack=off resolved=0 unresolved=0"},
+		},
+		{
+			name:          "a plan without a glyph language renders as switch off",
+			language:      "none",
+			wantPrompt:    []string{quarryLocate},
+			wantNotPrompt: []string{packHeading},
+			wantLog:       []string{"batch=1 kickstart_pack=language-none resolved=0 unresolved=0"},
+		},
+		{
+			name: "an unavailable index degrades every entry to unresolved",
+			prepare: func(index *fakeIndex) {
+				index.pack = &planindex.Pack{Unresolved: []planindex.PackUnresolved{{Ref: "internal/foo#Baz", Reason: "quarry could not answer"}}}
+				index.packErr = fmt.Errorf("%w: pack boom", planglyph.ErrQuarryUnavailable)
+			},
+			wantPrompt: []string{packHeading, "### Unresolved", "- `internal/foo#Baz` — quarry could not answer"},
+			wantLog: []string{
+				"level=WARN",
+				"pack boom",
+				"batch=1 kickstart_pack=on resolved=0 unresolved=1",
+			},
+		},
+		{
+			name:          "a handle the re-resolution canonicalized is listed by its canonical spelling",
+			withHandle:    true,
+			wantPrompt:    append([]string{"- `plan:internal/foo#Bar`"}, resolvedBaz...),
+			wantNotPrompt: []string{"plan:internal/foo#Barr"},
+		},
+		{
+			name:       "a plan that no longer parses degrades to the loaded plan",
+			withHandle: true,
+			prepare:    func(index *fakeIndex) { index.breakPlanAfterValidate = true },
+			wantPrompt: resolvedBaz,
+			wantLog: []string{
+				"level=WARN",
+				"could not re-parse the plan",
+				"batch=1 kickstart_pack=on resolved=1 unresolved=1",
+			},
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := captureLogs(t)
+			fx := newBeginFixture(t)
+			writeWorktreeFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Baz() {}\n")
+
+			language := tt.language
+			if language == "" {
+				language = "go"
+			}
+			cardOne := plankit.Card{Number: 1, Slug: "json-flag", Summary: "edit a member", Intent: "edit a member.", ImpactSummary: "None.",
+				Groups: []plankit.Group{{Label: "Edit", Targets: []string{"internal/foo#Baz"}}}}
+			if language == "none" {
+				cardOne.Groups = []plankit.Group{{Label: "Prosa", Targets: []string{"base.txt"}}}
+				cardOne.ImpactSummary = ""
+			}
+			if tt.withHandle {
+				cardOne.Groups = append([]plankit.Group{{Label: "Create", Targets: []string{"plan:internal/foo#Barr` -> `func Bar()"}}}, cardOne.Groups...)
+			}
+			planDir := t.TempDir()
+			plankit.Write(t, planDir, plankit.Plan{Approved: true, Language: language, Cards: []plankit.Card{
+				cardOne,
+				{Number: 2, Slug: "list-tests", Summary: "list the tests", Intent: "placeholder card.", Groups: []plankit.Group{{Label: "Prosa", Targets: []string{"base.txt"}}}},
+			}})
+			plan, err := planparser.ParsePlan(planDir)
+			if err != nil {
+				t.Fatalf("ParsePlan(%q) error = %v", planDir, err)
+			}
+			fx.Deps.Plan = plan
+			fx.Deps.Geom.PlanDir = planDir
+			fx.Deps.State.PlanFingerprint = mustFingerprint(t, planDir)
+			fx.Deps.Batches = []batcher.Batch{{Cards: plan.Cards[:1]}, {Cards: plan.Cards[1:]}}
+			fx.Deps.Config.KickstartPack = !tt.off
+			if tt.prepare != nil {
+				tt.prepare(fx.Deps.Geom.Index.(*fakeIndex))
+			}
+
+			result, err := websterengine.BeginBatch(fx.Deps, 1)
+			if err != nil {
+				t.Fatalf("BeginBatch() error = %v; want nil", err)
+			}
+
+			prompt, err := os.ReadFile(result.PromptPath)
+			if err != nil {
+				t.Fatalf("read the prompt file: %v", err)
+			}
+			for _, needle := range tt.wantPrompt {
+				requireContains(t, string(prompt), needle)
+			}
+			for _, needle := range tt.wantNotPrompt {
+				requireNotContains(t, string(prompt), needle)
+			}
+			// The pack reaches the prompt file alone.
+			envelope := fmt.Sprintf("%+v", *result)
+			requireNotContains(t, envelope, "Kick-start")
+			requireNotContains(t, envelope, "internal/foo/impl.go")
+			for _, needle := range tt.wantLog {
+				requireContains(t, logs.String(), needle)
+			}
+		})
 	}
 }
