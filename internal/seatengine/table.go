@@ -30,7 +30,6 @@ var reservedMarkers = []string{
 	"anchor_path",
 	"chair_name",
 	"edit_directive",
-	"failed_advisors",
 	"inputs",
 	"output_files",
 	"outputs",

@@ -1,4 +1,4 @@
-// notice.go declares the chair-side notice sender, which types one-line advisor notices into the chair's session, and the wording of an advisor's ending notice.
+// notice.go declares the chair-side notice sender, which types one-line advisor notices into the chair's session, and the wording of those notices.
 
 package seatengine
 
@@ -23,6 +23,16 @@ func advisorNotice(name string, outputs []string, outcome shuttleengine.Outcome)
 		ended = fmt.Sprintf("ended (%s)", outcome)
 	}
 	return fmt.Sprintf("Advisor %s %s and no longer answers; its outputs stand where they exist: %s", name, ended, strings.Join(outputs, ", "))
+}
+
+// advisorUpNotice returns the one-line notice that tells the chair advisor name is up and takes its questions.
+func advisorUpNotice(name string) string {
+	return fmt.Sprintf("Advisor %s is up and takes your questions.", name)
+}
+
+// advisorNotStartedNotice returns the one-line notice that tells the chair advisor name never started, so it decides without it.
+func advisorNotStartedNotice(name string) string {
+	return fmt.Sprintf("Advisor %s did not start and never answers; decide without it.", name)
 }
 
 // noticeSender types queued notice lines into one chair's session, one line at a time.

@@ -147,7 +147,7 @@ func TestTable_NamesAccessorsAndReservedMarkers(t *testing.T) {
 	if !slices.IsSorted(reserved) {
 		t.Errorf("ReservedMarkers() = %v, want a sorted list", reserved)
 	}
-	for _, name := range []string{"parent_directive", "edit_directive", "seat_name", "chair_name", "advisor_names", "failed_advisors", "inputs", "outputs", "output_files", "worktree_root", "anchor_path", "stencils_dir"} {
+	for _, name := range []string{"parent_directive", "edit_directive", "seat_name", "chair_name", "advisor_names", "inputs", "outputs", "output_files", "worktree_root", "anchor_path", "stencils_dir"} {
 		if !slices.Contains(reserved, name) {
 			t.Errorf("ReservedMarkers() = %v, want it to hold %q", reserved, name)
 		}

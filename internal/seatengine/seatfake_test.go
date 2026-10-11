@@ -108,8 +108,6 @@ type fakeShuttle struct {
 	sendErrs   map[string][]error
 	alwaysBusy map[string]bool
 	stopErrs   map[string]error
-	// holdStart blocks the start of a role until its channel is closed.
-	holdStart map[string]chan struct{}
 	// live holds the handles ProbeGated finds, and removedOnProbe the handles it stops and answers not found for.
 	live           map[string]*fakeHandle
 	removedOnProbe map[string]*fakeHandle
@@ -157,9 +155,6 @@ func (f *fakeShuttle) newHandle(role string) *fakeHandle {
 }
 
 func (f *fakeShuttle) StartGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (Handle, error) {
-	if hold, ok := f.holdStart[spec.Role]; ok {
-		<-hold
-	}
 	f.mu.Lock()
 	f.specs[spec.Role] = spec
 	f.gates[spec.Role] = gate

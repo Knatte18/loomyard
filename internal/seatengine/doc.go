@@ -35,16 +35,20 @@
 //
 // # Running a table fresh
 //
-// Engine.Run validates the table, forms every seat's strand name from the geometry's shortname and slug and the seat's role, and starts the advisors in table order and the chair last.
+// Engine.Run validates the table, forms every seat's strand name from the geometry's shortname and slug and the seat's role, and starts the chair first, then the advisors in table order.
+// The chair is the step's main agent: whoever talks to a producer running seats talks to the chair, and it holds the gate, the operator's channel and the step's outcome.
 // Each seat's prompt is its stencil filled, with the blocks it includes, from a value map holding the table's values, the seat's own and every reserved marker.
 // The chair starts with the table's gate and is the only interactive seat; an advisor starts ungated, keeps its pane and holds a turn end quietly.
 // A started seat whose strand took a different name than expected, which is reed numbering a name an earlier strand still holds, is stopped and reported as a start error naming the holder and the way forward.
-// An advisor that fails to start is recorded on its SeatResult and named in the chair's failed advisors, and the step goes on without it.
-// A chair that fails to start stops every started advisor and returns the error, which wraps shuttleengine.ErrNotStarted when the provider never came up.
+// A chair that fails to start starts no advisor and returns the error, which wraps shuttleengine.ErrNotStarted when the provider never came up.
+// Once each advisor's start ends, the chair is told in one line that the advisor is up, or that it did not start; seat-directive-chair tells the chair to send an advisor nothing before its up line.
+// An advisor that fails to start is recorded on its SeatResult and the step goes on without it.
+// An advisor whose misnamed strand could not be stopped ends the run: the chair and every started advisor are stopped and the error is returned.
 //
 // # The notice sender
 //
-// Each started advisor is waited on from the moment it starts.
+// The sender starts with the chair, so it carries the up and not-started lines as well as the endings.
+// Each started advisor is waited on from the moment its up line is queued, so an advisor's ending never reaches the chair before its up line.
 // An advisor that reaches done queues nothing, since it stays reachable and the chair reads its file.
 // An advisor that dies, times out or whose wait errors queues one line for the chair.
 // One goroutine per chair types the queued lines through the chair's handle, one at a time, so two lines are never interleaved.
@@ -68,6 +72,7 @@
 // # Resume
 //
 // Engine.Resume attaches to a live chair and the advisors the probe found, and joins them as a fresh run does; an advisor the probe did not find is never restarted.
+// The chair is told again that each found advisor is up, since that line may not have landed before the interruption.
 // The chair is told of each such advisor once: one whose outputs all exist is finished and the line says its output stands and the seat no longer answers, any other has ended and the line says so as a mid-step death does.
 // A notice sent before the interruption may land again, which costs the chair nothing.
 //

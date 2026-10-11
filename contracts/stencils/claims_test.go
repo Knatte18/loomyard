@@ -258,11 +258,14 @@ var wordingClaims = []stencilClaims{
 		{must: "mark a pick that rests on such an answer as advisor-informed, naming the same strand name", section: "## Working with your advisors", why: "the question ledger marks an advisor-informed pick, naming the strand"},
 		{must: "send every batch to every advisor", section: "## Working with your advisors", why: "every advisor sees every question, since each may find a different weakness"},
 		{must: "after weighing every advisor's answer", section: "## Working with your advisors", why: "the chair settles a question on all advisors' answers, not one advisor's area"},
+		{must: "you form the next batch from those answers", section: "## Working with your advisors", why: "the chair asks in rounds, each batch built on the answers to the last"},
+		{must: "Never send every question at once.", section: "## Working with your advisors", why: "nothing else stops a chair sending all its questions in one go"},
 		{mustNot: "an area of the design", why: "the retired area assignment never returns"},
 	}},
 	{"seat-directive-chair.md", SeatDirectiveChair, []claim{
 		{must: "If you have advisors, use them as below.", why: "the directive covers a chair with advisors"},
 		{must: "If you have none, skip the advisor bullets below and decide each question yourself as you judge best.", why: "the directive covers a chair with no advisors, so seats with an empty list needs no second prompt"},
+		{must: "Send an advisor nothing before its up line arrives", why: "the chair starts first, so an advisor may not exist yet when the chair is ready to ask"},
 	}},
 	{"loom-template-discussion-advisor.md", LoomTemplateDiscussionAdvisor, []claim{
 		{must: "You write only your notes file", why: "the notes file is the advisor's only write"},
