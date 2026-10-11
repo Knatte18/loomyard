@@ -13,7 +13,9 @@ package claudeengine
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -110,6 +112,17 @@ const forkSubagentEnvKey = "CLAUDE_CODE_FORK_SUBAGENT"
 // and it outranks every Claude Code control for the TTL but FORCE_PROMPT_CACHING_5M.
 const promptCacheTTLEnvKey = "CLAUDE_CODE_PROMPT_CACHE_TTL"
 
+// bashMaxTimeoutEnvKey is the variable Claude Code reads as the ceiling on the Bash tool's timeout parameter.
+// It rides the pane line for the same reason forkSubagentEnvKey does.
+// BASH_DEFAULT_TIMEOUT_MS is left at Claude Code's default, so only a call that sets an explicit timeout runs past the default.
+const bashMaxTimeoutEnvKey = "BASH_MAX_TIMEOUT_MS"
+
+// bashMaxTimeout is the Bash tool timeout ceiling every lyx-spawned session runs under.
+const bashMaxTimeout = time.Hour
+
+// bashMaxTimeoutMS is bashMaxTimeout as the decimal millisecond string bashMaxTimeoutEnvKey takes.
+var bashMaxTimeoutMS = strconv.FormatInt(bashMaxTimeout.Milliseconds(), 10)
+
 // validPromptCacheTTLs is the set of exact, case-sensitive prompt-cache TTL values Claude Code accepts.
 var validPromptCacheTTLs = map[string]bool{
 	"5m": true,
@@ -181,6 +194,7 @@ const envFileContent = "exec </dev/null\n"
 // It adds --dangerously-skip-permissions when skipPermissions is true, the mode validatePermissionMode resolved.
 // When forkSubagents is true, it wraps the line via sh.WithEnv to enable fork subagent type.
 // It assigns promptCacheTTL, the non-empty value Prepare validated, to promptCacheTTLEnvKey.
+// It assigns bashMaxTimeoutMS to bashMaxTimeoutEnvKey, so the line carries the Bash timeout ceiling.
 // It then wraps the finished line in the envFileKey assignment naming envFilePath, so that assignment leads the line.
 func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model, effort, notice, envFilePath, promptCacheTTL string, resume, skipPermissions, forkSubagents bool) string {
 	sessionFlag := " --session-id "
@@ -209,6 +223,7 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)
 	}
 	cmd = sh.WithEnv(promptCacheTTLEnvKey, promptCacheTTL, cmd)
+	cmd = sh.WithEnv(bashMaxTimeoutEnvKey, bashMaxTimeoutMS, cmd)
 	return sh.WithEnv(envFileKey, envFilePath, cmd)
 }
 
@@ -227,6 +242,7 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 // and because reed replays this line on every resume, a line without it would bring Claude back unnamed.
 // When forkSubagents is true, the line is wrapped to keep the fork-subagent capability.
 // It carries the promptCacheTTLEnvKey assignment too: the resumed claude inherits nothing from the launch, so without it the session would fall back to Claude Code's default TTL.
+// It carries the bashMaxTimeoutEnvKey assignment too, for the same reason.
 // It carries the envFileKey assignment naming envFilePath, leading the line, so a resumed session keeps the default stdin of its Bash tool.
 func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, notice, envFilePath, promptCacheTTL string, skipPermissions, forkSubagents bool) string {
 	cmd := sh.Invoke(bin) + " --resume " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath) +
@@ -247,5 +263,6 @@ func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort,
 		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)
 	}
 	cmd = sh.WithEnv(promptCacheTTLEnvKey, promptCacheTTL, cmd)
+	cmd = sh.WithEnv(bashMaxTimeoutEnvKey, bashMaxTimeoutMS, cmd)
 	return sh.WithEnv(envFileKey, envFilePath, cmd)
 }
