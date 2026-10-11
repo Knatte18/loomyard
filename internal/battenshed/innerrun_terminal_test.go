@@ -70,9 +70,12 @@ func TestInnerRun_OpensTerminalOnceAfterSpawn(t *testing.T) {
 	if *spawnCalls != 2 || opens != 1 {
 		t.Errorf("Spawn calls = %d, OpenTerminal calls = %d after a re-spawn; want 2 and 1", *spawnCalls, opens)
 	}
+	if _, err := os.Stat(TerminalOpenedFile(scratchDir, "innerrun")); err != nil {
+		t.Errorf("terminal-opened marker: %v; want it kept after the re-spawn", err)
+	}
 }
 
-// TestInnerRun_TerminalOpenGatedPerRun asserts the once-marker gates the open across resumes, a stale marker never suppresses a fresh child's open, and a failed spawn never opens.
+// TestInnerRun_TerminalOpenGatedPerRun asserts the once-marker gates the open across resumes and re-spawns, and a failed spawn never opens.
 func TestInnerRun_TerminalOpenGatedPerRun(t *testing.T) {
 	t.Parallel()
 
@@ -85,7 +88,7 @@ func TestInnerRun_TerminalOpenGatedPerRun(t *testing.T) {
 	}{
 		{name: "ApprovedResumeAfterOpenDoesNotReopen", marker: true, approved: true, wantOpens: 0},
 		{name: "ApprovedResumeWithoutMarkerOpensOnce", marker: false, approved: true, wantOpens: 1},
-		{name: "StaleMarkerDoesNotSuppressFreshChildOpen", marker: true, approved: false, wantOpens: 1},
+		{name: "MarkerSuppressesReSpawnOpen", marker: true, approved: false, wantOpens: 0},
 		{name: "FailedSpawnDoesNotOpen", approved: false, spawnErr: errors.New("bootstrap failed"), wantOpens: 0},
 		{name: "FailedApprovedResumeDoesNotOpen", approved: true, spawnErr: errors.New("bootstrap failed"), wantOpens: 0},
 	}
@@ -95,7 +98,7 @@ func TestInnerRun_TerminalOpenGatedPerRun(t *testing.T) {
 
 			scratchDir := t.TempDir()
 			if tt.marker {
-				if err := os.WriteFile(terminalOpenedFile(scratchDir, "innerrun"), []byte("opened\n"), 0o644); err != nil {
+				if err := os.WriteFile(TerminalOpenedFile(scratchDir, "innerrun"), []byte("opened\n"), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -161,7 +164,7 @@ func TestInnerRun_TerminalOpenErrorIsWarnedNotEscalated(t *testing.T) {
 	if len(failWarns) != len(successWarns)+1 || len(errWarns) != 1 || !strings.Contains(errWarns[0], "myslug") {
 		t.Errorf("warning lines = %q, success case's = %q; want exactly one more, naming the slug and the error", failWarns, successWarns)
 	}
-	if _, err := os.Stat(terminalOpenedFile(scratchDir, "innerrun")); err != nil {
+	if _, err := os.Stat(TerminalOpenedFile(scratchDir, "innerrun")); err != nil {
 		t.Errorf("terminal-opened marker: %v; want it written after a failed open", err)
 	}
 }
