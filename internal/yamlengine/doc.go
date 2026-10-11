@@ -7,6 +7,7 @@
 // [FillMissing] builds on the existing file instead: it appends only the mapping keys the template holds and the file lacks, never replaces a file value, and refuses a shape mismatch.
 // [MissingKeys] reports the template leaf paths the file lacks, treating a template list as a default and not a minimum length.
 // [SetValues] applies dotted key=value pairs to the template-shaped tree and refuses a key the template does not know.
+// [RaiseIntFloor] raises one top-level integer key to a floor, carrying every other key and comment through unchanged, for a module's migration hook.
 //
 // # Open maps
 //

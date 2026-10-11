@@ -845,7 +845,7 @@ func applyStaleRemoval(rec *Mutations, warpLayout *lyxcwd.Location, slug string,
 			}
 			continue
 		}
-		_, _ = unseedGitExclude(rec, warpLayout, slug, []string{name})
+		_, _ = unseedGitExclude(rec, warpLayout, slug, []string{name}, false)
 		removed = append(removed, name)
 	}
 

@@ -19,7 +19,7 @@ func TestRegistry_NamesAndDefaults(t *testing.T) {
 
 	reg := Registry()
 
-	want := []string{"loom-plan-spec"}
+	want := []string{"loom-plan-spec", "loom-final-summary-spec"}
 	got := reg.Names()
 	if len(got) != len(want) {
 		t.Fatalf("Registry().Names() = %v; want %v", got, want)
@@ -55,6 +55,7 @@ func TestRegistry_RelPathPlacesBothUnderLoomFamily(t *testing.T) {
 		want string
 	}{
 		{"loom-plan-spec", "loom/loom-plan-spec.md"},
+		{"loom-final-summary-spec", "loom/loom-final-summary-spec.md"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

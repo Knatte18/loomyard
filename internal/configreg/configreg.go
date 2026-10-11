@@ -52,7 +52,7 @@ type Module struct {
 	// A hub's first reconcile seeds an absent hub file from the prime's copy, like a module with open maps.
 	SeedsFromPrime bool
 	// Migrate, when non-nil, rewrites a present config file's bytes before reconcile compares them to the template.
-	// It returns the rewritten bytes and one human-readable line per rewrite, and changes only the keys its module declares retired.
+	// It returns the rewritten bytes and one human-readable line per rewrite, and changes only the keys its module declares retired or raises a key to its module's floor.
 	Migrate func(existing []byte) ([]byte, []string, error)
 }
 
@@ -71,11 +71,11 @@ func Modules() []Module {
 		{Name: "gate", Template: gateslot.ConfigTemplate, HubWide: true},
 		{Name: "landing", Template: landingshed.ConfigTemplate, HubWide: true, SeedsFromPrime: true},
 		{Name: "logger", Template: loggerconfig.ConfigTemplate},
-		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps()},
+		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps(), Migrate: loomengine.MigrateConfig},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true},
-		{Name: "orch", Template: orchengine.ConfigTemplate},
+		{Name: "orch", Template: orchengine.ConfigTemplate, Migrate: orchengine.MigrateConfig},
 		{Name: "reed", Template: reedengine.ConfigTemplate},
-		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, OpenMaps: shuttleengine.ConfigOpenMaps()},
+		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, OpenMaps: shuttleengine.ConfigOpenMaps(), Migrate: shuttleengine.MigrateConfig},
 		{Name: "webster", Template: websterengine.ConfigTemplate},
 	}
 }

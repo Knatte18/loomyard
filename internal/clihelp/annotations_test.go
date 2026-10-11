@@ -24,6 +24,7 @@ func TestAnnotationLiterals(t *testing.T) {
 		{"AudienceRole", AudienceRole, "role"},
 		{"AudienceInternal", AudienceInternal, "internal"},
 		{"IndexNoteAnnotation", IndexNoteAnnotation, "lyx.index-note"},
+		{"IndexNoteAudienceAnnotation", IndexNoteAudienceAnnotation, "lyx.index-note-audience"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

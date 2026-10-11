@@ -175,7 +175,7 @@ var wordingClaims = []stencilClaims{
 		{must: "A Discussion-Review entry is not carried into the description", why: "a Discussion-Review carry-over finding concerns the record, not the change under review"},
 	}},
 	{"darn-template-write.md", DarnTemplateWrite, joinClaims(
-		wantAll("the darn writer reads the task from the board entry", "`lyx board get {{.slug}}`"),
+		wantAll("the darn writer reads the task from the board entry", "`lyx board get '{\"slug\":\"{{.slug}}\"}'`"),
 		wantAll("the writer self-checks the description before handing off", "`lyx loom validate-description`"),
 		wantAll("the landing steps push the branch, never the writer", "Never push"),
 		wantAll("a rejection finding is this spawn's work when it is not (none)", "Rejection findings, which are this spawn's work when they are not `(none)`"),

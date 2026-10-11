@@ -31,6 +31,6 @@
 //
 // `lyx config reconcile` drops or fills keys across every module against its template, carrying each module's open maps whole;
 // it is a dry run unless applied.
-// A module that retires keys declares a migration, which reconcile runs over its present file first;
+// A module that retires keys or floors a value declares a migration, which reconcile runs over its present file first;
 // the dry run lists each rewrite under the module's `migrated` key, and applying writes the migrated file, even when the reconcile itself adds and removes nothing.
 package configcli

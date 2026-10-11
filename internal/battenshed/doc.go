@@ -39,6 +39,7 @@
 // A batten run starts with "lyx batten run <slug>" in a terminal, or with "--window" in its own tmux window of the orch's reed session, which returns at once.
 // The tmux window lives as long as the reed session, and a second batten for the slug is refused by the run's own lock inside the window, in batten's own log.
 // "--window" also asks the run to open the operator's terminal window: the InnerRun row opens it once per run through its OpenTerminal seam, after the child's first successful spawn, gated by a once-marker in its scratch directory.
+// Batten resets the marker when it seeds a fresh batten status, so a resume keeps it and a re-spawned child opens no second window.
 //
 // The InnerRun row waits on its child inside its call rather than returning once per poll.
 // Every poll_interval_s it stats the child's status file, and decodes it when its modification time differs from the last decode or notice_probe_s has passed.

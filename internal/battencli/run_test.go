@@ -123,6 +123,11 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 				})
 			}
 
+			markerPath := battenshed.TerminalOpenedFile(c.env.ScratchDir, battenrecipe.NameRunShed)
+			if err := os.WriteFile(markerPath, []byte("opened\n"), 0o644); err != nil {
+				t.Fatalf("plant terminal-opened marker: %v", err)
+			}
+
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(battenVerbCommand(c, "run"), &out, []string{c.slug})
 
@@ -131,6 +136,12 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 			}
 			if !strings.Contains(out.String(), `"ok":true`) {
 				t.Errorf("run(%s) output missing ok:true envelope; got: %q", tt.name, out.String())
+			}
+
+			// Only a fresh start resets the once-marker; every resume keeps it.
+			_, statErr := os.Stat(markerPath)
+			if freshStart := tt.state == ""; freshStart != os.IsNotExist(statErr) {
+				t.Errorf("terminal-opened marker stat error = %v; want it cleared only for the absent status file", statErr)
 			}
 
 			// The envelope's history_length key, free from the generic body's own len(result.History), matches the run's own persisted history length.

@@ -26,6 +26,7 @@ func Invocable(cmd *cobra.Command) bool {
 // A group prints in group form when only a descendant prints.
 // A runnable group prints in leaf form when its own annotation matches.
 // A command without an annotation never prints.
+// A command's index note prints only in the audience its IndexNoteAudienceAnnotation names.
 // It walks root in memory and reads no file.
 func RenderIndex(root *cobra.Command, audience string) string {
 	var builder strings.Builder
@@ -51,20 +52,20 @@ func indexLines(cmd *cobra.Command, audience string, depth int) []string {
 	indent := strings.Repeat("  ", depth)
 	switch {
 	case Invocable(cmd) && cmd.Annotations[AudienceAnnotation] == audience:
-		return append([]string{indent + leafLine(cmd)}, childLines...)
+		return append([]string{indent + leafLine(cmd, audience)}, childLines...)
 	case len(childLines) > 0:
-		return append([]string{indent + groupLine(cmd)}, childLines...)
+		return append([]string{indent + groupLine(cmd, audience)}, childLines...)
 	}
 	return nil
 }
 
-// groupLine formats cmd as the name in backticks, a colon and its Short.
-func groupLine(cmd *cobra.Command) string {
-	return withNote(cmd, "- `"+cmd.Name()+"`: "+cmd.Short)
+// groupLine formats cmd as the name in backticks, a colon and its Short, followed by its index note when audience is the one the note names.
+func groupLine(cmd *cobra.Command, audience string) string {
+	return withNote(cmd, audience, "- `"+cmd.Name()+"`: "+cmd.Short)
 }
 
-// leafLine formats cmd as its Use in backticks, then the flags Use does not spell, a colon and its Short.
-func leafLine(cmd *cobra.Command) string {
+// leafLine formats cmd as its Use in backticks, then the flags Use does not spell, a colon and its Short, followed by its index note when audience is the one the note names.
+func leafLine(cmd *cobra.Command, audience string) string {
 	line := "- `" + cmd.Use + "`"
 	var flagNames []string
 	for _, flag := range visibleLocalFlags(cmd) {
@@ -76,12 +77,12 @@ func leafLine(cmd *cobra.Command) string {
 	if len(flagNames) > 0 {
 		line += " `" + strings.Join(flagNames, " ") + "`"
 	}
-	return withNote(cmd, line+": "+cmd.Short)
+	return withNote(cmd, audience, line+": "+cmd.Short)
 }
 
-// withNote appends cmd's index note, when it carries one, to line.
-func withNote(cmd *cobra.Command, line string) string {
-	if note := cmd.Annotations[IndexNoteAnnotation]; note != "" {
+// withNote appends cmd's index note to line when cmd carries one and its note-audience annotation equals audience.
+func withNote(cmd *cobra.Command, audience, line string) string {
+	if note := cmd.Annotations[IndexNoteAnnotation]; note != "" && cmd.Annotations[IndexNoteAudienceAnnotation] == audience {
 		return line + " " + note
 	}
 	return line

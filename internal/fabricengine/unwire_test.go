@@ -65,15 +65,45 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 
-	res, err := fabricengine.Unwire(warpLayout.WorktreePath())
+	want := []string{"_other", lyxdirs.DotLyxDirName, lyxdirs.LyxDirName, "_extra"}
+	sort.Strings(want)
+
+	// The dry run reports exactly what the applied run removes, and removes nothing itself.
+	dry, err := fabricengine.Unwire(warpLayout.WorktreePath(), false)
+	if err != nil {
+		t.Fatalf("dry-run Unwire() = %v; want nil", err)
+	}
+	dryGot := slices.Clone(dry.JunctionsRemoved)
+	sort.Strings(dryGot)
+	if !slices.Equal(dryGot, want) {
+		t.Errorf("dry run JunctionsRemoved (sorted) = %v; want %v", dryGot, want)
+	}
+	if dry.GitExclude != "reverted" {
+		t.Errorf("dry run GitExclude = %q; want %q", dry.GitExclude, "reverted")
+	}
+	if dry.Applied {
+		t.Error("dry run Applied = true; want false")
+	}
+	if dry.Mutated().Len() != 0 {
+		t.Errorf("dry run Mutations = %v; want none", dry.Mutated().Entries())
+	}
+	for _, name := range want {
+		link := filepath.Join(warpLayout.WorktreePath(), name)
+		if _, statErr := os.Lstat(link); statErr != nil {
+			t.Errorf("junction %s missing after the dry run: %v", link, statErr)
+		}
+	}
+
+	res, err := fabricengine.Unwire(warpLayout.WorktreePath(), true)
 	if err != nil {
 		t.Fatalf("Unwire() = %v; want nil", err)
+	}
+	if !res.Applied {
+		t.Error("applied run Applied = false; want true")
 	}
 
 	got := slices.Clone(res.JunctionsRemoved)
 	sort.Strings(got)
-	want := []string{"_other", lyxdirs.DotLyxDirName, lyxdirs.LyxDirName, "_extra"}
-	sort.Strings(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("res.JunctionsRemoved (sorted) = %v; want %v", got, want)
 	}
@@ -134,7 +164,7 @@ func TestUnwire_PreservesWeftLyxAndOptionalContent(t *testing.T) {
 		t.Fatalf("git log (before Unwire) failed: %v (exit %d)", err, exitCode)
 	}
 
-	res, err := fabricengine.Unwire(warpLayout.WorktreePath())
+	res, err := fabricengine.Unwire(warpLayout.WorktreePath(), true)
 	if err != nil {
 		t.Fatalf("Unwire() = %v; want nil", err)
 	}
@@ -211,7 +241,7 @@ func TestUnwire_NeverWiredWarpIsIdempotentNoOp(t *testing.T) {
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
-	res, err := fabricengine.Unwire(h.PrimeWorktree())
+	res, err := fabricengine.Unwire(h.PrimeWorktree(), true)
 	if err != nil {
 		t.Fatalf("Unwire() = %v; want nil", err)
 	}
@@ -223,7 +253,7 @@ func TestUnwire_NeverWiredWarpIsIdempotentNoOp(t *testing.T) {
 	}
 
 	// Running it again is a clean, identical no-op: nothing left to remove.
-	res2, err := fabricengine.Unwire(h.PrimeWorktree())
+	res2, err := fabricengine.Unwire(h.PrimeWorktree(), true)
 	if err != nil {
 		t.Fatalf("second Unwire() = %v; want nil", err)
 	}
@@ -232,6 +262,18 @@ func TestUnwire_NeverWiredWarpIsIdempotentNoOp(t *testing.T) {
 	}
 	if len(res2.JunctionsRemoved) != 0 {
 		t.Errorf("second res.JunctionsRemoved = %v; want empty", res2.JunctionsRemoved)
+	}
+
+	// A dry run on the torn-down pair has nothing to report either.
+	dry, err := fabricengine.Unwire(h.PrimeWorktree(), false)
+	if err != nil {
+		t.Fatalf("dry-run Unwire() = %v; want nil", err)
+	}
+	if len(dry.JunctionsRemoved) != 0 {
+		t.Errorf("dry run JunctionsRemoved = %v; want empty", dry.JunctionsRemoved)
+	}
+	if dry.GitExclude != "unchanged" {
+		t.Errorf("dry run GitExclude = %q; want %q", dry.GitExclude, "unchanged")
 	}
 }
 
@@ -267,7 +309,7 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 
-	if _, err := fabricengine.Unwire(warpLayout.WorktreePath()); err != nil {
+	if _, err := fabricengine.Unwire(warpLayout.WorktreePath(), true); err != nil {
 		t.Fatalf("Unwire() = %v; want nil", err)
 	}
 
@@ -312,7 +354,7 @@ func TestUnwire_LeavesSiblingWorktreeUndirtied(t *testing.T) {
 		t.Fatalf("setup: kept worktree already dirty: %q", status)
 	}
 
-	if _, err := fabricengine.Unwire(unwiredLayout.AnchorPath()); err != nil {
+	if _, err := fabricengine.Unwire(unwiredLayout.AnchorPath(), true); err != nil {
 		t.Fatalf("Unwire(%s): %v", unwiredSlug, err)
 	}
 

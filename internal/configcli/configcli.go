@@ -414,7 +414,7 @@ func Command() *cobra.Command {
 their live templates, reporting added keys (new in template) and removed keys
 (deleted from template). By default it is a dry-run: no files are written.
 Pass --apply to write the reconciled files to disk atomically.
-A module that retires keys first migrates its present file: the dry-run lists
+A module that retires keys or floors a value first migrates its present file: the dry-run lists
 each rewrite under the module's "migrated" key, and --apply writes the migrated
 file even when the reconcile adds and removes nothing.
 Hub-wide modules (fabric, board) are reported, not reconciled here: a leftover

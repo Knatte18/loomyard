@@ -5,6 +5,7 @@
 package discussionparser
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -77,15 +78,21 @@ type CarryOver struct {
 // The new bytes are checked against the prior ones before they replace the record through a sibling temporary file.
 // A failed write or check leaves the record unchanged.
 //
+// A concurrent writer of the record, such as `lyx loom decision add`, is detected by two checks and no lock.
+// When the record differs from the bytes read at the start just before the rename, the write is refused and nothing is written.
+// When the record differs from the bytes written just after the rename, an error is returned and the other writer's bytes stay in place.
+// A write landing between the pre-rename check and the rename is still overwritten unseen.
+// Re-running the write after the other writer is done writes the same entry, since the rendering is deterministic.
+//
 // Every error is prefixed with decisionRecordPath; a missing record wraps os.ErrNotExist.
 func WriteCarryOver(decisionRecordPath string, entry CarryOver) error {
-	if err := writeCarryOver(decisionRecordPath, entry); err != nil {
+	if err := writeCarryOver(decisionRecordPath, entry, carryOverHooks{}); err != nil {
 		return fmt.Errorf("%s: %w", decisionRecordPath, err)
 	}
 	return nil
 }
 
-func writeCarryOver(path string, entry CarryOver) error {
+func writeCarryOver(path string, entry CarryOver, hooks carryOverHooks) error {
 	if err := validateCarryOverSegment(entry.Segment); err != nil {
 		return err
 	}
@@ -141,7 +148,7 @@ func writeCarryOver(path string, entry CarryOver) error {
 	if err := checkCarryOverSplice(lines, next, priorStart, priorEnd, nextEnd, entry.Segment, len(entry.Findings) > 0); err != nil {
 		return fmt.Errorf("refusing to write: %w", err)
 	}
-	return replaceFile(path, []byte(strings.Join(next, "\n")), info.Mode().Perm())
+	return replaceFile(path, prior, []byte(strings.Join(next, "\n")), info.Mode().Perm(), hooks)
 }
 
 // validateCarryOverSegment refuses a segment that cannot be spelled inside a marker line.
@@ -341,8 +348,18 @@ func h2Headings(lines []string) []string {
 	return headings
 }
 
+// carryOverHooks are optional callbacks run around the rename in replaceFile, so a test can interleave another writer.
+// Both are nil in production.
+type carryOverHooks struct {
+	beforeRename func()
+	afterRename  func()
+}
+
 // replaceFile writes data to a sibling temporary file and renames it over path.
-func replaceFile(path string, data []byte, perm os.FileMode) error {
+// prior is the content of path the caller read before computing data.
+// When path no longer holds prior just before the rename, the temporary file is removed and an error is returned with nothing written.
+// When path does not hold data just after the rename, an error is returned and the other writer's bytes stay in place.
+func replaceFile(path string, prior, data []byte, perm os.FileMode, hooks carryOverHooks) error {
 	temp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
 	if err != nil {
 		return err
@@ -354,9 +371,34 @@ func replaceFile(path string, data []byte, perm os.FileMode) error {
 		os.Remove(tempPath)
 		return err
 	}
+
+	if hooks.beforeRename != nil {
+		hooks.beforeRename()
+	}
+	current, err := os.ReadFile(path)
+	if err != nil {
+		os.Remove(tempPath)
+		return err
+	}
+	if !bytes.Equal(current, prior) {
+		os.Remove(tempPath)
+		return errors.New("the decision record changed during the carry-over write, by a concurrent writer such as `lyx loom decision add`; nothing was written; run `lyx loom start` to re-run the settle once the other writer is done")
+	}
+
 	if err := os.Rename(tempPath, path); err != nil {
 		os.Remove(tempPath)
 		return err
+	}
+
+	if hooks.afterRename != nil {
+		hooks.afterRename()
+	}
+	current, err = os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(current, data) {
+		return errors.New("the decision record changed during the carry-over write, by a concurrent writer such as `lyx loom decision add`; the other writer's bytes are in place; run `lyx loom start` to re-run the settle once the other writer is done")
 	}
 	return nil
 }

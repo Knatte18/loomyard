@@ -18,7 +18,7 @@ No operator is present, so make best-judgment calls and never block on a dialog.
 {{.friction_directive}}
 ## Step 1 — Read the task
 
-Read the board entry for task `{{.slug}}` with `lyx board get {{.slug}}`.
+Read the board entry for task `{{.slug}}` with `lyx board get '{"slug":"{{.slug}}"}'`.
 It is the whole statement of the change you make.
 
 Also read the repository's `CLAUDE.md`.
@@ -49,7 +49,7 @@ When both are `(none)`, this is the first spawn and the branch holds no work of 
 
 ## Step 4 — Write the change description
 
-Write the change description to `{{.description_path}}`, in the format the final-summary spec defines at `{{.specs_dir}}/final-summary-spec.md`.
+Write the change description to `{{.description_path}}`, in the format the final-summary spec defines at `{{.specs_dir}}/loom/loom-final-summary-spec.md`.
 Read that spec for the format; it is authoritative and this prompt does not restate it.
 Write the description for a reviewer who knows the codebase but has not seen this session, and never describe the session's own process.
 

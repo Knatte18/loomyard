@@ -23,6 +23,7 @@ var orchengineAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/logger",
 	"github.com/Knatte18/loomyard/internal/stencil",
 	"github.com/Knatte18/loomyard/internal/stencilstore",
+	"github.com/Knatte18/loomyard/internal/yamlengine",
 	"gopkg.in/yaml.v3",
 }
 

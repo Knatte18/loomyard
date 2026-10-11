@@ -114,7 +114,7 @@ var (
 	runningSection = readmeSection{"Running", "Held by a run; its scope is locked until the run ends."}
 	readySection   = readmeSection{"Ready", "Waits on nothing open; can start now."}
 	notesSection   = readmeSection{"Notes", "Not tasks: ideas and observations, merged into a task when one is promoted."}
-	doneSection    = readmeSection{"Done", "Finished, awaiting `lyx board prune`."}
+	doneSection    = readmeSection{"Done", "Finished, awaiting `lyx board prune --apply`."}
 )
 
 // otherNotesHeading is the Notes subsection for a note whose type label is no longer configured.

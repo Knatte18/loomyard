@@ -534,7 +534,7 @@ func requireSpecsSeeded(t *testing.T, res Standalone) {
 	if !filepath.IsAbs(res.SpecsDir) {
 		t.Errorf("ResolveStandalone() SpecsDir = %q; want an absolute path", res.SpecsDir)
 	}
-	for _, name := range []string{"loom-plan-spec"} {
+	for _, name := range []string{"loom-plan-spec", "loom-final-summary-spec"} {
 		path := stencilstore.Path(res.SpecsDir, name)
 		content, err := os.ReadFile(path)
 		if err != nil {

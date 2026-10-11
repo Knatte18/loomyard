@@ -38,7 +38,7 @@ The file is strictly decoded — unknown fields are rejected — and follows arc
 ## The summary artifact — `_lyx/webster/summary.md`
 
 webster's `summary.md` is the run record: it no longer reaches landing directly, since landing reads the change description loom's `Describe` row writes instead.
-The format and validation it shares are pinned producer-agnostically in [final-summary-spec.md](final-summary-spec.md); this section states only webster's own writer-side additions.
+The format and validation it shares are pinned producer-agnostically in [loom-final-summary-spec.md](loom-final-summary-spec.md); this section states only webster's own writer-side additions.
 It is required and fail-loud only when `outcome: done`, and follows the same archive-never-refuse discipline as every other stale artifact.
 A long-lived Master session is the only party with full oversight of what actually shipped, which is why it writes the run record.
 
@@ -66,7 +66,7 @@ A pass records the verified tree, so a landing step or a later gate that finds t
 
 ## See also
 
-- [final-summary-spec.md](final-summary-spec.md) — the producer-agnostic read contract for `summary.md`'s format, validation, and consumers.
+- [loom-final-summary-spec.md](loom-final-summary-spec.md) — the producer-agnostic read contract for `summary.md`'s format, validation, and consumers.
 - `contracts/stencils/loom/loom-template-plan.md` — the flat-card format webster consumes via `internal/planparser`, pinned in the Plan producer's own stencil rather than a separate doc.
 - [refusal-spec.md](refusal-spec.md) — the table of webster's refusals and their ways forward.
 - [llm-model-spec.md](llm-model-spec.md) — the model-spec notation webster's roles resolve against.

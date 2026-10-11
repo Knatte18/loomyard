@@ -158,6 +158,42 @@ func TestReconcileAll(t *testing.T) {
 		},
 	}
 
+	// Each floored module's below-floor key: a dry run reports the raise and writes nothing, an apply writes the key at its floor.
+	for _, floored := range []struct{ module, seed, line, raised, stale string }{
+		{"shuttle", "poll_interval_ms: 500\n", "poll_interval_ms: raised from 500 to 1000", "poll_interval_ms: 1000", "poll_interval_ms: 500"},
+		{"orch", "poll_interval_ms: 500\n", "poll_interval_ms: raised from 500 to 1000", "poll_interval_ms: 1000", "poll_interval_ms: 500"},
+		{"loom", "step_idle_timeout_min: 0\n", "step_idle_timeout_min: raised from 0 to 1", "step_idle_timeout_min: 1", "step_idle_timeout_min: 0"},
+	} {
+		tests = append(tests,
+			struct {
+				name  string
+				seed  map[string]string
+				apply bool
+				want  map[string]moduleWant
+			}{
+				name: "dry run reports a below-floor " + floored.module + " key and writes nothing",
+				seed: map[string]string{floored.module: floored.seed},
+				want: map[string]moduleWant{floored.module: {migratedAll: []string{floored.line}, wantFile: ptr(floored.seed)}},
+			},
+			struct {
+				name  string
+				seed  map[string]string
+				apply bool
+				want  map[string]moduleWant
+			}{
+				name:  "apply writes a below-floor " + floored.module + " key at its floor",
+				seed:  map[string]string{floored.module: floored.seed},
+				apply: true,
+				want: map[string]moduleWant{floored.module: {
+					applied:         true,
+					migratedAll:     []string{floored.line},
+					fileContains:    []string{floored.raised},
+					fileNotContains: []string{floored.stale},
+				}},
+			},
+		)
+	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()

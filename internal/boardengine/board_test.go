@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -468,7 +469,28 @@ func TestPruneRemovesDoneEntryAndDesignDocKeepsAbandoned(t *testing.T) {
 		t.Fatalf("design doc missing before prune: %v", err)
 	}
 
-	removed, err := w.Prune()
+	boardJSONBefore, err := os.ReadFile(filepath.Join(boardPath, "board.json"))
+	if err != nil {
+		t.Fatalf("read board.json: %v", err)
+	}
+	dry, err := w.Prune(false)
+	if err != nil {
+		t.Fatalf("Prune(false): %v", err)
+	}
+	if len(dry) != 1 || dry[0] != "finished" {
+		t.Errorf("dry run reported %v; want [finished]", dry)
+	}
+	if _, found, _ := w.GetTask("finished"); !found {
+		t.Errorf("dry run removed the done entry")
+	}
+	if _, err := os.Stat(filepath.Join(boardPath, "proposal-finished.md")); err != nil {
+		t.Errorf("dry run removed the design doc: %v", err)
+	}
+	if boardJSONAfter, err := os.ReadFile(filepath.Join(boardPath, "board.json")); err != nil || string(boardJSONAfter) != string(boardJSONBefore) {
+		t.Errorf("dry run changed board.json (read err %v)", err)
+	}
+
+	removed, err := w.Prune(true)
 	if err != nil {
 		t.Fatalf("Prune: %v", err)
 	}
@@ -496,8 +518,26 @@ func TestRetireLegacyFoldsDoneMarkAndRemovesLegacyFiles(t *testing.T) {
 		}
 	}
 
-	if err := w.RetireLegacy(); err != nil {
+	wantFiles := []string{"tasks.json", "notes.json"}
+	dry, err := w.RetireLegacy(false)
+	if err != nil {
+		t.Fatalf("RetireLegacy(false): %v", err)
+	}
+	if !slices.Equal(dry, wantFiles) {
+		t.Errorf("dry run reported %v; want %v", dry, wantFiles)
+	}
+	for _, name := range []string{"tasks.json", "notes.json", "tasks.json.swaplock", "notes.json.swaplock"} {
+		if _, err := os.Stat(filepath.Join(boardPath, name)); err != nil {
+			t.Errorf("dry run removed %s: %v", name, err)
+		}
+	}
+
+	retired, err := w.RetireLegacy(true)
+	if err != nil {
 		t.Fatalf("RetireLegacy: %v", err)
+	}
+	if !slices.Equal(retired, wantFiles) {
+		t.Errorf("retired = %v; want %v", retired, wantFiles)
 	}
 
 	for _, name := range []string{"tasks.json", "notes.json", "tasks.json.swaplock", "notes.json.swaplock"} {
@@ -525,11 +565,13 @@ func TestRetireLegacyWithoutLegacyFilesRefusesAndWritesNothing(t *testing.T) {
 	}
 	before := dataFiles(t, boardPath)
 
-	err := w.RetireLegacy()
-	if err == nil || !strings.Contains(err.Error(), "nothing to retire") {
-		t.Fatalf("RetireLegacy error = %v; want one saying nothing to retire", err)
+	for _, apply := range []bool{false, true} {
+		_, err := w.RetireLegacy(apply)
+		if err == nil || !strings.Contains(err.Error(), "nothing to retire") {
+			t.Fatalf("RetireLegacy(%v) error = %v; want one saying nothing to retire", apply, err)
+		}
+		assertSameFiles(t, before, dataFiles(t, boardPath))
 	}
-	assertSameFiles(t, before, dataFiles(t, boardPath))
 }
 
 // TestRetireLegacyFailedDeletionKeepsLegacyDone forces the deletion to fail after board.json is saved and checks that the surviving legacy file folds nothing twice:
@@ -547,7 +589,7 @@ func TestRetireLegacyFailedDeletionKeepsLegacyDone(t *testing.T) {
 		t.Fatalf("mkdir blocker: %v", err)
 	}
 
-	if err := w.RetireLegacy(); err == nil {
+	if _, err := w.RetireLegacy(true); err == nil {
 		t.Fatal("RetireLegacy succeeded; want the blocked deletion to fail")
 	}
 
@@ -693,7 +735,7 @@ func TestPriorityRoundTrip(t *testing.T) {
 			_, err := b.MergeTasks([]string{"gone"}, map[string]any{"slug": "hi", "body": "merged"}, &boardengine.MergeStatusUpdate{Selector: "lo", Status: strPtr("active")})
 			return err
 		}},
-		{"prune", func() error { _, err := b.Prune(); return err }},
+		{"prune", func() error { _, err := b.Prune(true); return err }},
 	}
 	for _, w := range writes {
 		if err := w.write(); err != nil {

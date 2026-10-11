@@ -38,7 +38,7 @@ func TestRenderIndex_FormsAndFiltering(t *testing.T) {
 	_ = get.Flags().MarkHidden("secret")
 	list := indexFixtureCommand("list", "list entries", AudienceOperator, true)
 	list.Flags().Bool("all", false, "")
-	board.Annotations = map[string]string{IndexNoteAnnotation: "(payload legend)"}
+	board.Annotations = map[string]string{IndexNoteAnnotation: "(payload legend)", IndexNoteAudienceAnnotation: AudienceOperator}
 	board.AddCommand(get, list)
 
 	// A runnable group in the operator audience, with children nested below it.
@@ -64,7 +64,18 @@ func TestRenderIndex_FormsAndFiltering(t *testing.T) {
 	completion := indexFixtureCommand("completion", "shell completion", AudienceOperator, false)
 	completion.AddCommand(indexFixtureCommand("bash", "bash completion", AudienceOperator, true))
 
-	root.AddCommand(board, config, reed, burler, loom, completion)
+	// Two noted groups with a leaf in every audience, so each prints under all three: a note without an audience never prints, and a note naming role prints under role only.
+	unaudienced := indexFixtureCommand("unaudienced", "note without audience", "", false)
+	unaudienced.Annotations = map[string]string{IndexNoteAnnotation: "(never printed)"}
+	roleNoted := indexFixtureCommand("role-noted", "note for role", "", false)
+	roleNoted.Annotations = map[string]string{IndexNoteAnnotation: "(role note)", IndexNoteAudienceAnnotation: AudienceRole}
+	for _, group := range []*cobra.Command{unaudienced, roleNoted} {
+		for _, audience := range Audiences {
+			group.AddCommand(indexFixtureCommand(group.Name()+"-"+audience, audience+" leaf", audience, true))
+		}
+	}
+
+	root.AddCommand(board, config, reed, burler, loom, completion, unaudienced, roleNoted)
 
 	tests := []struct {
 		audience string
@@ -78,17 +89,29 @@ func TestRenderIndex_FormsAndFiltering(t *testing.T) {
 			"  - `reconcile`: reconcile config",
 			"- `reed`: manage strands",
 			"  - `up`: start reed",
+			"- `role-noted`: note for role",
+			"  - `role-noted-operator`: operator leaf",
+			"- `unaudienced`: note without audience",
+			"  - `unaudienced-operator`: operator leaf",
 			"",
 		}, "\n")},
 		{AudienceRole, strings.Join([]string{
 			"- `burler`: run reviews",
 			"  - `run`: run a review",
 			"- `reed [<name>]`: manage strands",
+			"- `role-noted`: note for role (role note)",
+			"  - `role-noted-role`: role leaf",
+			"- `unaudienced`: note without audience",
+			"  - `unaudienced-role`: role leaf",
 			"",
 		}, "\n")},
 		{AudienceInternal, strings.Join([]string{
 			"- `loom`: drive looms",
 			"  - `watch`: poll",
+			"- `role-noted`: note for role",
+			"  - `role-noted-internal`: internal leaf",
+			"- `unaudienced`: note without audience",
+			"  - `unaudienced-internal`: internal leaf",
 			"",
 		}, "\n")},
 	}

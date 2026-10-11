@@ -171,15 +171,16 @@ To confirm the guard holds, follow the rejected add with `lyx fabric list`/`lyx 
 
 **Covers:** fabric
 
-**Goal:** "Deactivate a wired worktree with `lyx fabric unwire`, confirm it tears down exactly what it should and nothing more, then confirm `lyx fabric reconcile` re-wires it afterward."
+**Goal:** "Deactivate a wired worktree with `lyx fabric unwire --apply`, confirm it tears down exactly what it should and nothing more, then confirm `lyx fabric reconcile` re-wires it afterward."
 
-**Watch:** Run `lyx fabric unwire` on a wired worktree (the fabric prime,
-or a pair added in F2).
+**Watch:** On a wired worktree (the fabric prime, or a pair added in F2), run bare `lyx fabric unwire` first.
+Confirm it reports `"applied": false` with the junctions it would remove, and that those junctions are all still wired.
+Then run `lyx fabric unwire --apply` on the same worktree.
 Confirm it removes every fabric junction present on disk (e.g. `_lyx`, `.lyx`) — `ls`/`git -C <warp> ls-files --others -i --exclude-standard` or plain directory inspection should show the junction entries gone.
 Confirm it preserves the weft-side `_lyx` content — `_lyx/` under the paired weft worktree should be untouched, not cleared — since `_lyx` is deliberately never touched by unwire.
 Confirm it reverts the junction's own `.git/info/exclude` entry — there is no committed `.gitignore` block to revert, since junctions are excluded through `.git/info/exclude` alone.
 If a SECOND worktree in the same hub is still wired, confirm the exclude entry is KEPT (that file lives in the repo's shared gitdir, so removing it would make the other worktree's live junctions show up as untracked dirt) — check with `git -C <other-warp-worktree> status --porcelain`, which must stay clean.
-Run `lyx fabric unwire` a second time immediately after: it must be idempotent and no-op cleanly on an already-unwired worktree, not error.
+Run `lyx fabric unwire --apply` a second time immediately after: it must be idempotent and no-op cleanly on an already-unwired worktree, not error.
 Finally, confirm the repo-wide records survive unwire — `.lyx-anchor`, `<BoardDir>/_lyx/config/fabric.yaml`, and `.lyx-warp` are untouched — by running `lyx fabric reconcile` afterward and confirming it re-wires the worktree's junctions from those same repo-wide records, with no re-clone needed.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
@@ -279,7 +280,7 @@ promoting it to a deletable orphan destroys any weft commit it alone carries.
 **Goal:** "Cross every mutating verb with uncommitted work actually on disk, and confirm no verb silently discards it."
 
 **Watch:** Make an uncommitted edit to a TRACKED file on one side, then run one mutating verb, then check the edit is still there byte-for-byte.
-Repeat across the verbs -- `pull`, `sync`, `checkout`, `reconcile`, `remove`, `cleanup`, `unwire`, `prune`, `add`, `commit` -- and across the states: dirty warp only, dirty weft only, both dirty, untracked-only on each side.
+Repeat across the verbs -- `pull`, `sync`, `checkout`, `reconcile`, `remove`, `cleanup`, `unwire --apply`, `prune`, `add`, `commit` -- and across the states: dirty warp only, dirty weft only, both dirty, untracked-only on each side.
 A verb that REFUSES is fine. A verb that proceeds and leaves the work intact is fine. A verb that proceeds and discards it is a FAIL, whatever it reported.
 Expected refusals worth confirming by name: `pull` refuses a dirty warp (`ErrWarpDirty`, before warp moves at all), `checkout` refuses a dirty weft, `add` refuses a dirty source worktree, `remove` refuses either side without `--force`, and `prune --apply` reports `protected: true` for a stale pair whose weft worktree is dirty until `--force` is given.
 Untracked files are deliberately NOT a reason to refuse -- but confirm they genuinely survive every verb that proceeds, rather than being swept along with something else.
@@ -353,7 +354,7 @@ Repeat on a `--subpath backend` hub, where the anchor segment absorbs one `..` a
 
 **Watch:** On a hub with six added pairs, append a pattern of your own -- say `/my-secret-build-dir` -- to `<warp>/.git/info/exclude`, and note that the file also carries git's default six-line comment block.
 That file lives in the repo's COMMON gitdir, so it is ONE file for the whole hub, not one per worktree.
-Now launch all six worktrees at once (background five, run one in the foreground, `wait`), alternating `lyx fabric unwire` and `lyx fabric reconcile`, and repeat for ten rounds, printing the file's line count after each.
+Now launch all six worktrees at once (background five, run one in the foreground, `wait`), alternating `lyx fabric unwire --apply` and `lyx fabric reconcile`, and repeat for ten rounds, printing the file's line count after each.
 The count must never drop and your own pattern must be present after every round, alongside `/_lyx` and `/.lyx` exactly once each.
 (Historical: the count collapsed from 10 lines to 3 at round 6 and to 1 at round 9 on two independent hubs -- the operator's pattern and git's comment block destroyed, and fabric's own junction exclusions transiently lost, which makes every worktree's junctions show as untracked and a plain `git add -A` commit symlinks into the warp repo. The identical sequence run sequentially never lost a line.)
 Also run the destructive verbs against each other -- `prune --apply` alongside `checkout`, `cleanup --apply` alongside `commit`, `add` alongside `remove` -- and confirm every verb either succeeds or refuses with git's real message, and `lyx fabric pairs` afterwards reports every surviving pair `in_sync` and `junction_healthy`.

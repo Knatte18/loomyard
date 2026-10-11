@@ -26,7 +26,7 @@ internal/configengine: 13
 internal/configreg: 7
 internal/configsync: 6
 internal/darnengine: 4
-internal/discussionparser: 16
+internal/discussionparser: 17
 internal/dotgit: 3
 internal/editdirective: 2
 internal/envsource: 3
@@ -124,7 +124,7 @@ internal/vscode: 12
 internal/webstercli: 81
 internal/websterengine: 199
 internal/weftname: 1
-internal/yamlengine: 12
+internal/yamlengine: 13
 tools/codestats: 9
 tools/deploy: 7
 tools/godocreflow: 6
