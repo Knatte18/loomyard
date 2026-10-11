@@ -487,7 +487,7 @@ func retryLanded(sc sendContext, text string) bool {
 
 // confirmPasted reads the input box after a paste, first reader.SubmitSettle() later and then at a doubling interval up to confirmBackoffCap, cut to end at closeAt.
 // A turn start past sentAt, or an empty box, means the paste landed.
-// A send with a landingStart instead lands on a session start of that source past sentAt, and an empty box does not end its reads while the window and the read cap allow more;
+// A send with a landingStart, to an engine that parses session signals, instead lands on a session start of that source past sentAt, and an empty box does not end its reads while the window and the read cap allow more;
 // when they run out with none, the box read decides as for any send.
 // A box holding exactly the sent text, or the provider's placeholder for it, means the Enter did not take, and the guarded Enter is sent and the box read again.
 // No readable box sends nothing and is read again.
@@ -504,7 +504,8 @@ func confirmPasted(sc sendContext, paster TextPaster, reader InputBoxReader, tex
 		if turnStartedSince(sc.engine, sc.eventsPath, sentAt) {
 			return nil
 		}
-		awaitsLanding := sc.landingStart != ""
+		_, parsesSignals := sc.engine.(SessionSignalParser)
+		awaitsLanding := sc.landingStart != "" && parsesSignals
 		if awaitsLanding && sessionStartedSince(sc.engine, sc.eventsPath, sentAt, sc.landingStart) {
 			return nil
 		}

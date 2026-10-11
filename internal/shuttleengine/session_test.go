@@ -364,21 +364,34 @@ func (e *slashPasteEngine) ColorSequence(color segmentcolor.Color) []PaneInput {
 	return []PaneInput{{Text: "/color " + string(color), Submit: true}}
 }
 
+// parserlessPasteEngine is a paste-path engine with no SessionSignalParser: it exposes only the Engine, TextPaster, InputBoxReader and SessionCycler capabilities of the engine it wraps.
+type parserlessPasteEngine struct {
+	Engine
+	TextPaster
+	InputBoxReader
+	SessionCycler
+}
+
 // newSlashPasteRunner returns a runner over a live strand "strand-1" on a paste-path engine whose input box reads box and whose pane shows an operator active or not, and the reed it drives.
 func newSlashPasteRunner(t *testing.T, box string, active, noColor bool) (*Runner, *fakeReed, string) {
 	t.Helper()
-	runner, reed, runDir, _ := newSlashPasteRunnerAppending(t, box, active, noColor, "")
+	runner, reed, runDir, _ := newSlashPasteRunnerAppending(t, box, active, noColor, "", false)
 	return runner, reed, runDir
 }
 
 // newSlashPasteRunnerAppending is newSlashPasteRunner with every paste appending pasteLine to the events file, and returns the runner's clock as well.
-func newSlashPasteRunnerAppending(t *testing.T, box string, active, noColor bool, pasteLine string) (*Runner, *fakeReed, string, *fakeClock) {
+// parserless hides the engine's session-signal parsing behind parserlessPasteEngine.
+func newSlashPasteRunnerAppending(t *testing.T, box string, active, noColor bool, pasteLine string, parserless bool) (*Runner, *fakeReed, string, *fakeClock) {
 	t.Helper()
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"IDLE"}, ActiveQueue: []bool{active}}
 	appending := &pasteLineReed{fakeReed: reed, line: pasteLine}
 	clock := newFakeClock(time.Now())
 	boxes := &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: []inputBoxAnswer{{box, true}}, settle: 100 * time.Millisecond}
-	engine := &slashPasteEngine{scriptedPasteEngine: &scriptedPasteEngine{clearableBoxEngine: &clearableBoxEngine{inputBoxEngine: boxes}, pasteSubmits: true}, noColor: noColor}
+	slash := &slashPasteEngine{scriptedPasteEngine: &scriptedPasteEngine{clearableBoxEngine: &clearableBoxEngine{inputBoxEngine: boxes}, pasteSubmits: true}, noColor: noColor}
+	var engine Engine = slash
+	if parserless {
+		engine = parserlessPasteEngine{Engine: slash, TextPaster: slash, InputBoxReader: slash, SessionCycler: slash}
+	}
 	cfg := Config{SubmitSettleMS: 100, SubmitConfirmTimeoutS: 30, SendReadyTimeoutS: 60}
 	fx := newFixture(t, appending, engine, withConfig(cfg), withStrand("strand-1"), withClock(clock))
 	appending.eventsPath = fx.EventsPath
@@ -396,22 +409,25 @@ func newSlashPasteRunnerAppending(t *testing.T, box string, active, noColor bool
 // checkLandingStartConfirmation drives call, a session command that restarts the session with the source landing, over a paste-path engine whose box reads empty after the paste.
 // A session-start line of landing appended by the paste confirms the send at its first read.
 // A line of other, or none, leaves the send waiting out the whole submit window before the empty box confirms it.
+// An engine that parses no session signals confirms on the empty box at once.
 func checkLandingStartConfirmation(t *testing.T, landing, other SessionStartSource, call func(*Runner) error) {
 	t.Helper()
 	window := submitConfirmTimeout(Config{SubmitConfirmTimeoutS: 30})
 	tests := []struct {
-		name      string
-		pasteLine string
-		wantWait  bool
+		name       string
+		pasteLine  string
+		parserless bool
+		wantWait   bool
 	}{
 		{name: "a session start of the matching source confirms the send at once", pasteLine: "SESSIONSTART:" + string(landing)},
 		{name: "a session start of the other source is waited out", pasteLine: "SESSIONSTART:" + string(other), wantWait: true},
 		{name: "no session start confirms on the empty box once the window closes", wantWait: true},
+		{name: "an engine that parses no session signals confirms on the empty box at once", parserless: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			runner, _, _, clock := newSlashPasteRunnerAppending(t, "", false, false, tt.pasteLine)
+			runner, _, _, clock := newSlashPasteRunnerAppending(t, "", false, false, tt.pasteLine, tt.parserless)
 			start := clock.Now()
 			if err := call(runner); err != nil {
 				t.Fatalf("error = %v, want the command confirmed", err)
