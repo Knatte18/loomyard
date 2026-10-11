@@ -390,7 +390,8 @@ func TestRecentRuns(t *testing.T) {
 	if err := os.MkdirAll(projectDir(projects, "/hub/empty"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	finished := map[string]bool{"old": true, "new": true, "mid": true, "prime": true, "empty": true, "newest": true}
+	tag := []ArchiveTag{{Name: "archive/x/1"}}
+	finished := map[string][]ArchiveTag{"old": tag, "new": tag, "mid": tag, "prime": tag, "empty": tag, "newest": tag}
 
 	got, err := recentRuns(projects, "/hub", "prime", finished, 2)
 	if err != nil {
@@ -403,9 +404,62 @@ func TestRecentRuns(t *testing.T) {
 
 func TestArchivedSlugs(t *testing.T) {
 	t.Parallel()
-	refs := "refs/tags/archive/run-pushes/b783fd2\nrefs/tags/archive/run-pushes/0a1b2c3\nrefs/tags/archive/test-tiers/9f8e7d6\nrefs/tags/archive/no-sha\nrefs/tags/other/x/y\n"
-	got := archivedSlugs(refs)
-	if len(got) != 2 || !got["run-pushes"] || !got["test-tiers"] {
-		t.Errorf("archivedSlugs = %v, want run-pushes and test-tiers", got)
+	at := func(s string) time.Time {
+		parsed, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return parsed
+	}
+	tests := []struct {
+		name string
+		refs string
+		want map[string][]ArchiveTag
+	}{
+		{
+			"two tags of a slug newest first",
+			"refs/tags/archive/s/old\tc1\t2026-01-01T00:00:00+00:00\nrefs/tags/archive/s/new\tc2\t2026-01-02T00:00:00+00:00\n",
+			map[string][]ArchiveTag{"s": {
+				{"archive/s/new", "c2", at("2026-01-02T00:00:00Z")},
+				{"archive/s/old", "c1", at("2026-01-01T00:00:00Z")},
+			}},
+		},
+		{
+			"equal dates ordered by name",
+			"refs/tags/archive/s/b\tc2\t2026-01-01T00:00:00+00:00\nrefs/tags/archive/s/a\tc1\t2026-01-01T00:00:00+00:00\n",
+			map[string][]ArchiveTag{"s": {
+				{"archive/s/a", "c1", at("2026-01-01T00:00:00Z")},
+				{"archive/s/b", "c2", at("2026-01-01T00:00:00Z")},
+			}},
+		},
+		{
+			"malformed lines are skipped",
+			"refs/tags/archive/no-sha\tc\t2026-01-01T00:00:00+00:00\n" +
+				"refs/tags/other/x/y\tc\t2026-01-01T00:00:00+00:00\n" +
+				"refs/tags/archive/s/empty\t\t2026-01-01T00:00:00+00:00\n" +
+				"refs/tags/archive/s/nodate\tc\t\n" +
+				"refs/tags/archive/s/ok\tc\t2026-01-01T00:00:00+00:00\n",
+			map[string][]ArchiveTag{"s": {{"archive/s/ok", "c", at("2026-01-01T00:00:00Z")}}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := archivedSlugs(tt.refs)
+			if len(got) != len(tt.want) {
+				t.Fatalf("archivedSlugs = %v, want %v", got, tt.want)
+			}
+			for slug, tags := range tt.want {
+				if len(got[slug]) != len(tags) {
+					t.Fatalf("archivedSlugs[%s] = %v, want %v", slug, got[slug], tags)
+				}
+				for i := range tags {
+					g := got[slug][i]
+					if g.Name != tags[i].Name || g.Commit != tags[i].Commit || !g.Committed.Equal(tags[i].Committed) {
+						t.Errorf("archivedSlugs[%s][%d] = %v, want %v", slug, i, g, tags[i])
+					}
+				}
+			}
+		})
 	}
 }

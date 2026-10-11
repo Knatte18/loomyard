@@ -538,33 +538,61 @@ func roleOf(title string) string {
 	return trailingNumber.ReplaceAllString(title[strings.LastIndex(title, ":")+1:], "")
 }
 
-// finishedRuns reads the slugs of the runs whose pairs were torn down from the archive tags
-// in the weft repository at weft.
-func finishedRuns(weft string) (map[string]bool, error) {
-	out, err := gitexec.Run([]string{"for-each-ref", "--format=%(refname)", "refs/tags/archive/"}, weft)
+// ArchiveTag is one archive tag of a finished run: its name, the commit it names and that commit's committer date.
+type ArchiveTag struct {
+	// Name is the tag's name, archive/<slug>/<sha>.
+	Name      string
+	Commit    string
+	Committed time.Time
+}
+
+// finishedRuns reads the archive tags of the runs whose pairs were torn down from the weft repository at weft.
+// They are keyed by slug, each slug's tags newest first.
+// Archive tags are lightweight, so the object name each names is the commit.
+func finishedRuns(weft string) (map[string][]ArchiveTag, error) {
+	out, err := gitexec.Run([]string{"for-each-ref", "--format=%(refname)%09%(objectname)%09%(committerdate:iso-strict)", "refs/tags/archive/"}, weft)
 	if err != nil {
 		return nil, fmt.Errorf("reading the archive tags in %s: %w", weft, err)
 	}
 	return archivedSlugs(out), nil
 }
 
-// archivedSlugs parses for-each-ref output, one refs/tags/archive/<slug>/<sha> per line,
-// into the set of slugs.
-func archivedSlugs(refs string) map[string]bool {
-	slugs := map[string]bool{}
+// archivedSlugs parses for-each-ref output into each slug's tags ordered newest first by date, ties broken by name.
+// A line holds a refs/tags/archive/<slug>/<sha> ref, a commit and an RFC 3339 date, tab-separated.
+// A line of another shape is skipped.
+func archivedSlugs(refs string) map[string][]ArchiveTag {
+	slugs := map[string][]ArchiveTag{}
 	for _, line := range strings.Split(refs, "\n") {
-		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "refs/tags/archive/")
-		if slug, _, found := strings.Cut(rest, "/"); ok && found && slug != "" {
-			slugs[slug] = true
+		fields := strings.Split(strings.TrimSpace(line), "\t")
+		if len(fields) != 3 {
+			continue
 		}
+		rest, ok := strings.CutPrefix(fields[0], "refs/tags/archive/")
+		slug, sha, found := strings.Cut(rest, "/")
+		if !ok || !found || slug == "" || sha == "" || fields[1] == "" {
+			continue
+		}
+		committed, err := time.Parse(time.RFC3339, fields[2])
+		if err != nil {
+			continue
+		}
+		slugs[slug] = append(slugs[slug], ArchiveTag{Name: strings.TrimPrefix(fields[0], "refs/tags/"), Commit: fields[1], Committed: committed})
+	}
+	for _, tags := range slugs {
+		sort.Slice(tags, func(i, j int) bool {
+			if !tags[i].Committed.Equal(tags[j].Committed) {
+				return tags[i].Committed.After(tags[j].Committed)
+			}
+			return tags[i].Name < tags[j].Name
+		})
 	}
 	return slugs
 }
 
 // recentRuns names the finished task runs of the hub whose sessions changed most recently,
 // newest first, at most last of them: every project directory of a worktree under the hub
-// whose slug is in finished, except the prime's own.
-func recentRuns(projects, hub, prime string, finished map[string]bool, last int) ([]string, error) {
+// whose slug has an archive tag in finished, except the prime's own.
+func recentRuns(projects, hub, prime string, finished map[string][]ArchiveTag, last int) ([]string, error) {
 	prefix := filepath.Base(projectDir(projects, hub)) + "-"
 	entries, err := os.ReadDir(projects)
 	if err != nil {
@@ -577,7 +605,7 @@ func recentRuns(projects, hub, prime string, finished map[string]bool, last int)
 	var found []candidate
 	for _, e := range entries {
 		slug, ok := strings.CutPrefix(e.Name(), prefix)
-		if !e.IsDir() || !ok || slug == "" || slug == prime || !finished[slug] {
+		if !e.IsDir() || !ok || slug == "" || slug == prime || len(finished[slug]) == 0 {
 			continue
 		}
 		sessions, err := filepath.Glob(filepath.Join(projects, e.Name(), "*.jsonl"))
