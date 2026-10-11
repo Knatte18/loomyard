@@ -1,4 +1,4 @@
-// main_test.go checks tokencount's flag set: the retired history flag and a foreign hub without a weft repository are refused, and the hub flag resolves against the current directory.
+// main_test.go checks tokencount's flag set: the retired history flag and a foreign hub without a records repository are refused, and the hub flag resolves against the current directory.
 
 package main
 
@@ -17,31 +17,31 @@ func TestResolveHub(t *testing.T) {
 	tests := []struct {
 		name    string
 		hub     string
-		weft    string
+		records    string
 		want    string
 		wantErr bool
 	}{
 		{"empty is the parent", "", "", parent, false},
 		{"parent with a trailing slash", parent + string(filepath.Separator), "", parent, false},
 		{"relative parent", "..", "", parent, false},
-		{"another directory without a weft", other, "", "", true},
-		{"another directory with a weft", other, "weft", other, false},
+		{"another directory without a records", other, "", "", true},
+		{"another directory with a records", other, "records", other, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := resolveHub(tt.hub, wd, tt.weft)
+			got, err := resolveHub(tt.hub, wd, tt.records)
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("resolveHub(%q, %q, %q) error = %v; want error = %v", tt.hub, wd, tt.weft, err, tt.wantErr)
+				t.Fatalf("resolveHub(%q, %q, %q) error = %v; want error = %v", tt.hub, wd, tt.records, err, tt.wantErr)
 			}
 			if tt.wantErr {
 				if !strings.Contains(err.Error(), "-"+repositoryFlag) || !strings.Contains(err.Error(), tt.hub) {
-					t.Errorf("resolveHub error = %q; want it to name the hub %q and the weft flag", err, tt.hub)
+					t.Errorf("resolveHub error = %q; want it to name the hub %q and the records flag", err, tt.hub)
 				}
 				return
 			}
 			if got != tt.want {
-				t.Errorf("resolveHub(%q, %q, %q) = %q; want %q", tt.hub, wd, tt.weft, got, tt.want)
+				t.Errorf("resolveHub(%q, %q, %q) = %q; want %q", tt.hub, wd, tt.records, got, tt.want)
 			}
 		})
 	}
@@ -55,7 +55,7 @@ func TestRunRefuses(t *testing.T) {
 		wantErr string
 	}{
 		{"the retired history flag", []string{"-history", "somewhere", "-calibrate", "fit", "slug"}, "flag provided but not defined: -history"},
-		{"a foreign hub without a weft", []string{"-hub", t.TempDir(), "slug"}, "-" + repositoryFlag},
+		{"a foreign hub without a records", []string{"-hub", t.TempDir(), "slug"}, "-" + repositoryFlag},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

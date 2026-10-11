@@ -18,14 +18,14 @@ import (
 
 func TestRunReadsArchivedShedStatus(t *testing.T) {
 	t.Parallel()
-	weft, hub, projects := t.TempDir(), t.TempDir(), t.TempDir()
-	gitkit.Git(t, weft, "init", "-b", "main")
+	records, hub, projects := t.TempDir(), t.TempDir(), t.TempDir()
+	gitkit.Git(t, records, "init", "-b", "main")
 
-	// commit writes files into the weft and commits them with the given committer date, returning the commit.
+	// commit writes files into the records and commits them with the given committer date, returning the commit.
 	commit := func(date string, files map[string]string) string {
 		t.Helper()
 		for rel, content := range files {
-			full := filepath.Join(weft, filepath.FromSlash(rel))
+			full := filepath.Join(records, filepath.FromSlash(rel))
 			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 				t.Fatal(err)
 			}
@@ -33,14 +33,14 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		gitkit.Git(t, weft, "add", ".")
+		gitkit.Git(t, records, "add", ".")
 		cmd := exec.Command("git", "commit", "--allow-empty", "-m", "archive")
-		cmd.Dir = weft
+		cmd.Dir = records
 		cmd.Env = append(os.Environ(), "GIT_COMMITTER_DATE="+date, "GIT_AUTHOR_DATE="+date)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git commit: %v; output: %s", err, out)
 		}
-		return gitkit.Git(t, weft, "rev-parse", "HEAD")
+		return gitkit.Git(t, records, "rev-parse", "HEAD")
 	}
 	paths := func(slug string) (seedRel, statusRel string) {
 		t.Helper()
@@ -66,10 +66,10 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 		liveStatus: `{"history":[` + entry("Plan", "2026-01-01T10:03:00Z") + `]}`,
 	})
 	// Archive tags are lightweight.
-	gitkit.Git(t, weft, "tag", "archive/done/aaaaaaa", older)
-	gitkit.Git(t, weft, "tag", "archive/done/bbbbbbb", newest)
-	gitkit.Git(t, weft, "tag", "archive/live/ccccccc", older)
-	gitkit.Git(t, weft, "tag", "archive/live/ddddddd", newest)
+	gitkit.Git(t, records, "tag", "archive/done/aaaaaaa", older)
+	gitkit.Git(t, records, "tag", "archive/done/bbbbbbb", newest)
+	gitkit.Git(t, records, "tag", "archive/live/ccccccc", older)
+	gitkit.Git(t, records, "tag", "archive/live/ddddddd", newest)
 
 	// The in-flight run's worktree still exists.
 	if err := os.MkdirAll(filepath.Join(hub, "live"), 0o755); err != nil {
@@ -87,7 +87,7 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 
 	reportPath := filepath.Join(t.TempDir(), "report.md")
 	var stdout bytes.Buffer
-	args := []string{"-hub", hub, "-projects", projects, "-" + repositoryFlag, weft, "-out", reportPath, "done", "live"}
+	args := []string{"-hub", hub, "-projects", projects, "-" + repositoryFlag, records, "-out", reportPath, "done", "live"}
 	if err := run(args, &stdout); err != nil {
 		t.Fatalf("run: %v", err)
 	}
