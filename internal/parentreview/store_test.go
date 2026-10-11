@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 type clock struct{ t time.Time }
@@ -116,6 +118,28 @@ func TestRecordDelivered(t *testing.T) {
 	}
 	if err := s.RecordDelivered(""); !errors.Is(err, ErrExpired) {
 		t.Fatalf("expired: %v", err)
+	}
+
+	// A round that already carries a verdict is left untouched and logs no failure Warn.
+	settled, _ := newStore(t)
+	openOne(t, settled)
+	if err := settled.RecordVerdict(VerdictApprove, ""); err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	logger.SetOutput(&buf)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	for _, reason := range []string{"", "no such agent"} {
+		if err := settled.RecordDelivered(reason); !errors.Is(err, ErrVerdictRecorded) {
+			t.Fatalf("RecordDelivered(%q) after a verdict = %v; want ErrVerdictRecorded", reason, err)
+		}
+	}
+	r, _, _ = settled.Latest()
+	if _, err := os.Stat(filepath.Join(r.Dir, deliveryFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("delivery.json after a verdict: %v; want it absent", err)
+	}
+	if strings.Contains(buf.String(), "notice not delivered") {
+		t.Fatalf("log = %q; want no failure Warn", buf.String())
 	}
 }
 

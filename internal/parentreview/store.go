@@ -489,6 +489,8 @@ func (s Store) openRound() (Round, error) {
 }
 
 // RecordDelivered stamps delivered-at on the latest open request, or, when failedReason is non-empty, records the reason, logs a Warn and leaves delivered-at empty.
+// A round that already carries a verdict can no longer use the stamp: it returns ErrVerdictRecorded, writes nothing and logs nothing.
+// The Warn is logged only after the reason is written.
 func (s Store) RecordDelivered(failedReason string) error {
 	r, err := s.openRound()
 	if err != nil {
@@ -498,18 +500,29 @@ func (s Store) RecordDelivered(failedReason string) error {
 		return ErrExpired
 	}
 	now := s.now()
+	err = state.UpdateJSON(filepath.Join(r.Dir, deliveryFile), s.lockPath(r.Number), func(cur Delivery, _ bool) (Delivery, error) {
+		if _, verdicted, err := readHeldJSON[Verdict](filepath.Join(r.Dir, verdictFile)); err != nil || verdicted {
+			if err == nil {
+				err = ErrVerdictRecorded
+			}
+			return cur, err
+		}
+		if failedReason != "" {
+			cur.FailedReason = failedReason
+			cur.DeliveredAt = time.Time{}
+			return cur, nil
+		}
+		cur.DeliveredAt = now
+		cur.FailedReason = ""
+		return cur, nil
+	})
+	if err != nil {
+		return err
+	}
 	if failedReason != "" {
 		logger.Warn("parent review notice not delivered", "slug", r.Request.Slug, "reviewer", r.Request.Reviewer, "reason", failedReason)
 	}
-	return s.updateDelivery(r.Number, func(d *Delivery) {
-		if failedReason != "" {
-			d.FailedReason = failedReason
-			d.DeliveredAt = time.Time{}
-			return
-		}
-		d.DeliveredAt = now
-		d.FailedReason = ""
-	})
+	return nil
 }
 
 // openUnsettled is the shared refusal chain of AddNotify and RecordVerdict.

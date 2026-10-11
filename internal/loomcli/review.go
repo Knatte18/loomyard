@@ -121,8 +121,18 @@ func reviewNotifyVerb(out io.Writer, store parentreview.Store, slug string) int 
 }
 
 // reviewDeliveredVerb stamps delivery on the latest open request, or records failedReason when it is non-empty.
+// A round that already carries a verdict records nothing and succeeds, reporting the round settled.
 func reviewDeliveredVerb(out io.Writer, store parentreview.Store, slug, failedReason string) int {
-	if err := store.RecordDelivered(failedReason); err != nil {
+	err := store.RecordDelivered(failedReason)
+	if errors.Is(err, parentreview.ErrVerdictRecorded) {
+		return output.Ok(out, map[string]any{
+			"slug":    slug,
+			"action":  "delivered",
+			"settled": true,
+			"message": "the round already carries a verdict, so nothing is recorded and nothing more is needed",
+		})
+	}
+	if err != nil {
 		return reviewStoreErr(out, "delivered", err)
 	}
 	return output.Ok(out, map[string]any{"slug": slug, "action": "delivered", "failed": failedReason != ""})
@@ -313,7 +323,8 @@ Example:
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `delivered stamps the latest open review request as delivered. With --failed
 it records the reason instead, logs a warning and leaves the request
-undelivered, so the wait stays visible in status.
+undelivered, so the wait stays visible in status. On a round that already has
+a verdict it records nothing and reports the round settled.
 
 Example:
   lyx loom review delivered <slug>

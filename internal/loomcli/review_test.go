@@ -91,6 +91,26 @@ func TestReviewVerbs_Success(t *testing.T) {
 			t.Errorf("Delivery = %+v; want the reason recorded and no delivery stamp", r.Delivery)
 		}
 	})
+	for name, failed := range map[string]string{"delivered after a verdict": "", "delivered failed after a verdict": "no such agent"} {
+		t.Run(name, func(t *testing.T) {
+			s := newReviewStore(t)
+			openReviewRequest(t, s)
+			if err := s.RecordVerdict(parentreview.VerdictApprove, ""); err != nil {
+				t.Fatal(err)
+			}
+			var out bytes.Buffer
+			if code := reviewDeliveredVerb(&out, s, "task", failed); code != 0 {
+				t.Fatalf("delivered exit = %d, output %q", code, out.String())
+			}
+			if env := envelope.Decode(t, out.String()); env.Raw["settled"] != true {
+				t.Errorf("envelope = %v; want settled true", env)
+			}
+			r, _, _ := s.Latest()
+			if _, err := os.Stat(filepath.Join(r.Dir, "delivery.json")); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("delivery.json after a verdict: %v; want it absent", err)
+			}
+		})
+	}
 	t.Run("approve", func(t *testing.T) {
 		s := newReviewStore(t)
 		openReviewRequest(t, s)
