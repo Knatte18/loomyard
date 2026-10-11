@@ -52,6 +52,9 @@ const (
 	noticeAPIError = "api-error"
 )
 
+// noticeDriverBusyCondition is the condition text of the notice for a resume held back by a busy driver pane.
+const noticeDriverBusyCondition = "driver pane busy: clear the draft in the driver's pane; batten resumes the child"
+
 // noticeAPIErrorIdle is how long an agent run whose newest turn end is an API error must stay inactive before the api-error notice goes.
 const noticeAPIErrorIdle = 2 * time.Minute
 
@@ -292,6 +295,25 @@ func (p *innerRunProducer) noticeStep(ctx context.Context, w *childWait, final b
 		kept = append(kept, key)
 	}
 	p.saveEpisode(kept, old)
+}
+
+// noticeDriverBusy queues one orch notice per stall on a busy driver pane, and does nothing once one is queued or when no Notify was wired.
+// The notice carries the fixed condition and the child's own status, never the refusal text, which quotes the draft in another pane.
+// Every failure is a Warn, and the flag is set only once deliver reports the notice queued, so a refused attempt is tried again on the next refusal.
+func (p *innerRunProducer) noticeDriverBusy(ctx context.Context, w *childWait) {
+	if !p.notices || p.driverBusyNoticed {
+		return
+	}
+	attachDir, err := p.deps.AttachDir()
+	if err != nil {
+		logger.Warn("battenshed: notice skipped; attach directory unresolved", "producer", p.name, "slug", p.slug, "error", err)
+		return
+	}
+	line := renderNotice(noticeLine{slug: p.slug, condition: noticeDriverBusyCondition, status: w.status, since: p.episode.since, attachDir: attachDir})
+	key := noticeKey(noticeDriverBusyCondition, w.status.State, p.episode.since.UnixNano())
+	if p.deliver(ctx, key, noticeDriverBusyCondition, line, false) {
+		p.driverBusyNoticed = true
+	}
 }
 
 // noticeCondition returns the condition the child is in, with the stamp of its episode key, and the newest agent activity the check could read.
