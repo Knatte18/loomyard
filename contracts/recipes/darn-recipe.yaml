@@ -1,12 +1,18 @@
 # darn-recipe.yaml is the darn task recipe: one gated writer reads the board entry, edits, tests and
-# commits, then Publish, PR-Gate and Finalize land it. It is embedded into the binary by the sibling
-# recipes.go rather than read from disk. The row names below are the durable on-disk identities
-# pinned against internal/loomshed's Name* constants -- a rename here without a matching constant
-# rename breaks resume for any in-flight task.
+# commits, the Darn-Review perch reviews the committed diff, then Publish, PR-Gate and Finalize land
+# it. It is embedded into the binary by the sibling recipes.go rather than read from disk. The row
+# names below are the durable on-disk identities pinned against internal/loomshed's Name* constants
+# -- a rename here without a matching constant rename breaks resume for any in-flight task.
 #
 # Preflight, Publish and Finalize carry no on_stuck: nothing in the list produces what each of them
 # gates, so a human is the only thing that can fix them. Darn carries none either: its exhausted
 # gate halts the run for the parent, which resumes it with a fresh verify budget.
+#
+# Darn-Bouncer and Darn-Burler are the Darn-Review perch, wired like loom's Webster-Review pair:
+# each names the other in on_stuck under one shared segment label. The segment's rows declare no
+# max_bounces: their budget is darn.yaml's review_max_bounces, applied by internal/loomrecipe, and a
+# budget of 0 turns the perch off by routing Darn's Done straight to Publish. The perch's judge,
+# reviewer and fixer models are loom.yaml's Webster-Review keys, the other committed-diff review.
 #
 # PR-Gate bounces to Darn, the row that produces the diff it guards. The edge's max_bounces is the
 # value the status projection and the reject refusal report; a Darn Done ends the gate's episode
@@ -26,7 +32,8 @@ producers:
   - name: Darn
     engine: DarnWrite
     segment: PR-Review
-    on_done: Publish
+    # internal/loomrecipe rewrites this edge to Publish when darn.yaml's review_max_bounces is 0.
+    on_done: Darn-Bouncer
     config:
       # gates holds this row's handoff until it is mechanically valid: each entry names a gate and
       # re-prompts the live session up to its attempts times. The verify gate's attempts here is a
@@ -36,6 +43,60 @@ producers:
           attempts: 3
         - name: description
           attempts: 3
+
+  - name: Darn-Bouncer
+    engine: Bouncer
+    segment: Darn-Review
+    on_stuck: Darn-Burler
+    on_done: Publish
+    config:
+      run_subdir: darn
+      # The subject under review is the committed diff, which artifact_paths cannot name; the key is
+      # required, so it names the change description the writer committed, the writer's own claim
+      # of what the diff does. The rubric names the diff as the subject and the board entry as the
+      # measuring stick.
+      artifact_paths:
+        - _lyx/landing/summary.md
+      rubric_stencil: loom-rubric-darn-review
+      # No commit_seam: Darn-Burler runs fix-scope: source and commits each fix itself. No
+      # carry_over: a darn run has no decision record to file still-open findings in.
+
+  - name: Darn-Burler
+    engine: BurlerRound
+    segment: Darn-Review
+    on_stuck: Darn-Bouncer
+    # BurlerProducer never returns Done, so this edge is unreachable -- but an empty on_done is
+    # load-bearing and ends the whole run silently, so it names the row it can never reach.
+    on_done: Darn-Bouncer
+    config:
+      # The same run_subdir value as Darn-Bouncer is what makes both rows write into one shared run
+      # directory.
+      run_subdir: darn
+      # The verify gate runs darn.yaml's verify command on the committed tree after each round and
+      # re-prompts the round session with the findings until it passes.
+      gates:
+        - name: verify
+          attempts: 3
+      profile:
+        target:
+          # No paths key: a diff has no file on disk for the profile's path check to stat.
+          instructions: >
+            The subject under review is the committed diff. The rubric supplied in this prompt is
+            the single definition of the review range: read its "Determining the review range"
+            section and derive the range exactly as written there.
+        fasit:
+          instructions: >
+            The board entry of this run's task is the answer key: read it with
+            `lyx board get '{"slug":"<slug>"}'`, where <slug> is this worktree's own directory
+            name. The diff's job is to make the change that entry asks for.
+        rubric_stencil: loom-rubric-darn-review
+        # fix-scope: source: the target is the repo's own source files, and a fixer that cannot
+        # write and commit source cannot fix a diff.
+        fix-scope: source
+        # tool-use is required: the round runs read-only git to obtain the diff and reads the board
+        # entry.
+        tool-use: true
+        # No cluster-fan key: fork reviewers may run no git, and the subject exists only through git.
 
   - name: Publish
     engine: Publish
