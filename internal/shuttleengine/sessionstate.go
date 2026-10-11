@@ -16,6 +16,8 @@ const (
 	SessionIdleDone SessionStateName = "idle-done"
 	// SessionIdleStalled: the agent stopped without finishing the run, through no question.
 	SessionIdleStalled SessionStateName = "idle-stalled"
+	// SessionIdleFresh: the session just started with an empty context and has had no turn since.
+	SessionIdleFresh SessionStateName = "idle-fresh"
 	// SessionAsking: the session waits on an answer.
 	SessionAsking SessionStateName = "asking"
 	// SessionDead: the session's process is gone.
@@ -40,6 +42,7 @@ const (
 	SessionCauseEventsUnreadable = "events-unreadable"
 	SessionCauseNoSignal         = "no-signal"
 	SessionCauseNoState          = "no-state"
+	SessionCauseSessionStart     = "session-start"
 	sessionCauseSessionEnd       = "session-end"
 )
 
@@ -156,7 +159,10 @@ func (f *SessionFold) applySignal(signal SessionSignal, facts SessionFacts) {
 	switch signal.Kind {
 	case SessionSignalSessionStart:
 		f.sessionStartAt = signal.At
-		return
+		if !f.sessionStartIdles(signal.Source) {
+			return
+		}
+		f.setDerived(SessionState{Name: SessionIdleFresh, Cause: SessionCauseSessionStart, Since: signal.At}, false)
 	case SessionSignalTurnStart:
 		if !(f.hasDerived && f.derived.Name == SessionBusy && f.derived.Cause == SessionCauseTurn) {
 			f.setDerived(SessionState{Name: SessionBusy, Cause: SessionCauseTurn, Since: signal.At}, false)
@@ -185,6 +191,18 @@ func (f *SessionFold) applySignal(signal SessionSignal, facts SessionFacts) {
 		f.setDerived(SessionState{Name: name, Cause: cause, Since: signal.At}, false)
 	}
 	f.newest, f.hasNewest = signal, true
+}
+
+// sessionStartIdles reports whether a session start of source leaves the session idle-fresh.
+// A resume or clear always does; a startup does unless a turn is running; a compaction and an unrecognised source never do, so an automatic compaction inside a turn keeps it busy.
+func (f *SessionFold) sessionStartIdles(source SessionStartSource) bool {
+	switch source {
+	case SessionStartResume, SessionStartClear:
+		return true
+	case SessionStartStartup:
+		return !(f.hasDerived && f.derived.Name == SessionBusy && f.derived.Cause == SessionCauseTurn)
+	}
+	return false
 }
 
 // setDerived replaces the signal-derived state.

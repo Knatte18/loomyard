@@ -1029,7 +1029,16 @@ func skillStartFixtureWith(t *testing.T, strand reedengine.Strand, spec Spec, re
 		configure(reed, engine)
 	}
 	fc := newFakeClock(time.Now())
-	fx := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc))
+	var used Engine = engine
+	if engine.HookState {
+		engine.PrepareHook = func(runDir string) {
+			if err := os.WriteFile(filepath.Join(runDir, eventsFileName), []byte("SESSIONSTART:startup\n"), 0o644); err != nil {
+				t.Errorf("seed the events file: %v", err)
+			}
+		}
+		used = &hookStateSkillEngine{skillFakeEngine: engine}
+	}
+	fx := newFixture(t, reed, used, withConfig(fastConfig), withClock(fc))
 	reed.EventsPath = func() string { return filepath.Join(soleStartupRunDir(t, fastConfig, fx.Anchor), eventsFileName) }
 	spec.Prompt = "x"
 	spec.OutputFiles = []string{filepath.Join(t.TempDir(), "out.md")}
@@ -1082,6 +1091,8 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 		elapsed    string
 		// afterClassify, when set, runs with the events file's path after each load turn is classified.
 		afterClassify func(t *testing.T, eventsPath string)
+		// hookState starts the run over an engine reading hook state, whose events file holds only a SessionStart(startup) line beside a busy-looking pane.
+		hookState bool
 	}{
 		{
 			name:       "every skill loads in one turn before the prompt",
@@ -1165,6 +1176,15 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 			elapsed:   atLeastTimeout,
 		},
 		{
+			name:       "a session start alone sends the load into a pane the pane fallback refuses",
+			spec:       Spec{Skills: []string{"a"}},
+			reports:    []SkillLoadReport{loaded("a")},
+			wantTyped:  "LOAD:a|do the task",
+			wantOffset: true,
+			elapsed:    zero,
+			hookState:  true,
+		},
+		{
 			name:      "pane that dies during a load turn is a died startup",
 			spec:      Spec{Skills: []string{"a", "b"}},
 			dies:      []int{0},
@@ -1178,6 +1198,7 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 			buf := logcapture.Capture(t)
 			run, reed, elapsed, err := skillStartFixtureWith(t, reedengine.Strand{GUID: "strand-1"}, tt.spec, tt.reports, tt.hangs, tt.dies, func(reed *skillReed, engine *skillFakeEngine) {
 				reed.Screen = "the ready screen"
+				engine.HookState = tt.hookState
 				if tt.afterClassify != nil {
 					engine.OnClassify = func() { tt.afterClassify(t, reed.EventsPath()) }
 				}

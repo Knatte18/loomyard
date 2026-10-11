@@ -223,6 +223,10 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 			wantLog: "released an unmatched turn start",
 		},
 		{name: "a session start after a turn end leaves it idle", probes: []probe{{events: turnEnded + "SESSIONSTART\n", capture: idleFrame, want: IdleProbe{Idle: true}}}},
+		{name: "idle-fresh with an empty box is ready", probes: []probe{{events: "SESSIONSTART:startup\n", capture: idleFrame, want: IdleProbe{Idle: true}}}},
+		{name: "idle-fresh with a draft is held with its reason", probes: []probe{{events: "SESSIONSTART:clear\n", capture: "IDLE\n❯ half a draft", want: IdleProbe{Reason: `the input box holds a draft: "half a draft"`}, wantReason: "draft"}}},
+		{name: "idle-fresh with a pane too short is held and reported too short", tooShort: true, probes: []probe{{events: "SESSIONSTART:startup\n", capture: "IDLE", want: IdleProbe{TooShort: true, Reason: readinessReasonPaneTooShort}, wantReason: "too short"}}},
+		{name: "idle-fresh with no readable box is held", probes: []probe{{events: "SESSIONSTART:resume\n", capture: "no box here", want: IdleProbe{Reason: readinessReasonNoInputBox}, wantReason: "no input box"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

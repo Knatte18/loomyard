@@ -23,7 +23,7 @@ const (
 	// SessionSignalSessionEnd: the provider reported the session ended.
 	SessionSignalSessionEnd SessionSignalKind = "session_end"
 	// SessionSignalSessionStart: the provider started or resumed the session, or restarted its context after a compaction.
-	// It says nothing about what the session is doing, so a session fold does not move on it.
+	// A session fold reads a resume, a clear and a startup beside no running turn as an idle session with an empty context, and leaves its state alone on any other source.
 	SessionSignalSessionStart SessionSignalKind = "session_start"
 )
 

@@ -35,16 +35,16 @@ turn_ends:
   - reading: held
     outputs_exist: false
 states:
-  - {state: unknown, cause: no-signal}
+  - {state: idle-fresh, cause: session-start}
   - {state: busy, cause: turn}
   - {state: idle-stalled, cause: no-output}
   - {state: busy, cause: turn}
   - {state: idle-stalled, cause: no-output}
   - {state: unknown, cause: clear}
-  - {state: unknown, cause: clear}
+  - {state: idle-fresh, cause: session-start}
   - {state: busy, cause: turn}
   - {state: idle-stalled, cause: no-output}
   - {state: idle-stalled, cause: no-output}
   - {state: dead, cause: prompt_input_exit}
-  - {state: dead, cause: prompt_input_exit}
+  - {state: idle-fresh, cause: session-start}
   - {state: dead, cause: other}

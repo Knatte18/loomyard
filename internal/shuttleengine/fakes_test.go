@@ -469,6 +469,8 @@ type skillFakeEngine struct {
 
 	Timeout time.Duration
 	Reports []SkillLoadReport
+	// HookState makes skillStartFixtureWith run the start over a hookStateSkillEngine, with a SessionStart(startup) line already in the events file.
+	HookState bool
 	// OnClassify, when set, runs after ClassifySkillLoad picked its report, once the load turn's end has been read.
 	OnClassify func()
 
@@ -497,6 +499,44 @@ func (e *skillFakeEngine) ClassifySkillLoad(_ Event, _ []string) SkillLoadReport
 func (e *skillFakeEngine) DefaultSkillLoadTimeout() time.Duration { return e.Timeout }
 
 var _ SkillLoader = (*skillFakeEngine)(nil)
+
+// hookStateSkillEngine is a skillFakeEngine that also reads hook state: the session signal parser, a live prober and the SessionCycler idle reading.
+// A capture is idle when it starts with "IDLE" or holds a typed skill load, whose turn the skill reed ends at once;
+// so a pane the test leaves busy is one the pane fallback refuses until the first load, which only the hook state gets past.
+type hookStateSkillEngine struct {
+	*skillFakeEngine
+
+	hooks idleEngine
+}
+
+func (e *hookStateSkillEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
+	return e.hooks.ParseSessionSignals(data)
+}
+
+func (e *hookStateSkillEngine) ProcessLiveness(string) Liveness { return LivenessAlive }
+
+func (e *hookStateSkillEngine) TurnStartInterrupt(SessionSignal) (time.Time, bool) {
+	return time.Time{}, false
+}
+
+func (e *hookStateSkillEngine) ContextTokens(Event) ContextReading { return ContextReading{} }
+func (e *hookStateSkillEngine) CompactedSince(Event, time.Time) (CompactionBoundary, bool) {
+	return CompactionBoundary{}, false
+}
+func (e *hookStateSkillEngine) IdleSession(capture string) bool {
+	return strings.Contains(capture, "LOAD:") || e.hooks.IdleSession(capture)
+}
+func (e *hookStateSkillEngine) PaneTooShort(string) bool                  { return false }
+func (e *hookStateSkillEngine) ClearSessionSequence() []PaneInput         { return nil }
+func (e *hookStateSkillEngine) ReloadPluginsSequence() []PaneInput        { return nil }
+func (e *hookStateSkillEngine) CompactSessionSequence(string) []PaneInput { return nil }
+
+var (
+	_ SessionSignalParser = (*hookStateSkillEngine)(nil)
+	_ SessionProber       = (*hookStateSkillEngine)(nil)
+	_ SessionCycler       = (*hookStateSkillEngine)(nil)
+	_ SkillLoader         = (*hookStateSkillEngine)(nil)
+)
 
 // skillReed is a fakeReed whose pane capture echoes every text typed into it,
 // so a verified send finds its text.
@@ -576,7 +616,7 @@ func (r *skillReed) CapturePane(guid string) (string, error) {
 var _ ReedOps = (*skillReed)(nil)
 
 // sessionFakeEngine is waitingEngine plus the opt-in SessionSignalParser, SessionProber and ActivityReader capabilities.
-// ParseSessionSignals reads "START" as a turn start, "STOP:<message>" as a turn end, "WAIT:<message>" as a turn end carrying outstanding, "ASK" as an ask and "SESSIONSTART" as a session start.
+// ParseSessionSignals reads "START" as a turn start, "STOP:<message>" as a turn end, "WAIT:<message>" as a turn end carrying outstanding, "ASK" as an ask and "SESSIONSTART" or "SESSIONSTART:<source>" as a session start with that source.
 // Every signal names session-1, and the read consumes through the last complete line.
 // ProcessLiveness answers liveness for any session id, and TurnStartInterrupt answers interrupted and interruptAt for any turn start.
 // TurnEndActivity marks a turn end as an API error when its line is apiErrorLine.
@@ -602,8 +642,9 @@ func (e *sessionFakeEngine) ParseSessionSignals(data []byte) ([]SessionSignal, i
 			signal.Kind = SessionSignalAPIErrorTurnEnd
 		case trimmed == "ASK":
 			signal.Kind = SessionSignalAsk
-		case trimmed == "SESSIONSTART":
+		case strings.HasPrefix(trimmed, "SESSIONSTART"):
 			signal.Kind = SessionSignalSessionStart
+			signal.Source = SessionStartSource(strings.TrimPrefix(strings.TrimPrefix(trimmed, "SESSIONSTART"), ":"))
 		case strings.HasPrefix(trimmed, "STOP:"):
 			signal.Kind = SessionSignalTurnEnd
 		case strings.HasPrefix(trimmed, "WAIT:"):

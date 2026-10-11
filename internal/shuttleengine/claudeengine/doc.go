@@ -76,6 +76,7 @@
 //
 // The session-signal parse (SessionSignalParser) reads the same events file as ParseEvents but yields a separate stream, in signals.go, and leaves ParseEvents unchanged.
 // A `Stop` line is a turn end with its outstanding tasks read exactly as ParseEvents reads them, a `StopFailure` an API-error turn end, a `UserPromptSubmit` a turn start, a `PreToolUse` for `AskUserQuestion` an ask, a `Notification` of type permission prompt or elicitation dialog an ask and `idle_prompt` an idle notice (any other type is skipped), a `SessionEnd` a session end with its reason, and a `SessionStart` a session start carrying the payload's `source` mapped to a provider-neutral one: `startup`, `resume`, `clear` and `compact` to their constants, and any other or missing string to the empty source.
+// The session fold reads a `resume` or `clear` start as an idle-fresh session, and a `startup` start too unless a turn is running; a `compact` start moves nothing.
 // A `SessionEnd` reason of `logout`, `prompt_input_exit` or `other` ends the process; `clear`, `resume` and an unknown reason do not.
 // A recording hook writes a stamp line `{"lyx_stamp":"<hook>","lyx_at":"<RFC 3339 UTC>"}` before its payload, and the parser gives a payload the time of the nearest preceding untaken stamp naming its hook.
 // A payload with no such stamp, or whose stamp's time is empty or malformed, reads a zero time.

@@ -58,14 +58,14 @@ func readBox(engine Engine, capture string) boxReading {
 }
 
 // judgeReadiness turns a session state, whether a turn start is still unmatched and the box reading into a readiness.
-// A finished or stalled session, one waiting on input at a turn end and one busy only on background work are ready, provided no turn start is unmatched and the box, where one is read, is blank.
+// A finished, stalled or freshly started session, one waiting on input at a turn end and one busy only on background work are ready, provided no turn start is unmatched and the box, where one is read, is blank.
 // A running turn, a question awaiting an answer and a dead process are held, as are a pane too short, a pane showing no input box to an engine that reads one, an unmatched turn start and a draft in the box.
 // An unknown state is neither: the caller falls back to the pane.
 func judgeReadiness(state SessionState, unmatched bool, box boxReading) readiness {
 	switch state.Name {
 	case SessionUnknown:
 		return readiness{unknown: true, cause: state.Cause}
-	case SessionIdleDone, SessionIdleStalled:
+	case SessionIdleDone, SessionIdleStalled, SessionIdleFresh:
 	case SessionAsking:
 		if state.Cause != SessionCauseAwaitingInput {
 			return readiness{reason: "the session waits on an answer"}

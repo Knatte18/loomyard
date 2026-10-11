@@ -32,6 +32,9 @@ func TestSessionFold(t *testing.T) {
 	sessionEnd := func(seconds int, reason string, endsProcess bool) SessionSignal {
 		return SessionSignal{Kind: SessionSignalSessionEnd, At: at(seconds), Reason: reason, EndsProcess: endsProcess}
 	}
+	sessionStart := func(seconds int, source SessionStartSource) SessionSignal {
+		return SessionSignal{Kind: SessionSignalSessionStart, At: at(seconds), Source: source}
+	}
 	shell := BackgroundTask{Kind: BackgroundShell, ID: "bsh1", Label: "sleep 600", Signal: SignalPayload}
 
 	// factsWith builds alive facts read at readAt, then applies each change.
@@ -102,6 +105,56 @@ func TestSessionFold(t *testing.T) {
 			steps:       []step{{[]SessionSignal{turnEnd(1), {Kind: SessionSignalSessionStart, At: at(2), Source: "compact"}}, factsWith(outputs)}},
 			wantState:   state(SessionIdleDone, SessionCauseDone, at(1)),
 			wantHistory: []SessionState{state(SessionIdleDone, SessionCauseDone, at(1))},
+		},
+		{
+			name:        "a startup alone is idle-fresh",
+			steps:       []step{{[]SessionSignal{sessionStart(1, SessionStartStartup)}, factsWith()}},
+			wantState:   state(SessionIdleFresh, SessionCauseSessionStart, at(1)),
+			wantHistory: []SessionState{state(SessionIdleFresh, SessionCauseSessionStart, at(1))},
+		},
+		{
+			name:      "a clear session end then a clear start is idle-fresh",
+			steps:     []step{{[]SessionSignal{turnEnd(1), sessionEnd(2, "clear", false), sessionStart(3, SessionStartClear)}, factsWith(outputs)}},
+			wantState: state(SessionIdleFresh, SessionCauseSessionStart, at(3)),
+			wantHistory: []SessionState{
+				state(SessionIdleDone, SessionCauseDone, at(1)), state(SessionUnknown, "clear", at(2)), state(SessionIdleFresh, SessionCauseSessionStart, at(3)),
+			},
+		},
+		{
+			name:        "a resume after an unmatched turn start is idle-fresh",
+			steps:       []step{{[]SessionSignal{turnStart(1), sessionStart(2, SessionStartResume)}, factsWith()}},
+			wantState:   state(SessionIdleFresh, SessionCauseSessionStart, at(2)),
+			wantHistory: []SessionState{state(SessionBusy, SessionCauseTurn, at(1)), state(SessionIdleFresh, SessionCauseSessionStart, at(2))},
+		},
+		{
+			name:        "a startup after an unmatched turn start stays busy",
+			steps:       []step{{[]SessionSignal{turnStart(1), sessionStart(2, SessionStartStartup)}, factsWith()}},
+			wantState:   state(SessionBusy, SessionCauseTurn, at(1)),
+			wantHistory: []SessionState{state(SessionBusy, SessionCauseTurn, at(1))},
+		},
+		{
+			name:        "a compact start inside a running turn stays busy",
+			steps:       []step{{[]SessionSignal{turnStart(1), sessionStart(2, SessionStartCompact)}, factsWith()}},
+			wantState:   state(SessionBusy, SessionCauseTurn, at(1)),
+			wantHistory: []SessionState{state(SessionBusy, SessionCauseTurn, at(1))},
+		},
+		{
+			name:        "a start with the empty source changes nothing",
+			steps:       []step{{[]SessionSignal{turnEnd(1), sessionStart(2, "")}, factsWith(outputs)}},
+			wantState:   state(SessionIdleDone, SessionCauseDone, at(1)),
+			wantHistory: []SessionState{state(SessionIdleDone, SessionCauseDone, at(1))},
+		},
+		{
+			name:        "a dead liveness outranks idle-fresh",
+			steps:       []step{{[]SessionSignal{sessionStart(1, SessionStartStartup)}, factsWith(dead)}},
+			wantState:   state(SessionDead, SessionCauseProcessGone, readAt),
+			wantHistory: []SessionState{state(SessionIdleFresh, SessionCauseSessionStart, at(1)), state(SessionDead, SessionCauseProcessGone, readAt)},
+		},
+		{
+			name:        "an unproven liveness outranks idle-fresh",
+			steps:       []step{{[]SessionSignal{sessionStart(1, SessionStartStartup)}, factsWith(unproven)}},
+			wantState:   state(SessionUnknown, SessionCauseLivenessUnproven, readAt),
+			wantHistory: []SessionState{state(SessionIdleFresh, SessionCauseSessionStart, at(1)), state(SessionUnknown, SessionCauseLivenessUnproven, readAt)},
 		},
 		{
 			name:        "a clear session end is unknown with its reason until the next signal",

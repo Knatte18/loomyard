@@ -185,7 +185,7 @@
 // Then PromptLine goes out through the verified send path.
 // Every verified send first waits for an idle session, for at most `send_ready_timeout_s` and never past the run's deadline, and types nothing until then.
 // For an engine with the optional SessionCycler idle reading, every poll takes the readiness reading, built on the hook-derived session state.
-// The reading is ready on idle-done, idle-stalled of any cause, asking at an awaited turn end and busy on background work, provided no turn start is unmatched and the input box, where the engine reads one, is blank;
+// The reading is ready on idle-done, idle-stalled of any cause, idle-fresh, asking at an awaited turn end and busy on background work, provided no turn start is unmatched and the input box, where the engine reads one, is blank;
 // it is held, with a reason, on a running turn, a question awaiting an answer, a dead process, an unmatched turn start, a draft in the box, a pane too short and a pane showing no input box to an engine that reads one, as when a menu or picker is open.
 // A ready reading lets the send type even when the pane still shows the running-turn needle.
 // The pre-write guard is the last step of every poll: once the rest of the reading passed, shuttle asks reed once whether an attached client was active in the pane within `operator_quiet_s`, and holds the write while one was.
@@ -285,8 +285,10 @@
 // Wait's own shadow logging below stays display only.
 // The optional SessionSignalParser capability reads the events file's hook lines as provider-neutral signals with hook-side times:
 // a turn start, a turn end (with its outstanding background tasks), an API-error turn end, an ask, an idle notice, a session end and a session start (with its source).
-// The fold does not move on a session start: the reading stays as it was, and the time of the newest one is read through RunSessionState.SessionStartAt, zero when none.
-// SessionFold reduces the signals in file order, with facts the caller reads, to one state: busy, idle-done, idle-stalled, asking, dead or unknown, with a cause, a since time and the history of states passed through.
+// The time of the newest session start is read through RunSessionState.SessionStartAt, zero when none.
+// A session start of source resume or clear sets idle-fresh with cause session-start, and so does one of source startup unless the derived state is a running turn;
+// a compaction start, one with the empty source and a startup beside a running turn leave the state and the newest signal as they were, so an automatic compaction inside a turn keeps it busy.
+// SessionFold reduces the signals in file order, with facts the caller reads, to one state: busy, idle-done, idle-stalled, idle-fresh, asking, dead or unknown, with a cause, a since time and the history of states passed through.
 // Precedence, first that applies: a process-ending session end; a process proven dead; liveness left unproven; an unreadable events file; no signal at all; otherwise the state the signals give.
 // A turn end reads busy while it reports background tasks, idle-done when the run's output files exist, asking for an interactive run, and idle-stalled otherwise.
 // The transcript's API-error marker turns the newest turn end into an API-error stall, and the interrupt marker turns a turn that is still open into an interrupt stall.
@@ -302,7 +304,7 @@
 // Each tick, and once more just before a classified outcome is finalized, it logs every state change at Info as `shuttle: session state` with the loop's classification: running, waiting, held, done or died.
 // The session state is a shadow reading the loop never acts on.
 // It logs `shuttle: session state disagrees` at Warn once per disagreement, again only after either side changed, when the pair is outside the fixed mapping, and the line carries `stands=loop`:
-// waiting and running read busy, held reads idle-stalled or asking, done reads idle-done, died reads dead.
+// waiting and running read busy, held reads idle-stalled, idle-fresh or asking, done reads idle-done, died reads dead.
 // Two pairings are expected and log nothing: a gate wait with every output present beside idle-done, and done beside busy on background work.
 // The loop never branches on the state; an engine without the parser, an unreadable events file or a failed fact read logs once at Debug and changes no verdict, notice, wait mark or return.
 //

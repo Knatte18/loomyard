@@ -325,11 +325,13 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 func TestRunner_Start_TypesTheSegmentColorAfterStartup(t *testing.T) {
 	loaded := []SkillLoadReport{{Verified: true, Loaded: []string{"a"}}}
 	tests := []struct {
-		name      string
-		color     segmentcolor.Color
-		byCaller  bool
-		noInputs  bool
-		colorErr  error
+		name     string
+		color    segmentcolor.Color
+		byCaller bool
+		noInputs bool
+		colorErr error
+		// hookState starts the run over an engine reading hook state, whose events file holds only a SessionStart(startup) line beside a busy-looking pane.
+		hookState bool
 		wantTyped string
 	}{
 		{name: "ColoredStrandIsColoredBeforeTheSkillLoad", color: segmentcolor.Orange, wantTyped: "COLOR:orange|LOAD:a|do the task"},
@@ -337,6 +339,7 @@ func TestRunner_Start_TypesTheSegmentColorAfterStartup(t *testing.T) {
 		{name: "ColorByCallerTypesNone", color: segmentcolor.Orange, byCaller: true, wantTyped: "LOAD:a|do the task"},
 		{name: "EngineWithoutAColorCommandTypesNone", color: segmentcolor.Orange, noInputs: true, wantTyped: "LOAD:a|do the task"},
 		{name: "FailingColorPlayStillStartsTheRun", color: segmentcolor.Orange, colorErr: errors.New("boom"), wantTyped: "COLOR:orange|LOAD:a|do the task"},
+		{name: "ASessionStartAloneColorsAPaneThePaneFallbackRefuses", color: segmentcolor.Orange, hookState: true, wantTyped: "COLOR:orange|LOAD:a|do the task"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -346,6 +349,10 @@ func TestRunner_Start_TypesTheSegmentColorAfterStartup(t *testing.T) {
 			run, reed, _, err := skillStartFixtureWith(t, strand, spec, loaded, nil, nil, func(reed *skillReed, engine *skillFakeEngine) {
 				reed.ColorErr = tt.colorErr
 				engine.NoColorInputs = tt.noInputs
+				engine.HookState = tt.hookState
+				if tt.hookState {
+					reed.Screen = "working (esc to interrupt)"
+				}
 			})
 
 			if err != nil || run == nil {
