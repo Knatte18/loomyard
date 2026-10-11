@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
@@ -66,6 +67,12 @@ func TestTable_Validate(t *testing.T) {
 		wantErr string
 	}{
 		{name: "an accepted table"},
+		{name: "a gate on the chair seat", mutate: func(tb *Table) { tb.Seats[0].Gate = shuttleengine.GateSpec{{Name: "g", Attempts: 1}} }, wantErr: `seat "chair": carries a gate`},
+		{name: "an advisor gate and fork authorization on any seat", mutate: func(tb *Table) {
+			tb.Seats[1].Gate = shuttleengine.GateSpec{{Name: "g", Attempts: 1}}
+			tb.Seats[0].ForkSubagents, tb.Seats[1].ForkSubagents = true, true
+			tb.Round = "r1"
+		}},
 		{name: "a lone chair is accepted", mutate: func(tb *Table) { tb.Seats = tb.Seats[:1] }},
 		{name: "no chair", mutate: func(tb *Table) { tb.Seats = tb.Seats[1:] }, wantErr: `exactly one seat named "chair", found 0`},
 		{name: "two chairs", mutate: func(tb *Table) { tb.Seats[1].Name = RoleChair }, wantErr: `exactly one seat named "chair", found 2`},

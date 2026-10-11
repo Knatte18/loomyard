@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // LiveTable is what Probe found of a table's seats.
@@ -19,7 +18,7 @@ type LiveTable struct {
 }
 
 // Probe reports which of table's seats have a live run, without waiting on any.
-// The chair is probed with the table's gate and each advisor ungated, so an advisor whose record is terminal while its strand is still up, such as a done one kept by its pane or a timed-out one, is removed by the probe and answers not found.
+// The chair is probed with the table's gate and each advisor with its seat's gate, so an advisor whose record is terminal while its strand is still up, such as a done one kept by its pane or a timed-out one, is removed by the probe and answers not found.
 // When the chair is live Probe returns its handle with every advisor it found.
 // When it is not, Probe stops every live advisor and returns an empty LiveTable, so a caller archives and starts fresh only once no seat is live;
 // a stop that fails is an error wrapping ErrSeatNotStopped.
@@ -29,7 +28,7 @@ func (e *Engine) Probe(table Table) (LiveTable, error) {
 		return LiveTable{}, err
 	}
 
-	chairHandle, chairFound, err := e.probeSeat(table, table.Chair(), true)
+	chairHandle, chairFound, err := e.probeSeat(table, table.Chair())
 	if err != nil {
 		return LiveTable{}, err
 	}
@@ -38,7 +37,7 @@ func (e *Engine) Probe(table Table) (LiveTable, error) {
 		if seat.Name == RoleChair {
 			continue
 		}
-		handle, found, err := e.probeSeat(table, seat, false)
+		handle, found, err := e.probeSeat(table, seat)
 		if err != nil {
 			return LiveTable{}, err
 		}
@@ -59,13 +58,9 @@ func (e *Engine) Probe(table Table) (LiveTable, error) {
 	return LiveTable{}, stopErr
 }
 
-// probeSeat probes the shuttle for a live run of seat; gated probes with the table's gate.
-func (e *Engine) probeSeat(table Table, seat Seat, gated bool) (Handle, bool, error) {
-	var gate shuttleengine.GateSpec
-	if gated {
-		gate = table.Gate
-	}
-	handle, found, err := e.shuttle.ProbeGated(seatSpec(table, seat, ""), gate)
+// probeSeat probes the shuttle for a live run of seat, under the gate the seat starts with.
+func (e *Engine) probeSeat(table Table, seat Seat) (Handle, bool, error) {
+	handle, found, err := e.shuttle.ProbeGated(seatSpec(table, seat, ""), seatGate(table, seat))
 	if err != nil {
 		return nil, false, fmt.Errorf("seatengine: probe seat %q: %w", seat.Name, err)
 	}

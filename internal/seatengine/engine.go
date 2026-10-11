@@ -166,7 +166,7 @@ func (e *Engine) Run(table Table) (Result, error) {
 }
 
 // startSeat composes seat's prompt and spec, starts it, and checks it took the strand name its peers address it by.
-// The chair starts with the table's gate and an advisor ungated.
+// The chair starts with the table's gate and an advisor with its seat's own.
 func (e *Engine) startSeat(table Table, seat Seat, names map[string]string) (Handle, error) {
 	values, err := seatValues(e.geom, table, seat, names)
 	if err != nil {
@@ -176,11 +176,7 @@ func (e *Engine) startSeat(table Table, seat Seat, names map[string]string) (Han
 	if err != nil {
 		return nil, err
 	}
-	var gate shuttleengine.GateSpec
-	if seat.Name == RoleChair {
-		gate = table.Gate
-	}
-	handle, err := e.shuttle.StartGated(seatSpec(table, seat, prompt), gate)
+	handle, err := e.shuttle.StartGated(seatSpec(table, seat, prompt), seatGate(table, seat))
 	if err != nil {
 		return nil, fmt.Errorf("seatengine: seat %q: start: %w", seat.Name, err)
 	}

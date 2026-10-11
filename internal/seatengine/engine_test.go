@@ -4,6 +4,7 @@ package seatengine
 
 import (
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -33,6 +34,10 @@ func TestEngine_Run_ChairEndStopsEverySeat(t *testing.T) {
 				shuttle := newFakeShuttle(t)
 				engine, geom := engineFixture(t, shuttle)
 				table := engineTable(geom.WorktreeRoot, advisors)
+				advisorGate := shuttleengine.GateSpec{{Name: "advisor-gate", Attempts: 2}}
+				if advisors > 1 {
+					table.Seats[2].Gate = advisorGate
+				}
 
 				ended := runAsync(engine, table)
 				wantStarts := []string{role(RoleChair), role(AdvisorName(1)), role(AdvisorName(2))}[:advisors+1]
@@ -82,7 +87,10 @@ func TestEngine_Run_ChairEndStopsEverySeat(t *testing.T) {
 					t.Errorf("chair gate has %d entries, want the table's one", got)
 				}
 				if advisors > 0 && len(shuttle.gates[role(AdvisorName(1))]) != 0 {
-					t.Error("an advisor started gated, want ungated")
+					t.Error("an ungated advisor started gated, want ungated")
+				}
+				if advisors > 1 && !reflect.DeepEqual(shuttle.gates[role(AdvisorName(2))], advisorGate) {
+					t.Errorf("gated advisor started with %+v, want exactly its seat's gate %+v", shuttle.gates[role(AdvisorName(2))], advisorGate)
 				}
 				prompt := shuttle.spec(role(RoleChair)).Prompt
 				if advisors == 0 && !strings.Contains(prompt, "Your advisors, by strand name: (none)") {

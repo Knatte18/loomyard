@@ -128,6 +128,8 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 		}
 	}
 
+	table.Round = "r7"
+	table.Seats[1].ForkSubagents = true
 	chairSpec := seatSpec(table, table.Seats[0], chairPrompt)
 	if chairSpec.Prompt != chairPrompt || !slices.Equal(chairSpec.OutputFiles, []string{"/w/out.md"}) {
 		t.Errorf("chair spec prompt/outputs = %q / %v, want the prompt and the chair's outputs", chairSpec.Prompt, chairSpec.OutputFiles)
@@ -143,6 +145,9 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 	}
 
 	advisorSpec := seatSpec(table, table.Seats[1], advisorPrompt)
+	if chairSpec.ForkSubagents || !advisorSpec.ForkSubagents || chairSpec.Round != "r7" || advisorSpec.Round != "r7" {
+		t.Errorf("spec ForkSubagents/Round = chair %v/%q, advisor %v/%q, want the seat's flag and the table's round", chairSpec.ForkSubagents, chairSpec.Round, advisorSpec.ForkSubagents, advisorSpec.Round)
+	}
 	if advisorSpec.Interactive || !advisorSpec.KeepPane || !advisorSpec.QuietHold {
 		t.Errorf("advisor spec Interactive/KeepPane/QuietHold = %v/%v/%v, want false/true/true", advisorSpec.Interactive, advisorSpec.KeepPane, advisorSpec.QuietHold)
 	}

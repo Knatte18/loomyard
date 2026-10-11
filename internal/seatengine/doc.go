@@ -5,8 +5,11 @@
 //
 // # The seat model
 //
-// A Table holds the ordered Seats and what they share: the role prefix, the loom segment, the chair's gate, the timeout, the chair's interactivity and the marker values every seat's stencil takes.
+// A Table holds the ordered Seats and what they share: the role prefix, the loom segment, the chair's gate, the round that names every run directory, the timeout, the chair's interactivity and the marker values every seat's stencil takes.
+// An empty Round keeps the default run-directory naming.
 // A Seat names its stencil, its model choice, the files it reads (Inputs) and writes (Outputs), its skills and its own marker values.
+// An advisor Seat may also carry its own Gate, which adds a check to that advisor's run, and ForkSubagents, which authorizes the seat's session to spawn in-session fork subagents.
+// The engine audits no fork, so the caller that sets ForkSubagents owns the fork audit.
 // The chair seat is named RoleChair; the advisors are named AdvisorName(1), AdvisorName(2) and so on, in table order.
 // A seat's strand role is SeatRole(prefix, name), so a spec never spells a role as a literal.
 //
@@ -15,6 +18,7 @@
 // Table.Validate applies every rule as a loud error naming the seat.
 // The table has exactly one chair, and its other seats are advisors named from 1 contiguously in table order.
 // A table may hold no advisors: the chair then runs alone, and seat-directive-chair tells it to decide each question itself.
+// The chair seat carries no gate, since the chair's gate is the table's.
 // Every seat has at least one output and no two seats share an output path, and every advisor output is among the chair's inputs.
 // The role prefix and every seat's formed role pass the agent-name role grammar.
 // Every seat's stencil is readable from the told stencils directory, as is every block it includes (stencil.IncludeNames over the bytes read), and an included block declares no include of its own.
@@ -38,7 +42,7 @@
 // Engine.Run validates the table, forms every seat's strand name from the geometry's shortname and slug and the seat's role, and starts the chair first, then the advisors in table order.
 // The chair is the step's main agent: whoever talks to a producer running seats talks to the chair, and it holds the gate, the operator's channel and the step's outcome.
 // Each seat's prompt is its stencil filled, with the blocks it includes, from a value map holding the table's values, the seat's own and every reserved marker.
-// The chair starts with the table's gate and is the only interactive seat; an advisor starts ungated, keeps its pane and holds a turn end quietly.
+// The chair starts with the table's gate and is the only interactive seat; an advisor starts with its seat's gate, ungated when it has none, keeps its pane and holds a turn end quietly.
 // A started seat whose strand took a different name than expected, which is reed numbering a name an earlier strand still holds, is stopped and reported as a start error naming the holder and the way forward.
 // A chair that fails to start starts no advisor and returns the error, which wraps shuttleengine.ErrNotStarted when the provider never came up.
 // Once each advisor's start ends, the chair is told in one line that the advisor is up, or that it did not start; seat-directive-chair tells the chair to send an advisor nothing before its up line.
@@ -63,7 +67,7 @@
 //
 // # Probe before archive
 //
-// Engine.Probe reports which seats have a live run, the chair probed with the table's gate and each advisor ungated, and archives and starts nothing.
+// Engine.Probe reports which seats have a live run, the chair probed with the table's gate and each advisor with its seat's gate, and archives and starts nothing.
 // A terminal advisor whose strand is still up, a done one kept by its pane or a timed-out one, is removed by the probe itself, keeping its record's outcome and its output file, and answers not found.
 // With the chair live, Probe returns its handle and every advisor found.
 // With the chair not live, Probe stops every live advisor and returns an empty LiveTable, so a caller archives stale outputs and starts fresh only once no seat is live.
