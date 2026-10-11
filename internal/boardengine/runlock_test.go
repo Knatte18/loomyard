@@ -87,7 +87,7 @@ func TestRunLock(t *testing.T) {
 			return b.UpsertTasksBatch([]map[string]any{{"slug": "other", "body": "batched"}, {"slug": "locked", "status": "done"}})
 		}},
 		{name: "prune dropping a done dependency", locked: map[string]any{"depends_on": []string{"fin"}}, extra: []map[string]any{done}, act: func(b *boardengine.Board) error {
-			removed, err := b.Prune()
+			removed, err := b.Prune(true)
 			if err == nil && (len(removed) != 1 || removed[0] != "fin") {
 				t.Errorf("prune removed %v, want [fin]", removed)
 			}

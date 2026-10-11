@@ -193,7 +193,7 @@ func stepSyncRetireLegacyCommitsBoardJSONAndLegacyDeletions(t *testing.T, f *syn
 	}
 
 	b := New(Config{Path: f.boardPath, Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true})
-	if err := b.RetireLegacy(); err != nil {
+	if _, err := b.RetireLegacy(true); err != nil {
 		t.Fatalf("RetireLegacy() error = %v", err)
 	}
 	if err := Sync(f.boardPath, false, false); err != nil {

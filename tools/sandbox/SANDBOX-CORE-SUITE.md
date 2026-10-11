@@ -39,7 +39,7 @@ lyx board upsert '{"slug":"s3-demo","title":"S3 demo","labels":["enhancement"]}'
 lyx resolves against the current directory's own `_lyx/` and does **not** walk up to a parent.
 The Hub's Fabric repo is initialized at its root, so the agent runs the entire session from there (cwd is fixed at the root).
 Running a lyx command from a subdirectory that has not itself been initialized correctly reports `not initialized here; run "lyx fabric reconcile"` — that is expected behaviour, **not a finding**.
-The agent must **not** scaffold nested `_lyx/` during a session, with exactly one controlled exception: **S6** deliberately clones a second, subpath-anchored hub to prove the subpath-anchoring contract, and reverses that scaffolding with `lyx fabric unwire` at session end (see S6's durability note).
+The agent must **not** scaffold nested `_lyx/` during a session, with exactly one controlled exception: **S6** deliberately clones a second, subpath-anchored hub to prove the subpath-anchoring contract, and reverses that scaffolding with `lyx fabric unwire --apply` at session end (see S6's durability note).
 Outside of S6, creating a nested `_lyx/` is out of scope for a session and not something to try "just to see what happens."
 
 ## Black-box rule
@@ -208,18 +208,18 @@ or any other tool's raw stderr) — that is still a legitimate `WARN`/`FAIL` fin
 
 **Goal:** "Clone a second hub from the same warp/weft repos into a scratch location, anchored at a subdirectory instead of the repo root, using `lyx fabric clone --subpath <sub> <weft-url> <warp-url>`.
 From inside the anchored subpath, run `config` and `board`.
-Finally, tear the pair down with `lyx fabric unwire`."
+Finally, tear the pair down with `lyx fabric unwire --apply`."
 
 **Durability note:** Unlike the old subfolder-init scenario, S6 cannot retrofit the already-root-anchored main sandbox hub — the lyx-anchor subpath is recorded once, at clone time, onto `weft:main`.
 S6 instead clones a genuinely separate scratch hub from the same warp/weft URLs, so it is not bound by the Black-box rule's "operate only inside the main Hub" scope for its own duration.
-Use `--reset` on the clone so repeated sandbox sessions are idempotent. `lyx fabric unwire`, run from inside the anchored subpath at session end, removes the junctions, clears the weft-side `_lyx` content, and reverts `.gitignore` there — it is not purely local: clearing weft-side `_lyx` content commits and pushes that deletion to the shared `lyx-test-weft` remote. `unwire` deliberately leaves the scratch hub's recorded anchor and repo-wide `fabric.yaml` on `weft:main` untouched (that is what lets a later `lyx fabric reconcile` re-wire it), so delete the scratch hub directory itself with a plain filesystem removal once `unwire` completes, rather than expecting `unwire` to remove it.
+Use `--reset` on the clone so repeated sandbox sessions are idempotent. `lyx fabric unwire --apply`, run from inside the anchored subpath at session end, removes the junctions, clears the weft-side `_lyx` content, and reverts `.gitignore` there — it is not purely local: clearing weft-side `_lyx` content commits and pushes that deletion to the shared `lyx-test-weft` remote. `unwire` deliberately leaves the scratch hub's recorded anchor and repo-wide `fabric.yaml` on `weft:main` untouched (that is what lets a later `lyx fabric reconcile` re-wire it), so delete the scratch hub directory itself with a plain filesystem removal once `unwire` completes, rather than expecting `unwire` to remove it.
 
 **Watch:** Does `lyx fabric clone --subpath <sub>` scaffold junctions and config at `<sub>/_lyx` inside the new hub's warp worktree, not at the warp worktree root — with no follow-up activation command needed?
 Does `lyx config --print`/`--set` run from inside `<sub>` resolve against `<sub>/_lyx/config` — the actual subpath-anchoring demonstrator?
 Does `lyx board` still run cleanly from inside `<sub>` — a "still works from the anchored subpath" smoke check only;
 board's data lives at the hub level, so this does *not* itself prove subpath resolution the way `config` does.
 Does running a lyx command from outside the anchored subpath (e.g. the new warp worktree's root, when `<sub>` is not `.`) correctly hard-error rather than silently resolving the wrong subpath?
-Does `lyx fabric unwire` cleanly remove the junctions, clear the weft `_lyx` content, and revert `.gitignore`, while leaving the recorded anchor and repo-wide config intact?
+Does `lyx fabric unwire --apply` cleanly remove the junctions, clear the weft `_lyx` content, and revert `.gitignore`, while leaving the recorded anchor and repo-wide config intact?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

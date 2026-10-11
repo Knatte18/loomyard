@@ -89,8 +89,8 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		if content, err := os.ReadFile(configengine.ConfigFile(tmpDir, "batcher")); err != nil || string(content) != retiredBatcher {
 			t.Errorf("batcher.yaml = %q, %v; want it unchanged by a dry run", content, err)
 		}
-		if _, has := reconcileModule(t, result, "loom")["migrated"]; has {
-			t.Error("loom module entry carries migrated; want it omitted without a migration")
+		if _, has := reconcileModule(t, result, "reed")["migrated"]; has {
+			t.Error("reed module entry carries migrated; want it omitted without a migration")
 		}
 		modules, _ := result["modules"].([]any)
 		if len(modules) == 0 {

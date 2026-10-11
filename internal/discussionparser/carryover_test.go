@@ -3,6 +3,7 @@ package discussionparser
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -209,6 +210,57 @@ func TestWriteCarryOver_RefusesWithoutWriting(t *testing.T) {
 			t.Errorf("error = %v, want a path-prefixed os.ErrNotExist", err)
 		}
 	})
+}
+
+// TestWriteCarryOver_DetectsConcurrentWriter asserts a write by another process between the carry-over's read and its rename is refused with nothing written, and one just after the rename is reported; either way the file holds the other writer's bytes.
+func TestWriteCarryOver_DetectsConcurrentWriter(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// hooks returns the interleaving, given a function that overwrites the record as the other writer.
+		hooks func(otherWrites func()) carryOverHooks
+		// wantInError is the part of the error that tells the two outcomes apart.
+		wantInError string
+		// wantNoTemp is whether the temporary file must be gone, since nothing was renamed.
+		wantNoTemp bool
+	}{
+		{"before the rename", func(otherWrites func()) carryOverHooks { return carryOverHooks{beforeRename: otherWrites} }, "nothing was written", true},
+		{"after the rename", func(otherWrites func()) carryOverHooks { return carryOverHooks{afterRename: otherWrites} }, "the other writer's bytes are in place", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			prior := recordWithOpenRisks("\n")
+			path := writeRecord(t, prior)
+			concurrent := prior + "- appended by another writer\n"
+			otherWrites := func() {
+				if err := os.WriteFile(path, []byte(concurrent), 0o644); err != nil {
+					t.Fatalf("other writer: %v", err)
+				}
+			}
+
+			err := writeCarryOver(path, carryOverEntry("Plan-Review", "cache-key"), tt.hooks(otherWrites))
+			if err == nil {
+				t.Fatal("writeCarryOver succeeded, want an error naming the concurrent writer")
+			}
+			for _, want := range []string{"decision record changed", "concurrent writer", tt.wantInError, "lyx loom start"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not contain %q", err, want)
+				}
+			}
+			if got := readFile(t, path); got != concurrent {
+				t.Errorf("record = %q, want exactly the other writer's bytes %q", got, concurrent)
+			}
+			leftovers, globErr := filepath.Glob(path + ".*.tmp")
+			if globErr != nil {
+				t.Fatal(globErr)
+			}
+			if tt.wantNoTemp && len(leftovers) != 0 {
+				t.Errorf("temporary files left behind: %v", leftovers)
+			}
+		})
+	}
 }
 
 // TestWriteCarryOver_SanitizesHostileFields asserts a key holding a line break, a backtick, a marker string and a heading renders on one line and cannot end the entry early or add a heading.

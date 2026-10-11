@@ -64,7 +64,7 @@ func TestStencilSeeding_HubScenario(t *testing.T) {
 	specsDir := fabricengine.SpecsDir(hub.Path)
 	specsSubtreeRel := fabricengine.SpecsSubtreeRel()
 	discussionPath := filepath.Join(stencilsDir, "loom", "loom-template-discussion.md")
-	specNames := []string{"loom-plan-spec"}
+	specNames := []string{"loom-plan-spec", "loom-final-summary-spec"}
 	board := hub.BoardDir()
 	branch := gitkit.CurrentBranch(t, board)
 	unreachableOrigin := filepath.Join(t.TempDir(), "gone")

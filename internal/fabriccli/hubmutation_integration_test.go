@@ -106,6 +106,40 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 				t.Fatalf("RunCLI(remove) = %d; want 0\noutput: %s", code, output)
 			}
 		}},
+		{"UnwireIsADryRunUntilApplied", func(t *testing.T) {
+			// Bare "lyx fabric unwire" in a task pair's code worktree exits 0 with "applied":false and no mutation, and "unwire --apply" then reports "applied":true.
+			// The pair is removed again so the later steps see the hub they expect.
+			const slug = "unwire-dry-run-pair"
+			if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
+				t.Fatalf("RunCLI(add) = %d; want 0\noutput: %s", code, output)
+			}
+			pairWarp := h.PairCodeWorktree(slug)
+
+			code, output := runFabric(t, pairWarp, "unwire")
+			if code != 0 {
+				t.Fatalf("RunCLI(unwire) = %d; want 0\noutput: %s", code, output)
+			}
+			env := envelope.RequireOK(t, output)
+			if applied, present := env.Raw["applied"]; !present || applied != false {
+				t.Errorf("bare unwire envelope applied = %v (present %v); want false\noutput: %s", applied, present, output)
+			}
+			if mutations, _ := env.Raw["mutations"].([]any); len(mutations) != 0 {
+				t.Errorf("bare unwire envelope mutations = %v; want none\noutput: %s", mutations, output)
+			}
+
+			code, output = runFabric(t, pairWarp, "unwire", "--apply")
+			if code != 0 {
+				t.Fatalf("RunCLI(unwire --apply) = %d; want 0\noutput: %s", code, output)
+			}
+			env = envelope.RequireOK(t, output)
+			if applied, _ := env.Raw["applied"].(bool); !applied {
+				t.Errorf("unwire --apply envelope applied = false; want true\noutput: %s", output)
+			}
+
+			if code, output := runFabric(t, h.PrimeWorktree(), "remove", slug); code != 0 {
+				t.Fatalf("RunCLI(remove) = %d; want 0\noutput: %s", code, output)
+			}
+		}},
 		{"AddLeftoverWarpIsBarePreflightError", func(t *testing.T) {
 			// A removed pair's landed warp branch still on origin, beside an archived weft branch and no local weft branch, blocks the re-add with a pre-flight failure, so a bare error carrying neither `mutations` nor `partial`.
 			const slug = "leftover-slug"

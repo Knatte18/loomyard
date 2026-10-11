@@ -384,7 +384,7 @@ func TestUnwire_LeavesWarpBindingInPlace(t *testing.T) {
 		t.Fatalf("read %s: %v", bindingPath, err)
 	}
 
-	if _, err := fabricengine.Unwire(fixture.Result.PrimeCwd); err != nil {
+	if _, err := fabricengine.Unwire(fixture.Result.PrimeCwd, true); err != nil {
 		t.Fatalf("Unwire: %v", err)
 	}
 
