@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -141,6 +142,7 @@ func landingDeps(
 		},
 		VerifyCommand:          verify.command,
 		VerifyFailedWayForward: verify.failedWayForward,
+		VerifyFailureTarget:    verify.failureTarget,
 		FailingTests:           failingTestsOf,
 		VerifyDir:              verifytree.Dir(l.AnchorPath()),
 		GateSlots:              hubgeom.GateSlots(l),
@@ -157,6 +159,8 @@ type verifySource struct {
 	command func() (string, error)
 	// failedWayForward is the clause a recorded failed-verify Stuck reason ends with.
 	failedWayForward string
+	// failureTarget is the row the recipe routes a failed Publish verify back to.
+	failureTarget string
 }
 
 // planVerifySource returns loom's verify source: the plan's `## verify:` command, and the Webster-Burler route back to a fix.
@@ -175,6 +179,7 @@ func planVerifySource(l *lyxcwd.Location) verifySource {
 			return plan.Verify, nil
 		},
 		failedWayForward: `run "lyx loom goto --to Webster-Burler", then "lyx loom resume", in the task worktree; the Webster-Review round reads the Publish failure record and its gate runs the failing tests`,
+		failureTarget: loomshed.NameWebsterBurler,
 	}
 }
 

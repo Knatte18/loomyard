@@ -40,6 +40,10 @@ type PublishFailure struct {
 	Head string `yaml:"head"`
 	// MergeCommit is the merge-in commit Publish made, empty when it made none.
 	MergeCommit string `yaml:"merge_commit,omitempty"`
+	// Target is the producer row a fix is routed back to, empty when the writer told none.
+	Target string `yaml:"target,omitempty"`
+	// WrittenAt is the record's write time in RFC 3339 whole-second UTC, empty for a record written before the field existed.
+	WrittenAt string `yaml:"written_at,omitempty"`
 }
 
 // WritePublishFailure writes f as given to p.PublishFailure.

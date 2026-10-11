@@ -75,6 +75,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if got := c.verifySource().failedWayForward; !strings.Contains(got, `"lyx loom goto --to Darn-Write"`) {
 			t.Errorf("verifySource().failedWayForward = %q; want it to route back to the Darn-Write row", got)
 		}
+		if got := c.verifySource().failureTarget; got != "Darn-Write" {
+			t.Errorf("verifySource().failureTarget = %q; want Darn-Write", got)
+		}
 	})
 
 	t.Run("a loom seed leaves the darn seams nil", func(t *testing.T) {

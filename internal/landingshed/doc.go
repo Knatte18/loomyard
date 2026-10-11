@@ -38,7 +38,7 @@
 // A landing change is an operator or hub-orch `lyx config landing` run from the prime, committed in `_board` and effective for every pair at once.
 //
 // Publish alone persists its failure.
-// When its plan verify or `publish_verify` fails with a non-zero exit, it writes the verifytree Publish failure record with the failing kind, the failing tests the told Deps.FailingTests parses from the log, HEAD, and the merge-in commit, which is HEAD after a merge-in that was not already up to date and empty otherwise.
+// When its plan verify or `publish_verify` fails with a non-zero exit, it writes the verifytree Publish failure record with the failing kind, the failing tests the told Deps.FailingTests parses from the log, HEAD, the told Deps.VerifyFailureTarget row, the write time in whole-second UTC, and the merge-in commit, which is HEAD after a merge-in that was not already up to date and empty otherwise.
 // A dirty tree, a timeout and a shell that could not start write no record, and a write failure is logged and never changes the Stuck verdict.
 // The Stuck reason of a failed verify ends with the way-forward clause the recipe tells in Deps.VerifyFailedWayForward only when the record was written; otherwise, and when none is told, it asks to fix forward on the task branch.
 // A Publish that passes both verifies removes the record before its push, and Finalize neither writes nor removes it.

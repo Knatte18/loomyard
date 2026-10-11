@@ -51,6 +51,10 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 		t.Errorf("VerifyFailedWayForward = %q, want the plan source's Webster-Burler clause %q", deps.VerifyFailedWayForward, want)
 	}
 
+	if deps.VerifyFailureTarget != "Webster-Burler" {
+		t.Errorf("VerifyFailureTarget = %q, want Webster-Burler", deps.VerifyFailureTarget)
+	}
+
 	if _, err := deps.VerifyCommand(); err == nil {
 		t.Fatal("VerifyCommand before any plan exists: want an error, got nil")
 	}
