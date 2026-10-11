@@ -429,9 +429,9 @@ User-facing modules each get one `lyx <module>` namespace:
   `validate-plan --rework` runs the check `PR-Rework`'s own gate runs: the format-only checks over the whole new plan, plus a check that its `first_card` equals the card number the session was told.
   `validate-description` runs the same checks the `Describe` row's `description` gate runs over `_lyx/landing/summary.md`, standalone, with the same exit-code and findings-envelope contract.
   `lint-comments [--base <commit>]` runs `internal/commentlint` over the worktree: the fixed-column-wrapped breaks the working tree, or the range from `--base` to HEAD, creates in `//` comment blocks.
-  Every card gate ends with it, and it only reads git and files.
+  Every card gate ends with the two lints, and both only read git and files.
   `lint-pattern [--base <commit>]` runs `internal/patternlint` over the worktree: it compares `PATTERN.md` at HEAD with the working tree's, or at `--base` with HEAD's, and fails when the overview grew past its headroom line, naming the bytes to cut.
-  An overview that stays above the line or shrinks passes, and it only reads git and files.
+  An overview that stays above the line or shrinks passes.
   A PR-review wait at `PR-Gate` halts the run `awaiting`, the planned hand-off state: it behaves like `blocked` for resume but spends no bounce budget, triggers no friction reflection and raises no anomaly; a `blocked` or `failed` halt writes a Go halt note and reflects.
   A review segment escalates to the run's parent, also `awaiting`, for one of two causes: the judge's `CIRCLING` verdict, or a bounce budget spent without convergence.
   The Bouncer writes a brief and a one-line parent notice into its run directory and returns the notice as `parent_notice`; the loom driver relays it to the parent, whose one-shot fork reads the brief and decides.

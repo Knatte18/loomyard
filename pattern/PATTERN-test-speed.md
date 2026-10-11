@@ -21,7 +21,7 @@ Tests stay fast: Tier 1 is offline and spawns nothing, no test waits out a produ
 
 | Gate | Runs |
 |---|---|
-| Card gate | tier 1 of the card's own packages through `lyx gate test`, then the comment lint |
+| Card gate | tier 1 of the card's own packages through `lyx gate test`, then the comment lint and the headroom lint |
 | Batch gate | `lyx gate test --tags integration` once per batch over the batch's packages, each failing on a tmux server socket its end-of-package check finds |
 | Webster-Burler round gate | the comment lint, then the impacted-set command, or the plan's verify wherever the impacted set cannot narrow; the `tmux` and `llm` tiers are compiled by its `go vet` steps and run only as below |
 | Webster-Burler round gate, while a Publish failure record is present | the failing tests the record names, and for a `publish_verify` failure an impacted-set `tmux` pass, to confirm the fix |

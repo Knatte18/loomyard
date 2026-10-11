@@ -373,7 +373,7 @@ var wordingClaims = []stencilClaims{
 			"`hubforge`",
 			"stop and report `status: FAILED`, so the orch runs the verb"),
 		wantAll("the always-allowed commands are named and the sandbox ban covers mutating fabric verbs only",
-			"The card gate steps, the batch gate steps, `lyx loom lint-comments` and `lyx quarry resolve` are always allowed from any strand",
+			"The card gate steps, the batch gate steps, `lyx loom lint-comments`, `lyx loom lint-pattern` and `lyx quarry resolve` are always allowed from any strand",
 			"none of them is a fabric reference",
 			"The sandbox ban covers mutating `lyx fabric` verbs only"),
 		wantAll("a gate step runs as written and an unnamed tmux or llm test is compiled, never run",

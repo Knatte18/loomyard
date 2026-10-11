@@ -12,6 +12,7 @@ A mechanical gate's **closure** and its CLI self-check verb call the same packag
   Webster-Burler's `verify` gate (`loomshed.NewVerifyGate`) runs the comment lint and the derived round command through `verifytree.Verify`.
 - Every card gate's comment lint and `lyx loom lint-comments`: `commentlint.Lint`.
   The Webster-Burler round gate (`loomshed.NewVerifyGate`) joins this pair when it runs the lint.
+- Every card gate's headroom lint and `lyx loom lint-pattern`: `patternlint.Lint` over `pattern.Headroom`.
 - Every burler round's `review` gate and `lyx burler validate-review`: `burlerengine.CheckReviewFile`, over `ParseReview`.
 
 ## Rules
