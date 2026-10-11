@@ -338,7 +338,7 @@ func snapshot(advisors []*seatRun, sender *noticeSender) []SeatResult {
 }
 
 // join waits on the chair, stops the notice sender, then stops every started advisor, a kept done one included.
-// A chair whose wait errored carries no terminal outcome and may still be running, so it is stopped too.
+// A chair whose wait errored carries no terminal outcome and may still be running, and a chair that timed out keeps its strand live, so each is stopped too.
 // A required advisor whose end ended the step before the chair's makes join stop the sender and the chair, wait for the chair's result, and mark that advisor EndedStep; a chair that also ended by then decides the step as usual.
 // join returns the chair's result, the wait error and any stop error; a stop that failed is not waited for.
 func (e *Engine) join(table Table, chair Handle, advisors []*seatRun, sender *noticeSender, ender *stepEnder) (Result, error) {
@@ -372,7 +372,7 @@ func (e *Engine) join(table Table, chair Handle, advisors []*seatRun, sender *no
 	chairResult, waitErr := end.result, end.err
 	sender.stop()
 
-	if waitErr != nil && !stepEnded {
+	if (waitErr != nil || chairResult.Outcome == shuttleengine.OutcomeTimeout) && !stepEnded {
 		stopErr = stopSeat(chair)
 	}
 	stopErr = errors.Join(stopErr, stopAdvisors(advisors))

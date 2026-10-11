@@ -1,4 +1,5 @@
-// prompt.go composes the burler round's prompts: it reads the round prompts from stencilsDir at call time via stencilstore.Read — the reviewer and fixer orchestrators plus the explore, review and fix instruction stencils, and the focus directive block when the round carries one — each with only its own marker subset, and returns the two orchestrator strings plus the rendered (path, content) instruction pairs the caller (Engine.Run) writes to disk.
+// prompt.go composes the burler round's prompts: it reads the round's instruction stencils from stencilsDir at call time via stencilstore.Read — the explore, review and fix stencils, and the focus directive block when the round carries one — each with only its own marker subset, and returns the two seats' stencil marker values plus the rendered (path, content) instruction pairs the caller (Engine.Run) writes to disk.
+// The two seat stencils themselves are filled by the seats engine from those values.
 // composePrompt is called only after (*Profile).validate has run, so every path field it reads is already a cleaned absolute path and p.clusterLenses (when ClusterFan was set) is already resolved.
 // composePrompt itself does no filesystem access beyond the directory check formatFileSet already performs on each Target/Fasit path and the stencilstore.Read calls at its top.
 // It takes the instruction paths as plain string parameters rather than the engine's Geometry, so it never gains geometry awareness of its own;
@@ -12,12 +13,11 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
@@ -38,11 +38,38 @@ type roundFilePaths struct {
 	Fix             string
 }
 
-// roundPrompts is composePrompt's result: each half's orchestrator prompt, and the four instruction files in the order explore (reviewer), explore (fixer), review, fix.
+// roundFilesIn returns the four instruction file paths of a round whose instruction directory is dir.
+func roundFilesIn(dir string) roundFilePaths {
+	return roundFilePaths{
+		ReviewerExplore: filepath.Join(dir, "instruction-1-explore-reviewer.md"),
+		FixerExplore:    filepath.Join(dir, "instruction-1-explore-fixer.md"),
+		Review:          filepath.Join(dir, "instruction-2-review.md"),
+		Fix:             filepath.Join(dir, "instruction-3-fix.md"),
+	}
+}
+
+// roundPrompts is composePrompt's result: the marker values of each seat's stencil, and the four instruction files in the order explore (reviewer), explore (fixer), review, fix.
 type roundPrompts struct {
-	Reviewer string
-	Fixer    string
-	Files    []instructionFile
+	ReviewerValues map[string]string
+	FixerValues    map[string]string
+	Files          []instructionFile
+}
+
+// roundSeatValues returns the stencil marker values of the reviewer seat and the fixer seat for p, naming the instruction files at paths.
+func roundSeatValues(p *Profile, paths roundFilePaths) (reviewer, fixer map[string]string) {
+	reviewer = map[string]string{
+		"instruction_1_path": paths.ReviewerExplore,
+		"instruction_2_path": paths.Review,
+		"review_path":        p.ReviewPath,
+	}
+	fixer = map[string]string{
+		"instruction_1_path": paths.FixerExplore,
+		"review_format_path": paths.Review,
+		"instruction_3_path": paths.Fix,
+		"review_path":        p.ReviewPath,
+		"ready_marker_path":  p.ReadyMarkerPath,
+	}
+	return reviewer, fixer
 }
 
 // composePrompt builds the burler round prompts for p.
@@ -50,51 +77,9 @@ type roundPrompts struct {
 // a heuristic would risk silently dropping constraints.
 // frictionDirective is the caller-resolved Tier 2 note directive for this round, carried by the fixer's explore file only since the fixer is the round's only note writer;
 // an empty string means Tier 2 is off or the read failed, and renders as nothing.
-// stencilsDir is the absolute stencils directory composePrompt reads all round prompts from via stencilstore.Read.
-// parentName is the told parent agent name the orchestrators' parent directive renders from; an empty one renders the no-parent variant.
-func composePrompt(stencilsDir, parentName string, p *Profile, patternDirective, frictionDirective string, paths roundFilePaths) (roundPrompts, error) {
-	parentDirective, err := parentdirective.Directive(stencilsDir, parentName, false)
-	if err != nil {
-		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
-	}
-
-	editDirective, err := editdirective.Directive(stencilsDir)
-	if err != nil {
-		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
-	}
-
-	reviewerTemplate, err := stencilstore.Read(stencilsDir, "burler-template-review-orchestrator")
-	if err != nil {
-		return roundPrompts{}, err
-	}
-	reviewer, err := stencil.FillOptional(reviewerTemplate, map[string]string{
-		"instruction_1_path":       paths.ReviewerExplore,
-		"instruction_2_path":       paths.Review,
-		"review_path":              p.ReviewPath,
-		parentdirective.MarkerName: parentDirective,
-		editdirective.MarkerName:   editDirective,
-	}, []string{parentdirective.MarkerName})
-	if err != nil {
-		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
-	}
-
-	fixerTemplate, err := stencilstore.Read(stencilsDir, "burler-template-fix-orchestrator")
-	if err != nil {
-		return roundPrompts{}, err
-	}
-	fixer, err := stencil.FillOptional(fixerTemplate, map[string]string{
-		"instruction_1_path":       paths.FixerExplore,
-		"review_format_path":       paths.Review,
-		"instruction_3_path":       paths.Fix,
-		"review_path":              p.ReviewPath,
-		"ready_marker_path":        p.ReadyMarkerPath,
-		parentdirective.MarkerName: parentDirective,
-		editdirective.MarkerName:   editDirective,
-	}, []string{parentdirective.MarkerName})
-	if err != nil {
-		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
-	}
-
+// stencilsDir is the absolute stencils directory composePrompt reads all instruction stencils from via stencilstore.Read.
+// The seat stencils are not read here: the seats engine fills them, and renders the parent and edit directives into each.
+func composePrompt(stencilsDir string, p *Profile, patternDirective, frictionDirective string, paths roundFilePaths) (roundPrompts, error) {
 	exploreTemplate, err := stencilstore.Read(stencilsDir, "burler-step-1-explore")
 	if err != nil {
 		return roundPrompts{}, err
@@ -151,9 +136,10 @@ func composePrompt(stencilsDir, parentName string, p *Profile, patternDirective,
 		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
 	}
 
+	reviewerValues, fixerValues := roundSeatValues(p, paths)
 	return roundPrompts{
-		Reviewer: string(reviewer),
-		Fixer:    string(fixer),
+		ReviewerValues: reviewerValues,
+		FixerValues:    fixerValues,
 		Files: []instructionFile{
 			{Path: paths.ReviewerExplore, Content: string(reviewerExplore)},
 			{Path: paths.FixerExplore, Content: string(fixerExplore)},

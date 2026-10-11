@@ -64,6 +64,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
@@ -599,26 +600,26 @@ func TestReedUpSeam_WatcherLifecycle(t *testing.T) {
 	})
 }
 
-// diedShuttle is a burlerengine.Shuttle double whose started halves all report died at once, so a round driven through it ends at once with the reviewer's died outcome; it records every spec it starts.
+// diedShuttle is a seatengine.Shuttle double whose started seats all report died at once, so a round driven through it ends at once with a died outcome; it records every spec it starts.
 type diedShuttle struct {
 	specs []shuttleengine.Spec
-	// mu guards stopped, which both halves' goroutines append to.
+	// mu guards stopped, which both seats' goroutines append to.
 	mu sync.Mutex
 	// stopped holds the strand guid of every Stop call.
 	stopped []string
 }
 
-func (s *diedShuttle) StartGated(spec shuttleengine.Spec, _ shuttleengine.GateSpec) (burlerengine.Handle, error) {
+func (s *diedShuttle) StartGated(spec shuttleengine.Spec, _ shuttleengine.GateSpec) (seatengine.Handle, error) {
 	s.specs = append(s.specs, spec)
 	return diedHandle{role: spec.Role, shuttle: s}, nil
 }
 
-// ProbeGated finds no live run, since a diedShuttle only starts halves.
-func (s *diedShuttle) ProbeGated(shuttleengine.Spec, shuttleengine.GateSpec) (burlerengine.Handle, bool, error) {
+// ProbeGated finds no live run, since a diedShuttle only starts seats.
+func (s *diedShuttle) ProbeGated(shuttleengine.Spec, shuttleengine.GateSpec) (seatengine.Handle, bool, error) {
 	return nil, false, nil
 }
 
-// diedHandle is the started half of a diedShuttle.
+// diedHandle is the started seat of a diedShuttle; it names its strand as the seats engine expects.
 type diedHandle struct {
 	role    string
 	shuttle *diedShuttle
@@ -626,10 +627,18 @@ type diedHandle struct {
 
 func (h diedHandle) StrandGUID() string { return h.role + "-guid" }
 
+func (h diedHandle) StrandName() string { return "tst:slug:" + h.role }
+
 func (h diedHandle) RunDir() string { return "/kept/" + h.role }
 
+func (h diedHandle) SessionState() (shuttleengine.RunSessionState, error) {
+	return shuttleengine.RunSessionState{}, nil
+}
+
+func (h diedHandle) Send(string) error { return nil }
+
 func (h diedHandle) Wait() (shuttleengine.Result, error) {
-	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}, nil
+	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, StrandGUID: h.StrandGUID(), RunDir: h.RunDir()}, nil
 }
 
 // Stop records the call; the half is already over.
@@ -674,7 +683,7 @@ fixer-report-path: reviews/fixer-report.md
 			t.Fatalf("write profile: %v", err)
 		}
 		shuttle = &diedShuttle{}
-		engine := burlerengine.New(shuttle, burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root}, burlerengine.Config{}, stencilkit.Seed(t), "")
+		engine := burlerengine.New(shuttle, burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, burlerengine.Config{}, stencilkit.Seed(t), "")
 		c = &burlerCLI{cwd: root, engine: engine, mode: "standalone", markerRoot: root, markerBase: markerBase}
 		return c, shuttle, profilePath, root, markerBase
 	}
@@ -735,7 +744,7 @@ fixer-report-path: reviews/fixer-report.md
 		if envelope["readyMarkerPath"] != wantMarker {
 			t.Errorf("readyMarkerPath = %v; want %q (burlermarker.Path over the wired root and base)", envelope["readyMarkerPath"], wantMarker)
 		}
-		for key, role := range map[string]string{"review": "burler-review", "fix": "burler-fix"} {
+		for key, role := range map[string]string{"review": "burler-advisor-1", "fix": "burler-chair"} {
 			half, ok := envelope[key].(map[string]any)
 			if !ok || half["strandGuid"] != role+"-guid" {
 				t.Errorf("envelope %s = %v; want the %s half with strand %q", key, envelope[key], role, role+"-guid")
@@ -746,8 +755,8 @@ fixer-report-path: reviews/fixer-report.md
 		for _, spec := range shuttle.specs {
 			got[spec.Role] = [2]string{spec.Model, spec.Effort}
 		}
-		want := map[string][2]string{"burler-review": {"rm", "re"}, "burler-fix": {"fm", "fe"}}
-		if len(got) != len(want) || got["burler-review"] != want["burler-review"] || got["burler-fix"] != want["burler-fix"] {
+		want := map[string][2]string{"burler-advisor-1": {"rm", "re"}, "burler-chair": {"fm", "fe"}}
+		if len(got) != len(want) || got["burler-advisor-1"] != want["burler-advisor-1"] || got["burler-chair"] != want["burler-chair"] {
 			t.Errorf("started halves' (model, effort) = %v; want %v", got, want)
 		}
 	})

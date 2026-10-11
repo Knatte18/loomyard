@@ -37,6 +37,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -325,7 +326,7 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("burler geometry: %v", err)
 	}
-	engine := burlerengine.New(burlerengine.RunnerShuttle(runner), burlerGeom, burlerengine.Config{}, fabricengine.StencilsDir(h.Location.HubPath), "")
+	engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, burlerengine.Config{}, fabricengine.StencilsDir(h.Location.HubPath), "")
 
 	result, err := engine.Run(profile, burlerengine.RunOpts{Timeout: 5 * time.Minute})
 	if err != nil {

@@ -167,7 +167,7 @@ func TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning(t *testing.T) 
 	}
 	runner := shuttleengine.NewRunner(reedEngine, &shellLaunchEngine{quietSeconds: 3}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
-	for _, half := range []struct{ role, outputPath string }{{"burler-review", reviewPath}, {"burler-fix", fixerReportPath}} {
+	for _, half := range []struct{ role, outputPath string }{{"burler-advisor-1", reviewPath}, {"burler-chair", fixerReportPath}} {
 		live, err := runner.Start(shuttleengine.Spec{
 			Prompt:      "smoke: stand in for a live burler half",
 			OutputFiles: []string{half.outputPath},

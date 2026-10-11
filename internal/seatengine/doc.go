@@ -70,7 +70,7 @@
 // # The stop rule
 //
 // Run waits on the chair, stops the sender, then stops every started advisor, a kept done one included, before it returns.
-// A chair whose wait errored carries no terminal outcome and may still be running, so it is stopped as well.
+// A chair whose wait errored carries no terminal outcome and may still be running, and a chair that timed out keeps its strand live, so each is stopped as well.
 // A stop that fails is an error wrapping ErrSeatNotStopped whose message names the way forward; it is never retried and the seat is not waited for.
 // A required advisor ends the step before the chair does on every end Accept has not accepted: a run that is not done, done with its seat gate failed (Accept is not called), a wait error, an Accept error, or a failed start.
 // The advisor's own waiting goroutine calls Accept once, with the terminal result, for a run that ended done with its gate passed.

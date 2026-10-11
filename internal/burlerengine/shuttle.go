@@ -4,9 +4,9 @@ package burlerengine
 
 import "github.com/Knatte18/loomyard/internal/shuttleengine"
 
-// Handle is one started half of a round.
-// The engine stops it through Stop, which records the stop, and waits on it for the half's terminal result.
-// *shuttleengine.Run satisfies it.
+// Handle is one live half of a round, as a probe reports it.
+// A caller that will not resume the round stops it through Stop, which records the stop.
+// seatengine.Handle and *shuttleengine.Run satisfy it.
 type Handle interface {
 	StrandGUID() string
 	RunDir() string

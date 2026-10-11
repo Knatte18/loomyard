@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
@@ -142,7 +143,7 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 	if err != nil {
 		t.Fatalf("burler geometry: %v", err)
 	}
-	engine := burlerengine.New(burlerengine.RunnerShuttle(runner), burlerGeom, cfg, fabricengine.StencilsDir(h.Location.HubPath), "")
+	engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, cfg, fabricengine.StencilsDir(h.Location.HubPath), "")
 	return engine, h
 }
 

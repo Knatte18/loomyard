@@ -241,7 +241,7 @@ func TestComposePrompt_ReadsEditedStencilFromDisk(t *testing.T) {
 		t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 	}
 
-	prompts, err := composePrompt(stencilsDir, "", &p, "", "", testRoundFilePaths)
+	prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}

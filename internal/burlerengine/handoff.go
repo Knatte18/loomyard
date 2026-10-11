@@ -1,4 +1,4 @@
-// handoff.go joins a round's two halves: reviewReady turns the reviewer's done outcome into the ready marker that releases the fixer, join waits on both halves started in parallel, and decideRound decides the round's one Result from the halves' ends, whichever start order produced them.
+// handoff.go decides a round from its seat result: reviewReady turns the reviewer's done outcome into the ready marker that releases the fixer, roundAcceptance runs it as the reviewer seat's accept hook, and concludeRound and decideRound turn the seats engine's answer into the round's one Result.
 
 package burlerengine
 
@@ -8,13 +8,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ErrHalfNotStopped reports that a half of the round could not be stopped, so it may still be writing the round's files.
+// ErrHalfNotStopped reports that a seat of the round could not be stopped, so it may still be writing the round's files.
+// It wraps the seats engine's seatengine.ErrSeatNotStopped, whose message ends with the way forward.
 // The round never archives over or retries past it.
 var ErrHalfNotStopped = errors.New("burler: a half of the round could not be stopped")
 
@@ -60,32 +63,37 @@ func reviewReady(p *Profile, reviewer shuttleengine.Result, released *atomic.Boo
 	return handoff, nil
 }
 
-// reviewerEnd is the reviewer's goroutine report: its terminal result and, when it reached done, the handoff.
-type reviewerEnd struct {
-	result     shuttleengine.Result
-	waitErr    error
-	handoff    reviewHandoff
-	handoffErr error
+// roundAcceptance is the reviewer seat's acceptance of one round: the released flag, set as the marker write begins, and the review it accepted.
+type roundAcceptance struct {
+	profile  *Profile
+	released atomic.Bool
+
+	mu      sync.Mutex
+	handoff reviewHandoff
 }
 
-// accepted reports whether the reviewer reached done and its review was handed to the fixer.
-func (end reviewerEnd) accepted() bool {
-	return end.waitErr == nil && end.result.Outcome == shuttleengine.OutcomeDone && end.handoffErr == nil
+// accept is the reviewer seat's accept hook: it runs reviewReady on the reviewer's done result and keeps what it took.
+// Any failure writes no marker and is returned as the seat's accept error.
+func (a *roundAcceptance) accept(reviewer shuttleengine.Result) error {
+	handoff, err := reviewReady(a.profile, reviewer, &a.released)
+	if err != nil {
+		return err
+	}
+	a.mu.Lock()
+	a.handoff = handoff
+	a.mu.Unlock()
+	return nil
 }
 
-// fixerEnd is the fixer's goroutine report.
-type fixerEnd struct {
-	result shuttleengine.Result
-	err    error
+// accepted returns the review the acceptance took, the zero handoff when it accepted none.
+func (a *roundAcceptance) accepted() reviewHandoff {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.handoff
 }
 
-// finished reports whether the fixer reached done.
-func (end fixerEnd) finished() bool {
-	return end.err == nil && end.result.Outcome == shuttleengine.OutcomeDone
-}
-
-// halfOf names a half by the identity of its terminal result, falling back to the handle's own strand and run directory when the result carries none.
-func halfOf(handle Handle, result shuttleengine.Result) Half {
+// halfOf names a half by the identity of its terminal result, falling back to strandGUID and runDir when the result carries none.
+func halfOf(result shuttleengine.Result, strandGUID, runDir string) Half {
 	half := Half{
 		SessionID:            result.SessionID,
 		StrandGUID:           result.StrandGUID,
@@ -96,161 +104,105 @@ func halfOf(handle Handle, result shuttleengine.Result) Half {
 		Usage:                result.Usage,
 	}
 	if half.StrandGUID == "" {
-		half.StrandGUID = handle.StrandGUID()
+		half.StrandGUID = strandGUID
 	}
 	if half.RunDir == "" {
-		half.RunDir = handle.RunDir()
+		half.RunDir = runDir
 	}
 	return half
 }
 
-// stopHalf stops handle through its Stop, which records the stop before it removes the strand.
-// A failed stop returns an error wrapping ErrHalfNotStopped whose message ends with the way forward.
-func (e *Engine) stopHalf(handle Handle) error {
-	guid := handle.StrandGUID()
-	if err := handle.Stop(); err != nil {
-		return fmt.Errorf("%w: strand %s: %v; way forward: run \"lyx reed remove %s\", then re-step the row", ErrHalfNotStopped, guid, err, guid)
-	}
-	return nil
-}
-
-// join waits on both halves started in parallel and decides the round through decideRound.
-// The reviewer's goroutine runs reviewReady once its run is done;
-// the fixer's goroutine just waits.
-// The first half to end decides which rules apply:
-// a reviewer that did not finish with an accepted review stops the fixer and gives the reviewer's outcome or error;
-// a fixer that died or timed out stops the reviewer and gives the fixer's outcome;
-// a fixer that is done before the marker was released stops the reviewer and returns an error naming the skipped handoff.
-// Whether the marker was released is the reviewer goroutine's recorded fact, set as the marker write begins, never the order the two results arrive in.
-// Otherwise the round completes with the fixer's run:
-// a failing fixer gate gives the fixer's Gate with Verdict and Findings empty,
-// and a done fixer is accepted only when the review file still holds the bytes reviewReady parsed.
-// A half that timed out is stopped as well, since shuttle keeps a timed-out run's strand live, and so is a half whose wait returned an error, since it may still be running.
-// join returns only after both goroutines have returned, so no half is left live and no marker write outlives the attempt;
-// the one exception is a half it failed to stop, which it reports as ErrHalfNotStopped without waiting for.
-func (e *Engine) join(p *Profile, opts RunOpts, review, fix Handle) (Result, error) {
-	var markerReleased atomic.Bool
-	reviewCh := make(chan reviewerEnd, 1)
-	fixCh := make(chan fixerEnd, 1)
-
-	go func() {
-		reviewCh <- awaitReview(p, review, &markerReleased)
-	}()
-	go func() {
-		var end fixerEnd
-		end.result, end.err = fix.Wait()
-		fixCh <- end
-	}()
-
-	var reviewEnd reviewerEnd
-	var fixEnd fixerEnd
-	var stopErr error
-	// fixerDecided is set when the fixer ended first without finishing, so the stopped reviewer's consequential outcome is not the round's.
-	var fixerDecided, skippedHandoff bool
-
-	// A half whose stop failed is still live, so its goroutine is not waited for: it would block until the run's own deadline.
-	select {
-	case reviewEnd = <-reviewCh:
-		if !reviewEnd.accepted() {
-			stopErr = e.stopHalf(fix)
-		}
-		if stopErr == nil {
-			fixEnd = <-fixCh
-		}
-	case fixEnd = <-fixCh:
-		switch {
-		case !fixEnd.finished():
-			fixerDecided = true
-			stopErr = e.stopHalf(review)
-		case !markerReleased.Load():
-			skippedHandoff = true
-			stopErr = e.stopHalf(review)
-		}
-		if stopErr == nil {
-			reviewEnd = <-reviewCh
-		}
-	}
-
-	return e.decideRound(p, opts, review, fix, reviewEnd, fixEnd, fixerDecided, skippedHandoff, stopErr)
-}
-
-// awaitReview waits on the reviewer and, once its run is done, runs reviewReady, setting released as the marker write begins.
-func awaitReview(p *Profile, review Handle, released *atomic.Bool) reviewerEnd {
-	var end reviewerEnd
-	end.result, end.waitErr = review.Wait()
-	if end.waitErr == nil && end.result.Outcome == shuttleengine.OutcomeDone {
-		end.handoff, end.handoffErr = reviewReady(p, end.result, released)
-	}
-	return end
-}
-
-// decideRound stops a timed-out or failed half and decides the round's one Result from the two halves' ends.
-// stopErr is the stop error the caller already hit, which is returned with the result and stops nothing further.
-// fixerDecided and skippedHandoff are the flags of join's first-to-end select.
-// A fixer that was never started is a nil fix with a zero fixEnd; it is neither stopped nor read, and its Half is empty.
-func (e *Engine) decideRound(p *Profile, opts RunOpts, review, fix Handle, reviewEnd reviewerEnd, fixEnd fixerEnd, fixerDecided, skippedHandoff bool, stopErr error) (Result, error) {
-	// Shuttle keeps a timed-out run's strand, and a half whose wait failed may still be running, so both are stopped too, or a retry or an archive would run beside them.
-	type startedHalf struct {
-		handle  Handle
-		result  shuttleengine.Result
-		waitErr error
-	}
-	halves := []startedHalf{{review, reviewEnd.result, reviewEnd.waitErr}}
-	if fix != nil {
-		halves = append(halves, startedHalf{fix, fixEnd.result, fixEnd.err})
-	}
-	for _, half := range halves {
-		if stopErr == nil && (half.waitErr != nil || half.result.Outcome == shuttleengine.OutcomeTimeout) {
-			stopErr = e.stopHalf(half.handle)
-		}
-	}
-
-	logger.Info("burler: round halves joined", "round", opts.Round, "reviewOutcome", reviewEnd.result.Outcome, "fixOutcome", fixEnd.result.Outcome)
-
+// roundResult returns the part of the round's Result every ending shares: the two paths, both halves' identities and the lenses the reviewer ran.
+func roundResult(p *Profile, seats seatengine.Result) Result {
 	result := Result{
 		ReviewPath:      p.ReviewPath,
 		FixerReportPath: p.FixerReportPath,
-		Review:          halfOf(review, reviewEnd.result),
+		Fix:             halfOf(seats.Chair, "", ""),
+	}
+	if len(seats.Advisors) > 0 {
+		reviewer := seats.Advisors[0]
+		result.Review = halfOf(reviewer.Result, reviewer.StrandGUID, reviewer.RunDir)
 	}
 	for _, lens := range p.clusterLenses {
 		result.Lenses = append(result.Lenses, lens.Name)
 	}
-	if fix != nil {
-		result.Fix = halfOf(fix, fixEnd.result)
+	return result
+}
+
+// concludeRound turns the seats engine's answer, a seat result and the error it ran with, into the round's one Result.
+// A seat that could not be stopped is returned wrapped in ErrHalfNotStopped.
+// A chair that never started, recognised by the result holding no advisor, is a not-started round when its provider never came up and a wrapped start error otherwise.
+// A chair whose wait errored is that error wrapped, unless the reviewer ended the step, in which case the reviewer's rules decide as for any other ending.
+func (e *Engine) concludeRound(p *Profile, opts RunOpts, seats seatengine.Result, acceptance *roundAcceptance, runErr error) (Result, error) {
+	switch {
+	case runErr == nil:
+	case errors.Is(runErr, seatengine.ErrSeatNotStopped):
+		return roundResult(p, seats), fmt.Errorf("%w: %w", ErrHalfNotStopped, runErr)
+	case len(seats.Advisors) == 0:
+		if errors.Is(runErr, shuttleengine.ErrNotStarted) {
+			return notStartedResult(p, Half{}, Half{StartError: runErr.Error()}), nil
+		}
+		return Result{}, fmt.Errorf("burler: shuttle run: %w", runErr)
+	case !seats.Advisors[0].EndedStep:
+		return roundResult(p, seats), fmt.Errorf("burler: shuttle run: %w", runErr)
 	}
-	if stopErr != nil {
-		return result, stopErr
+	return e.decideRound(p, opts, seats, acceptance)
+}
+
+// decideRound decides the round's one Result from the seat result: the reviewer's from its advisor-1 entry and the fixer's from the chair's result.
+// It is the one place the round's failure rules live, in this order:
+// a reviewer that failed to start is a not-started round, the fixer already stopped by the seats engine;
+// a reviewer that ended the step gives its wait error, its accept error (the cluster audit or the strict parse) with its outcome and fork audit, its non-done outcome, or an error naming a failed review gate;
+// a fixer that died or timed out gives the fixer's outcome;
+// a fixer that is done while the review was never released gives an error naming the skipped handoff, the released flag being the recorded fact and never the order the ends arrived in;
+// otherwise the fixer's run decides: its Gate passes through, a failing gate leaves Verdict and Findings empty,
+// and a done fixer is accepted only when the review file still holds the bytes the acceptance parsed.
+// The seats engine has stopped every seat before it returns, so no half is left live and no marker write outlives the attempt.
+func (e *Engine) decideRound(p *Profile, opts RunOpts, seats seatengine.Result, acceptance *roundAcceptance) (Result, error) {
+	reviewer := seats.Advisors[0]
+	chair := seats.Chair
+
+	logger.Info("burler: round seats joined", "round", opts.Round, "reviewOutcome", reviewer.Result.Outcome, "fixOutcome", chair.Outcome)
+
+	if reviewer.StartError != "" {
+		return notStartedResult(p, Half{StartError: reviewer.StartError}, Half{}), nil
+	}
+
+	result := roundResult(p, seats)
+	if reviewer.EndedStep {
+		switch {
+		case reviewer.WaitErr != nil:
+			return result, fmt.Errorf("burler: shuttle run: %w", reviewer.WaitErr)
+		case reviewer.AcceptErr != nil:
+			result.Outcome = reviewer.Result.Outcome
+			result.ForkAudit = reviewer.Result.ForkAudit
+			return result, reviewer.AcceptErr
+		case reviewer.Result.Outcome != shuttleengine.OutcomeDone:
+			result.Outcome = reviewer.Result.Outcome
+			return result, nil
+		}
+		result.Outcome = reviewer.Result.Outcome
+		reason := ""
+		if gate := reviewer.Result.Gate; gate != nil {
+			reason = gate.Reason
+		}
+		return result, fmt.Errorf("burler: the reviewer reached done but its review gate failed, so the round has no verdict: %s", reason)
 	}
 
 	switch {
-	case fixerDecided && fixEnd.err != nil:
-		return result, fmt.Errorf("burler: shuttle run: %w", fixEnd.err)
-	case fixerDecided:
-		result.Outcome = fixEnd.result.Outcome
+	case chair.Outcome != shuttleengine.OutcomeDone:
+		result.Outcome = chair.Outcome
 		return result, nil
-	case skippedHandoff:
-		result.Outcome = fixEnd.result.Outcome
+	case !acceptance.released.Load():
+		result.Outcome = chair.Outcome
 		return result, fmt.Errorf("burler: the fixer reached done before the review was handed off: the ready marker %q was never written by the engine, so the fixer skipped its wait", p.ReadyMarkerPath)
-	case reviewEnd.waitErr != nil:
-		return result, fmt.Errorf("burler: shuttle run: %w", reviewEnd.waitErr)
-	case reviewEnd.result.Outcome != shuttleengine.OutcomeDone:
-		result.Outcome = reviewEnd.result.Outcome
-		return result, nil
-	case reviewEnd.handoffErr != nil:
-		result.Outcome = reviewEnd.result.Outcome
-		result.ForkAudit = reviewEnd.result.ForkAudit
-		return result, reviewEnd.handoffErr
-	case fixEnd.err != nil:
-		return result, fmt.Errorf("burler: shuttle run: %w", fixEnd.err)
-	case fixEnd.result.Outcome != shuttleengine.OutcomeDone:
-		result.Outcome = fixEnd.result.Outcome
-		return result, nil
 	}
 
-	result.Outcome = fixEnd.result.Outcome
-	result.Gate = fixEnd.result.Gate
-	result.ForkAudit = reviewEnd.result.ForkAudit
-	result.ClusterWarnings = reviewEnd.handoff.warnings
+	accepted := acceptance.accepted()
+	result.Outcome = chair.Outcome
+	result.Gate = chair.Gate
+	result.ForkAudit = reviewer.Result.ForkAudit
+	result.ClusterWarnings = accepted.warnings
 	if result.Gate != nil && !result.Gate.Passed {
 		// A failed fixer gate discredits the fixer's work, so the review that work answered is not reported as a verdict.
 		return result, nil
@@ -260,10 +212,10 @@ func (e *Engine) decideRound(p *Profile, opts RunOpts, review, fix Handle, revie
 	if err != nil {
 		return result, fmt.Errorf("burler: read review file %q after the fixer finished: %w", p.ReviewPath, err)
 	}
-	if !bytes.Equal(now, reviewEnd.handoff.content) {
+	if !bytes.Equal(now, accepted.content) {
 		return result, fmt.Errorf("burler: review file %q changed after it was handed off to the fixer; only the reviewer writes it", p.ReviewPath)
 	}
-	result.Verdict = reviewEnd.handoff.verdict
-	result.Findings = reviewEnd.handoff.findings
+	result.Verdict = accepted.verdict
+	result.Findings = accepted.findings
 	return result, nil
 }

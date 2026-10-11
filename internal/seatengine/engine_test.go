@@ -77,7 +77,8 @@ func TestEngine_Run_ChairEndStopsEverySeat(t *testing.T) {
 						t.Errorf("advisor %d: notified the chair, want nothing sent for a stop", n)
 					}
 				}
-				if chairStops, want := shuttle.handle(role(RoleChair)).stopCount(), map[bool]int{true: 1, false: 0}[tt.waitErr != nil]; chairStops != want {
+				chairStopped := tt.waitErr != nil || tt.result.Outcome == shuttleengine.OutcomeTimeout
+				if chairStops, want := shuttle.handle(role(RoleChair)).stopCount(), map[bool]int{true: 1, false: 0}[chairStopped]; chairStops != want {
 					t.Errorf("chair stopped %d times, want %d", chairStops, want)
 				}
 				if attempts := chair.attemptCount(); attempts != advisors {

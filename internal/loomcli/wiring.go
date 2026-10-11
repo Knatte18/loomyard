@@ -499,7 +499,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	burlerEngine := burlerengine.New(burlerengine.RunnerShuttle(runner), burlerGeom, burlerCfg, websterGeom.StencilsDir, frictionDir)
+	burlerEngine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, burlerCfg, websterGeom.StencilsDir, frictionDir)
 
 	runDeps := websterengine.RunDeps{
 		Starter:    runnerMasterStarter{runner: runner},
