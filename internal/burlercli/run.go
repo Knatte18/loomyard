@@ -1,6 +1,5 @@
-// run.go implements the `run` burler verb: the profile-YAML-and-flags-to-Run mapper that turns a
-// "lyx burler run" invocation into a blocking burlerengine.Engine.Run call and prints its Result as
-// a single JSON envelope.
+// run.go implements the `run` burler verb: the profile-YAML-and-flags-to-halves mapper that turns a "lyx burler run" invocation into a blocking burlerengine.Engine.Review call.
+// A review that reached done is followed by a burlerengine.Engine.Fix call, and both results print as a single JSON envelope.
 // It also owns decodeProfile, the strict YAML decode that maps a profile file 1:1 onto
 // burlerengine.Profile.
 
@@ -13,10 +12,10 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/burlermarker"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -92,12 +91,14 @@ func (c *burlerCLI) runCmd() *cobra.Command {
 		Long: `run reads a profile YAML file describing one review+fix round — what to
 review, what to judge it against, and how the round is allowed to write its
 fixes — drives the round through the real shuttle substrate, and prints its
-Result as a single JSON envelope.
+result as a single JSON envelope.
 
-The round starts two agents: a reviewer that writes the review file, and a
-fixer that waits for lyx to accept the review (it waits on a ready marker, whose
-path the envelope reports as readyMarkerPath) and then fixes what the reviewer
-found. The envelope reports each half's identity under review and fix.
+The round runs two sessions one after the other. A reviewer (role
+burler-review-chair) writes the review file. Once lyx has accepted the review,
+a fixer (role burler-fix-chair) fixes what the reviewer found. A review with no
+findings spawns no fixer: lyx writes the fixer report itself, and the envelope
+reports fixSkipped true. A reviewer that did not finish runs no fixer. The
+envelope reports each half's identity under review and fix.
 
 Example profile YAML:
   target:
@@ -125,12 +126,7 @@ Example invocation:
 --review-model/--review-effort and --fix-model/--fix-effort override each
 half's provider model and reasoning effort; empty defers to the provider
 default. --timeout overrides the shuttle config's run-timeout; zero defers to
-the config default.
-
-The ready marker lies under the state directory's ephemeral lyx directory at
-the review path's place relative to the reviewed root, so review-path must lie
-under the reviewed root: the anchor in hub mode, the target in standalone
-mode. A review-path outside it is refused.`,
+the config default.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 
@@ -168,13 +164,6 @@ mode. A review-path outside it is refused.`,
 				return nil
 			}
 
-			readyMarkerPath, err := burlermarker.Path(c.markerRoot, c.markerBase, profile.ReviewPath)
-			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-				return nil
-			}
-			profile.ReadyMarkerPath = readyMarkerPath
-
 			opts := burlerengine.RunOpts{
 				Review:  burlerengine.ModelChoice{Model: reviewModel, Effort: reviewEffort},
 				Fix:     burlerengine.ModelChoice{Model: fixModel, Effort: fixEffort},
@@ -193,13 +182,23 @@ mode. A review-path outside it is refused.`,
 				}
 			}
 
-			result, err := c.engine.Run(profile, opts)
+			review, err := c.engine.Review(profile, opts)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
 
-			clihelp.SetExit(cmd.Context(), output.Ok(out, resultEnvelope(result, readyMarkerPath, c.mode, c.stateDir, c.stencilsDir)))
+			// A reviewer that did not finish leaves no accepted review for a fixer to act on.
+			var fix burlerengine.FixResult
+			if review.Outcome == shuttleengine.OutcomeDone {
+				fix, err = c.engine.Fix(profile, opts, review.Digest)
+				if err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+					return nil
+				}
+			}
+
+			clihelp.SetExit(cmd.Context(), output.Ok(out, resultEnvelope(review, fix, c.mode, c.stateDir, c.stencilsDir)))
 			return nil
 		},
 	}
@@ -215,37 +214,39 @@ mode. A review-path outside it is refused.`,
 	return cmd
 }
 
-// resultEnvelope maps a burlerengine.Result onto the JSON envelope run's RunE prints via
+// resultEnvelope maps the two halves' results onto the JSON envelope run's RunE prints via
 // output.Ok. It is a separate function (rather than an inline map literal) so its shape
-// is directly unit-testable without needing a live c.engine.Run call. result.ForkAudit
-// is nil for a non-cluster round (or one that never reached done) — forkCount guards
-// that nil rather than dereferencing Forks on it.
+// is directly unit-testable without needing a live engine call.
+// fix is the zero FixResult when the fixer was not reached because the review did not finish.
+// The outcome is the fix half's when it ran and the review's otherwise.
+// The verdict, fork count and cluster warnings come from the review, and fixSkipped reports a fix that spawned no fixer.
+// review.ForkAudit is nil for a non-cluster review (or one that never reached done), so forkCount guards that nil rather than dereferencing Forks on it.
 //
 // mode, stateDir, and stencilsDir are CLI-level facts about how the stack was wired, taken as
 // parameters rather than read off a receiver so this function stays directly unit-testable without a
-// live c.engine.Run call. They are emitted in BOTH modes deliberately: a mode field that existed only
+// live engine call. They are emitted in BOTH modes deliberately: a mode field that existed only
 // in standalone could not be used to tell the two modes apart, which is its whole purpose, and
 // stencilsDir is equally worth reporting in a hub run pointed at an experimental stencil set via the
 // flag. stateDir is the empty string in hub mode, where no derived state directory exists.
-//
-// This is the third named exception to hub byte-identity: it is an output-shape-only change, no path
-// resolves differently and nothing new is written in hub mode, and the keys are additive so no
-// existing consumer breaks.
-func resultEnvelope(result burlerengine.Result, readyMarkerPath, mode, stateDir, stencilsDir string) map[string]any {
+func resultEnvelope(review burlerengine.ReviewResult, fix burlerengine.FixResult, mode, stateDir, stencilsDir string) map[string]any {
 	forkCount := 0
-	if result.ForkAudit != nil {
-		forkCount = len(result.ForkAudit.Forks)
+	if review.ForkAudit != nil {
+		forkCount = len(review.ForkAudit.Forks)
+	}
+	outcome := review.Outcome
+	if fix.Outcome != "" {
+		outcome = fix.Outcome
 	}
 
 	return map[string]any{
-		"outcome":         string(result.Outcome),
-		"verdict":         string(result.Verdict),
-		"reviewPath":      result.ReviewPath,
-		"fixerReportPath": result.FixerReportPath,
-		"readyMarkerPath": readyMarkerPath,
-		"review":          halfEnvelope(result.Review),
-		"fix":             halfEnvelope(result.Fix),
-		"clusterWarnings": result.ClusterWarnings,
+		"outcome":         string(outcome),
+		"verdict":         string(review.Verdict),
+		"reviewPath":      review.ReviewPath,
+		"fixerReportPath": fix.FixerReportPath,
+		"review":          halfEnvelope(review.Review),
+		"fix":             halfEnvelope(fix.Fix),
+		"fixSkipped":      fix.Skipped,
+		"clusterWarnings": review.ClusterWarnings,
 		"forkCount":       forkCount,
 		"mode":            mode,
 		"stateDir":        stateDir,

@@ -145,8 +145,6 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 	c.engine = burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, burlerCfg, stencilsDir, "")
 	c.mode = "hub"
 	c.stateDir = ""
-	c.markerRoot = anchorPath
-	c.markerBase = anchorPath
 	c.stencilsDir = stencilsDir
 	return nil
 }
@@ -222,8 +220,6 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 	c.engine = burlerengine.New(seatengine.RunnerShuttle(runner), standalonegeom.BurlerGeometry(res.Target, res.StateDir, res.Hash8), burlerCfg, res.StencilsDir, "")
 	c.mode = "standalone"
 	c.stateDir = res.StateDir
-	c.markerRoot = res.Target
-	c.markerBase = res.StateDir
 	c.stencilsDir = res.StencilsDir
 	return nil
 }

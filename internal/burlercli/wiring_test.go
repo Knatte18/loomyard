@@ -49,13 +49,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/burlermarker"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -138,9 +138,6 @@ func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
 		if c.reedUp != nil {
 			t.Error("wireHub armed c.reedUp; want nil -- hub mode's reed session is not run's to boot")
 		}
-		if c.markerRoot != loc.AnchorPath() || c.markerBase != loc.AnchorPath() {
-			t.Errorf("c.markerRoot, c.markerBase = %q, %q; want the anchor %q for both", c.markerRoot, c.markerBase, loc.AnchorPath())
-		}
 	})
 
 	t.Run("Standalone", func(t *testing.T) {
@@ -167,9 +164,6 @@ func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
 		}
 		if c.reedUp == nil {
 			t.Error("wireStandalone left c.reedUp nil; want the in-process reed bring-up seam armed")
-		}
-		if c.markerRoot != target || c.markerBase != stateDir {
-			t.Errorf("c.markerRoot, c.markerBase = %q, %q; want the target %q and the state directory %q", c.markerRoot, c.markerBase, target, stateDir)
 		}
 	})
 }
@@ -288,10 +282,9 @@ func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
 // shuttleengine.NewRunner: NewRunner's containment assertion refuses standalone's deliberately
 // detached anchor/worktree-root pair (the derived state directory sits outside the target
 // repository), setting the runner's held toldErr, which every public entry point returns
-// immediately without ever reaching reed. A runner that is merely non-nil proves nothing here, so
-// this test drives the one public entry point reachable from this package -- c.engine.Run, with a
-// minimal but validate()-passing Profile -- and asserts the returned error is some non-nil error
-// other than a told-path refusal.
+// immediately without ever reaching reed.
+// A runner that is merely non-nil proves nothing here, so this test drives a public entry point reachable from this package.
+// That is c.engine.Review, with a minimal but validateReview-passing Profile, and the test asserts the returned error is some non-nil error other than a told-path refusal.
 //
 // AddStrand now self-heals a cold worktree rather than failing fast on requireSessionLocked, so this
 // test can no longer rely on a bare wire to reach its assertion without spawning a real tmux server.
@@ -353,15 +346,14 @@ func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *tes
 		FixScope:        burlerengine.FixScopeOverlay,
 		ReviewPath:      "review.md",
 		FixerReportPath: "fixer.md",
-		ReadyMarkerPath: "review.md.ready",
 	}
 
-	_, err := c.engine.Run(profile, burlerengine.RunOpts{})
+	_, err := c.engine.Review(profile, burlerengine.RunOpts{})
 	if err == nil {
-		t.Fatal("engine.Run() error = nil; want a non-nil error, since the pinned-out tmux binary makes sessionSubstrateLocked's probe fail")
+		t.Fatal("engine.Review() error = nil; want a non-nil error, since the pinned-out tmux binary makes sessionSubstrateLocked's probe fail")
 	}
 	if strings.Contains(err.Error(), "NewRunner") || strings.Contains(err.Error(), "NewDetachedRunner") {
-		t.Fatalf("engine.Run() error = %v; want the exec-lookup error from the pinned-out tmux binary, not a told-path refusal -- this is exactly the error NewRunner's containment assertion would have produced against standalone's detached anchor/worktree-root pair", err)
+		t.Fatalf("engine.Review() error = %v; want the exec-lookup error from the pinned-out tmux binary, not a told-path refusal -- this is exactly the error NewRunner's containment assertion would have produced against standalone's detached anchor/worktree-root pair", err)
 	}
 }
 
@@ -600,92 +592,145 @@ func TestReedUpSeam_WatcherLifecycle(t *testing.T) {
 	})
 }
 
-// diedShuttle is a seatengine.Shuttle double whose started seats all report died at once, so a round driven through it ends at once with a died outcome; it records every spec it starts.
-type diedShuttle struct {
+const (
+	// reviewChairRole and fixChairRole are the strand roles of the review half's and the fix half's one seat.
+	reviewChairRole = "burler-review-chair"
+	fixChairRole    = "burler-fix-chair"
+)
+
+// halfShuttle is a seatengine.Shuttle double whose started seats finish at once.
+// A reviewer writes review to its output file and is done, or dies when review is empty; a fixer writes a fixer report to its output file and is done.
+// It records every spec it starts.
+type halfShuttle struct {
+	review string
+
+	// mu guards specs, which the seats' goroutines append to.
+	mu    sync.Mutex
 	specs []shuttleengine.Spec
-	// mu guards stopped, which both seats' goroutines append to.
-	mu sync.Mutex
-	// stopped holds the strand guid of every Stop call.
-	stopped []string
 }
 
-func (s *diedShuttle) StartGated(spec shuttleengine.Spec, _ shuttleengine.GateSpec) (seatengine.Handle, error) {
+func (s *halfShuttle) StartGated(spec shuttleengine.Spec, _ shuttleengine.GateSpec) (seatengine.Handle, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.specs = append(s.specs, spec)
-	return diedHandle{role: spec.Role, shuttle: s}, nil
+	return halfHandle{spec: spec, review: s.review}, nil
 }
 
-// ProbeGated finds no live run, since a diedShuttle only starts seats.
-func (s *diedShuttle) ProbeGated(shuttleengine.Spec, shuttleengine.GateSpec) (seatengine.Handle, bool, error) {
+// ProbeGated finds no live run, since a halfShuttle only starts seats.
+func (s *halfShuttle) ProbeGated(shuttleengine.Spec, shuttleengine.GateSpec) (seatengine.Handle, bool, error) {
 	return nil, false, nil
 }
 
-// diedHandle is the started seat of a diedShuttle; it names its strand as the seats engine expects.
-type diedHandle struct {
-	role    string
-	shuttle *diedShuttle
+// startedRoles returns the roles of the seats started so far, in start order.
+func (s *halfShuttle) startedRoles() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var roles []string
+	for _, spec := range s.specs {
+		roles = append(roles, spec.Role)
+	}
+	return roles
 }
 
-func (h diedHandle) StrandGUID() string { return h.role + "-guid" }
+// halfHandle is the started seat of a halfShuttle; it names its strand as the seats engine expects.
+type halfHandle struct {
+	spec   shuttleengine.Spec
+	review string
+}
 
-func (h diedHandle) StrandName() string { return "tst:slug:" + h.role }
+func (h halfHandle) StrandGUID() string { return h.spec.Role + "-guid" }
 
-func (h diedHandle) RunDir() string { return "/kept/" + h.role }
+func (h halfHandle) StrandName() string { return "tst:slug:" + h.spec.Role }
 
-func (h diedHandle) SessionState() (shuttleengine.RunSessionState, error) {
+func (h halfHandle) RunDir() string { return "/kept/" + h.spec.Role }
+
+func (h halfHandle) SessionState() (shuttleengine.RunSessionState, error) {
 	return shuttleengine.RunSessionState{}, nil
 }
 
-func (h diedHandle) Send(string) error { return nil }
+func (h halfHandle) Send(string) error { return nil }
 
-func (h diedHandle) Wait() (shuttleengine.Result, error) {
-	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, StrandGUID: h.StrandGUID(), RunDir: h.RunDir()}, nil
+func (h halfHandle) Wait() (shuttleengine.Result, error) {
+	result := shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, StrandGUID: h.StrandGUID(), RunDir: h.RunDir()}
+	content := "fixer report\n"
+	if h.spec.Role == reviewChairRole {
+		content = h.review
+	}
+	if content == "" {
+		return result, nil
+	}
+	output := h.spec.OutputFiles[0]
+	if err := os.MkdirAll(filepath.Dir(output), 0o755); err != nil {
+		return result, err
+	}
+	if err := os.WriteFile(output, []byte(content), 0o644); err != nil {
+		return result, err
+	}
+	result.Outcome = shuttleengine.OutcomeDone
+	return result, nil
 }
 
-// Stop records the call; the half is already over.
-func (h diedHandle) Stop() error {
-	h.shuttle.mu.Lock()
-	defer h.shuttle.mu.Unlock()
-	h.shuttle.stopped = append(h.shuttle.stopped, h.StrandGUID())
-	return nil
-}
+// Stop is a no-op; the half is already over.
+func (h halfHandle) Stop() error { return nil }
 
 // TestRunCmd drives burler's run verb through its own RunE with seams in place of the live substrate.
 // One row proves it calls c.reedUp with watch: true, through a recording fake that fails, so the call ends right after the reedUp check and c.engine stays nil.
-// One row proves it maps the four model flags onto the two halves and reports the ready marker burlermarker.Path derives over the wired root and base, and each half's identity.
+// One row proves a review with findings runs the fixer, maps the four model flags onto the two halves and reports each half's identity.
+// One row proves a review with no findings runs no fixer and reports fixSkipped beside the Go-written fixer report.
+// One row proves a reviewer that died runs no fixer and reports the death as the outcome.
 // One row proves it rejects the retired --model flag.
-// One row proves it refuses a review-path outside the wired root with the way forward.
 //
-//testtiming:keep the three round-driving rows pin the run verb's flag mapping, envelope and review-path refusal, which no other test reaches
+//testtiming:keep the round-driving rows pin the run verb's flag mapping, the fixer's gating on the review and the envelope, which no other test reaches
 func TestRunCmd(t *testing.T) {
 	t.Parallel()
 
-	const profileYAML = `target:
+	const (
+		profileYAML = `target:
   paths: [target.txt]
 fasit:
   paths: [fasit.txt]
 rubric: placeholder
 fix-scope: source
-review-path: %s
+review-path: reviews/review.md
 fixer-report-path: reviews/fixer-report.md
 `
+		approvedReview = "---\nverdict: APPROVED\n---\nlooks good\n"
+		blockingReview = "---\nverdict: BLOCKING\nfindings:\n" +
+			"  - id: F1\n    severity: BLOCKING\n    class: design\n    location: target.txt:1\n    summary: colors do not match\n    fix: change the color in target.txt:1\n" +
+			"---\n### [BLOCKING] colors do not match\n**Location:** target.txt:1\n**Issue:** found a mismatch\n"
+	)
 
-	// newRound builds a CLI over an engine on a diedShuttle, rooted at a fresh directory holding the profile.
-	newRound := func(t *testing.T, reviewPath string) (c *burlerCLI, shuttle *diedShuttle, profilePath, root, markerBase string) {
+	// newRound builds a CLI over an engine on a halfShuttle whose reviewer writes review, rooted at a fresh directory holding the profile.
+	newRound := func(t *testing.T, review string) (c *burlerCLI, shuttle *halfShuttle, profilePath, root string) {
 		t.Helper()
-		root, markerBase = t.TempDir(), t.TempDir()
+		root = t.TempDir()
 		for _, name := range []string{"target.txt", "fasit.txt"} {
 			if err := os.WriteFile(filepath.Join(root, name), []byte(name), 0o644); err != nil {
 				t.Fatalf("write %s: %v", name, err)
 			}
 		}
 		profilePath = filepath.Join(root, "profile.yaml")
-		if err := os.WriteFile(profilePath, []byte(fmt.Sprintf(profileYAML, reviewPath)), 0o644); err != nil {
+		if err := os.WriteFile(profilePath, []byte(profileYAML), 0o644); err != nil {
 			t.Fatalf("write profile: %v", err)
 		}
-		shuttle = &diedShuttle{}
+		shuttle = &halfShuttle{review: review}
 		engine := burlerengine.New(shuttle, burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, burlerengine.Config{}, stencilkit.Seed(t), "")
-		c = &burlerCLI{cwd: root, engine: engine, mode: "standalone", markerRoot: root, markerBase: markerBase}
-		return c, shuttle, profilePath, root, markerBase
+		c = &burlerCLI{cwd: root, engine: engine, mode: "standalone"}
+		return c, shuttle, profilePath, root
+	}
+
+	// runEnvelope runs the verb over args and returns its decoded envelope.
+	runEnvelope := func(t *testing.T, c *burlerCLI, args ...string) map[string]any {
+		t.Helper()
+		var out bytes.Buffer
+		if exitCode := clihelp.Execute(c.runCmd(), &out, args); exitCode != 0 {
+			t.Fatalf("run = exit %d, output: %s", exitCode, out.String())
+		}
+		var envelope map[string]any
+		if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+			t.Fatalf("envelope %q is not JSON: %v", out.String(), err)
+		}
+		return envelope
 	}
 
 	t.Run("passes watch true to the reed bring-up", func(t *testing.T) {
@@ -697,7 +742,7 @@ fixer-report-path: reviews/fixer-report.md
 			t.Fatalf("write profile: %v", err)
 		}
 
-		c := &burlerCLI{cwd: dir, markerRoot: dir, markerBase: dir}
+		c := &burlerCLI{cwd: dir}
 		var bringUps int
 		var gotWatch bool
 		c.reedUp = func(ctx context.Context, watch bool) error {
@@ -720,74 +765,81 @@ fixer-report-path: reviews/fixer-report.md
 		}
 	})
 
-	t.Run("maps the four model flags onto the halves and reports the marker", func(t *testing.T) {
+	t.Run("a review with findings runs the fixer and maps the four model flags onto the halves", func(t *testing.T) {
 		t.Parallel()
 
-		c, shuttle, profilePath, root, markerBase := newRound(t, "reviews/review.md")
-		var out bytes.Buffer
-		exitCode := clihelp.Execute(c.runCmd(), &out, []string{
+		c, shuttle, profilePath, _ := newRound(t, blockingReview)
+		envelope := runEnvelope(t, c,
 			"--profile", profilePath,
 			"--review-model", "rm", "--review-effort", "re", "--fix-model", "fm", "--fix-effort", "fe",
-		})
-		if exitCode != 0 {
-			t.Fatalf("run = exit %d, output: %s", exitCode, out.String())
-		}
+		)
 
-		var envelope map[string]any
-		if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
-			t.Fatalf("envelope %q is not JSON: %v", out.String(), err)
+		if envelope["outcome"] != "done" || envelope["verdict"] != "BLOCKING" || envelope["fixSkipped"] != false {
+			t.Errorf("envelope outcome/verdict/fixSkipped = %v/%v/%v; want done/BLOCKING/false", envelope["outcome"], envelope["verdict"], envelope["fixSkipped"])
 		}
-		wantMarker, err := burlermarker.Path(root, markerBase, "reviews/review.md")
-		if err != nil {
-			t.Fatalf("burlermarker.Path() = %v; want nil", err)
-		}
-		if envelope["readyMarkerPath"] != wantMarker {
-			t.Errorf("readyMarkerPath = %v; want %q (burlermarker.Path over the wired root and base)", envelope["readyMarkerPath"], wantMarker)
-		}
-		for key, role := range map[string]string{"review": "burler-advisor-1", "fix": "burler-chair"} {
+		for key, role := range map[string]string{"review": reviewChairRole, "fix": fixChairRole} {
 			half, ok := envelope[key].(map[string]any)
 			if !ok || half["strandGuid"] != role+"-guid" {
 				t.Errorf("envelope %s = %v; want the %s half with strand %q", key, envelope[key], role, role+"-guid")
 			}
+		}
+		if want := []string{reviewChairRole, fixChairRole}; !slices.Equal(shuttle.startedRoles(), want) {
+			t.Fatalf("started roles = %v; want the reviewer, then the fixer %v", shuttle.startedRoles(), want)
 		}
 
 		got := map[string][2]string{}
 		for _, spec := range shuttle.specs {
 			got[spec.Role] = [2]string{spec.Model, spec.Effort}
 		}
-		want := map[string][2]string{"burler-advisor-1": {"rm", "re"}, "burler-chair": {"fm", "fe"}}
-		if len(got) != len(want) || got["burler-advisor-1"] != want["burler-advisor-1"] || got["burler-chair"] != want["burler-chair"] {
+		want := map[string][2]string{reviewChairRole: {"rm", "re"}, fixChairRole: {"fm", "fe"}}
+		if len(got) != len(want) || got[reviewChairRole] != want[reviewChairRole] || got[fixChairRole] != want[fixChairRole] {
 			t.Errorf("started halves' (model, effort) = %v; want %v", got, want)
+		}
+	})
+
+	t.Run("a review with no findings runs no fixer", func(t *testing.T) {
+		t.Parallel()
+
+		c, shuttle, profilePath, root := newRound(t, approvedReview)
+		envelope := runEnvelope(t, c, "--profile", profilePath)
+
+		if envelope["outcome"] != "done" || envelope["verdict"] != "APPROVED" || envelope["fixSkipped"] != true {
+			t.Errorf("envelope outcome/verdict/fixSkipped = %v/%v/%v; want done/APPROVED/true", envelope["outcome"], envelope["verdict"], envelope["fixSkipped"])
+		}
+		if want := []string{reviewChairRole}; !slices.Equal(shuttle.startedRoles(), want) {
+			t.Errorf("started roles = %v; want only the reviewer %v", shuttle.startedRoles(), want)
+		}
+		if report, err := os.ReadFile(filepath.Join(root, "reviews", "fixer-report.md")); err != nil || len(report) == 0 {
+			t.Errorf("fixer report = %q, %v; want the Go-written report, non-empty", report, err)
+		}
+	})
+
+	t.Run("a reviewer that died runs no fixer", func(t *testing.T) {
+		t.Parallel()
+
+		c, shuttle, profilePath, _ := newRound(t, "")
+		envelope := runEnvelope(t, c, "--profile", profilePath)
+
+		if envelope["outcome"] != "died" || envelope["fixSkipped"] != false {
+			t.Errorf("envelope outcome/fixSkipped = %v/%v; want died/false", envelope["outcome"], envelope["fixSkipped"])
+		}
+		if want := []string{reviewChairRole}; !slices.Equal(shuttle.startedRoles(), want) {
+			t.Errorf("started roles = %v; want only the reviewer %v", shuttle.startedRoles(), want)
 		}
 	})
 
 	t.Run("rejects the retired --model flag", func(t *testing.T) {
 		t.Parallel()
 
-		c, shuttle, profilePath, _, _ := newRound(t, "reviews/review.md")
+		c, shuttle, profilePath, _ := newRound(t, approvedReview)
 		var out bytes.Buffer
 		exitCode := clihelp.Execute(c.runCmd(), &out, []string{"--profile", profilePath, "--model", "m"})
 
 		if exitCode == 0 || !strings.Contains(out.String(), "--model") {
 			t.Errorf("run --model = exit %d, output %q; want a non-zero exit naming the unknown flag", exitCode, out.String())
 		}
-		if len(shuttle.specs) != 0 {
-			t.Errorf("started halves = %d; want none for a rejected flag", len(shuttle.specs))
-		}
-	})
-
-	t.Run("refuses a review-path outside the wired root with the way forward", func(t *testing.T) {
-		t.Parallel()
-
-		c, shuttle, profilePath, _, _ := newRound(t, "../outside/review.md")
-		var out bytes.Buffer
-		exitCode := clihelp.Execute(c.runCmd(), &out, []string{"--profile", profilePath})
-
-		if exitCode != 1 || !strings.Contains(out.String(), "place the review path under") {
-			t.Errorf("run = exit %d, output %q; want exit 1 with the way forward", exitCode, out.String())
-		}
-		if len(shuttle.specs) != 0 {
-			t.Errorf("started halves = %d; want none for a refused review path", len(shuttle.specs))
+		if len(shuttle.startedRoles()) != 0 {
+			t.Errorf("started halves = %v; want none for a rejected flag", shuttle.startedRoles())
 		}
 	})
 }
