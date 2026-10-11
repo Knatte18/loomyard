@@ -795,7 +795,7 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 
 	// Binding runs after the done-checks above, so a card that already failed create-not-done is
 	// never bound, and applies its whole batch of substitutions in this one RewriteRefs call.
-	bindFindings, bindErr := delta.BindHandles(in.Plan, in.Geom.PlanDir, in.Cards)
+	bindFindings, _, bindErr := delta.BindHandles(in.Plan, in.Geom.PlanDir, in.Cards)
 	// BindHandles' plan-wide RewriteRefs lands on disk BEFORE it reports either a finding or an
 	// error — the substitutions come from delta.Created while a bind-count-mismatch comes from a
 	// card whose handle matched nothing, so one call routinely does both — which is why the

@@ -85,7 +85,7 @@ type batchDelta struct {
 	answer quarry.GitDeltaAnswer
 }
 
-func (d batchDelta) BindHandles(plan *planparser.Plan, planDir string, cards []planparser.Card) ([]Finding, error) {
+func (d batchDelta) BindHandles(plan *planparser.Plan, planDir string, cards []planparser.Card) ([]Finding, []planindex.BindOutcome, error) {
 	return BindHandles(plan, planDir, d.answer, cards)
 }
 

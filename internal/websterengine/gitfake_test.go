@@ -102,7 +102,7 @@ type fakeDelta struct {
 	answer quarry.GitDeltaAnswer
 }
 
-func (d fakeDelta) BindHandles(plan *planparser.Plan, planDir string, cards []planparser.Card) ([]planindex.Finding, error) {
+func (d fakeDelta) BindHandles(plan *planparser.Plan, planDir string, cards []planparser.Card) ([]planindex.Finding, []planindex.BindOutcome, error) {
 	return planglyph.BindHandles(plan, planDir, d.answer, cards)
 }
 

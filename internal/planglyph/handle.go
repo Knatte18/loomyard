@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
@@ -406,11 +407,16 @@ func cardOwnHandles(c planparser.Card) []string {
 // card — so the plan bytes are rewritten once and a handle's rewrite reaches every referencing
 // card, not only its declaring one.
 //
-// Under plan.Language "none" this function returns nil findings and performs no call and no
+// Next to the findings it returns one planindex.BindOutcome per handle of each card in cards, in card then handle order:
+// a handle of a card that bound cleanly carries its glyph, a handle that matched nothing carries planindex.BindNoDeltaMatch,
+// and a matched handle of a card that did not bind carries planindex.BindSiblingUnmatched.
+// A RewriteRefs error comes back beside the findings and outcomes computed so far.
+//
+// Under plan.Language "none" this function returns nil findings and outcomes and performs no call and no
 // rewrite, mirroring CanonicalizeHandles.
-func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAnswer, cards []planparser.Card) ([]Finding, error) {
+func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAnswer, cards []planparser.Card) ([]Finding, []planindex.BindOutcome, error) {
 	if _, ok := plan.GlyphLanguage(); !ok {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	created := make(map[string]bool, len(delta.Created))
@@ -434,6 +440,7 @@ func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAns
 	}
 
 	var findings []Finding
+	var outcomes []planindex.BindOutcome
 	subs := make(map[string]string)
 
 	for _, c := range cards {
@@ -459,21 +466,31 @@ func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAns
 				Detail:   fmt.Sprintf("card %d owns %d handle(s) but the record-batch delta matched only %d", c.Number, len(handles), matched),
 				Severity: SeverityBlocking,
 			})
+			for _, h := range handles {
+				reason := planindex.BindNoDeltaMatch
+				if _, ok := cardSubs[h]; ok {
+					reason = planindex.BindSiblingUnmatched
+				}
+				outcomes = append(outcomes, planindex.BindOutcome{Card: c.Number, Handle: h, Reason: reason})
+			}
 			continue // Suppress the rewrite for this card entirely; never half-bound.
 		}
 
+		for _, h := range handles {
+			outcomes = append(outcomes, planindex.BindOutcome{Card: c.Number, Handle: h, Glyph: cardSubs[h]})
+		}
 		for h, id := range cardSubs {
 			subs[h] = id
 		}
 	}
 
 	if len(subs) == 0 {
-		return findings, nil
+		return findings, outcomes, nil
 	}
 
 	if err := planparser.RewriteRefs(planDir, subs); err != nil {
-		return findings, err
+		return findings, outcomes, err
 	}
 
-	return findings, nil
+	return findings, outcomes, nil
 }

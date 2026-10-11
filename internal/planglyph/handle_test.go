@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/quarry/quarry"
@@ -491,12 +493,15 @@ func TestBindHandles_MatchedHandleRewritesDeclaringAndReferencingCard(t *testing
 	})
 	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{Created: []quarry.Symbol{{ID: "sub#New"}}}}
 
-	findings, err := BindHandles(plan, dir, delta, plan.Cards)
+	findings, outcomes, err := BindHandles(plan, dir, delta, plan.Cards)
 	if err != nil {
 		t.Fatalf("BindHandles(...) returned error: %v", err)
 	}
 	if len(findings) != 0 {
 		t.Fatalf("findings = %+v; want none", findings)
+	}
+	if want := []planindex.BindOutcome{{Card: 1, Handle: "plan:sub#New", Glyph: "sub#New"}}; !reflect.DeepEqual(outcomes, want) {
+		t.Errorf("outcomes = %+v; want %+v", outcomes, want)
 	}
 
 	got1 := readCardFile(t, dir, 1, "card1")
@@ -550,12 +555,19 @@ func TestBindHandles_PartialMatchOnOneCardMismatchesAndRewritesNeither(t *testin
 	})
 	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{Created: []quarry.Symbol{{ID: "sub#One"}}}}
 
-	findings, err := BindHandles(plan, dir, delta, plan.Cards)
+	findings, outcomes, err := BindHandles(plan, dir, delta, plan.Cards)
 	if err != nil {
 		t.Fatalf("BindHandles(...) returned error: %v", err)
 	}
 	if len(findings) != 1 || findings[0].Check != "bind-count-mismatch" {
 		t.Fatalf("findings = %+v; want exactly one bind-count-mismatch", findings)
+	}
+	wantOutcomes := []planindex.BindOutcome{
+		{Card: 1, Handle: "plan:sub#One", Reason: planindex.BindSiblingUnmatched},
+		{Card: 1, Handle: "plan:sub#Two", Reason: planindex.BindNoDeltaMatch},
+	}
+	if !reflect.DeepEqual(outcomes, wantOutcomes) {
+		t.Errorf("outcomes = %+v; want %+v", outcomes, wantOutcomes)
 	}
 
 	got := readCardFile(t, dir, 1, "card1")
@@ -572,12 +584,12 @@ func TestBindHandles_ZeroHandleCardNoFindingNoWrite(t *testing.T) {
 	})
 	before := readCardFile(t, dir, 1, "card1")
 
-	findings, err := BindHandles(plan, dir, quarry.GitDeltaAnswer{}, plan.Cards)
+	findings, outcomes, err := BindHandles(plan, dir, quarry.GitDeltaAnswer{}, plan.Cards)
 	if err != nil {
 		t.Fatalf("BindHandles(...) returned error: %v", err)
 	}
-	if len(findings) != 0 {
-		t.Fatalf("findings = %+v; want none", findings)
+	if len(findings) != 0 || len(outcomes) != 0 {
+		t.Fatalf("findings = %+v, outcomes = %+v; want none", findings, outcomes)
 	}
 	after := readCardFile(t, dir, 1, "card1")
 	if before != after {
@@ -598,7 +610,7 @@ func TestBindHandles_SubstitutionReachesCardOutsideTheCompletedBatch(t *testing.
 	// Only card 1 (the declaring card) is passed as the "completed batch" — card 2 is outside it.
 	completedOnly := []planparser.Card{plan.Cards[0]}
 
-	findings, err := BindHandles(plan, dir, delta, completedOnly)
+	findings, _, err := BindHandles(plan, dir, delta, completedOnly)
 	if err != nil {
 		t.Fatalf("BindHandles(...) returned error: %v", err)
 	}
@@ -628,7 +640,7 @@ func TestBindHandles_RenameNewSideHandleBinds(t *testing.T) {
 		Renamed: []quarry.RenamedPair{{From: quarry.Symbol{ID: "sub#Old"}, To: quarry.Symbol{ID: "sub#New"}}},
 	}}
 
-	findings, err := BindHandles(plan, dir, delta, plan.Cards)
+	findings, _, err := BindHandles(plan, dir, delta, plan.Cards)
 	if err != nil {
 		t.Fatalf("BindHandles(...) returned error: %v", err)
 	}
@@ -668,7 +680,7 @@ func TestBindHandles_RenameFileSidePairIsNotAHandle(t *testing.T) {
 	})
 	before := readCardFile(t, dir, 1, "card1")
 
-	findings, err := BindHandles(plan, dir, quarry.GitDeltaAnswer{}, plan.Cards)
+	findings, _, err := BindHandles(plan, dir, quarry.GitDeltaAnswer{}, plan.Cards)
 	if err != nil {
 		t.Fatalf("BindHandles(...) returned error: %v", err)
 	}
@@ -693,12 +705,15 @@ func TestBindHandles_RenameNewSideUnmatchedMismatches(t *testing.T) {
 		Renamed: []quarry.RenamedPair{{From: quarry.Symbol{ID: "other#A"}, To: quarry.Symbol{ID: "other#B"}}},
 	}}
 
-	findings, err := BindHandles(plan, dir, delta, plan.Cards)
+	findings, outcomes, err := BindHandles(plan, dir, delta, plan.Cards)
 	if err != nil {
 		t.Fatalf("BindHandles(...) returned error: %v", err)
 	}
 	if len(findings) != 1 || findings[0].Check != "bind-count-mismatch" {
 		t.Fatalf("findings = %+v; want exactly one bind-count-mismatch", findings)
+	}
+	if want := []planindex.BindOutcome{{Card: 1, Handle: "plan:sub#New", Reason: planindex.BindNoDeltaMatch}}; !reflect.DeepEqual(outcomes, want) {
+		t.Errorf("outcomes = %+v; want %+v", outcomes, want)
 	}
 
 	got := readCardFile(t, dir, 1, "card1")
@@ -712,11 +727,11 @@ func TestBindHandles_LanguageNoneNoOp(t *testing.T) {
 	dir := t.TempDir()
 	plan := &planparser.Plan{Dir: dir, Language: "none"}
 
-	findings, err := BindHandles(plan, dir, quarry.GitDeltaAnswer{}, nil)
+	findings, outcomes, err := BindHandles(plan, dir, quarry.GitDeltaAnswer{}, nil)
 	if err != nil {
 		t.Fatalf("BindHandles(...) returned error: %v", err)
 	}
-	if findings != nil {
-		t.Errorf("findings = %+v; want nil under language: none", findings)
+	if findings != nil || outcomes != nil {
+		t.Errorf("findings = %+v, outcomes = %+v; want nil under language: none", findings, outcomes)
 	}
 }
