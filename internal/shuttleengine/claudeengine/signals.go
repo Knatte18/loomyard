@@ -27,6 +27,8 @@ const (
 	hookEventNotification     = "Notification"
 	hookEventSessionEnd       = "SessionEnd"
 	hookEventSessionStart     = "SessionStart"
+
+	hookEventPermissionRequest = "PermissionRequest"
 )
 
 // askUserQuestionToolName is the tool whose PreToolUse payload is an ask.

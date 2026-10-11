@@ -82,11 +82,14 @@
 // The count the parser reports as consumed stops before the trailing run of stamp lines with no payload after them, so an incremental reader sees each stamp with its payload at its next read.
 // A transcript-fallback turn end's tasks are read from the transcript at parse time, so the same line parsed again later can read fewer.
 //
-// The events file holds, per recording hook (Stop, UserPromptSubmit, StopFailure, Notification, SessionEnd, SessionStart for a run whose spec sets a context-after-compaction command and, in an interactive run, the AskUserQuestion record), a stamp line and then the hook's payload line.
-// The hook command is plain POSIX `sh`, `date`, `cat` and `printf`: one `printf` writes the stamp, `;` joins it to the unchanged payload append so a failed stamp never blocks the payload, and the four newer hooks end in `; true` so they exit 0 whatever the append does.
+// The events file holds, per recording hook (Stop, UserPromptSubmit, StopFailure, Notification, SessionEnd, SessionStart, PermissionRequest and, in an interactive run, the AskUserQuestion record), a stamp line and then the hook's payload line.
+// The hook command is plain POSIX `sh`, `date`, `cat` and `printf`: one `printf` writes the stamp, `;` joins it to the unchanged payload append so a failed stamp never blocks the payload, and every hook but Stop ends in `; true` so it exits 0 whatever the append does.
 // A failed `date` leaves the stamp's time empty, which the parser reads as no time.
-// No recording hook prints to standard output.
-// The one exception is the second command of the `SessionStart` entry, which Spec.ContextAfterCompaction sets: the entry carries the `compact` matcher, records the event with the recording command and then runs that command verbatim, whose output joins the session's context after every compaction.
+// Every `SessionStart` source is recorded exactly once.
+// A run without a context-after-compaction command records them in one entry with no matcher;
+// a run with one records the sources but `compact` in an entry matching `startup|resume|clear`, and `compact` in its own entry.
+// No recording hook prints to standard output, so the `PermissionRequest` recording answers no request and leaves Claude's own dialog to decide it.
+// The one exception is the second command of the `compact` `SessionStart` entry, which Spec.ContextAfterCompaction sets: it runs after the recording command and verbatim, and its output joins the session's context after every compaction.
 // SessionStartContext renders the additional-context JSON such a command prints.
 // Two accepted races follow from the append order.
 // Hooks that fire at once can interleave their stamps ahead of both payloads, which the pairing by hook name absorbs;

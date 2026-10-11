@@ -51,6 +51,11 @@ func TestParseSessionSignals(t *testing.T) {
 	runningShell := []any{map[string]any{"id": "bsh1", "type": "shell", "status": "running", "command": "sleep 600"}}
 	askTool := signalPayload(t, "PreToolUse", map[string]any{"tool_name": "AskUserQuestion", "tool_input": map[string]any{"questions": []any{map[string]any{"question": "which?"}}}})
 	transcriptStop := signalPayload(t, "Stop", map[string]any{"transcript_path": "TRANSCRIPT"})
+	captured, err := os.ReadFile(filepath.Join("testdata", "corpus", "hook-capture", "events.jsonl"))
+	if err != nil {
+		t.Fatalf("read the captured hook lines: %v", err)
+	}
+	first, second := "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"
 
 	tests := []struct {
 		name string
@@ -199,6 +204,25 @@ func TestParseSessionSignals(t *testing.T) {
 			want: []shuttleengine.SessionSignal{
 				{Kind: shuttleengine.SessionSignalTurnStart, At: at, SessionID: "sess-1"},
 				{Kind: shuttleengine.SessionSignalTurnEnd, At: otherAt, SessionID: "sess-1", Event: true},
+			},
+		},
+		{
+			name:   "captured_session_reads_each_source_turn_and_end_and_skips_the_permission_request",
+			chunks: []string{string(captured)},
+			want: []shuttleengine.SessionSignal{
+				{Kind: shuttleengine.SessionSignalSessionStart, SessionID: first, Source: "startup"},
+				{Kind: shuttleengine.SessionSignalTurnStart, SessionID: first},
+				{Kind: shuttleengine.SessionSignalTurnEnd, SessionID: first, Event: true},
+				{Kind: shuttleengine.SessionSignalTurnStart, SessionID: first},
+				{Kind: shuttleengine.SessionSignalTurnEnd, SessionID: first, Event: true},
+				{Kind: shuttleengine.SessionSignalSessionEnd, SessionID: first, Reason: "clear"},
+				{Kind: shuttleengine.SessionSignalSessionStart, SessionID: second, Source: "clear"},
+				{Kind: shuttleengine.SessionSignalTurnStart, SessionID: second},
+				{Kind: shuttleengine.SessionSignalTurnEnd, SessionID: second, Event: true},
+				{Kind: shuttleengine.SessionSignalSessionStart, SessionID: second, Source: "compact"},
+				{Kind: shuttleengine.SessionSignalSessionEnd, SessionID: second, Reason: "prompt_input_exit", EndsProcess: true},
+				{Kind: shuttleengine.SessionSignalSessionStart, SessionID: first, Source: "resume"},
+				{Kind: shuttleengine.SessionSignalSessionEnd, SessionID: first, Reason: "other", EndsProcess: true},
 			},
 		},
 		{
