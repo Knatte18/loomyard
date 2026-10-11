@@ -211,6 +211,8 @@ type RunTally struct {
 	Span Interval
 	// Working is the union of every transcript's working intervals.
 	Working []Interval
+	// Shed is the shed record read from the run's archive tag, nil when no shed status was read.
+	Shed *ShedRecord
 }
 
 // RoleTime is how much of the run's span the role's sessions spent in a turn, 0 for a role the run lacks.
@@ -841,6 +843,9 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 	fmt.Fprintln(w, "Time shares can sum past 100% where sessions overlap, a `+sub` row overlapping its parent.")
 	fmt.Fprintln(w, "The union of working time plus idle is the span.")
 	fmt.Fprintln(w)
+	if rows, span := sumProducers(r.Runs); len(rows) > 0 {
+		writeProducers(w, rows, span)
+	}
 	var cost Cost
 	for _, t := range total {
 		cost.add(t.Cost)
@@ -866,6 +871,12 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 			times.Roles[role] = run.RoleTime(role)
 		}
 		writeTable(w, run.Roles, times, charge)
+		if run.Shed != nil {
+			writeProducers(w, run.Producers(), run.Span.Duration())
+		} else {
+			fmt.Fprintln(w, "No shed status was read, so the span is the transcript window and no Producers table is printed.")
+			fmt.Fprintln(w)
+		}
 	}
 
 	fmt.Fprintf(w, "## Webster forks\n\n")

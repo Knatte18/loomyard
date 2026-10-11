@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 func writeLines(t *testing.T, path string, lines ...string) {
@@ -461,5 +464,194 @@ func TestArchivedSlugs(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// fakeArchiveTrees is an in-memory ArchiveTrees keyed by commit and tree-relative path.
+type fakeArchiveTrees map[[2]string]string
+
+func (f fakeArchiveTrees) FileAtRevision(rev, relPath string) ([]byte, error) {
+	if content, ok := f[[2]string{rev, relPath}]; ok {
+		return []byte(content), nil
+	}
+	return nil, gitrepo.ErrPathNotAtRevision
+}
+
+func TestShedRecordSpanAndProducers(t *testing.T) {
+	t.Parallel()
+	clock := func(hms string) string { return "2026-01-01T" + hms + "Z" }
+	at := func(hms string) time.Time {
+		parsed, err := time.Parse(time.RFC3339, clock(hms))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return parsed
+	}
+	entry := func(producer, at string) string {
+		return `{"producer":"` + producer + `","outcome":"done","output":"","at":"` + clock(at) + `"}`
+	}
+	folded := func(producer, at, lastAt string) string {
+		return `{"producer":"` + producer + `","outcome":"done","output":"","at":"` + clock(at) + `","repeats":1,"last_at":"` + clock(lastAt) + `"}`
+	}
+	status := func(entries ...string) string { return `{"history":[` + strings.Join(entries, ",") + `]}` }
+	seedRel, statusRel, err := shedrun.TreeRunFileRels("r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const seed = `{"recipe":"loom","driver":"go"}`
+	seedStarted := func(startedAt string) string {
+		return `{"recipe":"loom","driver":"go","started_at":"` + startedAt + `"}`
+	}
+	newest := ArchiveTag{Name: "archive/r/new", Commit: "c2", Committed: at("11:00:00")}
+	older := func(committed string) ArchiveTag {
+		return ArchiveTag{Name: "archive/r/old", Commit: "c1", Committed: at(committed)}
+	}
+	tree := func(commit, seedJSON, statusJSON string) fakeArchiveTrees {
+		files := fakeArchiveTrees{}
+		if seedJSON != "" {
+			files[[2]string{commit, seedRel}] = seedJSON
+		}
+		if statusJSON != "" {
+			files[[2]string{commit, statusRel}] = statusJSON
+		}
+		return files
+	}
+	plain := status(entry("Plan", "10:03:00"), entry("Publish", "10:12:00"))
+
+	tests := []struct {
+		name     string
+		tags     []ArchiveTag
+		files    fakeArchiveTrees
+		wantNil  bool
+		wantErr  string
+		wantFrom time.Time
+		wantTo   time.Time
+		wantRows []ProducerRow
+		wantIdle time.Duration
+	}{
+		{
+			name:     "started_at, folded and out-of-order entries",
+			tags:     []ArchiveTag{newest},
+			files:    tree("c2", seedStarted(clock("09:58:00")), status(entry("Plan", "10:03:00"), folded("Bouncer", "10:04:00", "10:06:00"), entry("Plan", "10:05:00"), entry("Publish", "10:12:00"))),
+			wantFrom: at("09:58:00"),
+			wantTo:   at("10:12:00"),
+			wantRows: []ProducerRow{
+				{"Publish", 1, 6 * time.Minute, 4 * time.Minute},
+				{"Plan", 2, 5 * time.Minute, 3 * time.Minute},
+				{"Bouncer", 1, 3 * time.Minute, 3 * time.Minute},
+			},
+			wantIdle: 10 * time.Minute,
+		},
+		{name: "no started_at starts at the first transcript line", tags: []ArchiveTag{newest}, files: tree("c2", seed, plain), wantFrom: at("10:00:00"), wantTo: at("10:12:00")},
+		{name: "older tag after the first line", tags: []ArchiveTag{newest, older("10:01:00")}, files: tree("c2", seed, plain), wantFrom: at("10:01:00"), wantTo: at("10:12:00")},
+		{name: "first entry before the first line", tags: []ArchiveTag{newest}, files: tree("c2", seed, status(entry("Plan", "09:59:00"), entry("Publish", "10:12:00"))), wantFrom: at("09:59:00"), wantTo: at("10:12:00")},
+		{name: "status without a seed", tags: []ArchiveTag{newest}, files: tree("c2", "", plain), wantFrom: at("10:00:00"), wantTo: at("10:12:00")},
+		{
+			name:     "newest tag is read",
+			tags:     []ArchiveTag{newest, older("08:00:00")},
+			files:    fakeArchiveTrees{[2]string{"c2", statusRel}: plain, [2]string{"c1", statusRel}: status(entry("Plan", "10:20:00"))},
+			wantFrom: at("10:00:00"),
+			wantTo:   at("10:12:00"),
+		},
+		{name: "status that does not decode", tags: []ArchiveTag{newest}, files: tree("c2", seed, "{"), wantErr: "status.json"},
+		{name: "seed that does not decode", tags: []ArchiveTag{newest}, files: tree("c2", "{", plain), wantErr: "seed.json"},
+		{name: "started_at that does not parse", tags: []ArchiveTag{newest}, files: tree("c2", seedStarted("yesterday"), plain), wantErr: "seed.json"},
+		{name: "entry at that does not parse", tags: []ArchiveTag{newest}, files: tree("c2", seed, status(`{"producer":"Plan","at":"soon"}`)), wantErr: "status.json"},
+		{name: "folded last_at that does not parse", tags: []ArchiveTag{newest}, files: tree("c2", seed, status(`{"producer":"Plan","at":"`+clock("10:03:00")+`","repeats":1,"last_at":"later"}`)), wantErr: "status.json"},
+		{name: "no tags", files: tree("c2", seed, plain), wantNil: true},
+		{name: "tag without status", tags: []ArchiveTag{newest}, files: tree("c2", seed, ""), wantNil: true},
+		{name: "empty history", tags: []ArchiveTag{newest}, files: tree("c2", seed, status()), wantNil: true},
+	}
+	// A run whose burler works 10:00-10:02 and 10:08-10:10.
+	counted := func(t *testing.T) RunTally {
+		t.Helper()
+		dir := t.TempDir()
+		writeLines(t, filepath.Join(dir, "a.jsonl"),
+			`{"type":"custom-title","customTitle":"ly:r:burler"}`,
+			userAt(t, clock("10:00:00"), "go"),
+			stamped(clock("10:02:00"), `"end_turn"`),
+			userAt(t, clock("10:08:00"), "again"),
+			stamped(clock("10:10:00"), `"end_turn"`),
+		)
+		run, err := CountRun(dir, "r")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return run
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			rec, err := readShedRecord(tt.files, "r", tt.tags)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("readShedRecord = nil error; want one naming the file %s", tt.wantErr)
+				}
+				for _, part := range []string{"r", newest.Name, tt.wantErr} {
+					if !strings.Contains(err.Error(), part) {
+						t.Errorf("readShedRecord error = %q; want it to name %q", err, part)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.wantNil {
+				if rec != nil {
+					t.Fatalf("readShedRecord = %+v; want no record", rec)
+				}
+				return
+			}
+			run := counted(t)
+			run.useShedRecord(*rec)
+			if !run.Span.From.Equal(tt.wantFrom) || !run.Span.To.Equal(tt.wantTo) {
+				t.Errorf("span = %v..%v; want %v..%v", run.Span.From, run.Span.To, tt.wantFrom, tt.wantTo)
+			}
+			if tt.wantRows == nil {
+				return
+			}
+			if got := run.Producers(); !slices.Equal(got, tt.wantRows) {
+				t.Errorf("Producers() = %v; want %v", got, tt.wantRows)
+			}
+			if got := run.Idle(); got != tt.wantIdle {
+				t.Errorf("Idle() = %v; want %v", got, tt.wantIdle)
+			}
+		})
+	}
+
+	// The report prints the Producers table for a run with a record, the no-status line for one without, and the summed table in All runs.
+	rec, err := readShedRecord(tests[0].files, "r", tests[0].tags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withRecord := counted(t)
+	withRecord.useShedRecord(*rec)
+	without := counted(t)
+	without.Slug = "bare"
+	withRecord.Slug = "full"
+	var buf bytes.Buffer
+	if err := (Report{Runs: []RunTally{withRecord, without}}).WriteMarkdown(&buf); err != nil {
+		t.Fatal(err)
+	}
+	report := buf.String()
+	all, rest, _ := strings.Cut(report, "## full\n")
+	perFull, perBare, _ := strings.Cut(rest, "## bare\n")
+	row := "| Publish | 1 | 6m0s | 4m0s | 42.9% |"
+	for name, section := range map[string]string{"All runs": all, "full": perFull} {
+		if !strings.Contains(section, "### Producers") || !strings.Contains(section, row) {
+			t.Errorf("%s section lacks the Producers table row %q:\n%s", name, row, section)
+		}
+	}
+	noStatus := "No shed status was read, so the span is the transcript window and no Producers table is printed."
+	if !strings.Contains(perBare, noStatus) || strings.Contains(perBare, "### Producers") {
+		t.Errorf("bare section = %q; want the no-status line and no table", perBare)
+	}
+	buf.Reset()
+	if err := (Report{Runs: []RunTally{without}}).WriteMarkdown(&buf); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.SplitN(buf.String(), "## bare\n", 2)[0], "### Producers") {
+		t.Errorf("All runs section prints a Producers table with no record:\n%s", buf.String())
 	}
 }
