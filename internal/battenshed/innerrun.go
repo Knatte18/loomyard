@@ -551,7 +551,7 @@ func (p *innerRunProducer) wait(ctx context.Context, w *childWait, step armStep)
 	w.probeDue = true
 	w.aliveStale = true
 	w.activityStale = true
-	p.noticeStep(ctx, w, false)
+	p.noticeStep(ctx, w)
 	if end := step(ctx, w); end != nil {
 		return end.results()
 	}
@@ -582,7 +582,7 @@ func (p *innerRunProducer) check(ctx context.Context, w *childWait, step armStep
 	if w.probeDue {
 		p.refreshWatched(ctx)
 	}
-	p.noticeStep(ctx, w, false)
+	p.noticeStep(ctx, w)
 	if end := step(ctx, w); end != nil {
 		return end
 	}
@@ -884,7 +884,6 @@ func (p *innerRunProducer) doneStep(ctx context.Context, w *childWait) *waitEnd 
 	}
 
 	finish := func() *waitEnd {
-		p.noticeStep(ctx, w, true)
 		if err := os.Remove(markerPath); err != nil && !os.IsNotExist(err) {
 			return hardEnd(fmt.Errorf("battenshed: %s: remove done-seen marker: %w", p.name, err))
 		}

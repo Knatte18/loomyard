@@ -278,8 +278,7 @@ func (p *innerRunProducer) observeState(state shedengine.State, at time.Time) {
 // noticeStep sends the notice the child's current status calls for, once per episode, when it may go.
 // The row's outcome never depends on it: every failure here is a Warn.
 // It does nothing when no Notify was wired.
-// final is true for the attempt the Done return makes: it ignores the retry spacing, and a notice that still cannot be queued is logged as lost.
-func (p *innerRunProducer) noticeStep(ctx context.Context, w *childWait, final bool) {
+func (p *innerRunProducer) noticeStep(ctx context.Context, w *childWait) {
 	if !p.notices {
 		return
 	}
@@ -316,7 +315,7 @@ func (p *innerRunProducer) noticeStep(ctx context.Context, w *childWait, final b
 		return
 	}
 	line := renderNotice(noticeLine{slug: p.slug, condition: conditionText(finding, status), status: status, since: p.episode.since, report: report, pairDir: pairDir})
-	if p.deliver(ctx, key, condition, line, final) {
+	if p.deliver(ctx, key, condition, line) {
 		kept = append(kept, key)
 	}
 	p.saveEpisode(kept, old)
@@ -337,14 +336,18 @@ func (p *innerRunProducer) noticeDriverBusy(ctx context.Context, w *childWait) {
 	condition := haltText(w.status) + "; " + noticeDriverBusyCondition
 	line := renderNotice(noticeLine{slug: p.slug, condition: condition, status: w.status, since: p.episode.since, pairDir: pairDir})
 	key := noticeKey(noticeDriverBusyCondition, w.status.State, p.episode.since.UnixNano())
-	if p.deliver(ctx, key, noticeDriverBusyCondition, line, false) {
+	if p.deliver(ctx, key, noticeDriverBusyCondition, line) {
 		p.driverBusyNoticed = true
 	}
 }
 
 // noticeCondition returns the condition the child is in, with the stamp of its episode key, and the newest agent activity the check could read.
+// A done child is in no condition, since it sends no notice.
 // A dead driver strand is checked before the agents, so an agent-based condition needs a live driver.
 func (p *innerRunProducer) noticeCondition(ctx context.Context, w *childWait) (noticeFinding, activityStamp) {
+	if w.status.State == shedengine.StateDone {
+		return noticeFinding{}, activityStamp{}
+	}
 	if w.status.State != shedengine.StateRunning {
 		return noticeFinding{condition: noticeStateChanged, stamp: p.episode.since.UnixNano()}, activityStamp{}
 	}
@@ -433,16 +436,12 @@ func (p *innerRunProducer) logSessionStatesAtNotice(runs []AgentActivity, condit
 }
 
 // stateChangeReady decides whether the state-changed notice may go now, and returns its report clause.
-// A done child's notice goes at once and carries no report.
 // A parked stop's goes once a stop report written at or after the episode's since exists, or the driver strand has ended, or noticeReportWait has passed since;
 // a report older than since never qualifies, and a notice that goes without one says `report none yet`.
 // An awaiting child that carries a parent notice, while this batten holds the watched marker, is left to its driver's own relay:
 // its notice goes when the driver strand has ended, or noticeReportWait passed with no report, or noticeRelayWait passed since the report with no decision record.
 func (p *innerRunProducer) stateChangeReady(ctx context.Context, w *childWait) (ready bool, clause string) {
 	status := w.status
-	if status.State == shedengine.StateDone {
-		return true, ""
-	}
 	now := p.deps.Now()
 	path, at, found := p.stopReport()
 	qualifies := found && !at.Before(p.episode.since)
@@ -491,8 +490,8 @@ func (p *innerRunProducer) undecided() bool {
 }
 
 // deliver makes one attempt to send line, honouring the retry spacing, the missing orch strand and the attempt cap, and reports whether the notice was queued.
-// The attempts are spaced by noticeProbe unless final is set; a notice not queued after noticeMaxAttempts is dropped with a Warn, and a final attempt that does not queue it logs it as lost.
-func (p *innerRunProducer) deliver(ctx context.Context, key, condition, line string, final bool) bool {
+// The attempts are spaced by noticeProbe; a notice not queued after noticeMaxAttempts is dropped with a Warn.
+func (p *innerRunProducer) deliver(ctx context.Context, key, condition, line string) bool {
 	d := p.episode.deliveries[key]
 	if d == nil {
 		d = &noticeDelivery{}
@@ -502,7 +501,7 @@ func (p *innerRunProducer) deliver(ctx context.Context, key, condition, line str
 		return false
 	}
 	now := p.deps.Now()
-	if !final && !d.lastTry.IsZero() && now.Sub(d.lastTry) < p.noticeProbe {
+	if !d.lastTry.IsZero() && now.Sub(d.lastTry) < p.noticeProbe {
 		return false
 	}
 	d.lastTry = now
@@ -517,10 +516,6 @@ func (p *innerRunProducer) deliver(ctx context.Context, key, condition, line str
 			d.strandWarned = true
 			logger.Warn("battenshed: notice held back; no orch strand is recorded to receive it", "producer", p.name, "slug", p.slug, "condition", condition)
 		}
-		if final {
-			d.dropped = true
-			logger.Warn("battenshed: notice lost; no orch strand was recorded when the run finished", "producer", p.name, "slug", p.slug, "condition", condition)
-		}
 		return false
 	}
 
@@ -530,7 +525,7 @@ func (p *innerRunProducer) deliver(ctx context.Context, key, condition, line str
 	}
 	d.attempts++
 	logger.Warn("battenshed: notice not delivered", "producer", p.name, "slug", p.slug, "condition", condition, "queued", queued, "attempt", d.attempts, "error", err)
-	if d.attempts >= noticeMaxAttempts || final {
+	if d.attempts >= noticeMaxAttempts {
 		d.dropped = true
 		logger.Warn("battenshed: notice dropped", "producer", p.name, "slug", p.slug, "condition", condition, "attempts", d.attempts)
 	}

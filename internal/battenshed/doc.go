@@ -33,7 +33,7 @@
 // A parked stop's notice waits for the driver's stop report, for the driver strand to end, or for three minutes after `since`, whichever comes first, and an older report never qualifies.
 // An awaiting child whose status carries a parent notice, while this batten holds the watched marker, is left to its driver's relay:
 // its notice goes when the driver strand has ended, or three minutes passed with no report, or ten minutes passed since the report with no decision record.
-// A done child's notice goes on the first check that sees it, and the Done return makes one last attempt of a notice still pending.
+// A done child sends no notice: a landing that succeeds needs nothing from the orch.
 // A resume the child refuses because its parked driver's pane holds a draft, an active operator or another busy reading (a spawn error wrapping ErrChildDriverBusy) is retried like a not-parked one, without a deadline, until the resume lands, the child leaves awaiting or batten is paused or stopped.
 // Its wait reason names the draft and the remedy, and one notice per stall tells the orch to clear the draft in the driver's pane; the notice never carries the refusal's text, which quotes another pane, and a landed resume re-arms it.
 // Delivery: the Notify seam reports whether the line was queued; with no orch strand recorded it is not called, one Warn is logged per episode and the strand is asked about again once per notice_probe_s;
