@@ -440,7 +440,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Fatalf("WriteJSON(status) = %v; want nil", err)
 		}
 
-		routing, err := loomrecipe.Routing(c.cfg.ReviewMaxBounces)
+		routing, err := loomrecipe.Routing(c.cfg.ReviewMaxBounces, c.env.RowMaxBounces)
 		if err != nil {
 			t.Fatalf("loomrecipe.Routing(%d) = %v; want nil", c.cfg.ReviewMaxBounces, err)
 		}
@@ -865,17 +865,28 @@ func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]s
 // plan_review lands in the Plan-Burler-* rows' RowReviewModels entries alone, and the Discussion-Burler-* rows keep the run-wide models.
 // The Webster-Burler-* rows take the template's webster_review (one sonnet entry of effort high) with the run-wide fix models.
 // plan_judge, seed and webster_seed land in each Bouncer row's RowBouncerModels entry, the darn recipe's Darn-Bouncer taking Webster-Bouncer's.
+// The per-perch budget and auto-accept keys land in RowMaxBounces and RowAutoAccept under the Bouncer rows' names.
 func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	t.Parallel()
 
 	loc := hubLocation(t, "pair", ".")
 	seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{
 		"plan_review": "opus[effort=low]", "plan_judge": "opus[effort=high]", "seed": "haiku[effort=low]", "webster_seed": "opus[effort=low]",
+		"plan_max_bounces": "2", "webster_max_bounces": "1", "webster_auto_accept": "true",
 	})
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	wantRowMaxBounces := map[string]int{loomshed.NameDiscussionBouncer: 0, loomshed.NamePlanBouncer: 2, loomshed.NameWebsterBouncer: 1}
+	if !reflect.DeepEqual(c.env.RowMaxBounces, wantRowMaxBounces) {
+		t.Errorf("RowMaxBounces = %v; want %v", c.env.RowMaxBounces, wantRowMaxBounces)
+	}
+	wantRowAutoAccept := map[string]bool{loomshed.NameDiscussionBouncer: false, loomshed.NamePlanBouncer: false, loomshed.NameWebsterBouncer: true}
+	if !reflect.DeepEqual(c.env.RowAutoAccept, wantRowAutoAccept) {
+		t.Errorf("RowAutoAccept = %v; want %v", c.env.RowAutoAccept, wantRowAutoAccept)
 	}
 
 	// Each Bouncer row takes its segment's resolved pair: the template's judge is sonnet of effort medium.

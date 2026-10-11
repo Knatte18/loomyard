@@ -110,9 +110,8 @@ func applyDarnReviewBudget(producers []shedengine.ProducerDef, budget int) error
 	if err != nil {
 		return err
 	}
-	applyReviewBudget(producers, segments, budget)
 
-	return nil
+	return applyReviewBudget(producers, segments, budget, nil)
 }
 
 // applyVerifyAttempts sets the attempts of the verify gate entry of the recipe row named row.

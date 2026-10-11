@@ -66,8 +66,9 @@
 # rows is restarted, not migrated, as it is for the earlier retired rows above.
 #
 # The Bouncer, review and fix rows of those three segments declare no max_bounces: their budget
-# comes from loom.yaml's review_max_bounces, applied by internal/loomrecipe. PR-Gate keeps its
-# literal max_bounces.
+# is the perch's own loom.yaml key (discussion_max_bounces, plan_max_bounces or webster_max_bounces),
+# falling back to review_max_bounces where that is 0, applied by internal/loomrecipe. PR-Gate keeps
+# its literal max_bounces.
 
 version: 1
 entry: Preflight

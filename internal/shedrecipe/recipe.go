@@ -108,6 +108,12 @@ type Env struct {
 	// ReviewMaxBounces is the run-wide bounce budget of every review segment, read by loomrecipe alone.
 	// It is set on each row of a segment holding a Bouncer row, because the recipe declares no max_bounces there.
 	ReviewMaxBounces int
+	// RowMaxBounces is the bounce budget of each review segment, keyed by the segment's Bouncer row name as RowBouncerModels is, read by loomrecipe alone.
+	// A nil map, a missing entry and 0 take ReviewMaxBounces.
+	RowMaxBounces map[string]int
+	// RowAutoAccept is the auto-accept flag of each Bouncer row, keyed by row name; a nil map and a missing entry mean false.
+	// A Bouncer told true settles a spent bounce budget as an accept instead of escalating to the parent.
+	RowAutoAccept map[string]bool
 
 	// DiscussionSeats, when true, runs the Discussion-Write row on the DiscussionSeats engine instead of the recipe's DiscussionWrite, read by loomrecipe alone.
 	DiscussionSeats bool

@@ -4,8 +4,11 @@
 // It takes every absolute path from its caller and has no direct production import of
 // internal/lyxcwd, per the Told-Geometry Invariant.
 //
-// The bounce budget of every review segment (a segment holding a Bouncer row) is not declared in the loom recipe: New takes it from shedrecipe.Env.ReviewMaxBounces and Routing from its argument,
-// and both set it on every row of those segments.
+// The bounce budget of every review segment (a segment holding a Bouncer row) is not declared in the loom recipe.
+// It is the perch's own `<perch>_max_bounces` of loom.yaml, falling back to `review_max_bounces` where that is 0:
+// New takes the run-wide value from shedrecipe.Env.ReviewMaxBounces and the per-perch ones from shedrecipe.Env.RowMaxBounces, keyed by the segment's Bouncer row name, and Routing takes both from its arguments.
+// Both set the resolved value on every row of the segment, the Bouncer, the review row and the fix row, so the engine and the routing projection hold one value per perch.
+// A negative per-perch entry is a wiring error naming its Bouncer row.
 // PR-Gate keeps the recipe's own max_bounces.
 //
 // The second value New takes from the env is the Discussion-Write producer: when shedrecipe.Env.DiscussionSeats is true, New runs that row on the DiscussionSeats engine instead of the recipe's DiscussionWrite.

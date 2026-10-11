@@ -12,9 +12,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
@@ -36,7 +38,7 @@ func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.Burler
 		if err != nil || !found {
 			return 0, 0, false, err
 		}
-		routing, err := Routing(budgetEscalationBudget)
+		routing, err := Routing(budgetEscalationBudget, nil)
 		if err != nil {
 			return 0, 0, false, err
 		}
@@ -227,5 +229,112 @@ func TestEscalation_BudgetContinueGrantsOneRoundThenAccept(t *testing.T) {
 	}
 	if !settled {
 		t.Errorf("History has no %s Done entry after the accept: %+v", loomshed.NameDiscussionBouncer, result.History)
+	}
+}
+
+// TestEscalation_PerchBudgetOneWithAutoAccept drives the sequence fixture with Webster-Bouncer's own budget at 1 and its auto-accept flag set, and a Webster judge that rules CONTINUE.
+// With the fix half passing, the Webster-Review segment runs one review and one fix and Webster-Bouncer settles Done with an automatic accept on disk, and the run reaches Describe.
+// With the fix half's gate failing in round 1 no round is left to judge, so the run halts blocked, with no circling decision and no Webster-Bouncer Done.
+func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
+	tests := []struct {
+		name         string
+		fixResults   []burlerengine.FixResult
+		wantOutcome  shedengine.RunOutcome
+		wantAccepted bool
+	}{
+		{
+			name:         "the fix half passes",
+			fixResults:   []burlerengine.FixResult{{Outcome: shuttleengine.OutcomeDone}},
+			wantOutcome:  shedengine.RunBlocked,
+			wantAccepted: true,
+		},
+		{
+			name: "the fix half's gate fails in round 1",
+			fixResults: []burlerengine.FixResult{
+				{Outcome: shuttleengine.OutcomeDone},
+				{Outcome: shuttleengine.OutcomeDone},
+				{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: false, Attempts: 1}},
+			},
+			wantOutcome: shedengine.RunBlocked,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, env, paths := buildSequenceFixture(t)
+			rowBudgets := map[string]int{loomshed.NameWebsterBouncer: 1}
+			env.RowMaxBounces = rowBudgets
+			env.RowAutoAccept = map[string]bool{loomshed.NameWebsterBouncer: true}
+			env.Burler.(*shedfake.BurlerHalfRunner).FixResults = tt.fixResults
+
+			shuttle := env.Shuttle.(*shedfake.Shuttle)
+			dispatch := shuttle.RunFn
+			websterRunDir := string(filepath.Separator) + "webster" + string(filepath.Separator)
+			shuttle.RunFn = func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
+				if spec.Role == "bouncer-judge" && len(spec.OutputFiles) > 0 && strings.Contains(spec.OutputFiles[0], websterRunDir) {
+					return writeBouncerJudge(spec, "CONTINUE")
+				}
+				return dispatch(spec)
+			}
+			env.SegmentBounces = func(row string) (int, int, bool, error) {
+				st, found, err := state.ReadJSONStrict[shedengine.Status](env.StatusPath, env.StatusLockPath)
+				if err != nil || !found {
+					return 0, 0, false, err
+				}
+				routing, err := Routing(env.ReviewMaxBounces, rowBudgets)
+				if err != nil {
+					return 0, 0, false, err
+				}
+				count, budget, inSegment := routing.Bounces(row, st.History)
+				return count, budget, inSegment, nil
+			}
+
+			shed, err := New(env, paths)
+			if err != nil {
+				t.Fatalf("New() error = %v; want nil", err)
+			}
+			shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
+
+			result, err := shed.Run(context.Background())
+			if err != nil {
+				t.Fatalf("Run() error = %v; want nil", err)
+			}
+			if result.Outcome != tt.wantOutcome {
+				t.Fatalf("Run() outcome = %q at %q (reason %q); want %q", result.Outcome, result.HaltedProducer, result.Reason, tt.wantOutcome)
+			}
+
+			bouncerDone, reviews, fixes, describeDone := 0, 0, 0, 0
+			for _, e := range result.History {
+				switch {
+				case e.Producer == loomshed.NameWebsterBouncer && e.Outcome == shedengine.Done:
+					bouncerDone++
+				case e.Producer == loomshed.NameWebsterBurlerReview:
+					reviews++
+				case e.Producer == loomshed.NameWebsterBurlerFix:
+					fixes++
+				case e.Producer == loomshed.NameDescribe && e.Outcome == shedengine.Done:
+					describeDone++
+				}
+			}
+			decision, err := os.ReadFile(filepath.Join(env.RunRoot, "webster", "round-1-circling-decision.md"))
+
+			if tt.wantAccepted {
+				if reviews != 1 || fixes != 1 {
+					t.Errorf("Webster-Review review/fix calls = %d/%d; want exactly 1/1", reviews, fixes)
+				}
+				if bouncerDone != 1 || describeDone != 1 {
+					t.Errorf("Webster-Bouncer Done = %d, Describe Done = %d; want 1 and 1, the accept reaching Describe", bouncerDone, describeDone)
+				}
+				if err != nil || !strings.Contains(string(decision), "automatic: true") || !strings.Contains(string(decision), "settled: true") {
+					t.Errorf("round-1 decision = %q, %v; want a settled automatic accept", decision, err)
+				}
+				return
+			}
+			if bouncerDone != 0 || describeDone != 0 {
+				t.Errorf("Webster-Bouncer Done = %d, Describe Done = %d; want neither", bouncerDone, describeDone)
+			}
+			if !errors.Is(err, fs.ErrNotExist) {
+				t.Errorf("round-1 decision = %q, %v; want none recorded", decision, err)
+			}
+		})
 	}
 }

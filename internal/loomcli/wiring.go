@@ -762,10 +762,14 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		Now:     time.Now,
 
 		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
-		Slug:           seedSlug(location.WorktreeName),
-		SegmentBounces: segmentBounces(statusPath, statusLockPath, func() (shedengine.Routing, error) { return loomrecipe.Routing(loomCfg.ReviewMaxBounces) }),
+		Slug: seedSlug(location.WorktreeName),
+		SegmentBounces: segmentBounces(statusPath, statusLockPath, func() (shedengine.Routing, error) {
+			return loomrecipe.Routing(loomCfg.ReviewMaxBounces, perchMaxBounces(loomCfg))
+		}),
 
 		ReviewMaxBounces:         loomCfg.ReviewMaxBounces,
+		RowMaxBounces:            perchMaxBounces(loomCfg),
+		RowAutoAccept:            perchAutoAccept(loomCfg),
 		DiscussionSeats:          loomCfg.DiscussionProducer == loomengine.DiscussionProducerSeats,
 		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
 
@@ -855,6 +859,25 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	c.driverDirectory = newReedDriverDirectory(reedEngine)
 	c.bouncerSubdir = loomrecipe.BouncerRunSubdir
 	return nil
+}
+
+// perchMaxBounces maps loom.yaml's per-perch budget keys onto the Discussion, Plan and Webster Bouncer rows' names.
+// A 0 entry means the perch takes the run-wide review_max_bounces.
+func perchMaxBounces(cfg loomengine.Config) map[string]int {
+	return map[string]int{
+		loomshed.NameDiscussionBouncer: cfg.DiscussionMaxBounces,
+		loomshed.NamePlanBouncer:       cfg.PlanMaxBounces,
+		loomshed.NameWebsterBouncer:    cfg.WebsterMaxBounces,
+	}
+}
+
+// perchAutoAccept maps loom.yaml's per-perch auto-accept keys onto the Discussion, Plan and Webster Bouncer rows' names.
+func perchAutoAccept(cfg loomengine.Config) map[string]bool {
+	return map[string]bool{
+		loomshed.NameDiscussionBouncer: cfg.DiscussionAutoAccept,
+		loomshed.NamePlanBouncer:       cfg.PlanAutoAccept,
+		loomshed.NameWebsterBouncer:    cfg.WebsterAutoAccept,
+	}
 }
 
 // segmentBounces returns the Env.SegmentBounces seam over the status file at statusPath, locked by statusLockPath.

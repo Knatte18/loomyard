@@ -205,6 +205,7 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		Slug:            env.Slug,
 		ParentName:      env.ParentName,
 		Bounces:         bounces,
+		AutoAccept:      env.RowAutoAccept[name],
 
 		DecisionRecordPath: env.DecisionRecordPath,
 
