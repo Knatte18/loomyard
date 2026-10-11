@@ -25,7 +25,9 @@
 //
 // RunsRootRel names the anchor-relative run-records root, because fabricengine's Add drops everything under it from a freshly forked pair.
 //
-// Every constructor in this package is a plain filepath.Join onto a told *lyxcwd.Location's
-// AnchorPath(), per the Cwd Resolution Invariant: the package resolves no cwd of its own and spawns
-// no git.
+// TreeRunFileRels names a run's seed.json and status.json as slash-separated paths relative to a git tree, with no alias and no legacy fallback.
+// ParseSeed decodes seed bytes a caller read elsewhere, with the same strictness as ReadSeed.
+//
+// Every constructor that returns an absolute path joins onto a told *lyxcwd.Location's AnchorPath(), per the Cwd Resolution Invariant;
+// the *Rel constructors and TreeRunFileRels return relative paths, and no constructor resolves a cwd or spawns git.
 package shedrun

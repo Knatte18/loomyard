@@ -126,6 +126,25 @@ func TestValidateDriver(t *testing.T) {
 	}
 }
 
+func TestParseSeed(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		data string
+	}{
+		{"unknown driver", `{"recipe":"loom","driver":"rust"}`},
+		{"empty params key", `{"recipe":"loom","driver":"go","params":{"":"v"}}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := ParseSeed([]byte(tt.data)); err == nil {
+				t.Errorf("ParseSeed(%s) = nil error; want an error", tt.data)
+			}
+		})
+	}
+}
+
 func TestValidateRecipe(t *testing.T) {
 	tests := []struct {
 		name    string

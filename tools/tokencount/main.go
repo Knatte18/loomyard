@@ -1,5 +1,5 @@
 // Command tokencount reads Claude Code's session transcripts for a set of task runs and
-// writes a markdown report of their token use per run and per role, each role summed
+// writes a markdown report of their token use and time per run and per role, each role summed
 // over all runs first.
 //
 //	go run ./tools/tokencount
@@ -40,7 +40,8 @@
 //
 // With -calibrate <profile> the report gains a "Calibration (<profile>)" section of two tables, each row a fork that names cards.
 // The one repository flag, -weft, names the repository holding the archive tags of finished runs, the runs' plan commits and the runs' webster records;
-// its default, the current worktree's weft sibling, applies whenever the flag is empty and either no slugs are named or the calibration is asked for, so -calibrate needs no other flag.
+// its default, the current worktree's weft sibling, applies whenever the flag is empty, slugs named or not, so -calibrate needs no other flag.
+// A -hub naming a directory other than the current worktree's parent needs -weft, because the default would read another hub's records.
 // -config names the directory whose batcher.yaml holds the profile, default the current directory.
 // The code repository is the current directory.
 //
@@ -96,6 +97,25 @@
 // a cache write is priced by its lifetime, five minutes or one hour, as the transcript's usage splits it, and a model with a long-prompt rate card, Haiku 5.5 above 100K tokens of input + cache write + cache read, is priced per message on the card its prompt selects.
 // A message with usage whose model the table lacks is unpriced, never free: its cell reads "unpriced" or "$x + unpriced", and the "All runs" section names the unpriced models.
 //
+// The time and time share columns give a role's working time and its percentage of the table's span.
+// Time is turn time: a session works from a user or assistant line until the line that ends its turn.
+// That is an assistant line whose stop_reason is set and not tool_use, a user line holding an interrupt marker, or a user line holding a <local-command-stdout> output.
+// A role's time is the union of its transcripts' working intervals clipped to the span, a sub-agent's transcripts counting under <role>+sub.
+// The idle row is the span minus the union of every working interval of the run, orch sessions left out, so it holds parent review, gate-slot waits, a parked driver and Go-only work.
+// The orch row's time cells are blank, and the "All runs" table sums each run's figures per role, idle and span, with no union across runs.
+//
+// The span is the window the time figures are measured over.
+// It runs from the archived seed's started_at, or from the run's earliest transcript line without one.
+// That start is bounded below by the commit date of the slug's next-older archive tag and above by the end of the first history entry.
+// It ends at the latest history entry's end.
+// Both files are read from the slug's newest archive/<slug>/<sha> tag.
+// A run whose worktree still exists, or with no tag or no status at its tag, uses its transcript window instead and prints no Producers table.
+//
+// The Producers table splits the span by shed history entry: each entry owns the interval from the latest end before it to its own end.
+// So the elapsed figures sum to the span, and a row's elapsed holds any wait before the row started.
+// A row's idle is the part of its elapsed in which no session of the run was in a turn.
+// "All runs" sums the table per producer over the runs that have one.
+//
 // Right after the "All runs" section, before the per-run sections, comes the "Orchestrator" section: the hub orchestrator's own session, which runs in the prime and spans many runs, charged to the counted runs.
 // An orch session is a session in the prime's project directory whose role is orch (ly:orch, lyxhub:orch), and its sub-agents, the orch's review, gate and stop forks, count as orch+sub;
 // usage is counted once per message id across them.
@@ -122,6 +142,23 @@ import (
 // repositoryFlag is the name of the one flag naming the repository that holds the archive tags, plan commits and webster records.
 const repositoryFlag = "weft"
 
+// resolveHub makes the hub flag's value absolute and clean: empty is the current worktree's parent, and a relative path joins onto wd.
+// It refuses a hub other than that parent when weft is empty, because the default weft would then read another hub's records.
+func resolveHub(hub, wd, weft string) (string, error) {
+	parent := filepath.Clean(filepath.Dir(wd))
+	switch {
+	case hub == "":
+		hub = parent
+	case !filepath.IsAbs(hub):
+		hub = filepath.Join(wd, hub)
+	}
+	hub = filepath.Clean(hub)
+	if hub != parent && weft == "" {
+		return "", fmt.Errorf("-hub %s is not the current directory's parent %s, which is the hub this run assumes; the default weft would read another hub's records, so -%s must name that hub's weft repository", hub, parent, repositoryFlag)
+	}
+	return hub, nil
+}
+
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "tokencount:", err)
@@ -145,8 +182,9 @@ func run(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if *hub == "" {
-		*hub = filepath.Dir(wd)
+	*hub, err = resolveHub(*hub, wd, *weft)
+	if err != nil {
+		return err
 	}
 	if *projects == "" {
 		home, err := os.UserHomeDir()
@@ -156,18 +194,19 @@ func run(args []string, stdout io.Writer) error {
 		*projects = filepath.Join(home, ".claude", "projects")
 	}
 	slugs := fs.Args()
-	if *weft == "" && (len(slugs) == 0 || *calibrate != "") {
+	if *weft == "" {
 		loc, err := lyxcwd.Resolve(wd)
 		if err != nil {
 			return err
 		}
 		*weft = fabricengine.RecordsWorktree(loc)
 	}
+	fabric := gitrepo.New(*weft)
+	finished, err := finishedRuns(*weft)
+	if err != nil {
+		return err
+	}
 	if len(slugs) == 0 {
-		finished, err := finishedRuns(*weft)
-		if err != nil {
-			return err
-		}
 		slugs, err = recentRuns(*projects, *hub, filepath.Base(wd), finished, *last)
 		if err != nil {
 			return err
@@ -183,6 +222,20 @@ func run(args []string, stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
+		// Teardown removes a finished run's worktree, so one that still exists is in flight and its archive tags belong to an older run of the slug.
+		_, err = os.Stat(filepath.Join(*hub, slug))
+		if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if os.IsNotExist(err) {
+			record, err := readShedRecord(fabric, slug, finished[slug])
+			if err != nil {
+				return err
+			}
+			if record != nil {
+				r.useShedRecord(*record)
+			}
+		}
 		report.Runs = append(report.Runs, r)
 	}
 	orch, err := CountOrch(projectDir(*projects, wd), report.Runs)
@@ -197,7 +250,6 @@ func run(args []string, stdout io.Writer) error {
 		if *configDir == "" {
 			*configDir = wd
 		}
-		fabric := gitrepo.New(*weft)
 		c, err := Calibrate(report.Runs, *calibrate, *configDir, fabric, gitrepo.New(wd))
 		if err != nil {
 			return err
@@ -219,7 +271,7 @@ func run(args []string, stdout io.Writer) error {
 		defer f.Close()
 		w = f
 	}
-	fmt.Fprintf(w, "# Token usage by role\n\nGenerated %s for %s.\n\n", time.Now().Format("2006-01-02 15:04"), strings.Join(slugs, ", "))
+	fmt.Fprintf(w, "# Token usage and time by role\n\nGenerated %s for %s.\n\n", time.Now().Format("2006-01-02 15:04"), strings.Join(slugs, ", "))
 	if err := report.WriteMarkdown(w); err != nil {
 		return err
 	}

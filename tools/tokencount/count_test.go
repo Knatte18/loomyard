@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 func writeLines(t *testing.T, path string, lines ...string) {
@@ -51,6 +54,113 @@ func jsonString(t *testing.T, s string) string {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+// stamped is an assistant transcript line at ts with the given stop reason.
+func stamped(ts, stopReason string) string {
+	return `{"type":"assistant","timestamp":"` + ts + `","message":{"id":"` + ts + `","stop_reason":` + stopReason + `,"usage":{"input_tokens":1,"output_tokens":1}}}`
+}
+
+// userAt is a user transcript line at ts holding text.
+func userAt(t *testing.T, ts, text string) string {
+	t.Helper()
+	return `{"type":"user","timestamp":"` + ts + `","message":{"role":"user","content":` + jsonString(t, text) + `}}`
+}
+
+func TestRunTimeByRole(t *testing.T) {
+	t.Parallel()
+	const endTurn, toolUse = `"end_turn"`, `"tool_use"`
+	build := func(t *testing.T, sessions map[string][]string) RunTally {
+		t.Helper()
+		dir := t.TempDir()
+		for name, lines := range sessions {
+			writeLines(t, filepath.Join(dir, name), lines...)
+		}
+		run, err := CountRun(dir, "r")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return run
+	}
+	title := func(role string) string { return `{"type":"custom-title","customTitle":"ly:r:` + role + `"}` }
+
+	// burler: two turns of 1m and 2m with a 10m gap, then an interrupted turn of 1m followed by 5m of idle and a typed local command.
+	// tool: a tool_use turn whose result arrives 3m later counts the gap.
+	// An overlapping second burler session adds only its uncovered tail, and a sub-agent counts under burler+sub.
+	run := build(t, map[string][]string{
+		"a.jsonl": {
+			title("burler"),
+			userAt(t, "2026-01-01T00:00:00Z", "go"),
+			stamped("2026-01-01T00:01:00Z", endTurn),
+			userAt(t, "2026-01-01T00:11:00Z", "again"),
+			stamped("2026-01-01T00:13:00Z", endTurn),
+			userAt(t, "2026-01-01T00:14:00Z", "third"),
+			userAt(t, "2026-01-01T00:15:00Z", "[Request interrupted by user]"),
+			userAt(t, "2026-01-01T00:20:00Z", "<local-command-stdout>ok</local-command-stdout>"),
+			userAt(t, "2026-01-01T00:30:00Z", "late"),
+			stamped("2026-01-01T00:31:00Z", toolUse),
+			toolResult("2026-01-01T00:34:00Z", jsonString(t, "done")),
+			stamped("2026-01-01T00:35:00Z", endTurn),
+		},
+		"b.jsonl": {
+			title("burler"),
+			userAt(t, "2026-01-01T00:32:00Z", "overlap"),
+			stamped("2026-01-01T00:37:00Z", endTurn),
+		},
+		"a/subagents/s.jsonl": {
+			userAt(t, "2026-01-01T00:40:00Z", "sub"),
+			stamped("2026-01-01T00:42:00Z", endTurn),
+		},
+	})
+	min := time.Minute
+	// burler turns: 0-1, 11-13, 14-15, 30-35 and 32-37 unioned to 30-37.
+	if got, want := run.RoleTime("burler"), (1+2+1+7)*min; got != want {
+		t.Errorf("RoleTime(burler) = %v; want %v", got, want)
+	}
+	if got, want := run.RoleTime("burler+sub"), 2*min; got != want {
+		t.Errorf("RoleTime(burler+sub) = %v; want %v", got, want)
+	}
+	if got := run.RoleTime("absent"); got != 0 {
+		t.Errorf("RoleTime(absent) = %v; want 0", got)
+	}
+	// The span is 0..42m and the union of working time is 11m + 2m.
+	if got, want := run.Idle(), 42*min-13*min; got != want {
+		t.Errorf("Idle() = %v; want %v", got, want)
+	}
+
+	var buf bytes.Buffer
+	orch := OrchTally{Charges: map[string]*OrchCharge{"r": {Weight: 5e6}}}
+	if err := (Report{Runs: []RunTally{run}, Orch: &orch}).WriteMarkdown(&buf); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"| orch | | | | | | 5.0M | ",
+		"| role | sessions | output | cache write | cache read | input | weight | share | time | time share | est. cost | models (messages) |",
+		"| idle | | | | | | | | 29m0s | 69.0% | | |",
+	} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("report lacks %q:\n%s", want, buf.String())
+		}
+	}
+
+	// Two runs whose working intervals overlap in wall-clock time sum per role and in idle, and share the summed span.
+	one := build(t, map[string][]string{"a.jsonl": {title("burler"), userAt(t, "2026-01-01T00:00:00Z", "x"), stamped("2026-01-01T00:02:00Z", endTurn), userAt(t, "2026-01-01T00:04:00Z", "y")}})
+	two := build(t, map[string][]string{"a.jsonl": {title("burler"), userAt(t, "2026-01-01T00:01:00Z", "x"), stamped("2026-01-01T00:03:00Z", endTurn), userAt(t, "2026-01-01T00:05:00Z", "y")}})
+	buf.Reset()
+	if err := (Report{Runs: []RunTally{one, two}}).WriteMarkdown(&buf); err != nil {
+		t.Fatal(err)
+	}
+	all, _, _ := strings.Cut(buf.String(), "## r\n")
+	for _, want := range []string{
+		"| burler | 2 | 2 | 0 | 0 | 2 | 0.0M | 100.0% | 4m0s | 50.0% |",
+		"| idle | | | | | | | | 4m0s | 50.0% | | |",
+		"Time is turn time:",
+		"The union of working time plus idle is the span.",
+	} {
+		if !strings.Contains(all, want) {
+			t.Errorf("All runs section lacks %q:\n%s", want, all)
+		}
+	}
 }
 
 func TestCountRun(t *testing.T) {
@@ -283,7 +393,8 @@ func TestRecentRuns(t *testing.T) {
 	if err := os.MkdirAll(projectDir(projects, "/hub/empty"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	finished := map[string]bool{"old": true, "new": true, "mid": true, "prime": true, "empty": true, "newest": true}
+	tag := []ArchiveTag{{Name: "archive/x/1"}}
+	finished := map[string][]ArchiveTag{"old": tag, "new": tag, "mid": tag, "prime": tag, "empty": tag, "newest": tag}
 
 	got, err := recentRuns(projects, "/hub", "prime", finished, 2)
 	if err != nil {
@@ -296,9 +407,251 @@ func TestRecentRuns(t *testing.T) {
 
 func TestArchivedSlugs(t *testing.T) {
 	t.Parallel()
-	refs := "refs/tags/archive/run-pushes/b783fd2\nrefs/tags/archive/run-pushes/0a1b2c3\nrefs/tags/archive/test-tiers/9f8e7d6\nrefs/tags/archive/no-sha\nrefs/tags/other/x/y\n"
-	got := archivedSlugs(refs)
-	if len(got) != 2 || !got["run-pushes"] || !got["test-tiers"] {
-		t.Errorf("archivedSlugs = %v, want run-pushes and test-tiers", got)
+	at := func(s string) time.Time {
+		parsed, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return parsed
+	}
+	tests := []struct {
+		name string
+		refs string
+		want map[string][]ArchiveTag
+	}{
+		{
+			"two tags of a slug newest first",
+			"refs/tags/archive/s/old\tc1\t2026-01-01T00:00:00+00:00\nrefs/tags/archive/s/new\tc2\t2026-01-02T00:00:00+00:00\n",
+			map[string][]ArchiveTag{"s": {
+				{"archive/s/new", "c2", at("2026-01-02T00:00:00Z")},
+				{"archive/s/old", "c1", at("2026-01-01T00:00:00Z")},
+			}},
+		},
+		{
+			"equal dates ordered by name",
+			"refs/tags/archive/s/b\tc2\t2026-01-01T00:00:00+00:00\nrefs/tags/archive/s/a\tc1\t2026-01-01T00:00:00+00:00\n",
+			map[string][]ArchiveTag{"s": {
+				{"archive/s/a", "c1", at("2026-01-01T00:00:00Z")},
+				{"archive/s/b", "c2", at("2026-01-01T00:00:00Z")},
+			}},
+		},
+		{
+			"malformed lines are skipped",
+			"refs/tags/archive/no-sha\tc\t2026-01-01T00:00:00+00:00\n" +
+				"refs/tags/other/x/y\tc\t2026-01-01T00:00:00+00:00\n" +
+				"refs/tags/archive/s/empty\t\t2026-01-01T00:00:00+00:00\n" +
+				"refs/tags/archive/s/nodate\tc\t\n" +
+				"refs/tags/archive/s/ok\tc\t2026-01-01T00:00:00+00:00\n",
+			map[string][]ArchiveTag{"s": {{"archive/s/ok", "c", at("2026-01-01T00:00:00Z")}}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := archivedSlugs(tt.refs)
+			if len(got) != len(tt.want) {
+				t.Fatalf("archivedSlugs = %v, want %v", got, tt.want)
+			}
+			for slug, tags := range tt.want {
+				if len(got[slug]) != len(tags) {
+					t.Fatalf("archivedSlugs[%s] = %v, want %v", slug, got[slug], tags)
+				}
+				for i := range tags {
+					g := got[slug][i]
+					if g.Name != tags[i].Name || g.Commit != tags[i].Commit || !g.Committed.Equal(tags[i].Committed) {
+						t.Errorf("archivedSlugs[%s][%d] = %v, want %v", slug, i, g, tags[i])
+					}
+				}
+			}
+		})
+	}
+}
+
+// fakeArchiveTrees is an in-memory ArchiveTrees keyed by commit and tree-relative path.
+type fakeArchiveTrees map[[2]string]string
+
+func (f fakeArchiveTrees) FileAtRevision(rev, relPath string) ([]byte, error) {
+	if content, ok := f[[2]string{rev, relPath}]; ok {
+		return []byte(content), nil
+	}
+	return nil, gitrepo.ErrPathNotAtRevision
+}
+
+func TestShedRecordSpanAndProducers(t *testing.T) {
+	t.Parallel()
+	clock := func(hms string) string { return "2026-01-01T" + hms + "Z" }
+	at := func(hms string) time.Time {
+		parsed, err := time.Parse(time.RFC3339, clock(hms))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return parsed
+	}
+	entry := func(producer, at string) string {
+		return `{"producer":"` + producer + `","outcome":"done","output":"","at":"` + clock(at) + `"}`
+	}
+	folded := func(producer, at, lastAt string) string {
+		return `{"producer":"` + producer + `","outcome":"done","output":"","at":"` + clock(at) + `","repeats":1,"last_at":"` + clock(lastAt) + `"}`
+	}
+	status := func(entries ...string) string { return `{"history":[` + strings.Join(entries, ",") + `]}` }
+	seedRel, statusRel, err := shedrun.TreeRunFileRels("r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const seed = `{"recipe":"loom","driver":"go"}`
+	seedStarted := func(startedAt string) string {
+		return `{"recipe":"loom","driver":"go","started_at":"` + startedAt + `"}`
+	}
+	newest := ArchiveTag{Name: "archive/r/new", Commit: "c2", Committed: at("11:00:00")}
+	older := func(committed string) ArchiveTag {
+		return ArchiveTag{Name: "archive/r/old", Commit: "c1", Committed: at(committed)}
+	}
+	tree := func(commit, seedJSON, statusJSON string) fakeArchiveTrees {
+		files := fakeArchiveTrees{}
+		if seedJSON != "" {
+			files[[2]string{commit, seedRel}] = seedJSON
+		}
+		if statusJSON != "" {
+			files[[2]string{commit, statusRel}] = statusJSON
+		}
+		return files
+	}
+	plain := status(entry("Plan", "10:03:00"), entry("Publish", "10:12:00"))
+
+	tests := []struct {
+		name     string
+		tags     []ArchiveTag
+		files    fakeArchiveTrees
+		wantNil  bool
+		wantErr  string
+		wantFrom time.Time
+		wantTo   time.Time
+		wantRows []ProducerRow
+		wantIdle time.Duration
+	}{
+		{
+			name:     "started_at, folded and out-of-order entries",
+			tags:     []ArchiveTag{newest},
+			files:    tree("c2", seedStarted(clock("09:58:00")), status(entry("Plan", "10:03:00"), folded("Bouncer", "10:04:00", "10:06:00"), entry("Plan", "10:05:00"), entry("Publish", "10:12:00"))),
+			wantFrom: at("09:58:00"),
+			wantTo:   at("10:12:00"),
+			wantRows: []ProducerRow{
+				{"Publish", 1, 6 * time.Minute, 4 * time.Minute},
+				{"Plan", 2, 5 * time.Minute, 3 * time.Minute},
+				{"Bouncer", 1, 3 * time.Minute, 3 * time.Minute},
+			},
+			wantIdle: 10 * time.Minute,
+		},
+		{name: "no started_at starts at the first transcript line", tags: []ArchiveTag{newest}, files: tree("c2", seed, plain), wantFrom: at("10:00:00"), wantTo: at("10:12:00")},
+		{name: "older tag after the first line", tags: []ArchiveTag{newest, older("10:01:00")}, files: tree("c2", seed, plain), wantFrom: at("10:01:00"), wantTo: at("10:12:00")},
+		{name: "first entry before the first line", tags: []ArchiveTag{newest}, files: tree("c2", seed, status(entry("Plan", "09:59:00"), entry("Publish", "10:12:00"))), wantFrom: at("09:59:00"), wantTo: at("10:12:00")},
+		{name: "status without a seed", tags: []ArchiveTag{newest}, files: tree("c2", "", plain), wantFrom: at("10:00:00"), wantTo: at("10:12:00")},
+		{
+			name:     "newest tag is read",
+			tags:     []ArchiveTag{newest, older("08:00:00")},
+			files:    fakeArchiveTrees{[2]string{"c2", statusRel}: plain, [2]string{"c1", statusRel}: status(entry("Plan", "10:20:00"))},
+			wantFrom: at("10:00:00"),
+			wantTo:   at("10:12:00"),
+		},
+		{name: "status that does not decode", tags: []ArchiveTag{newest}, files: tree("c2", seed, "{"), wantErr: "status.json"},
+		{name: "seed that does not decode", tags: []ArchiveTag{newest}, files: tree("c2", "{", plain), wantErr: "seed.json"},
+		{name: "started_at that does not parse", tags: []ArchiveTag{newest}, files: tree("c2", seedStarted("yesterday"), plain), wantErr: "seed.json"},
+		{name: "entry at that does not parse", tags: []ArchiveTag{newest}, files: tree("c2", seed, status(`{"producer":"Plan","at":"soon"}`)), wantErr: "status.json"},
+		{name: "folded last_at that does not parse", tags: []ArchiveTag{newest}, files: tree("c2", seed, status(`{"producer":"Plan","at":"`+clock("10:03:00")+`","repeats":1,"last_at":"later"}`)), wantErr: "status.json"},
+		{name: "no tags", files: tree("c2", seed, plain), wantNil: true},
+		{name: "tag without status", tags: []ArchiveTag{newest}, files: tree("c2", seed, ""), wantNil: true},
+		{name: "empty history", tags: []ArchiveTag{newest}, files: tree("c2", seed, status()), wantNil: true},
+	}
+	// A run whose burler works 10:00-10:02 and 10:08-10:10.
+	counted := func(t *testing.T) RunTally {
+		t.Helper()
+		dir := t.TempDir()
+		writeLines(t, filepath.Join(dir, "a.jsonl"),
+			`{"type":"custom-title","customTitle":"ly:r:burler"}`,
+			userAt(t, clock("10:00:00"), "go"),
+			stamped(clock("10:02:00"), `"end_turn"`),
+			userAt(t, clock("10:08:00"), "again"),
+			stamped(clock("10:10:00"), `"end_turn"`),
+		)
+		run, err := CountRun(dir, "r")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return run
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			rec, err := readShedRecord(tt.files, "r", tt.tags)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("readShedRecord = nil error; want one naming the file %s", tt.wantErr)
+				}
+				for _, part := range []string{"r", newest.Name, tt.wantErr} {
+					if !strings.Contains(err.Error(), part) {
+						t.Errorf("readShedRecord error = %q; want it to name %q", err, part)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.wantNil {
+				if rec != nil {
+					t.Fatalf("readShedRecord = %+v; want no record", rec)
+				}
+				return
+			}
+			run := counted(t)
+			run.useShedRecord(*rec)
+			if !run.Span.From.Equal(tt.wantFrom) || !run.Span.To.Equal(tt.wantTo) {
+				t.Errorf("span = %v..%v; want %v..%v", run.Span.From, run.Span.To, tt.wantFrom, tt.wantTo)
+			}
+			if tt.wantRows == nil {
+				return
+			}
+			if got := run.Producers(); !slices.Equal(got, tt.wantRows) {
+				t.Errorf("Producers() = %v; want %v", got, tt.wantRows)
+			}
+			if got := run.Idle(); got != tt.wantIdle {
+				t.Errorf("Idle() = %v; want %v", got, tt.wantIdle)
+			}
+		})
+	}
+
+	// The report prints the Producers table for a run with a record, the no-status line for one without, and the summed table in All runs.
+	rec, err := readShedRecord(tests[0].files, "r", tests[0].tags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withRecord := counted(t)
+	withRecord.useShedRecord(*rec)
+	without := counted(t)
+	without.Slug = "bare"
+	withRecord.Slug = "full"
+	var buf bytes.Buffer
+	if err := (Report{Runs: []RunTally{withRecord, without}}).WriteMarkdown(&buf); err != nil {
+		t.Fatal(err)
+	}
+	report := buf.String()
+	all, rest, _ := strings.Cut(report, "## full\n")
+	perFull, perBare, _ := strings.Cut(rest, "## bare\n")
+	row := "| Publish | 1 | 6m0s | 4m0s | 42.9% |"
+	for name, section := range map[string]string{"All runs": all, "full": perFull} {
+		if !strings.Contains(section, "### Producers") || !strings.Contains(section, row) {
+			t.Errorf("%s section lacks the Producers table row %q:\n%s", name, row, section)
+		}
+	}
+	noStatus := "No shed status was read, so the span is the transcript window and no Producers table is printed."
+	if !strings.Contains(perBare, noStatus) || strings.Contains(perBare, "### Producers") {
+		t.Errorf("bare section = %q; want the no-status line and no table", perBare)
+	}
+	buf.Reset()
+	if err := (Report{Runs: []RunTally{without}}).WriteMarkdown(&buf); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.SplitN(buf.String(), "## bare\n", 2)[0], "### Producers") {
+		t.Errorf("All runs section prints a Producers table with no record:\n%s", buf.String())
 	}
 }

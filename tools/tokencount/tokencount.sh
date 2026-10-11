@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launcher for the token count: writes the markdown report to .scratch/token-usage-by-role.md
+# Launcher for the token and time count: writes the markdown report to .scratch/token-usage-by-role.md
 # and prints where it landed.
 # One fixed path, overwritten every run rather than accumulating a timestamped file per
 # count -- the run's own date and time and the counted slugs live inside the report.
