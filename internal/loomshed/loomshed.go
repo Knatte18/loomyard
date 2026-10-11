@@ -39,4 +39,13 @@ const (
 	NameDarnBurler        = "Darn-Burler"
 	NameFinalize          = "Finalize"
 	NameFrictionReflect   = "Friction-Reflect"
+
+	NameDiscussionBurlerReview = "Discussion-Burler-Review"
+	NameDiscussionBurlerFix    = "Discussion-Burler-Fix"
+	NamePlanBurlerReview       = "Plan-Burler-Review"
+	NamePlanBurlerFix          = "Plan-Burler-Fix"
+	NameWebsterBurlerReview    = "Webster-Burler-Review"
+	NameWebsterBurlerFix       = "Webster-Burler-Fix"
+	NameDarnBurlerReview       = "Darn-Burler-Review"
+	NameDarnBurlerFix          = "Darn-Burler-Fix"
 )

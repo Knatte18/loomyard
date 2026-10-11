@@ -720,7 +720,7 @@ var wordingClaims = []stencilClaims{
 			{must: "`lyx loom decision add`", why: "a design call is recorded with decision add"},
 			{must: "carries a copy of the gate rule from your own system prompt, its timeout value included", section: "## Fixing a run", why: "a non-fork agent does not inherit the orch's system prompt, so the orch carries the gate rule into its brief"},
 			{must: "To stop a run at a point, message its driver", section: "## Fixing a run", why: "a stop at a point is asked of the driver, which records it as a pause condition"},
-			{must: "`lyx loom goto --to Webster-Burler`", why: "a Publish blocked on a failed verify goes back to the Webster-Burler round"},
+			{must: "`lyx loom goto --to Webster-Burler-Review`", why: "a Publish blocked on a failed verify goes back to the Webster-Burler review row, since a goto into the fix row with no accepted review is refused"},
 			{mustNot: "goto --to Plan-Bouncer", why: "a failed Publish verify leaves the plan unchanged"},
 			{mustNot: "`lyx fabric add", why: "batten run creates the pair"},
 			{mustNot: "`lyx fabric remove", why: "batten's teardown removes the pair"},

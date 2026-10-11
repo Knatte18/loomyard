@@ -25,7 +25,7 @@ const budgetEscalationBudget = 2
 // newEscalationShed builds a Shed over the sequence fixture with a small review budget, a judge that rules CONTINUE every round,
 // and the SegmentBounces seam wired over the fixture's status file through Routing, as loomcli wires it.
 // It returns the Shed, the fixture env and the Discussion-Review run directory.
-func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.BurlerRunner, func() shedengine.Status) {
+func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.BurlerHalfRunner, func() shedengine.Status) {
 	t.Helper()
 
 	_, env, paths := buildSequenceFixture(t)
@@ -57,7 +57,7 @@ func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.Burler
 		}
 		return st
 	}
-	return shed, filepath.Join(env.RunRoot, "discussion"), env.Burler.(*shedfake.BurlerRunner), readStatus
+	return shed, filepath.Join(env.RunRoot, "discussion"), env.Burler.(*shedfake.BurlerHalfRunner), readStatus
 }
 
 // haltingProducer is a fake row that counts its calls and returns Stuck with no on_stuck to bounce to, so a run halts on reaching it.
@@ -177,7 +177,7 @@ func TestEscalation_BudgetContinueGrantsOneRoundThenAccept(t *testing.T) {
 	if st.ParentNotice == "" {
 		t.Error("status ParentNotice is empty; want the Bouncer's one-line notice")
 	}
-	roundsBefore := burler.Calls
+	roundsBefore := burler.ReviewCalls
 
 	round, cause, err := shedadapters.RecordCirclingDecision(runDir, shedadapters.CirclingContinue)
 	if err != nil {
@@ -197,11 +197,16 @@ func TestEscalation_BudgetContinueGrantsOneRoundThenAccept(t *testing.T) {
 	if result.Outcome != shedengine.RunAwaiting {
 		t.Fatalf("Run() after continue outcome = %q (reason %q); want %q -- one more round, then the next judge escalates again", result.Outcome, result.Reason, shedengine.RunAwaiting)
 	}
-	if got := burler.Calls - roundsBefore; got != 1 {
+	if got := burler.ReviewCalls - roundsBefore; got != 1 {
 		t.Errorf("rounds run after the budget continue = %d; want exactly 1", got)
 	}
-	if total, exempt := countStuck(result.History, loomshed.NameDiscussionBurler); total != burler.Calls || exempt != total {
-		t.Errorf("Discussion-Burler Stuck entries = %d, budget-exempt = %d; want both %d (every round's hand-back for judgment is exempt)", total, exempt, burler.Calls)
+	if burler.FixCalls != burler.ReviewCalls {
+		t.Errorf("fix calls = %d, review calls = %d; want one fix per review", burler.FixCalls, burler.ReviewCalls)
+	}
+	for _, row := range []string{loomshed.NameDiscussionBurlerReview, loomshed.NameDiscussionBurlerFix} {
+		if total, exempt := countStuck(result.History, row); total != burler.ReviewCalls || exempt != total {
+			t.Errorf("%s Stuck entries = %d, budget-exempt = %d; want both %d (every round's hand-back is exempt)", row, total, exempt, burler.ReviewCalls)
+		}
 	}
 	if _, exempt := countStuck(result.History, loomshed.NameDiscussionBouncer); exempt != 1 {
 		t.Errorf("Discussion-Bouncer budget-exempt Stuck entries = %d; want 1 (the continue)", exempt)

@@ -1,6 +1,5 @@
-// entries_bouncer.go implements bouncerEntry, the Constructor for the "Bouncer" registry row: the
-// segment's entry point, which joins and creates the run directory its opposite BurlerRound row
-// writes into and reads from.
+// entries_bouncer.go implements bouncerEntry, the Constructor for the "Bouncer" registry row:
+// the segment's entry point, which joins and creates the run directory its partner BurlerReview and BurlerFix rows write into and read from.
 
 package shedrecipe
 
@@ -13,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// bouncerEntry is the Constructor for the "Bouncer" registry row: it validates cfg and env, joins and creates the run directory a segment's Bouncer and BurlerRound rows share, resolves artifact_paths against env.AnchorPath, takes the row's seed and judge models from env.RowBouncerModels, resolves the optional commit_seam key to one of env.CommitPlan or env.CommitDiscussion, resolves the optional approve_seam key to env.ApprovePlan and nothing else, resolves the optional skip_seam key to env.SkipPlanReview, reads the optional carry_over key, the segment name that selects env.CarryOver, reads the optional boolean cluster_excludes key (default false) telling the judge whether its partner round has a cluster fan, and returns shedadapters.NewBouncer(cfg).
+// bouncerEntry is the Constructor for the "Bouncer" registry row: it validates cfg and env, joins and creates the run directory a segment's Bouncer, BurlerReview and BurlerFix rows share, resolves artifact_paths against env.AnchorPath, takes the row's seed and judge models from env.RowBouncerModels, resolves the optional commit_seam key to one of env.CommitPlan or env.CommitDiscussion, resolves the optional approve_seam key to env.ApprovePlan and nothing else, resolves the optional skip_seam key to env.SkipPlanReview, reads the optional carry_over key, the segment name that selects env.CarryOver, reads the optional boolean cluster_excludes key (default false) telling the judge whether its partner BurlerReview row has a cluster fan, and returns shedadapters.NewBouncer(cfg).
 func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -154,10 +153,9 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	if err != nil {
 		return nil, err
 	}
-	// The entry creates the joined run directory, not the caller or the round producer: Bouncer.Call
-	// reaches shedadapters.ResolveRound first, which os.Stats RunDir and hard-errors when it is
-	// absent, and the Bouncer is its segment's entry point, so it runs before BurlerProducer.Call's
-	// own idempotent os.MkdirAll would have created it.
+	// The entry creates the joined run directory, not the caller or the round producer:
+	// Bouncer.Call reaches shedadapters.ResolveRound first, which os.Stats RunDir and hard-errors when it is absent,
+	// and the Bouncer is its segment's entry point, so it runs before the review and fix producers' own idempotent os.MkdirAll would have created it.
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return nil, fmt.Errorf("shedrecipe: Bouncer: create run dir %q: %w", runDir, err)
 	}
@@ -182,7 +180,7 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		Name:          name,
 		RunDir:        runDir,
 		ArtifactPaths: resolvedArtifactPaths,
-		// ReportName is pinned rather than configurable: shedadapters.BurlerProducer writes its
+		// ReportName is pinned rather than configurable: shedadapters.BurlerReviewProducer writes its
 		// report to a hardcoded round-<n>-review.md under RunDir, and shedadapters.ResolveRound
 		// finds the current round by statting that same name, so any other value resolves the
 		// round to 0 forever and the Bouncer re-seeds every call until its bounce budget is spent,

@@ -35,8 +35,8 @@ func assertReviewBudget(t *testing.T, producers []shedengine.ProducerDef, budget
 			}
 		}
 	}
-	if reviewRows != 6 {
-		t.Errorf("review-segment rows = %d; want 6", reviewRows)
+	if want := 3 * len(reviewSegmentNames); reviewRows != want {
+		t.Errorf("review-segment rows = %d; want %d, a Bouncer, a review row and a fix row per segment", reviewRows, want)
 	}
 }
 

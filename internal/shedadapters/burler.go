@@ -31,9 +31,6 @@ type BurlerRunner interface {
 	Resume(p burlerengine.Profile, opts burlerengine.RunOpts, live burlerengine.LiveRound) (burlerengine.Result, error)
 }
 
-// Compile-time proof that *burlerengine.Engine satisfies BurlerRunner.
-var _ BurlerRunner = (*burlerengine.Engine)(nil)
-
 // BurlerProducer is the shedadapters adapter over one burlerengine round.
 //
 // Call returns shedengine.Stuck on every successful round and never shedengine.Done -- that Stuck
@@ -226,9 +223,6 @@ func hydrationPaths(runDir string, current int) (reviews []string, fixerReports 
 	}
 	return reviews, fixerReports, nil
 }
-
-// Compile-time proof that *BurlerProducer satisfies shedengine.ShedProducer.
-var _ shedengine.ShedProducer = (*BurlerProducer)(nil)
 
 // Call runs one BurlerProducer round: resolve the round to run from disk, hand control back
 // unspent when the highest complete round has not been judged yet, build a fresh per-round copy of

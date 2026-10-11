@@ -214,7 +214,7 @@ func configMapList(cfg Config, key string) (out []Config, present bool, err erro
 // message is deterministic across runs. A cfg with only recognised keys, and a nil or empty cfg,
 // both return nil.
 //
-// This runs at nested levels too, not only on the outer map -- BurlerRound's profile,
+// This runs at nested levels too, not only on the outer map -- BurlerReview's profile,
 // profile.target, and profile.fasit each get their own call.
 func configRejectUnknown(cfg Config, known ...string) error {
 	if len(cfg) == 0 {

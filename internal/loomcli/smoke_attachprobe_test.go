@@ -237,6 +237,153 @@ func TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning(t *testing.T) 
 	}
 }
 
+// probingHalfRunner is a shedadapters.BurlerHalfRunner whose ProbeReview and ProbeFix probe the half's output file through the real shuttleengine.Runner, as burlerengine.Engine does, and whose ResumeReview and ResumeFix wait on the live half.
+// Review and Fix fail the test: they stand in for the burlerengine half this producer must NOT start while an equivalent one is still alive.
+type probingHalfRunner struct {
+	t       *testing.T
+	runner  *shuttleengine.Runner
+	timeout time.Duration
+}
+
+func (r probingHalfRunner) Review(_ burlerengine.Profile, _ burlerengine.RunOpts) (burlerengine.ReviewResult, error) {
+	r.t.Error("burlerengine review was started while an equivalent live run existed; want the producer to resume it instead")
+	return burlerengine.ReviewResult{}, nil
+}
+
+func (r probingHalfRunner) ProbeReview(p burlerengine.Profile, _ burlerengine.RunOpts) (burlerengine.LiveHalf, error) {
+	return r.probe(p.ReviewPath)
+}
+
+func (r probingHalfRunner) ResumeReview(_ burlerengine.Profile, _ burlerengine.RunOpts, live burlerengine.LiveHalf) (burlerengine.ReviewResult, error) {
+	result, err := live.Handle.Wait()
+	if err != nil || result.Outcome != shuttleengine.OutcomeDone {
+		return burlerengine.ReviewResult{Outcome: result.Outcome}, err
+	}
+	return burlerengine.ReviewResult{Outcome: shuttleengine.OutcomeDone, Digest: "smoke-digest"}, nil
+}
+
+func (r probingHalfRunner) Fix(_ burlerengine.Profile, _ burlerengine.RunOpts, _ string) (burlerengine.FixResult, error) {
+	r.t.Error("burlerengine fix was started while an equivalent live run existed; want the producer to resume it instead")
+	return burlerengine.FixResult{}, nil
+}
+
+func (r probingHalfRunner) ProbeFix(p burlerengine.Profile, _ burlerengine.RunOpts) (burlerengine.LiveHalf, error) {
+	return r.probe(p.FixerReportPath)
+}
+
+func (r probingHalfRunner) ResumeFix(_ burlerengine.Profile, _ burlerengine.RunOpts, _ string, live burlerengine.LiveHalf) (burlerengine.FixResult, error) {
+	result, err := live.Handle.Wait()
+	if err != nil || result.Outcome != shuttleengine.OutcomeDone {
+		return burlerengine.FixResult{Outcome: result.Outcome}, err
+	}
+	return burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone}, nil
+}
+
+// probe reports the live run declaring outputPath, or a half that is gone.
+func (r probingHalfRunner) probe(outputPath string) (burlerengine.LiveHalf, error) {
+	run, found, err := r.runner.ProbeGated(shuttleengine.Spec{OutputFiles: []string{outputPath}, Timeout: r.timeout}, nil)
+	if err != nil || !found {
+		return burlerengine.LiveHalf{}, err
+	}
+	return burlerengine.LiveHalf{State: burlerengine.HalfLive, Handle: run}, nil
+}
+
+// TestSmokeBurlerReview_AttachesToALiveReviewerInsteadOfRespawning starts one real, live shuttle run declaring a round's review.
+// It then calls BurlerReviewProducer.Call against the same run directory and asserts it resumed that run rather than starting a second reviewer.
+// It also asserts the live run's own artifact was left where it wrote it and that the accepted review was recorded.
+func TestSmokeBurlerReview_AttachesToALiveReviewerInsteadOfRespawning(t *testing.T) {
+	tmuxBinaryPath(t)
+	_, loc, worktree, _ := newWiredPairFixture(t)
+	registerBootstrapTeardown(t, loc, worktree)
+
+	reedEngine := probeReedEngine(t, loc)
+	if _, err := reedEngine.Up(); err != nil {
+		t.Fatalf("reed up: %v", err)
+	}
+
+	runDir := filepath.Join(loomengine.LoomReviewsDir(loc), "attach-probe-review")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", runDir, err)
+	}
+	// The round-artifact convention is a durable two-sided contract (see internal/shedadapters'
+	// package documentation), so naming the files literally here is pinning that contract, not
+	// duplicating a derivation.
+	reviewPath := filepath.Join(runDir, "round-1-review.md")
+
+	// The stand-in run's quiet period is load-bearing:
+	// a review already on disk would be a finished review, and the producer would hand it on without probing anything.
+	shuttleCfg, err := shuttleengine.LoadConfig(loc.AnchorPath(), "shuttle")
+	if err != nil {
+		t.Fatalf("load shuttle config: %v", err)
+	}
+	reedGeom, err := hubgeom.ReedGeometry(loc)
+	if err != nil {
+		t.Fatalf("reed geometry: %v", err)
+	}
+	runner := shuttleengine.NewRunner(reedEngine, &shellLaunchEngine{quietSeconds: 3}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+
+	live, err := runner.Start(shuttleengine.Spec{
+		Prompt:      "smoke: stand in for a live burler reviewer",
+		OutputFiles: []string{reviewPath},
+		Role:        "burler-review-chair",
+		Round:       "1",
+		Timeout:     2 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("start the live reviewer stand-in run: %v", err)
+	}
+	t.Cleanup(func() { _, _ = reedEngine.RemoveStrand(live.StrandGUID(), false) })
+
+	producer, err := shedadapters.NewBurlerReviewProducer(
+		"Webster-Burler-Review",
+		shedadapters.BurlerHalfDeps{Runner: probingHalfRunner{t: t, runner: runner, timeout: 2 * time.Minute}},
+		burlerengine.Profile{Rubric: "smoke rubric", FixScope: burlerengine.FixScopeOverlay},
+		burlerengine.RunOpts{Timeout: 2 * time.Minute},
+		runDir,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewBurlerReviewProducer: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	outcome, ptr, err := producer.Call(ctx)
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q (an accepted review hands off to the fix row)", outcome, shedengine.Stuck)
+	}
+	if ptr.Path != reviewPath {
+		t.Errorf("Call() pointer = %q; want %q", ptr.Path, reviewPath)
+	}
+
+	// The live run's own bytes must still be at the canonical path: archiving would have renamed
+	// them to a stamped sibling, which is precisely what breaks an attached run's file contract.
+	content, readErr := os.ReadFile(reviewPath)
+	if readErr != nil {
+		t.Fatalf("os.ReadFile(%s) = %v; want the live run's own file left in place", reviewPath, readErr)
+	}
+	if string(content) != "live" {
+		t.Errorf("%s content = %q; want %q -- the attached run's artifact must be the one that survives", reviewPath, content, "live")
+	}
+	if _, err := os.Stat(filepath.Join(runDir, "round-1-acceptance.md")); err != nil {
+		t.Errorf("os.Stat(acceptance record) = %v; want the resumed review recorded as accepted", err)
+	}
+
+	status, err := reedEngine.Status()
+	if err != nil {
+		t.Fatalf("reed status: %v", err)
+	}
+	for _, s := range status.Strands {
+		if s.Live {
+			t.Errorf("live strand %q (%s) survived the attached review; want none -- a leftover pane here is a second agent nothing owns", s.Name, s.GUID)
+		}
+	}
+}
+
 // TestSmokeSingleLLM_HarvestsAFinishedRunWithReedStateGone is the live-substrate guard for crucible
 // round opus5-high-r7's F1: Attach's reed-state gates must consult the run's file contract before
 // refusing, so a producer whose agent already finished advances instead of hard-failing the step.

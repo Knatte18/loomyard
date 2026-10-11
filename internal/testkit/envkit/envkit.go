@@ -166,7 +166,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		SupportLogPath:     filepath.Join(dir, "support-log.md"),
 		DescriptionPath:    filepath.Join(dir, "description.md"),
 		Shuttle:            &shedfake.Shuttle{},
-		Burler:             &shedfake.BurlerRunner{},
+		Burler:             &shedfake.BurlerHalfRunner{},
 		Seats:              &shedfake.SeatRunner{},
 		Models:             modelspec.Registry{"opus": {Engine: "claude", Model: "claude-opus-test"}},
 		RowBouncerModels: map[string]shedadapters.BouncerModels{

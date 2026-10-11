@@ -326,10 +326,9 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	// The Env fields both review segments read -- shared by Discussion-Bouncer/Discussion-Burler and
-	// Plan-Bouncer/Plan-Burler alike -- are told: StencilsDir and RunRoot against their own
-	// loomengine/fabricengine accessor rather than a re-derived literal, and Now non-nil, which
-	// envkit.NilSeams skips as a documented default.
+	// The Env fields both review segments read, shared by the Discussion-Bouncer and Discussion-Burler-* rows and the Plan-Bouncer and Plan-Burler-* rows alike, are told.
+	// StencilsDir and RunRoot are told against their own loomengine/fabricengine accessor rather than a re-derived literal.
+	// Now is told non-nil, which envkit.NilSeams skips as a documented default.
 	t.Run("review segment paths and clock", func(t *testing.T) {
 		if want := fabricengine.StencilsDir(loc.HubPath); c.env.StencilsDir != want {
 			t.Errorf("c.env.StencilsDir = %q; want %q", c.env.StencilsDir, want)
@@ -863,8 +862,8 @@ func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]s
 }
 
 // TestWire_ReviewKeysReachTheEnv verifies the loom.yaml keys that tune a review round reach the Env:
-// plan_review lands in the Plan-Burler row's RowReviewModels entry alone, and the Discussion-Burler row keeps the run-wide models.
-// The Webster-Burler row takes the template's webster_review (one sonnet entry of effort high) with the run-wide fix models.
+// plan_review lands in the Plan-Burler rows' RowReviewModels entries alone, and the Discussion-Burler rows keep the run-wide models.
+// The Webster-Burler rows take the template's webster_review (one sonnet entry of effort high) with the run-wide fix models.
 // plan_judge, seed and webster_seed land in each Bouncer row's RowBouncerModels entry, the darn recipe's Darn-Bouncer taking Webster-Bouncer's.
 func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	t.Parallel()
@@ -903,22 +902,28 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		t.Errorf("RowBouncerModels = %+v; want %+v", c.env.RowBouncerModels, wantBouncerModels)
 	}
 
-	plan := c.env.RowReviewModels[loomshed.NamePlanBurler]
-	if len(plan.Review) != 1 || plan.Review[0].Effort != "low" {
-		t.Errorf("RowReviewModels[%q].Review = %+v; want one opus entry of effort low", loomshed.NamePlanBurler, plan.Review)
+	for _, row := range []string{loomshed.NamePlanBurlerReview, loomshed.NamePlanBurlerFix} {
+		plan := c.env.RowReviewModels[row]
+		if len(plan.Review) != 1 || plan.Review[0].Effort != "low" {
+			t.Errorf("RowReviewModels[%q].Review = %+v; want one opus entry of effort low", row, plan.Review)
+		}
+		if !reflect.DeepEqual(plan.Fix, c.env.ReviewModels.Fix) {
+			t.Errorf("RowReviewModels[%q].Fix = %+v; want the run-wide %+v", row, plan.Fix, c.env.ReviewModels.Fix)
+		}
 	}
-	if !reflect.DeepEqual(plan.Fix, c.env.ReviewModels.Fix) {
-		t.Errorf("RowReviewModels[%q].Fix = %+v; want the run-wide %+v", loomshed.NamePlanBurler, plan.Fix, c.env.ReviewModels.Fix)
+	for _, row := range []string{loomshed.NameDiscussionBurlerReview, loomshed.NameDiscussionBurlerFix} {
+		if got := c.env.RowReviewModels[row]; !reflect.DeepEqual(got, c.env.ReviewModels) {
+			t.Errorf("RowReviewModels[%q] = %+v; want the run-wide %+v", row, got, c.env.ReviewModels)
+		}
 	}
-	if got := c.env.RowReviewModels[loomshed.NameDiscussionBurler]; !reflect.DeepEqual(got, c.env.ReviewModels) {
-		t.Errorf("RowReviewModels[%q] = %+v; want the run-wide %+v", loomshed.NameDiscussionBurler, got, c.env.ReviewModels)
-	}
-	webster := c.env.RowReviewModels[loomshed.NameWebsterBurler]
-	if len(webster.Review) != 1 || webster.Review[0].Model != "sonnet" || webster.Review[0].Effort != "high" {
-		t.Errorf("RowReviewModels[%q].Review = %+v; want one sonnet entry of effort high", loomshed.NameWebsterBurler, webster.Review)
-	}
-	if !reflect.DeepEqual(webster.Fix, c.env.ReviewModels.Fix) {
-		t.Errorf("RowReviewModels[%q].Fix = %+v; want the run-wide %+v", loomshed.NameWebsterBurler, webster.Fix, c.env.ReviewModels.Fix)
+	for _, row := range []string{loomshed.NameWebsterBurlerReview, loomshed.NameWebsterBurlerFix, loomshed.NameDarnBurlerReview, loomshed.NameDarnBurlerFix} {
+		webster := c.env.RowReviewModels[row]
+		if len(webster.Review) != 1 || webster.Review[0].Model != "sonnet" || webster.Review[0].Effort != "high" {
+			t.Errorf("RowReviewModels[%q].Review = %+v; want one sonnet entry of effort high", row, webster.Review)
+		}
+		if !reflect.DeepEqual(webster.Fix, c.env.ReviewModels.Fix) {
+			t.Errorf("RowReviewModels[%q].Fix = %+v; want the run-wide %+v", row, webster.Fix, c.env.ReviewModels.Fix)
+		}
 	}
 	if c.env.WebsterRecord == nil {
 		t.Error("c.env.WebsterRecord = nil; want the closure over loomshed.WebsterRecordNote")
@@ -932,13 +937,13 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			t.Errorf("RowClusterFans[%q] = %q; want empty under the template's empty fans", row, fan)
 		}
 	}
-	for _, row := range []string{loomshed.NameWebsterBurler, loomshed.NameWebsterBouncer} {
+	for _, row := range []string{loomshed.NameWebsterBurlerReview, loomshed.NameWebsterBurlerFix, loomshed.NameWebsterBouncer} {
 		if _, present := c.env.RowClusterFans[row]; present {
 			t.Errorf("RowClusterFans has an entry for %q; want none, Webster-Review stays solo", row)
 		}
 	}
 
-	// Both fan keys set reach all four rows of the two segments, whose fanned reviewer lists come from fan_review.
+	// Both fan keys set reach each segment's Bouncer and review row, never its fix row, and the fanned reviewer lists come from fan_review.
 	fannedLoc := hubLocation(t, "pair", ".")
 	seedLoomConfigWithKeys(t, fannedLoc.AnchorPath(), map[string]string{"discussion_fan": "standard", "plan_fan": "full", "fan_review": "opus[effort=low]"})
 	fanned := &loomCLI{runID: shedrun.SelfRunID}
@@ -946,15 +951,15 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		t.Fatalf("wire() with fans = %v; want nil", err)
 	}
 	wantFans := map[string]string{
-		loomshed.NameDiscussionBouncer: "standard",
-		loomshed.NameDiscussionBurler:  "standard",
-		loomshed.NamePlanBouncer:       "full",
-		loomshed.NamePlanBurler:        "full",
+		loomshed.NameDiscussionBouncer:      "standard",
+		loomshed.NameDiscussionBurlerReview: "standard",
+		loomshed.NamePlanBouncer:            "full",
+		loomshed.NamePlanBurlerReview:       "full",
 	}
 	if !reflect.DeepEqual(fanned.env.RowClusterFans, wantFans) {
 		t.Errorf("RowClusterFans = %v; want %v", fanned.env.RowClusterFans, wantFans)
 	}
-	for _, row := range []string{loomshed.NameDiscussionBurler, loomshed.NamePlanBurler} {
+	for _, row := range []string{loomshed.NameDiscussionBurlerReview, loomshed.NamePlanBurlerReview} {
 		got := fanned.env.RowReviewModels[row].Review
 		if len(got) != 1 || got[0].Model != "opus" || got[0].Effort != "low" {
 			t.Errorf("RowReviewModels[%q].Review = %+v; want the fan_review entry, opus of effort low", row, got)

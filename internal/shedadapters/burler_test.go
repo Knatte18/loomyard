@@ -18,9 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// Compile-time proof that *shedfake.BurlerRunner satisfies BurlerRunner.
-var _ BurlerRunner = (*shedfake.BurlerRunner)(nil)
-
 // simpleBurlerProfile returns a minimal burlerengine.Profile suitable for passing through Call --
 // its content fields are irrelevant since BurlerProducer never invokes burlerengine's own validate.
 func simpleBurlerProfile() burlerengine.Profile {

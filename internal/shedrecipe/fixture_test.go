@@ -77,7 +77,7 @@ func newTestEnv(t *testing.T) Env {
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
 		SupportLogPath:     filepath.Join(dir, "support-log.md"),
 		Shuttle:            &shedfake.Shuttle{},
-		Burler:             &shedfake.BurlerRunner{},
+		Burler:             &shedfake.BurlerHalfRunner{},
 		Seats:              &shedfake.SeatRunner{},
 		Models:             modelspec.Registry{"opus": {Engine: "claude", Model: "claude-opus-test"}},
 		RowBouncerModels:   bouncerRowModels("review-bounce", "a", "b", "row-name"),
