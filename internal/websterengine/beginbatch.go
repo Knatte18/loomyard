@@ -13,12 +13,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -374,6 +376,50 @@ func existingReportRemedy(number int, recorded *BatchState, retry bool) (string,
 	return fmt.Sprintf("`lyx webster recover-batch %d`", number), false
 }
 
+// buildKickstartPack builds the kick-start pack of batch's cards for the fork prompt, or returns nil when the prompt renders without one, and logs one Info line saying which.
+// A nil pack is returned with deps.Config.KickstartPack false and for a plan whose language opts out of glyphs.
+// The plan is parsed afresh, since the dispatch re-resolution may have canonicalized handles on disk;
+// a parse error degrades to deps.Plan and batch.Cards instead, with a Warn, so building the pack never refuses the batch.
+// An index error is a Warn too, and the degraded pack the index returned is kept.
+func buildKickstartPack(deps BeginDeps, index planindex.Index, batch batcher.Batch, number int) *planindex.Pack {
+	logPack := func(state string, pack *planindex.Pack) {
+		var resolved, unresolved int
+		if pack != nil {
+			resolved, unresolved = len(pack.Resolved), len(pack.Unresolved)
+		}
+		logger.Info("webster: kickstart pack", "batch", number, "kickstart_pack", state, "resolved", resolved, "unresolved", unresolved)
+	}
+	if !deps.Config.KickstartPack {
+		logPack("off", nil)
+		return nil
+	}
+
+	plan, cards := deps.Plan, batch.Cards
+	fresh, err := planparser.ParsePlan(deps.Plan.Dir)
+	if err != nil {
+		logger.Warn("webster: kickstart pack could not re-parse the plan, building it from the loaded plan", "batch", number, "error", err)
+	} else {
+		plan = fresh
+		cards = nil
+		for _, c := range fresh.Cards {
+			if slices.ContainsFunc(batch.Cards, func(b planparser.Card) bool { return b.Number == c.Number }) {
+				cards = append(cards, c)
+			}
+		}
+	}
+	if _, glyphLanguage := plan.GlyphLanguage(); !glyphLanguage {
+		logPack("language-none", nil)
+		return nil
+	}
+
+	pack, err := index.KickstartPack(plan, cards, deps.Geom.WorktreeRoot)
+	if err != nil {
+		logger.Warn("webster: kickstart pack index failed, keeping the degraded pack", "batch", number, "error", err)
+	}
+	logPack("on", &pack)
+	return &pack
+}
+
 // BeginBatch drives one begin-batch call to completion, immediately before Master forks batchNumber's implementer: the pause gate, the fingerprint gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself.
 // The caller holds the state-mutation lease across this whole call and is responsible for
 // persisting deps.State via SaveState once BeginBatch returns successfully — BeginBatch itself
@@ -512,7 +558,8 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	notePath := friction.NotePath(deps.FrictionDir, batchName)
 	cardGates := renderCardGates(deps.Plan, batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Geom.WorktreeRoot)
 	batchGate := renderBatchGate(deps.Plan, batch.Cards, deps.Geom.WorktreeRoot)
-	prompt, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, nil)
+	pack := buildKickstartPack(deps, index, batch, number)
+	prompt, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, pack)
 	if err != nil {
 		return nil, err
 	}

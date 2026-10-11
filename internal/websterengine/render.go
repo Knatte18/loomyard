@@ -175,7 +175,10 @@ func renderPackSection(stencilsDir string, pack planindex.Pack) (string, error) 
 				lines = append(lines, fmt.Sprintf("  - `%s:%d-%d` — %s", d.File, d.Start, d.End, d.Signature))
 			}
 		}
-		entries = strings.Join(lines, "\n")
+		entries = "none"
+		if len(lines) > 0 {
+			entries = strings.Join(lines, "\n")
+		}
 	} else {
 		entries, err = readFragment(stencilsDir, "webster-fragment-pack-empty")
 		if err != nil {

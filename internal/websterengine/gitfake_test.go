@@ -71,6 +71,11 @@ type fakeIndex struct {
 	doneErr error
 	// bindErr, when set, is what the returned delta's BindHandles returns.
 	bindErr error
+	// pack and packErr, when pack is set, are what KickstartPack returns instead of the real index's answer.
+	pack    *planindex.Pack
+	packErr error
+	// breakPlanAfterValidate makes ValidateDispatch add a Card Index line for a card with no card file once the real index has answered, so a later plan parse fails.
+	breakPlanAfterValidate bool
 	// deltaRanges records the commit range of every Delta call, in order.
 	deltaRanges []deltaRange
 }
@@ -90,6 +95,37 @@ func newFakeIndex() *fakeIndex {
 func (i *fakeIndex) Delta(_, fromSHA, toSHA string) (planindex.Delta, error) {
 	i.deltaRanges = append(i.deltaRanges, deltaRange{from: fromSHA, to: toSHA})
 	return fakeDelta{answer: i.delta, bindErr: i.bindErr}, i.deltaErr
+}
+
+func (i *fakeIndex) KickstartPack(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) (planindex.Pack, error) {
+	if i.pack != nil {
+		return *i.pack, i.packErr
+	}
+	return i.Index.KickstartPack(plan, cards, worktreeRoot)
+}
+
+func (i *fakeIndex) ValidateDispatch(plan *planparser.Plan, worktreeRoot string, completed, forthcoming []planparser.Card) ([]planindex.Finding, error) {
+	findings, err := i.Index.ValidateDispatch(plan, worktreeRoot, completed, forthcoming)
+	if err != nil || !i.breakPlanAfterValidate {
+		return findings, err
+	}
+	overviewPath := filepath.Join(plan.Dir, "00-overview.md")
+	overview, readErr := os.ReadFile(overviewPath)
+	if readErr != nil {
+		return nil, readErr
+	}
+	lines := strings.Split(string(overview), "\n")
+	lastIndexLine := -1
+	for n, line := range lines {
+		if strings.Contains(line, " — ") && line != "" && line[0] >= '0' && line[0] <= '9' {
+			lastIndexLine = n
+		}
+	}
+	if lastIndexLine == -1 {
+		return nil, fmt.Errorf("the overview has no Card Index line to follow")
+	}
+	lines = slices.Insert(lines, lastIndexLine+1, "3 — ghost — a card with no card file")
+	return findings, os.WriteFile(overviewPath, []byte(strings.Join(lines, "\n")), 0o644)
 }
 
 func (i *fakeIndex) DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) ([]planindex.Finding, error) {

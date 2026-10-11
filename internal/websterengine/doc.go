@@ -129,6 +129,31 @@
 // A strand whose re-derivation is byte-identical to the flagged content is failed again;
 // the way forward is to revert the path and edit its card.
 //
+// # the kick-start pack
+//
+// A pack holds the member glyphs the batch's cards name in their targets and `Uses:`.
+// Each is resolved to its declarations with file, line span and signature.
+// Beside them sit the refs that did not resolve, each with a reason in plain words, `plan:` handles included.
+// begin-batch builds it (buildKickstartPack) immediately before it renders the fork prompt, after the dispatch re-resolution and its fingerprint re-stamp.
+// It parses the plan afresh, because that re-resolution may have canonicalized handles on disk.
+// A plan that no longer parses degrades to the loaded plan and the batch's cards with a Warn.
+// An index error keeps the degraded pack the index returned, also with a Warn.
+// Neither refuses begin-batch.
+// A plan whose language opts out of glyphs builds no pack, and the prompt renders as with the switch off.
+//
+// The pack reaches the fork prompt file alone: the begin-batch envelope, its advisories and Master's context carry none of it,
+// and the recovery prompt never takes one.
+// The locate step and the pack section are stencils RenderForkPrompt fills.
+// Without a pack the locate marker takes the quarry fragment, which is the step as it stood before the pack, so the prompt renders the same bytes as before.
+// With a pack it takes the pack fragment, which sends the fork to the listed spans and keeps the quarry or grep path for an unresolved member glyph,
+// and the pack section lists the entries and the unresolved refs, or says the cards name no member glyph.
+//
+// Every begin-batch logs one Info line, `webster: kickstart pack`.
+// Its keys are batch, kickstart_pack (`on`, `off` or `language-none`), resolved and unresolved.
+// The last two are entry counts that stay 0 when no pack is built.
+// The `kickstart_pack` key of webster.yaml switches the pack on and off, so runs with and without it can be compared;
+// each begin-batch reads it afresh, so a flip applies from the next call on.
+//
 // # one dispatch scope for begin-batch, run entry and validate
 //
 // A plan describes intended change, so re-resolving a card whose work may already have landed reports the plan working as designed as a defect.
