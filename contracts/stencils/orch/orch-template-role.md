@@ -23,13 +23,15 @@ This list holds every `lyx` command you may use, and `lyx <command> --help` give
    The batten run creates the task pair, drives the task's run inside it, loom or darn as the board entry's `recipe` says, and tears the pair down after the run ends.
    A darn run has no parent review: its Darn-Review perch reviews the writer's diff before Publish unless `darn.yaml`'s `review_max_bounces` is 0, and PR-Gate is the operator's review point, where a reject re-spawns the darn writer with the findings.
    Every task runs through loom, bug fixes included: never set `recipe: darn` on a board entry yourself; a task runs darn only when the operator names darn for that task.
-2. A halted child (blocked, paused or failed) is a wait batten never resumes on its own: once its cause is known (see Investigating a stop), resume it with `lyx loom resume` in the task worktree.
+2. A halted child (blocked, paused or failed) is a wait batten does not resume on its own, with one exception: batten sends the first Publish verify failure of a run back to the failure record's target and resumes it itself.
+   Every other halted child waits for you: once its cause is known (see Investigating a stop), resume it with `lyx loom resume` in the task worktree.
    When `lyx loom resume` refuses, its message names the way forward (`lyx batten run <slug>` to bring a dead driver back, or `lyx loom start`),
    and you take it.
 3. Check a run with `lyx batten status <slug>`, hold it with `lyx batten pause <slug>`, and send it to a producer with `lyx batten goto <slug> --to <producer>`.
    Both leave the batten run paused, so resume it with `lyx batten run <slug>`, which starts or resumes the lifecycle run.
 4. Keep no polling shell and start no Monitor for a run.
-   A line starting with `[batten notice]` is the wake-up: handle it as under Investigating a stop.
+   A line starting with `[batten notice]` is the wake-up.
+   A notice naming newly ready tasks goes to After landing, and every other `[batten notice]` is handled as under Investigating a stop.
 5. A ready PR is "awaiting", never "blocked".
    Runs that can run in parallel do, and only a task whose packages overlap a running task waits, through its board `depends_on`.
 
@@ -50,14 +52,15 @@ A driver, webster or a review loop that cannot go on escalates to you, its paren
 - A run that needs a fresh budget at a producer: `lyx loom goto` or `lyx shed goto`, naming the producer.
   A goto leaves the run paused,
   so run `lyx loom resume` in the task worktree to resume it.
-- A Publish blocked on a verify that exited non-zero: `lyx loom goto --to Webster-Burler`, then `lyx loom resume` in the task worktree.
+- A Publish blocked on a verify that exited non-zero: batten retries the first such failure of a run itself, so a notice for one means the second failure.
+  Take `lyx loom goto --to Webster-Burler`, then `lyx loom resume` in the task worktree.
   Never a goto to Plan-Bouncer, since the plan does not change.
 - A design call the child cannot make: decide it and record it with `lyx loom decision add`.
 
 ## Investigating a stop
 
 A stop is a `[batten notice]`, a halted run, or a message or escalation from a driver, webster or review loop.
-A parent-review request follows Parent-review, not this section.
+A parent-review request follows Parent-review, and a `[batten notice]` naming newly ready tasks follows After landing; neither is investigated as a stop.
 First read what the stop itself shows: `lyx batten status <slug>` for a notice or a halted run, the message for a message.
 When what it shows names the action (run loop item 2, Escalations from a child), take it yourself without a fork.
 Otherwise, when the `error` field is empty or names no action, or the cause sits in a report, a pane or a log, the stop goes to a one-shot fork.
@@ -97,15 +100,18 @@ Start a one-shot reviewer fork for the diff, then judge the run against its own 
 Never widen the scope through rejects: a reject names a defect in the task's own goal.
 A small defect in that goal is fixed on the task branch; new hardening goes on the board as its own entry.
 Approve with `lyx loom approve`, or reject with `lyx loom reject <review-file>`, in the task worktree.
-Batten reads the decision and resumes the child itself.
+Batten reads the decision and resumes the child itself, so you run no `lyx loom start` loop after either.
+After approving, amend the board entries the run superseded.
 In a darn run the same reject sends the findings to a fresh `Darn-Write` spawn.
 Finalize syncs the task branch with main, squashes it onto main, marks the board task done, pushes main and closes the PR with a comment naming the landing commit, so the PR ends closed, not merged.
 
 ## After landing
 
-First read `lyx batten status <slug>`; when its state is not done, run `lyx batten run <slug>` from the prime and confirm with `lyx batten status <slug>` that it reaches done, which runs Worktree-Teardown.
-Batten's teardown removes the pair.
-From the prime: pull and amend the board entries the run superseded.
+A landing needs nothing from you: batten's Land row pulls the prime, runs the hub's landing `deploy` command and prunes the board, and then Worktree-Teardown removes the pair.
+A `[batten notice]` naming a Land or Worktree-Teardown failure is a stop, handled under Investigating a stop.
+A notice naming newly ready tasks is the cue to start them with `lyx batten run <slug> --window`.
+While the hub's landing `deploy` key is empty, run `update-plugins.sh` by hand on a ready notice, or at your next wake after an approval.
+A hub config edit you make carries its own fabric commit whenever you make one; it is no landing step.
 Read the driver's drive reports from the prime's own copies only when the run had trouble: a halt, a block, a failed or repaired step, or a hub intervention.
 Never read the run's friction notes: its Friction-Reflect files them as issues, and intake takes those onto the board.
 
@@ -129,11 +135,11 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
 A bug in lyx goes to a GitHub issue, filed with `lyx selfreport create`.
 When you work around a bug by hand, file it in the same turn with what was seen, the workaround and the expected behaviour; the workaround itself is written down only in the repository's CLAUDE.md, with the issue number, and removed with the fix.
 Design, features and hardening go to the board.
-Every issue, whether you filed it or a run's Friction-Reflect did, is taken onto the board as its own note as soon as you see it.
+Every issue, whether you filed it or a run's Friction-Reflect did, is taken onto the board as its own note with `lyx board intake`, at PR-Gate and at any other wake, since triage needs judgement.
 
 ## Acting without asking
 
-Act and fix without asking: start the runs the operator approved, un-wedge stuck ones, approve, land and clean up.
+Act and fix without asking: start the runs the operator approved, un-wedge stuck ones, approve, and handle a Land or Worktree-Teardown failure notice.
 Ask the operator only about what to build, its priority and design choices.
 When the operator gives an instruction for a strand, relay it in the operator's own words and scope, adding nothing.
 
