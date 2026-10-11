@@ -1,18 +1,10 @@
-<!-- This is burler round instruction 2 of 3: the cluster rules, the
-     review-file format, source-grounding, and prior-round hydration.
-     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go),
-     seeded to <hub>/_board/_lyx/stencils/burler/ and read from there at call time by composePrompt
-     (prompt.go) via internal/stencil, then read by the reviewer only when the reviewer orchestrator
-     (burler-template-review-orchestrator.md) directs it here, after instruction 1.
-     The fixer never reads it as an instruction; the fixer orchestrator points the fixer at it only for the review-file format.
-     Every marker below is a top-level {{.X}} substitution;
-     stencil.Fill requires all three non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). -->
+<!-- This is the burler review-file format, the one format both halves of a round point at.
+     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lyx/stencils/burler/ and read
+     from there at call time by composeReviewPrompt and composeFixPrompt (prompt.go), which render it unchanged into each half's instruction directory.
+     The reviewer step names its path as the format it writes; the fixer seat names its path as the format it reads.
+     It is marker-free on purpose: it states the format and carries no path of either half. -->
 
-## Cluster rules
-
-{{.cluster_rules}}
-
-## Review-file format (write this to `{{.review_path}}`)
+## Review-file format
 
 Write the review file as `---`-delimited YAML frontmatter over unconstrained prose:
 
@@ -25,14 +17,17 @@ findings:
     class: design
     location: path/to/file.go:42
     summary: one-line description of the defect
+    fix: the exact change to make, and where
 ---
 ```
 
 Frontmatter rules, all strict:
 
+- The frontmatter's top-level keys are `verdict` and `findings` only.
 - `verdict` is exactly `APPROVED` or `BLOCKING` — no other spelling.
 - `findings` is a list;
-  every entry has a non-empty `id`, `severity`, `class`, `location`, and `summary`.
+  every entry has a non-empty `id`, `severity`, `class`, `location`, `summary`, and `fix`.
+- `fix` is the exact change to make and where, written so a fixer that has not seen your work can apply it from the review alone.
 - `severity` is exactly one of `BLOCKING`, `MEDIUM`, `LOW`, `NIT`.
 - `class` is exactly one of `design`, `scope`, `decision`, `consistency`, lowercase.
   - `design`: the design itself is wrong, or a decision is missing or rests on a false premise.
@@ -52,18 +47,11 @@ Frontmatter rules, all strict:
   Never invent a finding to pad the list.
 - In a cluster round, each finding also carries an `origin:` key — `lens:<name>` for a finding kept from a named fork, or `handler` for one you found yourself.
 
-Below the closing `---`, write prose: one `### [SEVERITY] <title>` block per finding, each carrying `**Location:**`, `**Issue:**`, and `**Fix:**` lines.
+Below the closing `---`, write prose: exactly one `### [SEVERITY] <title>` block per finding, each carrying `**Location:**` and `**Issue:**` lines.
+The change lives in the finding's `fix` key; no prose `**Fix:**` line restates it.
+A `## Rejected` section, if you write one, lists its items as bullets and never as `### [SEVERITY]` headings.
 
 When you departed from a focus directive this round, add a `## Focus departures` section below the frontmatter, after the finding blocks.
 Write one entry per departed directive, quoting the directive and giving your reason for departing.
 Omit the section when you departed from none.
 The section is prose and never a frontmatter key — the frontmatter schema above is unchanged.
-
-## Source-grounding rule
-
-Never fabricate file contents.
-Read the actual files before you describe or judge them — every claim in your review must be grounded in something you actually read.
-
-## Prior rounds
-
-{{.prior_rounds}}

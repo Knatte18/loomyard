@@ -55,7 +55,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// shortPollBattenRecipe is contracts/recipes/batten-recipe.yaml, byte-for-byte the same four rows
+// shortPollBattenRecipe is contracts/recipes/batten-recipe.yaml, byte-for-byte the same rows
 // and the same on_stuck self-route with no max_bounces, with poll_interval_s dropped from 2 to 1 so
 // the step-driven re-entrancy test below spends whole seconds only on the checks it needs. It is built here, not by
 // faking Env.InnerRun.Sleep, because this tier exists to exercise the assembled wiring -- the
@@ -78,11 +78,15 @@ producers:
 
   - name: Run-Shed
     engine: InnerRun
-    on_done: Worktree-Teardown
+    on_done: Land
     on_stuck: Run-Shed
     config:
       poll_interval_s: 1
       driver_exit_grace_s: 900
+
+  - name: Land
+    engine: Land
+    on_done: Worktree-Teardown
 
   - name: Worktree-Teardown
     engine: WorktreeTeardown
@@ -419,7 +423,7 @@ func stepRealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring(t *testing.T
 	}
 }
 
-// stepFourRowRun_SeedsChildCommitsAndTearsDown drives a spawn stub plus a read-status answering StateDone through the whole four-row list one row at a time: Worktree-Create, Seed-Child, Run-Shed, Worktree-Teardown.
+// stepFourRowRun_SeedsChildCommitsAndTearsDown drives a spawn stub plus a read-status answering StateDone through the whole row list one row at a time: Worktree-Create, Seed-Child, Run-Shed, Land, Worktree-Teardown.
 // It asserts the pair exists on disk after the create row, that the child's own _lyx/shed/<slug>/seed.json exists after the seed row, names the Board task's own "type" as its recipe, carries the pair's recorded parent branch as params.parent, and is committed (not merely written) on the child's own records pair, and that the pair is gone after the teardown row.
 // It runs once per recipe a child may run.
 func stepFourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T, h *hubforge.Hub) {
@@ -430,7 +434,7 @@ func stepFourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T, h *hubforge.Hub)
 	}
 }
 
-// fourRowRunForRecipe is the four-row run over a Board task whose recipe is recipe.
+// fourRowRunForRecipe is the whole-row-list run over a Board task whose recipe is recipe.
 func fourRowRunForRecipe(t *testing.T, h *hubforge.Hub, recipe string) {
 	slug := "batten-four-row-" + recipe
 	seedBoardTask(t, h, slug, recipe)
@@ -508,6 +512,18 @@ func fourRowRunForRecipe(t *testing.T, h *hubforge.Hub, recipe string) {
 	runStatus := boardengine.RunStatus("running", "Run-Shed")
 	if err := board.SetStatus(slug, &runStatus); err != nil {
 		t.Fatalf("hold the board entry at a run status: %v", err)
+	}
+
+	// Land runs over a prime at its remote head with an empty landing deploy command, and leaves the pair for the teardown.
+	landStep, err := shed.Step(ctx)
+	if err != nil {
+		t.Fatalf("Step (Land): %v", err)
+	}
+	if landStep.Producer != battenrecipe.NameLand || landStep.Outcome != shedengine.Done {
+		t.Fatalf("Land step = producer %q outcome %q reason %q; want %q Done", landStep.Producer, landStep.Outcome, landStep.Reason, battenrecipe.NameLand)
+	}
+	if !pathExists(pairPath) {
+		t.Fatalf("pair does not exist after Land: %s", pairPath)
 	}
 
 	if _, err := shed.Step(ctx); err != nil {

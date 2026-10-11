@@ -1,10 +1,10 @@
-// Package shedfake fakes the shed-layer seams: the shuttle, the burler runner, the seat runner, the merge shuttle and the webster run seams, plus the producer Call helpers.
+// Package shedfake fakes the shed-layer seams: the shuttle, the burler half runner, the seat runner, the merge shuttle and the webster run seams, plus the producer Call helpers.
 //
-// Shuttle satisfies shedadapters.Shuttle and frictionengine.Shuttle, BurlerRunner satisfies shedadapters.BurlerRunner, SeatRunner satisfies shedadapters.SeatRunner, and MergeShuttle satisfies mergeresolve.Shuttle, all structurally, so no consumer package is imported here and shedadapters' and landingshed's in-package tests can use the kit.
+// Shuttle satisfies shedadapters.Shuttle and frictionengine.Shuttle, BurlerHalfRunner satisfies shedadapters.BurlerHalfRunner, SeatRunner satisfies shedadapters.SeatRunner, and MergeShuttle satisfies mergeresolve.Shuttle, all structurally, so no consumer package is imported here and shedadapters' and landingshed's in-package tests can use the kit.
 // Every fake exposes fields and optional func overrides, and none asserts anything.
 // CallOK and RequireOutcome are the only assertions the kit makes.
 //
-// internal/burlerengine's in-package tests keep their own Shuttle fake, because this kit imports burlerengine for BurlerRunner's types.
+// internal/burlerengine's in-package tests keep their own Shuttle fake, because this kit imports burlerengine for BurlerHalfRunner's types.
 package shedfake
 
 import (
@@ -151,79 +151,125 @@ func evalGateList(gate shuttleengine.GateSpec) (bool, error) {
 	return true, nil
 }
 
-// BurlerRunner is a fake burler runner: Results[i] and Errs[i] answer the (i+1)th Run, and once either slice is exhausted its last entry repeats.
-// ProbeRound and Resume answer their own scripted slices the same way, and unscripted answer a round with neither half live.
-type BurlerRunner struct {
+// BurlerHalfRunner is a fake burler half runner: ReviewResults[i] and ReviewErrs[i] answer the (i+1)th Review, FixResults[i] and FixErrs[i] the (i+1)th Fix, and once either slice is exhausted its last entry repeats.
+// ProbeReview, ResumeReview, ProbeFix and ResumeFix answer their own scripted slices the same way, and unscripted probes answer a half that is gone.
+// Every method counts its invocations and records the profile, options and digest it received.
+type BurlerHalfRunner struct {
 	mu sync.Mutex
 
-	Results []burlerengine.Result
-	Errs    []error
+	ReviewResults []burlerengine.ReviewResult
+	ReviewErrs    []error
+	FixResults    []burlerengine.FixResult
+	FixErrs       []error
 
-	// LiveRounds and ProbeErrs script ProbeRound; ResumeResults and ResumeErrs script Resume.
-	LiveRounds    []burlerengine.LiveRound
-	ProbeErrs     []error
-	ResumeResults []burlerengine.Result
-	ResumeErrs    []error
-	// ProbeCalls and ResumeCalls count the invocations, GotProbeOpts holds every RunOpts handed to ProbeRound and GotLive every LiveRound handed to Resume.
-	ProbeCalls   int
-	ResumeCalls  int
-	GotProbeOpts []burlerengine.RunOpts
-	GotLive      []burlerengine.LiveRound
+	// LiveReviews and ProbeReviewErrs script ProbeReview; ResumeReviewResults and ResumeReviewErrs script ResumeReview.
+	LiveReviews         []burlerengine.LiveHalf
+	ProbeReviewErrs     []error
+	ResumeReviewResults []burlerengine.ReviewResult
+	ResumeReviewErrs    []error
+	// LiveFixes and ProbeFixErrs script ProbeFix; ResumeFixResults and ResumeFixErrs script ResumeFix.
+	LiveFixes        []burlerengine.LiveHalf
+	ProbeFixErrs     []error
+	ResumeFixResults []burlerengine.FixResult
+	ResumeFixErrs    []error
 
-	// GotProfiles and GotOpts hold every Profile and RunOpts handed to Run, in order, and Calls counts the invocations.
-	GotProfiles []burlerengine.Profile
-	GotOpts     []burlerengine.RunOpts
-	Calls       int
+	// ReviewCalls, ProbeReviewCalls, ResumeReviewCalls, FixCalls, ProbeFixCalls and ResumeFixCalls count the invocations of each method.
+	ReviewCalls       int
+	ProbeReviewCalls  int
+	ResumeReviewCalls int
+	FixCalls          int
+	ProbeFixCalls     int
+	ResumeFixCalls    int
 
-	// DuringRun runs from inside Run, before it answers, with the zero-based index of the invocation.
-	DuringRun func(callIndex int)
+	// GotReviewProfiles and GotReviewOpts hold every Profile and RunOpts handed to Review, in order; GotProbeReviewOpts, GotProbeFixOpts and GotResumeFixOpts hold the RunOpts of the other verbs.
+	GotReviewProfiles  []burlerengine.Profile
+	GotReviewOpts      []burlerengine.RunOpts
+	GotProbeReviewOpts []burlerengine.RunOpts
+	GotProbeFixOpts    []burlerengine.RunOpts
+	GotResumeFixOpts   []burlerengine.RunOpts
+	// GotFixProfiles, GotFixOpts and GotFixDigests hold every Profile, RunOpts and digest handed to Fix, in order; GotResumeFixDigests holds the digests handed to ResumeFix.
+	GotFixProfiles      []burlerengine.Profile
+	GotFixOpts          []burlerengine.RunOpts
+	GotFixDigests       []string
+	GotResumeFixDigests []string
+	// GotLiveReviews and GotLiveFixes hold every LiveHalf handed to ResumeReview and ResumeFix.
+	GotLiveReviews []burlerengine.LiveHalf
+	GotLiveFixes   []burlerengine.LiveHalf
+
+	// DuringReview and DuringFix run from inside Review and Fix, before they answer, with the zero-based index of the invocation.
+	DuringReview func(callIndex int)
+	DuringFix    func(callIndex int)
 }
 
-// Run records p and opts, runs DuringRun, then answers the scripted entry for this invocation.
-func (f *BurlerRunner) Run(p burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.Result, error) {
+// Review records p and opts, runs DuringReview, then answers the scripted entry for this invocation.
+func (f *BurlerHalfRunner) Review(p burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.ReviewResult, error) {
 	f.mu.Lock()
-	i := f.Calls
-	f.Calls++
-	f.GotProfiles = append(f.GotProfiles, p)
-	f.GotOpts = append(f.GotOpts, opts)
+	i := f.ReviewCalls
+	f.ReviewCalls++
+	f.GotReviewProfiles = append(f.GotReviewProfiles, p)
+	f.GotReviewOpts = append(f.GotReviewOpts, opts)
 	f.mu.Unlock()
-	if f.DuringRun != nil {
-		f.DuringRun(i)
+	if f.DuringReview != nil {
+		f.DuringReview(i)
 	}
-
-	var result burlerengine.Result
-	if i < len(f.Results) {
-		result = f.Results[i]
-	} else if len(f.Results) > 0 {
-		result = f.Results[len(f.Results)-1]
-	}
-	var err error
-	if i < len(f.Errs) {
-		err = f.Errs[i]
-	} else if len(f.Errs) > 0 {
-		err = f.Errs[len(f.Errs)-1]
-	}
-	return result, err
+	return scripted(f.ReviewResults, i), scripted(f.ReviewErrs, i)
 }
 
-// ProbeRound counts the call, records opts and answers the scripted LiveRound and error for this invocation.
-func (f *BurlerRunner) ProbeRound(_ burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.LiveRound, error) {
+// ProbeReview counts the call, records opts and answers the scripted LiveHalf and error for this invocation.
+func (f *BurlerHalfRunner) ProbeReview(_ burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.LiveHalf, error) {
 	f.mu.Lock()
-	i := f.ProbeCalls
-	f.ProbeCalls++
-	f.GotProbeOpts = append(f.GotProbeOpts, opts)
+	i := f.ProbeReviewCalls
+	f.ProbeReviewCalls++
+	f.GotProbeReviewOpts = append(f.GotProbeReviewOpts, opts)
 	f.mu.Unlock()
-	return scripted(f.LiveRounds, i), scripted(f.ProbeErrs, i)
+	return scripted(f.LiveReviews, i), scripted(f.ProbeReviewErrs, i)
 }
 
-// Resume counts the call, records live and answers the scripted Result and error for this invocation.
-func (f *BurlerRunner) Resume(_ burlerengine.Profile, _ burlerengine.RunOpts, live burlerengine.LiveRound) (burlerengine.Result, error) {
+// ResumeReview counts the call, records live and answers the scripted ReviewResult and error for this invocation.
+func (f *BurlerHalfRunner) ResumeReview(_ burlerengine.Profile, _ burlerengine.RunOpts, live burlerengine.LiveHalf) (burlerengine.ReviewResult, error) {
 	f.mu.Lock()
-	i := f.ResumeCalls
-	f.ResumeCalls++
-	f.GotLive = append(f.GotLive, live)
+	i := f.ResumeReviewCalls
+	f.ResumeReviewCalls++
+	f.GotLiveReviews = append(f.GotLiveReviews, live)
 	f.mu.Unlock()
-	return scripted(f.ResumeResults, i), scripted(f.ResumeErrs, i)
+	return scripted(f.ResumeReviewResults, i), scripted(f.ResumeReviewErrs, i)
+}
+
+// Fix records p, opts and digest, runs DuringFix, then answers the scripted entry for this invocation.
+func (f *BurlerHalfRunner) Fix(p burlerengine.Profile, opts burlerengine.RunOpts, digest string) (burlerengine.FixResult, error) {
+	f.mu.Lock()
+	i := f.FixCalls
+	f.FixCalls++
+	f.GotFixProfiles = append(f.GotFixProfiles, p)
+	f.GotFixOpts = append(f.GotFixOpts, opts)
+	f.GotFixDigests = append(f.GotFixDigests, digest)
+	f.mu.Unlock()
+	if f.DuringFix != nil {
+		f.DuringFix(i)
+	}
+	return scripted(f.FixResults, i), scripted(f.FixErrs, i)
+}
+
+// ProbeFix counts the call, records opts and answers the scripted LiveHalf and error for this invocation.
+func (f *BurlerHalfRunner) ProbeFix(_ burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.LiveHalf, error) {
+	f.mu.Lock()
+	i := f.ProbeFixCalls
+	f.ProbeFixCalls++
+	f.GotProbeFixOpts = append(f.GotProbeFixOpts, opts)
+	f.mu.Unlock()
+	return scripted(f.LiveFixes, i), scripted(f.ProbeFixErrs, i)
+}
+
+// ResumeFix counts the call, records opts, digest and live, and answers the scripted FixResult and error for this invocation.
+func (f *BurlerHalfRunner) ResumeFix(_ burlerengine.Profile, opts burlerengine.RunOpts, digest string, live burlerengine.LiveHalf) (burlerengine.FixResult, error) {
+	f.mu.Lock()
+	i := f.ResumeFixCalls
+	f.ResumeFixCalls++
+	f.GotResumeFixOpts = append(f.GotResumeFixOpts, opts)
+	f.GotResumeFixDigests = append(f.GotResumeFixDigests, digest)
+	f.GotLiveFixes = append(f.GotLiveFixes, live)
+	f.mu.Unlock()
+	return scripted(f.ResumeFixResults, i), scripted(f.ResumeFixErrs, i)
 }
 
 // scripted returns entries[i], the last entry once i runs past them, and the zero value for no entries.

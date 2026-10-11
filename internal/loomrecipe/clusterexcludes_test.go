@@ -1,14 +1,14 @@
 // clusterexcludes_test.go pins the agreement between each Bouncer row's cluster_excludes and its
-// partner BurlerRound row's cluster fan.
+// partner BurlerReview row's cluster fan.
 //
-// The rule: a Bouncer whose on_stuck names a BurlerRound row sets cluster_excludes: true exactly
+// The rule: a Bouncer whose on_stuck names a BurlerReview row sets cluster_excludes: true exactly
 // when that row's profile.cluster-fan is non-empty. The Bouncer's judge is asked for exclude_lenses
 // only when the partner round has a fan to trim (see cluster_excludes on bouncerEntry in
-// internal/shedrecipe); otherwise BurlerProducer drops the excludes with a WARN. shedbuild.Build
+// internal/shedrecipe); otherwise BurlerReviewProducer drops the excludes with a WARN. shedbuild.Build
 // runs no cross-row analysis, so this test is the only authoring-time guard.
 //
 // The fix for a failing author: set cluster_excludes: true on the Bouncer row when adding
-// profile.cluster-fan to its BurlerRound partner (and remove it again when removing the fan).
+// profile.cluster-fan to its BurlerReview partner (and remove it again when removing the fan).
 //
 // It parses the real embedded recipe and reads no worktree, staying untagged and offline.
 
@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 )
 
-// clusterExcludesMismatches returns one message per Bouncer row, partnered with a BurlerRound row
+// clusterExcludesMismatches returns one message per Bouncer row, partnered with a BurlerReview row
 // through on_stuck, whose cluster_excludes disagrees with the partner's cluster fan, or whose
 // relevant config values have the wrong type.
 func clusterExcludesMismatches(r shedbuild.Recipe) []string {
@@ -38,7 +38,7 @@ func clusterExcludesMismatches(r shedbuild.Recipe) []string {
 			continue
 		}
 		partner, ok := rows[b.OnStuck]
-		if !ok || partner.Engine != "BurlerRound" {
+		if !ok || partner.Engine != "BurlerReview" {
 			continue
 		}
 
@@ -56,13 +56,13 @@ func clusterExcludesMismatches(r shedbuild.Recipe) []string {
 		if v, present := partner.Config["profile"]; present {
 			profile, isMap := v.(map[string]any)
 			if !isMap {
-				msgs = append(msgs, fmt.Sprintf("BurlerRound row %q (partner of Bouncer row %q): profile is %T, want map", partner.Name, b.Name, v))
+				msgs = append(msgs, fmt.Sprintf("BurlerReview row %q (partner of Bouncer row %q): profile is %T, want map", partner.Name, b.Name, v))
 				continue
 			}
 			if fv, present := profile["cluster-fan"]; present {
 				s, isString := fv.(string)
 				if !isString {
-					msgs = append(msgs, fmt.Sprintf("BurlerRound row %q (partner of Bouncer row %q): profile.cluster-fan is %T, want string", partner.Name, b.Name, fv))
+					msgs = append(msgs, fmt.Sprintf("BurlerReview row %q (partner of Bouncer row %q): profile.cluster-fan is %T, want string", partner.Name, b.Name, fv))
 					continue
 				}
 				fan = s
@@ -70,15 +70,15 @@ func clusterExcludesMismatches(r shedbuild.Recipe) []string {
 		}
 
 		if excludes != (fan != "") {
-			msgs = append(msgs, fmt.Sprintf("Bouncer row %q has cluster_excludes=%t but its partner BurlerRound row %q has cluster-fan=%q; set cluster_excludes: true exactly when the partner has a fan", b.Name, excludes, partner.Name, fan))
+			msgs = append(msgs, fmt.Sprintf("Bouncer row %q has cluster_excludes=%t but its partner BurlerReview row %q has cluster-fan=%q; set cluster_excludes: true exactly when the partner has a fan", b.Name, excludes, partner.Name, fan))
 		}
 	}
 	return msgs
 }
 
-// TestShippedRecipe_ClusterExcludesAgreesWithPartnerFan asserts the shipped loom recipe has no Bouncer/BurlerRound pair whose cluster_excludes disagrees with the partner's cluster fan.
+// TestShippedRecipe_ClusterExcludesAgreesWithPartnerFan asserts the shipped loom recipe has no Bouncer/BurlerReview pair whose cluster_excludes disagrees with the partner's cluster fan.
 //
-//testtiming:keep pins that no shipped Bouncer/BurlerRound pair disagrees on cluster_excludes, a guard that fires on the recipe file, which TestApproveSeam_FailsToBuild never reads
+//testtiming:keep pins that no shipped Bouncer/BurlerReview pair disagrees on cluster_excludes, a guard that fires on the recipe file, which TestApproveSeam_FailsToBuild never reads
 func TestShippedRecipe_ClusterExcludesAgreesWithPartnerFan(t *testing.T) {
 	r, err := shedbuild.Parse(recipes.LoomRecipe)
 	if err != nil {
@@ -102,7 +102,7 @@ producers:
     config:
 ` + bouncerConfig + `
   - name: R
-    engine: BurlerRound
+    engine: BurlerReview
     on_stuck: B
     config:
 ` + burlerConfig + `
@@ -129,7 +129,7 @@ producers:
 		{"key absent, fan", recipe("R", noExcludes, withFan), 1, `"B"`},
 		{"key true, fan", recipe("R", excludesTrue, withFan), 0, ""},
 		{"key absent, no fan", recipe("R", noExcludes, noFan), 0, ""},
-		{"on_stuck names non-BurlerRound row", recipe("Z", excludesTrue, noFan), 0, ""},
+		{"on_stuck names non-BurlerReview row", recipe("Z", excludesTrue, noFan), 0, ""},
 		{"non-bool cluster_excludes", recipe("R", excludesStr, noFan), 1, `"B"`},
 		{"non-string cluster-fan", recipe("R", noExcludes, numericFan), 1, `"B"`},
 	}

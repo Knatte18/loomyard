@@ -34,7 +34,7 @@ const (
 	// RoleImplementer selects the directive for any agent that edits code: the webster fork, the
 	// webster recovery strand, the webster verify-gate fixer fork, and loom's Plan-Write.
 	RoleImplementer Role = iota + 1
-	// RoleReviewFix selects the directive for the Burler round's combined review-then-fix agent.
+	// RoleReviewFix selects the directive for the Burler fix half's fixer, the round's only note writer.
 	RoleReviewFix
 	// RoleOrchestrator selects the directive for webster's Master session, which forks rather than
 	// edits.

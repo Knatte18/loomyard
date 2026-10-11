@@ -119,6 +119,9 @@ func TestGotoCmd_RefusesHeldRunLock(t *testing.T) {
 	if msg, _ := env["error"].(string); !strings.Contains(msg, "lyx shed pause") {
 		t.Errorf("error %q does not name lyx shed pause", msg)
 	}
+	if kind, _ := env["kind"].(string); kind != shedengine.ShedBusyKind {
+		t.Errorf("kind = %q; want %q", kind, shedengine.ShedBusyKind)
+	}
 }
 
 // TestGotoCmd_PassesToldWayForwardTexts asserts the verb hands the spec's run-id and missing-status clause to the engine, seen in a refusal.

@@ -151,6 +151,7 @@ func TestConfigOverRealHub(t *testing.T) {
 	}{
 		{name: "task pair is refused naming the prime", module: "board", set: "labels.guard=desc", cwd: codeWorktreePath, wantCode: 1, wantErr: "prime worktree"},
 		{name: "task pair is refused weakening landing's publish_verify", module: "landing", set: "publish_verify=", cwd: codeWorktreePath, wantCode: 1, wantErr: "prime worktree"},
+		{name: "task pair is refused setting landing's deploy", module: "landing", set: "deploy=./update-plugins.sh", cwd: codeWorktreePath, wantCode: 1, wantErr: "prime worktree"},
 		{name: "prime under a slug-bearing strand name is refused", module: "board", set: "labels.guard=desc", cwd: primeWorktreePath, strand: "ly:" + slug + ":webster", wantCode: 1, wantErr: "task session"},
 		{name: "prime under the hub orch's slug-free name is allowed", module: "board", set: "labels.guard=desc", cwd: primeWorktreePath, strand: "ly:orch", wantWritten: "guard: desc"},
 	}

@@ -72,7 +72,7 @@ var gitrepoPinnedRunBoundMethods = []string{
 	"CherryPick",
 	"CherryPickAbort",
 	"pushWithRebaseRetry",
-	"PushRebaseFree",
+	"pushPlainWithRetry",
 	"HasUnpushed",
 	"HasUnpulled",
 	"DeleteRemoteBranch",

@@ -1,6 +1,4 @@
-// focus.go implements RoundFocus, the next-round directive a segment's Bouncer writes and its
-// BurlerRound row reads, and readRoundFocus, the fail-safe reader that turns a missing, unreadable,
-// or malformed focus file into the zero directive rather than an error.
+// focus.go implements RoundFocus, the next-round directive a segment's Bouncer writes and its Burler review row reads, and readRoundFocus, the fail-safe reader that turns a missing, unreadable, or malformed focus file into the zero directive rather than an error.
 // The file it reads is the one the Bouncer writes -- round-<N>-focus.md, the YAML-frontmatter shape
 // bouncerfiles.go renders and the two bouncer stencils instruct the judge to produce. See
 // readRoundFocus for why that had to be said out loud.
@@ -13,10 +11,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// burlerEngineLabel is the short engine label BurlerProducer's log lines and error text carry.
+// burlerEngineLabel is the short engine label the focus reader's log lines carry.
 const burlerEngineLabel = "burler"
 
-// RoundFocus is the next-round directive a segment's Bouncer writes and its BurlerRound row reads.
+// RoundFocus is the next-round directive a segment's Bouncer writes and its Burler review row reads.
 // Both fields are optional, and the zero value means "no directive", which every failure path
 // degrades to.
 // The round token in the filename this directive is read from names the round the directives are
@@ -50,7 +48,7 @@ type RoundFocus struct {
 //
 // DirectivePath carries the focus file's own path, and carries it only when the file has a directive to deliver -- a non-empty focus list or non-empty prose.
 // That is how the judge's targeting reaches the round:
-// BurlerProducer sets it as the profile's FocusDirective, which the explore step reads before findings are formed, so PriorReviews carries earlier rounds' reports only.
+// BurlerReviewProducer sets it as the profile's FocusDirective, which the explore step reads before findings are formed, so PriorReviews carries earlier rounds' reports only.
 // An APPROVED judge still writes a focus file (its third output file is unconditional, so the run classifies complete),
 // and that file carries empty lists (a Bouncer not told ClusterExcludes writes focus alone) and no prose;
 // delivering it would hand the next round an empty document asserting nothing, so an empty directive stays empty.

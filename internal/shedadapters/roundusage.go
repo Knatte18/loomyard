@@ -55,29 +55,6 @@ func roundUsagePath(runDir string, n int) string {
 	return filepath.Join(runDir, fmt.Sprintf("round-%d-usage.yaml", n))
 }
 
-// newRoundUsage builds the usage record of the round that ran fan on the review and fix models and produced result.
-// The round number is set by writeRoundUsage.
-func newRoundUsage(fan string, review, fix burlerengine.ModelChoice, result burlerengine.Result) roundUsage {
-	reviewHalf := newHalfUsage(review, result.Review)
-	if usage := result.Review.Usage; usage.Known {
-		forks := usage.Forks
-		reviewHalf.Forks = &forks
-		reviewHalf.ForkFreshTokens = &usage.ForkFresh
-		reviewHalf.ForkCacheReadTokens = &usage.ForkCacheRead
-		if usage.Fresh > 0 {
-			share := float64(usage.ForkFresh) / float64(usage.Fresh)
-			reviewHalf.ForkFreshShare = &share
-		}
-	}
-	fixHalf := newHalfUsage(fix, result.Fix)
-	return roundUsage{
-		Fan:    fan,
-		Lenses: result.Lenses,
-		Review: &reviewHalf,
-		Fix:    &fixHalf,
-	}
-}
-
 // newHalfUsage builds one half's record from the model it ran on and the half's run times and token reading.
 func newHalfUsage(model burlerengine.ModelChoice, half burlerengine.Half) halfUsage {
 	record := halfUsage{

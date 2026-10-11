@@ -82,7 +82,7 @@ func TestParentReviewBrief_NamesPathsAndSubmitLines(t *testing.T) {
 	for _, want := range []string{
 		"/w/decision.md",
 		"/w/support.md",
-		stencilstore.Path(dir, "burler-step-2-review"),
+		stencilstore.Path(dir, "burler-review-format"),
 		"lyx board list",
 		"lyx board get",
 		"lyx loom review approve add-json-flag",

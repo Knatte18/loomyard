@@ -159,10 +159,10 @@ func TestGateCapableEntries_RejectLeftoverOldKeys(t *testing.T) {
 	}
 
 	for _, key := range []string{"gate", "gate_attempts"} {
-		t.Run("BurlerRound/"+key, func(t *testing.T) {
-			cfg := minimalBurlerConfig()
+		t.Run("BurlerFix/"+key, func(t *testing.T) {
+			cfg := minimalFixConfig()
 			cfg[key] = "plan"
-			_, err := burlerRoundEntry("Row", cfg, newTestEnv(t))
+			_, err := burlerFixEntry("Row", cfg, newTestEnv(t))
 			assertErrContains(t, err, "unrecognized config key")
 			assertErrContains(t, err, key)
 		})

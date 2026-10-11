@@ -24,7 +24,7 @@ import (
 // After resolvePass it appends planGatePass's findings, skipping that pass when resolvePass failed.
 //
 // This is the WHOLE-plan form, correct before execution starts (both plan gate sites -- Plan-Write's
-// and Plan-Burler's own gates -- and the standalone verbs). Once execution is under way, use
+// and Plan-Burler-Fix's own gates -- and the standalone verbs). Once execution is under way, use
 // ValidateDispatch instead.
 func ValidateFormat(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 	return validateFormat(plan, worktreeRoot, defaultTypesLoader)

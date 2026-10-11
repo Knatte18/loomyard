@@ -223,13 +223,12 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 
 // TestBounceRouting_StuckContinuesAtDeclaredTarget drives Discussion-Bouncer (a real producer)
 // genuinely Stuck by scripting its judge round's verdict as non-approving, and asserts the run
-// continues at its declared OnStuck target, Discussion-Burler, immediately afterward.
+// continues at its declared OnStuck target, Discussion-Burler-Review, immediately afterward.
 //
 // Discussion-Validate is gone, and with it the standalone-validator vehicle this test used to drive:
-// a real, repeatably bounceable producer pair is what this test needs, and the Discussion-Review
-// segment's mutual on_stuck pair (Discussion-Bouncer/Discussion-Burler) is the one this task's new
-// writer-row gates have no bearing on -- the loom burler never reads burlerengine.RunOpts.Gate at
-// all -- so it is what remains, matching the same assertion shape over a pair that still exists.
+// a real, repeatably bounceable producer ring is what this test needs.
+// The Discussion-Review segment's on_stuck ring (Discussion-Bouncer, Discussion-Burler-Review, Discussion-Burler-Fix) is the one this task's new writer-row gates have no bearing on.
+// The loom burler never reads burlerengine.RunOpts.Gate at all, so the ring is what remains, matching the same assertion shape over a ring that still exists.
 // This test asserts only that routing continues at the declared target after one Stuck -- the
 // budget-exhaustion property belongs to TestBounceRouting_BudgetExhaustionBlocks below.
 func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
@@ -257,10 +256,10 @@ func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
 		t.Fatalf("Run() History has no %s Stuck entry: %+v", loomshed.NameDiscussionBouncer, result.History)
 	}
 	if stuckIdx+1 >= len(result.History) {
-		t.Fatalf("Run() History ends at the Stuck entry; want a following entry naming the bounce target %q", loomshed.NameDiscussionBurler)
+		t.Fatalf("Run() History ends at the Stuck entry; want a following entry naming the bounce target %q", loomshed.NameDiscussionBurlerReview)
 	}
-	if got := result.History[stuckIdx+1].Producer; got != loomshed.NameDiscussionBurler {
-		t.Errorf("History[%d].Producer (following the Stuck entry) = %q; want the declared bounce target %q", stuckIdx+1, got, loomshed.NameDiscussionBurler)
+	if got := result.History[stuckIdx+1].Producer; got != loomshed.NameDiscussionBurlerReview {
+		t.Errorf("History[%d].Producer (following the Stuck entry) = %q; want the declared bounce target %q", stuckIdx+1, got, loomshed.NameDiscussionBurlerReview)
 	}
 }
 
@@ -299,14 +298,13 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 //
 // Discussion-Validate is no longer this test's vehicle.
 // Discussion-Write now carries its own "gates" entry named "discussion" (resolveGateSpec, internal/shedrecipe/entries_gate.go), which calls the exact same discussionparser.Validate function Discussion-Validate's own Call does -- so a Discussion-Write whose redo never fixes its artifact fails its OWN gate on every bounce, and Discussion-Write carries no on_stuck, so that failure blocks the whole run on the very first bounce rather than letting Discussion-Validate cycle it repeatedly.
-// Discussion-Bouncer's mutual on_stuck with Discussion-Burler (segment: Discussion-Review) has no such dependency on this task's new gates -- the loom burler, this fixture's shedfake.BurlerRunner, never reads burlerengine.RunOpts.Gate at all -- so it is what remains a genuinely, repeatably bounceable real producer pair under the new design, matching the property this test exists to prove (a real producer's per-episode bounce budget is consumed and exhausted, never a fake standing in for a generic engine mechanism the recipe's own graph never exercises).
+// Discussion-Bouncer's on_stuck ring with Discussion-Burler-Review and Discussion-Burler-Fix (segment: Discussion-Review) has no such dependency on this task's new gates -- the loom burler, this fixture's shedfake.BurlerHalfRunner, never reads burlerengine.RunOpts.Gate at all -- so it is what remains a genuinely, repeatably bounceable real producer ring under the new design, matching the property this test exists to prove (a real producer's per-episode bounce budget is consumed and exhausted, never a fake standing in for a generic engine mechanism the recipe's own graph never exercises).
 //
 // The budget here is per-producer and episode-scoped, counted from the persisted history[] -- never
 // a run-wide counter. blockBouncerJudge makes the judge round reject on every pass, so
 // Discussion-Bouncer never returns Done and its episode (the run of its own history entries since
-// its last Done) is therefore the whole run: every Stuck entry it authors counts. Discussion-Burler,
-// the producer it bounces to, consumes none of Discussion-Bouncer's own budget -- each producer's
-// episode count is its own.
+// its last Done) is therefore the whole run: every Stuck entry it authors counts.
+// The Burler rows it bounces through consume none of Discussion-Bouncer's own budget, since each producer's episode count is its own.
 //
 // Discussion-Bouncer's budget is the fixture's Env.ReviewMaxBounces, which New applies to the row
 // (the recipe declares none), not inherited from ShedPaths.MaxBounces the way
@@ -314,7 +312,7 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 // trips rather than parameterizing a small paths.MaxBounces.
 //
 // The Bouncer is what this test binds its assertion to, never the Burler.
-// Every Discussion-Burler hand-back for judgment is budget-exempt, so Discussion-Bouncer's own budget is the segment's one budget on judged rounds and Discussion-Burler's is never spent.
+// Every Discussion-Burler-Review and Discussion-Burler-Fix hand-back is budget-exempt, so Discussion-Bouncer's own budget is the segment's one budget on judged rounds and the Burler rows' is never spent.
 func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 	blockBouncerJudge(env)

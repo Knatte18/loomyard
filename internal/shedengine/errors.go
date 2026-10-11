@@ -9,3 +9,6 @@ import "errors"
 // refusal as a real failure, mirroring treadleengine.ErrBlockBusy's role.
 // It is returned wrapped with %w.
 var ErrShedBusy = errors.New("shed is already running")
+
+// ShedBusyKind is the envelope `kind` of a verb refusal whose error wraps ErrShedBusy, so a caller reads the kind rather than the message.
+const ShedBusyKind = "shed_busy"

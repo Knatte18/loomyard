@@ -17,7 +17,7 @@ const (
 	parentReviewDeliveryStencil  = "loom-template-parent-review-delivery"
 	parentReviewBriefStencil     = "loom-template-parent-review-brief"
 	parentReviewKeepAliveStencil = "loom-template-parent-review-keepalive"
-	reviewFormatStencil          = "burler-step-2-review"
+	reviewFormatStencil          = "burler-review-format"
 )
 
 // ParentReviewKeepAlivePrompt renders the keep-alive prompt for keep-alive number ping, which keeps each ping's text distinct.

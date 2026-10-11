@@ -75,6 +75,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if got := c.verifySource().failedWayForward; !strings.Contains(got, `"lyx loom goto --to Darn-Write"`) {
 			t.Errorf("verifySource().failedWayForward = %q; want it to route back to the Darn-Write row", got)
 		}
+		if got := c.verifySource().failureTarget; got != "Darn-Write" {
+			t.Errorf("verifySource().failureTarget = %q; want Darn-Write", got)
+		}
 	})
 
 	t.Run("a loom seed leaves the darn seams nil", func(t *testing.T) {
@@ -87,8 +90,8 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if c.env.DarnSpec != nil || c.env.Darn.Commit != nil || c.env.VerifyMergeBase != nil || c.env.VerifyWholeDiff || c.env.DarnVerifyAttempts != 0 {
 			t.Errorf("a loom seed filled a darn seam: DarnSpec nil = %v, Darn.Commit nil = %v, VerifyMergeBase nil = %v, VerifyWholeDiff = %v, DarnVerifyAttempts = %d", c.env.DarnSpec == nil, c.env.Darn.Commit == nil, c.env.VerifyMergeBase == nil, c.env.VerifyWholeDiff, c.env.DarnVerifyAttempts)
 		}
-		if got := c.verifySource().failedWayForward; !strings.Contains(got, `"lyx loom goto --to Webster-Burler"`) {
-			t.Errorf("verifySource().failedWayForward = %q; want it to route back to the Webster-Burler row", got)
+		if got := c.verifySource().failedWayForward; !strings.Contains(got, `"lyx loom goto --to Webster-Burler-Review"`) {
+			t.Errorf("verifySource().failedWayForward = %q; want it to route back to the Webster-Burler-Review row", got)
 		}
 	})
 

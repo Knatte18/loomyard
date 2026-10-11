@@ -437,6 +437,41 @@ Extra metadata is harmless.
 			wantFindings: nil,
 		},
 		{
+			name: "finding without fix still parses",
+			content: `---
+verdict: BLOCKING
+findings:
+  - id: F1
+    severity: BLOCKING
+    class: design
+    location: file.go:7
+    summary: unchecked error
+---
+`,
+			wantVerdict: VerdictBlocking,
+			wantFindings: []Finding{
+				{ID: "F1", Severity: SeverityBlocking, Class: ClassDesign, Location: "file.go:7", Summary: "unchecked error"},
+			},
+		},
+		{
+			name: "fix decodes onto the finding",
+			content: `---
+verdict: BLOCKING
+findings:
+  - id: F1
+    severity: BLOCKING
+    class: design
+    location: file.go:7
+    summary: unchecked error
+    fix: return the error at file.go:7
+---
+`,
+			wantVerdict: VerdictBlocking,
+			wantFindings: []Finding{
+				{ID: "F1", Severity: SeverityBlocking, Class: ClassDesign, Location: "file.go:7", Summary: "unchecked error", Fix: "return the error at file.go:7"},
+			},
+		},
+		{
 			name:        "crlf content",
 			content:     "---\r\nverdict: APPROVED\r\n---\r\n\r\nAll clear.\r\n",
 			wantVerdict: VerdictApproved,
@@ -473,6 +508,67 @@ Extra metadata is harmless.
 				if findings[i] != tt.wantFindings[i] {
 					t.Errorf("ParseReview() findings[%d] = %+v; want %+v", i, findings[i], tt.wantFindings[i])
 				}
+			}
+		})
+	}
+}
+
+func TestParseCurrentReview(t *testing.T) {
+	const finding = "  - id: F1\n    severity: MEDIUM\n    class: scope\n    location: file.go:7\n    summary: unchecked error\n    fix: return the error at file.go:7\n"
+	tests := []struct {
+		name         string
+		content      string
+		errSubstr    string
+		wantFindings int
+	}{
+		{
+			name:         "well formed with a rejected section of bullets",
+			content:      "---\nverdict: APPROVED\nfindings:\n" + finding + "---\n### [MEDIUM] unchecked error\n**Location:** file.go:7\n**Issue:** dropped\n\n## Rejected\n\n- ### [LOW] is not a heading here\n- another item\n",
+			wantFindings: 1,
+		},
+		{
+			name:    "no findings and no prose blocks",
+			content: "---\nverdict: APPROVED\n---\nNothing to report.\n",
+		},
+		{
+			name:      "empty fix",
+			content:   "---\nverdict: BLOCKING\nfindings:\n  - id: F1\n    severity: BLOCKING\n    class: design\n    location: a.go:1\n    summary: s\n    fix: \"\"\n---\n### [BLOCKING] s\n",
+			errSubstr: `finding "F1" is missing a non-empty fix`,
+		},
+		{
+			name:      "findings under a misspelled key",
+			content:   "---\nverdict: APPROVED\nfinding:\n" + finding + "---\n",
+			errSubstr: `top-level key "finding"`,
+		},
+		{
+			name:      "prose block with no finding",
+			content:   "---\nverdict: APPROVED\n---\n### [MEDIUM] stray\n",
+			errSubstr: "1 `### [MEDIUM]` prose block(s) but 0 MEDIUM finding(s)",
+		},
+		{
+			name:      "prose and frontmatter disagree on severity",
+			content:   "---\nverdict: APPROVED\nfindings:\n" + finding + "---\n### [LOW] wrong severity\n",
+			errSubstr: "0 `### [MEDIUM]` prose block(s) but 1 MEDIUM finding(s)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, findings, err := ParseCurrentReview([]byte(tt.content))
+			if tt.errSubstr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.errSubstr) {
+					t.Fatalf("ParseCurrentReview() error = %v; want substring %q", err, tt.errSubstr)
+				}
+				if !strings.HasPrefix(err.Error(), "burler: ") {
+					t.Errorf("ParseCurrentReview() error = %q; want burler: -prefixed message", err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseCurrentReview() = %v; want nil error", err)
+			}
+			if len(findings) != tt.wantFindings {
+				t.Errorf("ParseCurrentReview() findings = %+v; want %d", findings, tt.wantFindings)
 			}
 		})
 	}

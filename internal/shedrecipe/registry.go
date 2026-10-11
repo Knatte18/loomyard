@@ -36,11 +36,13 @@ var registry = map[string]Constructor{
 	"SingleLLM":        singleLLMEntry,
 	"MultiLLM":         multiLLMEntry,
 	"Bouncer":          bouncerEntry,
-	"BurlerRound":      burlerRoundEntry,
+	"BurlerReview":     burlerReviewEntry,
+	"BurlerFix":        burlerFixEntry,
 	"WorktreeCreate":   worktreeCreateEntry,
 	"InnerRun":         innerRunEntry,
 	"SeedChild":        seedChildEntry,
 	"WorktreeTeardown": worktreeTeardownEntry,
+	"Land":             landEntry,
 }
 
 // Lookup resolves name against the registry, returning its Constructor.
