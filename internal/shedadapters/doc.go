@@ -116,6 +116,8 @@
 //     A legacy word never settles a harvest:
 //     a judge this Call spawned or attached that writes one has its three outputs archived and the round re-judged,
 //     through the round producer's unjudged-round hand-back, at one bounce unit on each row.
+//     A judgment the convergence guard refuses (see the end of this document) takes the same route beside the retired-word one, with a Reason naming the cause and ending in `the round is re-judged`;
+//     a replayed round that carries an escalation record or a circling decision file stands as recorded and is never refused.
 //     The ledger is reported rather than withheld because the Bouncer's ledger is a real cross-round artifact a human reads,
 //     and hiding it on a CONTINUE Stuck would hide it exactly when an operator most needs it.
 //     The exists-or-empty rule matters because Shed never stats a pointer,
@@ -300,8 +302,8 @@
 // outcome or its own RunOpts.Timeout elapses), and Bouncer for similar reasons at the shuttleengine
 // layer (see the Shared cancellation rule above for both).
 //
-// The Bouncer accepts one further soft spot: ledger carry-forward is enforced by the judge prompt
-// alone, so a misbehaving judge can drop an entry with nothing at the Go layer catching it; closing
-// that would require diffing the new ledger's key set against the previous one and deciding what a
-// missing key means, which is a feature rather than a one-line addition.
+// The Bouncer does not trust the judge alone with the rules it states:
+// a CONVERGED with an open BLOCKING ledger entry or a BLOCKING or unparseable review is archived and re-judged within the bounce budget.
+// So is any verdict whose ledger drops a key of the previous round's ledger.
+// Only keys are compared across ledgers, never status, class or severity.
 package shedadapters

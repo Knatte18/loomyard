@@ -458,7 +458,7 @@ func layoutBouncerRound1Report(t *testing.T, env Env) {
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", runDir, err)
 	}
-	if err := os.WriteFile(filepath.Join(runDir, "round-1-review.md"), []byte("a review\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(runDir, "round-1-review.md"), []byte("---\nverdict: APPROVED\nfindings: []\n---\na review\n"), 0o644); err != nil {
 		t.Fatalf("write round-1-review.md: %v", err)
 	}
 }
