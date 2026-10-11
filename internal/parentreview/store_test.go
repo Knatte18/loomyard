@@ -361,9 +361,11 @@ func TestPrepareRound(t *testing.T) {
 		verdict   string
 		expire    bool
 		noRound   bool
+		noRequest bool
 		wantRound int
 	}{
 		{name: "no round", noRound: true, wantRound: 1},
+		{name: "round without a request kept", noRequest: true, wantRound: 1},
 		{name: "reject kept", verdict: `{"kind":"reject"}`, wantRound: 1},
 		{name: "superseding approve kept", verdict: `{"kind":"approve","superseding":true}`, wantRound: 1},
 		{name: "plain approve begins", verdict: `{"kind":"approve"}`, wantRound: 2},
@@ -372,7 +374,11 @@ func TestPrepareRound(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s, _ := newStore(t)
-			if !tt.noRound {
+			if tt.noRequest {
+				if _, err := s.BeginRound(); err != nil {
+					t.Fatal(err)
+				}
+			} else if !tt.noRound {
 				openOne(t, s)
 				if tt.verdict != "" {
 					writeVerdict(t, s, 1, tt.verdict)
@@ -386,6 +392,14 @@ func TestPrepareRound(t *testing.T) {
 			got, err := s.PrepareRound()
 			if err != nil || got.Number != tt.wantRound {
 				t.Fatalf("PrepareRound = %d, %v; want round %d", got.Number, err, tt.wantRound)
+			}
+			if tt.noRound {
+				// Two fresh spawns with no reviewer leave one empty round, not two.
+				again, err := s.PrepareRound()
+				nums, numsErr := s.roundNumbers()
+				if err != nil || numsErr != nil || again.Number != 1 || len(nums) != 1 {
+					t.Fatalf("second PrepareRound = %d, %v; rounds = %v, %v; want round 1 and one round directory", again.Number, err, nums, numsErr)
+				}
 			}
 		})
 	}

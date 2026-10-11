@@ -67,7 +67,7 @@ The vocabulary is `discussion`, `plan`, `rework-plan`, `description`, `verify` a
 The entry is must-pass and may hold the run, and its `attempts` is the reject cap: the gate fails terminally at that many rejected rounds, halting the run `blocked` until the parent approves.
 A `pass_on_cap` key on the element is a construction error.
 The gate's own store counts the rejects, so the engine's own pass-on-cap never applies to this entry.
-It reads `Env.ParentReview`, and a Discussion-Write row with an enabled `parent-review` entry opens a new review round on each fresh spawn, except that the latest round is kept after a reject or a superseding approve so the gate can read it.
+It reads `Env.ParentReview`, and a Discussion-Write row with an enabled `parent-review` entry opens a new review round on each fresh spawn, except that the latest round is kept when it holds no request, or after a reject or a superseding approve so the gate can read it.
 
 ## The recipe loader/builder
 

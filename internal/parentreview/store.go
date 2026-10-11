@@ -266,13 +266,13 @@ func (s Store) rejectedRoundsExcept(skip int) (int, error) {
 }
 
 // PrepareRound is Discussion-Write's fresh-spawn preparation.
-// It returns the latest round unchanged when its verdict is a reject or a superseding approve, and otherwise calls BeginRound.
+// It returns the latest round unchanged when it holds no request, or its verdict is a reject or a superseding approve, and otherwise calls BeginRound.
 func (s Store) PrepareRound() (Round, error) {
 	r, ok, err := s.Latest()
 	if err != nil {
 		return Round{}, err
 	}
-	if ok && r.Verdict != nil && (r.Verdict.Kind == VerdictReject || r.Verdict.Superseding) {
+	if ok && (r.Request == nil || r.Verdict != nil && (r.Verdict.Kind == VerdictReject || r.Verdict.Superseding)) {
 		return r, nil
 	}
 	return s.BeginRound()
