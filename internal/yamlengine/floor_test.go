@@ -9,11 +9,11 @@ func TestRaiseIntFloor(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name         string
-		existing     string
-		wantOut      string
-		wantLine     string
-		wantErr      bool
+		name          string
+		existing      string
+		wantOut       string
+		wantLine      string
+		wantErr       bool
 		wantUnchanged bool
 	}{
 		{name: "below floor is raised", existing: "poll: 500\n", wantOut: "poll: 1000\n", wantLine: "poll: raised from 500 to 1000"},
