@@ -25,7 +25,7 @@ and guid, the state, its cause, the detail (an API error's text), the
 outstanding background tasks of a busy session, since when (RFC 3339), and the
 history of states the reading passed through.
 
-The states are busy, idle-done, idle-stalled, asking, dead and unknown.
+The states are busy, idle-done, idle-stalled, idle-fresh, asking, dead and unknown.
 The state model is in shadow mode: it is read here and logged beside the wait
 loop's own judgment, and no stop, notice or return depends on it yet.
 

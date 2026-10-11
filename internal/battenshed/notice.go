@@ -322,9 +322,10 @@ func (p *innerRunProducer) noticeStep(ctx context.Context, w *childWait) {
 }
 
 // noticeDriverBusy queues one orch notice per stall on a busy driver pane, and does nothing once one is queued or when no Notify was wired.
-// The notice carries the fixed condition and the child's own status, never the refusal text, which quotes the draft in another pane.
+// The notice carries the fixed condition and the child's own status, then cause, the spawn error that refused the resume, as one line cut at noticeErrorMax, so the box text it quotes reaches the orch.
+// The notice key stays the condition, so one stall sends one notice.
 // Every failure is a Warn, and the flag is set only once deliver reports the notice queued, so a refused attempt is tried again on the next refusal.
-func (p *innerRunProducer) noticeDriverBusy(ctx context.Context, w *childWait) {
+func (p *innerRunProducer) noticeDriverBusy(ctx context.Context, w *childWait, cause error) {
 	if !p.notices || p.driverBusyNoticed {
 		return
 	}
@@ -333,7 +334,7 @@ func (p *innerRunProducer) noticeDriverBusy(ctx context.Context, w *childWait) {
 		logger.Warn("battenshed: notice skipped; pair directory unresolved", "producer", p.name, "slug", p.slug, "error", err)
 		return
 	}
-	condition := haltText(w.status) + "; " + noticeDriverBusyCondition
+	condition := haltText(w.status) + "; " + noticeDriverBusyCondition + " (" + oneLine(cause.Error(), noticeErrorMax) + ")"
 	line := renderNotice(noticeLine{slug: p.slug, condition: condition, status: w.status, since: p.episode.since, pairDir: pairDir})
 	key := noticeKey(noticeDriverBusyCondition, w.status.State, p.episode.since.UnixNano())
 	if p.deliver(ctx, key, noticeDriverBusyCondition, line) {

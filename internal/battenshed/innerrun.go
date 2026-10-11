@@ -849,7 +849,7 @@ func (p *innerRunProducer) awaitingStep(ctx context.Context, w *childWait) *wait
 				w.busyLogged = true
 				logger.Info("battenshed: child driver pane is busy; retrying the resume until it is clear", "producer", p.name, "slug", p.slug, "error", spawnErr)
 			}
-			p.noticeDriverBusy(ctx, w)
+			p.noticeDriverBusy(ctx, w, spawnErr)
 			p.report(w, w.busyReason)
 			return nil
 		}
