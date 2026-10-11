@@ -277,7 +277,7 @@
 // The facts and their sources: the record gives Interactive and the output files (a run that declares none has none that exist), taken once per read;
 // the optional SessionProber gives process liveness for the session id of the newest signal that names one, else the record's, and the interrupt marker of the newest turn start;
 // the optional ActivityReader gives the API-error marker of the newest turn end; the caller's clock gives the reading time.
-// ReadSessionStates returns one RunSessionState per run under a run-directory root whose record reads running, whether or not its waiting process is alive, and Runner.SessionState reads the one run a guid names.
+// ReadSessionStates returns one RunSessionState per run under a run-directory root whose record reads running, whether or not its waiting process is alive, and Runner.SessionState reads the one run a guid names; Run.SessionState gives a run handle the same reading of its own strand.
 // Both read the signals past the prompt offset and write nothing; an engine without the parser reads unknown with cause unsupported.
 // The wait loop folds the same signals on a cursor of its own: it starts at the prompt offset on every path, never at the loop's event offset, and stops before an unpaired trailing stamp, so the stamp is read again with its payload.
 // At every liveness tick it re-reads the markers of the newest turn start and turn end folded so far, since the transcript can mark them after the tick that folded them.
