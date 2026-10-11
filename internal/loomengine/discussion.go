@@ -71,7 +71,7 @@ func DiscussionSpec(layout *lyxcwd.Location, stencilsDir, parentName string, cfg
 		frictionDirective = ""
 	}
 
-	prompt, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, parentDirective, autonomous)
+	prompt, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, parentDirective, "", "", autonomous)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: %w", err)
 	}

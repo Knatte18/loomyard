@@ -247,6 +247,8 @@ var wordingClaims = []stencilClaims{
 		{must: "{{.support_log_path}}", section: discussionFenceSection, why: "the fence names the output files by marker, so the permitted set cannot drift from the paths Step 5 writes"},
 		{must: "lyx loom review delivered", section: discussionFenceSection, why: "the fence carves out the parent-review delivered verb"},
 		{must: "parent-review entry to `## Review rounds`", section: discussionFenceSection, why: "the fence carves out the parent-review round entry"},
+		{must: "{{.twill_directive}}", section: "## Step 4 — How to get answers", why: "the twill lens review sits with the answer-gathering step, ahead of the files Step 5 writes"},
+		{must: "{{.twill_write_scope}}", section: discussionFenceSection, why: "the ready marker joins the write scope inside the fence"},
 	}, attackSurfaceClaims...)},
 	{"loom-template-discussion-chair.md", LoomTemplateDiscussionChair, []claim{
 		{must: `{{template "loom-template-discussion"}}`, why: "the chair includes the discussion stencil whole, so its write surface and gates cannot drift from the single writer's"},

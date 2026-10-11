@@ -52,7 +52,7 @@ func TestComposePrompt_RendersMarkers(t *testing.T) {
 	stencilsDir := newTestStencilsDir(t)
 	render := func(t *testing.T, autonomous bool) string {
 		t.Helper()
-		got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", "", "", autonomous)
+		got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", "", "", "", "", autonomous)
 		if err != nil {
 			t.Fatalf("composePrompt(..., autonomous=%v) = _, %v; want nil error", autonomous, err)
 		}
@@ -93,6 +93,15 @@ func TestComposePrompt_RendersMarkers(t *testing.T) {
 					t.Errorf("composePrompt(...) output names the skill %q; skills load from the spec, not the stencil", skill)
 				}
 			}
+			if strings.Contains(strings.ToLower(rendered), "twill") {
+				t.Errorf("composePrompt(..., twill blocks empty) output carries twill text; want none")
+			}
+			if want := modeRules(tt.autonomous) + "\n\n## Step 5"; !strings.Contains(rendered, want) {
+				t.Errorf("composePrompt(...) output does not hold the mode rules, one blank line, then Step 5")
+			}
+			if want := "- `" + supportLogPath + "`\n\nTwo narrow carve-outs"; !strings.Contains(rendered, want) {
+				t.Errorf("composePrompt(...) output does not hold the support-log bullet, one blank line, then the carve-outs")
+			}
 			if rules := modeRules(tt.autonomous); rules == "" {
 				t.Errorf("modeRules(%v) = \"\"; want non-empty string", tt.autonomous)
 			}
@@ -110,6 +119,22 @@ func TestComposePrompt_RendersMarkers(t *testing.T) {
 	if render(t, true) == render(t, false) {
 		t.Error("composePrompt(autonomous=true) and composePrompt(autonomous=false) rendered identically; want them to differ")
 	}
+
+	t.Run("twill blocks land each in a paragraph of its own", func(t *testing.T) {
+		t.Parallel()
+		got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", "", "", "SENTINEL-DIRECTIVE", "SENTINEL-SCOPE", false)
+		if err != nil {
+			t.Fatalf("composePrompt(sentinels) = _, %v; want nil error", err)
+		}
+		for _, want := range []string{
+			modeRules(false) + "\n\nSENTINEL-DIRECTIVE\n\n## Step 5",
+			"- `" + supportLogPath + "`\n\nSENTINEL-SCOPE\n\nTwo narrow carve-outs",
+		} {
+			if !strings.Contains(string(got), want) {
+				t.Errorf("composePrompt(sentinels) output does not contain %q", want)
+			}
+		}
+	})
 }
 
 // TestCompose_FrictionDirective verifies, for the discussion and the plan composer, that a real friction directive resolved via friction.NotePath/friction.Directive exactly as the spec builders resolve one lands its resolved absolute note path verbatim in the prompt (the property that catches a composer wiring the wrong path); that an empty directive (Tier 2 off) over a stencilsDir carrying no friction-directive stencil still renders with no friction content (the composer reads no friction stencil of its own); and that a seeded template whose bytes carry no {{.friction_directive}} literal still composes while Tier 2 is enabled -- the operator-edited-stencil and dev-build case, since internal/stencilstore/reconcile.go never refreshes a StateEdited stencil, so it must degrade to a warning rather than a failed run.
@@ -134,7 +159,7 @@ func TestCompose_FrictionDirective(t *testing.T) {
 			templateFile: "loom-template-discussion.md",
 			templateBody: stencils.LoomTemplateDiscussion,
 			compose: func(t *testing.T, stencilsDir, frictionDirective string) (string, error) {
-				got, err := composePrompt(stencilsDir, "add-json-flag", decisionRecordPath, supportLogPath, "", frictionDirective, "", false)
+				got, err := composePrompt(stencilsDir, "add-json-flag", decisionRecordPath, supportLogPath, "", frictionDirective, "", "", "", false)
 				return string(got), err
 			},
 		},
