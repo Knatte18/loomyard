@@ -363,7 +363,7 @@ func testInnerRunRefusedResume(t *testing.T, draft string, refusals []error, sec
 		}
 		return true, nil
 	}
-	deps.AttachDir = func() (string, error) { return "/wt/task", nil }
+	deps.PairDir = func() (string, error) { return "/wt/task", nil }
 	// The child's driver takes the resume once the scripted refusals end.
 	var attempts []time.Duration
 	start := clock.Now()
