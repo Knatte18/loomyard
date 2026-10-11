@@ -54,7 +54,7 @@ func TestDarnSpec(t *testing.T) {
 			name:      "first spawn renders both optional tokens as none",
 			configure: func(in *DarnInputs) {},
 			wantInPrompt: func(in DarnInputs) []string {
-				return []string{"`lyx board get fix-the-thing`", in.DescriptionPath, filepath.ToSlash(in.SpecsDir) + "/final-summary-spec.md"}
+				return []string{"`lyx board get '{\"slug\":\"fix-the-thing\"}'`", in.DescriptionPath, filepath.ToSlash(in.SpecsDir) + "/final-summary-spec.md"}
 			},
 			wantNone:     2,
 			wantNoParent: true,

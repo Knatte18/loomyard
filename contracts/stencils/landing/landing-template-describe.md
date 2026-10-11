@@ -21,7 +21,7 @@ Read only these sources, and use read-only git for the diff:
   An entry between `<!-- lyx:carry-over … -->` marker lines in `## Open risks` lists the findings a review left open.
   Each finding a Plan-Review or Webster-Review entry lists becomes one item to check by hand in your description, worded as the finding and where it is, never as a review round.
   A Discussion-Review entry is not carried into the description.
-- The board entry, via `lyx board get {{.slug}}`.
+- The board entry, via `lyx board get '{"slug":"{{.slug}}"}'`.
 - The diff of the task branch `{{.task_branch}}` against its merge base with the parent branch `{{.parent_branch}}` — for example `git diff $(git merge-base {{.parent_branch}} {{.task_branch}}) {{.task_branch}}`.
 - The run records, one per plan generation with the oldest first and the live one last, only as a source of manual-check items:
 {{.run_record_paths}}

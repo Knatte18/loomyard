@@ -18,7 +18,7 @@ No operator is present, so make best-judgment calls and never block on a dialog.
 {{.friction_directive}}
 ## Step 1 — Read the task
 
-Read the board entry for task `{{.slug}}` with `lyx board get {{.slug}}`.
+Read the board entry for task `{{.slug}}` with `lyx board get '{"slug":"{{.slug}}"}'`.
 It is the whole statement of the change you make.
 
 Also read the repository's `CLAUDE.md`.
