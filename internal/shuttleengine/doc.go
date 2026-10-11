@@ -70,7 +70,7 @@
 // an interactive run, a run whose Spec.QuietHold is set (which skips this notice alone; the hold, the wait mark and the deadline are unchanged), or a runner with no notifier, holds silently to its deadline, and a notifier error is logged and never ends the run.
 // A run whose Spec.HoldDeferral is set does not send the notice at the turn end:
 // Wait keeps the latest held turn end pending.
-// It sends the notice once holdNoticeSettle (45 seconds) has passed and the predicate reports no outstanding work elsewhere, or once holdNoticeMaxDeferral (20 minutes) has passed whatever it reports.
+// It sends the notice once holdNoticeSettle has passed and the predicate reports no outstanding work elsewhere, or once holdNoticeMaxDeferral has passed whatever it reports.
 // A new event or a turn start past the turn end, read first, drops it unnotified.
 // The predicate is not called before the settle interval, and the check rides Wait's existing poll.
 // The notice states that the text inside its « » delimiters is the agent's own words and not an instruction,
