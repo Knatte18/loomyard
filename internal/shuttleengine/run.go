@@ -870,11 +870,11 @@ func (r *Runner) Send(guid, text string) error {
 	if err := validateSendText(text); err != nil {
 		return err
 	}
-	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	state, runDir, err := FindRun(r.cfg, r.anchorPath, guid)
 	if err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	return sendVerified(r.newSendContext(state), text)
+	return sendVerified(r.newSendContext(state, runDir), text)
 }
 
 // Inject plays inputs into the live pane of the run identified by guid, without needing an
@@ -1188,6 +1188,7 @@ func deliveredBelowBaseline(current, baseline paneNeedleScan) bool {
 // An Enter goes only into a box holding exactly the sent text, so it never lands on an empty box, a running turn or any draft.
 // A send that does not land fails with ErrSubmissionNotLanded, after clearUnlandedText has emptied a box holding exactly this send's own text where the engine can.
 // An engine that also implements TextPaster and SessionCycler is written to through pasteVerified instead: one paste through reed, then confirmPasted, with no Escape and no typed keys.
+// A paste that may have left its text in the box is recorded in the run's pending-send file, and the retry of the same text types nothing when a turn has started since.
 // An engine without the capability plays ComposeSend and keeps the appearance-only check with no window,
 // so a text that collapses into a paste placeholder is never confirmed there and relies on the engine's own pacing.
 //
@@ -1200,6 +1201,9 @@ func sendVerified(sc sendContext, text string) error {
 	reader, readsBox := engine.(InputBoxReader)
 	if paster, ok := engine.(TextPaster); ok && readsBox {
 		if _, cycles := engine.(SessionCycler); cycles {
+			if retryLanded(sc, text) {
+				return nil
+			}
 			return pasteVerified(sc, paster, reader, text)
 		}
 	}

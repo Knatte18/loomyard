@@ -32,13 +32,14 @@ const (
 	paneTailLines = 15
 )
 
-// sendContext is what one verified send needs: the pane it types into, the run's record and events file, the config and the clock its timed waits read.
+// sendContext is what one verified send needs: the pane it types into, the run's record, directory and events file, the config and the clock its timed waits read.
 // A zero deadline means none, and a nil hold starts the idle wait's turn-start hold afresh.
 type sendContext struct {
 	reed       ReedOps
 	engine     Engine
 	guid       string
 	state      RunState
+	runDir     string
 	eventsPath string
 	cfg        Config
 	clock      Clock
@@ -53,19 +54,21 @@ func (run *Run) newSendContext() sendContext {
 		engine:     run.runner.engine,
 		guid:       run.state.StrandGUID,
 		state:      run.state,
+		runDir:     run.runDir,
 		eventsPath: run.state.EventsPath,
 		cfg:        run.runner.cfg,
 		clock:      run.clock,
 	}
 }
 
-// newSendContext returns the context of a verified send into the pane of the run state names.
-func (r *Runner) newSendContext(state RunState) sendContext {
+// newSendContext returns the context of a verified send into the pane of the run state names, whose directory is runDir.
+func (r *Runner) newSendContext(state RunState, runDir string) sendContext {
 	return sendContext{
 		reed:       r.reed,
 		engine:     r.engine,
 		guid:       state.StrandGUID,
 		state:      state,
+		runDir:     runDir,
 		eventsPath: state.EventsPath,
 		cfg:        r.cfg,
 		clock:      r.clock,
@@ -316,17 +319,50 @@ func pasteVerified(sc sendContext, paster TextPaster, reader InputBoxReader, tex
 	if windowClosed(sc.clock, closeAt) {
 		return withPaneTail(fmt.Errorf("%w: the submit window, cut to the send's deadline, had closed before the paste; nothing was pasted", ErrSubmissionNotLanded), "", sc)
 	}
-	normalized := normalizePaneText(text)
 	sentAt := eventsSize(sc.eventsPath)
 	if err := sc.reed.PasteSubmit(sc.guid, text, paster.PasteSubmits()); err != nil {
 		return fmt.Errorf("shuttle: paste text: %w", err)
 	}
+	err := settleAndConfirmPasted(sc, paster, reader, text, sentAt, closeAt)
+	if errors.Is(err, ErrSentTextInDraft) || errors.Is(err, ErrSubmissionNotLanded) {
+		if saveErr := savePendingSend(sc.runDir, pendingSend{Text: text, EventsOffset: sentAt}); saveErr != nil {
+			logger.Warn("shuttle: pending send not recorded, a retry may type the text twice", "strandGUID", sc.guid, "error", saveErr)
+		}
+	}
+	return err
+}
+
+// settleAndConfirmPasted runs what follows a paste: the box settles first when the paste carries no Enter, then confirmPasted reads the box until the send lands or the window closes.
+func settleAndConfirmPasted(sc sendContext, paster TextPaster, reader InputBoxReader, text string, sentAt int64, closeAt time.Time) error {
 	if !paster.PasteSubmits() {
 		if err := awaitSettledBox(sc, reader, closeAt); err != nil {
-			return failUnlanded(sc, reader, normalized, err)
+			return failUnlanded(sc, reader, normalizePaneText(text), err)
 		}
 	}
 	return confirmPasted(sc, paster, reader, text, sentAt, closeAt)
+}
+
+// retryLanded reports whether the pending-send record of an earlier failed send of this same text shows the text went out, so the retry types nothing.
+// The record is cleared whatever it says.
+// It reads as landed when the events file holds a turn start past the recorded offset, which is the text going out with the draft or with an Enter the operator pressed.
+// A record for another text, an unreadable record and one that cannot be cleared read as not landed, the last two logged at Warn, so a broken file never wedges a strand.
+func retryLanded(sc sendContext, text string) bool {
+	pending, found, err := loadPendingSend(sc.runDir)
+	if err != nil {
+		logger.Warn("shuttle: pending send unreadable, sending as usual", "strandGUID", sc.guid, "error", err)
+		if clearErr := clearPendingSend(sc.runDir); clearErr != nil {
+			logger.Warn("shuttle: pending send not cleared", "strandGUID", sc.guid, "error", clearErr)
+		}
+		return false
+	}
+	if !found {
+		return false
+	}
+	if err := clearPendingSend(sc.runDir); err != nil {
+		logger.Warn("shuttle: pending send not cleared, sending as usual", "strandGUID", sc.guid, "error", err)
+		return false
+	}
+	return pending.Text == text && turnStartedSince(sc.engine, sc.eventsPath, pending.EventsOffset)
 }
 
 // confirmPasted reads the input box after a paste, first reader.SubmitSettle() later and then at a doubling interval up to confirmBackoffCap, cut to end at closeAt.

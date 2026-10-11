@@ -1457,6 +1457,80 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			}
 		})
 	}
+
+	// The retry of a paste that may have left its text in the box: the pending-send record decides whether the second send types.
+	const retriedText = "run the suite"
+	retryTests := []struct {
+		name string
+		// firstBox is the box the first send ends on; wantRecord is whether that failure records the text.
+		firstBox   inputBoxAnswer
+		wantRecord bool
+		// turnStarted appends a turn start to the events file between the sends.
+		turnStarted bool
+		// retryText is the text of the second send.
+		retryText string
+		// wantPastes is how many pastes both sends made together.
+		wantPastes int
+	}{
+		{name: "a landed send leaves no record", firstBox: box(""), retryText: retriedText, wantPastes: 2},
+		{
+			name:     "text left in the draft with a turn started since types nothing on the retry",
+			firstBox: box("my own draft " + retriedText), wantRecord: true, turnStarted: true, retryText: retriedText, wantPastes: 1,
+		},
+		{
+			name:     "text left in the draft and cleared by the operator is pasted again",
+			firstBox: box("my own draft " + retriedText), wantRecord: true, retryText: retriedText, wantPastes: 2,
+		},
+		{
+			name:     "a send not landed after an unreadable box with a turn started since types nothing on the retry",
+			firstBox: inputBoxAnswer{"", false}, wantRecord: true, turnStarted: true, retryText: retriedText, wantPastes: 1,
+		},
+		{
+			name:     "a record for another text is cleared and the retry pastes",
+			firstBox: box("my own draft " + retriedText), wantRecord: true, turnStarted: true, retryText: "a different request", wantPastes: 2,
+		},
+	}
+	for _, tt := range retryTests {
+		t.Run("retry: "+tt.name, func(t *testing.T) {
+			t.Parallel()
+			clock := newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))
+			base := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"IDLE"}}
+			boxEngine := &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: []inputBoxAnswer{tt.firstBox}, settle: ms(100)}
+			engine := &scriptedPasteEngine{clearableBoxEngine: &clearableBoxEngine{inputBoxEngine: boxEngine}, pasteSubmits: true}
+			cfg := Config{SubmitSettleMS: 100, SubmitConfirmTimeoutS: 30, SendReadyTimeoutS: 60}
+			run := newFixture(t, base, engine, withConfig(cfg)).newRun(Spec{}, withRunEvents(""), withRunClock(clock, clock.Now().Add(time.Hour)))
+
+			_ = run.Send(retriedText)
+			_, recorded, err := loadPendingSend(run.runDir)
+			if err != nil {
+				t.Fatalf("loadPendingSend() error: %v", err)
+			}
+			if recorded != tt.wantRecord {
+				t.Fatalf("pending send recorded = %v after the first send, want %v", recorded, tt.wantRecord)
+			}
+
+			if tt.turnStarted {
+				f, err := os.OpenFile(run.state.EventsPath, os.O_APPEND|os.O_WRONLY, 0o644)
+				if err != nil {
+					t.Fatalf("open events: %v", err)
+				}
+				defer f.Close()
+				if _, err := f.WriteString("START\nSTOP:done\n"); err != nil {
+					t.Fatalf("append turn: %v", err)
+				}
+			}
+			boxEngine.boxes = []inputBoxAnswer{box("")}
+			if err := run.Send(tt.retryText); err != nil {
+				t.Fatalf("retry Send() error: %v, want the retry confirmed", err)
+			}
+			if len(base.PasteSubmitCalls) != tt.wantPastes {
+				t.Errorf("PasteSubmit calls = %+v, want %d", base.PasteSubmitCalls, tt.wantPastes)
+			}
+			if _, stillRecorded, _ := loadPendingSend(run.runDir); stillRecorded {
+				t.Error("pending send still recorded after the retry, want it cleared")
+			}
+		})
+	}
 }
 
 //testtiming:keep pins the pane scan's count and lines-below at the unit level, including a needle straddling a wrap boundary, which the delivery table reaches only through Send

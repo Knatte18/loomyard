@@ -210,6 +210,13 @@
 // a box holding exactly the sent text, or the provider's own placeholder for it, means the Enter did not take, and the guarded Enter, sent only when no operator was active in the pane just before the key, goes out and the box is read again;
 // no readable box sends nothing and is read again, and a window that ends that way, or on an exact match, fails with ErrSubmissionNotLanded;
 // the sent text beside other text fails with ErrSentTextInDraft, which wraps ErrSessionBusy, and any other text fails with ErrSessionBusy quoting the box; neither sends a key.
+// A pasted send that fails with ErrSentTextInDraft or ErrSubmissionNotLanded may have left its text in the box, so it records `{text, events offset}` in `pending-send.json` in the run directory, a file of its own so it never races run.json's writers.
+// A paste that landed, was held before it wrote or failed in reed records nothing.
+// The next send to the strand, once the idle wait passed on an empty box, reads and clears the record.
+// For the same text with a turn start past the recorded offset, the text went out with the draft or with an Enter the operator pressed, and the send returns landed without pasting;
+// otherwise the operator cleared the box, or the record was for another text, and the send pastes as usual.
+// A record that cannot be read or cleared is logged at Warn and the send pastes, so a broken file never wedges a strand.
+// A retry whose text started no turn, as a slash command's does not, always pastes afresh.
 // The run's events offset is the events file's size at the moment before the prompt is sent.
 // That lies past every load turn end, the retry's included, and past any line appended after them.
 // run.json records that offset as `promptOffset` before the prompt goes out,

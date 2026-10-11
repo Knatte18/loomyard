@@ -40,11 +40,11 @@ func (r *Runner) LoadSkills(guid string, skills []string) error {
 	if err != nil {
 		return err
 	}
-	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	state, runDir, err := FindRun(r.cfg, r.anchorPath, guid)
 	if err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	return sendVerified(r.newSendContext(state), loader.SkillLoadMessage(skills))
+	return sendVerified(r.newSendContext(state, runDir), loader.SkillLoadMessage(skills))
 }
 
 // ClassifySkillLoad returns the engine's classification of the load turn of skills that turnEnd ended.
@@ -144,8 +144,8 @@ func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 	if err != nil {
 		return IdleProbe{}, fmt.Errorf("shuttle: capture strand %q's pane to probe idleness: %w", guid, err)
 	}
-	if state, _, findErr := FindRun(r.cfg, r.anchorPath, guid); findErr == nil {
-		reading := sessionReadiness(r.newSendContext(state), cycler, r.holdFor(guid), capture)
+	if state, runDir, findErr := FindRun(r.cfg, r.anchorPath, guid); findErr == nil {
+		reading := sessionReadiness(r.newSendContext(state, runDir), cycler, r.holdFor(guid), capture)
 		switch {
 		case reading.ready:
 			if !cycler.IdleSession(capture) {
@@ -216,14 +216,14 @@ func (r *Runner) TypeColor(guid string, color segmentcolor.Color) error {
 	if r.toldErr != nil {
 		return r.toldErr
 	}
-	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	state, runDir, err := FindRun(r.cfg, r.anchorPath, guid)
 	if err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
 	if err := requireLiveStrand(r.reed, guid); err != nil {
 		return err
 	}
-	return typeColor(r.newSendContext(state), color)
+	return typeColor(r.newSendContext(state, runDir), color)
 }
 
 // CompactSession plays the provider's compact-session key choreography, keeping what focus names, into the live pane of the run identified by guid.
