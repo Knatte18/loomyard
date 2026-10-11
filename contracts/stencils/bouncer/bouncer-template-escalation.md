@@ -28,8 +28,8 @@ The run's worktree is `{{.worktree}}`.
 Settle the question only when you can do it on the materials and the task's own record.
 When you can:
 
-1. When the decision record exists, record each design call you make with `lyx loom decision add {{.slug}} --by parent --title … --decision … --rationale …`, run in `{{.worktree}}`.
-   A darn run has no decision record, so name each design call in your report back to your parent session instead.
+1. Record each design call you make with `lyx loom decision add {{.slug}} --by parent --title … --decision … --rationale …`, run in `{{.worktree}}`, when the decision record exists.
+   Without one, name each design call in your report back to your parent session instead.
 2. Record your decision on the segment with exactly one of:
    - `lyx loom circling accept {{.slug}}` ends the segment unconverged on this round.
      The segment passes with its open findings, recorded as unconverged.
