@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
@@ -190,9 +191,11 @@ func (f *prFixture) call() {
 	}
 }
 
-// TestParentReviewExchange_RejectThenFixGoesOnToPerch drives the embedded recipe's one parent review through delivery and a reject from the prime,
-// then the writer's fix, which goes on without a second round, and checks the commit, the status wait and the round numbering along the way.
-func TestParentReviewExchange_RejectThenFixGoesOnToPerch(t *testing.T) {
+// TestParentReviewExchange_RewriteReviewedThenCapRejectHalts drives the embedded recipe's two parent-review rounds through delivery and a reject from the prime each:
+// the rewrite after the first reject is reviewed as round 2, the second reject fails the gate terminally and the producer halts Stuck,
+// and an approve from the prime then supersedes the cap's reject so a second Call's gate passes with no new round.
+// It checks the commit, the status wait and the round numbering along the way.
+func TestParentReviewExchange_RewriteReviewedThenCapRejectHalts(t *testing.T) {
 	f := newPRFixture(t)
 	taskCwd := f.location.AnchorPath()
 	primeCwd := f.hub.Location.AnchorPath()
@@ -247,14 +250,50 @@ func TestParentReviewExchange_RejectThenFixGoesOnToPerch(t *testing.T) {
 			t.Fatalf("copied review = (%q, %v); want the reviewer's findings", got, err)
 		}
 
-		// Arrival 3: the writer fixed the discussion; the one parent review is spent, so the rewrite goes on to the perch with no second round.
+		// Arrival 3: the writer rewrote the discussion; the rewrite is reviewed as round 2, whose request opens and whose brief the prompt names.
 		f.writeDiscussion("\nAddressed the parent's finding.\n")
 		third := arrive(t, gates)
-		if !third.Passed || third.Pending || third.Send != "" {
-			t.Fatalf("arrival 3 = %+v; want passed with no prompt", third)
+		round2 := f.latest()
+		if round2.Number != 2 {
+			t.Fatalf("round number after the rewrite = %d; want 2", round2.Number)
 		}
-		if n := f.latest().Number; n != 1 {
-			t.Fatalf("round number after the fix = %d; want 1", n)
+		if !third.Pending || !strings.Contains(third.Send, round2.BriefPath()) {
+			t.Fatalf("arrival 3 = %+v; want pending carrying a prompt naming %q", third, round2.BriefPath())
+		}
+
+		// The parent rejects round 2 too, which is the cap's reject.
+		if code, out := f.verb(taskCwd, "review", "delivered"); code != 0 {
+			t.Fatalf("review delivered (round 2) = %d %q; want 0", code, out)
+		}
+		if code, out := f.verb(primeCwd, "review", "reject", f.slug, reviewFile); code != 0 {
+			t.Fatalf("review reject (round 2) = %d %q; want 0", code, out)
+		}
+
+		// Arrival 4: the cap's reject fails terminal naming the way out, and the run's gate outcome carries that text.
+		fourth := arrive(t, gates)
+		if fourth.Passed || fourth.Pending || !fourth.Terminal || !strings.Contains(fourth.Findings, "lyx loom review approve") {
+			t.Fatalf("arrival 4 = %+v; want a terminal failure naming lyx loom review approve", fourth)
+		}
+		return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: false, Reason: fourth.Findings}}
+	}
+	outcome, pointer, err := f.producer.Call(context.Background())
+	if err != nil || outcome != shedengine.Stuck || !strings.Contains(pointer.Reason, "lyx loom review approve") {
+		t.Fatalf("Discussion-Write Call = (%q, %+v, %v); want stuck with a reason naming lyx loom review approve", outcome, pointer, err)
+	}
+
+	// The halted run is blocked; the parent's approve supersedes the cap's reject, and the next Call's gate passes with no new round.
+	writeStatusFile(t, f.location, `{"current_producer":"Discussion-Write","state":"blocked"}`)
+	code, out := f.verb(primeCwd, "review", "approve", f.slug)
+	if code != 0 || envelope.Decode(t, out).Raw["superseded"] != true {
+		t.Fatalf("review approve = %d %q; want 0 reporting superseded", code, out)
+	}
+	f.shuttle.script = func(gates shuttleengine.GateSpec) shuttleengine.Result {
+		f.writeDiscussion("\nAddressed the cap's finding.\n")
+		if first := arrive(t, gates); !first.Passed || first.Pending {
+			t.Fatalf("first arrival after the approve = %+v; want passed", first)
+		}
+		if n := f.latest().Number; n != 2 {
+			t.Fatalf("round number after the approve = %d; want 2", n)
 		}
 		return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: true}}
 	}

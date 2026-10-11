@@ -1,8 +1,7 @@
 // gate.go is the parent-review gate: the two closures card 1's GateEntry.Gate and GateEntry.Final take, driving the round store.
 // The closures never send anything; they return the prompt text for the wait loop to send at a turn boundary.
 // The gate reviews every rewrite after a reject, one round each, until the store's rejected rounds reach GateConfig.Cap;
-// at the cap it fails terminally rather than letting the rewrite through, and the run halts `blocked` until the parent approves,
-// unless GateConfig.PassAtCap is set, in which case the cap's reject still goes to the writer and the rewrite after it passes unreviewed.
+// at the cap it fails terminally rather than letting the rewrite through, and the run halts `blocked` until the parent approves.
 
 package parentreview
 
@@ -40,10 +39,6 @@ type GateConfig struct {
 	// The count comes from the store, so it survives an attach, a driver restart and a resume.
 	// Zero or less means no cap.
 	Cap int
-	// PassAtCap makes the cap's reject a last round of findings rather than a halt:
-	// the writer is re-prompted with that review as below the cap, and its rewrite passes without another request.
-	// It suits a parent review that only checks scope, with a detailed review following it.
-	PassAtCap bool
 	// ReviewerLive is the told liveness seam: while it reports false, or errors, the gate holds its delivery prompt, so the prompt budget is not spent during an orch relaunch.
 	// Nil means the reviewer is treated as live, which is how a legacy-name reviewer with no known worktree is wired.
 	// The hold never skips the review short of WaitBound.
@@ -65,9 +60,8 @@ func NewGate(cfg GateConfig) (gate, final shuttleengine.Gate) {
 }
 
 type closures struct {
-	cfg             GateConfig
-	loggedNone      bool
-	loggedPassAtCap bool
+	cfg        GateConfig
+	loggedNone bool
 	// heldRound, warnedRound and warnedErr remember what holding last logged; round numbers start at 1, so zero means none.
 	heldRound   int
 	warnedRound int
@@ -128,7 +122,6 @@ func (c *closures) terminal(r Round, rejected int, atCap bool, afterStart string
 // gate reads the latest round before opening anything.
 // No round or request opens a request; an approve passes; a reject at the cap fails terminally, opening and consuming nothing;
 // an unconsumed reject below the cap is consumed and fails with its findings, and a consumed one opens the next round.
-// With PassAtCap, a reject at the cap is treated as one below it, except that once consumed it passes instead of opening a round.
 // An expired request passes, and an open request with no verdict waits, notifies and prompts;
 // while ReviewerLive reports the reviewer not live it only waits, carrying no prompt and leaving the prompt count and waiting notifies untouched.
 // Once delivery is recorded, a due keep-alive ping is carried after the prompt cases, at most maxKeepAlives per round.
@@ -156,14 +149,10 @@ func (c *closures) gate() (shuttleengine.GateResult, error) {
 		if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
-		if at && !c.cfg.PassAtCap {
+		if at {
 			return c.terminal(r, rejected, true, ""), nil
 		}
 		if r.Verdict.Consumed {
-			if at {
-				c.logPassedAtCap(rejected)
-				return passed, nil
-			}
 			if _, err := s.BeginRound(); err != nil {
 				return shuttleengine.GateResult{}, err
 			}
@@ -297,17 +286,8 @@ func (c *closures) carry(r Round, fromNotify bool) (shuttleengine.GateResult, er
 	return c.pending(text), nil
 }
 
-// logPassedAtCap logs, once per gate, that the rewrite after the cap's reject goes on unreviewed.
-func (c *closures) logPassedAtCap(rejected int) {
-	if c.loggedPassAtCap {
-		return
-	}
-	c.loggedPassAtCap = true
-	logger.Info("parent review cap reached; the rewrite after the last reject goes on unreviewed", "slug", c.cfg.Slug, "reviewer", c.cfg.Reviewer, "rejected", rejected)
-}
-
 // final never opens a request, carries no prompt and consumes nothing.
-// It passes only on no reviewer, no round or request, an approve, an expired request, or, with PassAtCap, a consumed reject at the cap;
+// It passes only on no reviewer, no round or request, an approve or an expired request;
 // an open request with no verdict is marked expired and passes with a timeout Warn.
 // Any other reject on the latest round fails terminally, because the rewrite after it was never reviewed: at the cap with the cap's line, below it with the line saying what `lyx loom start` then does.
 func (c *closures) final() (shuttleengine.GateResult, error) {
@@ -340,10 +320,6 @@ func (c *closures) final() (shuttleengine.GateResult, error) {
 		return shuttleengine.GateResult{}, err
 	}
 	if r.Verdict.Consumed {
-		if at && c.cfg.PassAtCap {
-			c.logPassedAtCap(rejected)
-			return passed, nil
-		}
 		return c.terminal(r, rejected, at, "re-spawns the writer, whose discussion then goes to the parent as the next round"), nil
 	}
 	return c.terminal(r, rejected, at, "re-spawns the writer and re-prompts it with that review"), nil

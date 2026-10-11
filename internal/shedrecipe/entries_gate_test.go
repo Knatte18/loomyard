@@ -3,6 +3,7 @@ package shedrecipe
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -127,12 +128,17 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 			map[string]any{"name": "bogus", "attempts": 1},
 		}}, `"gates" element 1`},
 		{"BadPassOnCap", Config{"gates": []any{map[string]any{"name": "plan", "attempts": 1, "pass_on_cap": "yes"}}}, "pass_on_cap"},
+		{"ParentReviewPassOnCapTrue", Config{"gates": []any{map[string]any{"name": "parent-review", "attempts": 1, "pass_on_cap": true}}}, "pass_on_cap"},
+		{"ParentReviewPassOnCapFalse", Config{"gates": []any{map[string]any{"name": "parent-review", "attempts": 1, "pass_on_cap": false}}}, "pass_on_cap"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := resolveGateSpec("TheRow", tt.cfg, newTestEnv(t))
+			_, err := resolveGateSpec("TheRow", tt.cfg, parentReviewEnv(t))
 			assertErrContains(t, err, "TheRow")
 			assertErrContains(t, err, tt.want)
+			if strings.HasPrefix(tt.name, "ParentReview") {
+				assertErrContains(t, err, "way forward:")
+			}
 		})
 	}
 }
@@ -245,36 +251,6 @@ func TestResolveGateSpec_OtherNamesCarryNoFinal(t *testing.T) {
 		if spec[0].Final != nil {
 			t.Errorf("%s: Final is set; want nil", name)
 		}
-	}
-}
-
-// TestResolveGateSpec_ParentReviewPassOnCapLetsRewriteThrough asserts "pass_on_cap: true" on parent-review reaches the gate, not the engine:
-// the entry stays must-pass MayHold, the cap's reject goes back to the writer as a non-terminal failure, and the rewrite after it passes.
-func TestResolveGateSpec_ParentReviewPassOnCapLetsRewriteThrough(t *testing.T) {
-	env := parentReviewEnv(t)
-	cfg := Config{"gates": []any{map[string]any{"name": "parent-review", "attempts": 1, "pass_on_cap": true}}}
-	spec, err := resolveGateSpec("Row", cfg, env)
-	if err != nil {
-		t.Fatalf("resolveGateSpec() error = %v; want nil", err)
-	}
-	if len(spec) != 1 || spec[0].PassOnCap || !spec[0].MayHold || spec[0].Attempts != 1 {
-		t.Fatalf("resolveGateSpec() = %+v; want one must-pass MayHold entry with Attempts 1", spec)
-	}
-	review := filepath.Join(t.TempDir(), "review.md")
-	if err := os.WriteFile(review, []byte("out of scope"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if res, err := spec[0].Gate(); err != nil || !res.Pending {
-		t.Fatalf("first arrival = %+v, %v; want pending", res, err)
-	}
-	if err := env.ParentReview.Store.RecordVerdict(parentreview.VerdictReject, review); err != nil {
-		t.Fatalf("RecordVerdict() error = %v", err)
-	}
-	if res, err := spec[0].Gate(); err != nil || res.Passed || res.Pending || res.Terminal {
-		t.Fatalf("reject = %+v, %v; want a non-terminal failure", res, err)
-	}
-	if res, err := spec[0].Gate(); err != nil || !res.Passed {
-		t.Fatalf("rewrite after the reject = %+v, %v; want passed", res, err)
 	}
 }
 

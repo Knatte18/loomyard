@@ -11,7 +11,7 @@
 //
 // Every write goes through internal/state under a per-round lock file in Store.LockDir, so the driver and a verb in another process never interleave a read-modify-write.
 // Rounds repeat after a reject until the cap, which the store decides by counting rejected rounds on disk;
-// at the cap the gate either halts the run or, when told to pass at the cap, lets the rewrite after the last reject through unreviewed.
+// at the cap the gate halts the run `blocked` until the parent approves.
 // While a delivered request waits with no verdict, the gate pings the idle writer every GateConfig.KeepAlive, inside the writer's prompt-cache lifetime.
 // It pings at most three times per round, so a late reject resumes the writer on a warm cache.
 // A ping spends no gate prompt and no waiting notify, and a zero KeepAlive turns pings off.

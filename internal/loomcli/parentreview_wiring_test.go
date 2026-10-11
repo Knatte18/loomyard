@@ -23,9 +23,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
-// TestDiscussionWriteRow_GateListIsDiscussionThenParentReview asserts the embedded recipe's Discussion-Write row lists the discussion gate, then a parent-review gate with attempts 1 and pass_on_cap: one scope review whose rewrite goes on to the perch.
+// TestDiscussionWriteRow_GateListIsDiscussionThenParentReview asserts the embedded recipe's Discussion-Write row lists the discussion gate, then a parent-review gate with attempts 2 and no pass_on_cap: every rewrite after a reject is reviewed, and the cap's reject halts the run.
 //
-//testtiming:keep pins the embedded recipe's Discussion-Write row listing the discussion gate then a parent-review gate with attempts 1 and pass_on_cap; no covering test reads the recipe's gate config
+//testtiming:keep pins the embedded recipe's Discussion-Write row listing the discussion gate then a parent-review gate with attempts 2 and no pass_on_cap; no covering test reads the recipe's gate config
 func TestDiscussionWriteRow_GateListIsDiscussionThenParentReview(t *testing.T) {
 	t.Parallel()
 
@@ -49,11 +49,11 @@ func TestDiscussionWriteRow_GateListIsDiscussionThenParentReview(t *testing.T) {
 		if second["name"] != "parent-review" {
 			t.Errorf("gates[1].name = %v; want parent-review", second["name"])
 		}
-		if second["attempts"] != 1 {
-			t.Errorf("gates[1].attempts = %v; want 1", second["attempts"])
+		if second["attempts"] != 2 {
+			t.Errorf("gates[1].attempts = %v; want 2", second["attempts"])
 		}
-		if second["pass_on_cap"] != true {
-			t.Errorf("gates[1].pass_on_cap = %v; want true", second["pass_on_cap"])
+		if _, present := second["pass_on_cap"]; present {
+			t.Errorf("gates[1].pass_on_cap = %v; want the key absent", second["pass_on_cap"])
 		}
 		return
 	}

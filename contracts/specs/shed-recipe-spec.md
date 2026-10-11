@@ -63,8 +63,8 @@ The vocabulary is `discussion`, `plan`, `rework-plan`, `description`, `verify` a
 `Env.VerifyWholeDiff` selects the whole-diff form and the round form is the default.
 `Env.VerifyMergeBase`, when set, is the base of the headroom lint, which runs before the comment lint, or of both lints under the whole-diff form, which requires it.
 `parent-review` waits for the run's parent to review the discussion, so it can return a pending result that the wait loop holds without stalling its liveness and deadline checks, and it carries a `Final` closure that `finalize` evaluates in its place.
-The entry is must-pass and may hold the run, and its `attempts` is the reject cap: the gate fails terminally at that many rejected rounds.
-With `pass_on_cap: true` the cap's reject instead goes to the writer like any other, and the rewrite after it passes without another round, so `attempts: 1` gives one parent review whose findings the writer addresses before the row below reviews in detail.
+The entry is must-pass and may hold the run, and its `attempts` is the reject cap: the gate fails terminally at that many rejected rounds, halting the run `blocked` until the parent approves.
+A `pass_on_cap` key on the element is a construction error.
 The gate's own store counts the rejects, so the engine's own pass-on-cap never applies to this entry.
 It reads `Env.ParentReview`, and a Discussion-Write row with an enabled `parent-review` entry opens a new review round on each fresh spawn, except that the latest round is kept after a reject or a superseding approve so the gate can read it.
 
