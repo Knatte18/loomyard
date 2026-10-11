@@ -83,16 +83,6 @@ type RunOpts struct {
 	Gate shuttleengine.GateSpec
 }
 
-// FixStart is when a round's fixer starts relative to its reviewer.
-type FixStart string
-
-const (
-	// FixStartParallel starts the fixer right after the reviewer, so both run at once and the fixer waits for the ready marker.
-	FixStartParallel FixStart = "parallel"
-	// FixStartAfterReview starts the fixer only once the reviewer's review is accepted and the ready marker written.
-	FixStartAfterReview FixStart = "after-review"
-)
-
 // validate normalizes p in place and reports a fail-loud error if not runnable.
 // Checks run in fixed order; the first failure is returned.
 func (p *Profile) validate(worktreeRoot string, cfg Config) error {
