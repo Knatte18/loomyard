@@ -37,6 +37,16 @@ const BattenWatchedFileName = "batten-watched"
 // It is exported so battencli recognises the refusal by this one declared value rather than by its message text.
 const StartNotParkedKind = "driver_not_parked"
 
+// StartDriverBusyKind is the envelope "kind" of the `lyx loom start` and `lyx loom resume` refusal for a parked driver whose pane would not take the resume line:
+// shuttle held the send on a draft, an active operator or another busy reading.
+// That refusal is retryable once the draft is cleared or sent.
+// It is exported so battencli recognises the refusal by this one declared value rather than by its message text.
+const StartDriverBusyKind = "driver_busy"
+
+// ResumeReportFileName is the filename of the resume-report file, whose path ResumeReport returns.
+// The file holds the park marker's content on its first line and, on its second, the stop-report path the resume branch picked for that park.
+const ResumeReportFileName = "driver-resume-report"
+
 // StartMergeInProgressKind is the envelope "kind" of the `lyx loom start` refusal for a start that would spawn or resume a driver over a pair carrying an unfinished merge.
 // That refusal is NOT retryable: the operator must resolve, conclude or abort the merge first.
 // It is exported so an unattended caller tells it apart from the retryable StartNotParkedKind by this one declared value rather than by message text.
@@ -98,6 +108,12 @@ func LastCommitMarker(l *lyxcwd.Location, runID string) string {
 // ParkMarker returns the path to the ephemeral driver park marker, ParkMarkerFileName under ScratchDir(l, runID), so it sits in the directory the full step envelope, held by the step record, reports as scratch_dir.
 func ParkMarker(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), ParkMarkerFileName)
+}
+
+// ResumeReport returns the path to the ephemeral resume-report file, ResumeReportFileName under ScratchDir(l, runID), beside the park marker.
+// It keeps the stop-report path the resume branch picked for the current park, so every rerun against that park types the same resume line.
+func ResumeReport(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), ResumeReportFileName)
 }
 
 // BattenWatchedMarker returns the path to the ephemeral batten-watched marker, BattenWatchedFileName under ScratchDir(l, runID).
