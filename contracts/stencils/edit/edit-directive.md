@@ -5,4 +5,3 @@
 
 Change files only with Edit or Write, never with a script that rewrites them: never `sed`, `awk` or `perl`, and never `python` or `node` in an inline heredoc.
 A bulk change is one Edit per site, or `replace_all` for an identical string.
-Never use `sed` at all, even to read; search and read with `grep`, `awk` or `cat`.
