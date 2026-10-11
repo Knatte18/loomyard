@@ -1,5 +1,5 @@
 // Command tokencount reads Claude Code's session transcripts for a set of task runs and
-// writes a markdown report of their token use per run and per role, each role summed
+// writes a markdown report of their token use and time per run and per role, each role summed
 // over all runs first.
 //
 //	go run ./tools/tokencount
@@ -40,7 +40,8 @@
 //
 // With -calibrate <profile> the report gains a "Calibration (<profile>)" section of two tables, each row a fork that names cards.
 // The one repository flag, -weft, names the repository holding the archive tags of finished runs, the runs' plan commits and the runs' webster records;
-// its default, the current worktree's weft sibling, applies whenever the flag is empty and either no slugs are named or the calibration is asked for, so -calibrate needs no other flag.
+// its default, the current worktree's weft sibling, applies whenever the flag is empty, slugs named or not, so -calibrate needs no other flag.
+// A -hub naming a directory other than the current worktree's parent needs -weft, because the default would read another hub's records.
 // -config names the directory whose batcher.yaml holds the profile, default the current directory.
 // The code repository is the current directory.
 //
@@ -95,6 +96,25 @@
 // The est. cost column prices each message at its model's Claude API list price, from the price table in cost.go, which cites its source;
 // a cache write is priced by its lifetime, five minutes or one hour, as the transcript's usage splits it, and a model with a long-prompt rate card, Haiku 5.5 above 100K tokens of input + cache write + cache read, is priced per message on the card its prompt selects.
 // A message with usage whose model the table lacks is unpriced, never free: its cell reads "unpriced" or "$x + unpriced", and the "All runs" section names the unpriced models.
+//
+// The time and time share columns give a role's working time and its percentage of the table's span.
+// Time is turn time: a session works from a user or assistant line until the line that ends its turn.
+// That is an assistant line whose stop_reason is set and not tool_use, a user line holding an interrupt marker, or a user line holding a <local-command-stdout> output.
+// A role's time is the union of its transcripts' working intervals clipped to the span, a sub-agent's transcripts counting under <role>+sub.
+// The idle row is the span minus the union of every working interval of the run, orch sessions left out, so it holds parent review, gate-slot waits, a parked driver and Go-only work.
+// The orch row's time cells are blank, and the "All runs" table sums each run's figures per role, idle and span, with no union across runs.
+//
+// The span is the window the time figures are measured over.
+// It runs from the archived seed's started_at, or from the run's earliest transcript line without one.
+// That start is bounded below by the commit date of the slug's next-older archive tag and above by the end of the first history entry.
+// It ends at the latest history entry's end.
+// Both files are read from the slug's newest archive/<slug>/<sha> tag.
+// A run whose worktree still exists, or with no tag or no status at its tag, uses its transcript window instead and prints no Producers table.
+//
+// The Producers table splits the span by shed history entry: each entry owns the interval from the latest end before it to its own end.
+// So the elapsed figures sum to the span, and a row's elapsed holds any wait before the row started.
+// A row's idle is the part of its elapsed in which no session of the run was in a turn.
+// "All runs" sums the table per producer over the runs that have one.
 //
 // Right after the "All runs" section, before the per-run sections, comes the "Orchestrator" section: the hub orchestrator's own session, which runs in the prime and spans many runs, charged to the counted runs.
 // An orch session is a session in the prime's project directory whose role is orch (ly:orch, lyxhub:orch), and its sub-agents, the orch's review, gate and stop forks, count as orch+sub;
