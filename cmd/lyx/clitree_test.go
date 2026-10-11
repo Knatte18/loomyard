@@ -270,10 +270,25 @@ func longProblems(cmd *cobra.Command) []string {
 	return nil
 }
 
-// formProblems runs the four form checks over cmd.
+// indexNoteProblems returns how cmd's index note breaks the form: a command carrying one also carries a note audience that is a member of the closed set.
+func indexNoteProblems(cmd *cobra.Command) []string {
+	if _, has := cmd.Annotations[clihelp.IndexNoteAnnotation]; !has {
+		return nil
+	}
+	value, has := cmd.Annotations[clihelp.IndexNoteAudienceAnnotation]
+	switch {
+	case !has:
+		return []string{"index note carries no note audience"}
+	case !slices.Contains(clihelp.Audiences, value):
+		return []string{fmt.Sprintf("note audience %q is outside %v", value, clihelp.Audiences)}
+	}
+	return nil
+}
+
+// formProblems runs the form checks over cmd.
 func formProblems(cmd *cobra.Command) []string {
 	var problems []string
-	for _, check := range []func(*cobra.Command) []string{audienceProblems, useProblems, shortProblems, longProblems} {
+	for _, check := range []func(*cobra.Command) []string{audienceProblems, useProblems, shortProblems, longProblems, indexNoteProblems} {
 		problems = append(problems, check(cmd)...)
 	}
 	return problems
@@ -350,6 +365,15 @@ func TestCLIForm_EveryCommand(t *testing.T) {
 			cmd := formTestCommand("leaf", "a leaf", operator)
 			cmd.Long = strings.Repeat("x", maxLongBytes)
 			return cmd
+		}, ""},
+		{"index note: a note without a note audience", indexNoteProblems, func() *cobra.Command {
+			return formTestCommand("leaf", "a leaf", map[string]string{clihelp.IndexNoteAnnotation: "(note)"})
+		}, "note audience"},
+		{"index note: a note audience outside the set", indexNoteProblems, func() *cobra.Command {
+			return formTestCommand("leaf", "a leaf", map[string]string{clihelp.IndexNoteAnnotation: "(note)", clihelp.IndexNoteAudienceAnnotation: "everyone"})
+		}, "outside"},
+		{"index note: a note with an audience from the set", indexNoteProblems, func() *cobra.Command {
+			return formTestCommand("leaf", "a leaf", map[string]string{clihelp.IndexNoteAnnotation: "(note)", clihelp.IndexNoteAudienceAnnotation: clihelp.AudienceOperator})
 		}, ""},
 	}
 	for _, tc := range synthetic {

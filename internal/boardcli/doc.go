@@ -14,7 +14,8 @@
 // so the config is path-only.
 //
 // A payload command's `Use` names its keys in one `{…}` token, written in the grammar `payloadLegend` states once;
-// the `board` group's `Long` ends with that legend, and the command index's `board` line carries it as an index note.
+// the `board` group's `Long` ends with that legend, and the operator command index's `board` line carries it as an index note.
+// The group's note-audience annotation names the operator, the audience of every payload-taking board verb, so no other audience's index prints the note.
 // Each parser validates against one `payloadKeys` declared beside its command, a test couples every token to its declaration, and an unknown key is refused.
 // The addressing verbs, `set-deps` included, take a `slug` or a numeric `id`.
 // Every verb prints JSON through `internal/output`, one object per line, errors included.
