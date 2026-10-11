@@ -31,7 +31,7 @@
 // The round compiles the `tmux` and `llm` tiers and never runs `llm`.
 // It runs the `tmux` tier only while a checked Publish failure record is present, as the failing top-level tests the record names, one step per package and test with the subtests collapsed into it, and, for a `publish_verify` failure, the impacted-set pass, to confirm the fix.
 // Publish reruns both verifies in full regardless, and stays the guard.
-// Told the whole-diff flag, it takes the whole-diff form the `Darn` row runs, and requires the merge base reader:
+// Told the whole-diff flag, it takes the whole-diff form the `Darn-Write` and `Darn-Burler` rows run, and requires the merge base reader:
 // the headroom lint and then the comment lint run from the task branch's merge base with the parent to HEAD, and the told command runs in full as the site's base command, so Publish skips on the same tree and command.
 // That form has no skip path: an empty told command, a command read error and a merge base read error are each the gate's returned error.
 // With a checked Publish failure record present it appends the failing tests and, for a `publish_verify` failure, `./...` under `tmux`.
@@ -40,8 +40,8 @@
 // It first archives webster's run record into the archive's `webster` subdirectory through a told seam, so the next Webster run starts a new run over the new plan instead of refusing the old record's plan drift.
 // A run holding webster's run lock refuses the archive before any plan file moves, and ArchivedPlanWebsterDirs lists the subdirectories a rotation writes the record into.
 //
-// The Darn row's producer (NewDarnWrite) wraps the gated darn writer session and tells it two texts, each empty when absent:
-// the pending rejection's findings, and a prior-work note, written in Go, that the change is already under way on the task branch, naming the latest Darn history entry's halt reason and the Publish failure record's path.
+// The Darn-Write row's producer (NewDarnWrite) wraps the gated darn writer session and tells it two texts, each empty when absent:
+// the pending rejection's findings, and a prior-work note, written in Go, that the change is already under way on the task branch, naming the latest Darn-Write history entry's halt reason and the Publish failure record's path.
 // On a non-empty output pointer, Done or a gate-failed Stuck, it commits the landing directory;
 // on Done of a spawn that was told a rejection it then removes the pending rejection.
 // A gate-failed Stuck keeps its record and gains the resume way forward.

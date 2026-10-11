@@ -71,21 +71,21 @@ func rejectFixture() (rejectDeps, *rejectCalls) {
 	return d, calls
 }
 
-// darnRejectRouting is the darn recipe's PR-Review pair: the gate bounces to the Darn row.
+// darnRejectRouting is the darn recipe's PR-Review pair: the gate bounces to the Darn-Write row.
 func darnRejectRouting() shedengine.Routing {
 	return shedengine.Routing{
 		Entry: loomshed.NamePRGate,
 		Producers: []shedengine.ProducerDef{
-			{Name: loomshed.NamePRGate, Segment: "PR-Review", MaxBounces: 2, OnStuck: loomshed.NameDarn},
-			{Name: loomshed.NameDarn, Segment: "PR-Review"},
+			{Name: loomshed.NamePRGate, Segment: "PR-Review", MaxBounces: 2, OnStuck: loomshed.NameDarnWrite},
+			{Name: loomshed.NameDarnWrite, Segment: "PR-Review"},
 		},
 	}
 }
 
-// asDarn turns d into the deps of a darn run, whose rework row is Darn and whose rejection record is pending as given.
+// asDarn turns d into the deps of a darn run, whose rework row is Darn-Write and whose rejection record is pending as given.
 func asDarn(d *rejectDeps, pending bool) {
 	d.routing = darnRejectRouting()
-	d.reworkRow = loomshed.NameDarn
+	d.reworkRow = loomshed.NameDarnWrite
 	d.rejectionPending = func() (bool, error) { return pending, nil }
 }
 
@@ -93,7 +93,7 @@ func TestReworkRowFor(t *testing.T) {
 	for recipe, want := range map[string]string{
 		"":                 loomshed.NamePRRework,
 		shedrun.RecipeLoom: loomshed.NamePRRework,
-		shedrun.RecipeDarn: loomshed.NameDarn,
+		shedrun.RecipeDarn: loomshed.NameDarnWrite,
 	} {
 		if got := reworkRowFor(recipe); got != want {
 			t.Errorf("reworkRowFor(%q) = %q; want %q", recipe, got, want)
@@ -155,7 +155,7 @@ func TestRejectVerb_Refusals(t *testing.T) {
 			mutate: func(d *rejectDeps) {
 				asDarn(d, false)
 				d.readStatus = func() (shedengine.Status, bool, error) {
-					return shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: loomshed.NameDarn}, true, nil
+					return shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: loomshed.NameDarnWrite}, true, nil
 				}
 			},
 			wantMsg: "no rejection pending",
@@ -168,7 +168,7 @@ func TestRejectVerb_Refusals(t *testing.T) {
 					return shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: loomshed.NamePRRework}, true, nil
 				}
 			},
-			wantMsg: "blocked at PR-Gate, nor blocked at Darn",
+			wantMsg: "blocked at PR-Gate, nor blocked at Darn-Write",
 		},
 		{
 			name: "BudgetExhaustedAtGate",
@@ -257,7 +257,7 @@ func TestRejectVerb_Success(t *testing.T) {
 		// The budget is not consulted at the rework row, so a record is replaced past it.
 		{"BlockedReworkPastBudget", shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: loomshed.NamePRRework, History: stuckHistory(2)}, false},
 		{"DarnAwaitingGate", shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: loomshed.NamePRGate}, true},
-		{"DarnBlockedWithRejectionPending", shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: loomshed.NameDarn, History: stuckHistory(2)}, true},
+		{"DarnBlockedWithRejectionPending", shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: loomshed.NameDarnWrite, History: stuckHistory(2)}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

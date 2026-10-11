@@ -145,7 +145,7 @@ func (f roundGateFixture) runGate(t *testing.T, mergeBase func() (string, error)
 
 // wholeDiffGate runs the whole-diff form of the gate once, told the fixture's command and the given merge base reader.
 func (f roundGateFixture) wholeDiffGate(command, mergeBase func() (string, error)) (shuttleengine.GateResult, error) {
-	return NewVerifyGate(f.worktree, f.verifyDir, "Darn gate", command, mergeBase, true, nil)()
+	return NewVerifyGate(f.worktree, f.verifyDir, "Darn-Write gate", command, mergeBase, true, nil)()
 }
 
 func (f roundGateFixture) planRanCount(t *testing.T) int {
