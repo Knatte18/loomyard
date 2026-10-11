@@ -103,7 +103,9 @@ Finalize syncs the task branch with main, squashes it onto main, marks the board
 ## After landing
 
 Batten's teardown removes the pair.
-From the prime: pull, read the friction notes and the driver's drive reports from the prime's own copies, and amend the board entries the run superseded.
+From the prime: pull and amend the board entries the run superseded.
+Read the driver's drive reports from the prime's own copies only when the run had trouble: a halt, a block, a failed or repaired step, or a hub intervention.
+Never read the run's friction notes: its Friction-Reflect files them as issues, and intake takes those onto the board.
 
 ## The board
 

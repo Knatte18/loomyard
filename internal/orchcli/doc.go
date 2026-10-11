@@ -35,7 +35,7 @@
 //     A real regression in the task is fixed in the task worktree by a background subagent, with code commits only, no `lyx fabric`, no `_lyx` or `.lyx` edits and no push, and the run is started again.
 //     A lyx bug is fixed on `main`, deployed, and the run is started again.
 //     Never merge the parent into a task while webster is mid-batch, because record-batch then refuses the batch; a merge-in is safe only once every batch is recorded, for example at a blocked integration verify.
-//  5. After landing, from the prime: pull, run the production deploy, reconcile config (preview, then apply), read the friction notes and the drive report, record findings, and remove the pair with `lyx fabric remove --remote <slug>`.
+//  5. After landing, from the prime: pull, run the production deploy, reconcile config (preview, then apply), read the drive report only when the run had trouble (friction findings arrive as issues through intake), record findings, and remove the pair with `lyx fabric remove --remote <slug>`.
 //
 // # Priorities
 //
