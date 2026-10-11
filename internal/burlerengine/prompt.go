@@ -1,11 +1,11 @@
-// prompt.go composes the burler round's prompts: it reads the round's instruction stencils from stencilsDir at call time via stencilstore.Read — the explore, review and fix stencils, and the focus directive block when the round carries one — each with only its own marker subset, and returns the two seats' stencil marker values plus the rendered (path, content) instruction pairs the caller (Engine.Run) writes to disk.
-// The two seat stencils themselves are filled by the seats engine from those values.
-// composePrompt is called only after (*Profile).validate has run, so every path field it reads is already a cleaned absolute path and p.clusterLenses (when ClusterFan was set) is already resolved.
-// composePrompt itself does no filesystem access beyond the directory check formatFileSet already performs on each Target/Fasit path and the stencilstore.Read calls at its top.
-// It takes the instruction paths as plain string parameters rather than the engine's Geometry, so it never gains geometry awareness of its own;
-// the caller (Engine.Run) computes the directive, the stencils directory, and the paths.
+// prompt.go composes a half's prompt: it reads the half's instruction stencils from stencilsDir at call time via stencilstore.Read — the explore, review and review-format stencils for the review half, the fix step and review-format stencils for the fix half, and the focus directive block when the round carries one — each with only its own marker subset, and returns the seat's stencil marker values plus the rendered (path, content) instruction pairs the half (Engine.Review or Engine.Fix) writes to disk.
+// The seat stencil itself is filled by the seats engine from those values.
+// composeReviewPrompt is called only after (*Profile).validateReview has run, and composeFixPrompt after (*Profile).validateFix, so every path field they read is already a cleaned absolute path and p.clusterLenses (when ClusterFan was set) is already resolved.
+// They do no filesystem access beyond the directory check formatFileSet already performs on each Target/Fasit path and the stencilstore.Read calls.
+// They take the instruction paths as plain string parameters rather than the engine's Geometry, so they never gain geometry awareness of their own;
+// the calling half computes the directive, the stencils directory, and the paths.
 //
-// composePrompt warns, without failing, when the explore stencil lacks the friction directive marker or the focus directive marker while a directive was computed for it.
+// composeReviewPrompt warns, without failing, when the explore stencil lacks the focus directive marker while a directive was computed for it.
 
 package burlerengine
 
@@ -22,131 +22,174 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// instructionFile is one rendered instruction asset paired with the absolute path Engine.Run will write it to.
-// composePrompt returns these so the caller can materialize them under a fresh per-round directory before handing each half's shuttle run only its orchestrator string.
+// instructionFile is one rendered instruction asset paired with the absolute path its half will write it to.
+// The compose functions return these so the half can materialize them under a fresh per-round directory before handing its shuttle run only its seat stencil.
 type instructionFile struct {
 	Path    string
 	Content string
 }
 
-// roundFilePaths are the absolute paths the round's four instruction files are written to.
-// The explore step is rendered once per half, since only the fixer's carries the friction directive.
-type roundFilePaths struct {
-	ReviewerExplore string
-	FixerExplore    string
-	Review          string
-	Fix             string
+// halfPrompt is what composing one half's prompt yields: the marker values of the half's seat stencil and the instruction files to write.
+type halfPrompt struct {
+	Values map[string]string
+	Files  []instructionFile
 }
 
-// roundFilesIn returns the four instruction file paths of a round whose instruction directory is dir.
-func roundFilesIn(dir string) roundFilePaths {
-	return roundFilePaths{
-		ReviewerExplore: filepath.Join(dir, "instruction-1-explore-reviewer.md"),
-		FixerExplore:    filepath.Join(dir, "instruction-1-explore-fixer.md"),
-		Review:          filepath.Join(dir, "instruction-2-review.md"),
-		Fix:             filepath.Join(dir, "instruction-3-fix.md"),
+// reviewFilePaths are the absolute paths the review half's three instruction files are written to.
+type reviewFilePaths struct {
+	Explore string
+	Review  string
+	Format  string
+}
+
+// reviewFilesIn returns the review half's instruction file paths for the instruction directory dir.
+func reviewFilesIn(dir string) reviewFilePaths {
+	return reviewFilePaths{
+		Explore: filepath.Join(dir, "instruction-1-explore.md"),
+		Review:  filepath.Join(dir, "instruction-2-review.md"),
+		Format:  filepath.Join(dir, "review-format.md"),
 	}
 }
 
-// roundPrompts is composePrompt's result: the marker values of each seat's stencil, and the four instruction files in the order explore (reviewer), explore (fixer), review, fix.
-type roundPrompts struct {
-	ReviewerValues map[string]string
-	FixerValues    map[string]string
-	Files          []instructionFile
+// fixFilePaths are the absolute paths the fix half's two instruction files are written to.
+type fixFilePaths struct {
+	Format string
+	Fix    string
 }
 
-// roundSeatValues returns the stencil marker values of the reviewer seat and the fixer seat for p, naming the instruction files at paths.
-func roundSeatValues(p *Profile, paths roundFilePaths) (reviewer, fixer map[string]string) {
-	reviewer = map[string]string{
-		"instruction_1_path": paths.ReviewerExplore,
+// fixFilesIn returns the fix half's instruction file paths for the instruction directory dir.
+func fixFilesIn(dir string) fixFilePaths {
+	return fixFilePaths{
+		Format: filepath.Join(dir, "review-format.md"),
+		Fix:    filepath.Join(dir, "instruction-fix.md"),
+	}
+}
+
+// reviewSeatValues returns the stencil marker values of the reviewer seat for p, naming the instruction files at paths.
+func reviewSeatValues(p *Profile, paths reviewFilePaths) map[string]string {
+	return map[string]string{
+		"instruction_1_path": paths.Explore,
 		"instruction_2_path": paths.Review,
 		"review_path":        p.ReviewPath,
 	}
-	fixer = map[string]string{
-		"instruction_1_path": paths.FixerExplore,
-		"review_format_path": paths.Review,
-		"instruction_3_path": paths.Fix,
-		"review_path":        p.ReviewPath,
-		"ready_marker_path":  p.ReadyMarkerPath,
-	}
-	return reviewer, fixer
 }
 
-// composePrompt builds the burler round prompts for p.
-// patternDirective is not gated on target type because loomyard has no target-type classification;
-// a heuristic would risk silently dropping constraints.
-// frictionDirective is the caller-resolved Tier 2 note directive for this round, carried by the fixer's explore file only since the fixer is the round's only note writer;
-// an empty string means Tier 2 is off or the read failed, and renders as nothing.
-// stencilsDir is the absolute stencils directory composePrompt reads all instruction stencils from via stencilstore.Read.
-// The seat stencils are not read here: the seats engine fills them, and renders the parent and edit directives into each.
-func composePrompt(stencilsDir string, p *Profile, patternDirective, frictionDirective string, paths roundFilePaths) (roundPrompts, error) {
+// fixSeatValues returns the stencil marker values of the fixer seat for p, naming the instruction files at paths.
+func fixSeatValues(p *Profile, paths fixFilePaths) map[string]string {
+	return map[string]string{
+		"review_path":          p.ReviewPath,
+		"review_format_path":   paths.Format,
+		"instruction_fix_path": paths.Fix,
+	}
+}
+
+// renderReviewFormat renders the review-file format stencil, which carries no marker, into the file content both halves point at.
+func renderReviewFormat(stencilsDir string) (string, error) {
+	template, err := stencilstore.Read(stencilsDir, "burler-review-format")
+	if err != nil {
+		return "", err
+	}
+	format, err := stencil.Fill(template, nil)
+	if err != nil {
+		return "", fmt.Errorf("burler: compose prompt: %w", err)
+	}
+	return string(format), nil
+}
+
+// composeReviewPrompt builds the review half's prompt for p: the explore step, the review step and the review-file format.
+// patternDirective is the caller-resolved PATTERN directive for the explore step.
+// The reviewer's files hold no fixer-side text; p is assumed already validated by validateReview.
+func composeReviewPrompt(stencilsDir string, p *Profile, patternDirective string, paths reviewFilePaths) (halfPrompt, error) {
 	exploreTemplate, err := stencilstore.Read(stencilsDir, "burler-step-1-explore")
 	if err != nil {
-		return roundPrompts{}, err
+		return halfPrompt{}, err
 	}
-	friction.WarnIfMarkerAbsent(exploreTemplate, "burler-step-1-explore", frictionDirective)
 	focusDirective, err := focusDirectiveBlock(stencilsDir, p.FocusDirective)
 	if err != nil {
-		return roundPrompts{}, err
+		return halfPrompt{}, err
 	}
 	warnIfFocusMarkerAbsent(exploreTemplate, "burler-step-1-explore", focusDirective)
-	renderExplore := func(halfFrictionDirective string) ([]byte, error) {
-		return stencil.FillOptional(exploreTemplate, map[string]string{
-			"pattern_directive": patternDirective,
-			friction.MarkerName: halfFrictionDirective,
-			focusMarkerName:     focusDirective,
-			"target":            formatFileSet(p.Target),
-			"fasit":             formatFileSet(p.Fasit),
-			"rubric":            p.Rubric,
-			"tool_use_rules":    toolUseRules(p.ToolUse),
-		}, []string{"pattern_directive", friction.MarkerName, focusMarkerName})
-	}
-	reviewerExplore, err := renderExplore("")
+	explore, err := stencil.FillOptional(exploreTemplate, map[string]string{
+		"pattern_directive": patternDirective,
+		focusMarkerName:     focusDirective,
+		"target":            formatFileSet(p.Target),
+		"fasit":             formatFileSet(p.Fasit),
+		"rubric":            p.Rubric,
+		"tool_use_rules":    toolUseRules(p.ToolUse),
+	}, []string{"pattern_directive", focusMarkerName})
 	if err != nil {
-		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
-	}
-	fixerExplore, err := renderExplore(frictionDirective)
-	if err != nil {
-		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
+		return halfPrompt{}, fmt.Errorf("burler: compose prompt: %w", err)
 	}
 
-	reviewTemplate, err := stencilstore.Read(stencilsDir, "burler-step-2-review")
+	reviewTemplate, err := stencilstore.Read(stencilsDir, "burler-step-review")
 	if err != nil {
-		return roundPrompts{}, err
+		return halfPrompt{}, err
 	}
 	review, err := stencil.Fill(reviewTemplate, map[string]string{
-		"cluster_rules": clusterRulesBlock(p),
-		"review_path":   p.ReviewPath,
-		"prior_rounds":  priorRoundsBlock(p),
+		"cluster_rules":      clusterRulesBlock(p),
+		"review_path":        p.ReviewPath,
+		"review_format_path": paths.Format,
+		"prior_rounds":       priorRoundsBlock(p),
 	})
 	if err != nil {
-		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
+		return halfPrompt{}, fmt.Errorf("burler: compose prompt: %w", err)
 	}
 
-	fixTemplate, err := stencilstore.Read(stencilsDir, "burler-step-3-fix")
+	format, err := renderReviewFormat(stencilsDir)
 	if err != nil {
-		return roundPrompts{}, err
+		return halfPrompt{}, err
 	}
-	fix, err := stencil.Fill(fixTemplate, map[string]string{
+	return halfPrompt{
+		Values: reviewSeatValues(p, paths),
+		Files: []instructionFile{
+			{Path: paths.Explore, Content: string(explore)},
+			{Path: paths.Review, Content: string(review)},
+			{Path: paths.Format, Content: format},
+		},
+	}, nil
+}
+
+// composeFixPrompt builds the fix half's prompt for p: the review-file format and the fix step.
+// frictionDirective is the caller-resolved Tier 2 note directive, empty when Tier 2 is off, and work is the fix step's statement of what to fix (see fixWork).
+// The fixer's files hold no rubric, fasit, PATTERN directive, focus file, prior rounds or explore step; p is assumed already validated by validateFix.
+func composeFixPrompt(stencilsDir string, p *Profile, frictionDirective, work string, paths fixFilePaths) (halfPrompt, error) {
+	fixTemplate, err := stencilstore.Read(stencilsDir, "burler-step-fix")
+	if err != nil {
+		return halfPrompt{}, err
+	}
+	friction.WarnIfMarkerAbsent(fixTemplate, "burler-step-fix", frictionDirective)
+	fix, err := stencil.FillOptional(fixTemplate, map[string]string{
+		friction.MarkerName: frictionDirective,
+		"work":              work,
 		"fix_scope_rules":   fixScopeRules(p),
 		"review_path":       p.ReviewPath,
 		"fixer_report_path": p.FixerReportPath,
-	})
+	}, []string{friction.MarkerName})
 	if err != nil {
-		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
+		return halfPrompt{}, fmt.Errorf("burler: compose prompt: %w", err)
 	}
 
-	reviewerValues, fixerValues := roundSeatValues(p, paths)
-	return roundPrompts{
-		ReviewerValues: reviewerValues,
-		FixerValues:    fixerValues,
+	format, err := renderReviewFormat(stencilsDir)
+	if err != nil {
+		return halfPrompt{}, err
+	}
+	return halfPrompt{
+		Values: fixSeatValues(p, paths),
 		Files: []instructionFile{
-			{Path: paths.ReviewerExplore, Content: string(reviewerExplore)},
-			{Path: paths.FixerExplore, Content: string(fixerExplore)},
-			{Path: paths.Review, Content: string(review)},
+			{Path: paths.Format, Content: format},
 			{Path: paths.Fix, Content: string(fix)},
 		},
 	}, nil
+}
+
+// fixWork returns the fix step's required work statement.
+// With no gate-findings path the review's findings are the work;
+// with one, the review holds no findings but the round's gates failed, so the work is what that file names.
+func fixWork(reviewPath, gateFindingsPath string) string {
+	if gateFindingsPath == "" {
+		return fmt.Sprintf("Fix every finding of the review at `%s`.", reviewPath)
+	}
+	return fmt.Sprintf("The review at `%s` holds no findings, but the round's gates failed on the target as it stands. Fix what the gate findings in `%s` name.", reviewPath, gateFindingsPath)
 }
 
 // focusDirectiveBlock renders the focus-directive stencil for focusPath, the value injected as the explore step's optional focus_directive marker.
@@ -168,7 +211,7 @@ func focusDirectiveBlock(stencilsDir, focusPath string) (string, error) {
 }
 
 // focusMarkerName is the marker the explore stencil carries for the focus directive block.
-// composePrompt's value-map key, its FillOptional optional-names entry, and warnIfFocusMarkerAbsent's literal all derive from it, so they cannot drift apart.
+// composeReviewPrompt's value-map key, its FillOptional optional-names entry, and warnIfFocusMarkerAbsent's literal all derive from it, so they cannot drift apart.
 const focusMarkerName = "focus_directive"
 
 // warnIfFocusMarkerAbsent logs a Warn when a round computed a focus directive but the explore stencil carries no marker to render it into.
@@ -191,7 +234,7 @@ func warnIfFocusMarkerAbsent(template []byte, stencilName, focusBlock string) {
 // backtick-wrapped absolute path per bullet — a directory entry annotated
 // "(a directory — everything under it)" — followed by the Instructions text
 // when non-empty. fs.Paths are assumed already validated to exist (validate
-// runs before composePrompt), so the os.Stat directory check below reports
+// runs before composeReviewPrompt), so the os.Stat directory check below reports
 // a real answer rather than guessing from the path string.
 func formatFileSet(fs FileSet) string {
 	var b strings.Builder
@@ -228,17 +271,29 @@ func fixScopeRules(p *Profile) string {
 			"what/why>`. Never push."
 	case FixScopeOverlay:
 		return fmt.Sprintf(
-			"Write surface: exactly the target paths plus the fixer-report (`%s`) — "+
+			"Write surface: exactly the target paths%s plus the fixer-report (`%s`) — "+
 				"nothing else — and you run no git commands at all; the loop owner commits "+
 				"these files at the round boundary.",
-			p.FixerReportPath)
+			namedTargetPaths(p.Target.Paths), p.FixerReportPath)
 	default:
-		// validate rejects every other value before composePrompt is ever
+		// validateReview rejects every other value before composeReviewPrompt is ever
 		// called; this branch is unreachable in practice and exists only so
 		// the switch fails loud instead of silently rendering an empty
 		// fix-scope block if that invariant is ever violated.
 		return fmt.Sprintf("burler: internal error: unknown FixScope %q", p.FixScope)
 	}
+}
+
+// namedTargetPaths returns paths as a parenthesised, backtick-wrapped list led by a space, or "" when there are none.
+func namedTargetPaths(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	quoted := make([]string, len(paths))
+	for i, path := range paths {
+		quoted[i] = "`" + path + "`"
+	}
+	return " (" + strings.Join(quoted, ", ") + ")"
 }
 
 // toolUseRules returns the evidence-gathering prose of the explore and review steps for toolUse: true
@@ -281,11 +336,8 @@ func priorRoundsBlock(p *Profile) string {
 	return b.String()
 }
 
-// clusterRulesBlock returns the review step's fork-cluster prose: the plain
-// single-reviewer statement when p carries no ClusterFan, or the full
-// phase/spawn/consolidation discipline composed from p.clusterLenses when
-// it does. p.clusterLenses is assumed already resolved by
-// (*Profile).validate — composePrompt never calls ResolveFan itself.
+// clusterRulesBlock returns the review step's fork-cluster prose: the plain single-reviewer statement when p carries no ClusterFan, or the full phase/spawn/consolidation discipline composed from p.clusterLenses when it does.
+// p.clusterLenses is assumed already resolved by (*Profile).validateReview — composeReviewPrompt never calls ResolveFan itself.
 func clusterRulesBlock(p *Profile) string {
 	if p.ClusterFan == "" {
 		return "This is a single-reviewer round — no cluster forks. Do the full review yourself."

@@ -119,7 +119,7 @@ func parseRecordedVerdict(content []byte) (verdict bouncerVerdict, rationale str
 // invalidate a judgment that provably happened.
 //
 // The verdict is read through parseRecordedVerdict, so a run directory an older binary judged still reads as judged:
-// the clear, the replay and BurlerProducer's may-advance check all go through here.
+// the clear, the replay and BurlerReviewProducer's may-advance check all go through here.
 func recordedVerdict(runDir string, round int) (bouncerVerdict, ledgerFile, bool) {
 	return readJudgment(runDir, round, func(content []byte) (bouncerVerdict, error) {
 		verdict, _, _, err := parseRecordedVerdict(content)

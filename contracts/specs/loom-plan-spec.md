@@ -5,7 +5,7 @@
 ## Producer and contract
 
 This format is produced by `Plan-Write` (stencil: `contracts/stencils/loom/loom-template-plan.md`).
-It is validated by `Plan-Write`'s and `Plan-Burler`'s own gates over `internal/planparser` — see [Validation checks](#validation-checks-as-implemented-by-internalplanparser) below, this file's own validation-checks section.
+It is validated by `Plan-Write`'s and `Plan-Burler-Fix`'s own gates over `internal/planparser` — see [Validation checks](#validation-checks-as-implemented-by-internalplanparser) below, this file's own validation-checks section.
 It is reviewed by `Plan-Review`.
 
 - **Output** — the shape below, per [Card fields and order](#card-fields-and-order).
@@ -242,7 +242,7 @@ Once bound, a `Create` declaration bullet collapses to the plain `` - `<glyph>` 
 
 A `Rename` group's two sides carry different obligations under this alphabet: the `Old` side must be a glyph — it names something real that will be resolved — and the `New` side must be a `plan:` handle, whose content a later binding step computes and overwrites at the validation boundary rather than trusting the planner's draft spelling. A `Rename` card therefore needs no declaration head of its own, unlike a `Create` card, because the declaration is derived from the resolved old side. A file-rename pair — both sides self glyphs — is exempt from this rule, since it has no declaration head to name and belongs in the same group as a plain path pair.
 
-**A `Rename`'s `Old` side can never be a symbol the same plan creates.** Both plan gate sites — `Plan-Write`'s and `Plan-Burler`'s own gates — resolve the whole plan against the tree as it stands before any card has run, so a `Create` card's own not-yet-real symbol has nothing to resolve against yet — the `Old` side of a later card renaming it reads `not_found`, and the declaration-derivation step described above has no resolved signature to derive from (`rename-old-unresolved`), regardless of how the plan sequences its cards. This is a limit on what one plan can express, not a defect: a symbol renamed in the very plan that creates it gains nothing a correctly-named `Create` does not already give it, so the fix is to spell the `Create` target with its final name to begin with.
+**A `Rename`'s `Old` side can never be a symbol the same plan creates.** Both plan gate sites — `Plan-Write`'s and `Plan-Burler-Fix`'s own gates — resolve the whole plan against the tree as it stands before any card has run, so a `Create` card's own not-yet-real symbol has nothing to resolve against yet — the `Old` side of a later card renaming it reads `not_found`, and the declaration-derivation step described above has no resolved signature to derive from (`rename-old-unresolved`), regardless of how the plan sequences its cards. This is a limit on what one plan can express, not a defect: a symbol renamed in the very plan that creates it gains nothing a correctly-named `Create` does not already give it, so the fix is to spell the `Create` target with its final name to begin with.
 
 The checks that keep this mechanism internally consistent are `handle-dangling`, `handle-collision` and `handle-malformed` (all keeping a declared handle consistent with where it is referenced), and `rename-to-not-handle`/`rename-from-not-glyph` (keeping a `Rename` pair's two sides on their correct side of the handle/glyph line) — see [Validation checks](#validation-checks-as-implemented-by-internalplanparser) below for each check's own row.
 The handle checks do not all read the same source set, and the split is deliberate: `handle-dangling` and `handle-collision` read **both** declaring sources (a `Create` sub-bullet and a `Rename` to-side), and `handle-malformed`'s file-unit rule reads `Create` declarations alone, since a `Rename` to-side's unit is derived from its resolved old side rather than from the draft handle's own unit half.
@@ -285,7 +285,7 @@ The section must cover what a parent merge can break.
 The section runs, in this order, `go build ./...`, `go vet` under each of `-tags integration`, `-tags tmux` and `-tags llm`, the untagged tier (`go test`), then the `integration` tier (`go test -tags integration`).
 The `tmux` tier is run at Publish by landing config's `publish_verify` where the repo sets it, never by the plan.
 Webster's gate, Publish and Finalize run the section itself, and Publish then runs `publish_verify` after it.
-The Webster-Burler round gate instead runs a derived impacted-set command between rounds.
+The Webster-Burler-Fix round gate instead runs a derived impacted-set command between rounds.
 
 The three tiers match this repo's own test-tier discipline — `internal/planparser`'s existing `Verify` fields are the V1 precedent this generalizes, not three tiers invented for this format:
 
@@ -372,7 +372,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
 1. `format-unrecognized` — `format:` is a recognized version (currently only `5`); else refuse to run.
 2. `plan-language-unrecognized` — `language:` (when present) is `"go"` or `"none"`; else flagged, naming the offending value and the two legal ones. Absent defaults to `"go"` and is never flagged.
 3. `plan-unapproved` — `approved: true`; else refuse to run.
-   This is a consumer guard, and its "else refuse to run" is deliberately not enforced by every caller: both plan gate sites — `Plan-Write`'s and `Plan-Burler`'s own gates — run only the format-only set, `ValidateFormat`, strictly before the review segment's approve seam ever writes the flag, so neither one re-checks it. Every standalone plan consumer (`internal/websterengine`, `internal/webstercli`, `internal/batcher`) still enforces it through `Validate`, the full entry point — the plan writer is forbidden from setting the flag, and the review segment (`Plan-Bouncer`'s approved settle) is what writes it, so a pre-review gate demanding it would be demanding something only review itself can produce, and no row in the recipe re-checks it once written.
+   This is a consumer guard, and its "else refuse to run" is deliberately not enforced by every caller: both plan gate sites — `Plan-Write`'s and `Plan-Burler-Fix`'s own gates — run only the format-only set, `ValidateFormat`, strictly before the review segment's approve seam ever writes the flag, so neither one re-checks it. Every standalone plan consumer (`internal/websterengine`, `internal/webstercli`, `internal/batcher`) still enforces it through `Validate`, the full entry point — the plan writer is forbidden from setting the flag, and the review segment (`Plan-Bouncer`'s approved settle) is what writes it, so a pre-review gate demanding it would be demanding something only review itself can produce, and no row in the recipe re-checks it once written.
 4. `index-file-mismatch` — Card Index ↔ card files consistent (numbering from `first_card` upward, slugs, no gaps, no orphaned file on disk).
    A `first_card:` that is not a positive integer is a finding of its own naming the value, and the numbering half then checks against `1`.
    This check covers the card count because there is no separate `(C cards)` segment to cross-check;

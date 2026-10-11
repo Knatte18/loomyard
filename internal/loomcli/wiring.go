@@ -74,7 +74,7 @@ type commitStatusDeps struct {
 // The loom durable directory is staged whole rather than its friction directory alone:
 // staging the parent carries the friction directory and every timestamped archive sibling in one entry,
 // where a friction-only entry would miss the archives.
-// Existence alone is not enough: shedrecipe's Bouncer and BurlerRound entries os.MkdirAll every review row's run directory at recipe build time,
+// Existence alone is not enough: shedrecipe's Bouncer, BurlerReview and BurlerFix entries os.MkdirAll every review row's run directory at recipe build time,
 // so from a run's first transition the reviews root exists holding only empty segment directories.
 // `git add -- <dir>` accepts an empty directory,
 // but StageAndCommit's `git commit -- <pathspec>` then fails with "pathspec did not match any file(s) known to git", which the seam would turn into a hard error;
@@ -718,7 +718,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// set rather than the producer that last touched it, so a Plan-Write commit and a
 		// Plan-Bouncer commit read identically. Both callers fire this closure only after a gate has
 		// already judged the plan: Plan-Write's own gate runs inside its Call, ahead of its own
-		// post-Done commit, and Plan-Burler's own gate runs the same way, ahead of the Plan-Bouncer
+		// post-Done commit, and Plan-Burler-Fix's own gate runs the same way, ahead of the Plan-Bouncer
 		// approved settle that commits its overlay fix -- and that is intentional and matches the
 		// discussion precedent: the commit keeps the artifact durable, it does not certify it. The
 		// pathspec is the whole plan directory via
@@ -748,14 +748,12 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		},
 		// Rework opens nothing at wire time: every closure reads or writes on demand, since wire() also runs for status/pause.
 		Rework: reworkDeps,
-		// StencilsDir, SpecsDir, RunRoot, Burler, and Now are filled for both review segments --
-		// Discussion-Bouncer/Discussion-Burler and Plan-Bouncer/Plan-Burler alike. StencilsDir and
-		// SpecsDir are websterGeom.StencilsDir and websterGeom.SpecsDir -- the same values the
-		// DiscussionSpec and PlanSpec closures above already capture directly -- so each is one
-		// value read from one place, not a second copy that could drift from theirs. Now is filled
-		// explicitly with time.Now rather than left nil, even though nil defaults to time.Now
-		// inside the underlying constructors, because the Bouncer's archive-filename collision
-		// suffix is the one place a test wants to inject a clock.
+		// StencilsDir, SpecsDir, RunRoot, Burler, and Now are filled for both review segments.
+		// That is the Discussion-Bouncer and Discussion-Burler-* rows and the Plan-Bouncer and Plan-Burler-* rows alike.
+		// StencilsDir and SpecsDir are websterGeom.StencilsDir and websterGeom.SpecsDir, the same values the DiscussionSpec and PlanSpec closures above already capture directly.
+		// So each is one value read from one place, not a second copy that could drift from theirs.
+		// Now is filled explicitly with time.Now rather than left nil, even though nil defaults to time.Now inside the underlying constructors.
+		// The Bouncer's archive-filename collision suffix is the one place a test wants to inject a clock.
 		StencilsDir: websterGeom.StencilsDir,
 		SpecsDir:    websterGeom.SpecsDir,
 		// RunRoot is durable: the status seam commits it with every transition.
@@ -764,29 +762,37 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		Now:     time.Now,
 
 		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
-		Slug:           seedSlug(location.WorktreeName),
-		SegmentBounces: segmentBounces(statusPath, statusLockPath, func() (shedengine.Routing, error) { return loomrecipe.Routing(loomCfg.ReviewMaxBounces) }),
+		Slug: seedSlug(location.WorktreeName),
+		SegmentBounces: segmentBounces(statusPath, statusLockPath, func() (shedengine.Routing, error) {
+			return loomrecipe.Routing(loomCfg.ReviewMaxBounces, perchMaxBounces(loomCfg))
+		}),
 
 		ReviewMaxBounces:         loomCfg.ReviewMaxBounces,
+		RowMaxBounces:            perchMaxBounces(loomCfg),
+		RowAutoAccept:            perchAutoAccept(loomCfg),
 		DiscussionSeats:          loomCfg.DiscussionProducer == loomengine.DiscussionProducerSeats,
 		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
 
 		ReviewModels:  reviewSettings.Models,
 		ReviewTimeout: reviewSettings.Timeout,
 		RowReviewModels: map[string]burlerengine.RoundModels{
-			loomshed.NameDiscussionBurler: reviewSettings.Discussion,
-			loomshed.NamePlanBurler:       reviewSettings.Plan,
-			loomshed.NameWebsterBurler:    reviewSettings.Webster,
+			loomshed.NameDiscussionBurlerReview: reviewSettings.Discussion,
+			loomshed.NameDiscussionBurlerFix:    reviewSettings.Discussion,
+			loomshed.NamePlanBurlerReview:       reviewSettings.Plan,
+			loomshed.NamePlanBurlerFix:          reviewSettings.Plan,
+			loomshed.NameWebsterBurlerReview:    reviewSettings.Webster,
+			loomshed.NameWebsterBurlerFix:       reviewSettings.Webster,
 			// The darn recipe's Darn-Review perch reviews a committed diff as Webster-Review does, so it takes that segment's models.
-			loomshed.NameDarnBurler: reviewSettings.Webster,
+			loomshed.NameDarnBurlerReview: reviewSettings.Webster,
+			loomshed.NameDarnBurlerFix:    reviewSettings.Webster,
 		},
-		// A segment's fan reaches both of its rows from one key, so its Bouncer and its round agree by construction.
+		// A segment's fan reaches its Bouncer and its review row from one key, so the two agree by construction; the fix row runs no fan.
 		// Webster-Review stays solo: its forks may run no git and its subject exists only through git.
 		RowClusterFans: map[string]string{
-			loomshed.NameDiscussionBouncer: loomCfg.DiscussionFan,
-			loomshed.NameDiscussionBurler:  loomCfg.DiscussionFan,
-			loomshed.NamePlanBouncer:       loomCfg.PlanFan,
-			loomshed.NamePlanBurler:        loomCfg.PlanFan,
+			loomshed.NameDiscussionBouncer:      loomCfg.DiscussionFan,
+			loomshed.NameDiscussionBurlerReview: loomCfg.DiscussionFan,
+			loomshed.NamePlanBouncer:            loomCfg.PlanFan,
+			loomshed.NamePlanBurlerReview:       loomCfg.PlanFan,
 		},
 
 		RowBouncerModels: map[string]shedadapters.BouncerModels{
@@ -853,6 +859,25 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	c.driverDirectory = newReedDriverDirectory(reedEngine)
 	c.bouncerSubdir = loomrecipe.BouncerRunSubdir
 	return nil
+}
+
+// perchMaxBounces maps loom.yaml's per-perch budget keys onto the Discussion, Plan and Webster Bouncer rows' names.
+// A 0 entry means the perch takes the run-wide review_max_bounces.
+func perchMaxBounces(cfg loomengine.Config) map[string]int {
+	return map[string]int{
+		loomshed.NameDiscussionBouncer: cfg.DiscussionMaxBounces,
+		loomshed.NamePlanBouncer:       cfg.PlanMaxBounces,
+		loomshed.NameWebsterBouncer:    cfg.WebsterMaxBounces,
+	}
+}
+
+// perchAutoAccept maps loom.yaml's per-perch auto-accept keys onto the Discussion, Plan and Webster Bouncer rows' names.
+func perchAutoAccept(cfg loomengine.Config) map[string]bool {
+	return map[string]bool{
+		loomshed.NameDiscussionBouncer: cfg.DiscussionAutoAccept,
+		loomshed.NamePlanBouncer:       cfg.PlanAutoAccept,
+		loomshed.NameWebsterBouncer:    cfg.WebsterAutoAccept,
+	}
 }
 
 // segmentBounces returns the Env.SegmentBounces seam over the status file at statusPath, locked by statusLockPath.

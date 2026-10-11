@@ -226,12 +226,12 @@ func (c *loomCLI) recipeRouting() (shedengine.Routing, error) {
 		return loomrecipe.DarnRouting(budget)
 	}
 
-	budget, err := c.reviewBudget()
+	budget, rowBudgets, err := c.reviewBudget()
 	if err != nil {
 		return shedengine.Routing{}, err
 	}
 
-	return loomrecipe.Routing(budget)
+	return loomrecipe.Routing(budget, rowBudgets)
 }
 
 // newShed builds the shed of the run's recipe over c.env and c.shedPaths.
@@ -252,26 +252,26 @@ func (c *loomCLI) verifySource() verifySource {
 	return planVerifySource(c.location)
 }
 
-// reviewBudget returns the review bounce budget the routing projection reports.
+// reviewBudget returns the run-wide review bounce budget and the per-perch budget map the routing projection reports.
 // The full wiring has already loaded loom.yaml into c.cfg; the lightweight wiring loads no config, so it reads loom.yaml here once more.
-// An unreadable loom.yaml degrades to the template's default with a warning, because the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
-func (c *loomCLI) reviewBudget() (int, error) {
+// An unreadable loom.yaml degrades to the template's defaults with a warning, because the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
+func (c *loomCLI) reviewBudget() (int, map[string]int, error) {
 	if c.cfg.ReviewMaxBounces > 0 {
-		return c.cfg.ReviewMaxBounces, nil
+		return c.cfg.ReviewMaxBounces, perchMaxBounces(c.cfg), nil
 	}
 
 	cfg, err := loomengine.LoadConfig(c.location.AnchorPath(), "loom")
 	if err == nil {
-		return cfg.ReviewMaxBounces, nil
+		return cfg.ReviewMaxBounces, perchMaxBounces(cfg), nil
 	}
 	logger.Warn("loom: could not read loom.yaml for the review bounce budget; reporting the template default", "error", err)
 
 	var template loomengine.Config
 	if err := yaml.Unmarshal([]byte(loomengine.ConfigTemplate()), &template); err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 
-	return template.ReviewMaxBounces, nil
+	return template.ReviewMaxBounces, perchMaxBounces(template), nil
 }
 
 // specFor fills a Spec from c's already-wired fields, performing no resolution, no wire call, and

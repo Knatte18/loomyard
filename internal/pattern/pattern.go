@@ -39,7 +39,7 @@ type Role int
 const (
 	// RoleImplementer selects the pre-edit checklist for any agent that edits code.
 	RoleImplementer Role = iota + 1
-	// RoleReviewFix selects the combined review+fix variant for the burler round.
+	// RoleReviewFix selects the reviewer variant for the burler review half.
 	RoleReviewFix
 	// RoleOrchestrator selects the forking-only variant for webster's Master session.
 	RoleOrchestrator

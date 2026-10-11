@@ -53,7 +53,7 @@ A driver, webster or a review loop that cannot go on escalates to you, its paren
   A goto leaves the run paused,
   so run `lyx loom resume` in the task worktree to resume it.
 - A Publish blocked on a verify that exited non-zero: batten retries the first such failure of a run itself, so a notice for one means the second failure.
-  Take `lyx loom goto --to Webster-Burler`, then `lyx loom resume` in the task worktree.
+  Take `lyx loom goto --to Webster-Burler-Review`, then `lyx loom resume` in the task worktree.
   Never a goto to Plan-Bouncer, since the plan does not change.
 - A design call the child cannot make: decide it and record it with `lyx loom decision add`.
 

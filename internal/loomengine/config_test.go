@@ -109,6 +109,12 @@ func templateConfig() Config {
 		StepIdleTimeoutMin:       60,
 		ReviewCirclingCheckpoint: 3,
 		ReviewMaxBounces:         3,
+		DiscussionMaxBounces:     0,
+		PlanMaxBounces:           0,
+		WebsterMaxBounces:        0,
+		DiscussionAutoAccept:     false,
+		PlanAutoAccept:           false,
+		WebsterAutoAccept:        false,
 	}
 }
 
@@ -279,6 +285,17 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.ReviewCirclingCheckpoint, c.ReviewMaxBounces = 2, 7 },
 		},
 		{
+			name: "explicit per-perch budgets and auto-accept flags",
+			values: map[string]string{
+				"discussion_max_bounces": "1", "plan_max_bounces": "2", "webster_max_bounces": "4",
+				"discussion_auto_accept": "true", "plan_auto_accept": "true", "webster_auto_accept": "true",
+			},
+			mutate: func(c *Config) {
+				c.DiscussionMaxBounces, c.PlanMaxBounces, c.WebsterMaxBounces = 1, 2, 4
+				c.DiscussionAutoAccept, c.PlanAutoAccept, c.WebsterAutoAccept = true, true, true
+			},
+		},
+		{
 			name:   "checkpoint above budget",
 			values: map[string]string{"review_circling_checkpoint": "9", "review_max_bounces": "2"},
 			mutate: func(c *Config) { c.ReviewCirclingCheckpoint, c.ReviewMaxBounces = 9, 2 },
@@ -396,6 +413,9 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"negative review_circling_checkpoint", "review_circling_checkpoint", "-1", []string{positiveIntegerForward}, ""},
 		{"zero review_max_bounces", "review_max_bounces", "0", []string{positiveIntegerForward}, ""},
 		{"negative review_max_bounces", "review_max_bounces", "-1", []string{positiveIntegerForward}, ""},
+		{"negative discussion_max_bounces", "discussion_max_bounces", "-1", []string{"must not be negative", "set it to 0 to take review_max_bounces"}, ""},
+		{"negative plan_max_bounces", "plan_max_bounces", "-1", []string{"must not be negative", "set it to 0 to take review_max_bounces"}, ""},
+		{"negative webster_max_bounces", "webster_max_bounces", "-1", []string{"must not be negative", "set it to 0 to take review_max_bounces"}, ""},
 		{"negative discussion timeout", "discussion_timeout_min", "-1", []string{"must not be negative"}, ""},
 		{"negative plan timeout", "plan_timeout_min", "-1", []string{"must not be negative"}, ""},
 		{"negative review timeout", "review_timeout_min", "-1", []string{"must not be negative"}, ""},

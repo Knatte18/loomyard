@@ -475,9 +475,7 @@ func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, 
 	// (a dead claude with a finished output file is, to loom, a done step -- see
 	// PATTERN-completion-signal).
 	//
-	// This never fires on a review-segment bounce (e.g. Discussion-Bouncer bouncing to
-	// Discussion-Burler), so it does not reopen the crash-versus-bounce trap that bars a
-	// producer-level file-existence check: a bounce re-enters its producer only after the prior run
+	// This never fires on a review-segment bounce (e.g. Discussion-Bouncer bouncing to Discussion-Burler-Review), so it does not reopen the crash-versus-bounce trap that bars a producer-level file-existence check: a bounce re-enters its producer only after the prior run
 	// reached OutcomeDone, at which point finalize already removed that run's directory — so no
 	// "running" run.json survives to match here. Spec.validate refuses a spec whose output file
 	// already exists on the Start path, so a "running" run.json is proof the files appeared AFTER this

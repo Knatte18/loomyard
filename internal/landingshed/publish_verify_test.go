@@ -364,7 +364,7 @@ func TestPublishVerify_FailureRecord(t *testing.T) {
 		wantMerge       string
 		// blockRecord pre-creates the record path as a directory, so the write fails.
 		blockRecord bool
-		// wantGoto expects the Stuck reason to name the Webster-Burler goto as the way forward.
+		// wantGoto expects the Stuck reason to name the goto to Webster-Burler-Review as the way forward.
 		wantGoto bool
 	}{
 		{"plan verify fails", false, map[string]verifytree.Result{planCommand: failed}, verifytree.FailureKindPlanVerify, "merged-head", false, true},

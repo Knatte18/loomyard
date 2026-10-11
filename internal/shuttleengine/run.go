@@ -750,8 +750,7 @@ func (r *Runner) Run(spec Spec) (Result, error) {
 // A not-ready start is deliberately NOT surfaced as an error here: errors.Is(err, ErrNotStarted)
 // reports (result, nil), where result carries the died/timeout Outcome abandonStartup's teardown
 // already classified, its identity fields, and a zero Gate — preserving RunGated's own OutcomeDied
-// contract that the burler round producer's one-retry ladder depends on
-// (TestBurlerProducer_Call_DiedThenDoneSucceedsWithRetry), so a caller that already branches on
+// contract that the Burler row producers' one-retry ladder depends on, so a caller that already branches on
 // Result.Outcome sees the same shape whether the run died at startup or later in Wait's own loop.
 // The folded result carries the start error's text in StartError, so the cause is not lost with the error.
 // Any other non-nil err (a pre-strand failure from start itself) is
