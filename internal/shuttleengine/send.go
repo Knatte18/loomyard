@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// ErrSessionBusy marks a verified send that found the session still held by its readiness reading when its idle wait ran out: a turn running, a question awaiting an answer, a draft in the input box, an unmatched turn start or, when the reading is unknown, a pane that is not idle.
+// ErrSessionBusy marks a verified send that found the session still held by its readiness reading when its idle wait ran out: a turn running, a question awaiting an answer, a draft in the input box, an unmatched turn start, an operator active in the pane within reed's quiet window, a pane showing no input box to an engine that reads one or, when the reading is unknown, a pane that is not idle.
 // Nothing was typed, so the caller may retry the send later.
 var ErrSessionBusy = errors.New("shuttle: the session is not idle")
 
@@ -98,7 +98,13 @@ func windowPollCap(window, minInterval time.Duration) int {
 func awaitIdleSession(sc sendContext) error {
 	cycler, ok := sc.engine.(SessionCycler)
 	if !ok {
-		return requireReadyAgentPane(sc.reed, sc.engine, sc.guid)
+		if err := requireReadyAgentPane(sc.reed, sc.engine, sc.guid); err != nil {
+			return err
+		}
+		if hold := operatorActivityHold(sc.reed, sc.guid); hold != "" {
+			return fmt.Errorf("%w: strand %q: %s; retry once the operator is idle", ErrSessionBusy, sc.guid, hold)
+		}
+		return nil
 	}
 	if err := requireLiveStrand(sc.reed, sc.guid); err != nil {
 		return err
@@ -131,6 +137,7 @@ func awaitIdleSession(sc sendContext) error {
 // busyReading polls the pane and the events file once and returns what keeps the session from being idle, or "" when it is idle.
 // The readiness reading decides: a ready reading returns "" and a held one its reason.
 // An unknown reading falls back to the pane, logging its cause at Debug.
+// Operator activity is asked last, and only once the rest of the reading passed, so each poll is one fresh reading of readiness, box and activity.
 func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold) string {
 	capture, err := sc.reed.CapturePane(sc.guid)
 	if err != nil {
@@ -139,7 +146,7 @@ func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold) stri
 	reading := sessionReadiness(sc, cycler, hold, capture)
 	switch {
 	case reading.ready:
-		return ""
+		return operatorActivityHold(sc.reed, sc.guid)
 	case !reading.unknown:
 		return reading.reason
 	}
@@ -157,8 +164,24 @@ func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold) stri
 		return "the pane shows no input-ready provider"
 	case !paneIdle:
 		return "the pane is not idle"
+	case unmatched != "":
+		return unmatched
 	}
-	return unmatched
+	return operatorActivityHold(sc.reed, sc.guid)
+}
+
+// operatorActivityHold asks reed once whether an attached client was active in the strand's pane within the quiet window, and returns the reason a write is held for it, or "" when none.
+// A query error is logged at Warn and holds nothing, so a tmux that cannot list its clients stalls no run.
+func operatorActivityHold(reed ReedOps, guid string) string {
+	active, quiet, err := reed.OperatorActive(guid)
+	if err != nil {
+		logger.Warn("shuttle: operator activity unreadable, not holding the write", "strandGUID", guid, "error", err)
+		return ""
+	}
+	if !active {
+		return ""
+	}
+	return fmt.Sprintf("the operator typed in this pane within the last %d s", int(quiet.Seconds()))
 }
 
 // unmatchedTurnStart returns the newest turn_start in the events file that no later turn_end or api_error_turn_end follows.

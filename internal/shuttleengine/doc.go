@@ -179,13 +179,17 @@
 // Every verified send first waits for an idle session, for at most `send_ready_timeout_s` and never past the run's deadline, and types nothing until then.
 // For an engine with the optional SessionCycler idle reading, every poll takes the readiness reading, built on the hook-derived session state.
 // The reading is ready on idle-done, idle-stalled of any cause, asking at an awaited turn end and busy on background work, provided no turn start is unmatched and the input box, where the engine reads one, is blank;
-// it is held, with a reason, on a running turn, a question awaiting an answer, a dead process, an unmatched turn start, a draft in the box and a pane too short.
-// A ready reading lets the send type even when the pane still shows the running-turn needle or no box.
+// it is held, with a reason, on a running turn, a question awaiting an answer, a dead process, an unmatched turn start, a draft in the box, a pane too short and a pane showing no input box to an engine that reads one, as when a menu or picker is open.
+// A ready reading lets the send type even when the pane still shows the running-turn needle.
+// The pre-write guard is the last step of every poll: once the rest of the reading passed, shuttle asks reed once whether an attached client was active in the pane within `operator_quiet_s`, and holds the write while one was.
+// So each poll is one fresh reading of readiness, box and activity immediately before the caller types.
+// An activity query that errors is logged at Warn and holds nothing, so a tmux that cannot list its clients stalls no run; the empty-box requirement still stands.
+// Runner.SessionIdle applies the same hold after a ready reading, so the orch watcher's probe reports an active operator with its reason.
 // An unmatched turn start releases after the pane has read idle on every poll for turnStartIdleOverride, or at once when the engine reports that turn interrupted.
 // When the session state is unknown, the reading falls back to the pane, which must classify ready and idle, and for an engine that parses session signals no turn start may be left unmatched by a later turn end; the cause is logged at Debug.
 // A session that stays held fails the send with ErrSessionBusy, naming the reading and ending with the pane's last lines.
 // Run.Send and the gated wait loop's own send each hold the run's send lock for the whole idle wait, typing and delivery check, so an in-process send and a gate re-prompt on one run type one after the other, never at once; the lock skips no idle wait, delivery check or gate evaluation.
-// An engine without the idle reading keeps the not-ready refusal alone.
+// An engine without the idle reading keeps the not-ready refusal and the operator-activity hold, with no wait: either fails the send at once.
 // That path confirms a send is submitted, not only that its text appeared in the pane, for an engine that implements the optional InputBoxReader capability, inside a window of `submit_confirm_timeout_s` from the moment typing begins.
 // The text is typed without its Enter, and once it has appeared shuttle reads the input box every `submit_settle_ms` until two reads agree, so no Enter lands inside a typing burst;
 // reads that agree only once the window has closed send no Enter.

@@ -1416,6 +1416,9 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		// reader also gives it an input-box reader, for a row that fails before anything is typed.
 		reading, reader bool
 		viaRunner       bool
+		// activeQueue and activityErr script the fake reed's operator-activity answers.
+		activeQueue []bool
+		activityErr error
 		// frozen gives the run a clock that never advances, so only the poll count can end the wait.
 		frozen bool
 		// wantTypedBetween is the window the first typed key lands in; ignored when wantBusy is set.
@@ -1433,6 +1436,10 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		{name: "unmatched turn start is released by an interrupt report", events: "START\n", reading: true, interrupted: true},
 		{name: "unmatched turn start against a busy pane fails busy with the reading's reason", events: "START\n", reading: true, idleAfter: never, busyFrame: "working", wantBusy: []string{"a turn is running"}},
 		{name: "draft in the box fails busy with the reading's reason", events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the input box holds a draft", "a half-typed draft"}},
+		{name: "an active operator holds the write until it goes quiet", activeQueue: []bool{true, true, true, false}, wantTypedMin: time.Second, wantTypedMax: 3 * time.Second},
+		{name: "an operator active through the whole window fails busy naming the activity", activeQueue: []bool{true}, wantBusy: []string{"the operator typed in this pane within the last 5 s"}},
+		{name: "an unreadable activity query still holds on a draft", activityErr: errors.New("list-clients failed"), events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the input box holds a draft", "a half-typed draft"}},
+		{name: "an unreadable activity query holds nothing over an empty box", activityErr: errors.New("list-clients failed"), events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: time.Millisecond, busyFrame: "IDLE\n❯ "},
 		{name: "turn end after the turn start releases at once", events: "START\nSTOP:done\n"},
 		{name: "api error turn end counts as a turn end", events: "START\nAPIERR\n"},
 		{name: "a hook turn end beside a pane needle types at once", events: "START\nSTOP:done\n", reading: true, idleAfter: time.Second, busyFrame: "working (esc to interrupt)\n❯ "},
@@ -1443,7 +1450,7 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 			buf := logcapture.Capture(t)
 			clock := newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))
 			start := clock.Now()
-			reed := &idleReed{fakeReed: &fakeReed{StatusQueue: liveStrandStatus(true)}, clock: clock, busyFrame: tt.busyFrame}
+			reed := &idleReed{fakeReed: &fakeReed{StatusQueue: liveStrandStatus(true), ActiveQueue: tt.activeQueue, ActivityErr: tt.activityErr}, clock: clock, busyFrame: tt.busyFrame}
 			if tt.idleAfter > 0 {
 				reed.idleAt = start.Add(tt.idleAfter)
 			}

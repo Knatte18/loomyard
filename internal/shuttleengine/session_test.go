@@ -160,7 +160,9 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 		// advance moves the fake clock before the probe.
 		advance time.Duration
 		capture string
-		want    IdleProbe
+		// active makes the fake reed report an operator active in the pane.
+		active bool
+		want   IdleProbe
 		// wantReason is a substring of the held reason; empty when the probe is not held by the reading.
 		wantReason string
 	}
@@ -196,7 +198,8 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 			probes:  []probe{{events: turnEnded, capture: needleFrame, want: IdleProbe{Idle: true}}},
 			wantLog: "readiness reads ready beside a pane that does not show idle",
 		},
-		{name: "a hook turn end beside a pane with no box reads idle", probes: []probe{{events: turnEnded, capture: "no box here", want: IdleProbe{Idle: true}}}},
+		{name: "a pane with no readable box is held for an engine that reads one", probes: []probe{{events: turnEnded, capture: "no box here", want: IdleProbe{Reason: readinessReasonNoInputBox}, wantReason: "no input box"}}},
+		{name: "an active operator is held with the activity reason", probes: []probe{{events: turnEnded, capture: idleFrame, active: true, want: IdleProbe{Reason: "the operator typed in this pane within the last 5 s"}, wantReason: "operator typed"}}},
 		{
 			name: "a turn start with no turn end is held, then released by a later turn end",
 			probes: []probe{
@@ -254,6 +257,7 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 				}
 				clock.Sleep(p.advance)
 				reed.CaptureQueue = []string{p.capture}
+				reed.ActiveQueue = []bool{p.active}
 				got, err := fx.Runner.SessionIdle("strand-1")
 				if err != nil || got != p.want {
 					t.Errorf("probe %d: SessionIdle = %+v, %v; want %+v, nil", i, got, err, p.want)
