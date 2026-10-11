@@ -89,6 +89,12 @@ type Spec struct {
 	// QuietHold skips the held-turn parent notice alone.
 	// The hold itself, the wait mark, the deadline and attach behaviour are unchanged.
 	QuietHold bool
+	// HoldDeferral, when set, reports whether outstanding work elsewhere defers this run's held-turn parent notice.
+	// A held turn end is then noticed only after holdNoticeSettle has passed and the predicate reports false, or after holdNoticeMaxDeferral whatever it reports.
+	// A new event or turn start drops the pending notice.
+	// It is called from the run's wait loop, so it must not block.
+	// validate does not inspect it.
+	HoldDeferral func() bool
 	// Segment is the loom segment the spawning module names for its role.
 	// It is forwarded to reed, which resolves the segment's palette color for the strand's bar button and border,
 	// and shuttle types the provider's color command for that color after startup.

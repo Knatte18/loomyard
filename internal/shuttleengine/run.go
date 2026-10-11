@@ -298,6 +298,11 @@ type Run struct {
 	// turnStartRead is true when the latest pollEventsTick read a turn start positioned past the latest turn end the loop holds, which ends a held wait too.
 	// That turn end is the held one the tick returns, else the one on show.
 	turnStartRead bool
+	// pendingHold is the held turn end whose parent notice a Spec.HoldDeferral run has not yet sent, nil when none is pending.
+	// pendingHoldAt is the run clock's time when it was read.
+	// Both live in memory for one Wait.
+	pendingHold   *heldTurnEnd
+	pendingHoldAt time.Time
 	// holdGuard is true while a turn end read is not yet a task turn end: the load turns' own turn starts were seen and the prompt's has not been read.
 	// promptTurnStarted is true once a turn start at or past the prompt offset has been read.
 	// Both live in memory for one Wait.

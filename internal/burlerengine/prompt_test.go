@@ -17,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
@@ -69,11 +70,28 @@ func newComposableProfile(t *testing.T) Profile {
 	}
 }
 
-// combinedPrompt joins both orchestrator strings with every instruction file's Content, newline-separated.
+// seatPrompts renders the two seat prompts of p's round the way the seats engine fills them from prompts' marker values, told parentName.
+// It returns the reviewer's (advisor-1) and the fixer's (chair).
+func seatPrompts(t *testing.T, stencilsDir, parentName string, p *Profile, prompts roundPrompts) (reviewer, fixer string) {
+	t.Helper()
+	root := filepath.Dir(p.ReviewPath)
+	rendered, err := seatengine.Prompts(
+		seatengine.Geometry{WorktreeRoot: root, AnchorPath: root, StencilsDir: stencilsDir, ParentName: parentName, Shortname: "tst", Slug: "task"},
+		p.roundTable(RunOpts{}, prompts, nil),
+	)
+	if err != nil {
+		t.Fatalf("seatengine.Prompts() = %v; want nil error", err)
+	}
+	return rendered[seatengine.AdvisorName(1)], rendered[seatengine.RoleChair]
+}
+
+// combinedPrompt joins both seat prompts with every instruction file's Content, newline-separated.
 // It gives tests a single haystack to search when a presence/absence assertion does not care which of the rendered assets carries the text.
-func combinedPrompt(prompts roundPrompts) string {
+func combinedPrompt(t *testing.T, stencilsDir string, p *Profile, prompts roundPrompts) string {
+	t.Helper()
+	reviewer, fixer := seatPrompts(t, stencilsDir, "", p, prompts)
 	parts := make([]string, 0, len(prompts.Files)+2)
-	parts = append(parts, prompts.Reviewer, prompts.Fixer)
+	parts = append(parts, reviewer, fixer)
 	for _, f := range prompts.Files {
 		parts = append(parts, f.Content)
 	}
@@ -100,7 +118,7 @@ func TestComposePrompt_FocusDirective(t *testing.T) {
 			t.Fatalf("WriteFile(focus) = %v; want nil", err)
 		}
 
-		prompts, err := composePrompt(stencilsDir, "", &p, "", "", testRoundFilePaths)
+		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -116,7 +134,7 @@ func TestComposePrompt_FocusDirective(t *testing.T) {
 	t.Run("directive absent", func(t *testing.T) {
 		p := newComposableProfile(t)
 
-		prompts, err := composePrompt(stencilsDir, "", &p, "", "", testRoundFilePaths)
+		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -158,7 +176,7 @@ func TestComposePrompt_FocusDirective(t *testing.T) {
 		var buf bytes.Buffer
 		logger.SetOutput(&buf)
 		t.Cleanup(func() { logger.SetOutput(os.Stderr) })
-		if _, err := composePrompt(dir, "", &p, "", "", testRoundFilePaths); err != nil {
+		if _, err := composePrompt(dir, &p, "", "", testRoundFilePaths); err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
 		return buf.String()
@@ -196,11 +214,11 @@ func TestComposePrompt_MinimalProfile(t *testing.T) {
 	p := newComposableProfile(t)
 	stencilsDir := newTestStencilsDir(t)
 
-	prompts, err := composePrompt(stencilsDir, "", &p, "", "", testRoundFilePaths)
+	prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}
-	got := combinedPrompt(prompts)
+	got := combinedPrompt(t, stencilsDir, &p, prompts)
 
 	requireContains(t, got, p.ReviewPath)
 	requireContains(t, got, p.FixerReportPath)
@@ -218,8 +236,9 @@ func TestComposePrompt_MinimalProfile(t *testing.T) {
 	}
 	requireNotContains(t, fileLine, "a directory")
 
-	if prompts.Reviewer == "" || prompts.Fixer == "" {
-		t.Errorf("composePrompt() orchestrators = (%q, %q); want both non-empty", prompts.Reviewer, prompts.Fixer)
+	reviewer, fixer := seatPrompts(t, stencilsDir, "", &p, prompts)
+	if reviewer == "" || fixer == "" {
+		t.Errorf("seat prompts = (%q, %q); want both non-empty", reviewer, fixer)
 	}
 	wantPaths := []string{testRoundFilePaths.ReviewerExplore, testRoundFilePaths.FixerExplore, testRoundFilePaths.Review, testRoundFilePaths.Fix}
 	if len(prompts.Files) != len(wantPaths) {
@@ -231,15 +250,15 @@ func TestComposePrompt_MinimalProfile(t *testing.T) {
 		}
 	}
 
-	requireContains(t, prompts.Reviewer, testRoundFilePaths.ReviewerExplore)
-	requireContains(t, prompts.Reviewer, testRoundFilePaths.Review)
-	requireContains(t, prompts.Fixer, testRoundFilePaths.FixerExplore)
-	requireContains(t, prompts.Fixer, testRoundFilePaths.Fix)
-	requireContains(t, prompts.Fixer, "lyx burler await-review "+p.ReadyMarkerPath)
-	requireContains(t, prompts.Fixer, testRoundFilePaths.Review)
-	requireNotContains(t, prompts.Reviewer, p.ReadyMarkerPath)
+	requireContains(t, reviewer, testRoundFilePaths.ReviewerExplore)
+	requireContains(t, reviewer, testRoundFilePaths.Review)
+	requireContains(t, fixer, testRoundFilePaths.FixerExplore)
+	requireContains(t, fixer, testRoundFilePaths.Fix)
+	requireContains(t, fixer, "lyx shuttle await "+p.ReadyMarkerPath)
+	requireContains(t, fixer, testRoundFilePaths.Review)
+	requireNotContains(t, reviewer, p.ReadyMarkerPath)
 
-	for _, orchestrator := range []string{prompts.Reviewer, prompts.Fixer} {
+	for _, orchestrator := range []string{reviewer, fixer} {
 		requireNotContains(t, orchestrator, "not whether it gets fixed")
 		requireNotContains(t, orchestrator, "verdict:")
 		requireNotContains(t, orchestrator, "findings:")
@@ -253,25 +272,23 @@ func TestComposePrompt_ParentDirective(t *testing.T) {
 	p := newComposableProfile(t)
 	stencilsDir := newTestStencilsDir(t)
 
-	withParent, err := composePrompt(stencilsDir, "tst:task:orch", &p, "", "", testRoundFilePaths)
+	prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}
-	for _, orchestrator := range []string{withParent.Reviewer, withParent.Fixer} {
-		requireContains(t, orchestrator, "tst:task:orch")
+	withParentReviewer, withParentFixer := seatPrompts(t, stencilsDir, "tst:task:orch", &p, prompts)
+	for _, orchestrator := range []string{withParentReviewer, withParentFixer} {
 		requireContains(t, orchestrator, "A question to the operator in your pane is never the way forward.")
 		requireContains(t, orchestrator, "Edit or Write")
 	}
+	requireContains(t, withParentFixer, "tst:task:orch")
+	requireContains(t, withParentReviewer, "tst:task:burler-chair")
 
-	without, err := composePrompt(stencilsDir, "", &p, "", "", testRoundFilePaths)
-	if err != nil {
-		t.Fatalf("composePrompt() = %v; want nil error", err)
-	}
-	for _, orchestrator := range []string{without.Reviewer, without.Fixer} {
-		requireContains(t, orchestrator, "No parent is recorded for this run.")
-	}
+	withoutReviewer, withoutFixer := seatPrompts(t, stencilsDir, "", &p, prompts)
+	requireContains(t, withoutFixer, "No parent is recorded for this run.")
+	requireContains(t, withoutReviewer, "tst:task:burler-chair")
 
-	for _, f := range withParent.Files {
+	for _, f := range prompts.Files {
 		if strings.Contains(f.Content, "## Your parent") {
 			t.Errorf("instruction file %s carries the parent directive; want it only in the orchestrator", f.Path)
 		}
@@ -288,11 +305,11 @@ func TestComposePrompt_FixScope(t *testing.T) {
 		stencilsDir := newTestStencilsDir(t)
 		p.FixScope = FixScopeSource
 
-		prompts, err := composePrompt(stencilsDir, "", &p, "", "", testRoundFilePaths)
+		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
-		got := combinedPrompt(prompts)
+		got := combinedPrompt(t, stencilsDir, &p, prompts)
 		requireContains(t, got, "commit")
 		requireNotContains(t, got, "no git")
 		requireNotContains(t, findLineContaining(prompts.Files[fixFile].Content, "Write surface"), p.ReviewPath)
@@ -303,11 +320,11 @@ func TestComposePrompt_FixScope(t *testing.T) {
 		stencilsDir := newTestStencilsDir(t)
 		p.FixScope = FixScopeOverlay
 
-		prompts, err := composePrompt(stencilsDir, "", &p, "", "", testRoundFilePaths)
+		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
-		got := combinedPrompt(prompts)
+		got := combinedPrompt(t, stencilsDir, &p, prompts)
 		requireContains(t, got, "no git")
 		requireNotContains(t, got, "commit each fix")
 		writeSurface := findLineContaining(prompts.Files[fixFile].Content, "Write surface")
@@ -324,11 +341,11 @@ func TestComposePrompt_ToolUse(t *testing.T) {
 		stencilsDir := newTestStencilsDir(t)
 		p.ToolUse = true
 
-		prompts, err := composePrompt(stencilsDir, "", &p, "", "", testRoundFilePaths)
+		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
-		got := combinedPrompt(prompts)
+		got := combinedPrompt(t, stencilsDir, &p, prompts)
 		requireContains(t, got, "Drive the real substrate")
 		requireNotContains(t, got, "Read-only analysis")
 	})
@@ -338,11 +355,11 @@ func TestComposePrompt_ToolUse(t *testing.T) {
 		stencilsDir := newTestStencilsDir(t)
 		p.ToolUse = false
 
-		prompts, err := composePrompt(stencilsDir, "", &p, "", "", testRoundFilePaths)
+		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
-		got := combinedPrompt(prompts)
+		got := combinedPrompt(t, stencilsDir, &p, prompts)
 		requireContains(t, got, "Read-only analysis")
 		requireNotContains(t, got, "Drive the real substrate")
 	})
@@ -355,11 +372,11 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 		p := newComposableProfile(t)
 		stencilsDir := newTestStencilsDir(t)
 
-		prompts, err := composePrompt(stencilsDir, "", &p, "", "", testRoundFilePaths)
+		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
-		got := combinedPrompt(prompts)
+		got := combinedPrompt(t, stencilsDir, &p, prompts)
 		requireContains(t, got, "This is the first round")
 	})
 
@@ -369,11 +386,11 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 		p.PriorReviews = []string{filepath.Join(t.TempDir(), "prior-review.md")}
 		p.PriorFixerReports = []string{filepath.Join(t.TempDir(), "prior-fixer-report.md")}
 
-		prompts, err := composePrompt(stencilsDir, "", &p, "", "", testRoundFilePaths)
+		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
-		got := combinedPrompt(prompts)
+		got := combinedPrompt(t, stencilsDir, &p, prompts)
 		requireNotContains(t, got, "This is the first round")
 		requireContains(t, got, p.PriorReviews[0])
 		requireContains(t, got, p.PriorFixerReports[0])
@@ -394,11 +411,11 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 		p := newComposableProfile(t)
 		stencilsDir := newTestStencilsDir(t)
 
-		prompts, err := composePrompt(stencilsDir, "", &p, "", "", testRoundFilePaths)
+		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
-		got := combinedPrompt(prompts)
+		got := combinedPrompt(t, stencilsDir, &p, prompts)
 		requireContains(t, got, "single-reviewer round")
 		requireNotContains(t, got, "subagent_type")
 	})
@@ -412,11 +429,11 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 			{Name: "security", Text: "pay extra attention to security"},
 		}
 
-		prompts, err := composePrompt(stencilsDir, "", &p, "pattern directive placeholder", "", testRoundFilePaths)
+		prompts, err := composePrompt(stencilsDir, &p, "pattern directive placeholder", "", testRoundFilePaths)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
-		got := combinedPrompt(prompts)
+		got := combinedPrompt(t, stencilsDir, &p, prompts)
 		requireContains(t, got, "style")
 		requireContains(t, got, "security")
 		requireContains(t, got, "never call the Agent tool")
@@ -448,7 +465,8 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 		requireContains(t, instruction1, p.Target.Paths[0])
 		requireNotContains(t, instruction2, "pattern directive placeholder")
 		requireNotContains(t, instruction3, "pattern directive placeholder")
-		for _, orchestrator := range []string{prompts.Reviewer, prompts.Fixer} {
+		reviewer, fixer := seatPrompts(t, stencilsDir, "", &p, prompts)
+		for _, orchestrator := range []string{reviewer, fixer} {
 			requireNotContains(t, orchestrator, "Write surface")
 			requireNotContains(t, orchestrator, "style")
 			requireNotContains(t, orchestrator, "pattern directive placeholder")
@@ -466,7 +484,7 @@ func TestComposePrompt_FrictionDirective(t *testing.T) {
 		p := newComposableProfile(t)
 		stencilsDir := newTestStencilsDir(t)
 
-		prompts, err := composePrompt(stencilsDir, "", &p, "", "friction directive placeholder", testRoundFilePaths)
+		prompts, err := composePrompt(stencilsDir, &p, "", "friction directive placeholder", testRoundFilePaths)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -478,11 +496,11 @@ func TestComposePrompt_FrictionDirective(t *testing.T) {
 		p := newComposableProfile(t)
 		stencilsDir := newTestStencilsDir(t)
 
-		prompts, err := composePrompt(stencilsDir, "", &p, "", "", testRoundFilePaths)
+		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
-		got := combinedPrompt(prompts)
+		got := combinedPrompt(t, stencilsDir, &p, prompts)
 		requireNotContains(t, got, "friction directive")
 	})
 
@@ -494,7 +512,7 @@ func TestComposePrompt_FrictionDirective(t *testing.T) {
 			t.Fatalf("WriteFile(marker-free burler-step-1-explore.md) = %v; want nil", err)
 		}
 
-		_, err := composePrompt(stencilsDir, "", &p, "", "friction directive placeholder", testRoundFilePaths)
+		_, err := composePrompt(stencilsDir, &p, "", "friction directive placeholder", testRoundFilePaths)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}

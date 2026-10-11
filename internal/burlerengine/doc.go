@@ -1,9 +1,10 @@
 // Package burlerengine runs one review+fix round over an artifact and returns a verdict.
 // It is named for burling and mending: the cloth-finishing step where a worker inspects woven fabric for defects AND repairs them.
-// A round splits that into two agents started together.
+// A round splits that into two agents of one seat table on the seats engine (internal/seatengine).
+// The fixer is the table's chair and the reviewer its required advisor-1.
 // A reviewer finds the defects and writes the review.
 // A fixer orients while the review is written, waits for lyx to accept it, then validates the findings and repairs them.
-// Each half is its own shuttle run.
+// Each seat is its own shuttle run.
 //
 // A burler runs ONE round and exits. It knows nothing about round loops,
 // caps, convergence, or progress across rounds — that is its caller's job,
@@ -13,7 +14,7 @@
 // caller -> burler -> shuttle, a strict chain: each layer knows only the one
 // below it. This split is deliberate and is why burler is a separate module
 // from its caller rather than folded into it: burler is LLM-heavy (one
-// round is two shuttle runs; its tests are a fake-shuttle unit suite plus a
+// round is two seats; its tests are a fake-shuttle unit suite plus a
 // handful of opt-in real-engine smoke tests), while the loop owner is
 // deterministic Go (the round advance and the Bouncer's judge call; its
 // tests use a fake burler returning scripted verdicts, no LLM at all).
@@ -30,26 +31,44 @@
 //
 // # Skills and the parent directive
 //
-// Both halves load `scribe:prose`, `scribe:code-quality` and `scribe:testing` through their spawn specs' skills (`burlerSkills`).
-// Each orchestrator stencil renders the parent directive (internal/parentdirective) from Geometry.ParentName, which hubgeom.BurlerGeometry fills from the worktree's origin record;
-// standalone geometry leaves it empty, which renders the no-parent variant.
+// Both seats load `scribe:prose`, `scribe:code-quality` and `scribe:testing` through their spawn specs' skills (`burlerSkills`).
+// The seats engine renders the parent and edit directives into each seat stencil exactly once:
+// the chair's parent directive names Geometry.ParentName, which hubgeom.BurlerGeometry fills from the worktree's origin record, and standalone geometry leaves it empty, which renders the no-parent variant;
+// the advisor's names the chair.
 // The instruction files carry no directive.
 //
-// # The two halves
+// # The seat table
 //
-// The reviewer's role is burler-review and the fixer's is burler-fix.
-// The strands are therefore <shortname>:<slug>:burler-review and <shortname>:<slug>:burler-fix.
+// roundTable builds the round's seatengine.Table: the role prefix burlerRolePrefix, the review segment, the fixer's gate as the table gate, RunOpts.Timeout and RunOpts.Round, not interactive, and two seats in order.
+// The strands are therefore <shortname>:<slug>:burler-chair and <shortname>:<slug>:burler-advisor-1, formed through seatengine.SeatRole by the seats engine.
+// New builds that seat engine itself from the told Geometry and the stencils directory, over the seatengine.Shuttle it is given.
+// Each seat's stencil markers ride the seat's values: the absolute instruction-file paths, the review path, the review format path and the ready marker path.
+// composePrompt fills the instruction files and returns those values; the seat stencils are filled by the seats engine.
+//
+// # The two seats
+//
+// The reviewer is the advisor-1 seat, required, with roundAcceptance as its accept hook.
 // The reviewer explores the target, judges it against the fasit and writes the review file;
 // its write surface is the review file alone, in every fix scope, and it never edits, creates or deletes a target file.
 // Its spec declares the review file as its only output file.
-// Its gate is the review-parse entry (ReviewGateEntry) alone.
+// Its gate is the review-parse entry (ReviewGateEntry) alone, carried as the seat's own gate.
 // It sets ForkSubagents exactly when the profile names a cluster fan.
+// The fixer is the chair seat and never forks.
 // The fixer explores the target while the review is written.
-// It then runs `lyx burler await-review` on the ready marker until it reports ready, reads the review, validates each finding against the code and the fasit, and fixes it.
+// It then runs `lyx shuttle await` on the ready marker inside its turn until it reports ready, reads the review, validates each finding against the code and the fasit, and fixes it.
 // Its spec declares the fixer-report as its only output file.
-// Its gate is RunOpts.Gate, every entry wrapped by repairReportBeforeGate.
+// Its gate is the table's gate, RunOpts.Gate with every entry wrapped by repairReportBeforeGate.
 // The fixer is the round's only friction-note writer.
-// RunOpts.Review and RunOpts.Fix pick each half's model, effort and version.
+// RunOpts.Review and RunOpts.Fix pick each seat's model, effort and version.
+//
+// # The seat channel
+//
+// The two seat stencils state Burler's own channel between the seats, narrower than the shared seat directives, which neither stencil includes.
+// The fixer waits inside its turn and never ends its turn to await the reviewer, and the seats engine's up line opens nothing.
+// It may message the reviewer only once the ready marker exists, an existing marker standing in for the up line, and only to ask what an accepted finding means or rests on.
+// The reviewer sends the fixer nothing unprompted, never asks it to wrap up, answers only by message, writes no file after its review, and a reply only explains a finding the accepted review already holds.
+// A reply is advice: the fixer still validates every finding, a dispute still needs cited evidence, and it acts on nothing a reply raises beyond the accepted review.
+// These rules are stencil-enforced only; the engine catches a fixer done before the marker and any edit to the review file.
 //
 // # The handoff
 //
@@ -63,7 +82,7 @@
 // per round and writes them to a fresh directory under .lyx, AnchorPath-anchored so it is a
 // directory sibling of the durable _lyx tree
 // (via lyxdirs.DotLyxDirName, machine-local, never committed —
-// distinct from the committed _lyx), then hands each half's shuttle run only its orchestrator, which
+// distinct from the committed _lyx), then runs each seat from its stencil, which
 // names the files' absolute paths so the agent reads each step's rules when it
 // reaches that step. Run never prunes these per-round directories itself —
 // they accumulate under .lyx/burler across rounds in a long-lived worktree.
@@ -75,8 +94,9 @@
 //
 // The edge that releases the fixer is the ready marker, a file whose path the caller tells the engine on Profile.ReadyMarkerPath.
 // The caller derives it with burlermarker.Path (the engine derives no path), and only lyx code writes it.
-// Run removes any stale marker before either half starts.
-// reviewReady writes it only after the current attempt's reviewer reached done, passed the fork audit (cluster rounds) and parsed strictly.
+// Run removes any stale marker before anything starts; the fixer starts first, so the removal is what keeps its wait from returning on a prior attempt's marker.
+// roundAcceptance.accept runs reviewReady on the reviewer's done result, and reviewReady writes the marker only after the current attempt's reviewer passed the fork audit (cluster rounds) and parsed strictly.
+// The accept hook sets the released flag as the marker write begins, and any failure writes no marker and is the reviewer seat's accept error.
 // An unparseable review after the review gate's budget is the strict-parse error, never a gate-failed outcome.
 // The engine cannot see a fixer that creates the marker itself, edits the target before it, names another existing file to the wait verb, or writes a round file other than its fixer-report.
 // Those rules are prompt-enforced and caught by review alone.
@@ -84,46 +104,45 @@
 //
 // # How the round starts
 //
-// RunOpts.FixStart chooses when the fixer starts.
-// FixStartParallel, the default and the empty value, starts the reviewer and then the fixer at once, and the fixer waits for the ready marker.
-// FixStartAfterReview starts the reviewer alone, waits for it, and starts the fixer only once the reviewer's review was accepted and the marker written, so the fixer's first await returns at once.
-// A reviewer that ends without an accepted review starts no fixer, and the round reports the reviewer's outcome or error.
-// Both orders skip no gate, and the reviewer-before-fixer ordering and the marker handoff are the same.
-// An unknown value is an error from Run.
+// Run starts the fixer, the chair, first and then the reviewer, and the fixer waits for the ready marker.
+// The seats engine tells the chair in one line when the reviewer is up.
 //
 // # How the round ends
 //
-// decideRound is the one place the round's failure rules live, reached from join in the parallel order and from Run directly in the after-review order.
-// join waits on both halves, and the first half to end decides which rules apply:
-//   - The reviewer ends in anything but done, or its handoff fails: the fixer is stopped and the round returns the reviewer's outcome (died, timeout) with a nil error, or the audit or strict-parse error.
-//   - The fixer dies or times out while the reviewer runs: the reviewer is stopped and the round returns the fixer's outcome.
-//   - The fixer reaches done before the marker was released: the reviewer is stopped and the round returns an error naming the skipped handoff.
-//     Whether the marker was released is the reviewer goroutine's recorded fact, set as the marker write begins, never the order the two results arrive in.
+// decideRound is the one place the round's failure rules live.
+// It reads the seat result, the reviewer's from its advisor-1 entry and the fixer's from the chair's result:
+//   - The reviewer failed to start: the round is OutcomeDied with NotStarted and Review.StartError and a nil error, the fixer already stopped by the seats engine.
+//   - The reviewer's end ended the step, the fixer stopped by the seats engine, and the reviewer's wait error is returned wrapped, its accept error (the audit or the strict parse) is returned with its outcome and fork audit, its non-done outcome (died, timeout) is returned with a nil error, and a done reviewer whose review gate failed is an error naming the gate, never a verdict.
+//   - The fixer dies or times out: the round returns the fixer's outcome.
+//   - The fixer reaches done before the marker was released: the round returns an error naming the skipped handoff.
+//     Whether the marker was released is the acceptance's recorded fact, set as the marker write begins, never the order the two ends arrive in.
 //   - Otherwise the round completes with the fixer's run.
 //     A failing fixer gate returns the fixer's Gate with Verdict and Findings empty.
 //     A done fixer with a passing or absent gate compares the review file with the parsed bytes before Verdict and Findings are set.
 //
-// A half is stopped through its handle's Stop, which records the stop in the half's run record before it removes the strand, so a later attach probe reads the half as stopped and never halts on it.
-// The round returns the failing half's outcome, never the stopped half's consequential died outcome.
-// A failed stop is ErrHalfNotStopped, never retried or archived over, whose message ends with the way forward (run "lyx reed remove <guid>", then re-step the row).
-// A half that timed out is stopped as well, since shuttle keeps a timed-out run's strand live and a retry would otherwise run beside it, and so is a half whose wait returned an error, since it may still be running.
-// join returns only after both waiting goroutines have returned, so no half is left live.
-// The one exception is the half it failed to stop, which it reports without waiting for.
-// A half whose provider never came up is that half's OutcomeDied with NotStarted set and a nil error.
-// StartGated reports only the error there, so the half carries its StartError text and no identity.
-// A reviewer that fails to start leaves the fixer never started, and a fixer that fails to start stops the already-started reviewer first.
-// Any other start error is a pre-strand failure, returned wrapped, with the started reviewer stopped first.
+// The seats engine stops every seat before it returns, through each handle's Stop, which records the stop in the seat's run record before it removes the strand, so a later attach probe reads the seat as stopped and never halts on it.
+// A chair that timed out or whose wait returned an error is stopped as well, since it may still be running.
+// No seat is left live and no marker write outlives the attempt.
+// A seat that cannot be stopped is seatengine.ErrSeatNotStopped, returned wrapped in ErrHalfNotStopped beside it, so a caller matching either sees it; it is never retried or archived over, and its message ends with the way forward (run "lyx reed remove <guid>", then re-step the row).
+// A seat whose provider never came up is that half's OutcomeDied with NotStarted set and a nil error.
+// The seats engine reports only the error there, so the half carries its StartError text and no identity.
+// A fixer that fails to start starts no reviewer, and a reviewer that fails to start has the fixer stopped.
+// Any other fixer start error is a pre-strand failure, returned wrapped.
 //
 // # Resuming a round
 //
 // A caller that finds a previous session's round on disk asks ProbeRound what became of each half, without waiting on either.
-// A half is live when the shuttle holds a run for its one output file, even when that file is already on disk, as a reviewer repairing its review in the parse gate is.
+// ProbeRound builds the round's table with the same builder and runs the seats engine's probe over it.
+// A half is live when the shuttle holds a run for its seat, even when its output file is already on disk, as a reviewer repairing its review in the parse gate is.
 // A half is done when it has no live run and its output file is present, and gone otherwise.
-// The LiveRound it returns carries each half's state and, for a live half, its Handle, whose strand guid is what a caller stops the half by.
+// The probe stops a live reviewer beside a fixer that is not live and reports it by its file, so a caller starts a fresh round.
+// A seat that cannot be stopped is returned wrapped in ErrHalfNotStopped.
+// The LiveRound it returns carries each half's state and, for a live half, its Handle, whose strand guid is what a caller stops the half by;
+// it also holds, unexported, what the probe found, which Resume hands back to the seats engine.
 // Resume attaches to a round whose halves are both live: it starts nothing, removes the ready marker it finds (a finished reviewer's run is never live, so a marker is stale),
-// and hands both handles to join, so a resumed round ends exactly as a fresh one does.
-// Any other combination is the caller's to settle by stopping what is live through the handles' Stop and running a fresh round;
-// Resume refuses it, since a round never ends with one half live and a live half is never started a second time.
+// and resumes the seat table, so a resumed round ends exactly as a fresh one does.
+// Any other combination, and a LiveRound that did not come from ProbeRound, is refused with nothing started or stopped;
+// the caller settles it by stopping what is live through the handles' Stop and running a fresh round, since a live half is never started a second time.
 //
 // Every recorded finding is fixed by the fixer, all severities including LOW and NIT.
 // Severity affects how a finding is reported, never whether it gets fixed.
@@ -182,7 +201,7 @@
 // selection that varies per invocation — a caller may vary each half's model/effort
 // per round of the SAME artifact — while Profile describes what does not
 // change about the round's content.
-// Run maps RunOpts onto each half's shuttle Spec and leaves Interactive/Parent/Display/KeepPane at their zero values:
+// Run maps RunOpts onto each seat's shuttle Spec through roundTable, and the table is not interactive:
 // rounds are autonomous by default.
 // Profile.ReadyMarkerPath is told with the round's other paths and required.
 //

@@ -1,6 +1,6 @@
 // Package burlermarker derives the machine-local ready marker of a burler round from the round's review path.
 //
-// The marker is the file Go writes once a review is on disk and the fixer's `lyx burler await-review` waits on.
+// The marker is the file Go writes once a review is on disk and the fixer's `lyx shuttle await` waits on.
 // Path is the one derivation of it: both shedadapters.BurlerProducer and `lyx burler run` call it,
 // so any process re-derives the same marker and no caller builds its own.
 //

@@ -1,8 +1,8 @@
-// engine_test.go tables Engine.Run against a same-package fakeShuttle whose handles block until the test releases them or stops them, a stop ending the handle's Wait as died.
-// It covers spec construction for both halves (including the ClusterFan -> Spec.ForkSubagents wiring and the concurrent start) and the cluster audit policy wiring.
-// It covers every shuttleengine.Outcome of either half, the fixer's gate outcomes, the review-parse gate's re-prompts and the marker lifecycle.
-// It covers the round's failure rules (every failure row of join, the start failures and ErrHalfNotStopped).
-// It covers ProbeRound's per-half classification and Resume's attach, marker removal and routing into join.
+// engine_test.go tables Engine.Run against a same-package fakeShuttle, a seatengine.Shuttle whose handles block until the test releases them or stops them, a stop ending the handle's Wait as died; the real seats engine runs over it.
+// It covers spec construction for both seats (including the ClusterFan -> Spec.ForkSubagents wiring) and the cluster audit policy wiring.
+// It covers every shuttleengine.Outcome of either seat, the fixer's gate outcomes, the review-parse gate's re-prompts and the marker lifecycle.
+// It covers the round's failure rules (every failure row of decideRound, the start failures and ErrHalfNotStopped).
+// It covers ProbeRound's per-seat classification and Resume's attach, marker removal and routing into decideRound.
 // It covers the per-round instruction-file materialization step, and the PATTERN-directive transposition detector for the pattern.Directive call site.
 // Every Geometry built here points WorktreeRoot at a test temp dir, so materialization lands there
 // rather than in the real package source tree. TestEngine_Run_MaterializesInstructionFiles is the
@@ -23,11 +23,12 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// halfScript scripts one half of a fake round.
+// halfScript scripts one seat of a fake round.
 type halfScript struct {
 	// result is what Wait returns once it is let through.
 	result shuttleengine.Result
@@ -35,13 +36,13 @@ type halfScript struct {
 	err error
 	// startErr, when set, makes StartGated fail with it and return no handle.
 	startErr error
-	// onStart runs inside StartGated, after the half is registered and before it returns.
+	// onStart runs inside StartGated, after the seat is registered and before it returns.
 	onStart func()
-	// hold, when non-nil, blocks Wait until it is closed or the half is stopped.
+	// hold, when non-nil, blocks Wait until it is closed or the seat is stopped.
 	hold chan struct{}
-	// waitForMarker blocks Wait until the ready marker exists or the half is stopped, as a fixer awaiting its review does.
+	// waitForMarker blocks Wait until the ready marker exists or the seat is stopped, as a fixer awaiting its review does.
 	waitForMarker bool
-	// writes is the content Wait writes to the half's one output file before it reports done.
+	// writes is the content Wait writes to the seat's one output file before it reports done.
 	writes string
 	// beforeReturn runs after writes, before Wait reports done.
 	beforeReturn func()
@@ -49,16 +50,20 @@ type halfScript struct {
 	rewrites []string
 }
 
-// fakeShuttle is a same-package Shuttle double: it starts the half its spec's role names, records the spec and gate it was given, and hands back a fakeHandle scripted from that half's halfScript.
+// fakeStrandPrefix is the shortname and slug every fake strand name is formed under.
+const fakeStrandPrefix = "tst:slug:"
+
+// fakeShuttle is a same-package seatengine.Shuttle double: it starts the seat its spec's role names, records the spec and gate it was given, and hands back a fakeHandle scripted from that seat's halfScript.
+// review scripts the reviewer seat (advisor-1) and fix the fixer seat (the chair).
 type fakeShuttle struct {
 	review, fix halfScript
 	// markerPath is the round's absolute ready marker path, which waitForMarker polls.
 	markerPath string
 
 	mu sync.Mutex
-	// started holds the roles of the halves that were started, in start order.
+	// started holds the roles of the seats that were started, in start order.
 	started []string
-	// markerAtStart records, per started role, whether the ready marker existed when the half was started.
+	// markerAtStart records, per started role, whether the ready marker existed when the seat was started.
 	markerAtStart map[string]bool
 	specs         map[string]shuttleengine.Spec
 	gates         map[string]shuttleengine.GateSpec
@@ -66,7 +71,7 @@ type fakeShuttle struct {
 	// gateFindings collects the findings of every failed gate evaluation.
 	gateFindings []string
 
-	// live holds the roles of the halves ProbeGated finds live; a role absent from it is found nowhere.
+	// live holds the roles of the seats ProbeGated finds live; a role absent from it is found nowhere.
 	live map[string]bool
 	// probeErr holds, per role, the error ProbeGated answers instead of a result.
 	probeErr map[string]error
@@ -87,7 +92,7 @@ func (f *fakeShuttle) stopCalls() []string {
 	return slices.Clone(f.stoppedGUIDs)
 }
 
-// fakeHandle is one started fake half.
+// fakeHandle is one started fake seat.
 type fakeHandle struct {
 	shuttle  *fakeShuttle
 	role     string
@@ -103,7 +108,17 @@ type fakeHandle struct {
 
 func (h *fakeHandle) StrandGUID() string { return h.guid }
 
+func (h *fakeHandle) StrandName() string { return fakeStrandPrefix + h.role }
+
 func (h *fakeHandle) RunDir() string { return h.runDir }
+
+// SessionState answers an idle zero reading.
+func (h *fakeHandle) SessionState() (shuttleengine.RunSessionState, error) {
+	return shuttleengine.RunSessionState{}, nil
+}
+
+// Send lands every line.
+func (h *fakeHandle) Send(string) error { return nil }
 
 // stop ends the handle's blocked Wait as died.
 func (h *fakeHandle) stop() {
@@ -142,7 +157,7 @@ func (h *fakeHandle) diedResult() shuttleengine.Result {
 	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, StrandGUID: h.guid, SessionID: h.role + "-session", RunDir: h.runDir}
 }
 
-// Wait blocks as its script says, then reports the scripted result, first writing the half's output file for a done outcome and evaluating the half's gate like the shuttle wait loop would.
+// Wait blocks as its script says, then reports the scripted result, first writing the seat's output file for a done outcome and evaluating the seat's gate like the shuttle wait loop would.
 func (h *fakeHandle) Wait() (shuttleengine.Result, error) {
 	defer h.returned.Store(true)
 
@@ -182,7 +197,8 @@ func (h *fakeHandle) Wait() (shuttleengine.Result, error) {
 	if h.script.beforeReturn != nil {
 		h.script.beforeReturn()
 	}
-	if len(h.gate) > 0 {
+	// A scripted gate outcome stands in for the evaluation, as a row that needs a failed review gate cannot get one from the real entry, which passes on cap.
+	if len(h.gate) > 0 && result.Gate == nil {
 		gate, err := h.evaluateGate()
 		if err != nil {
 			return result, err
@@ -192,7 +208,7 @@ func (h *fakeHandle) Wait() (shuttleengine.Result, error) {
 	return result, nil
 }
 
-// waitForMarker polls for the ready marker, reporting false when the half is stopped first.
+// waitForMarker polls for the ready marker, reporting false when the seat is stopped first.
 // A marker that never appears fails the test by the deadline rather than hanging it.
 func (h *fakeHandle) waitForMarker() bool {
 	deadline := time.Now().Add(10 * time.Second)
@@ -211,7 +227,7 @@ func (h *fakeHandle) waitForMarker() bool {
 
 // evaluateGate runs the handle's gate spec like the shuttle wait loop:
 // each entry's closure runs in list order, skipping off entries.
-// A failing entry is re-prompted up to its Attempts, each re-prompt first writing the next rewrites content to the output file as the half would,
+// A failing entry is re-prompted up to its Attempts, each re-prompt first writing the next rewrites content to the output file as the seat would,
 // and a PassOnCap entry that spent its budget is let through.
 // Any other entry that spent its budget fails the gate and stops the evaluation.
 // A closure's error is returned.
@@ -251,9 +267,9 @@ func (h *fakeHandle) evaluateGate() (*shuttleengine.GateOutcome, error) {
 	return outcome, nil
 }
 
-// scriptFor is the halfScript of the half spec's role names.
+// scriptFor is the halfScript of the seat spec's role names.
 func (f *fakeShuttle) scriptFor(spec shuttleengine.Spec) halfScript {
-	if spec.Role == burlerReviewRole {
+	if spec.Role == reviewRole {
 		return f.review
 	}
 	return f.fix
@@ -271,7 +287,7 @@ func (f *fakeShuttle) initLocked() {
 	f.probeSpecs = map[string]shuttleengine.Spec{}
 }
 
-// registerLocked builds the handle of spec's half from script and records it; the caller holds f.mu.
+// registerLocked builds the handle of spec's seat from script and records it; the caller holds f.mu.
 func (f *fakeShuttle) registerLocked(spec shuttleengine.Spec, gate shuttleengine.GateSpec, script halfScript) *fakeHandle {
 	handle := &fakeHandle{
 		shuttle: f,
@@ -287,8 +303,8 @@ func (f *fakeShuttle) registerLocked(spec shuttleengine.Spec, gate shuttleengine
 	return handle
 }
 
-// StartGated registers the half its spec's role names and returns a handle scripted from that half's halfScript, or its start error.
-func (f *fakeShuttle) StartGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (Handle, error) {
+// StartGated registers the seat its spec's role names and returns a handle scripted from that seat's halfScript, or its start error.
+func (f *fakeShuttle) StartGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (seatengine.Handle, error) {
 	script := f.scriptFor(spec)
 
 	f.mu.Lock()
@@ -313,8 +329,8 @@ func (f *fakeShuttle) StartGated(spec shuttleengine.Spec, gate shuttleengine.Gat
 	return handle, nil
 }
 
-// ProbeGated records spec and answers the half its role names: its scripted probe error, a handle scripted like a started half when the role is live, and otherwise not found.
-func (f *fakeShuttle) ProbeGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (Handle, bool, error) {
+// ProbeGated records spec and answers the seat its role names: its scripted probe error, a handle scripted like a started seat when the role is live, and otherwise not found.
+func (f *fakeShuttle) ProbeGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (seatengine.Handle, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.initLocked()
@@ -391,9 +407,12 @@ func newEngineForTest(t *testing.T, root string, shuttle *fakeShuttle) *Engine {
 	return newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, Config{}, shuttle)
 }
 
-// newEngineWith is newEngineForTest over a told geometry and config.
+// newEngineWith is newEngineForTest over a told geometry and config; a geometry without a shortname is given the fake strand prefix's.
 func newEngineWith(t *testing.T, geom Geometry, cfg Config, shuttle *fakeShuttle) *Engine {
 	t.Helper()
+	if geom.Shortname == "" {
+		geom.Shortname, geom.Slug = "tst", "slug"
+	}
 	shuttle.markerPath = filepath.Join(geom.WorktreeRoot, "review.md.ready")
 	return New(shuttle, geom, cfg, newTestStencilsDir(t), "")
 }
@@ -405,8 +424,8 @@ const (
 		"---\nfound a mismatch\n"
 	malformedReview = "not frontmatter at all\n"
 
-	reviewRole = burlerReviewRole
-	fixRole    = burlerFixRole
+	reviewRole = burlerRolePrefix + "-" + seatengine.RoleAdvisor + "-1"
+	fixRole    = burlerRolePrefix + "-" + seatengine.RoleChair
 )
 
 // clusterTestConfig is a one-lens, one-fan config, so a cluster profile resolves to exactly one fork.
@@ -415,15 +434,12 @@ var clusterTestConfig = Config{
 	Fans:   map[string][]string{"standard": {"style"}},
 }
 
-// TestEngine_Run_SpecConstruction proves Run starts both halves before either finishes and builds each half's shuttle Spec as the round driver pins it:
-// the reviewer then the fixer, each with a non-empty prompt, its own role and one output file resolved absolute, the round's timeout, round and skills, its own model choice, and Interactive left false.
+// TestEngine_Run_SpecConstruction proves Run starts the fixer, then the reviewer, and builds each seat's shuttle Spec as the round driver pins it:
+// each with a non-empty prompt, its own role and one output file resolved absolute, the round's timeout, round, segment and skills, its own model choice, and Interactive left false;
+// the reviewer keeps its pane and holds its turn end audibly, since it is required, and the fixer does neither.
 func TestEngine_Run_SpecConstruction(t *testing.T) {
 	root, p := newEngineTestProfile(t)
 	shuttle := doneRound(approvedReview)
-	// The reviewer cannot finish before the fixer has started.
-	reviewHold := make(chan struct{})
-	shuttle.review.hold = reviewHold
-	shuttle.fix.onStart = func() { close(reviewHold) }
 	e := newEngineForTest(t, root, shuttle)
 
 	opts := RunOpts{
@@ -435,17 +451,18 @@ func TestEngine_Run_SpecConstruction(t *testing.T) {
 	if _, err := e.Run(p, opts); err != nil {
 		t.Fatalf("Run() = %v; want nil error", err)
 	}
-	if want := []string{reviewRole, fixRole}; !slices.Equal(shuttle.started, want) {
-		t.Fatalf("started halves = %v; want %v, both before either finished", shuttle.started, want)
+	if want := []string{fixRole, reviewRole}; !slices.Equal(shuttle.started, want) {
+		t.Fatalf("started seats = %v; want %v, the chair first", shuttle.started, want)
 	}
 
 	tests := []struct {
-		role       string
-		wantOutput string
-		wantChoice ModelChoice
+		role         string
+		wantOutput   string
+		wantChoice   ModelChoice
+		wantKeepPane bool
 	}{
-		{reviewRole, filepath.Join(root, "review.md"), opts.Review},
-		{fixRole, filepath.Join(root, "fixer-report.md"), opts.Fix},
+		{reviewRole, filepath.Join(root, "review.md"), opts.Review, true},
+		{fixRole, filepath.Join(root, "fixer-report.md"), opts.Fix, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.role, func(t *testing.T) {
@@ -477,10 +494,16 @@ func TestEngine_Run_SpecConstruction(t *testing.T) {
 			if spec.Interactive {
 				t.Errorf("spec.Interactive = true; want false (autonomous default)")
 			}
+			if spec.KeepPane != tt.wantKeepPane {
+				t.Errorf("spec.KeepPane = %v; want %v", spec.KeepPane, tt.wantKeepPane)
+			}
+			if spec.QuietHold {
+				t.Errorf("spec.QuietHold = true; want false, since the reviewer is required and the chair never holds quietly")
+			}
 		})
 	}
 	if shuttle.specs[reviewRole].Prompt == shuttle.specs[fixRole].Prompt {
-		t.Errorf("both halves received the same prompt; want each its own orchestrator")
+		t.Errorf("both seats received the same prompt; want each its own orchestrator")
 	}
 }
 
@@ -555,8 +578,8 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 		if got.ForkAudit != violatingAudit {
 			t.Errorf("Result.ForkAudit = %v; want the raw audit copied through even on a policy failure", got.ForkAudit)
 		}
-		if want := []string{fixRole + "-guid"}; !slices.Equal(shuttle.stopCalls(), want) {
-			t.Errorf("stopped halves = %v; want the fixer %v", shuttle.stopCalls(), want)
+		if want := []string{fixRole + "-guid", reviewRole + "-guid"}; !slices.Equal(shuttle.stopCalls(), want) {
+			t.Errorf("stopped seats = %v; want the fixer then the reviewer %v", shuttle.stopCalls(), want)
 		}
 	})
 
@@ -599,10 +622,10 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 	})
 }
 
-// TestEngine_Run_ShuttleOutcomes table-drives Run over every outcome of either half and the review-file parse path.
+// TestEngine_Run_ShuttleOutcomes table-drives Run over every outcome of either seat and the review-file parse path.
 // A non-done outcome of the reviewer, or of the fixer after the handoff, carries through to Result.Outcome with an empty Verdict and a nil error.
 // A done round parses its review file into VerdictBlocking with its findings or VerdictApproved with none, and fails loud -- never defaulting a verdict -- on a review file that was never written (a fake-shuttle-only scenario; the real shuttle's file-contract polling makes it impossible in production) or whose frontmatter is malformed;
-// a hard shuttle start error is wrapped, not swallowed.
+// a hard shuttle start error of the fixer is wrapped, not swallowed.
 // Whatever the outcome, each half's identities and kept RunDir pass through to the Result unchanged: the RunDir passthrough is what lets a caller point at the kept shuttle run dir for a died or timed-out half.
 func TestEngine_Run_ShuttleOutcomes(t *testing.T) {
 	t.Parallel()
@@ -685,9 +708,9 @@ func TestEngine_Run_ShuttleOutcomes(t *testing.T) {
 			errSubstr:   "frontmatter",
 		},
 		{
-			name: "hard shuttle start error",
+			name: "hard shuttle start error of the fixer",
 			shuttle: &fakeShuttle{
-				review: halfScript{startErr: errors.New("reed: add strand failed")},
+				fix: halfScript{startErr: errors.New("reed: add strand failed")},
 			},
 			wantErr:   true,
 			errSubstr: "reed: add strand failed",
@@ -751,7 +774,7 @@ func TestEngine_Run_ShuttleOutcomes(t *testing.T) {
 				t.Errorf("Result.Fix times and usage = (%v, %v, %+v); want the fixer's scripted ones", got.Fix.StartedAt, got.Fix.EndedAt, got.Fix.Usage)
 			}
 			if got.NotStarted {
-				t.Errorf("Result.NotStarted = true; want false for halves that started")
+				t.Errorf("Result.NotStarted = true; want false for seats that started")
 			}
 		})
 	}
@@ -871,7 +894,7 @@ func TestEngine_Run_GateOutcomes(t *testing.T) {
 // A rewrite that parses passes the entry,
 // and Run returns the verdict of the repaired file.
 // A file still invalid after the entry's budget is let through,
-// and Run fails with the strict parse error, after exactly one failed evaluation per attempt plus the capping one.
+// and Run fails with the strict parse error from the acceptance, after exactly one failed evaluation per attempt plus the capping one.
 func TestEngine_Run_ReviewGateRepairsUnparseableReview(t *testing.T) {
 	t.Parallel()
 
@@ -927,7 +950,7 @@ func TestEngine_Run_ReviewGateRepairsUnparseableReview(t *testing.T) {
 }
 
 // TestEngine_Run_MarkerLifecycle table-drives the ready marker's lifecycle.
-// A stale marker is removed before either half starts, and the reviewer is held until the fixer has started so the marker is observably absent while the reviewer runs.
+// A stale marker is removed before either seat starts, so the marker is observably absent when the fixer and the reviewer start.
 // The marker exists afterwards only when the reviewer reached done with a parsing review and, for a cluster round, a passing audit.
 func TestEngine_Run_MarkerLifecycle(t *testing.T) {
 	t.Parallel()
@@ -960,9 +983,6 @@ func TestEngine_Run_MarkerLifecycle(t *testing.T) {
 			}
 			shuttle := doneRound("")
 			shuttle.review = tt.review
-			reviewHold := make(chan struct{})
-			shuttle.review.hold = reviewHold
-			shuttle.fix.onStart = func() { close(reviewHold) }
 			e := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, clusterTestConfig, shuttle)
 			markerPath := filepath.Join(root, "review.md.ready")
 			if tt.staleMarker {
@@ -976,9 +996,12 @@ func TestEngine_Run_MarkerLifecycle(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Run() error = %v; wantErr %v", err, tt.wantErr)
 			}
+			if len(shuttle.markerAtStart) != 2 {
+				t.Fatalf("seats started = %d; want both the fixer and the reviewer", len(shuttle.markerAtStart))
+			}
 			for role, existed := range shuttle.markerAtStart {
 				if existed {
-					t.Errorf("the marker existed when the %s half started; want it removed or not yet written", role)
+					t.Errorf("the marker existed when the %s seat started; want it removed or not yet written", role)
 				}
 			}
 			_, statErr := os.Stat(markerPath)
@@ -990,7 +1013,8 @@ func TestEngine_Run_MarkerLifecycle(t *testing.T) {
 }
 
 // TestEngine_Run_RoundFailureRules table-drives the round's failure rules, one row each.
-// The rows cover every failure row of join (the stopped half's guid, the deciding half's outcome or error, and no fake handle left blocked), the start failures of either half, and a half that cannot be stopped.
+// The rows cover every failure row of decideRound (the stopped seats, the deciding seat's outcome or error, and no fake handle left blocked), the start failures of either seat, and a seat that cannot be stopped.
+// The seats engine stops the fixer when the reviewer ends the step and every started reviewer when the fixer ends, so a stop list names the fixer first.
 func TestEngine_Run_RoundFailureRules(t *testing.T) {
 	t.Parallel()
 
@@ -1001,8 +1025,6 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 	tests := []struct {
 		name    string
 		shuttle *fakeShuttle
-		// fixStart is the round's RunOpts.FixStart; empty is the default.
-		fixStart FixStart
 		// stopErr makes a handle's Stop fail, for every handle or only that of stopErrGuid when it is set.
 		stopErr     error
 		stopErrGuid string
@@ -1011,7 +1033,7 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 		wantErrText string
 		wantStopped []string
 		wantStarted []string
-		// leftLive names a row whose failed stop leaves a half running by design.
+		// leftLive names a row whose failed stop leaves a seat running by design.
 		leftLive bool
 		// editReview, when set, is written over the review file by the fixer before it reports done.
 		editReview  string
@@ -1026,134 +1048,19 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 				fix:    halfScript{result: done, waitForMarker: true},
 			},
 			wantOutcome: shuttleengine.OutcomeDied,
-			wantStopped: []string{fixRole + "-guid"},
-			wantStarted: []string{reviewRole, fixRole},
+			wantStopped: []string{fixRole + "-guid", reviewRole + "-guid"},
+			wantStarted: []string{fixRole, reviewRole},
 			noVerdict:   true,
 		},
 		{
-			name:     "an explicit parallel fix start behaves as the default",
-			fixStart: FixStartParallel,
-			shuttle: &fakeShuttle{
-				review: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}},
-				fix:    halfScript{result: done, waitForMarker: true},
-			},
-			wantOutcome: shuttleengine.OutcomeDied,
-			wantStopped: []string{fixRole + "-guid"},
-			wantStarted: []string{reviewRole, fixRole},
-			noVerdict:   true,
-		},
-		{
-			name:     "an unknown fix start is refused before any half starts",
-			fixStart: "sideways",
-			shuttle: &fakeShuttle{
-				review: halfScript{result: done, writes: approvedReview},
-				fix:    halfScript{result: done, waitForMarker: true},
-			},
-			wantErrText: `unknown fix start "sideways"; set it to "parallel" or "after-review"`,
-		},
-		{
-			name:     "after-review: a reviewer that died starts no fixer and reports the reviewer's outcome",
-			fixStart: FixStartAfterReview,
-			shuttle: &fakeShuttle{
-				review: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}},
-				fix:    halfScript{result: done, waitForMarker: true},
-			},
-			wantOutcome: shuttleengine.OutcomeDied,
-			wantStarted: []string{reviewRole},
-			noVerdict:   true,
-			check: func(t *testing.T, got Result) {
-				if got.Fix != (Half{}) {
-					t.Errorf("Result.Fix = %+v; want the empty half of a fixer that never started", got.Fix)
-				}
-			},
-		},
-		{
-			name:     "after-review: a reviewer that timed out starts no fixer and is stopped",
-			fixStart: FixStartAfterReview,
-			shuttle: &fakeShuttle{
-				review: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}},
-				fix:    halfScript{result: done, waitForMarker: true},
-			},
-			wantOutcome: shuttleengine.OutcomeTimeout,
-			wantStopped: []string{reviewRole + "-guid"},
-			wantStarted: []string{reviewRole},
-			noVerdict:   true,
-		},
-		{
-			name:     "after-review: an unparseable review starts no fixer and reports the strict parse error",
-			fixStart: FixStartAfterReview,
-			shuttle: &fakeShuttle{
-				review: halfScript{result: done, writes: malformedReview},
-				fix:    halfScript{result: done, waitForMarker: true},
-			},
-			wantErrText: "round reached done but its review file is invalid",
-			wantStarted: []string{reviewRole},
-		},
-		{
-			name:     "after-review: an accepted review starts the fixer with the marker already written",
-			fixStart: FixStartAfterReview,
-			shuttle: &fakeShuttle{
-				review: halfScript{result: done, writes: blockingReview},
-				fix:    halfScript{result: done, waitForMarker: true, writes: "nothing fixed"},
-			},
-			wantOutcome: shuttleengine.OutcomeDone,
-			wantVerdict: VerdictBlocking,
-			wantStarted: []string{reviewRole, fixRole},
-			check: func(t *testing.T, got Result) {
-				if got.Fix.StrandGUID != fixRole+"-guid" {
-					t.Errorf("Result.Fix.StrandGUID = %q; want %q", got.Fix.StrandGUID, fixRole+"-guid")
-				}
-			},
-		},
-		{
-			name:     "after-review: a fixer that timed out is stopped and its outcome reported",
-			fixStart: FixStartAfterReview,
-			shuttle: &fakeShuttle{
-				review: halfScript{result: done, writes: approvedReview},
-				fix:    halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}},
-			},
-			wantOutcome: shuttleengine.OutcomeTimeout,
-			wantStopped: []string{fixRole + "-guid"},
-			wantStarted: []string{reviewRole, fixRole},
-			noVerdict:   true,
-		},
-		{
-			name:     "after-review: a review changed by the fixer is an error",
-			fixStart: FixStartAfterReview,
-			shuttle: &fakeShuttle{
-				review: halfScript{result: done, writes: approvedReview},
-				fix:    halfScript{result: done, waitForMarker: true, writes: "nothing fixed"},
-			},
-			editReview:  blockingReview,
-			wantErrText: "changed after it was handed off",
-			wantStarted: []string{reviewRole, fixRole},
-		},
-		{
-			name:     "after-review: a fixer that never started reports it with the reviewer's identity",
-			fixStart: FixStartAfterReview,
-			shuttle: &fakeShuttle{
-				review: halfScript{result: done, writes: approvedReview},
-				fix:    halfScript{startErr: notStarted},
-			},
-			wantOutcome: shuttleengine.OutcomeDied,
-			wantStopped: []string{reviewRole + "-guid"},
-			wantStarted: []string{reviewRole, fixRole},
-			noVerdict:   true,
-			check: func(t *testing.T, got Result) {
-				if !got.NotStarted || got.Fix.StartError != notStarted.Error() || got.Review.StrandGUID != reviewRole+"-guid" {
-					t.Errorf("Result = %+v; want NotStarted, the fixer's StartError text and the reviewer's identity", got)
-				}
-			},
-		},
-		{
-			name: "a reviewer that timed out stops both halves, since shuttle keeps a timed-out strand live",
+			name: "a reviewer that timed out stops both seats and reports the timeout",
 			shuttle: &fakeShuttle{
 				review: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}},
 				fix:    halfScript{result: done, waitForMarker: true},
 			},
 			wantOutcome: shuttleengine.OutcomeTimeout,
 			wantStopped: []string{fixRole + "-guid", reviewRole + "-guid"},
-			wantStarted: []string{reviewRole, fixRole},
+			wantStarted: []string{fixRole, reviewRole},
 			noVerdict:   true,
 		},
 		{
@@ -1163,18 +1070,28 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 				fix:    halfScript{result: done, waitForMarker: true},
 			},
 			wantErrText: "round reached done but its review file is invalid",
-			wantStopped: []string{fixRole + "-guid"},
-			wantStarted: []string{reviewRole, fixRole},
+			wantStopped: []string{fixRole + "-guid", reviewRole + "-guid"},
+			wantStarted: []string{fixRole, reviewRole},
 		},
 		{
-			name: "a fixer that timed out while the reviewer runs stops both halves and reports the fixer's outcome",
+			name: "a reviewer done with its review gate failed is an error naming the gate, never a verdict",
+			shuttle: &fakeShuttle{
+				review: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: false, Reason: "review is invalid"}}},
+				fix:    halfScript{result: done, waitForMarker: true},
+			},
+			wantErrText: "review gate failed",
+			wantStopped: []string{fixRole + "-guid", reviewRole + "-guid"},
+			wantStarted: []string{fixRole, reviewRole},
+		},
+		{
+			name: "a fixer that timed out while the reviewer runs stops both seats and reports the fixer's outcome",
 			shuttle: &fakeShuttle{
 				review: halfScript{result: done, writes: approvedReview, hold: make(chan struct{})},
 				fix:    halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}},
 			},
 			wantOutcome: shuttleengine.OutcomeTimeout,
-			wantStopped: []string{reviewRole + "-guid", fixRole + "-guid"},
-			wantStarted: []string{reviewRole, fixRole},
+			wantStopped: []string{fixRole + "-guid", reviewRole + "-guid"},
+			wantStarted: []string{fixRole, reviewRole},
 			noVerdict:   true,
 			check: func(t *testing.T, got Result) {
 				if got.Fix.StrandGUID != fixRole+"-guid" || got.Review.StrandGUID != reviewRole+"-guid" {
@@ -1190,7 +1107,7 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 			},
 			wantErrText: "before the review was handed off",
 			wantStopped: []string{reviewRole + "-guid"},
-			wantStarted: []string{reviewRole, fixRole},
+			wantStarted: []string{fixRole, reviewRole},
 		},
 		{
 			name: "a review changed after the handoff is an error",
@@ -1200,7 +1117,8 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 			},
 			editReview:  blockingReview,
 			wantErrText: "changed after it was handed off",
-			wantStarted: []string{reviewRole, fixRole},
+			wantStopped: []string{reviewRole + "-guid"},
+			wantStarted: []string{fixRole, reviewRole},
 		},
 		{
 			name: "a fixer-report with a Disputed section completes like any other",
@@ -1210,19 +1128,21 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 			},
 			wantOutcome: shuttleengine.OutcomeDone,
 			wantVerdict: VerdictBlocking,
-			wantStarted: []string{reviewRole, fixRole},
+			wantStopped: []string{reviewRole + "-guid"},
+			wantStarted: []string{fixRole, reviewRole},
 		},
 		{
-			name: "a half that cannot be stopped is ErrHalfNotStopped with the way forward",
+			name: "a seat that cannot be stopped is ErrHalfNotStopped with the way forward",
 			shuttle: &fakeShuttle{
 				review: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}},
 				fix:    halfScript{result: done, waitForMarker: true},
 			},
 			stopErr:     errors.New("reed unreachable"),
+			stopErrGuid: fixRole + "-guid",
 			wantErrIs:   ErrHalfNotStopped,
 			wantErrText: `way forward: run "lyx reed remove ` + fixRole + `-guid", then re-step the row`,
-			wantStopped: []string{fixRole + "-guid"},
-			wantStarted: []string{reviewRole, fixRole},
+			wantStopped: []string{fixRole + "-guid", reviewRole + "-guid"},
+			wantStarted: []string{fixRole, reviewRole},
 			leftLive:    true,
 		},
 		{
@@ -1236,79 +1156,94 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 			wantErrIs:   ErrHalfNotStopped,
 			wantErrText: `way forward: run "lyx reed remove ` + reviewRole + `-guid", then re-step the row`,
 			wantStopped: []string{fixRole + "-guid", reviewRole + "-guid"},
-			wantStarted: []string{reviewRole, fixRole},
+			wantStarted: []string{fixRole, reviewRole},
 		},
 		{
-			name: "a reviewer whose wait failed is stopped too, and the shuttle error is returned",
+			name: "a reviewer whose wait failed stops the fixer, and the shuttle error is returned",
 			shuttle: &fakeShuttle{
 				review: halfScript{err: errors.New("shuttle: liveness probe failed")},
 				fix:    halfScript{result: done, waitForMarker: true},
 			},
 			wantErrText: "burler: shuttle run: shuttle: liveness probe failed",
 			wantStopped: []string{fixRole + "-guid", reviewRole + "-guid"},
-			wantStarted: []string{reviewRole, fixRole},
+			wantStarted: []string{fixRole, reviewRole},
 		},
 		{
-			name: "a reviewer that never started leaves the fixer unstarted",
+			name: "a fixer whose wait failed is stopped and the shuttle error is returned",
 			shuttle: &fakeShuttle{
-				review: halfScript{startErr: notStarted},
+				review: halfScript{result: done, writes: approvedReview},
+				fix:    halfScript{err: errors.New("shuttle: liveness probe failed"), waitForMarker: true},
+			},
+			wantErrText: "burler: shuttle run: seatengine: chair wait: shuttle: liveness probe failed",
+			wantStopped: []string{fixRole + "-guid", reviewRole + "-guid"},
+			wantStarted: []string{fixRole, reviewRole},
+		},
+		{
+			name: "a fixer that never started leaves the reviewer unstarted",
+			shuttle: &fakeShuttle{
+				fix: halfScript{startErr: notStarted},
 			},
 			wantOutcome: shuttleengine.OutcomeDied,
-			wantStarted: []string{reviewRole},
+			wantStarted: []string{fixRole},
 			noVerdict:   true,
 			check: func(t *testing.T, got Result) {
-				if !got.NotStarted || got.Review.StartError != notStarted.Error() || got.Review.StrandGUID != "" || got.Review.SessionID != "" || got.Review.RunDir != "" {
+				if !got.NotStarted || !strings.Contains(got.Fix.StartError, notStarted.Error()) || got.Fix.StrandGUID != "" || got.Review != (Half{}) {
+					t.Errorf("Result = %+v; want NotStarted, the fixer's StartError text, no fixer identity and an empty reviewer", got)
+				}
+			},
+		},
+		{
+			name: "a fixer whose start fails with a plain error is returned and the reviewer never started",
+			shuttle: &fakeShuttle{
+				fix: halfScript{startErr: plainStartErr},
+			},
+			wantErrIs:   plainStartErr,
+			wantErrText: "burler: shuttle run:",
+			wantStarted: []string{fixRole},
+		},
+		{
+			name: "a reviewer that never started stops the fixer",
+			shuttle: &fakeShuttle{
+				review: halfScript{startErr: notStarted},
+				fix:    halfScript{result: done, waitForMarker: true},
+			},
+			wantOutcome: shuttleengine.OutcomeDied,
+			wantStopped: []string{fixRole + "-guid"},
+			wantStarted: []string{fixRole, reviewRole},
+			noVerdict:   true,
+			check: func(t *testing.T, got Result) {
+				if !got.NotStarted || !strings.Contains(got.Review.StartError, notStarted.Error()) || got.Review.StrandGUID != "" || got.Fix.StartError != "" {
 					t.Errorf("Result = %+v; want NotStarted, the reviewer's StartError text and no reviewer identity", got)
 				}
 			},
 		},
 		{
-			name: "a fixer that never started stops the reviewer first",
+			name: "a reviewer whose start fails with a plain error is a not-started round too",
 			shuttle: &fakeShuttle{
-				review: halfScript{result: done, writes: approvedReview, hold: make(chan struct{})},
-				fix:    halfScript{startErr: notStarted},
+				review: halfScript{startErr: plainStartErr},
+				fix:    halfScript{result: done, waitForMarker: true},
 			},
 			wantOutcome: shuttleengine.OutcomeDied,
-			wantStopped: []string{reviewRole + "-guid"},
-			wantStarted: []string{reviewRole, fixRole},
+			wantStopped: []string{fixRole + "-guid"},
+			wantStarted: []string{fixRole, reviewRole},
 			noVerdict:   true,
 			check: func(t *testing.T, got Result) {
-				if !got.NotStarted || got.Fix.StartError != notStarted.Error() || got.Fix.StrandGUID != "" || got.Review.StrandGUID != reviewRole+"-guid" || got.Review.StartError != "" {
-					t.Errorf("Result = %+v; want NotStarted, the fixer's StartError text, no fixer identity and the reviewer's identity", got)
+				if !got.NotStarted || !strings.Contains(got.Review.StartError, plainStartErr.Error()) {
+					t.Errorf("Result = %+v; want NotStarted with the reviewer's StartError text", got)
 				}
 			},
 		},
 		{
-			name: "a reviewer whose start fails with a plain error is returned and the fixer never started",
+			name: "a reviewer whose start fails and a fixer that cannot be stopped is ErrHalfNotStopped",
 			shuttle: &fakeShuttle{
 				review: halfScript{startErr: plainStartErr},
-			},
-			wantErrIs:   plainStartErr,
-			wantErrText: "burler: shuttle run:",
-			wantStarted: []string{reviewRole},
-		},
-		{
-			name: "a fixer whose start fails with a plain error stops the reviewer and is returned",
-			shuttle: &fakeShuttle{
-				review: halfScript{result: done, writes: approvedReview, hold: make(chan struct{})},
-				fix:    halfScript{startErr: plainStartErr},
-			},
-			wantErrIs:   plainStartErr,
-			wantErrText: "burler: shuttle run:",
-			wantStopped: []string{reviewRole + "-guid"},
-			wantStarted: []string{reviewRole, fixRole},
-		},
-		{
-			name: "a fixer whose start fails with a plain error and a reviewer that cannot be stopped is ErrHalfNotStopped",
-			shuttle: &fakeShuttle{
-				review: halfScript{result: done, writes: approvedReview, hold: make(chan struct{})},
-				fix:    halfScript{startErr: plainStartErr},
+				fix:    halfScript{result: done, waitForMarker: true},
 			},
 			stopErr:     errors.New("reed unreachable"),
 			wantErrIs:   ErrHalfNotStopped,
-			wantErrText: `way forward: run "lyx reed remove ` + reviewRole + `-guid", then re-step the row`,
-			wantStopped: []string{reviewRole + "-guid"},
-			wantStarted: []string{reviewRole, fixRole},
+			wantErrText: `way forward: run "lyx reed remove ` + fixRole + `-guid", then re-step the row`,
+			wantStopped: []string{fixRole + "-guid"},
+			wantStarted: []string{fixRole, reviewRole},
 			leftLive:    true,
 		},
 	}
@@ -1328,12 +1263,8 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 			tt.shuttle.stopErr = tt.stopErr
 			tt.shuttle.stopErrGuid = tt.stopErrGuid
 
-			got, err := e.Run(p, RunOpts{FixStart: tt.fixStart})
+			got, err := e.Run(p, RunOpts{})
 
-			// Under after-review the fixer is released by an already-written marker, never started before it.
-			if tt.fixStart == FixStartAfterReview && slices.Contains(tt.shuttle.started, fixRole) && !tt.shuttle.markerAtStart[fixRole] {
-				t.Error("the ready marker did not exist when the fixer started; want the fixer started only after the marker was written")
-			}
 			wantErr := tt.wantErrIs != nil || tt.wantErrText != ""
 			if wantErr != (err != nil) {
 				t.Fatalf("Run() error = %v; wantErr %v", err, wantErr)
@@ -1344,8 +1275,13 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 			if tt.wantErrText != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErrText)) {
 				t.Errorf("Run() error = %v; want it to carry %q", err, tt.wantErrText)
 			}
-			if tt.wantErrIs == ErrHalfNotStopped && (err == nil || !strings.HasSuffix(err.Error(), tt.wantErrText)) {
-				t.Errorf("Run() error = %v; want it to end with the way forward %q", err, tt.wantErrText)
+			if tt.wantErrIs == ErrHalfNotStopped {
+				if !errors.Is(err, seatengine.ErrSeatNotStopped) {
+					t.Errorf("Run() error = %v; want it to wrap seatengine.ErrSeatNotStopped beside ErrHalfNotStopped", err)
+				}
+				if err == nil || !strings.HasSuffix(err.Error(), tt.wantErrText) {
+					t.Errorf("Run() error = %v; want it to end with the way forward %q", err, tt.wantErrText)
+				}
 			}
 			if !wantErr {
 				if got.Outcome != tt.wantOutcome {
@@ -1359,17 +1295,17 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 				t.Errorf("Result verdict = (%q, %v); want empty", got.Verdict, got.Findings)
 			}
 			if !slices.Equal(tt.shuttle.stopCalls(), tt.wantStopped) {
-				t.Errorf("stopped halves = %v; want %v", tt.shuttle.stopCalls(), tt.wantStopped)
+				t.Errorf("stopped seats = %v; want %v", tt.shuttle.stopCalls(), tt.wantStopped)
 			}
 			if !slices.Equal(tt.shuttle.started, tt.wantStarted) {
-				t.Errorf("started halves = %v; want %v", tt.shuttle.started, tt.wantStarted)
+				t.Errorf("started seats = %v; want %v", tt.shuttle.started, tt.wantStarted)
 			}
 			if tt.leftLive {
 				for _, guid := range tt.wantStopped {
 					tt.shuttle.stop(guid)
 				}
 			} else if blocked := tt.shuttle.blocked(); len(blocked) != 0 {
-				t.Errorf("halves left blocked: %v; want every started half stopped or finished", blocked)
+				t.Errorf("seats left blocked: %v; want every started seat stopped or finished", blocked)
 			}
 			if tt.check != nil {
 				tt.check(t, got)
@@ -1380,7 +1316,7 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 
 // TestEngine_Run_MaterializesInstructionFiles proves Run writes exactly four instruction files to
 // a fresh per-round directory under lyxdirs.DotLyxDirName, bakes their absolute
-// paths into the two orchestrator prompts it hands the shuttle, and that a rendered file's content
+// paths into the two seat prompts it hands the shuttle, and that a rendered file's content
 // reflects a filled marker from the profile.
 func TestEngine_Run_MaterializesInstructionFiles(t *testing.T) {
 	root, p := newEngineTestProfile(t)
@@ -1441,7 +1377,7 @@ func TestEngine_Run_MaterializesInstructionFiles(t *testing.T) {
 
 // TestEngine_Run_PatternDirectiveReachesInstruction1 closes the one pattern.Directive call site with no behavioural coverage at all before this task.
 // Engine.Run passes the directive into composePrompt as patternDirective, and composePrompt fills it into the explore files' values map only, through stencil.FillOptional with pattern_directive in the optional set.
-// The review and fix files therefore never receive it, and the orchestrator prompts never carry it.
+// The review and fix files therefore never receive it, and the seat prompts never carry it.
 // Each sub-test plants PATTERN.md at the repo root, or somewhere else for the negative cases,
 // before Run, and asserts on both explore files' disk content for the inlined overview text.
 // The subpath-anchored cases tell WorktreeRoot and AnchorPath a subdirectory of the repo root, as a
@@ -1542,12 +1478,12 @@ func TestEngine_Run_MaterializeFailure(t *testing.T) {
 		t.Errorf("Run() error = %q; want it to name the materialization failure", err.Error())
 	}
 	if len(shuttle.started) != 0 {
-		t.Errorf("started halves = %v; want none on a materialization failure", shuttle.started)
+		t.Errorf("started seats = %v; want none on a materialization failure", shuttle.started)
 	}
 }
 
-// TestEngine_ProbeRound classifies each half as live, done or gone by its shuttle probe and its output file, and returns a live half's handle.
-// The rows include a found run whose output file already exists, which stays live, and a probe error from either half.
+// TestEngine_ProbeRound classifies each half as live, done or gone by the seats engine's probe and its output file, and returns a live half's handle.
+// The rows include a live reviewer beside a gone fixer, which the probe stops and reports by its output file, a reviewer whose stop fails, and a probe error from either seat.
 func TestEngine_ProbeRound(t *testing.T) {
 	t.Parallel()
 
@@ -1556,24 +1492,28 @@ func TestEngine_ProbeRound(t *testing.T) {
 		// live holds the roles the shuttle holds a run for.
 		live []string
 		// files holds the output files already on disk, relative to the profile's root.
-		files     []string
-		probeErr  map[string]error
-		wantErr   bool
-		wantState [2]HalfState
+		files       []string
+		probeErr    map[string]error
+		stopErr     error
+		wantErr     bool
+		wantErrIs   error
+		wantState   [2]HalfState
+		wantStopped []string
 	}{
 		{name: "both live", live: []string{reviewRole, fixRole}, wantState: [2]HalfState{HalfLive, HalfLive}},
-		{name: "found run with its output file on disk stays live", live: []string{reviewRole}, files: []string{"review.md"}, wantState: [2]HalfState{HalfLive, HalfGone}},
+		{name: "live reviewer beside a gone fixer is stopped and reported by its file", live: []string{reviewRole}, files: []string{"review.md"}, wantState: [2]HalfState{HalfDone, HalfGone}, wantStopped: []string{reviewRole + "-guid"}},
 		{name: "no live run and the output file present is done", files: []string{"review.md", "fixer-report.md"}, wantState: [2]HalfState{HalfDone, HalfDone}},
 		{name: "live fixer beside a finished review", live: []string{fixRole}, files: []string{"review.md"}, wantState: [2]HalfState{HalfDone, HalfLive}},
 		{name: "neither live and no output file is gone", wantState: [2]HalfState{HalfGone, HalfGone}},
 		{name: "reviewer probe error", probeErr: map[string]error{reviewRole: errors.New("reed unreadable")}, wantErr: true},
 		{name: "fixer probe error", probeErr: map[string]error{fixRole: errors.New("reed unreadable")}, wantErr: true},
+		{name: "a live reviewer that cannot be stopped is ErrHalfNotStopped", live: []string{reviewRole}, stopErr: errors.New("reed unreachable"), wantErr: true, wantErrIs: ErrHalfNotStopped, wantStopped: []string{reviewRole + "-guid"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			root, p := newEngineTestProfile(t)
-			shuttle := &fakeShuttle{live: map[string]bool{}, probeErr: tt.probeErr}
+			shuttle := &fakeShuttle{live: map[string]bool{}, probeErr: tt.probeErr, stopErr: tt.stopErr}
 			for _, role := range tt.live {
 				shuttle.live[role] = true
 			}
@@ -1588,6 +1528,12 @@ func TestEngine_ProbeRound(t *testing.T) {
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("ProbeRound() error = %v; wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs) {
+				t.Errorf("ProbeRound() error = %v; want it to wrap %v", err, tt.wantErrIs)
+			}
+			if !slices.Equal(shuttle.stopCalls(), tt.wantStopped) {
+				t.Errorf("stopped seats = %v; want %v", shuttle.stopCalls(), tt.wantStopped)
 			}
 			if tt.wantErr {
 				return
@@ -1621,9 +1567,10 @@ func TestEngine_ProbeRound(t *testing.T) {
 	}
 }
 
-// TestEngine_Resume attaches to two live halves and ends the round through join.
+// TestEngine_Resume attaches to two live seats and ends the round through decideRound.
 // The fixer waits for the ready marker, so a round that completes proves neither wait blocked the other and the stale marker was removed.
-// The failure rows prove the attached handles route into join: an unparseable review leaves no marker, and an attached fixer that completes before the marker stops the reviewer.
+// The failure rows prove the attached handles route into the round's rules: an unparseable review leaves no marker, and an attached fixer that completes before the marker stops the reviewer.
+// A round without both halves live, and a hand-built both-live round that holds no probed table, are refused with nothing started.
 func TestEngine_Resume(t *testing.T) {
 	t.Parallel()
 
@@ -1640,18 +1587,21 @@ func TestEngine_Resume(t *testing.T) {
 		wantVerdict Verdict
 		// onlyReviewerLive makes the fixer's run absent, so the probed round cannot be resumed.
 		onlyReviewerLive bool
+		// handBuilt resumes a both-live LiveRound built by hand, as a fake-runner test does, instead of the probe's answer.
+		handBuilt bool
 	}{
-		{name: "both attached and joined through the marker", review: halfScript{result: done, writes: approvedReview}, fix: fixerWaiting, wantMarker: true, wantVerdict: VerdictApproved},
-		{name: "stale marker is removed before the attached reviewer is done", review: halfScript{result: done, writes: approvedReview}, fix: fixerWaiting, staleMarker: true, wantMarker: true, wantVerdict: VerdictApproved},
-		{name: "unparseable review writes no marker and stops the fixer", review: halfScript{result: done, writes: malformedReview}, fix: fixerWaiting, staleMarker: true, wantErr: "review file is invalid", wantStopped: []string{fixRole + "-guid"}},
+		{name: "both attached and joined through the marker", review: halfScript{result: done, writes: approvedReview}, fix: fixerWaiting, wantMarker: true, wantVerdict: VerdictApproved, wantStopped: []string{reviewRole + "-guid"}},
+		{name: "stale marker is removed before the attached reviewer is done", review: halfScript{result: done, writes: approvedReview}, fix: fixerWaiting, staleMarker: true, wantMarker: true, wantVerdict: VerdictApproved, wantStopped: []string{reviewRole + "-guid"}},
+		{name: "unparseable review writes no marker and stops the fixer", review: halfScript{result: done, writes: malformedReview}, fix: fixerWaiting, staleMarker: true, wantErr: "review file is invalid", wantStopped: []string{fixRole + "-guid", reviewRole + "-guid"}},
 		{name: "attached fixer completing before the marker stops the reviewer", review: halfScript{result: done, writes: approvedReview, hold: make(chan struct{})}, fix: halfScript{result: done, writes: "nothing fixed"}, wantErr: "before the review was handed off", wantStopped: []string{reviewRole + "-guid"}},
-		{name: "a round without both halves live is refused and nothing is stopped", review: halfScript{result: done}, onlyReviewerLive: true, wantErr: "both halves live"},
+		{name: "a round without both halves live is refused after the probe stops the reviewer", review: halfScript{result: done}, onlyReviewerLive: true, wantErr: "both halves live", wantStopped: []string{reviewRole + "-guid"}},
+		{name: "a hand-built both-live round holds no probed table and is refused", review: halfScript{result: done}, fix: fixerWaiting, handBuilt: true, wantErr: "needs the table ProbeRound found"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			root, p := newEngineTestProfile(t)
-			shuttle := &fakeShuttle{review: tt.review, fix: tt.fix, live: map[string]bool{reviewRole: true, fixRole: !tt.onlyReviewerLive}}
+			shuttle := &fakeShuttle{review: tt.review, fix: tt.fix, live: map[string]bool{reviewRole: true, fixRole: !tt.onlyReviewerLive && !tt.handBuilt}}
 			e := newEngineForTest(t, root, shuttle)
 			markerPath := filepath.Join(root, "review.md.ready")
 			if tt.staleMarker {
@@ -1659,9 +1609,15 @@ func TestEngine_Resume(t *testing.T) {
 					t.Fatalf("WriteFile(stale marker) = %v; want nil", err)
 				}
 			}
-			live, err := e.ProbeRound(p, RunOpts{})
-			if err != nil {
-				t.Fatalf("ProbeRound() error = %v; want nil", err)
+			live := LiveRound{
+				Review: LiveHalf{State: HalfLive, Handle: &fakeHandle{guid: reviewRole + "-guid"}},
+				Fix:    LiveHalf{State: HalfLive, Handle: &fakeHandle{guid: fixRole + "-guid"}},
+			}
+			if !tt.handBuilt {
+				var err error
+				if live, err = e.ProbeRound(p, RunOpts{}); err != nil {
+					t.Fatalf("ProbeRound() error = %v; want nil", err)
+				}
 			}
 
 			result, err := e.Resume(p, RunOpts{}, live)
@@ -1681,7 +1637,7 @@ func TestEngine_Resume(t *testing.T) {
 				t.Errorf("marker exists after the round = %v; want %v", statErr == nil, tt.wantMarker)
 			}
 			if !slices.Equal(shuttle.stopCalls(), tt.wantStopped) {
-				t.Errorf("stopped halves = %v; want %v", shuttle.stopCalls(), tt.wantStopped)
+				t.Errorf("stopped seats = %v; want %v", shuttle.stopCalls(), tt.wantStopped)
 			}
 			if len(shuttle.started) != 0 {
 				t.Errorf("Resume started %v; want nothing started", shuttle.started)

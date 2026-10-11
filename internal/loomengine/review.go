@@ -26,8 +26,6 @@ type ReviewSettings struct {
 	Webster    burlerengine.RoundModels
 	// Timeout is one review round's shuttle-run deadline, derived from cfg.ReviewTimeoutMin.
 	Timeout time.Duration
-	// FixStart is when every round's fixer starts, from cfg.FixStart.
-	FixStart burlerengine.FixStart
 }
 
 // BouncerModels is one review segment's resolved seed and judge pair, each an already-resolved model, effort and version triple.
@@ -146,7 +144,6 @@ func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
 		Plan:       plan,
 		Webster:    webster,
 		Timeout:    time.Duration(cfg.ReviewTimeoutMin) * time.Minute,
-		FixStart:   burlerengine.FixStart(cfg.FixStart),
 	}, nil
 }
 

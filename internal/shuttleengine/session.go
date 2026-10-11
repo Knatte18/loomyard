@@ -96,6 +96,12 @@ func (r *Runner) SessionState(guid string) (RunSessionState, error) {
 	return readRunSessionState(rs, r.engine, r.clock.Now()), nil
 }
 
+// SessionState returns the session state of this run, the same reading Runner.SessionState gives for its strand guid.
+// It reads files only and writes nothing, so it is safe to call while the run's Wait runs on another goroutine.
+func (run *Run) SessionState() (RunSessionState, error) {
+	return run.runner.SessionState(run.StrandGUID())
+}
+
 // ContextTokens returns the provider's context usage as of turnEnd, via the engine's SessionCycler.
 // A reading with Known false means usage could not be read.
 func (r *Runner) ContextTokens(turnEnd Event) (ContextReading, error) {

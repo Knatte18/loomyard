@@ -26,6 +26,8 @@ type fakeHandle struct {
 	attempts   int
 	stops      int
 	stopErr    error
+	session    shuttleengine.RunSessionState
+	sessionErr error
 
 	sent   chan string
 	ended  chan struct{}
@@ -37,6 +39,20 @@ type fakeHandle struct {
 func (h *fakeHandle) StrandGUID() string { return h.guid }
 func (h *fakeHandle) StrandName() string { return h.name }
 func (h *fakeHandle) RunDir() string     { return "/run/" + h.guid }
+
+// SessionState answers the scripted reading and error.
+func (h *fakeHandle) SessionState() (shuttleengine.RunSessionState, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.session, h.sessionErr
+}
+
+// setSession scripts the reading and error SessionState answers from now on.
+func (h *fakeHandle) setSession(state shuttleengine.RunSessionState, err error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.session, h.sessionErr = state, err
+}
 
 // release ends the seat's wait with result and err; only the first release counts.
 func (h *fakeHandle) release(result shuttleengine.Result, err error) {
@@ -120,6 +136,8 @@ type fakeShuttle struct {
 	specs   map[string]shuttleengine.Spec
 	gates   map[string]shuttleengine.GateSpec
 	probed  []string
+	// probeSpecs holds the spec each probe was given, keyed by role.
+	probeSpecs map[string]shuttleengine.Spec
 }
 
 func newFakeShuttle(t *testing.T) *fakeShuttle {
@@ -130,6 +148,8 @@ func newFakeShuttle(t *testing.T) *fakeShuttle {
 		handles: make(map[string]*fakeHandle),
 		specs:   make(map[string]shuttleengine.Spec),
 		gates:   make(map[string]shuttleengine.GateSpec),
+
+		probeSpecs: make(map[string]shuttleengine.Spec),
 	}
 }
 
@@ -174,6 +194,7 @@ func (f *fakeShuttle) StartGated(spec shuttleengine.Spec, gate shuttleengine.Gat
 func (f *fakeShuttle) ProbeGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (Handle, bool, error) {
 	f.mu.Lock()
 	f.probed = append(f.probed, spec.Role)
+	f.probeSpecs[spec.Role] = spec
 	f.gates[spec.Role] = gate
 	f.mu.Unlock()
 	if f.probeErr != nil {
@@ -199,6 +220,13 @@ func (f *fakeShuttle) handle(role string) *fakeHandle {
 		f.t.Fatalf("no seat was started with the role %q", role)
 	}
 	return handle
+}
+
+// probeSpec returns the spec the seat with role was last probed with.
+func (f *fakeShuttle) probeSpec(role string) shuttleengine.Spec {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.probeSpecs[role]
 }
 
 // spec returns the spec the seat with role was started with.

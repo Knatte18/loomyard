@@ -5,9 +5,19 @@ package shuttleengine
 import (
 	"fmt"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+)
+
+const (
+	// holdNoticeSettle is how long after a held turn end a Spec.HoldDeferral run waits before it asks the predicate.
+	// It is short enough to notify a real stall within a minute and long enough for a SendMessage to reach an idle peer.
+	holdNoticeSettle = 45 * time.Second
+	// holdNoticeMaxDeferral is the longest a Spec.HoldDeferral run defers a held turn end's notice whatever the predicate reports.
+	// It is long enough for a peer to answer an ordinary batch and short enough that a wedged peer hides a stall well inside a review or discussion table's timeout.
+	holdNoticeMaxDeferral = 20 * time.Minute
 )
 
 const (
@@ -44,6 +54,23 @@ func holdNotice(strandName string, held *heldTurnEnd) string {
 		"To answer it, SendMessage to %s, ending your message with %q. "+
 		"Its last message: %s",
 		noticeOpen, noticeClose, strandName, strandName, MessageTail, delimitedAgentText(held.message))
+}
+
+// settleDeferredHold sends the pending held turn end of a Spec.HoldDeferral run once its deferral is over, and clears it.
+// The deferral is over holdNoticeSettle after the turn end was read once the predicate reports no outstanding work.
+// It is over holdNoticeMaxDeferral after the turn end was read whatever the predicate reports.
+// The predicate is not called before holdNoticeSettle has passed.
+func (run *Run) settleDeferredHold() {
+	held := run.pendingHold
+	if held == nil {
+		return
+	}
+	waited := run.clock.Now().Sub(run.pendingHoldAt)
+	if waited < holdNoticeSettle || (waited < holdNoticeMaxDeferral && run.spec.HoldDeferral()) {
+		return
+	}
+	run.pendingHold = nil
+	run.notifyHeld(held)
 }
 
 // notifyHeld sends the parent one notice for a held turn end of an autonomous run on a runner with a notifier.

@@ -495,7 +495,11 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	// AnchorPath semantics and the field set burlerengine.Geometry declares, rather than webster's
 	// (see hubgeom.go's BurlerGeometry doc comment). The two geometry builders are distinct types
 	// with distinct field sets, not interchangeable constructors of the same shape.
-	burlerEngine := burlerengine.New(burlerengine.RunnerShuttle(runner), hubgeom.BurlerGeometry(location), burlerCfg, websterGeom.StencilsDir, frictionDir)
+	burlerGeom, err := hubgeom.BurlerGeometry(location)
+	if err != nil {
+		return err
+	}
+	burlerEngine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, burlerCfg, websterGeom.StencilsDir, frictionDir)
 
 	runDeps := websterengine.RunDeps{
 		Starter:    runnerMasterStarter{runner: runner},
@@ -769,7 +773,6 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 		ReviewModels:  reviewSettings.Models,
 		ReviewTimeout: reviewSettings.Timeout,
-		FixStart:      reviewSettings.FixStart,
 		RowReviewModels: map[string]burlerengine.RoundModels{
 			loomshed.NameDiscussionBurler: reviewSettings.Discussion,
 			loomshed.NamePlanBurler:       reviewSettings.Plan,
