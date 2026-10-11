@@ -640,6 +640,17 @@ func TestBuildDenyNotice_SentenceContent(t *testing.T) {
 	if !strings.Contains(nonFork, "The Agent tool is unavailable") {
 		t.Errorf("non-fork notice = %q; want the Agent tool named unavailable", nonFork)
 	}
+	for _, want := range []string{
+		"Gate rule: run lyx gate test in the foreground with the Bash tool timeout set to 3600000, never in the background",
+		"never cd into the directory you already work in",
+	} {
+		if !strings.Contains(nonFork, want) {
+			t.Errorf("non-fork notice = %q; want it to contain %q", nonFork, want)
+		}
+	}
+	if strings.Contains(nonFork, "background Bash call") {
+		t.Errorf("non-fork notice = %q; want no background Bash call route", nonFork)
+	}
 	if !strings.Contains(nonFork, "final message") {
 		t.Errorf("notice = %q; want the AskUserQuestion final-message channel", nonFork)
 	}

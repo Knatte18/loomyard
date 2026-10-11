@@ -13,17 +13,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// ActivityReader is an optional capability beside Engine: the provider's reading of the transcript a turn end names.
+// ActivityReader is an optional capability beside Engine: the provider's reading of the session a turn end names, its last activity with its forks included.
 // An Engine without it yields activity readings with no transcript part.
 type ActivityReader interface {
-	// TurnEndActivity returns the activity of the transcript turnEnd names.
+	// TurnEndActivity returns the session's last activity, its forks included, and the API-error reading of the transcript turnEnd names.
+	// A fork's pending tool call reads active up to a provider-defined ceiling past its last write.
 	// It degrades to the zero value on every failure and never errors.
 	TurnEndActivity(turnEnd Event) TurnEndActivity
 }
 
-// TurnEndActivity is a provider-neutral reading of a session's transcript at a turn end.
+// TurnEndActivity is a provider-neutral reading of a session at a turn end: its last activity, its forks included, and the API-error part, which reads the session's own transcript only.
 type TurnEndActivity struct {
-	// TranscriptModTime is the transcript's last write time; zero when the transcript cannot be read.
+	// TranscriptModTime is the session's last activity, its forks included; zero when the transcript cannot be read.
 	TranscriptModTime time.Time
 	// APIError is true when the transcript's newest main-chain turn end is an API error rather than the agent's own message.
 	APIError bool
@@ -35,7 +36,7 @@ type TurnEndActivity struct {
 type AgentActivity struct {
 	// StrandName is the run's strand name, the strand guid for a record that predates the name.
 	StrandName string
-	// LastActivity is the newer of the transcript's last write and the time of the events file's newest Stop or ask line.
+	// LastActivity is the newer of the session's last activity, its forks included, and the time of the events file's newest Stop or ask line.
 	// A Stop or ask line with no time, an engine without a SessionSignalParser and a file yielding no signals count the events file's last write instead.
 	// It is the run's creation time when none of these can be read.
 	LastActivity time.Time
