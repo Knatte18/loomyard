@@ -168,6 +168,8 @@
 // A held or failed color is logged and never fails the launch, since the color is display only.
 // Runner.TypeColor sends the same sequence into a live shuttle strand for a caller that colors its own session, and returns a held color's error, wrapping ErrSessionBusy, so the caller may retry.
 // Runner.ClearSession, Runner.CompactSession and Runner.ReloadPlugins send their slash commands through the same path, so a draft in the box or an active operator holds them with ErrSessionBusy instead of a caller's earlier idle probe letting them type.
+// Runner.ClearSession and Runner.CompactSession confirm on the session-start line their command makes the provider write, of source clear and compact, past the events offset taken before the paste;
+// an empty box does not confirm them early, and when the submit window closes with no such line the box read decides as for any send, so an engine that records no session starts confirms on the empty box at the window's end.
 // A provider with no command for the request types nothing and asks nothing.
 // The palette-to-command mapping is provider grammar and lives in the engine.
 //

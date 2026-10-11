@@ -35,6 +35,7 @@ const (
 // sendContext is what one verified send needs: the pane it types into, the run's record, directory and events file, the config and the clock its timed waits read.
 // A zero deadline means none, and a nil hold starts the idle wait's turn-start hold afresh.
 // startsNoTurn marks a send whose text starts no turn, such as a slash command, so no turn start reads as its landing.
+// landingStart is the session-start source whose line confirms a send that starts no turn; it is empty for every other send.
 type sendContext struct {
 	reed         ReedOps
 	engine       Engine
@@ -47,6 +48,7 @@ type sendContext struct {
 	deadline     time.Time
 	hold         *turnStartHold
 	startsNoTurn bool
+	landingStart SessionStartSource
 }
 
 // newSendContext returns the context of a verified send into run's own pane.
@@ -407,6 +409,8 @@ func retryLanded(sc sendContext, text string) bool {
 
 // confirmPasted reads the input box after a paste, first reader.SubmitSettle() later and then at a doubling interval up to confirmBackoffCap, cut to end at closeAt.
 // A turn start past sentAt, or an empty box, means the paste landed.
+// A send with a landingStart instead lands on a session start of that source past sentAt, and an empty box does not end its reads while the window and the read cap allow more;
+// when they run out with none, the box read decides as for any send.
 // A box holding exactly the sent text, or the provider's placeholder for it, means the Enter did not take, and the guarded Enter is sent and the box read again.
 // No readable box sends nothing and is read again.
 // The sent text beside other text fails with ErrSentTextInDraft, and any other text fails with ErrSessionBusy quoting the box; neither sends a key.
@@ -422,11 +426,17 @@ func confirmPasted(sc sendContext, paster TextPaster, reader InputBoxReader, tex
 		if turnStartedSince(sc.engine, sc.eventsPath, sentAt) {
 			return nil
 		}
+		awaitsLanding := sc.landingStart != ""
+		if awaitsLanding && sessionStartedSince(sc.engine, sc.eventsPath, sentAt, sc.landingStart) {
+			return nil
+		}
 		if boxText, readable := readInputBox(sc, reader); readable {
 			box := normalizePaneText(boxText)
 			switch {
 			case box == "":
-				return nil
+				if !awaitsLanding || windowClosed(sc.clock, closeAt) || read >= maxReads {
+					return nil
+				}
 			case box == normalized || paster.OwnPastePlaceholder(boxText, text):
 				if _, err := guardedEnter(sc); err != nil {
 					return err
@@ -601,6 +611,26 @@ func turnStartedSince(engine Engine, eventsPath string, offset int64) bool {
 	signals, _ := parser.ParseSessionSignals(data[offset:])
 	for _, signal := range signals {
 		if signal.Kind == SessionSignalTurnStart {
+			return true
+		}
+	}
+	return false
+}
+
+// sessionStartedSince reports whether the events file holds a session-start signal of source past byte offset.
+// An engine without SessionSignalParser and an unreadable file read as no.
+func sessionStartedSince(engine Engine, eventsPath string, offset int64, source SessionStartSource) bool {
+	parser, ok := engine.(SessionSignalParser)
+	if !ok {
+		return false
+	}
+	data, err := os.ReadFile(eventsPath)
+	if err != nil || offset > int64(len(data)) {
+		return false
+	}
+	signals, _ := parser.ParseSessionSignals(data[offset:])
+	for _, signal := range signals {
+		if signal.Kind == SessionSignalSessionStart && signal.Source == source {
 			return true
 		}
 	}
