@@ -1747,6 +1747,9 @@ func TestValidate_VerifyModuleWide(t *testing.T) {
 			for _, f := range planparser.ValidateFormat(plan, t.TempDir()) {
 				if f.Check == "verify-module-wide" {
 					got = append(got, f.Card)
+					if !strings.Contains(f.Detail, "run in the foreground under the gate rule in your system prompt") || strings.Contains(f.Detail, "background") {
+						t.Errorf("verify-module-wide detail = %q; want the foreground route under the gate rule and no background", f.Detail)
+					}
 				}
 			}
 			if !slices.Equal(got, tt.want) {
