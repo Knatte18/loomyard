@@ -4,7 +4,7 @@
 // (the batcher, webster's master, and fork prompt rendering) goes through
 // planparser.ParsePlan and the Plan/Card model it returns.
 // The package's write paths are the only places any `_lyx/plan/` byte is ever rewritten:
-// SetApproved (the approval flag), RewriteRefs (ref substitution across the plan, rewrite.go), AppendAmendment (the append-only amendment log, amendment.go), and InsertCard and RemoveCard (one card added or dropped with the cards after it renumbered, renumber.go).
+// SetApproved (the approval flag), RewriteRefs (ref substitution across the plan, rewrite.go), AppendAmendment (the append-only amendment log, amendment.go), InsertCard and RemoveCard (one card added or dropped with the cards after it renumbered, renumber.go), and RestoreRenumber (the undo of an interrupted renumber, restore.go).
 // So the on-disk grammar has exactly one reader and named writers, and the rest of webster never re-derives it.
 //
 // # The Glyph Conversion Chokepoint Invariant
@@ -24,6 +24,7 @@
 // PlanOverview declare the absolute form.
 // PlanScratchDir declares the plan directory's never-tracked mirror, joined from the same segment as PlanDir, and RenumberJournalPath the journal under it.
 // InsertCard and RemoveCard write that journal before they touch the plan directory and remove it when they finish, so a journal found on disk is an interrupted renumber.
+// RestoreRenumber is the journal's only reader: it undoes that renumber from the journal, which discards any edit made to the journaled files since.
 // All file operations of a renumber go through RenumberIO, the raw I/O seam OSRenumberIO fills from the standard library.
 // The package itself never resolves cwd: its loomyard imports are internal/lyxdirs and internal/pattern, the latter for the entry-line cap alone.
 // The caller supplies the anchor path, which in a lyx worktree is lyxcwd.Location.AnchorPath() and never WorktreePath().

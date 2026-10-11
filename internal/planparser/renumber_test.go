@@ -34,6 +34,12 @@ type renumberFixture struct {
 // newRenumberFixture writes cards alpha, beta, gamma and delta numbered from first, with card references in the framing, a plan section and gamma's intent.
 func newRenumberFixture(t *testing.T, first int) renumberFixture {
 	t.Helper()
+	return newRenumberFixtureWithBeta(t, first, "beta")
+}
+
+// newRenumberFixtureWithBeta is newRenumberFixture with the second card named betaSlug.
+func newRenumberFixtureWithBeta(t *testing.T, first int, betaSlug string) renumberFixture {
+	t.Helper()
 	root := t.TempDir()
 	planDir := filepath.Join(root, "plan")
 
@@ -44,7 +50,7 @@ func newRenumberFixture(t *testing.T, first int) renumberFixture {
 		},
 		Cards: []plankit.Card{
 			{Number: first, Slug: "alpha", Summary: "intent of alpha", Intent: fmt.Sprintf("Stands alone; see card %d.", first)},
-			{Number: first + 1, Slug: "beta", Summary: "intent of beta", Commit: fmt.Sprintf("%d: beta", first+1)},
+			{Number: first + 1, Slug: betaSlug, Summary: "intent of beta", Commit: fmt.Sprintf("%d: beta", first+1)},
 			{Number: first + 2, Slug: "gamma", Summary: "intent of gamma", Intent: gammaIntent(first)},
 			{Number: first + 3, Slug: "delta", Summary: "intent of delta"},
 		},
@@ -479,6 +485,95 @@ func TestRenumber_IOFailureReversed(t *testing.T) {
 				t.Fatalf("error = %v; want ErrRenumberIOFailed", err)
 			}
 			requireSameTree(t, before, snapshot(t, fx.root))
+		})
+	}
+}
+
+func TestRestoreRenumber(t *testing.T) {
+	t.Parallel()
+
+	const journalOutside = `{"files":{"00-overview.md":""},"created":["%s"]}`
+	outside := func(name string) string { return fmt.Sprintf(journalOutside, name) }
+
+	tests := []struct {
+		name     string
+		betaSlug string
+		// interrupt, when set, leaves a journal by failing the reversal of that call.
+		interrupt renumberCall
+		// journal is written verbatim when nothing was interrupted.
+		journal string
+		// tempOnly writes the temporary journal alone.
+		tempOnly bool
+		// restoreFault fails one operation of the restore.
+		restoreFault *fault
+		want         error
+	}{
+		{name: "interrupted insert", betaSlug: "beta", interrupt: insertAt(1)},
+		{name: "interrupted remove", betaSlug: "beta", interrupt: removeAt(1)},
+		{name: "moved card whose slug the card slug rule rejects", betaSlug: "Odd_Slug", interrupt: insertAt(1)},
+		{name: "write failure partway, then a re-run", betaSlug: "beta", interrupt: insertAt(1), restoreFault: &fault{op: "WriteFile", base: "04-delta.md", times: 1}, want: planparser.ErrRenumberRestoreFailed},
+		{name: "no journal", betaSlug: "beta", want: planparser.ErrRenumberNoJournal},
+		{name: "temporary journal alone", betaSlug: "beta", tempOnly: true, want: planparser.ErrRenumberNoJournal},
+		{name: "undecodable journal", betaSlug: "beta", journal: "not json", want: planparser.ErrRenumberJournalInvalid},
+		{name: "journal read fails", betaSlug: "beta", journal: "{}", restoreFault: &fault{op: "ReadFile", base: renumberJournalName, times: 1}, want: planparser.ErrRenumberIOFailed},
+		{name: "name escaping the directory", betaSlug: "beta", journal: outside("../x.md"), want: planparser.ErrRenumberJournalInvalid},
+		{name: "name inside an archive", betaSlug: "beta", journal: outside("archive-1/01-a.md"), want: planparser.ErrRenumberJournalInvalid},
+		{name: "name inside a prior generation", betaSlug: "beta", journal: outside("round-1/prior-generation/01-a.md"), want: planparser.ErrRenumberJournalInvalid},
+		{name: "name with a backslash", betaSlug: "beta", journal: outside(`a\\b.md`), want: planparser.ErrRenumberJournalInvalid},
+		{name: "name that is neither overview nor card file", betaSlug: "beta", journal: outside("notes.md"), want: planparser.ErrRenumberJournalInvalid},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newRenumberFixtureWithBeta(t, 1, tc.betaSlug)
+			original := snapshot(t, fx.root)
+
+			switch {
+			case tc.interrupt != nil:
+				_, err := tc.interrupt(faultyIO(&fault{op: "WriteFile", base: renumberOverview, times: 2}), fx)
+				if !errors.Is(err, planparser.ErrRenumberReversalFailed) {
+					t.Fatalf("interrupted call error = %v; want ErrRenumberReversalFailed", err)
+				}
+			case tc.journal != "":
+				plankit.WriteTree(t, filepath.Dir(fx.journalPath), map[string]string{renumberJournalName: tc.journal})
+			case tc.tempOnly:
+				plankit.WriteTree(t, filepath.Dir(fx.journalPath), map[string]string{renumberJournalName + ".tmp": "{}"})
+			}
+			before := snapshot(t, fx.root)
+
+			ops := planparser.OSRenumberIO()
+			if tc.restoreFault != nil {
+				injected := *tc.restoreFault
+				ops = faultyIO(&injected)
+			}
+			result, err := planparser.RestoreRenumber(ops, fx.planDir, fx.journalPath)
+
+			switch {
+			case tc.want == nil:
+				if err != nil {
+					t.Fatalf("RestoreRenumber failed: %v", err)
+				}
+				requireSameTree(t, original, snapshot(t, fx.root))
+				if !slices.Contains(result.Restored, renumberOverview) {
+					t.Errorf("Restored = %v; want it to hold the overview", result.Restored)
+				}
+			case errors.Is(tc.want, planparser.ErrRenumberRestoreFailed):
+				if !errors.Is(err, tc.want) {
+					t.Fatalf("error = %v; want %v", err, tc.want)
+				}
+				if _, statErr := os.Stat(fx.journalPath); statErr != nil {
+					t.Fatalf("journal not kept after a failed restore: %v", statErr)
+				}
+				if _, err := planparser.RestoreRenumber(planparser.OSRenumberIO(), fx.planDir, fx.journalPath); err != nil {
+					t.Fatalf("re-run failed: %v", err)
+				}
+				requireSameTree(t, original, snapshot(t, fx.root))
+			default:
+				if !errors.Is(err, tc.want) {
+					t.Fatalf("error = %v; want %v", err, tc.want)
+				}
+				requireSameTree(t, before, snapshot(t, fx.root))
+			}
 		})
 	}
 }
