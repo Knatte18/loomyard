@@ -112,6 +112,10 @@ type Watcher struct {
 	heldSince          time.Time
 	heldWaited         time.Duration
 	sessionStartLogged time.Time
+
+	// lastSendHeld is the reason a typed step was last held by the session, as logged, empty once a typed step passes.
+	// It is memory only: binding to another strand clears it.
+	lastSendHeld string
 }
 
 // idleStatePair is one idle probe answer beside the session state it disagreed with.
@@ -309,7 +313,7 @@ func (w *Watcher) tick() (done bool, err error) {
 
 // typeStartColor types the strand's color on the first tick whose idle probe passes after binding, before anything else that tick types, then clears the mark.
 // A session resumed at the reload sequence's color step is left to that step.
-// A failed typing is logged and dropped, since the color is display only.
+// A failed typing is logged and dropped, since the color is display only; a held one stays pending for the next tick.
 func (w *Watcher) typeStartColor(st *State) error {
 	if !w.colorPending {
 		return nil
@@ -325,16 +329,25 @@ func (w *Watcher) typeStartColor(st *State) error {
 	if !probe.Idle {
 		return nil
 	}
+	if w.typeColor(st) {
+		return nil
+	}
 	w.colorPending = false
-	w.typeColor(st.Strand)
 	return nil
 }
 
 // typeColor types the strand's color and logs a failure instead of returning it, so the color never wedges a start or a reload.
-func (w *Watcher) typeColor(strand string) {
-	if err := w.session.TypeColor(strand); err != nil {
-		logger.Warn("orch: typing the strand color failed", "strandGUID", strand, "cause", err)
+// held is true when the session held the write, so the caller keeps the color pending and tries again on a later tick.
+func (w *Watcher) typeColor(st *State) (held bool) {
+	err := w.session.TypeColor(st.Strand)
+	held, saveErr := w.heldTyping(st, "color", err)
+	if saveErr != nil {
+		logger.Warn("orch: recording the held strand color failed", "strandGUID", st.Strand, "cause", saveErr)
 	}
+	if !held && err != nil {
+		logger.Warn("orch: typing the strand color failed", "strandGUID", st.Strand, "cause", err)
+	}
+	return held
 }
 
 // initCursor sets the read cursor from st on the watcher's first tick for a strand.
@@ -347,6 +360,7 @@ func (w *Watcher) initCursor(st State) (State, error) {
 	w.colorPending = true
 	w.idleDisagreement, w.hasIdleDisagreement = idleStatePair{}, false
 	w.lastHeld, w.heldSince, w.heldWaited, w.sessionStartLogged = "", time.Time{}, 0, time.Time{}
+	w.lastSendHeld = ""
 	switch {
 	case st.Phase == PhaseIdle:
 		w.cursor = st.LastInjectionOffset
@@ -369,7 +383,7 @@ func (w *Watcher) toIdle(st State, abortReason string) error {
 	st.PhaseInjected = false
 	st.PendingHandoff, st.PendingResume = "", ""
 	st.ReloadStep, st.ReloadTypedAt, st.ReloadRetry, st.ReloadSkipsSkills = ReloadStepSkills, time.Time{}, nil, false
-	st.Stuck, st.StuckByHold = "", false
+	st.Stuck, st.StuckByHold, st.StuckBySend = "", false, false
 	st.LastInjectionOffset = w.cursor
 	if abortReason != "" {
 		st.LastAbortReason = abortReason
@@ -388,7 +402,7 @@ func (w *Watcher) enter(st State, phase Phase, now time.Time) (State, error) {
 	st.PhaseEnteredAt = now
 	st.PhaseEventsOffset = w.cursor
 	st.PhaseInjected = false
-	st.Stuck, st.StuckByHold = "", false
+	st.Stuck, st.StuckByHold, st.StuckBySend = "", false, false
 	w.seen = phaseEvents{}
 	return st, w.save(st)
 }
@@ -406,8 +420,41 @@ func (w *Watcher) markStuck(st State, reason string) error {
 		return nil
 	}
 	logger.Warn("orch: cycle phase stuck", "phase", string(st.Phase), "reason", reason, "strandGUID", st.Strand)
-	st.Stuck, st.StuckByHold = reason, false
+	st.Stuck, st.StuckByHold, st.StuckBySend = reason, false, false
 	return w.save(st)
+}
+
+// heldTyping folds the error of a typed step into whether shuttle held the write.
+// A nil error and one that does not wrap shuttleengine.ErrSessionBusy answer held false, and the caller returns the error as it did before.
+// A held write typed nothing: it is logged at Info once per change of reason, and the caller returns nil leaving its phase as it is, so the next tick retypes the same text and the tick counts no error.
+// In the idle phase the reason is also recorded in st.Stuck with StuckBySend and saved, unless a Stuck that no hold and no send wrote is already there.
+func (w *Watcher) heldTyping(st *State, step string, err error) (held bool, saveErr error) {
+	if err == nil {
+		w.lastSendHeld = ""
+		return false, nil
+	}
+	if !errors.Is(err, shuttleengine.ErrSessionBusy) {
+		return false, nil
+	}
+	reason, _, _ := strings.Cut(err.Error(), "\n")
+	if reason != w.lastSendHeld {
+		logger.Info("orch: injection held by the session", "strandGUID", st.Strand, "step", step, "reason", reason)
+	}
+	w.lastSendHeld = reason
+	if st.Phase != PhaseIdle || st.Stuck == reason || st.Stuck != "" && !st.StuckByHold && !st.StuckBySend {
+		return true, nil
+	}
+	st.Stuck, st.StuckByHold, st.StuckBySend = reason, false, true
+	return true, w.save(*st)
+}
+
+// clearSendStuck ends a Stuck that a held step wrote, once a send has passed.
+func (w *Watcher) clearSendStuck(st *State) error {
+	if !st.StuckBySend {
+		return nil
+	}
+	st.Stuck, st.StuckBySend = "", false
+	return w.save(*st)
 }
 
 // paneTooShortReason is the State.Stuck text recorded while the idle probe reports a pane too short to draw an input box.
@@ -579,7 +626,14 @@ func (w *Watcher) deliverNotice() error {
 	if !probe.Idle {
 		return nil
 	}
-	if err := w.session.Send(st.Strand, notices[0].Line); err != nil {
+	err = w.session.Send(st.Strand, notices[0].Line)
+	if held, saveErr := w.heldTyping(&st, "notice", err); saveErr != nil || held {
+		return saveErr
+	}
+	if err != nil {
+		return err
+	}
+	if err := w.clearSendStuck(&st); err != nil {
 		return err
 	}
 	return RemoveNotice(notices[0])
@@ -680,7 +734,11 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	if err := ClearCycleRequest(w.paths); err != nil {
 		return err
 	}
-	if err := w.session.Send(st.Strand, text); err != nil {
+	err = w.session.Send(st.Strand, text)
+	if held, saveErr := w.heldTyping(&st, "handoff request", err); saveErr != nil || held {
+		return saveErr
+	}
+	if err != nil {
 		return err
 	}
 	return w.confirm(st)
@@ -752,7 +810,11 @@ func (w *Watcher) tickHandoff(st State, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	if err := w.session.Send(st.Strand, text); err != nil {
+	err = w.session.Send(st.Strand, text)
+	if held, saveErr := w.heldTyping(&st, "handoff request", err); saveErr != nil || held {
+		return saveErr
+	}
+	if err != nil {
 		return err
 	}
 	return w.confirm(st)
@@ -785,7 +847,11 @@ func (w *Watcher) startClearing(st State, now time.Time) error {
 	if st, err = w.enter(st, PhaseClearing, now); err != nil {
 		return err
 	}
-	if err := w.session.ClearSession(st.Strand); err != nil {
+	err = w.session.ClearSession(st.Strand)
+	if held, saveErr := w.heldTyping(&st, "clear", err); saveErr != nil || held {
+		return saveErr
+	}
+	if err != nil {
 		return err
 	}
 	return w.confirm(st)
@@ -808,7 +874,11 @@ func (w *Watcher) tickClearing(st State, now time.Time) error {
 	}
 	if !st.PhaseInjected && !timedOut {
 		// A clear that errored never reached the pane, and a pre-clear pane passes the idle probe too.
-		if err := w.session.ClearSession(st.Strand); err != nil {
+		err := w.session.ClearSession(st.Strand)
+		if held, saveErr := w.heldTyping(&st, "clear", err); saveErr != nil || held {
+			return saveErr
+		}
+		if err != nil {
 			return err
 		}
 		return w.confirm(st)
@@ -913,7 +983,9 @@ func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 	step := w.reloadStep(st)
 	switch step {
 	case ReloadStepColor:
-		w.typeColor(st.Strand)
+		if w.typeColor(&st) {
+			return nil
+		}
 		w.logTyped(st, reloadStepName(step))
 		st.ReloadStep, st.ReloadTypedAt = ReloadStepPlugins, time.Time{}
 		st.PhaseEventsOffset = w.cursor
@@ -921,7 +993,11 @@ func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 		w.seen = phaseEvents{}
 		return w.save(st)
 	case ReloadStepPlugins:
-		if err := w.session.ReloadPlugins(st.Strand); err != nil {
+		err := w.session.ReloadPlugins(st.Strand)
+		if held, saveErr := w.heldTyping(&st, reloadStepName(step), err); saveErr != nil || held {
+			return saveErr
+		}
+		if err != nil {
 			return err
 		}
 		w.logTyped(st, reloadStepName(step))
@@ -944,6 +1020,9 @@ func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 			return w.toIdle(st, "")
 		}
 		err = w.session.Send(st.Strand, st.PendingResume)
+	}
+	if held, saveErr := w.heldTyping(&st, reloadStepName(step), err); saveErr != nil || held {
+		return saveErr
 	}
 	if err != nil {
 		return err
@@ -1083,7 +1162,11 @@ func (w *Watcher) startCompacting(st State, now time.Time) error {
 		return err
 	}
 	w.newest = nil
-	if err := w.session.CompactSession(st.Strand, focus); err != nil {
+	err = w.session.CompactSession(st.Strand, focus)
+	if held, saveErr := w.heldTyping(&st, "compact", err); saveErr != nil || held {
+		return saveErr
+	}
+	if err != nil {
 		return err
 	}
 	return w.confirm(st)
@@ -1181,7 +1264,11 @@ func (w *Watcher) tickCompacting(st State, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	if err := w.session.CompactSession(st.Strand, focus); err != nil {
+	err = w.session.CompactSession(st.Strand, focus)
+	if held, saveErr := w.heldTyping(&st, "compact", err); saveErr != nil || held {
+		return saveErr
+	}
+	if err != nil {
 		return err
 	}
 	return w.confirm(st)

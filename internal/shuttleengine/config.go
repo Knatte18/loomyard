@@ -30,7 +30,7 @@ type Config struct {
 
 	BackgroundShellWaitMin int `yaml:"background_shell_wait_min"` // Minutes an outstanding background shell of either signal may run before the wait logs it and shows it in the wait marker; it expires nothing. LoadConfig refuses non-positive.
 
-	SubmitSettleMS int `yaml:"submit_settle_ms"` // Interval between the two input-box reads that must agree before a verified send's Enter, and the pause before a slash command's Enter; 0 reads back to back, LoadConfig refuses negative.
+	SubmitSettleMS int `yaml:"submit_settle_ms"` // Interval between the two input-box reads that must agree before a verified send's Enter, and the pause before the /model command's Enter; 0 reads back to back, LoadConfig refuses negative.
 
 	SubmitRedrawSettleMS int `yaml:"submit_redraw_settle_ms"` // First step of the doubling interval at which the input box is read after an Enter to confirm the send; 0 reads at once, LoadConfig refuses negative.
 

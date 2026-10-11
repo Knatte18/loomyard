@@ -22,7 +22,7 @@ func TestColorSequence_TypesTheColorCommandForEveryPaletteColor(t *testing.T) {
 	var rows []row
 	for _, color := range segmentcolor.Palette() {
 		rows = append(rows, row{color, []shuttleengine.PaneInput{
-			{Text: "/color " + string(color), SettleMS: defaultSubmitSettleMS},
+			{Text: "/color " + string(color)},
 			{Key: "Enter"},
 		}})
 	}

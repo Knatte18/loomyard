@@ -159,12 +159,11 @@
 // Segment color: Spec.Segment names the loom segment the spawning module gives its role, and Runner.start forwards it to reed, which resolves the segment's palette color on the strand it returns.
 // After startup confirms the provider ready and before the skill load, start plays Engine.ColorSequence for that color into the strand's pane;
 // an engine without a color command, a strand without a color and a spec with ColorByCaller type nothing.
-// The play then waits, at most colorSettleAttempts pane reads, until the provider has consumed the command:
-// the pane classifies StartupReady and the input box (InputBoxReader) no longer holds the command,
-// so the next step never finds the command still sitting in the box.
-// A command still in the box after the last read is submitted again through the verified send's extra Enters.
-// A failed play and an unconfirmed command are logged and never fail the launch, since the color is display only.
-// Runner.TypeColor plays the same sequence, with the same wait, into a live shuttle strand for a caller that colors its own session.
+// The command goes out through the guarded send path, like every other write: a paste-path engine pastes it once and the empty box confirms it, so the next step never finds it still sitting in the box.
+// A held or failed color is logged and never fails the launch, since the color is display only.
+// Runner.TypeColor sends the same sequence into a live shuttle strand for a caller that colors its own session, and returns a held color's error, wrapping ErrSessionBusy, so the caller may retry.
+// Runner.ClearSession, Runner.CompactSession and Runner.ReloadPlugins send their slash commands through the same path, so a draft in the box or an active operator holds them with ErrSessionBusy instead of a caller's earlier idle probe letting them type.
+// A provider with no command for the request types nothing and asks nothing.
 // The palette-to-command mapping is provider grammar and lives in the engine.
 //
 // Skill loading: Spec.Skills names provider-neutral skills that shuttle loads into a fresh session, all in one turn, before the prompt.
@@ -182,13 +181,17 @@
 // Every verified send first waits for an idle session, for at most `send_ready_timeout_s` and never past the run's deadline, and types nothing until then.
 // For an engine with the optional SessionCycler idle reading, every poll takes the readiness reading, built on the hook-derived session state.
 // The reading is ready on idle-done, idle-stalled of any cause, asking at an awaited turn end and busy on background work, provided no turn start is unmatched and the input box, where the engine reads one, is blank;
-// it is held, with a reason, on a running turn, a question awaiting an answer, a dead process, an unmatched turn start, a draft in the box and a pane too short.
-// A ready reading lets the send type even when the pane still shows the running-turn needle or no box.
+// it is held, with a reason, on a running turn, a question awaiting an answer, a dead process, an unmatched turn start, a draft in the box, a pane too short and a pane showing no input box to an engine that reads one, as when a menu or picker is open.
+// A ready reading lets the send type even when the pane still shows the running-turn needle.
+// The pre-write guard is the last step of every poll: once the rest of the reading passed, shuttle asks reed once whether an attached client was active in the pane within `operator_quiet_s`, and holds the write while one was.
+// So each poll is one fresh reading of readiness, box and activity immediately before the caller types.
+// An activity query that errors is logged at Warn and holds nothing, so a tmux that cannot list its clients stalls no run; the empty-box requirement still stands.
+// Runner.SessionIdle applies the same hold after a ready reading, so the orch watcher's probe reports an active operator with its reason.
 // An unmatched turn start releases after the pane has read idle on every poll for turnStartIdleOverride, or at once when the engine reports that turn interrupted.
 // When the session state is unknown, the reading falls back to the pane, which must classify ready and idle, and for an engine that parses session signals no turn start may be left unmatched by a later turn end; the cause is logged at Debug.
 // A session that stays held fails the send with ErrSessionBusy, naming the reading and ending with the pane's last lines.
 // Run.Send and the gated wait loop's own send each hold the run's send lock for the whole idle wait, typing and delivery check, so an in-process send and a gate re-prompt on one run type one after the other, never at once; the lock skips no idle wait, delivery check or gate evaluation.
-// An engine without the idle reading keeps the not-ready refusal alone.
+// An engine without the idle reading keeps the not-ready refusal and the operator-activity hold, with no wait: either fails the send at once.
 // That path confirms a send is submitted, not only that its text appeared in the pane, for an engine that implements the optional InputBoxReader capability, inside a window of `submit_confirm_timeout_s` from the moment typing begins.
 // The text is typed without its Enter, and once it has appeared shuttle reads the input box every `submit_settle_ms` until two reads agree, so no Enter lands inside a typing burst;
 // reads that agree only once the window has closed send no Enter.
@@ -198,9 +201,24 @@
 // The submission is confirmed when the box no longer holds the sent text, or when the engine's session signals show a turn start past the file's size before the send.
 // A send that does not land fails with ErrSubmissionNotLanded, naming why and ending with the pane's last lines.
 // An empty box then means the submission landed late and the send succeeds;
-// otherwise, for an engine with both the idle reading and the optional InputBoxClearer capability, a box that shows this send's own text, or the provider's collapsed paste placeholder, is cleared and read again;
+// otherwise, for an engine with both the idle reading and the optional InputBoxClearer capability, a box that holds exactly this send's own text, re-read just before the key, is cleared and read again;
 // a box holding anything else gets no key, and a box the clear did not empty is named in the error.
+// The text counts as held only when the box reads exactly the sent text, normalized, so a box that merely contains its leading part is never taken for it.
 // An engine without the capability keeps the appearance-only check.
+// An engine that also implements the optional TextPaster capability, with the box reader and the idle reading, is written to through pasteVerified instead.
+// It issues one reed paste-submit, with no Escape and no typed keys, carrying the trailing Enter when `PasteSubmits` is true; with it false, the box is settled first and the Enter goes out as the guarded one below.
+// The box is then read first `submit_redraw_settle_ms` after the paste and at a doubling interval up to confirmBackoffCap, and each read decides:
+// a turn start past the file's size before the send, or an empty box, means the paste landed;
+// a box holding exactly the sent text, or the provider's own placeholder for it, means the Enter did not take, and the guarded Enter, sent only when no operator was active in the pane just before the key, goes out and the box is read again;
+// no readable box sends nothing and is read again, and a window that ends that way, or on an exact match, fails with ErrSubmissionNotLanded;
+// the sent text beside other text fails with ErrSentTextInDraft, which wraps ErrSessionBusy, and any other text fails with ErrSessionBusy quoting the box; neither sends a key.
+// A pasted send that fails with ErrSentTextInDraft or ErrSubmissionNotLanded may have left its text in the box, so it records `{text, events offset}` in `pending-send.json` in the run directory, a file of its own so it never races run.json's writers.
+// A paste that landed, was held before it wrote or failed in reed records nothing.
+// The next send to the strand, once the idle wait passed on an empty box, reads and clears the record.
+// For the same text with a turn start past the recorded offset, the text went out with the draft or with an Enter the operator pressed, and the send returns landed without pasting;
+// otherwise the operator cleared the box, or the record was for another text, and the send pastes as usual.
+// A record that cannot be read or cleared is logged at Warn and the send pastes, so a broken file never wedges a strand.
+// A retry whose text started no turn, as a slash command's does not, always pastes afresh.
 // The run's events offset is the events file's size at the moment before the prompt is sent.
 // That lies past every load turn end, the retry's included, and past any line appended after them.
 // run.json records that offset as `promptOffset` before the prompt goes out,
@@ -258,7 +276,7 @@
 // The reading is ready or held, or unknown when the state is, and an unknown reading falls back to the pane probe.
 // Runner.SessionIdle answers IdleProbe.Idle for a ready reading and, for a held one, IdleProbe.Reason, with TooShort set when the reason is the short pane;
 // the runner keeps one turn-start hold per strand guid, so the orch watcher's probes keep one hold across its ticks as a send keeps one across its polls.
-// A ready reading beside a pane that shows the needle or no box still answers idle, and logs the disagreement with the pane's last lines at Debug.
+// A ready reading beside a pane that shows the needle still answers idle, and logs the disagreement with the pane's last lines at Debug.
 // Wait's own shadow logging below stays display only.
 // The optional SessionSignalParser capability reads the events file's hook lines as provider-neutral signals with hook-side times:
 // a turn start, a turn end (with its outstanding background tasks), an API-error turn end, an ask, an idle notice, a session end and a session start (with its source).

@@ -103,6 +103,10 @@ func TestParkMarker(t *testing.T) {
 			if err != nil || strings.HasPrefix(rel, "..") {
 				t.Errorf("ParkMarker(l, %q) = %q; want it under the .lyx tree", runID, got)
 			}
+			report := ResumeReport(l, runID)
+			if report == got || filepath.Dir(report) != filepath.Dir(got) || filepath.Dir(report) != ScratchDir(l, runID) {
+				t.Errorf("ResumeReport(l, %q) = %q; want a file beside %q under the scratch directory", runID, report, got)
+			}
 		})
 	}
 }

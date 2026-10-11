@@ -22,14 +22,14 @@ var colorNames = map[segmentcolor.Color]string{
 
 // ColorSequence returns the key choreography that sets a live claude session's prompt-bar color: the `/color <name>` slash command.
 // A color outside the palette answers no inputs.
-// Like ModelSwitchSequence it sends no leading Escape, and the text and the Enter are two paced steps so the Enter lands outside the typing burst.
+// It sends no leading Escape and no pause between the text and the Enter: the paste path submits them in one tmux invocation.
 func (c *Claude) ColorSequence(color segmentcolor.Color) []shuttleengine.PaneInput {
 	name, ok := colorNames[color]
 	if !ok {
 		return nil
 	}
 	return []shuttleengine.PaneInput{
-		{Text: "/color " + name, SettleMS: c.submitSettleMS},
+		{Text: "/color " + name},
 		{Key: "Enter"},
 	}
 }

@@ -79,6 +79,9 @@ func TestResumeParkedDriver(t *testing.T) {
 		wantErr []string
 		// wantNotErr holds substrings the refusal must not contain.
 		wantNotErr []string
+		// rerun makes a second call after the first and compares the lines typed.
+		// "same" reruns against the same marker content, "newpark" against a marker rewritten with new content.
+		rerun string
 	}{
 		{name: "sends one line and removes the marker", sender: &fakeDriverSender{}, wantTexts: 1},
 		{name: "waits through a not-ready pane", sender: &fakeDriverSender{errs: []error{notReady(), notReady()}}, wantTexts: 3, wantWaits: 2},
@@ -98,6 +101,22 @@ func TestResumeParkedDriver(t *testing.T) {
 			wantErr:    []string{`"lyx loom resume"`, `"lyx loom status"`},
 			wantNotErr: []string{"lyx loom start"},
 		},
+		{
+			name:      "a busy pane is not retried and a rerun types the identical line",
+			sender:    &fakeDriverSender{repeatErr: fmt.Errorf("the input box holds a draft: %w", shuttleengine.ErrSessionBusy)},
+			wantTexts: 2,
+			rerun:     "same",
+			wantErr:   []string{"the input box holds a draft"},
+			// The busy refusal says nothing was typed; the advice for a delivery the pane hid does not apply.
+			wantNotErr: []string{"may have resumed"},
+		},
+		{
+			name:      "a park with new marker content picks a new report path",
+			sender:    &fakeDriverSender{repeatErr: fmt.Errorf("the input box holds a draft: %w", shuttleengine.ErrSessionBusy)},
+			wantTexts: 2,
+			rerun:     "newpark",
+			wantErr:   []string{"the input box holds a draft"},
+		},
 		{name: "another error is never retried", sender: &fakeDriverSender{repeatErr: errors.New("text never appeared")}, wantTexts: 1, wantErr: []string{"text never appeared"}},
 	}
 	for _, tt := range tests {
@@ -109,6 +128,19 @@ func TestResumeParkedDriver(t *testing.T) {
 				retry = retryStart
 			}
 			reportPath, err := c.resumeParkedDriver("g-drv", retry)
+			resumeReport := shedrun.ResumeReport(c.location, shedrun.ResolveRunID(c.location, c.runID))
+			if tt.rerun != "" {
+				if tt.rerun == "newpark" {
+					if err := os.WriteFile(marker, []byte("reports/stop-2.md"), 0o644); err != nil {
+						t.Fatalf("rewrite marker: %v", err)
+					}
+				}
+				_, _ = c.resumeParkedDriver("g-drv", retry)
+				first, second := tt.sender.texts[0], tt.sender.texts[1]
+				if same := first == second; same != (tt.rerun == "same") {
+					t.Errorf("lines typed %q then %q; identical = %v, want %v", first, second, same, tt.rerun == "same")
+				}
+			}
 
 			if len(tt.sender.texts) != tt.wantTexts {
 				t.Fatalf("SendDriver calls = %d; want %d", len(tt.sender.texts), tt.wantTexts)
@@ -133,6 +165,9 @@ func TestResumeParkedDriver(t *testing.T) {
 				if !markerExists(marker) {
 					t.Error("park marker was removed despite the failed resume")
 				}
+				if !markerExists(resumeReport) {
+					t.Error("resume-report file was removed despite the failed resume")
+				}
 				return
 			}
 			if err != nil {
@@ -151,6 +186,9 @@ func TestResumeParkedDriver(t *testing.T) {
 			}
 			if markerExists(marker) {
 				t.Error("park marker still on disk after a verified send")
+			}
+			if markerExists(resumeReport) {
+				t.Error("resume-report file still on disk after a verified send")
 			}
 		})
 	}

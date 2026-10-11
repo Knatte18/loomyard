@@ -10,6 +10,7 @@
 package reedengine
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -53,6 +54,165 @@ func TestResolveLivePaneID(t *testing.T) {
 				t.Errorf("resolveLivePaneID(%q) = %q, want %q", tt.guid, got, tt.wantPaneID)
 			}
 		})
+	}
+}
+
+// TestPasteSubmitArgv pins the exact command list of a paste with and without the trailing Enter.
+func TestPasteSubmitArgv(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		text   string
+		submit bool
+		want   []string
+	}{
+		{
+			name: "plain text with Enter", text: "hello world", submit: true,
+			want: []string{
+				"set-buffer", "-b", "buf", "--", "hello world",
+				";", "paste-buffer", "-p", "-d", "-b", "buf", "-t", "%7",
+				";", "send-keys", "-t", "%7", "Enter",
+			},
+		},
+		{
+			name: "plain text without Enter", text: "hello world", submit: false,
+			want: []string{
+				"set-buffer", "-b", "buf", "--", "hello world",
+				";", "paste-buffer", "-p", "-d", "-b", "buf", "-t", "%7",
+			},
+		},
+		{
+			name: "dash-leading text follows the double dash", text: "-n flag", submit: false,
+			want: []string{
+				"set-buffer", "-b", "buf", "--", "-n flag",
+				";", "paste-buffer", "-p", "-d", "-b", "buf", "-t", "%7",
+			},
+		},
+		{
+			name: "text ending in a semicolon escapes the final one", text: "run a;", submit: false,
+			want: []string{
+				"set-buffer", "-b", "buf", "--", `run a\;`,
+				";", "paste-buffer", "-p", "-d", "-b", "buf", "-t", "%7",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := pasteSubmitArgv("%7", "buf", tt.text, tt.submit); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("pasteSubmitArgv = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestPasteSubmit pins that a write is one tmux invocation with no send-keys -l, that an unresolvable strand fails before any invocation, and that a failed invocation deletes its named buffer.
+func TestPasteSubmit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		guid string
+		// pasteErr is what the paste invocation fails with, nil for success.
+		pasteErr error
+		wantErr  string
+	}{
+		{name: "a live strand is pasted in one invocation", guid: "a"},
+		{name: "an unknown strand fails before any invocation", guid: "missing", wantErr: `unknown strand "missing"`},
+		{name: "a hidden strand fails before any invocation", guid: "hidden", wantErr: "is hidden"},
+		{name: "a failed paste deletes its buffer", guid: "a", pasteErr: errors.New("can't find pane: %7"), wantErr: "paste text: can't find pane: %7"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := newTestEngine(t)
+			fake := installIfAbsentTmux(t, e, "%7 0 0 100 20 4321\n")
+			st := &ReedState{Strands: []Strand{
+				{GUID: "a", PaneID: "%7", Display: render.Display{Anchor: render.AnchorBelowParent}},
+				{GUID: "hidden", Display: render.Display{Anchor: render.AnchorHidden}},
+			}}
+			if err := SaveState(e.stateDir(), st); err != nil {
+				t.Fatalf("SaveState: %v", err)
+			}
+			if tt.pasteErr != nil {
+				fake.answer("set-buffer", "", tt.pasteErr)
+			}
+
+			err := e.PasteSubmit(tt.guid, "hello", true)
+			pastes := fake.ArgvFor("set-buffer")
+			deletes := fake.ArgvFor("delete-buffer")
+			if tt.pasteErr != nil {
+				if err == nil || err.Error() != tt.wantErr {
+					t.Fatalf("PasteSubmit error = %v; want %q", err, tt.wantErr)
+				}
+				if len(pastes) != 1 || len(deletes) != 1 || !reflect.DeepEqual(deletes[0], []string{"delete-buffer", "-b", pastes[0][2]}) {
+					t.Errorf("delete-buffer calls = %v after paste %v; want one deleting the paste's buffer", deletes, pastes)
+				}
+				return
+			}
+			if len(deletes) != 0 {
+				t.Errorf("delete-buffer calls = %v; want none, the paste deletes its own buffer", deletes)
+			}
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("PasteSubmit error = %v; want it to contain %q", err, tt.wantErr)
+				}
+				if len(pastes) != 0 {
+					t.Errorf("set-buffer calls = %v; want none", pastes)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("PasteSubmit: %v", err)
+			}
+			if len(pastes) != 1 {
+				t.Fatalf("set-buffer invocations = %d; want 1", len(pastes))
+			}
+			if !strings.HasPrefix(pastes[0][2], "lyx-inject-") {
+				t.Errorf("buffer name = %q; want the lyx-inject- prefix", pastes[0][2])
+			}
+			if sends := fake.ArgvFor("send-keys"); len(sends) != 0 {
+				t.Errorf("separate send-keys calls = %v; want none, the Enter rides the paste invocation", sends)
+			}
+		})
+	}
+}
+
+// TestActiveClientOnPane pins which client lines count as an active operator, and the quiet-window floor of a hand-built Config.
+// The floor sits here rather than in config_test.go because that file is an external test package and cannot reach operatorQuiet.
+func TestActiveClientOnPane(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(1787000100, 0)
+	quiet := 5 * time.Second
+
+	tests := []struct {
+		name    string
+		clients string
+		want    bool
+	}{
+		{"a client on the pane active 1 s ago is active", "%7 1787000099\n", true},
+		{"a client on the pane active 6 s ago is not", "%7 1787000094\n", false},
+		{"a client on another pane is not", "%8 1787000099\n", false},
+		{"an empty list is not", "", false},
+		{"a malformed line is skipped", "garbage\n%7 notanumber\n%7 1787000099\n", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := activeClientOnPane(tt.clients, "%7", now, quiet); got != tt.want {
+				t.Errorf("activeClientOnPane(%q) = %v; want %v", tt.clients, got, tt.want)
+			}
+		})
+	}
+
+	for _, seconds := range []int{0, -1} {
+		if got := operatorQuiet(Config{OperatorQuietS: seconds}); got != 5*time.Second {
+			t.Errorf("operatorQuiet(%d) = %v; want 5s", seconds, got)
+		}
+	}
+	if got := operatorQuiet(Config{OperatorQuietS: 9}); got != 9*time.Second {
+		t.Errorf("operatorQuiet(9) = %v; want 9s", got)
 	}
 }
 

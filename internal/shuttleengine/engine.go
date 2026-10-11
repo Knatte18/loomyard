@@ -224,14 +224,22 @@ type InputBoxReader interface {
 	TypeSequence(text string) []PaneInput
 }
 
-// InputBoxClearer is an optional capability beside Engine: the provider's way of emptying its input box and recognising a collapsed paste.
-// The caller sends the clear only into a box it has just read as holding its own text,
+// InputBoxClearer is an optional capability beside Engine: the provider's way of emptying its input box.
+// The caller sends the clear only into a box it has just read as holding exactly its own text,
 // and the choreography never uses a key that interrupts a running turn.
 type InputBoxClearer interface {
 	// ClearInputSequence returns the key choreography that empties the input box without interrupting a running turn.
 	ClearInputSequence() []PaneInput
-	// PastePlaceholder reports whether boxText, an input-box reading, is the provider's collapsed paste placeholder.
-	PastePlaceholder(boxText string) bool
+}
+
+// TextPaster is an optional capability beside Engine: a provider that takes text as one bracketed paste.
+// An engine with it, InputBoxReader and SessionCycler is written to through reed's paste-submit instead of typed keys.
+type TextPaster interface {
+	// PasteSubmits reports whether an Enter right after the paste end submits the pasted text,
+	// so the paste goes out with its trailing Enter (true) or without it (false).
+	PasteSubmits() bool
+	// OwnPastePlaceholder reports whether boxText, an input-box reading, is exactly the collapsed-paste placeholder a paste of text produces.
+	OwnPastePlaceholder(boxText, text string) bool
 }
 
 // ContextReading is a provider-neutral reading of how much context a live session holds.

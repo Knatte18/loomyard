@@ -870,11 +870,11 @@ func (r *Runner) Send(guid, text string) error {
 	if err := validateSendText(text); err != nil {
 		return err
 	}
-	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	state, runDir, err := FindRun(r.cfg, r.anchorPath, guid)
 	if err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	return sendVerified(r.newSendContext(state), text)
+	return sendVerified(r.newSendContext(state, runDir), text)
 }
 
 // Inject plays inputs into the live pane of the run identified by guid, without needing an
@@ -1006,62 +1006,11 @@ func playInputs(reed ReedOps, guid string, inputs []PaneInput) error {
 	return nil
 }
 
-const (
-	// colorSettleAttempts caps the pane reads typeColor makes while waiting for the color command to be consumed.
-	colorSettleAttempts = 12
-	// colorSettleInterval is the pause between two of those reads.
-	colorSettleInterval = 250 * time.Millisecond
-)
-
-// typeColor plays the engine's color command for color into sc's pane,
-// then waits, at most colorSettleAttempts reads, until the provider has consumed it:
-// the pane classifies StartupReady and the input box (for an engine that implements InputBoxReader) no longer holds the command.
-// A pane showing no readable box counts as not holding it, as in the verified send's confirmation.
-// Without the wait the command can still sit in the box when the next step demands an idle, input-ready provider.
-// A command still in the box after the last read is submitted through confirmSubmitted's Enters, within one submit window.
-// Only a failed play is returned: an unconsumed command is logged, since the color is display only.
+// typeColor sends the engine's color command for color into sc's pane through the guarded send path.
+// A provider with no command for color types nothing and returns nil.
+// A held or unconfirmed send returns its error, wrapping ErrSessionBusy when the session or its box was not free.
 func typeColor(sc sendContext, color segmentcolor.Color) error {
-	reed, engine, guid := sc.reed, sc.engine, sc.guid
-	inputs := engine.ColorSequence(color)
-	if len(inputs) == 0 {
-		return nil
-	}
-	sentAt := eventsSize(sc.eventsPath)
-	if err := playInputs(reed, guid, inputs); err != nil {
-		return err
-	}
-	var command strings.Builder
-	for _, in := range inputs {
-		command.WriteString(in.Text)
-	}
-	normalized := normalizePaneText(command.String())
-	needle := sendNeedle(normalized)
-	reader, hasReader := engine.(InputBoxReader)
-	holding := false
-	for attempt := 0; attempt < colorSettleAttempts; attempt++ {
-		if attempt > 0 {
-			inputSleep(colorSettleInterval)
-		}
-		capture, err := reed.CapturePane(guid)
-		if err != nil {
-			continue
-		}
-		holding = hasReader && boxHoldsSentText(reader, capture, normalized, needle)
-		if !holding && engine.Startup(capture) == StartupReady {
-			return nil
-		}
-	}
-	if !holding {
-		logger.Warn("shuttle: the segment color command was not confirmed consumed", "strandGUID", guid, "color", color, "attempts", colorSettleAttempts)
-		return nil
-	}
-	closeAt := sc.clock.Now().Add(submitConfirmTimeout(sc.cfg))
-	if err := confirmSubmitted(sc, reader, normalized, needle, sentAt, closeAt); err != nil {
-		logger.Warn("shuttle: the segment color command stayed in the input box", "strandGUID", guid, "color", color, "error", err)
-		return nil
-	}
-	logger.Warn("shuttle: the segment color command lingered in the input box and was submitted again", "strandGUID", guid, "color", color, "attempts", colorSettleAttempts)
-	return nil
+	return sendSequence(sc, sc.engine.ColorSequence(color))
 }
 
 // sendVerifyPositionMarginLines is how much closer to the bottom of the capture an occurrence must
@@ -1186,9 +1135,10 @@ func deliveredBelowBaseline(current, baseline paneNeedleScan) bool {
 // An engine that implements InputBoxReader types without submitting and then submits itself, inside a window of submitConfirmTimeout from the moment typing begins (cut to the send's deadline):
 // once the text has appeared, awaitSettledBox waits for the input box to stop changing,
 // and confirmSubmitted sends the Enter, then reads the box at a growing interval and sends one more Enter while the box still holds the sent text.
-// An Enter goes only into a box holding the sent text, so it never lands on an empty box, a running turn or a draft lacking the needle;
-// a draft containing the needle of a text of sendNeedleRunes or more characters is indistinguishable from the sent text and is submitted by the Enter.
-// A send that does not land fails with ErrSubmissionNotLanded, after clearUnlandedText has emptied the box of this send's own text where the engine can.
+// An Enter goes only into a box holding exactly the sent text, so it never lands on an empty box, a running turn or any draft.
+// A send that does not land fails with ErrSubmissionNotLanded, after clearUnlandedText has emptied a box holding exactly this send's own text where the engine can.
+// An engine that also implements TextPaster and SessionCycler is written to through pasteVerified instead: one paste through reed, then confirmPasted, with no Escape and no typed keys.
+// A paste that may have left its text in the box is recorded in the run's pending-send file, and the retry of the same text types nothing when a turn has started since.
 // An engine without the capability plays ComposeSend and keeps the appearance-only check with no window,
 // so a text that collapses into a paste placeholder is never confirmed there and relies on the engine's own pacing.
 //
@@ -1199,6 +1149,14 @@ func sendVerified(sc sendContext, text string) error {
 	}
 	reed, engine, guid := sc.reed, sc.engine, sc.guid
 	reader, readsBox := engine.(InputBoxReader)
+	if paster, ok := engine.(TextPaster); ok && readsBox {
+		if _, cycles := engine.(SessionCycler); cycles {
+			if retryLanded(sc, text) {
+				return nil
+			}
+			return pasteVerified(sc, paster, reader, text)
+		}
+	}
 	typing := engine.ComposeSend
 	var closeAt time.Time
 	sentAt := eventsSize(sc.eventsPath)
@@ -1235,7 +1193,7 @@ func sendVerified(sc sendContext, text string) error {
 					if !readsBox {
 						return nil
 					}
-					return settleAndConfirm(sc, reader, normalized, needle, sentAt, closeAt)
+					return settleAndConfirm(sc, reader, normalized, sentAt, closeAt)
 				case current.count < baseline.count:
 					// The viewport scrolled past an occurrence the baseline counted. Track the
 					// pane's reality rather than holding a threshold it can no longer reach.
@@ -1256,30 +1214,23 @@ func sendVerified(sc sendContext, text string) error {
 	if !readsBox {
 		return withPaneTail(err, "", sc)
 	}
-	return failUnlanded(sc, reader, normalized, needle, err)
+	return failUnlanded(sc, reader, normalized, err)
 }
 
-// inputBoxHoldsSentText reports whether the pane's input box holds the sent text.
-// A box showing a longer draft that merely contains a short sent text, a collapsed paste placeholder, nothing, no readable box or a failed capture all count as not holding it.
-func inputBoxHoldsSentText(reed ReedOps, reader InputBoxReader, guid, normalized, needle string) bool {
+// inputBoxHoldsSentText reports whether the pane's input box holds exactly the sent text.
+// A box showing a longer draft that merely contains the sent text or its leading part, a collapsed paste placeholder, nothing, no readable box or a failed capture all count as not holding it.
+func inputBoxHoldsSentText(reed ReedOps, reader InputBoxReader, guid, normalized string) bool {
 	capture, err := reed.CapturePane(guid)
 	if err != nil {
 		return false
 	}
-	return boxHoldsSentText(reader, capture, normalized, needle)
+	return boxHoldsSentText(reader, capture, normalized)
 }
 
 // boxHoldsSentText is inputBoxHoldsSentText over a capture already taken.
-func boxHoldsSentText(reader InputBoxReader, capture, normalized, needle string) bool {
+func boxHoldsSentText(reader InputBoxReader, capture, normalized string) bool {
 	boxText, ok := reader.InputBoxText(capture)
-	if !ok {
-		return false
-	}
-	box := normalizePaneText(boxText)
-	if len([]rune(normalized)) < sendNeedleRunes {
-		return box == normalized
-	}
-	return strings.Contains(box, needle)
+	return ok && normalizePaneText(boxText) == normalized
 }
 
 // sendNeedle returns the leading sendNeedleRunes characters of normalized, the slice that identifies a sent text in a pane.

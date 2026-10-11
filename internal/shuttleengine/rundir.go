@@ -158,6 +158,39 @@ func loadRunState(runDir string) (RunState, bool, error) {
 	return state.ReadJSON[RunState](path, lockPath)
 }
 
+// pendingSendFileName is the file name of the pending-send record inside a per-run directory.
+// It is a file of its own so its writes never race run.json's writers.
+const pendingSendFileName = "pending-send.json"
+
+// pendingSend records a send that may have left its text in the strand's input box.
+// EventsOffset is the events-file size just before the text was written, so a later turn start past it reads as the text going out.
+type pendingSend struct {
+	Text         string `json:"text"`
+	EventsOffset int64  `json:"eventsOffset"`
+}
+
+// savePendingSend writes p to <runDir>/pending-send.json atomically.
+func savePendingSend(runDir string, p pendingSend) error {
+	path := filepath.Join(runDir, pendingSendFileName)
+	return state.WriteJSON(path, path+".lock", p)
+}
+
+// loadPendingSend reads the pending-send record at <runDir>/pending-send.json.
+// found is false for an absent file; a file that does not decode is an error.
+func loadPendingSend(runDir string) (pendingSend, bool, error) {
+	path := filepath.Join(runDir, pendingSendFileName)
+	return state.ReadJSON[pendingSend](path, path+".lock")
+}
+
+// clearPendingSend removes the pending-send record; an absent record is already cleared.
+func clearPendingSend(runDir string) error {
+	err := os.Remove(filepath.Join(runDir, pendingSendFileName))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 // findRunByStrand scans <root>/*/run.json for the run whose StrandGUID
 // matches guid, returning its RunState and owning run directory. This is
 // how the CLI's interrupt/send verbs turn an operator-supplied guid into

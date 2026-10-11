@@ -445,3 +445,43 @@ func TestReadStuckReason(t *testing.T) {
 		t.Error("readStuckReason reported a reason for an empty scratch directory")
 	}
 }
+
+// TestHaltedOverDoneChild asserts the flag appears only for a failed, blocked or paused batten over a found, done child, and names the run that closes the pair.
+func TestHaltedOverDoneChild(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		batten     shedengine.State
+		child      shedengine.State
+		childFound bool
+		wantFlag   bool
+	}{
+		{name: "failed batten over a done child", batten: shedengine.StateFailed, child: shedengine.StateDone, childFound: true, wantFlag: true},
+		{name: "blocked batten over a done child", batten: shedengine.StateBlocked, child: shedengine.StateDone, childFound: true, wantFlag: true},
+		{name: "paused batten over a done child", batten: shedengine.StatePaused, child: shedengine.StateDone, childFound: true, wantFlag: true},
+		{name: "running batten over a done child", batten: shedengine.StateRunning, child: shedengine.StateDone, childFound: true},
+		{name: "done batten over a done child", batten: shedengine.StateDone, child: shedengine.StateDone, childFound: true},
+		{name: "failed batten over a blocked child", batten: shedengine.StateFailed, child: shedengine.StateBlocked, childFound: true},
+		{name: "failed batten over an unread child", batten: shedengine.StateFailed, child: shedengine.StateDone},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, flagged := haltedOverDoneChild("some-slug", shedengine.Status{State: tt.batten}, shedengine.Status{State: tt.child}, tt.childFound)
+
+			if flagged != tt.wantFlag {
+				t.Fatalf("haltedOverDoneChild(...) flagged = %v; want %v", flagged, tt.wantFlag)
+			}
+			if !tt.wantFlag {
+				return
+			}
+			for _, want := range []string{"batten is " + string(tt.batten), `"lyx batten run some-slug"`} {
+				if !strings.Contains(got, want) {
+					t.Errorf("flag %q lacks %q", got, want)
+				}
+			}
+		})
+	}
+}

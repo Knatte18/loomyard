@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -120,6 +121,10 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 	}
 	reportPath, err := c.resumeParkedDriver(driver.GUID, retryResume)
 	if err != nil {
+		if errors.Is(err, shuttleengine.ErrSessionBusy) {
+			refuse(resumeRefusal{message: driverBusyMessage(err, retryResume), kind: shedrun.StartDriverBusyKind})
+			return
+		}
 		refuse(resumeRefusal{message: err.Error()})
 		return
 	}

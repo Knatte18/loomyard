@@ -66,6 +66,9 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.MinFullRows != 3 {
 		t.Errorf("MinFullRows = %d, want 3", cfg.MinFullRows)
 	}
+	if cfg.OperatorQuietS != 5 {
+		t.Errorf("OperatorQuietS = %d, want 5", cfg.OperatorQuietS)
+	}
 	if cfg.DebugLog != "0" {
 		t.Errorf("DebugLog = %q, want %q", cfg.DebugLog, "0")
 	}

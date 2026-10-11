@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -243,6 +244,15 @@ func TestReed_Overrides(t *testing.T) {
 			SendTextFn:     func(string, string, bool) error { return boom },
 			SendKeyFn:      func(string, string) error { return boom },
 			CapturePaneFn:  func(string) (string, error) { return "pane", nil },
+
+			PasteSubmitFn:    func(string, string, bool) error { return boom },
+			OperatorActiveFn: func(string) (bool, time.Duration, error) { return true, 9 * time.Second, boom },
+		}
+		if err := r.PasteSubmit("g", "t", true); !errors.Is(err, boom) {
+			t.Errorf("PasteSubmitFn ignored: %v", err)
+		}
+		if active, quiet, err := r.OperatorActive("g"); !active || quiet != 9*time.Second || !errors.Is(err, boom) {
+			t.Errorf("OperatorActiveFn ignored: %v, %v, %v", active, quiet, err)
 		}
 		if s, _ := r.AddStrand(reedengine.AddSpec{}); s.GUID != "scripted" {
 			t.Errorf("AddStrandFn ignored: %+v", s)
@@ -284,6 +294,23 @@ func TestReed_PaneTransportRecordsCalls(t *testing.T) {
 	}
 	if len(r.CaptureCalls) != 1 || r.CaptureCalls[0] != "g3" {
 		t.Errorf("CaptureCalls = %v", r.CaptureCalls)
+	}
+
+	if err := r.PasteSubmit("g4", "pasted", false); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.PasteSubmitCalls) != 1 || r.PasteSubmitCalls[0] != (PasteSubmitCall{GUID: "g4", Text: "pasted", Submit: false}) {
+		t.Errorf("PasteSubmitCalls = %+v", r.PasteSubmitCalls)
+	}
+	if active, quiet, err := r.OperatorActive("g5"); active || quiet != 5*time.Second || err != nil {
+		t.Errorf("OperatorActive = %v, %v, %v; want not active, 5s, nil", active, quiet, err)
+	}
+	r.Quiet = 8 * time.Second
+	if _, quiet, _ := r.OperatorActive("g5"); quiet != 8*time.Second {
+		t.Errorf("OperatorActive quiet = %v, want the Quiet field's 8s", quiet)
+	}
+	if len(r.ActivityCalls) != 2 || r.ActivityCalls[0] != "g5" {
+		t.Errorf("ActivityCalls = %v", r.ActivityCalls)
 	}
 }
 

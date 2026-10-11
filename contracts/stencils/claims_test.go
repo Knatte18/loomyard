@@ -613,6 +613,7 @@ var wordingClaims = []stencilClaims{
 			{must: "`lyx loom reject <review-file>`", why: "a reject names its review file"},
 			{must: "marks the board task done, pushes main and closes the PR", why: "Finalize marks the task done, pushes and closes the PR"},
 			{must: "Read the driver's drive reports from the prime's own copies only when the run had trouble", section: "## After landing", why: "after landing the drive reports are read from the prime, and only for a troubled run"},
+			{must: "read `lyx batten status <slug>`; when its state is not done, run `lyx batten run <slug>` from the prime and confirm with `lyx batten status <slug>`", section: "## After landing", why: "after landing the orch closes a batten run that stopped before its teardown"},
 			{mustNot: "read the friction notes", why: "a run's Friction-Reflect files its findings as issues, which intake takes onto the board"},
 			{must: "run `lyx loom resume` in the task worktree to resume the run", why: "a circling decision resumes nothing by itself"},
 			{must: "A goto leaves the run paused,\n  so run `lyx loom resume`", why: "a goto leaves the run paused"},

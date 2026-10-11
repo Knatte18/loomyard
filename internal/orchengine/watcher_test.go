@@ -2,6 +2,7 @@ package orchengine
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -33,6 +34,7 @@ type fakeSession struct {
 	clearErr   error // Returned by every ClearSession while set.
 	clearErrs  []error
 	compactErr error    // Returned by every CompactSession while set.
+	skillsErr  error    // Returned by every LoadSkills while set.
 	colorErr   error    // Returned by every TypeColor while set.
 	colors     int      // TypeColor calls, kept out of calls so a test of any other behavior ignores the color typing.
 	calls      []string // "send:<text>", "clear", "reload-plugins", "skills:<list>" and "compact:<focus>", in order.
@@ -57,7 +59,7 @@ func (f *fakeSession) SessionState(string) (shuttleengine.RunSessionState, error
 
 func (f *fakeSession) LoadSkills(_ string, skills []string) error {
 	f.calls = append(f.calls, "skills:"+strings.Join(skills, ","))
-	return nil
+	return f.skillsErr
 }
 
 func (f *fakeSession) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error) {
@@ -160,6 +162,9 @@ func (f *fakeSession) count(prefix string) int {
 }
 
 var errBoom = errors.New("boom")
+
+// errHeld is what shuttle returns for a write its pre-write guard held: nothing was typed, and the session may take it later.
+var errHeld = fmt.Errorf("%w: strand \"s1\": the input box holds a draft; retry once the session is idle", shuttleengine.ErrSessionBusy)
 
 // reloadPluginsCall is the call the fake records for the plugins step.
 const reloadPluginsCall = "reload-plugins"
@@ -2337,4 +2342,130 @@ func TestWatcher_LogsDisagreementBetweenIdleProbeAndSessionState(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestWatcher_HeldNoticeWaitsForTheOperatorAndRecordsWhy pins an idle-phase notice that shuttle held:
+// the notice file stays and the tick returns no error, and the reason is recorded in State.Stuck with StuckBySend.
+// A probe that is not idle leaves that reason alone, and the first send that passes clears it and removes the notice.
+func TestWatcher_HeldNoticeWaitsForTheOperatorAndRecordsWhy(t *testing.T) {
+	t.Parallel()
+
+	e := newWatchEnv(t)
+	e.queue("notice")
+	e.s.sendErrs = []error{errHeld}
+	e.tick()
+	if got := e.noticeLines(); !slices.Equal(got, []string{"notice"}) {
+		t.Fatalf("notices = %v, want the held notice kept", got)
+	}
+	if st := e.state(); st.Stuck != errHeld.Error() || !st.StuckBySend || st.StuckByHold {
+		t.Fatalf("state = %+v, want the held reason recorded by the send", st)
+	}
+
+	e.s.idle = false
+	e.tick()
+	if st := e.state(); st.Stuck != errHeld.Error() || !st.StuckBySend {
+		t.Errorf("state = %+v after a probe that is not idle, want the send's reason left alone", st)
+	}
+
+	e.s.idle = true
+	e.tick()
+	if got := e.noticeLines(); len(got) != 0 {
+		t.Errorf("notices = %v, want the notice removed once its send passed", got)
+	}
+	if st := e.state(); st.Stuck != "" || st.StuckBySend {
+		t.Errorf("state = %+v, want the send's reason cleared", st)
+	}
+}
+
+// TestWatcher_HeldTypedStepRetriesOnTheNextTickWithoutAdvancing pins every typed step of the cycle that shuttle held:
+// the tick returns no error, the phase and step stay unconfirmed, and the next tick types the same step.
+func TestWatcher_HeldTypedStepRetriesOnTheNextTickWithoutAdvancing(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// run drives the env to the step, holds it, ticks, checks the unconfirmed state, releases it and ticks again.
+		run func(t *testing.T, e *watchEnv)
+	}{
+		{"handoff request", func(t *testing.T, e *watchEnv) {
+			e.s.usage["a"] = 2000
+			e.s.events = []shuttleengine.Event{stop("a")}
+			e.tick()
+			e.clock.advance(11 * time.Second)
+			e.s.sendErrs = []error{errHeld}
+			e.tick()
+			if st := e.state(); st.Phase != PhaseHandoffRequested || st.PhaseInjected || e.s.count("send:") != 1 {
+				t.Fatalf("state = %+v calls = %v, want the request unconfirmed after one held send", st, e.s.calls)
+			}
+			e.tick()
+			if st := e.state(); !st.PhaseInjected || e.s.count("send:") != 2 || e.s.calls[0] != e.s.calls[1] {
+				t.Errorf("state = %+v calls = %v, want the same request retyped and confirmed", st, e.s.calls)
+			}
+		}},
+		{"clear", func(t *testing.T, e *watchEnv) {
+			e.injectHandoff()
+			e.writeHandoff()
+			e.s.events = append(e.s.events, stop("handoff"))
+			e.s.clearErr = errHeld
+			e.tick()
+			if st := e.state(); st.Phase != PhaseClearing || st.PhaseInjected || e.s.count("clear") != 1 {
+				t.Fatalf("state = %+v calls = %v, want the clear unconfirmed after one held clear", st, e.s.calls)
+			}
+			e.s.clearErr = nil
+			e.tick()
+			if st := e.state(); !st.PhaseInjected || e.s.count("clear") != 2 {
+				t.Errorf("state = %+v calls = %v, want the clear retyped and confirmed", st, e.s.calls)
+			}
+		}},
+		{"color step", func(t *testing.T, e *watchEnv) {
+			e.reachClearing()
+			e.s.colorErr = errHeld
+			e.tick()
+			if st := e.state(); st.Phase != PhaseResuming || e.reloadStepOf(st) != ReloadStepColor {
+				t.Fatalf("state = %+v, want the reload held at its color step", st)
+			}
+			e.s.colorErr = nil
+			e.tick()
+			if st := e.state(); e.reloadStepOf(st) != ReloadStepPlugins {
+				t.Errorf("state = %+v, want the reload on its plugins step after the color passed", st)
+			}
+		}},
+		{"skills step", func(t *testing.T, e *watchEnv) {
+			e.withSkills()
+			e.reachClearing()
+			e.tick() // color
+			e.tick() // plugins
+			e.s.skillsErr = errHeld
+			e.tick()
+			if st := e.state(); e.reloadStepOf(st) != ReloadStepSkills || st.PhaseInjected || e.s.count("skills:") != 1 {
+				t.Fatalf("state = %+v calls = %v, want the skills step unconfirmed after one held load", st, e.s.calls)
+			}
+			e.s.skillsErr = nil
+			e.tick()
+			if st := e.state(); !st.PhaseInjected || e.s.count("skills:") != 2 {
+				t.Errorf("state = %+v calls = %v, want the skills load retyped and confirmed", st, e.s.calls)
+			}
+		}},
+		{"start color", func(t *testing.T, e *watchEnv) {
+			e.s.colorErr = errHeld
+			e.tick()
+			e.s.colorErr = nil
+			e.tick()
+			e.tick()
+			if e.s.colors != 2 {
+				t.Errorf("TypeColor calls = %d, want the held color retried once and then not again", e.s.colors)
+			}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tt.run(t, newWatchEnv(t))
+		})
+	}
+}
+
+// reloadStepOf returns the normalised reload step st is in.
+func (e *watchEnv) reloadStepOf(st State) int {
+	return e.w.reloadStep(st)
 }

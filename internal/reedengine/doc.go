@@ -206,7 +206,15 @@
 // When the watcher cannot be opened the loop logs that once and stays in poll mode for good.
 // A resize while a poll-mode watcher is backed off heals at the next tick, up to a minute late.
 // Windows is poll-only, and on POSIX a watcher stays in poll mode when its file watch failed at promotion or until a later attach or apply installs the hook.
+// PasteSubmit is the pane-write transport op: one tmux invocation fills a fresh named buffer (`lyx-inject-` plus 8 hex characters) with the text, pastes it as a bracketed paste, deletes the buffer, and, when asked, sends Enter behind it.
+// The paste and the Enter reach the pane in one command list, so nothing the operator types lands between them, and the operator's automatic paste-buffer stack is never touched.
+// A text longer than tmux's message limit fails the whole invocation and pastes nothing; every text lyx injects is one short line.
+// A failed invocation stops before the paste's own delete, so a best-effort `delete-buffer` of its own removes the buffer.
+// OperatorActive is the operator-activity query: it lists the session's attached clients with their active pane and last-activity epoch second, and answers whether any client is on the strand's pane with activity within the quiet window, plus that window.
+// The window is the reed.yaml key `operator_quiet_s` (seconds, default 5; a zero or negative value takes the default, as does a materialized reed.yaml lacking the key until `lyx config reconcile` writes it).
+// No attached client, or clients on other panes only, answer not active, and a failed listing is returned as the error for the caller to decide on.
 // The hub watchdog daemon runs a name-repair tick (namerepair.go) beside its resize loop: it resets a drifted pane title itself and repairs a drifted provider session name through the SessionNamer seam, which the provider package implements and cliwire fills.
+// The session-name repair types the rename only into an idle pane with no active operator, and does it with one paste-submit under the op lock it already holds; an active operator defers the repair to the next tick, and an unreadable client list does not hold it.
 // The name-repair tick backs off: its wait starts at ten seconds, doubles through NextWakeCadence up to a minute across passes that repair nothing, and returns to ten seconds after a pass that repaired a title or a session name.
 // NextWakeCadence is the one backoff rule the daemon's loops share.
 // The discover signal is the hub-level file named DiscoverSignalFileName, at the path Geometry.DiscoverSignalPath tells.

@@ -206,12 +206,28 @@ type Reed struct {
 	// WaitMarkErr makes SetWaitMark fail after recording the call.
 	WaitMarkErr error
 
-	AddStrandFn    func(spec reedengine.AddSpec) (reedengine.Strand, error)
-	RemoveStrandFn func(guid string, recursive bool) (reedengine.Removed, error)
-	StatusFn       func() (reedengine.StatusResult, error)
-	SendTextFn     func(guid, text string, submit bool) error
-	SendKeyFn      func(guid, key string) error
-	CapturePaneFn  func(guid string) (string, error)
+	// PasteSubmitCalls records every PasteSubmit call, in call order.
+	PasteSubmitCalls []PasteSubmitCall
+	// ActivityCalls records the GUID of every OperatorActive call, in call order.
+	ActivityCalls []string
+	// Quiet is the quiet window OperatorActive answers when OperatorActiveFn is nil; zero answers 5 s.
+	Quiet time.Duration
+
+	AddStrandFn      func(spec reedengine.AddSpec) (reedengine.Strand, error)
+	RemoveStrandFn   func(guid string, recursive bool) (reedengine.Removed, error)
+	StatusFn         func() (reedengine.StatusResult, error)
+	SendTextFn       func(guid, text string, submit bool) error
+	SendKeyFn        func(guid, key string) error
+	CapturePaneFn    func(guid string) (string, error)
+	PasteSubmitFn    func(guid, text string, submit bool) error
+	OperatorActiveFn func(guid string) (bool, time.Duration, error)
+}
+
+// PasteSubmitCall is one recorded PasteSubmit call.
+type PasteSubmitCall struct {
+	GUID   string
+	Text   string
+	Submit bool
 }
 
 // SendTextCall is one recorded SendText call.
@@ -326,6 +342,32 @@ func (r *Reed) SendKey(guid, key string) error {
 		return r.SendKeyFn(guid, key)
 	}
 	return nil
+}
+
+// PasteSubmit records the call and answers PasteSubmitFn, else nil.
+func (r *Reed) PasteSubmit(guid, text string, submit bool) error {
+	r.mu.Lock()
+	r.PasteSubmitCalls = append(r.PasteSubmitCalls, PasteSubmitCall{GUID: guid, Text: text, Submit: submit})
+	r.mu.Unlock()
+	if r.PasteSubmitFn != nil {
+		return r.PasteSubmitFn(guid, text, submit)
+	}
+	return nil
+}
+
+// OperatorActive records the GUID and answers OperatorActiveFn, else not active with Quiet, defaulting to 5 s.
+func (r *Reed) OperatorActive(guid string) (bool, time.Duration, error) {
+	r.mu.Lock()
+	r.ActivityCalls = append(r.ActivityCalls, guid)
+	quiet := r.Quiet
+	r.mu.Unlock()
+	if r.OperatorActiveFn != nil {
+		return r.OperatorActiveFn(guid)
+	}
+	if quiet == 0 {
+		quiet = 5 * time.Second
+	}
+	return false, quiet, nil
 }
 
 // SetWaitMark records the call and answers WaitMarkErr.

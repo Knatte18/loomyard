@@ -310,3 +310,38 @@ func TestSweepOrphans_OneUndeletableDirDoesNotAbandonTheRest(t *testing.T) {
 		t.Errorf("os.Stat(%q) = %v; want the sweepable orphan gone", sweepable, statErr)
 	}
 }
+
+func TestPendingSend_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	runDir := t.TempDir()
+	if _, found, err := loadPendingSend(runDir); err != nil || found {
+		t.Fatalf("loadPendingSend() on an absent file = found %v, error %v, want not found", found, err)
+	}
+	if err := clearPendingSend(runDir); err != nil {
+		t.Fatalf("clearPendingSend() on an absent file error: %v", err)
+	}
+
+	want := pendingSend{Text: "run the suite", EventsOffset: 42}
+	if err := savePendingSend(runDir, want); err != nil {
+		t.Fatalf("savePendingSend() error: %v", err)
+	}
+	got, found, err := loadPendingSend(runDir)
+	if err != nil || !found || got != want {
+		t.Fatalf("loadPendingSend() = %+v, found %v, error %v, want %+v", got, found, err, want)
+	}
+
+	if err := clearPendingSend(runDir); err != nil {
+		t.Fatalf("clearPendingSend() error: %v", err)
+	}
+	if _, found, _ := loadPendingSend(runDir); found {
+		t.Error("loadPendingSend() found the record after clearPendingSend()")
+	}
+
+	if err := os.WriteFile(filepath.Join(runDir, pendingSendFileName), []byte("{not json"), 0o644); err != nil {
+		t.Fatalf("write corrupt record: %v", err)
+	}
+	if _, _, err := loadPendingSend(runDir); err == nil {
+		t.Error("loadPendingSend() on a corrupt file error = nil, want a decode error")
+	}
+}
