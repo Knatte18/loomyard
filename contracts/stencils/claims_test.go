@@ -342,6 +342,7 @@ var wordingClaims = []stencilClaims{
 		wantAll("the brief tells the fork to record design calls and the decision and to resume the run",
 			"lyx loom decision add", "lyx loom circling accept", "lyx loom circling continue", "lyx loom resume"),
 		wantNone("the brief resumes through resume, since start is only a halted run's way forward", "lyx loom start"),
+		wantAll("a darn run has no decision record, so its fork reports design calls instead of recording them", "A darn run has no decision record"),
 		wantAll("the brief names both causes", "`circling`", "`budget`"),
 		wantAll("the brief says accept passes the segment unconverged", "recorded as unconverged"),
 		wantAll("a fork that cannot settle the question records nothing and reports back", "record nothing", "The run stays `awaiting`"),
