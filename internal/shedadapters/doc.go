@@ -202,6 +202,9 @@
 // Round 1 runs the whole fan and drops a focus file's excludes, and an excluded lens returns only with a new generation, since an archived generation moves the whole run directory aside.
 // Every completed round, solo and fanned, also leaves round-<N>-usage.yaml beside them:
 // the fan and lenses the round ran, and each half's model, run times, wall time and tokens, forks included, with an unknown reading left unknown rather than zero.
+// The record also carries the Bouncer's `seed` and `judge` lists, one entry per pass in the same half shape.
+// Every writer merges into the record on write, and a record that does not decode is archived aside and replaced by one holding only the writer's part.
+// A record without a review half reads as missing for the lens facts and the lens exclusions, since only the Bouncer has written to it.
 // A gate-failed round is archived and writes none, and a failed write is a warning that never changes the round's outcome.
 // The told run directory's whole content and every timestamped archive the adapters write -- per-file siblings inside the run directory and whole-generation siblings of the run directory beside it (archiveRunDir) alike -- are durable record the wiring layer commits, so the adapters write nothing there that is not meant for git.
 //
