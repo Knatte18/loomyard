@@ -293,7 +293,7 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 	// The Bouncer's next call is a genuine judge retry through judgeCall, whose failures exit through degrade and are counted on the Bouncer row,
 	// so a judge that never recovers halts the run within that row's budget.
 	if highest > 0 {
-		if _, judged := recordedVerdict(p.runDir, highest); !judged {
+		if _, _, judged := recordedVerdict(p.runDir, highest); !judged {
 			if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}

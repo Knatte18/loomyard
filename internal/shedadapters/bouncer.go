@@ -339,8 +339,8 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 			// its harvest and settles it -- exactly as judgeCall's own harvest step does, and never
 			// as the clear below, whose whole premise is a verdict some EARLIER call already
 			// settled the segment on.
-			if verdict, ok := harvestedVerdict(b.cfg.RunDir, n); ok {
-				return b.settleUnlessRefused(ctx, n, verdict, true)
+			if verdict, ledger, ok := harvestedVerdict(b.cfg.RunDir, n); ok {
+				return b.settleUnlessRefused(ctx, n, verdict, ledger, true)
 			}
 			if b.judged(n) {
 				return b.retireLegacyVerdict(ctx, n)
@@ -403,11 +403,11 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		return b.seedCall(ctx)
 	}
 
-	if verdict, ok := recordedVerdict(b.cfg.RunDir, n); ok {
+	if verdict, ledger, ok := recordedVerdict(b.cfg.RunDir, n); ok {
 		if b.standsAsRecorded(n) {
 			return b.settle(ctx, n, false)
 		}
-		return b.settleUnlessRefused(ctx, n, verdict, false)
+		return b.settleUnlessRefused(ctx, n, verdict, ledger, false)
 	}
 	return b.judgeCall(ctx, n)
 }
@@ -443,7 +443,7 @@ func (b *Bouncer) round1FocusSeeded() bool {
 // Bouncer's own run directory -- the bool half of recordedVerdict, for the callers that act on the
 // fact of a judgment rather than on which way it went.
 func (b *Bouncer) judged(round int) bool {
-	_, ok := recordedVerdict(b.cfg.RunDir, round)
+	_, _, ok := recordedVerdict(b.cfg.RunDir, round)
 	return ok
 }
 
@@ -451,7 +451,7 @@ func (b *Bouncer) judged(round int) bool {
 // CONVERGED, or any verdict whose decision is a settled accept.
 // A malformed decision file is not a settled one, so settle reports it.
 func (b *Bouncer) settledGeneration(round int) bool {
-	verdict, ok := recordedVerdict(b.cfg.RunDir, round)
+	verdict, _, ok := recordedVerdict(b.cfg.RunDir, round)
 	if !ok {
 		return false
 	}
@@ -602,9 +602,10 @@ func (b *Bouncer) retireLegacyVerdict(ctx context.Context, round int) (shedengin
 }
 
 // settleUnlessRefused settles round's judgment unless judgmentRefusal rejects it, in which case the round is re-judged.
-func (b *Bouncer) settleUnlessRefused(ctx context.Context, round int, verdict bouncerVerdict, spawned bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	if cause := b.judgmentRefusal(round, verdict); cause != "" {
-		return b.rejudge(ctx, round, cause)
+// verdict and ledger are round's judgment as the caller's verdict read parsed them.
+func (b *Bouncer) settleUnlessRefused(ctx context.Context, round int, verdict bouncerVerdict, ledger ledgerFile, spawned bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	if cause := b.judgmentRefusal(round, verdict, ledger); cause != "" {
+		return b.rejudge(ctx, round, verdict, cause)
 	}
 	return b.settle(ctx, round, spawned)
 }
@@ -618,21 +619,12 @@ func (b *Bouncer) standsAsRecorded(round int) bool {
 	return escalated || decided
 }
 
-// judgmentRefusal returns why the judge's verdict for round does not stand, or "" when it does.
+// judgmentRefusal returns why the judge's verdict and ledger for round do not stand, or "" when they do.
 // A CONVERGED verdict is refused over a ledger entry open at severity BLOCKING, and over a review that does not parse or carries a BLOCKING finding.
 // Any verdict of round 2 or later is refused when its ledger drops a key of the previous round's ledger; only keys are compared.
 // A previous ledger that cannot be read or parsed is warned about and skips that check.
 // It reads only on-disk state under the run directory, so a harvest and a later replay of the same round agree.
-func (b *Bouncer) judgmentRefusal(round int, verdict bouncerVerdict) string {
-	ledgerRaw, err := os.ReadFile(ledgerPath(b.cfg.RunDir, round))
-	if err != nil {
-		return fmt.Sprintf("the ledger is unreadable: %v", err)
-	}
-	ledger, err := parseLedger(ledgerRaw)
-	if err != nil {
-		return fmt.Sprintf("the ledger does not parse: %v", err)
-	}
-
+func (b *Bouncer) judgmentRefusal(round int, verdict bouncerVerdict, ledger ledgerFile) string {
 	if verdict == verdictConverged {
 		for _, entry := range ledger.Entries {
 			if entry.Status == "open" && entry.Severity == burlerengine.SeverityBlocking {
@@ -683,8 +675,7 @@ func (b *Bouncer) judgmentRefusal(round int, verdict bouncerVerdict) string {
 // The judge stays the only writer of those files.
 // The Stuck spends one counted bounce unit, is never BudgetExempt and never escalates, so a segment at its budget halts on it.
 // A failed archive degrades naming that failure instead.
-func (b *Bouncer) rejudge(ctx context.Context, round int, cause string) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	verdict, _ := recordedVerdict(b.cfg.RunDir, round)
+func (b *Bouncer) rejudge(ctx context.Context, round int, verdict bouncerVerdict, cause string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := archiveStaleOutputs(judgeOutputs(b.cfg.RunDir, round), b.cfg.Now); err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer failed to archive a refused judgment's outputs", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
 	}
@@ -1209,8 +1200,8 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 	// Harvest: evaluate judged(n) against what is now on disk before classifying the run's own
 	// outcome. When it holds, act on a judgment that provably happened regardless of what the run
 	// reported.
-	if verdict, ok := harvestedVerdict(b.cfg.RunDir, n); ok {
-		return b.settleUnlessRefused(ctx, n, verdict, true)
+	if verdict, ledger, ok := harvestedVerdict(b.cfg.RunDir, n); ok {
+		return b.settleUnlessRefused(ctx, n, verdict, ledger, true)
 	}
 	if b.judged(n) {
 		return b.retireLegacyVerdict(ctx, n)
