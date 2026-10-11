@@ -258,7 +258,7 @@ func (p *innerRunProducer) publishRetryResume(ctx context.Context, w *childWait,
 		w.publishRetryAt = p.deps.Now().Add(p.noticeProbe)
 		w.publishRetryReason = fmt.Sprintf("the automatic Publish verify retry waits to resume the child at %s; retrying (%s)", r.target, w.publishRefusal)
 		if busy {
-			p.noticeDriverBusy(ctx, w)
+			p.noticeDriverBusy(ctx, w, err)
 		}
 		p.report(w, w.publishRetryReason)
 		return nil
