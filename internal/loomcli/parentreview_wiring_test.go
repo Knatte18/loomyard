@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -17,6 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
 // TestDiscussionWriteRow_GateListIsDiscussionThenParentReview asserts the embedded recipe's Discussion-Write row lists the discussion gate, then a parent-review gate with attempts 1 and pass_on_cap: one scope review whose rewrite goes on to the perch.
@@ -81,7 +85,7 @@ func TestNewParentReviewConfig_ReviewerFromResolver(t *testing.T) {
 					t.Fatalf("WriteShortname = %v; want nil", err)
 				}
 			}
-			cfg, err := newParentReviewConfig(loc, reedengine.Config{}, loomengine.Config{ParentReviewWaitMin: 5}, t.TempDir())
+			cfg, err := newParentReviewConfig(loc, reedengine.Config{}, loomengine.Config{ParentReviewWaitMin: 5}, t.TempDir(), &shuttlefake.Engine{}, shuttleengine.Config{})
 			if err != nil {
 				t.Fatalf("newParentReviewConfig = %v; want nil", err)
 			}
@@ -96,6 +100,51 @@ func TestNewParentReviewConfig_ReviewerFromResolver(t *testing.T) {
 			}
 			if got := cfg.WaitBound.Minutes(); got != 5 {
 				t.Errorf("WaitBound = %v minutes; want 5", got)
+			}
+		})
+	}
+}
+
+// TestNewParentReviewConfig_KeepAliveInterval asserts the keep-alive interval is the writer role's prompt-cache lifetime less a minute, and zero when the lifetime reaches the wait bound or cannot be resolved.
+// The seats producer's writer is its chair, so a role mapped for the chair decides the seats rows.
+func TestNewParentReviewConfig_KeepAliveInterval(t *testing.T) {
+	t.Parallel()
+
+	chairRole := loomengine.DiscussionWriterRole(loomengine.Config{DiscussionProducer: loomengine.DiscussionProducerSeats})
+	tests := []struct {
+		name       string
+		producer   string
+		defaultTTL string
+		roles      map[string]string
+		want       time.Duration
+	}{
+		{name: "single at the 5m default", producer: loomengine.DiscussionProducerSingle, defaultTTL: "5m", want: 4 * time.Minute},
+		{name: "single with the discussion role mapped to 1h", producer: loomengine.DiscussionProducerSingle, defaultTTL: "5m", roles: map[string]string{"discussion": "1h"}, want: 0},
+		{name: "seats with the chair role mapped to 1h", producer: loomengine.DiscussionProducerSeats, defaultTTL: "5m", roles: map[string]string{chairRole: "1h"}, want: 0},
+		{name: "seats at the 5m default", producer: loomengine.DiscussionProducerSeats, defaultTTL: "5m", want: 4 * time.Minute},
+		{name: "invalid TTL", producer: loomengine.DiscussionProducerSingle, defaultTTL: "1H", want: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+			shuttleCfg, err := shuttleengine.LoadConfig(t.TempDir(), "shuttle")
+			if err != nil {
+				t.Fatalf("load the shipped shuttle template: %v", err)
+			}
+			shuttleCfg.ClaudePromptCacheTTL = tt.defaultTTL
+			shuttleCfg.ClaudePromptCacheTTLRoles = tt.roles
+			loomCfg := loomengine.Config{DiscussionProducer: tt.producer, ParentReviewWaitMin: 60}
+			cfg, err := newParentReviewConfig(loc, reedengine.Config{}, loomCfg, t.TempDir(), claudeengine.NewFromConfig(shuttleCfg), shuttleCfg)
+			if err != nil {
+				t.Fatalf("newParentReviewConfig = %v; want nil", err)
+			}
+			if cfg.KeepAlive != tt.want {
+				t.Errorf("KeepAlive = %v; want %v", cfg.KeepAlive, tt.want)
+			}
+			if tt.want > 0 && cfg.RenderKeepAlive == nil {
+				t.Errorf("RenderKeepAlive is nil; want it set when KeepAlive is positive")
 			}
 		})
 	}

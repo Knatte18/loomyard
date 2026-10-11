@@ -55,7 +55,7 @@ internal/landingshed: 68
 internal/lock: 4
 internal/logger: 34
 internal/loggerconfig: 3
-internal/loomcli: 200
+internal/loomcli: 201
 internal/loomengine: 43
 internal/loomrecipe: 51
 internal/loomshed: 76
