@@ -4,6 +4,14 @@
 // It does no spawning, polling, or filesystem writing itself — shedadapters.SingleLLMProducer drives
 // the returned Spec through the shuttle seam, reached from internal/shedrecipe's DiscussionWrite
 // registry entry.
+//
+// With discussion_producer twill the spec is the single writer's with the twill block rendered into the discussion template and fork subagents authorized.
+// The block's lenses come from the twill-discussion fan in burler.yaml, and the forks wait on the ready marker, which the writer creates once its record passes the self-check and Go removes before every fresh spawn.
+// The spec sets ForkSubagents, so the writer may spawn subagents of type fork, and the webster fork guard is installed whatever the Agent setting.
+// While the shuttle config's claude_deny_agent_tool is true, the Agent hook admits fork subagents only and refuses every other subagent type; with it false no Agent hook is installed, so the writer and its forks may spawn any subagent type, as single may under the same setting.
+// The hook admits a fork spawn from any session in the run, so a fork spawning a further fork is refused only by the fork boilerplate.
+// Forks inherit every other standing deny of the writer's session.
+// The writer's write scope and a fork's read-only and no-Agent-call rules are stencil-level, and the discussion gates bound what lands in the record.
 
 package loomengine
 
@@ -71,21 +79,31 @@ func DiscussionSpec(layout *lyxcwd.Location, stencilsDir, parentName string, cfg
 		frictionDirective = ""
 	}
 
-	prompt, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, parentDirective, "", "", autonomous)
+	var twillDirective, twillWriteScope string
+	twill := cfg.DiscussionProducer == DiscussionProducerTwill
+	if twill {
+		twillDirective, twillWriteScope, err = twillBlocks(layout, stencilsDir)
+		if err != nil {
+			return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: %w", err)
+		}
+	}
+
+	prompt, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, parentDirective, twillDirective, twillWriteScope, autonomous)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: %w", err)
 	}
 
 	return shuttleengine.Spec{
-		Prompt:      string(prompt),
-		OutputFiles: []string{decisionRecordPath, supportLogPath},
-		Model:       resolved.Model,
-		Effort:      resolved.Params["effort"],
-		Version:     resolved.Params["version"],
-		Interactive: !autonomous,
-		Role:        discussionRole,
-		Segment:     segmentcolor.Discussion,
-		Skills:      discussionSkills,
-		Timeout:     time.Duration(cfg.DiscussionTimeoutMin) * time.Minute,
+		Prompt:        string(prompt),
+		OutputFiles:   []string{decisionRecordPath, supportLogPath},
+		Model:         resolved.Model,
+		Effort:        resolved.Params["effort"],
+		Version:       resolved.Params["version"],
+		Interactive:   !autonomous,
+		Role:          discussionRole,
+		Segment:       segmentcolor.Discussion,
+		Skills:        discussionSkills,
+		Timeout:       time.Duration(cfg.DiscussionTimeoutMin) * time.Minute,
+		ForkSubagents: twill,
 	}, nil
 }

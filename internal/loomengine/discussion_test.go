@@ -12,10 +12,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // TestDiscussionSpec verifies DiscussionSpec's field mapping for both autonomous values.
@@ -39,17 +42,25 @@ func TestDiscussionSpec(t *testing.T) {
 
 	tests := []struct {
 		name            string
+		producer        string
 		autonomous      bool
 		wantInteractive bool
+		wantForks       bool
 	}{
-		{"Interactive", false, true},
-		{"Autonomous", true, false},
+		{"Interactive", DiscussionProducerSingle, false, true, false},
+		{"Autonomous", DiscussionProducerSingle, true, false, false},
+		{"Twill autonomous", DiscussionProducerTwill, true, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			cfg := cfg
+			cfg.DiscussionProducer = tt.producer
 			spec, err := DiscussionSpec(layout, newTestStencilsDir(t), "", cfg, reg, "add-json-flag", tt.autonomous)
 			if err != nil {
 				t.Fatalf("DiscussionSpec(..., autonomous=%v) = _, %v; want nil error", tt.autonomous, err)
+			}
+			if spec.ForkSubagents != tt.wantForks {
+				t.Errorf("DiscussionSpec(producer=%q).ForkSubagents = %v; want %v", tt.producer, spec.ForkSubagents, tt.wantForks)
 			}
 
 			if len(spec.OutputFiles) != len(wantOutputFiles) {
@@ -89,14 +100,18 @@ func TestDiscussionSpec(t *testing.T) {
 func TestDiscussionSpec_Refuses(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name         string
-		slug         string
-		missingDir   bool
-		wantErrNames string
+		name       string
+		slug       string
+		missingDir bool
+		// burlerYAML, when non-empty, runs the twill producer against a temp-dir location whose anchor holds this burler.yaml.
+		burlerYAML   string
+		wantErrNames []string
 	}{
 		{name: "empty slug", slug: ""},
 		// The parent directive renders before the discussion stencil is read, so it is the first stencil the error names.
-		{name: "missing stencils directory", slug: "add-json-flag", missingDir: true, wantErrNames: "parent-directive-none"},
+		{name: "missing stencils directory", slug: "add-json-flag", missingDir: true, wantErrNames: []string{"parent-directive-none"}},
+		{name: "twill burler.yaml does not parse", slug: "add-json-flag", burlerYAML: "fans: [unterminated\n", wantErrNames: []string{"twill-discussion", "burler.yaml"}},
+		{name: "twill fan names an undefined lens", slug: "add-json-flag", burlerYAML: "fans:\n  twill-discussion:\n    - no-such-lens\n", wantErrNames: []string{"twill-discussion", "burler.yaml"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -104,6 +119,11 @@ func TestDiscussionSpec_Refuses(t *testing.T) {
 			worktreeRoot := filepath.Join("home", "user", "repo")
 			layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 			cfg := Config{Discussion: "opus[effort=high]", DiscussionTimeoutMin: 480}
+			if tt.burlerYAML != "" {
+				layout = &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "repo"}
+				writeBurlerYAML(t, layout, tt.burlerYAML)
+				cfg.DiscussionProducer = DiscussionProducerTwill
+			}
 			reg, err := modelspec.LoadRegistry(t.TempDir())
 			if err != nil {
 				t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
@@ -117,11 +137,112 @@ func TestDiscussionSpec_Refuses(t *testing.T) {
 			if err == nil {
 				t.Fatalf("DiscussionSpec(slug=%q, missingDir=%v) = _, nil; want non-nil error", tt.slug, tt.missingDir)
 			}
-			if !strings.Contains(err.Error(), tt.wantErrNames) {
-				t.Errorf("DiscussionSpec(slug=%q, missingDir=%v) error = %q; want it to name %q", tt.slug, tt.missingDir, err.Error(), tt.wantErrNames)
+			for _, want := range tt.wantErrNames {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("DiscussionSpec(slug=%q, missingDir=%v) error = %q; want it to name %q", tt.slug, tt.missingDir, err.Error(), want)
+				}
 			}
 		})
 	}
+}
+
+// writeBurlerYAML plants content as the burler.yaml of layout's anchor, creating its _lyx/config/ directory.
+func writeBurlerYAML(t *testing.T, layout *lyxcwd.Location, content string) {
+	t.Helper()
+	path := configengine.ConfigFile(layout.AnchorPath(), "burler")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+	}
+}
+
+// TestDiscussionSpec_Twill verifies the twill producer's rendered prompt: the template fan's lenses in order, the ready marker, the rubric path, the await command, the fork instruction, the host's self-check and step names and the write-scope sentence, with the directive between the mode rules and Step 5, and that a burler.yaml redefining the fan replaces the lenses.
+func TestDiscussionSpec_Twill(t *testing.T) {
+	t.Parallel()
+	reg, err := modelspec.LoadRegistry(t.TempDir())
+	if err != nil {
+		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+	}
+	cfg := Config{Discussion: "opus[effort=high]", DiscussionTimeoutMin: 480, DiscussionProducer: DiscussionProducerTwill}
+
+	templateFan, err := burlerengine.ResolveFan(burlerengine.Config{}, twillFan)
+	if err != nil {
+		t.Fatalf("ResolveFan(zero Config, %q) = _, %v; want nil error", twillFan, err)
+	}
+
+	tests := []struct {
+		name       string
+		burlerYAML string
+		wantLenses []string
+	}{
+		{name: "template fan without burler.yaml", wantLenses: lensNames(templateFan)},
+		{name: "burler.yaml redefines the fan", burlerYAML: "fans:\n  twill-discussion: [goal-scope]\n", wantLenses: []string{"goal-scope"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			layout := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "repo"}
+			if tt.burlerYAML != "" {
+				writeBurlerYAML(t, layout, tt.burlerYAML)
+			}
+			stencilsDir := newTestStencilsDir(t)
+
+			spec, err := DiscussionSpec(layout, stencilsDir, "", cfg, reg, "add-json-flag", true)
+			if err != nil {
+				t.Fatalf("DiscussionSpec(twill) = _, %v; want nil error", err)
+			}
+			prompt := spec.Prompt
+
+			at := 0
+			for _, lens := range tt.wantLenses {
+				next := strings.Index(prompt[at:], "- "+lens+": ")
+				if next < 0 {
+					t.Fatalf("DiscussionSpec(twill).Prompt lacks lens %q after offset %d; want the lenses %v in order", lens, at, tt.wantLenses)
+				}
+				at += next
+			}
+			if tt.burlerYAML != "" {
+				for _, dropped := range templateFan {
+					if dropped.Name != "goal-scope" && strings.Contains(prompt, "- "+dropped.Name+": ") {
+						t.Errorf("DiscussionSpec(twill).Prompt carries lens %q; want only the burler.yaml fan %v", dropped.Name, tt.wantLenses)
+					}
+				}
+			}
+
+			for _, want := range []string{
+				DiscussionReadyMarker(layout),
+				stencilstore.Path(stencilsDir, "loom-rubric-discussion-review"),
+				"lyx shuttle await",
+				`subagent_type: "fork"`,
+				"lyx loom validate-discussion",
+				"Step 5",
+				"Step 6",
+				"and you create its parent directory too",
+			} {
+				if !strings.Contains(prompt, want) {
+					t.Errorf("DiscussionSpec(twill).Prompt lacks %q", want)
+				}
+			}
+
+			modeRulesAt := strings.Index(prompt, "This session is running autonomously")
+			directiveAt := strings.Index(prompt, "lyx shuttle await")
+			stepFiveAt := strings.Index(prompt, "## Step 5")
+			if modeRulesAt < 0 || directiveAt < modeRulesAt || stepFiveAt < directiveAt {
+				t.Errorf("mode rules at %d, directive at %d, Step 5 at %d; want the directive between the mode rules and Step 5", modeRulesAt, directiveAt, stepFiveAt)
+			}
+		})
+	}
+}
+
+// lensNames returns the names of lenses, in order.
+func lensNames(lenses []burlerengine.Lens) []string {
+	names := make([]string, len(lenses))
+	for i, lens := range lenses {
+		names[i] = lens.Name
+	}
+	return names
 }
 
 // TestDiscussionSpec_ReadsStencilAtCallTime verifies DiscussionSpec's prompt reflects an on-disk edit to the stencils directory rather than the embedded default, per the runtime-read-not-embed Shared Decision.
