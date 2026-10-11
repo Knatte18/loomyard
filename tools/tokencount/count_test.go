@@ -456,24 +456,51 @@ func TestRecentRuns(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	touch("/hub/old", 3*time.Hour)
-	touch("/hub/new", time.Hour)
-	touch("/hub/mid", 2*time.Hour)
-	touch("/hub/prime", 0)
-	touch("/hub/parked", 0)
-	touch("/other/newest", 0)
-	if err := os.MkdirAll(projectDir(projects, "/hub/empty"), 0o755); err != nil {
+	hub := t.TempDir()
+	if err := os.Mkdir(filepath.Join(hub, "inflight"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	tag := []ArchiveTag{{Name: "archive/x/1"}}
-	finished := map[string][]ArchiveTag{"old": tag, "new": tag, "mid": tag, "prime": tag, "empty": tag, "newest": tag}
+	finished := map[string][]ArchiveTag{}
+	trees := fakeArchiveTrees{}
+	// archive gives slug one archive tag whose seed names recipe and whose status holds the producers.
+	archive := func(slug, recipe string, producers ...string) {
+		finished[slug] = []ArchiveTag{{Name: "archive/" + slug + "/1", Commit: slug}}
+		seedRel, statusRel, err := shedrun.TreeRunFileRels(slug)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var entries []string
+		for _, producer := range producers {
+			entries = append(entries, `{"producer":"`+producer+`","at":"2026-01-01T10:00:00Z"}`)
+		}
+		trees[[2]string{slug, seedRel}] = `{"recipe":"` + recipe + `","driver":"go"}`
+		trees[[2]string{slug, statusRel}] = `{"history":[` + strings.Join(entries, ",") + `]}`
+	}
+	full := []string{"Plan-Write", "Webster", "Finalize", "Friction-Reflect"}
+	for slug, age := range map[string]time.Duration{"old": 5 * time.Hour, "mid": 4 * time.Hour, "new": 3 * time.Hour, "inflight": 2 * time.Hour, "prime": 0, "empty": 0} {
+		touch(filepath.Join(hub, slug), age)
+		archive(slug, shedrun.RecipeLoom, full...)
+	}
+	touch(filepath.Join(hub, "darn"), 90*time.Minute)
+	archive("darn", "darn", "Darn-Write", "Finalize")
+	touch(filepath.Join(hub, "bench"), time.Hour)
+	archive("bench", shedrun.RecipeLoom, "Preflight", "Discussion-Write")
+	touch(filepath.Join(hub, "parked"), 0)
+	touch("/other/newest", 0)
+	archive("newest", shedrun.RecipeLoom, full...)
+	if err := os.RemoveAll(filepath.Join(projectDir(projects, filepath.Join(hub, "empty")), "s.jsonl")); err != nil {
+		t.Fatal(err)
+	}
 
-	got, err := recentRuns(projects, "/hub", "prime", finished, 2)
+	counted, skipped, err := recentRuns(projects, hub, "prime", finished, trees, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got, ",") != "new,mid" {
-		t.Errorf("recentRuns = %v, want [new mid]", got)
+	if strings.Join(counted, ",") != "new,mid" {
+		t.Errorf("recentRuns counted = %v, want [new mid]", counted)
+	}
+	if strings.Join(skipped, ",") != "bench,darn,inflight" {
+		t.Errorf("recentRuns skipped = %v, want [bench darn inflight]", skipped)
 	}
 }
 

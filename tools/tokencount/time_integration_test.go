@@ -1,6 +1,7 @@
 //go:build integration
 
-// time_integration_test.go checks that run reads each finished run's archived shed status from a real git repository's archive tags.
+// time_integration_test.go checks that run reads each finished run's archived shed status from a real git repository's archive tags,
+// and that with no slugs named it counts only full loom runs and says in the header which it counted and skipped.
 
 package main
 
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -55,6 +57,7 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	}
 	doneSeed, doneStatus := paths("done")
 	_, liveStatus := paths("live")
+	fullSeed, fullStatus := paths("full")
 
 	older := commit("2026-01-01T09:00:00Z", map[string]string{
 		doneStatus: `{"history":[` + entry("OldProducer", "2026-01-01T09:30:00Z") + `]}`,
@@ -64,12 +67,15 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 		doneSeed:   `{"recipe":"loom","driver":"go","started_at":"2026-01-01T09:58:00Z"}`,
 		doneStatus: `{"history":[` + entry("Plan", "2026-01-01T10:03:00Z") + `,` + entry("Publish", "2026-01-01T10:12:00Z") + `]}`,
 		liveStatus: `{"history":[` + entry("Plan", "2026-01-01T10:03:00Z") + `]}`,
+		fullSeed:   `{"recipe":"loom","driver":"go","started_at":"2026-01-01T10:58:00Z"}`,
+		fullStatus: `{"history":[` + entry("Plan", "2026-01-01T11:03:00Z") + `,` + entry("Finalize", "2026-01-01T11:12:00Z") + `]}`,
 	})
 	// Archive tags are lightweight.
 	gitkit.Git(t, records, "tag", "archive/done/aaaaaaa", older)
 	gitkit.Git(t, records, "tag", "archive/done/bbbbbbb", newest)
 	gitkit.Git(t, records, "tag", "archive/live/ccccccc", older)
 	gitkit.Git(t, records, "tag", "archive/live/ddddddd", newest)
+	gitkit.Git(t, records, "tag", "archive/full/fffffff", newest)
 
 	// The in-flight run's worktree still exists.
 	if err := os.MkdirAll(filepath.Join(hub, "live"), 0o755); err != nil {
@@ -78,7 +84,7 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	// The done slug's counted transcript starts after its older tag's date and the live slug's after its newest tag's date;
 	// the solo slug has one tag and no worktree, so no bound.
 	// An earlier transcript of each bounded slug starts before that date and is left out.
-	for slug, hour := range map[string]string{"done": "10", "live": "13", "solo": "08"} {
+	for slug, hour := range map[string]string{"done": "10", "live": "13", "solo": "08", "full": "11"} {
 		at := func(minute string) string { return "2026-01-01T" + hour + ":" + minute + ":00Z" }
 		writeLines(t, filepath.Join(projectDir(projects, filepath.Join(hub, slug)), "a.jsonl"),
 			`{"type":"custom-title","customTitle":"ly:`+slug+`:burler"}`,
@@ -132,5 +138,38 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	}
 	if strings.Contains(soloPart, "left out") || !strings.Contains(soloPart, "| burler | 1 |") {
 		t.Errorf("one-tag run = %q; want its transcript counted and no left-out line", soloPart)
+	}
+	if !strings.Contains(report, " for done, live, solo.\n\n") {
+		t.Errorf("report header lacks the named slugs as given:\n%s", report)
+	}
+
+	// With no slugs named, the default walks the runs newest session first and counts only full loom runs:
+	// done stopped before Finalize and live is in flight, so both are skipped ahead of full.
+	for slug, age := range map[string]time.Duration{"done": time.Hour, "live": 2 * time.Hour, "full": 3 * time.Hour, "solo": 4 * time.Hour} {
+		sessions, err := filepath.Glob(filepath.Join(projectDir(projects, filepath.Join(hub, slug)), "*.jsonl"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		touched := time.Now().Add(-age)
+		for _, s := range sessions {
+			if err := os.Chtimes(s, touched, touched); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	var defaulted bytes.Buffer
+	if err := run([]string{"-hub", hub, "-projects", projects, "-" + repositoryFlag, records, "-last", "1"}, &defaulted); err != nil {
+		t.Fatalf("run with no slugs: %v", err)
+	}
+	wantHeader := " for the 1 most recent full loom runs: full.\nSkipped 2 more recent runs that are not full loom runs: done, live.\n\n"
+	if !strings.Contains(defaulted.String(), wantHeader) {
+		t.Errorf("default report header lacks %q:\n%s", wantHeader, defaulted.String())
+	}
+
+	emptyHub := t.TempDir()
+	err = run([]string{"-hub", emptyHub, "-projects", projects, "-" + repositoryFlag, records}, &defaulted)
+	wantErr := "no full loom runs of " + emptyHub + " under " + projects + "; name the slugs to count a partial run"
+	if err == nil || err.Error() != wantErr {
+		t.Errorf("run with no full loom run = %v; want %q", err, wantErr)
 	}
 }

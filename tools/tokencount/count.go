@@ -632,14 +632,14 @@ func archivedSlugs(refs string) map[string][]ArchiveTag {
 	return slugs
 }
 
-// recentRuns names the finished task runs of the hub whose sessions changed most recently,
-// newest first, at most last of them: every project directory of a worktree under the hub
-// whose slug has an archive tag in finished, except the prime's own.
-func recentRuns(projects, hub, prime string, finished map[string][]ArchiveTag, last int) ([]string, error) {
+// recentRuns names the full loom runs of the hub whose sessions changed most recently, newest first, at most last of them, and, newest first, the runs it skipped on the way because they are not full loom runs.
+// A candidate is a project directory of a worktree under the hub whose slug has an archive tag in finished, except the prime's own;
+// fullLoomRun decides it from the archive tags read through trees.
+func recentRuns(projects, hub, prime string, finished map[string][]ArchiveTag, trees ArchiveTrees, last int) (counted, skipped []string, err error) {
 	prefix := filepath.Base(projectDir(projects, hub)) + "-"
 	entries, err := os.ReadDir(projects)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	type candidate struct {
 		slug    string
@@ -653,7 +653,7 @@ func recentRuns(projects, hub, prime string, finished map[string][]ArchiveTag, l
 		}
 		sessions, err := filepath.Glob(filepath.Join(projects, e.Name(), "*.jsonl"))
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		var touched time.Time
 		for _, s := range sessions {
@@ -666,11 +666,19 @@ func recentRuns(projects, hub, prime string, finished map[string][]ArchiveTag, l
 		}
 	}
 	sort.Slice(found, func(i, j int) bool { return found[i].touched.After(found[j].touched) })
-	slugs := []string{}
-	for i := 0; i < len(found) && i < last; i++ {
-		slugs = append(slugs, found[i].slug)
+	counted = []string{}
+	for i := 0; i < len(found) && len(counted) < last; i++ {
+		full, err := fullLoomRun(trees, hub, found[i].slug, finished[found[i].slug])
+		if err != nil {
+			return nil, nil, err
+		}
+		if full {
+			counted = append(counted, found[i].slug)
+		} else {
+			skipped = append(skipped, found[i].slug)
+		}
 	}
-	return slugs, nil
+	return counted, skipped, nil
 }
 
 // runBound returns the lower bound of a slug's run from its archive tags, newest first.
