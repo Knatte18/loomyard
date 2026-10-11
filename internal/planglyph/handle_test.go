@@ -671,9 +671,8 @@ func TestBindHandles_RenameNewSideHandleBinds(t *testing.T) {
 	}
 }
 
-// TestBindHandles_RenameFileSidePairIsNotAHandle covers a file-rename pair (both sides self glyphs,
-// per spec's own exemption) producing no finding and no write: neither side is handle-shaped, so
-// cardOwnHandles reports nothing to bind and the card is skipped exactly like a zero-handle card.
+// TestBindHandles_RenameFileSidePairIsNotAHandle covers a file-rename pair (both sides self glyphs, per spec's own exemption) producing no finding and no write.
+// Neither side is handle-shaped, so planparser.OwnedHandles reports nothing to bind and the card is skipped exactly like a zero-handle card.
 func TestBindHandles_RenameFileSidePairIsNotAHandle(t *testing.T) {
 	dir, plan := writePlanFixture(t, map[int]string{
 		1: "**Rename:**\n- `sub/old.go` -> `sub/new.go`\n\n**Intent:** rename a file\n",
