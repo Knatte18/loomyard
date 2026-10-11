@@ -517,6 +517,9 @@ func TestBurlerProducer_Call_WritesRoundUsageRecord(t *testing.T) {
 		result burlerengine.Result
 		check  func(t *testing.T, got roundUsage)
 		wantNo bool
+		// before lays out an existing record, and after checks the run directory once the round has written its own.
+		before func(t *testing.T, runDir string)
+		after  func(t *testing.T, runDir string)
 	}{
 		{
 			name:   "fanned round records fan, models and lenses",
@@ -556,10 +559,51 @@ func TestBurlerProducer_Call_WritesRoundUsageRecord(t *testing.T) {
 			name:   "unknown reading and zero times render as unknown, not zero",
 			result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone},
 			check: func(t *testing.T, got roundUsage) {
-				for label, half := range map[string]halfUsage{"review": got.Review, "fix": got.Fix} {
+				for label, half := range map[string]halfUsage{"review": *got.Review, "fix": *got.Fix} {
 					if half.TokensKnown || half.FreshTokens != nil || half.CacheReadTokens != nil || half.WallSeconds != nil || half.Forks != nil {
 						t.Errorf("%s half = %+v; want tokens, wall time and forks unknown", label, half)
 					}
+				}
+			},
+		},
+		{
+			name:   "an existing record keeps its seed and judge entries beside the fresh halves",
+			result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Review: knownReviewer, Fix: knownFixer},
+			before: func(t *testing.T, runDir string) {
+				existing := roundUsage{Seed: []halfUsage{{Model: "seed-model"}}, Judge: []halfUsage{{Model: "judge-model"}, {Model: "judge-again"}}}
+				if err := writeRoundUsage(runDir, 1, existing); err != nil {
+					t.Fatalf("writeRoundUsage = %v; want nil", err)
+				}
+			},
+			check: func(t *testing.T, got roundUsage) {
+				if len(got.Seed) != 1 || got.Seed[0].Model != "seed-model" || len(got.Judge) != 2 || got.Judge[1].Model != "judge-again" {
+					t.Errorf("seed, judge = %+v, %+v; want the existing entries kept", got.Seed, got.Judge)
+				}
+				if got.Review == nil || got.Review.Model != "reviewer-model" || got.Fix == nil || got.Fix.Model != "fixer-model" {
+					t.Errorf("review, fix = %+v, %+v; want the round's fresh halves", got.Review, got.Fix)
+				}
+			},
+		},
+		{
+			name:   "a malformed existing record is archived and the fresh record holds the halves alone",
+			result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Review: knownReviewer, Fix: knownFixer},
+			before: func(t *testing.T, runDir string) {
+				if err := os.WriteFile(roundUsagePath(runDir, 1), []byte("round: [\n"), 0o644); err != nil {
+					t.Fatalf("WriteFile = %v; want nil", err)
+				}
+			},
+			check: func(t *testing.T, got roundUsage) {
+				if got.Seed != nil || got.Judge != nil {
+					t.Errorf("seed, judge = %+v, %+v; want none from a malformed record", got.Seed, got.Judge)
+				}
+				if got.Review == nil || got.Fix == nil {
+					t.Errorf("review, fix = %+v, %+v; want both halves", got.Review, got.Fix)
+				}
+			},
+			after: func(t *testing.T, runDir string) {
+				archived := archivedSiblingPath(roundUsagePath(runDir, 1), started)
+				if raw, err := os.ReadFile(archived); err != nil || string(raw) != "round: [\n" {
+					t.Errorf("archived record = %q, %v; want the malformed bytes aside", raw, err)
 				}
 			},
 		},
@@ -573,10 +617,13 @@ func TestBurlerProducer_Call_WritesRoundUsageRecord(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			runDir := t.TempDir()
+			if tt.before != nil {
+				tt.before(t, runDir)
+			}
 			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{tt.result}}
 			profile := simpleBurlerProfile()
 			profile.ClusterFan = tt.fan
-			p := newBurlerProducer(t, runDir, runner, withBurlerProfile(profile), withBurlerModels(models))
+			p := newBurlerProducer(t, runDir, runner, withBurlerProfile(profile), withBurlerModels(models), withBurlerClock(fixedClock(started)))
 
 			shedfake.RequireOutcome(t, p, shedengine.Stuck)
 			got, err := readRoundUsage(runDir, 1)
@@ -593,6 +640,9 @@ func TestBurlerProducer_Call_WritesRoundUsageRecord(t *testing.T) {
 				t.Errorf("record round = %d; want 1", got.Round)
 			}
 			tt.check(t, got)
+			if tt.after != nil {
+				tt.after(t, runDir)
+			}
 		})
 	}
 
@@ -649,7 +699,9 @@ func TestBurlerProducer_Call_ClusterExclusions(t *testing.T) {
 		roundOneWarn   = "shedadapters: round 1 focus file names cluster excludes but the whole fan runs in round 1; dropping them"
 		ineligibleWarn = "shedadapters: focus file excludes lenses the previous round did not run under this fan; dropping them"
 	)
-	usageOf := func(fan string, lenses ...string) *roundUsage { return &roundUsage{Fan: fan, Lenses: lenses} }
+	usageOf := func(fan string, lenses ...string) *roundUsage {
+		return &roundUsage{Fan: fan, Lenses: lenses, Review: &halfUsage{}}
+	}
 
 	// judged rounds 1..judged are on disk and the call is round judged+1.
 	// excludes and usage are keyed by round; a round with no usage entry has no record.

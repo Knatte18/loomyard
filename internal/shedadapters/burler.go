@@ -293,7 +293,7 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 	// The Bouncer's next call is a genuine judge retry through judgeCall, whose failures exit through degrade and are counted on the Bouncer row,
 	// so a judge that never recovers halts the run within that row's budget.
 	if highest > 0 {
-		if _, judged := recordedVerdict(p.runDir, highest); !judged {
+		if _, _, judged := recordedVerdict(p.runDir, highest); !judged {
 			if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}
@@ -483,7 +483,11 @@ func (p *BurlerProducer) doneExit(ctx context.Context, round int, result burlere
 		return "", shedengine.OutputPointer{}, cerr
 	}
 	review, fix := p.models.Pick(round)
-	if err := writeRoundUsage(p.runDir, round, newRoundUsage(p.profile.ClusterFan, review, fix, result)); err != nil {
+	completed := newRoundUsage(p.profile.ClusterFan, review, fix, result)
+	err := mergeRoundUsage(p.runDir, round, p.now, func(u *roundUsage) {
+		u.Fan, u.Lenses, u.Review, u.Fix = completed.Fan, completed.Lenses, completed.Review, completed.Fix
+	})
+	if err != nil {
 		logger.Warn("shedadapters: burler round's usage record was not written", "producer", p.name, "engine", burlerEngineLabel, "round", round, "error", err)
 	}
 	return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, round), GateAttempts: gateAttemptsPointer(result.Gate), BudgetExempt: true}, nil

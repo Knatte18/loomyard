@@ -321,10 +321,10 @@ prose
 		t.Parallel()
 		dir := t.TempDir()
 		writeReview(t, dir)
-		if err := writeRoundUsage(dir, 1, roundUsage{Fan: "fanX", Lenses: []string{"alpha", "beta", "gamma"}}); err != nil {
+		if err := writeRoundUsage(dir, 1, roundUsage{Fan: "fanX", Lenses: []string{"alpha", "beta", "gamma"}, Review: &halfUsage{}}); err != nil {
 			t.Fatalf("writeRoundUsage 1 = %v; want nil", err)
 		}
-		if err := writeRoundUsage(dir, 2, roundUsage{Fan: "fanX", Lenses: []string{"alpha", "beta"}}); err != nil {
+		if err := writeRoundUsage(dir, 2, roundUsage{Fan: "fanX", Lenses: []string{"alpha", "beta"}, Review: &halfUsage{}}); err != nil {
 			t.Fatalf("writeRoundUsage 2 = %v; want nil", err)
 		}
 		writeFocusFile(t, dir, 2, focusFile{Round: 2, ExcludeLenses: []string{"gamma"}})
@@ -366,7 +366,7 @@ prose
 		if err := os.WriteFile(filepath.Join(dir, reportName(2)), []byte("no frontmatter here\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile review = %v; want nil", err)
 		}
-		if err := writeRoundUsage(dir, 2, roundUsage{Fan: "fanX", Lenses: []string{"alpha"}}); err != nil {
+		if err := writeRoundUsage(dir, 2, roundUsage{Fan: "fanX", Lenses: []string{"alpha"}, Review: &halfUsage{}}); err != nil {
 			t.Fatalf("writeRoundUsage 2 = %v; want nil", err)
 		}
 
@@ -380,6 +380,33 @@ prose
 		}
 		if strings.Contains(lenses, "| Origin |") {
 			t.Errorf("lens section = %q; want no per-origin table", lenses)
+		}
+	})
+
+	t.Run("a record with a seed entry and no review half reads as missing", func(t *testing.T) {
+		t.Parallel()
+		seedOnly := roundUsage{Seed: []halfUsage{{Model: "seed-model"}}}
+
+		unreadable := t.TempDir()
+		writeReview(t, unreadable)
+		if err := writeRoundUsage(unreadable, 2, seedOnly); err != nil {
+			t.Fatalf("writeRoundUsage 2 = %v; want nil", err)
+		}
+		if out := writeFacts(t, unreadable); !strings.Contains(out, "Usage record unreadable, so the fan and lenses run are unknown: ") {
+			t.Errorf("facts file = %q; want the unreadable-record line", out)
+		}
+
+		dropped := t.TempDir()
+		writeReview(t, dropped)
+		if err := writeRoundUsage(dropped, 1, seedOnly); err != nil {
+			t.Fatalf("writeRoundUsage 1 = %v; want nil", err)
+		}
+		if err := writeRoundUsage(dropped, 2, roundUsage{Fan: "fanX", Lenses: []string{"alpha"}, Review: &halfUsage{}}); err != nil {
+			t.Fatalf("writeRoundUsage 2 = %v; want nil", err)
+		}
+		writeFocusFile(t, dropped, 2, focusFile{Round: 2, ExcludeLenses: []string{"gamma"}})
+		if out := writeFacts(t, dropped); !strings.Contains(out, "Lenses already excluded for the next round: none\n") {
+			t.Errorf("facts file = %q; want the exclusion dropped over a previous round with no review half", out)
 		}
 	})
 }

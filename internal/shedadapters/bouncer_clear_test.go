@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -79,6 +80,10 @@ func TestBouncer_Clear_ApprovedRunDirClearsAndReseeds(t *testing.T) {
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 	layoutApprovedGeneration(t, cfg, 1)
+	oldGeneration := roundUsage{Review: &halfUsage{}, Seed: []halfUsage{{Model: "old-seed"}}}
+	if err := writeRoundUsage(cfg.RunDir, 1, oldGeneration); err != nil {
+		t.Fatalf("writeRoundUsage(old generation) = %v; want nil", err)
+	}
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 	if ptr != (shedengine.OutputPointer{}) {
@@ -107,6 +112,7 @@ func TestBouncer_Clear_ApprovedRunDirClearsAndReseeds(t *testing.T) {
 		"round-1-bouncer-ledger.md":  false,
 		"round-1-review.md":          false,
 		"round-1-fixer-report.md":    false,
+		"round-1-usage.yaml":         false,
 	}
 	for _, e := range entries {
 		if _, ok := wantNames[e.Name()]; ok {
@@ -123,12 +129,20 @@ func TestBouncer_Clear_ApprovedRunDirClearsAndReseeds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadDir(recreated run dir) = %v; want nil", err)
 	}
-	if len(freshEntries) != 1 || freshEntries[0].Name() != "round-1-focus.md" {
-		names := make([]string, len(freshEntries))
-		for i, e := range freshEntries {
-			names[i] = e.Name()
-		}
-		t.Errorf("recreated run dir entries = %v; want exactly [round-1-focus.md] (only what seedCall writes)", names)
+	names := make([]string, len(freshEntries))
+	for i, e := range freshEntries {
+		names[i] = e.Name()
+	}
+	if want := []string{"round-1-focus.md", "round-1-usage.yaml"}; !slices.Equal(names, want) {
+		t.Errorf("recreated run dir entries = %v; want exactly %v (only what the seed pass writes)", names, want)
+	}
+	fresh, err := readRoundUsage(cfg.RunDir, 1)
+	if err != nil || len(fresh.Seed) != 1 || fresh.Seed[0].Model != cfg.Models.Seed.Model {
+		t.Errorf("fresh usage record = %+v, %v; want exactly one seed entry on the seed model %q", fresh, err, cfg.Models.Seed.Model)
+	}
+	archivedUsage, err := readRoundUsage(archived, 1)
+	if err != nil || len(archivedUsage.Seed) != 1 || archivedUsage.Seed[0].Model != "old-seed" {
+		t.Errorf("archived usage record = %+v, %v; want the old generation's record untouched", archivedUsage, err)
 	}
 
 	// Re-approve a second generation in the freshly recreated run dir, under the same injected

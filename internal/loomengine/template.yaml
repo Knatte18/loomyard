@@ -16,7 +16,15 @@ webster_fix: ""  # model-spec for the Webster-Review fixer; empty takes the run-
 discussion_fan: ""  # fan name from burler.yaml (its fans fall back per name to the embedded template) that turns the lens fan on for Discussion-Review; empty, the default, runs the segment solo
 plan_fan: ""  # fan name from burler.yaml that turns the lens fan on for Plan-Review; empty, the default, runs the segment solo; Webster-Review has no fan key and always runs solo
 fan_review: sonnet[high]  # model-spec for the reviewer of a fanned segment's round (a segment whose discussion_fan or plan_fan is set), replacing that segment's review list while its fixer list is kept; it is also the forks' model, since forks run on the reviewer session's model; same grammar as review, a YAML list sets one model per round with the last entry for every later round
-judge: sonnet[medium]  # model-spec for every Bouncer row's seed and judge passes (see contracts/specs/llm-model-spec.md)
+judge: sonnet[medium]  # model-spec for every Bouncer row's judge pass, and for its seed pass while seed is empty; discussion_judge, plan_judge and webster_judge override it per segment (see contracts/specs/llm-model-spec.md)
+seed: ""  # model-spec for every Bouncer row's seed pass; empty takes that segment's resolved judge; discussion_seed, plan_seed and webster_seed override it per segment
+discussion_judge: ""  # model-spec for the Discussion-Review judge pass; empty takes judge
+plan_judge: ""  # model-spec for the Plan-Review judge pass; empty takes judge
+webster_judge: ""  # model-spec for the Webster-Review judge pass; empty takes judge
+discussion_seed: ""  # model-spec for the Discussion-Review seed pass; empty takes seed, and seed empty takes the segment's resolved judge
+plan_seed: ""  # model-spec for the Plan-Review seed pass; empty takes seed, and seed empty takes the segment's resolved judge
+webster_seed: ""  # model-spec for the Webster-Review seed pass; empty takes seed, and seed empty takes the segment's resolved judge
+rework: ""  # model-spec for the PR-Rework agent; empty takes plan
 review_timeout_min: 240  # minutes one review round's shuttle run is allowed to run
 friction: sonnet[medium]  # model-spec for the Tier 2 friction-reflection producer (see contracts/specs/llm-model-spec.md); empty turns Tier 2 self-reporting off
 friction_timeout_min: 30  # minutes the friction-reflection agent's shuttle run is allowed to run

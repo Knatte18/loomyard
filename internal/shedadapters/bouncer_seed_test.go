@@ -59,14 +59,15 @@ func TestBouncer_SeedCall_HappyPath(t *testing.T) {
 	if shuttle.GotSpec.Round != "1" {
 		t.Errorf("seed call spec.Round = %q; want %q", shuttle.GotSpec.Round, "1")
 	}
-	if shuttle.GotSpec.Model != cfg.Model {
-		t.Errorf("recorded spec.Model = %q; want %q", shuttle.GotSpec.Model, cfg.Model)
+	seed := cfg.Models.Seed
+	if shuttle.GotSpec.Model != seed.Model {
+		t.Errorf("recorded spec.Model = %q; want %q", shuttle.GotSpec.Model, seed.Model)
 	}
-	if shuttle.GotSpec.Effort != cfg.Effort {
-		t.Errorf("recorded spec.Effort = %q; want %q", shuttle.GotSpec.Effort, cfg.Effort)
+	if shuttle.GotSpec.Effort != seed.Effort {
+		t.Errorf("recorded spec.Effort = %q; want %q", shuttle.GotSpec.Effort, seed.Effort)
 	}
-	if shuttle.GotSpec.Version != cfg.Version {
-		t.Errorf("recorded spec.Version = %q; want %q", shuttle.GotSpec.Version, cfg.Version)
+	if shuttle.GotSpec.Version != seed.Version {
+		t.Errorf("recorded spec.Version = %q; want %q", shuttle.GotSpec.Version, seed.Version)
 	}
 	if len(shuttle.GotSpec.OutputFiles) == 0 {
 		t.Fatal("recorded spec.OutputFiles is empty")

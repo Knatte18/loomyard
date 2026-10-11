@@ -102,10 +102,9 @@ func parseRecordedVerdict(content []byte) (verdict bouncerVerdict, rationale str
 	return "", "", false, strictErr
 }
 
-// recordedVerdict reads and parses round's verdict file inside runDir, then reads and parses that
-// round's ledger file, returning the parsed verdict and false on any read or parse failure of
-// either. It is the "this round has been judged" predicate, and the parsed verdict rides along
-// because the one caller that needs it would otherwise have to re-read the same file.
+// recordedVerdict reads and parses round's verdict file inside runDir, then reads and parses that round's ledger file;
+// it returns the parsed verdict and ledger, and false on any read or parse failure of either.
+// It is the "this round has been judged" predicate, and the parsed verdict and ledger ride along so a caller that needs them never re-reads the same files.
 //
 // It is a free function over a told run directory rather than a Bouncer method because the question
 // is two-sided, and both sides must answer it identically: the Bouncer asks whether it still owes
@@ -121,7 +120,7 @@ func parseRecordedVerdict(content []byte) (verdict bouncerVerdict, rationale str
 //
 // The verdict is read through parseRecordedVerdict, so a run directory an older binary judged still reads as judged:
 // the clear, the replay and BurlerProducer's may-advance check all go through here.
-func recordedVerdict(runDir string, round int) (bouncerVerdict, bool) {
+func recordedVerdict(runDir string, round int) (bouncerVerdict, ledgerFile, bool) {
 	return readJudgment(runDir, round, func(content []byte) (bouncerVerdict, error) {
 		verdict, _, _, err := parseRecordedVerdict(content)
 		return verdict, err
@@ -130,7 +129,7 @@ func recordedVerdict(runDir string, round int) (bouncerVerdict, bool) {
 
 // harvestedVerdict is recordedVerdict for a judge this Call spawned or attached:
 // it reads the strict vocabulary only, so a legacy word never counts as a harvest and the caller re-judges the round.
-func harvestedVerdict(runDir string, round int) (bouncerVerdict, bool) {
+func harvestedVerdict(runDir string, round int) (bouncerVerdict, ledgerFile, bool) {
 	return readJudgment(runDir, round, func(content []byte) (bouncerVerdict, error) {
 		verdict, _, err := parseVerdict(content)
 		return verdict, err
@@ -139,22 +138,22 @@ func harvestedVerdict(runDir string, round int) (bouncerVerdict, bool) {
 
 // readJudgment is the shared body of recordedVerdict and harvestedVerdict:
 // it reads round's verdict through parse, then requires round's ledger to parse and to name the same round.
-func readJudgment(runDir string, round int, parse func([]byte) (bouncerVerdict, error)) (bouncerVerdict, bool) {
+func readJudgment(runDir string, round int, parse func([]byte) (bouncerVerdict, error)) (bouncerVerdict, ledgerFile, bool) {
 	verdictRaw, err := os.ReadFile(verdictPath(runDir, round))
 	if err != nil {
-		return "", false
+		return "", ledgerFile{}, false
 	}
 	verdict, err := parse(verdictRaw)
 	if err != nil {
-		return "", false
+		return "", ledgerFile{}, false
 	}
 	ledgerRaw, err := os.ReadFile(ledgerPath(runDir, round))
 	if err != nil {
-		return "", false
+		return "", ledgerFile{}, false
 	}
 	ledger, err := parseLedger(ledgerRaw)
 	if err != nil {
-		return "", false
+		return "", ledgerFile{}, false
 	}
 	// The ledger file's own round: frontmatter field must agree with the round number ITS OWN
 	// FILENAME already encodes (ledgerPath(runDir, round)): a mismatch here means the judge wrote
@@ -164,9 +163,9 @@ func readJudgment(runDir string, round int, parse func([]byte) (bouncerVerdict, 
 	// re-judges it, rather than trusting a ledger that disagrees with itself about which round it
 	// belongs to (crucible round sonnet-xhigh-r8, LS-1).
 	if ledger.Round != round {
-		return "", false
+		return "", ledgerFile{}, false
 	}
-	return verdict, true
+	return verdict, ledger, true
 }
 
 // ledgerEntry is one finding-identity record in a ledger file: a Key the judge uses to recognize

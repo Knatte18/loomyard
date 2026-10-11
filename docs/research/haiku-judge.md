@@ -12,7 +12,7 @@ No config, code or board entry was changed.
 | Plan-Bouncer | trial first | Haiku-safe | Findings are card-level and concrete, but the old-or-new key call still decides convergence, and a miss reaches Webster, the most expensive phase. |
 | Webster-Bouncer | trial first, strongest candidate | Haiku-safe | Findings cite files, tests and PATTERN entries, most gating ones are BLOCKING and never downgraded, and the PR description and PR-Gate catch what it lets through. |
 
-No row is "safe for Haiku" without a trial: the rule is mostly mechanical, but two parts of every ruling need judgement (below), and Go does not cross-check the verdict against the facts.
+No row is "safe for Haiku" without a trial: the rule is mostly mechanical, but two parts of every ruling need judgement (below), and Go cross-checks the verdict only for an open BLOCKING finding and a dropped ledger key.
 The saving is about $1.2 per task, while one wrongly bounced round costs about three times that, so the trial has to show Haiku adds no rounds.
 
 ## The rows
@@ -44,18 +44,12 @@ The question it rules on is fixed, rendered by `decisionRuleMarker` in `internal
 
 ## How the judge's model is set
 
-One key covers every row: `judge` in `loom.yaml` (`_lyx/config/loom.yaml`, template `internal/loomengine/template.yaml`), today `sonnet[medium]`.
-`loomengine.ResolveJudge` resolves it through `models.yaml` once per process, and `shedrecipe.Env.JudgeModel`/`JudgeEffort`/`JudgeVersion` carry it to every Bouncer row, for both the seed and the judge pass.
+`judge` in `loom.yaml` (`_lyx/config/loom.yaml`, template `internal/loomengine/template.yaml`), today `sonnet[medium]`, sets every Bouncer row's judge pass, and `discussion_judge`, `plan_judge` and `webster_judge` override it per segment.
+`seed` sets every row's seed pass, and `discussion_seed`, `plan_seed` and `webster_seed` override it per segment; an empty seed key takes that segment's resolved judge.
+`loomengine.ResolveJudge` resolves every key through `models.yaml` once at run start, and loomcli's wire threads each segment's seed and judge pair to its Bouncer row through `shedrecipe.Env.RowBouncerModels`.
+A Bouncer row's recipe `config` takes no `model`, `effort` or `version` key: `bouncerEntry` refuses one as unknown.
 
-Per row, `bouncerEntry` (`internal/shedrecipe/entries_bouncer.go`) does accept `model`, `effort` and `version` keys in a Bouncer row's recipe `config`, overriding the Env value.
-That is not a config-level choice today:
-
-- the recipe is embedded in the binary (`contracts/recipes/recipes.go`), so a per-row model is a recipe edit plus a rebuild;
-- the row values are provider strings (`haiku`, `medium`), not model-specs, so they bypass `models.yaml`;
-- every row's recipe comment says the key is deliberately absent so the row stays tunable from `loom.yaml`.
-
-So the operator can switch the judge for all three rows (seeds included), not for one row.
-A per-row switch needs a code change, for example per-segment `discussion_judge`, `plan_judge` and `webster_judge` keys mirroring `webster_review`.
+So the operator can switch the judge or the seed of one row from `loom.yaml`, without a code change.
 
 `loom` is not a hub-wide module, so each task pair has its own `_lyx/config/loom.yaml`: a trial can be confined to one pair.
 
@@ -80,8 +74,8 @@ Two parts need judgement, and they decide the verdict from round 2 on:
    The judge may relabel a finding's class or severity where its own review entry shows the mislabel, and must ratify or reject each `## Focus departures` entry; it also writes the next round's focus, checked against the rubric's `Do not flag` list.
    In the records relabels are rare (the rationales mostly say "no relabel"), and BLOCKING is never relabelled down.
 
-Go does not check the verdict against the facts: `CONVERGED` over a BLOCKING row is accepted, and the carry-over into `## Open risks` is built from the judge's own ledger.
-A key the judge drops or wrongly marks `resolved` is therefore lost silently, while a key it maps as new is carried and stays visible.
+Go refuses a `CONVERGED` over an open BLOCKING ledger entry or a BLOCKING or unparseable review, and any verdict whose ledger drops a key of the previous round's ledger, and re-judges the round.
+The carry-over into `## Open risks` is built from the judge's own ledger, so a key the judge wrongly marks `resolved` is still lost silently, while a key it maps as new is carried and stays visible.
 
 ## Past verdicts
 
@@ -142,21 +136,18 @@ In use, a Haiku 5.5 driver once ended its first turn asking to start (`bolt-and-
 | Webster-Bouncer | A code defect reaches Describe and the PR; a carried key becomes a check-by-hand item in the PR description, and PR-Gate is the operator's review. A dropped ledger key is silent. | One review round (`webster_review: sonnet[medium]`) plus an Opus fix and a verify gate run. | trial first |
 
 The seed pass of each row writes only a focus list, never caps severity and never gates; a weak focus costs round-1 depth, not a wrong outcome, so it is Haiku-safe.
-It shares the `judge` key with the judge pass, so it moves only with it.
+It follows its segment's judge while `seed` and its per-segment seed key are empty, and moves on its own once either is set.
 
 ## Trial
 
 ### What to switch
 
-Config can only switch all three rows at once, so the first live run switches all three, seeds included, and is read per row:
+The first live run switches the Plan and Webster judges and every seed, and keeps Discussion-Bouncer's judge on Sonnet:
 
-- In the trial task's own pair, before `lyx loom start`, run `lyx config loom --set 'judge=haiku[medium]'`.
+- In the trial task's own pair, before `lyx loom start`, run `lyx config loom --set 'plan_judge=haiku[medium]'`, `lyx config loom --set 'webster_judge=haiku[medium]'` and `lyx config loom --set 'seed=haiku[medium]'`.
 - Do not set it in the prime: other pairs keep `sonnet[medium]` and are the comparison.
 - `haiku[medium]` is written out although the `models.yaml` alias already defaults to medium, as the benchmark advises.
 - Pick a task with a real Webster phase (several cards), so all three segments run at least two rounds.
-
-Discussion-Bouncer runs on Haiku in this trial only because no config isolates it; its verdicts are read but do not count toward switching it.
-To trial Plan and Webster alone, the recipe would need `model: haiku` and `effort: medium` on those two rows, or per-segment judge keys: a code change, out of scope here.
 
 ### Check every Haiku verdict on the run
 
@@ -182,4 +173,4 @@ The hub reads each Haiku round's facts, review, previous ledger and the three wr
 | Wall time per judge pass | measure on both | transcript timestamps |
 
 Switch a row only when its Haiku verdicts match the hub's reading on every round and the run adds no round or escalation that Sonnet would not have; one run is one sample, so repeat on a second task before switching.
-A Go check that refuses `CONVERGED` over a BLOCKING facts row, and a ledger that drops a previous key, would make any judge model safer, and is worth its own board entry.
+A Haiku judgment Go refuses for an open BLOCKING finding or a dropped ledger key shows as a re-judge, not a defect let through, and counts against the row as an added round.

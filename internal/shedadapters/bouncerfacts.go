@@ -93,7 +93,7 @@ type roundFacts struct {
 // Every lens the round ran has an origin row, even with no findings.
 func computeLensFacts(name, runDir string, round int, reportName func(int) string) lensFacts {
 	var facts lensFacts
-	usage, err := readRoundUsage(runDir, round)
+	usage, err := readCompletedRoundUsage(runDir, round)
 	if err != nil {
 		facts.UsageErr = escapeCell(err.Error())
 	} else {

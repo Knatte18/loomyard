@@ -11,6 +11,8 @@
 // discussion_producer selects the Discussion-Write row's producer and must be single or seats.
 // discussion_advisors lists the seats producer's advisor model-specs; every entry is resolved through the model registry at load, whatever discussion_producer holds, and an unset list loads as no advisors.
 // Under seats, no advisors runs the chair alone, deciding each question itself.
+// seed, discussion_judge, plan_judge, webster_judge, discussion_seed, plan_seed, webster_seed and rework are role model-specs validated only when non-empty, an empty value meaning the fallback:
+// a per-segment judge takes judge, a per-segment seed takes seed, seed takes that segment's resolved judge, and rework takes plan.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
 // value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
 // driver, and both must load cleanly, unlike the other role keys, which are always required.
@@ -337,6 +339,14 @@ type Config struct {
 	PlanFan               string        `yaml:"plan_fan"`
 	FanReview             ModelSpecList `yaml:"fan_review"`
 	Judge                 string        `yaml:"judge"`
+	Seed                  string        `yaml:"seed"`
+	DiscussionJudge       string        `yaml:"discussion_judge"`
+	PlanJudge             string        `yaml:"plan_judge"`
+	WebsterJudge          string        `yaml:"webster_judge"`
+	DiscussionSeed        string        `yaml:"discussion_seed"`
+	PlanSeed              string        `yaml:"plan_seed"`
+	WebsterSeed           string        `yaml:"webster_seed"`
+	Rework                string        `yaml:"rework"`
 	ReviewTimeoutMin      int           `yaml:"review_timeout_min"`
 	Friction              string        `yaml:"friction"`
 	FrictionTimeoutMin    int           `yaml:"friction_timeout_min"`
@@ -582,6 +592,29 @@ func LoadConfig(baseDir, module string) (Config, error) {
 
 	if _, err := modelspec.Parse(cfg.Judge); err != nil {
 		return Config{}, fmt.Errorf("loom config key %q: %w", "judge", err)
+	}
+
+	// The judge, seed and rework override keys are validated only when non-empty:
+	// an empty value takes its fallback key at run start and must load cleanly.
+	for _, override := range []struct {
+		key   string
+		value string
+	}{
+		{"seed", cfg.Seed},
+		{"discussion_judge", cfg.DiscussionJudge},
+		{"plan_judge", cfg.PlanJudge},
+		{"webster_judge", cfg.WebsterJudge},
+		{"discussion_seed", cfg.DiscussionSeed},
+		{"plan_seed", cfg.PlanSeed},
+		{"webster_seed", cfg.WebsterSeed},
+		{"rework", cfg.Rework},
+	} {
+		if override.value == "" {
+			continue
+		}
+		if _, err := modelspec.Parse(override.value); err != nil {
+			return Config{}, fmt.Errorf("loom config key %q: %w", override.key, err)
+		}
 	}
 
 	// friction is validated only when non-empty: a present-but-empty value means Tier 2 is off and
