@@ -242,6 +242,7 @@ func (f *SessionFold) rejudgeNewestTurnEnd(facts SessionFacts) {
 }
 
 // applyTranscriptMarkers applies the transcript's API-error marker to the newest turn end and its interrupt marker to the newest turn start.
+// The interrupt marker turns a running turn, and an ask the marker is not older than, into an interrupt stall.
 func (f *SessionFold) applyTranscriptMarkers(facts SessionFacts) {
 	if !f.hasDerived {
 		return
@@ -250,10 +251,25 @@ func (f *SessionFold) applyTranscriptMarkers(facts SessionFacts) {
 		f.setDerived(SessionState{Name: SessionIdleStalled, Cause: SessionCauseAPIError, Detail: facts.APIErrorText, Since: f.turnEndAt}, true)
 		f.recordHistory(f.derived)
 	}
-	if facts.Interrupted && f.derived.Name == SessionBusy && f.derived.Cause == SessionCauseTurn {
+	if facts.Interrupted && (f.derivedIsRunningTurn() || f.derivedIsAskReleasedBy(facts.InterruptAt)) {
 		f.setDerived(SessionState{Name: SessionIdleStalled, Cause: SessionCauseInterrupt, Since: facts.InterruptAt}, false)
 		f.recordHistory(f.derived)
 	}
+}
+
+// derivedIsRunningTurn reports whether the signal-derived state is a running turn.
+func (f *SessionFold) derivedIsRunningTurn() bool {
+	return f.derived.Name == SessionBusy && f.derived.Cause == SessionCauseTurn
+}
+
+// derivedIsAskReleasedBy reports whether the signal-derived state is an ask an interrupt marker at interruptAt releases:
+// one with cause ask, whatever signal raised it, that the marker is not older than; either time being zero counts as not older.
+// An awaiting-input ask from a turn end is never released.
+func (f *SessionFold) derivedIsAskReleasedBy(interruptAt time.Time) bool {
+	if f.derived.Name != SessionAsking || f.derived.Cause != SessionCauseAsk {
+		return false
+	}
+	return interruptAt.IsZero() || f.derived.Since.IsZero() || !interruptAt.Before(f.derived.Since)
 }
 
 // settle sets the current state: the first of a process-ending session end, a dead process, an unproven liveness, an unreadable events file and an empty signal history that applies, else the signal-derived state.

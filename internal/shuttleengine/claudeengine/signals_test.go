@@ -123,6 +123,23 @@ func TestParseSessionSignals(t *testing.T) {
 			want:   []shuttleengine.SessionSignal{{Kind: shuttleengine.SessionSignalAsk, At: at, SessionID: "sess-1"}},
 		},
 		{
+			name:   "permission_request_is_an_ask_without_an_event",
+			chunks: []string{signalStamp("PermissionRequest", stampTime) + signalPayload(t, "PermissionRequest", map[string]any{"tool_name": "Write"})},
+			want:   []shuttleengine.SessionSignal{{Kind: shuttleengine.SessionSignalAsk, At: at, SessionID: "sess-1"}},
+		},
+		{
+			name:   "elicitation_url_dialog_notification_is_an_ask",
+			chunks: []string{signalStamp("Notification", stampTime) + signalPayload(t, "Notification", map[string]any{"notification_type": "elicitation_url_dialog"})},
+			want:   []shuttleengine.SessionSignal{{Kind: shuttleengine.SessionSignalAsk, At: at, SessionID: "sess-1"}},
+		},
+		{
+			name: "agent_needs_input_and_elicitation_response_notifications_yield_nothing",
+			chunks: []string{
+				signalPayload(t, "Notification", map[string]any{"notification_type": "agent_needs_input"}),
+				signalPayload(t, "Notification", map[string]any{"notification_type": "elicitation_response"}),
+			},
+		},
+		{
 			name:   "idle_prompt_notification_is_an_idle_notice",
 			chunks: []string{signalStamp("Notification", stampTime) + signalPayload(t, "Notification", map[string]any{"notification_type": "idle_prompt"})},
 			want:   []shuttleengine.SessionSignal{{Kind: shuttleengine.SessionSignalIdleNotice, At: at, SessionID: "sess-1"}},
@@ -212,13 +229,14 @@ func TestParseSessionSignals(t *testing.T) {
 			},
 		},
 		{
-			name:   "captured_session_reads_each_source_turn_and_end_and_skips_the_permission_request",
+			name:   "captured_session_reads_each_source_turn_permission_request_and_end",
 			chunks: []string{string(captured)},
 			want: []shuttleengine.SessionSignal{
 				{Kind: shuttleengine.SessionSignalSessionStart, SessionID: first, Source: "startup"},
 				{Kind: shuttleengine.SessionSignalTurnStart, SessionID: first},
 				{Kind: shuttleengine.SessionSignalTurnEnd, SessionID: first, Event: true},
 				{Kind: shuttleengine.SessionSignalTurnStart, SessionID: first},
+				{Kind: shuttleengine.SessionSignalAsk, SessionID: first},
 				{Kind: shuttleengine.SessionSignalTurnEnd, SessionID: first, Event: true},
 				{Kind: shuttleengine.SessionSignalSessionEnd, SessionID: first, Reason: "clear"},
 				{Kind: shuttleengine.SessionSignalSessionStart, SessionID: second, Source: "clear"},

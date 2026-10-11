@@ -232,6 +232,24 @@ func TestSessionFold(t *testing.T) {
 			wantHistory: []SessionState{state(SessionBusy, SessionCauseTurn, at(0)), state(SessionIdleStalled, SessionCauseInterrupt, at(50))},
 		},
 		{
+			name:        "an interrupt marker past an ask turns it into idle-stalled, stamped with the marker's time",
+			steps:       []step{{[]SessionSignal{turnStart(1), ask(2)}, factsWith(func(f *SessionFacts) { f.Interrupted, f.InterruptAt = true, at(50) })}},
+			wantState:   state(SessionIdleStalled, SessionCauseInterrupt, at(50)),
+			wantHistory: []SessionState{state(SessionBusy, SessionCauseTurn, at(1)), state(SessionAsking, SessionCauseAsk, at(2)), state(SessionIdleStalled, SessionCauseInterrupt, at(50))},
+		},
+		{
+			name:        "an interrupt marker older than the ask leaves it asking",
+			steps:       []step{{[]SessionSignal{turnStart(1), ask(60)}, factsWith(func(f *SessionFacts) { f.Interrupted, f.InterruptAt = true, at(50) })}},
+			wantState:   state(SessionAsking, SessionCauseAsk, at(60)),
+			wantHistory: []SessionState{state(SessionBusy, SessionCauseTurn, at(1)), state(SessionAsking, SessionCauseAsk, at(60))},
+		},
+		{
+			name:        "an interrupt marker leaves an interactive turn end's awaiting-input ask alone",
+			steps:       []step{{[]SessionSignal{turnStart(1), turnEnd(2)}, factsWith(interactive, func(f *SessionFacts) { f.Interrupted, f.InterruptAt = true, at(50) })}},
+			wantState:   state(SessionAsking, SessionCauseAwaitingInput, at(2)),
+			wantHistory: []SessionState{state(SessionBusy, SessionCauseTurn, at(1)), state(SessionAsking, SessionCauseAwaitingInput, at(2))},
+		},
+		{
 			name:        "an interrupt marker leaves a busy background turn end and a finished turn alone",
 			steps:       []step{{[]SessionSignal{turnStart(1), turnEnd(2, shell)}, factsWith(func(f *SessionFacts) { f.Interrupted, f.InterruptAt = true, at(50) })}},
 			wantState:   SessionState{Name: SessionBusy, Cause: SessionCauseBackground, Outstanding: []BackgroundTask{shell}, Since: at(2)},

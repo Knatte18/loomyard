@@ -34,12 +34,22 @@ const (
 // askUserQuestionToolName is the tool whose PreToolUse payload is an ask.
 const askUserQuestionToolName = "AskUserQuestion"
 
-// Notification types the parser reads: the two that wait on an answer, and the idle notice.
+// Notification types the parser reads: the three that wait on an answer, and the idle notice.
 const (
-	notificationPermissionPrompt  = "permission_prompt"
-	notificationElicitationDialog = "elicitation_dialog"
-	notificationIdlePrompt        = "idle_prompt"
+	notificationPermissionPrompt     = "permission_prompt"
+	notificationElicitationDialog    = "elicitation_dialog"
+	notificationElicitationURLDialog = "elicitation_url_dialog"
+	notificationIdlePrompt           = "idle_prompt"
 )
+
+// notificationSignalKinds maps a Notification payload's type to the signal it yields.
+// A type absent from it, such as agent_needs_input and elicitation_response, yields no signal.
+var notificationSignalKinds = map[string]shuttleengine.SessionSignalKind{
+	notificationPermissionPrompt:     shuttleengine.SessionSignalAsk,
+	notificationElicitationDialog:    shuttleengine.SessionSignalAsk,
+	notificationElicitationURLDialog: shuttleengine.SessionSignalAsk,
+	notificationIdlePrompt:           shuttleengine.SessionSignalIdleNotice,
+}
 
 // SessionEnd reasons that end Claude's process.
 const (
@@ -150,15 +160,15 @@ func signalFromPayload(hookName string, fields map[string]any) (shuttleengine.Se
 			return shuttleengine.SessionSignal{}, false
 		}
 		return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalAsk, Event: true}, true
+	case hookEventPermissionRequest:
+		return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalAsk}, true
 	case hookEventNotification:
 		notificationType, _ := fields["notification_type"].(string)
-		switch notificationType {
-		case notificationPermissionPrompt, notificationElicitationDialog:
-			return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalAsk}, true
-		case notificationIdlePrompt:
-			return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalIdleNotice}, true
+		kind, ok := notificationSignalKinds[notificationType]
+		if !ok {
+			return shuttleengine.SessionSignal{}, false
 		}
-		return shuttleengine.SessionSignal{}, false
+		return shuttleengine.SessionSignal{Kind: kind}, true
 	case hookEventSessionEnd:
 		reason, _ := fields["reason"].(string)
 		return shuttleengine.SessionSignal{

@@ -292,6 +292,8 @@
 // Precedence, first that applies: a process-ending session end; a process proven dead; liveness left unproven; an unreadable events file; no signal at all; otherwise the state the signals give.
 // A turn end reads busy while it reports background tasks, idle-done when the run's output files exist, asking for an interactive run, and idle-stalled otherwise.
 // The transcript's API-error marker turns the newest turn end into an API-error stall, and the interrupt marker turns a turn that is still open into an interrupt stall.
+// The interrupt marker also releases an ask with cause ask, whichever signal raised it, to the same interrupt stall when the marker's time is not before the ask's, or either time is zero; an awaiting-input ask from a turn end is not released.
+// A granted permission writes neither a turn signal nor a marker, so an ask holds every send until the next turn signal or an interrupt marker.
 // Output files are consulted first only among the output-derived states, so dead and unknown outrank idle-done and a finished run can read dead:
 // the first consumer that acts on dead applies PATTERN-completion-signal's output check before acting.
 // The facts and their sources: the record gives Interactive and the output files (a run that declares none has none that exist), taken once per read;
