@@ -92,6 +92,7 @@ func TestNames(t *testing.T) {
 			"Finalize",
 			"FrictionReflect",
 			"InnerRun",
+			"Land",
 			"LoomPreflight",
 			"MultiLLM",
 			"PRGate",

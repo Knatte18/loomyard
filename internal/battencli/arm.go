@@ -646,7 +646,7 @@ func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, er
 const childDoneFlagKey = "child_done_batten_halted"
 
 // haltedOverDoneChild returns the flag text and true when batten's own state st is failed, blocked or paused while the child loom run's status child, read when childFound, is done.
-// The flag names the batten run that closes the pair, which runs Worktree-Teardown.
+// The flag names the batten run that closes the pair: it resumes batten at the row it halted at, which lands the run through Land before Worktree-Teardown tears the pair down.
 func haltedOverDoneChild(slug string, st, child shedengine.Status, childFound bool) (string, bool) {
 	switch st.State {
 	case shedengine.StateFailed, shedengine.StateBlocked, shedengine.StatePaused:
@@ -656,7 +656,7 @@ func haltedOverDoneChild(slug string, st, child shedengine.Status, childFound bo
 	if !childFound || child.State != shedengine.StateDone {
 		return "", false
 	}
-	return fmt.Sprintf("batten is %s while its child loom run is done; run \"lyx batten run %s\" from the prime, which runs Worktree-Teardown", st.State, slug), true
+	return fmt.Sprintf("batten is %s while its child loom run is done; run \"lyx batten run %s\" from the prime, which resumes batten at the row it halted at and lands the run through Land before Worktree-Teardown tears the pair down", st.State, slug), true
 }
 
 // readChildStatus reads the task worktree's own loom run status.

@@ -32,8 +32,8 @@ func locationFixtures(t *testing.T) map[string]*lyxcwd.Location {
 }
 
 // TestPaths_ResolveUnderTheAnchorBySegment asserts, over a root-anchored and a subpath-anchored Location, the path constructors' whole contract:
-//   - BattenDir and PrimeRunLock sit at their fixed spots under the ephemeral segment;
-//   - StatusFile lives under the fabric-synced _lyx segment while RunLock, StatusLock and PrimeRunLock stay under the never-tracked .lyx segment, per the Durable-vs-Ephemeral State Invariant;
+//   - BattenDir, PrimeRunLock and LandLock sit at their fixed spots under the ephemeral segment;
+//   - StatusFile lives under the fabric-synced _lyx segment while RunLock, StatusLock, PrimeRunLock and LandLock stay under the never-tracked .lyx segment, per the Durable-vs-Ephemeral State Invariant;
 //   - the two per-slug locks sit under BattenDir, and StatusFile, RunLock and StatusLock are pairwise distinct -- RunLock differing from StatusLock is what shedengine.Shed's own validation rejects outright, and it must not first surface at runtime;
 //   - every path stays under the Location's own anchor and none contains a managed task worktree's own path -- this package's half of the Batten Bookend Invariant's mechanical proxy, since every seam resolves against the prime Location's anchored tree, never the managed slug's worktree, which does not exist at wiring time.
 //
@@ -55,6 +55,7 @@ func TestPaths_ResolveUnderTheAnchorBySegment(t *testing.T) {
 			runLock := RunLock(l, managedSlug)
 			statusLock := StatusLock(l, managedSlug)
 			primeRunLock := PrimeRunLock(l)
+			landLock := LandLock(l)
 
 			if want := filepath.Join(l.AnchorPath(), ".lyx", "shed", managedSlug); dir != want {
 				t.Errorf("BattenDir() = %q; want %q", dir, want)
@@ -62,11 +63,14 @@ func TestPaths_ResolveUnderTheAnchorBySegment(t *testing.T) {
 			if want := filepath.Join(l.AnchorPath(), ".lyx", "shed", "run.lock"); primeRunLock != want {
 				t.Errorf("PrimeRunLock() = %q; want %q", primeRunLock, want)
 			}
+			if want := filepath.Join(l.AnchorPath(), ".lyx", "shed", "land.lock"); landLock != want {
+				t.Errorf("LandLock() = %q; want %q", landLock, want)
+			}
 
 			if !strings.HasPrefix(statusFile, durablePrefix) {
 				t.Errorf("StatusFile() = %q; want it under the durable segment %q", statusFile, durablePrefix)
 			}
-			for pathName, got := range map[string]string{"RunLock": runLock, "StatusLock": statusLock, "PrimeRunLock": primeRunLock} {
+			for pathName, got := range map[string]string{"RunLock": runLock, "StatusLock": statusLock, "PrimeRunLock": primeRunLock, "LandLock": landLock} {
 				if !strings.HasPrefix(got, ephemeralPrefix) {
 					t.Errorf("%s() = %q; want it under the ephemeral segment %q", pathName, got, ephemeralPrefix)
 				}
@@ -84,7 +88,7 @@ func TestPaths_ResolveUnderTheAnchorBySegment(t *testing.T) {
 
 			managedWorktreePath := filepath.Join(l.HubPath, managedSlug)
 			for pathName, got := range map[string]string{
-				"BattenDir": dir, "StatusFile": statusFile, "RunLock": runLock, "StatusLock": statusLock, "PrimeRunLock": primeRunLock,
+				"BattenDir": dir, "StatusFile": statusFile, "RunLock": runLock, "StatusLock": statusLock, "PrimeRunLock": primeRunLock, "LandLock": landLock,
 			} {
 				if !strings.HasPrefix(got, l.AnchorPath()+separator) && got != l.AnchorPath() {
 					t.Errorf("%s() = %q; want it under Location's own anchor %q", pathName, got, l.AnchorPath())

@@ -171,7 +171,7 @@ func TestWire_PairDirRefusesAnAbsentTaskWorktreeByName(t *testing.T) {
 }
 
 // TestWire_BattenStatusSeamsReadBattensOwnStatus asserts the wired seams that read batten's own status file agree on one fixture:
-// the pause seam reports the pause_requested flag and false while the file is absent, and the row notices' history seam reports the history length and 0 while the file is absent.
+// the pause seams of Run-Shed and Land report the pause_requested flag and false while the file is absent, and the row notices' history seam reports the history length and 0 while the file is absent.
 func TestWire_BattenStatusSeamsReadBattensOwnStatus(t *testing.T) {
 	t.Parallel()
 
@@ -207,6 +207,10 @@ func TestWire_BattenStatusSeamsReadBattensOwnStatus(t *testing.T) {
 			got, err := c.env.InnerRun.PauseRequested()
 			if err != nil || got != tt.want {
 				t.Errorf("PauseRequested() = %v, %v; want %v, nil", got, err, tt.want)
+			}
+			landPaused, err := c.env.Land.PauseRequested()
+			if err != nil || landPaused != tt.want {
+				t.Errorf("Land.PauseRequested() = %v, %v; want %v, nil", landPaused, err, tt.want)
 			}
 			history, err := c.env.Teardown.Notices.BattenHistoryLen()
 			if err != nil || history != tt.wantHistory {

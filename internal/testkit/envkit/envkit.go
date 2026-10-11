@@ -71,6 +71,11 @@ var nilLegal = map[string]bool{
 	"InnerRun.OpenTerminal":                            true,
 	"InnerRun.Notify":                                  true,
 	"InnerRun.PairDir":                                 true,
+	"Land.Sleep":                                       true,
+	"Land.Now":                                         true,
+	"Land.LandLock.Sleep":                              true,
+	"Land.Notices.Notify":                              true,
+	"Land.Notices.Sleep":                               true,
 	"Teardown.Notices.Notify":                          true,
 	"Teardown.Notices.Sleep":                           true,
 	"PrimeLock.Sleep":                                  true,
@@ -265,6 +270,29 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(context.Context) (string, error) { return "", nil },
 			Remove:   func(context.Context) error { return nil },
+			Notices: battenshed.RowNoticeDeps{
+				OrchStrandRecorded: func() (bool, error) { return true, nil },
+				BattenHistoryLen:   func() (int, error) { return 0, nil },
+			},
+		},
+		Land: battenshed.LandDeps{
+			ParentBranch: func() (string, error) { return "main", nil },
+			PrimeBranch:  func() (string, error) { return "main", nil },
+			PrimeDirty:   func() ([]string, error) { return nil, nil },
+			Pull:         func(context.Context) error { return nil },
+			Landing:      func() (battenshed.LandingSettings, error) { return battenshed.LandingSettings{}, nil },
+			RunDeploy: func(context.Context, string, string, time.Duration) (battenshed.DeployResult, error) {
+				return battenshed.DeployResult{}, nil
+			},
+			ReadyTasks:     func() ([]string, error) { return nil, nil },
+			PruneBoard:     func() error { return nil },
+			PauseRequested: func() (bool, error) { return false, nil },
+			LandLock: battenshed.PrimeLock{
+				Path: filepath.Join(dir, "land.lock"),
+				Acquire: func() (func() error, bool, error) {
+					return func() error { return nil }, true, nil
+				},
+			},
 			Notices: battenshed.RowNoticeDeps{
 				OrchStrandRecorded: func() (bool, error) { return true, nil },
 				BattenHistoryLen:   func() (int, error) { return 0, nil },

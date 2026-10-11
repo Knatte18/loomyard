@@ -1,5 +1,5 @@
 # batten-recipe.yaml is the task-worktree batten's producer graph. It is embedded into the
-# binary by the sibling recipes.go rather than read from disk. The four row names below are
+# binary by the sibling recipes.go rather than read from disk. The row names below are
 # durable on-disk identities that resume depends on, pinned against internal/battenrecipe's own
 # Name* constants by that package's coverage guard -- a rename here without a matching constant
 # rename breaks resume for any in-flight run.
@@ -17,6 +17,12 @@
 # Run-Shed's own hard-error return -- not an empty on_stuck -- is what shedengine turns into
 # StateFailed at Run-Shed with the run halted; a halted child is no longer such a return, only a
 # mechanism failure is.
+#
+# Land runs after Run-Shed's Done: under the hub's land lock it pulls the prime, runs the hub-wide
+# deploy command, prunes the board and names the tasks the landing made ready. It carries no
+# on_stuck and no max_bounces: a failed Land step, or a pause honoured during its waits, halts
+# batten blocked at Land with the pair present, so Worktree-Teardown stays the only terminal and
+# unreachable from any failure path.
 #
 # Worktree-Teardown's empty on_done is likewise load-bearing and is what ends the run quietly.
 
@@ -36,13 +42,17 @@ producers:
 
   - name: Run-Shed
     engine: InnerRun
-    on_done: Worktree-Teardown
+    on_done: Land
     on_stuck: Run-Shed
     config:
       poll_interval_s: 2
       notice_probe_s: 30
       driver_exit_grace_s: 900
       notice_quiet_min: 30
+
+  - name: Land
+    engine: Land
+    on_done: Worktree-Teardown
 
   - name: Worktree-Teardown
     engine: WorktreeTeardown

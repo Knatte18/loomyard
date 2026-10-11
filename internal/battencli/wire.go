@@ -717,6 +717,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 			Notices: rowNotices(location, slug),
 		},
+		Land: landDeps(location, slug, locateTask),
 		InnerRun: battenshed.InnerRunDeps{
 			// Notify queues the notice on the prime's orch, the parent of a batten run started from the prime, and reports QueueNotice's own answer: whether the notice was queued.
 			Notify: func(ctx context.Context, line string) (bool, error) {
@@ -734,13 +735,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 			MarkWatched: markWatched,
 			// PauseRequested reads batten's own status file, the one `lyx batten pause` writes, so the in-call wait notices a pause within one check.
-			PauseRequested: func() (bool, error) {
-				status, found, err := state.ReadJSONStrict[shedengine.Status](StatusFile(location, slug), StatusLock(location, slug))
-				if err != nil || !found {
-					return false, err
-				}
-				return status.PauseRequested, nil
-			},
+			PauseRequested: pauseRequested(location, slug),
 			// Activity resolves the task worktree on Call like every seam here.
 			Activity: func(context.Context) ([]battenshed.AgentActivity, bool, error) {
 				taskLocation, err := locateTask()

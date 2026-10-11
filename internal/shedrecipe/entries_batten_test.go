@@ -1,9 +1,9 @@
-// entries_batten_test.go covers the four batten entries: worktreeCreateEntry, innerRunEntry,
-// seedChildEntry, and worktreeTeardownEntry. It follows entries_simple_test.go's table shape for
+// entries_batten_test.go covers the batten entries: worktreeCreateEntry, innerRunEntry,
+// seedChildEntry, landEntry and worktreeTeardownEntry. It follows entries_simple_test.go's table shape for
 // the shared Slug/ScratchDir/seam validation, plus innerRunEntry's own poll_interval_s config
 // coverage.
 //
-// Every seam the four batten entries validate -- CreateWorktree, PrimeLock.Acquire, Teardown.Shutdown, Teardown.Remove, InnerRun.Spawn, InnerRun.ResolveStatus, InnerRun.ReadStatus, InnerRun.ReadDecision, InnerRun.DriverAlive, and the five SeedChild closures -- is a concrete func type, not an interface, so there is no separate typed-nil-interface case to exercise beyond the plain-nil case requireSeam handles for a reflect.Func value: a nil func value passed as any already reports Kind() == reflect.Func with IsNil() true, the same detection path a typed-nil interface takes.
+// Every seam the batten entries validate is a concrete func type, not an interface, so there is no separate typed-nil-interface case to exercise beyond the plain-nil case requireSeam handles for a reflect.Func value: a nil func value passed as any already reports Kind() == reflect.Func with IsNil() true, the same detection path a typed-nil interface takes.
 
 package shedrecipe
 
@@ -83,6 +83,24 @@ func lifecycleEntryCases() []lifecycleEntryCase {
 				{"InnerRun.ReadStatus", func(env Env) Env { env.InnerRun.ReadStatus = nil; return env }},
 				{"InnerRun.ReadDecision", func(env Env) Env { env.InnerRun.ReadDecision = nil; return env }},
 				{"InnerRun.DriverAlive", func(env Env) Env { env.InnerRun.DriverAlive = nil; return env }},
+			},
+		},
+		{
+			registryKey: "Land",
+			entry:       landEntry,
+			buildEnv:    newTestEnv,
+			zeroSeams: []lifecycleSeamCase{
+				{"PrimeLock.Acquire", func(env Env) Env { env.PrimeLock.Acquire = nil; return env }},
+				{"Land.LandLock.Acquire", func(env Env) Env { env.Land.LandLock.Acquire = nil; return env }},
+				{"Land.ParentBranch", func(env Env) Env { env.Land.ParentBranch = nil; return env }},
+				{"Land.PrimeBranch", func(env Env) Env { env.Land.PrimeBranch = nil; return env }},
+				{"Land.PrimeDirty", func(env Env) Env { env.Land.PrimeDirty = nil; return env }},
+				{"Land.Pull", func(env Env) Env { env.Land.Pull = nil; return env }},
+				{"Land.Landing", func(env Env) Env { env.Land.Landing = nil; return env }},
+				{"Land.RunDeploy", func(env Env) Env { env.Land.RunDeploy = nil; return env }},
+				{"Land.ReadyTasks", func(env Env) Env { env.Land.ReadyTasks = nil; return env }},
+				{"Land.PruneBoard", func(env Env) Env { env.Land.PruneBoard = nil; return env }},
+				{"Land.PauseRequested", func(env Env) Env { env.Land.PauseRequested = nil; return env }},
 			},
 		},
 		{
