@@ -285,6 +285,8 @@ type Run struct {
 	// not-ready teardown (abandonStartup) it is saved to startupCaptureFileName inside the run
 	// directory as the diagnosis artifact a later operator or attach reads.
 	lastStartupCapture string
+	// sessionLiveness is the per-wait state of sessionGone, reset at the entry of Wait and awaitStartup.
+	sessionLiveness sessionLivenessState
 	// startupHookReason is why the latest startup probe held a ready pane back for want of a session-start line, empty when it held nothing back.
 	startupHookReason string
 	// dismissed reports that this run played a startup-gate dismissal that sent a key, and dismissedAt is when, on the run's clock.

@@ -165,9 +165,17 @@ func TestStartup_NeedsSessionStartLine(t *testing.T) {
 		// wantErr is a substring of the start error, empty for none; wantNoErr is one it must not hold.
 		wantErr   string
 		wantNoErr string
+		// wantNamesEvents asserts the start error names the events path.
+		wantNamesEvents bool
+		// death scripts the registry's liveness reading across the startup ticks.
+		death *deathScript
 	}{
-		{name: "a ready pane with no session-start line is not started", records: true, script: []StartupState{StartupReady}, wantErr: "no session-start line in the events file"},
-		{name: "an unreadable events file is not started and says so", records: true, script: []StartupState{StartupReady}, eventsIsDir: true, wantErr: "could not be read for a session-start line"},
+		{name: "a ready pane with no session-start line is not started", records: true, script: []StartupState{StartupReady}, wantErr: "no session-start line in the events file", wantNamesEvents: true},
+		{name: "an unreadable events file is not started and says so", records: true, script: []StartupState{StartupReady}, eventsIsDir: true, wantErr: "could not be read for a session-start line", wantNamesEvents: true},
+		{
+			name: "a process read alive after its session-start line that dies before the pane is ready fails the start as died", records: true, script: []StartupState{StartupPending},
+			events: "SESSIONSTART:startup\n", death: &deathScript{liveness: LivenessAlive, steps: []deathStep{{liveness: LivenessDead}}}, wantErr: `outcome "died"`,
+		},
 		{name: "a session-start line and a ready pane start the run", records: true, script: []StartupState{StartupReady}, events: "SESSIONSTART:startup\n", wantStarted: true},
 		{name: "a gate on screen is dismissed beside a session-start line, then the ready pane starts the run", records: true, script: []StartupState{StartupTrustPrompt, StartupReady}, events: "SESSIONSTART:startup\n", wantStarted: true, wantEnter: true},
 		{name: "a session-start line of an earlier launch with a pane not yet ready is not started", records: true, script: []StartupState{StartupPending}, events: "SESSIONSTART:startup\n", wantNoErr: "session-start line"},
@@ -181,6 +189,9 @@ func TestStartup_NeedsSessionStartLine(t *testing.T) {
 				CaptureQueue: []string{"gate"},
 			}
 			engine := &sessionFakeEngine{}
+			if tt.death != nil {
+				engine.liveness = tt.death.liveness
+			}
 			engine.StartupScript = tt.script
 			engine.PrepareLaunch = Launch{Cmd: "cmd", SessionID: "session-1", RecordsSessionStarts: tt.records}
 			engine.PrepareHook = func(runDir string) {
@@ -199,6 +210,9 @@ func TestStartup_NeedsSessionStartLine(t *testing.T) {
 			}
 			seedStartupFakes(reed, &engine.fakeEngine)
 			runner := newFixture(t, reed, engine, withConfig(shortStartupConfig)).Runner
+			if tt.death != nil {
+				runner.clock = &multiStepClock{fakeClock: newFakeClock(time.Now()), steps: tt.death.stepsOn(t, engine, "")}
+			}
 
 			run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}}, GateSpec{})
 			if tt.wantStarted {
@@ -212,7 +226,7 @@ func TestStartup_NeedsSessionStartLine(t *testing.T) {
 				if tt.wantErr != "" && !strings.Contains(err.Error(), tt.wantErr) {
 					t.Errorf("error = %v; want it to contain %q", err, tt.wantErr)
 				}
-				if tt.wantErr != "" && !strings.Contains(err.Error(), eventsFileName) {
+				if tt.wantNamesEvents && !strings.Contains(err.Error(), eventsFileName) {
 					t.Errorf("error = %v; want it to name the events path %q", err, eventsFileName)
 				}
 				if tt.wantNoErr != "" && strings.Contains(err.Error(), tt.wantNoErr) {

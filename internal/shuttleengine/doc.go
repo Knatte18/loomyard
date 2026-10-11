@@ -322,4 +322,10 @@
 // A launch that declares Launch.RecordsSessionStarts, recorded as RunState.RecordsSessionStarts, starts only once the events file holds a session-start line of any source beside the ready pane;
 // until both hold the run stays not started and the startup error names the missing line or the unreadable events file, while gate detection and dismissal run as for any run.
 // An engine that leaves the flag false, and a record an older binary wrote, start on the pane alone.
+//
+// Process death: for an engine with both SessionSignalParser and SessionProber, every liveness tick of Wait and of the startup step, once the strand reads live, asks whether the provider's process is gone behind the pane's shell.
+// It is gone when the registry reads the newest session id dead and this wait read that id alive at an earlier tick;
+// it is also gone when the events file ends, past its size at the wait's first liveness tick, in a process-ending session end and the registry does not read the id alive.
+// An unproven reading, a session end at or before that first-tick size and a session end beside an alive reading end nothing, so an earlier launch's end never fails a resumed launch.
+// A gone session ends the run died, or done when every output file exists, the way a dead pane does; a startup that finds it fails as died.
 package shuttleengine

@@ -194,7 +194,61 @@ func TestRun_Wait_Classification(t *testing.T) {
 		wantIdentity bool
 		wantCleanup  cleanupExpectation
 		wantLogged   []string
+		// death, when set, runs the wait over a session-signal engine whose registry reading starts at death.liveness and changes as the wait sleeps between ticks.
+		death *deathScript
 	}{
+		{
+			name: "a process-ending session end past the first tick with the registry unproven ends the run died", status: liveStrands, startup: ready,
+			death:       &deathScript{steps: []deathStep{{appendLine: "SESSIONEND:other"}}},
+			wantOutcome: OutcomeDied, wantCleanup: cleanupSkipped,
+		},
+		{
+			name: "the session end of /exit ends the run died", status: liveStrands, startup: ready,
+			death:       &deathScript{steps: []deathStep{{appendLine: "SESSIONEND:prompt_input_exit"}}},
+			wantOutcome: OutcomeDied, wantCleanup: cleanupSkipped,
+		},
+		{
+			name: "a session read alive whose entry then reads dead ends the run died", status: liveStrands, startup: ready,
+			death:       &deathScript{liveness: LivenessAlive, steps: []deathStep{{liveness: LivenessDead}}},
+			wantOutcome: OutcomeDied, wantCleanup: cleanupSkipped,
+		},
+		{
+			name: "a process-ending session end with every output file present ends the run done", status: liveStrands, startup: ready, output: true,
+			death:       &deathScript{steps: []deathStep{{appendLine: "SESSIONEND:other"}}},
+			wantOutcome: OutcomeDone,
+		},
+		{
+			name: "a session read alive whose entry then reads dead with every output file present ends the run done", status: liveStrands, startup: ready, output: true,
+			death:       &deathScript{liveness: LivenessAlive, steps: []deathStep{{liveness: LivenessDead}}},
+			wantOutcome: OutcomeDone,
+		},
+		{
+			name: "an unproven liveness ends nothing", status: liveStrands, startup: ready, timeout: heldTestTimeout,
+			death:       &deathScript{},
+			wantOutcome: OutcomeTimeout, wantCleanup: cleanupSkipped,
+		},
+		{
+			name: "a session end that does not end the process ends nothing", status: liveStrands, startup: ready, timeout: heldTestTimeout,
+			death:       &deathScript{steps: []deathStep{{appendLine: "SESSIONEND:clear"}}},
+			wantOutcome: OutcomeTimeout, wantCleanup: cleanupSkipped,
+		},
+		{
+			name: "a process-ending session end beside an alive registry reading ends nothing", status: liveStrands, startup: ready, timeout: heldTestTimeout,
+			death:       &deathScript{liveness: LivenessAlive, steps: []deathStep{{appendLine: "SESSIONEND:other"}}},
+			wantOutcome: OutcomeTimeout, wantCleanup: cleanupSkipped,
+		},
+		{
+			name: "a crashed launch's dead entry before a resumed launch reads alive ends nothing", status: liveStrands, startup: ready, timeout: heldTestTimeout,
+			death:       &deathScript{liveness: LivenessDead, steps: []deathStep{{liveness: LivenessAlive}}},
+			wantOutcome: OutcomeTimeout, wantCleanup: cleanupSkipped,
+		},
+		{
+			// The earlier launch's session end is the newest signal but lies before the first tick's size, so neither an unproven registry before the resumed process registers nor one after it read alive ends the run.
+			name: "an earlier launch's process-ending session end ends nothing, before or after the resumed process reads alive", status: liveStrands, startup: ready, timeout: heldTestTimeout,
+			events:      "SESSIONEND:other\n",
+			death:       &deathScript{steps: []deathStep{{liveness: LivenessAlive}, {liveness: LivenessUnproven}}},
+			wantOutcome: OutcomeTimeout, wantCleanup: cleanupSkipped,
+		},
 		{
 			name: "done cleans up", status: liveStrands, startup: ready, events: "STOP:done\n", output: true,
 			wantOutcome: OutcomeDone, wantCleanup: cleanupPerformed,
@@ -303,13 +357,20 @@ func TestRun_Wait_Classification(t *testing.T) {
 			}
 
 			reed := &fakeReed{StatusQueue: tt.status, StatusErr: tt.statusErr}
-			engine := &fakeEngine{StartupScript: tt.startup, ParseEventsErr: tt.parseEventsErr}
-			fx := newFixture(t, reed, engine, withConfig(cfg))
+			var engine Engine = &fakeEngine{StartupScript: tt.startup, ParseEventsErr: tt.parseEventsErr}
 			fc := newFakeClock(time.Now())
+			var runClock Clock = fc
+			if tt.death != nil {
+				sessionEngine := &sessionFakeEngine{liveness: tt.death.liveness}
+				sessionEngine.StartupScript = tt.startup
+				engine = sessionEngine
+				runClock = &multiStepClock{fakeClock: fc, steps: tt.death.stepsOn(t, sessionEngine, eventsPath)}
+			}
+			fx := newFixture(t, reed, engine, withConfig(cfg))
 			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: timeout, KeepPane: tt.keepPane, Display: render.Display{Anchor: tt.anchor}},
 				withRunDir(runDir),
 				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
-				withRunClock(fc, fc.Now().Add(timeout)))
+				withRunClock(runClock, fc.Now().Add(timeout)))
 
 			buf := logcapture.CaptureVerbose(t)
 			result, err := run.Wait()
@@ -363,6 +424,42 @@ func TestRun_Wait_Classification(t *testing.T) {
 			}
 		})
 	}
+}
+
+// deathScript scripts the registry's liveness reading and the events file across the ticks of one wait.
+// liveness is the reading from the first tick, and steps[i] is applied when the wait sleeps after tick i+1.
+type deathScript struct {
+	liveness Liveness
+	steps    []deathStep
+}
+
+// deathStep is one change between two ticks: a new liveness reading, a line appended to the events file, or both.
+type deathStep struct {
+	liveness   Liveness
+	appendLine string
+}
+
+// stepsOn returns the clock steps that apply the script's steps to engine and the events file at eventsPath.
+func (d *deathScript) stepsOn(t *testing.T, engine *sessionFakeEngine, eventsPath string) []func() {
+	var steps []func()
+	for _, step := range d.steps {
+		steps = append(steps, func() {
+			if step.appendLine == "" {
+				engine.liveness = step.liveness
+				return
+			}
+			file, err := os.OpenFile(eventsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+			if err != nil {
+				t.Errorf("open events: %v", err)
+				return
+			}
+			defer file.Close()
+			if _, err := file.WriteString(step.appendLine + "\n"); err != nil {
+				t.Errorf("append events: %v", err)
+			}
+		})
+	}
+	return steps
 }
 
 // boundLivePane is a reed Status answer for strand-1 with a bound pane that is live.

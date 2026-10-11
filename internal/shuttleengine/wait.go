@@ -246,6 +246,7 @@ func (run *Run) Wait() (Result, error) {
 	// run keeps full liveness coverage regardless of Started — only the startup probe itself is
 	// conditional on it.
 	started := run.state.Started
+	run.sessionLiveness = sessionLivenessState{}
 	eventsFailures := 0
 	statusFailures := 0
 
@@ -526,6 +527,7 @@ func (run *Run) awaitStartup() (Result, error) {
 	sleep := base
 	previousCapture := ""
 	started := false
+	run.sessionLiveness = sessionLivenessState{}
 	statusFailures := 0
 	for tick := 0; tick < maxTicks; tick++ {
 		outcome, err := run.checkLivenessTick(&started, startupDeadline)
@@ -997,6 +999,9 @@ func allOutputFilesExist(files []string) bool {
 // A startup gate is dismissed at most once per dismissalGap on the run's clock: a probe inside the gap that still sees a gate plays nothing and does not ask for the dismissal keys.
 // Any play that sent at least one input starts the gap, failed partway or not; an empty sequence or a first input that failed does not.
 // Bound: the throttle only removes key presses and never adds one, and the startup deadline and the tick cap still end a gate that never clears.
+//
+// Once the strand reads live, every tick asks sessionGone, before the started short-circuit so startup is covered too;
+// a gone session returns OutcomeDone when every output file exists and OutcomeDied otherwise, the way a dead pane does.
 // Run.Wait's own startup probe already runs at least one gap apart, so the throttle never holds a dismissal there.
 //
 // For a record with RecordsSessionStarts, a ready pane marks the run started only once the events file also holds a session-start line.
@@ -1026,6 +1031,13 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 		// every other run's strand carries a pane id from the moment AddStrand persists it.
 		if strand.PaneID == "" && run.spec.Display.Anchor != render.AnchorHidden {
 			return "", errStrandPaneBindingCleared
+		}
+		return OutcomeDied, nil
+	}
+
+	if run.sessionGone() {
+		if allOutputFilesExist(run.spec.OutputFiles) {
+			return OutcomeDone, nil
 		}
 		return OutcomeDied, nil
 	}
@@ -1099,6 +1111,69 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 	// StartupPending and a trust prompt that has not yet cleared are both "still not ready", and
 	// share the one deadline that governs the whole startup window.
 	return run.classifyStartupWindow(startupDeadline), nil
+}
+
+// sessionLivenessState is what sessionGone keeps across the liveness ticks of one wait.
+type sessionLivenessState struct {
+	// sizeTaken reports that firstTickSize holds the events file's size at the wait's first liveness tick.
+	sizeTaken     bool
+	firstTickSize int64
+	// readAlive holds the session ids a liveness tick of this wait read alive.
+	readAlive map[string]bool
+}
+
+// sessionGone reports whether this tick proves the provider's process gone behind a live pane.
+// It answers false for an engine without both SessionSignalParser and SessionProber.
+// Otherwise it reads the registry once for the newest session id the events file names, the record's SessionID when none, and answers true when either holds:
+// the signals past the events-file size taken at the wait's first call end in a process-ending session end and the reading is not alive,
+// or the reading is dead for an id this wait read alive at an earlier tick.
+// An alive reading records the id and answers false, as does an unproven reading, a dead one for an id this wait never read alive and a session end at or before the first-call size.
+// An unreadable events file counts no session end.
+func (run *Run) sessionGone() bool {
+	parser, parses := run.runner.engine.(SessionSignalParser)
+	prober, probes := run.runner.engine.(SessionProber)
+	if !parses || !probes {
+		return false
+	}
+	state := &run.sessionLiveness
+	if !state.sizeTaken {
+		state.firstTickSize, state.sizeTaken = eventsSize(run.state.EventsPath), true
+	}
+
+	var pastFirstTick []SessionSignal
+	sessionID := run.state.SessionID
+	if data, err := os.ReadFile(run.state.EventsPath); err == nil {
+		signals, _ := parser.ParseSessionSignals(data)
+		for i := len(signals) - 1; i >= 0; i-- {
+			if signals[i].SessionID != "" {
+				sessionID = signals[i].SessionID
+				break
+			}
+		}
+		if state.firstTickSize <= int64(len(data)) {
+			pastFirstTick, _ = parser.ParseSessionSignals(data[state.firstTickSize:])
+		}
+	}
+
+	liveness := prober.ProcessLiveness(sessionID)
+	if liveness == LivenessAlive {
+		if state.readAlive == nil {
+			state.readAlive = map[string]bool{}
+		}
+		state.readAlive[sessionID] = true
+		return false
+	}
+	proof := ""
+	switch {
+	case len(pastFirstTick) > 0 && pastFirstTick[len(pastFirstTick)-1].Kind == SessionSignalSessionEnd && pastFirstTick[len(pastFirstTick)-1].EndsProcess:
+		proof = "a process-ending session end past the wait's first tick, and the process not alive"
+	case liveness == LivenessDead && state.readAlive[sessionID]:
+		proof = "the process read alive earlier in this wait is now dead"
+	default:
+		return false
+	}
+	logger.Info("shuttle: the provider's process is gone behind a live pane", "strandGUID", run.state.StrandGUID, "sessionID", sessionID, "proof", proof)
+	return true
 }
 
 // sessionStartRecorded reports whether the events file holds a session-start signal of any source, read from the file's start.

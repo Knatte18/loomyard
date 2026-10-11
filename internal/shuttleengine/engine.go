@@ -21,14 +21,13 @@ const (
 	OutcomeDone Outcome = "done"
 	// OutcomeDied: a strand reed STILL TRACKS has a pane that is not alive (or the provider never
 	// became ready inside the startup window) before output files were written.
-	// Pane death is the only observable process failure;
-	// a provider crash mid-run behind a live pane shell classifies OutcomeTimeout instead.
+	// A provider process proven gone behind a live pane shell is this outcome too, by the registry or a process-ending session end;
+	// it needs an engine that parses session signals and probes liveness.
 	// A strand reed no longer tracks AT ALL is deliberately NOT this outcome — reed's bookkeeping
 	// going away says nothing about the agent, so Wait reports that as a mechanism failure.
 	OutcomeDied Outcome = "died"
 	// OutcomeTimeout: wall-clock Timeout elapsed before output files written.
-	// This also covers provider crashes mid-run behind a still-live pane shell (pane tells the
-	// operator which happened).
+	// A provider crash behind a still-live pane shell that nothing proves, such as an engine without liveness probing, also ends here.
 	OutcomeTimeout Outcome = "timeout"
 )
 
