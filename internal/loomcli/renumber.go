@@ -148,7 +148,7 @@ var renumberWaysForward = []struct {
 	{planparser.ErrRenumberPlanInconsistent, "run lyx loom validate-plan and fix its index-file-mismatch and card-numbering findings, then re-run the verb"},
 	{planparser.ErrRenumberPosition, "pass a position from first_card to the last card, or one past it for insert-card"},
 	{planparser.ErrRenumberOnlyCard, "insert the replacement card first, then remove"},
-	{planparser.ErrRenumberSlug, "pass a slug of lowercase letters and digits joined by single hyphens"},
+	{planparser.ErrRenumberSlug, "pass lowercase letters and digits joined by single hyphens"},
 	{planparser.ErrRenumberIntent, "pass a non-empty one-line --intent"},
 	{planparser.ErrRenumberNoJournal, "nothing to restore, lyx loom insert-card or lyx loom remove-card is the verb to run"},
 	{planparser.ErrRenumberJournalInvalid, "delete the named journal file, then run lyx loom validate-plan, whose findings name any card left inconsistent"},

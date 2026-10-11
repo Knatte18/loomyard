@@ -308,7 +308,7 @@ func TestRenumberVerbs_Refusals(t *testing.T) {
 		{name: "remove: non-integer position", run: runRemove("two"), want: []string{"remove-card", `"two" is not an integer`, "way forward: pass a position from first_card to the last card"}},
 		{name: "insert: position out of range", run: runInsert("9"), want: []string{"way forward: pass a position from first_card to the last card, or one past it for insert-card"}, untouched: true},
 		{name: "remove: position out of range", run: runRemove("9"), want: []string{"way forward: pass a position from first_card to the last card"}, untouched: true},
-		{name: "insert: invalid slug", run: func(d renumberDeps, out io.Writer) int { return insertCardVerb(out, d, "2", "Bad/Slug", "x") }, want: []string{"way forward: pass a slug of lowercase letters and digits joined by single hyphens"}, untouched: true},
+		{name: "insert: invalid slug", run: func(d renumberDeps, out io.Writer) int { return insertCardVerb(out, d, "2", "Bad/Slug", "x") }, want: []string{"way forward: pass lowercase letters and digits joined by single hyphens"}, untouched: true},
 		{name: "insert: invalid intent", run: func(d renumberDeps, out io.Writer) int { return insertCardVerb(out, d, "2", "new", " ") }, want: []string{"way forward: pass a non-empty one-line --intent"}, untouched: true},
 		{name: "insert: at a done card", prepare: withState(doneBatch), run: runInsert("2"), want: []string{"card 2, the last card webster has begun", "way forward: a begun card is frozen, so insert or remove after card 2"}, untouched: true},
 		{name: "remove: at a done card", prepare: withState(doneBatch), run: runRemove("1"), want: []string{"way forward: a begun card is frozen, so insert or remove after card 2"}, untouched: true},
