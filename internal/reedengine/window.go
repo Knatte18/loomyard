@@ -33,7 +33,7 @@ type WindowResult struct {
 const windowListFormat = "#{window_id} #{pane_id} #{pane_dead} #{window_name}"
 
 // OpenWindow opens a detached window named name in this worktree's reed session and runs `lyx` with lyxArgs in it.
-// The window is never selected, so it takes no focus, and it closes when its command exits.
+// The window is never selected, so it takes no focus, it carries @lyx_hidden, so the status bar gives it no button, and it closes when its command exits.
 //
 // A window of that exact name whose pane is live is returned as existing and nothing is started;
 // one whose pane is dead is killed and replaced.
@@ -70,7 +70,8 @@ func (e *Engine) OpenWindow(name string, lyxArgs []string) (WindowResult, error)
 		sessionWindows := exactSessionWindowTarget(session)
 		namedTarget := sessionWindows + "=" + name
 		out, err := e.tmux.output("new-window", "-d", "-P", "-F", "#{window_id}", "-t", sessionWindows, "-n", name, command,
-			";", "set-option", "-w", "-t", namedTarget, "remain-on-exit", "off")
+			";", "set-option", "-w", "-t", namedTarget, "remain-on-exit", "off",
+			";", "set-option", "-w", "-t", namedTarget, "@lyx_hidden", "1")
 		if err != nil {
 			return fmt.Errorf("%w: %w", ErrNewWindowFailed, err)
 		}

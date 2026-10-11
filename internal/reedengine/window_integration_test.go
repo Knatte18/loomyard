@@ -1,7 +1,7 @@
 //go:build tmux
 
 // window_integration_test.go proves OpenWindow against a real tmux.
-// The window opens detached without moving the current window, reads remain-on-exit off while the strands' window still reads on, closes when its command exits (also when it exits at once), and a second call while it is live starts nothing.
+// The window opens detached without moving the current window, carries @lyx_hidden, reads remain-on-exit off while the strands' window still reads on, closes when its command exits (also when it exits at once), and a second call while it is live starts nothing.
 // One cold session serves every step.
 
 package reedengine
@@ -76,6 +76,10 @@ func TestOpenWindow_RealTmux(t *testing.T) {
 		}
 		if got := remainOnExit(strandWindow); got != "on" {
 			t.Errorf("strand window remain-on-exit = %q, want on", got)
+		}
+		hidden, err := e.tmux.output("display-message", "-p", "-t", opened.WindowID, "#{@lyx_hidden}")
+		if err != nil || strings.TrimSpace(hidden) != "1" {
+			t.Errorf("new window @lyx_hidden = (%q, %v), want 1", strings.TrimSpace(hidden), err)
 		}
 	})
 

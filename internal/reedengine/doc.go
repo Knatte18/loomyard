@@ -276,9 +276,10 @@
 // A session's first up has neither, so it falls back to the current window, and the Selvage pane created there defines the strand window from then on.
 // The pane-generation read (generation.go) stays session-scoped and outside the seam: it reads session fields only, so it keeps the "=<session>:" form, which expands them, where the bare "=<session>" form expands every session field to empty (verified live, tmux 3.6).
 //
-// Detached windows: OpenWindow (window.go) opens a detached, named window in the worktree's reed session running a `lyx` command, for a caller that wants a long-running command visible in the session's window list.
-// One multiplexer invocation runs `new-window -d -P -F '#{window_id}' -t '=<session>:' -n <name> <command>` chained with `set-option -w -t '=<session>:=<name>' remain-on-exit off`.
-// The window is detached and never selected, so it takes no focus, and the option is chained by exact name because one chained after a detached new-window without a target lands on the current window, the strands' window, whose remain-on-exit must stay on.
+// Detached windows: OpenWindow (window.go) opens a detached, named window in the worktree's reed session running a `lyx` command, for a caller that wants a long-running command to live in the session without a status-bar button.
+// One multiplexer invocation runs `new-window -d -P -F '#{window_id}' -t '=<session>:' -n <name> <command>` chained with `set-option -w -t '=<session>:=<name>' remain-on-exit off` and `set-option -w -t '=<session>:=<name>' @lyx_hidden 1`.
+// The window is detached and never selected, so it takes no focus, and the options are chained by exact name because one chained after a detached new-window without a target lands on the current window, the strands' window, whose remain-on-exit must stay on.
+// @lyx_hidden is display only: the status bar skips a window carrying it, and no Go decision reads it.
 // The op reads remain-on-exit back from the new window by the printed id, and a window that does not read off (two concurrent calls sharing a name, where the chained option landed on the older window) is killed by that id with ErrWindowReadBack.
 // A window of the same name whose pane is live is returned as existing and nothing is started; one whose pane is dead is killed and replaced.
 // The command line is composed in panebin.go from the pane-binary prelude, so `lyx` resolves to the spawning binary.
