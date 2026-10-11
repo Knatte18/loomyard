@@ -300,11 +300,15 @@ ensures that session itself, exactly as "lyx loom start" does, rather than
 failing several producers deep once a row first tries to add a strand.
 What run does not do is add the status strand or spawn a detached driver.
 
-run never seeds a status file and never commits anything -- only
-"lyx loom start" seeds, because only it owns the commit-before-precondition
-ordering the bootstrap needs. run itself never seeds either: an optional
-run-id positional addresses a run other than this worktree's own default
-("self"), and run refuses when no seed already exists at that run-id.
+run needs a seed and a status file, writes neither and commits nothing.
+The seed comes from "lyx loom start", which seeds and spawns the LLM driver,
+or from "lyx shed seed self --recipe loom --driver go --param
+parent=<parent-branch>", which writes a driverless seed; <parent-branch> is
+the pair's recorded parent branch, "parent_branch" in fabric's origin record.
+Only "lyx loom start" or a first "lyx loom step" writes the status file, so
+after a driverless seed "lyx loom step" comes first. An optional run-id
+positional addresses a run other than this worktree's own default ("self"),
+and run refuses when no seed already exists at that run-id.
 
 Example:
   lyx loom run
@@ -313,10 +317,18 @@ Example:
 	Step: shedverbs.VerbText{
 		Use:      "step [<run-id>]",
 		Audience: clihelp.AudienceRole,
-		Short:    "bootstrap idempotently and drive exactly one producer, reporting a JSON envelope",
-		Long: `step bootstraps this worktree's loom task exactly as "lyx loom start" does --
-seeding the status file when absent and committing it into the fabric --
-and then drives exactly one producer through shedengine.Shed's own Step.
+		Short:    "drive exactly one producer of a seeded run, reporting a JSON envelope",
+		Long: `step needs a seed at the addressed run-id and refuses without one, since it
+never writes a seed itself. With one, it runs the seed-agreement,
+status-seeding and commit block "lyx loom start" runs, then drives exactly one
+producer through shedengine.Shed's own Step.
+
+Two routes write the seed: "lyx loom start", which seeds and spawns the LLM
+driver, and "lyx shed seed self --recipe loom --driver go --param
+parent=<parent-branch>", which writes a driverless seed; <parent-branch> is the
+pair's recorded parent branch, "parent_branch" in fabric's origin record. After
+a driverless seed the first driving call is "lyx loom step", whose bootstrap
+seeds the status file; from then on step or run drives.
 
 step spawns no detached driver and loops over nothing: it is the single-producer primitive an external supervisor
 drives, one invocation at a time. The printed envelope is short: its
@@ -330,8 +342,7 @@ transient, so a supervisor can read what the step did and repair from it.
 and run state are unchanged.
 
 An optional run-id positional addresses a run other than this worktree's
-own default ("self"); step refuses when no seed already exists at that
-run-id, since it never writes one itself.
+own default ("self").
 
 Example:
   lyx loom step
