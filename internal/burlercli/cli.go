@@ -55,7 +55,7 @@ type burlerCLI struct {
 
 	// mode, stateDir, and stencilsDir are CLI-level facts about how the stack was wired, read off
 	// this receiver by run.go's success envelope. They are not results of a review round, which is
-	// why they are not threaded through burlerengine.Result.
+	// why they are not threaded through burlerengine.ReviewResult or burlerengine.FixResult.
 	mode        string
 	stateDir    string
 	stencilsDir string
