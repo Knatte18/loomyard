@@ -5,7 +5,7 @@
 // internal/lyxcwd, per the Told-Geometry Invariant.
 //
 // The bounce budget of every review segment (a segment holding a Bouncer row) is not declared in the
-// recipe: New takes it from shedrecipe.Env.ReviewMaxBounces and Routing from its argument, and both
+// loom recipe: New takes it from shedrecipe.Env.ReviewMaxBounces and Routing from its argument, and both
 // set it on every row of those segments.
 // PR-Gate keeps the recipe's own max_bounces.
 //
@@ -13,9 +13,9 @@
 // The row keeps its name, gates and routing, and Routing never reads the choice.
 //
 // NewDarn is the second builder: it builds the embedded darn recipe, and DarnRouting projects that recipe's routing.
-// The recipe has no review segment, so no review budget applies.
-// Its verify budget is not declared in the recipe either: NewDarn stamps shedrecipe.Env.DarnVerifyAttempts, the `verify_attempts` of `darn.yaml`, onto the Darn row's verify gate at every build and refuses a value below 1.
-// DarnRouting reads no budget, so a caller that never builds a Shed is never refused by it.
+// Its verify budget is not declared in the recipe: NewDarn stamps shedrecipe.Env.DarnVerifyAttempts, the `verify_attempts` of `darn.yaml`, onto the Darn row's verify gate at every build and refuses a value below 1.
+// Nor is the bounce budget of its Darn-Review perch: NewDarn takes it from shedrecipe.Env.DarnReviewMaxBounces, the `review_max_bounces` of `darn.yaml`, and DarnRouting from its argument, and both set it on the perch's rows and refuse a value below 0.
+// A budget of 0 turns the perch off: both route the Darn row's Done straight to Publish, so a run never reaches the perch's rows.
 //
 // This package sits above internal/loomshed rather than inside it because internal/shedrecipe's
 // registry already imports loomshed for six of its constructors -- a loomshed -> shedbuild ->

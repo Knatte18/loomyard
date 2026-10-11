@@ -836,7 +836,7 @@ func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]s
 // plan_review lands in the Plan-Burler row's RowReviewModels entry alone, and the Discussion-Burler row keeps the run-wide models.
 // The Webster-Burler row takes the template's webster_review (one sonnet entry of effort high) with the run-wide fix models.
 // fix_start lands in Env.FixStart.
-// plan_judge, seed and webster_seed land in each Bouncer row's RowBouncerModels entry.
+// plan_judge, seed and webster_seed land in each Bouncer row's RowBouncerModels entry, the darn recipe's Darn-Bouncer taking Webster-Bouncer's.
 func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	t.Parallel()
 
@@ -862,6 +862,11 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			Judge: burlerengine.ModelChoice{Model: "opus", Effort: "high"},
 		},
 		loomshed.NameWebsterBouncer: {
+			Seed:  burlerengine.ModelChoice{Model: "opus", Effort: "low"},
+			Judge: burlerengine.ModelChoice{Model: "sonnet", Effort: "medium"},
+		},
+		// The darn recipe's Darn-Review perch takes Webster-Review's pair.
+		loomshed.NameDarnBouncer: {
 			Seed:  burlerengine.ModelChoice{Model: "opus", Effort: "low"},
 			Judge: burlerengine.ModelChoice{Model: "sonnet", Effort: "medium"},
 		},

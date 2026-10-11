@@ -1,4 +1,4 @@
-// darnrecipe_test.go covers NewDarn and DarnRouting: the darn recipe's row order, engines and producer types, its PR-Review routing, the verify budget stamped onto the Darn row, and the refusal of a budget below 1.
+// darnrecipe_test.go covers NewDarn and DarnRouting: the darn recipe's row order, engines and producer types, its PR-Review and Darn-Review routing, the verify budget stamped onto the Darn row, the review budget applied to the perch, and the refusal of a budget out of range.
 
 package loomrecipe
 
@@ -19,6 +19,8 @@ import (
 var wantDarnProducerTable = []wantProducerRow{
 	{loomshed.NamePreflight, "Preflight", reflect.TypeOf(preflightshed.NewPreflight("", ""))},
 	{loomshed.NameDarn, "DarnWrite", reflect.TypeOf(loomshed.NewDarnWrite("", nil, loomshed.DarnDeps{}))},
+	{loomshed.NameDarnBouncer, "Bouncer", bouncerType},
+	{loomshed.NameDarnBurler, "BurlerRound", burlerType},
 	{loomshed.NamePublish, "Publish", reflect.TypeOf(&landingshed.Publish{})},
 	{loomshed.NamePRGate, "PRGate", reflect.TypeOf(&landingshed.PRGate{})},
 	{loomshed.NameFinalize, "Finalize", reflect.TypeOf(&landingshed.Finalize{})},
@@ -55,26 +57,53 @@ func TestNewDarn_RowsMatchTheDarnTable(t *testing.T) {
 	}
 }
 
-func TestNewDarn_PRGateBouncesToTheDarnRowInsideItsSegment(t *testing.T) {
-	env, paths := testEnv(t)
-	shed, err := NewDarn(env, paths)
-	if err != nil {
-		t.Fatalf("NewDarn() error = %v; want nil", err)
+// TestNewDarn_Routing pins PR-Gate's bounce to Darn inside PR-Review, the Darn-Review perch between Darn and Publish with the review budget on both of its rows, and a review budget of 0 routing Darn straight to Publish.
+func TestNewDarn_Routing(t *testing.T) {
+	build := func(t *testing.T, reviewBudget int) map[string]shedengine.ProducerDef {
+		t.Helper()
+		env, paths := testEnv(t)
+		env.DarnReviewMaxBounces = reviewBudget
+		shed, err := NewDarn(env, paths)
+		if err != nil {
+			t.Fatalf("NewDarn() error = %v; want nil", err)
+		}
+		rows := map[string]shedengine.ProducerDef{}
+		for _, p := range shed.Producers {
+			rows[p.Name] = p
+		}
+		return rows
 	}
-	rows := map[string]shedengine.ProducerDef{}
-	for _, p := range shed.Producers {
-		rows[p.Name] = p
-	}
-	gate, darn := rows[loomshed.NamePRGate], rows[loomshed.NameDarn]
-	if gate.OnStuck != loomshed.NameDarn || gate.OnDone != loomshed.NameFinalize {
-		t.Errorf("PR-Gate OnDone/OnStuck = %q/%q; want %q/%q", gate.OnDone, gate.OnStuck, loomshed.NameFinalize, loomshed.NameDarn)
-	}
-	if gate.Segment != "PR-Review" || darn.Segment != gate.Segment {
-		t.Errorf("segments PR-Gate/Darn = %q/%q; want both PR-Review", gate.Segment, darn.Segment)
-	}
-	if darn.OnDone != loomshed.NamePublish || darn.OnStuck != "" {
-		t.Errorf("Darn OnDone/OnStuck = %q/%q; want %q/empty", darn.OnDone, darn.OnStuck, loomshed.NamePublish)
-	}
+
+	t.Run("PR-Gate bounces to Darn inside its segment and the perch sits before Publish", func(t *testing.T) {
+		rows := build(t, 4)
+		gate, darn := rows[loomshed.NamePRGate], rows[loomshed.NameDarn]
+		if gate.OnStuck != loomshed.NameDarn || gate.OnDone != loomshed.NameFinalize {
+			t.Errorf("PR-Gate OnDone/OnStuck = %q/%q; want %q/%q", gate.OnDone, gate.OnStuck, loomshed.NameFinalize, loomshed.NameDarn)
+		}
+		if gate.Segment != "PR-Review" || darn.Segment != gate.Segment {
+			t.Errorf("segments PR-Gate/Darn = %q/%q; want both PR-Review", gate.Segment, darn.Segment)
+		}
+		if darn.OnDone != loomshed.NameDarnBouncer || darn.OnStuck != "" {
+			t.Errorf("Darn OnDone/OnStuck = %q/%q; want %q/empty", darn.OnDone, darn.OnStuck, loomshed.NameDarnBouncer)
+		}
+		bouncer, burler := rows[loomshed.NameDarnBouncer], rows[loomshed.NameDarnBurler]
+		if bouncer.OnDone != loomshed.NamePublish || bouncer.OnStuck != loomshed.NameDarnBurler || burler.OnStuck != loomshed.NameDarnBouncer {
+			t.Errorf("Darn-Bouncer OnDone/OnStuck = %q/%q, Darn-Burler OnStuck = %q; want %q/%q, %q", bouncer.OnDone, bouncer.OnStuck, burler.OnStuck, loomshed.NamePublish, loomshed.NameDarnBurler, loomshed.NameDarnBouncer)
+		}
+		if bouncer.Segment != "Darn-Review" || burler.Segment != bouncer.Segment {
+			t.Errorf("segments Darn-Bouncer/Darn-Burler = %q/%q; want both Darn-Review", bouncer.Segment, burler.Segment)
+		}
+		if bouncer.MaxBounces != 4 || burler.MaxBounces != 4 || gate.MaxBounces != 5 {
+			t.Errorf("MaxBounces Darn-Bouncer/Darn-Burler/PR-Gate = %d/%d/%d; want 4/4/5", bouncer.MaxBounces, burler.MaxBounces, gate.MaxBounces)
+		}
+	})
+
+	t.Run("a review budget of 0 routes Darn straight to Publish", func(t *testing.T) {
+		rows := build(t, 0)
+		if got := rows[loomshed.NameDarn].OnDone; got != loomshed.NamePublish {
+			t.Errorf("Darn OnDone = %q; want %q", got, loomshed.NamePublish)
+		}
+	})
 }
 
 func TestDarnVerifyBudget(t *testing.T) {
@@ -129,6 +158,20 @@ func TestDarnVerifyBudget(t *testing.T) {
 		}
 	})
 
+	t.Run("a review budget below 0 is refused with the way forward before any row builds", func(t *testing.T) {
+		env, paths := testEnv(t)
+		env.DarnReviewMaxBounces = -1
+		env.Landing.OpenFabric = nil
+		shed, err := NewDarn(env, paths)
+		if err == nil || shed != nil {
+			t.Fatalf("NewDarn() = %v, %v; want nil and an error", shed, err)
+		}
+		want := `loomrecipe: darn review_max_bounces = -1; want 0 or more; way forward: run "lyx config darn --set review_max_bounces=<n>" from the prime, then "lyx loom resume"`
+		if err.Error() != want {
+			t.Errorf("NewDarn() error = %q; want %q", err.Error(), want)
+		}
+	})
+
 	t.Run("a diverging status path is refused first", func(t *testing.T) {
 		env, paths := testEnv(t)
 		paths.StatusPath += ".other"
@@ -138,20 +181,46 @@ func TestDarnVerifyBudget(t *testing.T) {
 	})
 }
 
-func TestDarnRouting_ReadsNoBudget(t *testing.T) {
-	routing, err := DarnRouting()
-	if err != nil {
-		t.Fatalf("DarnRouting() error = %v; want nil", err)
-	}
-	var names []string
-	for _, p := range routing.Producers {
-		names = append(names, p.Name)
-	}
-	var want []string
-	for _, row := range wantDarnProducerTable {
-		want = append(want, row.name)
-	}
-	if !reflect.DeepEqual(names, want) {
-		t.Errorf("DarnRouting() rows = %v; want %v", names, want)
-	}
+// TestDarnRouting pins the projection's rows and its review budget applied as NewDarn applies it, Darn's route to Publish under a budget of 0, and the refusal of a budget below 0.
+func TestDarnRouting(t *testing.T) {
+	t.Run("rows and the review budget on the perch", func(t *testing.T) {
+		routing, err := DarnRouting(2)
+		if err != nil {
+			t.Fatalf("DarnRouting() error = %v; want nil", err)
+		}
+		var names []string
+		budgets := map[string]int{}
+		for _, p := range routing.Producers {
+			names = append(names, p.Name)
+			budgets[p.Name] = p.MaxBounces
+		}
+		var want []string
+		for _, row := range wantDarnProducerTable {
+			want = append(want, row.name)
+		}
+		if !reflect.DeepEqual(names, want) {
+			t.Errorf("DarnRouting() rows = %v; want %v", names, want)
+		}
+		if budgets[loomshed.NameDarnBouncer] != 2 || budgets[loomshed.NameDarnBurler] != 2 {
+			t.Errorf("DarnRouting() MaxBounces Darn-Bouncer/Darn-Burler = %d/%d; want 2/2", budgets[loomshed.NameDarnBouncer], budgets[loomshed.NameDarnBurler])
+		}
+	})
+
+	t.Run("a review budget of 0 routes Darn straight to Publish", func(t *testing.T) {
+		routing, err := DarnRouting(0)
+		if err != nil {
+			t.Fatalf("DarnRouting() error = %v; want nil", err)
+		}
+		for _, p := range routing.Producers {
+			if p.Name == loomshed.NameDarn && p.OnDone != loomshed.NamePublish {
+				t.Errorf("Darn OnDone = %q; want %q", p.OnDone, loomshed.NamePublish)
+			}
+		}
+	})
+
+	t.Run("a review budget below 0 is refused", func(t *testing.T) {
+		if _, err := DarnRouting(-1); err == nil {
+			t.Error("DarnRouting(-1) error = nil; want non-nil")
+		}
+	})
 }

@@ -566,7 +566,7 @@ var wordingClaims = []stencilClaims{
 		wantNone(orchNoScribeHandoffWhy, "scribe:handoff"),
 		[]claim{
 			{must: "creates the task pair, drives the task's run inside it, loom or darn as the board entry's `recipe` says, and tears the pair down", why: "the batten run owns the pair's creation and teardown, and drives whichever recipe the entry names"},
-			{must: "a reject re-spawns the darn writer with the findings", why: "a darn run's one review point is PR-Gate"},
+			{must: "a reject re-spawns the darn writer with the findings", why: "a darn run's PR-Gate reject goes back to the darn writer"},
 			{must: "`lyx batten run <slug> --window`", why: "a run is started in its own window of the orch's reed session"},
 			{mustNot: "setsid nohup", why: "the window, not a detached shell process, keeps a started run alive and listed"},
 			{must: "Batten reads the decision and resumes the child itself", why: "batten resumes the child after a PR-Gate decision"},
