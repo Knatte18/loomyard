@@ -27,17 +27,33 @@ const (
 	hookEventNotification     = "Notification"
 	hookEventSessionEnd       = "SessionEnd"
 	hookEventSessionStart     = "SessionStart"
+
+	hookEventPermissionRequest = "PermissionRequest"
 )
+
+// SessionStartupPayloadFixture is the payload line Claude's SessionStart hook records when a fresh session starts.
+// A stubbed provider standing in for claude appends it to the run's events file so the run reads the session start a real launch records.
+const SessionStartupPayloadFixture = `{"hook_event_name":"` + hookEventSessionStart + `","source":"startup"}`
 
 // askUserQuestionToolName is the tool whose PreToolUse payload is an ask.
 const askUserQuestionToolName = "AskUserQuestion"
 
-// Notification types the parser reads: the two that wait on an answer, and the idle notice.
+// Notification types the parser reads: the three that wait on an answer, and the idle notice.
 const (
-	notificationPermissionPrompt  = "permission_prompt"
-	notificationElicitationDialog = "elicitation_dialog"
-	notificationIdlePrompt        = "idle_prompt"
+	notificationPermissionPrompt     = "permission_prompt"
+	notificationElicitationDialog    = "elicitation_dialog"
+	notificationElicitationURLDialog = "elicitation_url_dialog"
+	notificationIdlePrompt           = "idle_prompt"
 )
+
+// notificationSignalKinds maps a Notification payload's type to the signal it yields.
+// A type absent from it, such as agent_needs_input and elicitation_response, yields no signal.
+var notificationSignalKinds = map[string]shuttleengine.SessionSignalKind{
+	notificationPermissionPrompt:     shuttleengine.SessionSignalAsk,
+	notificationElicitationDialog:    shuttleengine.SessionSignalAsk,
+	notificationElicitationURLDialog: shuttleengine.SessionSignalAsk,
+	notificationIdlePrompt:           shuttleengine.SessionSignalIdleNotice,
+}
 
 // SessionEnd reasons that end Claude's process.
 const (
@@ -148,15 +164,15 @@ func signalFromPayload(hookName string, fields map[string]any) (shuttleengine.Se
 			return shuttleengine.SessionSignal{}, false
 		}
 		return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalAsk, Event: true}, true
+	case hookEventPermissionRequest:
+		return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalAsk}, true
 	case hookEventNotification:
 		notificationType, _ := fields["notification_type"].(string)
-		switch notificationType {
-		case notificationPermissionPrompt, notificationElicitationDialog:
-			return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalAsk}, true
-		case notificationIdlePrompt:
-			return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalIdleNotice}, true
+		kind, ok := notificationSignalKinds[notificationType]
+		if !ok {
+			return shuttleengine.SessionSignal{}, false
 		}
-		return shuttleengine.SessionSignal{}, false
+		return shuttleengine.SessionSignal{Kind: kind}, true
 	case hookEventSessionEnd:
 		reason, _ := fields["reason"].(string)
 		return shuttleengine.SessionSignal{
@@ -166,9 +182,24 @@ func signalFromPayload(hookName string, fields map[string]any) (shuttleengine.Se
 		}, true
 	case hookEventSessionStart:
 		source, _ := fields["source"].(string)
-		return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalSessionStart, Source: source}, true
+		return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalSessionStart, Source: sessionStartSource(source)}, true
 	}
 	return shuttleengine.SessionSignal{}, false
+}
+
+// sessionStartSource maps a SessionStart payload's source string to the provider-neutral source, or the empty source for any other string.
+func sessionStartSource(source string) shuttleengine.SessionStartSource {
+	switch source {
+	case "startup":
+		return shuttleengine.SessionStartStartup
+	case "resume":
+		return shuttleengine.SessionStartResume
+	case "clear":
+		return shuttleengine.SessionStartClear
+	case "compact":
+		return shuttleengine.SessionStartCompact
+	}
+	return ""
 }
 
 // apiErrorText returns a StopFailure payload's text from error, else error_details, else last_assistant_message.

@@ -9,17 +9,19 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 var (
-	_ shuttleengine.SessionCycler   = (*Claude)(nil)
-	_ shuttleengine.SkillLoader     = (*Claude)(nil)
-	_ shuttleengine.InputBoxReader  = (*Claude)(nil)
-	_ shuttleengine.InputBoxClearer = (*Claude)(nil)
-	_ shuttleengine.TextPaster      = (*Claude)(nil)
+	_ shuttleengine.SessionCycler    = (*Claude)(nil)
+	_ shuttleengine.SkillLoader      = (*Claude)(nil)
+	_ shuttleengine.InputBoxReader   = (*Claude)(nil)
+	_ shuttleengine.InputBoxClearer  = (*Claude)(nil)
+	_ shuttleengine.StrayInputReader = (*Claude)(nil)
+	_ shuttleengine.TextPaster       = (*Claude)(nil)
 )
 
 // pastePlaceholderShape matches the whole input-box reading Claude Code shows for a collapsed paste: `[Pasted text #<n>]` or `[Pasted text #<n> +<m> lines]`.
@@ -111,13 +113,31 @@ func (c *Claude) InputBoxText(capture string) (text string, ok bool) {
 	return strings.Join(parts, " "), true
 }
 
+// StrayInput reports whether capture shows Claude idle but for an input box holding exactly one stray-character candidate, and returns it.
+// A candidate is a single character that is neither a letter, a digit nor whitespace, in a box located as IdleSession locates it, with no running turn on screen.
+// The lone `%` reads as an empty box, so it is never a candidate.
+func (c *Claude) StrayInput(capture string) (text string, ok bool) {
+	if strings.Contains(normalizeCapture(capture), runningTurnNeedle) {
+		return "", false
+	}
+	boxText, ok := c.InputBoxText(capture)
+	if !ok || utf8.RuneCountInString(boxText) != 1 {
+		return "", false
+	}
+	character, _ := utf8.DecodeRuneInString(boxText)
+	if unicode.IsLetter(character) || unicode.IsDigit(character) || unicode.IsSpace(character) {
+		return "", false
+	}
+	return boxText, true
+}
+
 // SubmitSettle returns how long after an Enter the input box needs to be redrawn before it is read.
 func (c *Claude) SubmitSettle() time.Duration {
 	return time.Duration(c.submitRedrawSettleMS) * time.Millisecond
 }
 
 // ClearInputSequence returns one C-u, which deletes from the caret to the start of the line.
-// Sent text is one line with the caret at its end, so that empties the box;
+// Sent text is one line with the caret at its end, and so is a lone stray-character candidate, so that empties the box;
 // C-u is neither Escape nor C-c, so it never interrupts a running turn.
 func (c *Claude) ClearInputSequence() []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{{Key: "C-u"}}

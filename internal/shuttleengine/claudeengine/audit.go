@@ -146,6 +146,8 @@ type transcriptLine struct {
 	// CustomTitle is the session name carried by a `custom-title` line.
 	CustomTitle string `json:"customTitle"`
 	Message     struct {
+		// ID is the API message id shared by every assistant entry Claude writes for one message, one entry per content block.
+		ID      string            `json:"id"`
 		Content []transcriptBlock `json:"content"`
 	} `json:"message"`
 }

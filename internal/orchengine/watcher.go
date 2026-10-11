@@ -558,7 +558,7 @@ func reloadStepName(step int) string {
 	return "pointer"
 }
 
-// logIdleStateDisagreement warns once when probe reads idle beside the state busy, or not idle beside idle-done, idle-stalled or asking, and again only after either side changes.
+// logIdleStateDisagreement warns once when probe reads idle beside the state busy, or not idle beside idle-done, idle-stalled, idle-fresh or asking, and again only after either side changes.
 // It also logs the hook's session-start event once per new time.
 // A probe that reports the pane too short is not compared.
 // A state that cannot be read is logged at Debug, and nothing the watcher decides depends on the state.
@@ -580,7 +580,7 @@ func (w *Watcher) logIdleStateDisagreement(strand string, probe shuttleengine.Id
 	if probe.Idle {
 		disagrees = state.Name == shuttleengine.SessionBusy
 	} else {
-		disagrees = state.Name == shuttleengine.SessionIdleDone || state.Name == shuttleengine.SessionIdleStalled || state.Name == shuttleengine.SessionAsking
+		disagrees = state.Name == shuttleengine.SessionIdleDone || state.Name == shuttleengine.SessionIdleStalled || state.Name == shuttleengine.SessionIdleFresh || state.Name == shuttleengine.SessionAsking
 	}
 	if !disagrees {
 		w.hasIdleDisagreement = false

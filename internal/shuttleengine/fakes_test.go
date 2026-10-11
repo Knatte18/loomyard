@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -469,6 +470,8 @@ type skillFakeEngine struct {
 
 	Timeout time.Duration
 	Reports []SkillLoadReport
+	// HookState makes skillStartFixtureWith run the start over a hookStateSkillEngine, with a SessionStart(startup) line already in the events file.
+	HookState bool
 	// OnClassify, when set, runs after ClassifySkillLoad picked its report, once the load turn's end has been read.
 	OnClassify func()
 
@@ -497,6 +500,44 @@ func (e *skillFakeEngine) ClassifySkillLoad(_ Event, _ []string) SkillLoadReport
 func (e *skillFakeEngine) DefaultSkillLoadTimeout() time.Duration { return e.Timeout }
 
 var _ SkillLoader = (*skillFakeEngine)(nil)
+
+// hookStateSkillEngine is a skillFakeEngine that also reads hook state: the session signal parser, a live prober and the SessionCycler idle reading.
+// A capture is idle when it starts with "IDLE" or holds a typed skill load, whose turn the skill reed ends at once;
+// so a pane the test leaves busy is one the pane fallback refuses until the first load, which only the hook state gets past.
+type hookStateSkillEngine struct {
+	*skillFakeEngine
+
+	hooks idleEngine
+}
+
+func (e *hookStateSkillEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
+	return e.hooks.ParseSessionSignals(data)
+}
+
+func (e *hookStateSkillEngine) ProcessLiveness(string) Liveness { return LivenessAlive }
+
+func (e *hookStateSkillEngine) TurnStartInterrupt(SessionSignal) (time.Time, bool) {
+	return time.Time{}, false
+}
+
+func (e *hookStateSkillEngine) ContextTokens(Event) ContextReading { return ContextReading{} }
+func (e *hookStateSkillEngine) CompactedSince(Event, time.Time) (CompactionBoundary, bool) {
+	return CompactionBoundary{}, false
+}
+func (e *hookStateSkillEngine) IdleSession(capture string) bool {
+	return strings.Contains(capture, "LOAD:") || e.hooks.IdleSession(capture)
+}
+func (e *hookStateSkillEngine) PaneTooShort(string) bool                  { return false }
+func (e *hookStateSkillEngine) ClearSessionSequence() []PaneInput         { return nil }
+func (e *hookStateSkillEngine) ReloadPluginsSequence() []PaneInput        { return nil }
+func (e *hookStateSkillEngine) CompactSessionSequence(string) []PaneInput { return nil }
+
+var (
+	_ SessionSignalParser = (*hookStateSkillEngine)(nil)
+	_ SessionProber       = (*hookStateSkillEngine)(nil)
+	_ SessionCycler       = (*hookStateSkillEngine)(nil)
+	_ SkillLoader         = (*hookStateSkillEngine)(nil)
+)
 
 // skillReed is a fakeReed whose pane capture echoes every text typed into it,
 // so a verified send finds its text.
@@ -576,7 +617,7 @@ func (r *skillReed) CapturePane(guid string) (string, error) {
 var _ ReedOps = (*skillReed)(nil)
 
 // sessionFakeEngine is waitingEngine plus the opt-in SessionSignalParser, SessionProber and ActivityReader capabilities.
-// ParseSessionSignals reads "START" as a turn start, "STOP:<message>" as a turn end, "WAIT:<message>" as a turn end carrying outstanding, "ASK" as an ask and "SESSIONSTART" as a session start.
+// ParseSessionSignals reads "START" as a turn start, "STOP:<message>" as a turn end, "WAIT:<message>" as a turn end carrying outstanding, "ASK" as an ask, "SESSIONSTART" or "SESSIONSTART:<source>" as a session start with that source and "SESSIONEND:<reason>" as a session end that ends the process unless its reason is "clear".
 // Every signal names session-1, and the read consumes through the last complete line.
 // ProcessLiveness answers liveness for any session id, and TurnStartInterrupt answers interrupted and interruptAt for any turn start.
 // TurnEndActivity marks a turn end as an API error when its line is apiErrorLine.
@@ -602,8 +643,13 @@ func (e *sessionFakeEngine) ParseSessionSignals(data []byte) ([]SessionSignal, i
 			signal.Kind = SessionSignalAPIErrorTurnEnd
 		case trimmed == "ASK":
 			signal.Kind = SessionSignalAsk
-		case trimmed == "SESSIONSTART":
+		case strings.HasPrefix(trimmed, "SESSIONSTART"):
 			signal.Kind = SessionSignalSessionStart
+			signal.Source = SessionStartSource(strings.TrimPrefix(strings.TrimPrefix(trimmed, "SESSIONSTART"), ":"))
+		case strings.HasPrefix(trimmed, "SESSIONEND:"):
+			signal.Kind = SessionSignalSessionEnd
+			signal.Reason = strings.TrimPrefix(trimmed, "SESSIONEND:")
+			signal.EndsProcess = signal.Reason != "clear"
 		case strings.HasPrefix(trimmed, "STOP:"):
 			signal.Kind = SessionSignalTurnEnd
 		case strings.HasPrefix(trimmed, "WAIT:"):
@@ -739,6 +785,8 @@ type tuiReed struct {
 	typedAt time.Time
 	// clears counts the C-u keys played.
 	clears int
+	// keepOnClear makes C-u leave the box as it is, as when a character survives the clear.
+	keepOnClear bool
 }
 
 func (r *tuiReed) SendText(guid, text string, submit bool) error {
@@ -772,7 +820,9 @@ func (r *tuiReed) PasteSubmit(guid, text string, submit bool) error {
 func (r *tuiReed) SendKey(guid, key string) error {
 	switch key {
 	case "C-u":
-		r.box = ""
+		if !r.keepOnClear {
+			r.box = ""
+		}
 		r.clears++
 	case "Enter":
 		if !r.clock.Now().Before(r.swallowEnterUntil) {
@@ -855,6 +905,38 @@ var (
 	_ TextPaster = (*pasteEngine)(nil)
 	_ TextPaster = (*scriptedPasteEngine)(nil)
 )
+
+// strayPasteEngine is a pasteEngine whose idle reading needs an empty box and that implements StrayInputReader:
+// a box holding exactly one character that is neither a letter, a digit nor whitespace is a candidate.
+// The registry reads its process alive when alive is set, so the hook-derived reading decides; otherwise liveness is unproven and the pane decides.
+type strayPasteEngine struct {
+	*pasteEngine
+
+	alive bool
+}
+
+func (e *strayPasteEngine) ProcessLiveness(string) Liveness {
+	if e.alive {
+		return LivenessAlive
+	}
+	return LivenessUnproven
+}
+
+func (e *strayPasteEngine) IdleSession(capture string) bool {
+	text, _ := e.InputBoxText(capture)
+	return strings.HasPrefix(capture, "IDLE") && text == ""
+}
+
+func (e *strayPasteEngine) StrayInput(capture string) (string, bool) {
+	text, _ := e.InputBoxText(capture)
+	runes := []rune(text)
+	if !strings.HasPrefix(capture, "IDLE") || len(runes) != 1 || unicode.IsLetter(runes[0]) || unicode.IsDigit(runes[0]) || unicode.IsSpace(runes[0]) {
+		return "", false
+	}
+	return text, true
+}
+
+var _ StrayInputReader = (*strayPasteEngine)(nil)
 
 // newTUIEngine returns a tuiEngine whose pane starts ready and whose redraw settle is 100 ms.
 func newTUIEngine() *tuiEngine {

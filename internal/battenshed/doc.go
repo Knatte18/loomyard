@@ -35,7 +35,7 @@
 // its notice goes when the driver strand has ended, or three minutes passed with no report, or ten minutes passed since the report with no decision record.
 // A done child's notice goes on the first check that sees it, and the Done return makes one last attempt of a notice still pending.
 // A resume the child refuses because its parked driver's pane holds a draft, an active operator or another busy reading (a spawn error wrapping ErrChildDriverBusy) is retried like a not-parked one, without a deadline, until the resume lands, the child leaves awaiting or batten is paused or stopped.
-// Its wait reason names the draft and the remedy, and one notice per stall tells the orch to clear the draft in the driver's pane; the notice never carries the refusal's text, which quotes another pane, and a landed resume re-arms it.
+// Its wait reason names the draft and the remedy, and one notice per stall tells the orch to clear the draft in the driver's pane and quotes the box text the refusal found, as one line; a landed resume re-arms it.
 // Delivery: the Notify seam reports whether the line was queued; with no orch strand recorded it is not called, one Warn is logged per episode and the strand is asked about again once per notice_probe_s;
 // a Notify error or an unqueued line is retried at most once per notice_probe_s and at most three times, then dropped with a Warn.
 // Control flow is unchanged: a notice is informational, a delivery failure is only warned about, and the outcomes, halts and waits are the same with or without it.
