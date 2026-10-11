@@ -38,7 +38,9 @@ var allowedSpawners = []scankit.Entry{
 
 // allowedTmuxkitOutsideTmuxTier lists tagged files that compile in tier 2 and reference a tmuxkit export, each with a reason it starts no server there.
 var allowedTmuxkitOutsideTmuxTier = []scankit.Entry{
-	{Key: "internal/loomcli/smoke_helpers_test.go", Why: "reads /proc through the kit's spawn-free Pids and ProcCwd probes to wait out a fixture's git child; starts no server"},
+	{Key: "internal/loomcli/smoke_helpers_test.go", Why: "reads /proc through the kit's spawn-free Pids, ProcArgv, ProcCwd, ProcPPID and IsWatchdog probes to find a fixture's driver and watchdog processes; starts no server"},
+	{Key: "internal/shedverbs/loop_integration_test.go", Why: "reads a process's state through the kit's spawn-free ProcState probe; starts no server"},
+	{Key: "internal/gatecli/test_integration_test.go", Why: "reads a process's state through the kit's spawn-free ProcState probe; starts no server"},
 }
 
 // knownTierTags are the `//go:build` constraint substrings that mark a *_test.go file
