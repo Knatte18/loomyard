@@ -1,17 +1,12 @@
-// startup_test.go covers the startup step (awaitStartup, abandonStartup) that Start/StartGated/
-// RunGated now run before ever issuing a run handle: the pending-to-ready path with a trust-gate
-// dismissal recorded, the already-ready and already-satisfied-file-contract fast paths, the
-// not-ready teardown (pane-died and undismissable-gate refusal, both wrapping ErrNotStarted with the
-// strand removed and the run dir kept), the status-retry-cap paths (transient recovery, exhaustion
-// with and without a satisfied file contract, and the untracked-strand mechanism failure), the
-// tick-count cap, the run-deadline-shorter-than-the-startup-window interaction, RunGated's own
-// not-ready and mechanism-failure mappings, startupTickCap's own boundary arithmetic, and the
-// probe-cadence-matches-Wait assertion. Every case runs on a fake clock; none sleeps on the real one.
+// startup_test.go covers the startup step (awaitStartup, abandonStartup) that Start, StartGated and RunGated run before ever issuing a run handle.
+// It covers the pending-to-ready path with a trust-gate dismissal recorded, the already-ready and already-satisfied-file-contract fast paths, the not-ready teardown (pane-died and never-clearing-gate refusal, both wrapping ErrNotStarted with the strand removed and the run dir kept), the status-retry-cap paths (transient recovery, exhaustion with and without a satisfied file contract, and the untracked-strand mechanism failure), the tick-count cap, the run-deadline-shorter-than-the-startup-window interaction, RunGated's own not-ready and mechanism-failure mappings, startupTickCap's own boundary arithmetic, and the probe backoff and gate-dismissal spacing.
+// Every case runs on a fake clock; none sleeps on the real one.
 
 package shuttleengine
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -154,34 +149,45 @@ func TestStartup_TrustPromptThenReady(t *testing.T) {
 	}
 }
 
-// TestStartup_ReadyProbeTiming covers the ready paths' timing on the virtual clock. Ready on the
-// first probe is the fast path: no dismissal ever attempted and no Sleep call before the handle is
-// returned. The startup step probes at pollInterval x LivenessEveryNPolls, never at the bare poll
-// interval: with PollIntervalMS 1000 and LivenessEveryNPolls 10, a ready-on-third-Status-call script
-// must advance the virtual clock by exactly two probe intervals (2 x 1s x 10 = 20s), never by a
-// bare 1s step.
+// TestStartup_ReadyProbeTiming covers the ready paths' timing on the virtual clock.
+// Ready on the first probe is the fast path: no dismissal ever attempted and no Sleep call before the handle is returned.
+// Otherwise the startup step probes every poll interval while the pane redraws and backs off to the dismissal gap (here 10 s) while it does not.
 //
-//testtiming:keep pins the ready path's virtual-clock timing: no Sleep when ready on the first probe, and exactly two probe intervals otherwise
+//testtiming:keep pins the ready path's virtual-clock timing: no sleep when ready on the first probe, the base interval while the pane redraws, and the backoff to the dismissal gap while it does not
 func TestStartup_ReadyProbeTiming(t *testing.T) {
+	probeConfig := Config{PollIntervalMS: 1000, LivenessEveryNPolls: 10, StartupTimeoutS: 60, RunTimeoutMin: 5}
 	tests := []struct {
 		name            string
 		cfg             Config
 		script          []StartupState
+		captures        []string
 		wantStatusCalls int
 		wantElapsed     time.Duration
 	}{
 		{name: "ready on the first probe never sleeps", cfg: fastConfig, script: []StartupState{StartupReady}, wantStatusCalls: 1},
 		{
-			name:            "probe cadence matches Wait",
-			cfg:             Config{PollIntervalMS: 1000, LivenessEveryNPolls: 10, StartupTimeoutS: 60, RunTimeoutMin: 5},
+			name:            "a pane that redraws between probes is probed every poll interval",
+			cfg:             probeConfig,
 			script:          []StartupState{StartupPending, StartupPending, StartupReady},
+			captures:        []string{"booting", "booting.", "booting.."},
 			wantStatusCalls: 3,
-			wantElapsed:     2 * 1000 * time.Millisecond * 10,
+			wantElapsed:     2 * time.Second,
+		},
+		{
+			name:            "an unchanged pane backs off to the dismissal gap",
+			cfg:             probeConfig,
+			script:          []StartupState{StartupPending, StartupPending, StartupPending, StartupPending, StartupPending, StartupPending, StartupReady},
+			captures:        []string{"booting"},
+			wantStatusCalls: 7,
+			wantElapsed:     (1 + 2 + 4 + 8 + 10 + 10) * time.Second,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}}}
+			reed := &fakeReed{
+				StatusQueue:  []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}},
+				CaptureQueue: tt.captures,
+			}
 			engine := &fakeEngine{StartupScript: tt.script}
 			fc := newFakeClock(time.Now())
 			seedStartupFakes(reed, engine)
@@ -301,49 +307,155 @@ func TestStartup_PaneNotLiveMidStartup(t *testing.T) {
 	}
 }
 
-// TestStartup_UndismissableGateUntilWindowExpires covers a gate whose accepting option cannot be
-// located: no key is ever sent, and the startup window expires with the same not-ready teardown
-// TestStartup_PaneNotLiveMidStartup pins.
+// keyTimesReed records the clock time of every SendKey call and fails the calls whose key is failKey, after recording them.
+type keyTimesReed struct {
+	*fakeReed
+	clock   Clock
+	failKey string
+	times   []time.Time
+}
+
+func (r *keyTimesReed) SendKey(guid, key string) error {
+	r.times = append(r.times, r.clock.Now())
+	if key == r.failKey {
+		return errors.New("tmux: send-keys failed")
+	}
+	return r.fakeReed.SendKey(guid, key)
+}
+
+var _ ReedOps = (*keyTimesReed)(nil)
+
+// twoKeyEngine embeds *fakeEngine and overrides TrustDismissSequence to return a two-key dismissal.
+type twoKeyEngine struct {
+	*fakeEngine
+}
+
+func (e *twoKeyEngine) TrustDismissSequence(string) []PaneInput {
+	return []PaneInput{{Key: "Enter"}, {Key: "Down"}}
+}
+
+var _ Engine = (*twoKeyEngine)(nil)
+
+// TestStartup_GateNeverClearsUntilWindowExpires covers a startup gate that never clears: the startup window expires with the same not-ready teardown TestStartup_PaneNotLiveMidStartup pins.
+// Each row pins the virtual times of the gate's dismissals, at most one play per dismissal gap.
+// It owns the process-global logger capture, so its rows do not run in parallel.
 //
-//testtiming:keep pins that a gate whose accepting option cannot be located sends no key and logs no dismissal before the window expires
-func TestStartup_UndismissableGateUntilWindowExpires(t *testing.T) {
-	innerReed := &fakeReed{
-		StatusQueue:  []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}},
-		CaptureQueue: []string{"❯ No, exit\n  Yes, I trust this folder"},
+//testtiming:keep pins a gate that never clears: its dismissals' virtual times, at most one play per dismissal gap, until the window expires
+func TestStartup_GateNeverClearsUntilWindowExpires(t *testing.T) {
+	startupGateConfig := Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1000, LivenessEveryNPolls: 10}
+	// distinctCaptures gives every probe its own capture, so the probe backoff stays at the base interval.
+	distinctCaptures := func() []string {
+		captures := make([]string, 100)
+		for i := range captures {
+			captures[i] = fmt.Sprintf("❯ No, exit\n  Yes, I trust this folder %d", i)
+		}
+		return captures
 	}
-	engine := &undismissableEngine{fakeEngine: &fakeEngine{StartupScript: []StartupState{StartupTrustPrompt}}}
-	cfg := shortStartupConfig
-	fc := newFakeClock(time.Now())
-	innerReed.AddStrandResult = reedengine.Strand{GUID: "strand-1"}
-	fx := newFixture(t, innerReed, engine, withConfig(cfg), withClock(fc))
-	runner, anchorPath := fx.Runner, fx.Anchor
+	perGap := []time.Duration{0, 10 * time.Second, 20 * time.Second, 30 * time.Second}
+	everyProbe := make([]time.Duration, 32)
+	for i := range everyProbe {
+		everyProbe[i] = time.Duration(i) * time.Second
+	}
+	twice := func(offsets []time.Duration) []time.Duration {
+		var doubled []time.Duration
+		for _, offset := range offsets {
+			doubled = append(doubled, offset, offset)
+		}
+		return doubled
+	}
+	tests := []struct {
+		name     string
+		cfg      Config
+		captures []string
+		engine   func() Engine
+		// sendKeyErr fails every key of the fake reed.
+		sendKeyErr error
+		// failKey fails the calls of that one key.
+		failKey         string
+		wantKeyOffsets  []time.Duration
+		wantDismissLogs int
+	}{
+		{
+			name:     "a gate whose accepting option cannot be located sends no key",
+			cfg:      shortStartupConfig,
+			captures: []string{"❯ No, exit\n  Yes, I trust this folder"},
+			engine: func() Engine {
+				return &undismissableEngine{fakeEngine: &fakeEngine{StartupScript: []StartupState{StartupTrustPrompt}}}
+			},
+		},
+		{
+			name:            "a gate that never clears is dismissed once per gap",
+			cfg:             startupGateConfig,
+			captures:        distinctCaptures(),
+			engine:          func() Engine { return &fakeEngine{StartupScript: []StartupState{StartupTrustPrompt}} },
+			wantKeyOffsets:  perGap,
+			wantDismissLogs: len(perGap),
+		},
+		{
+			name:           "a play whose first key fails leaves the next probe free",
+			cfg:            startupGateConfig,
+			captures:       distinctCaptures(),
+			engine:         func() Engine { return &fakeEngine{StartupScript: []StartupState{StartupTrustPrompt}} },
+			sendKeyErr:     errors.New("tmux: send-keys failed"),
+			wantKeyOffsets: everyProbe,
+		},
+		{
+			name:     "a play that sends its first key and fails a later one starts the gap",
+			cfg:      startupGateConfig,
+			captures: distinctCaptures(),
+			engine: func() Engine {
+				return &twoKeyEngine{fakeEngine: &fakeEngine{StartupScript: []StartupState{StartupTrustPrompt}}}
+			},
+			failKey:        "Down",
+			wantKeyOffsets: twice(perGap),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inner := &fakeReed{
+				AddStrandResult: reedengine.Strand{GUID: "strand-1"},
+				StatusQueue:     []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}},
+				CaptureQueue:    tt.captures,
+				SendKeyErr:      tt.sendKeyErr,
+			}
+			fc := newFakeClock(time.Now())
+			reed := &keyTimesReed{fakeReed: inner, clock: fc, failKey: tt.failKey}
+			fx := newFixture(t, reed, tt.engine(), withConfig(tt.cfg), withClock(fc))
+			runner, anchorPath := fx.Runner, fx.Anchor
+			start := fc.Now()
 
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	buf := logcapture.CaptureVerbose(t)
-	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
-	if run != nil {
-		t.Errorf("StartGated() run = %+v; want nil", run)
-	}
-	if !errors.Is(err, ErrNotStarted) {
-		t.Fatalf("StartGated() error = %v; want one wrapping ErrNotStarted", err)
-	}
-	if len(innerReed.SendKeyCalls) != 0 {
-		t.Errorf("SendKeyCalls = %+v; want none — the gate could not be dismissed", innerReed.SendKeyCalls)
-	}
-	if strings.Contains(buf.String(), "shuttle: dismissed startup gate") {
-		t.Errorf("logger output = %q; want no dismissal line", buf.String())
-	}
+			outputFile := filepath.Join(t.TempDir(), "out.md")
+			buf := logcapture.CaptureVerbose(t)
+			run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
+			if run != nil {
+				t.Errorf("StartGated() run = %+v; want nil", run)
+			}
+			if !errors.Is(err, ErrNotStarted) {
+				t.Fatalf("StartGated() error = %v; want one wrapping ErrNotStarted", err)
+			}
+			var gotOffsets []time.Duration
+			for _, at := range reed.times {
+				gotOffsets = append(gotOffsets, at.Sub(start))
+			}
+			if !reflect.DeepEqual(gotOffsets, tt.wantKeyOffsets) {
+				t.Errorf("SendKey virtual times = %v; want %v", gotOffsets, tt.wantKeyOffsets)
+			}
+			if got := strings.Count(buf.String(), "shuttle: dismissed startup gate"); got != tt.wantDismissLogs {
+				t.Errorf("dismissal log lines = %d; want %d", got, tt.wantDismissLogs)
+			}
 
-	runDir := soleStartupRunDir(t, cfg, anchorPath)
-	rs, found, rerr := loadRunState(runDir)
-	if rerr != nil || !found {
-		t.Fatalf("loadRunState: found=%v err=%v", found, rerr)
-	}
-	if rs.Outcome != string(OutcomeDied) {
-		t.Errorf("loadRunState().Outcome = %q; want %q", rs.Outcome, OutcomeDied)
-	}
-	if len(innerReed.RemoveStrandCalls) != 1 {
-		t.Errorf("RemoveStrandCalls = %+v; want exactly one", innerReed.RemoveStrandCalls)
+			runDir := soleStartupRunDir(t, tt.cfg, anchorPath)
+			rs, found, rerr := loadRunState(runDir)
+			if rerr != nil || !found {
+				t.Fatalf("loadRunState: found=%v err=%v", found, rerr)
+			}
+			if rs.Outcome != string(OutcomeDied) {
+				t.Errorf("loadRunState().Outcome = %q; want %q", rs.Outcome, OutcomeDied)
+			}
+			if len(inner.RemoveStrandCalls) != 1 {
+				t.Errorf("RemoveStrandCalls = %+v; want exactly one", inner.RemoveStrandCalls)
+			}
+		})
 	}
 }
 
@@ -529,7 +641,7 @@ func TestStartup_TickCap(t *testing.T) {
 			t.Fatalf("StartGated() error = %v; want one wrapping ErrNotStarted", err)
 		}
 
-		wantTicks := startupTickCap(time.Duration(cfg.StartupTimeoutS)*time.Second, pollInterval(cfg)*time.Duration(cfg.LivenessEveryNPolls))
+		wantTicks := startupTickCap(time.Duration(cfg.StartupTimeoutS)*time.Second, pollInterval(cfg))
 		gotTicks := 0
 		for _, c := range reed.CallLog {
 			if c == "Status" {

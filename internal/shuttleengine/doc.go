@@ -311,4 +311,6 @@
 // issuing a handle, so no caller outside this package probes readiness or plays gate keys.
 // A not-ready provider is torn down (strand removed, run dir and startup-capture.txt kept, Outcome persisted) and reported as ErrNotStarted from StartGated and as OutcomeDied/OutcomeTimeout from RunGated.
 // RunGated's not-ready result carries the start error's text in Result.StartError.
+// The startup probe starts at the poll interval and backs off to the dismissal gap (the poll interval times liveness_every_n_polls) while the pane does not change.
+// Startup-gate dismissals are at least one dismissal gap apart.
 package shuttleengine

@@ -126,6 +126,16 @@ func pollInterval(cfg Config) time.Duration {
 	return interval
 }
 
+// dismissalGap returns the spacing of the startup probe's backoff ceiling and of startup-gate dismissals:
+// pollInterval(cfg) times LivenessEveryNPolls, the multiple floored to 1 exactly as Run.Wait floors it.
+func dismissalGap(cfg Config) time.Duration {
+	livenessEvery := cfg.LivenessEveryNPolls
+	if livenessEvery <= 0 {
+		livenessEvery = 1
+	}
+	return pollInterval(cfg) * time.Duration(livenessEvery)
+}
+
 // maxEventsReadRetries bounds consecutive event-read failures before reporting a mechanism failure.
 const maxEventsReadRetries = 3
 
@@ -433,9 +443,9 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 	return Result{}, false, nil
 }
 
-// startupTickCap returns the maximum number of checkLivenessTick calls awaitStartup's loop performs,
-// given the probe interval (not the raw poll interval) and the startup window: the ceiling of
-// startupTimeout/probeInterval, plus 1, plus maxStatusRetries.
+// startupTickCap returns the maximum number of checkLivenessTick calls awaitStartup's loop performs.
+// Its interval is the startup probe's base interval, the poll interval and the shortest sleep the probe takes.
+// The cap is the ceiling of startupTimeout/interval, plus 1, plus maxStatusRetries.
 //
 // It is the Live-Substrate Spawn Observability retry clause's attempt-COUNT bound: every tick's
 // reed.Status and pane capture each run a real tmux process through reed, so the count cap is the
@@ -487,23 +497,20 @@ func startupTickCap(startupTimeout, interval time.Duration) int {
 //
 // The tick cap (startupTickCap) bounds the loop by count as well as by the deadline.
 //
-// Probe cadence: awaitStartup calls checkLivenessTick once per probe interval, where the probe
-// interval is pollInterval(cfg) times LivenessEveryNPolls (floored to 1 exactly as Wait floors it),
-// so it probes, and replays any trust-gate dismissal, at the same cadence Wait does (every 10s under
-// the shipped template's poll_interval_ms: 1000 and liveness_every_n_polls: 10) and never faster.
-// awaitStartup has no events file to poll between probes, so it sleeps the whole probe interval at
-// once rather than ticking at the poll interval.
-// This is deliberate: checkLivenessTick replays the trust-dismiss sequence on every probe whose capture still shows a gate, and probing at every poll would let a capture taken before the provider redraws after the first Enter drive a second key into the next gate — the stray-keypress hazard the capture-driven dismissal exists to prevent;
-// matching Wait's cadence keeps awaitStartup on the one cadence already proven live for producers.
+// Probe cadence: awaitStartup calls checkLivenessTick once per sleep, and the sleep backs off while the pane does not change.
+// The base is pollInterval(cfg) and the ceiling is dismissalGap(cfg).
+// The first sleep is the base.
+// After each later probe the sleep returns to the base when the pane's capture differs from the one the previous probe left, and otherwise doubles up to the ceiling.
+// A probe whose capture failed leaves the capture unchanged, so it backs off.
+// A ready provider shows within the first one or two probes, because Claude's boot redraws the pane and resets the backoff.
+// Gate keys are spaced by checkLivenessTick's dismissal gap rather than by the probe cadence,
+// so a capture taken before the provider redraws after a dismissal never drives a second key into the next gate.
 //
 // Manual live-substrate verification recipe: docs/reference/claude-trust-dialog-repro.md.
 func (run *Run) awaitStartup() (Result, error) {
 	cfg := run.runner.cfg
-	livenessEvery := cfg.LivenessEveryNPolls
-	if livenessEvery <= 0 {
-		livenessEvery = 1
-	}
-	interval := pollInterval(cfg) * time.Duration(livenessEvery)
+	base := pollInterval(cfg)
+	ceiling := dismissalGap(cfg)
 	startupTimeout := time.Duration(cfg.StartupTimeoutS) * time.Second
 	startupDeadline := run.clock.Now().Add(startupTimeout)
 
@@ -514,8 +521,10 @@ func (run *Run) awaitStartup() (Result, error) {
 	if window < 0 {
 		window = 0
 	}
-	maxTicks := startupTickCap(window, interval)
+	maxTicks := startupTickCap(window, base)
 
+	sleep := base
+	previousCapture := ""
 	started := false
 	statusFailures := 0
 	for tick := 0; tick < maxTicks; tick++ {
@@ -552,7 +561,15 @@ func (run *Run) awaitStartup() (Result, error) {
 			return run.abandonStartup(OutcomeTimeout, nil)
 		}
 
-		run.clock.Sleep(interval)
+		if tick > 0 {
+			if run.lastStartupCapture != previousCapture {
+				sleep = base
+			} else {
+				sleep = min(2*sleep, ceiling)
+			}
+		}
+		previousCapture = run.lastStartupCapture
+		run.clock.Sleep(sleep)
 	}
 
 	if allOutputFilesExist(run.spec.OutputFiles) {
@@ -971,6 +988,11 @@ func allOutputFilesExist(files []string) bool {
 // A satisfied file contract wins over every negative answer: the agent's output files ARE its return
 // value, so their existence classifies OutcomeDone whether the pane died or reed simply stopped
 // tracking or addressing it.
+//
+// A startup gate is dismissed at most once per dismissalGap on the run's clock: a probe inside the gap that still sees a gate plays nothing and does not ask for the dismissal keys.
+// Any play that sent at least one input starts the gap, failed partway or not; an empty sequence or a first input that failed does not.
+// Bound: the throttle only removes key presses and never adds one, and the startup deadline and the tick cap still end a gate that never clears.
+// Run.Wait's own startup probe already runs at least one gap apart, so the throttle never holds a dismissal there.
 func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Outcome, error) {
 	status, err := run.runner.reed.Status()
 	if err != nil {
@@ -1033,8 +1055,17 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 		}
 		return "", nil
 	case StartupTrustPrompt:
+		now := run.clock.Now()
+		if run.dismissed && now.Sub(run.dismissedAt) < dismissalGap(run.runner.cfg) {
+			logger.Debug("shuttle: startup gate dismissal held for the dismissal gap", "strandGUID", run.state.StrandGUID)
+			break
+		}
 		inputs := run.runner.engine.TrustDismissSequence(capture)
-		if err := playInputs(run.runner.reed, run.state.StrandGUID, inputs); err != nil {
+		sent, err := playInputsSent(run.runner.reed, run.state.StrandGUID, inputs)
+		if sent > 0 {
+			run.dismissed, run.dismissedAt = true, now
+		}
+		if err != nil {
 			logger.Warn("shuttle: dismiss trust prompt (non-fatal)", "strandGUID", run.state.StrandGUID, "error", err)
 		} else if len(inputs) > 0 {
 			// Info, not Debug: a dismissal is a lifecycle event that happens at most once or twice

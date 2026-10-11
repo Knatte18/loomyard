@@ -285,6 +285,9 @@ type Run struct {
 	// not-ready teardown (abandonStartup) it is saved to startupCaptureFileName inside the run
 	// directory as the diagnosis artifact a later operator or attach reads.
 	lastStartupCapture string
+	// dismissed reports that this run played a startup-gate dismissal that sent a key, and dismissedAt is when, on the run's clock.
+	dismissed   bool
+	dismissedAt time.Time
 
 	// waitingTasks is the outstanding list of the latest EventWaiting, cleared by any later non-waiting event and when expiredTurnEnd counts the turn end at once.
 	waitingTasks []BackgroundTask
@@ -1001,19 +1004,27 @@ func requireLiveStrand(reed ReedOps, guid string) error {
 // playInputs plays inputs into guid's pane through reed in order, with
 // SettleMS honored after each step to allow pauses between steps.
 func playInputs(reed ReedOps, guid string, inputs []PaneInput) error {
+	_, err := playInputsSent(reed, guid, inputs)
+	return err
+}
+
+// playInputsSent is playInputs, returning as well how many inputs were delivered before it returned, so a play whose first input failed reports 0.
+func playInputsSent(reed ReedOps, guid string, inputs []PaneInput) (int, error) {
+	sent := 0
 	for _, in := range inputs {
 		if in.Key != "" {
 			if err := reed.SendKey(guid, in.Key); err != nil {
-				return fmt.Errorf("shuttle: send key %q: %w", in.Key, err)
+				return sent, fmt.Errorf("shuttle: send key %q: %w", in.Key, err)
 			}
 		} else if err := reed.SendText(guid, in.Text, in.Submit); err != nil {
-			return fmt.Errorf("shuttle: send text: %w", err)
+			return sent, fmt.Errorf("shuttle: send text: %w", err)
 		}
+		sent++
 		if in.SettleMS > 0 {
 			inputSleep(time.Duration(in.SettleMS) * time.Millisecond)
 		}
 	}
-	return nil
+	return sent, nil
 }
 
 // typeColor sends the engine's color command for color into sc's pane through the guarded send path.
