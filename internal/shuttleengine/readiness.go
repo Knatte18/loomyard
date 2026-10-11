@@ -28,6 +28,8 @@ type readiness struct {
 	unknown bool
 	// cause is the unknown state's cause; empty on the others.
 	cause string
+	// draft is the box's text of a reading held only for a draft in the input box; empty on every other reading.
+	draft string
 }
 
 // boxReading is what a pane capture says about the provider's input box.
@@ -87,7 +89,8 @@ func judgeReadiness(state SessionState, unmatched bool, box boxReading) readines
 	case unmatched:
 		return readiness{reason: "a turn start has no turn end"}
 	case box.read && strings.TrimSpace(box.text) != "":
-		return readiness{reason: fmt.Sprintf("the input box holds a draft: %q", strings.TrimSpace(box.text))}
+		draft := strings.TrimSpace(box.text)
+		return readiness{reason: fmt.Sprintf("the input box holds a draft: %q", draft), draft: draft}
 	}
 	return readiness{ready: true}
 }

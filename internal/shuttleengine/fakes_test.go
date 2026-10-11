@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -784,6 +785,8 @@ type tuiReed struct {
 	typedAt time.Time
 	// clears counts the C-u keys played.
 	clears int
+	// keepOnClear makes C-u leave the box as it is, as when a character survives the clear.
+	keepOnClear bool
 }
 
 func (r *tuiReed) SendText(guid, text string, submit bool) error {
@@ -817,7 +820,9 @@ func (r *tuiReed) PasteSubmit(guid, text string, submit bool) error {
 func (r *tuiReed) SendKey(guid, key string) error {
 	switch key {
 	case "C-u":
-		r.box = ""
+		if !r.keepOnClear {
+			r.box = ""
+		}
 		r.clears++
 	case "Enter":
 		if !r.clock.Now().Before(r.swallowEnterUntil) {
@@ -900,6 +905,38 @@ var (
 	_ TextPaster = (*pasteEngine)(nil)
 	_ TextPaster = (*scriptedPasteEngine)(nil)
 )
+
+// strayPasteEngine is a pasteEngine whose idle reading needs an empty box and that implements StrayInputReader:
+// a box holding exactly one character that is neither a letter, a digit nor whitespace is a candidate.
+// The registry reads its process alive when alive is set, so the hook-derived reading decides; otherwise liveness is unproven and the pane decides.
+type strayPasteEngine struct {
+	*pasteEngine
+
+	alive bool
+}
+
+func (e *strayPasteEngine) ProcessLiveness(string) Liveness {
+	if e.alive {
+		return LivenessAlive
+	}
+	return LivenessUnproven
+}
+
+func (e *strayPasteEngine) IdleSession(capture string) bool {
+	text, _ := e.InputBoxText(capture)
+	return strings.HasPrefix(capture, "IDLE") && text == ""
+}
+
+func (e *strayPasteEngine) StrayInput(capture string) (string, bool) {
+	text, _ := e.InputBoxText(capture)
+	runes := []rune(text)
+	if !strings.HasPrefix(capture, "IDLE") || len(runes) != 1 || unicode.IsLetter(runes[0]) || unicode.IsDigit(runes[0]) || unicode.IsSpace(runes[0]) {
+		return "", false
+	}
+	return text, true
+}
+
+var _ StrayInputReader = (*strayPasteEngine)(nil)
 
 // newTUIEngine returns a tuiEngine whose pane starts ready and whose redraw settle is 100 ms.
 func newTUIEngine() *tuiEngine {

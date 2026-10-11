@@ -137,7 +137,7 @@ func (c *Claude) SubmitSettle() time.Duration {
 }
 
 // ClearInputSequence returns one C-u, which deletes from the caret to the start of the line.
-// Sent text is one line with the caret at its end, so that empties the box;
+// Sent text is one line with the caret at its end, and so is a lone stray-character candidate, so that empties the box;
 // C-u is neither Escape nor C-c, so it never interrupts a running turn.
 func (c *Claude) ClearInputSequence() []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{{Key: "C-u"}}

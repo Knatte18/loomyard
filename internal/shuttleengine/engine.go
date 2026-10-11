@@ -226,7 +226,7 @@ type InputBoxReader interface {
 }
 
 // InputBoxClearer is an optional capability beside Engine: the provider's way of emptying its input box.
-// The caller sends the clear only into a box it has just read as holding exactly its own text,
+// The caller sends the clear only into a box it has just read as holding exactly its own text, or exactly one stray-character candidate its guard reading found,
 // and the choreography never uses a key that interrupts a running turn.
 type InputBoxClearer interface {
 	// ClearInputSequence returns the key choreography that empties the input box without interrupting a running turn.

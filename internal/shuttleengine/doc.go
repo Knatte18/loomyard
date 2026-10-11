@@ -196,6 +196,12 @@
 // Runner.SessionIdle applies the same hold after a ready reading, so the orch watcher's probe reports an active operator with its reason.
 // An unmatched turn start releases after the pane has read idle on every poll for turnStartIdleOverride, or at once when the engine reports that turn interrupted.
 // When the session state is unknown, the reading falls back to the pane, which must classify ready and idle, and for an engine that parses session signals no turn start may be left unmatched by a later turn end; the cause is logged at Debug.
+// A fallback hold whose box reads non-empty quotes the box.
+// Stray character: for an engine with StrayInputReader, InputBoxClearer and InputBoxReader, a box holding exactly one stray-character candidate is cleared once per send attempt.
+// It counts on the hook reading held only for that draft, and on the pane reading that is ready but not idle.
+// An active operator holds the send instead, quoting the box; otherwise the clear plays right after that reading, the box settles for `SubmitSettle`, and a second full reading is the write's guard reading.
+// From the clear on, every reading of the attempt is a post-clear reading: a box still holding exactly the cleared character reads as empty, so the send goes out, and anything else holds as a draft with no second clear.
+// A character that survives is submitted at the head of the message, and the post-paste confirm keeps its exact-text reading, so it fails with ErrSentTextInDraft.
 // A session that stays held fails the send with ErrSessionBusy, naming the reading and ending with the pane's last lines.
 // Run.Send and the gated wait loop's own send each hold the run's send lock for the whole idle wait, typing and delivery check, so an in-process send and a gate re-prompt on one run type one after the other, never at once; the lock skips no idle wait, delivery check or gate evaluation.
 // An engine without the idle reading keeps the not-ready refusal and the operator-activity hold, with no wait: either fails the send at once.

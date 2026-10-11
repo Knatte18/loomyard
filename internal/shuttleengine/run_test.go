@@ -1381,7 +1381,16 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 		wantNotLand bool
 		wantKeys    []string
 		wantSubmit  bool
+		// strayBox starts the tui pane's box on a lone stray character the clear leaves on screen, which the send then pastes beside.
+		strayBox string
+		// wantRecord asserts the failure recorded the pending send.
+		wantRecord bool
 	}{
+		{
+			name: "a residue character beside the pasted text fails without a key of its own and records the send", text: shortPasted, pasteSubmits: true,
+			strayBox: "+", swallowFor: ms(500),
+			wantErr: "+run the suite", wantIs: []error{ErrSentTextInDraft, ErrSessionBusy}, wantKeys: keys("C-u"), wantSubmit: true, wantRecord: true,
+		},
 		{name: "one paste-submit and no typed keys", text: shortPasted, pasteSubmits: true, wantSubmit: true},
 		{name: "a swallowed Enter leaves the exact text and gets one guarded Enter", text: shortPasted, pasteSubmits: true, swallowFor: ms(50), wantKeys: keys("Enter"), wantSubmit: true},
 		{name: "a long text's placeholder box gets the guarded Enter", text: longPasted, pasteSubmits: true, swallowFor: ms(50), wantKeys: keys("Enter"), wantSubmit: true},
@@ -1426,6 +1435,9 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 					clearableBoxEngine: &clearableBoxEngine{inputBoxEngine: &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: tt.scripted, settle: ms(100)}},
 					pasteSubmits:       tt.pasteSubmits,
 				}
+			} else if tt.strayBox != "" {
+				reed = &tuiReed{fakeReed: base, clock: clock, swallowEnterUntil: clock.Now().Add(tt.swallowFor), box: tt.strayBox, keepOnClear: true}
+				engine = &strayPasteEngine{pasteEngine: &pasteEngine{tuiEngine: newTUIEngine(), pasteSubmits: tt.pasteSubmits}}
 			} else {
 				reed = &tuiReed{fakeReed: base, clock: clock, swallowEnterUntil: clock.Now().Add(tt.swallowFor)}
 				engine = &pasteEngine{tuiEngine: newTUIEngine(), pasteSubmits: tt.pasteSubmits}
@@ -1461,6 +1473,11 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			}
 			if !reflect.DeepEqual(gotKeys, tt.wantKeys) {
 				t.Errorf("keys = %v, want %v", gotKeys, tt.wantKeys)
+			}
+			if tt.wantRecord {
+				if _, recorded, loadErr := loadPendingSend(run.runDir); loadErr != nil || !recorded {
+					t.Errorf("pending send recorded = %v (error %v), want the failed send recorded", recorded, loadErr)
+				}
 			}
 		})
 	}
@@ -1599,7 +1616,18 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		wantTypedMin, wantTypedMax time.Duration
 		wantBusy                   []string
 		wantWarns                  int
+		// stray, when set, drives the row through a pane holding a lone stray character instead.
+		stray *strayRow
 	}{
+		{name: "stray character cleared and the send goes out, on the hook reading", stray: &strayRow{box: "+", hook: true, wantClears: 1}},
+		{name: "stray character cleared and the send goes out, on the pane reading", stray: &strayRow{box: "+", wantClears: 1}},
+		{name: "stray character left on screen by the clear is residue, on the hook reading", stray: &strayRow{box: "+", hook: true, keepOnClear: true, wantClears: 1}},
+		{name: "stray character left on screen by the clear is residue, on the pane reading", stray: &strayRow{box: "+", keepOnClear: true, wantClears: 1}},
+		{name: "operator activity in the settle holds at the post-clear reading", stray: &strayRow{box: "+", hook: true, active: []bool{false, true}, wantClears: 1, wantBusy: []string{"the operator typed in this pane"}}},
+		{name: "a quiet operator at the next reading sends the residue with no second clear", stray: &strayRow{box: "+", hook: true, keepOnClear: true, active: []bool{false, true, false}, wantClears: 1}},
+		{name: "a lone stray character beside an active operator holds with the box quoted", stray: &strayRow{box: "+", active: []bool{true}, wantBusy: []string{"the operator typed in this pane", `the input box holds "+"`}}},
+		{name: "a two-character box holds as a draft on the hook reading", stray: &strayRow{box: "++", hook: true, wantBusy: []string{"the input box holds a draft", "++"}}},
+		{name: "a two-character box holds with the box quoted on the pane reading", stray: &strayRow{box: "++", wantBusy: []string{"the pane is not idle", `the input box holds "++"`}}},
 		{name: "idle pane types at once", wantTypedMax: 0},
 		{name: "running turn turns idle then types", idleAfter: 3 * time.Second, busyFrame: "working (esc to interrupt)", wantTypedMin: 3 * time.Second, wantTypedMax: 5 * time.Second},
 		{name: "runner send waits as run send does", idleAfter: 3 * time.Second, busyFrame: "working (esc to interrupt)", viaRunner: true, wantTypedMin: 3 * time.Second, wantTypedMax: 5 * time.Second},
@@ -1621,6 +1649,10 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.stray != nil {
+				checkStraySend(t, tt.stray)
+				return
+			}
 			buf := logcapture.Capture(t)
 			clock := newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))
 			start := clock.Now()
@@ -1684,6 +1716,61 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 				t.Errorf("release warnings = %d, want %d; log: %s", got, tt.wantWarns, buf.String())
 			}
 		})
+	}
+}
+
+// strayRow is one Send into a pane whose input box starts holding box, driven over a strayPasteEngine.
+// hook gives the engine a live process and a finished turn, so the hook-derived reading decides; otherwise the pane does.
+// keepOnClear makes the clear leave the box as it is, active scripts the operator-activity answers, and wantClears is how many C-u keys the send plays.
+// A row with wantBusy fails with ErrSessionBusy naming each fragment and pastes nothing; any other row pastes "hello" once.
+type strayRow struct {
+	box         string
+	hook        bool
+	keepOnClear bool
+	active      []bool
+	wantClears  int
+	wantBusy    []string
+}
+
+// checkStraySend runs row's Send and checks its outcome.
+func checkStraySend(t *testing.T, row *strayRow) {
+	t.Helper()
+	clock := newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))
+	base := &fakeReed{StatusQueue: liveStrandStatus(true), ActiveQueue: row.active}
+	reed := &tuiReed{fakeReed: base, clock: clock, box: row.box, keepOnClear: row.keepOnClear}
+	engine := &strayPasteEngine{pasteEngine: &pasteEngine{tuiEngine: newTUIEngine(), pasteSubmits: true}, alive: row.hook}
+	events := ""
+	if row.hook {
+		events = "START\nSTOP:done\n"
+	}
+	cfg := Config{SubmitSettleMS: 100, SubmitConfirmTimeoutS: 30, SendReadyTimeoutS: 60}
+	run := newFixture(t, reed, engine, withConfig(cfg)).newRun(Spec{},
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1"}),
+		withRunEvents(events), withRunClock(clock, clock.Now().Add(time.Hour)))
+
+	err := run.Send("hello")
+	if reed.clears != row.wantClears {
+		t.Errorf("C-u keys = %d, want %d", reed.clears, row.wantClears)
+	}
+	if row.wantBusy != nil {
+		if !errors.Is(err, ErrSessionBusy) {
+			t.Fatalf("Send error = %v, want ErrSessionBusy", err)
+		}
+		for _, want := range row.wantBusy {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("Send error = %q, want it to contain %q", err, want)
+			}
+		}
+		if len(base.PasteSubmitCalls) != 0 {
+			t.Errorf("PasteSubmit calls = %+v, want none for a held send", base.PasteSubmitCalls)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if len(base.PasteSubmitCalls) != 1 || base.PasteSubmitCalls[0].Text != "hello" {
+		t.Errorf("PasteSubmit calls = %+v, want one of the exact text", base.PasteSubmitCalls)
 	}
 }
 
