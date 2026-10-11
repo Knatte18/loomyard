@@ -8,7 +8,7 @@
 // discussion_fan and plan_fan each name a fan from burler.yaml and turn the lens fan on for Discussion-Review and Plan-Review; empty, the default, runs that segment solo.
 // fan_review is the reviewer model-spec list of a fanned segment, and the forks' model too, since forks run on the reviewer session's model.
 // There is no webster_fan key: Webster-Review always runs solo.
-// discussion_producer selects the Discussion-Write row's producer and must be single or seats.
+// discussion_producer selects the Discussion-Write row's producer and must be single, seats or twill.
 // discussion_advisors lists the seats producer's advisor model-specs; every entry is resolved through the model registry at load, whatever discussion_producer holds, and an unset list loads as no advisors.
 // Under seats, no advisors runs the chair alone, deciding each question itself.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
@@ -314,6 +314,8 @@ const (
 	DiscussionProducerSingle = "single"
 	// DiscussionProducerSeats selects the chair with its advisors for the Discussion-Write row.
 	DiscussionProducerSeats = "seats"
+	// DiscussionProducerTwill selects the single-agent writer with lens forks for the Discussion-Write row.
+	DiscussionProducerTwill = "twill"
 )
 
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.
@@ -656,9 +658,9 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	}
 
 	switch cfg.DiscussionProducer {
-	case DiscussionProducerSingle, DiscussionProducerSeats:
+	case DiscussionProducerSingle, DiscussionProducerSeats, DiscussionProducerTwill:
 	default:
-		return Config{}, fmt.Errorf("loom config key %q: unknown value %q; set it to %q or %q", "discussion_producer", cfg.DiscussionProducer, DiscussionProducerSingle, DiscussionProducerSeats)
+		return Config{}, fmt.Errorf("loom config key %q: unknown value %q; set it to %q, %q or %q", "discussion_producer", cfg.DiscussionProducer, DiscussionProducerSingle, DiscussionProducerSeats, DiscussionProducerTwill)
 	}
 
 	return cfg, nil
