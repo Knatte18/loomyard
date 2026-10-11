@@ -728,7 +728,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				}
 				return readAgentActivity(taskLocation)
 			},
-			AttachDir: func() (string, error) {
+			PairDir: func() (string, error) {
 				taskLocation, err := locateTask()
 				if err != nil {
 					return "", err

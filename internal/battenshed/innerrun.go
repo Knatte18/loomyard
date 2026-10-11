@@ -218,8 +218,8 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	if deps.OrchStrandRecorded == nil {
 		deps.OrchStrandRecorded = func() (bool, error) { return true, nil }
 	}
-	if deps.AttachDir == nil {
-		deps.AttachDir = func() (string, error) { return "", errors.New("no attach directory wired") }
+	if deps.PairDir == nil {
+		deps.PairDir = func() (string, error) { return "", errors.New("no pair directory wired") }
 	}
 	if deps.DriverStrand == nil {
 		deps.DriverStrand = func(context.Context) (ChildDriverStrand, error) { return ChildDriverNone, nil }

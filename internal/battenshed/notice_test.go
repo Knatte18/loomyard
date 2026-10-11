@@ -150,7 +150,7 @@ func (h *noticeHarness) producer() shedengine.ShedProducer {
 			h.activityReads++
 			return h.runs, h.waitLive, h.activityErr
 		},
-		AttachDir: func() (string, error) { return "/wt/task", nil },
+		PairDir: func() (string, error) { return "/wt/task", nil },
 	}
 	return NewInnerRun("Run-Shed", "task", deps, h.poll, h.scratch, testGrace)
 }
@@ -201,7 +201,9 @@ func TestRenderNotice(t *testing.T) {
 	t.Parallel()
 
 	since := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	long := shedengine.Status{State: shedengine.StateFailed, Error: "boom\nsecond\x1b[0m line " + strings.Repeat("x", 300), History: make([]shedengine.HistoryEntry, 7)}
+	long := shedengine.Status{State: shedengine.StateFailed, CurrentProducer: "Publish", Error: "boom\nsecond\x1b[0m line " + strings.Repeat("x", 300), History: make([]shedengine.HistoryEntry, 7)}
+	awaiting := shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: "PR-Gate", Error: "the pull request awaits review: /wt/task/_lyx/review.md, beside /other/wt/task/x", History: make([]shedengine.HistoryEntry, 3)}
+	done := shedengine.Status{State: shedengine.StateDone}
 	tests := []struct {
 		name string
 		line noticeLine
@@ -209,20 +211,27 @@ func TestRenderNotice(t *testing.T) {
 		deny []string
 	}{
 		{
-			name: "SinceHistoryAndAReportPath",
-			line: noticeLine{slug: "task", condition: "child left running", status: long, since: since, report: reportClause("/wt/task/stop.md", true), attachDir: "/wt/task"},
-			want: []string{"task", "child left running", "failed", "boom second", "since 2026-01-02T03:04:05Z", "history 7", "report /wt/task/stop.md"},
+			name: "AFailedChildLabelsItsReasonAnError",
+			line: noticeLine{slug: "task", condition: haltText(long), status: long, since: since, report: reportClause("/wt/task/_lyx/stop.md", true), pairDir: "/wt/task"},
+			want: []string{"task: failed at Publish;", "error: boom second", "since 2026-01-02T03:04:05Z", "history 7", "report _lyx/stop.md"},
+			deny: []string{"/wt/task"},
 		},
 		{
 			name: "NoReportYet",
-			line: noticeLine{slug: "task", condition: "child left running", status: parked(shedengine.StateBlocked), since: since, report: reportClause("", false), attachDir: "/wt/task"},
-			want: []string{"since 2026-01-02T03:04:05Z", "history 2", "report none yet"},
+			line: noticeLine{slug: "task", condition: haltText(parked(shedengine.StateBlocked)), status: parked(shedengine.StateBlocked), since: since, report: reportClause("", false), pairDir: "/wt/task"},
+			want: []string{"task: blocked at Publish;", "error: stuck", "since 2026-01-02T03:04:05Z", "history 2", "report none yet"},
 		},
 		{
-			name: "ADoneNoticeCarriesNoReportAndNoError",
-			line: noticeLine{slug: "task", condition: "child left running", status: shedengine.Status{State: shedengine.StateDone}, since: since, attachDir: "/wt"},
-			want: []string{"child state done", "since 2026-01-02T03:04:05Z", "history 0"},
-			deny: []string{"report", "error:"},
+			name: "AnAwaitingChildIsWaitingNotAnError",
+			line: noticeLine{slug: "task", condition: haltText(awaiting), status: awaiting, since: since, pairDir: "/wt/task"},
+			want: []string{"task: awaiting at PR-Gate;", "waiting: the pull request awaits review: _lyx/review.md, beside /other/wt/task/x;"},
+			deny: []string{"error:", " /wt/task"},
+		},
+		{
+			name: "ADoneNoticeCarriesNoReportAndNoReason",
+			line: noticeLine{slug: "task", condition: haltText(done), status: done, since: since, pairDir: "/wt"},
+			want: []string{"task: done;", "since 2026-01-02T03:04:05Z", "history 0"},
+			deny: []string{"report", "error:", "waiting:"},
 		},
 	}
 	for _, tt := range tests {
@@ -230,8 +239,8 @@ func TestRenderNotice(t *testing.T) {
 			t.Parallel()
 
 			line := renderNotice(tt.line)
-			if !strings.HasPrefix(line, noticePrefix) || !strings.HasSuffix(line, "cd "+tt.line.attachDir+" && lyx reed attach") {
-				t.Errorf("notice = %q; want the prefix and the attach command at the end", line)
+			if !strings.HasPrefix(line, noticePrefix) || strings.Contains(line, "reed attach") {
+				t.Errorf("notice = %q; want the prefix and no attach command", line)
 			}
 			if strings.ContainsAny(line, "\n\r\x1b") {
 				t.Errorf("notice = %q; want one line without control characters", line)
@@ -634,7 +643,7 @@ func TestNotice_ParkedStopWaitsForTheStopReport(t *testing.T) {
 			name:       "AReportWrittenAfterTheStopGoesWithItsPath",
 			state:      shedengine.StateBlocked,
 			at:         func(h *noticeHarness, since time.Time) { h.writeReport(since.Add(10 * time.Second)) },
-			wantReport: "report /wt/task/_lyx/stop-report.md",
+			wantReport: "report _lyx/stop-report.md",
 		},
 		{
 			name:       "NoReportGoesAfterThreeMinutesAsNoneYet",
@@ -689,12 +698,12 @@ func TestNotice_ParkedStopWaitsForTheStopReport(t *testing.T) {
 				t.Fatalf("notices before the second check = %d, in all = %v; want none, then exactly one", sentBefore(), h.notified)
 			}
 			line := h.notified[0]
-			for _, want := range []string{"child state " + string(tt.state), "since " + since.UTC().Format(time.RFC3339), "history 2", tt.wantReport} {
+			for _, want := range []string{"task: " + string(tt.state) + " at Publish;", "since " + since.UTC().Format(time.RFC3339), "history 2", tt.wantReport} {
 				if !strings.Contains(line, want) {
 					t.Errorf("notice = %q; want it to contain %q", line, want)
 				}
 			}
-			if tt.wantReport == "report none yet" && strings.Contains(line, "report /") {
+			if tt.wantReport == "report none yet" && strings.Contains(line, "stop-report.md") {
 				t.Errorf("notice = %q; want no report path", line)
 			}
 		})
@@ -734,7 +743,7 @@ func TestNotice_DoneChildNotifiesOnFirstSightAndTheDoneReturnAttemptsAPendingOne
 		if err != nil || outcome != shedengine.Done {
 			t.Fatalf("Call() = %v, %v; want Done", outcome, err)
 		}
-		if len(h.notified) != 1 || strings.Contains(h.notified[0], "report") || !strings.Contains(h.notified[0], "child state done") || !strings.Contains(h.notified[0], "history 5") {
+		if len(h.notified) != 1 || strings.Contains(h.notified[0], "report") || !strings.Contains(h.notified[0], "task: done;") || !strings.Contains(h.notified[0], "history 5") {
 			t.Errorf("notified = %v; want one done notice with no report", h.notified)
 		}
 	})

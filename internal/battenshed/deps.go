@@ -171,9 +171,9 @@ type InnerRunDeps struct {
 	// The wait reads it for a running child with a live driver strand, at most once per notice probe; an error is warned about and sends no activity notice.
 	// A nil Activity resolves to reporting no live run and no live wait in NewInnerRun.
 	Activity func(ctx context.Context) (runs []AgentActivity, waitLive bool, err error)
-	// AttachDir returns the task worktree directory the notice's attach command changes into.
+	// PairDir returns the task worktree directory a notice renders its paths relative to.
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
-	AttachDir func() (string, error)
+	PairDir func() (string, error)
 	// DriverStrand reports the child's driver strand in its reed state.
 	// Call invokes it when a running child's spawn was not confirmed by this process, to tell a child that still has a driver from one that needs its bootstrap run again.
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
