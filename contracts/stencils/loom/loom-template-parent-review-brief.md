@@ -33,3 +33,5 @@ Submit with exactly one of these:
 
 - Approve: `lyx loom review approve {{.slug}}`
 - Reject: `lyx loom review reject {{.slug}} <review-file>`, where `<review-file>` is the review you wrote.
+
+The verdict reaches the writer through the gate only, so send the writer no message, neither an acknowledgement nor a reply to its notice.

@@ -32,6 +32,7 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"webster-fragment-locate-pack", WebsterFragmentLocatePack, []string{"specs_dir"}},
 		{"webster-fragment-pack-section", WebsterFragmentPackSection, []string{"pack_entries", "pack_unresolved"}},
 		{"webster-fragment-pack-empty", WebsterFragmentPackEmpty, nil},
+		{"loom-template-parent-review-keepalive", LoomTemplateParentReviewKeepalive, []string{"ping"}},
 		{"loom-template-discussion-chair", LoomTemplateDiscussionChair, nil},
 		{"loom-template-discussion-advisor", LoomTemplateDiscussionAdvisor, []string{"decision_record_path", "edit_directive", "output_files", "parent_directive", "pattern_directive", "slug", "support_log_path"}},
 	}

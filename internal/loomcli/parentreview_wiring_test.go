@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -17,11 +18,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
-// TestDiscussionWriteRow_GateListIsDiscussionThenParentReview asserts the embedded recipe's Discussion-Write row lists the discussion gate, then a parent-review gate with attempts 1 and pass_on_cap: one scope review whose rewrite goes on to the perch.
+// TestDiscussionWriteRow_GateListIsDiscussionThenParentReview asserts the embedded recipe's Discussion-Write row lists the discussion gate, then a parent-review gate with attempts 2 and no pass_on_cap: every rewrite after a reject is reviewed, and the cap's reject halts the run.
 //
-//testtiming:keep pins the embedded recipe's Discussion-Write row listing the discussion gate then a parent-review gate with attempts 1 and pass_on_cap; no covering test reads the recipe's gate config
+//testtiming:keep pins the embedded recipe's Discussion-Write row listing the discussion gate then a parent-review gate with attempts 2 and no pass_on_cap; no covering test reads the recipe's gate config
 func TestDiscussionWriteRow_GateListIsDiscussionThenParentReview(t *testing.T) {
 	t.Parallel()
 
@@ -45,11 +49,11 @@ func TestDiscussionWriteRow_GateListIsDiscussionThenParentReview(t *testing.T) {
 		if second["name"] != "parent-review" {
 			t.Errorf("gates[1].name = %v; want parent-review", second["name"])
 		}
-		if second["attempts"] != 1 {
-			t.Errorf("gates[1].attempts = %v; want 1", second["attempts"])
+		if second["attempts"] != 2 {
+			t.Errorf("gates[1].attempts = %v; want 2", second["attempts"])
 		}
-		if second["pass_on_cap"] != true {
-			t.Errorf("gates[1].pass_on_cap = %v; want true", second["pass_on_cap"])
+		if _, present := second["pass_on_cap"]; present {
+			t.Errorf("gates[1].pass_on_cap = %v; want the key absent", second["pass_on_cap"])
 		}
 		return
 	}
@@ -81,7 +85,7 @@ func TestNewParentReviewConfig_ReviewerFromResolver(t *testing.T) {
 					t.Fatalf("WriteShortname = %v; want nil", err)
 				}
 			}
-			cfg, err := newParentReviewConfig(loc, reedengine.Config{}, loomengine.Config{ParentReviewWaitMin: 5}, t.TempDir())
+			cfg, err := newParentReviewConfig(loc, reedengine.Config{}, loomengine.Config{ParentReviewWaitMin: 5}, t.TempDir(), &shuttlefake.Engine{}, shuttleengine.Config{})
 			if err != nil {
 				t.Fatalf("newParentReviewConfig = %v; want nil", err)
 			}
@@ -96,6 +100,51 @@ func TestNewParentReviewConfig_ReviewerFromResolver(t *testing.T) {
 			}
 			if got := cfg.WaitBound.Minutes(); got != 5 {
 				t.Errorf("WaitBound = %v minutes; want 5", got)
+			}
+		})
+	}
+}
+
+// TestNewParentReviewConfig_KeepAliveInterval asserts the keep-alive interval is the writer role's prompt-cache lifetime less a minute, and zero when the lifetime reaches the wait bound or cannot be resolved.
+// The seats producer's writer is its chair, so a role mapped for the chair decides the seats rows.
+func TestNewParentReviewConfig_KeepAliveInterval(t *testing.T) {
+	t.Parallel()
+
+	chairRole := loomengine.DiscussionWriterRole(loomengine.Config{DiscussionProducer: loomengine.DiscussionProducerSeats})
+	tests := []struct {
+		name       string
+		producer   string
+		defaultTTL string
+		roles      map[string]string
+		want       time.Duration
+	}{
+		{name: "single at the 5m default", producer: loomengine.DiscussionProducerSingle, defaultTTL: "5m", want: 4 * time.Minute},
+		{name: "single with the discussion role mapped to 1h", producer: loomengine.DiscussionProducerSingle, defaultTTL: "5m", roles: map[string]string{"discussion": "1h"}, want: 0},
+		{name: "seats with the chair role mapped to 1h", producer: loomengine.DiscussionProducerSeats, defaultTTL: "5m", roles: map[string]string{chairRole: "1h"}, want: 0},
+		{name: "seats at the 5m default", producer: loomengine.DiscussionProducerSeats, defaultTTL: "5m", want: 4 * time.Minute},
+		{name: "invalid TTL", producer: loomengine.DiscussionProducerSingle, defaultTTL: "1H", want: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+			shuttleCfg, err := shuttleengine.LoadConfig(t.TempDir(), "shuttle")
+			if err != nil {
+				t.Fatalf("load the shipped shuttle template: %v", err)
+			}
+			shuttleCfg.ClaudePromptCacheTTL = tt.defaultTTL
+			shuttleCfg.ClaudePromptCacheTTLRoles = tt.roles
+			loomCfg := loomengine.Config{DiscussionProducer: tt.producer, ParentReviewWaitMin: 60}
+			cfg, err := newParentReviewConfig(loc, reedengine.Config{}, loomCfg, t.TempDir(), claudeengine.NewFromConfig(shuttleCfg), shuttleCfg)
+			if err != nil {
+				t.Fatalf("newParentReviewConfig = %v; want nil", err)
+			}
+			if cfg.KeepAlive != tt.want {
+				t.Errorf("KeepAlive = %v; want %v", cfg.KeepAlive, tt.want)
+			}
+			if tt.want > 0 && cfg.RenderKeepAlive == nil {
+				t.Errorf("RenderKeepAlive is nil; want it set when KeepAlive is positive")
 			}
 		})
 	}

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 type clock struct{ t time.Time }
@@ -117,6 +119,28 @@ func TestRecordDelivered(t *testing.T) {
 	if err := s.RecordDelivered(""); !errors.Is(err, ErrExpired) {
 		t.Fatalf("expired: %v", err)
 	}
+
+	// A round that already carries a verdict is left untouched and logs no failure Warn.
+	settled, _ := newStore(t)
+	openOne(t, settled)
+	if err := settled.RecordVerdict(VerdictApprove, ""); err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	logger.SetOutput(&buf)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	for _, reason := range []string{"", "no such agent"} {
+		if err := settled.RecordDelivered(reason); !errors.Is(err, ErrVerdictRecorded) {
+			t.Fatalf("RecordDelivered(%q) after a verdict = %v; want ErrVerdictRecorded", reason, err)
+		}
+	}
+	r, _, _ = settled.Latest()
+	if _, err := os.Stat(filepath.Join(r.Dir, deliveryFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("delivery.json after a verdict: %v; want it absent", err)
+	}
+	if strings.Contains(buf.String(), "notice not delivered") {
+		t.Fatalf("log = %q; want no failure Warn", buf.String())
+	}
 }
 
 func TestRecordDelivered_SupersededRefused(t *testing.T) {
@@ -199,6 +223,22 @@ func TestRecordVerdict(t *testing.T) {
 	}
 	if err := s.RecordVerdict(VerdictReject, writeFile(t, "  \n")); !errors.Is(err, ErrEmptyReviewFile) {
 		t.Fatalf("reject empty file: %v", err)
+	}
+	for name, path := range map[string]string{
+		"missing":    filepath.Join(t.TempDir(), "missing.md"),
+		"whitespace": writeFile(t, "  \n"),
+		"unreadable": t.TempDir(),
+	} {
+		if err := s.RecordVerdict(VerdictApprove, path); !errors.Is(err, ErrEmptyReviewFile) {
+			t.Fatalf("approve %s file: %v", name, err)
+		}
+		r, _, _ := s.Latest()
+		if r.Verdict != nil {
+			t.Fatalf("approve %s file recorded verdict %+v", name, r.Verdict)
+		}
+		if _, err := os.Stat(r.ReviewPath()); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("approve %s file left review.md: %v", name, err)
+		}
 	}
 	if err := s.RecordVerdict(VerdictReject, writeFile(t, "fix it")); err != nil {
 		t.Fatal(err)
@@ -361,9 +401,11 @@ func TestPrepareRound(t *testing.T) {
 		verdict   string
 		expire    bool
 		noRound   bool
+		noRequest bool
 		wantRound int
 	}{
 		{name: "no round", noRound: true, wantRound: 1},
+		{name: "round without a request kept", noRequest: true, wantRound: 1},
 		{name: "reject kept", verdict: `{"kind":"reject"}`, wantRound: 1},
 		{name: "superseding approve kept", verdict: `{"kind":"approve","superseding":true}`, wantRound: 1},
 		{name: "plain approve begins", verdict: `{"kind":"approve"}`, wantRound: 2},
@@ -372,7 +414,11 @@ func TestPrepareRound(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s, _ := newStore(t)
-			if !tt.noRound {
+			if tt.noRequest {
+				if _, err := s.BeginRound(); err != nil {
+					t.Fatal(err)
+				}
+			} else if !tt.noRound {
 				openOne(t, s)
 				if tt.verdict != "" {
 					writeVerdict(t, s, 1, tt.verdict)
@@ -386,6 +432,14 @@ func TestPrepareRound(t *testing.T) {
 			got, err := s.PrepareRound()
 			if err != nil || got.Number != tt.wantRound {
 				t.Fatalf("PrepareRound = %d, %v; want round %d", got.Number, err, tt.wantRound)
+			}
+			if tt.noRound {
+				// Two fresh spawns with no reviewer leave one empty round, not two.
+				again, err := s.PrepareRound()
+				nums, numsErr := s.roundNumbers()
+				if err != nil || numsErr != nil || again.Number != 1 || len(nums) != 1 {
+					t.Fatalf("second PrepareRound = %d, %v; rounds = %v, %v; want round 1 and one round directory", again.Number, err, nums, numsErr)
+				}
 			}
 		})
 	}

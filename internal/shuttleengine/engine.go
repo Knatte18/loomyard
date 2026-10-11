@@ -139,6 +139,10 @@ const (
 type Engine interface {
 	// Prepare writes provider-specific artifacts (prompt file, settings/hooks) and returns opaque Launch command strings.
 	Prepare(runDir string, spec Spec, cfg Config) (Launch, error)
+	// PromptCacheLifetime returns how long the provider keeps a session's prompt cache warm while the session sits idle, for a session started from spec under cfg.
+	// Zero means the provider knows no warm lifetime, so a caller keeps nothing warm.
+	// An error means cfg cannot be resolved for spec.
+	PromptCacheLifetime(spec Spec, cfg Config) (time.Duration, error)
 	// ParseEvents parses events.jsonl into Events (turn-end signal and live ask).
 	// It is lenient: malformed or unrecognized lines are skipped.
 	ParseEvents(data []byte) ([]Event, error)

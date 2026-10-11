@@ -1,4 +1,4 @@
-// parentreview.go composes the two parent-review prompts: the one-line delivery prompt typed into the live Discussion-Write session, and the reviewer brief the parent's one-shot fork reads.
+// parentreview.go composes the three parent-review prompts: the one-line delivery prompt and the one-line keep-alive prompt typed into the live Discussion-Write session, and the reviewer brief the parent's one-shot fork reads.
 // Each reads its stencil from stencilsDir at call time and fills it through internal/stencil.
 // The SendMessage wording lives in the delivery stencil only, per the Shuttle Provider-Seam Invariant.
 
@@ -6,6 +6,7 @@ package loomengine
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -13,10 +14,29 @@ import (
 )
 
 const (
-	parentReviewDeliveryStencil = "loom-template-parent-review-delivery"
-	parentReviewBriefStencil    = "loom-template-parent-review-brief"
-	reviewFormatStencil         = "burler-review-format"
+	parentReviewDeliveryStencil  = "loom-template-parent-review-delivery"
+	parentReviewBriefStencil     = "loom-template-parent-review-brief"
+	parentReviewKeepAliveStencil = "loom-template-parent-review-keepalive"
+	reviewFormatStencil          = "burler-review-format"
 )
+
+// ParentReviewKeepAlivePrompt renders the keep-alive prompt for keep-alive number ping, which keeps each ping's text distinct.
+// It errors when the render contains a newline, since shuttle's Send refuses multi-line text.
+func ParentReviewKeepAlivePrompt(stencilsDir string, ping int) (string, error) {
+	template, err := stencilstore.Read(stencilsDir, parentReviewKeepAliveStencil)
+	if err != nil {
+		return "", fmt.Errorf("loom: read %s: %w", parentReviewKeepAliveStencil, err)
+	}
+	filled, err := stencil.Fill(template, map[string]string{"ping": strconv.Itoa(ping)})
+	if err != nil {
+		return "", fmt.Errorf("loom: fill %s: %w", parentReviewKeepAliveStencil, err)
+	}
+	out := strings.TrimSpace(string(filled))
+	if strings.ContainsAny(out, "\r\n") {
+		return "", fmt.Errorf("loom: %s renders to more than one line; shuttle's Send refuses multi-line text, so fix the stencil", parentReviewKeepAliveStencil)
+	}
+	return out, nil
+}
 
 // ParentReviewDeliveryPrompt renders the delivery prompt for the run slug, naming the reviewer brief at briefPath and the reviewer's full agent name.
 // It errors when the render contains a newline, since shuttle's Send refuses multi-line text.

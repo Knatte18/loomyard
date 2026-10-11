@@ -56,6 +56,7 @@
 // and validates the whole configured set to `5m` or `1h` (exact, case-sensitive) before any artifact is written.
 // It logs the resolved value with the role.
 // The value is fixed for the session's life, since a resume line is never rebuilt.
+// PromptCacheLifetime answers the same resolved value as a duration, so a caller can keep an idle session's cache warm inside it.
 // The subagent bucket (`CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL`) is left at Claude Code's default,
 // and a `FORCE_PROMPT_CACHING_5M` in Claude Code's own environment still wins.
 //

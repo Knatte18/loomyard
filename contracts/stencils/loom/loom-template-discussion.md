@@ -141,8 +141,8 @@ Fix whatever it reports, then re-run it until it exits 0 before ending your turn
 
 ## Messages the gate may send after you end your turn
 
-Once `lyx loom validate-discussion` passes, the gate may send you one of two messages.
-Neither changes the design on its own.
+Once `lyx loom validate-discussion` passes, the gate may send you one of three messages.
+None changes the design on its own.
 
 - **A delivery prompt** asks you to notify the parent reviewer and then record the delivery.
   Follow it as written.
@@ -151,6 +151,8 @@ Neither changes the design on its own.
   Read it and address every finding, BLOCKING and NIT alike, by fixing it in the discussion or by answering it.
   Append one parent-review entry to the support log's `## Review rounds`, listing each finding with its disposition: fixed, or answered with the reason.
   Then re-run `lyx loom validate-discussion` until it exits 0, and end your turn.
+- **A keep-alive prompt** asks only that you end your turn.
+  It changes nothing in the discussion.
 
 ## Never use `AskUserQuestion`
 

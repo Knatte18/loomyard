@@ -357,6 +357,8 @@ type Run struct {
 	// unsentReprompt marks that a re-prompt send at this boundary failed busy or unlanded; while it is set the loop re-sends the re-prompt on a later tick with no new writer event.
 	// It is cleared by a successful re-prompt, a new arrival and a writer turn that starts meanwhile.
 	unsentReprompt bool
+	// lastGateEvalAt is the run clock's time of the last gate evaluation at a boundary, zero before the first; the loop re-reads a pending entry no sooner than gateRecheckEvery after it.
+	lastGateEvalAt time.Time
 
 	// resumeWarning is the non-empty warning SessionResumer.CheckResume returned when it could not confirm the session was resumable, empty otherwise.
 	resumeWarning string

@@ -46,7 +46,7 @@ var (
 	ErrExpired = errors.New("parentreview: review request expired")
 	// ErrVerdictRecorded means the round already carries a verdict.
 	ErrVerdictRecorded = errors.New("parentreview: verdict already recorded")
-	// ErrEmptyReviewFile means a reject came without a readable, non-empty review file.
+	// ErrEmptyReviewFile means a reject, or an approve carrying a review file, came without a readable, non-empty one.
 	ErrEmptyReviewFile = errors.New("parentreview: review file missing or empty")
 	// ErrNotAtCap means the latest round is not the cap's reject, so there is nothing to supersede.
 	ErrNotAtCap = errors.New("parentreview: latest round is not the cap's reject")
@@ -73,6 +73,9 @@ type Delivery struct {
 	LastPromptAt   time.Time `json:"last_prompt_at"`
 	WaitingNotifys int       `json:"waiting_notifies"`
 	CapWarned      bool      `json:"cap_warned"`
+	// Pings counts the keep-alives carried and LastPingAt stamps the latest; a delivery.json written before keep-alives decodes with both zero.
+	Pings      int       `json:"pings"`
+	LastPingAt time.Time `json:"last_ping_at"`
 }
 
 // Verdict is verdict.json.
@@ -211,6 +214,31 @@ func (s Store) Latest() (Round, bool, error) {
 	return r, true, nil
 }
 
+// peekLatest returns the highest-numbered round's request and verdict, or false when there is no round.
+// It takes no round lock and creates no directory, so a caller on a polling cadence leaves the exchange untouched; the Delivery stays zero.
+func (s Store) peekLatest() (Round, bool, error) {
+	n, err := s.latestNumber()
+	if err != nil || n == 0 {
+		return Round{}, false, err
+	}
+	r := Round{Number: n, Dir: s.roundDir(n)}
+	req, found, err := readHeldJSON[Request](filepath.Join(r.Dir, requestFile))
+	if err != nil {
+		return Round{}, false, err
+	}
+	if found {
+		r.Request = &req
+	}
+	v, found, err := readHeldJSON[Verdict](filepath.Join(r.Dir, verdictFile))
+	if err != nil {
+		return Round{}, false, err
+	}
+	if found {
+		r.Verdict = &v
+	}
+	return r, true, nil
+}
+
 // BeginRound marks the latest round superseded when it is still open with no verdict, then creates the next round directory empty.
 func (s Store) BeginRound() (Round, error) {
 	n, err := s.latestNumber()
@@ -263,13 +291,13 @@ func (s Store) rejectedRoundsExcept(skip int) (int, error) {
 }
 
 // PrepareRound is Discussion-Write's fresh-spawn preparation.
-// It returns the latest round unchanged when its verdict is a reject or a superseding approve, and otherwise calls BeginRound.
+// It returns the latest round unchanged when it holds no request, or its verdict is a reject or a superseding approve, and otherwise calls BeginRound.
 func (s Store) PrepareRound() (Round, error) {
 	r, ok, err := s.Latest()
 	if err != nil {
 		return Round{}, err
 	}
-	if ok && r.Verdict != nil && (r.Verdict.Kind == VerdictReject || r.Verdict.Superseding) {
+	if ok && (r.Request == nil || r.Verdict != nil && (r.Verdict.Kind == VerdictReject || r.Verdict.Superseding)) {
 		return r, nil
 	}
 	return s.BeginRound()
@@ -385,6 +413,22 @@ func (s Store) RecordPrompt(fromNotify bool) error {
 	})
 }
 
+// RecordPing records one carried keep-alive on the latest round: it bumps the ping count and stamps the last-ping time, touching no prompt count, last-prompt time or waiting notify.
+func (s Store) RecordPing() error {
+	r, ok, err := s.Latest()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNoOpenRequest
+	}
+	now := s.now()
+	return s.updateDelivery(r.Number, func(d *Delivery) {
+		d.Pings++
+		d.LastPingAt = now
+	})
+}
+
 // MarkExpired marks the latest round's request expired.
 // It refuses with ErrVerdictRecorded when a verdict landed since the caller's read, checked under the round lock, so a recorded verdict is never expired unread.
 func (s Store) MarkExpired() error {
@@ -470,6 +514,8 @@ func (s Store) openRound() (Round, error) {
 }
 
 // RecordDelivered stamps delivered-at on the latest open request, or, when failedReason is non-empty, records the reason, logs a Warn and leaves delivered-at empty.
+// A round that already carries a verdict can no longer use the stamp: it returns ErrVerdictRecorded, writes nothing and logs nothing.
+// The Warn is logged only after the reason is written.
 func (s Store) RecordDelivered(failedReason string) error {
 	r, err := s.openRound()
 	if err != nil {
@@ -479,18 +525,29 @@ func (s Store) RecordDelivered(failedReason string) error {
 		return ErrExpired
 	}
 	now := s.now()
+	err = state.UpdateJSON(filepath.Join(r.Dir, deliveryFile), s.lockPath(r.Number), func(cur Delivery, _ bool) (Delivery, error) {
+		if _, verdicted, err := readHeldJSON[Verdict](filepath.Join(r.Dir, verdictFile)); err != nil || verdicted {
+			if err == nil {
+				err = ErrVerdictRecorded
+			}
+			return cur, err
+		}
+		if failedReason != "" {
+			cur.FailedReason = failedReason
+			cur.DeliveredAt = time.Time{}
+			return cur, nil
+		}
+		cur.DeliveredAt = now
+		cur.FailedReason = ""
+		return cur, nil
+	})
+	if err != nil {
+		return err
+	}
 	if failedReason != "" {
 		logger.Warn("parent review notice not delivered", "slug", r.Request.Slug, "reviewer", r.Request.Reviewer, "reason", failedReason)
 	}
-	return s.updateDelivery(r.Number, func(d *Delivery) {
-		if failedReason != "" {
-			d.FailedReason = failedReason
-			d.DeliveredAt = time.Time{}
-			return
-		}
-		d.DeliveredAt = now
-		d.FailedReason = ""
-	})
+	return nil
 }
 
 // openUnsettled is the shared refusal chain of AddNotify and RecordVerdict.
@@ -518,7 +575,7 @@ func (s Store) AddNotify() error {
 }
 
 // RecordVerdict records an approve or reject on the latest open request, copying reviewPath to review.md when given.
-// A reject needs a readable, non-empty review file.
+// A reject needs a readable, non-empty review file, and so does an approve that is given one; an approve with no path copies nothing.
 func (s Store) RecordVerdict(kind, reviewPath string) error {
 	if kind != VerdictApprove && kind != VerdictReject {
 		return fmt.Errorf("parentreview: unknown verdict kind %q", kind)
@@ -530,10 +587,7 @@ func (s Store) RecordVerdict(kind, reviewPath string) error {
 	var data []byte
 	if reviewPath != "" {
 		data, err = os.ReadFile(reviewPath)
-		if err != nil && kind == VerdictApprove {
-			return fmt.Errorf("parentreview: read review file: %w", err)
-		}
-		if kind == VerdictReject && (err != nil || len(strings.TrimSpace(string(data))) == 0) {
+		if err != nil || len(strings.TrimSpace(string(data))) == 0 {
 			return ErrEmptyReviewFile
 		}
 	} else if kind == VerdictReject {

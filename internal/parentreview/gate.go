@@ -1,8 +1,7 @@
 // gate.go is the parent-review gate: the two closures card 1's GateEntry.Gate and GateEntry.Final take, driving the round store.
 // The closures never send anything; they return the prompt text for the wait loop to send at a turn boundary.
 // The gate reviews every rewrite after a reject, one round each, until the store's rejected rounds reach GateConfig.Cap;
-// at the cap it fails terminally rather than letting the rewrite through, and the run halts `blocked` until the parent approves,
-// unless GateConfig.PassAtCap is set, in which case the cap's reject still goes to the writer and the rewrite after it passes unreviewed.
+// at the cap it fails terminally rather than letting the rewrite through, and the run halts `blocked` until the parent approves.
 
 package parentreview
 
@@ -20,6 +19,8 @@ const (
 	maxGatePrompts = 3
 	// promptThrottle is the minimum gap between two gate-driven prompts.
 	promptThrottle = time.Minute
+	// maxKeepAlives is the per-round cap on keep-alive pings; after the last, the writer's prompt cache is left to expire.
+	maxKeepAlives = 3
 )
 
 // GateConfig is the told input of NewGate.
@@ -38,10 +39,6 @@ type GateConfig struct {
 	// The count comes from the store, so it survives an attach, a driver restart and a resume.
 	// Zero or less means no cap.
 	Cap int
-	// PassAtCap makes the cap's reject a last round of findings rather than a halt:
-	// the writer is re-prompted with that review as below the cap, and its rewrite passes without another request.
-	// It suits a parent review that only checks scope, with a detailed review following it.
-	PassAtCap bool
 	// ReviewerLive is the told liveness seam: while it reports false, or errors, the gate holds its delivery prompt, so the prompt budget is not spent during an orch relaunch.
 	// Nil means the reviewer is treated as live, which is how a legacy-name reviewer with no known worktree is wired.
 	// The hold never skips the review short of WaitBound.
@@ -50,6 +47,10 @@ type GateConfig struct {
 	RenderDelivery func(briefPath string) (string, error)
 	// RenderBrief renders the reviewer brief written beside the request.
 	RenderBrief func() (string, error)
+	// KeepAlive is the gap between keep-alive pings to the idle writer while a delivered request waits, kept inside the writer's prompt-cache lifetime; zero turns pings off.
+	KeepAlive time.Duration
+	// RenderKeepAlive renders the one-line keep-alive prompt for ping number ping; required when KeepAlive is positive.
+	RenderKeepAlive func(ping int) (string, error)
 }
 
 // NewGate returns the entry's per-arrival closure and its final-verdict closure over cfg.
@@ -59,9 +60,8 @@ func NewGate(cfg GateConfig) (gate, final shuttleengine.Gate) {
 }
 
 type closures struct {
-	cfg             GateConfig
-	loggedNone      bool
-	loggedPassAtCap bool
+	cfg        GateConfig
+	loggedNone bool
 	// heldRound, warnedRound and warnedErr remember what holding last logged; round numbers start at 1, so zero means none.
 	heldRound   int
 	warnedRound int
@@ -122,9 +122,9 @@ func (c *closures) terminal(r Round, rejected int, atCap bool, afterStart string
 // gate reads the latest round before opening anything.
 // No round or request opens a request; an approve passes; a reject at the cap fails terminally, opening and consuming nothing;
 // an unconsumed reject below the cap is consumed and fails with its findings, and a consumed one opens the next round.
-// With PassAtCap, a reject at the cap is treated as one below it, except that once consumed it passes instead of opening a round.
 // An expired request passes, and an open request with no verdict waits, notifies and prompts;
 // while ReviewerLive reports the reviewer not live it only waits, carrying no prompt and leaving the prompt count and waiting notifies untouched.
+// Once delivery is recorded, a due keep-alive ping is carried after the prompt cases, at most maxKeepAlives per round.
 func (c *closures) gate() (shuttleengine.GateResult, error) {
 	passed := shuttleengine.GateResult{Passed: true}
 	if c.noReviewer() {
@@ -149,14 +149,10 @@ func (c *closures) gate() (shuttleengine.GateResult, error) {
 		if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
-		if at && !c.cfg.PassAtCap {
+		if at {
 			return c.terminal(r, rejected, true, ""), nil
 		}
 		if r.Verdict.Consumed {
-			if at {
-				c.logPassedAtCap(rejected)
-				return passed, nil
-			}
 			if _, err := s.BeginRound(); err != nil {
 				return shuttleengine.GateResult{}, err
 			}
@@ -194,8 +190,63 @@ func (c *closures) gate() (shuttleengine.GateResult, error) {
 			return shuttleengine.GateResult{}, err
 		}
 		logger.Warn("parent review notice still not delivered; gate re-sending stopped", "slug", c.cfg.Slug, "reviewer", c.cfg.Reviewer, "request", r.RequestPath())
+	case c.pingDue(d, now):
+		return c.ping(r)
 	}
 	return c.pending(""), nil
+}
+
+// NewExpiryProbe returns the entry's read-only expiry probe over cfg.
+// It answers true once the latest round's request is open, carries no verdict and is at least WaitBound old on the store's clock, and false otherwise.
+// It sends, counts and writes nothing, and it marks no request expired: only the gate and final closures do, when they next read the round.
+func NewExpiryProbe(cfg GateConfig) func() (bool, error) {
+	g := &closures{cfg: cfg}
+	return func() (bool, error) {
+		if cfg.Reviewer == "" {
+			return false, nil
+		}
+		r, ok, err := cfg.Store.peekLatest()
+		if err != nil || !ok {
+			return false, err
+		}
+		if r.Request == nil || r.Request.State != StateOpen || r.Verdict != nil {
+			return false, nil
+		}
+		return g.now().Sub(r.Request.OpenedAt) >= cfg.WaitBound, nil
+	}
+}
+
+// pingDue reports whether a keep-alive is due: pings are on, delivery is recorded, fewer than maxKeepAlives are counted, and KeepAlive has passed since the latest of delivery, last prompt and last ping.
+func (c *closures) pingDue(d Delivery, now time.Time) bool {
+	if c.cfg.KeepAlive <= 0 || d.DeliveredAt.IsZero() || d.Pings >= maxKeepAlives {
+		return false
+	}
+	last := d.DeliveredAt
+	if d.LastPromptAt.After(last) {
+		last = d.LastPromptAt
+	}
+	if d.LastPingAt.After(last) {
+		last = d.LastPingAt
+	}
+	return now.Sub(last) >= c.cfg.KeepAlive
+}
+
+// ping records one keep-alive and returns pending carrying its text.
+// The ping counts toward the cap whether or not its send lands.
+// Its send-failure way forward asks for nothing, since a re-sent notice would reach a reviewer who already has it.
+func (c *closures) ping(r Round) (shuttleengine.GateResult, error) {
+	text, err := c.cfg.RenderKeepAlive(r.Delivery.Pings + 1)
+	if err != nil {
+		return shuttleengine.GateResult{}, err
+	}
+	if err := c.cfg.Store.RecordPing(); err != nil {
+		return shuttleengine.GateResult{}, err
+	}
+	return shuttleengine.GateResult{
+		Pending:              true,
+		Send:                 text,
+		SendFailedWayForward: "nothing needs doing: the review is still pending, and the next keep-alive retries while the round's cap allows",
+	}, nil
 }
 
 // open writes the request for the latest round and carries its first prompt.
@@ -255,17 +306,8 @@ func (c *closures) carry(r Round, fromNotify bool) (shuttleengine.GateResult, er
 	return c.pending(text), nil
 }
 
-// logPassedAtCap logs, once per gate, that the rewrite after the cap's reject goes on unreviewed.
-func (c *closures) logPassedAtCap(rejected int) {
-	if c.loggedPassAtCap {
-		return
-	}
-	c.loggedPassAtCap = true
-	logger.Info("parent review cap reached; the rewrite after the last reject goes on unreviewed", "slug", c.cfg.Slug, "reviewer", c.cfg.Reviewer, "rejected", rejected)
-}
-
 // final never opens a request, carries no prompt and consumes nothing.
-// It passes only on no reviewer, no round or request, an approve, an expired request, or, with PassAtCap, a consumed reject at the cap;
+// It passes only on no reviewer, no round or request, an approve or an expired request;
 // an open request with no verdict is marked expired and passes with a timeout Warn.
 // Any other reject on the latest round fails terminally, because the rewrite after it was never reviewed: at the cap with the cap's line, below it with the line saying what `lyx loom start` then does.
 func (c *closures) final() (shuttleengine.GateResult, error) {
@@ -298,10 +340,6 @@ func (c *closures) final() (shuttleengine.GateResult, error) {
 		return shuttleengine.GateResult{}, err
 	}
 	if r.Verdict.Consumed {
-		if at && c.cfg.PassAtCap {
-			c.logPassedAtCap(rejected)
-			return passed, nil
-		}
 		return c.terminal(r, rejected, at, "re-spawns the writer, whose discussion then goes to the parent as the next round"), nil
 	}
 	return c.terminal(r, rejected, at, "re-spawns the writer and re-prompts it with that review"), nil

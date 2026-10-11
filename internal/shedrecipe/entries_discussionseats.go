@@ -18,7 +18,7 @@ import (
 // The resolved gate is stamped onto each table the source returns, so the row's "gates" key guards the chair whatever table the source builds.
 // A table with no advisors is the single-agent case: one chair writing the discussion alone.
 //
-// When the resolved gate list holds an enabled "parent-review" entry, the producer's fresh-spawn preparation calls Env.ParentReview.Store.PrepareRound, so a start opens the next round unless the latest one holds a reject or a superseding approve, which the gate must read, and a resume of a live chair continues the latest one.
+// When the resolved gate list holds an enabled "parent-review" entry, the producer's fresh-spawn preparation calls Env.ParentReview.Store.PrepareRound, so a start opens the next round unless the latest one holds no request, a reject or a superseding approve, which the gate must read, and a resume of a live chair continues the latest one.
 // A disabled or absent entry leaves the preparation nil.
 func discussionSeatsEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	gate, err := resolveGateSpec("DiscussionSeats", cfg, env)

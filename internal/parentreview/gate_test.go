@@ -2,8 +2,11 @@ package parentreview
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -406,94 +409,6 @@ func TestFinal_RejectAtCapNamesWayOut(t *testing.T) {
 	}
 }
 
-// newPassAtCapGates builds gates with the given cap whose rewrite after the cap's reject passes.
-func newPassAtCapGates(t *testing.T, s Store, rejectCap int) (gate, final shuttleengine.Gate) {
-	t.Helper()
-	return NewGate(GateConfig{
-		Store:          s,
-		Slug:           "x",
-		Reviewer:       "hub:orch",
-		DecisionRecord: "d.md",
-		SupportLog:     "s.md",
-		WaitBound:      time.Hour,
-		Cap:            rejectCap,
-		PassAtCap:      true,
-		RenderDelivery: func(p string) (string, error) { return "review " + p, nil },
-		RenderBrief:    func() (string, error) { return "brief", nil },
-	})
-}
-
-// wantFindingsFailure asserts res is a non-terminal failure whose findings name the latest round's review.
-func wantFindingsFailure(t *testing.T, s Store, res shuttleengine.GateResult) {
-	t.Helper()
-	if res.Passed || res.Pending || res.Terminal || !strings.Contains(res.Findings, latest(t, s).ReviewPath()) {
-		t.Fatalf("want a non-terminal failure naming the review, got %+v", res)
-	}
-}
-
-func TestGate_PassAtCap_CapRejectGoesToWriterThenRewritePasses(t *testing.T) {
-	s, _ := newStore(t)
-	gate, _ := newPassAtCapGates(t, s, 1)
-	wantCarry(t, mustEval(t, gate))
-	rejectRound(t, s)
-	wantFindingsFailure(t, s, mustEval(t, gate))
-	if !latest(t, s).Verdict.Consumed {
-		t.Fatal("the cap's reject was not consumed")
-	}
-	if !mustEval(t, gate).Passed {
-		t.Fatal("the rewrite after the cap's reject must pass")
-	}
-	if latest(t, s).Number != 1 {
-		t.Fatal("the rewrite opened a second round")
-	}
-}
-
-func TestGate_PassAtCap_BelowCapStillOpensNextRound(t *testing.T) {
-	s, _ := newStore(t)
-	gate, _ := newPassAtCapGates(t, s, 2)
-	wantCarry(t, mustEval(t, gate))
-	rejectRound(t, s)
-	wantFindingsFailure(t, s, mustEval(t, gate))
-	wantCarry(t, mustEval(t, gate))
-	if latest(t, s).Number != 2 {
-		t.Fatal("a reject below the cap must open the next round")
-	}
-}
-
-func TestGate_PassAtCap_FreshGateAfterCapRejectPasses(t *testing.T) {
-	s, _ := newStore(t)
-	gate, _ := newPassAtCapGates(t, s, 1)
-	wantCarry(t, mustEval(t, gate))
-	rejectRound(t, s)
-	mustEval(t, gate)
-	resumed, _ := newPassAtCapGates(t, s, 1)
-	if !mustEval(t, resumed).Passed {
-		t.Fatal("a fresh gate after the consumed cap reject must pass")
-	}
-	if latest(t, s).Number != 1 {
-		t.Fatal("a fresh gate opened a round")
-	}
-}
-
-func TestFinal_PassAtCap_ConsumedCapRejectPasses(t *testing.T) {
-	s, _ := newStore(t)
-	gate, final := newPassAtCapGates(t, s, 1)
-	wantCarry(t, mustEval(t, gate))
-	rejectRound(t, s)
-	mustEval(t, gate)
-	if !mustEval(t, final).Passed {
-		t.Fatal("final must pass the rewrite after a consumed cap reject")
-	}
-}
-
-func TestFinal_PassAtCap_UnconsumedCapRejectFailsTerminal(t *testing.T) {
-	s, _ := newStore(t)
-	gate, final := newPassAtCapGates(t, s, 1)
-	wantCarry(t, mustEval(t, gate))
-	rejectRound(t, s)
-	wantTerminal(t, mustEval(t, final))
-}
-
 func newLiveGates(t *testing.T, s Store, live func() (bool, error)) (gate, final shuttleengine.Gate) {
 	t.Helper()
 	return NewGate(GateConfig{
@@ -622,7 +537,7 @@ func TestGate_ResendAfterDelivery(t *testing.T) {
 	}
 }
 
-// TestApprovePasses covers an approve verdict on the opened round: the gate passes, the final passes, and a gate built with PassAtCap passes.
+// TestApprovePasses covers an approve verdict on the opened round: the gate passes, and the final passes.
 func TestApprovePasses(t *testing.T) {
 	t.Parallel()
 
@@ -637,9 +552,6 @@ func TestApprovePasses(t *testing.T) {
 		{name: "final", newGates: func(t *testing.T, s Store) (shuttleengine.Gate, shuttleengine.Gate) {
 			return newGates(t, s, "hub:orch")
 		}, useFinal: true},
-		{name: "gate with pass-at-cap", newGates: func(t *testing.T, s Store) (shuttleengine.Gate, shuttleengine.Gate) {
-			return newPassAtCapGates(t, s, 1)
-		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -689,6 +601,276 @@ func TestSupersedingApprovePasses(t *testing.T) {
 			}
 			if !mustEval(t, closure).Passed {
 				t.Fatal("a superseding approve must pass")
+			}
+		})
+	}
+}
+
+// newKeepAliveGate returns a gate with a one-minute KeepAlive whose renderer echoes the ping number; a nil live means the reviewer is always live.
+func newKeepAliveGate(t *testing.T, s Store, live func() (bool, error)) shuttleengine.Gate {
+	t.Helper()
+	gate, _ := NewGate(GateConfig{
+		Store:           s,
+		Slug:            "x",
+		Reviewer:        "hub:orch",
+		DecisionRecord:  "d.md",
+		SupportLog:      "s.md",
+		WaitBound:       time.Hour,
+		Cap:             testCap,
+		KeepAlive:       time.Minute,
+		ReviewerLive:    live,
+		RenderDelivery:  func(p string) (string, error) { return "review " + p, nil },
+		RenderBrief:     func() (string, error) { return "brief", nil },
+		RenderKeepAlive: func(n int) (string, error) { return "ping " + strconv.Itoa(n), nil },
+	})
+	return gate
+}
+
+// wantPing asserts res carries keep-alive number n with a way forward that asks for no re-send.
+func wantPing(t *testing.T, res shuttleengine.GateResult, n int) {
+	t.Helper()
+	if !res.Pending || res.Send != "ping "+strconv.Itoa(n) {
+		t.Fatalf("want pending carrying ping %d, got %+v", n, res)
+	}
+	if strings.Contains(res.SendFailedWayForward, "lyx loom review notify") {
+		t.Fatalf("a ping's way-forward = %q; want none that re-sends the notice", res.SendFailedWayForward)
+	}
+}
+
+// deliveredKeepAliveGate opens a round, carries its prompt and records the delivery, so the gate is waiting on the review.
+func deliveredKeepAliveGate(t *testing.T, live func() (bool, error)) (Store, *clock, shuttleengine.Gate) {
+	t.Helper()
+	s, c := newStore(t)
+	gate := newKeepAliveGate(t, s, live)
+	wantCarry(t, mustEval(t, gate))
+	if err := s.RecordDelivered(""); err != nil {
+		t.Fatal(err)
+	}
+	return s, c, gate
+}
+
+func TestGate_KeepAlive(t *testing.T) {
+	t.Parallel()
+
+	t.Run("pings once per interval, three per round, then stays quiet", func(t *testing.T) {
+		t.Parallel()
+		s, c, gate := deliveredKeepAliveGate(t, nil)
+		before := latest(t, s).Delivery
+		c.t = c.t.Add(30 * time.Second)
+		wantHold(t, mustEval(t, gate))
+		c.t = c.t.Add(30 * time.Second)
+		for n := 1; n <= maxKeepAlives; n++ {
+			wantPing(t, mustEval(t, gate), n)
+			wantHold(t, mustEval(t, gate))
+			c.t = c.t.Add(time.Minute)
+		}
+		c.t = c.t.Add(10 * time.Minute)
+		wantHold(t, mustEval(t, gate))
+		after := latest(t, s).Delivery
+		if after.Pings != maxKeepAlives {
+			t.Errorf("pings = %d, want %d", after.Pings, maxKeepAlives)
+		}
+		if after.Prompts != before.Prompts || !after.LastPromptAt.Equal(before.LastPromptAt) || after.WaitingNotifys != before.WaitingNotifys {
+			t.Errorf("delivery after pings = %+v, want prompts, last-prompt time and waiting notifies as before (%+v)", after, before)
+		}
+	})
+
+	t.Run("a fresh gate over the same store resumes the count and clock", func(t *testing.T) {
+		t.Parallel()
+		s, c, gate := deliveredKeepAliveGate(t, nil)
+		for n := 1; n <= maxKeepAlives; n++ {
+			c.t = c.t.Add(time.Minute)
+			wantPing(t, mustEval(t, gate), n)
+		}
+		c.t = c.t.Add(time.Minute)
+		wantHold(t, mustEval(t, newKeepAliveGate(t, s, nil)))
+	})
+
+	t.Run("waits on the stored clock when restarted mid-interval", func(t *testing.T) {
+		t.Parallel()
+		s, c, gate := deliveredKeepAliveGate(t, nil)
+		c.t = c.t.Add(time.Minute)
+		wantPing(t, mustEval(t, gate), 1)
+		c.t = c.t.Add(30 * time.Second)
+		restarted := newKeepAliveGate(t, s, nil)
+		wantHold(t, mustEval(t, restarted))
+		c.t = c.t.Add(30 * time.Second)
+		wantPing(t, mustEval(t, restarted), 2)
+	})
+
+	t.Run("a waiting notify carries the delivery prompt ahead of a due ping", func(t *testing.T) {
+		t.Parallel()
+		s, c, gate := deliveredKeepAliveGate(t, nil)
+		if err := s.AddNotify(); err != nil {
+			t.Fatal(err)
+		}
+		c.t = c.t.Add(time.Minute)
+		wantCarry(t, mustEval(t, gate))
+		if got := latest(t, s).Delivery.Pings; got != 0 {
+			t.Errorf("pings = %d after a notify prompt, want 0", got)
+		}
+	})
+
+	t.Run("no ping while delivery is unrecorded", func(t *testing.T) {
+		t.Parallel()
+		s, c := newStore(t)
+		gate := newKeepAliveGate(t, s, nil)
+		wantCarry(t, mustEval(t, gate))
+		c.t = c.t.Add(time.Minute)
+		if res := mustEval(t, gate); strings.HasPrefix(res.Send, "ping") {
+			t.Fatalf("got %+v before delivery was recorded; want no ping", res)
+		}
+		if got := latest(t, s).Delivery.Pings; got != 0 {
+			t.Errorf("pings = %d, want 0", got)
+		}
+	})
+
+	t.Run("no ping while the reviewer is not live", func(t *testing.T) {
+		t.Parallel()
+		live := true
+		s, c, gate := deliveredKeepAliveGate(t, func() (bool, error) { return live, nil })
+		live = false
+		c.t = c.t.Add(time.Minute)
+		wantHold(t, mustEval(t, gate))
+		if got := latest(t, s).Delivery.Pings; got != 0 {
+			t.Errorf("pings = %d, want 0", got)
+		}
+	})
+
+	t.Run("no ping after a verdict", func(t *testing.T) {
+		t.Parallel()
+		s, c, gate := deliveredKeepAliveGate(t, nil)
+		if err := s.RecordVerdict(VerdictReject, writeFile(t, "fix this")); err != nil {
+			t.Fatal(err)
+		}
+		c.t = c.t.Add(time.Minute)
+		if res := mustEval(t, gate); strings.HasPrefix(res.Send, "ping") {
+			t.Fatalf("got %+v after a verdict; want no ping", res)
+		}
+		if got := latest(t, s).Delivery.Pings; got != 0 {
+			t.Errorf("pings = %d, want 0", got)
+		}
+	})
+
+	t.Run("no ping after expiry", func(t *testing.T) {
+		t.Parallel()
+		s, c, gate := deliveredKeepAliveGate(t, nil)
+		c.t = c.t.Add(2 * time.Hour)
+		if !mustEval(t, gate).Passed {
+			t.Fatal("an expired request must pass")
+		}
+		if got := latest(t, s).Delivery.Pings; got != 0 {
+			t.Errorf("pings = %d, want 0", got)
+		}
+	})
+
+	t.Run("a zero KeepAlive never pings", func(t *testing.T) {
+		t.Parallel()
+		s, c := newStore(t)
+		gate, _ := newGates(t, s, "hub:orch")
+		wantCarry(t, mustEval(t, gate))
+		if err := s.RecordDelivered(""); err != nil {
+			t.Fatal(err)
+		}
+		c.t = c.t.Add(30 * time.Minute)
+		wantHold(t, mustEval(t, gate))
+	})
+}
+
+// snapshotTree records every directory and file under each root, files with their content.
+func snapshotTree(t *testing.T, roots ...string) map[string]string {
+	t.Helper()
+	snap := map[string]string{}
+	for _, root := range roots {
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				if errors.Is(err, fs.ErrNotExist) {
+					return nil
+				}
+				return err
+			}
+			if d.IsDir() {
+				snap[path] = "dir"
+				return nil
+			}
+			data, err := os.ReadFile(path)
+			snap[path] = string(data)
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return snap
+}
+
+func TestExpiryProbe(t *testing.T) {
+	tests := []struct {
+		name     string
+		reviewer string
+		setup    func(t *testing.T, s Store, c *clock)
+		want     bool
+	}{
+		{name: "no reviewer", setup: func(t *testing.T, s Store, c *clock) { openOne(t, s); c.t = c.t.Add(2 * time.Hour) }},
+		{name: "no round", reviewer: "hub:orch", setup: func(*testing.T, Store, *clock) {}},
+		{name: "open request before the bound", reviewer: "hub:orch", setup: func(t *testing.T, s Store, c *clock) {
+			openOne(t, s)
+			c.t = c.t.Add(59 * time.Minute)
+		}},
+		{name: "approve past the bound", reviewer: "hub:orch", setup: func(t *testing.T, s Store, c *clock) {
+			openOne(t, s)
+			if err := s.RecordVerdict(VerdictApprove, ""); err != nil {
+				t.Fatal(err)
+			}
+			c.t = c.t.Add(2 * time.Hour)
+		}},
+		{name: "reject past the bound", reviewer: "hub:orch", setup: func(t *testing.T, s Store, c *clock) {
+			openOne(t, s)
+			if err := s.RecordVerdict(VerdictReject, writeFile(t, "fix it")); err != nil {
+				t.Fatal(err)
+			}
+			c.t = c.t.Add(2 * time.Hour)
+		}},
+		{name: "expired request", reviewer: "hub:orch", setup: func(t *testing.T, s Store, c *clock) {
+			openOne(t, s)
+			if err := s.MarkExpired(); err != nil {
+				t.Fatal(err)
+			}
+			c.t = c.t.Add(2 * time.Hour)
+		}},
+		{name: "superseded request", reviewer: "hub:orch", setup: func(t *testing.T, s Store, c *clock) {
+			r := openOne(t, s)
+			if err := s.setRequestState(r.Number, StateSuperseded); err != nil {
+				t.Fatal(err)
+			}
+			c.t = c.t.Add(2 * time.Hour)
+		}},
+		{name: "open request with no verdict at the bound", reviewer: "hub:orch", want: true, setup: func(t *testing.T, s Store, c *clock) {
+			openOne(t, s)
+			c.t = c.t.Add(time.Hour)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, c := newStore(t)
+			tt.setup(t, s, c)
+			before := snapshotTree(t, s.Root, s.LockDir)
+
+			expired, err := NewExpiryProbe(GateConfig{Store: s, Reviewer: tt.reviewer, WaitBound: time.Hour})()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if expired != tt.want {
+				t.Errorf("expired = %v, want %v", expired, tt.want)
+			}
+			after := snapshotTree(t, s.Root, s.LockDir)
+			if !reflect.DeepEqual(before, after) {
+				t.Errorf("probe changed the exchange's files:\nbefore %v\nafter  %v", before, after)
+			}
+			for path := range after {
+				if filepath.Base(path) == deliveryFile {
+					t.Errorf("probe left %s behind", path)
+				}
 			}
 		})
 	}

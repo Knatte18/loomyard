@@ -42,6 +42,37 @@ func TestParentReviewDeliveryPrompt_RefusesMultiLineRender(t *testing.T) {
 	}
 }
 
+func TestParentReviewKeepAlivePrompt_OneLineNamingPing(t *testing.T) {
+	dir := newParentReviewStencilsDir(t)
+	first, err := ParentReviewKeepAlivePrompt(dir, 1)
+	if err != nil {
+		t.Fatalf("ParentReviewKeepAlivePrompt(dir, 1) = _, %v; want nil error", err)
+	}
+	second, err := ParentReviewKeepAlivePrompt(dir, 2)
+	if err != nil {
+		t.Fatalf("ParentReviewKeepAlivePrompt(dir, 2) = _, %v; want nil error", err)
+	}
+	for ping, got := range map[string]string{"1": first, "2": second} {
+		if strings.ContainsAny(got, "\r\n") {
+			t.Errorf("ParentReviewKeepAlivePrompt(dir, %s) = %q; want one line", ping, got)
+		}
+		if !strings.Contains(got, "number "+ping) {
+			t.Errorf("ParentReviewKeepAlivePrompt(dir, %s) = %q; want it to name number %s", ping, got, ping)
+		}
+	}
+	if first == second {
+		t.Errorf("ParentReviewKeepAlivePrompt renders pings 1 and 2 alike (%q); want distinct text", first)
+	}
+
+	multiLine := "first line {{.ping}}\nsecond line\n"
+	if err := os.WriteFile(stencilstore.Path(dir, parentReviewKeepAliveStencil), []byte(multiLine), 0o644); err != nil {
+		t.Fatalf("overwrite the keep-alive stencil: %v", err)
+	}
+	if got, err := ParentReviewKeepAlivePrompt(dir, 1); err == nil {
+		t.Errorf("ParentReviewKeepAlivePrompt(multi-line stencil) = %q, nil; want error", got)
+	}
+}
+
 func TestParentReviewBrief_NamesPathsAndSubmitLines(t *testing.T) {
 	dir := newParentReviewStencilsDir(t)
 	got, err := ParentReviewBrief(dir, "add-json-flag", "/w/decision.md", "/w/support.md")
