@@ -86,7 +86,7 @@ internal/shedadapters: 160
 internal/shedbuild: 13
 internal/shedcheck: 3
 internal/shedcli: 17
-internal/shedengine: 133
+internal/shedengine: 134
 internal/shedrecipe: 102
 internal/shedrun: 22
 internal/shedtransient: 2
