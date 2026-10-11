@@ -288,7 +288,10 @@ func priorRoundsBlock(p *Profile) string {
 	}
 	b.WriteString("\nForm your OWN findings first; only AFTER your review is saved may you " +
 		"read the prior rounds' files, to confirm previously-fixed behaviors have not " +
-		"regressed and to re-evaluate their deferred and disputed items.")
+		"regressed and to re-evaluate their deferred and disputed items. " +
+		"If you re-raise a finding a prior fixer-report disputed, state in that finding's " +
+		"**Issue:** why the dispute's evidence does not hold, amending the matching " +
+		"finding in your saved review before you end your turn.")
 	return b.String()
 }
 
