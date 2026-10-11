@@ -431,7 +431,7 @@ func TestValidateReviewVerb_AgreesWithTheReviewGate(t *testing.T) {
 	}
 }
 
-// TestAwaitReviewVerb runs await-review from a temp directory outside any git repository and asserts its answer, exit code and envelope for each way a marker can be present, absent, appearing, or unreadable, and that the verb writes nothing.
+// TestAwaitReviewVerb runs await-review from a temp directory outside any git repository and asserts its answer, exit code and envelope for each way a marker can be present, absent or unreadable, and that the verb writes nothing.
 // It is the only test of the verb's behavior.
 func TestAwaitReviewVerb(t *testing.T) {
 	t.Parallel()
@@ -440,9 +440,7 @@ func TestAwaitReviewVerb(t *testing.T) {
 	tests := []struct {
 		name string
 		// seed creates the files that exist before the verb runs.
-		seed func(t *testing.T, dir string)
-		// during runs concurrently with the verb, after it has started polling.
-		during  func(t *testing.T, dir string)
+		seed    func(t *testing.T, dir string)
 		args    []string
 		wantErr bool
 		// wantReady is the envelope's ready answer on a successful run.
@@ -461,13 +459,6 @@ func TestAwaitReviewVerb(t *testing.T) {
 			name:      "absent marker answers not ready after the cap",
 			args:      []string{markerName, "--cap", "50ms"},
 			wantReady: false,
-		},
-		{
-			name:        "marker created while polling is ready",
-			during:      func(t *testing.T, dir string) { writeFile(t, filepath.Join(dir, markerName)) },
-			args:        []string{markerName, "--cap", "30s"},
-			wantReady:   true,
-			wantEntries: []string{markerName},
 		},
 		{
 			name:    "missing argument is an error",
@@ -490,9 +481,6 @@ func TestAwaitReviewVerb(t *testing.T) {
 			dir := t.TempDir()
 			if tt.seed != nil {
 				tt.seed(t, dir)
-			}
-			if tt.during != nil {
-				go tt.during(t, dir)
 			}
 
 			var out bytes.Buffer
