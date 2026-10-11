@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -57,6 +58,103 @@ type RoleTally struct {
 	// Cost is the usage priced per message at the message's model.
 	Cost   Cost
 	Models map[string]int // assistant messages per model
+	// Working is the union of the role's sessions' working intervals.
+	Working []Interval
+}
+
+// Interval is a span of time from From to To.
+type Interval struct {
+	From, To time.Time
+}
+
+// Duration is To - From, 0 when To is not after From.
+func (i Interval) Duration() time.Duration {
+	if !i.To.After(i.From) {
+		return 0
+	}
+	return i.To.Sub(i.From)
+}
+
+// unionIntervals returns the sorted, non-overlapping, non-touching union of set, dropping empty intervals.
+func unionIntervals(set []Interval) []Interval {
+	sorted := make([]Interval, 0, len(set))
+	for _, i := range set {
+		if i.Duration() > 0 {
+			sorted = append(sorted, i)
+		}
+	}
+	sort.Slice(sorted, func(a, b int) bool { return sorted[a].From.Before(sorted[b].From) })
+	var merged []Interval
+	for _, i := range sorted {
+		if n := len(merged); n > 0 && !i.From.After(merged[n-1].To) {
+			if i.To.After(merged[n-1].To) {
+				merged[n-1].To = i.To
+			}
+			continue
+		}
+		merged = append(merged, i)
+	}
+	return merged
+}
+
+// covered returns how much of window the union of set covers.
+func covered(set []Interval, window Interval) time.Duration {
+	var total time.Duration
+	for _, i := range unionIntervals(set) {
+		total += Interval{max2(i.From, window.From), min2(i.To, window.To)}.Duration()
+	}
+	return total
+}
+
+func max2(a, b time.Time) time.Time {
+	if b.After(a) {
+		return b
+	}
+	return a
+}
+
+func min2(a, b time.Time) time.Time {
+	if b.Before(a) {
+		return b
+	}
+	return a
+}
+
+// turnPoint is one user or assistant line's timestamp and whether the line ends its session's turn.
+type turnPoint struct {
+	At   time.Time
+	Ends bool
+}
+
+// endsTurn reports whether a line ends its session's turn: an assistant line whose stop reason is not tool_use, or a user line that interrupts the turn or holds a local command's output.
+func endsTurn(l line) bool {
+	if l.Message == nil {
+		return false
+	}
+	switch l.Type {
+	case "assistant":
+		return l.Message.StopReason != "" && l.Message.StopReason != "tool_use"
+	case "user":
+		for _, text := range userTexts(l.Message.Content) {
+			if strings.HasPrefix(text, "[Request interrupted by user") || strings.HasPrefix(text, "<local-command-stdout>") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// workingIntervals returns the interval from each point to the next, in timestamp order, except after a point that ends the turn.
+func workingIntervals(points []turnPoint) []Interval {
+	ordered := slices.Clone(points)
+	sort.SliceStable(ordered, func(a, b int) bool { return ordered[a].At.Before(ordered[b].At) })
+	var working []Interval
+	for i := 0; i+1 < len(ordered); i++ {
+		if !ordered[i].Ends {
+			working = append(working, Interval{ordered[i].At, ordered[i+1].At})
+		}
+	}
+	return working
 }
 
 // ForkTally is the usage of one Webster fork: one sub-agent transcript of a session whose role is webster.
@@ -109,6 +207,24 @@ type RunTally struct {
 	// First and Last bound the run's active window: the earliest and latest timestamp of a user or assistant line in any of its transcripts;
 	// both are zero when no such line carries one.
 	First, Last time.Time
+	// Span is the window the time figures are measured over: First..Last.
+	Span Interval
+	// Working is the union of every transcript's working intervals.
+	Working []Interval
+}
+
+// RoleTime is how much of the run's span the role's sessions spent in a turn, 0 for a role the run lacks.
+func (run RunTally) RoleTime(role string) time.Duration {
+	t := run.Roles[role]
+	if t == nil {
+		return 0
+	}
+	return covered(t.Working, run.Span)
+}
+
+// Idle is the run's span minus the time any session of the run was in a turn.
+func (run RunTally) Idle() time.Duration {
+	return run.Span.Duration() - covered(run.Working, run.Span)
 }
 
 // Cost is the run's estimated cost, summed over its roles.
@@ -122,11 +238,8 @@ func (run RunTally) Cost() Cost {
 
 // observeTime widens the run's active window to hold a user or assistant line's timestamp.
 func (run *RunTally) observeTime(l line) {
-	if l.Type != "user" && l.Type != "assistant" {
-		return
-	}
-	at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
-	if err != nil {
+	at, ok := lineTime(l)
+	if !ok {
 		return
 	}
 	if run.First.IsZero() || at.Before(run.First) {
@@ -137,6 +250,15 @@ func (run *RunTally) observeTime(l line) {
 	}
 }
 
+// lineTime returns the parsed timestamp of a user or assistant line, false for any other line or an unparseable timestamp.
+func lineTime(l line) (time.Time, bool) {
+	if l.Type != "user" && l.Type != "assistant" {
+		return time.Time{}, false
+	}
+	at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
+	return at, err == nil
+}
+
 // line is the part of a transcript line tokencount reads.
 type line struct {
 	Type        string `json:"type"`
@@ -144,10 +266,11 @@ type line struct {
 	UUID        string `json:"uuid"`
 	Timestamp   string `json:"timestamp"`
 	Message     *struct {
-		ID      string          `json:"id"`
-		Model   string          `json:"model"`
-		Usage   *Usage          `json:"usage"`
-		Content json.RawMessage `json:"content"`
+		ID         string          `json:"id"`
+		Model      string          `json:"model"`
+		StopReason string          `json:"stop_reason"`
+		Usage      *Usage          `json:"usage"`
+		Content    json.RawMessage `json:"content"`
 	} `json:"message"`
 }
 
@@ -531,6 +654,7 @@ func CountRun(dir, slug string) (RunTally, error) {
 	}
 	sort.SliceStable(run.Forks, func(i, j int) bool { return run.Forks[i].Started.Before(run.Forks[j].Started) })
 	sort.SliceStable(run.Merriams, func(i, j int) bool { return run.Merriams[i].Started.Before(run.Merriams[j].Started) })
+	run.Span = Interval{run.First, run.Last}
 	return run, nil
 }
 
@@ -553,11 +677,15 @@ func (run *RunTally) countFile(path, role string, seen map[string]bool, fork *Fo
 		run.Roles[role] = tally
 	}
 	tally.Sessions++
-	return eachLine(path, func(l line) {
+	var points []turnPoint
+	err := eachLine(path, func(l line) {
 		if fork != nil {
 			fork.observe(l)
 		}
 		run.observeTime(l)
+		if at, ok := lineTime(l); ok {
+			points = append(points, turnPoint{at, endsTurn(l)})
+		}
 		if l.Type != "assistant" || l.Message == nil || l.Message.Usage == nil {
 			return
 		}
@@ -584,6 +712,13 @@ func (run *RunTally) countFile(path, role string, seen map[string]bool, fork *Fo
 			fork.PeakContext = max(fork.PeakContext, context)
 		}
 	})
+	if err != nil {
+		return err
+	}
+	working := workingIntervals(points)
+	tally.Working = unionIntervals(append(tally.Working, working...))
+	run.Working = unionIntervals(append(run.Working, working...))
+	return nil
 }
 
 // observe records a line's timestamp and, until a card pointer has been found, its card attribution: the fork's prompt is the first tool result holding a card pointer line.
@@ -639,8 +774,14 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 	if r.Orch != nil {
 		orchTotal = &OrchCharge{}
 	}
+	totalTimes := tableTime{Roles: map[string]time.Duration{}}
 	for _, run := range r.Runs {
 		duplicates += run.Duplicates
+		totalTimes.Idle += run.Idle()
+		totalTimes.Span += run.Span.Duration()
+		for role := range run.Roles {
+			totalTimes.Roles[role] += run.RoleTime(role)
+		}
 		if orchTotal != nil {
 			charge := r.Orch.Charges[run.Slug]
 			orchTotal.Tokens += charge.Tokens
@@ -665,8 +806,13 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 	}
 
 	fmt.Fprintf(w, "## All runs\n\n")
-	writeTable(w, total, orchTotal)
+	writeTable(w, total, totalTimes, orchTotal)
 	fmt.Fprintf(w, "Total weight %.1fM; %d repeated transcript lines skipped.\n\n", grand/1e6, duplicates)
+	fmt.Fprintln(w, "Time is turn time: a session works from a user or assistant line until the line that ends its turn.")
+	fmt.Fprintln(w, "Idle is the time no session of the run is in a turn, which holds parent review, PR-Gate, gate-slot waits, a parked driver and Go-only work such as verify and push.")
+	fmt.Fprintln(w, "Time shares can sum past 100% where sessions overlap, a `+sub` row overlapping its parent.")
+	fmt.Fprintln(w, "The union of working time plus idle is the span.")
+	fmt.Fprintln(w)
 	var cost Cost
 	for _, t := range total {
 		cost.add(t.Cost)
@@ -687,7 +833,11 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 		if r.Orch != nil {
 			charge = r.Orch.Charges[run.Slug]
 		}
-		writeTable(w, run.Roles, charge)
+		times := tableTime{Roles: map[string]time.Duration{}, Idle: run.Idle(), Span: run.Span.Duration()}
+		for role := range run.Roles {
+			times.Roles[role] = run.RoleTime(role)
+		}
+		writeTable(w, run.Roles, times, charge)
 	}
 
 	fmt.Fprintf(w, "## Webster forks\n\n")
@@ -706,9 +856,16 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 	return nil
 }
 
-// writeTable writes one role table, and below its roles an orch row of the charge orch when orch is not nil;
-// the shares divide by the table's total weight, the orch row's included.
-func writeTable(w io.Writer, roles map[string]*RoleTally, orch *OrchCharge) {
+// tableTime is one role table's time figures: a duration per role, the idle duration and the span duration.
+type tableTime struct {
+	Roles map[string]time.Duration
+	Idle  time.Duration
+	Span  time.Duration
+}
+
+// writeTable writes one role table, then an idle row, and below it an orch row of the charge orch when orch is not nil;
+// the shares divide by the table's total weight, the orch row's included, and the time shares by the span in times.
+func writeTable(w io.Writer, roles map[string]*RoleTally, times tableTime, orch *OrchCharge) {
 	tallies := make([]*RoleTally, 0, len(roles))
 	for _, t := range roles {
 		tallies = append(tallies, t)
@@ -732,15 +889,23 @@ func writeTable(w io.Writer, roles map[string]*RoleTally, orch *OrchCharge) {
 		}
 		return 100 * weight / tableWeight
 	}
-	fmt.Fprintln(w, "| role | sessions | output | cache write | cache read | input | weight | share | est. cost | models (messages) |")
-	fmt.Fprintln(w, "|---|---|---|---|---|---|---|---|---|---|")
+	timeCells := func(d time.Duration) string {
+		pct := 0.0
+		if times.Span > 0 {
+			pct = 100 * float64(d) / float64(times.Span)
+		}
+		return fmt.Sprintf("%s | %.1f%%", d.Round(time.Second), pct)
+	}
+	fmt.Fprintln(w, "| role | sessions | output | cache write | cache read | input | weight | share | time | time share | est. cost | models (messages) |")
+	fmt.Fprintln(w, "|---|---|---|---|---|---|---|---|---|---|---|---|")
 	for _, t := range tallies {
 		u := t.Usage
-		fmt.Fprintf(w, "| %s | %d | %d | %d | %d | %d | %.1fM | %.1f%% | %s | %s |\n",
-			t.Role, t.Sessions, u.Output, u.CacheCreate, u.CacheRead, u.Input, u.Weight()/1e6, share(u.Weight()), t.Cost, models(t.Models))
+		fmt.Fprintf(w, "| %s | %d | %d | %d | %d | %d | %.1fM | %.1f%% | %s | %s | %s |\n",
+			t.Role, t.Sessions, u.Output, u.CacheCreate, u.CacheRead, u.Input, u.Weight()/1e6, share(u.Weight()), timeCells(times.Roles[t.Role]), t.Cost, models(t.Models))
 	}
+	fmt.Fprintf(w, "| idle | | | | | | | | %s | | |\n", timeCells(times.Idle))
 	if orch != nil {
-		fmt.Fprintf(w, "| %s | | | | | | %.1fM | %.1f%% | %s | |\n", orchRole, orch.Weight/1e6, share(orch.Weight), orch.Cost)
+		fmt.Fprintf(w, "| %s | | | | | | %.1fM | %.1f%% | | | %s | |\n", orchRole, orch.Weight/1e6, share(orch.Weight), orch.Cost)
 	}
 	fmt.Fprintln(w)
 }

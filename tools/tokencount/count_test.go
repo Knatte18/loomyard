@@ -53,6 +53,113 @@ func jsonString(t *testing.T, s string) string {
 	return string(b)
 }
 
+// stamped is an assistant transcript line at ts with the given stop reason.
+func stamped(ts, stopReason string) string {
+	return `{"type":"assistant","timestamp":"` + ts + `","message":{"id":"` + ts + `","stop_reason":` + stopReason + `,"usage":{"input_tokens":1,"output_tokens":1}}}`
+}
+
+// userAt is a user transcript line at ts holding text.
+func userAt(t *testing.T, ts, text string) string {
+	t.Helper()
+	return `{"type":"user","timestamp":"` + ts + `","message":{"role":"user","content":` + jsonString(t, text) + `}}`
+}
+
+func TestRunTimeByRole(t *testing.T) {
+	t.Parallel()
+	const endTurn, toolUse = `"end_turn"`, `"tool_use"`
+	build := func(t *testing.T, sessions map[string][]string) RunTally {
+		t.Helper()
+		dir := t.TempDir()
+		for name, lines := range sessions {
+			writeLines(t, filepath.Join(dir, name), lines...)
+		}
+		run, err := CountRun(dir, "r")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return run
+	}
+	title := func(role string) string { return `{"type":"custom-title","customTitle":"ly:r:` + role + `"}` }
+
+	// burler: two turns of 1m and 2m with a 10m gap, then an interrupted turn of 1m followed by 5m of idle and a typed local command.
+	// tool: a tool_use turn whose result arrives 3m later counts the gap.
+	// An overlapping second burler session adds only its uncovered tail, and a sub-agent counts under burler+sub.
+	run := build(t, map[string][]string{
+		"a.jsonl": {
+			title("burler"),
+			userAt(t, "2026-01-01T00:00:00Z", "go"),
+			stamped("2026-01-01T00:01:00Z", endTurn),
+			userAt(t, "2026-01-01T00:11:00Z", "again"),
+			stamped("2026-01-01T00:13:00Z", endTurn),
+			userAt(t, "2026-01-01T00:14:00Z", "third"),
+			userAt(t, "2026-01-01T00:15:00Z", "[Request interrupted by user]"),
+			userAt(t, "2026-01-01T00:20:00Z", "<local-command-stdout>ok</local-command-stdout>"),
+			userAt(t, "2026-01-01T00:30:00Z", "late"),
+			stamped("2026-01-01T00:31:00Z", toolUse),
+			toolResult("2026-01-01T00:34:00Z", jsonString(t, "done")),
+			stamped("2026-01-01T00:35:00Z", endTurn),
+		},
+		"b.jsonl": {
+			title("burler"),
+			userAt(t, "2026-01-01T00:32:00Z", "overlap"),
+			stamped("2026-01-01T00:37:00Z", endTurn),
+		},
+		"a/subagents/s.jsonl": {
+			userAt(t, "2026-01-01T00:40:00Z", "sub"),
+			stamped("2026-01-01T00:42:00Z", endTurn),
+		},
+	})
+	min := time.Minute
+	// burler turns: 0-1, 11-13, 14-15, 30-35 and 32-37 unioned to 30-37.
+	if got, want := run.RoleTime("burler"), (1+2+1+7)*min; got != want {
+		t.Errorf("RoleTime(burler) = %v; want %v", got, want)
+	}
+	if got, want := run.RoleTime("burler+sub"), 2*min; got != want {
+		t.Errorf("RoleTime(burler+sub) = %v; want %v", got, want)
+	}
+	if got := run.RoleTime("absent"); got != 0 {
+		t.Errorf("RoleTime(absent) = %v; want 0", got)
+	}
+	// The span is 0..42m and the union of working time is 11m + 2m.
+	if got, want := run.Idle(), 42*min-13*min; got != want {
+		t.Errorf("Idle() = %v; want %v", got, want)
+	}
+
+	var buf bytes.Buffer
+	orch := OrchTally{Charges: map[string]*OrchCharge{"r": {Weight: 5e6}}}
+	if err := (Report{Runs: []RunTally{run}, Orch: &orch}).WriteMarkdown(&buf); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"| orch | | | | | | 5.0M | ",
+		"| role | sessions | output | cache write | cache read | input | weight | share | time | time share | est. cost | models (messages) |",
+		"| idle | | | | | | | | 29m0s | 69.0% | | |",
+	} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("report lacks %q:\n%s", want, buf.String())
+		}
+	}
+
+	// Two runs whose working intervals overlap in wall-clock time sum per role and in idle, and share the summed span.
+	one := build(t, map[string][]string{"a.jsonl": {title("burler"), userAt(t, "2026-01-01T00:00:00Z", "x"), stamped("2026-01-01T00:02:00Z", endTurn), userAt(t, "2026-01-01T00:04:00Z", "y")}})
+	two := build(t, map[string][]string{"a.jsonl": {title("burler"), userAt(t, "2026-01-01T00:01:00Z", "x"), stamped("2026-01-01T00:03:00Z", endTurn), userAt(t, "2026-01-01T00:05:00Z", "y")}})
+	buf.Reset()
+	if err := (Report{Runs: []RunTally{one, two}}).WriteMarkdown(&buf); err != nil {
+		t.Fatal(err)
+	}
+	all, _, _ := strings.Cut(buf.String(), "## r\n")
+	for _, want := range []string{
+		"| burler | 2 | 2 | 0 | 0 | 2 | 0.0M | 100.0% | 4m0s | 50.0% |",
+		"| idle | | | | | | | | 4m0s | 50.0% | | |",
+		"Time is turn time:",
+		"The union of working time plus idle is the span.",
+	} {
+		if !strings.Contains(all, want) {
+			t.Errorf("All runs section lacks %q:\n%s", want, all)
+		}
+	}
+}
+
 func TestCountRun(t *testing.T) {
 	t.Parallel()
 	projects := t.TempDir()
