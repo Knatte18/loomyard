@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
@@ -366,28 +367,9 @@ func resignHeadMismatch(src declSource, res quarry.NameResult) Finding {
 	}
 }
 
-// cardOwnHandles returns every plan: handle a card's own Declarations AND Rename pairs declare, in
-// body order: a Create declaration's own Handle, plus any Rename pair whose New side is still
-// handle-shaped (a file-rename pair's New side is already a self glyph, never a handle, and is
-// skipped here — nothing to bind).
-//
-// Folding a Rename pair's New side in alongside Create declarations is what closes the gap a Rename-only card fell into before this fix (crucible round sonnet-xhigh-r8, PG-2): a card carrying no Create group has an empty Declarations, so a BindHandles keyed on Declarations alone skipped it entirely, and its own New-side handle never lost its "plan:" prefix — permanently invisible to collectGlyphTargets, which excludes anything plan:-prefixed by construction, for every later card that legitimately referenced the renamed symbol.
-func cardOwnHandles(c planparser.Card) []string {
-	handles := make([]string, 0, len(c.Declarations)+len(c.Pairs))
-	for _, d := range c.Declarations {
-		handles = append(handles, d.Handle)
-	}
-	for _, p := range c.Pairs {
-		if planparser.IsHandleRef(p.New) {
-			handles = append(handles, p.New)
-		}
-	}
-	return handles
-}
-
 // BindHandles turns a handle into the real glyph the card actually created or renamed to, from the
 // record-batch delta rather than from anyone's spelling: for each completed card's own handles (its
-// Create declarations, per cardOwnHandles, and any Rename pair whose New side is still
+// Create declarations, per planparser.OwnedHandles, and any Rename pair whose New side is still
 // handle-shaped), the canonical handle's expected glyph — the substring after
 // planparser.HandlePrefix, already canonicalized by CanonicalizeHandles before this call ever runs
 // — is matched against delta's Created symbols by Symbol.ID for a Create declaration, or against
@@ -406,11 +388,16 @@ func cardOwnHandles(c planparser.Card) []string {
 // card — so the plan bytes are rewritten once and a handle's rewrite reaches every referencing
 // card, not only its declaring one.
 //
-// Under plan.Language "none" this function returns nil findings and performs no call and no
+// Next to the findings it returns one planindex.BindOutcome per handle of each card in cards, in card then handle order:
+// a handle of a card that bound cleanly carries its glyph, a handle that matched nothing carries planindex.BindNoDeltaMatch,
+// and a matched handle of a card that did not bind carries planindex.BindSiblingUnmatched.
+// A RewriteRefs error comes back beside the findings and outcomes computed so far.
+//
+// Under plan.Language "none" this function returns nil findings and outcomes and performs no call and no
 // rewrite, mirroring CanonicalizeHandles.
-func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAnswer, cards []planparser.Card) ([]Finding, error) {
+func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAnswer, cards []planparser.Card) ([]Finding, []planindex.BindOutcome, error) {
 	if _, ok := plan.GlyphLanguage(); !ok {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	created := make(map[string]bool, len(delta.Created))
@@ -423,7 +410,7 @@ func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAns
 	}
 	// A handle matches if EITHER delta source produced its expected glyph: a Create declaration's
 	// own expected ID is checked against created, a Rename pair's own expected ID against
-	// renamedTo, but a handle read from cardOwnHandles carries no tag saying which source declared
+	// renamedTo, but a handle read from planparser.OwnedHandles carries no tag saying which source declared
 	// it, so either match is accepted here rather than routed by source. The same handle spelling
 	// appearing in both a Declarations entry and a Rename pair is the blocking pure finding
 	// handle-collision (planparser's checkHandleConsistency, which counts BOTH declaring sources
@@ -434,10 +421,11 @@ func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAns
 	}
 
 	var findings []Finding
+	var outcomes []planindex.BindOutcome
 	subs := make(map[string]string)
 
 	for _, c := range cards {
-		handles := cardOwnHandles(c)
+		handles := planparser.OwnedHandles(c)
 		if len(handles) == 0 {
 			continue
 		}
@@ -459,21 +447,31 @@ func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAns
 				Detail:   fmt.Sprintf("card %d owns %d handle(s) but the record-batch delta matched only %d", c.Number, len(handles), matched),
 				Severity: SeverityBlocking,
 			})
+			for _, h := range handles {
+				reason := planindex.BindNoDeltaMatch
+				if _, ok := cardSubs[h]; ok {
+					reason = planindex.BindSiblingUnmatched
+				}
+				outcomes = append(outcomes, planindex.BindOutcome{Card: c.Number, Handle: h, Reason: reason})
+			}
 			continue // Suppress the rewrite for this card entirely; never half-bound.
 		}
 
+		for _, h := range handles {
+			outcomes = append(outcomes, planindex.BindOutcome{Card: c.Number, Handle: h, Glyph: cardSubs[h]})
+		}
 		for h, id := range cardSubs {
 			subs[h] = id
 		}
 	}
 
 	if len(subs) == 0 {
-		return findings, nil
+		return findings, outcomes, nil
 	}
 
 	if err := planparser.RewriteRefs(planDir, subs); err != nil {
-		return findings, err
+		return findings, outcomes, err
 	}
 
-	return findings, nil
+	return findings, outcomes, nil
 }

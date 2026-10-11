@@ -87,6 +87,7 @@ func TestLoadConfig(t *testing.T) {
 		MasterTimeoutMin:   480,
 		RecoveryTimeoutMin: 60,
 		VerifyGateAttempts: 3,
+		KickstartPack:      true,
 	}
 	absentKnobs := websterengine.Config{
 		Master:             "sonnet",
@@ -95,6 +96,7 @@ func TestLoadConfig(t *testing.T) {
 		MasterTimeoutMin:   480,
 		RecoveryTimeoutMin: 60,
 		VerifyGateAttempts: 3,
+		KickstartPack:      true,
 	}
 	tests := []struct {
 		name string
@@ -106,7 +108,7 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		{
 			name: "overrides round-trip",
-			body: "master: opus[effort=high]\nrecovery: opus[effort=max]\nself_fix_cap: 5\nmaster_timeout_min: 120\nrecovery_timeout_min: 30\nverify_gate_attempts: 4\n",
+			body: "master: opus[effort=high]\nrecovery: opus[effort=max]\nself_fix_cap: 5\nmaster_timeout_min: 120\nrecovery_timeout_min: 30\nverify_gate_attempts: 4\nkickstart_pack: false\n",
 			want: websterengine.Config{
 				Master:             "opus[effort=high]",
 				Recovery:           "opus[effort=max]",
@@ -114,7 +116,13 @@ func TestLoadConfig(t *testing.T) {
 				MasterTimeoutMin:   120,
 				RecoveryTimeoutMin: 30,
 				VerifyGateAttempts: 4,
+				KickstartPack:      false,
 			},
+		},
+		{
+			name: "kickstart_pack absent loads the template default",
+			body: "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: 3\n",
+			want: absentKnobs,
 		},
 		{
 			name: "the retired poll_wait_s key still loads",
@@ -157,6 +165,11 @@ func TestLoadConfig(t *testing.T) {
 			name:       "verify_gate_attempts explicitly zero names the key",
 			body:       "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: 0\n",
 			wantErrKey: "verify_gate_attempts",
+		},
+		{
+			name:       "a kickstart_pack that is not a boolean is invalid",
+			body:       "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: 3\nkickstart_pack: maybe\n",
+			wantErrKey: "webster config",
 		},
 		{
 			name:       "verify_gate_attempts negative names the key",

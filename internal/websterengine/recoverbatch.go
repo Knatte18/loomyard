@@ -621,6 +621,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		State:     st,
 		Batch:     bs,
 		Geom:      deps.Geom,
+		Number:    batchNumber,
 		Cards:     batch.Cards,
 		Completed: completedCards(deps.Batches, st, batchNumber),
 		StartSHA:  bs.StartSHA,

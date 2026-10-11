@@ -76,7 +76,7 @@ func bindCardOne(t *testing.T, f *deltaFixtureRepo, dir, base, head string) *pla
 	if err != nil {
 		t.Fatalf("Delta(%q, %q, %q) returned error: %v", f.root, base, head, err)
 	}
-	findings, err := BindHandles(plan, dir, delta, plan.Cards[:1])
+	findings, _, err := BindHandles(plan, dir, delta, plan.Cards[:1])
 	if err != nil {
 		t.Fatalf("BindHandles(...) returned error: %v", err)
 	}

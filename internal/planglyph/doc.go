@@ -25,6 +25,7 @@
 //
 // The finding types and ErrQuarryUnavailable are declared in internal/planindex, which links no tree-sitter;
 // this package aliases them, so errors.Is matches under either name.
+// The index also serves KickstartPack (pack.go), which resolves the member glyphs a batch's cards name in one call and returns them with the refs that did not resolve, so a caller that never links quarry gets a batch's pack through planindex.Index.
 // NewIndex returns the real planindex.Index, which a package that calls the code index receives from the CLI layer instead of importing planglyph (index.go).
 //
 // Every resolve-backed Finding.Check ID this package can raise, the canonical list a caller checks
@@ -83,7 +84,7 @@
 //     An old side declared once per build-constraint set stays unresolved, since a rename derives from exactly one declaration;
 //     its detail names each candidate's file and constraint and the way forward: a Delete of the old member and one Create declaration of the new member's handle on a card that edits each of the old member's files, or an Edit of each file's body.
 //   - bind-count-mismatch (blocking) — BindHandles (handle.go), a card whose own handles (its
-//     Create declarations AND any Rename pair's still-handle-shaped New side, per cardOwnHandles)
+//     Create declarations AND any Rename pair's still-handle-shaped New side, per planparser.OwnedHandles)
 //     the record-batch delta matched fewer of than it owns.
 //   - plan-references-deleted-symbol (blocking), rename-candidate (informational) — DetectDrift
 //     (drift.go), the exact-tier and evidence-tier halves of drift detection.
