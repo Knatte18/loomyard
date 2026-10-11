@@ -1,7 +1,7 @@
 <!-- This is the advisor's seat directive: the block a seat stencil pulls in with the bare {{template "seat-directive-advisor"}}, with no pipeline.
      The fill hands it the seat's value map, so it declares three required markers:
      {{.chair_name}}, {{.seat_name}} and {{.output_files}}.
-     internal/seatengine fills them for each advisor seat, and the seat-to-seat channel wording lives in this block and in seat-directive-chair, and in the Burler seat stencils, which state a narrower channel of their own. -->
+     internal/seatengine fills them for each advisor seat, and the seat-to-seat channel wording lives in this block and in seat-directive-chair. -->
 
 ## You are an advisor in this step
 

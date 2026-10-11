@@ -3,7 +3,7 @@
 Go comments, doc and inline alike, use semantic line breaks.
 The rule applies `scribe:prose`'s line-break rule with the clarifications below;
 inside lyx's writers, fixers and lint, this reading governs where `scribe:prose` reads as requiring the clause break.
-`lyx loom lint-comments` alone enforces it, run by every card gate and by the Webster-Burler round gate.
+`lyx loom lint-comments` alone enforces it, run by every card gate and by the Webster-Burler-Fix round gate.
 A comment's line break or wrap is never a review finding: no reviewer or judge raises it, and a fixer rewraps only the lines the lint flags.
 
 The writing rules, guidance for whoever writes or changes a comment:

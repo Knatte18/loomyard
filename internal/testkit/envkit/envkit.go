@@ -76,6 +76,8 @@ var nilLegal = map[string]bool{
 	"RowReviewModels":                                  true,
 	"RowClusterFans":                                   true,
 	"RowBouncerModels":                                 true,
+	"RowMaxBounces":                                    true,
+	"RowAutoAccept":                                    true,
 }
 
 // noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.
@@ -166,7 +168,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		SupportLogPath:     filepath.Join(dir, "support-log.md"),
 		DescriptionPath:    filepath.Join(dir, "description.md"),
 		Shuttle:            &shedfake.Shuttle{},
-		Burler:             &shedfake.BurlerRunner{},
+		Burler:             &shedfake.BurlerHalfRunner{},
 		Seats:              &shedfake.SeatRunner{},
 		Models:             modelspec.Registry{"opus": {Engine: "claude", Model: "claude-opus-test"}},
 		RowBouncerModels: map[string]shedadapters.BouncerModels{

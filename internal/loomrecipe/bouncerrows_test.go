@@ -44,7 +44,7 @@ func TestBouncerRunSubdir(t *testing.T) {
 		}
 	}
 
-	for _, row := range []string{loomshed.NameDiscussionBurler, loomshed.NamePRGate, "No-Such-Row"} {
+	for _, row := range []string{loomshed.NameDiscussionBurlerReview, loomshed.NameDiscussionBurlerFix, loomshed.NamePRGate, "No-Such-Row"} {
 		got, ok, err := BouncerRunSubdir(row)
 		if err != nil || ok || got != "" {
 			t.Errorf("BouncerRunSubdir(%q) = %q, %v, %v; want empty, false, nil", row, got, ok, err)

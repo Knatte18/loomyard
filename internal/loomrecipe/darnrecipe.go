@@ -1,5 +1,5 @@
 // darnrecipe.go implements NewDarn and DarnRouting, the builder and routing projection of the embedded darn recipe, and DarnRetiredRows, the row renames a darn run is carried across.
-// Neither of the recipe's budgets is declared in it: NewDarn stamps the verify budget `darn.yaml` supplies onto the verify gates of Darn-Write and Darn-Burler, and both apply its review budget to the Darn-Review perch, at every call.
+// Neither of the recipe's budgets is declared in it: NewDarn stamps the verify budget `darn.yaml` supplies onto the verify gates of Darn-Write and Darn-Burler-Fix, and both apply its review budget to the Darn-Review perch, at every call.
 
 package loomrecipe
 
@@ -17,14 +17,14 @@ import (
 const verifyGateName = "verify"
 
 // darnVerifyGatedRows are the darn recipe's rows whose verify gate runs darn.yaml's verify command.
-var darnVerifyGatedRows = []string{loomshed.NameDarnWrite, loomshed.NameDarnBurler}
+var darnVerifyGatedRows = []string{loomshed.NameDarnWrite, loomshed.NameDarnBurlerFix}
 
 // DarnRetiredRows maps each row name a darn run's status file may still carry from an earlier recipe onto the row that replaced it.
 func DarnRetiredRows() map[string]string {
 	return map[string]string{"Darn": loomshed.NameDarnWrite}
 }
 
-// NewDarn parses recipes.DarnRecipe, stamps env.DarnVerifyAttempts onto the verify gates of Darn-Write and Darn-Burler, builds it against env, applies env.DarnReviewMaxBounces to the Darn-Review perch, and returns the assembled *shedengine.Shed.
+// NewDarn parses recipes.DarnRecipe, stamps env.DarnVerifyAttempts onto the verify gates of Darn-Write and Darn-Burler-Fix, builds it against env, applies env.DarnReviewMaxBounces to the Darn-Review perch, and returns the assembled *shedengine.Shed.
 // A review budget of 0 routes Darn-Write's Done straight to Publish, so neither the perch nor Describe runs.
 // It makes the status-path coherence checks New makes, then refuses an env.DarnVerifyAttempts below 1 and an env.DarnReviewMaxBounces below 0 before any row builds.
 func NewDarn(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error) {
@@ -110,9 +110,8 @@ func applyDarnReviewBudget(producers []shedengine.ProducerDef, budget int) error
 	if err != nil {
 		return err
 	}
-	applyReviewBudget(producers, segments, budget)
 
-	return nil
+	return applyReviewBudget(producers, segments, budget, nil)
 }
 
 // applyVerifyAttempts sets the attempts of the verify gate entry of the recipe row named row.

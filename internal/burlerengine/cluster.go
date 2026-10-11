@@ -1,4 +1,4 @@
-// cluster.go implements the fail-loud policy Engine.Run enforces over a cluster round's
+// cluster.go implements the fail-loud policy Engine.Review enforces over a cluster round's
 // shuttleengine.ForkAudit: the fork-count contract and the per-fork violation classes a disobedient
 // fork reviewer can trigger.
 // auditClusterRound is the single place that turns the raw audit facts (shuttleengine's own

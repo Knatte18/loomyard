@@ -15,7 +15,7 @@ import (
 const (
 	parentReviewDeliveryStencil = "loom-template-parent-review-delivery"
 	parentReviewBriefStencil    = "loom-template-parent-review-brief"
-	reviewFormatStencil         = "burler-step-2-review"
+	reviewFormatStencil         = "burler-review-format"
 )
 
 // ParentReviewDeliveryPrompt renders the delivery prompt for the run slug, naming the reviewer brief at briefPath and the reviewer's full agent name.

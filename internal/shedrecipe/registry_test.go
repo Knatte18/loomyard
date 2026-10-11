@@ -84,7 +84,8 @@ func TestNames(t *testing.T) {
 		want := []string{
 			"Batchifier",
 			"Bouncer",
-			"BurlerRound",
+			"BurlerFix",
+			"BurlerReview",
 			"DarnWrite",
 			"Describe",
 			"DiscussionSeats",

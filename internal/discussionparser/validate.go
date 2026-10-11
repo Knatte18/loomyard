@@ -1,6 +1,6 @@
 // validate.go implements Validate, the discussion gate's complete machine check set: both
 // `_lyx/discussion/` files exist, and the decision record carries every required H2 section.
-// It backs both gated discussion sites -- Discussion-Write's own gate and Discussion-Burler's own
+// It backs both gated discussion sites -- Discussion-Write's own gate and Discussion-Burler-Fix's own
 // fix-step gate, both built by internal/loomshed's NewDiscussionGate -- and the standalone
 // `lyx loom validate-discussion` verb, per the Gate Self-Check Parity Invariant, so extracting it
 // into this stdlib-only leaf changes nothing about when a failed check re-prompts the live session

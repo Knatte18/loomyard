@@ -15,8 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 )
 
-// engineMinimalConfig maps an engine name to its minimal Config, covering only the four engines that need one.
-// They are SingleLLM, Bouncer, BurlerRound and MultiLLM, whose chair and advisor both take the stencil name and the "opus" alias FullEnv's Models carries.
+// engineMinimalConfig maps an engine name to its minimal Config, covering only the engines that need one.
+// They are SingleLLM, Bouncer, BurlerReview, BurlerFix and MultiLLM, whose chair and advisor both take the stencil name and the "opus" alias FullEnv's Models carries.
 // Every other engine takes no config at all and are given none in this test,
 // since a non-empty config block on any of them is an error from the constructor. All three
 // lifecycle engines join them: WorktreeCreate and WorktreeTeardown take no Config keys at
@@ -37,9 +37,14 @@ func engineMinimalConfig(stencilName, rubricStencilName string) map[string]map[s
 			"artifact_paths": []string{"out/artifact.md"},
 			"rubric_stencil": rubricStencilName,
 		},
-		"BurlerRound": {
+		"BurlerReview": {
 			"run_subdir": "review-segment",
 			"profile":    map[string]any{"rubric": "a rubric"},
+		},
+		"BurlerFix": {
+			"run_subdir": "review-segment",
+			"review_row": "Row-Burler-Review",
+			"profile":    map[string]any{"fix-scope": "source"},
 		},
 		"MultiLLM": {
 			"role":    "coverage",

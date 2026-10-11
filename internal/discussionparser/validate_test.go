@@ -243,7 +243,7 @@ func TestValidate_DecisionRecordPathIsDirectory(t *testing.T) {
 }
 
 // TestMissingSections_ASingleHugeLineDoesNotHideEveryHeadingBelowIt is R6-28's regression test.
-// A bufio.Scanner stops at the first line over bufio.MaxScanTokenSize (64 KB) and reports it only through scanner.Err(), which was never checked — so one pasted base64 blob or minified snippet, entirely ordinary in an agent-written discussion document, made every heading below it report missing. loomshed's Discussion-Write and Discussion-Burler gates map that to a re-prompt against the still-live session, holding the handoff until the gate passes or its attempt budget escalates to a human.
+// A bufio.Scanner stops at the first line over bufio.MaxScanTokenSize (64 KB) and reports it only through scanner.Err(), which was never checked — so one pasted base64 blob or minified snippet, entirely ordinary in an agent-written discussion document, made every heading below it report missing. loomshed's Discussion-Write and Discussion-Burler-Fix gates map that to a re-prompt against the still-live session, holding the handoff until the gate passes or its attempt budget escalates to a human.
 //
 //testtiming:keep pins the R6-28 regression that a line over 64 KB does not hide the headings below it, which its covering test does not assert
 func TestMissingSections_ASingleHugeLineDoesNotHideEveryHeadingBelowIt(t *testing.T) {

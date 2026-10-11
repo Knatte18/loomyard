@@ -109,7 +109,7 @@ type BouncerConfig struct {
 	// Now is the injected clock resolving only the archive filename's same-second collision
 	// suffix.
 	Now func() time.Time
-	// ClusterExcludes is a told value: true exactly when the BurlerRound row this Bouncer's OnStuck
+	// ClusterExcludes is a told value: true exactly when the Burler review row this Bouncer's OnStuck
 	// names runs a cluster fan the judge's exclude_lenses can trim.
 	// Only then does the judge prompt ask for exclude_lenses, and the seed prompt never does;
 	// the zero value asks the judge for focus alone.
@@ -135,6 +135,10 @@ type BouncerConfig struct {
 	// a CONTINUE or CIRCLING verdict then escalates to the parent instead of reaching Shed's generic budget block.
 	// Nil is the absent value, ok false means unknown, and an error warns; each means the budget is not reached.
 	Bounces func() (count, budget int, ok bool, err error)
+	// AutoAccept makes a spent budget settle the round as an accept instead of escalating to the parent.
+	// It applies only to a CONTINUE or CIRCLING verdict this call's judge just wrote, over a round with no recorded decision and no escalation record;
+	// a replay, a circling-cause escalation and a round already escalated behave as when it is false, which is the default.
+	AutoAccept bool
 	// CirclingCheckpoint is the first round a CIRCLING verdict is legal in.
 	// The judge prompt offers CIRCLING only from this round on, and settle reads an earlier CIRCLING as CONTINUE.
 	// It must be positive.
@@ -176,6 +180,7 @@ type Bouncer struct {
 // the round producer hands back every completed or unjudged round as BudgetExempt, so only this row's Stuck returns are counted.
 // Every degrade exit, the seed and re-bounce Stuck, a CONTINUE with no decision and a circling-cause continue are counted here;
 // only a budget-cause continue is exempt, and an escalation returns Awaiting, which is never counted.
+// With cfg.AutoAccept set, a spent budget over a freshly judged CONTINUE or CIRCLING round settles as an automatic accept and returns Done instead of escalating.
 // So a judge that never recovers halts within MaxBounces counted Stucks, and a budget continue buys exactly one judged round.
 //
 // Wiring obligation: this producer is its segment's entry point, its OnStuck names the round
@@ -778,7 +783,7 @@ func (b *Bouncer) unearnedCircling(round int) string {
 // A failed settle write is returned before Approve runs, so an accept never passes without its settled record.
 // A settled accept is reachable here only through the entry-time attach branch, and degrades rather than settling twice.
 // A malformed decision file degrades with the read error as the Reason.
-// With no decision, a spent budget escalates with cause budget, even over a CIRCLING verdict;
+// With no decision, a spent budget escalates with cause budget, even over a CIRCLING verdict, or settles as an automatic accept when AutoAccept is set (see settleUndecided);
 // otherwise a CIRCLING verdict escalates with cause circling and a CONTINUE returns Stuck.
 func (b *Bouncer) settleUnconverged(ctx context.Context, round int, verdict bouncerVerdict, spawned bool, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	decision, cause, settled, exists, err := readCirclingDecision(b.cfg.RunDir, round)
@@ -796,6 +801,14 @@ func (b *Bouncer) settleUnconverged(ctx context.Context, round int, verdict boun
 		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling accept for round %d is already settled; way forward: run `lyx loom start`, which re-enters the segment and archives the settled round", round), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round)
 	}
 
+	return b.acceptRound(round, ptr)
+}
+
+// acceptRound passes round on a recorded accept decision, a parent's or an automatic one.
+// It calls the CarryOver seam with CarryOverAccepted, settles the decision record, then approves and commits exactly as CONVERGED does, and returns Done with ptr.
+// A failed carry-over leaves the accept pending, so its re-call retries the write;
+// a failed settle write is returned before Approve runs.
+func (b *Bouncer) acceptRound(round int, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := b.writeCarryOver(round, discussionparser.CarryOverAccepted); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
@@ -817,10 +830,20 @@ func (b *Bouncer) settleUnconverged(ctx context.Context, round int, verdict boun
 
 // settleUndecided maps a CONTINUE or CIRCLING round that has no decision file onto an escalation or a plain Stuck.
 // A spent budget escalates with cause budget, also over a CIRCLING verdict;
-// otherwise a CIRCLING verdict escalates with cause circling, and a CONTINUE calls ensureFocus(round + 1) and returns Stuck.
+// with AutoAccept set it instead records an automatic accept and passes the round through acceptRound, writing no escalation record and no parent notice.
+// The automatic accept needs a harvest (spawned) over a round with no escalation record, so a replay and an already escalated round escalate as without AutoAccept.
+// Otherwise a CIRCLING verdict escalates with cause circling, and a CONTINUE calls ensureFocus(round + 1) and returns Stuck.
 func (b *Bouncer) settleUndecided(round int, verdict bouncerVerdict, spawned bool, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	switch {
 	case b.budgetReached(round):
+		if b.cfg.AutoAccept && spawned {
+			if _, _, escalated, err := readEscalation(b.cfg.RunDir, round); err == nil && !escalated {
+				if err := recordAutoAccept(b.cfg.RunDir, round); err != nil {
+					return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): record automatic accept: %w", b.cfg.Name, bouncerEngineLabel, err)
+				}
+				return b.acceptRound(round, ptr)
+			}
+		}
 		return b.escalate(round, EscalationBudget, ptr)
 	case verdict == verdictCircling:
 		return b.escalate(round, EscalationCircling, ptr)

@@ -10,14 +10,19 @@
 # gates, so a human is the only thing that can fix them. Darn-Write and Describe carry none either:
 # an exhausted writer gate halts the run for the parent, which resumes it with a fresh budget.
 #
-# Darn-Bouncer and Darn-Burler are the Darn-Review perch, wired like loom's Webster-Review pair:
-# each names the other in on_stuck under one shared segment label. The segment's rows declare no
-# max_bounces: their budget is darn.yaml's review_max_bounces, applied by internal/loomrecipe, and a
-# budget of 0 turns the perch off by routing Darn-Write's Done straight to Publish, past Describe, so
-# the writer's own description stands. The perch's judge, reviewer and fixer models are loom.yaml's
-# Webster-Review keys, the other committed-diff review.
+# Darn-Bouncer, Darn-Burler-Review and Darn-Burler-Fix are the Darn-Review perch, wired like loom's
+# Webster-Review ring under one shared segment label: the Bouncer's on_stuck names the review row,
+# the review row's on_stuck names the fix row, the fix row's on_stuck names the Bouncer, and each
+# Burler row's on_done names the same row as its on_stuck, since neither ever returns Done. The
+# segment's rows declare no max_bounces: their budget is darn.yaml's review_max_bounces, applied by
+# internal/loomrecipe, and a budget of 0 turns the perch off by routing Darn-Write's Done straight
+# to Publish, past Describe, so the writer's own description stands. The perch's judge, reviewer
+# and fixer models are loom.yaml's Webster-Review keys, the other committed-diff review.
 #
-# Describe follows the perch because Darn-Burler can change the code after the writer described it.
+# An in-flight run parked on the retired Darn-Burler row is restarted, not migrated, as it is for
+# the other retired rows.
+#
+# Describe follows the perch because Darn-Burler-Fix can change the code after the writer described it.
 #
 # PR-Gate bounces to Darn-Write, the row that produces the diff it guards, so a rework passes the
 # perch and Describe again before Publish refreshes the open pull request. The edge's max_bounces is
@@ -53,7 +58,7 @@ producers:
   - name: Darn-Bouncer
     engine: Bouncer
     segment: Darn-Review
-    on_stuck: Darn-Burler
+    on_stuck: Darn-Burler-Review
     on_done: Describe
     config:
       run_subdir: darn
@@ -64,26 +69,20 @@ producers:
       artifact_paths:
         - _lyx/landing/summary.md
       rubric_stencil: loom-rubric-darn-review
-      # No commit_seam: Darn-Burler runs fix-scope: source and commits each fix itself. No
+      # No commit_seam: Darn-Burler-Fix runs fix-scope: source and commits each fix itself. No
       # carry_over: a darn run has no decision record to file still-open findings in.
 
-  - name: Darn-Burler
-    engine: BurlerRound
+  - name: Darn-Burler-Review
+    engine: BurlerReview
     segment: Darn-Review
-    on_stuck: Darn-Bouncer
-    # BurlerProducer never returns Done, so this edge is unreachable -- but an empty on_done is
-    # load-bearing and ends the whole run silently, so it names the row it can never reach.
-    on_done: Darn-Bouncer
+    on_stuck: Darn-Burler-Fix
+    # BurlerReviewProducer never returns Done, so this edge is unreachable -- but an empty on_done
+    # is load-bearing and ends the whole run silently, so it names the row it can never reach.
+    on_done: Darn-Burler-Fix
     config:
-      # The same run_subdir value as Darn-Bouncer is what makes both rows write into one shared run
-      # directory.
+      # The same run_subdir value as Darn-Bouncer is what makes the three rows write into one
+      # shared run directory.
       run_subdir: darn
-      # The verify gate runs darn.yaml's verify command on the committed tree after each round and
-      # re-prompts the round session with the findings until it passes. Its attempts here is a
-      # placeholder: the builder stamps darn.yaml's verify_attempts at every build.
-      gates:
-        - name: verify
-          attempts: 3
       profile:
         target:
           # No paths key: a diff has no file on disk for the profile's path check to stat.
@@ -104,6 +103,27 @@ producers:
         # entry.
         tool-use: true
         # No cluster-fan key: fork reviewers may run no git, and the subject exists only through git.
+
+  - name: Darn-Burler-Fix
+    engine: BurlerFix
+    segment: Darn-Review
+    on_stuck: Darn-Bouncer
+    # BurlerFixProducer never returns Done, so this edge is unreachable -- but an empty on_done is
+    # load-bearing and ends the whole run silently, so it names the row it can never reach.
+    on_done: Darn-Bouncer
+    config:
+      run_subdir: darn
+      review_row: Darn-Burler-Review
+      # The verify gate runs darn.yaml's verify command on the committed tree after each round and
+      # re-prompts the fix session with the findings until it passes. Its attempts here is a
+      # placeholder: the builder stamps darn.yaml's verify_attempts at every build.
+      gates:
+        - name: verify
+          attempts: 3
+      profile:
+        # No target key: a diff names no file, so the fixer finds its files from the review's
+        # findings and the gate's findings alone.
+        fix-scope: source
 
   # Describe writes the change description from the final diff, replacing the writer's own.
   - name: Describe
