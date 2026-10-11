@@ -179,17 +179,31 @@ func TestTmuxConfBootGuard(t *testing.T) {
 	})
 
 	t.Run("SessionGoneFailsTheBootNamingTheConfig", func(t *testing.T) {
-		e, fake, _, _ := guardEngine(t)
-		identities(fake, "200 2")
-		fake.answer("has-session", "", exitCodeErr{code: 1})
-
-		err := e.guardBootSessionLocked("100 1", path)
-		if err == nil {
-			t.Fatal("guardBootSessionLocked() = nil, want an error for the vanished session")
+		tests := []struct {
+			name           string
+			reedSessions   string
+			wantKillServer int
+		}{
+			{"NoReedSessionLeftEndsTheServer", "", 1},
+			{"AnotherReedSessionKeepsTheServer", "other\n", 0},
 		}
-		for _, want := range []string{"tmux_conf", tmuxConfEnv, path} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("error = %q, want it to name %q", err, want)
+		for _, tt := range tests {
+			e, fake, _, _ := guardEngine(t)
+			identities(fake, "200 2")
+			fake.answer("has-session", "", exitCodeErr{code: 1})
+			fake.answer("list-sessions", tt.reedSessions, nil)
+
+			err := e.guardBootSessionLocked("100 1", path)
+			if err == nil {
+				t.Fatalf("%s: guardBootSessionLocked() = nil, want an error for the vanished session", tt.name)
+			}
+			for _, want := range []string{"tmux_conf", tmuxConfEnv, path} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("%s: error = %q, want it to name %q", tt.name, err, want)
+				}
+			}
+			if got := fake.Count("kill-server"); got != tt.wantKillServer {
+				t.Errorf("%s: kill-server calls = %d, want %d", tt.name, got, tt.wantKillServer)
 			}
 		}
 	})

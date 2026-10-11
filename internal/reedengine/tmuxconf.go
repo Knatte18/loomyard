@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -87,7 +89,7 @@ func bootGuardArgv(candidate bool, confPath string) []string {
 // guardBootSessionLocked runs the boot guard on the server the boot just reached, then reads back that this session and both pins survived the operator file.
 // The boot is a candidate for the source when the server's identity now differs from identityBefore, the one read before the spawn.
 // The guard invocation's exit status is only ever a warning, since one status carries the claim, the source and both pins; the read-back decides.
-// It fails when the session is gone, naming the key, the variable and confPath, or when either pin does not read `off`.
+// It fails when the session is gone, naming the key, the variable and confPath, after ending the server if no reed session remains on it, or when either pin does not read `off`.
 func (e *Engine) guardBootSessionLocked(identityBefore, confPath string) error {
 	candidate := e.serverIdentityLocked() != identityBefore
 	logger.Info("reed: tmux config claim", "socket", e.Socket(), "session", e.SessionName(), "candidate", candidate, "path", confPath)
@@ -106,6 +108,7 @@ func (e *Engine) guardBootSessionLocked(identityBefore, confPath string) error {
 		return fmt.Errorf("check session after the boot guard: %w", err)
 	}
 	if !up {
+		e.endServerWithoutReedSessionLocked()
 		return fmt.Errorf("reed: session %q ended while the tmux config %q (key tmux_conf, variable %s) was sourced; remove from the file the command that ends the session, such as an untargeted `set destroy-unattached on` or a `kill-session`", e.SessionName(), confPath, tmuxConfEnv)
 	}
 
@@ -117,6 +120,26 @@ func (e *Engine) guardBootSessionLocked(identityBefore, confPath string) error {
 		return fmt.Errorf("reed: destroy-unattached and exit-unattached must read off after the boot guard, got %q (key tmux_conf, variable %s, path %q)", strings.TrimSpace(out), tmuxConfEnv, confPath)
 	}
 	return nil
+}
+
+// endServerWithoutReedSessionLocked ends the server and removes its socket file when it lists no session that counts as reed's, or no longer answers.
+// A boot refused because the operator file ended its session calls it, so a server holding only sessions the file created does not outlive the refusal.
+// It is best-effort: a failure is logged and never replaces the refusal.
+func (e *Engine) endServerWithoutReedSessionLocked() {
+	if out, err := e.tmux.output(listSessionsArgv(runtime.GOOS, "#{session_name}")...); err == nil && strings.TrimSpace(out) != "" {
+		return
+	}
+	serverPID := 0
+	if out, err := e.tmux.output("display-message", "-p", "#{pid}"); err == nil {
+		serverPID, _ = strconv.Atoi(strings.TrimSpace(out))
+	}
+	logger.Info("reed: tearing down the tmux server the refused boot leaves without a reed session", "socket", e.Socket(), "serverPID", serverPID)
+	if err := e.tmux.run("kill-server"); err != nil {
+		logger.Debug("reed: best-effort kill-server failed", "socket", e.Socket(), "err", err)
+	}
+	if err := e.ensureServerGoneLocked(serverPID); err != nil {
+		logger.Warn("reed: server did not confirm gone after kill-server", "socket", e.Socket(), "serverPID", serverPID, "err", err)
+	}
 }
 
 // reedSessionFilter is the tmux format that is true for a session that counts as reed's.

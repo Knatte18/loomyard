@@ -243,7 +243,7 @@
 // Only sessions that count as reed's are seen by reed.
 // On a server whose claim is `sourced`, a session counts when it carries `@lyx_reed_session`; on any other server, every session counts, so Windows and servers started before the claim existed behave as before.
 // Every session read applies the rule: `list-sessions -f` through listSessionsArgv in Go (the watchdog's discovery, the pair teardown, the last-session check that ends the server, the session-less holder and zombie checks, the recorded-session classification and the next/previous session switch), and the same condition in the status bar's session row.
-// Teardown therefore ends the server, and any session the file created with it, when no reed session remains.
+// Teardown therefore ends the server, and any session the file created with it, when no reed session remains, and so does a boot refused because the file ended its session.
 // The bound: such a session is hidden from reed and lives until the server ends.
 // Windows parses the key and does none of it: psmux reads its own config at start, and the filter flag is never passed to its `list-sessions`.
 //

@@ -125,17 +125,39 @@ func TestBoot_TmuxConf(t *testing.T) {
 		}
 	})
 
-	t.Run("UntargetedDestroyUnattachedFailsTheBoot", func(t *testing.T) {
-		conf := writeTmuxConf(t, "set destroy-unattached on")
-		e, _ := tmuxConfEngine(t, t.TempDir(), "worktree", conf)
-		err := bootOwnServer(t, e)
-		if err == nil {
-			t.Fatal("Up() = nil, want an error: the file ends the session")
+	t.Run("FileEndingTheSessionFailsTheBootAndLeavesNoServer", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			lines func(session string) []string
+		}{
+			{"UntargetedDestroyUnattached", func(string) []string { return []string{"set destroy-unattached on"} }},
+			{"KillSessionBesideAFileCreatedSession", func(session string) []string {
+				return []string{"new-session -d -s operator", "kill-session -t " + exactSessionTarget(session)}
+			}},
 		}
-		for _, want := range []string{"tmux_conf", tmuxConfEnv, conf} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("Up() error = %q, want it to name %q", err, want)
-			}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				conf := writeTmuxConf(t)
+				e, _ := tmuxConfEngine(t, t.TempDir(), "worktree", conf)
+				if err := os.WriteFile(conf, []byte(strings.Join(tt.lines(e.SessionName()), "\n")+"\n"), 0o644); err != nil {
+					t.Fatalf("write operator tmux config: %v", err)
+				}
+				_, err := e.Up()
+				_, listErr := ListSessions(e.cfg.Tmux, e.Socket())
+				// Registered only after the check: the kit pre-starts a server of its own on registration.
+				tmuxkit.KillOnCleanup(t, e.cfg.Tmux, e.Socket())
+				if err == nil {
+					t.Fatal("Up() = nil, want an error: the file ends the session")
+				}
+				for _, want := range []string{"tmux_conf", tmuxConfEnv, conf} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("Up() error = %q, want it to name %q", err, want)
+					}
+				}
+				if !IsNoServer(listErr) {
+					t.Errorf("ListSessions after the refused boot error = %v, want no server running", listErr)
+				}
+			})
 		}
 	})
 
