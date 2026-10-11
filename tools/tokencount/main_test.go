@@ -17,7 +17,7 @@ func TestResolveHub(t *testing.T) {
 	tests := []struct {
 		name    string
 		hub     string
-		records    string
+		records string
 		want    string
 		wantErr bool
 	}{
