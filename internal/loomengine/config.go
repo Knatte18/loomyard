@@ -1,8 +1,7 @@
 // config.go — configuration for the loom module.
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1, and rejects a fix_start that is neither parallel nor after-review,
-// and every entry of fan_review, and resolves each non-empty discussion_fan and plan_fan through burlerengine.ResolveFan,
+// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1, validates every entry of fan_review, and resolves each non-empty discussion_fan and plan_fan through burlerengine.ResolveFan,
 // so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
 // step_idle_timeout_min is the minutes a --until-stop step may show no activity before the loop kills it; a value below 1 is raised to 1 with one Warn and never refused.
 // discussion_fan and plan_fan each name a fan from burler.yaml and turn the lens fan on for Discussion-Review and Plan-Review; empty, the default, runs that segment solo.
@@ -375,8 +374,6 @@ type Config struct {
 
 	ReviewCirclingCheckpoint int `yaml:"review_circling_checkpoint"`
 	ReviewMaxBounces         int `yaml:"review_max_bounces"`
-
-	FixStart string `yaml:"fix_start"`
 }
 
 // ModelSpecList is a model-spec key's value: one model-spec for every round, or a list of model-specs, one per round, whose last entry serves every later round.
@@ -699,12 +696,6 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		if knob.value < 1 {
 			return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set it to a positive integer in loom.yaml", knob.key, knob.value)
 		}
-	}
-
-	switch burlerengine.FixStart(cfg.FixStart) {
-	case burlerengine.FixStartParallel, burlerengine.FixStartAfterReview:
-	default:
-		return Config{}, fmt.Errorf("loom config key %q: unknown value %q; set it to %q or %q", "fix_start", cfg.FixStart, burlerengine.FixStartParallel, burlerengine.FixStartAfterReview)
 	}
 
 	switch cfg.DiscussionProducer {

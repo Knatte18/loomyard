@@ -121,7 +121,22 @@ func TestBurlerGeometry(t *testing.T) {
 		AnchorRel:    anchorRel,
 	}
 
-	var got burlerengine.Geometry = BurlerGeometry(l)
+	boardDir := fabricengine.BoardDir(hub)
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll board: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(boardDir, fabricengine.ShortnameFileName), []byte("tst\n"), 0o644); err != nil {
+		t.Fatalf("write shortname: %v", err)
+	}
+
+	var got burlerengine.Geometry = burlerGeometry(l, false)
+
+	if got.Shortname != "tst" || got.Slug != worktreeName {
+		t.Errorf("burlerGeometry(l, false) Shortname/Slug = %q/%q; want the recorded shortname and the worktree name, %q/%q", got.Shortname, got.Slug, "tst", worktreeName)
+	}
+	if prime := burlerGeometry(l, true); prime.Shortname != "tst" || prime.Slug != "" {
+		t.Errorf("burlerGeometry(l, true) Shortname/Slug = %q/%q; want the recorded shortname and no slug", prime.Shortname, prime.Slug)
+	}
 
 	if got.WorktreeRoot != anchorPath {
 		t.Errorf("BurlerGeometry(l).WorktreeRoot = %q; want %q (anchorPath)", got.WorktreeRoot, anchorPath)
@@ -145,12 +160,12 @@ func TestBurlerGeometry_ParentNameFromOriginRecord(t *testing.T) {
 	t.Parallel()
 
 	l := hubWithOrigin(t, `{"parent_branch":"main","parent_worktree":"gone-task"}`)
-	if got, want := BurlerGeometry(l).ParentName, "tst:gone-task:orch"; got != want {
+	if got, want := burlerGeometry(l, false).ParentName, "tst:gone-task:orch"; got != want {
 		t.Errorf("BurlerGeometry(l).ParentName = %q; want %q", got, want)
 	}
 
 	l = hubWithOrigin(t, `{"parent_branch":"main"}`)
-	if got := BurlerGeometry(l).ParentName; got != "" {
+	if got := burlerGeometry(l, false).ParentName; got != "" {
 		t.Errorf("BurlerGeometry(l).ParentName without a parent worktree = %q; want empty", got)
 	}
 }

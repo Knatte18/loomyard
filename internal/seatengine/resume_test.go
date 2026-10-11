@@ -5,6 +5,7 @@ package seatengine
 import (
 	"errors"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -16,6 +17,8 @@ func TestEngine_ProbeAndResume_AttachToALiveChair(t *testing.T) {
 	shuttle := newFakeShuttle(t)
 	engine, geom := engineFixture(t, shuttle)
 	table := engineTable(geom.WorktreeRoot, 3)
+	advisorGate := shuttleengine.GateSpec{{Name: "advisor-gate", Attempts: 2}}
+	table.Seats[1].Gate = advisorGate
 
 	// advisor-1 is live, advisor-2 is a done advisor kept by its pane that the probe removes, and advisor-3 is gone.
 	chair := shuttle.newHandle(role(RoleChair))
@@ -41,8 +44,8 @@ func TestEngine_ProbeAndResume_AttachToALiveChair(t *testing.T) {
 	if _, err := os.Stat(keptOutput); err != nil {
 		t.Errorf("the kept advisor's output after the probe: %v, want it left in place", err)
 	}
-	if len(shuttle.gates[role(RoleChair)]) != 1 || len(shuttle.gates[role(AdvisorName(1))]) != 0 {
-		t.Errorf("probe gates: chair %d entries, advisor %d, want the table's gate on the chair only", len(shuttle.gates[role(RoleChair)]), len(shuttle.gates[role(AdvisorName(1))]))
+	if len(shuttle.gates[role(RoleChair)]) != 1 || !reflect.DeepEqual(shuttle.gates[role(AdvisorName(1))], advisorGate) || len(shuttle.gates[role(AdvisorName(3))]) != 0 {
+		t.Errorf("probe gates: chair %d entries, advisor-1 %+v, advisor-3 %d, want the table's gate on the chair, the seat's own on advisor-1 and none on advisor-3", len(shuttle.gates[role(RoleChair)]), shuttle.gates[role(AdvisorName(1))], len(shuttle.gates[role(AdvisorName(3))]))
 	}
 
 	ended := make(chan engineEnd, 1)

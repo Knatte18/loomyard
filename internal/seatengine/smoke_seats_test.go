@@ -114,9 +114,48 @@ func TestSmokeSeatsChairAsksAdvisor(t *testing.T) {
 		},
 	}
 
+	advisorStrand, err := agentname.Format(reedGeom.NameShortname, reedGeom.NameSlug, seatengine.SeatRole(smokeRolePrefix, seatengine.AdvisorName(1)))
+	if err != nil {
+		t.Fatalf("format advisor strand name: %v", err)
+	}
+	// The advisor waits for the chair's question before it writes its output,
+	// so its session reads an idle stall until the chair's SendMessage starts a turn.
+	var longestHistory []shuttleengine.SessionState
+	stopPolling, polled := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(polled)
+		for {
+			select {
+			case <-stopPolling:
+				return
+			case <-time.After(2 * time.Second):
+			}
+			readings, readErr := shuttleengine.ReadSessionStates(shuttleCfg, reedGeom.AnchorPath, claudeengine.New(), time.Now())
+			if readErr != nil {
+				continue
+			}
+			for _, reading := range readings {
+				if reading.StrandName == advisorStrand && len(reading.History) > len(longestHistory) {
+					longestHistory = reading.History
+				}
+			}
+		}
+	}()
+
 	result, err := engine.Run(table)
+	close(stopPolling)
+	<-polled
 	if err != nil {
 		t.Fatalf("seat run: %v", err)
+	}
+	stalled := false
+	busyAfterStall := false
+	for _, state := range longestHistory {
+		stalled = stalled || state.Name == shuttleengine.SessionIdleStalled
+		busyAfterStall = busyAfterStall || (stalled && state.Name == shuttleengine.SessionBusy && state.Cause == shuttleengine.SessionCauseTurn)
+	}
+	if !busyAfterStall {
+		t.Errorf("advisor session history = %v; want a busy turn after an idle stall, the turn the chair's question started", longestHistory)
 	}
 	if result.Chair.Outcome != shuttleengine.OutcomeDone {
 		t.Fatalf("chair outcome = %q; want %q; chair message: %q", result.Chair.Outcome, shuttleengine.OutcomeDone, result.Chair.LastAssistantMessage)
@@ -133,10 +172,6 @@ func TestSmokeSeatsChairAsksAdvisor(t *testing.T) {
 		t.Errorf("advisor output: %v; want the file written", err)
 	}
 
-	advisorStrand, err := agentname.Format(reedGeom.NameShortname, reedGeom.NameSlug, seatengine.SeatRole(smokeRolePrefix, seatengine.AdvisorName(1)))
-	if err != nil {
-		t.Fatalf("format advisor strand name: %v", err)
-	}
 	status, err := reedEngine.Status()
 	if err != nil {
 		t.Fatalf("reed status: %v", err)

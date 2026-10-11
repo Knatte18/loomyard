@@ -146,22 +146,32 @@ func composeSeatPrompt(stencilsDir string, seat Seat, values map[string]string, 
 }
 
 // seatSpec returns the shuttle spec that runs seat with prompt.
-// Only the chair is interactive; only an advisor keeps its pane and holds its turn end quietly.
-// The chair's gate rides the start call, not the spec.
+// Only the chair is interactive; only an advisor keeps its pane, and an advisor holds its turn end quietly unless it is Required.
+// The seat's gate rides the start call, not the spec.
 func seatSpec(table Table, seat Seat, prompt string) shuttleengine.Spec {
 	isChair := seat.Name == RoleChair
 	return shuttleengine.Spec{
-		Prompt:      prompt,
-		OutputFiles: slices.Clone(seat.Outputs),
-		Model:       seat.Model,
-		Effort:      seat.Effort,
-		Version:     seat.Version,
-		Interactive: isChair && table.Interactive,
-		QuietHold:   !isChair,
-		KeepPane:    !isChair,
-		Segment:     table.Segment,
-		Role:        SeatRole(table.RolePrefix, seat.Name),
-		Timeout:     table.Timeout,
-		Skills:      slices.Clone(seat.Skills),
+		Prompt:        prompt,
+		OutputFiles:   slices.Clone(seat.Outputs),
+		Model:         seat.Model,
+		Effort:        seat.Effort,
+		Version:       seat.Version,
+		ForkSubagents: seat.ForkSubagents,
+		Interactive:   isChair && table.Interactive,
+		QuietHold:     !isChair && !seat.Required,
+		KeepPane:      !isChair,
+		Segment:       table.Segment,
+		Role:          SeatRole(table.RolePrefix, seat.Name),
+		Round:         table.Round,
+		Timeout:       table.Timeout,
+		Skills:        slices.Clone(seat.Skills),
 	}
+}
+
+// seatGate returns the gate seat runs under: the table's for the chair, the seat's own for an advisor.
+func seatGate(table Table, seat Seat) shuttleengine.GateSpec {
+	if seat.Name == RoleChair {
+		return table.Gate
+	}
+	return seat.Gate
 }

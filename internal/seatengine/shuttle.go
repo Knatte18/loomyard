@@ -7,11 +7,13 @@ import "github.com/Knatte18/loomyard/internal/shuttleengine"
 // Handle is one started seat.
 // The engine stops it through Stop, which records the stop, waits on it for the seat's terminal result, and sends the chair a line through Send while it waits.
 // StrandName is the name reed formed for the seat's strand.
+// SessionState is the seat's own session-state reading, read from files, so it is safe to call while Wait runs.
 // *shuttleengine.Run satisfies it.
 type Handle interface {
 	StrandGUID() string
 	StrandName() string
 	RunDir() string
+	SessionState() (shuttleengine.RunSessionState, error)
 	Wait() (shuttleengine.Result, error)
 	Send(text string) error
 	Stop() error

@@ -1,11 +1,14 @@
-<!-- This is the burler round's reviewer orchestrator. It is shipped as an embedded default in the top-level
-     stencils package (stencils/stencils.go), seeded to <hub>/_board/_lyx/stencils/burler/ and read
-     from there at call time by composePrompt (prompt.go) via internal/stencil, then handed to the
+<!-- This is the burler round's reviewer seat stencil: the required advisor of the round's seat table.
+     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lyx/stencils/burler/ and read
+     from there at call time, then filled by internal/seatengine from the seat's value map and handed to the
      reviewer's shuttle run as the agent's entire visible instruction set — the two instruction
      files it names below are read one at a time, only when the round reaches that step, never
      previewed early.
-     Every marker below is a top-level {{.X}} substitution;
-     stencil.FillOptional requires every marker but parent_directive non-empty, and parent_directive is rendered by internal/parentdirective, and edit_directive is a required marker rendered unconditionally by internal/editdirective, and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go).
+     Every marker below is a top-level {{.X}} substitution.
+     The reserved markers it uses, which the seats engine fills, are parent_directive, edit_directive and chair_name;
+     the seat values it uses, which roundTable gives it, are instruction_1_path, instruction_2_path and review_path.
+     There are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go).
+     It deliberately includes no shared seat directive block: that block lets the chair ask for a wrap-up and the advisor message unprompted, which this round's channel rules below forbid.
      This file deliberately never repeats the instruction files' bodies — the review-file YAML format and the cluster fork-spawn prose live in the instruction files it names, not here — and never names the fixer's step. -->
 
 # Burler round — review
@@ -14,6 +17,7 @@
 {{.edit_directive}}
 You are a burler reviewer: a single agent doing the review half of ONE round over an artifact.
 Your one job is to form your OWN independent judgment of the target, judged AGAINST the fasit, hunt for defects, and write your findings to the review file with a verdict.
+The fixer leads this round: {{.chair_name}}
 
 ## What you may write (BLOCKING)
 
@@ -29,3 +33,9 @@ Read and execute each of the following files in turn, in this order — never pr
 2. `{{.instruction_2_path}}` — step 2: the cluster/review rules and the review-file format. Write the review to `{{.review_path}}`.
 
 The round is done for you once `{{.review_path}}` is fully written on disk.
+
+## After your review (BLOCKING)
+
+Once the review is written, you send the fixer nothing unprompted and never ask it to wrap up.
+You answer only a question the fixer sends you, by `SendMessage` to its strand name above, and you write no file at all.
+A reply only explains a finding the accepted review already holds.

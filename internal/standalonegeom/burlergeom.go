@@ -4,6 +4,7 @@
 package standalonegeom
 
 import (
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 )
 
@@ -18,11 +19,12 @@ import (
 // instruction directory joins onto, and pointing it at target is exactly what would push a hidden
 // .lyx tree into the reviewed folder.
 //
-// Like WebsterGeometry, BurlerGeometry takes no hash8: no value in the struct is hash-derived.
-func BurlerGeometry(target, stateDir string) burlerengine.Geometry {
+// Shortname is derived from the session's hash8 and Slug stays empty, matching ReedGeometry, so the agent names burler forms match the names reed gives the strands.
+func BurlerGeometry(target, stateDir, hash8 string) burlerengine.Geometry {
 	return burlerengine.Geometry{
 		WorktreeRoot: target,
 		AnchorPath:   stateDir,
 		RepoRoot:     target,
+		Shortname:    agentname.StandaloneShortname(hash8),
 	}
 }

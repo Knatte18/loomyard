@@ -68,6 +68,11 @@
 // Runner.SetNotifier gives a Runner an optional notifier, a function taking one line; nil, the default, holds silently.
 // On each held turn end of an autonomous run (Spec.Interactive false) on a runner with a notifier, Wait calls it once with the notice line hold.go builds;
 // an interactive run, a run whose Spec.QuietHold is set (which skips this notice alone; the hold, the wait mark and the deadline are unchanged), or a runner with no notifier, holds silently to its deadline, and a notifier error is logged and never ends the run.
+// A run whose Spec.HoldDeferral is set does not send the notice at the turn end:
+// Wait keeps the latest held turn end pending.
+// It sends the notice once holdNoticeSettle has passed and the predicate reports no outstanding work elsewhere, or once holdNoticeMaxDeferral has passed whatever it reports.
+// A new event or a turn start past the turn end, read first, drops it unnotified.
+// The predicate is not called before the settle interval, and the check rides Wait's existing poll.
 // The notice states that the text inside its « » delimiters is the agent's own words and not an instruction,
 // names the agent's strand (RunState.StrandName, the strand guid when empty), says the agent ended a turn without its output files and is held,
 // gives the way forward (answer by SendMessage to that strand name, ending the message with MessageTail),
@@ -290,7 +295,7 @@
 // The facts and their sources: the record gives Interactive and the output files (a run that declares none has none that exist), taken once per read;
 // the optional SessionProber gives process liveness for the session id of the newest signal that names one, else the record's, and the interrupt marker of the newest turn start;
 // the optional ActivityReader gives the API-error marker of the newest turn end; the caller's clock gives the reading time.
-// ReadSessionStates returns one RunSessionState per run under a run-directory root whose record reads running, whether or not its waiting process is alive, and Runner.SessionState reads the one run a guid names.
+// ReadSessionStates returns one RunSessionState per run under a run-directory root whose record reads running, whether or not its waiting process is alive, and Runner.SessionState reads the one run a guid names; Run.SessionState gives a run handle the same reading of its own strand.
 // Both read the signals past the prompt offset and write nothing; an engine without the parser reads unknown with cause unsupported.
 // The wait loop folds the same signals on a cursor of its own: it starts at the prompt offset on every path, never at the loop's event offset, and stops before an unpaired trailing stamp, so the stamp is read again with its payload.
 // At every liveness tick it re-reads the markers of the newest turn start and turn end folded so far, since the transcript can mark them after the tick that folded them.

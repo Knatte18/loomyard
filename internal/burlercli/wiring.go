@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
@@ -137,7 +138,11 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(loc, line) })
 
 	// A `lyx burler` run is not a loom run and has no friction directory in either mode.
-	c.engine = burlerengine.New(burlerengine.RunnerShuttle(runner), hubgeom.BurlerGeometry(loc), burlerCfg, stencilsDir, "")
+	burlerGeom, err := hubgeom.BurlerGeometry(loc)
+	if err != nil {
+		return err
+	}
+	c.engine = burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, burlerCfg, stencilsDir, "")
 	c.mode = "hub"
 	c.stateDir = ""
 	c.markerRoot = anchorPath
@@ -214,7 +219,7 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 	}
 
 	// A `lyx burler` run is not a loom run and has no friction directory in either mode.
-	c.engine = burlerengine.New(burlerengine.RunnerShuttle(runner), standalonegeom.BurlerGeometry(res.Target, res.StateDir), burlerCfg, res.StencilsDir, "")
+	c.engine = burlerengine.New(seatengine.RunnerShuttle(runner), standalonegeom.BurlerGeometry(res.Target, res.StateDir, res.Hash8), burlerCfg, res.StencilsDir, "")
 	c.mode = "standalone"
 	c.stateDir = res.StateDir
 	c.markerRoot = res.Target

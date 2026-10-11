@@ -24,8 +24,13 @@ func TestBurlerGeometry(t *testing.T) {
 	target := filepath.Join(string(filepath.Separator), "home", "operator", "src", "distinctive-repo-name")
 	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
 
-	got := BurlerGeometry(target, stateDir)
+	hash8 := "abcd1234"
 
+	got := BurlerGeometry(target, stateDir, hash8)
+
+	if want := agentname.StandaloneShortname(hash8); got.Shortname != want || got.Slug != "" {
+		t.Errorf("BurlerGeometry().Shortname/Slug = %q/%q; want %q and an empty slug", got.Shortname, got.Slug, want)
+	}
 	if got.WorktreeRoot != target {
 		t.Errorf("BurlerGeometry().WorktreeRoot = %q; want %q (target)", got.WorktreeRoot, target)
 	}

@@ -104,8 +104,6 @@ type Env struct {
 	// RowClusterFans holds the burler cluster fan a review segment runs, keyed by the name of each of the segment's two rows.
 	// A row with no entry, and a nil map, take no fan from it.
 	RowClusterFans map[string]string
-	// FixStart is the run-wide start order of every BurlerRound row's fixer, set on each round's RunOpts; empty is parallel.
-	FixStart burlerengine.FixStart
 
 	// ReviewMaxBounces is the run-wide bounce budget of every review segment, read by loomrecipe alone.
 	// It is set on each row of a segment holding a Bouncer row, because the recipe declares no max_bounces there.

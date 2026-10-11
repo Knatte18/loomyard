@@ -576,7 +576,8 @@ func TestRunner_LoadSkillsAndClassifySkillLoad_ErrorOnPlainEngine(t *testing.T) 
 func TestRunner_SessionState(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC)
-	runner := newFixture(t, &fakeReed{}, &fakeEngine{}, withStrand("strand-1"), withClock(&frozenClock{now: now})).Runner
+	fx := newFixture(t, &fakeReed{}, &fakeEngine{}, withStrand("strand-1"), withClock(&frozenClock{now: now}))
+	runner := fx.Runner
 
 	got, err := runner.SessionState("strand-1")
 	if err != nil {
@@ -584,6 +585,14 @@ func TestRunner_SessionState(t *testing.T) {
 	}
 	if got.StrandGUID != "strand-1" || got.StrandName != "strand-1" || got.State.Name != SessionUnknown || got.State.Cause != SessionCauseUnsupported || !got.State.Since.Equal(now) {
 		t.Errorf("SessionState = %+v; want strand-1 unknown/unsupported since %v", got, now)
+	}
+
+	fromHandle, err := fx.newRun(Spec{}, withRunState(RunState{StrandGUID: "strand-1"})).SessionState()
+	if err != nil {
+		t.Fatalf("Run.SessionState: %v", err)
+	}
+	if !reflect.DeepEqual(fromHandle, got) {
+		t.Errorf("Run.SessionState = %+v; want Runner.SessionState's %+v", fromHandle, got)
 	}
 
 	if _, err := runner.SessionState("nope"); err == nil {

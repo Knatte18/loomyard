@@ -1,56 +1,60 @@
-// engine.go implements the round driver: Engine.Run validates a Profile, composes both halves' prompts, starts the reviewer and the fixer over the Shuttle seam, and joins them through the ready marker (handoff.go) into one Result.
+// engine.go implements the round driver: Engine.Run validates a Profile, composes the round's seat values and instruction files, runs the round as one seat table on the seats engine (the fixer as chair, the reviewer as required advisor-1), and decides the round's one Result from the seat result (handoff.go).
 // This is the library's one external entry point — a caller invokes it once per round.
 // Today that caller is internal/shedadapters.BurlerProducer, which wraps the call as a Shed row.
 
 package burlerengine
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync/atomic"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/pattern"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// The agent-name roles of a round's two halves, both specs naming the review segment.
-const (
-	burlerReviewRole = "burler-review"
-	burlerFixRole    = "burler-fix"
-)
+// burlerRolePrefix is the role prefix of the round's two seats; the seats engine forms their strand roles from it.
+const burlerRolePrefix = "burler"
 
-// burlerSkills are the skills both halves of the round load, in order.
+// burlerSkills are the skills both seats of the round load, in order.
 var burlerSkills = []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}
 
-// Engine drives burler rounds through a Shuttle, resolving Profile paths against geom.WorktreeRoot
+// Engine drives burler rounds through a seat engine, resolving Profile paths against geom.WorktreeRoot
 // and Profile.ClusterFan against cfg's lens/fan library.
 type Engine struct {
-	shuttle     Shuttle
+	seats       *seatengine.Engine
 	geom        Geometry
 	cfg         Config
 	stencilsDir string
 	frictionDir string
 }
 
-// New returns an Engine ready to run rounds against shuttle, resolving relative Profile paths
+// New returns an Engine ready to run rounds, resolving relative Profile paths
 // against geom.WorktreeRoot and any Profile.ClusterFan against cfg (the burler.yaml lens/fan
 // library, loaded via LoadConfig).
+// It builds its own seat engine over shuttle, told geom's paths and names and stencilsDir.
 // geom is the told geometry the caller supplies (hubgeom.BurlerGeometry in hub mode).
-// stencilsDir is the absolute stencils directory (see fabricengine.StencilsDir) composePrompt reads
-// burler's round prompts from at call time via stencilstore.Read.
+// stencilsDir is the absolute stencils directory (see fabricengine.StencilsDir) the round's seat stencils and instruction stencils are read from at call time via stencilstore.Read.
 // frictionDir is told rather than derived: burlerengine must not import loomengine, and
 // burlerengine.Geometry is internal/hubgeom's/internal/standalonegeom's to construct under the
 // Told-Geometry Invariant, so an explicit constructor parameter is the remaining told seam. An empty
 // value means Tier 2 is off for this engine.
-func New(shuttle Shuttle, geom Geometry, cfg Config, stencilsDir, frictionDir string) *Engine {
-	return &Engine{shuttle: shuttle, geom: geom, cfg: cfg, stencilsDir: stencilsDir, frictionDir: frictionDir}
+func New(shuttle seatengine.Shuttle, geom Geometry, cfg Config, stencilsDir, frictionDir string) *Engine {
+	seats := seatengine.New(shuttle, seatengine.Geometry{
+		WorktreeRoot: geom.WorktreeRoot,
+		AnchorPath:   geom.AnchorPath,
+		StencilsDir:  stencilsDir,
+		ParentName:   geom.ParentName,
+		Shortname:    geom.Shortname,
+		Slug:         geom.Slug,
+	})
+	return &Engine{seats: seats, geom: geom, cfg: cfg, stencilsDir: stencilsDir, frictionDir: frictionDir}
 }
 
 // Half is one half of a round: the identities, last message and kept run directory a caller needs to act on a non-done outcome further.
@@ -101,33 +105,11 @@ type Result struct {
 	NotStarted bool
 }
 
-// halfSpec is one half's shuttle spec and gate.
-type halfSpec struct {
-	spec shuttleengine.Spec
-	gate shuttleengine.GateSpec
-}
-
-// roundHalves builds both halves' specs and gates for p under opts, the prompts being the already-composed orchestrators.
-// The reviewer declares the review file alone and is gated by the review-parse entry alone;
-// the fixer declares the fixer-report alone and is gated by opts.Gate, every entry wrapped by repairReportBeforeGate.
-func (p *Profile) roundHalves(opts RunOpts, reviewPrompt, fixPrompt string) (review, fix halfSpec) {
-	review = halfSpec{
-		spec: shuttleengine.Spec{
-			Prompt:        reviewPrompt,
-			OutputFiles:   []string{p.ReviewPath},
-			Model:         opts.Review.Model,
-			Effort:        opts.Review.Effort,
-			Version:       opts.Review.Version,
-			Timeout:       opts.Timeout,
-			Role:          burlerReviewRole,
-			Segment:       segmentcolor.Review,
-			Skills:        burlerSkills,
-			Round:         opts.Round,
-			ForkSubagents: p.ClusterFan != "",
-		},
-		gate: shuttleengine.GateSpec{ReviewGateEntry(p.ReviewPath)},
-	}
-
+// roundTable builds the round's seat table for p under opts: the fixer as the chair and the reviewer as the required advisor-1, whose end is judged by accept.
+// The chair reads the review file, writes the fixer-report, never forks, and is gated by opts.Gate, every entry wrapped by repairReportBeforeGate;
+// the reviewer writes the review file alone, is gated by the review-parse entry alone, and may fork exactly when p names a cluster fan.
+// prompts carries the marker values each seat's stencil is filled from.
+func (p *Profile) roundTable(opts RunOpts, prompts roundPrompts, accept func(shuttleengine.Result) error) seatengine.Table {
 	// A fresh copy, so the caller's slice is never mutated;
 	// off entries are wrapped too, since they never run and the wrap is harmless there.
 	fixGate := make(shuttleengine.GateSpec, 0, len(opts.Gate))
@@ -135,41 +117,58 @@ func (p *Profile) roundHalves(opts RunOpts, reviewPrompt, fixPrompt string) (rev
 		entry.Gate = repairReportBeforeGate(entry.Gate, p.FixerReportPath)
 		fixGate = append(fixGate, entry)
 	}
-	fix = halfSpec{
-		spec: shuttleengine.Spec{
-			Prompt:      fixPrompt,
-			OutputFiles: []string{p.FixerReportPath},
-			Model:       opts.Fix.Model,
-			Effort:      opts.Fix.Effort,
-			Version:     opts.Fix.Version,
-			Timeout:     opts.Timeout,
-			Role:        burlerFixRole,
-			Segment:     segmentcolor.Review,
-			Skills:      burlerSkills,
-			Round:       opts.Round,
+	return seatengine.Table{
+		RolePrefix: burlerRolePrefix,
+		Segment:    segmentcolor.Review,
+		Gate:       fixGate,
+		Round:      opts.Round,
+		Timeout:    opts.Timeout,
+		Seats: []seatengine.Seat{
+			{
+				Name:    seatengine.RoleChair,
+				Stencil: "burler-template-fix-orchestrator",
+				Model:   opts.Fix.Model,
+				Effort:  opts.Fix.Effort,
+				Version: opts.Fix.Version,
+				Inputs:  []string{p.ReviewPath},
+				Outputs: []string{p.FixerReportPath},
+				Skills:  burlerSkills,
+				Values:  prompts.FixerValues,
+			},
+			{
+				Name:          seatengine.AdvisorName(1),
+				Stencil:       "burler-template-review-orchestrator",
+				Model:         opts.Review.Model,
+				Effort:        opts.Review.Effort,
+				Version:       opts.Review.Version,
+				Outputs:       []string{p.ReviewPath},
+				Skills:        burlerSkills,
+				Values:        prompts.ReviewerValues,
+				Gate:          shuttleengine.GateSpec{ReviewGateEntry(p.ReviewPath)},
+				ForkSubagents: p.ClusterFan != "",
+				Required:      true,
+				Accept:        accept,
+			},
 		},
-		gate: fixGate,
 	}
-	return review, fix
 }
 
 // Run drives one burler round for p, tuned by opts.
 // Sequence: validate p against the engine's worktree root;
 // resolve opts.NoteID against the engine's friction directory and swallow a friction.Directive error
 // as a Warn, exactly as if Tier 2 were off (see composePrompt's frictionDirective parameter);
-// compose both halves' prompts;
+// compose both seats' marker values and the four instruction files;
 // materialize the four rendered instruction files to a fresh per-round directory under .lyx (via
-// lyxdirs.DotLyxDirName) so the orchestrator prompts can name their absolute paths;
-// remove any stale ready marker, since no caller carries that duty;
-// start the reviewer, then the fixer, through the Shuttle seam, each as an autonomous run (Interactive/Parent/Display/KeepPane stay zero-valued);
-// and join them (see join).
-// Under FixStartAfterReview the fixer starts only after the reviewer ended with an accepted review and the ready marker was written, and the round is decided from the two ends (see decideRound);
-// a reviewer that ends without an accepted review starts no fixer.
+// lyxdirs.DotLyxDirName) so the seat stencils can name their absolute paths;
+// remove any stale ready marker before anything starts, since no caller carries that duty and the fixer starts first;
+// run the round's seat table on the seats engine, the fixer as chair and the reviewer as required advisor-1;
+// and decide the round from the seat result (see decideRound).
 //
-// A half that never starts because its provider never came up is that half's OutcomeDied with NotStarted set and a nil error.
-// StartGated returns only the error there, so the half carries its StartError text and no identity.
-// A reviewer that fails to start leaves the fixer never started; a fixer that fails to start stops the already-started reviewer first.
-// Any other start error is a pre-strand failure and is returned wrapped, with the already-started reviewer stopped first.
+// A seat that never starts because its provider never came up is that half's OutcomeDied with NotStarted set and a nil error.
+// The seats engine returns only the error there, so the half carries its StartError text and no identity.
+// A fixer that fails to start starts no reviewer; a reviewer that fails to start has the fixer stopped by the seats engine.
+// Any other chair start error is a pre-strand failure and is returned wrapped.
+// A seat that cannot be stopped is returned wrapped in ErrHalfNotStopped.
 //
 // Run returns a nil error for every non-done outcome (died/timeout are normal loop events a
 // caller branches on via Result.Outcome, with an empty Verdict) and reserves errors for hard
@@ -177,11 +176,6 @@ func (p *Profile) roundHalves(opts RunOpts, reviewPrompt, fixPrompt string) (rev
 // — deliberately fail-loud — a verdict parse failure on a done review, since a defaulted verdict could
 // silently terminate a caller's round loop on a malformed round.
 func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
-	switch opts.FixStart {
-	case "", FixStartParallel, FixStartAfterReview:
-	default:
-		return Result{}, fmt.Errorf("burler: unknown fix start %q; set it to %q or %q", opts.FixStart, FixStartParallel, FixStartAfterReview)
-	}
 	if err := p.validate(e.geom.WorktreeRoot, e.cfg); err != nil {
 		return Result{}, err
 	}
@@ -217,12 +211,7 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		return Result{}, fmt.Errorf("burler: materialize instruction files: %w", err)
 	}
 
-	prompts, err := composePrompt(e.stencilsDir, e.geom.ParentName, &p, directive, frictionDirective, roundFilePaths{
-		ReviewerExplore: filepath.Join(roundDir, "instruction-1-explore-reviewer.md"),
-		FixerExplore:    filepath.Join(roundDir, "instruction-1-explore-fixer.md"),
-		Review:          filepath.Join(roundDir, "instruction-2-review.md"),
-		Fix:             filepath.Join(roundDir, "instruction-3-fix.md"),
-	})
+	prompts, err := composePrompt(e.stencilsDir, &p, directive, frictionDirective, roundFilesIn(roundDir))
 	if err != nil {
 		return Result{}, err
 	}
@@ -237,61 +226,22 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		return Result{}, fmt.Errorf("burler: remove the stale ready marker %q: %w", p.ReadyMarkerPath, err)
 	}
 
-	reviewSpec, fixSpec := p.roundHalves(opts, prompts.Reviewer, prompts.Fixer)
-
-	reviewHandle, err := e.shuttle.StartGated(reviewSpec.spec, reviewSpec.gate)
-	if err != nil {
-		if errors.Is(err, shuttleengine.ErrNotStarted) {
-			return notStartedResult(&p, err, nil), nil
-		}
-		return Result{}, fmt.Errorf("burler: shuttle run: %w", err)
-	}
-
-	afterReview := opts.FixStart == FixStartAfterReview
-	var reviewEnd reviewerEnd
-	if afterReview {
-		var markerReleased atomic.Bool
-		reviewEnd = awaitReview(&p, reviewHandle, &markerReleased)
-		if !reviewEnd.accepted() {
-			return e.decideRound(&p, opts, reviewHandle, nil, reviewEnd, fixerEnd{}, false, false, nil)
-		}
-	}
-
-	fixHandle, err := e.shuttle.StartGated(fixSpec.spec, fixSpec.gate)
-	if err != nil {
-		if stopErr := e.stopHalf(reviewHandle); stopErr != nil {
-			return Result{}, stopErr
-		}
-		if errors.Is(err, shuttleengine.ErrNotStarted) {
-			return notStartedResult(&p, err, reviewHandle), nil
-		}
-		return Result{}, fmt.Errorf("burler: shuttle run: %w", err)
-	}
-
-	if afterReview {
-		var fixEnd fixerEnd
-		fixEnd.result, fixEnd.err = fixHandle.Wait()
-		return e.decideRound(&p, opts, reviewHandle, fixHandle, reviewEnd, fixEnd, false, false, nil)
-	}
-	return e.join(&p, opts, reviewHandle, fixHandle)
+	acceptance := &roundAcceptance{profile: &p}
+	seats, err := e.seats.Run(p.roundTable(opts, prompts, acceptance.accept))
+	return e.concludeRound(&p, opts, seats, acceptance, err)
 }
 
 // notStartedResult is the round's result when a half's provider never came up: OutcomeDied with NotStarted set.
-// With a non-nil reviewHandle the fixer is the half that never started and the reviewer's started identity is kept; otherwise the reviewer never started.
-func notStartedResult(p *Profile, startErr error, reviewHandle Handle) Result {
-	result := Result{
+// review and fix are the two halves as they stand, the one that never started carrying its StartError.
+func notStartedResult(p *Profile, review, fix Half) Result {
+	return Result{
 		Outcome:         shuttleengine.OutcomeDied,
 		ReviewPath:      p.ReviewPath,
 		FixerReportPath: p.FixerReportPath,
+		Review:          review,
+		Fix:             fix,
 		NotStarted:      true,
 	}
-	if reviewHandle == nil {
-		result.Review.StartError = startErr.Error()
-		return result
-	}
-	result.Review = Half{StrandGUID: reviewHandle.StrandGUID(), RunDir: reviewHandle.RunDir()}
-	result.Fix.StartError = startErr.Error()
-	return result
 }
 
 // repairReportBeforeGate wraps told, a round's own gate closure, in a per-round closure that additionally instructs the fixer to rewrite fixerReportPath when the gate fails.
@@ -305,7 +255,7 @@ func notStartedResult(p *Profile, startErr error, reviewHandle Handle) Result {
 // On a failing result it appends to GateResult.Findings a blank line and an instruction naming fixerReportPath, requiring it to be rewritten to reflect the repair the agent is about to make.
 // The instruction rides the findings FILE and never the Send line, which must stay a single line — see the "findings always ride a file" decision.
 //
-// It is composed in roundHalves, rather than in the closure the caller built, because only the round's profile knows its own fixer-report path.
+// It is composed in roundTable, rather than in the closure the caller built, because only the round's profile knows its own fixer-report path.
 func repairReportBeforeGate(told shuttleengine.Gate, fixerReportPath string) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
 		result, err := told()

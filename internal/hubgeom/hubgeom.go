@@ -113,11 +113,29 @@ func reedGeometry(l *lyxcwd.Location, prime bool) reedengine.Geometry {
 // RepoRoot is l.WorktreePath(), the directory holding PATTERN.md,
 // which the anchor path is not in a subpath-anchored hub.
 // ParentName is what ResolveParent returns; an unresolvable parent logs a warning and leaves it empty, as reedGeometry does.
-func BurlerGeometry(l *lyxcwd.Location) burlerengine.Geometry {
+// Shortname and Slug are told exactly as ReedGeometry tells NameShortname and NameSlug, so the names formed from them match the names reed gives the strands.
+// Failing to tell the prime from a task worktree is the one error, as for ReedGeometry.
+func BurlerGeometry(l *lyxcwd.Location) (burlerengine.Geometry, error) {
+	prime, err := isPrimeWorktree(l.WorktreePath())
+	if err != nil {
+		return burlerengine.Geometry{}, err
+	}
+	return burlerGeometry(l, prime), nil
+}
+
+// burlerGeometry is BurlerGeometry once the prime is told from a task worktree, split out so the unit test can tell either without a .git entry.
+func burlerGeometry(l *lyxcwd.Location, prime bool) burlerengine.Geometry {
+	shortname, _ := fabricengine.ReadShortname(fabricengine.BoardDir(l.HubPath))
+	var slug string
+	if !prime {
+		slug = l.WorktreeName
+	}
 	return burlerengine.Geometry{
 		WorktreeRoot: l.AnchorPath(),
 		AnchorPath:   l.AnchorPath(),
 		RepoRoot:     l.WorktreePath(),
 		ParentName:   parentNameOrEmpty(l, "burler prompts"),
+		Shortname:    shortname,
+		Slug:         slug,
 	}
 }
