@@ -203,6 +203,8 @@
 // Every completed round, solo and fanned, also leaves round-<N>-usage.yaml beside them:
 // the fan and lenses the round ran, and each half's model, run times, wall time and tokens, forks included, with an unknown reading left unknown rather than zero.
 // The record also carries the Bouncer's `seed` and `judge` lists, one entry per pass in the same half shape.
+// The Bouncer appends an entry for every pass whose result reached the Call, a judgment the guard refuses included, so a re-judged round lists every pass it took;
+// a pass whose run errored, and a judgment a later Call settles from disk, record nothing, and a failed write only logs a warning.
 // Every writer merges into the record on write, and a record that does not decode is archived aside and replaced by one holding only the writer's part.
 // A record without a review half reads as missing for the lens facts and the lens exclusions, since only the Bouncer has written to it.
 // A gate-failed round is archived and writes none, and a failed write is a warning that never changes the round's outcome.

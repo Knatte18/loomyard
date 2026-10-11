@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 
 	"gopkg.in/yaml.v3"
 )
@@ -95,6 +96,12 @@ func newHalfUsage(model burlerengine.ModelChoice, half burlerengine.Half) halfUs
 		record.CacheReadTokens = &half.Usage.CacheRead
 	}
 	return record
+}
+
+// newPassUsage builds the entry of one Bouncer pass from the model it ran on and the shuttle result's run times and token reading.
+// The fork fields stay unset.
+func newPassUsage(model burlerengine.ModelChoice, result shuttleengine.Result) halfUsage {
+	return newHalfUsage(model, burlerengine.Half{StartedAt: result.StartedAt, EndedAt: result.EndedAt, Usage: result.Usage})
 }
 
 // writeRoundUsage renders u as round's usage record under runDir.
