@@ -209,6 +209,7 @@
 // PasteSubmit is the pane-write transport op: one tmux invocation fills a fresh named buffer (`lyx-inject-` plus 8 hex characters) with the text, pastes it as a bracketed paste, deletes the buffer, and, when asked, sends Enter behind it.
 // The paste and the Enter reach the pane in one command list, so nothing the operator types lands between them, and the operator's automatic paste-buffer stack is never touched.
 // A text longer than tmux's message limit fails the whole invocation and pastes nothing; every text lyx injects is one short line.
+// A failed invocation stops before the paste's own delete, so a best-effort `delete-buffer` of its own removes the buffer.
 // OperatorActive is the operator-activity query: it lists the session's attached clients with their active pane and last-activity epoch second, and answers whether any client is on the strand's pane with activity within the quiet window, plus that window.
 // The window is the reed.yaml key `operator_quiet_s` (seconds, default 5; a zero or negative value takes the default, as does a materialized reed.yaml lacking the key until `lyx config reconcile` writes it).
 // No attached client, or clients on other panes only, answer not active, and a failed listing is returned as the error for the caller to decide on.

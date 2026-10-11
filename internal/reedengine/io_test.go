@@ -10,6 +10,7 @@
 package reedengine
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -105,18 +106,21 @@ func TestPasteSubmitArgv(t *testing.T) {
 	}
 }
 
-// TestPasteSubmit pins that a write is one tmux invocation with no send-keys -l, and that an unresolvable strand fails before any invocation.
+// TestPasteSubmit pins that a write is one tmux invocation with no send-keys -l, that an unresolvable strand fails before any invocation, and that a failed invocation deletes its named buffer.
 func TestPasteSubmit(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		guid    string
-		wantErr string
+		name string
+		guid string
+		// pasteErr is what the paste invocation fails with, nil for success.
+		pasteErr error
+		wantErr  string
 	}{
 		{name: "a live strand is pasted in one invocation", guid: "a"},
 		{name: "an unknown strand fails before any invocation", guid: "missing", wantErr: `unknown strand "missing"`},
 		{name: "a hidden strand fails before any invocation", guid: "hidden", wantErr: "is hidden"},
+		{name: "a failed paste deletes its buffer", guid: "a", pasteErr: errors.New("can't find pane: %7"), wantErr: "paste text: can't find pane: %7"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -131,9 +135,25 @@ func TestPasteSubmit(t *testing.T) {
 			if err := SaveState(e.stateDir(), st); err != nil {
 				t.Fatalf("SaveState: %v", err)
 			}
+			if tt.pasteErr != nil {
+				fake.answer("set-buffer", "", tt.pasteErr)
+			}
 
 			err := e.PasteSubmit(tt.guid, "hello", true)
 			pastes := fake.ArgvFor("set-buffer")
+			deletes := fake.ArgvFor("delete-buffer")
+			if tt.pasteErr != nil {
+				if err == nil || err.Error() != tt.wantErr {
+					t.Fatalf("PasteSubmit error = %v; want %q", err, tt.wantErr)
+				}
+				if len(pastes) != 1 || len(deletes) != 1 || !reflect.DeepEqual(deletes[0], []string{"delete-buffer", "-b", pastes[0][2]}) {
+					t.Errorf("delete-buffer calls = %v after paste %v; want one deleting the paste's buffer", deletes, pastes)
+				}
+				return
+			}
+			if len(deletes) != 0 {
+				t.Errorf("delete-buffer calls = %v; want none, the paste deletes its own buffer", deletes)
+			}
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("PasteSubmit error = %v; want it to contain %q", err, tt.wantErr)

@@ -141,12 +141,14 @@ func (e *Engine) PasteSubmit(guid, text string, submit bool) error {
 
 // pasteSubmitLocked pastes text into paneID through a fresh named tmux buffer, so the operator's automatic paste-buffer stack is untouched.
 // The caller holds the op lock and has resolved paneID.
+// A failed invocation stops before the paste's own delete, so the buffer is then deleted by a best-effort command of its own, whose error is dropped.
 func (e *Engine) pasteSubmitLocked(paneID, text string, submit bool) error {
 	buffer, err := injectBufferName()
 	if err != nil {
 		return err
 	}
 	if err := e.tmux.run(pasteSubmitArgv(paneID, buffer, text, submit)...); err != nil {
+		_ = e.tmux.run("delete-buffer", "-b", buffer)
 		return fmt.Errorf("paste text: %w", err)
 	}
 	return nil
