@@ -95,6 +95,11 @@ var LoomTemplateParentReviewDelivery []byte
 //go:embed loom/loom-template-parent-review-brief.md
 var LoomTemplateParentReviewBrief []byte
 
+// LoomTemplateParentReviewKeepalive is the one-line prompt that keeps the live Discussion-Write session's prompt cache warm while the parent's review is pending.
+//
+//go:embed loom/loom-template-parent-review-keepalive.md
+var LoomTemplateParentReviewKeepalive []byte
+
 // BurlerTemplateReviewOrchestrator is burler's shipped-default reviewer seat stencil, the required advisor of a round's seat table.
 //
 //go:embed burler/burler-template-review-orchestrator.md
@@ -392,6 +397,7 @@ var entries = []registryEntry{
 	{"loom-template-prior-plan", &LoomTemplatePriorPlan},
 	{"loom-template-parent-review-delivery", &LoomTemplateParentReviewDelivery},
 	{"loom-template-parent-review-brief", &LoomTemplateParentReviewBrief},
+	{"loom-template-parent-review-keepalive", &LoomTemplateParentReviewKeepalive},
 	{"burler-template-review-orchestrator", &BurlerTemplateReviewOrchestrator},
 	{"burler-template-fix-orchestrator", &BurlerTemplateFixOrchestrator},
 	{"burler-step-1-explore", &BurlerStep1Explore},
