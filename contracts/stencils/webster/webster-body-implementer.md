@@ -15,6 +15,12 @@ content you merely inherited is not.
 This is the immediately preceding batch's own persisted digest, rendered as a fixed one-line summary by `begin-batch` — the literal string `none (first batch)` when you are the first executed batch's fork.
 It is Go-rendered from the persisted record, never something you need to go derive yourself.
 
+## Where and how you run commands
+
+Your session's working directory already is the worktree root, `{{.worktree_root}}`: run every Bash command from there, give the paths in Bash commands worktree-relative, and follow the gate rule in your system prompt for `cd` and for quick checks.
+Paths you pass to the Read, Write and Edit tools stay absolute.
+You never run a Bash call in the background: every card gate step, every card `verify:` line and the batch gate runs as a foreground Bash call under the gate rule, and you end your turn only after writing the report.
+
 ## Your cards — implement each in declared order, build+test+verify+commit per card
 
 {{.card_pointers}}
@@ -27,20 +33,19 @@ For EACH card file listed above, in the order listed:
 2. A card names its targets under its own type label(s) and what it reads under `**Uses:**`; see `{{.specs_dir}}/loom/loom-plan-spec.md` for the full grammar. Make exactly the changes the card describes, in exactly the targets its type labels name.
    Locate them with one `lyx quarry resolve <glyph>...` call over the card's target and `Uses:` glyphs: each answer gives the member's `file` and its `start` and `end` lines, so read those spans instead of grepping for them or reading whole files.
    A `plan:` handle names a member the card creates and does not resolve yet.
-3. Run each step of the card's gate from the list below, in order, from `{{.worktree_root}}`.
-   Each step runs as its own Bash call with `run_in_background`, and you wait for its exit, so neither a slot wait nor the run is killed by the Bash tool's timeout.
+3. Run each step of the card's gate from the list below, in order, each as its own foreground Bash call under the gate rule in your system prompt.
    A failure here is the card's own gate — fix it before moving on;
    this gate is implicit in every card, never optional.
 
 {{.card_gates}}
 
-4. Commit the card to the repo — normal dev git, run from `{{.worktree_root}}` — never any `_lyx` path.
+4. Commit the card to the repo — normal dev git, run from your working directory — never any `_lyx` path.
    One commit per card is the norm.
    The commit subject is `N: <name>` — the card's own number and heading name (e.g. `1: alpha`) — unless the card FILE carries a `**Commit:**` line, which pins the exact subject to use verbatim.
    This subject shape is the plan's resume trail: a fresh session reads from `git log` exactly which card was reached.
    You never call the Agent tool yourself (no nested forks — this is banned),
    and you are never passed a name of your own when spawned.
-5. If the card declares its own `verify:` line, run it immediately after committing that card, each line of it as its own Bash call with `run_in_background`, waited for.
+5. If the card declares its own `verify:` line, run it immediately after committing that card, each line of it as its own foreground Bash call under the gate rule.
    A non-zero exit fails the card exactly like the gate in step 3 — there is no separate "deferred verify" concept;
    every card's gate (the steps above, plus its own `verify:` when it declares one) is checked right after that card's own commit, never bundled into a later card.
 
@@ -60,7 +65,7 @@ The sandbox ban covers mutating `lyx fabric` verbs only.
 
 {{.batch_gate}}
 
-After the last card's commit and that card's own `verify:`, and before writing the report, run the batch gate once, each step as its own Bash call with `run_in_background`, waited for.
+After the last card's commit and that card's own `verify:`, and before writing the report, run the batch gate once, each step as its own foreground Bash call under the gate rule.
 A failure counts as a gate failure under the self-fix bound below and makes the report `FAILED` once the bound runs out.
 
 ## Slot-busy exits and raw `go` runs
