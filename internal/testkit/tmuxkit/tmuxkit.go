@@ -7,6 +7,7 @@
 // Socket, KillOnCleanup and PackageServer each first start a hermetic server on the key from the kit's own tmux config, so no server a test uses reads `~/.tmux.conf`, starts login-shell panes or exits when it has no session.
 // The config marks its servers with the user option `@lyx_test_server`, which reed's stale-holder probe reads to leave such a server alone.
 // A server reed starts itself reads no `~/.tmux.conf` either and pins the same two shell options per session, so the kit's server differs from reed's own only by the two extra lines, `exit-empty off` and the marker.
+// Main also unsets `LYX_REED_TMUX_CONF`, so every reed.yaml a tagged test renders from the template resolves `tmux_conf` to empty and no operator tmux config reaches a server a test starts.
 // Reed starts a server itself only after a test's own `down` or `kill-server` on its key, or when a test registers its key after reed's boot.
 //
 // Main also points `TMPDIR` at that directory, so every temp file a test creates lands there, and after the run it sweeps the servers, killing every process their panes' sessions still hold, scans `/proc` on Linux for any process whose cwd, executable or argv references the directory, kills it and fails the package, then removes the directory.
@@ -441,7 +442,7 @@ func kitBase() string {
 	return ""
 }
 
-// setEnv points tmux and every temporary file at dir and detaches the process from any enclosing tmux session.
+// setEnv points tmux and every temporary file at dir, detaches the process from any enclosing tmux session, and clears the variable that names an operator tmux config for reed.
 func setEnv(dir string) {
 	os.Setenv("TMUX_TMPDIR", dir)
 	os.Setenv("TMPDIR", dir)
@@ -451,6 +452,7 @@ func setEnv(dir string) {
 	}
 	os.Unsetenv("TMUX")
 	os.Unsetenv("TMUX_PANE")
+	os.Unsetenv("LYX_REED_TMUX_CONF")
 }
 
 // listSockets returns the socket files under dir's per-user socket directory, and nothing outside it.

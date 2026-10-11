@@ -288,13 +288,14 @@ func TestChildSeedFor_CarriesRecipeDriverAndParams(t *testing.T) {
 }
 
 // TestChildSpawnError asserts a child bootstrap's exit status is turned into a diagnosis: a non-zero exit carries the child's own output, a silent child passes the run error through, a nil run error stays nil, and over-long output is truncated with an explicit marker, on a valid UTF-8 boundary even when a multi-byte rune straddles it -- a naive byte slice at maxChildOutputInError can land mid-rune and embed an invalid tail.
-// Only the start refusal of kind shedrun.StartNotParkedKind reaches InnerRun as battenshed.ErrChildNotParked, wherever it sits in the output.
+// Only the start refusal of kind shedrun.StartNotParkedKind reaches InnerRun as battenshed.ErrChildNotParked, and only one of kind shedrun.StartDriverBusyKind as battenshed.ErrChildDriverBusy, wherever it sits in the output.
 func TestChildSpawnError(t *testing.T) {
 	t.Parallel()
 
 	runErr := errors.New("exit status 1")
 	longOutput := strings.Repeat("x", maxChildOutputInError+50)
 	notParkedLine := `{"error":"loom: the driver has not parked yet","kind":"` + shedrun.StartNotParkedKind + `","ok":false}`
+	driverBusyLine := `{"error":"loom: the input box holds a draft","kind":"` + shedrun.StartDriverBusyKind + `","ok":false}`
 
 	tests := []struct {
 		name          string
@@ -302,8 +303,22 @@ func TestChildSpawnError(t *testing.T) {
 		childOutput   string
 		wantNil       bool
 		wantNotParked bool
+		wantBusy      bool
 		wantSubstr    []string
 	}{
+		{
+			name:        "driver_busy_refusal_wraps_its_own_sentinel_and_not_the_not_parked_one",
+			runErr:      runErr,
+			childOutput: driverBusyLine,
+			wantBusy:    true,
+			wantSubstr:  []string{"exit status 1", "holds a draft"},
+		},
+		{
+			name:        "a_busy_kind_on_a_success_envelope_wraps_neither",
+			runErr:      runErr,
+			childOutput: `{"kind":"` + shedrun.StartDriverBusyKind + `","ok":true}`,
+			wantSubstr:  []string{"exit status 1"},
+		},
 		{
 			name:        "nil_run_error_stays_nil",
 			runErr:      nil,
@@ -387,6 +402,9 @@ func TestChildSpawnError(t *testing.T) {
 			}
 			if errors.Is(got, battenshed.ErrChildNotParked) != tt.wantNotParked {
 				t.Errorf("childSpawnError(...) = %v; errors.Is(ErrChildNotParked) = %v, want %v", got, !tt.wantNotParked, tt.wantNotParked)
+			}
+			if errors.Is(got, battenshed.ErrChildDriverBusy) != tt.wantBusy {
+				t.Errorf("childSpawnError(...) = %v; errors.Is(ErrChildDriverBusy) = %v, want %v", got, !tt.wantBusy, tt.wantBusy)
 			}
 			for _, want := range tt.wantSubstr {
 				if !strings.Contains(got.Error(), want) {

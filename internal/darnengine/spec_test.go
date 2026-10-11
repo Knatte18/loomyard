@@ -68,7 +68,7 @@ func TestDarnSpec(t *testing.T) {
 				in.FrictionDir = t.TempDir()
 			},
 			wantInPrompt: func(in DarnInputs) []string {
-				return []string{"the cache is never invalidated", "the verify gate failed on TestCache", "the-parent", filepath.Join(in.FrictionDir, "Darn.md")}
+				return []string{"the cache is never invalidated", "the verify gate failed on TestCache", "the-parent", filepath.Join(in.FrictionDir, "Darn-Write.md")}
 			},
 		},
 	}

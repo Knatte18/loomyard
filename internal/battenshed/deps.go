@@ -37,6 +37,10 @@ var ErrDisagreeingChildSeed = errors.New("battenshed: task worktree already seed
 // InnerRun treats it as a retryable wait on the approval-resume path: it records nothing and spawns again, at most once per notice probe, until the driver parks or the child's state changes.
 var ErrChildNotParked = errors.New("battenshed: the task worktree's driver has not parked yet")
 
+// ErrChildDriverBusy is the sentinel an InnerRunDeps.Spawn closure wraps when the child's bootstrap refused because its parked driver's pane holds a draft, an active operator or another busy reading, so the resume line was not typed.
+// InnerRun treats it as ErrChildNotParked is treated: a retryable wait on the approval-resume path that records nothing and spawns again, at most once per notice probe, and it queues one orch notice per stall.
+var ErrChildDriverBusy = errors.New("battenshed: the task worktree's driver pane is busy")
+
 // PrimeLock carries the told absolute path to a hub-scoped advisory lock plus the injected
 // acquire closure both WorktreeCreate and WorktreeTeardown hold it behind, so the two producers
 // that mutate the hub's worktree registry concurrently with each other never race.
@@ -95,6 +99,7 @@ type InnerRunDeps struct {
 	// spawned again.
 	//
 	// A bootstrap refused because the child's live driver has not parked yet returns an error wrapping ErrChildNotParked.
+	// One refused because the parked driver's pane is busy returns an error wrapping ErrChildDriverBusy.
 	Spawn func(ctx context.Context) error
 	// ResolveStatus resolves the absolute status-file path and its companion lock path for the
 	// task worktree. It is evaluated on Call, never at wiring time: the task worktree this status

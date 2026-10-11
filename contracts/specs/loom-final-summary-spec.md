@@ -6,7 +6,7 @@
 ## What it is
 
 The final-summary artifact is the prose final-summary a run's last content-producing step writes: a first non-blank line `# <title>`, then free-form prose describing the change.
-Today that step is loom's `Describe` row, which writes `_lyx/landing/summary.md`; its body is a change description — what the change does and why, for a PR reviewer — rather than a run narrative.
+Today that step is the `Describe` row of the loom and darn recipes, or the darn writer when the darn review is off, which writes `_lyx/landing/summary.md`; its body is a change description — what the change does and why, for a PR reviewer — rather than a run narrative.
 The contract names no producer — a future last-content-producing step (e.g. Tenter) can satisfy it too.
 
 ## Format and validation
@@ -36,7 +36,7 @@ The artifact has two consumers today, both in `internal/landingshed`:
 - **`Finalize`** uses `LandingMessage` — the title, a blank line, the body with its leading whitespace trimmed, then exactly one `Co-Authored-By` trailer carrying `landing.yaml`'s `co_authored_by` — as the landing merge commit's message.
 
 `Finalize`'s read is unconditional: a missing or malformed artifact there is a hard error.
-`Publish`'s read is reached only when the parent branch requires a pull request and no pull request already exists.
+`Publish`'s read is reached only when the parent branch requires a pull request: it opens one from the artifact, or refreshes an open one's title and body, so a re-run Publish carries a rewritten description onto the pull request.
 
 ## Producer-appended sections
 

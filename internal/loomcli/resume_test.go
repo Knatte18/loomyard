@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -179,8 +180,11 @@ func TestResumeVerb(t *testing.T) {
 		wantKind string
 		// wantIn holds substrings of the envelope's message or error.
 		wantIn []string
-		// wantSent is whether the resume line was typed.
+		// wantSent is whether the resume line was typed and the driver woken.
 		wantSent bool
+		// sendErr makes every send fail;
+		// the line is then attempted but never lands.
+		sendErr error
 	}{
 		{name: "no status file", wantIn: []string{`"lyx loom start"`, "task worktree"}},
 		{name: "done is a no-op success", runState: shedengine.StateDone, directory: noDriver, wantOK: true, wantIn: []string{"done"}},
@@ -198,6 +202,7 @@ func TestResumeVerb(t *testing.T) {
 		{name: "halted live driver without a marker is refused", runState: shedengine.StatePaused, directory: liveDriver, wantKind: shedrun.StartNotParkedKind, wantIn: []string{"has not parked yet", "`lyx loom resume`"}},
 		{name: "halted live driver without a marker is not probed for a merge", runState: shedengine.StateFailed, directory: liveDriver, merge: mergeParked, wantKind: shedrun.StartNotParkedKind, wantIn: []string{"has not parked yet"}},
 		{name: "blocked parked driver is woken", runState: shedengine.StateBlocked, directory: liveDriver, marker: true, wantOK: true, wantSent: true, wantIn: []string{"woken"}},
+		{name: "parked driver whose pane holds a draft is refused as busy", runState: shedengine.StateBlocked, directory: liveDriver, marker: true, sendErr: fmt.Errorf("the input box holds a draft: %w", shuttleengine.ErrSessionBusy), wantKind: shedrun.StartDriverBusyKind, wantIn: []string{"draft", `"lyx loom resume" again`, "lyx batten run <slug>"}},
 		{name: "paused parked driver is woken", runState: shedengine.StatePaused, directory: liveDriver, marker: true, wantOK: true, wantSent: true, wantIn: []string{"woken"}},
 		{name: "failed parked driver is woken", runState: shedengine.StateFailed, directory: liveDriver, marker: true, wantOK: true, wantSent: true, wantIn: []string{"woken"}},
 		{name: "parked driver over an unfinished merge is refused", runState: shedengine.StateBlocked, directory: liveDriver, marker: true, merge: mergeParked, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{`"lyx loom resume"`, "lyx fabric merge"}},
@@ -212,7 +217,7 @@ func TestResumeVerb(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sender := &fakeDriverSender{}
+			sender := &fakeDriverSender{repeatErr: tt.sendErr}
 			c, starter, probe := newResumeVerbReceiver(t, sender, tt.directory)
 			c.midMerge = func(*lyxcwd.Location) (fabricengine.MidMergeState, error) { return tt.merge, nil }
 			c.recordedParentBranch = parentBranchSeam(nil)
@@ -267,7 +272,7 @@ func TestResumeVerb(t *testing.T) {
 			if starter.called || probe.removeCalled {
 				t.Errorf("the verb spawned (%v) or removed (%v) a strand", starter.called, probe.removeCalled)
 			}
-			if sent := len(sender.texts) > 0; sent != tt.wantSent {
+			if sent := len(sender.texts) > 0; sent != (tt.wantSent || tt.sendErr != nil) {
 				t.Errorf("resume line typed = %v, want %v", sent, tt.wantSent)
 			}
 			if tt.wantSent {

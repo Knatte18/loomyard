@@ -12,6 +12,7 @@ package reedengine
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -207,7 +208,7 @@ func (e *Engine) classifyRecordedSessionLocked(recorded PaneGeneration) (recorde
 		return recordedSessionAbsent, nil
 	}
 
-	listed, err := e.tmux.output("list-sessions", "-F", "#{session_name}")
+	listed, err := e.tmux.output(listSessionsArgv(runtime.GOOS, "#{session_name}")...)
 	if err != nil || !sessionNameListed(listed, recorded.SessionName) {
 		return recordedSessionAbsent, nil
 	}

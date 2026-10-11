@@ -347,7 +347,7 @@ const maxChildOutputInError = 2000
 // carries the child's diagnosis rather than only its exit status.
 // It returns nil for a nil runErr, runErr unchanged when the child said nothing, and truncates
 // output past maxChildOutputInError with an explicit marker.
-// An output carrying the not-parked refusal (childNotParked) also wraps battenshed.ErrChildNotParked, so InnerRun retries rather than failing.
+// An output carrying the not-parked refusal (kind shedrun.StartNotParkedKind) also wraps battenshed.ErrChildNotParked, and one carrying the busy-pane refusal (kind shedrun.StartDriverBusyKind) also wraps battenshed.ErrChildDriverBusy, so InnerRun retries rather than failing.
 //
 // The byte slice lands on a rune boundary only by chance, so strings.ToValidUTF8 drops any partial
 // rune it leaves dangling at the cut point rather than embedding invalid UTF-8 into the error text.
@@ -359,19 +359,22 @@ func childSpawnError(runErr error, childOutput string) error {
 	if trimmed == "" {
 		return runErr
 	}
-	notParked := childNotParked(trimmed)
+	kind := childRefusalKind(trimmed)
 	if len(trimmed) > maxChildOutputInError {
 		trimmed = strings.ToValidUTF8(trimmed[:maxChildOutputInError], "") + " ... (truncated)"
 	}
-	if notParked {
+	switch kind {
+	case shedrun.StartNotParkedKind:
 		return fmt.Errorf("%w: %w: %s", battenshed.ErrChildNotParked, runErr, trimmed)
+	case shedrun.StartDriverBusyKind:
+		return fmt.Errorf("%w: %w: %s", battenshed.ErrChildDriverBusy, runErr, trimmed)
 	}
 	return fmt.Errorf("%w: %s", runErr, trimmed)
 }
 
-// childNotParked reports whether a child bootstrap's output carries the refusal envelope whose "kind" is shedrun.StartNotParkedKind.
+// childRefusalKind returns the "kind" of the first line of a child bootstrap's output that is a refusal envelope carrying one, or "" when none is.
 // Each output line is tried as an envelope, since the child's stdout and stderr share one buffer.
-func childNotParked(childOutput string) bool {
+func childRefusalKind(childOutput string) string {
 	for line := range strings.Lines(childOutput) {
 		var envelope struct {
 			OK   bool   `json:"ok"`
@@ -380,11 +383,11 @@ func childNotParked(childOutput string) bool {
 		if json.Unmarshal([]byte(line), &envelope) != nil {
 			continue
 		}
-		if !envelope.OK && envelope.Kind == shedrun.StartNotParkedKind {
-			return true
+		if !envelope.OK && envelope.Kind != "" {
+			return envelope.Kind
 		}
 	}
-	return false
+	return ""
 }
 
 // childRecipeSupported reports whether recipe is one a task worktree's bootstrap verb can run as the child's own run:

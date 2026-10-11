@@ -1142,6 +1142,14 @@ var (
 	_ SessionSignalParser = (*startSendEngine)(nil)
 )
 
+// startPasteEngine is a startSendEngine that takes pastes, whose Enter submits them.
+type startPasteEngine struct {
+	*startSendEngine
+}
+
+func (e *startPasteEngine) PasteSubmits() bool                   { return true }
+func (e *startPasteEngine) OwnPastePlaceholder(_, _ string) bool { return false }
+
 // brokenRunRecordReed is a skillReed that, once a load turn is typed, replaces run.json with a non-empty directory so the next save of the record fails.
 type brokenRunRecordReed struct {
 	*skillReed
@@ -1181,20 +1189,27 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 		breakRecord bool
 		// startOnWindowClose appends a turn start once the submit window has closed.
 		startOnWindowClose bool
-		wantIs             []error
-		wantStarted        bool
+		// active scripts the operator-activity answers of the fake reed.
+		active []bool
+		// paste gives the engine the paste path.
+		paste       bool
+		wantIs      []error
+		wantStarted bool
 		// wantDiedRecord is false when the record itself is made unwritable.
 		wantDiedRecord bool
 	}{
 		{name: "a skill-load send that stays busy", skill: true, idle: false, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
 		{name: "a prompt delivery that does not land", idle: true, box: prompt, wantIs: []error{ErrNotStarted, ErrSubmissionNotLanded}, wantDiedRecord: true},
+		{name: "a skill load held past the send window by an active operator", skill: true, idle: true, active: []bool{true}, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
+		{name: "a prompt delivery held past the send window by an active operator", idle: true, active: []bool{true}, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
+		{name: "a prompt delivery that finds a foreign box", idle: true, box: "somebody else's draft", paste: true, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
 		{name: "a prompt-offset persist that fails", skill: true, idle: true, breakRecord: true, wantIs: []error{ErrNotStarted}},
 		{name: "an unlanded prompt followed by a turn start landed late", idle: true, box: prompt, startOnWindowClose: true, wantStarted: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			base := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}, StatusQueue: liveStrandStatus(true)}
+			base := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}, StatusQueue: liveStrandStatus(true), ActiveQueue: tt.active}
 			engine := &startSendEngine{
 				skillFakeEngine: &skillFakeEngine{
 					fakeEngine: &fakeEngine{
@@ -1213,7 +1228,11 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 				reed = &brokenRunRecordReed{skillReed: skills}
 			}
 			clock := newFakeClock(time.Now())
-			fx := newFixture(t, reed, engine, withConfig(fastConfig), withClock(clock))
+			var runEngine Engine = engine
+			if tt.paste {
+				runEngine = &startPasteEngine{engine}
+			}
+			fx := newFixture(t, reed, runEngine, withConfig(fastConfig), withClock(clock))
 			skills.EventsPath = func() string { return filepath.Join(soleStartupRunDir(t, fastConfig, fx.Anchor), eventsFileName) }
 			if tt.startOnWindowClose {
 				start := clock.Now()

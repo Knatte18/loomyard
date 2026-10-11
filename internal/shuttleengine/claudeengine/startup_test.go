@@ -367,12 +367,11 @@ func TestComposeSend(t *testing.T) {
 	tests := []struct {
 		name         string
 		engine       *Claude
-		settle       int
 		redrawSettle time.Duration
 	}{
-		{"default settle", New(), defaultSubmitSettleMS, 300 * time.Millisecond},
-		{"configured settle", NewFromConfig(shuttleengine.Config{SubmitSettleMS: 120, SubmitRedrawSettleMS: 80}), 120, 80 * time.Millisecond},
-		{"zero redraw settle reads at once", NewFromConfig(shuttleengine.Config{SubmitSettleMS: 120}), 120, 0},
+		{"default settle", New(), 300 * time.Millisecond},
+		{"configured settle", NewFromConfig(shuttleengine.Config{SubmitSettleMS: 120, SubmitRedrawSettleMS: 80}), 80 * time.Millisecond},
+		{"zero redraw settle reads at once", NewFromConfig(shuttleengine.Config{SubmitSettleMS: 120}), 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -384,8 +383,7 @@ func TestComposeSend(t *testing.T) {
 
 			got := tt.engine.ComposeSend("hello")
 			want := []shuttleengine.PaneInput{
-				{Key: "Escape", SettleMS: composeSendSettleMS},
-				{Text: "hello", SettleMS: tt.settle},
+				{Text: "hello"},
 				{Key: "Enter"},
 			}
 			if len(got) != len(want) {
@@ -397,11 +395,8 @@ func TestComposeSend(t *testing.T) {
 				}
 			}
 
-			// TypeSequence is the same choreography without its Enter step and without the text's paced settle.
-			wantTyped := []shuttleengine.PaneInput{
-				{Key: "Escape", SettleMS: composeSendSettleMS},
-				{Text: "hello"},
-			}
+			// TypeSequence is the text step alone.
+			wantTyped := []shuttleengine.PaneInput{{Text: "hello"}}
 			typed := tt.engine.TypeSequence("hello")
 			if len(typed) != len(wantTyped) {
 				t.Fatalf("TypeSequence(%q) = %+v; want %+v", "hello", typed, wantTyped)
