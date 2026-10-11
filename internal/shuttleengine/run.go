@@ -231,6 +231,9 @@ type Result struct {
 	// it is false on every other return, including a died or timeout outcome reached in Wait.
 	// RunGated folds that branch into (result, nil), so this field is how a caller tells a never-ready start from an agent that died mid-run.
 	NotStarted bool
+	// StartError is the text of the error start returned on RunGated's not-started branch, which names the cause and ends with the pane's last lines;
+	// it is empty on every other return.
+	StartError string
 	// EndedShells holds each background shell outstanding when the run ended, whatever ended it, in the order its turn end listed them.
 	EndedShells []EndedShell
 	// StartedAt is the run's creation time from its state, zero when the record's time does not parse.
@@ -741,12 +744,14 @@ func (r *Runner) Run(spec Spec) (Result, error) {
 // contract that the burler round producer's one-retry ladder depends on
 // (TestBurlerProducer_Call_DiedThenDoneSucceedsWithRetry), so a caller that already branches on
 // Result.Outcome sees the same shape whether the run died at startup or later in Wait's own loop.
+// The folded result carries the start error's text in StartError, so the cause is not lost with the error.
 // Any other non-nil err (a pre-strand failure from start itself) is
 // returned unchanged, alongside whatever identity result carries.
 func (r *Runner) RunGated(spec Spec, gate GateSpec) (Result, error) {
 	run, result, err := r.start(spec, gate)
 	if errors.Is(err, ErrNotStarted) {
 		result.NotStarted = true
+		result.StartError = err.Error()
 		return result, nil
 	}
 	if err != nil {

@@ -631,6 +631,7 @@ func TestStartup_RunGatedMappings(t *testing.T) {
 		script         []StartupState
 		wantOutcome    Outcome
 		wantNotStarted bool
+		wantStartError bool
 	}{
 		{
 			name: "not-ready start is a died result with a nil error",
@@ -641,12 +642,23 @@ func TestStartup_RunGatedMappings(t *testing.T) {
 			script:         []StartupState{StartupPending},
 			wantOutcome:    OutcomeDied,
 			wantNotStarted: true,
+			wantStartError: true,
 		},
 		{
 			name:           "status-cap exit is a died not-started result with a nil error",
 			status:         []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "someone-elses-strand", Live: true}}}},
 			wantOutcome:    OutcomeDied,
 			wantNotStarted: true,
+			wantStartError: true,
+		},
+		{
+			name: "a run that dies after a ready start carries no start error",
+			status: []reedengine.StatusResult{
+				{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}},
+				{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: false}}},
+			},
+			script:      []StartupState{StartupReady},
+			wantOutcome: OutcomeDied,
 		},
 	}
 	for _, tt := range tests {
@@ -673,6 +685,9 @@ func TestStartup_RunGatedMappings(t *testing.T) {
 			}
 			if result.NotStarted != tt.wantNotStarted {
 				t.Errorf("RunGated() NotStarted = %v; want %v", result.NotStarted, tt.wantNotStarted)
+			}
+			if (result.StartError != "") != tt.wantStartError || (tt.wantStartError && !strings.Contains(result.StartError, ErrNotStarted.Error())) {
+				t.Errorf("RunGated() StartError = %q; want non-empty and containing %q: %v", result.StartError, ErrNotStarted.Error(), tt.wantStartError)
 			}
 			if result.StrandGUID != "strand-1" || result.RunDir == "" || result.SessionID == "" {
 				t.Errorf("RunGated() result = %+v; want StrandGUID/RunDir/SessionID all populated", result)
