@@ -83,6 +83,7 @@ func newTestEnv(t *testing.T) Env {
 				Interactive: false,
 			}, nil
 		},
+		PrepareDiscussionSpawn: func() error { return nil },
 		DiscussionTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "discussion",
