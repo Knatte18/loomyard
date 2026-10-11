@@ -481,6 +481,9 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 	if err := battenshed.ClearTerminalOpened(c.env.ScratchDir, battenrecipe.NameRunShed); err != nil {
 		return err
 	}
+	if err := battenshed.ClearRunMarkers(c.env.ScratchDir); err != nil {
+		return err
+	}
 	return state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
 		if found {
 			return cur, nil
@@ -559,6 +562,9 @@ func (c *battenCLI) battenPreStepUnmarked(ctx context.Context) (string, error) {
 	}
 
 	if err := battenshed.ClearTerminalOpened(c.env.ScratchDir, battenrecipe.NameRunShed); err != nil {
+		return shedverbs.KindUnseeded, err
+	}
+	if err := battenshed.ClearRunMarkers(c.env.ScratchDir); err != nil {
 		return shedverbs.KindUnseeded, err
 	}
 	if err := state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {

@@ -275,4 +275,6 @@ type TeardownDeps struct {
 	Shutdown func(ctx context.Context) (abandonedSession string, err error)
 	// Remove deletes the task worktree pair. Called only after Shutdown has succeeded.
 	Remove func(ctx context.Context) error
+	// Notices carries the seams the row's failure notice goes through; its zero value switches the notice off.
+	Notices RowNoticeDeps
 }

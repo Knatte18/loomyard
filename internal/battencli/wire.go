@@ -452,6 +452,26 @@ func orchStrandRecorded(prime *lyxcwd.Location) (bool, error) {
 	return orch.Strand != "", nil
 }
 
+// battenHistoryLen returns the length of batten's own status history for slug, 0 when the status file is absent.
+func battenHistoryLen(location *lyxcwd.Location, slug string) (int, error) {
+	status, found, err := state.ReadJSONStrict[shedengine.Status](StatusFile(location, slug), StatusLock(location, slug))
+	if err != nil || !found {
+		return 0, err
+	}
+	return len(status.History), nil
+}
+
+// rowNotices returns the notice seams of the rows after Run-Shed: notices go to the prime's orch, as Run-Shed's do, and an episode is told apart by batten's own history length.
+func rowNotices(location *lyxcwd.Location, slug string) battenshed.RowNoticeDeps {
+	return battenshed.RowNoticeDeps{
+		Notify: func(ctx context.Context, line string) (bool, error) {
+			return orchengine.QueueNotice(orchcli.PrimePaths(location), line, time.Now())
+		},
+		OrchStrandRecorded: func() (bool, error) { return orchStrandRecorded(location) },
+		BattenHistoryLen:   func() (int, error) { return battenHistoryLen(location, slug) },
+	}
+}
+
 // readStopReport reads the driver park marker of the task worktree's run, whose content is the path of the stop report the driver parked on, and the time the marker was written.
 // An absent marker reports found == false.
 func readStopReport(taskLocation *lyxcwd.Location) (path string, at time.Time, found bool, err error) {
@@ -695,6 +715,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				res, err := td.RemovePair(teardownRequest(slug))
 				return finishRemoval(res, err, slug)
 			},
+			Notices: rowNotices(location, slug),
 		},
 		InnerRun: battenshed.InnerRunDeps{
 			// Notify queues the notice on the prime's orch, the parent of a batten run started from the prime, and reports QueueNotice's own answer: whether the notice was queued.

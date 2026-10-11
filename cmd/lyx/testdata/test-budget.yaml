@@ -9,7 +9,7 @@ internal/agentname: 7
 internal/batcher: 9
 internal/battencli: 59
 internal/battenrecipe: 8
-internal/battenshed: 90
+internal/battenshed: 93
 internal/boardcli: 13
 internal/boardengine: 76
 internal/boardengine/boardtest: 3

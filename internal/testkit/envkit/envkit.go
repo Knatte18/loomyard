@@ -71,6 +71,8 @@ var nilLegal = map[string]bool{
 	"InnerRun.OpenTerminal":                            true,
 	"InnerRun.Notify":                                  true,
 	"InnerRun.PairDir":                                 true,
+	"Teardown.Notices.Notify":                          true,
+	"Teardown.Notices.Sleep":                           true,
 	"PrimeLock.Sleep":                                  true,
 	"SegmentBounces":                                   true,
 	"RowReviewModels":                                  true,
@@ -263,6 +265,10 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(context.Context) (string, error) { return "", nil },
 			Remove:   func(context.Context) error { return nil },
+			Notices: battenshed.RowNoticeDeps{
+				OrchStrandRecorded: func() (bool, error) { return true, nil },
+				BattenHistoryLen:   func() (int, error) { return 0, nil },
+			},
 		},
 		PrimeLock: battenshed.PrimeLock{
 			Path: filepath.Join(dir, "prime.lock"),
