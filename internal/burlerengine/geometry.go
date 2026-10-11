@@ -10,8 +10,7 @@ package burlerengine
 // *lyxcwd.Location, but is deliberately not imported here — this file states the contract, not the
 // implementation.
 type Geometry struct {
-	// WorktreeRoot is the root Engine.Run resolves a Profile's relative paths against, via
-	// (*Profile).validate.
+	// WorktreeRoot is the root Engine.Review and Engine.Fix resolve a Profile's relative paths against, via (*Profile).validateReview and (*Profile).validateFix.
 	// What fills it differs by mode: hub mode now tells it the anchor path
 	// (hubgeom.BurlerGeometry), while standalone tells it the reviewed target directory
 	// (standalonegeom.BurlerGeometry) — this is why the field is not collapsible into AnchorPath

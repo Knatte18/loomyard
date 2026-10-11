@@ -31,7 +31,6 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/burlermarker"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -50,19 +49,9 @@ import (
 // bare "pwsh": the WindowsApps execution alias is a 0-byte ConPTY stub.
 const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
 
-// readyMarkerPath derives the round's ready marker the way a caller does, with the anchor as both root and base.
-func readyMarkerPath(t *testing.T, anchorPath, reviewPath string) string {
-	t.Helper()
-	marker, err := burlermarker.Path(anchorPath, anchorPath, reviewPath)
-	if err != nil {
-		t.Fatalf("burlermarker.Path(%q, %q, %q) = %v; want nil", anchorPath, anchorPath, reviewPath, err)
-	}
-	return marker
-}
-
 // seedHubStencils populates hub's real fabricengine.StencilsDir(hub) with every shipped stencil,
 // through the same stencilstore.Reconcile pass cmd/lyx's root pre-run runs. hubforge.NewHub builds
-// a fabric, not a seeded board, and burler reads its four prompts from disk at call time via
+// a fabric, not a seeded board, and burler reads its prompts from disk at call time via
 // stencilstore.Read — so an unseeded fixture hub fails every round before it reaches a pane.
 func seedHubStencils(t *testing.T, hub string) {
 	t.Helper()
@@ -267,7 +256,7 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 	})
 
 	// up: boots the substrate. A strand must exist in an up'd session before
-	// shuttle's AddStrand can bind it to a pane — burlerengine.Run drives
+	// shuttle's AddStrand can bind it to a pane — each burlerengine half drives
 	// exactly one shuttle run under the hood.
 	var reedOut bytes.Buffer
 	if code := reedcli.RunCLI(&reedOut, []string{"up"}); code != 0 {
@@ -303,7 +292,6 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 		ToolUse:         false,
 		ReviewPath:      reviewPath,
 		FixerReportPath: fixerReportPath,
-		ReadyMarkerPath: readyMarkerPath(t, h.Location.AnchorPath(), reviewPath),
 	}
 
 	// Wire the real stack directly: burlerengine never imports claudeengine
@@ -328,19 +316,27 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 	}
 	engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, burlerengine.Config{}, fabricengine.StencilsDir(h.Location.HubPath), "")
 
-	result, err := engine.Run(profile, burlerengine.RunOpts{Timeout: 5 * time.Minute})
+	opts := burlerengine.RunOpts{Timeout: 5 * time.Minute}
+	review, err := engine.Review(profile, opts)
 	if err != nil {
-		t.Fatalf("burler round: %v", err)
+		t.Fatalf("burler review: %v", err)
+	}
+	if review.Outcome != shuttleengine.OutcomeDone {
+		t.Fatalf("review outcome = %q; want %q; reviewer message: %q", review.Outcome, shuttleengine.OutcomeDone, review.Review.LastAssistantMessage)
+	}
+	if review.Verdict != burlerengine.VerdictBlocking {
+		t.Fatalf("review verdict = %q; want %q (the toy fixture's color mismatch is unambiguous)", review.Verdict, burlerengine.VerdictBlocking)
+	}
+	if len(review.Findings) == 0 {
+		t.Errorf("review verdict is BLOCKING but Findings is empty; want at least one recorded finding")
 	}
 
-	if result.Outcome != shuttleengine.OutcomeDone {
-		t.Fatalf("round outcome = %q; want %q; reviewer message: %q; fixer message: %q", result.Outcome, shuttleengine.OutcomeDone, result.Review.LastAssistantMessage, result.Fix.LastAssistantMessage)
+	fix, err := engine.Fix(profile, opts, review.Digest)
+	if err != nil {
+		t.Fatalf("burler fix: %v", err)
 	}
-	if result.Verdict != burlerengine.VerdictBlocking {
-		t.Fatalf("round verdict = %q; want %q (the toy fixture's color mismatch is unambiguous)", result.Verdict, burlerengine.VerdictBlocking)
-	}
-	if len(result.Findings) == 0 {
-		t.Errorf("round verdict is BLOCKING but Findings is empty; want at least one recorded finding")
+	if fix.Outcome != shuttleengine.OutcomeDone {
+		t.Fatalf("fix outcome = %q; want %q; fixer message: %q", fix.Outcome, shuttleengine.OutcomeDone, fix.Fix.LastAssistantMessage)
 	}
 
 	fixed, err := os.ReadFile(targetPath)

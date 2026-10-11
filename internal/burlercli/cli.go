@@ -55,17 +55,10 @@ type burlerCLI struct {
 
 	// mode, stateDir, and stencilsDir are CLI-level facts about how the stack was wired, read off
 	// this receiver by run.go's success envelope. They are not results of a review round, which is
-	// why they are not threaded through burlerengine.Result.
+	// why they are not threaded through burlerengine.ReviewResult or burlerengine.FixResult.
 	mode        string
 	stateDir    string
 	stencilsDir string
-
-	// markerRoot and markerBase are the two told directories burlermarker.Path derives a round's ready marker from:
-	// the root the review path must lie inside, and the base whose ephemeral lyx directory holds the marker.
-	// Hub wiring sets both to the anchor; standalone wiring sets the reviewed target and the state directory.
-	// They sit here because burlerengine.Engine keeps its geometry unexported.
-	markerRoot string
-	markerBase string
 }
 
 // resolvePersistentPreRun resolves cwd, calls preflight.ResolveMode(cwd), and delegates the mode
@@ -120,14 +113,15 @@ func Command() *cobra.Command {
 	parent := &cobra.Command{
 		Use:   "burler",
 		Short: "run one review+fix round over an artifact (the burler round worker)",
-		Long: `burler drives one review+fix round over an artifact with two agents: a
-reviewer reviews the target against a fasit (a source of truth) and writes a
-structured review file (verdict + findings), while a fixer orients in the
-target, waits for the review to be accepted, then validates what the reviewer
-found, fixes it and writes a fixer report. What to review, what to judge it
-against, and how the round is allowed to write its fixes are all supplied as a
-profile YAML file — burler itself carries zero domain logic about the artifact
-under review.
+		Long: `burler drives one review+fix round over an artifact with two sessions run
+one after the other: a reviewer (role burler-review-chair) reviews the target
+against a fasit (a source of truth) and writes a structured review file
+(verdict + findings, each finding carrying its fix), then, once lyx has
+accepted the review, a fixer (role burler-fix-chair) validates what the
+reviewer found, fixes it and writes a fixer report. A review with no findings
+spawns no fixer. What to review, what to judge it against, and how the round is
+allowed to write its fixes are all supplied as a profile YAML file — burler
+itself carries zero domain logic about the artifact under review.
 
 Modes:
   burler runs in hub mode inside a lyx hub worktree, and in standalone mode

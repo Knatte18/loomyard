@@ -15,8 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// LoomPlanSpec is the plan format contract's shipped-default content: the grammar Plan-Write's and
-// Plan-Burler's own gates parse a written plan against.
+// LoomPlanSpec is the plan format contract's shipped-default content: the grammar Plan-Write's and Plan-Burler-Fix's own gates parse a written plan against.
 //
 //go:embed loom-plan-spec.md
 var LoomPlanSpec []byte

@@ -1,6 +1,6 @@
 <!-- This is the parent-review reviewer brief, handed to the one-shot fork the parent runs for a review notice, rendered by ParentReviewBrief (internal/loomengine/parentreview.go).
      Every marker is a top-level {{.X}} substitution: {{.slug}}, {{.decision_record_path}}, {{.support_log_path}} and {{.review_format_path}}.
-     The review-output format is named by the path of the deployed burler-step-2-review stencil and never restated here. -->
+     The review-output format is named by the path of the deployed burler-review-format stencil and never restated here. -->
 
 # Parent review — does the design for {{.slug}} fit the planned work?
 

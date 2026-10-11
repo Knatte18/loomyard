@@ -4,15 +4,18 @@
 // It takes every absolute path from its caller and has no direct production import of
 // internal/lyxcwd, per the Told-Geometry Invariant.
 //
-// The bounce budget of every review segment (a segment holding a Bouncer row) is not declared in the loom recipe: New takes it from shedrecipe.Env.ReviewMaxBounces and Routing from its argument,
-// and both set it on every row of those segments.
+// The bounce budget of every review segment (a segment holding a Bouncer row) is not declared in the loom recipe.
+// It is the perch's own `<perch>_max_bounces` of loom.yaml, falling back to `review_max_bounces` where that is 0:
+// New takes the run-wide value from shedrecipe.Env.ReviewMaxBounces and the per-perch ones from shedrecipe.Env.RowMaxBounces, keyed by the segment's Bouncer row name, and Routing takes both from its arguments.
+// Both set the resolved value on every row of the segment, the Bouncer, the review row and the fix row, so the engine and the routing projection hold one value per perch.
+// A negative per-perch entry is a wiring error naming its Bouncer row.
 // PR-Gate keeps the recipe's own max_bounces.
 //
 // The second value New takes from the env is the Discussion-Write producer: when shedrecipe.Env.DiscussionSeats is true, New runs that row on the DiscussionSeats engine instead of the recipe's DiscussionWrite.
 // The row keeps its name, gates and routing, and Routing never reads the choice.
 //
 // NewDarn is the second builder: it builds the embedded darn recipe, and DarnRouting projects that recipe's routing.
-// Its verify budget is not declared in the recipe: NewDarn stamps shedrecipe.Env.DarnVerifyAttempts, the `verify_attempts` of `darn.yaml`, onto the verify gates of the `Darn-Write` and `Darn-Burler` rows at every build and refuses a value below 1.
+// Its verify budget is not declared in the recipe: NewDarn stamps shedrecipe.Env.DarnVerifyAttempts, the `verify_attempts` of `darn.yaml`, onto the verify gates of the `Darn-Write` and `Darn-Burler-Fix` rows at every build and refuses a value below 1.
 // Nor is the bounce budget of its Darn-Review perch: NewDarn takes it from shedrecipe.Env.DarnReviewMaxBounces, the `review_max_bounces` of `darn.yaml`, and DarnRouting from its argument, and both set it on the perch's rows and refuse a value below 0.
 // A budget of 0 turns the perch off: both route `Darn-Write`'s Done straight to Publish, so a run reaches neither the perch's rows nor the `Describe` row after them, and the writer's own change description stands.
 // DarnRetiredRows maps the writer row's former name, `Darn`, onto `Darn-Write`, so the caller can carry a darn run parked under the old name across with shedengine.RenameProducers.

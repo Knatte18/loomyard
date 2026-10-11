@@ -18,7 +18,7 @@ import (
 )
 
 // TestNew_ShapeMatchesRecipe builds the embedded recipe through New from testEnv(t) and asserts row order and concrete Producer type against wantProducerTable.
-// It also asserts the perch shape over the built rows: every Bouncer's OnStuck names a Burler whose OnStuck names it back, with equal Segment and MaxBounces, and no row is unreachable through OnDone/OnStuck from the first row.
+// It also asserts the perch shape over the built rows: every Bouncer's OnStuck names a review row whose OnStuck names a fix row whose OnStuck names the Bouncer back, with equal Segment and MaxBounces, and no row is unreachable through OnDone/OnStuck from the first row.
 func TestNew_ShapeMatchesRecipe(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)
@@ -46,16 +46,23 @@ func TestNew_ShapeMatchesRecipe(t *testing.T) {
 		if reflect.TypeOf(row.Producer) != bouncerType {
 			continue
 		}
-		burler, ok := byName[row.OnStuck]
-		if !ok || reflect.TypeOf(burler.Producer) != burlerType {
-			t.Errorf("Bouncer %q OnStuck = %q; want a Burler row", row.Name, row.OnStuck)
+		review, ok := byName[row.OnStuck]
+		if !ok || reflect.TypeOf(review.Producer) != burlerReviewType {
+			t.Errorf("Bouncer %q OnStuck = %q; want a review row", row.Name, row.OnStuck)
 			continue
 		}
-		if burler.OnStuck != row.Name {
-			t.Errorf("Burler %q OnStuck = %q; want %q, the Bouncer naming it", burler.Name, burler.OnStuck, row.Name)
+		fix, ok := byName[review.OnStuck]
+		if !ok || reflect.TypeOf(fix.Producer) != burlerFixType {
+			t.Errorf("review row %q OnStuck = %q; want a fix row", review.Name, review.OnStuck)
+			continue
 		}
-		if burler.Segment != row.Segment || burler.MaxBounces != row.MaxBounces {
-			t.Errorf("perch %q/%q segment/max_bounces = %q/%d vs %q/%d; want equal", row.Name, burler.Name, row.Segment, row.MaxBounces, burler.Segment, burler.MaxBounces)
+		if fix.OnStuck != row.Name {
+			t.Errorf("fix row %q OnStuck = %q; want %q, the Bouncer opening the ring", fix.Name, fix.OnStuck, row.Name)
+		}
+		for _, burler := range []shedengine.ProducerDef{review, fix} {
+			if burler.Segment != row.Segment || burler.MaxBounces != row.MaxBounces {
+				t.Errorf("perch %q/%q segment/max_bounces = %q/%d vs %q/%d; want equal", row.Name, burler.Name, row.Segment, row.MaxBounces, burler.Segment, burler.MaxBounces)
+			}
 		}
 	}
 

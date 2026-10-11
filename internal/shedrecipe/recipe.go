@@ -65,10 +65,10 @@ type Env struct {
 	// GateSlots is the hub gate-slot pool every Go-side verify a row runs acquires from, read by the gate resolver's "verify" gate.
 	// Nil where no hub is wired, which runs the verify unslotted.
 	GateSlots *gateslot.Pool
-	// PublishFailure returns the Publish failure note the Webster-Review rubric renders, read by the BurlerRound and Bouncer entries each time a segment builds its producers.
+	// PublishFailure returns the Publish failure note the Webster-Review rubric renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
 	// Nil renders `none`.
 	PublishFailure func() string
-	// WebsterRecord returns the webster run-record note the Plan-Review rubric renders, read by the BurlerRound and Bouncer entries each time a segment builds its producers.
+	// WebsterRecord returns the webster run-record note the Plan-Review rubric renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
 	// Nil renders `none`.
 	WebsterRecord func() string
 	// StatusPath is the told status file path, read by LoomPreflight.
@@ -77,12 +77,12 @@ type Env struct {
 	StatusLockPath string
 	// StencilsDir is the told stencils directory, read by SingleLLM and Bouncer.
 	StencilsDir string
-	// SpecsDir is the told deployed-specs directory, read by the Bouncer and BurlerRound entries.
+	// SpecsDir is the told deployed-specs directory, read by the Bouncer and BurlerReview entries.
 	// It is a run-wide root, which is exactly the class Env carries, so it belongs here rather
 	// than as a per-row Config key.
 	SpecsDir string
-	// RunRoot is the root every Config run_subdir resolves against, read by Bouncer and
-	// BurlerRound.
+	// RunRoot is the root every Config run_subdir resolves against.
+	// The Bouncer, BurlerReview and BurlerFix entries read it.
 	RunRoot string
 	// DecisionRecordPath is the told decision record path, read by the gate resolver's "discussion"
 	// gate and by the Bouncer entry, which names it in the escalation brief.
@@ -93,12 +93,12 @@ type Env struct {
 	// resolver's "description" gate.
 	DescriptionPath string
 
-	// ReviewModels holds the reviewer's and the fixer's model lists, which BurlerRound picks from per round.
-	// ReviewTimeout is the run-wide review round deadline, used when a BurlerRound row's timeout_s is absent.
+	// ReviewModels holds the reviewer's and the fixer's model lists, which the BurlerReview and BurlerFix rows pick from per round.
+	// ReviewTimeout is the run-wide review round deadline, used when a BurlerReview or BurlerFix row's timeout_s is absent.
 	// Both are legal on Env at all because Env carries roots and run-wide values only, and one review model list shared by every review segment is exactly such a value.
 	ReviewModels  burlerengine.RoundModels
 	ReviewTimeout time.Duration
-	// RowReviewModels holds a BurlerRound row's own reviewer and fixer model lists, keyed by row name like SegmentBounces.
+	// RowReviewModels holds a BurlerReview or BurlerFix row's own reviewer and fixer model lists, keyed by row name like SegmentBounces.
 	// A row with no entry, and a nil map, take ReviewModels.
 	RowReviewModels map[string]burlerengine.RoundModels
 	// RowClusterFans holds the burler cluster fan a review segment runs, keyed by the name of each of the segment's two rows.
@@ -108,6 +108,12 @@ type Env struct {
 	// ReviewMaxBounces is the run-wide bounce budget of every review segment, read by loomrecipe alone.
 	// It is set on each row of a segment holding a Bouncer row, because the recipe declares no max_bounces there.
 	ReviewMaxBounces int
+	// RowMaxBounces is the bounce budget of each review segment, keyed by the segment's Bouncer row name as RowBouncerModels is, read by loomrecipe alone.
+	// A nil map, a missing entry and 0 take ReviewMaxBounces.
+	RowMaxBounces map[string]int
+	// RowAutoAccept is the auto-accept flag of each Bouncer row, keyed by row name; a nil map and a missing entry mean false.
+	// A Bouncer told true settles a spent bounce budget as an accept instead of escalating to the parent.
+	RowAutoAccept map[string]bool
 
 	// DiscussionSeats, when true, runs the Discussion-Write row on the DiscussionSeats engine instead of the recipe's DiscussionWrite, read by loomrecipe alone.
 	DiscussionSeats bool
@@ -118,14 +124,14 @@ type Env struct {
 
 	// RowBouncerModels is the resolved seed and judge pair of each Bouncer row, keyed by row name as RowReviewModels and RowClusterFans are.
 	// A Bouncer row with no entry is a construction error.
-	// BurlerRound rows keep reading the Review* fields above.
+	// BurlerReview and BurlerFix rows keep reading the Review* fields above.
 	RowBouncerModels map[string]shedadapters.BouncerModels
 
 	// Shuttle is the injected shedadapters.Shuttle seam, an already-constructed engine (or a
 	// factory over one).
 	Shuttle shedadapters.Shuttle
-	// Burler is the injected shedadapters.BurlerRunner seam.
-	Burler shedadapters.BurlerRunner
+	// Burler is the injected shedadapters.BurlerHalfRunner seam.
+	Burler shedadapters.BurlerHalfRunner
 	// Seats is the injected shedadapters.SeatRunner seam, the seat engine over the caller's shuttle runner, read by the MultiLLM entry.
 	// Nil is legal when no row uses that entry.
 	Seats shedadapters.SeatRunner
@@ -213,7 +219,7 @@ type Env struct {
 	// It arrives as a closure for the reason ReworkSpec does.
 	DarnSpec func(loomshed.DarnTold) (shuttleengine.Spec, error)
 	// DarnVerifyAttempts is the verify gate's attempt budget of the darn recipe, which `darn.yaml`'s verify_attempts supplies.
-	// internal/loomrecipe alone reads it, stamping it onto the verify gates of the Darn-Write and Darn-Burler rows at every build.
+	// internal/loomrecipe alone reads it, stamping it onto the verify gates of the Darn-Write and Darn-Burler-Fix rows at every build.
 	DarnVerifyAttempts int
 	// DarnReviewMaxBounces is the bounce budget of the darn recipe's Darn-Review perch, which `darn.yaml`'s review_max_bounces supplies; 0 runs no review.
 	// internal/loomrecipe alone reads it.

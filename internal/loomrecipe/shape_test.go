@@ -43,8 +43,9 @@ func rowEngines() map[string]string {
 }
 
 var (
-	bouncerType = reflect.TypeOf(&shedadapters.Bouncer{})
-	burlerType  = reflect.TypeOf(&shedadapters.BurlerProducer{})
+	bouncerType      = reflect.TypeOf(&shedadapters.Bouncer{})
+	burlerReviewType = reflect.TypeOf(&shedadapters.BurlerReviewProducer{})
+	burlerFixType    = reflect.TypeOf(&shedadapters.BurlerFixProducer{})
 )
 
 // frictionReflectProducerType returns the dynamic type of the producer loomshed.NewFrictionReflect
@@ -62,14 +63,17 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NameLoomPreflight, "LoomPreflight", reflect.TypeOf(loomshed.NewLoomPreflight("", "", "", ""))},
 	{loomshed.NameDiscussionWrite, "DiscussionWrite", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NameDiscussionBouncer, "Bouncer", bouncerType},
-	{loomshed.NameDiscussionBurler, "BurlerRound", burlerType},
+	{loomshed.NameDiscussionBurlerReview, "BurlerReview", burlerReviewType},
+	{loomshed.NameDiscussionBurlerFix, "BurlerFix", burlerFixType},
 	{loomshed.NamePlanWrite, "PlanWrite", reflect.TypeOf(loomshed.NewPlanWrite("", nil, nil))},
 	{loomshed.NamePlanBouncer, "Bouncer", bouncerType},
-	{loomshed.NamePlanBurler, "BurlerRound", burlerType},
+	{loomshed.NamePlanBurlerReview, "BurlerReview", burlerReviewType},
+	{loomshed.NamePlanBurlerFix, "BurlerFix", burlerFixType},
 	{loomshed.NameBatchifier, "Batchifier", reflect.TypeOf(loomshed.NewBatchifier("", ""))},
 	{loomshed.NameWebster, "Webster", reflect.TypeOf(loomshed.NewWebsterProducer("", "", nil, websterengine.RunDeps{}, nil))},
 	{loomshed.NameWebsterBouncer, "Bouncer", bouncerType},
-	{loomshed.NameWebsterBurler, "BurlerRound", burlerType},
+	{loomshed.NameWebsterBurlerReview, "BurlerReview", burlerReviewType},
+	{loomshed.NameWebsterBurlerFix, "BurlerFix", burlerFixType},
 	{loomshed.NameDescribe, "Describe", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NamePublish, "Publish", reflect.TypeOf(&landingshed.Publish{})},
 	{loomshed.NamePRGate, "PRGate", reflect.TypeOf(&landingshed.PRGate{})},
@@ -215,13 +219,13 @@ func TestNew_PassesShedValidation(t *testing.T) {
 }
 
 // TestNew_RoutingGraphIsClean is the guard that fires when one of the upcoming "loom: real LLM
-// producers" tasks mis-wires a Bouncer/Burler pair.
+// producers" tasks mis-wires a Bouncer/Burler ring.
 //
-// It catches a Burler left with OnDone: "" (reported as unexpected-terminal), a Bouncer whose
+// It catches a Burler row left with OnDone: "" (reported as unexpected-terminal), a Bouncer whose
 // OnDone never exits its segment (reported as unreachable downstream), and a Bouncer whose OnStuck
 // never routes back to it (reported as blind-gate).
 //
-// It does NOT catch a Burler handing back via OnDone instead of OnStuck: both wirings produce the
+// It does NOT catch a Burler row handing back via OnDone instead of OnStuck: both wirings produce the
 // identical routing graph, and the difference is a verdict returned inside Call, which
 // shedcheck.Check never inspects. A comment claiming unqualified perch coverage would be false.
 func TestNew_RoutingGraphIsClean(t *testing.T) {

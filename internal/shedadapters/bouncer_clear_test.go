@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// layoutApprovedGeneration writes a full, already-settled generation for round into cfg.RunDir: the round producer's own review and fixer-report pair (BurlerProducer's artifacts) alongside the Bouncer's report, CONVERGED verdict, and ledger -- the complete on-disk state a clear must move as one unit.
+// layoutApprovedGeneration writes a full, already-settled generation for round into cfg.RunDir: the Burler rows' own review and fixer-report pair (their artifacts) alongside the Bouncer's report, CONVERGED verdict, and ledger -- the complete on-disk state a clear must move as one unit.
 func layoutApprovedGeneration(t *testing.T, cfg BouncerConfig, round int) {
 	t.Helper()
 

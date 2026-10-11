@@ -1,14 +1,11 @@
-// overlay_seam_guard_test.go enforces the Fabric Git Invariant at the recipe-shape level: every
-// BurlerRound row whose target paths reach into the overlay tree (the durable _lyx directory) must
-// run fix-scope: overlay, and its partner Bouncer row must carry a commit_seam key matching the
-// overlay subdirectory those target paths share -- otherwise an approved overlay-round fix has no
-// committer, and the round's own writes stay uncommitted in the records working tree.
+// overlay_seam_guard_test.go enforces the Fabric Git Invariant at the recipe-shape level:
+// every BurlerFix row whose target paths reach into the overlay tree (the durable _lyx directory) must run fix-scope: overlay,
+// and its partner Bouncer row must carry a commit_seam key matching the overlay subdirectory those target paths share.
+// Otherwise an approved overlay-round fix has no committer, and the round's own writes stay uncommitted in the records working tree.
 //
-// This is the parse-level regression guard the shipped Discussion-Burler row's fix-scope: source
-// violation would have caught before it shipped: assertOverlayBurlerCommitSeams is one rule shared
-// by TestShippedRecipe_OverlayBurlersCommitThroughSeam (the real embedded recipe) and
-// TestOverlayBurlerCommitSeams_RejectsBadShapes (synthetic negative and positive cases), so the two
-// halves can never drift into two hand-kept copies of the same rule.
+// This is the parse-level regression guard the shipped Discussion-Burler-Fix row's fix-scope: source violation would have caught before it shipped.
+// assertOverlayBurlerCommitSeams is one rule shared by TestShippedRecipe_OverlayBurlersCommitThroughSeam (the real embedded recipe) and TestOverlayBurlerCommitSeams_RejectsBadShapes (synthetic negative and positive cases),
+// so the two halves can never drift into two hand-kept copies of the same rule.
 
 package loomrecipe
 
@@ -21,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 )
 
-// assertOverlayBurlerCommitSeams walks every shedbuild.Row in r whose Engine is "BurlerRound" and,
+// assertOverlayBurlerCommitSeams walks every shedbuild.Row in r whose Engine is "BurlerFix" and,
 // for each row that declares at least one overlay target path (a path whose first segment equals
 // lyxdirs.LyxDirName), asserts both halves of the Fabric Git Invariant's overlay-seam rule: the
 // row's profile.fix-scope must be "overlay", and the row's partner Bouncer row (same Segment) must
@@ -47,7 +44,7 @@ func assertOverlayBurlerCommitSeams(t testing.TB, r shedbuild.Recipe) {
 	t.Helper()
 
 	for _, row := range r.Producers {
-		if row.Engine != "BurlerRound" {
+		if row.Engine != "BurlerFix" {
 			continue
 		}
 
@@ -278,7 +275,7 @@ func TestOverlayBurlerCommitSeams_RejectsBadShapes(t *testing.T) {
 	}
 }
 
-// overlaySeamFixture returns a two-row recipe YAML document -- a Bouncer/BurlerRound pair sharing
+// overlaySeamFixture returns a two-row recipe YAML document -- a Bouncer/BurlerFix pair sharing
 // segment "Fixture-Review" -- whose Burler row carries fixScope as its profile.fix-scope value and
 // whose Bouncer row carries commitSeam as its commit_seam config value (omitted entirely when
 // commitSeam is empty).
@@ -297,7 +294,7 @@ func overlaySeamFixture(fixScope, commitSeam string) string {
 		"    config:\n" +
 		commitSeamLine +
 		"  - name: Fixture-Burler\n" +
-		"    engine: BurlerRound\n" +
+		"    engine: BurlerFix\n" +
 		"    segment: Fixture-Review\n" +
 		"    config:\n" +
 		"      profile:\n" +
@@ -315,7 +312,7 @@ func overlaySeamFixtureNoBouncer() string {
 		"terminals: [Fixture-Burler]\n" +
 		"producers:\n" +
 		"  - name: Fixture-Burler\n" +
-		"    engine: BurlerRound\n" +
+		"    engine: BurlerFix\n" +
 		"    segment: Fixture-Review\n" +
 		"    config:\n" +
 		"      profile:\n" +
@@ -340,7 +337,7 @@ func overlaySeamFixtureStraddling() string {
 		"    config:\n" +
 		"      commit_seam: discussion\n" +
 		"  - name: Fixture-Burler\n" +
-		"    engine: BurlerRound\n" +
+		"    engine: BurlerFix\n" +
 		"    segment: Fixture-Review\n" +
 		"    config:\n" +
 		"      profile:\n" +
@@ -364,7 +361,7 @@ func overlaySeamFixtureInstructionsOnly() string {
 		"    segment: Fixture-Review\n" +
 		"    config: {}\n" +
 		"  - name: Fixture-Burler\n" +
-		"    engine: BurlerRound\n" +
+		"    engine: BurlerFix\n" +
 		"    segment: Fixture-Review\n" +
 		"    config:\n" +
 		"      profile:\n" +

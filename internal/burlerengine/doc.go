@@ -1,23 +1,17 @@
-// Package burlerengine runs one review+fix round over an artifact and returns a verdict.
+// Package burlerengine runs the two halves of one review+fix round over an artifact: a review half that returns a verdict and a fix half that repairs the findings.
 // It is named for burling and mending: the cloth-finishing step where a worker inspects woven fabric for defects AND repairs them.
-// A round splits that into two agents of one seat table on the seats engine (internal/seatengine).
-// The fixer is the table's chair and the reviewer its required advisor-1.
+// A round splits that into two fresh sessions, each the chair of its own one-seat table on the seats engine (internal/seatengine).
 // A reviewer finds the defects and writes the review.
-// A fixer orients while the review is written, waits for lyx to accept it, then validates the findings and repairs them.
-// Each seat is its own shuttle run.
+// A fixer, spawned only once the review is accepted, validates the findings against the code and repairs them.
+// Each half is its own shuttle run, and neither waits on, messages or knows of the other.
 //
-// A burler runs ONE round and exits. It knows nothing about round loops,
-// caps, convergence, or progress across rounds — that is its caller's job,
-// which composes burler. Today the caller is
-// internal/shedadapters.BurlerProducer, the Shed row that wraps one round
-// and hands off to its segment's Bouncer. The dependency runs one way,
-// caller -> burler -> shuttle, a strict chain: each layer knows only the one
-// below it. This split is deliberate and is why burler is a separate module
-// from its caller rather than folded into it: burler is LLM-heavy (one
-// round is two seats; its tests are a fake-shuttle unit suite plus a
-// handful of opt-in real-engine smoke tests), while the loop owner is
-// deterministic Go (the round advance and the Bouncer's judge call; its
-// tests use a fake burler returning scripted verdicts, no LLM at all).
+// A burler half runs ONCE and exits.
+// It knows nothing about round loops, caps, convergence, or progress across rounds — that is its caller's job, which composes burler.
+// Today the caller is internal/shedadapters, whose review row and fix row each wrap one half and hand off to their segment's Bouncer.
+// The dependency runs one way, caller -> burler -> shuttle, a strict chain: each layer knows only the one below it.
+// This split is deliberate and is why burler is a separate module from its caller rather than folded into it:
+// burler is LLM-heavy: one round is two sessions, and its tests are a fake-shuttle unit suite plus a handful of opt-in real-engine smoke tests.
+// The loop owner is deterministic Go: the round advance and the Bouncer's judge call, whose tests use a fake burler returning scripted results, no LLM at all.
 // Keeping them one module would blend those two test regimes.
 //
 // Told-geometry tier: burlerengine is a producer — it is told the absolute paths it operates on
@@ -33,116 +27,96 @@
 //
 // Both seats load `scribe:prose`, `scribe:code-quality` and `scribe:testing` through their spawn specs' skills (`burlerSkills`).
 // The seats engine renders the parent and edit directives into each seat stencil exactly once:
-// the chair's parent directive names Geometry.ParentName, which hubgeom.BurlerGeometry fills from the worktree's origin record, and standalone geometry leaves it empty, which renders the no-parent variant;
-// the advisor's names the chair.
+// the chair's parent directive names Geometry.ParentName, which hubgeom.BurlerGeometry fills from the worktree's origin record, and standalone geometry leaves it empty, which renders the no-parent variant.
 // The instruction files carry no directive.
 //
-// # The seat table
+// # The seat tables
 //
-// roundTable builds the round's seatengine.Table: the role prefix burlerRolePrefix, the review segment, the fixer's gate as the table gate, RunOpts.Timeout and RunOpts.Round, not interactive, and two seats in order.
-// The strands are therefore <shortname>:<slug>:burler-chair and <shortname>:<slug>:burler-advisor-1, formed through seatengine.SeatRole by the seats engine.
+// reviewTable and fixTable each build a one-seat seatengine.Table: the review segment, RunOpts.Timeout and RunOpts.Round, not interactive, and the half's agent as the chair.
+// The strands are therefore <shortname>:<slug>:burler-review-chair and <shortname>:<slug>:burler-fix-chair, formed through seatengine.SeatRole by the seats engine.
 // New builds that seat engine itself from the told Geometry and the stencils directory, over the seatengine.Shuttle it is given.
-// Each seat's stencil markers ride the seat's values: the absolute instruction-file paths, the review path, the review format path and the ready marker path.
-// composePrompt fills the instruction files and returns those values; the seat stencils are filled by the seats engine.
+// Each seat's stencil markers ride the seat's values: the absolute instruction-file paths and the review path, and for the fix half the review format path.
+// composeReviewPrompt and composeFixPrompt fill the instruction files and return those values; the seat stencils are filled by the seats engine.
+// RunOpts.Review and RunOpts.Fix pick each half's model, effort and version.
 //
-// # The two seats
+// # The review half
 //
-// The reviewer is the advisor-1 seat, required, with roundAcceptance as its accept hook.
+// Engine.Review runs one fresh reviewer session as the chair of the review table.
 // The reviewer explores the target, judges it against the fasit and writes the review file;
 // its write surface is the review file alone, in every fix scope, and it never edits, creates or deletes a target file.
 // Its spec declares the review file as its only output file.
-// Its gate is the review-parse entry (ReviewGateEntry) alone, carried as the seat's own gate.
+// Its gate is the review-parse entry (ReviewGateEntry) alone.
 // It sets ForkSubagents exactly when the profile names a cluster fan.
-// The fixer is the chair seat and never forks.
-// The fixer explores the target while the review is written.
-// It then runs `lyx shuttle await` on the ready marker inside its turn until it reports ready, reads the review, validates each finding against the code and the fasit, and fixes it.
-// Its spec declares the fixer-report as its only output file.
-// Its gate is the table's gate, RunOpts.Gate with every entry wrapped by repairReportBeforeGate.
+// The review half's files are the explore step, the review step and the review-file format, written to a fresh directory under the anchor's .lyx.
+// The reviewer's prompt carries the PATTERN directive; it carries no friction directive.
+// The accepted review is the part of a done reviewer's end acceptReview takes: the cluster audit for a fanned round, then ParseCurrentReview on the review file.
+// Its ReviewResult carries the verdict, the findings and the Digest, the hex SHA-256 of the accepted bytes.
+// An unparseable review after the review gate's budget is the strict-parse error, never a gate-failed outcome.
+//
+// # The fix half
+//
+// Engine.Fix runs one fresh fixer session as the chair of the fix table, over a review whose bytes hash to the digest it is told.
+// It reads the review through acceptedReview first, so a review edited after acceptance is ErrReviewChanged and never reaches a fixer, and the same check runs again after a done fixer.
+// A review with findings of any severity, a NIT included, spawns the fixer.
+// A review with none runs the round's gates once through checkGates:
+// when they pass, Fix writes a normal fixer report saying nothing was fixed and returns a skipped OutcomeDone with no session;
+// when one fails, the fixer is spawned with the failing gates' findings in a gate-findings file as its work, since a gate exhausted in a round leaves its gate-failed edits in the target and the re-review of that round may find nothing.
+// A gate closure that errors is returned wrapped with nothing spawned.
+// The fixer reads the review, validates each finding against the code, and fixes it.
+// Its spec declares the fixer-report as its only output file, and its gate is RunOpts.Gate with every entry wrapped by repairReportBeforeGate.
+// The fixer's files hold the review-file format and the fix step; it carries no rubric, fasit, PATTERN directive, focus file, prior rounds or explore step,
+// so `premise false` means false against the code it reads.
 // The fixer is the round's only friction-note writer.
-// RunOpts.Review and RunOpts.Fix pick each seat's model, effort and version.
 //
-// # The seat channel
+// # Review before fix
 //
-// The two seat stencils state Burler's own channel between the seats, narrower than the shared seat directives, which neither stencil includes.
-// The fixer waits inside its turn and never ends its turn to await the reviewer, and the seats engine's up line opens nothing.
-// It may message the reviewer only once the ready marker exists, an existing marker standing in for the up line, and only to ask what an accepted finding means or rests on.
-// The reviewer sends the fixer nothing unprompted, never asks it to wrap up, answers only by message, writes no file after its review, and a reply only explains a finding the accepted review already holds.
-// A reply is advice: the fixer still validates every finding, a dispute still needs cited evidence, and it acts on nothing a reply raises beyond the accepted review.
-// These rules are stencil-enforced only; the engine catches a fixer done before the marker and any edit to the review file.
-//
-// # The handoff
-//
-// Review-before-fix is a hard gate, not advisory: the review is fully on disk, and accepted by Go, before the round touches a single target file.
+// Review-before-fix is a hard gate, not advisory: the review is fully on disk, and accepted by Go, before the fix half spawns at all, so no target file is touched before then.
 // Fixing findings as they are spotted turns the "review" into a post-hoc rationalization of edits already made, which destroys the independent judgment the whole method depends on.
-// See PATTERN-review-round and the round-prompt assets that state this rule to each agent every round.
-// Those assets are the two orchestrators, burler-template-{review,fix}-orchestrator.md, and the instruction files burler-step-{1-explore,2-review,3-fix}.md, the explore step rendered once per half.
+// No file or message rides between the halves; what carries the acceptance is the digest the review half returns, which the caller records and hands to the fix half.
+// See PATTERN-review-round and the prompt assets that state this rule to each agent every round.
+// Those assets are the two seat stencils, burler-template-{reviewer,fixer}.md, and the instruction files burler-step-1-explore.md, burler-step-review.md, burler-review-format.md and burler-step-fix.md.
 // The prompts ship as embedded defaults in the top-level stencils package.
 // They are read from the hub's stencils directory (see fabricengine.StencilsDir) at call time via stencilstore.Read, never from a compiled-in copy — see prompt.go.
-// Engine.Run renders the instruction files
-// per round and writes them to a fresh directory under .lyx, AnchorPath-anchored so it is a
+// Each half renders its instruction files per call and writes them to a fresh directory under .lyx, AnchorPath-anchored so it is a
 // directory sibling of the durable _lyx tree
 // (via lyxdirs.DotLyxDirName, machine-local, never committed —
-// distinct from the committed _lyx), then runs each seat from its stencil, which
+// distinct from the committed _lyx), then runs its seat from its stencil, which
 // names the files' absolute paths so the agent reads each step's rules when it
-// reaches that step. Run never prunes these per-round directories itself —
-// they accumulate under .lyx/burler across rounds in a long-lived worktree.
+// reaches that step. A half never prunes these per-call directories itself —
+// they accumulate under .lyx/burler in a long-lived worktree.
 // This is accepted machine-local litter, not a leak: .lyx is never
 // committed, so it carries no cross-machine cost, and whatever clears a
 // worktree's .lyx tree wholesale (a future caller-side cleanup step, or
 // manual deletion) removes it along with everything else machine-local
 // there.
 //
-// The edge that releases the fixer is the ready marker, a file whose path the caller tells the engine on Profile.ReadyMarkerPath.
-// The caller derives it with burlermarker.Path (the engine derives no path), and only lyx code writes it.
-// Run removes any stale marker before anything starts; the fixer starts first, so the removal is what keeps its wait from returning on a prior attempt's marker.
-// roundAcceptance.accept runs reviewReady on the reviewer's done result, and reviewReady writes the marker only after the current attempt's reviewer passed the fork audit (cluster rounds) and parsed strictly.
-// The accept hook sets the released flag as the marker write begins, and any failure writes no marker and is the reviewer seat's accept error.
-// An unparseable review after the review gate's budget is the strict-parse error, never a gate-failed outcome.
-// The engine cannot see a fixer that creates the marker itself, edits the target before it, names another existing file to the wait verb, or writes a round file other than its fixer-report.
-// Those rules are prompt-enforced and caught by review alone.
-// What the engine does check is the review file: after the fixer is done it compares the file with the bytes it parsed, and a difference is an error.
+// # How a half ends
 //
-// # How the round starts
-//
-// Run starts the fixer, the chair, first and then the reviewer, and the fixer waits for the ready marker.
-// The seats engine tells the chair in one line when the reviewer is up.
-//
-// # How the round ends
-//
-// decideRound is the one place the round's failure rules live.
-// It reads the seat result, the reviewer's from its advisor-1 entry and the fixer's from the chair's result:
-//   - The reviewer failed to start: the round is OutcomeDied with NotStarted and Review.StartError and a nil error, the fixer already stopped by the seats engine.
-//   - The reviewer's end ended the step, the fixer stopped by the seats engine, and the reviewer's wait error is returned wrapped, its accept error (the audit or the strict parse) is returned with its outcome and fork audit, its non-done outcome (died, timeout) is returned with a nil error, and a done reviewer whose review gate failed is an error naming the gate, never a verdict.
-//   - The fixer dies or times out: the round returns the fixer's outcome.
-//   - The fixer reaches done before the marker was released: the round returns an error naming the skipped handoff.
-//     Whether the marker was released is the acceptance's recorded fact, set as the marker write begins, never the order the two ends arrive in.
-//   - Otherwise the round completes with the fixer's run.
-//     A failing fixer gate returns the fixer's Gate with Verdict and Findings empty.
-//     A done fixer with a passing or absent gate compares the review file with the parsed bytes before Verdict and Findings are set.
+// concludeReview and Fix's conclusion are each the one place their half's failure rules live:
+//   - A reviewer whose provider never came up is OutcomeDied with NotStarted, Review.StartError and a nil error; a fixer's likewise, with Fix.StartError.
+//   - A half that dies or times out returns its outcome with a nil error.
+//   - A done reviewer whose review gate failed is an error naming the gate, never a verdict.
+//   - A done reviewer whose cluster audit or strict parse fails is that error, returned with the outcome and fork audit.
+//   - A done fixer returns its Gate, passed through; a failing fixer gate returns the fixer's Gate with a nil error.
+//   - A done fixer whose review file no longer holds the accepted bytes is ErrReviewChanged.
 //
 // The seats engine stops every seat before it returns, through each handle's Stop, which records the stop in the seat's run record before it removes the strand, so a later attach probe reads the seat as stopped and never halts on it.
-// A chair that timed out or whose wait returned an error is stopped as well, since it may still be running.
-// No seat is left live and no marker write outlives the attempt.
+// A seat that timed out or whose wait returned an error is stopped as well, since it may still be running.
 // A seat that cannot be stopped is seatengine.ErrSeatNotStopped, returned wrapped in ErrHalfNotStopped beside it, so a caller matching either sees it; it is never retried or archived over, and its message ends with the way forward (run "lyx reed remove <guid>", then re-step the row).
-// A seat whose provider never came up is that half's OutcomeDied with NotStarted set and a nil error.
-// The seats engine reports only the error there, so the half carries its StartError text and no identity.
-// A fixer that fails to start starts no reviewer, and a reviewer that fails to start has the fixer stopped.
-// Any other fixer start error is a pre-strand failure, returned wrapped.
+// Any other start error is a pre-strand failure, returned wrapped.
 //
-// # Resuming a round
+// # Resuming a half
 //
-// A caller that finds a previous session's round on disk asks ProbeRound what became of each half, without waiting on either.
-// ProbeRound builds the round's table with the same builder and runs the seats engine's probe over it.
+// A caller that finds a previous session's half on disk asks ProbeReview or ProbeFix what became of it, without waiting on it.
+// A probe builds the half's table with the same builder and runs the seats engine's probe over it.
 // A half is live when the shuttle holds a run for its seat, even when its output file is already on disk, as a reviewer repairing its review in the parse gate is.
 // A half is done when it has no live run and its output file is present, and gone otherwise.
-// The probe stops a live reviewer beside a fixer that is not live and reports it by its file, so a caller starts a fresh round.
 // A seat that cannot be stopped is returned wrapped in ErrHalfNotStopped.
-// The LiveRound it returns carries each half's state and, for a live half, its Handle, whose strand guid is what a caller stops the half by;
-// it also holds, unexported, what the probe found, which Resume hands back to the seats engine.
-// Resume attaches to a round whose halves are both live: it starts nothing, removes the ready marker it finds (a finished reviewer's run is never live, so a marker is stale),
-// and resumes the seat table, so a resumed round ends exactly as a fresh one does.
-// Any other combination, and a LiveRound that did not come from ProbeRound, is refused with nothing started or stopped;
-// the caller settles it by stopping what is live through the handles' Stop and running a fresh round, since a live half is never started a second time.
+// The LiveHalf it returns carries the half's state and, for a live half, its Handle, whose strand guid is what a caller stops the half by;
+// it also holds, unexported, what the probe found, which ResumeReview or ResumeFix hands back to the seats engine.
+// ResumeReview and ResumeFix attach to a live half: they start nothing, and the resumed half ends exactly as a fresh one does.
+// A LiveHalf that is not live, and one that did not come from the half's probe, is refused with nothing started or stopped;
+// the caller settles it by stopping what is live through the handle's Stop and running the half fresh, since a live half is never started a second time.
 //
 // Every recorded finding is fixed by the fixer, all severities including LOW and NIT.
 // Severity affects how a finding is reported, never whether it gets fixed.
@@ -150,7 +124,7 @@
 // unfixed nits re-surface or silently vanish across rounds instead of ever closing, so round count goes up instead of down.
 // Two exceptions exist.
 // A finding is disputed, with cited evidence in the fixer-report's Disputed section, on one of two grounds:
-// its premise is false against the code or the fasit, or the premise holds but every change that addresses it makes the target worse.
+// its premise is false against the code, or the premise holds but every change that addresses it makes the target worse.
 // One sound change means the finding is fixed, not disputed, and a finding whose only sound change leaves the fixer's write surface is deferred.
 // When the premise holds and the proposed change is wrong, the fixer fixes with its own change and marks the finding as fixed differently in the fixer-report's list of changes.
 // Severity, size, cost or disagreement with the rubric never justify a dispute, and a dispute never converges a segment on its own.
@@ -183,14 +157,14 @@
 // A single burler round never grades its own fix.
 // Because the review precedes the fix within a round, the reviewer is a legitimate, independent gate exactly like a normal reviewer.
 // The fix FROM round N is judged by a FRESH reviewer in round N+1, not by the same round that made it.
-// That cross-round independence is the caller's discipline (it spawns a new burler each round);
-// a single Engine.Run call only guarantees review-before-fix within its own round.
+// That cross-round independence is the caller's discipline (it spawns a new review half each round);
+// a single round only guarantees review-before-fix within itself.
 //
 // # Profile vs RunOpts
 //
 // Profile is the content contract for one round: what to review (Target),
 // what to judge it against (Fasit — an empty Fasit degenerates the round
-// to a pure internal-consistency check, which validate rejects), the
+// to a pure internal-consistency check, which validateReview rejects), the
 // criteria (Rubric, mapped onto the fixed Severity vocabulary), the
 // write-surface discipline (FixScope), whether the round may drive the
 // real substrate (ToolUse), cluster fan-out (ClusterFan), the caller-named
@@ -201,9 +175,8 @@
 // selection that varies per invocation — a caller may vary each half's model/effort
 // per round of the SAME artifact — while Profile describes what does not
 // change about the round's content.
-// Run maps RunOpts onto each seat's shuttle Spec through roundTable, and the table is not interactive:
+// Each half maps RunOpts onto its seat's shuttle Spec through its table builder, and the tables are not interactive:
 // rounds are autonomous by default.
-// Profile.ReadyMarkerPath is told with the round's other paths and required.
 //
 // # FixScope: overlay vs source
 //
@@ -224,17 +197,15 @@
 //     commands at all — the Fabric Git Invariant reserves committing that
 //     class of file to the loop owner, never an agent.
 //
-// Any other FixScope value, including empty, is a validate error: the
+// Any other FixScope value, including empty, is a validation error: the
 // field selects safety-critical behavior and gets no silent default.
 //
 // # Fabric-blindness
 //
 // burlerengine never imports the fabric module and never constructs a
-// _lyx/... path — Result returns the review/fixer-report paths the
-// caller supplied (resolved absolute), and committing them
-// is the loop owner's job (loom's
-// Burler-round-producer-plus-Bouncer segments), via the
-// fabric engine in-process. See PATTERN-fabric-git.
+// _lyx/... path — the results return the review/fixer-report paths the caller supplied (resolved absolute).
+// Committing them is the loop owner's job (loom's Burler review and fix rows plus the Bouncer segments), via the fabric engine in-process.
+// See PATTERN-fabric-git.
 // The one exception an agent DOES commit is its own code
 // under FixScopeSource — that is an ordinary repo commit, not a fabric
 // operation.
@@ -248,25 +219,25 @@
 // listed lens, in fan order (repeats allowed). An empty ClusterFan is a
 // single-reviewer round — the default, since forking is never on unless a
 // profile explicitly names a fan — and a fan longer than maxClusterN (16)
-// entries fails validate. There is deliberately no fan named "default":
+// entries fails validation. There is deliberately no fan named "default":
 // every seeded fan is dormant until a profile names it.
 // Fan and lens names resolve against burler.yaml first and, per name, against the embedded template,
 // so an operator-defined name wins and an absent burler.yaml resolves wholly from the template.
 //
 // ClusterExclude names lenses to drop from the fan ClusterFan resolves to,
-// applied inside validate after ResolveFan, with the survivors stored in
+// applied inside validateReview after ResolveFan, with the survivors stored in
 // clusterLenses — the single value both prompt composition and
 // auditClusterRound's exact-N fork check read, so a trimmed round demands
 // exactly the forks it named and ErrClusterForksMissing's fail-loud posture
 // is untouched. Three edge cases split on who authored the input:
-// ClusterExclude set with an empty ClusterFan is a validate error, because
+// ClusterExclude set with an empty ClusterFan is a validation error, because
 // that is a Go caller's mistake; a name not present in the resolved fan is a
 // no-op for that name with a warning, because an exclusion list is an
 // advisory, per-call directive over a config-owned fan an operator may edit
 // between rounds, so a stale name is stale rather than wrong; and an
 // exclusion that would empty the fan falls back to ClusterExcludeHeld, the exclusions carried from earlier rounds of the generation.
 // When that would empty the fan too the whole fan runs, because dropping to zero lenses is never what "these found nothing last round" meant and running more lenses costs tokens, never correctness.
-// ClusterExcludeHeld set with an empty ClusterFan is a validate error too.
+// ClusterExcludeHeld set with an empty ClusterFan is a validation error too.
 //
 // A cluster round still runs its review as ONE shuttle session, the handler, in three phases.
 // (1) the handler explores the target in full; (2)
@@ -281,7 +252,7 @@
 // positives (judged with equal skepticism, never appearing in the parsed
 // findings), and severity ordering.
 // All three phases are part of the review, so review-before-fix is intact exactly as in a solo round:
-// the consolidated review is fully written to disk, and accepted, before the fixer touches a single target file.
+// the consolidated review is fully written to disk, and accepted, before the fix half spawns.
 //
 // Fork discipline is fixed boilerplate the handler composes into every
 // fork's prompt, never per-lens: read-only evidence gathering only (no
@@ -303,7 +274,7 @@
 // any fork with AgentCalls > 0, WriteCalls > 0, or a git-mutating Bash
 // command is a hard error; any named spawn is a hard error. A fork that
 // ran clean but never returned a report is sloppiness no mechanism
-// prevents in advance — it is collected into Result.ClusterWarnings, never
+// prevents in advance — it is collected into ReviewResult.ClusterWarnings, never
 // failing the round, since the handler's own consolidation phase already
 // judges each fork's output on its merits.
 //
@@ -340,26 +311,28 @@
 // never imports fabric, never constructs a _lyx/... path) is exactly as
 // true for a cluster round as for a solo one.
 //
-// # What a round returns
+// # What the halves return
 //
-// Result is an invariant contract regardless of what was reviewed.
-// It carries a Verdict (VerdictApproved or VerdictBlocking) and the parsed Findings.
+// ReviewResult is an invariant contract regardless of what was reviewed.
+// It carries a Verdict (VerdictApproved or VerdictBlocking), the parsed Findings and the Digest.
 // ParseReview enforces unique, non-empty ids fail-loud, so cross-round hydration and audit can cite a finding unambiguously;
 // the caller judges progress across rounds holistically via its own verdict judge, not by tracking finding-key identity.
-// It also carries the resolved ReviewPath/FixerReportPath, and each half's SessionID/StrandGUID/LastAssistantMessage/RunDir (Result.Review and Result.Fix, with StartError set only on a half that never started).
-// Outcome is the deciding half's, the fixer's Gate is passed through, and ForkAudit and ClusterWarnings come from the reviewer.
-// Each Half also carries its run's StartedAt, EndedAt and session Usage (forks included) from its terminal shuttle Result, and Result.Lenses names the lenses the reviewer ran, nil for a solo round; no decision reads them.
-// Run returns a nil error for every shuttleengine outcome except a hard failure:
-// an invalid profile, a shuttle start failure, a half that cannot be stopped, a skipped handoff, a changed review,
+// It also carries the resolved ReviewPath, the reviewer's SessionID/StrandGUID/LastAssistantMessage/RunDir (ReviewResult.Review, with StartError set only on a half that never started), ForkAudit and ClusterWarnings.
+// FixResult carries the fixer's Outcome, the resolved FixerReportPath, the fixer's Half, its Gate passed through, Skipped and NotStarted.
+// Each Half also carries its run's StartedAt, EndedAt and session Usage (forks included) from its terminal shuttle Result, and ReviewResult.Lenses names the lenses the reviewer ran, nil for a solo round; no decision reads them.
+// Review and Fix return a nil error for every shuttleengine outcome except a hard failure:
+// an invalid profile, a shuttle start failure, a half that cannot be stopped, a changed review,
 // or — deliberately loud — a verdict parse failure on a done review, since a defaulted verdict could silently terminate a caller's round loop on a malformed round.
-// died/timeout are normal loop events a caller branches on via Result.Outcome, with an empty Verdict.
+// died/timeout are normal loop events a caller branches on via the result's Outcome, with an empty Verdict.
 //
 // # The review-parse gate
 //
 // The reviewer's gate spec is the review entry (ReviewGateEntry) alone, and the caller's own entries gate the fixer.
 // While the round's own review file does not parse, the entry re-prompts the reviewer in its own session with the parse error, its quoting hint and the file to rewrite.
-// It re-prompts at most reviewGateAttempts times and then lets the run through, so a file still invalid after the budget fails at the strict parse in the handoff.
-// The gate (through CheckReviewFile) and that parse both reach ParseReview.
+// It re-prompts at most reviewGateAttempts times and then lets the run through, so a file still invalid after the budget fails at the strict parse in acceptReview.
+// The gate (through CheckReviewFile) and that parse both reach ParseCurrentReview, the strict parse of the current round's review:
+// ParseReview plus a non-empty `fix` on every finding, `verdict` and `findings` as the frontmatter's only top-level keys, and one `### [SEVERITY]` prose block per finding matching the frontmatter's count per severity.
+// ParseReview stays tolerant of `fix`, so a prior round's review written before the key existed still hydrates and still feeds a Bouncer's evidence.
 // `lyx burler validate-review <review-file>` is the gate's self-check verb:
 // it runs CheckReviewFile read-only and needs no hub, mode or git repository.
 package burlerengine

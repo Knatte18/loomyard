@@ -181,12 +181,20 @@ fixer-report-path: fixer-report.md
 }
 
 // TestResultEnvelope_ForkCountNilGuard asserts resultEnvelope's forkCount guards a nil ForkAudit
-// (the non-cluster or non-done case) to 0 rather than panicking,
-// reports the real fork count plus the raw ClusterWarnings slice when ForkAudit is set,
-// and lands the told mode/stateDir/stencilsDir parameters under their own keys.
+// (the non-cluster or non-done case) to 0 rather than panicking.
+// It reports the real fork count plus the raw ClusterWarnings slice when ForkAudit is set.
+// It takes the outcome from the fix half when it ran and from the review otherwise.
+// It reports a skipped fix.
+// It lands the told mode/stateDir/stencilsDir parameters under their own keys.
 func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
-	t.Run("nil ForkAudit", func(t *testing.T) {
-		env := resultEnvelope(burlerengine.Result{Outcome: shuttleengine.OutcomeDone}, "/hub/.lyx/review.md.ready", "hub", "", "/hub/stencils")
+	t.Run("a review that stopped short", func(t *testing.T) {
+		env := resultEnvelope(burlerengine.ReviewResult{Outcome: shuttleengine.OutcomeDied}, burlerengine.FixResult{}, "hub", "", "/hub/stencils")
+		if got := env["outcome"]; got != "died" {
+			t.Errorf(`resultEnvelope() outcome = %v; want the review's "died", no fix having run`, got)
+		}
+		if got := env["fixSkipped"]; got != false {
+			t.Errorf(`resultEnvelope() fixSkipped = %v; want false`, got)
+		}
 		if got := env["forkCount"]; got != 0 {
 			t.Errorf(`resultEnvelope() forkCount = %v; want 0`, got)
 		}
@@ -207,19 +215,31 @@ func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
 		}
 	})
 
-	t.Run("populated ForkAudit and warnings", func(t *testing.T) {
-		result := burlerengine.Result{
-			Outcome: shuttleengine.OutcomeDone,
+	t.Run("a fixed round with a populated ForkAudit and warnings", func(t *testing.T) {
+		review := burlerengine.ReviewResult{
+			Outcome:    shuttleengine.OutcomeDone,
+			Verdict:    burlerengine.VerdictBlocking,
+			ReviewPath: "/state/dir/review.md",
 			ForkAudit: &shuttleengine.ForkAudit{
 				Forks: []shuttleengine.ForkReport{{TranscriptPath: "a"}, {TranscriptPath: "b"}},
 			},
 			ClusterWarnings: []string{`fork "b" never returned a final report`},
+			Review:          burlerengine.Half{SessionID: "rs", StrandGUID: "rg", LastAssistantMessage: "rm", RunDir: "/kept/r"},
 		}
-		result.Review = burlerengine.Half{SessionID: "rs", StrandGUID: "rg", LastAssistantMessage: "rm", RunDir: "/kept/r"}
-		result.Fix = burlerengine.Half{StartError: "never came up"}
-		env := resultEnvelope(result, "/state/dir/.lyx/review.md.ready", "standalone", "/state/dir", "/state/dir/_lyx/stencils")
-		if got := env["readyMarkerPath"]; got != "/state/dir/.lyx/review.md.ready" {
-			t.Errorf(`resultEnvelope() readyMarkerPath = %v; want the told marker`, got)
+		fix := burlerengine.FixResult{
+			Outcome:         shuttleengine.OutcomeTimeout,
+			FixerReportPath: "/state/dir/fixer-report.md",
+			Fix:             burlerengine.Half{StartError: "never came up"},
+		}
+		env := resultEnvelope(review, fix, "standalone", "/state/dir", "/state/dir/_lyx/stencils")
+		if got := env["outcome"]; got != "timeout" {
+			t.Errorf(`resultEnvelope() outcome = %v; want the fix half's "timeout"`, got)
+		}
+		if got := env["verdict"]; got != "BLOCKING" {
+			t.Errorf(`resultEnvelope() verdict = %v; want the review's "BLOCKING"`, got)
+		}
+		if env["reviewPath"] != "/state/dir/review.md" || env["fixerReportPath"] != "/state/dir/fixer-report.md" {
+			t.Errorf(`resultEnvelope() reviewPath/fixerReportPath = %v/%v; want each half's path`, env["reviewPath"], env["fixerReportPath"])
 		}
 		if got := env["review"]; !reflect.DeepEqual(got, map[string]any{"sessionId": "rs", "strandGuid": "rg", "lastAssistantMessage": "rm", "runDir": "/kept/r", "startError": ""}) {
 			t.Errorf(`resultEnvelope() review = %v; want the reviewer's identity`, got)
@@ -242,6 +262,18 @@ func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
 		}
 		if got := env["stencilsDir"]; got != "/state/dir/_lyx/stencils" {
 			t.Errorf(`resultEnvelope() stencilsDir = %v; want "/state/dir/_lyx/stencils"`, got)
+		}
+	})
+
+	t.Run("a skipped fix", func(t *testing.T) {
+		review := burlerengine.ReviewResult{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictApproved}
+		fix := burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Skipped: true, FixerReportPath: "/hub/fixer-report.md"}
+		env := resultEnvelope(review, fix, "hub", "", "/hub/stencils")
+		if env["fixSkipped"] != true || env["outcome"] != "done" || env["fixerReportPath"] != "/hub/fixer-report.md" {
+			t.Errorf(`resultEnvelope() fixSkipped/outcome/fixerReportPath = %v/%v/%v; want true/done/the Go-written report`, env["fixSkipped"], env["outcome"], env["fixerReportPath"])
+		}
+		if _, present := env["readyMarkerPath"]; present {
+			t.Error("resultEnvelope() carries readyMarkerPath; want none, the round has no ready marker")
 		}
 	})
 }
@@ -367,6 +399,11 @@ func TestValidateReviewVerb_AgreesWithTheReviewGate(t *testing.T) {
 			name:    "missing delimiter",
 			content: "verdict: APPROVED\n",
 			wantErr: "must open with a \"---\"",
+		},
+		{
+			name:    "finding without a fix",
+			content: "---\nverdict: BLOCKING\nfindings:\n  - id: b-1\n    severity: BLOCKING\n    class: design\n    location: file.go:1\n    summary: broken\n---\n### [BLOCKING] broken\n",
+			wantErr: "missing a non-empty fix",
 		},
 		{
 			name:    "missing file",

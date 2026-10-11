@@ -1,9 +1,5 @@
-// attachprobe_test.go covers the live-agent probe BurlerProducer and Bouncer run before they archive
-// or spawn -- the seam that stops a resumed run from starting a second agent over one that is still
-// alive. BurlerProducer probes the round's two halves through its runner and resumes, stops or respawns by what is live;
-// the Bouncer probes through its Shuttle. The probe spans both producers, so its cases live in one file rather than being duplicated
-// into burler_test.go, bouncer_seed_test.go, and bouncer_judge_test.go; all three of those files'
-// own fakes and fixtures are reused here.
+// attachprobe_test.go covers the live-agent probe the Bouncer runs before it archives or spawns -- the seam that stops a resumed run from starting a second agent over one that is still alive.
+// The Bouncer probes through its Shuttle; the Burler rows' probes are covered beside their producers in burlerreview_test.go and burlerfix_test.go.
 //
 // Two properties are asserted in every case, not one. That the probe RAN is not enough: archiving
 // renames the very files a live agent is about to write, so a probe that ran after the archive would
@@ -13,18 +9,13 @@
 package shedadapters
 
 import (
-	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -49,16 +40,14 @@ func stampedSiblingCount(t *testing.T, dir, base string) int {
 	return count
 }
 
-// --- BurlerProducer ---
-
-// stopLog records the strand guid of every Stop call on the handles of a round built by roundWithStops, failing each call with err when set.
+// stopLog records the strand guid of every Stop call on the handles built over it, failing each call with err when set.
 type stopLog struct {
 	mu      sync.Mutex
 	err     error
 	stopped []string
 }
 
-// probedHandle is a burlerengine.Handle for a half the runner's probe reports live; the producer reads its strand guid and stops it.
+// probedHandle is a burlerengine.Handle for a half a probe reports live; a producer reads its strand guid and stops it.
 // A nil log makes Stop a no-op.
 type probedHandle struct {
 	guid string
@@ -79,216 +68,6 @@ func (h probedHandle) Stop() error {
 	defer h.log.mu.Unlock()
 	h.log.stopped = append(h.log.stopped, h.guid)
 	return h.log.err
-}
-
-const (
-	reviewGUID = "review-guid"
-	fixGUID    = "fix-guid"
-)
-
-// roundWith builds the LiveRound a probe reports for the given states, a live half carrying its guid's handle.
-func roundWith(review, fix burlerengine.HalfState) burlerengine.LiveRound {
-	return roundWithStops(nil, review, fix)
-}
-
-// roundWithStops is roundWith whose live halves record their Stop calls in log.
-func roundWithStops(log *stopLog, review, fix burlerengine.HalfState) burlerengine.LiveRound {
-	half := func(state burlerengine.HalfState, guid string) burlerengine.LiveHalf {
-		if state != burlerengine.HalfLive {
-			return burlerengine.LiveHalf{State: state}
-		}
-		return burlerengine.LiveHalf{State: state, Handle: probedHandle{guid: guid, log: log}}
-	}
-	return burlerengine.LiveRound{Review: half(review, reviewGUID), Fix: half(fix, fixGUID)}
-}
-
-func TestBurlerProducer_ResumesBothLiveHalvesInsteadOfRespawning(t *testing.T) {
-	t.Parallel()
-
-	runDir := t.TempDir()
-	stops := &stopLog{}
-	live := roundWithStops(stops, burlerengine.HalfLive, burlerengine.HalfLive)
-	runner := &shedfake.BurlerRunner{
-		LiveRounds:    []burlerengine.LiveRound{live},
-		ResumeResults: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}},
-	}
-	p := newBurlerProducer(t, runDir, runner, withBurlerClock(fixedClock(time.Now())))
-
-	// The live reviewer's own in-progress review, already on disk.
-	// It must still be there afterwards.
-	if err := os.WriteFile(roundReviewPath(runDir, 1), []byte("---\nverdict: APPROVED\n---\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(review) = %v; want nil", err)
-	}
-
-	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	if want := roundReviewPath(runDir, 1); ptr.Path != want {
-		t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
-	}
-	if runner.ProbeCalls != 1 || runner.ResumeCalls != 1 {
-		t.Errorf("ProbeRound calls %d, Resume calls %d; want 1 each, the probe before anything else", runner.ProbeCalls, runner.ResumeCalls)
-	}
-	if runner.GotLive[0] != live {
-		t.Errorf("Resume was handed %+v; want the probed round", runner.GotLive[0])
-	}
-	if runner.Calls != 0 {
-		t.Errorf("runner.Run calls = %d; want 0 -- a live round must be resumed, never respawned over", runner.Calls)
-	}
-	if len(stops.stopped) != 0 {
-		t.Errorf("stopped halves = %v; want none for a resumed round", stops.stopped)
-	}
-	if _, err := os.Stat(roundReviewPath(runDir, 1)); err != nil {
-		t.Errorf("the live round's review file was moved (stat = %v); want it untouched -- archiving renames the file the live reviewer is still writing", err)
-	}
-	if n := stampedSiblingCount(t, runDir, filepath.Base(roundReviewPath(runDir, 1))); n != 0 {
-		t.Errorf("stamped archive siblings = %d; want 0 -- the resume branch must not archive", n)
-	}
-}
-
-// TestBurlerProducer_NoLiveHalfSpawnsAttemptOne also pins what the probe is told: the round's own timeout, so a resumed round's deadline is the round's and not the shuttle config's shorter default.
-//
-//testtiming:keep pins the round and timeout the probe is handed, which no other test reads off the recorded probe options
-func TestBurlerProducer_NoLiveHalfSpawnsAttemptOne(t *testing.T) {
-	t.Parallel()
-
-	runDir := t.TempDir()
-	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-	opts := burlerengine.RunOpts{Timeout: 90 * time.Minute}
-	p := newBurlerProducer(t, runDir, runner, withBurlerRunOpts(opts), withBurlerClock(fixedClock(time.Now())))
-	// Round 1 is complete on disk, so this Call is round 2.
-	writeJudgedRound(t, runDir, 1)
-
-	shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	if runner.Calls != 1 || runner.ResumeCalls != 0 {
-		t.Errorf("runner.Run calls %d, Resume calls %d; want 1 and 0 -- a probe finding nothing live falls through to the spawn path", runner.Calls, runner.ResumeCalls)
-	}
-	if got := runner.GotProbeOpts[0]; got.Timeout != opts.Timeout || got.Round != "2" {
-		t.Errorf("probe options Timeout %s, Round %q; want %s and %q", got.Timeout, got.Round, opts.Timeout, "2")
-	}
-}
-
-// TestBurlerProducer_ResumedRoundThatEndedDeadRespawnsFromAttemptOne covers a resumed round whose halves died or timed out.
-func TestBurlerProducer_ResumedRoundThatEndedDeadRespawnsFromAttemptOne(t *testing.T) {
-	t.Parallel()
-
-	for _, outcome := range []shuttleengine.Outcome{shuttleengine.OutcomeDied, shuttleengine.OutcomeTimeout} {
-		t.Run(string(outcome), func(t *testing.T) {
-			t.Parallel()
-			runDir := t.TempDir()
-			runner := &shedfake.BurlerRunner{
-				Results:       []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}},
-				LiveRounds:    []burlerengine.LiveRound{roundWith(burlerengine.HalfLive, burlerengine.HalfLive)},
-				ResumeResults: []burlerengine.Result{{Outcome: outcome}},
-			}
-			p := newBurlerProducer(t, runDir, runner, withBurlerClock(fixedClock(time.Now())))
-
-			shedfake.RequireOutcome(t, p, shedengine.Stuck)
-			if runner.Calls != 1 {
-				t.Fatalf("runner.Run calls = %d; want 1 -- a dead resumed round leaves nothing to attach to, so a fresh spawn is correct", runner.Calls)
-			}
-			// The resumed round was not this producer's own attempt, so the retry budget must start fresh.
-			if got := runner.GotOpts[0].Round; got != "1" {
-				t.Errorf("first spawn's RunOpts.Round = %q; want \"1\" -- counting the dead resumed round as attempt 1 would halve every resumed round's retry budget", got)
-			}
-		})
-	}
-}
-
-// TestBurlerProducer_LiveRoundErrorNeitherArchivesNorSpawns covers the three errors a live-round probe can end in.
-// Each leaves the round's files in place, since a half that may still be live may be writing them.
-func TestBurlerProducer_LiveRoundErrorNeitherArchivesNorSpawns(t *testing.T) {
-	t.Parallel()
-
-	sentinel := errors.New("reed state unreadable")
-	tests := []struct {
-		name       string
-		runner     *shedfake.BurlerRunner
-		wantErr    error
-		wantSuffix string
-	}{
-		{
-			name:    "probe error",
-			runner:  &shedfake.BurlerRunner{ProbeErrs: []error{sentinel}},
-			wantErr: sentinel,
-		},
-		{
-			name:       "failed stop of the one live half",
-			runner:     &shedfake.BurlerRunner{LiveRounds: []burlerengine.LiveRound{roundWithStops(&stopLog{err: sentinel}, burlerengine.HalfDone, burlerengine.HalfLive)}},
-			wantErr:    burlerengine.ErrHalfNotStopped,
-			wantSuffix: `way forward: run "lyx reed remove ` + fixGUID + `", then re-step the row`,
-		},
-		{
-			name: "resume that could not stop a half",
-			runner: &shedfake.BurlerRunner{
-				LiveRounds: []burlerengine.LiveRound{roundWith(burlerengine.HalfLive, burlerengine.HalfLive)},
-				ResumeErrs: []error{fmt.Errorf("%w: strand g", burlerengine.ErrHalfNotStopped)},
-			},
-			wantErr: burlerengine.ErrHalfNotStopped,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			runDir := t.TempDir()
-			p := newBurlerProducer(t, runDir, tt.runner, withBurlerClock(fixedClock(time.Now())))
-			writeRoundFile(t, roundReviewPath(runDir, 1))
-
-			outcome, _, err := p.Call(context.Background())
-			if !errors.Is(err, tt.wantErr) {
-				t.Fatalf("Call() error = %v; want errors.Is(err, %v)", err, tt.wantErr)
-			}
-			if tt.wantSuffix != "" && !strings.HasSuffix(err.Error(), tt.wantSuffix) {
-				t.Errorf("Call() error = %q; want it to end with %q", err, tt.wantSuffix)
-			}
-			if outcome != "" {
-				t.Errorf("Call() outcome = %q; want empty alongside a non-nil error", outcome)
-			}
-			if tt.runner.Calls != 0 {
-				t.Errorf("runner.Run calls = %d; want 0", tt.runner.Calls)
-			}
-			if n := stampedSiblingCount(t, runDir, filepath.Base(roundReviewPath(runDir, 1))); n != 0 {
-				t.Errorf("stamped archive siblings = %d; want 0 -- an undeterminable or unstoppable half is exactly when archiving is most dangerous", n)
-			}
-		})
-	}
-}
-
-// TestBurlerProducer_PartiallyLiveRoundIsStoppedAndRespawned covers the pairs a round cannot be resumed from:
-// one live half is stopped through its handle, and a done/gone pair stops nothing, and both spawn attempt 1.
-func TestBurlerProducer_PartiallyLiveRoundIsStoppedAndRespawned(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name        string
-		review, fix burlerengine.HalfState
-		wantStopped []string
-	}{
-		{"live reviewer beside a gone fixer", burlerengine.HalfLive, burlerengine.HalfGone, []string{reviewGUID}},
-		{"live fixer beside a finished review", burlerengine.HalfDone, burlerengine.HalfLive, []string{fixGUID}},
-		{"finished review and a gone fixer", burlerengine.HalfDone, burlerengine.HalfGone, nil},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			runDir := t.TempDir()
-			stops := &stopLog{}
-			runner := &shedfake.BurlerRunner{
-				Results:    []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}},
-				LiveRounds: []burlerengine.LiveRound{roundWithStops(stops, tt.review, tt.fix)},
-			}
-			p := newBurlerProducer(t, runDir, runner, withBurlerClock(fixedClock(time.Now())))
-
-			shedfake.RequireOutcome(t, p, shedengine.Stuck)
-			if !slices.Equal(stops.stopped, tt.wantStopped) {
-				t.Errorf("stopped halves = %v; want %v", stops.stopped, tt.wantStopped)
-			}
-			if runner.ResumeCalls != 0 || runner.Calls != 1 {
-				t.Errorf("Resume calls %d, runner.Run calls %d; want 0 and 1", runner.ResumeCalls, runner.Calls)
-			}
-			if got := runner.GotOpts[0].Round; got != "1" {
-				t.Errorf("spawn's RunOpts.Round = %q; want \"1\"", got)
-			}
-		})
-	}
 }
 
 // --- Bouncer, judge pass ---
@@ -439,9 +218,7 @@ func TestBouncer_EntryProbe_AttachErrorNeitherClearsNorSettles(t *testing.T) {
 }
 
 // TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles pins what the probe matches on.
-// shuttleengine.Attach set-matches a persisted run.json's OutputFiles and nothing else, so a probe
-// naming any other set -- the seed pass's single focus file, or the Burler row's review/fixer-report
-// pair -- silently matches nothing and is indistinguishable from no agent being alive at all.
+// shuttleengine.Attach set-matches a persisted run.json's OutputFiles and nothing else, so a probe naming any other set -- the seed pass's single focus file, or a Burler row's review or fixer-report file -- silently matches nothing and is indistinguishable from no agent being alive at all.
 //
 //testtiming:keep pins the OutputFiles set the judge's entry probe names, which no other test reads off the recorded attach spec
 func TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles(t *testing.T) {

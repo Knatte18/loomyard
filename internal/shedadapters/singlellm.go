@@ -38,7 +38,7 @@ const singleLLMEngineLabel = "shuttle"
 //
 // RunGated and AttachGated are added beside Run and Attach rather than a widening of either, per
 // the "added forms, never widened signatures" decision: this seam is shared by three consumers --
-// SingleLLMProducer, BurlerProducer's attach probe, and Bouncer -- and Bouncer has no gate and never
+// SingleLLMProducer, the Burler rows' attach probes, and Bouncer -- and Bouncer has no gate and never
 // will, so widening Run/Attach would rewrite its six call sites to pass a zero value that means
 // nothing there. Every test fake implementing this seam gains both methods because Go admits no
 // partial implementation, and that churn is the intended cost, matching the precedent already
@@ -193,7 +193,7 @@ func (p *SingleLLMProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 // judge downstream of its own Stuck, since the run halts there, so its pointer is free to carry the
 // meaning the commit decorators key on, which is what keeps a gate-failed artifact committed and
 // diagnosable rather than sitting in a dirty working tree. This is the writer-row half of the "the two
-// producers' output pointers mean different things" decision; BurlerProducer's own gate-failed exit
+// producers' output pointers mean different things" decision; BurlerFixProducer's own gate-failed exit
 // carries the opposite, empty pointer, because emptiness is what tells the segment's Bouncer there
 // is no round artifact to judge (its cause rides on Reason instead) -- a meaning this producer has
 // no downstream consumer for.

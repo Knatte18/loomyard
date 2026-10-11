@@ -1,7 +1,7 @@
 <!-- This is the RoleReviewFix friction directive: the variant internal/friction.Directive renders
-     for the Burler round's fixer, the round's only note writer.
-     Its consuming call site is the fixer's instruction 1 (internal/burlerengine/prompt.go),
-     filled through the same stencil.FillOptional call that also carries pattern_directive.
+     for the Burler fix half's fixer, the round's only note writer.
+     Its consuming call site is the fix step, burler-step-fix (internal/burlerengine/prompt.go),
+     filled through a stencil.FillOptional call.
      internal/friction.Directive reads this file through stencilstore.Read, strips this banner with
      stencil.StripLeadingComment, and substitutes the literal "{{.note_path}}" token below with the
      composed absolute note path before returning the result.

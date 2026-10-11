@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -260,5 +261,131 @@ func TestBouncer_Escalation_MalformedRecordHaltsStuckNamingTheWayForward(t *test
 	requireReasonContains(t, ptr.Reason, "round 2", "unreadable", "way forward:", escalationPath(cfg.RunDir, 2), "lyx loom start")
 	if ptr.ParentNotice != "" {
 		t.Errorf("ParentNotice = %q; want none", ptr.ParentNotice)
+	}
+}
+
+// TestBouncer_AutoAccept covers BouncerConfig.AutoAccept: a spent budget over a verdict this call's judge just wrote settles as an automatic accept,
+// and every other case behaves as it does without the flag.
+func TestBouncer_AutoAccept(t *testing.T) {
+	gating := evidenceEntry{"alpha", "open", "design", "MEDIUM"}
+	tests := []struct {
+		name        string
+		verdict     string
+		harvest     bool
+		autoAccept  bool
+		bounces     func() (int, int, bool, error)
+		escalated   bool
+		decide      CirclingDecision
+		wantOutcome shedengine.Outcome
+		// wantCause is the escalation cause an Awaiting row writes.
+		wantCause EscalationCause
+		// wantSettled expects a settled accept on disk whose automatic value is wantAutomaticValue.
+		wantSettled        bool
+		wantAutomaticValue bool
+		wantExempt         bool
+	}{
+		{name: "a harvested CONTINUE at a spent budget settles automatically", verdict: "CONTINUE", harvest: true, autoAccept: true, bounces: spentBounces,
+			wantOutcome: shedengine.Done, wantSettled: true, wantAutomaticValue: true},
+		{name: "a harvested CIRCLING at a spent budget settles automatically", verdict: "CIRCLING", harvest: true, autoAccept: true, bounces: spentBounces,
+			wantOutcome: shedengine.Done, wantSettled: true, wantAutomaticValue: true},
+		{name: "the flag false escalates with cause budget", verdict: "CONTINUE", harvest: true, bounces: spentBounces,
+			wantOutcome: shedengine.Awaiting, wantCause: EscalationBudget},
+		{name: "an escalation already recorded returns its Awaiting", verdict: "CONTINUE", harvest: true, autoAccept: true, bounces: spentBounces, escalated: true,
+			wantOutcome: shedengine.Awaiting, wantCause: EscalationBudget},
+		{name: "a replayed CONTINUE escalates", verdict: "CONTINUE", autoAccept: true, bounces: spentBounces,
+			wantOutcome: shedengine.Awaiting, wantCause: EscalationBudget},
+		{name: "a harvested CIRCLING below the budget escalates with cause circling", verdict: "CIRCLING", harvest: true, autoAccept: true, bounces: belowBounces,
+			wantOutcome: shedengine.Awaiting, wantCause: EscalationCircling},
+		{name: "an erroring bounce seam returns a plain Stuck", verdict: "CONTINUE", harvest: true, autoAccept: true,
+			bounces:     func() (int, int, bool, error) { return 3, 3, true, errors.New("status unreadable") },
+			wantOutcome: shedengine.Stuck},
+		{name: "a recorded parent continue returns its budget-exempt Stuck", verdict: "CONTINUE", autoAccept: true, bounces: spentBounces, decide: CirclingContinue,
+			wantOutcome: shedengine.Stuck, wantExempt: true},
+		{name: "a recorded parent accept settles with automatic false", verdict: "CONTINUE", autoAccept: true, bounces: spentBounces, decide: CirclingAccept,
+			wantOutcome: shedengine.Done, wantSettled: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			seams := &circlingSeams{}
+			carry := &carryOverRecorder{}
+			shuttle := judgeFakeShuttle(2, bouncerVerdictContent(tt.verdict), evidenceLedgerContent(t, 2, gating), true)
+			cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle), withEscalationInputs()).Config
+			cfg.CirclingCheckpoint = 2
+			cfg.Bounces = tt.bounces
+			cfg.AutoAccept = tt.autoAccept
+			seams.install(&cfg)
+			carry.install(&cfg)
+			rounds := []bouncerJudgeFixture{
+				{round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONTINUE"), ledger: bouncerLedgerContent(1)},
+				{round: 2, report: bouncerReport(2)},
+			}
+			if !tt.harvest {
+				rounds[1].verdict = bouncerVerdictContent(tt.verdict)
+				rounds[1].ledger = bouncerLedgerContent(2)
+			}
+			layoutBouncerRun(t, cfg, rounds)
+			writeEvidenceLedger(t, cfg.RunDir, 1, gating)
+			if !tt.harvest {
+				writeEvidenceLedger(t, cfg.RunDir, 2, gating)
+			}
+			for n := 1; n <= 2; n++ {
+				if err := os.WriteFile(roundReviewPath(cfg.RunDir, n), []byte("review\n"), 0o644); err != nil {
+					t.Fatalf("WriteFile(review round %d) = %v; want nil", n, err)
+				}
+			}
+			if tt.escalated {
+				if err := writeEscalation(cfg.RunDir, 2, EscalationBudget, "brief\n", "notice"); err != nil {
+					t.Fatalf("writeEscalation = %v; want nil", err)
+				}
+			}
+			b, err := NewBouncer(cfg)
+			if err != nil {
+				t.Fatalf("NewBouncer(...) error = %v; want nil", err)
+			}
+
+			firstOutcome := tt.wantOutcome
+			if tt.decide != "" {
+				firstOutcome = shedengine.Awaiting
+			}
+			ptr := shedfake.RequireOutcome(t, b, firstOutcome)
+			if tt.decide != "" {
+				if _, _, err := RecordCirclingDecision(cfg.RunDir, tt.decide); err != nil {
+					t.Fatalf("RecordCirclingDecision(%s) = %v; want nil", tt.decide, err)
+				}
+				seams.order, carry.entries = nil, nil
+				ptr = shedfake.RequireOutcome(t, b, tt.wantOutcome)
+			}
+
+			if ptr.BudgetExempt != tt.wantExempt {
+				t.Errorf("BudgetExempt = %v; want %v", ptr.BudgetExempt, tt.wantExempt)
+			}
+			if tt.wantCause != "" {
+				requireEscalation(t, &cfg, tt.wantCause)
+			}
+			if tt.wantOutcome != shedengine.Awaiting && tt.decide == "" {
+				requireNoEscalation(t, &cfg)
+				if ptr.ParentNotice != "" {
+					t.Errorf("ParentNotice = %q; want none", ptr.ParentNotice)
+				}
+			}
+
+			decision, cause, settled, automatic, exists, err := readCirclingFile(cfg.RunDir, 2)
+			if err != nil {
+				t.Fatalf("readCirclingFile(round 2) = %v; want nil", err)
+			}
+			if tt.wantSettled {
+				if !exists || decision != CirclingAccept || !settled || automatic != tt.wantAutomaticValue {
+					t.Errorf("decision file = (%q, %q, settled %v, automatic %v, exists %v); want a settled accept with automatic %v", decision, cause, settled, automatic, exists, tt.wantAutomaticValue)
+				}
+				if got := strings.Join(seams.order, ","); got != "approve,commit" {
+					t.Errorf("seam order = %q; want approve,commit", got)
+				}
+				if len(carry.entries) != 1 || carry.entries[0].Closing != discussionparser.CarryOverAccepted {
+					t.Errorf("carry-over entries = %+v; want one with closing %q", carry.entries, discussionparser.CarryOverAccepted)
+				}
+			} else if tt.decide == "" && exists {
+				t.Errorf("decision file exists (%q); want none", decision)
+			}
+		})
 	}
 }

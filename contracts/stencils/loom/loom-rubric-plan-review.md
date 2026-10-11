@@ -1,7 +1,7 @@
-<!-- This is the Plan-Review rubric. It is read by both rows of the Plan-Review perch:
+<!-- This is the Plan-Review rubric. It is read by the Bouncer row and the review row of the Plan-Review perch:
      the Plan-Bouncer row interpolates it as bouncer-template-seed.md's and
-     bouncer-template-judge.md's rubric marker value, and the Plan-Burler row interpolates it the
-     same way into internal/burlerengine's own round prompt.
+     bouncer-template-judge.md's rubric marker value, and the Plan-Burler-Review row interpolates it the
+     same way into internal/burlerengine's own review prompt.
      It is a marker VALUE, never a template -- its only markers are the ones ReadRubric fills, and
      internal/stencil's StripLeadingComment removes this leading comment before either consumer ever
      sees it. -->
@@ -106,7 +106,7 @@ Do not flag any of the following as a finding:
 A finding whose fix adds, drops, moves or pairs targets, or changes a verify command, proposes only a fix that every check in the validation-checks section of `{{.specs_dir}}/loom/loom-plan-spec.md` admits.
 A fix that adds or pairs targets must pass `redundant-package-target` and `redundant-file-target` there, since a file or a package listed beside a member of it on one card is refused, and the spec says what counts and the way forward.
 When the reviewer sees no admissible fix, it still reports the defect and names the check that constrains the fix.
-The `**Fix:**` line is a proposal: the fixer may apply any other fix the checks admit, and when none exists it defers the finding with the constraining check as the reason.
+A finding's `fix` key is a proposal: the fixer may apply any other fix the checks admit, and when none exists it defers the finding with the constraining check as the reason.
 The rule narrows only which fix shapes a reviewer proposes; no defect becomes unreportable.
 
 ## Finding class

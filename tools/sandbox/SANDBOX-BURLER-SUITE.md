@@ -131,7 +131,9 @@ Write a profile YAML identical in shape to S1's but with fresh `review-path` / `
 Run `lyx burler run --profile <file>`.
 The JSON envelope reports `"outcome":"done"` and `"verdict":"APPROVED"`;
 the review file's frontmatter carries zero `BLOCKING`-severity findings (non-blocking MEDIUM/LOW/NIT polish findings are legal and do not fail this scenario);
-the fixer-report still exists and is non-empty (it is written unconditionally every round, even with nothing to fix -- it should say so).
+the fixer-report still exists and is non-empty.
+A review with no findings at all spawns no fixer: the fixer-report is then the Go-written one, which says nothing was fixed, and the envelope reports `"fixSkipped":true`.
+A review with polish findings runs the fixer, and the fixer-report is its own.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

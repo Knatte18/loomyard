@@ -49,11 +49,8 @@ type Profile struct {
 	clusterLenses      []Lens
 	ReviewPath         string
 	FixerReportPath    string
-	// ReadyMarkerPath is the told path of the file the engine writes once the reviewer's review is accepted and the fixer waits on.
-	// The caller derives it with burlermarker.Path; the engine derives no path.
-	ReadyMarkerPath   string
-	PriorReviews      []string
-	PriorFixerReports []string
+	PriorReviews       []string
+	PriorFixerReports  []string
 	// FocusDirective is an optional path to this round's focus directive file, kept apart from PriorReviews.
 	// It is steering input the reviewer reads before forming findings, and is never subject to the prior-rounds clean-room rule.
 	FocusDirective string
@@ -83,9 +80,9 @@ type RunOpts struct {
 	Gate shuttleengine.GateSpec
 }
 
-// validate normalizes p in place and reports a fail-loud error if not runnable.
+// validateReview normalizes p in place and reports a fail-loud error if the review half is not runnable.
 // Checks run in fixed order; the first failure is returned.
-func (p *Profile) validate(worktreeRoot string, cfg Config) error {
+func (p *Profile) validateReview(worktreeRoot string, cfg Config) error {
 	// Resolve all path fields to absolute first.
 	p.Target.Paths = resolvePaths(worktreeRoot, p.Target.Paths)
 	p.Fasit.Paths = resolvePaths(worktreeRoot, p.Fasit.Paths)
@@ -94,7 +91,6 @@ func (p *Profile) validate(worktreeRoot string, cfg Config) error {
 	p.FocusDirective = resolvePath(worktreeRoot, p.FocusDirective)
 	p.ReviewPath = resolvePath(worktreeRoot, p.ReviewPath)
 	p.FixerReportPath = resolvePath(worktreeRoot, p.FixerReportPath)
-	p.ReadyMarkerPath = resolvePath(worktreeRoot, p.ReadyMarkerPath)
 
 	// Target and Fasit must each carry at least one of Paths/Instructions.
 	if len(p.Target.Paths) == 0 && strings.TrimSpace(p.Target.Instructions) == "" {
@@ -153,14 +149,37 @@ func (p *Profile) validate(worktreeRoot string, cfg Config) error {
 	if p.FixerReportPath == "" {
 		return fmt.Errorf("burler: profile.FixerReportPath must not be empty")
 	}
-	if p.ReadyMarkerPath == "" {
-		return fmt.Errorf("burler: profile.ReadyMarkerPath must not be empty")
-	}
 	// A same-path pair would violate the file contract (OutputFiles must be distinct).
 	if p.ReviewPath == p.FixerReportPath {
 		return fmt.Errorf("burler: profile.ReviewPath and profile.FixerReportPath must not be the same path (got %q for both)", p.ReviewPath)
 	}
 
+	return nil
+}
+
+// validateFix normalizes the fix half's path fields in place and reports a fail-loud error if the fix half is not runnable:
+// the resolved Target.Paths exist, FixScope is legal, and the review and fixer-report paths are non-empty and distinct.
+// The fixer holds no fasit or rubric, so neither is required.
+func (p *Profile) validateFix(worktreeRoot string) error {
+	p.Target.Paths = resolvePaths(worktreeRoot, p.Target.Paths)
+	p.ReviewPath = resolvePath(worktreeRoot, p.ReviewPath)
+	p.FixerReportPath = resolvePath(worktreeRoot, p.FixerReportPath)
+
+	if err := requireExistingPaths("Target.Paths", p.Target.Paths); err != nil {
+		return err
+	}
+	if p.FixScope != FixScopeOverlay && p.FixScope != FixScopeSource {
+		return fmt.Errorf("burler: profile.FixScope must be %q or %q, got %q", FixScopeOverlay, FixScopeSource, p.FixScope)
+	}
+	if p.ReviewPath == "" {
+		return fmt.Errorf("burler: profile.ReviewPath must not be empty")
+	}
+	if p.FixerReportPath == "" {
+		return fmt.Errorf("burler: profile.FixerReportPath must not be empty")
+	}
+	if p.ReviewPath == p.FixerReportPath {
+		return fmt.Errorf("burler: profile.ReviewPath and profile.FixerReportPath must not be the same path (got %q for both)", p.ReviewPath)
+	}
 	return nil
 }
 

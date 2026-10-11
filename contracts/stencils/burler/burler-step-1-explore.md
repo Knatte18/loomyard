@@ -1,20 +1,16 @@
-<!-- This is burler round instruction 1 of 3: explore the target and
+<!-- This is the review half's explore step: explore the target and
      understand what it is judged against.
      It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go),
-     seeded to <hub>/_board/_lyx/stencils/burler/ and read from there at call time by composePrompt
-     (prompt.go) via internal/stencil, then read by each half's agent only when its orchestrator
-     (burler-template-review-orchestrator.md for the reviewer, burler-template-fix-orchestrator.md
-     for the fixer) directs it here; both halves read it, rendered once per half. target, fasit, rubric, and tool_use_rules are top-level {{.X}} substitutions;
+     seeded to <hub>/_board/_lyx/stencils/burler/ and read from there at call time by composeReviewPrompt
+     (prompt.go) via internal/stencil, then read by the reviewer only when its seat stencil
+     (burler-template-reviewer.md) directs it here; the reviewer is its only reader. target, fasit, rubric, and tool_use_rules are top-level {{.X}} substitutions;
      stencil.Fill requires all four non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). pattern_directive is the fifth marker,
-     and friction_directive is the sixth: both are optional, both filled via stencil.FillOptional, and
-     both render as nothing when their respective feature is inactive (PATTERN for pattern_directive,
-     Tier 2 for friction_directive).
-     focus_directive is the seventh marker, optional, filled via stencil.FillOptional, and renders
+     optional, filled via stencil.FillOptional, and renders as nothing when PATTERN is inactive.
+     focus_directive is the sixth marker, optional, filled via stencil.FillOptional, and renders
      nothing when the round has no directive.
-     All three stay at the top level, before the first work heading, so their optional-blank semantics hold. -->
+     Both stay at the top level, before the first work heading, so their optional-blank semantics hold. -->
 
 {{.pattern_directive}}
-{{.friction_directive}}
 {{.focus_directive}}
 ## What to review (the target)
 

@@ -26,11 +26,9 @@ const (
 //
 // Every row maps to InterruptPolicyReinvoke except NameWebster, which maps to
 // InterruptPolicyHandback. On every row but Webster and Friction-Reflect, re-calling current_producer after an
-// interrupted invocation does not double-spawn: internal/shedadapters/doc.go's "Every spawning
-// adapter probes for a live agent first" section records that SingleLLMProducer, Bouncer, and
-// BurlerProducer all call shuttleengine's Attach seam with the step's own OutputFiles and wait on a
-// match before any archive, so a re-invocation reattaches to the live agent rather than spawning a
-// second one.
+// interrupted invocation does not double-spawn:
+// internal/shedadapters/doc.go's "Every spawning adapter probes for a live agent first" section records that SingleLLMProducer, Bouncer, BurlerReviewProducer and BurlerFixProducer all call shuttleengine's Attach seam with the step's own OutputFiles and wait on a match before any archive.
+// So a re-invocation reattaches to the live agent rather than spawning a second one.
 //
 // NameFrictionReflect's premise is the attach premise:
 // frictionengine.Reflect probes shuttle's attach seam for a live reflection agent and archives a finished reflection's notes instead of spawning,
@@ -48,23 +46,29 @@ var InterruptPolicies = map[string]string{
 	NameLoomPreflight:     InterruptPolicyReinvoke,
 	NameDiscussionWrite:   InterruptPolicyReinvoke,
 	NameDiscussionBouncer: InterruptPolicyReinvoke,
-	NameDiscussionBurler:  InterruptPolicyReinvoke,
 	NamePlanWrite:         InterruptPolicyReinvoke,
 	NamePlanBouncer:       InterruptPolicyReinvoke,
-	NamePlanBurler:        InterruptPolicyReinvoke,
 	NameBatchifier:        InterruptPolicyReinvoke,
 	NameWebster:           InterruptPolicyHandback,
 	NameWebsterBouncer:    InterruptPolicyReinvoke,
-	NameWebsterBurler:     InterruptPolicyReinvoke,
 	NameDescribe:          InterruptPolicyReinvoke,
 	NamePublish:           InterruptPolicyReinvoke,
 	NamePRGate:            InterruptPolicyReinvoke, // spawns nothing
 	NamePRRework:          InterruptPolicyReinvoke, // the single-session adapter reattaches rather than double-spawns
 	NameDarnWrite:         InterruptPolicyReinvoke, // the single-session adapter reattaches rather than double-spawns
 	NameDarnBouncer:       InterruptPolicyReinvoke,
-	NameDarnBurler:        InterruptPolicyReinvoke,
 	NameFinalize:          InterruptPolicyReinvoke,
 	NameFrictionReflect:   InterruptPolicyReinvoke,
+
+	// Both halves of every review segment probe for a live session and resume it rather than spawn a second one.
+	NameDiscussionBurlerReview: InterruptPolicyReinvoke,
+	NameDiscussionBurlerFix:    InterruptPolicyReinvoke,
+	NamePlanBurlerReview:       InterruptPolicyReinvoke,
+	NamePlanBurlerFix:          InterruptPolicyReinvoke,
+	NameWebsterBurlerReview:    InterruptPolicyReinvoke,
+	NameWebsterBurlerFix:       InterruptPolicyReinvoke,
+	NameDarnBurlerReview:       InterruptPolicyReinvoke,
+	NameDarnBurlerFix:          InterruptPolicyReinvoke,
 }
 
 // InterruptPolicyFor returns InterruptPolicies' entry for name, or the empty string when name is

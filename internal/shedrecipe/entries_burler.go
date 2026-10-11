@@ -1,6 +1,5 @@
-// entries_burler.go implements burlerRoundEntry, the Constructor for the "BurlerRound" registry
-// row: the round producer opposite a segment's Bouncer row, sharing that row's run_subdir value so
-// both write into one joined run directory.
+// entries_burler.go implements burlerReviewEntry and burlerFixEntry, the Constructors for the "BurlerReview" and "BurlerFix" registry rows:
+// the review row and the fix row opposite a segment's Bouncer row, sharing that row's run_subdir value so all three write into one joined run directory.
 
 package shedrecipe
 
@@ -14,11 +13,30 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// burlerRoundEntry is the Constructor for the "BurlerRound" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile, resolves the row's "gates" Config key through resolveGateSpec into the RunOpts.Gate it builds, joins and creates the run directory this row's segment shares with its Bouncer row, and returns shedadapters.NewBurlerProducer(name, shedadapters.BurlerDeps{Runner: env.Burler, Models: the row's env.RowReviewModels entry, else env.ReviewModels, AnchorPath: env.AnchorPath}, profile, opts, runDir, env.Now).
+// burlerRowModels returns the review and fix model lists of the row called name: its env.RowReviewModels entry, else env.ReviewModels.
+// Each row of a segment takes its own half of the pick.
+func burlerRowModels(name string, env Env) burlerengine.RoundModels {
+	if rowModels, ok := env.RowReviewModels[name]; ok {
+		return rowModels
+	}
+	return env.ReviewModels
+}
+
+// burlerRowTimeout returns the round deadline of a row whose timeout_s Config key read timeoutS: the row's own value, else env.ReviewTimeout.
+// configInt with required false returns 0 for an absent key, so 0 is the absent sentinel here.
+// The reasoning is configString's: an empty string is the absent sentinel because there is no meaningful explicit zero.
+func burlerRowTimeout(timeoutS int, env Env) time.Duration {
+	if timeoutS == 0 {
+		return env.ReviewTimeout
+	}
+	return time.Duration(timeoutS) * time.Second
+}
+
+// burlerReviewEntry is the Constructor for the "BurlerReview" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile, joins and creates the run directory this row's segment shares with its Bouncer and fix rows, and returns shedadapters.NewBurlerReviewProducer(name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: burlerRowModels(name, env)}, profile, opts, runDir, env.Now).
 //
-// All three burler rows (Discussion-Burler, Plan-Burler, Webster-Burler) share this one constructor, which is why the validator is selected by the "gates" key rather than implied by the constructor:
-// the Webster round names the "verify" gate, so a round that changed code ends with a passing plan verify, and the two review rounds name their own validators.
-func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+// The row takes no "gates" key: its only gate is the engine's review-parse entry.
+// A cluster fan from env.RowClusterFans reaches the profile, and one also set in the recipe's profile is a construction error.
+func burlerReviewEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
 		return nil, err
@@ -31,11 +49,7 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 	if err != nil {
 		return nil, err
 	}
-	gate, err := resolveRowGateSpec("BurlerRound", name, cfg, env)
-	if err != nil {
-		return nil, err
-	}
-	if err := configRejectUnknown(cfg, "run_subdir", "profile", "timeout_s", "gates"); err != nil {
+	if err := configRejectUnknown(cfg, "run_subdir", "profile", "timeout_s"); err != nil {
 		return nil, err
 	}
 
@@ -54,55 +68,87 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 
 	if fan := env.RowClusterFans[name]; fan != "" {
 		if profile.ClusterFan != "" {
-			return nil, fmt.Errorf("shedrecipe: BurlerRound: row %q: cluster fan %q from loom.yaml through the wiring conflicts with cluster-fan %q set in the recipe's profile; way forward: remove cluster-fan from the recipe's profile for this row", name, fan, profile.ClusterFan)
+			return nil, fmt.Errorf("shedrecipe: BurlerReview: row %q: cluster fan %q from loom.yaml through the wiring conflicts with cluster-fan %q set in the recipe's profile; way forward: remove cluster-fan from the recipe's profile for this row", name, fan, profile.ClusterFan)
 		}
 		profile.ClusterFan = fan
 	}
 
-	// A row setting timeout_s overrides the Env value; a row omitting it takes the Env value; both absent leaves the zero value.
-	// configInt with required false returns 0 for an absent key, so 0 is the absent sentinel here.
-	// The reasoning is configString's: an empty string is the absent sentinel because there is no meaningful explicit zero.
-	timeout := time.Duration(timeoutS) * time.Second
-	if timeoutS == 0 {
-		timeout = env.ReviewTimeout
-	}
-
-	opts := burlerengine.RunOpts{
-		Timeout: timeout,
-		Gate:    gate,
-	}
-
-	if err := requireAbsRoot("BurlerRound", "RunRoot", env.RunRoot); err != nil {
-		return nil, err
-	}
-	// The anchor the round's ready marker is derived under.
-	if err := requireAbsRoot("BurlerRound", "AnchorPath", env.AnchorPath); err != nil {
-		return nil, err
-	}
-	if err := requireSeam("BurlerRound", "Burler", env.Burler); err != nil {
-		return nil, err
-	}
-
-	runDir, err := resolveUnderRoot("BurlerRound", "run_subdir", env.RunRoot, runSubdir)
+	runDir, err := burlerRunDir("BurlerReview", runSubdir, env)
 	if err != nil {
 		return nil, err
 	}
-	// The same run_subdir value in this row and its segment's Bouncer row is what makes both write
-	// into one directory, which is what lets shedadapters' roundComplete find this producer's report
-	// where the Bouncer looks for it.
-	if err := os.MkdirAll(runDir, 0o755); err != nil {
-		return nil, fmt.Errorf("shedrecipe: BurlerRound: create run dir %q: %w", runDir, err)
-	}
-
-	models := env.ReviewModels
-	if rowModels, ok := env.RowReviewModels[name]; ok {
-		models = rowModels
-	}
-	producer, err := shedadapters.NewBurlerProducer(name, shedadapters.BurlerDeps{Runner: env.Burler, Models: models, AnchorPath: env.AnchorPath}, profile, opts, runDir, env.Now)
+	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env)}
+	producer, err := shedadapters.NewBurlerReviewProducer(name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: burlerRowModels(name, env)}, profile, opts, runDir, env.Now)
 	if err != nil {
-		return nil, fmt.Errorf("shedrecipe: BurlerRound: %w", err)
+		return nil, fmt.Errorf("shedrecipe: BurlerReview: %w", err)
 	}
 	return producer, nil
+}
+
+// burlerFixEntry is the Constructor for the "BurlerFix" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile through burlerFixProfile, resolves the row's "gates" Config key through resolveRowGateSpec into the RunOpts.Gate it builds, joins and creates the run directory this row's segment shares with its Bouncer and review rows, and returns shedadapters.NewBurlerFixProducer(name, review_row, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: burlerRowModels(name, env)}, profile, opts, runDir, env.Now).
+//
+// All four fix rows share this one constructor, which is why the validator is selected by the "gates" key rather than implied by the constructor:
+// the Webster and Darn fixers name the "verify" gate, so a round that changed code ends with a passing verify, and the two review segments name their own validators.
+// The row takes no cluster fan, since the fixer runs no fan.
+func burlerFixEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+	runSubdir, err := configString(cfg, "run_subdir", true)
+	if err != nil {
+		return nil, err
+	}
+	reviewRow, err := configString(cfg, "review_row", true)
+	if err != nil {
+		return nil, err
+	}
+	profileCfg, err := configMap(cfg, "profile", true)
+	if err != nil {
+		return nil, err
+	}
+	timeoutS, err := configInt(cfg, "timeout_s", false)
+	if err != nil {
+		return nil, err
+	}
+	gate, err := resolveRowGateSpec("BurlerFix", name, cfg, env)
+	if err != nil {
+		return nil, err
+	}
+	if err := configRejectUnknown(cfg, "run_subdir", "review_row", "profile", "timeout_s", "gates"); err != nil {
+		return nil, err
+	}
+
+	profile, err := burlerFixProfile(profileCfg)
+	if err != nil {
+		return nil, err
+	}
+	runDir, err := burlerRunDir("BurlerFix", runSubdir, env)
+	if err != nil {
+		return nil, err
+	}
+	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), Gate: gate}
+	producer, err := shedadapters.NewBurlerFixProducer(name, reviewRow, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: burlerRowModels(name, env)}, profile, opts, runDir, env.Now)
+	if err != nil {
+		return nil, fmt.Errorf("shedrecipe: BurlerFix: %w", err)
+	}
+	return producer, nil
+}
+
+// burlerRunDir checks the Env fields a burler half row reads, then joins and creates the run directory runSubdir names under env.RunRoot.
+// The same run_subdir value in a segment's Bouncer, review and fix rows is what makes all three write into one directory.
+// That is what lets shedadapters' roundComplete find the review where the Bouncer looks for it.
+func burlerRunDir(entry, runSubdir string, env Env) (string, error) {
+	if err := requireAbsRoot(entry, "RunRoot", env.RunRoot); err != nil {
+		return "", err
+	}
+	if err := requireSeam(entry, "Burler", env.Burler); err != nil {
+		return "", err
+	}
+	runDir, err := resolveUnderRoot(entry, "run_subdir", env.RunRoot, runSubdir)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		return "", fmt.Errorf("shedrecipe: %s: create run dir %q: %w", entry, runDir, err)
+	}
+	return runDir, nil
 }
 
 // burlerRoundFileSet maps profile's target or fasit sub-map onto a burlerengine.FileSet, recognising
@@ -142,7 +188,7 @@ func burlerRoundFileSet(entry, field string, cfg Config) (burlerengine.FileSet, 
 // kebab-case shape, kept identical deliberately so a human who has written a burler profile file
 // reads a recipe row without a second vocabulary. review-path, fixer-report-path, prior-reviews,
 // prior-fixer-reports, and cluster-exclude are deliberately absent.
-// shedadapters.NewBurlerProducer's own doc states that those burlerengine.Profile fields, the ready marker path and burlerengine.RunOpts.Round are overwritten per round.
+// shedadapters.NewBurlerReviewProducer's own doc states that those burlerengine.Profile fields and burlerengine.RunOpts.Round are overwritten per round.
 // A recipe author setting one would therefore set a value the producer silently discards.
 //
 // rubric_stencil is the one key with no profileYAML counterpart: it names a stencilstore rubric
@@ -198,32 +244,32 @@ func burlerRoundProfile(cfg Config, stencilsDir, specsDir, publishFailure, webst
 	// key and cannot say which of the two the author meant.
 	switch {
 	case rubric != "" && rubricStencil != "":
-		return burlerengine.Profile{}, fmt.Errorf("shedrecipe: BurlerRound: config keys \"rubric\" and \"rubric_stencil\" are mutually exclusive")
+		return burlerengine.Profile{}, fmt.Errorf("shedrecipe: BurlerReview: config keys \"rubric\" and \"rubric_stencil\" are mutually exclusive")
 	case rubric == "" && rubricStencil == "":
-		return burlerengine.Profile{}, fmt.Errorf("shedrecipe: BurlerRound: exactly one of config keys \"rubric\" and \"rubric_stencil\" is required")
+		return burlerengine.Profile{}, fmt.Errorf("shedrecipe: BurlerReview: exactly one of config keys \"rubric\" and \"rubric_stencil\" is required")
 	}
 
 	if rubricStencil != "" {
-		if err := requireAbsRoot("BurlerRound", "StencilsDir", stencilsDir); err != nil {
+		if err := requireAbsRoot("BurlerReview", "StencilsDir", stencilsDir); err != nil {
 			return burlerengine.Profile{}, err
 		}
 		// Guarded inside this branch, not at function entry, so a row using a literal rubric: key
 		// still constructs with no specs directory wired, exactly as it does today.
-		if err := requireAbsRoot("BurlerRound", "SpecsDir", specsDir); err != nil {
+		if err := requireAbsRoot("BurlerReview", "SpecsDir", specsDir); err != nil {
 			return burlerengine.Profile{}, err
 		}
 		filled, err := shedadapters.ReadRubric(stencilsDir, rubricStencil, specsDir, publishFailure, websterRecord)
 		if err != nil {
-			return burlerengine.Profile{}, fmt.Errorf("shedrecipe: BurlerRound: rubric_stencil %q: %w", rubricStencil, err)
+			return burlerengine.Profile{}, fmt.Errorf("shedrecipe: BurlerReview: rubric_stencil %q: %w", rubricStencil, err)
 		}
 		rubric = filled
 	}
 
-	target, err := burlerRoundFileSet("BurlerRound", "target", targetCfg)
+	target, err := burlerRoundFileSet("BurlerReview", "target", targetCfg)
 	if err != nil {
 		return burlerengine.Profile{}, err
 	}
-	fasit, err := burlerRoundFileSet("BurlerRound", "fasit", fasitCfg)
+	fasit, err := burlerRoundFileSet("BurlerReview", "fasit", fasitCfg)
 	if err != nil {
 		return burlerengine.Profile{}, err
 	}
@@ -244,4 +290,25 @@ func burlerRoundProfile(cfg Config, stencilsDir, specsDir, publishFailure, webst
 		ToolUse:    toolUse,
 		ClusterFan: clusterFan,
 	}, nil
+}
+
+// burlerFixProfile maps cfg's profile map onto the burlerengine.Profile of a fix row, recognising exactly two keys -- target and fix-scope -- both optional at this level.
+// The fixer holds no fasit, rubric or cluster fan, so those keys are rejected as unrecognised; profile.target.paths follows burlerRoundProfile's relative-path exception.
+func burlerFixProfile(cfg Config) (burlerengine.Profile, error) {
+	targetCfg, err := configMap(cfg, "target", false)
+	if err != nil {
+		return burlerengine.Profile{}, err
+	}
+	fixScope, err := configString(cfg, "fix-scope", false)
+	if err != nil {
+		return burlerengine.Profile{}, err
+	}
+	if err := configRejectUnknown(cfg, "target", "fix-scope"); err != nil {
+		return burlerengine.Profile{}, err
+	}
+	target, err := burlerRoundFileSet("BurlerFix", "target", targetCfg)
+	if err != nil {
+		return burlerengine.Profile{}, err
+	}
+	return burlerengine.Profile{Target: target, FixScope: burlerengine.FixScope(fixScope)}, nil
 }

@@ -1,4 +1,4 @@
-// publishfailure.go turns the Publish failure record into the extra steps the Webster-Burler round gate runs to confirm a fix.
+// publishfailure.go turns the Publish failure record into the extra steps the Webster-Burler-Fix round gate runs to confirm a fix.
 // The record sits in the pair's own ignored directory, so every field is shape-checked before it reaches a command line.
 // It also renders webster's run record as the Plan-Review rubric's note.
 

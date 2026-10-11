@@ -1,4 +1,4 @@
-// Package impactset derives the command a Webster-Burler round gate runs from the diff between a base commit and HEAD.
+// Package impactset derives the command a Webster-Burler-Fix round gate runs from the diff between a base commit and HEAD.
 //
 // Derive is told the worktree and the base and resolves no cwd.
 // Git runs through `gitexec.Run`, and `go list` is a logged spawn.

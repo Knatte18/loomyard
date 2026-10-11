@@ -26,8 +26,11 @@ func (c *burlerCLI) validateReviewCmd() *cobra.Command {
 		Short:       "check that a review file parses, as a round's review gate does",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `validate-review runs the parse every burler round's review gate runs on its
-review file (burlerengine.CheckReviewFile, over ParseReview): YAML frontmatter
-carrying a legal verdict and well-formed findings. It prints ok with the
+review file (burlerengine.CheckReviewFile, over ParseCurrentReview): YAML
+frontmatter carrying a legal verdict and well-formed findings, each with a
+non-empty fix key. The frontmatter's only top-level keys are verdict and
+findings, and the body holds exactly one "### [SEVERITY]" prose block per
+finding, matching the frontmatter's count per severity. It prints ok with the
 absolute review file when the file parses, and the parse error verbatim with
 exit 1 when it does not. It is read-only and needs no hub or git repository.
 

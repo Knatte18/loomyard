@@ -27,10 +27,10 @@ type wantSequenceEntry struct {
 // Every entry but the three review segments and the trailing Publish carries a Done outcome by
 // rule; the segments themselves do not, so their entries are spelled out explicitly rather than
 // derived.
-// Each segment contributes exactly three entries in the same shape: NameXBouncer with Stuck (the seed call, which spawns a focus-setting pass and always reports Stuck, never judging anything on its first call), NameXBurler with Stuck (one completed review round -- BurlerProducer reports every successful round as Stuck by contract, never Done, since its Stuck is a routine hand-off to the Bouncer rather than a real stuck condition), and NameXBouncer again with Done (the judge call, whose fixture-scripted CONVERGED verdict is what advances the run past the segment).
+// Each segment contributes exactly four entries in the same shape: NameXBouncer with Stuck (the seed call, which spawns a focus-setting pass and always reports Stuck, never judging anything on its first call), NameXBurlerReview with Stuck (one completed review -- the review row reports every successful review as Stuck by contract, never Done, since its Stuck is a routine hand-off to the fix row rather than a real stuck condition), NameXBurlerFix with Stuck (the fix row's hand-back to the Bouncer, a Stuck for the same reason), and NameXBouncer again with Done (the judge call, whose fixture-scripted CONVERGED verdict is what advances the run past the segment).
 // With the standalone validate rows gone, the Plan-Review segment no longer carries
 // the trailing post-segment mechanical re-check the other two segments never had a counterpart
-// for either -- all three segments now share the identical three-entry shape.
+// for either -- all three segments now share the identical four-entry shape.
 // Stuck entries mid-run are therefore not a failure signal here; they are each segment doing its
 // job.
 //
@@ -55,7 +55,7 @@ type wantSequenceEntry struct {
 // method, still finds a complete, zero-findings plan after the decorator's rotation archived the
 // seeded one away.
 //
-// It is derived from wantProducerTable's order and types: a Bouncer row expands to its three entries (the Burler row follows it in the table), a Burler row contributes only through its Bouncer, Publish is Stuck and ends the sequence, and every other row is Done.
+// It is derived from wantProducerTable's order and types: a Bouncer row expands to its four entries (its review and fix rows follow it in the table), a review or fix row contributes only through its Bouncer, Publish is Stuck and ends the sequence, and every other row is Done.
 var wantSequenceOrder = deriveSequenceOrder()
 
 func deriveSequenceOrder() []wantSequenceEntry {
@@ -63,13 +63,14 @@ func deriveSequenceOrder() []wantSequenceEntry {
 	for i, row := range wantProducerTable {
 		switch {
 		case row.producerType == bouncerType:
-			burler := wantProducerTable[i+1]
+			review, fix := wantProducerTable[i+1], wantProducerTable[i+2]
 			order = append(order,
 				wantSequenceEntry{row.name, shedengine.Stuck},
-				wantSequenceEntry{burler.name, shedengine.Stuck},
+				wantSequenceEntry{review.name, shedengine.Stuck},
+				wantSequenceEntry{fix.name, shedengine.Stuck},
 				wantSequenceEntry{row.name, shedengine.Done},
 			)
-		case row.producerType == burlerType:
+		case row.producerType == burlerReviewType, row.producerType == burlerFixType:
 		case row.name == loomshed.NamePublish:
 			return append(order, wantSequenceEntry{row.name, shedengine.Stuck})
 		default:
@@ -161,11 +162,11 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	}
 
 	// The scenario checks that all three review segments genuinely ran rather than being silently short-circuited:
-	// the fake burler ran exactly three rounds (one per segment),
+	// the fake burler ran exactly one review and one fix per segment,
 	// and the fake shuttle recorded exactly three bouncer-judge spawns -- the judge calls whose fixture-scripted CONVERGED verdicts are what advanced the run past each segment.
-	loomBurler := env.Burler.(*shedfake.BurlerRunner)
-	if loomBurler.Calls != 3 {
-		t.Errorf("burler Calls = %d; want exactly 3 after a clean run", loomBurler.Calls)
+	loomBurler := env.Burler.(*shedfake.BurlerHalfRunner)
+	if loomBurler.ReviewCalls != 3 || loomBurler.FixCalls != 3 {
+		t.Errorf("burler Review/Fix calls = %d/%d; want exactly 3/3 after a clean run", loomBurler.ReviewCalls, loomBurler.FixCalls)
 	}
 	if judgeCalls := countRole(env.Shuttle.(*shedfake.Shuttle), "bouncer-judge"); judgeCalls != 3 {
 		t.Errorf("bouncer-judge spawns = %d; want exactly 3 after a clean run", judgeCalls)

@@ -1,15 +1,15 @@
 // progress_test.go runs shedengine.Routing.ProgressAt over loom's real recipe: every row maps to a
-// step, a review segment's two rows share one step, Friction-Reflect is the last step, and a
+// step, a review segment's three rows share one step, Friction-Reflect is the last step, and a
 // Burler current producer reports its segment's step.
 
 package loomrecipe
 
 import "testing"
 
-// TestRouting_ProgressAt asserts, over loom's real recipe, that every row maps to a step, both rows of each review segment map to the same step and a Burler reports its segment's step name, and Friction-Reflect is the last main-line step.
+// TestRouting_ProgressAt asserts, over loom's real recipe, that every row maps to a step, the three rows of each review segment map to the same step and a Burler row reports its segment's step name, and Friction-Reflect is the last main-line step.
 func TestRouting_ProgressAt(t *testing.T) {
 	t.Parallel()
-	routing, err := Routing(5)
+	routing, err := Routing(5, nil)
 	if err != nil {
 		t.Fatalf("Routing() = _, %v; want nil", err)
 	}
@@ -28,17 +28,20 @@ func TestRouting_ProgressAt(t *testing.T) {
 
 	t.Run("review segments share a step", func(t *testing.T) {
 		t.Parallel()
-		for _, seg := range []struct{ bouncer, burler, name string }{
-			{"Discussion-Bouncer", "Discussion-Burler", "Discussion-Review"},
-			{"Plan-Bouncer", "Plan-Burler", "Plan-Review"},
-			{"Webster-Bouncer", "Webster-Burler", "Webster-Review"},
+		for _, seg := range []struct{ bouncer, review, fix, name string }{
+			{"Discussion-Bouncer", "Discussion-Burler-Review", "Discussion-Burler-Fix", "Discussion-Review"},
+			{"Plan-Bouncer", "Plan-Burler-Review", "Plan-Burler-Fix", "Plan-Review"},
+			{"Webster-Bouncer", "Webster-Burler-Review", "Webster-Burler-Fix", "Webster-Review"},
 		} {
-			a, b := routing.ProgressAt(seg.bouncer), routing.ProgressAt(seg.burler)
-			if a.Step != b.Step || a.Step == 0 {
-				t.Errorf("%s step = %d, %s step = %d; want the same nonzero step", seg.bouncer, a.Step, seg.burler, b.Step)
-			}
-			if b.Name != seg.name {
-				t.Errorf("ProgressAt(%q).Name = %q; want %q", seg.burler, b.Name, seg.name)
+			a := routing.ProgressAt(seg.bouncer)
+			for _, row := range []string{seg.review, seg.fix} {
+				b := routing.ProgressAt(row)
+				if a.Step != b.Step || a.Step == 0 {
+					t.Errorf("%s step = %d, %s step = %d; want the same nonzero step", seg.bouncer, a.Step, row, b.Step)
+				}
+				if b.Name != seg.name {
+					t.Errorf("ProgressAt(%q).Name = %q; want %q", row, b.Name, seg.name)
+				}
 			}
 		}
 	})

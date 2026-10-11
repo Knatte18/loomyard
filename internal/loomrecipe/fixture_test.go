@@ -43,20 +43,24 @@ func (fakeAlwaysDoneProducer) Call(context.Context) (shedengine.Outcome, shedeng
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// newLoomBurler returns the shedfake.BurlerRunner every review segment's Burler row runs through.
-// Each round's DuringRun hook writes the ReviewPath and FixerReportPath the handed burlerengine.Profile names, each with short non-empty placeholder content, and the scripted Result reports shuttleengine.OutcomeDone.
-// That pair-on-disk plus OutcomeDone is what makes BurlerProducer.Call return Stuck with a real report rather than erroring, which is what the Bouncer's next call then judges.
-// The runner's Calls field counts the rounds.
-func newLoomBurler(t *testing.T) *shedfake.BurlerRunner {
+// newLoomBurler returns the shedfake.BurlerHalfRunner every review segment's Burler rows run through.
+// Each review writes the ReviewPath the handed burlerengine.Profile names and each fix writes its FixerReportPath, each with short non-empty placeholder content, and the scripted results report shuttleengine.OutcomeDone.
+// That file-on-disk plus OutcomeDone is what makes the review row hand on to the fix row and the fix row hand back to the Bouncer with a complete round, which is what the Bouncer's next call then judges.
+// The runner's ReviewCalls and FixCalls fields count the rounds.
+func newLoomBurler(t *testing.T) *shedfake.BurlerHalfRunner {
 	t.Helper()
-	burler := &shedfake.BurlerRunner{
-		Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}},
+	burler := &shedfake.BurlerHalfRunner{
+		ReviewResults: []burlerengine.ReviewResult{{Outcome: shuttleengine.OutcomeDone, Digest: "review-digest"}},
+		FixResults:    []burlerengine.FixResult{{Outcome: shuttleengine.OutcomeDone}},
 	}
-	burler.DuringRun = func(callIndex int) {
-		p := burler.GotProfiles[callIndex]
+	burler.DuringReview = func(callIndex int) {
+		p := burler.GotReviewProfiles[callIndex]
 		if err := os.WriteFile(p.ReviewPath, []byte("---\nverdict: APPROVED\nfindings: []\n---\nreview\n"), 0o644); err != nil {
 			t.Fatalf("write review %s: %v", p.ReviewPath, err)
 		}
+	}
+	burler.DuringFix = func(callIndex int) {
+		p := burler.GotFixProfiles[callIndex]
 		if err := os.WriteFile(p.FixerReportPath, []byte("fixer report"), 0o644); err != nil {
 			t.Fatalf("write fixer report %s: %v", p.FixerReportPath, err)
 		}

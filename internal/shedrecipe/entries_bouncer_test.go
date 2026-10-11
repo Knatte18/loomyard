@@ -187,7 +187,7 @@ func TestBouncerEntry_ArtifactPathsResolveUnderAnchorPath(t *testing.T) {
 // TestBouncerEntry_ReportNamePinning is the batch's second load-bearing assertion: a drift in the
 // pinned report name makes shedadapters.ResolveRound return 0 forever, and the Bouncer re-seeds
 // every call rather than judging the report already on disk. This test writes round-1-review.md
-// directly (bypassing BurlerProducer, which is out of this batch's scope) and asserts Call reaches
+// directly (bypassing the Burler rows) and asserts Call reaches
 // the judge branch -- observable via the recorded shuttle spec's Role, which is "bouncer-judge" only
 // past the seed branch and "bouncer-seed" inside it -- rather than the seed branch.
 func TestBouncerEntry_ReportNamePinning(t *testing.T) {
@@ -202,8 +202,8 @@ func TestBouncerEntry_ReportNamePinning(t *testing.T) {
 	}
 
 	runDir := filepath.Join(env.RunRoot, "review-segment")
-	// shedadapters.BurlerProducer writes its round n report to round-<n>-review.md; write that exact
-	// name here to simulate a completed round 1 without depending on BurlerProducer itself.
+	// The Burler review row writes its round n report to round-<n>-review.md; write that exact
+	// name here to simulate a completed round 1 without depending on the Burler rows themselves.
 	if err := os.WriteFile(filepath.Join(runDir, "round-1-review.md"), []byte("a review\n"), 0o644); err != nil {
 		t.Fatalf("write round-1-review.md: %v", err)
 	}
@@ -450,7 +450,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 // layoutBouncerRound1Report writes round 1's report file directly into env.RunRoot/review-segment,
 // so a bouncerEntry-built producer's first Call resolves round 1 and reaches the judge branch
 // rather than the seed branch -- the same setup TestBouncerEntry_ReportNamePinning uses to reach
-// the judge branch without depending on BurlerProducer. The file name mirrors bouncerEntry's own
+// the judge branch without depending on the Burler rows. The file name mirrors bouncerEntry's own
 // pinned ReportName convention.
 func layoutBouncerRound1Report(t *testing.T, env Env) {
 	t.Helper()

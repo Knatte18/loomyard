@@ -1,10 +1,8 @@
-// prompt_test.go covers composePrompt's marker composition: the happy path fills every marker
-// across all four rendered assets, each switched block (fix-scope, tool-use, prior-rounds,
-// cluster-rules) renders the branch its Profile field selects and not the other branch's exclusive
-// phrasing, and each block helper's content lands in its intended instruction file rather than
-// leaking into an orchestrator or a sibling instruction file.
-// It also declares newTestStencilsDir, the package-local test helper every burlerengine test uses to
-// seed a hermetic stencils directory through `stencilkit`.
+// prompt_test.go covers the half prompts' marker composition.
+// The happy path fills every marker across the review half's three rendered assets and the fix half's two.
+// Each switched block (fix-scope, tool-use, prior-rounds, cluster-rules) renders the branch its Profile field selects and not the other branch's exclusive phrasing.
+// Each block helper's content lands in its intended instruction file rather than leaking into a seat stencil or a sibling instruction file.
+// It also declares newTestStencilsDir, the package-local test helper every burlerengine test uses to seed a hermetic stencils directory through `stencilkit`.
 
 package burlerengine
 
@@ -26,21 +24,29 @@ func newTestStencilsDir(t *testing.T) string {
 	return stencilkit.Seed(t)
 }
 
-// Placeholder absolute instruction paths every composePrompt call in this
-// file passes — composePrompt does no filesystem access on these beyond
-// baking them into the orchestrators' marker values, so they need not
-// exist on disk (Engine.Run, not composePrompt, writes the files there).
-var testRoundFilePaths = roundFilePaths{
-	ReviewerExplore: "/tmp/instruction-1-explore-reviewer.md",
-	FixerExplore:    "/tmp/instruction-1-explore-fixer.md",
-	Review:          "/tmp/instruction-2-review.md",
-	Fix:             "/tmp/instruction-3-fix.md",
-}
+// Placeholder absolute instruction paths every compose call in this file passes.
+// The compose functions do no filesystem access on these beyond baking them into the seat stencils' marker values, so they need not exist on disk (the halves, not the compose functions, write the files there).
+var (
+	testReviewFiles = reviewFilesIn("/tmp/review-half")
+	testFixFiles    = fixFilesIn("/tmp/fix-half")
+)
+
+// The positions of the rendered instruction files in a halfPrompt's Files.
+const (
+	reviewExploreFile = iota
+	reviewStepFile
+	reviewFormatFile
+)
+
+const (
+	fixFormatFile = iota
+	fixStepFile
+)
 
 // newComposableProfile builds a minimal Profile whose paths already exist
-// on disk (composePrompt's directory annotation stats them) and whose
-// fields are all resolved absolute paths, as (*Profile).validate would
-// leave them — composePrompt is documented to run only after validate.
+// on disk (the compose functions' directory annotation stats them) and whose
+// fields are all resolved absolute paths, as validateReview and validateFix would
+// leave them — the compose functions are documented to run only after validation.
 func newComposableProfile(t *testing.T) Profile {
 	t.Helper()
 	root := t.TempDir()
@@ -66,47 +72,70 @@ func newComposableProfile(t *testing.T) Profile {
 		ToolUse:         false,
 		ReviewPath:      filepath.Join(root, "review.md"),
 		FixerReportPath: filepath.Join(root, "fixer-report.md"),
-		ReadyMarkerPath: filepath.Join(root, "review.md.ready"),
 	}
 }
 
-// seatPrompts renders the two seat prompts of p's round the way the seats engine fills them from prompts' marker values, told parentName.
-// It returns the reviewer's (advisor-1) and the fixer's (chair).
-func seatPrompts(t *testing.T, stencilsDir, parentName string, p *Profile, prompts roundPrompts) (reviewer, fixer string) {
+// composeReview composes p's review half prompt over the placeholder paths, failing the test on error.
+func composeReview(t *testing.T, stencilsDir string, p *Profile, patternDirective string) halfPrompt {
+	t.Helper()
+	prompt, err := composeReviewPrompt(stencilsDir, p, patternDirective, testReviewFiles)
+	if err != nil {
+		t.Fatalf("composeReviewPrompt() = %v; want nil error", err)
+	}
+	return prompt
+}
+
+// composeFix composes p's fix half prompt over the placeholder paths and a review's findings as the work, failing the test on error.
+func composeFix(t *testing.T, stencilsDir string, p *Profile, frictionDirective string) halfPrompt {
+	t.Helper()
+	prompt, err := composeFixPrompt(stencilsDir, p, frictionDirective, fixWork(p.ReviewPath, ""), testFixFiles)
+	if err != nil {
+		t.Fatalf("composeFixPrompt() = %v; want nil error", err)
+	}
+	return prompt
+}
+
+// chairPrompt renders the one chair seat's prompt of a half's table the way the seats engine fills it, told parentName.
+func chairPrompt(t *testing.T, stencilsDir, parentName string, p *Profile, table seatengine.Table) string {
 	t.Helper()
 	root := filepath.Dir(p.ReviewPath)
 	rendered, err := seatengine.Prompts(
 		seatengine.Geometry{WorktreeRoot: root, AnchorPath: root, StencilsDir: stencilsDir, ParentName: parentName, Shortname: "tst", Slug: "task"},
-		p.roundTable(RunOpts{}, prompts, nil),
+		table,
 	)
 	if err != nil {
 		t.Fatalf("seatengine.Prompts() = %v; want nil error", err)
 	}
-	return rendered[seatengine.AdvisorName(1)], rendered[seatengine.RoleChair]
+	return rendered[seatengine.RoleChair]
 }
 
-// combinedPrompt joins both seat prompts with every instruction file's Content, newline-separated.
+// combinedPrompt joins a half's chair prompt with every instruction file's Content, newline-separated.
 // It gives tests a single haystack to search when a presence/absence assertion does not care which of the rendered assets carries the text.
-func combinedPrompt(t *testing.T, stencilsDir string, p *Profile, prompts roundPrompts) string {
+func combinedPrompt(t *testing.T, stencilsDir string, p *Profile, table seatengine.Table, prompt halfPrompt) string {
 	t.Helper()
-	reviewer, fixer := seatPrompts(t, stencilsDir, "", p, prompts)
-	parts := make([]string, 0, len(prompts.Files)+2)
-	parts = append(parts, reviewer, fixer)
-	for _, f := range prompts.Files {
+	parts := make([]string, 0, len(prompt.Files)+1)
+	parts = append(parts, chairPrompt(t, stencilsDir, "", p, table))
+	for _, f := range prompt.Files {
 		parts = append(parts, f.Content)
 	}
 	return strings.Join(parts, "\n")
 }
 
-// The positions of the rendered instruction files in roundPrompts.Files.
-const (
-	reviewerExploreFile = iota
-	fixerExploreFile
-	reviewFile
-	fixFile
-)
+// reviewHalf composes p's review half and returns its prompt with its combined haystack.
+func reviewHalf(t *testing.T, stencilsDir string, p *Profile, patternDirective string) (halfPrompt, string) {
+	t.Helper()
+	prompt := composeReview(t, stencilsDir, p, patternDirective)
+	return prompt, combinedPrompt(t, stencilsDir, p, p.reviewTable(RunOpts{}, prompt.Values), prompt)
+}
 
-// TestComposePrompt_FocusDirective proves a round's focus file reaches instruction 1 through its own channel, with the precedence rule, and never reaches instruction 2's prior-rounds block;
+// fixHalf composes p's fix half and returns its prompt with its combined haystack.
+func fixHalf(t *testing.T, stencilsDir string, p *Profile, frictionDirective string) (halfPrompt, string) {
+	t.Helper()
+	prompt := composeFix(t, stencilsDir, p, frictionDirective)
+	return prompt, combinedPrompt(t, stencilsDir, p, p.fixTable(RunOpts{}, prompt.Values), prompt)
+}
+
+// TestComposePrompt_FocusDirective proves a round's focus file reaches the explore step through its own channel, with the precedence rule, and never reaches the review step's prior-rounds block;
 // and that a round without a directive renders no focus text and no marker residue.
 func TestComposePrompt_FocusDirective(t *testing.T) {
 	stencilsDir := newTestStencilsDir(t)
@@ -118,32 +147,21 @@ func TestComposePrompt_FocusDirective(t *testing.T) {
 			t.Fatalf("WriteFile(focus) = %v; want nil", err)
 		}
 
-		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
-		if err != nil {
-			t.Fatalf("composePrompt() = %v; want nil error", err)
-		}
-		for _, explore := range []int{reviewerExploreFile, fixerExploreFile} {
-			requireContains(t, prompts.Files[explore].Content, p.FocusDirective)
-			requireContains(t, prompts.Files[explore].Content, "The rubric binds over the focus directive")
-		}
-		if strings.Contains(prompts.Files[reviewFile].Content, p.FocusDirective) {
-			t.Errorf("instruction 2 contains the focus path %q; want it absent", p.FocusDirective)
-		}
+		prompt := composeReview(t, stencilsDir, &p, "")
+
+		requireContains(t, prompt.Files[reviewExploreFile].Content, p.FocusDirective)
+		requireContains(t, prompt.Files[reviewExploreFile].Content, "The rubric binds over the focus directive")
+		requireNotContains(t, prompt.Files[reviewStepFile].Content, p.FocusDirective)
 	})
 
 	t.Run("directive absent", func(t *testing.T) {
 		p := newComposableProfile(t)
 
-		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
-		if err != nil {
-			t.Fatalf("composePrompt() = %v; want nil error", err)
-		}
-		got := prompts.Files[reviewerExploreFile].Content
-		if strings.Contains(got, "Focus directive for this round") {
-			t.Errorf("instruction 1 contains the focus heading with no directive: %q", got)
-		}
+		got := composeReview(t, stencilsDir, &p, "").Files[reviewExploreFile].Content
+
+		requireNotContains(t, got, "Focus directive for this round")
 		if strings.Contains(got, "{{") || strings.Contains(got, "<no value>") {
-			t.Errorf("instruction 1 contains marker residue: %q", got)
+			t.Errorf("explore step contains marker residue: %q", got)
 		}
 	})
 
@@ -176,9 +194,7 @@ func TestComposePrompt_FocusDirective(t *testing.T) {
 		var buf bytes.Buffer
 		logger.SetOutput(&buf)
 		t.Cleanup(func() { logger.SetOutput(os.Stderr) })
-		if _, err := composePrompt(dir, &p, "", "", testRoundFilePaths); err != nil {
-			t.Fatalf("composePrompt() = %v; want nil error", err)
-		}
+		composeReview(t, dir, &p, "")
 		return buf.String()
 	}
 
@@ -203,94 +219,99 @@ func TestComposePrompt_FocusDirective(t *testing.T) {
 	})
 }
 
-// TestComposePrompt_MinimalProfile proves a minimal valid profile composes cleanly through stencil (no unfilled-marker error) and one render satisfies every part of composePrompt's contract:
-// the combined prompt carries the profile's content (both output paths, the ready marker path and the verbatim rubric text), a Target.Paths directory entry is annotated as one while a file entry is not, both non-empty orchestrators come back with exactly four instructionFile entries whose Path values equal the four path parameters in order (the contract Engine.Run relies on to write each rendered file to the path the orchestrator names), the fixer orchestrator names the rendered review file as the review format and the marker as the file to wait on, and neither orchestrator carries a downstream instruction body.
-// The tokens an orchestrator must not carry each appear only inside a downstream instruction file's body, so a regression that inlines one back trips the guard on the first offending token without colliding with an orchestrator's legitimate bare-word "verdict"/"findings" usage.
+// TestComposePrompt_MinimalProfile proves a minimal valid profile composes both halves cleanly through stencil (no unfilled-marker error) and one render of each satisfies the compose contract:
+// the review half's combined prompt carries the profile's content (the review path and the verbatim rubric text), a Target.Paths directory entry is annotated as one while a file entry is not, its files come back with Path values equal to the path parameters in order (the contract each half relies on to write every rendered file to the path the seat stencil names), and its seat stencil names the explore and review files;
+// the fix half's combined prompt carries both output paths, its seat stencil names the review, the format file and the fix step, and no seat stencil carries a downstream instruction body or a ready marker.
+// The tokens a seat stencil must not carry each appear only inside a downstream instruction file's body, so a regression that inlines one back trips the guard on the first offending token without colliding with a seat stencil's legitimate bare-word "verdict"/"findings" usage.
 //
-//testtiming:keep pins the profile content, the directory annotation, the four instruction file paths, the fixer orchestrator's pointers and the orchestrators' exclusion of downstream bodies, which the cluster-rules test covering its blocks does not assert
+//testtiming:keep pins the profile content, the directory annotation, the instruction file paths, the fixer stencil's pointers and the seat stencils' exclusion of downstream bodies, which the cluster-rules test covering its blocks does not assert
 func TestComposePrompt_MinimalProfile(t *testing.T) {
 	t.Parallel()
 
 	p := newComposableProfile(t)
 	stencilsDir := newTestStencilsDir(t)
 
-	prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
-	if err != nil {
-		t.Fatalf("composePrompt() = %v; want nil error", err)
-	}
-	got := combinedPrompt(t, stencilsDir, &p, prompts)
+	review, reviewAll := reviewHalf(t, stencilsDir, &p, "")
+	fix, fixAll := fixHalf(t, stencilsDir, &p, "")
 
-	requireContains(t, got, p.ReviewPath)
-	requireContains(t, got, p.FixerReportPath)
-	requireContains(t, got, p.ReadyMarkerPath)
-	requireContains(t, got, p.Rubric)
+	requireContains(t, reviewAll, p.ReviewPath)
+	requireContains(t, reviewAll, p.Rubric)
+	requireContains(t, fixAll, p.ReviewPath)
+	requireContains(t, fixAll, p.FixerReportPath)
 
-	dirLine := findLineContaining(got, "targetdir")
+	dirLine := findLineContaining(reviewAll, "targetdir")
 	if dirLine == "" {
-		t.Fatalf("composePrompt() output missing a line for the target directory entry")
+		t.Fatalf("composeReviewPrompt() output missing a line for the target directory entry")
 	}
 	requireContains(t, dirLine, "a directory")
-	fileLine := findLineContaining(got, "target.txt")
+	fileLine := findLineContaining(reviewAll, "target.txt")
 	if fileLine == "" {
-		t.Fatalf("composePrompt() output missing a line for the target file entry")
+		t.Fatalf("composeReviewPrompt() output missing a line for the target file entry")
 	}
 	requireNotContains(t, fileLine, "a directory")
 
-	reviewer, fixer := seatPrompts(t, stencilsDir, "", &p, prompts)
-	if reviewer == "" || fixer == "" {
-		t.Errorf("seat prompts = (%q, %q); want both non-empty", reviewer, fixer)
-	}
-	wantPaths := []string{testRoundFilePaths.ReviewerExplore, testRoundFilePaths.FixerExplore, testRoundFilePaths.Review, testRoundFilePaths.Fix}
-	if len(prompts.Files) != len(wantPaths) {
-		t.Fatalf("composePrompt() files = %d entries; want %d", len(prompts.Files), len(wantPaths))
-	}
-	for i, want := range wantPaths {
-		if prompts.Files[i].Path != want {
-			t.Errorf("files[%d].Path = %q; want %q", i, prompts.Files[i].Path, want)
+	for _, tt := range []struct {
+		name      string
+		prompt    halfPrompt
+		wantPaths []string
+	}{
+		{"review", review, []string{testReviewFiles.Explore, testReviewFiles.Review, testReviewFiles.Format}},
+		{"fix", fix, []string{testFixFiles.Format, testFixFiles.Fix}},
+	} {
+		if len(tt.prompt.Files) != len(tt.wantPaths) {
+			t.Fatalf("%s half files = %d entries; want %d", tt.name, len(tt.prompt.Files), len(tt.wantPaths))
+		}
+		for i, want := range tt.wantPaths {
+			if tt.prompt.Files[i].Path != want {
+				t.Errorf("%s half files[%d].Path = %q; want %q", tt.name, i, tt.prompt.Files[i].Path, want)
+			}
 		}
 	}
 
-	requireContains(t, reviewer, testRoundFilePaths.ReviewerExplore)
-	requireContains(t, reviewer, testRoundFilePaths.Review)
-	requireContains(t, fixer, testRoundFilePaths.FixerExplore)
-	requireContains(t, fixer, testRoundFilePaths.Fix)
-	requireContains(t, fixer, "lyx shuttle await "+p.ReadyMarkerPath)
-	requireContains(t, fixer, testRoundFilePaths.Review)
-	requireNotContains(t, reviewer, p.ReadyMarkerPath)
-
-	for _, orchestrator := range []string{reviewer, fixer} {
-		requireNotContains(t, orchestrator, "not whether it gets fixed")
-		requireNotContains(t, orchestrator, "verdict:")
-		requireNotContains(t, orchestrator, "findings:")
-		requireNotContains(t, orchestrator, "SINGLE message")
-		requireNotContains(t, orchestrator, "subagent_type")
+	reviewer := chairPrompt(t, stencilsDir, "", &p, p.reviewTable(RunOpts{}, review.Values))
+	fixer := chairPrompt(t, stencilsDir, "", &p, p.fixTable(RunOpts{}, fix.Values))
+	requireContains(t, reviewer, testReviewFiles.Explore)
+	requireContains(t, reviewer, testReviewFiles.Review)
+	requireContains(t, fixer, testFixFiles.Format)
+	requireContains(t, fixer, testFixFiles.Fix)
+	requireContains(t, fixer, p.ReviewPath)
+	for _, seat := range []string{reviewer, fixer} {
+		requireNotContains(t, seat, "not whether it gets fixed")
+		requireNotContains(t, seat, "verdict:")
+		requireNotContains(t, seat, "findings:")
+		requireNotContains(t, seat, "SINGLE message")
+		requireNotContains(t, seat, "subagent_type")
+		requireNotContains(t, seat, "lyx shuttle await")
 	}
 }
 
-// TestComposePrompt_ParentDirective proves both orchestrators carry the parent variant naming the parent when one is told, the no-parent variant when none is, and no instruction file carries either.
+// TestComposePrompt_ParentDirective proves both seat stencils carry the parent variant naming the parent when one is told, the no-parent variant when none is, and no instruction file carries either.
 func TestComposePrompt_ParentDirective(t *testing.T) {
 	p := newComposableProfile(t)
 	stencilsDir := newTestStencilsDir(t)
 
-	prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
-	if err != nil {
-		t.Fatalf("composePrompt() = %v; want nil error", err)
-	}
-	withParentReviewer, withParentFixer := seatPrompts(t, stencilsDir, "tst:task:orch", &p, prompts)
-	for _, orchestrator := range []string{withParentReviewer, withParentFixer} {
-		requireContains(t, orchestrator, "A question to the operator in your pane is never the way forward.")
-		requireContains(t, orchestrator, "Edit or Write")
-	}
-	requireContains(t, withParentFixer, "tst:task:orch")
-	requireContains(t, withParentReviewer, "tst:task:burler-chair")
+	review := composeReview(t, stencilsDir, &p, "")
+	fix := composeFix(t, stencilsDir, &p, "")
+	reviewTable, fixTable := p.reviewTable(RunOpts{}, review.Values), p.fixTable(RunOpts{}, fix.Values)
 
-	withoutReviewer, withoutFixer := seatPrompts(t, stencilsDir, "", &p, prompts)
-	requireContains(t, withoutFixer, "No parent is recorded for this run.")
-	requireContains(t, withoutReviewer, "tst:task:burler-chair")
+	for _, seat := range []string{
+		chairPrompt(t, stencilsDir, "tst:task:orch", &p, reviewTable),
+		chairPrompt(t, stencilsDir, "tst:task:orch", &p, fixTable),
+	} {
+		requireContains(t, seat, "tst:task:orch")
+		requireContains(t, seat, "A question to the operator in your pane is never the way forward.")
+		requireContains(t, seat, "Edit or Write")
+	}
+	for _, seat := range []string{
+		chairPrompt(t, stencilsDir, "", &p, reviewTable),
+		chairPrompt(t, stencilsDir, "", &p, fixTable),
+	} {
+		requireContains(t, seat, "No parent is recorded for this run.")
+	}
 
-	for _, f := range prompts.Files {
+	for _, f := range append(append([]instructionFile{}, review.Files...), fix.Files...) {
 		if strings.Contains(f.Content, "## Your parent") {
-			t.Errorf("instruction file %s carries the parent directive; want it only in the orchestrator", f.Path)
+			t.Errorf("instruction file %s carries the parent directive; want it only in the seat stencil", f.Path)
 		}
 	}
 }
@@ -305,14 +326,11 @@ func TestComposePrompt_FixScope(t *testing.T) {
 		stencilsDir := newTestStencilsDir(t)
 		p.FixScope = FixScopeSource
 
-		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
-		if err != nil {
-			t.Fatalf("composePrompt() = %v; want nil error", err)
-		}
-		got := combinedPrompt(t, stencilsDir, &p, prompts)
+		fix, got := fixHalf(t, stencilsDir, &p, "")
+
 		requireContains(t, got, "commit")
 		requireNotContains(t, got, "no git")
-		requireNotContains(t, findLineContaining(prompts.Files[fixFile].Content, "Write surface"), p.ReviewPath)
+		requireNotContains(t, findLineContaining(fix.Files[fixStepFile].Content, "Write surface"), p.ReviewPath)
 	})
 
 	t.Run("overlay", func(t *testing.T) {
@@ -320,14 +338,11 @@ func TestComposePrompt_FixScope(t *testing.T) {
 		stencilsDir := newTestStencilsDir(t)
 		p.FixScope = FixScopeOverlay
 
-		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
-		if err != nil {
-			t.Fatalf("composePrompt() = %v; want nil error", err)
-		}
-		got := combinedPrompt(t, stencilsDir, &p, prompts)
+		fix, got := fixHalf(t, stencilsDir, &p, "")
+
 		requireContains(t, got, "no git")
 		requireNotContains(t, got, "commit each fix")
-		writeSurface := findLineContaining(prompts.Files[fixFile].Content, "Write surface")
+		writeSurface := findLineContaining(fix.Files[fixStepFile].Content, "Write surface")
 		requireContains(t, writeSurface, "plus the fixer-report (`"+p.FixerReportPath+"`)")
 		requireNotContains(t, writeSurface, p.ReviewPath)
 	})
@@ -338,28 +353,20 @@ func TestComposePrompt_FixScope(t *testing.T) {
 func TestComposePrompt_ToolUse(t *testing.T) {
 	t.Run("true drives the substrate", func(t *testing.T) {
 		p := newComposableProfile(t)
-		stencilsDir := newTestStencilsDir(t)
 		p.ToolUse = true
 
-		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
-		if err != nil {
-			t.Fatalf("composePrompt() = %v; want nil error", err)
-		}
-		got := combinedPrompt(t, stencilsDir, &p, prompts)
+		_, got := reviewHalf(t, newTestStencilsDir(t), &p, "")
+
 		requireContains(t, got, "Drive the real substrate")
 		requireNotContains(t, got, "Read-only analysis")
 	})
 
 	t.Run("false is read-only", func(t *testing.T) {
 		p := newComposableProfile(t)
-		stencilsDir := newTestStencilsDir(t)
 		p.ToolUse = false
 
-		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
-		if err != nil {
-			t.Fatalf("composePrompt() = %v; want nil error", err)
-		}
-		got := combinedPrompt(t, stencilsDir, &p, prompts)
+		_, got := reviewHalf(t, newTestStencilsDir(t), &p, "")
+
 		requireContains(t, got, "Read-only analysis")
 		requireNotContains(t, got, "Drive the real substrate")
 	})
@@ -370,27 +377,19 @@ func TestComposePrompt_ToolUse(t *testing.T) {
 func TestComposePrompt_PriorRounds(t *testing.T) {
 	t.Run("first round", func(t *testing.T) {
 		p := newComposableProfile(t)
-		stencilsDir := newTestStencilsDir(t)
 
-		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
-		if err != nil {
-			t.Fatalf("composePrompt() = %v; want nil error", err)
-		}
-		got := combinedPrompt(t, stencilsDir, &p, prompts)
+		_, got := reviewHalf(t, newTestStencilsDir(t), &p, "")
+
 		requireContains(t, got, "This is the first round")
 	})
 
 	t.Run("prior round", func(t *testing.T) {
 		p := newComposableProfile(t)
-		stencilsDir := newTestStencilsDir(t)
 		p.PriorReviews = []string{filepath.Join(t.TempDir(), "prior-review.md")}
 		p.PriorFixerReports = []string{filepath.Join(t.TempDir(), "prior-fixer-report.md")}
 
-		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
-		if err != nil {
-			t.Fatalf("composePrompt() = %v; want nil error", err)
-		}
-		got := combinedPrompt(t, stencilsDir, &p, prompts)
+		_, got := reviewHalf(t, newTestStencilsDir(t), &p, "")
+
 		requireNotContains(t, got, "This is the first round")
 		requireContains(t, got, p.PriorReviews[0])
 		requireContains(t, got, p.PriorFixerReports[0])
@@ -404,18 +403,14 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 // renders the explicit single-reviewer prose with none of the fork machinery language, while a
 // resolved fan renders every lens name plus both load-bearing fork-discipline ban phrases (no Agent
 // tool, no git).
-// composePrompt reads p.clusterLenses directly (as (*Profile).validate would have left it) rather
+// composeReviewPrompt reads p.clusterLenses directly (as (*Profile).validateReview would have left it) rather
 // than calling ResolveFan itself.
 func TestComposePrompt_ClusterRules(t *testing.T) {
 	t.Run("non-cluster", func(t *testing.T) {
 		p := newComposableProfile(t)
-		stencilsDir := newTestStencilsDir(t)
 
-		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
-		if err != nil {
-			t.Fatalf("composePrompt() = %v; want nil error", err)
-		}
-		got := combinedPrompt(t, stencilsDir, &p, prompts)
+		_, got := reviewHalf(t, newTestStencilsDir(t), &p, "")
+
 		requireContains(t, got, "single-reviewer round")
 		requireNotContains(t, got, "subagent_type")
 	})
@@ -429,18 +424,17 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 			{Name: "security", Text: "pay extra attention to security"},
 		}
 
-		prompts, err := composePrompt(stencilsDir, &p, "pattern directive placeholder", "", testRoundFilePaths)
-		if err != nil {
-			t.Fatalf("composePrompt() = %v; want nil error", err)
-		}
-		got := combinedPrompt(t, stencilsDir, &p, prompts)
+		review, got := reviewHalf(t, stencilsDir, &p, "pattern directive placeholder")
+		fix := composeFix(t, stencilsDir, &p, "")
+
 		requireContains(t, got, "style")
 		requireContains(t, got, "security")
 		requireContains(t, got, "never call the Agent tool")
 		requireContains(t, got, "never run any git command")
 
-		// The cluster round's load-bearing fork-discipline statements: this content is composed dynamically by clusterRulesBlock into instruction 2, not baked into burler-step-2-review.md itself, so an edit that silently waters any of them down fails here rather than only in human review.
-		instruction1, instruction2, instruction3 := prompts.Files[reviewerExploreFile].Content, prompts.Files[reviewFile].Content, prompts.Files[fixFile].Content
+		// The cluster round's load-bearing fork-discipline statements: this content is composed dynamically by clusterRulesBlock into the review step, not baked into burler-step-review.md itself, so an edit that silently waters any of them down fails here rather than only in human review.
+		explore, reviewStep := review.Files[reviewExploreFile].Content, review.Files[reviewStepFile].Content
+		fixStep := fix.Files[fixStepFile].Content
 		for _, statement := range []string{
 			"SINGLE message",
 			"subagent_type",
@@ -453,69 +447,68 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 			"origin:",
 			"Rejected",
 		} {
-			requireContains(t, instruction2, statement)
+			requireContains(t, reviewStep, statement)
 		}
 
-		// Each block helper's rendered content lands in its intended instruction file and nowhere else: fix_scope_rules is instruction 3's alone, cluster_rules (the lens names) is instruction 2's alone, and pattern_directive/target is instruction 1's alone.
-		requireContains(t, instruction3, "Write surface")
-		requireNotContains(t, instruction1, "Write surface")
-		requireNotContains(t, instruction2, "Write surface")
+		// Each block helper's rendered content lands in its intended instruction file and nowhere else: fix_scope_rules is the fix step's alone, cluster_rules (the lens names) is the review step's alone, and pattern_directive/target is the explore step's alone.
+		requireContains(t, fixStep, "Write surface")
+		requireNotContains(t, explore, "Write surface")
+		requireNotContains(t, reviewStep, "Write surface")
 
-		requireContains(t, instruction1, "pattern directive placeholder")
-		requireContains(t, instruction1, p.Target.Paths[0])
-		requireNotContains(t, instruction2, "pattern directive placeholder")
-		requireNotContains(t, instruction3, "pattern directive placeholder")
-		reviewer, fixer := seatPrompts(t, stencilsDir, "", &p, prompts)
-		for _, orchestrator := range []string{reviewer, fixer} {
-			requireNotContains(t, orchestrator, "Write surface")
-			requireNotContains(t, orchestrator, "style")
-			requireNotContains(t, orchestrator, "pattern directive placeholder")
+		requireContains(t, explore, "pattern directive placeholder")
+		requireContains(t, explore, p.Target.Paths[0])
+		requireNotContains(t, reviewStep, "pattern directive placeholder")
+		requireNotContains(t, fixStep, "pattern directive placeholder")
+		for _, seat := range []string{
+			chairPrompt(t, stencilsDir, "", &p, p.reviewTable(RunOpts{}, review.Values)),
+			chairPrompt(t, stencilsDir, "", &p, p.fixTable(RunOpts{}, fix.Values)),
+		} {
+			requireNotContains(t, seat, "Write surface")
+			requireNotContains(t, seat, "style")
+			requireNotContains(t, seat, "pattern directive placeholder")
 		}
-		requireNotContains(t, instruction1, "style")
-		requireNotContains(t, instruction3, "style")
+		requireNotContains(t, explore, "style")
+		requireNotContains(t, fixStep, "style")
 	})
 }
 
 // TestComposePrompt_FrictionDirective proves the friction_directive marker composes the same way
-// pattern_directive does: enabled carries the directive text verbatim into the fixer's instruction 1 alone, disabled
+// pattern_directive does: enabled carries the directive text verbatim into the fix step alone, disabled
 // composes cleanly with no directive text, and a marker-free template composes cleanly regardless.
 func TestComposePrompt_FrictionDirective(t *testing.T) {
 	t.Run("enabled", func(t *testing.T) {
 		p := newComposableProfile(t)
 		stencilsDir := newTestStencilsDir(t)
 
-		prompts, err := composePrompt(stencilsDir, &p, "", "friction directive placeholder", testRoundFilePaths)
-		if err != nil {
-			t.Fatalf("composePrompt() = %v; want nil error", err)
+		fix := composeFix(t, stencilsDir, &p, "friction directive placeholder")
+		review := composeReview(t, stencilsDir, &p, "")
+
+		requireContains(t, fix.Files[fixStepFile].Content, "friction directive placeholder")
+		for _, f := range review.Files {
+			requireNotContains(t, f.Content, "friction directive placeholder")
 		}
-		requireContains(t, prompts.Files[fixerExploreFile].Content, "friction directive placeholder")
-		requireNotContains(t, prompts.Files[reviewerExploreFile].Content, "friction directive placeholder")
 	})
 
 	t.Run("disabled", func(t *testing.T) {
 		p := newComposableProfile(t)
 		stencilsDir := newTestStencilsDir(t)
 
-		prompts, err := composePrompt(stencilsDir, &p, "", "", testRoundFilePaths)
-		if err != nil {
-			t.Fatalf("composePrompt() = %v; want nil error", err)
-		}
-		got := combinedPrompt(t, stencilsDir, &p, prompts)
-		requireNotContains(t, got, "friction directive")
+		_, fixAll := fixHalf(t, stencilsDir, &p, "")
+		_, reviewAll := reviewHalf(t, stencilsDir, &p, "")
+
+		requireNotContains(t, fixAll, "friction directive")
+		requireNotContains(t, reviewAll, "friction directive")
 	})
 
 	t.Run("marker-free template", func(t *testing.T) {
 		p := newComposableProfile(t)
 		stencilsDir := newTestStencilsDir(t)
-		markerFree := bytes.ReplaceAll(stencils.BurlerStep1Explore, []byte("{{.friction_directive}}"), nil)
-		if err := os.WriteFile(filepath.Join(stencilsDir, "burler", "burler-step-1-explore.md"), markerFree, 0o644); err != nil {
-			t.Fatalf("WriteFile(marker-free burler-step-1-explore.md) = %v; want nil", err)
+		markerFree := bytes.ReplaceAll(stencils.BurlerStepFix, []byte("{{.friction_directive}}"), nil)
+		if err := os.WriteFile(filepath.Join(stencilsDir, "burler", "burler-step-fix.md"), markerFree, 0o644); err != nil {
+			t.Fatalf("WriteFile(marker-free burler-step-fix.md) = %v; want nil", err)
 		}
 
-		_, err := composePrompt(stencilsDir, &p, "", "friction directive placeholder", testRoundFilePaths)
-		if err != nil {
-			t.Fatalf("composePrompt() = %v; want nil error", err)
-		}
+		composeFix(t, stencilsDir, &p, "friction directive placeholder")
 	})
 }
 

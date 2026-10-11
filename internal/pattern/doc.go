@@ -26,8 +26,8 @@
 // Directive's Role parameter selects the directive-text variant for one agent shape,
 // because each shape needs its constraint text worded for what that agent actually does.
 // RoleImplementer is worded as a pre-edit checklist, because its agents edit code.
-// RoleReviewFix covers both phases of the one review+fix round in the round's own order,
-// since a pure reviewer variant would have no user: the burler template that reviews also fixes.
+// RoleReviewFix is worded for the burler review half's reviewer, which judges code and never edits it.
+// Its name is historical: the fix half receives no PATTERN directive.
 // RoleOrchestrator is worded for forking rather than editing,
 // because an implementer-worded instruction would ask webster's Master to do something its own prompt says it never does.
 // RoleDesigner is worded for checking decisions against the entries before any plan exists,

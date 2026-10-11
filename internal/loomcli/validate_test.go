@@ -256,8 +256,7 @@ func glyphPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget strin
 // TestValidatePlanCmd_InformationalFindingsSurfaceOnSuccess asserts that an informational-only
 // findings set (card 18's create-new-unit, on a Create target introducing a brand-new package)
 // still reports a success envelope, carrying the findings under their own key rather than dropping
-// them, per the severity-decides-the-verdict rule this CLI verb shares with Plan-Write's and
-// Plan-Burler's own gate.
+// them, per the severity-decides-the-verdict rule this CLI verb shares with Plan-Write's and Plan-Burler-Fix's own gate.
 func TestValidatePlanCmd_InformationalFindingsSurfaceOnSuccess(t *testing.T) {
 	anchorPath := t.TempDir()
 	worktreeRoot := plankit.Repo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})

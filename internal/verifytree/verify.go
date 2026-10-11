@@ -58,7 +58,7 @@ const (
 
 // Site names the call site and its attempt for the running marker.
 type Site struct {
-	// Label is one of `webster gate`, `Webster-Burler gate`, `Publish`, `Finalize`, `webster verify`.
+	// Label is one of `webster gate`, `Webster-Burler-Fix gate`, `Publish`, `Finalize`, `webster verify`.
 	Label string
 	// Attempt is 0 where no attempt counter applies.
 	Attempt int

@@ -1,12 +1,14 @@
 // config.go — configuration for the loom module.
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1, validates every entry of fan_review, and resolves each non-empty discussion_fan and plan_fan through burlerengine.ResolveFan,
+// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1, rejects a discussion_max_bounces, plan_max_bounces or webster_max_bounces below 0, validates every entry of fan_review, and resolves each non-empty discussion_fan and plan_fan through burlerengine.ResolveFan,
 // so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
 // step_idle_timeout_min is the minutes a --until-stop step may show no activity before the loop kills it; a value below 1 is raised to 1 with one Warn and never refused.
 // discussion_fan and plan_fan each name a fan from burler.yaml and turn the lens fan on for Discussion-Review and Plan-Review; empty, the default, runs that segment solo.
 // fan_review is the reviewer model-spec list of a fanned segment, and the forks' model too, since forks run on the reviewer session's model.
 // There is no webster_fan key: Webster-Review always runs solo.
+// discussion_max_bounces, plan_max_bounces and webster_max_bounces set one perch's bounce budget, and 0 takes review_max_bounces;
+// discussion_auto_accept, plan_auto_accept and webster_auto_accept make that perch settle a spent budget as accepted instead of escalating to the parent.
 // discussion_producer selects the Discussion-Write row's producer and must be single, seats or twill.
 // discussion_advisors lists the seats producer's advisor model-specs; every entry is resolved through the model registry at load, whatever discussion_producer holds, and an unset list loads as no advisors.
 // Under seats, no advisors runs the chair alone, deciding each question itself.
@@ -374,6 +376,15 @@ type Config struct {
 
 	ReviewCirclingCheckpoint int `yaml:"review_circling_checkpoint"`
 	ReviewMaxBounces         int `yaml:"review_max_bounces"`
+
+	// Each perch's bounce budget and auto-accept flag.
+	// A budget of 0 takes ReviewMaxBounces; a flag true makes the perch's spent budget settle the round as accepted instead of escalating to the parent.
+	DiscussionMaxBounces int  `yaml:"discussion_max_bounces"`
+	PlanMaxBounces       int  `yaml:"plan_max_bounces"`
+	WebsterMaxBounces    int  `yaml:"webster_max_bounces"`
+	DiscussionAutoAccept bool `yaml:"discussion_auto_accept"`
+	PlanAutoAccept       bool `yaml:"plan_auto_accept"`
+	WebsterAutoAccept    bool `yaml:"webster_auto_accept"`
 }
 
 // ModelSpecList is a model-spec key's value: one model-spec for every round, or a list of model-specs, one per round, whose last entry serves every later round.
@@ -695,6 +706,20 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	} {
 		if knob.value < 1 {
 			return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set it to a positive integer in loom.yaml", knob.key, knob.value)
+		}
+	}
+
+	// A per-perch budget of 0 takes review_max_bounces, validated above, so only a negative value is refused here.
+	for _, knob := range []struct {
+		key   string
+		value int
+	}{
+		{"discussion_max_bounces", cfg.DiscussionMaxBounces},
+		{"plan_max_bounces", cfg.PlanMaxBounces},
+		{"webster_max_bounces", cfg.WebsterMaxBounces},
+	} {
+		if knob.value < 0 {
+			return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; set it to 0 to take review_max_bounces, or to a positive integer, in loom.yaml", knob.key, knob.value)
 		}
 	}
 

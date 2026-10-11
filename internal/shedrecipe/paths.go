@@ -21,7 +21,7 @@ import (
 // bars absolute paths from Config outright, and accepting one would make a non-portable recipe
 // silently work on its author's machine.
 //
-// The one documented exception that never calls this helper is BurlerRound's profile.target.paths
+// The one documented exception that never calls this helper is BurlerReview's and BurlerFix's profile.target.paths
 // and profile.fasit.paths, passed through relative and unjoined because burlerengine.Profile.validate
 // resolves them against its own told worktree root.
 func resolveUnderRoot(entry, key, root, value string) (string, error) {

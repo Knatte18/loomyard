@@ -1,8 +1,8 @@
 // Package shedadapters holds the shedengine.ShedProducer adapters that let a Shed-built
-// product drive shuttle, Webster, one burlerengine round, a seatengine table of seats, and the generic review-gate
+// product drive shuttle, Webster, the two halves of a burlerengine round, a seatengine table of seats, and the generic review-gate
 // Bouncer as ordinary producers in its own flat producer list.
 // SingleLLMProducer wraps one shuttleengine run, WebsterProducer wraps one websterengine
-// multi-spawn run, BurlerProducer wraps one burlerengine round, a reviewer strand and a fixer strand, and MultiLLMProducer wraps one seatengine table, a chair strand and its advisors' strands, as a single Shed
+// multi-spawn run, BurlerReviewProducer and BurlerFixProducer each wrap one half of a burlerengine round, a reviewer strand or a fixer strand, and MultiLLMProducer wraps one seatengine table, a chair strand and its advisors' strands, as a single Shed
 // row: each of these is a thin translation layer over an already-shipped engine, never a
 // second implementation of that engine's own loop.
 // Bouncer is the one member of this package for which that is false: it is new logic over
@@ -37,20 +37,19 @@
 //     Its run is handed two options: Fresh is always false, and AutoRebaseline is always true, so a plan changed between steps is rebaselined on entry.
 //     Webster's own "stuck" outcome, a websterengine.ErrPendingAuditFindings error and a websterengine.ErrAutoRebaseline error all map to Stuck with an empty Path and a Reason: Master's own stuck_reason or the run-entry refusal's text, whose way forward already ends in this row's re-entry step (NewWebsterProducer sets RunDeps.ReentryStep to "re-step the <row> row" when it is empty).
 //     Webster's own "paused" outcome reaching Call out of band is an engine-level error.
-//   - BurlerProducer: a completed round -- shuttleengine.OutcomeDone reached within the bounded
+//   - BurlerReviewProducer and BurlerFixProducer: a finished half -- shuttleengine.OutcomeDone reached within the bounded
 //     retry -- maps to Stuck, never Done, reporting the round's own review path as the pointer.
-//     That Stuck is a routine hand-off to the segment's Bouncer via OnStuck, never a real stuck
-//     condition: a round producer has no independent notion of "finished," only the judge does.
-//     Both hand-backs for judgment, a completed round and an unjudged highest round, are BudgetExempt, so the Bouncer row's own budget check is the segment's one budget on judged rounds.
-//     The gate-failed exit is counted against this row's own MaxBounces.
-//     A round names two strands, the reviewer's and the fixer's, and each round's ready marker is derived from BurlerDeps.AnchorPath with burlermarker.Path.
-//     Each attempt picks both halves' models from BurlerDeps.Models for the round.
+//     That Stuck is a routine hand-off, the review row's to the fix row and the fix row's to the segment's Bouncer via OnStuck, never a real stuck
+//     condition: a half producer has no independent notion of "finished," only the judge does.
+//     Every hand-on, a finished half and an unjudged highest round, is BudgetExempt, so the Bouncer row's own budget check is the segment's one budget on judged rounds.
+//     The fix row's gate-failed exit is counted against its own MaxBounces.
+//     A round names two strands, the reviewer's and the fixer's, one per row, and each attempt picks its half's model from BurlerHalfDeps.Models for the round.
 //     A runner error wrapping burlerengine.ErrHalfNotStopped returns without archiving and without the retry, since a live half may still write the round's files.
-//     Before archiving or spawning it probes the round's two halves and resumes, stops or respawns by what is live (see "Every spawning adapter probes for a live agent first").
+//     Before archiving or spawning, each row probes its half and resumes or respawns by what is live (see "Every spawning adapter probes for a live agent first").
 //     Every non-done shuttle outcome that survives the bounded retry -- two
 //     consecutive OutcomeDied/OutcomeTimeout results, or an unrecognized outcome -- is an
 //     engine-level error, not Stuck, because the Bouncer tells its seed call from its judge call by
-//     the round artifacts on disk, and a failed round returning Stuck with no review written would
+//     the round artifacts on disk, and a failed half returning Stuck with no review written would
 //     be misread as a seed call.
 //   - MultiLLMProducer: the chair's result maps exactly as SingleLLMProducer's single run does:
 //     shuttleengine.OutcomeDone maps to Done with the chair's first output as the pointer's path,
@@ -98,6 +97,11 @@
 //     A recorded decision is acted on first, whatever the budget:
 //     a continue maps to Stuck, marked BudgetExempt exactly when the escalation's cause is budget, so a continue after a budget escalation spends no budget;
 //     a pending accept settles its record and maps to Done after Approve and Commit, for either cause.
+//     Auto-accept: a Bouncer told BouncerConfig.AutoAccept settles a spent budget as an accept instead of escalating.
+//     It fires for the budget cause alone, also over a CIRCLING verdict, and only on a harvest, the judge having written the verdict in this call, over a round with no decision and no escalation record.
+//     It records the round's decision file as an accept with cause budget and `automatic: true`, then takes the path a recorded parent accept takes (carry-over, settled record, Approve, Commit, Done),
+//     writing no escalation record and no parent notice; settling the record keeps its `automatic` value, which a parent's accept never sets.
+//     A replay of an earlier round's CONTINUE, a CIRCLING below the budget, an already escalated round, a recorded decision and an unknown or errored Bounces seam behave as with the flag false, which is the default.
 //     Carry-over: a Bouncer told a CarryOver seam, with the Segment its entry is filed under and the AnchorPath its paths are relative to, calls it on every Done that settles a judged round.
 //     The seam is called with discussionparser.CarryOverConverged before Approve on a CONVERGED settle,
 //     and with CarryOverAccepted before the settle write of a pending accept, so a failed write leaves the accept pending and its re-call retries.
@@ -112,7 +116,7 @@
 //     The exemption covers only the Bouncer's Stuck; each further round past the budget needs its own decision, and `lyx loom goto` grants a fresh budget.
 //     Every other path -- the seed call, the re-bounce, the clear itself, every degraded path -- reports an empty Path,
 //     with the re-bounce and degraded paths carrying their cause on Reason.
-//     The legacy words APPROVED and BLOCKING are read as CONVERGED and CONTINUE only for a verdict already on disk at Call entry (the clear, the replay and BurlerProducer's may-advance check).
+//     The legacy words APPROVED and BLOCKING are read as CONVERGED and CONTINUE only for a verdict already on disk at Call entry (the clear, the replay and the review row's may-advance check).
 //     A legacy word never settles a harvest:
 //     a judge this Call spawned or attached that writes one has its three outputs archived and the round re-judged,
 //     through the round producer's unjudged-round hand-back, at one bounce unit on each row.
@@ -134,7 +138,7 @@
 // SingleLLMProducer additionally takes an injected clock, a nil now defaulting to the real
 // time.Now; the injected clock resolves only the archive filename's same-second collision suffix,
 // never Shed's own history[].at field.
-// BurlerProducer is told an absolute run directory and an already-constructed runner, and takes the
+// BurlerReviewProducer and BurlerFixProducer are told an absolute run directory and an already-constructed half runner, and take the
 // same injected clock SingleLLMProducer does, resolving only the archive filename's same-second
 // collision suffix the same way.
 // MultiLLMProducer is told a seatengine.Table and an already-constructed SeatRunner, and takes the same injected clock for the same purpose.
@@ -150,16 +154,16 @@
 //
 // # The round-artifact convention
 //
-// This is the binding two-sided contract between BurlerProducer and its segment's Bouncer, pinned
+// This is the binding two-sided contract between the Burler rows and their segment's Bouncer, pinned
 // here durably rather than only in a board entry, so it survives independently of the entry
 // that is deleted when the Bouncer item completes.
-// Artifact paths are flat inside the told run directory, one canonical pair per round with no
-// attempt suffix: round-<N>-review.md and round-<N>-fixer-report.md, with N a positive decimal
+// Artifact paths are flat inside the told run directory, one canonical set per round with no
+// attempt suffix: round-<N>-review.md, round-<N>-fixer-report.md and the acceptance record round-<N>-acceptance.md, with N a positive decimal
 // integer carrying no leading zeros.
-// A retry writes to the same two paths, because a retry is a second try at the one artifact the
+// A retry writes to the same paths, because a retry is a second try at the one artifact the
 // round owes rather than a second artifact.
-// The presence of both files means, and only means, that round N completed and produced a usable
-// review -- never that anyone has judged it, which is why the round producer pairs that predicate
+// The presence of all three files means, and only means, that round N completed and produced a usable
+// review that was fixed -- never that anyone has judged it, which is why the review row pairs that predicate
 // with a second one before advancing: round N's own bouncer verdict and ledger must both exist and
 // parse too. Completion alone would let a Bouncer's degraded Stuck -- a judge spawn that died, a
 // verdict that did not parse -- buy a whole extra fixer round over a review nobody judged, and leave
@@ -167,7 +171,7 @@
 // The Bouncer's own round resolution is deliberately narrower and is stated here rather than
 // implied: ResolveRound stats the REVIEW file alone, so the two sides do not run the same test.
 // The asymmetry is safe only because of where an orphaned review can appear -- a process killed
-// between phase A and phase B leaves the run's current_producer naming the round producer, which
+// between the review row and the fix row leaves the run's current_producer naming one of them, which
 // re-resolves the same round and archives the orphan before the Bouncer is routed to at all. A
 // change that lets the Bouncer be entered with an orphaned review present would have it judge a
 // review that no fixer round stands behind.
@@ -175,7 +179,7 @@
 // exclude_lenses, and focus, over optional prose -- whose token names the round the directives are
 // for, not the round that produced them: a Bouncer rejecting round N writes the file for round N+1,
 // and the seed call writes the file for round 1.
-// One filename, one format, one parser: the Bouncer renders it and the BurlerRound row reads it back
+// One filename, one format, one parser: the Bouncer renders it and the Burler review row reads it back
 // through that same pair. The two sides once disagreed -- the writer emitted this .md file while the
 // reader opened a round-<N>-focus.json and strictly decoded JSON -- which silently emptied the
 // directive on every production read, so the agreement is pinned here rather than left implicit.
@@ -193,7 +197,7 @@
 // erroring, including at application time when a well-formed directive cannot be honoured.
 // A segment that has already approved and is entered again does not replay that approval: its
 // Bouncer archives the whole generation aside and re-judges from a fresh round 1 instead. Both rows'
-// artifacts move together in that archive, because BurlerProducer would otherwise resume at round
+// artifacts move together in that archive, because the review row would otherwise resume at round
 // N+1, hydrating from a generation the Bouncer had already discarded.
 // A fanned round's exclusions accumulate across the generation, held in Go:
 // the round's ClusterExclude is the union of the eligible exclude_lenses of focus files 2 through the round, and ClusterExcludeHeld the union through the round before.
@@ -215,7 +219,7 @@
 // Every adapter checks ctx.Err() at Call entry and returns immediately without starting anything.
 // On exit, a cancelled context replaces every result except a genuine success verdict -- shuttle's
 // OutcomeDone, Webster's "done", the Bouncer's own harvested verdict, or
-// a BurlerProducer's completed round -- which is returned as its mapped shedengine.Done or
+// a Burler row's finished half -- which is returned as its mapped shedengine.Done or
 // shedengine.Stuck with its pointer regardless of cancellation.
 // This exception exists because converting a finished success into the context error would make Shed
 // record no history entry for it, so the next Call would archive a valid artifact and pay for the
@@ -225,18 +229,15 @@
 // shuttleengine completion: a verdict and ledger that both exist and parse are returned as their
 // mapped outcome and pointer even when the run that produced them reported an error, a non-done
 // outcome, or arrived after the context was cancelled.
-// For BurlerProducer, the completion exception is narrower: a completed round's artifacts survive
-// cancellation, but the verdict itself is not returned as Stuck (see the note below).
+// For the Burler rows, the completion exception is narrower: a finished half's artifacts survive
+// cancellation, but the hand-on itself is not returned as Stuck (see the note below).
 // No adapter installs a mid-run cancellation bridge: none of the engines they wrap exposes a
 // pause seam shaped as a caller-supplied callback.
 //
-// BurlerProducer's cancellation behavior is governed by the seam obligation in
-// internal/shedengine/producer.go that every implementation surface cancellation as a non-nil
-// error and never as Stuck: this producer always errors under cancellation, including on a
-// completed round. The exception's purpose -- never discarding a paid-for artifact -- is served
-// instead by an archive carve-out: a completed-then-cancelled round keeps its two files, so
-// from-disk round resolution advances past it on the next call, and only the re-derivable
-// in-memory verdict is dropped.
+// The Burler rows' cancellation behavior is governed by the seam obligation in internal/shedengine/producer.go that every implementation surface cancellation as a non-nil error and never as Stuck:
+// these producers always error under cancellation, including on a finished half.
+// The exception's purpose -- never discarding a paid-for artifact -- is served instead by an archive carve-out:
+// a finished-then-cancelled half keeps its files, so from-disk round resolution advances past it on the next call, and only the re-derivable in-memory hand-on is dropped.
 //
 // # Every spawning adapter probes for a live agent first
 //
@@ -245,7 +246,7 @@
 // policy choice here.
 // SingleLLMProducer and Bouncer call shuttleengine's Attach seam with the step's own OutputFiles and wait on a match.
 // The Bouncer does so on its seed pass, on its judge pass, on the re-bounce, and once more at Call entry (see below).
-// BurlerProducer probes its round's two halves through its runner (see below).
+// The review row and the fix row each probe their half through their runner (see below).
 // MultiLLMProducer probes its table's seats through its SeatRunner: with the chair live it resumes the table, and otherwise the probe has already stopped every live advisor, so the archive that follows runs beside no live seat.
 // A MultiLLMProducer built with a fresh-spawn preparation runs it on the fresh path only, after the probe and before the archive; its error fails the call with nothing archived and no seat started.
 // WebsterProducer inherits websterengine's own entry-time reclaim, which stops a leftover Master rather than attaching to it.
@@ -264,17 +265,14 @@
 // paths, so archiving first would make an attached run unable to ever classify done -- in exactly
 // the case the probe exists to protect.
 //
-// BurlerProducer's probe is two-stranded, because a round is a reviewer and a fixer, each declaring its own single output file.
-// BurlerRunner.ProbeRound reports each half as live, done or gone, and Call acts on the pair.
-// With both halves live it calls Resume and maps the result through the outcome switch a spawned attempt uses.
-// A died or timeout result there falls through to a fresh attempt 1, since the resumed round is not counted as an attempt.
-// With exactly one half live it stops that half through its handle's Stop, which records the stop, and falls through to attempt 1.
-// So a live fixer beside a finished review is stopped and re-run rather than attached, and its target edits stay in the worktree for the next attempt's reviewer to review.
-// With one half done and the other gone nothing is live, so nothing is removed and it falls through to attempt 1.
-// With neither half live it falls through.
-// A fall-through spawn archives the round's outputs and the engine removes the ready marker, so a round never ends with one half still live and a live half is never spawned a second time.
-// A probe error, a failed stop and a Resume error wrapping burlerengine.ErrHalfNotStopped are returned without archiving and without spawning, since a half that may still be live may be writing the round's files.
-// The failed-stop error wraps burlerengine.ErrHalfNotStopped and ends with the way forward, run "lyx reed remove <guid>" and re-step the row.
+// A Burler row's probe is one-stranded, because a row drives one half, a reviewer or a fixer, each declaring its own single output file.
+// BurlerHalfRunner.ProbeReview and ProbeFix report the half as live, done or gone, and Call acts on it.
+// A live half is resumed through ResumeReview or ResumeFix, and the result is mapped through the outcome switch a spawned attempt uses.
+// A died or timeout result there falls through to a fresh attempt 1, since the resumed half is not counted as an attempt.
+// A half that is done or gone is nothing live, so nothing is removed and it falls through to attempt 1.
+// A fall-through spawn archives the half's outputs first, so a half is never spawned a second time beside a live one.
+// A probe error and a resume error wrapping burlerengine.ErrHalfNotStopped are returned without archiving and without spawning, since a half that may still be live may be writing the round's files.
+// A failed stop wraps burlerengine.ErrHalfNotStopped and ends with the way forward, run "lyx reed remove <guid>" and re-step the row.
 //
 // The Bouncer's third probe covers the two modes that spawn nothing at all, and it exists because
 // its own judgment record is narrower than the judge spawn that produces it: a recorded judgment is
@@ -289,12 +287,37 @@
 // it rather than clearing it, and a not-found probe leaves both branches acting on exactly the state
 // they always did.
 //
-// The Bouncer and BurlerProducer rows once lacked this deliberately, recorded here as a scope call.
+// The Bouncer and the Burler rows once lacked this deliberately, recorded here as a scope call.
 // It was not survivable: a driver crash inside any review segment left the round's agent alive, and
 // the next Call spawned a second one over it -- two sessions writing one review and one fixer
 // report, and on a fix-scope: source row, two sessions committing to one branch. Both were
 // reproduced live before the probe was added, and neither run could continue without an operator
 // deleting a pane by hand.
+//
+// # The review row and the fix row
+//
+// BurlerReviewProducer and BurlerFixProducer split a review segment's round into two Shed rows, each driving one half of a burlerengine round through BurlerHalfRunner.
+// Neither returns Done: a finished half is a routine Stuck hand-off, the review row's to the fix row and the fix row's to the segment's Bouncer.
+// The round's acceptance record, round-<n>-acceptance.md in the run directory, joins the round's review and fixer report as one of its paths.
+// It holds the round and the hex SHA-256 of the accepted review in YAML frontmatter, and only the review row writes it, after the review passed the strict parse.
+// A record that is absent or does not parse reads as absent.
+//
+// The review row resolves the round from the highest complete round, and hands on BudgetExempt without spawning in two cases:
+// the highest complete round has no recorded verdict, and the next round's review already carries an acceptance record, so a restart with the fixer pending resumes at the fix row.
+// Otherwise it probes for a live reviewer before archiving anything, resumes one it finds, and spawns at most two attempts, the second only after a died or timed-out first.
+// An accepted review writes its record, merges the half's usage into the round's usage record and hands on with the review as the pointer's path.
+// Every other end, a gate or strict-parse failure included, is a hard error that archives the round's review, fixer report and acceptance record;
+// a reviewer that could not be stopped returns bare, with nothing archived.
+// A review with no record beside it is an orphan and is reviewed again.
+//
+// The fix row hands on an unjudged highest round the same way, and otherwise requires the next round's acceptance record and review.
+// Without them it is a hard error whose way forward is a goto to the review row and a resume, since the review row's hand-on never produces that state:
+// its inputs are a goto into the fix row with no accepted review, and a resume after the fix row archived a review that changed since acceptance.
+// It probes for a live fixer first and resumes it against the recorded digest, then spawns at most two attempts under that digest.
+// A finished fix, a skipped empty review included, merges the fix half's usage and hands on BudgetExempt with the review as the pointer's path.
+// A finished fix whose gate failed archives the review, fixer report and acceptance record and returns a counted Stuck with an empty path, so the Bouncer's next round reviews afresh.
+// A review that changed after acceptance archives the same three and ends with the same way forward.
+// Any other failure archives the fixer report alone, keeping the accepted review and its record so a resume re-spawns the fixer without re-running the reviewer.
 //
 // # Limitations
 //
@@ -302,8 +325,8 @@
 // is observed only once the run reaches a terminal outcome or its own configured deadline elapses --
 // bounded by the shuttle spec's own timeout for SingleLLMProducer, and by Webster's own whole-run
 // timeout for WebsterProducer.
-// BurlerProducer and Bouncer likewise install no mid-run cancellation bridge: BurlerProducer because
-// burlerengine exposes no pause seam (so a cancel is observed only once the round reaches a terminal
+// The Burler rows and Bouncer likewise install no mid-run cancellation bridge: the Burler rows because
+// burlerengine exposes no pause seam (so a cancel is observed only once the half reaches a terminal
 // outcome or its own RunOpts.Timeout elapses), and Bouncer for similar reasons at the shuttleengine
 // layer (see the Shared cancellation rule above for both).
 //
