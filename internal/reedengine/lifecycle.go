@@ -311,7 +311,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		return false, nil, err
 	}
 
-	shellPath, _, err := e.preflightBootHost()
+	shellPath, tmuxConf, err := e.preflightBootHost()
 	if err != nil {
 		return false, nil, err
 	}
@@ -449,6 +449,10 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// then reports the truly unexpected state instead. A genuine
 	// never-boots regression still fails, at bootOverallTimeout instead of
 	// after two attempts.
+	identityBefore := ""
+	if runtime.GOOS != "windows" {
+		identityBefore = e.serverIdentityLocked()
+	}
 	bootStart := time.Now()
 	bootDeadline := bootStart.Add(bootOverallTimeout)
 	attempt := 0
@@ -502,6 +506,12 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 
 	e.touchDiscoverSignal()
 
+	if runtime.GOOS != "windows" {
+		if err := e.guardBootSessionLocked(identityBefore, tmuxConf); err != nil {
+			return false, nil, err
+		}
+	}
+
 	if err := e.pinBootOptionsLocked(mouse, shellPath); err != nil {
 		return false, nil, err
 	}
@@ -551,18 +561,27 @@ func (e *Engine) pinBootOptionsLocked(mouse, shellPath string) error {
 // Everywhere but Windows, `-f /dev/null` follows them, so the server reads none of the operator's `~/.tmux.conf`; a running server ignores the flag.
 // `-c` pins new-session's pane default cwd to the told pane spawn directory, even though the server process's own cwd has moved to the logs directory.
 // The configured shell is the first pane's trailing command.
+// Off Windows, two `set-option` commands chain after it in the same invocation, so the new session is pinned `destroy-unattached off` and tagged `@lyx_reed_session` before any operator config could act.
 func (e *Engine) serverSpawnArgv(goos string, debugArgs []string) []string {
 	argv := append([]string{}, debugArgs...)
 	if goos != "windows" {
 		argv = append(argv, "-f", os.DevNull)
 	}
-	return append(argv,
+	argv = append(argv,
 		"-L", e.Socket(),
 		"new-session", "-d", "-s", e.SessionName(),
 		"-c", e.geom.PaneCwd,
 		"-x", strconv.Itoa(e.cfg.Width),
 		"-y", strconv.Itoa(e.cfg.Height),
 		e.cfg.Shell,
+	)
+	if goos == "windows" {
+		return argv
+	}
+	target := exactSessionWindowTarget(e.SessionName())
+	return append(argv,
+		";", "set-option", "-t", target, "destroy-unattached", "off",
+		";", "set-option", "-t", target, reedSessionOption, "on",
 	)
 }
 

@@ -8,6 +8,7 @@ package reedengine
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -36,6 +37,8 @@ type Engine struct {
 	tmux TmuxCmd
 	// skipRevival is set, under the op lock, while a step runs after the earlier worktrees were revived (revive.go).
 	skipRevival bool
+	// warnOut receives the operator-facing warning for a tmux config that failed to source; it is the booting command's stderr.
+	warnOut io.Writer
 }
 
 // New builds an Engine for the given Config and Geometry.
@@ -46,6 +49,8 @@ func New(cfg Config, geom Geometry) *Engine {
 		cfg:  cfg,
 		geom: geom,
 		tmux: NewTmuxCmd(cfg.Tmux, geom.SocketKey),
+
+		warnOut: os.Stderr,
 	}
 }
 

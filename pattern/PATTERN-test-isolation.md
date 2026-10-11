@@ -50,6 +50,8 @@ A test package never reaches the operator's global gitconfig or default tmux soc
 
 ## Hermetic servers
 
+- A server reed starts sources the file `tmux_conf` names, which `tmuxkit.Main` empties by unsetting `LYX_REED_TMUX_CONF`, so a test that exercises it sets the key to a file it wrote and registers its key after reed's first boot.
+
 - `Socket` and `KillOnCleanup` pre-start a server on the key before returning, from `tmux -f <config> -L <key> start-server`, so no pre-started server reads `~/.tmux.conf`.
   The kit writes the config once per test binary, with four options: `default-shell` and an equal `default-command` (a non-empty `default-command` makes tmux start a pane's shell without the login flag, so the operator's rc files still run and the login profile does not), `exit-empty off` (the server outlives having no session) and `@lyx_test_server on`.
 - The pre-start applies the environment hygiene reed's own server spawn applies: the server's environment is the test process's less `CLAUDECODE`, `CLAUDE_CODE_*`, `LYX_TRACE_ID`, `LYX_STRAND_NAME` and `LYX_PARENT`, because every session and pane on the key inherits from that server.
