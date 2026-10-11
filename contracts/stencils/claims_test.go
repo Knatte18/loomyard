@@ -135,7 +135,7 @@ var wordingClaims = []stencilClaims{
 		{must: "no graded blast radius to summarise", why: "Rename carries no ImpactSummary because there is no graded blast radius"},
 		{must: "support-log.md", why: "support-log.md is outside this review entirely"},
 		{must: "findings.md", why: "the live generation's findings join the answer key"},
-		{must: "is not part of the answer key", why: "a carry-over entry in the record's Open risks is an unreviewed fix, not a requirement the plan must carry"},
+		{must: "is not part of the answer key", why: "a carry-over entry in the record's Open risks lists findings the closing round's fixer fixed or disputed and no fresh reviewer has seen, not a requirement the plan must carry"},
 		{must: "record.json` carries a `class`", why: "the live generation's round needs a class"},
 		{must: "`first_card`", why: "the live generation's round matches first_card"},
 		{must: "the decision record alone is the answer key", why: "generation 0 falls back to the decision record alone"},
@@ -168,7 +168,7 @@ var wordingClaims = []stencilClaims{
 		{must: "Raise each failing test named above as a BLOCKING finding", why: "a failing test of a Publish failure record is a BLOCKING finding"},
 	}},
 	{"loom-template-rework.md", LoomTemplateRework, []claim{
-		{must: "never plan an entry as scope", why: "a carry-over entry in the record's Open risks lists unreviewed fixes, never scope for a rework generation"},
+		{must: "never plan an entry as scope", why: "a carry-over entry in the record's Open risks lists findings the closing round's fixer fixed or disputed and no fresh reviewer has seen, never scope for a rework generation"},
 	}},
 	{"landing-template-describe.md", LandingTemplateDescribe, []claim{
 		{must: "one item to check by hand", why: "a Plan-Review or Webster-Review carry-over finding reaches the reviewer as a manual-check item"},
