@@ -70,8 +70,7 @@ var LoomRubricPlanReview []byte
 //go:embed loom/loom-rubric-webster-review.md
 var LoomRubricWebsterReview []byte
 
-// LoomRubricDarnReview is the Darn-Review rubric, read by both rows of the darn recipe's
-// Darn-Review perch.
+// LoomRubricDarnReview is the Darn-Review rubric, read by both rows of the darn recipe's Darn-Review perch.
 //
 //go:embed loom/loom-rubric-darn-review.md
 var LoomRubricDarnReview []byte

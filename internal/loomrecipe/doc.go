@@ -4,9 +4,8 @@
 // It takes every absolute path from its caller and has no direct production import of
 // internal/lyxcwd, per the Told-Geometry Invariant.
 //
-// The bounce budget of every review segment (a segment holding a Bouncer row) is not declared in the
-// loom recipe: New takes it from shedrecipe.Env.ReviewMaxBounces and Routing from its argument, and both
-// set it on every row of those segments.
+// The bounce budget of every review segment (a segment holding a Bouncer row) is not declared in the loom recipe: New takes it from shedrecipe.Env.ReviewMaxBounces and Routing from its argument,
+// and both set it on every row of those segments.
 // PR-Gate keeps the recipe's own max_bounces.
 //
 // The second value New takes from the env is the Discussion-Write producer: when shedrecipe.Env.DiscussionSeats is true, New runs that row on the DiscussionSeats engine instead of the recipe's DiscussionWrite.
