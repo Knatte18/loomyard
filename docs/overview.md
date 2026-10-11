@@ -524,10 +524,13 @@ User-facing modules each get one `lyx <module>` namespace:
   `Run-Shed` opens no VS Code window: the operator watches a run through terminal windows and opens VS Code only on request with `lyx ide`.
   On a run started with `--window`, `Run-Shed` opens that terminal window once per run, after the child's first successful spawn: a once-marker in its scratch directory, reset only when a fresh batten status is seeded, keeps a resume and a re-spawn from opening a second one, and a failed launch is a warning only.
   A child that halts (`blocked`, `failed`, `paused`) makes `Run-Shed` wait, budget-exempt and without a time limit,
-  and batten never resumes a halted child (it does restart an approved or rejected `awaiting` one): the operator resumes the child from inside the task worktree (`lyx loom resume`) and the watch carries on, with one warning per halt episode;
+  and batten never resumes a halted child (it does restart an approved or rejected `awaiting` one, and retries the first Publish verify failure of a run, below): the operator resumes the child from inside the task worktree (`lyx loom resume`) and the watch carries on, with one warning per halt episode;
   the reason, naming `lyx loom start` too when no driver can be woken, is what batten logs and writes to the row's stuck-reason file,
   and `lyx batten status` does not show it while the child is halted;
   `lyx batten pause <slug>` stops the wait within one check.
+  The one exception to batten never resuming a halted child is the first Publish verify failure of a batten run: when the child is blocked at its `Publish` row and the failure record names a target producer and was written during the halting attempt, `Run-Shed` sends the child to that target with `lyx loom goto` and resumes it, with no notice for the halt in between.
+  A `<row>-publish-retry` marker in the scratch directory records the retry (`started`, `goto-done`, `resumed` or `capped`), spends the run's one retry once resumed or capped, and is reset only by a fresh batten seed.
+  A goto refused as busy and a resume refused as not parked or as a busy pane are retried until they land or thirty minutes after the retry started; past that, or on any other goto refusal, the retry gives up and the usual blocked notice goes with its refusal, as it does for a second Publish halt, which says the automatic retry already ran.
   When a halted or awaiting child's reed state holds a dead driver strand, batten revives the pair's strands through reed resume once per halt episode per batten process, which brings the parked driver back with its own session and leaves the run halted and the park marker in place,
   so a later `lyx loom resume` wakes that driver;
   a retiring strand is left to `lyx loom start`.

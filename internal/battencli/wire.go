@@ -34,6 +34,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
@@ -348,6 +349,7 @@ const maxChildOutputInError = 2000
 // It returns nil for a nil runErr, runErr unchanged when the child said nothing, and truncates
 // output past maxChildOutputInError with an explicit marker.
 // An output carrying the not-parked refusal (kind shedrun.StartNotParkedKind) also wraps battenshed.ErrChildNotParked, and one carrying the busy-pane refusal (kind shedrun.StartDriverBusyKind) also wraps battenshed.ErrChildDriverBusy, so InnerRun retries rather than failing.
+// One carrying a held-run-lock refusal (kind shedengine.ShedBusyKind) also wraps battenshed.ErrChildRunBusy.
 //
 // The byte slice lands on a rune boundary only by chance, so strings.ToValidUTF8 drops any partial
 // rune it leaves dangling at the cut point rather than embedding invalid UTF-8 into the error text.
@@ -368,6 +370,8 @@ func childSpawnError(runErr error, childOutput string) error {
 		return fmt.Errorf("%w: %w: %s", battenshed.ErrChildNotParked, runErr, trimmed)
 	case shedrun.StartDriverBusyKind:
 		return fmt.Errorf("%w: %w: %s", battenshed.ErrChildDriverBusy, runErr, trimmed)
+	case shedengine.ShedBusyKind:
+		return fmt.Errorf("%w: %w: %s", battenshed.ErrChildRunBusy, runErr, trimmed)
 	}
 	return fmt.Errorf("%w: %s", runErr, trimmed)
 }
@@ -734,6 +738,28 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				return readStopReport(taskLocation)
 			},
 			MarkWatched: markWatched,
+			PublishRow:  loomshed.NamePublish,
+			PublishFailure: func() (battenshed.ChildPublishFailure, bool, error) {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return battenshed.ChildPublishFailure{}, false, err
+				}
+				return readChildPublishFailure(taskLocation)
+			},
+			ChildHead: func() (string, error) {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return "", err
+				}
+				return childHead(taskLocation)
+			},
+			Goto: func(ctx context.Context, target string) error {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return err
+				}
+				return childGoto(ctx, taskLocation, slug, target)
+			},
 			// PauseRequested reads batten's own status file, the one `lyx batten pause` writes, so the in-call wait notices a pause within one check.
 			PauseRequested: pauseRequested(location, slug),
 			// Activity resolves the task worktree on Call like every seam here.

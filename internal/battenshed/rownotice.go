@@ -29,6 +29,7 @@ const rowNoticeFailurePrefix = "failure "
 var runMarkerSuffixes = []string{
 	rowNoticeFileSuffix,
 	readySnapshotFileSuffix,
+	publishRetryFileSuffix,
 }
 
 // ClearRunMarkers removes every file in scratchDir whose name ends in a suffix of runMarkerSuffixes.

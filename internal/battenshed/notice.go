@@ -349,7 +349,11 @@ func (p *innerRunProducer) noticeCondition(ctx context.Context, w *childWait) (n
 		return noticeFinding{}, activityStamp{}
 	}
 	if w.status.State != shedengine.StateRunning {
-		return noticeFinding{condition: noticeStateChanged, stamp: p.episode.since.UnixNano()}, activityStamp{}
+		// A halt the automatic Publish retry is about to take, or has taken and not finished, is no event for the orch.
+		if w.retry.action != publishRetryNone {
+			return noticeFinding{}, activityStamp{}
+		}
+		return noticeFinding{condition: noticeStateChanged, stamp: p.episode.since.UnixNano(), text: p.publishRetryNoticeText(w)}, activityStamp{}
 	}
 	alive, known := p.driverAlive(ctx, w)
 	if !known {

@@ -76,13 +76,21 @@
 // so a second driver is never stacked.
 //
 // A child that halts (blocked, paused or failed) is a budget-exempt wait, not a failure of the Run-Shed row:
-// batten never spawns or resumes a halted child, logs one Warn per halt episode, and keeps waiting with the child's state, error, current producer and the resume command ("lyx loom resume" in the task worktree) as its reason.
+// batten never spawns or resumes a halted child, bar one exception below, logs one Warn per halt episode, and keeps waiting with the child's state, error, current producer and the resume command ("lyx loom resume" in the task worktree) as its reason.
 // A halted or awaiting child whose reed state holds a dead driver strand has its pair's strands revived through reed resume, once per halt episode per batten process;
 // the run stays halted and nothing is resumed,
 // so the operator's "lyx loom resume" wakes the revived driver.
 // A retiring strand is not revived and a child with no driver strand has none to revive;
 // a revive that fails, and a child with no driver strand, make the reason also name "lyx loom start" in the task worktree.
 // The wait has no time limit and spends no bounce budget; "lyx batten pause" stops it within one check, and the row reads the child as running again once the operator resumes it.
+//
+// The one exception is the first Publish verify failure of a batten run (publishretry.go).
+// A child blocked at the Publish row whose failure record names a target, carries the child's HEAD and was written during the halting attempt is sent to that target through the child's goto verb and then resumed through its bootstrap, with no notice for the halt or the paused state in between.
+// The `<row>-publish-retry` marker holds the retry's state and start time: `started` before the goto, `goto-done` after it, `resumed` after a resume that landed and `capped` when the retry gave up.
+// `resumed` and `capped` each spend the run's one retry, and the marker is cleared only where batten seeds a fresh status, so a restart neither repeats a finished retry nor resets the cap.
+// A goto refused as busy and a resume refused as not parked or as a busy pane are retried once per notice probe until the cap of thirty minutes after the start; any other goto refusal gives up at once.
+// A retry that gave up, or a second Publish halt after the retry ran, sends the usual blocked notice with words saying so, which tells the orch the failure needs judgement.
+// Any record that does not match, and any read error on the way to the decision, leaves the halt to the handling above.
 //
 // Its counterpart is equally by design: a driver that finishes NORMALLY leaves its strand and its
 // run directory behind. Nothing here tears either down as part of a clean finish -- only the
