@@ -54,10 +54,11 @@ const commandPositionPattern = `("command"[[:space:]]*:[[:space:]]*"|\\n|[;&|(` 
 const pythonCommandPattern = commandPositionPattern + `python(3(\.[0-9]+)?)?([^A-Za-z0-9_./-]|$)`
 
 // steerRawGoDeny refuses a Bash go run that bypasses the gate slots; it must contain no single/double quote or backslash (checked at init).
-const steerRawGoDeny = "raw module-wide, tmux-tier and llm-tier go runs are refused here. Run the package-scoped command through lyx gate test as a background Bash call, for example lyx gate test ./internal/x, and use its --tags flag for a tag. The slot, strand and prebuilt-binary environment variables belong to lyx, and a command naming any of them is refused"
+// It is the gate rule every lyx-spawned session and its forks read, which stencils point at as "the gate rule in your system prompt".
+var steerRawGoDeny = "raw module-wide, tmux-tier and llm-tier go runs are refused here. Gate rule: run lyx gate test in the foreground with the Bash tool timeout set to " + bashMaxTimeoutMS + ", never in the background, for example lyx gate test ./internal/x, and use its --tags flag for a tag. Run every other check in the foreground too, and never cd into the directory you already work in. The slot, strand and prebuilt-binary environment variables belong to lyx, and a command naming any of them is refused"
 
 // noticeRawGoDeny announces the raw go deny in the same wording as its steer.
-const noticeRawGoDeny = steerRawGoDeny + "."
+var noticeRawGoDeny = steerRawGoDeny + "."
 
 // goSubcommandPattern is the grep -E prefix of a go test, build or vet command: go in command position directly before the subcommand, with an optional -C <dir> between them, then whitespace.
 const goSubcommandPattern = commandPositionPattern + `go[[:space:]]+(-C[[:space:]=]+[^[:space:]]+[[:space:]]+)?`

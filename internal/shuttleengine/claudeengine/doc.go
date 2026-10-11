@@ -59,6 +59,10 @@
 // The subagent bucket (`CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL`) is left at Claude Code's default,
 // and a `FORCE_PROMPT_CACHING_5M` in Claude Code's own environment still wins.
 //
+// Both lines also carry `BASH_MAX_TIMEOUT_MS`, the ceiling on the Bash tool's `timeout` parameter, set to one hour from `bashMaxTimeout`.
+// `BASH_DEFAULT_TIMEOUT_MS` is left at Claude Code's default, so only a call with an explicit `timeout` runs past the default.
+// No call stays in the foreground past the ceiling: at the ceiling the Bash tool ends the call or moves it to the background.
+//
 // The context reading comes from the transcript a Stop payload names, read backwards from its end in doubling chunks.
 // The latest main-chain assistant usage entry or compaction boundary is the reading, whichever sits later in the file;
 // a boundary reading carries its `postTokens` and timestamp and is marked compacted.
@@ -137,7 +141,7 @@
 // a `go test` whose `-tags` value names `tmux` or `llm`;
 // and any command naming the slot-inheritance variable or the strand-name variable, each spelled into the pattern from its constant.
 // `go` must stand in command position directly before the subcommand, so `go test ./internal/x` and `lyx gate test ./...` pass.
-// The steer names `lyx gate test` as the route, run as a background Bash call.
+// The steer is the gate rule: it names `lyx gate test` run in the foreground with the Bash tool's `timeout` at the ceiling, every other check in the foreground, and no `cd` into the session's own working directory.
 // It is a guardrail, not a barrier: its hook sees static text only, so a run hidden behind a script, `bash -c`, a `cd` plus a relative pattern it does not cover, or a shell variable passes, as does any raw package-scoped `go test`,
 // and a matching spelling inside a quoted argument, a commit message or a `grep` is falsely denied.
 //
