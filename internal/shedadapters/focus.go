@@ -118,7 +118,7 @@ func excludedLenses(name, runDir string, through int, fan string) (excluded, dro
 
 // lensesRunUnderFan returns the set of lenses round's usage record lists as run, empty when the record is missing, unreadable or names a fan other than fan.
 func lensesRunUnderFan(name, runDir string, round int, fan string) map[string]bool {
-	usage, err := readRoundUsage(runDir, round)
+	usage, err := readCompletedRoundUsage(runDir, round)
 	if err != nil {
 		logger.Warn("shedadapters: usage record unreadable; the next round's lens exclusions are ineligible", "producer", name, "engine", burlerEngineLabel, "round", round, "error", err)
 		return nil

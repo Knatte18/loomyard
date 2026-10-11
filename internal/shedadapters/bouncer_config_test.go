@@ -99,7 +99,7 @@ func TestNewBouncer_ValidationRules(t *testing.T) {
 	}
 }
 
-//testtiming:keep pins the config shapes NewBouncer accepts: an empty Model, Effort and Version, a nil clock that defaults, and an artifact path that does not exist yet
+//testtiming:keep pins the config shapes NewBouncer accepts: empty seed and judge pairs, a nil clock that defaults, and an artifact path that does not exist yet
 func TestNewBouncer_AcceptedConfigs(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -107,12 +107,8 @@ func TestNewBouncer_AcceptedConfigs(t *testing.T) {
 		mutate func(cfg *BouncerConfig)
 	}{
 		{
-			name: "empty Model, Effort and Version",
-			mutate: func(cfg *BouncerConfig) {
-				cfg.Model = ""
-				cfg.Effort = ""
-				cfg.Version = ""
-			},
+			name:   "empty Models",
+			mutate: func(cfg *BouncerConfig) { cfg.Models = BouncerModels{} },
 		},
 		{
 			name:   "a nil Now defaults to a non-nil clock",

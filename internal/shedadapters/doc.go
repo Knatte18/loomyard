@@ -116,6 +116,8 @@
 //     A legacy word never settles a harvest:
 //     a judge this Call spawned or attached that writes one has its three outputs archived and the round re-judged,
 //     through the round producer's unjudged-round hand-back, at one bounce unit on each row.
+//     A judgment the convergence guard refuses (see the end of this document) takes the same route beside the retired-word one, with a Reason naming the cause and ending in `the round is re-judged`;
+//     a replayed round that carries an escalation record or a circling decision file stands as recorded and is never refused.
 //     The ledger is reported rather than withheld because the Bouncer's ledger is a real cross-round artifact a human reads,
 //     and hiding it on a CONTINUE Stuck would hide it exactly when an operator most needs it.
 //     The exists-or-empty rule matters because Shed never stats a pointer,
@@ -137,7 +139,7 @@
 // collision suffix the same way.
 // MultiLLMProducer is told a seatengine.Table and an already-constructed SeatRunner, and takes the same injected clock for the same purpose.
 // NewMultiLLMProducerSourced is told a TableSource instead of a table: the source builds the table once per Call, so stencils and directives are read at call time.
-// Bouncer's own told inputs are RunDir, StencilsDir, the resolved (Model, Effort, Version) triple,
+// Bouncer's own told inputs are RunDir, StencilsDir, the resolved seed and judge pairs,
 // and the report-name convention as a function. NewBouncer is the package's one validating,
 // error-returning constructor, in contrast with the two
 // that return a bare pointer: NewSingleLLMProducer, whose Spec is validated downstream by
@@ -200,6 +202,11 @@
 // Round 1 runs the whole fan and drops a focus file's excludes, and an excluded lens returns only with a new generation, since an archived generation moves the whole run directory aside.
 // Every completed round, solo and fanned, also leaves round-<N>-usage.yaml beside them:
 // the fan and lenses the round ran, and each half's model, run times, wall time and tokens, forks included, with an unknown reading left unknown rather than zero.
+// The record also carries the Bouncer's `seed` and `judge` lists, one entry per pass in the same half shape.
+// The Bouncer appends an entry for every pass whose result reached the Call, a judgment the guard refuses included, so a re-judged round lists every pass it took;
+// a pass whose run errored, and a judgment a later Call settles from disk, record nothing, and a failed write only logs a warning.
+// Every writer merges into the record on write, and a record that does not decode is archived aside and replaced by one holding only the writer's part.
+// A record without a review half reads as missing for the lens facts and the lens exclusions, since only the Bouncer has written to it.
 // A gate-failed round is archived and writes none, and a failed write is a warning that never changes the round's outcome.
 // The told run directory's whole content and every timestamped archive the adapters write -- per-file siblings inside the run directory and whole-generation siblings of the run directory beside it (archiveRunDir) alike -- are durable record the wiring layer commits, so the adapters write nothing there that is not meant for git.
 //
@@ -300,8 +307,8 @@
 // outcome or its own RunOpts.Timeout elapses), and Bouncer for similar reasons at the shuttleengine
 // layer (see the Shared cancellation rule above for both).
 //
-// The Bouncer accepts one further soft spot: ledger carry-forward is enforced by the judge prompt
-// alone, so a misbehaving judge can drop an entry with nothing at the Go layer catching it; closing
-// that would require diffing the new ledger's key set against the previous one and deciding what a
-// missing key means, which is a feature rather than a one-line addition.
+// The Bouncer does not trust the judge alone with the rules it states:
+// a CONVERGED with an open BLOCKING ledger entry or a BLOCKING or unparseable review is archived and re-judged within the bounce budget.
+// So is any verdict whose ledger drops a key of the previous round's ledger.
+// Only keys are compared across ledgers, never status, class or severity.
 package shedadapters

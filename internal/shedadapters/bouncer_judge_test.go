@@ -10,10 +10,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -63,7 +65,7 @@ func layoutBouncerRun(t *testing.T, cfg BouncerConfig, fixtures []bouncerJudgeFi
 // bouncerReport, bouncerVerdictContent, and bouncerLedgerContent are minimal well-formed file
 // bodies for the three file contracts, reused across this batch's fixtures.
 func bouncerReport(round int) string {
-	return fmt.Sprintf("---\nround: %d\n---\nfindings for round %d\n", round, round)
+	return fmt.Sprintf("---\nround: %d\nverdict: APPROVED\nfindings: []\n---\nfindings for round %d\n", round, round)
 }
 
 func bouncerVerdictContent(verdict string) string {
@@ -267,6 +269,13 @@ func TestBouncer_JudgeCall_Verdicts(t *testing.T) {
 			if len(shuttle.GotSpec.OutputFiles) != 3 {
 				t.Errorf("recorded Spec.OutputFiles has %d entries; want 3", len(shuttle.GotSpec.OutputFiles))
 			}
+			judge := cfg.Models.Judge
+			if got := (burlerengine.ModelChoice{Model: shuttle.GotSpec.Model, Effort: shuttle.GotSpec.Effort, Version: shuttle.GotSpec.Version}); got != judge {
+				t.Errorf("recorded spec model = %+v; want the judge pair %+v", got, judge)
+			}
+			if judge == cfg.Models.Seed {
+				t.Errorf("fixture judge pair equals the seed pair %+v; want them distinct", judge)
+			}
 			for _, path := range []string{verdictPath(cfg.RunDir, 1), ledgerPath(cfg.RunDir, 1), focusPath(cfg.RunDir, 2)} {
 				if _, err := os.Stat(path); err != nil {
 					t.Errorf("os.Stat(%q) = %v; want nil (all three files exist)", path, err)
@@ -286,6 +295,167 @@ func TestBouncer_JudgeCall_Verdicts(t *testing.T) {
 			}
 			if len(parsed.Focus) != 0 {
 				t.Errorf("parsed focus Focus = %v; want empty", parsed.Focus)
+			}
+		})
+	}
+}
+
+// TestBouncer_JudgeCall_RefusedJudgment covers the judgments Go refuses and the rounds it leaves as recorded:
+// a refused round archives its three judge outputs, returns a counted Stuck whose Reason names the cause and the re-judge, runs no seam and escalates nothing.
+func TestBouncer_JudgeCall_RefusedJudgment(t *testing.T) {
+	t.Parallel()
+	const blockingReview = "---\nverdict: BLOCKING\nfindings:\n  - id: f1\n    severity: BLOCKING\n    class: design\n    location: plan.md\n    summary: broken\n---\nreview\n"
+	alpha := evidenceEntry{"alpha", "open", "design", "MEDIUM"}
+	beta := evidenceEntry{"beta", "open", "design", "MEDIUM"}
+	replayAccept := func(t *testing.T, cfg BouncerConfig) {
+		for n := 1; n <= 2; n++ {
+			if err := os.WriteFile(roundReviewPath(cfg.RunDir, n), []byte("review\n"), 0o644); err != nil {
+				t.Fatalf("WriteFile(review round %d) = %v; want nil", n, err)
+			}
+		}
+		if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
+			t.Fatalf("RecordCirclingDecision(accept) = %v; want nil", err)
+		}
+	}
+	tests := []struct {
+		name        string
+		round       int
+		verdict     string
+		previous    string
+		ledger      string
+		review      string
+		replay      bool
+		record      func(t *testing.T, cfg BouncerConfig)
+		bounces     func() (int, int, bool, error)
+		wantOutcome shedengine.Outcome
+		wantCause   string
+		wantSeams   []string
+	}{
+		{
+			name: "CONVERGED over an open BLOCKING ledger entry", round: 1, verdict: "CONVERGED",
+			ledger:      evidenceLedgerContent(t, 1, evidenceEntry{"alpha", "open", "scope", "BLOCKING"}),
+			wantOutcome: shedengine.Stuck, wantCause: `ledger key "alpha" is open at severity BLOCKING`,
+		},
+		{
+			name: "CONVERGED over a review with a BLOCKING finding", round: 1, verdict: "CONVERGED",
+			ledger: bouncerLedgerContent(1), review: blockingReview,
+			wantOutcome: shedengine.Stuck, wantCause: `review finding "f1" is BLOCKING`,
+		},
+		{
+			name: "CONVERGED over an unparseable review", round: 1, verdict: "CONVERGED",
+			ledger: bouncerLedgerContent(1), review: "no frontmatter\n",
+			wantOutcome: shedengine.Stuck, wantCause: `the review does not parse: burler: review file must open with a "---" frontmatter delimiter line`,
+		},
+		{
+			name: "a round 2 CONTINUE whose ledger drops a round 1 key", round: 2, verdict: "CONTINUE",
+			previous: evidenceLedgerContent(t, 1, alpha), ledger: bouncerLedgerContent(2),
+			wantOutcome: shedengine.Stuck, wantCause: `the ledger drops key "alpha" of round 1's ledger`,
+		},
+		{
+			name: "a round 2 CONVERGED with a lossless ledger settles over a malformed round 1 ledger", round: 2, verdict: "CONVERGED",
+			previous: "not a ledger\n", ledger: bouncerLedgerContent(2),
+			wantOutcome: shedengine.Done, wantSeams: []string{"approve", "commit"},
+		},
+		{
+			name: "a CONTINUE with a BLOCKING finding passes the guard", round: 1, verdict: "CONTINUE",
+			ledger: bouncerLedgerContent(1), review: blockingReview,
+			wantOutcome: shedengine.Stuck,
+		},
+		{
+			name: "a replayed round 2 CONTINUE with a lossy ledger is re-judged", round: 2, verdict: "CONTINUE", replay: true,
+			previous: evidenceLedgerContent(t, 1, alpha), ledger: evidenceLedgerContent(t, 2, beta),
+			wantOutcome: shedengine.Stuck, wantCause: `the ledger drops key "alpha" of round 1's ledger`,
+		},
+		{
+			name: "a replayed lossy round with an escalation record stands as recorded", round: 2, verdict: "CONTINUE", replay: true,
+			previous: evidenceLedgerContent(t, 1, alpha), ledger: evidenceLedgerContent(t, 2, beta),
+			record: func(t *testing.T, cfg BouncerConfig) {
+				if err := writeEscalation(cfg.RunDir, 2, EscalationCircling, "brief\n", "notice"); err != nil {
+					t.Fatalf("writeEscalation = %v; want nil", err)
+				}
+			},
+			wantOutcome: shedengine.Stuck,
+		},
+		{
+			name: "a replayed lossy round 2 CIRCLING with a pending accept settles", round: 2, verdict: "CIRCLING", replay: true,
+			previous: evidenceLedgerContent(t, 1, alpha), ledger: evidenceLedgerContent(t, 2, beta), record: replayAccept,
+			wantOutcome: shedengine.Done, wantSeams: []string{"approve", "commit"},
+		},
+		{
+			name: "a refusal at the bounce budget blocks without escalating", round: 1, verdict: "CONVERGED",
+			ledger:  evidenceLedgerContent(t, 1, evidenceEntry{"alpha", "open", "scope", "BLOCKING"}),
+			bounces: spentBounces, wantOutcome: shedengine.Stuck, wantCause: `ledger key "alpha" is open at severity BLOCKING`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shuttle := judgeFakeShuttle(tt.round, bouncerVerdictContent(tt.verdict), tt.ledger, true)
+			var seams seamLog
+			fx := newBouncerFixture(t, withShuttle(shuttle))
+			fx.Config.Approve = seams.approve(nil)
+			fx.Config.Commit = seams.commit(nil)
+			fx.Config.Bounces = tt.bounces
+			b, cfg := fx.Build()
+
+			review := tt.review
+			if review == "" {
+				review = bouncerReport(tt.round)
+			}
+			judged := bouncerJudgeFixture{round: tt.round, report: review}
+			if tt.replay {
+				judged.verdict = bouncerVerdictContent(tt.verdict)
+				judged.ledger = tt.ledger
+			}
+			fixtures := []bouncerJudgeFixture{judged}
+			if tt.round == 2 {
+				fixtures = []bouncerJudgeFixture{{round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONTINUE"), ledger: tt.previous}, judged}
+			}
+			layoutBouncerRun(t, cfg, fixtures)
+			if tt.record != nil {
+				tt.record(t, cfg)
+			}
+
+			ptr := shedfake.RequireOutcome(t, b, tt.wantOutcome)
+			if tt.replay && shuttle.Called {
+				t.Error("Call() spawned a judge on a replay; want none")
+			}
+			if !slices.Equal(seams.calls, tt.wantSeams) {
+				t.Errorf("seam calls = %v; want %v", seams.calls, tt.wantSeams)
+			}
+
+			outputs := judgeOutputs(cfg.RunDir, tt.round)
+			if tt.wantCause == "" {
+				if ptr.Reason != "" {
+					t.Errorf("Call() Reason = %q; want none", ptr.Reason)
+				}
+				for _, path := range outputs[:2] {
+					if _, err := os.Stat(path); err != nil {
+						t.Errorf("os.Stat(%q) = %v; want the judgment left in place", path, err)
+					}
+				}
+				return
+			}
+
+			wantReason := fmt.Sprintf("refused round %d's %s judgment: %s; way forward: the round is re-judged", tt.round, tt.verdict, tt.wantCause)
+			if !strings.HasSuffix(ptr.Reason, wantReason) {
+				t.Errorf("Call() Reason = %q; want it to end in %q", ptr.Reason, wantReason)
+			}
+			if ptr.BudgetExempt {
+				t.Error("Call() BudgetExempt = true; want the refusal counted")
+			}
+			for _, path := range outputs {
+				if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("os.Stat(%q) = %v; want the output archived away", path, err)
+				}
+			}
+			for _, path := range outputs[:2] {
+				if _, err := os.Stat(archivedSiblingPath(path, bouncerJudgeTestClock)); err != nil {
+					t.Errorf("archived sibling of %q = %v; want it present", path, err)
+				}
+			}
+			if _, _, escalated, _ := readEscalation(cfg.RunDir, tt.round); escalated {
+				t.Error("a refusal wrote an escalation record; want none")
 			}
 		})
 	}

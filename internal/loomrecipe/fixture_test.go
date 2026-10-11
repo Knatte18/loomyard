@@ -54,7 +54,7 @@ func newLoomBurler(t *testing.T) *shedfake.BurlerRunner {
 	}
 	burler.DuringRun = func(callIndex int) {
 		p := burler.GotProfiles[callIndex]
-		if err := os.WriteFile(p.ReviewPath, []byte("review"), 0o644); err != nil {
+		if err := os.WriteFile(p.ReviewPath, []byte("---\nverdict: APPROVED\nfindings: []\n---\nreview\n"), 0o644); err != nil {
 			t.Fatalf("write review %s: %v", p.ReviewPath, err)
 		}
 		if err := os.WriteFile(p.FixerReportPath, []byte("fixer report"), 0o644); err != nil {

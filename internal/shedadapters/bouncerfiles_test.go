@@ -475,7 +475,7 @@ func TestRecordedVerdict_LedgerRoundMustMatchItsOwnFilename(t *testing.T) {
 		dir := t.TempDir()
 		writeVerdictAndLedger(t, dir, 3, 3)
 
-		verdict, judged := recordedVerdict(dir, 3)
+		verdict, _, judged := recordedVerdict(dir, 3)
 		if !judged {
 			t.Fatalf("recordedVerdict(round 3) judged = false; want true (a ledger whose own round agrees with its filename)")
 		}
@@ -491,7 +491,7 @@ func TestRecordedVerdict_LedgerRoundMustMatchItsOwnFilename(t *testing.T) {
 		// into a file that landed at the right path would produce.
 		writeVerdictAndLedger(t, dir, 3, 1)
 
-		_, judged := recordedVerdict(dir, 3)
+		_, _, judged := recordedVerdict(dir, 3)
 		if judged {
 			t.Error("recordedVerdict(round 3) judged = true; want false -- the ledger's own round: 1 disagrees with its filename's round 3, so it must not be trusted as round 3's judgment")
 		}

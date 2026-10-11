@@ -96,7 +96,7 @@ func withEscalationInputs() bouncerFixtureOpt {
 	return func(s *bouncerFixtureSpec) { s.escalation = true }
 }
 
-// withBareConfig leaves Model, Effort, Version and Now unset, writes the bare rubric body, and defaults the shuttle to an empty shedfake.Shuttle.
+// withBareConfig leaves Models and Now unset, writes the bare rubric body, and defaults the shuttle to an empty shedfake.Shuttle.
 func withBareConfig() bouncerFixtureOpt {
 	return func(s *bouncerFixtureSpec) { s.bare = true }
 }
@@ -160,9 +160,10 @@ func newBouncerFixture(t *testing.T, opts ...bouncerFixtureOpt) *bouncerFixture 
 			cfg.Shuttle = &shedfake.Shuttle{}
 		}
 	} else {
-		cfg.Model = "claude-x"
-		cfg.Effort = "high"
-		cfg.Version = "v1"
+		cfg.Models = BouncerModels{
+			Seed:  burlerengine.ModelChoice{Model: "claude-seed", Effort: "low", Version: "v1"},
+			Judge: burlerengine.ModelChoice{Model: "claude-judge", Effort: "high", Version: "v2"},
+		}
 	}
 	return &bouncerFixture{t: t, Config: cfg, StencilsDir: cfg.StencilsDir}
 }

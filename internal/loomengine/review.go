@@ -30,29 +30,77 @@ type ReviewSettings struct {
 	FixStart burlerengine.FixStart
 }
 
-// JudgeSettings is the Bouncer rows' run-wide model settings, resolved once from Config and threaded onto shedrecipe.Env for every Bouncer row to fall back to.
-// It carries no timeout, since BouncerConfig carries none.
-type JudgeSettings struct {
-	// Model is the resolved judge role's provider-side model string.
-	Model string
-	// Effort is the resolved judge role's "effort" parameter, empty when unset.
-	Effort string
-	// Version is the resolved judge role's "version" parameter, empty when unset.
-	Version string
+// BouncerModels is one review segment's resolved seed and judge pair, each an already-resolved model, effort and version triple.
+type BouncerModels struct {
+	Seed  burlerengine.ModelChoice
+	Judge burlerengine.ModelChoice
 }
 
-// ResolveJudge parses and resolves the judge role's model-spec from cfg, returning the JudgeSettings the caller threads onto shedrecipe.Env.
+// JudgeSettings is each review segment's resolved Bouncer models, resolved once from Config and threaded onto shedrecipe.Env per Bouncer row.
+// It carries no timeout, since BouncerConfig carries none.
+type JudgeSettings struct {
+	Discussion BouncerModels
+	Plan       BouncerModels
+	Webster    BouncerModels
+}
+
+// ResolveJudge resolves each review segment's judge and seed models from cfg, returning the JudgeSettings the caller threads onto shedrecipe.Env.
+// A segment's judge is its own judge key when non-empty, else judge.
+// A segment's seed is its own seed key when non-empty, else seed when non-empty, else the segment's resolved judge.
+// An error names the key the failing value came from.
 func ResolveJudge(cfg Config, reg modelspec.Registry) (JudgeSettings, error) {
-	spec, err := modelspec.Parse(cfg.Judge)
+	discussion, err := resolveSegmentBouncerModels("discussion", cfg.DiscussionJudge, cfg.DiscussionSeed, cfg, reg)
 	if err != nil {
-		return JudgeSettings{}, fmt.Errorf("loom: ResolveJudge: judge role model-spec: %w", err)
+		return JudgeSettings{}, err
+	}
+	plan, err := resolveSegmentBouncerModels("plan", cfg.PlanJudge, cfg.PlanSeed, cfg, reg)
+	if err != nil {
+		return JudgeSettings{}, err
+	}
+	webster, err := resolveSegmentBouncerModels("webster", cfg.WebsterJudge, cfg.WebsterSeed, cfg, reg)
+	if err != nil {
+		return JudgeSettings{}, err
+	}
+	return JudgeSettings{Discussion: discussion, Plan: plan, Webster: webster}, nil
+}
+
+// resolveSegmentBouncerModels resolves one segment's judge and seed pairs, applying the fallback order ResolveJudge documents.
+// segment prefixes the per-segment key names in an error.
+func resolveSegmentBouncerModels(segment, segmentJudge, segmentSeed string, cfg Config, reg modelspec.Registry) (BouncerModels, error) {
+	judgeKey, judgeRaw := "judge", cfg.Judge
+	if segmentJudge != "" {
+		judgeKey, judgeRaw = segment+"_judge", segmentJudge
+	}
+	seedKey, seedRaw := judgeKey, judgeRaw
+	switch {
+	case segmentSeed != "":
+		seedKey, seedRaw = segment+"_seed", segmentSeed
+	case cfg.Seed != "":
+		seedKey, seedRaw = "seed", cfg.Seed
+	}
+
+	judge, err := resolveKeyedModelChoice(judgeKey, judgeRaw, reg)
+	if err != nil {
+		return BouncerModels{}, err
+	}
+	seed, err := resolveKeyedModelChoice(seedKey, seedRaw, reg)
+	if err != nil {
+		return BouncerModels{}, err
+	}
+	return BouncerModels{Seed: seed, Judge: judge}, nil
+}
+
+// resolveKeyedModelChoice parses and resolves one model-spec through reg, naming key in an error.
+func resolveKeyedModelChoice(key, raw string, reg modelspec.Registry) (burlerengine.ModelChoice, error) {
+	spec, err := modelspec.Parse(raw)
+	if err != nil {
+		return burlerengine.ModelChoice{}, fmt.Errorf("loom: ResolveJudge: %s role model-spec: %w", key, err)
 	}
 	resolved, err := reg.Resolve(spec)
 	if err != nil {
-		return JudgeSettings{}, fmt.Errorf("loom: ResolveJudge: judge role model-spec: %w", err)
+		return burlerengine.ModelChoice{}, fmt.Errorf("loom: ResolveJudge: %s role model-spec: %w", key, err)
 	}
-
-	return JudgeSettings{
+	return burlerengine.ModelChoice{
 		Model:   resolved.Model,
 		Effort:  resolved.Params["effort"],
 		Version: resolved.Params["version"],

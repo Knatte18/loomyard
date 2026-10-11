@@ -72,10 +72,10 @@ func TestHarvestedVerdict_RefusesLegacyWords(t *testing.T) {
 		t.Fatalf("WriteFile(verdict) = %v; want nil", err)
 	}
 
-	if _, ok := harvestedVerdict(dir, 1); ok {
+	if _, _, ok := harvestedVerdict(dir, 1); ok {
 		t.Error("harvestedVerdict(legacy APPROVED) ok = true; want false")
 	}
-	if got, ok := recordedVerdict(dir, 1); !ok || got != verdictConverged {
+	if got, _, ok := recordedVerdict(dir, 1); !ok || got != verdictConverged {
 		t.Errorf("recordedVerdict(legacy APPROVED) = (%q, %v); want (%q, true)", got, ok, verdictConverged)
 	}
 }

@@ -62,7 +62,7 @@ func RecordCirclingDecision(runDir string, d CirclingDecision) (int, EscalationC
 		return 0, "", err
 	}
 	if !escalated {
-		if verdict, judged := recordedVerdict(runDir, round); !judged || verdict != verdictCircling {
+		if verdict, _, judged := recordedVerdict(runDir, round); !judged || verdict != verdictCircling {
 			return 0, "", ErrNotEscalated
 		}
 		cause = EscalationCircling

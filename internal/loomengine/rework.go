@@ -1,7 +1,7 @@
 // rework.go implements ReworkSpec, the PR-Rework producer's Spec factory, and its composeReworkPrompt prompt composer.
 // Like PlanSpec, the rework agent is a prompt/profile fed to shuttle.Run, one shuttle.Run producing one artifact.
 // It turns the pending rejection's findings into a whole new plan generation, written into the emptied plan directory, and writes the coverage file last as its completion signal.
-// Rework is planning, so it reuses the plan role's model-spec and timeout rather than carrying config keys of its own.
+// Rework is planning, so it reuses the plan role's timeout and takes the model-spec of the rework key, which falls back to plan.
 //
 // ReworkSpec is a pure composer: it stats nothing and spawns nothing.
 // Archiving the retired generation and classifying the new one are owned by the PR-Rework producer, not by this file.
@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -86,21 +87,39 @@ func composeReworkPrompt(stencilsDir, specsDir string, p reworkPaths, firstCard 
 	return rendered, nil
 }
 
+// ResolveRework parses and resolves the rework role's model-spec from cfg: cfg.Rework when non-empty, else cfg.Plan.
+// An error names the rework role and the key the value came from.
+func ResolveRework(cfg Config, reg modelspec.Registry) (burlerengine.ModelChoice, error) {
+	key, raw := "plan", cfg.Plan
+	if cfg.Rework != "" {
+		key, raw = "rework", cfg.Rework
+	}
+	spec, err := modelspec.Parse(raw)
+	if err != nil {
+		return burlerengine.ModelChoice{}, fmt.Errorf("loom: ResolveRework: rework role model-spec from key %q: %w", key, err)
+	}
+	resolved, err := reg.Resolve(spec)
+	if err != nil {
+		return burlerengine.ModelChoice{}, fmt.Errorf("loom: ResolveRework: rework role model-spec from key %q: %w", key, err)
+	}
+	return burlerengine.ModelChoice{
+		Model:   resolved.Model,
+		Effort:  resolved.Params["effort"],
+		Version: resolved.Params["version"],
+	}, nil
+}
+
 // ReworkSpec builds the shuttleengine.Spec for one PR-Rework agent run.
 // stencilsDir, specsDir and parentName are told, never derived: this package is bound by the Told-Geometry Invariant.
 // An empty parentName renders the no-parent directive.
 // firstCard is the number the new generation's first card takes, one past the highest card of the retired generation,
 // and priorPlanDir is where that generation's plan was archived; both are told as values because the session cannot derive them from the worktree it runs in.
-// The plan role's model-spec and PlanTimeoutMin are reused.
+// The model is ResolveRework's and the timeout is PlanTimeoutMin.
 // Segment is the webster segment, because rework belongs to the Webster row of the loom.
 func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir, parentName string, cfg Config, reg modelspec.Registry, firstCard int, priorPlanDir string) (shuttleengine.Spec, error) {
-	spec, err := modelspec.Parse(cfg.Plan)
+	model, err := ResolveRework(cfg, reg)
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("loom: ReworkSpec: plan role model-spec: %w", err)
-	}
-	resolved, err := reg.Resolve(spec)
-	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("loom: ReworkSpec: plan role model-spec: %w", err)
+		return shuttleengine.Spec{}, fmt.Errorf("loom: ReworkSpec: %w", err)
 	}
 
 	paths := reworkPaths{
@@ -143,9 +162,9 @@ func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir, parentName strin
 	return shuttleengine.Spec{
 		Prompt:      string(prompt),
 		OutputFiles: []string{paths.coverage},
-		Model:       resolved.Model,
-		Effort:      resolved.Params["effort"],
-		Version:     resolved.Params["version"],
+		Model:       model.Model,
+		Effort:      model.Effort,
+		Version:     model.Version,
 		Interactive: false,
 		Role:        reworkRole,
 		Segment:     segmentcolor.Webster,

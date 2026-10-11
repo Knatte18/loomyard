@@ -119,3 +119,9 @@ webster.yaml holds two roles, each a model-spec: `master` (the long-lived Master
 its in-session forks always inherit Master's current model, so there are no per-fork roles) and `recovery` (the cold recovery strand `recover-batch` spawns).
 Stack-wide roles elsewhere (burler reviewers, Bouncer judges, loom producers) use the same notation in their own config sections;
 loom's config section overrides per role when loom drives the module.
+
+loom.yaml gives the Bouncer judge and seed passes and PR-Rework keys of their own, each a model-spec validated only when non-empty:
+
+- A per-segment judge key (`discussion_judge`, `plan_judge`, `webster_judge`) left empty takes `judge`.
+- A per-segment seed key (`discussion_seed`, `plan_seed`, `webster_seed`) left empty takes `seed`, and `seed` left empty takes that segment's resolved judge.
+- `rework` left empty takes `plan`.
