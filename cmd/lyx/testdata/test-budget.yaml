@@ -118,6 +118,7 @@ internal/testkit/shuttlefake: 8
 internal/testkit/stencilkit: 3
 internal/testkit/tmuxkit: 15
 internal/treadleengine: 34
+internal/twilldirective: 3
 internal/verifyrun: 4
 internal/verifytree: 7
 internal/vscode: 12
