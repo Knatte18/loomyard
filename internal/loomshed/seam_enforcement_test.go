@@ -52,6 +52,10 @@ var loomshedAllowedImports = []string{
 	// Both are told the worktree and resolve no geometry.
 	"github.com/Knatte18/loomyard/internal/commentlint",
 	"github.com/Knatte18/loomyard/internal/impactset",
+	// internal/patternlint and internal/pattern are the round gate's headroom lint and the finding type it returns.
+	// Both are told the worktree and resolve no geometry.
+	"github.com/Knatte18/loomyard/internal/patternlint",
+	"github.com/Knatte18/loomyard/internal/pattern",
 	// internal/gitrepo is the go-git read that checks a Publish failure record's merge commit.
 	// It is told the worktree and resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/gitrepo",

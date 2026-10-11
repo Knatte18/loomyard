@@ -548,6 +548,15 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		return err
 	}
 
+	// A pair run records its parent branch in the origin record, so the record file's presence tells the headroom lint its merge base.
+	// The check only stats, because reading the record would create the weft lock directory and seed the weft exclude.
+	var verifyMergeBase func() (string, error)
+	if _, err := os.Stat(fabricengine.OriginRecordPath(location)); err == nil {
+		verifyMergeBase = pairMergeBase(location)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("loomcli: stat the origin record: %w", err)
+	}
+
 	c.env = shedrecipe.Env{
 		ParentReview: parentReviewCfg,
 		Cwd:          cwd,
@@ -558,6 +567,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		VerifyDir:     verifytree.Dir(anchorPath),
 		VerifyCommand: planVerifySource(location).command,
 		GateSlots:     hubgeom.GateSlots(location),
+		// VerifyMergeBase is nil for a standalone run, which records no parent branch.
+		VerifyMergeBase: verifyMergeBase,
 		PublishFailure: func() string {
 			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath))
 		},

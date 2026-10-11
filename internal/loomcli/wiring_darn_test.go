@@ -59,6 +59,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if c.env.VerifyMergeBase == nil {
 			t.Error("c.env.VerifyMergeBase is nil after wire() of a darn seed; want the merge base reader")
 		}
+		if !c.env.VerifyWholeDiff {
+			t.Error("c.env.VerifyWholeDiff = false after wire() of a darn seed; want true")
+		}
 		if c.env.DarnVerifyAttempts != 5 {
 			t.Errorf("c.env.DarnVerifyAttempts = %d; want 5", c.env.DarnVerifyAttempts)
 		}
@@ -77,11 +80,30 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
-		if c.env.DarnSpec != nil || c.env.Darn.Commit != nil || c.env.VerifyMergeBase != nil || c.env.DarnVerifyAttempts != 0 {
-			t.Errorf("a loom seed filled a darn seam: DarnSpec nil = %v, Darn.Commit nil = %v, VerifyMergeBase nil = %v, DarnVerifyAttempts = %d", c.env.DarnSpec == nil, c.env.Darn.Commit == nil, c.env.VerifyMergeBase == nil, c.env.DarnVerifyAttempts)
+		if c.env.DarnSpec != nil || c.env.Darn.Commit != nil || c.env.VerifyMergeBase != nil || c.env.VerifyWholeDiff || c.env.DarnVerifyAttempts != 0 {
+			t.Errorf("a loom seed filled a darn seam: DarnSpec nil = %v, Darn.Commit nil = %v, VerifyMergeBase nil = %v, VerifyWholeDiff = %v, DarnVerifyAttempts = %d", c.env.DarnSpec == nil, c.env.Darn.Commit == nil, c.env.VerifyMergeBase == nil, c.env.VerifyWholeDiff, c.env.DarnVerifyAttempts)
 		}
 		if got := c.verifySource().failedWayForward; !strings.Contains(got, `"lyx loom goto --to Webster-Burler"`) {
 			t.Errorf("verifySource().failedWayForward = %q; want it to route back to the Webster-Burler row", got)
+		}
+	})
+
+	t.Run("a loom seed over a recorded parent branch gets the merge base reader in the round form", func(t *testing.T) {
+		t.Parallel()
+		loc := hubLocation(t, "pair", ".")
+		recordPath := fabricengine.OriginRecordPath(loc)
+		if err := os.MkdirAll(filepath.Dir(recordPath), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(recordPath), err)
+		}
+		if err := os.WriteFile(recordPath, []byte("{}"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", recordPath, err)
+		}
+		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeLoom}
+		if err := c.wire(loc, loc.AnchorPath()); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if c.env.VerifyMergeBase == nil || c.env.VerifyWholeDiff {
+			t.Errorf("a loom seed over an origin record: VerifyMergeBase nil = %v, VerifyWholeDiff = %v; want the reader set and the round form", c.env.VerifyMergeBase == nil, c.env.VerifyWholeDiff)
 		}
 	})
 

@@ -1,5 +1,5 @@
-// darnwiring.go holds the wiring only a darn run needs: the verify source and merge base the darn recipe tells its verify gate and landing producers, the Darn row's seams, and the writer's Spec source.
-// A loom run leaves all of it unwired.
+// darnwiring.go holds the wiring only a darn run needs: the verify source and whole-diff form the darn recipe tells its verify gate and landing producers, the Darn row's seams, and the writer's Spec source.
+// A loom run leaves all of it unwired, but shares the merge base reader `pairMergeBase` builds.
 
 package loomcli
 
@@ -125,6 +125,7 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 
 	c.env.VerifyCommand = darnVerifySource(location).command
 	c.env.VerifyMergeBase = pairMergeBase(location)
+	c.env.VerifyWholeDiff = true
 	c.env.DarnVerifyAttempts = cfg.VerifyAttempts
 	c.env.Darn = darnDeps(location, c.runID, c.env.VerifyDir)
 	c.env.DarnSpec = func(told loomshed.DarnTold) (shuttleengine.Spec, error) {

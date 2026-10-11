@@ -58,8 +58,10 @@ type Env struct {
 	// VerifyCommand is the told verify-command source, read at each arrival by the gate resolver's "verify" gate, which requires it.
 	VerifyCommand func() (string, error)
 	// VerifyMergeBase is the told reader of the task branch's merge base with the parent branch, read by the gate resolver's "verify" gate.
-	// Nil selects the gate's round form; set selects its whole-diff form.
+	// It is the base of the headroom lint, or of both lints when VerifyWholeDiff is set; nil skips the headroom lint.
 	VerifyMergeBase func() (string, error)
+	// VerifyWholeDiff selects the "verify" gate's whole-diff form, and alone selects it; it requires VerifyMergeBase.
+	VerifyWholeDiff bool
 	// GateSlots is the hub gate-slot pool every Go-side verify a row runs acquires from, read by the gate resolver's "verify" gate.
 	// Nil where no hub is wired, which runs the verify unslotted.
 	GateSlots *gateslot.Pool

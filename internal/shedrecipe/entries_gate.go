@@ -30,8 +30,8 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // "plan" requires env.AnchorPath, env.WorktreeRoot and a non-nil env.PlanIndex and returns loomshed.NewPlanGate over them;
 // "rework-plan" requires the same two roots and index plus a non-nil env.Rework.ReadCommitted and returns loomshed.NewReworkPlanGate over them;
 // "description" requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate over it;
-// "verify" requires the absolute env.WorktreeRoot and env.VerifyDir and a non-nil env.VerifyCommand, takes the optional env.VerifyMergeBase, and returns loomshed.NewVerifyGate over them, with the site label "<row name> gate";
-// the gate runs in its round form without a merge base and in its whole-diff form with one;
+// "verify" requires the absolute env.WorktreeRoot and env.VerifyDir and a non-nil env.VerifyCommand, takes the optional env.VerifyMergeBase and env.VerifyWholeDiff, and returns loomshed.NewVerifyGate over them, with the site label "<row name> gate";
+// env.VerifyWholeDiff alone selects the whole-diff form, and env.VerifyMergeBase is the base of the headroom lint, or of both lints in that form;
 // "parent-review" requires the absolute Env.ParentReview.Store.Root, Store.LockDir, DecisionRecord and SupportLog, a non-empty Slug and both render seams, and returns parentreview.NewGate's closure pair, the second being the entry's Final closure;
 // it is must-pass and may hold the run, its "attempts" is the reject cap told to the gate, and its "pass_on_cap" tells the gate to let the rewrite after the cap's reject through rather than halt the run;
 // any other value is an error naming the key and all six legal values.
@@ -209,7 +209,7 @@ func resolvePlainGateClosure(entry, row string, index int, name string, env Env)
 		if err := requireSeam(entry, "VerifyCommand", env.VerifyCommand); err != nil {
 			return nil, err
 		}
-		return loomshed.NewVerifyGate(env.WorktreeRoot, env.VerifyDir, row+" gate", env.VerifyCommand, env.VerifyMergeBase, env.GateSlots), nil
+		return loomshed.NewVerifyGate(env.WorktreeRoot, env.VerifyDir, row+" gate", env.VerifyCommand, env.VerifyMergeBase, env.VerifyWholeDiff, env.GateSlots), nil
 	default:
 		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "discussion", "plan", "rework-plan", "description", "verify", "parent-review", name)
 	}
