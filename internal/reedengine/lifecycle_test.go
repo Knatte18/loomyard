@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
-	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 func guids(strands []Strand) []string {

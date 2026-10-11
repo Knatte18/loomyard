@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -503,6 +504,21 @@ func validateFanKeys(baseDir string, cfg Config) error {
 		}
 	}
 	return nil
+}
+
+// MigrateConfig raises a below-floor or null step_idle_timeout_min in a loom.yaml document to its floor, for lyx config reconcile, and returns the rewritten bytes with one line describing the rewrite.
+// Everything else is carried through with its comments;
+// the loader never calls it.
+// A document that does not parse returns an error marked configengine.ErrInvalid.
+func MigrateConfig(existing []byte) ([]byte, []string, error) {
+	rewritten, line, err := yamlengine.RaiseIntFloor(existing, "step_idle_timeout_min", stepIdleTimeoutFloorMin)
+	if err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
+	}
+	if line == "" {
+		return rewritten, nil, nil
+	}
+	return rewritten, []string{line}, nil
 }
 
 // LoadConfig loads and unmarshals configuration for the loom module.

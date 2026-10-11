@@ -94,7 +94,7 @@ lyx board get '{"slug":"my-task"}'
 Remove every done entry:
 
 ```
-lyx board prune
+lyx board prune --apply
 ```
 
 ## Claimed entries

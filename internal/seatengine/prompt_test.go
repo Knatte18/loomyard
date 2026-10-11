@@ -56,11 +56,11 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 		}
 	}
 
-	chairValues, err := seatValues(geom, table, table.Seats[0], names, []string{names[AdvisorName(2)]})
+	chairValues, err := seatValues(geom, table, table.Seats[0], names)
 	if err != nil {
 		t.Fatalf("seatValues(chair) = %v", err)
 	}
-	advisorValues, err := seatValues(geom, table, table.Seats[1], names, []string{names[AdvisorName(2)]})
+	advisorValues, err := seatValues(geom, table, table.Seats[1], names)
 	if err != nil {
 		t.Fatalf("seatValues(advisor) = %v", err)
 	}
@@ -81,12 +81,6 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 		}
 	}
 
-	if got := chairValues["failed_advisors"]; got != "ly:task:multi-advisor-2" {
-		t.Errorf("chair failed_advisors = %q, want the failed advisor", got)
-	}
-	if got := advisorValues["failed_advisors"]; got != noneValue {
-		t.Errorf("advisor failed_advisors = %q, want %q", got, noneValue)
-	}
 	if got := chairValues["inputs"]; got != "/w/a1.md\n/w/a2.md" {
 		t.Errorf("chair inputs = %q, want the chair's inputs one per line", got)
 	}
@@ -97,12 +91,12 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 		t.Errorf("advisor focus = %q, want the seat's own value", got)
 	}
 
-	emptyInputs, err := seatValues(geom, table, table.Seats[2], names, nil)
+	emptyInputs, err := seatValues(geom, table, table.Seats[2], names)
 	if err != nil {
 		t.Fatalf("seatValues(advisor with no inputs) = %v", err)
 	}
-	if emptyInputs["inputs"] != noneValue || emptyInputs["failed_advisors"] != noneValue {
-		t.Errorf("empty lists = %q and %q, want %q for both", emptyInputs["inputs"], emptyInputs["failed_advisors"], noneValue)
+	if emptyInputs["inputs"] != noneValue {
+		t.Errorf("empty inputs = %q, want %q", emptyInputs["inputs"], noneValue)
 	}
 
 	if !strings.Contains(chairValues["parent_directive"], "`ly:orch`") {
@@ -194,7 +188,7 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Prompts(plain table) = %v", err)
 		}
-		advisorNone, err := seatValues(geom, table, table.Seats[1], names, nil)
+		advisorNone, err := seatValues(geom, table, table.Seats[1], names)
 		if err != nil {
 			t.Fatalf("seatValues(advisor) = %v", err)
 		}
@@ -224,7 +218,7 @@ func TestComposePrompt_RefusesAMarkerAbsentFromTheValueMap(t *testing.T) {
 	}
 	seat := table.Seats[1]
 	seat.Stencil = "seat-test-undeclared"
-	values, err := seatValues(geom, table, seat, names, nil)
+	values, err := seatValues(geom, table, seat, names)
 	if err != nil {
 		t.Fatalf("seatValues() = %v", err)
 	}

@@ -353,15 +353,17 @@ Example:
 	cleanupCmd.Flags().Bool("remote", false, "irreversibly delete each deleted branch's copy on the weft remote too, visible to every other clone; requires --apply")
 	cmd.AddCommand(cleanupCmd)
 
-	cmd.AddCommand(&cobra.Command{
+	var unwireCmd *cobra.Command
+	unwireCmd = &cobra.Command{
 		Use:         "unwire",
 		Args:        cobra.NoArgs,
 		Short:       "fully deactivate fabric wiring for this worktree",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `unwire is a full per-warp-worktree deactivation: it removes every warp
-junction present (_lyx, .lyx) and their warp .git/info/exclude entries. It
-leaves every weft-side directory intact — weft-side content is never deleted
-by unwire.
+		Long: `Without --apply, unwire only reports what it would remove and changes
+nothing. With --apply it is a full per-warp-worktree deactivation: it removes
+every warp junction present (_lyx, .lyx) and their warp .git/info/exclude
+entries. It leaves every weft-side directory intact — weft-side content is
+never deleted by unwire.
 
 This is distinct from "lyx fabric reconcile", which converges wiring toward
 the repo-wide pathspec (adding or re-pointing junctions as needed); unwire
@@ -370,9 +372,15 @@ always tears wiring down. It leaves the repo-wide weft:main records intact
 "lyx fabric reconcile" can re-wire this worktree.
 
 Example:
-  lyx fabric unwire`,
-		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runUnwire(ctx, out, args) }),
-	})
+  lyx fabric unwire
+  lyx fabric unwire --apply`,
+		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
+			apply, _ := unwireCmd.Flags().GetBool("apply")
+			return runUnwire(ctx, out, apply)
+		}),
+	}
+	unwireCmd.Flags().Bool("apply", false, "remove the junctions and exclude lines (default is dry-run/report)")
+	cmd.AddCommand(unwireCmd)
 
 	cmd.AddCommand(&cobra.Command{
 		Use:         "shortname [<shortname>]",

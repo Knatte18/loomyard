@@ -21,6 +21,12 @@ import (
 //go:embed loom-plan-spec.md
 var LoomPlanSpec []byte
 
+// LoomFinalSummarySpec is the final-summary format contract's shipped-default content.
+// Every producer of a task's final summary writes against its format and validation, and its consumers parse it.
+//
+//go:embed loom-final-summary-spec.md
+var LoomFinalSummarySpec []byte
+
 // registryEntry pairs one spec's registered name with the embedded default bytes behind it.
 type registryEntry struct {
 	name string
@@ -33,6 +39,7 @@ type registryEntry struct {
 // family directory from the substring up to the first "-".
 var entries = []registryEntry{
 	{"loom-plan-spec", &LoomPlanSpec},
+	{"loom-final-summary-spec", &LoomFinalSummarySpec},
 }
 
 // registry implements stencilstore.Registry over entries.

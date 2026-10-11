@@ -88,9 +88,18 @@ const doneSeenFileSuffix = "-done-seen"
 // terminalOpenedFileSuffix is the fixed suffix of the marker recording that the producer already opened the terminal window this run, joined onto the producer's own name.
 const terminalOpenedFileSuffix = "-terminal-opened"
 
-// terminalOpenedFile returns the path of the once-marker written after the terminal window open was attempted.
-func terminalOpenedFile(scratchDir, producer string) string {
+// TerminalOpenedFile returns the path of the once-marker written after the terminal window open was attempted.
+func TerminalOpenedFile(scratchDir, producer string) string {
 	return filepath.Join(scratchDir, producer+terminalOpenedFileSuffix)
+}
+
+// ClearTerminalOpened removes the once-marker so the next run opens a terminal window again.
+// An absent marker is not an error.
+func ClearTerminalOpened(scratchDir, producer string) error {
+	if err := os.Remove(TerminalOpenedFile(scratchDir, producer)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("battenshed: %s: clear terminal-opened marker: %w", producer, err)
+	}
+	return nil
 }
 
 // decisionActedFile returns the path of the marker holding the decision identity already resumed on and the child's history length at that resume;
@@ -253,7 +262,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // The full disposition table, evaluated top to bottom: a spawn as above (logging both Live-Substrate
 // Spawn Observability lines around deps.Spawn), then one more read;
 // deps.Spawn returning an error is a hard error, not Stuck, since a failed spawn is mechanism failure, not an ordinary wait, and the next Call retries it; still no status file after a successful spawn is a hard error naming the spawn that returned success without producing one.
-// After a successful spawn, whether here or in the approved-resume arm, Call opens the operator's terminal window through deps.OpenTerminal once per run: a once-marker under scratchDir (terminalOpenedFile) gates it, a fresh child (no status file) clears the marker first, and an open error is only warned about, never changing the row's outcome.
+// After a successful spawn, whether here or in the approved-resume arm, Call opens the operator's terminal window through deps.OpenTerminal once per run: a once-marker under scratchDir (TerminalOpenedFile) gates it, batten clears the marker when it seeds a fresh batten status and never here, and an open error is only warned about, never changing the row's outcome.
 // A failed spawn returns before the open.
 // Any Call that finds the child in a state other than done first removes a leftover done-seen marker, so a marker from an earlier run of the same slug never shortens a later wait.
 // Any Call that finds the child out of a halted state likewise removes the halt-warned marker, which ends the halt episode.
@@ -330,11 +339,6 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 	if mustSpawn {
 		if err := os.Remove(confirmedPath); err != nil && !os.IsNotExist(err) {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: clear spawn confirmation: %w", p.name, err)
-		}
-		if !found {
-			if err := os.Remove(terminalOpenedFile(p.scratchDir, p.name)); err != nil && !os.IsNotExist(err) {
-				return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: clear terminal-opened marker: %w", p.name, err)
-			}
 		}
 		logger.Info("battenshed: spawning inner shed run", "producer", p.name, "slug", p.slug, "status_found", found)
 		spawnErr := p.deps.Spawn(ctx)
@@ -898,7 +902,7 @@ func (p *innerRunProducer) driverAlive(ctx context.Context, w *childWait) (alive
 // An open error is logged rather than escalated, and the marker is written whatever the outcome, so a failed open is not retried;
 // a marker write failure is logged too, since a lost marker costs only one extra window.
 func (p *innerRunProducer) openTerminalOnce(ctx context.Context) {
-	markerPath := terminalOpenedFile(p.scratchDir, p.name)
+	markerPath := TerminalOpenedFile(p.scratchDir, p.name)
 	if _, err := os.Stat(markerPath); err == nil {
 		return
 	}

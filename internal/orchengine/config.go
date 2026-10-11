@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -90,6 +91,21 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// MigrateConfig raises a below-floor or null poll_interval_ms in an orch.yaml document to the poll floor, for lyx config reconcile, and returns the rewritten bytes with one line describing the rewrite.
+// Everything else is carried through with its comments;
+// the loader never calls it.
+// A document that does not parse returns an error marked configengine.ErrInvalid.
+func MigrateConfig(existing []byte) ([]byte, []string, error) {
+	rewritten, line, err := yamlengine.RaiseIntFloor(existing, "poll_interval_ms", int(pollFloor.Milliseconds()))
+	if err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate orch config: %w", err))
+	}
+	if line == "" {
+		return rewritten, nil, nil
+	}
+	return rewritten, []string{line}, nil
 }
 
 // Mode returns the cycle mode, resolving an empty value to CycleCompact.

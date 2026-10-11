@@ -13,6 +13,8 @@
 //
 // It also owns the global --json flag (InstallJSONHelp): under it every command, leaf or group, prints its help as structured JSON and exits 0, and no command runs;
 // a command that declares its own local --json flag shadows the global one and keeps its own meaning.
+//
+// The command index appends a command's index note (IndexNoteAnnotation) only when rendering the audience its IndexNoteAudienceAnnotation names, and never prints a note that lacks one.
 package clihelp
 
 import (

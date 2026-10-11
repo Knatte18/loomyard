@@ -74,6 +74,7 @@ func (e *Engine) probeSeat(table Table, seat Seat, gated bool) (Handle, bool, er
 
 // Resume completes a table whose chair is live, attaching to the chair and every advisor the probe found instead of starting any.
 // It joins them as a fresh run does.
+// The chair is told again that each found advisor is up, since the line may not have landed before the interruption.
 // An advisor the probe did not find is never restarted, and the chair is told of it once:
 // an advisor whose outputs all exist is finished, any other has ended.
 // A notice sent before the interruption may land again, which costs the chair nothing.
@@ -99,6 +100,7 @@ func (e *Engine) Resume(table Table, live LiveTable) (Result, error) {
 		}
 		outputs := e.absolute(seat.Outputs)
 		if handle, found := live.Advisors[seat.Name]; found {
+			sender.queue(advisorUpNotice(names[seat.Name]))
 			advisors = append(advisors, newSeatRun(seat, names[seat.Name], handle, outputs, sender))
 			continue
 		}

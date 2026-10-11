@@ -175,7 +175,7 @@ var wordingClaims = []stencilClaims{
 		{must: "A Discussion-Review entry is not carried into the description", why: "a Discussion-Review carry-over finding concerns the record, not the change under review"},
 	}},
 	{"darn-template-write.md", DarnTemplateWrite, joinClaims(
-		wantAll("the darn writer reads the task from the board entry", "`lyx board get {{.slug}}`"),
+		wantAll("the darn writer reads the task from the board entry", "`lyx board get '{\"slug\":\"{{.slug}}\"}'`"),
 		wantAll("the writer self-checks the description before handing off", "`lyx loom validate-description`"),
 		wantAll("the landing steps push the branch, never the writer", "Never push"),
 		wantAll("a rejection finding is this spawn's work when it is not (none)", "Rejection findings, which are this spawn's work when they are not `(none)`"),
@@ -258,11 +258,14 @@ var wordingClaims = []stencilClaims{
 		{must: "mark a pick that rests on such an answer as advisor-informed, naming the same strand name", section: "## Working with your advisors", why: "the question ledger marks an advisor-informed pick, naming the strand"},
 		{must: "send every batch to every advisor", section: "## Working with your advisors", why: "every advisor sees every question, since each may find a different weakness"},
 		{must: "after weighing every advisor's answer", section: "## Working with your advisors", why: "the chair settles a question on all advisors' answers, not one advisor's area"},
+		{must: "you form the next batch from those answers", section: "## Working with your advisors", why: "the chair asks in rounds, each batch built on the answers to the last"},
+		{must: "Never send every question at once.", section: "## Working with your advisors", why: "nothing else stops a chair sending all its questions in one go"},
 		{mustNot: "an area of the design", why: "the retired area assignment never returns"},
 	}},
 	{"seat-directive-chair.md", SeatDirectiveChair, []claim{
 		{must: "If you have advisors, use them as below.", why: "the directive covers a chair with advisors"},
 		{must: "If you have none, skip the advisor bullets below and decide each question yourself as you judge best.", why: "the directive covers a chair with no advisors, so seats with an empty list needs no second prompt"},
+		{must: "Send an advisor nothing before its up line arrives", why: "the chair starts first, so an advisor may not exist yet when the chair is ready to ask"},
 	}},
 	{"loom-template-discussion-advisor.md", LoomTemplateDiscussionAdvisor, []claim{
 		{must: "You write only your notes file", why: "the notes file is the advisor's only write"},
@@ -569,7 +572,8 @@ var wordingClaims = []stencilClaims{
 			{must: "Batten reads the decision and resumes the child itself", why: "batten resumes the child after a PR-Gate decision"},
 			{must: "`lyx loom reject <review-file>`", why: "a reject names its review file"},
 			{must: "marks the board task done, pushes main and closes the PR", why: "Finalize marks the task done, pushes and closes the PR"},
-			{must: "the driver's drive reports from the prime's own copies", why: "after landing the notes and reports are read from the prime"},
+			{must: "Read the driver's drive reports from the prime's own copies only when the run had trouble", section: "## After landing", why: "after landing the drive reports are read from the prime, and only for a troubled run"},
+			{mustNot: "read the friction notes", why: "a run's Friction-Reflect files its findings as issues, which intake takes onto the board"},
 			{must: "run `lyx loom resume` in the task worktree to resume the run", why: "a circling decision resumes nothing by itself"},
 			{must: "A goto leaves the run paused,\n  so run `lyx loom resume`", why: "a goto leaves the run paused"},
 			{must: "resume it with `lyx loom resume` in the task worktree", why: "a halted child is resumed by waking its parked driver"},

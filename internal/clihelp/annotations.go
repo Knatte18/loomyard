@@ -34,4 +34,9 @@ const AudienceInternal = "internal"
 var Audiences = []string{AudienceOperator, AudienceRole, AudienceInternal}
 
 // IndexNoteAnnotation is the cobra-annotation key whose value the command index appends, after one space, to the line of the command carrying it.
+// The note prints only when the index renders the audience the command's IndexNoteAudienceAnnotation names; a note without that annotation never prints.
 const IndexNoteAnnotation = "lyx.index-note"
+
+// IndexNoteAudienceAnnotation is the cobra-annotation key naming the one audience, a member of Audiences, whose index prints the command's index note.
+// The command index appends a command's index note only when rendering that audience, and prints no note for a command without this annotation.
+const IndexNoteAudienceAnnotation = "lyx.index-note-audience"

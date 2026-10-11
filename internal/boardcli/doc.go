@@ -5,12 +5,17 @@
 //   - `promote`, `prune`, `find`, `labels` and `retire-legacy`, plus the `rerender` and `sync` maintenance verbs, are built in `Command`.
 //   - `intake` (list, import, close) comes from `intakeCommand`.
 //
+// `prune` and `retire-legacy` are read-only dry runs without `--apply`.
+// Each prints the fields an applied run prints, filled with what it would change, plus `"applied": false`;
+// `prune` prints `removed` and `retire-legacy` prints `legacy_files`.
+//
 // A `PersistentPreRunE` resolves configuration once: it loads the hub's `<hub>/_board/_lyx/config/board.yaml` through `boardengine.LoadConfig`, whatever worktree the verb runs in, and derives the board data dir from the worktree layout.
 // The hidden `--board-path` flag overrides the data dir for the detached sync child and skips both,
 // so the config is path-only.
 //
 // A payload command's `Use` names its keys in one `{…}` token, written in the grammar `payloadLegend` states once;
-// the `board` group's `Long` ends with that legend, and the command index's `board` line carries it as an index note.
+// the `board` group's `Long` ends with that legend, and the operator command index's `board` line carries it as an index note.
+// The group's note-audience annotation names the operator, the audience of every payload-taking board verb, so no other audience's index prints the note.
 // Each parser validates against one `payloadKeys` declared beside its command, a test couples every token to its declaration, and an unknown key is refused.
 // The addressing verbs, `set-deps` included, take a `slug` or a numeric `id`.
 // Every verb prints JSON through `internal/output`, one object per line, errors included.
