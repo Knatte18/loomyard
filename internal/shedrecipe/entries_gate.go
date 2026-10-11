@@ -35,7 +35,7 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // "parent-review" requires the absolute Env.ParentReview.Store.Root, Store.LockDir, DecisionRecord and SupportLog, a non-empty Slug and both render seams, and returns parentreview.NewGate's closure pair, the second being the entry's Final closure;
 // it is must-pass and may hold the run, its "attempts" is the reject cap told to the gate, and a "pass_on_cap" key on it is refused;
 // any other value is an error naming the key and all six legal values.
-// A name may appear once per list.
+// A name may appear once per list, and "parent-review" must be the last element, since a must-pass entry after a pending review would read as not reached at a deadline.
 //
 // "attempts" is required, a non-negative integer read via configInt so 0 is a present value:
 // 0 turns the entry off, yet the entry still resolves its closure and its Env requirements, so a typo in an off gate fails loud.
@@ -74,6 +74,11 @@ func resolveRowGateSpec(entry, row string, cfg Config, env Env) (shuttleengine.G
 		}
 		seen[ge.Name] = true
 		spec = append(spec, ge)
+	}
+	for i, ge := range spec[:len(spec)-1] {
+		if ge.Name == parentReviewGateName {
+			return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: %q must be the last element of the list; way forward: move the %s element to the end of the gates list", entry, "gates", i, parentReviewGateName, parentReviewGateName)
+		}
 	}
 	return spec, nil
 }

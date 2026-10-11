@@ -58,6 +58,7 @@ The row drives `Env.Seats`, and a nil seam is a construction error.
 
 A gate-capable row's `gates` key selects validators by name from a closed vocabulary, in order, each element carrying its own `attempts` budget (0 means off) and an optional `pass_on_cap`.
 An absent key is ungated, while an empty list, a duplicate name, or a negative budget is a construction error.
+`parent-review` must be the last element of its list, else construction fails.
 The vocabulary is `discussion`, `plan`, `rework-plan`, `description`, `verify` and `parent-review`.
 `verify` lints the comments, then runs the verify command the wiring tells in `Env.VerifyCommand`, which it requires.
 `Env.VerifyWholeDiff` selects the whole-diff form and the round form is the default.

@@ -129,6 +129,10 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 		}}, `"gates" element 1`},
 		{"BadPassOnCap", Config{"gates": []any{map[string]any{"name": "plan", "attempts": 1, "pass_on_cap": "yes"}}}, "pass_on_cap"},
 		{"ParentReviewPassOnCapTrue", Config{"gates": []any{map[string]any{"name": "parent-review", "attempts": 1, "pass_on_cap": true}}}, "pass_on_cap"},
+		{"ParentReviewNotLast", Config{"gates": []any{
+			map[string]any{"name": "parent-review", "attempts": 1},
+			map[string]any{"name": "discussion", "attempts": 1},
+		}}, `"parent-review" must be the last element`},
 		{"ParentReviewPassOnCapFalse", Config{"gates": []any{map[string]any{"name": "parent-review", "attempts": 1, "pass_on_cap": false}}}, "pass_on_cap"},
 	}
 	for _, tt := range tests {
@@ -189,12 +193,16 @@ func parentReviewCfg(attempts int) Config {
 }
 
 func TestResolveGateSpec_ParentReviewResolvesMustPassMayHold(t *testing.T) {
-	spec, err := resolveGateSpec("Row", parentReviewCfg(3), parentReviewEnv(t))
+	cfg := Config{"gates": []any{
+		map[string]any{"name": "discussion", "attempts": 1},
+		map[string]any{"name": "parent-review", "attempts": 3},
+	}}
+	spec, err := resolveGateSpec("Row", cfg, parentReviewEnv(t))
 	if err != nil {
 		t.Fatalf("resolveGateSpec() error = %v; want nil", err)
 	}
-	if len(spec) != 1 || spec[0].Gate == nil || spec[0].Final == nil || spec[0].PassOnCap || !spec[0].MayHold || spec[0].Attempts != 3 {
-		t.Fatalf("resolveGateSpec() = %+v; want one must-pass MayHold entry with Gate and Final set and Attempts 3", spec)
+	if len(spec) != 2 || spec[1].Name != "parent-review" || spec[1].Gate == nil || spec[1].Final == nil || spec[1].PassOnCap || !spec[1].MayHold || spec[1].Attempts != 3 {
+		t.Fatalf("resolveGateSpec() = %+v; want parent-review last as a must-pass MayHold entry with Gate and Final set and Attempts 3", spec)
 	}
 }
 
