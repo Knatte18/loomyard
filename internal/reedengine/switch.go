@@ -5,6 +5,7 @@ package reedengine
 
 import (
 	"fmt"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -21,7 +22,7 @@ func SwitchClient(tmuxPath, socketPath, client string, next bool) error {
 
 // switchClientVia is SwitchClient's implementation over an already-built TmuxCmd, so a test can drive it through the execHook seam.
 func switchClientVia(cmd TmuxCmd, client string, next bool) error {
-	listing, err := cmd.output("list-sessions", "-F", "#{session_id} #{session_name}")
+	listing, err := cmd.output(listSessionsArgv(runtime.GOOS, "#{session_id} #{session_name}")...)
 	if err != nil {
 		return fmt.Errorf("list sessions: %w", err)
 	}

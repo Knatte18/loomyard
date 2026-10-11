@@ -31,7 +31,7 @@ Apply it exactly as written, except where this prompt says otherwise.
    They are read-only context.
    Never edit, move or delete anything under `{{.prior_plan_dir}}`.
 3. Read the decision record at `{{.decision_record_path}}`.
-   An entry between `<!-- lyx:carry-over … -->` marker lines in `## Open risks` lists review findings whose fix in the record no fresh reviewer has seen.
+   An entry between `<!-- lyx:carry-over … -->` marker lines in `## Open risks` lists review findings the closing round's fixer fixed or disputed, unseen by a fresh reviewer; the entry's fixer report says which.
    Check each one against the code, and never plan an entry as scope.
 4. Read the task's diff against its base with read-only git (`git log`, `git diff`, `git show`).
    Never commit, reset, checkout or otherwise change the repository with git.
@@ -48,6 +48,7 @@ Write a complete plan into it.
   {{.first_card}} is one past the highest card of the retired generation, so take it as given.
 - Carry forward from the retired overview whatever task framing, `## Shared Decisions`, `## Rename mechanic` and `## verify:` content still holds, and drop or revise what the findings overturn.
 - Write one card file per new card, numbered from {{.first_card}}.
+  Insert or remove a card of the new generation only with `lyx loom insert-card` or `lyx loom remove-card`, which renumber the later cards and whose `--help` says what they do, never by renaming, rewriting under a new name or deleting a card file by hand.
   Never copy a retired card: every card that was built is already in the code, so a new card describes only work that remains.
 - Cover every finding with at least one new card.
   Several findings may share one card.

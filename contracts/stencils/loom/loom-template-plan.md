@@ -22,7 +22,7 @@ Read `{{.decision_record_path}}`.
 This is your **sole** input — never read the support log or the board.
 If the file is missing or empty, STOP and report that rather than inventing scope.
 
-An entry between `<!-- lyx:carry-over … -->` marker lines in `## Open risks` lists review findings whose fix in the record no fresh reviewer has seen.
+An entry between `<!-- lyx:carry-over … -->` marker lines in `## Open risks` lists review findings the closing round's fixer fixed or disputed, unseen by a fresh reviewer; the entry's fixer report says which.
 Check each one against the code while you explore, and never plan an entry as scope.
 
 A scope addition that arrives after the Discussion is a design call the parent records.
@@ -83,6 +83,7 @@ A card that prescribes an addition to a `PATTERN.md` entry line leaves the line 
 
 `00-overview.md` + one `NN-<card-slug>.md` per card. `NN` is zero-padded and equals the card's flat heading number `N`;
 cards run `1..M` with no gaps.
+Insert or remove a card only with `lyx loom insert-card` or `lyx loom remove-card`, which renumber the later cards and whose `--help` says what they do, never by renaming, rewriting under a new name or deleting a card file by hand.
 
 ### `00-overview.md`
 
@@ -161,6 +162,11 @@ A `**Custom:**` group may not be combined with a group of a different type.
 
 A card that introduces a new verb, flag, escape hatch or routing edge, or removes, downgrades or makes bypassable a guard, states in its `**Intent:**` what the change can now skip or let through and what bounds it.
 Plan-Review flags one left unbounded.
+
+A card that prescribes a refusal or guard branch names in its `**Intent:**` the input that reaches it after every upstream check passes, and the test that reaches it.
+A propagated raw I/O error that joins its section's grouped transient row in `refusal-spec.md` is exempt.
+A branch that upstream validation already rules out is not prescribed: drop it, or, when it guards an invariant, write it as a fail-loud wiring guard in `refusal-spec.md`'s sense, which takes no per-row test.
+A test that calls only the refusal's error constructor does not reach it.
 
 A field with no content is omitted entirely — never write a `none` sentinel on any field.
 

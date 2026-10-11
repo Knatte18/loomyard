@@ -277,28 +277,41 @@ func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err err
 }
 
 // preflightBootHost refuses, before any tmux round trip, a socket path over the OS limit (naming `TMUX_TMPDIR`) and a configured shell that does not resolve (naming the `shell` key).
-// It returns the resolved shell path the boot pins on the session.
-// On Windows it checks nothing and returns the empty string: psmux keeps no socket file, and the boot keeps its current shell handling.
-func (e *Engine) preflightBootHost() (shellPath string, err error) {
+// It also refuses a non-empty `tmux_conf` that does not name a usable file (naming the `tmux_conf` key).
+// It returns the resolved shell path the boot pins on the session and the validated tmux config path, empty when none is configured.
+// On Windows it checks nothing and returns empty strings: psmux keeps no socket file, the boot keeps its current shell handling, and `tmux_conf` is parsed but never validated or sourced.
+func (e *Engine) preflightBootHost() (shellPath, tmuxConf string, err error) {
 	if runtime.GOOS == "windows" {
-		return "", nil
+		return "", "", nil
 	}
 	if err := checkSocketPathLength(resolvedSocketDir(), e.Socket(), unixSocketPathLimit(runtime.GOOS)); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return resolveShellPath(e.cfg.Shell)
+	shellPath, err = resolveShellPath(e.cfg.Shell)
+	if err != nil {
+		return "", "", err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = ""
+	}
+	tmuxConf, err = tmuxConfPath(e.cfg.TmuxConf, home)
+	if err != nil {
+		return "", "", err
+	}
+	return shellPath, tmuxConf, nil
 }
 
 // ensureServerAndSessionLocked ensures this hub's tmux server and this
 // worktree's session exist. Reports booted=true on fresh spawn; validates
-// capability, debug_log, mouse, watchdog and segment colors before any tmux round trip.
+// capability, debug_log, mouse, watchdog, segment colors and tmux_conf before any tmux round trip.
 func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
 	debugArgs, mouse, err := e.validateBootConfig()
 	if err != nil {
 		return false, nil, err
 	}
 
-	shellPath, err := e.preflightBootHost()
+	shellPath, tmuxConf, err := e.preflightBootHost()
 	if err != nil {
 		return false, nil, err
 	}
@@ -436,6 +449,10 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// then reports the truly unexpected state instead. A genuine
 	// never-boots regression still fails, at bootOverallTimeout instead of
 	// after two attempts.
+	identityBefore := ""
+	if runtime.GOOS != "windows" {
+		identityBefore = e.serverIdentityLocked()
+	}
 	bootStart := time.Now()
 	bootDeadline := bootStart.Add(bootOverallTimeout)
 	attempt := 0
@@ -469,7 +486,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 			break
 		}
 
-		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err == nil && strings.TrimSpace(out) != "" {
+		if out, err := e.tmux.output(listSessionsArgv(runtime.GOOS, "#{session_name}")...); err == nil && strings.TrimSpace(out) != "" {
 			logger.Warn("reed: tmux server up but session did not materialize", "socket", e.Socket(), "session", session, "attempt", attempt)
 			return false, nil, fmt.Errorf("tmux server is up but session %q did not materialize within %s", session, bootAttemptTimeout)
 		}
@@ -488,6 +505,12 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	}
 
 	e.touchDiscoverSignal()
+
+	if runtime.GOOS != "windows" {
+		if err := e.guardBootSessionLocked(identityBefore, tmuxConf); err != nil {
+			return false, nil, err
+		}
+	}
 
 	if err := e.pinBootOptionsLocked(mouse, shellPath); err != nil {
 		return false, nil, err
@@ -538,18 +561,27 @@ func (e *Engine) pinBootOptionsLocked(mouse, shellPath string) error {
 // Everywhere but Windows, `-f /dev/null` follows them, so the server reads none of the operator's `~/.tmux.conf`; a running server ignores the flag.
 // `-c` pins new-session's pane default cwd to the told pane spawn directory, even though the server process's own cwd has moved to the logs directory.
 // The configured shell is the first pane's trailing command.
+// Off Windows, two `set-option` commands chain after it in the same invocation, so the new session is pinned `destroy-unattached off` and tagged `@lyx_reed_session` before any operator config could act.
 func (e *Engine) serverSpawnArgv(goos string, debugArgs []string) []string {
 	argv := append([]string{}, debugArgs...)
 	if goos != "windows" {
 		argv = append(argv, "-f", os.DevNull)
 	}
-	return append(argv,
+	argv = append(argv,
 		"-L", e.Socket(),
 		"new-session", "-d", "-s", e.SessionName(),
 		"-c", e.geom.PaneCwd,
 		"-x", strconv.Itoa(e.cfg.Width),
 		"-y", strconv.Itoa(e.cfg.Height),
 		e.cfg.Shell,
+	)
+	if goos == "windows" {
+		return argv
+	}
+	target := exactSessionWindowTarget(e.SessionName())
+	return append(argv,
+		";", "set-option", "-t", target, "destroy-unattached", "off",
+		";", "set-option", "-t", target, reedSessionOption, "on",
 	)
 }
 
@@ -870,7 +902,7 @@ func (e *Engine) Down() (DownResult, error) {
 		// debug-logging batch — the same sessionless-holder reasoning the
 		// pre-boot check applies regardless).
 		var serverErr error
-		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err != nil || strings.TrimSpace(out) == "" {
+		if out, err := e.tmux.output(listSessionsArgv(runtime.GOOS, "#{session_name}")...); err != nil || strings.TrimSpace(out) == "" {
 			logger.Info("reed: tearing down tmux server", "socket", e.Socket(), "serverPID", serverPID)
 			// Best-effort — the more significant "server did not confirm
 			// gone" outcome is already covered at Warn by ensureServerGoneLocked
@@ -946,7 +978,7 @@ func (e *Engine) sessionlessSocketHolderPersists() bool {
 	for {
 		// A socket that lists sessions hosts a healthy shared server — never
 		// in scope for reaping, no matter what else is pending.
-		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err == nil && strings.TrimSpace(out) != "" {
+		if out, err := e.tmux.output(listSessionsArgv(runtime.GOOS, "#{session_name}")...); err == nil && strings.TrimSpace(out) != "" {
 			return false
 		}
 		if len(e.serverProcessesOnSocket()) == 0 {

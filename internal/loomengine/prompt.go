@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/twilldirective"
 )
 
 // composePrompt builds the discussion producer's interview prompt by reading the
@@ -22,7 +23,9 @@ import (
 // frictionDirective is the caller-resolved Tier 2 note directive for this run --
 // an empty string means Tier 2 is off or the read failed, and renders as nothing.
 // parentDirective is the caller-rendered parent directive and renders as nothing when empty.
-func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, parentDirective string, autonomous bool) ([]byte, error) {
+// twillDirective and twillWriteScope are the caller-rendered twill blocks and render as nothing when empty;
+// a non-empty one is set off with a newline on each side, so it sits in a paragraph of its own.
+func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, parentDirective, twillDirective, twillWriteScope string, autonomous bool) ([]byte, error) {
 	template, err := stencilstore.Read(stencilsDir, "loom-template-discussion")
 	if err != nil {
 		return nil, err
@@ -44,13 +47,25 @@ func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patter
 		friction.MarkerName:        frictionDirective,
 		parentdirective.MarkerName: parentDirective,
 		editdirective.MarkerName:   editDirective,
+
+		twilldirective.MarkerName:           setOffParagraph(twillDirective),
+		twilldirective.WriteScopeMarkerName: setOffParagraph(twillWriteScope),
 	}
 
-	rendered, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName, parentdirective.MarkerName})
+	optional := []string{"pattern_directive", friction.MarkerName, parentdirective.MarkerName, twilldirective.MarkerName, twilldirective.WriteScopeMarkerName}
+	rendered, err := stencil.FillOptional(template, values, optional)
 	if err != nil {
 		return nil, fmt.Errorf("loom: compose discussion prompt: %w", err)
 	}
 	return rendered, nil
+}
+
+// setOffParagraph wraps a non-empty block in one newline on each side, so the line it replaces gains a blank line before and after it; an empty block stays empty.
+func setOffParagraph(block string) string {
+	if block == "" {
+		return ""
+	}
+	return "\n" + block + "\n"
 }
 
 // modeRules returns the {{.mode_rules}} block for autonomous or interactive mode.

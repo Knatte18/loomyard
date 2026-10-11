@@ -34,7 +34,8 @@ type CarryOverClosing string
 
 const (
 	// CarryOverConverged is a round closed by a CONVERGED verdict.
-	// Each listed finding was addressed by the round's fixer, and no fresh reviewer has seen the fix.
+	// Each listed finding was fixed or disputed by the round's fixer, and no fresh reviewer has seen the result.
+	// The fixer report says which.
 	CarryOverConverged CarryOverClosing = "converged"
 
 	// CarryOverAccepted is a round closed by a recorded circling accept.
@@ -173,7 +174,7 @@ func renderCarryOver(entry CarryOver) []string {
 	var closing string
 	switch entry.Closing {
 	case CarryOverConverged:
-		closing = "converged; each finding below was addressed by the round's fixer, and no fresh reviewer has seen the fix"
+		closing = "converged; each finding below was fixed or disputed by the round's fixer, and no fresh reviewer has seen the result; the fixer report says which"
 	case CarryOverAccepted:
 		closing = "closed by an accepted circling decision; a finding below was addressed by the round's fixer or is still unfixed"
 	}

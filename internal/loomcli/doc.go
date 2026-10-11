@@ -57,4 +57,23 @@
 //
 // The driver strand is read from reed's directory, which still lists a session that died with the machine, never from the run's seed.
 // A resume line that cannot be delivered is refused, naming `lyx loom status` and a re-run of resume.
+//
+// # Plan card verbs
+//
+// `lyx loom insert-card <position> <slug> --intent <intent>`, `lyx loom remove-card <position>` and `lyx loom restore-renumber` are the sanctioned way to add or drop one card of the plan and renumber the cards after it.
+// A renumber moves each later card's file name prefix, heading number, explicit `Commit:` prefix and Card Index number, and writes a heading-only stub for an inserted card, which the agent fills with Edit or Write.
+// The success envelope carries `plan_dir`, `moved`, `created` or `removed`, and `prose_mentions`, the lines that name a moved card by its old number; they are never rewritten, so the agent checks each by hand.
+// `restore-renumber` reports `plan_dir`, `journal`, `restored` and `removed`.
+//
+// Each verb takes webster's state-mutation lease first and releases it before it prints, so no begin-batch records a batch between the bound check and the renumber.
+// `insert-card` and `remove-card` refuse a position at or before the last card of any batch webster has begun, terminal or not, since a begun card is frozen.
+// They touch only the current generation's card files and the Card Index of the overview, never an archive, a prior generation, the overview's frontmatter or any other section, and they never commit, approve or set `approved:`.
+//
+// Every call writes a journal under the plan's never-tracked mirror before it changes the plan directory, and removes it as its last step.
+// A failure undoes the call; one whose undo fails keeps the journal, and `restore-renumber` completes the undo from it.
+// The restore writes back whole pre-call files, the overview included, and removes every created name whatever it holds by then, so it discards any edit made to the journaled files since the interrupted call.
+// A journal naming anything but the overview or a card file at the top level of the plan directory is refused before any file is written.
+//
+// The three verbs read only the resolved anchor, so they join the lightweight wiring and are not held up by an unrelated module's config.
+// `renumberRefusal` words every refusal with its way forward; the rows are in `contracts/specs/refusal-spec.md`.
 package loomcli

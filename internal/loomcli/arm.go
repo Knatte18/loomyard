@@ -85,8 +85,8 @@ func genericShedVerb(verb string) bool {
 // Tier 1 despite arm itself needing lyxcwd.Resolve's real git spawn.
 func (c *loomCLI) resolveRunID(location *lyxcwd.Location, verb string, args []string) error {
 	runID := shedrun.SelfRunID
-	// reject's one positional argument is its review file, never a run-id.
-	if len(args) > 0 && verb != "reject" {
+	// reject's one positional argument is its review file, and insert-card's and remove-card's first is a card position; none is a run-id.
+	if len(args) > 0 && verb != "reject" && verb != "insert-card" && verb != "remove-card" {
 		runID = args[0]
 	}
 	c.runID = runID
@@ -183,6 +183,12 @@ func (c *loomCLI) armAt(location *lyxcwd.Location, verb string, args []string) (
 		return shedverbs.Spec{}, err
 	}
 
+	if c.recipe == shedrun.RecipeDarn {
+		if err := c.renameRetiredDarnRows(); err != nil {
+			return shedverbs.Spec{}, err
+		}
+	}
+
 	if err := c.loadRouting(); err != nil {
 		return shedverbs.Spec{}, err
 	}
@@ -205,10 +211,14 @@ func (c *loomCLI) loadRouting() error {
 	return nil
 }
 
-// recipeRouting returns the routing of the run's recipe: the darn recipe's for a darn run, loom's, with the review bounce budget applied, otherwise.
+// recipeRouting returns the routing of the run's recipe, with its review bounce budget applied: the darn recipe's for a darn run, loom's otherwise.
 func (c *loomCLI) recipeRouting() (shedengine.Routing, error) {
 	if c.recipe == shedrun.RecipeDarn {
-		return loomrecipe.DarnRouting()
+		budget, err := c.darnReviewBudget()
+		if err != nil {
+			return shedengine.Routing{}, err
+		}
+		return loomrecipe.DarnRouting(budget)
 	}
 
 	budget, err := c.reviewBudget()

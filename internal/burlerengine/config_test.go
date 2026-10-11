@@ -95,11 +95,11 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 
 	cfg := loadSeededConfig(t)
 
-	const wantLenses = 16
+	const wantLenses = 18
 	if len(cfg.Lenses) != wantLenses {
 		t.Errorf("seeded template has %d lenses; want %d", len(cfg.Lenses), wantLenses)
 	}
-	const wantFans = 4
+	const wantFans = 5
 	if len(cfg.Fans) != wantFans {
 		t.Errorf("seeded template has %d fans; want %d", len(cfg.Fans), wantFans)
 	}
@@ -110,7 +110,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 			}
 		}
 	}
-	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5} {
+	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5, "twill-discussion": 6} {
 		entries, ok := cfg.Fans[fanName]
 		if !ok {
 			t.Errorf("seeded template is missing fan %q", fanName)
@@ -120,8 +120,9 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		}
 	}
 	wantOrders := map[string][]string{
-		"discussion": {"generic", "goal-scope", "pattern-fit", "scenarios", "leanness"},
-		"plan":       {"generic", "decision-coverage", "card-structure", "verify-tests", "pattern-fit"},
+		"discussion":       {"generic", "goal-scope", "pattern-fit", "scenarios", "leanness"},
+		"plan":             {"generic", "decision-coverage", "card-structure", "verify-tests", "pattern-fit"},
+		"twill-discussion": {"premises", "goal-scope", "board-fit", "pattern-fit", "scenarios", "leanness"},
 	}
 	for fanName, wantOrder := range wantOrders {
 		lenses, err := ResolveFan(Config{}, fanName)

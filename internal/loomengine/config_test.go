@@ -193,6 +193,11 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.DiscussionProducer = "seats" },
 		},
 		{
+			name:   "discussion_producer twill",
+			values: map[string]string{"discussion_producer": "twill"},
+			mutate: func(c *Config) { c.DiscussionProducer = "twill" },
+		},
+		{
 			name:   "discussion_advisors as an empty string means no advisors",
 			values: map[string]string{"discussion_advisors": `""`},
 			mutate: func(c *Config) { c.DiscussionAdvisors = nil },
@@ -369,7 +374,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed fan_review spec", "fan_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"empty fan_review list", "fan_review", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
 		{"unknown fix_start", "fix_start", "sideways", []string{`"parallel"`, `"after-review"`}, ""},
-		{"unknown discussion_producer", "discussion_producer", "sideways", []string{`"single"`, `"seats"`}, ""},
+		{"unknown discussion_producer", "discussion_producer", "sideways", []string{`"single"`, `"seats"`, `"twill"`}, ""},
 		{"empty discussion_advisors entry beside another", "discussion_advisors", `["", "sonnet[high]"]`, []string{"entry 1", advisorWayForward}, ""},
 		{"malformed discussion_advisors entry", "discussion_advisors", `["opus[effort"]`, []string{"entry 1", advisorWayForward}, ""},
 		{"unknown discussion_advisors alias", "discussion_advisors", `["sonnet[high]", "ghost"]`, []string{"entry 2", "ghost", advisorWayForward}, ""},

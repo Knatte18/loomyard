@@ -66,6 +66,29 @@ func TestUp_BootValidation(t *testing.T) {
 			wantErr:   "key shell",
 		},
 		{
+			name: "TmuxConfRelative",
+			setup: func(t *testing.T) {
+				if runtime.GOOS == "windows" {
+					t.Skip("Windows parses tmux_conf and validates nothing")
+				}
+			},
+			configure: func(cfg *Config) {
+				cfg.Shell = "sh"
+				cfg.TmuxConf = "tmux.conf"
+			},
+			wantErr: "tmux_conf",
+		},
+		{
+			name: "TmuxConfUnvalidatedOnWindows",
+			setup: func(t *testing.T) {
+				if runtime.GOOS != "windows" {
+					t.Skip("only Windows leaves tmux_conf unvalidated")
+				}
+			},
+			configure: func(cfg *Config) { cfg.TmuxConf = "tmux.conf" },
+			notErr:    "tmux_conf",
+		},
+		{
 			name:      "SegmentColorOutsidePalette",
 			configure: func(cfg *Config) { cfg.SegmentColors = map[string]string{"review": "crimson"} },
 			wantErr:   `segment_colors.review: color "crimson" is not in the palette`,
@@ -117,7 +140,7 @@ func TestUp_BootValidation(t *testing.T) {
 	}
 }
 
-// TestServerSpawnArgv pins the argv of the server-starting invocation: the debug flags first, `-f /dev/null` ahead of `-L` everywhere but Windows, then new-session with the configured shell last.
+// TestServerSpawnArgv pins the argv of the server-starting invocation: the debug flags first, `-f /dev/null` ahead of `-L` everywhere but Windows, then new-session with the configured shell, and off Windows the two chained session pins last.
 func TestServerSpawnArgv(t *testing.T) {
 	e := newTestEngine(t)
 	session := []string{
@@ -128,14 +151,19 @@ func TestServerSpawnArgv(t *testing.T) {
 		"-y", strconv.Itoa(e.cfg.Height),
 		e.cfg.Shell,
 	}
+	// The chained pins of the new session: not destroyed when unattached, and tagged as reed's.
+	posixTail := []string{
+		";", "set-option", "-t", "=" + e.SessionName() + ":", "destroy-unattached", "off",
+		";", "set-option", "-t", "=" + e.SessionName() + ":", "@lyx_reed_session", "on",
+	}
 	tests := []struct {
 		name      string
 		goos      string
 		debugArgs []string
 		want      []string
 	}{
-		{"LinuxWithoutDebugFlags", "linux", nil, append([]string{"-f", os.DevNull}, session...)},
-		{"LinuxWithDebugFlags", "linux", []string{"-vv"}, append([]string{"-vv", "-f", os.DevNull}, session...)},
+		{"LinuxWithoutDebugFlags", "linux", nil, slices.Concat([]string{"-f", os.DevNull}, session, posixTail)},
+		{"LinuxWithDebugFlags", "linux", []string{"-vv"}, slices.Concat([]string{"-vv", "-f", os.DevNull}, session, posixTail)},
 		{"WindowsHasNoConfigFlag", "windows", nil, session},
 	}
 	for _, tt := range tests {
