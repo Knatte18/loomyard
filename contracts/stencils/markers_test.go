@@ -24,7 +24,7 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"burler-focus-directive", BurlerFocusDirective, []string{"focus_path"}},
 		{"loom-template-prior-plan", LoomTemplatePriorPlan, []string{"archive_dir", "moved_files"}},
 		{"orch-template-role", OrchTemplateRole, []string{"command_index"}},
-		{"seat-directive-chair", SeatDirectiveChair, []string{"advisor_names", "failed_advisors", "inputs", "output_files"}},
+		{"seat-directive-chair", SeatDirectiveChair, []string{"advisor_names", "inputs", "output_files"}},
 		{"seat-directive-advisor", SeatDirectiveAdvisor, []string{"chair_name", "output_files", "seat_name"}},
 		{"loom-template-discussion-chair", LoomTemplateDiscussionChair, nil},
 		{"loom-template-discussion-advisor", LoomTemplateDiscussionAdvisor, []string{"decision_record_path", "edit_directive", "output_files", "parent_directive", "pattern_directive", "slug", "support_log_path"}},

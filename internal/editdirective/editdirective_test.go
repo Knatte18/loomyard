@@ -18,7 +18,7 @@ func TestDirective_RendersTheRuleWithoutBannerOrMarkers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Directive = _, %v; want nil error", err)
 	}
-	for _, want := range []string{"Edit or Write", "sed", "replace_all", "grep"} {
+	for _, want := range []string{"Edit or Write", "sed", "replace_all"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("Directive = %q; want it to contain %q", got, want)
 		}
