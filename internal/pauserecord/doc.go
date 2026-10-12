@@ -27,5 +27,6 @@
 // With no gate installed, as in every test binary, Network does nothing.
 // The gate only waits and marks; it fails no call.
 //
-// The package imports the standard library and `internal/lock` only.
+// The package imports the standard library, `internal/lock` and `internal/state` only.
+// Update goes through `internal/state`, so a key of the file that the record types do not declare survives a rewrite by an older binary.
 package pauserecord

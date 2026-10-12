@@ -123,6 +123,30 @@ func TestUpdate(t *testing.T) {
 		}
 	})
 
+	t.Run("keeps keys the record types do not declare", func(t *testing.T) {
+		t.Parallel()
+		path := filepath.Join(t.TempDir(), RecordFileName)
+		seed := `{"future_top":1,"live":[{"scope":"a","future_entry":"x"}]}`
+		if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Update(path, epoch, func(r *Record) error {
+			r.Live = append(r.Live, Entry{Scope: "b"})
+			return nil
+		}); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{`"future_top"`, `"future_entry"`} {
+			if !strings.Contains(string(data), key) {
+				t.Errorf("record after Update lost %s:\n%s", key, data)
+			}
+		}
+	})
+
 	t.Run("concurrent updates each keep their entry", func(t *testing.T) {
 		t.Parallel()
 		path := filepath.Join(t.TempDir(), RecordFileName)
