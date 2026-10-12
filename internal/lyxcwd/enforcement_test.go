@@ -567,9 +567,6 @@ var vocabScanSkippedRoots = map[string]bool{"_lyx": true, ".lyx": true, "sandbox
 // vocabScanRootFiles are the repo-root files the extended scan covers.
 var vocabScanRootFiles = map[string]bool{"CLAUDE.md": true, "README.md": true}
 
-// recordsRepositoryName is the published name of the records repository, which the repo-root files link to.
-const recordsRepositoryName = "loomyard-weft"
-
 func vocabScanAllowlisted(rel string) bool {
 	for _, e := range vocabScanAllowlist {
 		if rel == e.path || (strings.HasSuffix(e.path, "/") && strings.HasPrefix(rel, e.path)) {
@@ -626,10 +623,6 @@ func fabricVocabularyFailures(t *testing.T, base string) ([]string, int) {
 			}
 		default:
 			text := string(file.Data)
-			if vocabScanRootFiles[rel] {
-				// The records repository's published name is a proper noun the root files must spell to link it.
-				text = strings.ReplaceAll(text, recordsRepositoryName, "")
-			}
 			ext := filepath.Ext(rel)
 			bareScope := (ext == ".md" && (inInternal || vocabScanRootFiles[rel])) || inDocRoot
 			hostScope := ext == ".md" && (inInternal || strings.HasPrefix(rel, "contracts/stencils/"))

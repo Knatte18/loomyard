@@ -39,6 +39,8 @@ func TestFabricVocabularyFailures_Fixtures(t *testing.T) {
 		{"skipped root passes", "sandbox/x.md", "weft\n", false},
 		{"yaml under a doc root fails", "contracts/x.yaml", "name: weft\n", true},
 		{"README fails", "README.md", "weft\n", true},
+		{"README linking the records repository passes", "README.md", "Records live in [loomyard-weft](https://github.com/Knatte18/loomyard-weft).\n", false},
+		{"README with a bare weft next to the records repository fails", "README.md", "Records live in [loomyard-weft](https://github.com/Knatte18/loomyard-weft). Each task has a weft branch.\n", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

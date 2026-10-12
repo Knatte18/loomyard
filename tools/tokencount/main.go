@@ -29,9 +29,13 @@
 // A slug's earlier runs share its worktree path, so they share its project directory, and a run counts only the transcripts that started after the slug's previous run.
 // The run's lower bound is the commit date of the slug's newest archive tag for a run in flight, whose worktree <hub>/<slug> exists.
 // For a finished run it is the commit date of the next-older tag, and the bound is absent when the slug has no such tag, which counts every transcript.
-// A main-session transcript is judged by the earliest timestamp of its user and assistant lines, and one with no such line is left out when a bound exists.
+// A main-session transcript is judged by the earliest timestamp of its user and assistant lines, and one with no such line is left out when a bound exists and counted under -no-cutoff.
 // A left-out transcript adds nothing to tokens, cost, working intervals, the session count, the Webster forks, the Merriam starts, the run's begin-batch base or its transcript window, and neither do its sub-agents.
-// The run's section reports how many were left out and the bound's date, and no flag turns the filter off.
+// The run's section reports how many were left out and the bound's date.
+// -no-cutoff drops the bound for every run, so a slug's earlier runs that share its project directory feed every figure the bound gates (tokens, cost, working intervals, the session count, the Webster forks, the Merriam starts, the begin-batch base, the transcript window and with it the orch charge), and it drops the next-older tag's clamp on the span start.
+// With -calibrate the base and Merriam rows may come from an earlier run.
+// The plan, read from the newest plan commit before the run's first Webster fork, may be an earlier run's, and with it the peak table, the start table's base and the identity card counts, or the run may be listed with "no plan commit before the first fork".
+// A span start taken from the earliest transcript when the seed has no started_at may be an earlier run's.
 //
 // A session's role is the part after the last colon of its latest custom-title line,
 // which lyx sets to the strand name (ly:<slug>:burler), with a trailing -N dropped, so
@@ -119,7 +123,7 @@
 //
 // The span is the window the time figures are measured over.
 // It runs from the archived seed's started_at, or from the run's earliest transcript line without one.
-// That start is bounded below by the commit date of the slug's next-older archive tag and above by the end of the first history entry.
+// That start is bounded below by the commit date of the slug's next-older archive tag, unless -no-cutoff is set, and above by the end of the first history entry.
 // It ends at the latest history entry's end.
 // Both files are read from the slug's newest archive/<slug>/<sha> tag.
 // A run whose worktree still exists, or with no tag or no status at its tag, uses its transcript window instead and prints no Producers table.
@@ -188,6 +192,7 @@ func run(args []string, stdout io.Writer) error {
 	weft := fs.String(repositoryFlag, "", "the prime's fabric repository holding the archive tags of finished runs, the runs' plan commits and webster records (default: the current worktree's weft sibling)")
 	calibrate := fs.String("calibrate", "", "add the calibration section for this batcher.yaml profile")
 	configDir := fs.String("config", "", "directory whose batcher.yaml holds the profile (default: the current directory)")
+	noCutoff := fs.Bool("no-cutoff", false, "turn off the archive-tag cutoff, so every transcript in each slug's project directory counts")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -242,7 +247,11 @@ func run(args []string, stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
-		r, err := CountRun(projectDir(*projects, filepath.Join(*hub, slug)), slug, runBound(finished[slug], running))
+		var bound time.Time
+		if !*noCutoff {
+			bound = runBound(finished[slug], running)
+		}
+		r, err := CountRun(projectDir(*projects, filepath.Join(*hub, slug)), slug, bound)
 		if err != nil {
 			return err
 		}
@@ -252,6 +261,9 @@ func run(args []string, stdout io.Writer) error {
 				return err
 			}
 			if record != nil {
+				if *noCutoff {
+					record.Older = time.Time{}
+				}
 				r.useShedRecord(*record)
 			}
 		}
@@ -290,7 +302,11 @@ func run(args []string, stdout io.Writer) error {
 		defer f.Close()
 		w = f
 	}
-	fmt.Fprintf(w, "# Token usage and time by role\n\nGenerated %s for %s.\n%s\n", time.Now().Format("2006-01-02 15:04"), counted, skippedNote)
+	var cutoffNote string
+	if *noCutoff {
+		cutoffNote = "The archive-tag cutoff is off: every transcript in each slug's project directory counts.\n"
+	}
+	fmt.Fprintf(w, "# Token usage and time by role\n\nGenerated %s for %s.\n%s%s\n", time.Now().Format("2006-01-02 15:04"), counted, cutoffNote, skippedNote)
 	if err := report.WriteMarkdown(w); err != nil {
 		return err
 	}

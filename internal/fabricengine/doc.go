@@ -573,6 +573,11 @@
 // answer.
 // `ReferenceRule` (refscanner.go), constructed via `NewReferenceRule()`, is the location-free part of that answer.
 // Its `MatchPath` and `MatchSpelling` return the matched text without any worktree, so a plan check shares one rule with the audit.
+// `IsReadOnlyCommand` (refscanner.go) rejects an unquoted parenthesis and a dollar expansion in a reader segment, because a zsh glob qualifier and a parameter expansion run code with no substitution marker.
+// It otherwise leaves readers' globs and flags free, because no flag of a listed reader writes a file or runs a command, so a glob that expands into a flag-shaped name can do nothing a typed flag could not.
+// A reader joins `readOnlyCommands` only if none of its flags writes or executes, and a reader that blocks, such as `tail -f`, writes nothing and is admitted.
+// In `git` words an unquoted glob is rejected except after the `--` of `log`, `show`, `diff` and `status`, because git reads every word after `--` as a pathspec, so an expanded name is a path and never a flag.
+// Every other rule is in `IsReadOnlyCommand`'s comment.
 // `Healthy(l)` returns a typed `HealthReason` (drift.go) rather than a string a caller would have to
 // substring-match, so a caller like `preflight.CheckResolved` switches on `HealthReason.Cause`
 // instead of parsing prose.

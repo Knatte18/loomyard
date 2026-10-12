@@ -2,6 +2,7 @@
 
 // time_integration_test.go checks that run reads each finished run's archived shed status from a real git repository's archive tags,
 // and that with no slugs named it counts only full loom runs and says in the header which it counted and skipped.
+// It also checks that -no-cutoff counts every transcript and keeps the span from the seed's start.
 
 package main
 
@@ -58,17 +59,20 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	doneSeed, doneStatus := paths("done")
 	_, liveStatus := paths("live")
 	fullSeed, fullStatus := paths("full")
+	earlySeed, earlyStatus := paths("early")
 
 	older := commit("2026-01-01T09:00:00Z", map[string]string{
 		doneStatus: `{"history":[` + entry("OldProducer", "2026-01-01T09:30:00Z") + `]}`,
 		liveStatus: `{"history":[` + entry("OldLive", "2026-01-01T09:30:00Z") + `]}`,
 	})
 	newest := commit("2026-01-01T12:00:00Z", map[string]string{
-		doneSeed:   `{"recipe":"loom","driver":"go","started_at":"2026-01-01T09:58:00Z"}`,
-		doneStatus: `{"history":[` + entry("Plan", "2026-01-01T10:03:00Z") + `,` + entry("Publish", "2026-01-01T10:12:00Z") + `]}`,
-		liveStatus: `{"history":[` + entry("Plan", "2026-01-01T10:03:00Z") + `]}`,
-		fullSeed:   `{"recipe":"loom","driver":"go","started_at":"2026-01-01T10:58:00Z"}`,
-		fullStatus: `{"history":[` + entry("Plan", "2026-01-01T11:03:00Z") + `,` + entry("Finalize", "2026-01-01T11:12:00Z") + `]}`,
+		doneSeed:    `{"recipe":"loom","driver":"go","started_at":"2026-01-01T09:58:00Z"}`,
+		doneStatus:  `{"history":[` + entry("Plan", "2026-01-01T10:03:00Z") + `,` + entry("Publish", "2026-01-01T10:12:00Z") + `]}`,
+		liveStatus:  `{"history":[` + entry("Plan", "2026-01-01T10:03:00Z") + `]}`,
+		fullSeed:    `{"recipe":"loom","driver":"go","started_at":"2026-01-01T10:58:00Z"}`,
+		fullStatus:  `{"history":[` + entry("Plan", "2026-01-01T11:03:00Z") + `,` + entry("Finalize", "2026-01-01T11:12:00Z") + `]}`,
+		earlySeed:   `{"recipe":"loom","driver":"go","started_at":"2026-01-01T08:30:00Z"}`,
+		earlyStatus: `{"history":[` + entry("Plan", "2026-01-01T10:03:00Z") + `,` + entry("Publish", "2026-01-01T10:12:00Z") + `]}`,
 	})
 	// Archive tags are lightweight.
 	gitkit.Git(t, records, "tag", "archive/done/aaaaaaa", older)
@@ -76,6 +80,8 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	gitkit.Git(t, records, "tag", "archive/live/ccccccc", older)
 	gitkit.Git(t, records, "tag", "archive/live/ddddddd", newest)
 	gitkit.Git(t, records, "tag", "archive/full/fffffff", newest)
+	gitkit.Git(t, records, "tag", "archive/early/1111111", older)
+	gitkit.Git(t, records, "tag", "archive/early/2222222", newest)
 
 	// The in-flight run's worktree still exists.
 	if err := os.MkdirAll(filepath.Join(hub, "live"), 0o755); err != nil {
@@ -142,6 +148,10 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	if !strings.Contains(report, " for done, live, solo.\n\n") {
 		t.Errorf("report header lacks the named slugs as given:\n%s", report)
 	}
+	const cutoffOffLine = "The archive-tag cutoff is off: every transcript in each slug's project directory counts.\n"
+	if strings.Contains(report, cutoffOffLine) {
+		t.Errorf("report without -no-cutoff holds the cutoff-off line:\n%s", report)
+	}
 
 	// With no slugs named, the default walks the runs newest session first and counts only full loom runs:
 	// done stopped before Finalize and live is in flight, so both are skipped ahead of full.
@@ -171,5 +181,47 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	wantErr := "no full loom runs of " + emptyHub + " under " + projects + "; name the slugs to count a partial run"
 	if err == nil || err.Error() != wantErr {
 		t.Errorf("run with no full loom run = %v; want %q", err, wantErr)
+	}
+
+	// Written after the default runs above, so early's sessions change neither their order nor their skipped header.
+	// Under -no-cutoff the earlier transcripts and the untimestamped one count, and the span keeps the seed's start instead of the older tag's date.
+	earlyDir := projectDir(projects, filepath.Join(hub, "early"))
+	writeLines(t, filepath.Join(earlyDir, "a.jsonl"),
+		`{"type":"custom-title","customTitle":"ly:early:burler"}`,
+		userAt(t, "2026-01-01T10:00:00Z", "go"),
+		stamped("2026-01-01T10:02:00Z", `"end_turn"`),
+		userAt(t, "2026-01-01T10:08:00Z", "again"),
+		stamped("2026-01-01T10:10:00Z", `"end_turn"`),
+	)
+	writeLines(t, filepath.Join(earlyDir, "none.jsonl"),
+		`{"type":"custom-title","customTitle":"ly:early:burler"}`,
+		assistant("untimed", "claude-sonnet-4-5", 1, 1),
+	)
+	noCutoffPath := filepath.Join(t.TempDir(), "no-cutoff.md")
+	args = []string{"-hub", hub, "-projects", projects, "-" + repositoryFlag, records, "-out", noCutoffPath, "-no-cutoff", "done", "live", "early"}
+	if err := run(args, &stdout); err != nil {
+		t.Fatalf("run with -no-cutoff: %v", err)
+	}
+	data, err = os.ReadFile(noCutoffPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report = string(data)
+	if !strings.Contains(report, " for done, live, early.\n"+cutoffOffLine+"\n") {
+		t.Errorf("-no-cutoff report header lacks the cutoff-off line after the counted runs:\n%s", report)
+	}
+	if strings.Contains(report, "left out") {
+		t.Errorf("-no-cutoff report leaves transcripts out:\n%s", report)
+	}
+	_, afterDone, _ = strings.Cut(report, "## done\n")
+	donePart, afterLive, _ = strings.Cut(afterDone, "## live\n")
+	livePart, earlyPart, _ := strings.Cut(afterLive, "## early\n")
+	for name, part := range map[string]string{"done": donePart, "live": livePart, "early": earlyPart} {
+		if !strings.Contains(part, "| burler | 2 |") {
+			t.Errorf("-no-cutoff %s section lacks both transcripts counted:\n%s", name, part)
+		}
+	}
+	if !strings.Contains(earlyPart, "| Plan | 1 | 1h33m0s |") {
+		t.Errorf("-no-cutoff early section lacks the Plan row spanning from the seed's start:\n%s", earlyPart)
 	}
 }
