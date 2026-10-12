@@ -52,6 +52,9 @@ type fakeTmux struct {
 	captures  []bool
 	stdins    [][]byte
 	real      *TmuxCmd
+
+	// windowPanes, when set, answers the session-wide windowPaneFormat listing.
+	windowPanes *tmuxAnswer
 }
 
 // installFakeTmux installs a fresh fakeTmux on e's tmux seam.
@@ -104,6 +107,13 @@ func (f *fakeTmux) answerFormat(format, out string, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.formats[format] = tmuxAnswer{out, err}
+}
+
+// answerWindowPanes scripts the session-wide windowPaneFormat listing from now on, replacing the one derived from the plain list-panes script.
+func (f *fakeTmux) answerWindowPanes(out string, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.windowPanes = &tmuxAnswer{out, err}
 }
 
 // answerSession scripts the answers a session with live panes gives: list-panes, the generation probe and the live window-size query.
@@ -205,8 +215,15 @@ func (f *fakeTmux) exec(capture bool, stdin []byte, args ...string) (string, err
 	ans, ok := f.verbs[verb]
 	if verb == sessionListVerb && !ok {
 		ans, ok = f.verbs["list-panes"], true
-		if args[len(args)-1] == sessionPaneWindowFormat {
+		switch args[len(args)-1] {
+		case sessionPaneWindowFormat:
 			ans = tmuxAnswer{out: sessionListingOf(ans.out)}
+		case windowPaneFormat:
+			if f.windowPanes != nil {
+				ans = *f.windowPanes
+			} else {
+				ans = tmuxAnswer{out: windowPaneListingOf(ans.out)}
+			}
 		}
 	}
 	if verb == "display-message" {
@@ -245,6 +262,23 @@ func sessionListingOf(windowListing string) string {
 		if fields := strings.Fields(line); len(fields) > 0 {
 			out += fields[0] + " " + fakeStrandWindow + "\n"
 		}
+	}
+	return out
+}
+
+// windowPaneListingOf renders each pane of a per-window list-panes answer as one windowPaneFormat line in window fakeStrandWindow, not own and with no group, keeping its dead flag, pid and title.
+func windowPaneListingOf(windowListing string) string {
+	out := ""
+	for _, line := range strings.Split(windowListing, "\n") {
+		fields := strings.SplitN(strings.TrimSpace(line), " ", 7)
+		if len(fields) < 6 {
+			continue
+		}
+		title := ""
+		if len(fields) == 7 {
+			title = " " + fields[6]
+		}
+		out += fakeStrandWindow + " 0 - " + fields[0] + " " + fields[1] + " " + fields[5] + title + "\n"
 	}
 	return out
 }

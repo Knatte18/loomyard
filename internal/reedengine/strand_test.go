@@ -985,13 +985,20 @@ func TestPaneIDsInSession(t *testing.T) {
 // CapturePane share this resolution, and a pane id belonging to another worktree's session on the
 // shared socket is a target send-keys accepts — one agent's input typed into another agent's pane.
 func TestResolvePaneInThisSessionLocked(t *testing.T) {
-	st := &ReedState{Strands: []Strand{{GUID: "a", PaneID: "%7"}}}
-
 	tests := []struct {
-		name            string
+		name string
+		// strand is the strand "a" resolves; the zero value is a window 0 strand bound to %7.
+		strand          Strand
 		listPanesOut    string
+		windowPanes     string
 		wantErrFragment string
 	}{
+		{
+			name:         "an own-window pane outside window 0 resolves",
+			strand:       ownWindowTestStrand("a", "%7"),
+			listPanesOut: "%1 0 0 100 20 4321\n",
+			windowPanes:  "@3 1 - %7 0 4321 title\n",
+		},
 		{
 			name:         "a pane of this session resolves",
 			listPanesOut: "%7 0 0 100 20 4321\n",
@@ -1006,7 +1013,16 @@ func TestResolvePaneInThisSessionLocked(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
-			installFakeTmux(t, e).answer("list-panes", tt.listPanesOut, nil)
+			fake := installFakeTmux(t, e)
+			fake.answer("list-panes", tt.listPanesOut, nil)
+			if tt.windowPanes != "" {
+				fake.answerWindowPanes(tt.windowPanes, nil)
+			}
+			strand := tt.strand
+			if strand.GUID == "" {
+				strand = Strand{GUID: "a", PaneID: "%7"}
+			}
+			st := &ReedState{Strands: []Strand{strand}}
 
 			paneID, err := e.resolvePaneInThisSessionLocked(st, "a")
 			if tt.wantErrFragment == "" {

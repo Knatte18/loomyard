@@ -520,12 +520,12 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 			}
 
 			if spec.IfAbsent {
-				live, err := e.listStrandPanes(st)
+				live, windows, err := e.listStrandAndWindowPanes(st)
 				if err != nil {
 					return fmt.Errorf("list panes: %w", err)
 				}
 				// aliveIDSet, not liveIDSet: see classifyIfAbsent's own doc comment for why.
-				decision, idx := classifyIfAbsent(st.Strands, explicitName, aliveIDSet(live))
+				decision, idx := classifyIfAbsent(st.Strands, explicitName, aliveIDSet(presentPanes(st.Strands, live, windows)))
 				switch decision {
 				case ifAbsentNoOpAlive, ifAbsentNoOpHidden:
 					// Neither no-op branch mutates anything: no SaveState, no reconcile/apply, and

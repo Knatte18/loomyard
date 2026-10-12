@@ -280,11 +280,13 @@
 // Strand window: the strands live in one window of the session, and every op that enumerates, lays out or measures them addresses that window by its id ("@<n>"), never by the session's current window.
 // A second window in the session is therefore never read as the strands' window.
 // The one seam, windowtarget.go's TmuxCmd.strandWindowTarget, lists the session's own panes across all its windows (`list-panes -s -t '=<session>' -F "#{pane_id} #{window_id}"`).
-// It resolves the window of the recorded Selvage pane (alive, or a dead corpse), else of any present recorded strand pane, else the current-window target "=<session>:", which only the seam keeps.
+// It resolves the window of the recorded Selvage pane (alive, or a dead corpse), else of any present recorded strand pane placed in window 0, else the current-window target "=<session>:", which only the seam keeps.
 // A session reap (Down, and the engine-less ReapSession) ends every window, so it lists the panes of all of them (`list-panes -s`) and reads no reed state.
 // A recorded pane id counts as present only when that session-scoped listing carries it, since pane ids are server-wide and a stale id can name another session's pane.
 // With a present Selvage or strand pane a batten window, current or not, is never read as the strands' window and its pane is never reaped as untracked.
 // A session's first up has neither, so it falls back to the current window, and the Selvage pane created there defines the strand window from then on.
+// An own-window strand lives outside the strands' window: its pane is never read as that window, and its liveness is read through the session-wide listing (ownwindow.go's windowPane) instead.
+// Reconcile ends only a window carrying @lyx_own with no pane bound to a strand; a window without the marker is never ended.
 // The pane-generation read (generation.go) stays session-scoped and outside the seam: it reads session fields only, so it keeps the "=<session>:" form, which expands them, where the bare "=<session>" form expands every session field to empty (verified live, tmux 3.6).
 //
 // Detached windows: OpenWindow (window.go) opens a detached, named window in the worktree's reed session running a `lyx` command, for a caller that wants a long-running command to live in the session without a status-bar button.
@@ -293,6 +295,7 @@
 // @lyx_hidden is display only: the status bar skips a window carrying it, and no Go decision reads it.
 // The op reads remain-on-exit back from the new window by the printed id, and a window that does not read off (two concurrent calls sharing a name, where the chained option landed on the older window) is killed by that id with ErrWindowReadBack.
 // A window of the same name whose pane is live is returned as existing and nothing is started; one whose pane is dead is killed and replaced.
+// A window carrying @lyx_own is skipped by that lookup, so OpenWindow never adopts, kills or replaces an own window of the same name.
 // The command line is composed in panebin.go from the pane-binary prelude, so `lyx` resolves to the spawning binary.
 // Bound: the op only chooses where a command runs; the window lives as long as the reed session, and the session's other windows keep remain-on-exit on.
 //

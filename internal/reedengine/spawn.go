@@ -78,12 +78,12 @@ func sendKeysLiteralArg(text string) string {
 // a script write failure degrades to typing the composed line itself.
 // The script is written on every launch, so a relaunch with a different command or a different spawning executable always regenerates it.
 func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) error {
-	live, err := e.listStrandPanes(st)
+	live, windows, err := e.listStrandAndWindowPanes(st)
 	if err != nil {
 		return fmt.Errorf("list panes: %w", err)
 	}
 
-	killed, err := e.reconcileLocked(st, live)
+	killed, err := e.reconcileLocked(st, live, windows)
 	if err != nil {
 		return fmt.Errorf("reconcile: %w", err)
 	}
@@ -211,12 +211,12 @@ func (e *Engine) loadOrInitStateLocked() (*ReedState, error) {
 // pane bindings, reapplies the layout, and persists the state. It is the
 // shared tail every public op composes after mutation.
 func (e *Engine) reconcileApplyPersistLocked(st *ReedState) ([]LivePane, error) {
-	live, err := e.listStrandPanes(st)
+	live, windows, err := e.listStrandAndWindowPanes(st)
 	if err != nil {
 		return nil, fmt.Errorf("list panes: %w", err)
 	}
 
-	killed, err := e.reconcileLocked(st, live)
+	killed, err := e.reconcileLocked(st, live, windows)
 	if err != nil {
 		return nil, fmt.Errorf("reconcile: %w", err)
 	}

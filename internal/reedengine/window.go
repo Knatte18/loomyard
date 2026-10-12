@@ -29,8 +29,8 @@ type WindowResult struct {
 	Existing bool `json:"existing"`
 }
 
-// windowListFormat is the session-wide listing format OpenWindow finds a named window with: window id, pane id, pane dead flag, then the window name.
-const windowListFormat = "#{window_id} #{pane_id} #{pane_dead} #{window_name}"
+// windowListFormat is the session-wide listing format OpenWindow finds a named window with: window id, pane id, pane dead flag, the own-window flag, then the window name.
+const windowListFormat = "#{window_id} #{pane_id} #{pane_dead} #{?#{@lyx_own},1,0} #{window_name}"
 
 // OpenWindow opens a detached window named name in this worktree's reed session and runs `lyx` with lyxArgs in it.
 // The window is never selected, so it takes no focus, it carries @lyx_hidden, so the status bar gives it no button, and it closes when its command exits.
@@ -106,14 +106,15 @@ type namedWindow struct {
 
 // findWindowLocked returns the window of this session named exactly name, or nil when there is none.
 // It reads the session-wide pane listing and compares names itself, since a window-name target that matches nothing falls back to the current window.
+// A window carrying the own-window marker is skipped, so an own window of the same name is never adopted, killed or replaced.
 func (e *Engine) findWindowLocked(name string) (*namedWindow, error) {
 	out, err := e.tmux.output("list-panes", "-s", "-t", exactSessionTarget(e.SessionName()), "-F", windowListFormat)
 	if err != nil {
 		return nil, fmt.Errorf("list windows: %w", err)
 	}
 	for _, line := range strings.Split(out, "\n") {
-		fields := strings.SplitN(strings.TrimSpace(line), " ", 4)
-		if len(fields) != 4 || fields[3] != name {
+		fields := strings.SplitN(strings.TrimSpace(line), " ", 5)
+		if len(fields) != 5 || fields[3] == "1" || fields[4] != name {
 			continue
 		}
 		return &namedWindow{windowID: fields[0], paneID: fields[1], paneDead: fields[2] == "1"}, nil

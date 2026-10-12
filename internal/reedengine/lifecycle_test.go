@@ -274,6 +274,46 @@ func TestStatus_ReportsSegmentColor(t *testing.T) {
 	}
 }
 
+// TestStatus_ReportsOwnWindowStrandsFromTheSessionListing pins that Status reads an own-window strand's pane from the session-wide listing: alive is live, dead is present but not live, and one in no listing is neither.
+func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
+	e := newTestEngine(t)
+	fake := installFakeTmux(t, e)
+	fake.answer("display-message", "$0|4321|1787000000", nil)
+	fake.answer("list-sessions", "worktree\n", nil)
+	fake.answer("list-panes", "%1 0 0 100 3 4322\n%2 0 3 100 20 4323\n", nil)
+	fake.answerWindowPanes("@0 0 - %1 0 4322 t\n@0 0 - %2 0 4323 t\n@3 1 - %5 0 4325 t\n@3 1 - %6 1 4326 t\n", nil)
+	st := &ReedState{
+		SelvagePaneID:  "%1",
+		PaneGeneration: PaneGeneration{SessionName: "worktree", TmuxSessionID: "$0", ServerPID: "4321", Created: "1787000000"},
+		Strands: []Strand{
+			{GUID: "w", Name: "w", PaneID: "%2"},
+			{GUID: "alive", Name: "alive", PaneID: "%5", Display: render.Display{Anchor: render.AnchorOwnWindow}},
+			{GUID: "dead", Name: "dead", PaneID: "%6", Display: render.Display{Anchor: render.AnchorOwnWindow}},
+			{GUID: "gone", Name: "gone", PaneID: "%9", Display: render.Display{Anchor: render.AnchorOwnWindow}},
+		},
+	}
+	if err := SaveState(e.stateDir(), st); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	result, err := e.Status()
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	type shape struct{ live, present, own bool }
+	want := map[string]shape{
+		"w":     {live: true, present: true},
+		"alive": {live: true, present: true, own: true},
+		"dead":  {present: true, own: true},
+		"gone":  {own: true},
+	}
+	for _, s := range result.Strands {
+		if got := (shape{s.Live, s.Present, s.OwnWindow}); got != want[s.GUID] {
+			t.Errorf("Status of strand %q = %+v, want %+v", s.GUID, got, want[s.GUID])
+		}
+	}
+}
+
 // TestServerBootEnv_ExcludesTraceID pins that LYX_TRACE_ID is stripped before the tmux server
 // inherits the boot env (long-lived singleton).
 func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
