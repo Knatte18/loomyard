@@ -222,13 +222,10 @@ func loopLockOwner(l *lyxcwd.Location, runID string) func() (parentlock.Owner, e
 		} else if found && rec.LoopID != shedverbs.TeardownLoopID && parentlock.ProcessAlive(rec.Loop.PID, rec.Loop.StartTime) {
 			process = rec.Loop
 		}
-		return parentlock.Owner{
-			Slug:      seedSlug(l.WorktreeName),
-			Pair:      l.WorktreePath(),
-			RunID:     shedrun.ResolveRunID(l, runID),
-			PID:       process.PID,
-			StartTime: process.StartTime,
-		}, nil
+		owner := runLockIdentity(l, runID)
+		owner.PID = process.PID
+		owner.StartTime = process.StartTime
+		return owner, nil
 	}
 }
 

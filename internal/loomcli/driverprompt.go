@@ -89,12 +89,21 @@ func driverPrompt(stencilsDir, parentName, runID, reportPath string, watched boo
 // An absent or unreadable marker, one that does not parse as a pid and one whose pid is dead are all unwatched,
 // so the marker a batten left behind when it died never silences a fresh driver.
 func driverWatched(markerPath string, isAlive func(pid int) bool) bool {
+	_, watched := liveBattenPID(markerPath, isAlive)
+	return watched
+}
+
+// liveBattenPID returns the pid the batten-watched marker at markerPath names and true when isAlive confirms it, and false in every case driverWatched reads as unwatched.
+func liveBattenPID(markerPath string, isAlive func(pid int) bool) (int, bool) {
 	data, err := os.ReadFile(markerPath)
 	if err != nil {
-		return false
+		return 0, false
 	}
 	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	return err == nil && pid > 0 && isAlive(pid)
+	if err != nil || pid <= 0 || !isAlive(pid) {
+		return 0, false
+	}
+	return pid, true
 }
 
 // driverRecordsCommand commits the run records; driverTeardownCommand runs it first, and driverParkCommand extends it.
