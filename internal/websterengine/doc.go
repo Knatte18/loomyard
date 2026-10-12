@@ -534,7 +534,15 @@
 // A failure is parsed from the log and rerun once: a rerun pass passes the gate, and the identities that failed once are flaky, which Run reports after the wait as a warning, a summary.md section and a friction note (VerifyGateNotes.Apply).
 // A failure that survives the rerun returns findings.
 // A run that outlives the verify timeout is never rerun, since a hang is not flakiness: it fails the gate at once,
-// and the report names the timeout, the log path and the log tail.
+// and the report names the timeout, the log path and the log tail, and says the step was not re-run.
+// A failed run that hung is not re-run either: classifyHang reads the log and exit code, and the first failure and the rerun's failure are both checked.
+// The markers are checked in this order: the CPU watchdog line of `lyx gate test`, go test's `panic: test timed out after`, the runtime's `SIGQUIT: quit` dump header and a log line starting `signal: `.
+// Without a marker, an exit code of 128 or above, or -1 with no `Detail`, which `verifyrun` returns for a shell killed by a signal, is a hang.
+// A shell that could not start and an ordinary non-zero exit below 128 are no hang.
+// Bound: the markers are matched as text anywhere in the log, so a test that prints one, or a test binary the OOM killer ends, also reads as a hang, and any exit code of 128 or above reads as one whatever caused it.
+// A false match skips only the one rerun, and a flaky failure in the same run reaches the fixer without its retry.
+// The hang report carries `Hang` (the marker or `exit code <n>` matched), `HangStacks`, `WatchdogWindow` after a watchdog quit, the failing identities the log parses to, the log path and the log tail.
+// Its findings say the step was not re-run and whether goroutine stacks are in the log, and after a watchdog quit name the window and that a package that is CPU-bound but healthy needs `gateslot.BusyQuitWayForward`, the operator's to do.
 // The first failed evaluation of any kind records HEAD as the pre-fix head, so every commit a fixer makes afterwards is checked at the next arrival.
 // The same moment persists it as state.json's `PreFixHead`, overwriting a value an earlier shuttle run left, so a later verb can reset to it;
 // a passing evaluation clears it, and `run --fresh` archives state.json with it.
