@@ -8,6 +8,7 @@ package boardengine
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 )
 
 // Task is the canonical record stored in board.json.
@@ -26,6 +27,10 @@ type Task struct {
 	Body      string   `json:"body"`
 	Status    *string  `json:"status,omitempty"`     // pointer: nil → field omitted in JSON; non-nil → status value present
 	ShortName string   `json:"short_name,omitempty"` // optional short display label; falls back to Slug via ShortNameOrSlug
+	// Created is when the entry was added and Revised when its scope last changed, both in whole UTC seconds;
+	// zero, stored as no key, means unknown.
+	Created time.Time `json:"created,omitzero"`
+	Revised time.Time `json:"revised,omitzero"`
 }
 
 const (
@@ -54,7 +59,7 @@ func priorityRank(priority string) int {
 	}
 }
 
-// normalizeTask stores a normal priority as the empty value, then checks that the Kind is one of the two kinds and the Priority one of the accepted values.
+// normalizeTask stores a normal priority as the empty value and the dates in whole UTC seconds, then checks that the Kind is one of the two kinds and the Priority one of the accepted values.
 func normalizeTask(t *Task) error {
 	if t.Kind != KindTask && t.Kind != KindNote {
 		return fmt.Errorf("kind %q is not one of %s, %s", t.Kind, KindTask, KindNote)
@@ -62,6 +67,8 @@ func normalizeTask(t *Task) error {
 	if t.Priority == PriorityNormal {
 		t.Priority = ""
 	}
+	t.Created = entryTime(t.Created)
+	t.Revised = entryTime(t.Revised)
 	if t.Priority != "" && t.Priority != PriorityHigh && t.Priority != PriorityLow {
 		return fmt.Errorf("entry %q has priority %q, and a priority is one of %s, %s, %s: correct it, or set %q to clear it",
 			t.Slug, t.Priority, PriorityHigh, PriorityNormal, PriorityLow, PriorityNormal)

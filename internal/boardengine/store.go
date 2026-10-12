@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -26,18 +27,20 @@ const swapLockSuffix = ".swaplock"
 // BriefTask is the enriched read-only view returned by list, with Layer and HasProposal computed at
 // read time.
 type BriefTask struct {
-	ID          int      `json:"id"`
-	Slug        string   `json:"slug"`
-	Title       string   `json:"title"`
-	DependsOn   []string `json:"depends_on"`
-	Kind        string   `json:"kind"`
-	Labels      []string `json:"labels"`
-	Isolated    bool     `json:"isolated"`
-	Brief       string   `json:"brief"`
-	Priority    string   `json:"priority,omitempty"`
-	Status      *string  `json:"status,omitempty"`
-	Layer       string   `json:"layer"`
-	HasProposal bool     `json:"has_proposal"`
+	ID          int       `json:"id"`
+	Slug        string    `json:"slug"`
+	Title       string    `json:"title"`
+	DependsOn   []string  `json:"depends_on"`
+	Kind        string    `json:"kind"`
+	Labels      []string  `json:"labels"`
+	Isolated    bool      `json:"isolated"`
+	Brief       string    `json:"brief"`
+	Priority    string    `json:"priority,omitempty"`
+	Status      *string   `json:"status,omitempty"`
+	Created     time.Time `json:"created,omitzero"`
+	Revised     time.Time `json:"revised,omitzero"`
+	Layer       string    `json:"layer"`
+	HasProposal bool      `json:"has_proposal"`
 }
 
 const (
@@ -336,7 +339,7 @@ type MergeStatusUpdate struct {
 // UpsertPayloadKeys returns the keys a task payload carries on every upsert path: the required keys and the optional ones.
 // "id" is auto-assigned and never accepted; "phase" and "group" are retired.
 func UpsertPayloadKeys() (required, optional []string) {
-	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues"}
+	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised"}
 }
 
 // upsertAllowedKeys is the set of field names every upsert path accepts, enforced at the store boundary.
@@ -616,6 +619,8 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 			Brief:       t.Brief,
 			Priority:    t.Priority,
 			Status:      t.Status,
+			Created:     t.Created,
+			Revised:     t.Revised,
 			Layer:       layerMap[t.Slug],
 			HasProposal: t.Body != "",
 		}
@@ -793,9 +798,24 @@ func (s *Store) carriedIssues(own []int, removeSlugs []string) []int {
 	return carried
 }
 
+// oldestCreated returns the earliest known creation time among own and the removeSlugs entries, zero when none is known.
+func (s *Store) oldestCreated(own time.Time, removeSlugs []string) time.Time {
+	oldest := own
+	for _, t := range s.tasks {
+		if !slices.Contains(removeSlugs, t.Slug) || t.Created.IsZero() {
+			continue
+		}
+		if oldest.IsZero() || t.Created.Before(oldest) {
+			oldest = t.Created
+		}
+	}
+	return oldest
+}
+
 // MergeTasks removes slugs, upserts one task, and optionally sets a status — all atomically.
 // The upserted entry's issues are its own followed by those of each removed entry,
-// so a merge never loses a recorded issue.
+// so a merge never loses a recorded issue,
+// and its creation time is the oldest known among them.
 // setStatus is the resolved status-update step,
 // or nil to skip it.
 // When setStatus targets a missing task, SetStatus returns an error and boardCriticalSection discards the in-memory mutation without saving, leaving the on-disk state unchanged.
@@ -849,8 +869,12 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 	}
 
 	incoming.Issues = s.carriedIssues(incoming.Issues, removeSlugs)
+	incoming.Created = s.oldestCreated(incoming.Created, removeSlugs)
 	upsert = maps.Clone(upsert)
 	upsert["issues"] = incoming.Issues
+	if !incoming.Created.IsZero() {
+		upsert["created"] = incoming.Created
+	}
 
 	if err := s.validateWrite(projected, incoming); err != nil {
 		return Task{}, err

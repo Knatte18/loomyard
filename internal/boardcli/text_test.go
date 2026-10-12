@@ -4,6 +4,7 @@ package boardcli_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardcli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -11,11 +12,13 @@ import (
 
 func strPtr(s string) *string { return &s }
 
-// TestRenderCompact asserts the compact listing aligns columns by display width, shows the status bracket only when a status is set, shows the priority column only when an entry is high or low, leaves no trailing gap without labels, keeps the input order and prints nothing for no input.
+// TestRenderCompact asserts the compact listing aligns columns by display width, shows the status bracket only when a status is set, shows the priority column only when an entry is high or low, shows each age column only when an entry has that date, leaves no trailing gap without labels, keeps the input order and prints nothing for no input.
 //
 //testtiming:keep pins the column alignment, multi-byte widths, status bracket, label gap and ordering of the compact listing, which its covering test asserts for one listing only
 func TestRenderCompact(t *testing.T) {
 	t.Parallel()
+	now := time.Date(2026, 10, 12, 9, 30, 0, 0, time.UTC)
+	day := 24 * time.Hour
 	tests := []struct {
 		name string
 		in   []boardengine.BriefTask
@@ -62,6 +65,15 @@ func TestRenderCompact(t *testing.T) {
 			want: "task  high  a  One  bug\ntask        b  Two  bug\nnote  low   c  Six  bug\n",
 		},
 		{
+			name: "age columns as of now, blank for an unknown date",
+			in: []boardengine.BriefTask{
+				{Kind: "task", Labels: []string{"bug"}, Slug: "a", Title: "One", Created: now.Add(-3 * day), Revised: now.Add(-5 * time.Hour)},
+				{Kind: "task", Labels: []string{"bug"}, Slug: "b", Title: "Two", Created: now.Add(-40 * day)},
+				{Kind: "note", Labels: []string{"bug"}, Slug: "c", Title: "Six"},
+			},
+			want: "task  3d  5h  a  One  bug\ntask  5w      b  Two  bug\nnote          c  Six  bug\n",
+		},
+		{
 			name: "input order is preserved",
 			in: []boardengine.BriefTask{
 				{Kind: "note", Labels: []string{"bug"}, Slug: "z", Title: "Z"},
@@ -78,7 +90,7 @@ func TestRenderCompact(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := boardcli.RenderCompact(tt.in); got != tt.want {
+			if got := boardcli.RenderCompact(tt.in, now); got != tt.want {
 				t.Fatalf("got:\n%q\nwant:\n%q", got, tt.want)
 			}
 		})

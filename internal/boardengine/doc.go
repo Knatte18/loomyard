@@ -36,6 +36,18 @@
 // a priority with no entry in the group gets no heading and no table, and Done stays one table.
 // Priority is part of an entry's scope, so the run lock refuses a change to it on a run-held entry.
 //
+// # Dates
+//
+// An entry carries two dates, created, when it was added, and revised, when its scope last changed, each in whole UTC seconds, and board.json names neither while it is unknown.
+// The write critical section stamps them after the mutation, against the entries as loaded, with the time Config.Clock gives, the wall clock by default:
+// a new entry gets that time for whichever date it does not carry, and an entry whose scope changed gets it as revised unless the write set revised itself.
+// Scope is what the run lock guards, so a status change revises nothing, nor does prune's dropping of a removed done dependency;
+// a note becoming a task revises nothing either, so a promote keeps the note's dates.
+// An existing entry without a created date keeps none, since no write knows when it was added.
+// An upsert may carry either date as an RFC 3339 time, which is how a backfill writes them, and the run lock lets such a write through on a held entry, since the dates are not scope.
+// A merge gives the upserted entry the oldest created date among it and the entries it removes.
+// No view stores an age: the README and `lyx board list --text` compute each as they render, in one compact unit such as `3d` or `5w`, through FormatAge.
+//
 // # Migration
 //
 // A board.json entry in the old shape, with a numeric tier and a type, converts in memory on load and persists in the new shape on the next write.
@@ -47,14 +59,14 @@
 //
 // # README
 //
-// Every write renders README.md, with a Tasks section, a Notes section grouped by type label in the order of the types list with the remainder under Other, and a Done section.
+// Every write renders README.md, opening with the UTC date and time it was rendered, so its ages read as of that moment, then a Tasks section, a Notes section grouped by type label in the order of the types list with the remainder under Other, and a Done section.
 // Tasks splits into Running, Ready, the dependency layers A, B and on, and Independent for an isolated task.
 // A task a run holds, by IsRunStatus as the run lock decides it, goes under Running and in no layer; Running is omitted when no task runs.
 // Ready holds the open tasks with no open dependency, and is always written, as `_None._` when empty.
 // A dependency on a done task does not count, and one on a running task does, so a task waiting on a run is not Ready.
 // Layer A holds the tasks that wait only on Running or Ready entries, Layer B those that wait on something in Layer A, and so on; ComputeLayers names each task's subsection, and the same name is the layer field of `lyx board list`.
 // Each open subsection holds one markdown table per priority, as the Priority section describes, numbered on from 1 across them so each entry keeps one number in its subsection, and Done is one table numbered from 1.
-// A row holds the bold title, with the brief as a `• ` bullet under it in the same cell, the slug linked to its design doc when the entry has a body, and the labels that are not type labels.
+// A row holds the bold title, with the brief as a `• ` bullet under it in the same cell, the slug linked to its design doc when the entry has a body, the Age and Revised cells, the entry's age and the time since its last revision, blank for an unknown date, and the labels that are not type labels.
 // The Running, Ready and layer tables add a Recipe column after the slug, the recipe the task runs, `loom` when its recipe field is empty; the Notes and Done tables have none.
 // Running adds an At column, the run status without the state when the state is `running`, and Ready and the layers add an After column, the open entries named in depends_on.
 // A pipe in a cell is escaped and a line break becomes a space, so an entry is always one row.
