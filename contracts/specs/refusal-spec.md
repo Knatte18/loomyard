@@ -391,6 +391,7 @@ Its JSON error envelopes carry the way forward as a trailing `way forward:` clau
 |---|---|---|---|
 | no package argument | `lyx gate test` names no package, or only go test flags after `--` | correctness halt | run "lyx gate test <packages...>", for example "lyx gate test ./internal/foo" |
 | -C directory missing | `-C` names a directory that does not exist or is not a directory | correctness halt | pass an existing directory to -C |
+| package directory missing | a relative package argument, a trailing `/...` removed and not a `.go` file, names no directory under the run directory; the error names each such argument and, for an external test package, the package directory to pass instead | correctness halt | re-run the same command with each named package argument corrected |
 | slot busy | every gate slot stays held past the hub's `cli_wait_sec`; the verb exits 75 and the envelope names each holder's worktree and site | transient | re-run the same command |
 | gate.yaml absent | the hub has no `gate.yaml` | correctness halt | run "lyx fabric reconcile", then re-run the same command; a session lyx refuses the verb from reports status: FAILED and the orch runs it |
 | gate.yaml unreadable or invalid | the hub's `gate.yaml` cannot be read, does not parse, or holds a value below 1, or a negative `busy_quit_sec` | correctness halt | fix the file with "lyx config gate" from the prime, then re-run the same command |

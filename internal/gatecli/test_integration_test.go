@@ -264,6 +264,20 @@ func TestGateTest_Scenario(t *testing.T) {
 		t.Fatalf("seed gate.yaml: %v", err)
 	}
 	prime := h.PrimeWorktree()
+	// The package arguments the rows name must be directories, since the verb refuses one that is not.
+	for _, pkg := range []string{"pkg", "held", "nested", "enclosed"} {
+		if err := os.MkdirAll(filepath.Join(prime, pkg), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cwdWithPkg := func(t *testing.T) string {
+		t.Helper()
+		cwd := t.TempDir()
+		if err := os.Mkdir(filepath.Join(cwd, "pkg"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return cwd
+	}
 	pool := hubgeom.GateSlots(h.Location)
 	waitDir := gateslot.WaitDir(h.Location.AnchorPath())
 
@@ -456,13 +470,17 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("a target outside every hub runs unslotted and logs it", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "./pkg"}, env: []string{strandEnvEntry}})
+		g := startGate(t, gateRun{cwd: cwdWithPkg(t), args: []string{"test", "./pkg/...", "example.com/x", "./absent/a_test.go"}, env: []string{strandEnvEntry}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d; want 0", code)
 		}
 		record := g.standIn(t)
 		if record.Slot != "" || !slices.Contains(record.Args, "4") {
 			t.Errorf("go args = %q, slot %q; want the template's -p 4 and no slot", record.Args, record.Slot)
+		}
+		// A pattern, an import path and a .go file argument reach go test unread.
+		if want := []string{"./pkg/...", "example.com/x", "./absent/a_test.go"}; len(record.Args) < len(want) || !slices.Equal(record.Args[len(record.Args)-len(want):], want) {
+			t.Errorf("go args = %q; want them to end with %q", record.Args, want)
 		}
 		if record.Strand != "" {
 			t.Errorf("go environment %s = %q; want it dropped", agentname.StrandNameEnv, record.Strand)
@@ -552,7 +570,7 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("a tagged run in a root without cmd/lyx builds nothing and strips an inherited prebuilt variable", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "--tags", "integration", "./pkg"}, env: []string{stale}})
+		g := startGate(t, gateRun{cwd: cwdWithPkg(t), args: []string{"test", "--tags", "integration", "./pkg"}, env: []string{stale}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d; want 0", code)
 		}
@@ -584,11 +602,19 @@ func TestGateTest_Scenario(t *testing.T) {
 
 	// Each row breaks the shared hub in its setup and repairs it in the returned restore, so the rows run in order.
 	refusals := []struct {
-		name      string
+		name string
+		// args defaults to `test ./pkg`.
+		args      []string
 		setup     func(t *testing.T) (restore func())
 		env       []string
 		wantError string
 	}{
+		{
+			name:      "a missing package directory refuses before the slot and the prebuild",
+			args:      []string{"test", "--tags", "integration", "./nope"},
+			setup:     func(t *testing.T) func() { return func() {} },
+			wantError: "./nope",
+		},
 		{
 			name: "an absent gate.yaml names lyx fabric reconcile",
 			setup: func(t *testing.T) func() {
@@ -653,7 +679,11 @@ func TestGateTest_Scenario(t *testing.T) {
 	for _, tc := range refusals {
 		t.Run(tc.name, func(t *testing.T) {
 			restore := tc.setup(t)
-			g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./pkg"}, env: tc.env})
+			args := tc.args
+			if args == nil {
+				args = []string{"test", "./pkg"}
+			}
+			g := startGate(t, gateRun{cwd: prime, args: args, env: tc.env})
 			code := g.wait(t)
 			restore()
 

@@ -44,6 +44,9 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
+	if refusal := missingPackageDirs(dir, request.packages); refusal != "" {
+		return output.Err(out, refusal)
+	}
 
 	runCtx, caught, stop := catchTerminatingSignals(ctx)
 	defer stop()
