@@ -144,8 +144,8 @@ func ParseSeed(data []byte) (Seed, error) {
 // An unknown key reads; an empty Driver defaults to DriverGo and nothing else is validated.
 // It errors only for bytes that are not a JSON object.
 func ParseSeedTolerant(data []byte) (Seed, error) {
-	var seed Seed
-	if err := json.Unmarshal(data, &seed); err != nil {
+	seed, err := decodeSeed(data)
+	if err != nil {
 		return Seed{}, fmt.Errorf("decode: %w", err)
 	}
 	if seed.Driver == "" {
