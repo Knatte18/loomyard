@@ -116,7 +116,7 @@ func WireJunctionsWith(rec *Mutations, l *lyxcwd.Location, slug string, names []
 		return err
 	}
 
-	return nil
+	return seedScratchExclude(rec, WorktreePath(l, slug))
 }
 
 // WireJunctions is WireJunctionsWith's nil-recorder delegation, kept only because roughly fifty
