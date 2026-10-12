@@ -1037,9 +1037,10 @@ func keptValue(t *testing.T, raw []byte, slug, key string) (string, bool) {
 	return compact.String(), true
 }
 
-// keptBoardBody is the board.json the kept-key rows of TestLoad share: a top-level key, a task a with a big integer and a nested value listed unsorted, a task b, a note n and a done task fin.
+// keptBoardBody is the board.json the kept-key rows of TestLoad share: a top-level key, a task a with a big integer, a nested value, strings holding an escaped quote and closing brackets, and a key spelled with an escape, listed unsorted, a task b, a note n and a done task fin.
 const keptBoardBody = `{"version":1,"entries":[` +
-	`{"id":0,"slug":"a","title":"A","kind":"task","labels":["bug"],"zz_scalar":9007199254740993,"zz_nested":{"a":[1,{"b":"c"}]}},` +
+	`{"id":0,"slug":"a","title":"A","kind":"task","labels":["bug"],"zz_scalar":9007199254740993,"zz_nested":{"a":[1,{"b":"c"}]},` +
+	`"zz_quote":"q\"}],x","zz_nested_quote":{"s":["q\"}],x",{"t":"\\}],"}]},"zz\u005fesc":1},` +
 	`{"id":1,"slug":"b","title":"B","kind":"task","labels":["bug"],"zz_b":true},` +
 	`{"id":2,"slug":"n","title":"N","kind":"note","labels":["bug"],"zz_n":"x"},` +
 	`{"id":3,"slug":"fin","title":"Fin","kind":"task","labels":["bug"],"status":"done"}],` +
@@ -1049,6 +1050,9 @@ const keptBoardBody = `{"version":1,"entries":[` +
 var keptA = [][3]string{
 	{"a", "zz_scalar", "9007199254740993"},
 	{"a", "zz_nested", `{"a":[1,{"b":"c"}]}`},
+	{"a", "zz_quote", `"q\"}],x"`},
+	{"a", "zz_nested_quote", `{"s":["q\"}],x",{"t":"\\}],"}]}`},
+	{"a", "zz_esc", "1"},
 	{"", "zz_top", `{"k":[1,2]}`},
 }
 
