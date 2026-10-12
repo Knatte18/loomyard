@@ -360,6 +360,7 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 		StatusLockPath: c.shedPaths.StatusLockPath,
 
 		MissingStatusWayForward: c.shedPaths.MissingStatusWayForward,
+		PauseWayForward:         c.shedPaths.PauseWayForward,
 		// The status file is durable and its lock is ephemeral, so a machine that never stepped
 		// this slug -- a fresh clone, or a hand-seeded run -- has the file and not the lock's
 		// directory. Creating that directory is not a write to the run: it is what lets the

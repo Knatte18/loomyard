@@ -371,17 +371,21 @@ func TestStep_ErrShedBusy(t *testing.T) {
 	if !errors.Is(err, ErrShedBusy) {
 		t.Fatalf("Step(...) error = %v; want errors.Is(err, ErrShedBusy)", err)
 	}
-	if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lyx shed pause") || !strings.Contains(err.Error(), "lyx shed status") {
-		t.Errorf("Step(...) error = %q; want a way forward naming lyx shed pause and lyx shed status", err.Error())
+	if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), `"lyx shed pause --after <current_producer>"`) || !strings.Contains(err.Error(), "lyx shed status") {
+		t.Errorf("Step(...) error = %q; want a way forward naming lyx shed pause --after <current_producer> and lyx shed status", err.Error())
 	}
-	if _, err := shed.Run(context.Background()); !errors.Is(err, ErrShedBusy) || !strings.Contains(err.Error(), "way forward: \"lyx shed pause\"") {
+	if _, err := shed.Run(context.Background()); !errors.Is(err, ErrShedBusy) || !strings.Contains(err.Error(), "way forward: \"lyx shed pause --after <current_producer>\"") {
 		t.Errorf("Run(...) error = %v; want ErrShedBusy carrying the same way forward", err)
 	}
 	shed.RunID = "some-slug"
-	if _, err := shed.Step(context.Background()); err == nil || !strings.Contains(err.Error(), `"lyx shed pause some-slug"`) || !strings.Contains(err.Error(), `"lyx shed status some-slug"`) {
+	if _, err := shed.Step(context.Background()); err == nil || !strings.Contains(err.Error(), `"lyx shed pause some-slug --after <current_producer>"`) || !strings.Contains(err.Error(), `"lyx shed status some-slug"`) {
 		t.Errorf("Step(...) on a Shed told RunID error = %v; want the pause and status verbs addressing some-slug", err)
 	}
-	shed.RunID = ""
+	shed.PauseWayForward = "lyx batten pause some-slug"
+	if _, err := shed.Step(context.Background()); err == nil || !strings.Contains(err.Error(), `"lyx batten pause some-slug"`) || strings.Contains(err.Error(), "lyx shed pause") {
+		t.Errorf("Step(...) on a Shed told PauseWayForward error = %v; want the told command in place of the shed default", err)
+	}
+	shed.RunID, shed.PauseWayForward = "", ""
 
 	// The way forward taken: the holder releases, and the refused call succeeds.
 	statusPath := shed.StatusPath

@@ -260,7 +260,7 @@ func (t *Teardown) busyError(slug string, st quietState) error {
 	attach := fmt.Sprintf("lyx reed attach, run from %s", t.taskAnchor(slug))
 	wayForward := "retry once the driver has written its report, or end it with `lyx reed down` in the pair"
 	if st.loop {
-		wayForward = fmt.Sprintf("pause the run with `lyx shed pause %s`, or retry once the loop stops; %s", slug, wayForward)
+		wayForward = fmt.Sprintf("pause the run with `lyx shed pause %s --after <current_producer>`, or retry once the loop stops; %s", slug, wayForward)
 	}
 	return fmt.Errorf("%w: %s in pair %q; attach with %s; %s", ErrDriverBusy, blocker, slug, attach, wayForward)
 }
