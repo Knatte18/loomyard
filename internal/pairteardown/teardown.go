@@ -285,7 +285,7 @@ func (t *Teardown) topology() (*fabricengine.Topology, error) {
 // A hub socket with no tmux server behind it has no sessions.
 // The prime's own sessions, the orch among them, are never in the pair set and never count.
 func (t *Teardown) otherPairSessions(slug string) ([]string, error) {
-	cfg, err := reedengine.LoadConfig(t.prime.AnchorPath(), "reed")
+	cfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(t.prime), "reed")
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +346,7 @@ func (t *Teardown) taskLocation(slug string) (*lyxcwd.Location, error) {
 
 // reedEngine builds the reed engine for the present task worktree.
 func (t *Teardown) reedEngine(task *lyxcwd.Location) (*reedengine.Engine, error) {
-	cfg, err := reedengine.LoadConfig(task.AnchorPath(), "reed")
+	cfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(task), "reed")
 	if err != nil {
 		return nil, err
 	}
@@ -443,7 +443,7 @@ func (t *Teardown) endReedSession(slug string, gone bool) (bool, string, error) 
 		return true, res.AbandonedSession, nil
 	}
 
-	cfg, err := reedengine.LoadConfig(t.prime.AnchorPath(), "reed")
+	cfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(t.prime), "reed")
 	if err != nil {
 		return false, "", err
 	}

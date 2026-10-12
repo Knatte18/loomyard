@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -93,7 +94,7 @@ func newLiveFixture(t *testing.T, orchCfg string, extraCfg map[string]string) *l
 	hubforge.SeedConfig(t, h, cfgs)
 	prime := h.Location.AnchorPath()
 
-	reedCfg, err := reedengine.LoadConfig(prime, "reed")
+	reedCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: prime}, "reed")
 	if err != nil {
 		t.Fatalf("load reed config: %v", err)
 	}

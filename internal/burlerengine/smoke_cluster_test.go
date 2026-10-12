@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -124,7 +125,7 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
-	reedCfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
+	reedCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: h.Location.AnchorPath()}, "reed")
 	if err != nil {
 		t.Fatalf("load reed config: %v", err)
 	}

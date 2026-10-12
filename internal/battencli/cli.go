@@ -22,6 +22,7 @@ import (
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -379,7 +380,7 @@ func (c *battenCLI) runInWindow(cmd *cobra.Command) error {
 
 // openWindowInPrimeSession opens the window through the prime's own reed engine.
 func (c *battenCLI) openWindowInPrimeSession(name string, lyxArgs []string) (reedengine.WindowResult, error) {
-	reedCfg, err := reedengine.LoadConfig(c.location.AnchorPath(), "reed")
+	reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(c.location), "reed")
 	if err != nil {
 		return reedengine.WindowResult{}, err
 	}

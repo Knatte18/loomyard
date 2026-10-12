@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -31,7 +32,7 @@ func newReviveHub(t *testing.T, names ...string) (engines []*Engine, entries []R
 			t.Fatalf("mkdir worktree dir: %v", err)
 		}
 		seedReedConfig(t, worktreeDir)
-		cfg, err := LoadConfig(worktreeDir, "reed")
+		cfg, err := LoadConfig(configengine.Dirs{Anchor: worktreeDir}, "reed")
 		if err != nil {
 			t.Fatalf("LoadConfig: %v", err)
 		}

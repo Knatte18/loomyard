@@ -43,6 +43,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -318,7 +319,7 @@ func newSmokeRunner(t *testing.T) (*shuttleengine.Runner, shuttleengine.Engine, 
 	if err != nil {
 		t.Fatalf("shuttleengine.LoadConfig: %v", err)
 	}
-	reedCfg, err := reedengine.LoadConfig(layout.AnchorPath(), "reed")
+	reedCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: layout.AnchorPath()}, "reed")
 	if err != nil {
 		t.Fatalf("reedengine.LoadConfig: %v", err)
 	}
@@ -335,7 +336,7 @@ func newSmokeRunner(t *testing.T) (*shuttleengine.Runner, shuttleengine.Engine, 
 // registerReedServer registers the hub's reed socket key with tmuxkit before the test's first reed boot, so the boot finds the kit's hermetic server.
 func registerReedServer(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
-	reedCfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
+	reedCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: h.Location.AnchorPath()}, "reed")
 	if err != nil {
 		t.Fatalf("reedengine.LoadConfig: %v", err)
 	}

@@ -131,7 +131,7 @@ Every verb runs from the hub's prime worktree only.`,
 			if err != nil {
 				return fail(err)
 			}
-			reedCfg, err := reedengine.LoadConfig(location.AnchorPath(), "reed")
+			reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
 			if err != nil {
 				return fail(err)
 			}

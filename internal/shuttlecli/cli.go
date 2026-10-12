@@ -14,6 +14,7 @@ import (
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -91,7 +92,7 @@ provider specifics.`,
 				return nil
 			}
 
-			reedCfg, err := reedengine.LoadConfig(layout.AnchorPath(), "reed")
+			reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(layout), "reed")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)

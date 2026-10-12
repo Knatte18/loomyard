@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
@@ -38,7 +39,7 @@ func newColdScratchEngine(t *testing.T) *Engine {
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
 
-	cfg, err := LoadConfig(tmpDir, "reed")
+	cfg, err := LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}

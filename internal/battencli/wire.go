@@ -778,7 +778,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					if err != nil {
 						return reedengine.StatusResult{}, err
 					}
-					reedCfg, err := reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")
+					reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
 					if err != nil {
 						return reedengine.StatusResult{}, err
 					}
@@ -799,7 +799,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					if err != nil {
 						return nil, err
 					}
-					reedCfg, err := reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")
+					reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
 					if err != nil {
 						return nil, err
 					}
@@ -816,7 +816,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				reedCfg, err := reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")
+				reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
 				if err != nil {
 					return err
 				}

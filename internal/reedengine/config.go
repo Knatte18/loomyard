@@ -45,11 +45,38 @@ type SelvageConfig struct {
 	HeightRows int `yaml:"height_rows"`
 }
 
-// LoadConfig loads and unmarshals configuration for the reed module.
-// An absent <baseDir>/_lyx/ directory or an absent config file resolves the embedded template;
-// a config file that exists but is invalid still errors.
-func LoadConfig(baseDir, module string) (Config, error) {
-	resolved, err := configengine.LoadOrTemplate(configengine.Dirs{Anchor: baseDir}, configengine.Spec{Name: module, Template: []byte(ConfigTemplate())})
+// ConfigSpec returns reed's layered-load spec.
+// It carries the GOOS template and the per-key classification that decides which keys a local override may hold.
+func ConfigSpec() configengine.Spec {
+	return configengine.Spec{
+		Name:     "reed",
+		Template: []byte(ConfigTemplate()),
+		Categories: map[string]configengine.Category{
+			"tmux":             configengine.CategoryExecutable,
+			"shell":            configengine.CategoryExecutable,
+			"width":            configengine.CategoryNone,
+			"height":           configengine.CategoryNone,
+			"collapsed_rows":   configengine.CategoryNone,
+			"min_full_rows":    configengine.CategoryNone,
+			"debug_log":        configengine.CategoryCrossPair,
+			"mouse":            configengine.CategoryCrossPair,
+			"watchdog":         configengine.CategoryNone,
+			"operator_quiet_s": configengine.CategoryNone,
+			"tmux_conf":        configengine.CategorySourcedFile,
+			"selvage":          configengine.CategoryNone,
+			"segment_colors":   configengine.CategoryNone,
+		},
+	}
+}
+
+// LoadConfig loads and unmarshals configuration for the reed module through the layer stack under dirs.
+// An absent config file in every layer resolves the embedded template;
+// a layer file that exists but is invalid still errors.
+// module names the config file to read, so a caller may load a sibling file with reed's shape.
+func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
+	spec := ConfigSpec()
+	spec.Name = module
+	resolved, err := configengine.LoadOrTemplate(dirs, spec)
 	if err != nil {
 		return Config{}, err
 	}

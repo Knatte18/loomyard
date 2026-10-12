@@ -32,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/burlermarker"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -308,7 +309,7 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 
 	// Wire the real stack directly: burlerengine never imports claudeengine
 	// itself, but this test is the caller and may.
-	reedCfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
+	reedCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: h.Location.AnchorPath()}, "reed")
 	if err != nil {
 		t.Fatalf("load reed config: %v", err)
 	}
@@ -366,7 +367,7 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 // registerReedServer registers the hub's reed socket key with tmuxkit before the test's first reed boot, so the boot finds the kit's hermetic server.
 func registerReedServer(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
-	reedCfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
+	reedCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: h.Location.AnchorPath()}, "reed")
 	if err != nil {
 		t.Fatalf("load reed config: %v", err)
 	}

@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -115,7 +116,7 @@ func TestSmokeParentReview_NoticeReachesTheWriterPaneAndApproveLetsTheRunThrough
 	runner := shuttleengine.NewRunner(reedEngine, &parentNoticeEngine{gateRepromptReadEngine: gateRepromptReadEngine{quietSeconds: 3}, noticePath: noticePath}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	// The same two closures resolveGateSpec builds for the row's "gates" list.
-	reedCfg, err := reedengine.LoadConfig(loc.AnchorPath(), "reed")
+	reedCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: loc.AnchorPath()}, "reed")
 	if err != nil {
 		t.Fatalf("load reed config: %v", err)
 	}

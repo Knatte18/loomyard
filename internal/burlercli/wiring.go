@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/cliwire"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -112,7 +113,7 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 		return err
 	}
 
-	reedCfg, err := reedengine.LoadConfig(anchorPath, "reed")
+	reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(loc), "reed")
 	if err != nil {
 		return err
 	}
@@ -182,7 +183,7 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 	if err != nil {
 		return err
 	}
-	reedCfg, err := reedengine.LoadConfig(res.StateDir, "reed")
+	reedCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: res.StateDir}, "reed")
 	if err != nil {
 		return err
 	}

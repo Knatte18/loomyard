@@ -419,7 +419,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	reedCfg, err := reedengine.LoadConfig(anchorPath, "reed")
+	reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
 	if err != nil {
 		return err
 	}

@@ -135,7 +135,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	if err != nil {
 		return err
 	}
-	reedCfg, err := reedengine.LoadConfig(anchorPath, "reed")
+	reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(loc), "reed")
 	if err != nil {
 		return err
 	}
@@ -261,7 +261,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	if err != nil {
 		return err
 	}
-	reedCfg, err := reedengine.LoadConfig(res.StateDir, "reed")
+	reedCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: res.StateDir}, "reed")
 	if err != nil {
 		return err
 	}
