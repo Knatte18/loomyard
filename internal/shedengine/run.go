@@ -178,7 +178,7 @@ func gotoCommand(runID, target string) string {
 func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	// Step 1, the read gate. A found of false is a hard error: Shed never seeds a status
 	// file.
-	st, found, err := state.ReadJSONStrict[Status](s.StatusPath, s.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[Status](s.StatusPath, s.StatusLockPath)
 	if err != nil {
 		return StepResult{}, fmt.Errorf("shedengine: read status file %q: %w", s.StatusPath, err)
 	}
@@ -658,18 +658,14 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // and writes whatever the mutate returns, so without the guard a status file deleted mid-run would
 // be silently re-created from a zero value, contradicting the rule that Shed never seeds one.
 //
-// The accepted leniency asymmetry: UpdateJSON re-reads through a plain unmarshal with no
-// unknown-field rejection, so strictness is the contract of the read gate only. Malformed JSON
-// still fails loud on this path, but an unknown top-level key written by an external actor after
-// the read gate passed is silently destroyed by the full-struct marshal -- not caught by a later
-// strict read, because the merge strips it and the next read sees a clean file. This is accepted
-// because product is the sanctioned channel for everything an external writer legitimately owns,
-// and a key outside it is a mistake nothing here promises to preserve.
+// The persist keeps every key its type does not know, through internal/state.
+// A key an external actor wrote, or a newer binary added, survives each write.
+// Malformed JSON still fails loud on this path.
 //
 // After the write, and only after UpdateJSON has returned and released StatusLockPath, persist
 // calls s.CommitStatus with the transition's own nextCurrentProducer and string(nextState),
 // never from inside the mutate callback above: a synchronous network push made while
-// StatusLockPath is held would block every ReadJSON/ReadJSONStrict reader on that path for the
+// StatusLockPath is held would block every ReadJSON/ReadJSONNoMkdir reader on that path for the
 // push's duration -- "lyx loom status --watch" included, which is precisely the observability
 // this seam exists to deliver. A nil CommitStatus is a silent no-op. A non-nil error the closure
 // returns propagates out of persist and therefore halts Run, but by then the status-file write
@@ -706,7 +702,7 @@ func conditionReason(when, target string) string {
 // routedState returns the state a routed running outcome of def persists.
 // It is StatePaused with the pause_after reason when the status file's pause_after names def, read fresh because an outside actor may have recorded it while def ran, and StateRunning otherwise.
 func (s *Shed) routedState(def ProducerDef) (State, string, error) {
-	cur, found, err := state.ReadJSONStrict[Status](s.StatusPath, s.StatusLockPath)
+	cur, found, err := state.ReadJSONNoMkdir[Status](s.StatusPath, s.StatusLockPath)
 	if err != nil {
 		return "", "", fmt.Errorf("shedengine: read status file %q: %w", s.StatusPath, err)
 	}

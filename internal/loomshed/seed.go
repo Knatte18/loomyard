@@ -62,7 +62,7 @@ func Seed(statusPath, statusLockPath, slug, parent string) error {
 		}, nil
 	})
 	if err != nil && errors.Is(err, state.ErrDecode) {
-		// A present-but-undecodable status file (malformed JSON, an unknown top-level field) is
+		// A present-but-undecodable status file (malformed JSON) is
 		// still PRESENT: Seed's whole contract is never to overwrite an existing status file, and a
 		// corrupt one is exactly what must not be destroyed -- it may be the only forensic record of
 		// what an in-flight run was doing when it broke. So this is the same refusal as a
@@ -70,10 +70,8 @@ func Seed(statusPath, statusLockPath, slug, parent string) error {
 		// UpdateJSON aborts before its mutate on a decode failure, so no write happened and the file
 		// is left untouched.
 		//
-		// This defers the decode diagnosis to the spawned driver's own Shed.Run step-1 read gate,
-		// exactly as the unknown-field shape already did (UpdateJSON's lenient read tolerates an
-		// unknown field, so that shape decodes here and takes the found branch above). Without this
-		// mapping the malformed-JSON shape made `lyx loom start` refuse on the envelope before ever
+		// This defers the decode diagnosis to the spawned driver's own Shed.Run step-1 read gate.
+		// Without this mapping the malformed-JSON shape made `lyx loom start` refuse on the envelope before ever
 		// spawning a driver -- the very state the Completion Signal Invariant
 		// promises a poisoned status file never presents as ("A poisoned status file must never look
 		// like it belongs to bootstrap's own gate"), reproduced live in crucible round

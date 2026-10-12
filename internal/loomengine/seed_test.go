@@ -57,7 +57,7 @@ func coherentFreshProduct() Status {
 
 // TestCheckSeed drives CheckSeed over each seed a run can be started from, against loom's own row ("Loom-Preflight", tolerating the generic "Preflight" row before it) unless a row names another producer.
 // A coherent seed reports OK; each incoherent one reports the failure that names its defect:
-// a missing file, a file that does not decode (malformed JSON, an unknown top-level field), a product that does not decode as loom's status shape, an out-of-vocabulary history outcome (the file a broken adapter leaves behind, since Shed records an outcome verbatim) whose failure ends in the seed-a-new-run way forward, and a told producer name that is genuinely told rather than assumed.
+// a missing file, a file that does not decode (malformed JSON), a product that does not decode as loom's status shape, an out-of-vocabulary history outcome (the file a broken adapter leaves behind, since Shed records an outcome verbatim) whose failure ends in the seed-a-new-run way forward, and a told producer name that is genuinely told rather than assumed.
 // The deep-lock-parent row is the MkdirAll guard's regression: only the lock parent is missing, and that guard stops a worktree with no ephemeral tree from escalating the verdict to an infra error.
 func TestCheckSeed(t *testing.T) {
 	t.Parallel()
@@ -87,18 +87,6 @@ func TestCheckSeed(t *testing.T) {
 				statusPath := filepath.Join(dir, "status.json")
 				if err := os.WriteFile(statusPath, []byte("{not valid json"), 0o644); err != nil {
 					t.Fatalf("write malformed status file: %v", err)
-				}
-				return statusPath, filepath.Join(dir, "ephemeral", "status.json.lock")
-			},
-			wantCheck: CheckSeedIncoherent,
-		},
-		{
-			name: "unknown top-level field",
-			setup: func(t *testing.T, dir string) (string, string) {
-				statusPath := filepath.Join(dir, "status.json")
-				body := `{"current_producer":"Loom-Preflight","state":"running","error":"","pause_requested":false,"activity":{"now":"","last":"","wait":""},"history":[],"product":{},"bogus_field":true}`
-				if err := os.WriteFile(statusPath, []byte(body), 0o644); err != nil {
-					t.Fatalf("write status file with unknown field: %v", err)
 				}
 				return statusPath, filepath.Join(dir, "ephemeral", "status.json.lock")
 			},

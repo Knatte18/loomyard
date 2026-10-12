@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -24,11 +25,11 @@ const defaultGoBinary = "go"
 
 // Command builds the cobra command tree for the gate module.
 func Command() *cobra.Command {
-	return newCommand(defaultGoBinary)
+	return newCommand(defaultGoBinary, defaultSamplePeriod)
 }
 
-// newCommand builds the gate command tree over goBinary, the go command the test verb spawns.
-func newCommand(goBinary string) *cobra.Command {
+// newCommand builds the gate command tree over goBinary, the go command the test verb spawns, and samplePeriod, how often the CPU watchdog samples go test's process tree.
+func newCommand(goBinary string, samplePeriod time.Duration) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "gate",
 		Short: "run go tests inside the hub's gate-slot pool",
@@ -60,7 +61,7 @@ Examples:
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			request := testRequest{goBinary: goBinary, dir: dir, tags: tags, packages: args}
+			request := testRequest{goBinary: goBinary, samplePeriod: samplePeriod, stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, packages: args}
 			if dash := cmd.ArgsLenAtDash(); dash >= 0 {
 				request.packages, request.flags = args[:dash], args[dash:]
 			}
@@ -92,6 +93,10 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 // testRequest is one `lyx gate test` invocation after flag parsing.
 type testRequest struct {
 	goBinary string
+	// samplePeriod is how often the CPU watchdog samples go test's process tree.
+	samplePeriod time.Duration
+	// stderr receives the line the CPU watchdog prints after a quit.
+	stderr io.Writer
 	// dir is the -C value as typed; empty means the seam cwd.
 	dir  string
 	tags string

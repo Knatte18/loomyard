@@ -1,7 +1,7 @@
 # Top-level test functions per package, in its _test.go files under every build tag.
 # TestTestBudget_PackagesStayWithinBudget fails when a package exceeds its row or has tests and no row.
 # Raise a row in the commit that adds the tests that need it.
-cmd/lyx: 78
+cmd/lyx: 79
 cmd/testtiming: 21
 contracts/specs: 3
 contracts/stencils: 16
@@ -39,8 +39,8 @@ internal/frictionengine: 15
 internal/fslink: 5
 internal/fswatch: 5
 internal/fsx: 4
-internal/gatecli: 3
-internal/gateslot: 11
+internal/gatecli: 4
+internal/gateslot: 12
 internal/gitexec: 7
 internal/githubclient: 12
 internal/gitkit: 10
@@ -80,7 +80,7 @@ internal/planglyph: 86
 internal/planparser: 92
 internal/preflight: 7
 internal/preflightshed: 8
-internal/proc: 17
+internal/proc: 18
 internal/quarrycli: 7
 internal/reedcli: 38
 internal/reedengine: 257
@@ -104,7 +104,7 @@ internal/shuttleengine: 168
 internal/shuttleengine/claudeengine: 108
 internal/standalonegeom: 7
 internal/standalonestate: 6
-internal/state: 8
+internal/state: 9
 internal/statuscommit: 6
 internal/statuspane: 6
 internal/stencil: 4

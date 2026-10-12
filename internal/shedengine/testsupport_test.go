@@ -86,13 +86,13 @@ func seedStatus(t testing.TB, statusPath, statusLockPath string, want Status) {
 	}
 }
 
-// readStatus reads the status file at statusPath/statusLockPath via state.ReadJSONStrict, failing
+// readStatus reads the status file at statusPath/statusLockPath via state.ReadJSONNoMkdir, failing
 // the test if the read errors or the file is missing.
 func readStatus(t *testing.T, statusPath, statusLockPath string) Status {
 	t.Helper()
-	got, found, err := state.ReadJSONStrict[Status](statusPath, statusLockPath)
+	got, found, err := state.ReadJSONNoMkdir[Status](statusPath, statusLockPath)
 	if err != nil {
-		t.Fatalf("readStatus: state.ReadJSONStrict(...) = _, _, %v", err)
+		t.Fatalf("readStatus: state.ReadJSONNoMkdir(...) = _, _, %v", err)
 	}
 	if !found {
 		t.Fatalf("readStatus: status file %q not found", statusPath)

@@ -9,7 +9,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
@@ -168,21 +170,39 @@ func TestVerifyGate_FlakyFailurePassesOnRerunWithNote(t *testing.T) {
 	}
 }
 
-// TestVerifyGate_TimedOutVerifyFailsAtOnceWithoutRerun pins that a verify that outlived its timeout fails the gate at once, on the first run or on the rerun, with a report naming the timeout, the log path and the log tail.
-func TestVerifyGate_TimedOutVerifyFailsAtOnceWithoutRerun(t *testing.T) {
+// TestVerifyGate_HungVerifyFailsAtOnceWithoutRerun pins that a verify that outlived its timeout or hung fails the gate at once, on the first run or on the rerun, with a report naming the timeout or the hang, the log path and the log tail, and that a failure that is no hang is still rerun.
+func TestVerifyGate_HungVerifyFailsAtOnceWithoutRerun(t *testing.T) {
 	t.Parallel()
 
 	timedOut := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, TimedOut: true}
+	exit := func(code int, detail string) verifytree.Result {
+		return verifytree.Result{Status: verifytree.StatusFailed, ExitCode: code, Detail: detail}
+	}
+	watchdogLog := gateslot.WatchdogLine("/tmp/x/a.test", 42, 2*time.Minute) + "\nSIGQUIT: quit\n" + failingPackageLog
 	tests := []struct {
 		name          string
 		results       []verifytree.Result
 		logs          []string
 		wantVerifyRun int
-		// wantLog is the timed-out run's own log.
+		// wantLog is the failed run's own log.
 		wantLog string
+		// wantTimedOut is set when the failure is the verify timeout.
+		wantTimedOut bool
+		// wantHang is the report's Hang, empty for a failure that is no hang.
+		wantHang   string
+		wantStacks bool
+		wantWindow string
 	}{
-		{name: "first run times out", results: []verifytree.Result{timedOut}, logs: []string{"hung in TestSlow\n"}, wantVerifyRun: 1, wantLog: "/verify/verify-1.log"},
-		{name: "rerun times out", results: []verifytree.Result{failedResult(), timedOut}, logs: []string{failingPackageLog, "hung in TestSlow\n"}, wantVerifyRun: 2, wantLog: "/verify/verify-2.log"},
+		{name: "first run times out", results: []verifytree.Result{timedOut}, logs: []string{"hung in TestSlow\n"}, wantVerifyRun: 1, wantLog: "/verify/verify-1.log", wantTimedOut: true},
+		{name: "rerun times out", results: []verifytree.Result{failedResult(), timedOut}, logs: []string{failingPackageLog, "hung in TestSlow\n"}, wantVerifyRun: 2, wantLog: "/verify/verify-2.log", wantTimedOut: true},
+		{name: "a go test timeout panic", results: []verifytree.Result{failedResult()}, logs: []string{"panic: test timed out after 10m0s\n" + failingPackageLog}, wantVerifyRun: 1, wantLog: "/verify/verify-1.log", wantHang: "panic: test timed out after", wantStacks: true},
+		{name: "a SIGQUIT dump", results: []verifytree.Result{failedResult()}, logs: []string{"SIGQUIT: quit\n" + failingPackageLog}, wantVerifyRun: 1, wantLog: "/verify/verify-1.log", wantHang: "SIGQUIT: quit", wantStacks: true},
+		{name: "a CPU watchdog quit", results: []verifytree.Result{failedResult()}, logs: []string{watchdogLog}, wantVerifyRun: 1, wantLog: "/verify/verify-1.log", wantHang: "CPU watchdog SIGQUIT", wantStacks: true, wantWindow: "2m0s"},
+		{name: "a test binary ended by a signal", results: []verifytree.Result{failedResult()}, logs: []string{"signal: killed\n" + failingPackageLog}, wantVerifyRun: 1, wantLog: "/verify/verify-1.log", wantHang: "signal: killed"},
+		{name: "an exit code of 128 or above", results: []verifytree.Result{exit(137, "")}, logs: []string{failingPackageLog}, wantVerifyRun: 1, wantLog: "/verify/verify-1.log", wantHang: "exit code 137"},
+		{name: "a shell killed by a signal", results: []verifytree.Result{exit(-1, "")}, logs: []string{failingPackageLog}, wantVerifyRun: 1, wantLog: "/verify/verify-1.log", wantHang: "exit code -1"},
+		{name: "a rerun that hangs", results: []verifytree.Result{failedResult(), failedResult()}, logs: []string{failingPackageLog, "SIGQUIT: quit\n" + failingPackageLog}, wantVerifyRun: 2, wantLog: "/verify/verify-2.log", wantHang: "SIGQUIT: quit", wantStacks: true},
+		{name: "a shell that could not start is no hang", results: []verifytree.Result{exit(-1, "no shell")}, logs: []string{failingPackageLog}, wantVerifyRun: 2, wantLog: "/verify/verify-2.log"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -196,7 +216,8 @@ func TestVerifyGate_TimedOutVerifyFailsAtOnceWithoutRerun(t *testing.T) {
 				results: tt.results,
 				logs:    tt.logs,
 			}
-			gate := newVerifyGate(reports, 3, &VerifyGateNotes{}, testFixPromptPath, f.seams())
+			notes := &VerifyGateNotes{}
+			gate := newVerifyGate(reports, 3, notes, testFixPromptPath, f.seams())
 
 			res, err := gate()
 			if err != nil || res.Passed || res.Terminal {
@@ -209,13 +230,34 @@ func TestVerifyGate_TimedOutVerifyFailsAtOnceWithoutRerun(t *testing.T) {
 			if err != nil {
 				t.Fatalf("readVerifyGateReport() error = %v", err)
 			}
-			if report.TimedOut != verifytree.Timeout.String() || report.LogPath != tt.wantLog || !strings.Contains(report.LogTail, "hung in TestSlow") || len(report.Failures) != 0 {
-				t.Errorf("report = %+v; want the timeout, the log path %s and the log tail, with no failures", report, tt.wantLog)
+			if report.LogPath != tt.wantLog {
+				t.Errorf("report log path = %q; want %q", report.LogPath, tt.wantLog)
 			}
-			for _, want := range []string{"did not finish within 1h0m0s and was killed", tt.wantLog, "hung in TestSlow"} {
-				if !strings.Contains(res.Findings, want) {
-					t.Errorf("findings = %q; want %q in it", res.Findings, want)
+			if tt.wantTimedOut {
+				if report.TimedOut != verifytree.Timeout.String() || !strings.Contains(report.LogTail, "hung in TestSlow") || len(report.Failures) != 0 || report.Hang != "" {
+					t.Errorf("report = %+v; want the timeout and the log tail, with no failures and no hang", report)
 				}
+				for _, want := range []string{"did not finish within 1h0m0s and was killed", "not re-run", tt.wantLog, "hung in TestSlow"} {
+					if !strings.Contains(res.Findings, want) {
+						t.Errorf("findings = %q; want %q in it", res.Findings, want)
+					}
+				}
+				return
+			}
+			if report.Hang != tt.wantHang || report.HangStacks != tt.wantStacks || report.WatchdogWindow != tt.wantWindow || report.TimedOut != "" {
+				t.Errorf("report hang = (%q, stacks %v, window %q, timed out %q); want (%q, %v, %q) and no timeout", report.Hang, report.HangStacks, report.WatchdogWindow, report.TimedOut, tt.wantHang, tt.wantStacks, tt.wantWindow)
+			}
+			if got := failureIDs(report.Failures); !slices.Equal(got, []string{"example.com/mod/internal/a"}) {
+				t.Errorf("report failures = %v; want the identity the log parses to", got)
+			}
+			if tt.wantHang == "" {
+				return
+			}
+			if flaky := notes.Flaky(); len(flaky) != 0 {
+				t.Errorf("notes.Flaky() = %v; want none for a hang", flaky)
+			}
+			if !strings.Contains(res.Findings, "not re-run") || !strings.Contains(res.Findings, tt.wantHang) {
+				t.Errorf("findings = %q; want them to say the step was not re-run and name %q", res.Findings, tt.wantHang)
 			}
 		})
 	}
@@ -402,20 +444,52 @@ func TestVerifyGateStuckReason_TerminalRejectionEndsInResetToPreFix(t *testing.T
 	}
 }
 
-func TestVerifyGateStuckReason_TimedOutReportNamesTheTimeoutAndLog(t *testing.T) {
+func TestVerifyGateStuckReason_HungReportNamesTheHang(t *testing.T) {
 	t.Parallel()
 
-	reportsDir := t.TempDir()
-	report := VerifyGateReport{Attempt: 2, Cap: 2, TimedOut: "1h0m0s", LogPath: "/wt/.lyx/verify/verify.log"}
-	if err := WriteVerifyGateReport(VerifyGateReportPath(reportsDir), report); err != nil {
-		t.Fatal(err)
+	const log = "/wt/.lyx/verify/verify.log"
+	tests := []struct {
+		name   string
+		report VerifyGateReport
+		want   string
+	}{
+		{
+			name:   "a timed-out report names the timeout, that nothing was re-run and the log",
+			report: VerifyGateReport{Attempt: 2, Cap: 2, TimedOut: "1h0m0s", LogPath: log},
+			want:   "verify gate failed after 2 attempt(s) of 2: the verify command did not finish within 1h0m0s, was killed and was not re-run, see " + log,
+		},
+		{
+			name:   "a SIGQUIT report names the hang, the stacks and the log",
+			report: VerifyGateReport{Attempt: 2, Cap: 2, Hang: "SIGQUIT: quit", HangStacks: true, LogPath: log},
+			want:   "verify gate failed after 2 attempt(s) of 2: the verify command hung (SIGQUIT: quit) and was not re-run; its goroutine stacks are in " + log,
+		},
+		{
+			name:   "a watchdog report names the window, the way forward and the re-entry",
+			report: VerifyGateReport{Attempt: 2, Cap: 2, Hang: "CPU watchdog SIGQUIT", HangStacks: true, WatchdogWindow: "2m0s", LogPath: log},
+			want: "verify gate failed after 2 attempt(s) of 2: the verify command hung (CPU watchdog SIGQUIT) and was not re-run; its goroutine stacks are in " + log +
+				"; the gate test's CPU watchdog quit a test binary busy for 2m0s: if that package is CPU-bound but healthy, " + gateslot.BusyQuitWayForward + ", then lyx webster run",
+		},
+		{
+			name:   "an exit-code report names the code and holds no stacks",
+			report: VerifyGateReport{Attempt: 2, Cap: 2, Hang: "exit code 137", LogPath: log},
+			want:   "verify gate failed after 2 attempt(s) of 2: the verify command was killed or exited with exit code 137 and was not re-run, see " + log,
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	got := verifyGateStuckReason(reportsDir, &shuttleengine.GateOutcome{}, "lyx webster run")
+			reportsDir := t.TempDir()
+			if err := WriteVerifyGateReport(VerifyGateReportPath(reportsDir), tt.report); err != nil {
+				t.Fatal(err)
+			}
 
-	want := "verify gate failed after 2 attempt(s) of 2: the verify command did not finish within 1h0m0s and was killed, see /wt/.lyx/verify/verify.log"
-	if got != want {
-		t.Errorf("verifyGateStuckReason() = %q; want %q", got, want)
+			got := verifyGateStuckReason(reportsDir, &shuttleengine.GateOutcome{}, "lyx webster run")
+
+			if got != tt.want {
+				t.Errorf("verifyGateStuckReason() = %q; want %q", got, tt.want)
+			}
+		})
 	}
 }
 

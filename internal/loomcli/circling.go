@@ -161,7 +161,7 @@ func circlingStatusReader(statusPath, statusLock string) reviewStatusReader {
 		if err := os.MkdirAll(filepath.Dir(statusLock), 0o755); err != nil {
 			return shedengine.Status{}, false, fmt.Errorf("create the status lock directory: %w", err)
 		}
-		return state.ReadJSONStrict[shedengine.Status](statusPath, statusLock)
+		return state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLock)
 	}
 }
 
