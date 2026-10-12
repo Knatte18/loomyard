@@ -237,6 +237,52 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 	return sh.WithEnv(envFileKey, envFilePath, cmd)
 }
 
+// buildOpenCmd composes the pane-shell line of a named interactive session that takes no prompt.
+// A fresh session is named with --session-id; when resume is true the line takes over the session sessionID names with --resume instead.
+// It names the session with --name as a reference to LYX_STRAND_NAME, as buildLaunchCmd does, and appends --model and --effort only when non-empty.
+// It passes no prompt, no --settings (the session takes the worktree's own settings), no permission flag and no environment assignment, so the line is one pipeline that OrElse may join.
+func buildOpenCmd(sh shell.Shell, bin, sessionID, model, effort string, resume bool) string {
+	sessionFlag := " --session-id "
+	if resume {
+		sessionFlag = " --resume "
+	}
+	cmd := sh.Invoke(bin) + sessionFlag + sh.Quote(sessionID) + " --name " + sh.EnvRef(agentname.StrandNameEnv)
+	if model != "" {
+		cmd += " --model " + sh.Quote(model)
+	}
+	if effort != "" {
+		cmd += " --effort " + sh.Quote(effort)
+	}
+	return cmd
+}
+
+// OpenLaunch returns the launch of a named interactive session with no prompt.
+// It validates the effort and resolves the model and version into a model id before anything else, mints a session id, and returns the fresh line as Cmd.
+// ResumeCmd resumes the session and falls back to a fresh start under the same id, because Claude Code keeps no transcript for a session that never took a turn, so --resume fails there.
+// Bound: the fresh line runs whenever the resume line exits nonzero, including a resumed session that ends nonzero after a working life;
+// a fresh start under a session id whose transcript exists fails at once, so the fallback never starts a second live session over a recorded one.
+func (c *Claude) OpenLaunch(spec shuttleengine.OpenSpec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
+	if err := validateEffort(spec.Effort); err != nil {
+		return shuttleengine.Launch{}, err
+	}
+	resolvedModel, err := resolveModelID(spec.Model, spec.Version)
+	if err != nil {
+		return shuttleengine.Launch{}, err
+	}
+	sessionID, err := newSessionID()
+	if err != nil {
+		return shuttleengine.Launch{}, fmt.Errorf("mint session id: %w", err)
+	}
+	sh := shell.ForGOOS()
+	bin := claudeBinary(cfg)
+	fresh := buildOpenCmd(sh, bin, sessionID, resolvedModel, spec.Effort, false)
+	resumeLine := buildOpenCmd(sh, bin, sessionID, resolvedModel, spec.Effort, true)
+	return shuttleengine.Launch{Cmd: fresh, ResumeCmd: sh.OrElse(resumeLine, fresh), SessionID: sessionID}, nil
+}
+
+// Compile-time proof that Claude can open a session with no prompt.
+var _ shuttleengine.SessionOpener = (*Claude)(nil)
+
 // buildResumeCmd composes the pane-shell line that reattaches an existing claude session by id.
 // It always uses --resume, never --continue, to avoid ambiguity under concurrent runs.
 //
