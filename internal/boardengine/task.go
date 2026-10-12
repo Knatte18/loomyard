@@ -90,7 +90,7 @@ func unknownMembers(data []byte, known map[string]bool) map[string]json.RawMessa
 }
 
 // eachMember calls visit with the key and raw value of each member of the JSON object data, in order; it visits nothing when data is not an object.
-// data must already be valid JSON: the walk is a single byte pass that trusts its structure, which keeps a load under the shared lock cheap.
+// data must already be valid JSON: the walk is a single byte pass that trusts its structure.
 // value aliases data.
 func eachMember(data []byte, visit func(key string, value []byte)) {
 	position := skipSpace(data, 0)

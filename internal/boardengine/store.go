@@ -83,7 +83,7 @@ type loadedStoreFile struct {
 }
 
 // UnmarshalJSON decodes the known fields in one json pass, then walks the raw bytes once to keep every other key, top-level and per entry, in Unknown.
-// The entries decode through decodedEntry, not storedEntry, so no json call is nested per entry and the load stays as cheap as one decode while the shared lock is held.
+// The entries decode through decodedEntry, not storedEntry, so no json call is nested per entry and the load stays as cheap as one decode.
 func (f *loadedStoreFile) UnmarshalJSON(data []byte) error {
 	var decoded struct {
 		Version    int            `json:"version"`
