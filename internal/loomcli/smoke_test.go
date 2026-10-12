@@ -166,6 +166,20 @@ func waitForCurrentProducer(t *testing.T, loc *lyxcwd.Location, want string, tim
 	}
 }
 
+// readDriverLogContaining polls loc's driver log until its lowercased content contains want or a 20s deadline passes, and returns the last content read.
+// The bootstrap can return while the driver is still between taking the run lock and writing its failure, so a single read can see an empty log.
+func readDriverLogContaining(loc *lyxcwd.Location, want string) []byte {
+	logPath := loomengine.LoomDriverLog(loc)
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		content, _ := os.ReadFile(logPath)
+		if strings.Contains(strings.ToLower(string(content)), want) || time.Now().After(deadline) {
+			return content
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
 // poisonStatusFile rewrites the state of loc's already-seeded status file to an unrecognised value and commits the change records-side.
 // This is the whole rig behind the driver-failure regression cases.
 // The file still decodes, so loomshed.Seed's UpdateJSON takes its found branch and ordinary re-entrant seeding stays unaffected.
@@ -631,16 +645,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		// The rig is confirmed by the driver log's own content: the read gate's invalid-state refusal, not an ordinary completed run.
 		// Without this the step would pass against any fast-exiting driver and prove nothing about the rig.
 		// The poisoned state is not running, so the handshake reports halted on its first poll and the bootstrap can return while the driver is still starting; the log is polled for rather than read once.
-		wantLog := loomengine.LoomDriverLog(loc)
-		var driverLog []byte
-		logDeadline := time.Now().Add(20 * time.Second)
-		for {
-			driverLog, _ = os.ReadFile(wantLog)
-			if strings.Contains(strings.ToLower(string(driverLog)), "invalid state") || time.Now().After(logDeadline) {
-				break
-			}
-			time.Sleep(25 * time.Millisecond)
-		}
+		driverLog := readDriverLogContaining(loc, "invalid state")
 		if !strings.Contains(strings.ToLower(string(driverLog)), "invalid state") {
 			t.Errorf("driver log = %q; want it to name the poisoned status file's invalid state -- the reason the run halted must survive in the log even though the bootstrap proceeded", driverLog)
 		}
@@ -685,10 +690,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		}
 
 		// The driver log carries the decode failure from Shed.Run's own step-1 read gate.
-		driverLog, err := os.ReadFile(loomengine.LoomDriverLog(loc))
-		if err != nil {
-			t.Fatalf("read driver log: %v", err)
-		}
+		driverLog := readDriverLogContaining(loc, "decode")
 		if !strings.Contains(strings.ToLower(string(driverLog)), "decode") {
 			t.Errorf("driver log = %q; want it to name the malformed status file's decode failure", driverLog)
 		}
