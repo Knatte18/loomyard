@@ -128,6 +128,15 @@
 // A Clock that is also an AwakeClock feeds the run's sleep watch each tick, and the deadline moves later by the union of the detected sleeps and the coverage's paused intervals since the run was created.
 // A clock without Awake detects no sleep.
 //
+// # Opened sessions
+//
+// Runner.Open opens a named interactive session with no prompt in a window of its own, for an extra session the orch or the operator wants beside the runs.
+// It needs an engine with the optional SessionOpener capability, and a covered pause refuses it before anything is created.
+// The strand's command chains, after the provider line, an exit marker under the anchor's ephemeral `shuttle-open` directory, reed's detached self-removal and the shell's exit, so ending the session closes its window.
+// The marker is the strand's done-when path, so a resume drops a finished session instead of relaunching it.
+// The strand carries the provider's session id, which the watchdog's name repair reads.
+// An open writes no run directory, no run.json and no output file, so the state verb and the hold notices never cover an opened session.
+//
 // # Stop verb
 //
 // Run.Stop and Runner.StopStrand (the guid form, for a caller holding no handle) remove a run's strand, when it is live or an own-window strand whose pane is dead, after recording the stop in run.json.

@@ -687,6 +687,24 @@ var (
 	_ ActivityReader      = (*sessionFakeEngine)(nil)
 )
 
+// openerFakeEngine is fakeEngine plus the SessionOpener capability: OpenLaunch records the spec it was given and returns the scripted launch, or the scripted error.
+type openerFakeEngine struct {
+	fakeEngine
+
+	launch    Launch
+	openErr   error
+	openSpecs []OpenSpec
+}
+
+func (e *openerFakeEngine) OpenLaunch(spec OpenSpec, cfg Config) (Launch, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.openSpecs = append(e.openSpecs, spec)
+	return e.launch, e.openErr
+}
+
+var _ SessionOpener = (*openerFakeEngine)(nil)
+
 // idleEngine is sessionFakeEngine plus the SessionCycler idle reading: a capture is idle when it starts with "IDLE".
 // Only IdleSession is scripted; the other SessionCycler methods answer empty.
 // A test sets StartupScript to StartupReady for the pane to classify ready.
