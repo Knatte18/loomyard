@@ -3,6 +3,7 @@
 package loomcli
 
 import (
+	"sync"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -58,6 +59,17 @@ func readAgentStates(loc *lyxcwd.Location, cfg shuttleengine.Config) func() ([]p
 			states = append(states, parentlock.AgentState{Name: wait.StrandName, Busy: wait.Busy, Waiting: wait.Waiting})
 		}
 		return states, nil
+	}
+}
+
+// builtOnFirstCall returns a hook that calls build on its first call and runs what build returned from then on.
+// The wake hook reads landing's idle bound when it first wakes, so the verbs that never run a loop read no landing config.
+func builtOnFirstCall(build func() func()) func() {
+	var once sync.Once
+	var hook func()
+	return func() {
+		once.Do(func() { hook = build() })
+		hook()
 	}
 }
 
