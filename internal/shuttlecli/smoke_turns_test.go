@@ -1,7 +1,7 @@
 //go:build llm
 
 // smoke_turns_test.go provokes the hard turn-end cases against a REAL claude in a REAL tmux pane:
-// a long background shell, a background shell finishing mid-turn, a Monitor, a fork, a message sent mid-turn, a skill load and a compact.
+// a long background shell, a background shell finishing mid-turn, a Monitor, a fork, a fork's permission dialog, a message sent mid-turn, a skill load and a compact.
 // One more scenario records every hook line of a session's whole life.
 // Each test drives shuttleengine.Runner directly and reads the run's events file through claudeengine's ParseEvents while Wait runs,
 // so a scenario whose agent has background work running checks that the Stop payload lists exactly what is running.
@@ -329,6 +329,26 @@ func TestSmokeTurnsFork(t *testing.T) {
 	})
 	requireOutstanding(t, w.awaitTurnEnds(1)[0], shuttleengine.BackgroundFork)
 	w.finishDone()
+}
+
+// TestSmokeTurnsForkPermissionAsk pins that a fork whose Bash command Claude Code prompts on in bypass mode records an ask signal that is not an event, from a permission or input-dialog hook.
+// The command is a computed-path `rm` through the special parameter `$$`, and the dialog is never answered, so the run is torn down by the scenario's cleanup.
+func TestSmokeTurnsForkPermissionAsk(t *testing.T) {
+	hub := newTurnHub(t)
+	output := filepath.Join(hub.prime, "turns-fork-permission-ask.txt")
+	w := startTurnScenario(t, hub, shuttleengine.Spec{
+		Prompt: fmt.Sprintf("Launch one forked subagent with the Agent tool, subagent_type fork, whose whole task is to run the one Bash command `rm -f ./smoke-ask-$$` and reply OK. "+
+			"Then wait for it. When the fork returns, write exactly DONE to %s and end your turn.", output),
+		OutputFiles:   []string{output},
+		Model:         smokeClaudeModel,
+		ForkSubagents: true,
+	})
+	w.awaitSignal(shuttleengine.SessionSignalAsk, false)
+	if !slices.ContainsFunc(w.signals(), func(signal shuttleengine.SessionSignal) bool {
+		return signal.Kind == shuttleengine.SessionSignalAsk && !signal.Event
+	}) {
+		t.Fatalf("every ask signal is also an event; want one from a permission or input-dialog hook")
+	}
 }
 
 // TestSmokeTurnsMessageMidTurn pins that a message sent with Run.Send while the agent works does not end the run: it still ends done.

@@ -77,6 +77,7 @@
 //
 // The session-signal parse (SessionSignalParser) reads the same events file as ParseEvents but yields a separate stream, in signals.go, and leaves ParseEvents unchanged.
 // A `Stop` line is a turn end with its outstanding tasks read exactly as ParseEvents reads them, a `StopFailure` an API-error turn end, a `UserPromptSubmit` a turn start, a `PreToolUse` for `AskUserQuestion` an ask, a `PermissionRequest` an ask by its hook name alone, a `Notification` by the fixed table `notificationSignalKinds` (`permission_prompt`, `elicitation_dialog` and `elicitation_url_dialog` are asks, `idle_prompt` is an idle notice, and `agent_needs_input`, `elicitation_response` and any other type are skipped), a `SessionEnd` a session end with its reason, and a `SessionStart` a session start carrying the payload's `source` mapped to a provider-neutral one: `startup`, `resume`, `clear` and `compact` to their constants, and any other or missing string to the empty source.
+// The asks that are not events, the ones the dialog notice reads, are the `PermissionRequest` hook and the `permission_prompt`, `elicitation_dialog` and `elicitation_url_dialog` Notifications, a fork's included; the question tool's ask is an event.
 // The session fold reads a `resume` or `clear` start as an idle-fresh session, and a `startup` start too unless a turn is running; a `compact` start moves nothing.
 // A `SessionEnd` reason of `logout`, `prompt_input_exit` or `other` ends the process; `clear`, `resume` and an unknown reason do not.
 // A recording hook writes a stamp line `{"lyx_stamp":"<hook>","lyx_at":"<RFC 3339 UTC>"}` before its payload, and the parser gives a payload the time of the nearest preceding untaken stamp naming its hook.
@@ -160,6 +161,19 @@
 // The steer is the gate rule: it names `lyx gate test` run in the foreground with the Bash tool's `timeout` at the ceiling, every other check in the foreground, and no `cd` into the session's own working directory.
 // It is a guardrail, not a barrier: its hook sees static text only, so a run hidden behind a script, `bash -c`, a `cd` plus a relative pattern it does not cover, or a shell variable passes, as does any raw package-scoped `go test`,
 // and a matching spelling inside a quoted argument, a commit message or a `grep` is falsely denied.
+//
+// The in-place edit row denies a Bash `sed` or `perl` whose words include an in-place flag, and every run installs it, the orch included, with no config key.
+// For `sed` that is `-i`, `-i<suffix>`, a short-flag cluster holding `i`, or any prefix of `--in-place` from `--i` up;
+// for `perl`, a short-flag cluster holding `i`.
+// Reading with `sed -n` passes, and the steer points at the edit directive's rule.
+// It is a guardrail, not a barrier: its hook sees static text only, so `sed` writing by redirection, a `w` command inside a script, `awk`, `find -exec sed -i`, anything behind `bash -c`, `eval` or a variable, and anything after a prefix the pattern does not list pass,
+// and a matching spelling inside a quoted argument, a `grep` alternation or another payload field, or a `perl` read whose cluster holds an `i`, is falsely denied.
+//
+// The computed-rm row denies a Bash `rm` in command position when the same payload also holds a command substitution (`$(` or a backtick) or a shell variable expansion (`$` followed by a letter, a digit, `_`, `{`, `@` or `*`), and every run installs it, the orch included.
+// It is a deny and not a prompt because Claude Code raises a statically-unresolvable-target dialog for an `rm` on a computed path, which shows even in bypass mode and stalls an unwatched run.
+// The steer names the literal path as the way forward.
+// It is a guardrail, not a barrier: its hook sees static text only, so a removal behind `find -delete`, `xargs rm` with no `$`, `bash -c` or a script passes, as does one through `$$`, `$?`, `$#` or `$!`,
+// and an `rm` of a literal path in a command that uses `$` elsewhere, a `grep` alternation naming `rm`, or a matching spelling in another payload field such as the description is falsely denied.
 //
 // A replay corpus of real turn ends lives under testdata/corpus, one directory per case:
 // transcript.jsonl holds the source transcript's lines the parsers read, trimmed to the fields they read;

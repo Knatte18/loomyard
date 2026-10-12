@@ -205,7 +205,7 @@ var substitutionMarkers = []string{"$(", "`", "<(", ">("}
 // A quoted word starting with `-` is still a flag, so a quoted writing flag is rejected.
 // A glob character (`*`, `?`, `[`, `#`, or `^` at a word's start) is rejected in every `lyx` word, quoted or not.
 // In a `git` word a quoted one is text wherever a positional is admitted, and an unquoted one is rejected except after the `--` of `log`, `show`, `diff` and `status`, where every word is a pathspec.
-// `sed` is read-only only as `-n`, one line number or range of two line numbers followed by `p`, and file words.
+// `sed` is read-only only as the quiet flag (`-n`, `--quiet` or `--silent`), one script of print commands joined by `;` that each take a line-number or `/RE/` address or a range of two, and file words.
 // The two stderr redirections `2>&1` and `2>/dev/null`, each a whole token that does not open its segment, are dropped before the redirection scan; every other redirection fails it.
 // A separator or redirection character inside a quoted span is text.
 // A substitution is found with only single-quoted spans blanked, because a shell runs one inside double quotes.
@@ -420,13 +420,18 @@ func readOnlyLyxSegment(words []shellWord) bool {
 	return len(args) == 0
 }
 
-// sedPrintScript matches a print of one line or of a range of two lines.
-var sedPrintScript = regexp.MustCompile(`^[0-9]+(,[0-9]+)?p$`)
+// sedPrintScript matches one or more print commands joined by `;`, each an address or a range of two addresses followed by `p`, with nothing after the last `p`.
+// An address is a line number or a regex `/RE/` whose `RE` is non-empty and holds no `/`, `;` or newline, with no flag after the closing `/`.
+// No command but `p` is in the grammar and a regex address cannot end or split inside itself, so a match can only read.
+var sedPrintScript = regexp.MustCompile(`^(?:(?:[0-9]+|/[^/;\n]+/)(?:,(?:[0-9]+|/[^/;\n]+/))?p)(?:;(?:[0-9]+|/[^/;\n]+/)(?:,(?:[0-9]+|/[^/;\n]+/))?p)*$`)
 
-// readOnlySedSegment reports whether words, the words of one `sed` segment, are `-n`, a print script of a line or a line range, then file words.
+// sedQuietFlags are the spellings of sed's quiet flag.
+var sedQuietFlags = []string{"-n", "--quiet", "--silent"}
+
+// readOnlySedSegment reports whether words, the words of one `sed` segment, are a quiet flag, one print script, then file words.
 // A file word may not start with `-` or hold an unquoted glob character, so no flag can follow the script; with no file word, sed prints its standard input.
 func readOnlySedSegment(words []shellWord) bool {
-	if len(words) < 3 || words[1].text != "-n" || !sedPrintScript.MatchString(words[2].text) {
+	if len(words) < 3 || !slices.Contains(sedQuietFlags, words[1].text) || !sedPrintScript.MatchString(words[2].text) {
 		return false
 	}
 	return !slices.ContainsFunc(words[3:], func(word shellWord) bool { return strings.HasPrefix(word.text, "-") || word.glob })

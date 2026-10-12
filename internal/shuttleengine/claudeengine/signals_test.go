@@ -128,6 +128,11 @@ func TestParseSessionSignals(t *testing.T) {
 			want:   []shuttleengine.SessionSignal{{Kind: shuttleengine.SessionSignalAsk, At: at, SessionID: "sess-1"}},
 		},
 		{
+			name:   "fork_permission_request_is_an_ask_without_an_event",
+			chunks: []string{signalStamp("PermissionRequest", stampTime) + signalPayload(t, "PermissionRequest", map[string]any{"tool_name": "Write", "agent_id": "fork-1"})},
+			want:   []shuttleengine.SessionSignal{{Kind: shuttleengine.SessionSignalAsk, At: at, SessionID: "sess-1"}},
+		},
+		{
 			name:   "elicitation_url_dialog_notification_is_an_ask",
 			chunks: []string{signalStamp("Notification", stampTime) + signalPayload(t, "Notification", map[string]any{"notification_type": "elicitation_url_dialog"})},
 			want:   []shuttleengine.SessionSignal{{Kind: shuttleengine.SessionSignalAsk, At: at, SessionID: "sess-1"}},

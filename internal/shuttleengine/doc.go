@@ -85,6 +85,17 @@
 // A batch of several new events is classified by its last event, so only its last held turn end is notified.
 // It stays provider-invariant, per the Shuttle Provider-Seam Invariant.
 //
+// A second notice covers a permission or input dialog lyx cannot answer, in the same runs and through the same notifier, with the same skips for an interactive run and a runner with no notifier.
+// An engine with SessionSignalParser and InputBoxReader reports each ask that is not also an event, and Wait folds those asks into a latch that sets on the first ask and keeps its stamp for further asks.
+// While the latch is set, each tick reads the pane.
+// An input box on screen clears the latch at any age, and a failed capture or a pane too short to draw the box changes nothing.
+// A pane with no input box, once the latch is permissionNoticeBound old, sends one line naming the strand and saying the operator answers the dialog in the pane, reached with `lyx reed attach` in the run's worktree.
+// A later turn end or turn start never clears the latch, and Spec.QuietHold and Spec.HoldDeferral neither suppress nor defer the notice.
+// RunState.DialogNotifiedOffset, the events-file offset past the latest ask folded into a notified episode, is persisted before the notifier is called and advanced by later asks of that episode,
+// and a Wait that starts reading asks from the larger of the prompt offset and it never rebuilds a latch from an ask at or below it, including after an Attach.
+// It is kept apart from RunState.NotifiedOffset so a hold notice and a dialog notice never suppress each other.
+// The notice is never typed into the pane and changes no outcome.
+//
 // AwaitAny is the shared wait: it stats the told paths once a second until one exists or the cap elapses, and watches no directory.
 // It is the poll every capped keep-cache-warm wait verb runs on, and DefaultAwaitCap is the cap those verbs default to.
 //
