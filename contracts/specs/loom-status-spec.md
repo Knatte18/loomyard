@@ -63,7 +63,7 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
 - **`product.slug` / `product.parent`** — the only handoff pointers into the wider task record;
   the board owns durable title/description, not this file.
 - **`product.start_sha`** — the repo `HEAD` stamped when Webster begins, so Raddle can diff `start_sha..HEAD`. `null` until Webster starts.
-- **`pause_before` / `pause_after`** — stop conditions an outside actor records through `lyx shed pause --before|--after`; both keys are absent when empty.
+- **`pause_before` / `pause_after`** — stop conditions an outside actor records through `lyx loom pause --before|--after` or `lyx shed pause --before|--after`, the loom pause verb's only forms; both keys are absent when empty.
   `pause_before` fires when `current_producer` equals it, before that producer is called.
   `pause_after` fires when the named producer returns a routed running outcome, pausing at the routed row, and stays recorded across a halting outcome or a producer error.
   A fired condition pauses the run with the reason `paused before <target>, as requested` or `paused after <target>, as requested` and clears both keys.

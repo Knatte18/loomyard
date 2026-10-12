@@ -105,7 +105,7 @@ func passedResult() verifytree.Result {
 }
 
 // TestVerifyGate_PassesWithoutVerifying proves the gate passes without running the verify when the
-// outcome is stuck or paused (even over a dirty tree), when the plan has no verify section, and when
+// outcome is stuck (even over a dirty tree), when the plan has no verify section, and when
 // outcome.yaml is unreadable, leaving that file to the run's own mapping.
 func TestVerifyGate_PassesWithoutVerifying(t *testing.T) {
 	t.Parallel()
@@ -117,7 +117,6 @@ func TestVerifyGate_PassesWithoutVerifying(t *testing.T) {
 		outcomeErr error
 	}{
 		{name: "a stuck outcome", fake: gateFake{outcome: outcomeStuck, command: "go test ./...", dirty: []string{"x.go"}}},
-		{name: "a paused outcome", fake: gateFake{outcome: outcomePaused, command: "go test ./...", dirty: []string{"x.go"}}},
 		{name: "no verify section", fake: gateFake{outcome: outcomeDone}},
 		{name: "an unreadable outcome", fake: gateFake{command: "go test ./...", results: []verifytree.Result{failedResult()}}, outcomeErr: errors.New("no outcome.yaml")},
 	}

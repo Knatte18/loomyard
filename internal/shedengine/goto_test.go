@@ -88,15 +88,19 @@ func TestGoto_RunLockHeldRefusesAndLeavesFile(t *testing.T) {
 	if !errors.Is(err, ErrShedBusy) {
 		t.Fatalf("Goto(...) error = %v; want ErrShedBusy", err)
 	}
-	for _, want := range []string{"lyx shed pause", "lyx shed status"} {
+	for _, want := range []string{`"lyx shed pause --after <current_producer>"`, "lyx shed status"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not name %q", err, want)
 		}
 	}
 	req := gotoRequest(shed, "A")
 	req.RunID = "some-slug"
-	if _, err := Goto(req); err == nil || !strings.Contains(err.Error(), `"lyx shed pause some-slug"`) || !strings.Contains(err.Error(), `"lyx shed status some-slug"`) {
+	if _, err := Goto(req); err == nil || !strings.Contains(err.Error(), `"lyx shed pause some-slug --after <current_producer>"`) || !strings.Contains(err.Error(), `"lyx shed status some-slug"`) {
 		t.Errorf("Goto(...) told RunID error = %v; want the pause and status verbs addressing some-slug", err)
+	}
+	req.PauseWayForward = "lyx batten pause some-slug"
+	if _, err := Goto(req); err == nil || !strings.Contains(err.Error(), `"lyx batten pause some-slug"`) || strings.Contains(err.Error(), "lyx shed pause") {
+		t.Errorf("Goto(...) told PauseWayForward error = %v; want the told command in place of the shed default", err)
 	}
 	if after := readStatus(t, shed.StatusPath, shed.StatusLockPath); !reflect.DeepEqual(before, after) {
 		t.Errorf("status file changed on a busy refusal: %+v -> %+v", before, after)
@@ -344,7 +348,7 @@ func TestGoto_AwaitingRefusesFinalizeAndAdmitsEarlierRow(t *testing.T) {
 func TestGoto_RunningRunRefusedUntilPaused(t *testing.T) {
 	shed := tailShed(t, "Describe", StateRunning, nil)
 	err := assertGotoRefused(t, shed, "Webster")
-	for _, want := range []string{"lyx shed pause", "lyx shed step"} {
+	for _, want := range []string{"lyx shed pause --after Describe", "lyx shed step"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not name %q", err, want)
 		}
@@ -416,7 +420,7 @@ func TestRelaunch(t *testing.T) {
 		wantAdmits int
 		check      func(t *testing.T, got Status)
 	}{
-		{name: "run lock held", seed: seedWith(StateBlocked, "B"), holdLock: true, target: "A", wantBusy: true, wantErr: "lyx shed pause"},
+		{name: "run lock held", seed: seedWith(StateBlocked, "B"), holdLock: true, target: "A", wantBusy: true, wantErr: `"lyx shed pause --after <current_producer>"`},
 		{name: "status file absent", target: "A", wantErr: "way forward: told clause"},
 		{name: "done run", seed: seedWith(StateDone, "B"), target: "A", wantErr: "relaunch never re-opens a finished run; way forward: seed a new run"},
 		{name: "running run", seed: seedWith(StateRunning, "B"), target: "A", wantErr: "another loop owns this run; way forward:"},

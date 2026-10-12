@@ -22,6 +22,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
 // setCacheDir redirects the token cache to dir by setting every environment
@@ -503,5 +505,96 @@ func TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout(t *testing.T) {
 	const slack = 200 * time.Millisecond
 	if elapsed > ghAuthTokenTimeout+slack {
 		t.Errorf("resolveToken() took %v; want close to ghAuthTokenTimeout (%v), not an unbounded hang", elapsed, ghAuthTokenTimeout)
+	}
+}
+
+// TestAuthRT_WaitsWhileAPauseCoversTheProcess pins that a request waits at entry while a live pause covers the process, writes one gate line, and goes out once the pause is resumed.
+// It is not parallel: the pause network gate is process-wide state.
+func TestAuthRT_WaitsWhileAPauseCoversTheProcess(t *testing.T) {
+	setCacheDir(t, t.TempDir())
+	t.Setenv("GH_TOKEN", "env-token")
+	t.Setenv("GITHUB_TOKEN", "")
+
+	recordPath := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
+	setLive := func(entries ...pauserecord.Entry) {
+		t.Helper()
+		if _, err := pauserecord.Update(recordPath, time.Now(), func(r *pauserecord.Record) error {
+			r.Live = entries
+			return nil
+		}); err != nil {
+			t.Fatalf("update the pause record: %v", err)
+		}
+	}
+	setLive(pauserecord.Entry{Scope: pauserecord.ScopeHub, PausedAt: time.Now()})
+
+	var mu sync.Mutex
+	var lines []string
+	wakes := make(chan struct{}, 100)
+	t.Cleanup(pauserecord.InstallGate(pauserecord.Gate{
+		Geometry: pauserecord.Geometry{RecordPath: recordPath},
+		Notify: func(line string) {
+			mu.Lock()
+			defer mu.Unlock()
+			lines = append(lines, line)
+		},
+		Sleep: func(ctx context.Context, d time.Duration) error {
+			wakes <- struct{}{}
+			time.Sleep(20 * time.Millisecond)
+			return nil
+		},
+	}))
+
+	var captured []capturedRequest
+	server := newScriptedServer(t, []int{http.StatusOK}, &captured)
+	do := func() error {
+		req, err := http.NewRequest(http.MethodGet, server.URL, nil)
+		if err != nil {
+			return err
+		}
+		resp, err := (&http.Client{Transport: &authRT{}}).Do(req)
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return err
+	}
+
+	finished := make(chan error, 1)
+	go func() { finished <- do() }()
+
+	select {
+	case <-wakes:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the held request never woke its wait")
+	}
+	if len(captured) != 0 {
+		t.Fatalf("server hits after the first wake = %d; want 0 while the pause covers the process", len(captured))
+	}
+	mu.Lock()
+	if len(lines) != 1 || !strings.Contains(lines[0], `"lyx resume"`) {
+		t.Fatalf("gate lines = %q; want exactly one naming lyx resume", lines)
+	}
+	mu.Unlock()
+
+	setLive()
+	select {
+	case err := <-finished:
+		if err != nil {
+			t.Fatalf("held request error = %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the request did not complete after the pause was resumed")
+	}
+	if len(captured) != 1 {
+		t.Fatalf("server hits after the resume = %d; want 1", len(captured))
+	}
+
+	for len(wakes) > 0 {
+		<-wakes
+	}
+	if err := do(); err != nil {
+		t.Fatalf("request with no pause: %v", err)
+	}
+	if len(wakes) != 0 || len(captured) != 2 {
+		t.Fatalf("with no pause: wakes = %d, hits = %d; want no wake and a second hit", len(wakes), len(captured))
 	}
 }

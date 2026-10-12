@@ -102,7 +102,7 @@ func TestGotoCmd_RefusesMissingOrUnknownTarget(t *testing.T) {
 	}
 }
 
-// TestGotoCmd_RefusesHeldRunLock asserts a held run lock names lyx shed pause.
+// TestGotoCmd_RefusesHeldRunLock asserts a held run lock names lyx shed pause --after <current_producer>.
 func TestGotoCmd_RefusesHeldRunLock(t *testing.T) {
 	paths := newTestPaths(t)
 	seedBlocked(t, paths, "B")
@@ -116,19 +116,20 @@ func TestGotoCmd_RefusesHeldRunLock(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit code = %d; want 1", code)
 	}
-	if msg, _ := env["error"].(string); !strings.Contains(msg, "lyx shed pause") {
-		t.Errorf("error %q does not name lyx shed pause", msg)
+	if msg, _ := env["error"].(string); !strings.Contains(msg, "lyx shed pause run-1 --after <current_producer>") {
+		t.Errorf("error %q does not name lyx shed pause run-1 --after <current_producer>", msg)
 	}
 	if kind, _ := env["kind"].(string); kind != shedengine.ShedBusyKind {
 		t.Errorf("kind = %q; want %q", kind, shedengine.ShedBusyKind)
 	}
 }
 
-// TestGotoCmd_PassesToldWayForwardTexts asserts the verb hands the spec's run-id and missing-status clause to the engine, seen in a refusal.
+// TestGotoCmd_PassesToldWayForwardTexts asserts the verb hands the spec's run-id, missing-status clause and pause command to the engine, seen in a refusal.
 func TestGotoCmd_PassesToldWayForwardTexts(t *testing.T) {
 	paths := newTestPaths(t)
 	spec := gotoSpec(paths)
 	spec.MissingStatusWayForward = "way forward: told clause"
+	spec.PauseWayForward = "lyx batten pause run-1"
 
 	env, code := execEnvelope(t, gotoCmd(gotoTexts(), spec), []string{"--to", "A"})
 	if code == 0 {
@@ -143,8 +144,8 @@ func TestGotoCmd_PassesToldWayForwardTexts(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("exit code = 0 over a running run; want a refusal (env %v)", env)
 	}
-	if msg, _ := env["error"].(string); !strings.Contains(msg, "lyx shed pause run-1") {
-		t.Errorf("message = %q; want the running refusal to name the spec's run-id", msg)
+	if msg, _ := env["error"].(string); !strings.Contains(msg, `"lyx batten pause run-1"`) || !strings.Contains(msg, `"lyx shed step run-1"`) {
+		t.Errorf("message = %q; want the running refusal to name the spec's told pause command and run-id", msg)
 	}
 }
 

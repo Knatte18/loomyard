@@ -17,6 +17,7 @@ var alignmentAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/editdirective",
 	"github.com/Knatte18/loomyard/internal/logger",
 	"github.com/Knatte18/loomyard/internal/parentdirective",
+	"github.com/Knatte18/loomyard/internal/pauserecord",
 	"github.com/Knatte18/loomyard/internal/segmentcolor",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
 	"github.com/Knatte18/loomyard/internal/state",

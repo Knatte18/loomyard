@@ -61,6 +61,7 @@ func gotoCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 
 				RunID:                   spec.RunID,
 				MissingStatusWayForward: spec.MissingStatusWayForward,
+				PauseWayForward:         spec.PauseWayForward,
 			})
 			if err != nil {
 				if errors.Is(err, shedengine.ErrShedBusy) {

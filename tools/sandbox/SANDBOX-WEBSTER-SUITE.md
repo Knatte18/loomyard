@@ -4,7 +4,7 @@
 
 A structured test-loop for exercising `lyx webster` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo. `webster` is the implementer module, with its own plan format and report contract: instead of spawning a fresh reed/tmux strand per batch, one long-lived **Master** session reads the codebase and the whole flat card-list plan (plan-format, parsed by `internal/planparser`, grouped into execution batches by `internal/batcher`'s config-selected batchifier -- the `cautious` cost profile by default) once, then forks one implementer per batch in-session (Claude Code's Agent tool, `subagent_type: "fork"`) -- no `spawn-batch`/`poll` verbs exist here;
 Master itself brackets each fork with `begin-batch`/`await-batch`/`record-batch` calls (forks are BACKGROUNDED agents on current Claude Code -- the Agent call returns immediately, so Master long-polls `await-batch` for the batch report instead of relying on a synchronous fork return, and never ends its turn while a batch is open).
-This suite is deliberately narrow: one scenario, because webster's pure Go-level mechanics (fingerprinting, `--fresh` archiving, pause, `run.lock` contention, plan validation) are webster-local code already covered by the hermetic and `-tags integration` test tiers -- what is genuinely live-only here is the fork loop itself (W1).
+This suite is deliberately narrow: one scenario, because webster's pure Go-level mechanics (fingerprinting, `--fresh` archiving, `run.lock` contention, plan validation) are webster-local code already covered by the hermetic and `-tags integration` test tiers -- what is genuinely live-only here is the fork loop itself (W1).
 
 ## Pre-conditions
 
@@ -160,6 +160,6 @@ and it keeps the Hub clean while the session is still open for inspection.
 
 - Warp/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in `SANDBOX-REED-SUITE.md`, shuttle black-box agent scenarios stay in `SANDBOX-SHUTTLE-SUITE.md`, burler's own review+fix round scenarios stay in `SANDBOX-BURLER-SUITE.md`;
   this suite holds only webster's fork-loop scenarios -- add `W` scenarios here, not in any other suite.
-- This suite is a FLOOR, not a ceiling: the run-level mechanics (fingerprinting, `--fresh` archiving, pause, `run.lock` contention, plan validation, crash reclaim) are webster-local Go code exercised by the hermetic and `-tags integration` test tiers plus `internal/webstercli/smoke_test.go`'s live smoke tests -- duplicating those here would re-test covered Go paths through a slower medium.
+- This suite is a FLOOR, not a ceiling: the run-level mechanics (fingerprinting, `--fresh` archiving, `run.lock` contention, plan validation, crash reclaim) are webster-local Go code exercised by the hermetic and `-tags integration` test tiers plus `internal/webstercli/smoke_test.go`'s live smoke tests -- duplicating those here would re-test covered Go paths through a slower medium.
   What is genuinely live-only is the fork loop itself (W1).
   It does not prove implementer quality or plan-format content richness -- those are a normal code review's job.

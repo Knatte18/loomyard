@@ -95,6 +95,7 @@ func reedGeometry(l *lyxcwd.Location, prime bool) reedengine.Geometry {
 		NameShortname:      shortname,
 		NameSlug:           slug,
 		ParentName:         parent,
+		PauseRecordPath:    pauseGeometry(l, prime).RecordPath,
 		DiscoverSignalPath: filepath.Join(fabricengine.HubScratchDir(l.HubPath), reedengine.DiscoverSignalFileName),
 	}
 }

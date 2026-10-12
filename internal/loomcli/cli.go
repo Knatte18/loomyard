@@ -359,7 +359,9 @@ Example:
 Without --watch, it reads the status file once and emits a single JSON
 envelope carrying the current producer, state, error text, pause flag,
 composed activity, history length, the task's slug/parent, and the
-interrupt policy for the current producer.
+interrupt policy for the current producer. While a pause covers the run,
+the envelope also carries "paused_since" (when the pause began, RFC 3339)
+and "paused_by" (the pause's scope); a run no pause covers carries neither.
 
 With --watch, it performs the same read once as a pre-flight, then tails
 the file and never exits, printing a line only when the composed activity
@@ -382,25 +384,31 @@ Example:
 	Pause: shedverbs.VerbText{
 		Use:      "pause [<run-id>]",
 		Audience: clihelp.AudienceOperator,
-		Short:    "request a pause at loom's next producer boundary",
-		Long: `pause sets a request the running phase machine consumes at its next
-producer boundary. It does not kill anything -- the machine itself clears
-the flag in the persist that records the paused state.
+		Short:    "record a stop condition that pauses loom at a named producer boundary",
+		Long: `pause records a stop condition the running phase machine fires at a named
+producer boundary. It does not kill anything.
+
+--before <producer> pauses the run before that producer runs. --after
+<producer> pauses after that producer returns a routed running outcome, at
+the row it routed to. Either replaces a recorded one. --clear removes both
+conditions, and refuses beside --before or --after.
+
+A bare pause, with no flag, refuses for a loom run: it no longer stops
+anything. The refusal names the two ways forward: "lyx pause <slug>" stops
+the run's agents now, and "--after <current_producer>" halts the run at its
+next producer boundary.
+
+--after naming a row that waits for the parent lock also ends that wait
+mid-row, halting the run at the row; the condition stays recorded until
+"lyx loom goto" clears it, and "lyx loom resume" then moves the run.
 
 An optional run-id positional addresses a run other than this worktree's
 own default ("self"); pause refuses when no seed already exists at that
 run-id.
 
---before <producer> records a stop condition instead: the run pauses before
-that producer runs. --after <producer> pauses after that producer returns a
-routed running outcome, at the row it routed to. Either replaces a recorded
-one, and neither touches the request above. --clear removes both
-conditions, and refuses beside --before or --after.
-
 Example:
-  lyx loom pause
-  lyx loom pause <run-id>
-  lyx loom pause --before Plan-Write
+  lyx loom pause --after Plan-Write
+  lyx loom pause <run-id> --before Plan-Write
   lyx loom pause --clear`,
 	},
 	Goto: shedverbs.VerbText{

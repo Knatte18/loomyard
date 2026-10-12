@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
 // defaultConfig is the Config most tests that never poll use.
@@ -179,5 +180,55 @@ func (fx *fixture) newRun(spec Spec, opts ...runOpt) *Run {
 		deadline: s.deadline,
 		gate:     s.gate,
 		offset:   s.offset,
+
+		createdAt: s.clk.Now(),
+	}
+}
+
+// coverHub writes a live hub-wide pause entry paused at pausedAt into a fresh temp record.
+// It returns the geometry a Runner reads that record through, and the function that resumes the entry at resumedAt.
+func coverHub(t *testing.T, pausedAt time.Time) (pauserecord.Geometry, func(resumedAt time.Time)) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
+	update := func(now time.Time, mutate func(*pauserecord.Record)) {
+		t.Helper()
+		_, err := pauserecord.Update(path, now, func(record *pauserecord.Record) error {
+			mutate(record)
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("update pause record: %v", err)
+		}
+	}
+	update(pausedAt, func(record *pauserecord.Record) {
+		record.Live = append(record.Live, pauserecord.Entry{Scope: pauserecord.ScopeHub, PausedAt: pausedAt})
+	})
+	resume := func(resumedAt time.Time) {
+		update(resumedAt, func(record *pauserecord.Record) {
+			entry := record.Live[0]
+			entry.ResumedAt = resumedAt
+			record.Live = nil
+			record.Resumed = append(record.Resumed, entry)
+		})
+	}
+	return pauserecord.Geometry{RecordPath: path, Slug: "slug"}, resume
+}
+
+// liftClock runs lift once, after its liftAfter-th Sleep, so a test ends a pause at a known tick.
+// The clock it wraps must be an AwakeClock, whose reading it forwards.
+type liftClock struct {
+	Clock
+	sleeps    int
+	liftAfter int
+	lift      func()
+}
+
+func (c *liftClock) Awake() time.Duration { return c.Clock.(AwakeClock).Awake() }
+
+func (c *liftClock) Sleep(d time.Duration) {
+	c.Clock.Sleep(d)
+	c.sleeps++
+	if c.sleeps == c.liftAfter {
+		c.lift()
 	}
 }

@@ -1,0 +1,174 @@
+// report.go declares the seams the pause, resume and status sequences read through and the reports they return, with the holds report shared by pause and status.
+
+package pauseengine
+
+import (
+	"sort"
+	"time"
+
+	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
+)
+
+// SessionInfo is one live shuttle-run strand of a pair.
+type SessionInfo struct {
+	// Strand is the reed strand name.
+	Strand string `json:"strand"`
+	GUID   string `json:"guid"`
+	// Slug is the pair's slug.
+	Slug string `json:"slug"`
+}
+
+// Pair is one hub pair as the sequences see it.
+type Pair interface {
+	// Slug is the pair's slug.
+	Slug() string
+	// Sessions lists the pair's live shuttle-run strands, the loom driver included.
+	Sessions() ([]SessionInfo, error)
+	// Busy reports whether the session is in a turn or holds an unsent draft.
+	Busy(guid string) (bool, error)
+	// Live reports whether the strand exists with a live pane.
+	Live(guid string) (bool, error)
+	// Interrupt sends the provider's interrupt key to the session after the pane check.
+	Interrupt(guid string) error
+	// Send types text into the session through the guarded paste-submit.
+	Send(guid, text string) error
+	// Running reports the pair's current producer and whether its run reads running.
+	Running() (producer string, running bool, err error)
+}
+
+// Deps is everything the sequences read and write, all of it told.
+type Deps struct {
+	// RecordPath is the pause record file.
+	RecordPath string
+	// Pairs are the hub's pairs.
+	Pairs []Pair
+	// NetOps lists the network operations in flight.
+	NetOps func() ([]pauserecord.NetOp, error)
+	// Locks lists the parent lock records.
+	Locks func() ([]parentlock.Entry, error)
+	// OrchWatcherLive reports whether an orch watcher is running.
+	OrchWatcherLive func() bool
+	// Caller is the caller's strand name, empty for an external caller.
+	Caller string
+	// Now is the clock.
+	Now func() time.Time
+	// Sleep waits for a duration.
+	Sleep func(time.Duration)
+}
+
+// SessionNote names a session with the reason the sequence did what it did to it.
+type SessionNote struct {
+	Strand string `json:"strand"`
+	Slug   string `json:"slug"`
+	Reason string `json:"reason"`
+}
+
+// NetOpReport is one network operation in flight.
+type NetOpReport struct {
+	Op     string `json:"op"`
+	Strand string `json:"strand"`
+	Slug   string `json:"slug"`
+	// UnderParentLock reports whether the process held its slug's parent lock when the operation began.
+	UnderParentLock bool `json:"under_parent_lock"`
+}
+
+// HeldBranch is a parent branch a covered run holds the lock on, with the runs queued behind it.
+type HeldBranch struct {
+	Branch string   `json:"branch"`
+	Slug   string   `json:"slug"`
+	Queued []string `json:"queued"`
+}
+
+// WaitingRun is a covered run waiting in a parent lock queue, with the runs queued behind it.
+type WaitingRun struct {
+	Slug   string   `json:"slug"`
+	Branch string   `json:"branch"`
+	Behind []string `json:"behind"`
+}
+
+// holdReport is what a pause leaves held on the parent locks.
+type holdReport struct {
+	Held    []HeldBranch `json:"held"`
+	Waiting []WaitingRun `json:"waiting"`
+}
+
+// GoProducer is a covered run that reads running with no live session: it advances through local Go work until it reaches a held path.
+type GoProducer struct {
+	Slug     string `json:"slug"`
+	Producer string `json:"producer"`
+}
+
+// OrchCase says what became of the orch under a hub pause.
+type OrchCase string
+
+const (
+	// OrchRanPause means the orch ran the pause itself, so nothing interrupts it.
+	OrchRanPause OrchCase = "ran-the-pause"
+	// OrchDelegated means a live orch watcher interrupts the orch at the grace end.
+	OrchDelegated OrchCase = "delegated-to-the-orch-watcher"
+	// OrchNotInterrupted means no orch watcher is live, so the orch is not interrupted.
+	OrchNotInterrupted OrchCase = "not-interrupted-no-orch-watcher-is-live"
+)
+
+// readHolds reports the parent branches the covered runs hold and the covered runs waiting in a queue.
+// A run is covered when a live entry of rec covers its slug now.
+func readHolds(deps Deps, rec pauserecord.Record) (holdReport, error) {
+	report := holdReport{Held: []HeldBranch{}, Waiting: []WaitingRun{}}
+	if deps.Locks == nil {
+		return report, nil
+	}
+	entries, err := deps.Locks()
+	if err != nil {
+		return report, err
+	}
+	covered := func(slug string) bool {
+		_, ok := rec.Covering(slug)
+		return ok
+	}
+	for _, entry := range entries {
+		if entry.Err != "" {
+			continue
+		}
+		waiters := append([]parentlock.Ticket(nil), entry.Waiters...)
+		sort.SliceStable(waiters, func(i, j int) bool { return waiters[i].QueuedAt.Before(waiters[j].QueuedAt) })
+		queued := make([]string, 0, len(waiters))
+		for _, waiter := range waiters {
+			queued = append(queued, waiter.Owner.Slug)
+		}
+		if holder := entry.Record.Owner.Slug; covered(holder) {
+			report.Held = append(report.Held, HeldBranch{Branch: entry.Record.Branch, Slug: holder, Queued: queued})
+		}
+		for i, waiter := range waiters {
+			if covered(waiter.Owner.Slug) {
+				report.Waiting = append(report.Waiting, WaitingRun{Slug: waiter.Owner.Slug, Branch: entry.Record.Branch, Behind: queued[i+1:]})
+			}
+		}
+	}
+	return report, nil
+}
+
+// netOpReports lists the network operations in flight that covers selects, each marked when run under a parent lock.
+func netOpReports(deps Deps, covers func(slug string) bool) ([]NetOpReport, error) {
+	reports := []NetOpReport{}
+	if deps.NetOps == nil {
+		return reports, nil
+	}
+	ops, err := deps.NetOps()
+	if err != nil {
+		return reports, err
+	}
+	for _, op := range ops {
+		if covers(op.Slug) {
+			reports = append(reports, NetOpReport{Op: op.Op, Strand: op.Strand, Slug: op.Slug, UnderParentLock: op.UnderParentLock})
+		}
+	}
+	return reports, nil
+}
+
+// isOrchStrand reports whether strand names the orch of the prime.
+func isOrchStrand(strand string) bool {
+	name, err := agentname.Parse(strand)
+	return err == nil && name.Role == agentname.RoleOrch && name.Slug == ""
+}

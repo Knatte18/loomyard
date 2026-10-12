@@ -174,15 +174,6 @@ func TestBeginBatch_Refusals(t *testing.T) {
 		check       func(t *testing.T, fx *beginFixture)
 	}{
 		{
-			name: "a pause request",
-			prepare: func(t *testing.T, fx *beginFixture) {
-				if err := websterengine.RequestPause(fx.Deps.Geom.ScratchDir); err != nil {
-					t.Fatalf("RequestPause() error = %v; want nil", err)
-				}
-			},
-			wantIs: websterengine.ErrPaused,
-		},
-		{
 			name: "a plan edited after run init points at the reset-to-start route",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				fx.Deps.State.PlanFingerprint = "0000000000000000000000000000000000000000000000000000000000000000"

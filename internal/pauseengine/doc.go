@@ -1,0 +1,38 @@
+// Package pauseengine implements the pause, resume and status sequences behind `lyx pause` and `lyx resume`, over seams.
+//
+// A pause records an entry in the pause record and waits a short grace for busy sessions and network operations to finish.
+// It then interrupts every covered session still busy with Esc, and reports what it saw.
+// A resume lifts entries and gives each session it interrupted one line to carry on.
+// Status reads the live entries and the holds a pause leaves, and changes nothing.
+//
+// Every path and every probe is told through Deps; the engine resolves no working directory and spawns nothing.
+// Pair is one hub pair as the sequences see it, and the CLI fills it over shuttle and reed.
+//
+// # Pause
+//
+// A pause covers the whole hub for an empty slug and one pair for a slug.
+// Under the record lock it adds the entry with its grace end and the caller; a live entry of the same scope adds none.
+// It then polls each second until every covered session reads idle and no covered network operation is in flight, the grace end passes, or the entry is no longer live.
+// An entry resumed during the grace ends the sequence with no Esc.
+//
+// Each covered session that still reads busy is then recorded in the entry under the record lock, and only then interrupted, so a pause killed before its Esc leaves the session recorded.
+// The caller's own session and a session another live entry owns are skipped.
+// A session still busy after an Esc is interrupted once more, so at most twice, and a pane that is not ready is reported as refused.
+// An entry that is no longer live at the check stops the step, so no Esc follows a resume.
+// The engine sends Esc only, never text; it kills no pane, strand or process and never touches the orch.
+// Under a hub entry the report says whether the orch ran the pause, is left to a live orch watcher, or is not interrupted because no watcher is live.
+//
+// # Resume
+//
+// An empty slug resumes every live entry; a slug resumes that pair's own entry.
+// A slug that only a live hub entry covers is refused, naming `lyx resume`.
+// Under the record lock each resumed entry moves to the resumed list, and each session it owns that another live entry still covers moves to that entry with no line.
+// After the lock, each remaining non-orch session gets `pauserecord.ResumeLine` once through the guarded send.
+// A strand that is not live, a session that reads busy, and a send refused because the box holds a draft get no line and are named with the reason.
+// The orch's session is left to the orch watcher.
+//
+// # Status
+//
+// Status reports the live entries, the network operations in flight with the ones run under a parent lock marked, and the holds:
+// each parent branch a covered run holds with the runs queued behind it, and each covered run waiting in a queue with the runs behind it.
+package pauseengine

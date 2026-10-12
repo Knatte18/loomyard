@@ -372,3 +372,41 @@ func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
 		}
 	})
 }
+
+// TestPauseCmd_BareLoomPauseRefusesNamingBothWaysForward runs loom's pause verb on a hand-populated receiver over a running status at Plan-Write:
+// a flagless pause refuses naming `lyx pause <slug>` and `lyx loom pause --after Plan-Write`, and leaves the status file byte-identical.
+func TestPauseCmd_BareLoomPauseRefusesNamingBothWaysForward(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	c := &loomCLI{
+		location: &lyxcwd.Location{HubPath: dir, WorktreeName: "some-slug", AnchorRel: "."},
+		shedPaths: shedbuild.ShedPaths{
+			StatusPath:     filepath.Join(dir, "status.json"),
+			StatusLockPath: filepath.Join(dir, "status.json.lock"),
+		},
+	}
+	writeStatusFixture(t, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, shedengine.Status{
+		CurrentProducer: "Plan-Write",
+		State:           shedengine.StateRunning,
+		History:         []shedengine.HistoryEntry{},
+	})
+	before, err := os.ReadFile(c.shedPaths.StatusPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if exitCode := clihelp.Execute(loomVerbCommand(c, "pause"), &out, nil); exitCode != 1 {
+		t.Fatalf("bare pause exit code = %d; want 1; output: %s", exitCode, out.String())
+	}
+	for _, want := range []string{`lyx pause some-slug`, `lyx loom pause --after Plan-Write`} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("bare pause output %q does not name %q", out.String(), want)
+		}
+	}
+	after, err := os.ReadFile(c.shedPaths.StatusPath)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Errorf("status file after a refused bare pause = %q, %v; want it unchanged: %q", after, err, before)
+	}
+}

@@ -103,7 +103,7 @@ producers:
 // The wait's sleep is a counter and the pause seam reports a pause from the first check on, so a stubbed child that never changes makes the wait return after one check; a test that wants a longer wait replaces either.
 func wireForHub(t *testing.T, h *hubforge.Hub, slug string, readStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)) *battenCLI {
 	t.Helper()
-	c := &battenCLI{}
+	c := &battenCLI{location: h.Location}
 	if err := c.wire(h.Location, slug); err != nil {
 		t.Fatalf("wire(%s): %v", slug, err)
 	}

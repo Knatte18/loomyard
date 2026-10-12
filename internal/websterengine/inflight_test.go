@@ -22,7 +22,6 @@ func TestRunInFlight(t *testing.T) {
 	}{
 		{name: "no state file", want: false},
 		{name: "state without outcome", state: true, want: true},
-		{name: "paused", state: true, outcome: writeOutcome("outcome: paused\nstuck_reason: null\nbatches_done: 1\n"), want: true},
 		{name: "stuck with reason", state: true, outcome: writeOutcome("outcome: stuck\nstuck_reason: \"batch 2 failed\"\nbatches_done: 1\n"), want: true},
 		{name: "done", state: true, outcome: writeOutcome("outcome: done\nstuck_reason: null\nbatches_done: 3\n"), want: false},
 		{name: "unknown outcome value", state: true, outcome: writeOutcome("outcome: bogus\nstuck_reason: null\nbatches_done: 0\n"), wantErr: true},
