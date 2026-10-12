@@ -473,6 +473,23 @@ func TestNotice_QuietOnlyForRunningChildWithLiveDriver(t *testing.T) {
 		}
 	})
 
+	t.Run("AnActivityWrittenJustBeforeTheSleepKeepsTheGap", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now()}}
+		onCheck(h, map[int]func(){
+			2: func() {
+				h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now()}}
+				h.suspend(3 * time.Hour)
+			},
+			3: func() { h.clock.advance(h.quiet) },
+		})
+		h.run(p, 6)
+		if len(h.notified) != 1 || !strings.Contains(h.notified[0], "agents idle for 45m") || strings.Contains(h.notified[0], "3h") {
+			t.Fatalf("notified = %v; want one quiet notice reporting 45m of awake idle time, not the night's gap", h.notified)
+		}
+	})
+
 	t.Run("AMovedNewestActivityDropsTheGapObservedWithIt", func(t *testing.T) {
 		h := newNoticeHarness(t)
 		p := h.producer()
@@ -525,31 +542,6 @@ func TestNotice_QuietOnlyForRunningChildWithLiveDriver(t *testing.T) {
 			t.Fatalf("notified = %v; want none: the gap seen on the unreadable check is subtracted at the readable one", h.notified)
 		}
 	})
-}
-
-func TestSleepGap(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name             string
-		prevWall, wall   time.Duration
-		prevAwake, awake time.Duration
-		want             time.Duration
-	}{
-		{name: "HoursOfWallAgainstSecondsAwake", prevWall: 0, wall: 3 * time.Hour, prevAwake: 0, awake: 5 * time.Second, want: 3*time.Hour - 5*time.Second},
-		{name: "ExcessAtTheToleranceIsZero", prevWall: 0, wall: time.Hour, prevAwake: 0, awake: time.Hour - sleepGapTolerance, want: 0},
-		{name: "ExcessJustOverTheToleranceCounts", prevWall: 0, wall: time.Hour, prevAwake: 0, awake: time.Hour - sleepGapTolerance - time.Second, want: sleepGapTolerance + time.Second},
-		{name: "EqualDeltasAreZero", prevWall: time.Hour, wall: 2 * time.Hour, prevAwake: 10 * time.Second, awake: time.Hour + 10*time.Second, want: 0},
-		{name: "WallBehindAwakeIsZero", prevWall: 0, wall: time.Minute, prevAwake: 0, awake: time.Hour, want: 0},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := sleepGap(int64(tt.prevWall), int64(tt.wall), tt.prevAwake, tt.awake); got != tt.want {
-				t.Errorf("sleepGap = %s; want %s", got, tt.want)
-			}
-		})
-	}
 }
 
 func TestNotice_APIErrorStall(t *testing.T) {

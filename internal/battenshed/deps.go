@@ -159,7 +159,7 @@ type InnerRunDeps struct {
 	// A nil Now resolves to time.Now in NewInnerRun, the same way a nil Sleep resolves to waitOrCancel; a test replaces it to keep the grace out of real time.
 	Now func() time.Time
 	// Awake is a clock that stops while the machine sleeps, read as a duration from any fixed origin.
-	// The quiet and api-error idle checks subtract the time the wall clock ran ahead of it, so suspended time is not idle time.
+	// The quiet and api-error idle checks treat each time the wall clock ran ahead of it by more than a minute as a sleep, an interval that is not idle time.
 	// A nil Awake resolves in NewInnerRun to Go's monotonic reading, measured from an origin taken at construction.
 	// That reading stops during suspend on Linux and macOS; on Windows it keeps running, so a nil Awake there leaves the idle clocks counting suspended time as before.
 	Awake func() time.Duration

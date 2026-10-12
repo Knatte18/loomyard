@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -501,13 +502,8 @@ type childWait struct {
 	activity      agentReading
 	activityOK    bool
 	activityStale bool
-	// prevWallNanos and prevAwake are the wall and awake readings of the previous idle check, and clocksSeen whether there was one.
-	prevWallNanos int64
-	prevAwake     time.Duration
-	clocksSeen    bool
-	// asleep is the suspended time observed since the newest agent activity last moved, and asleepStamp the activity stamp it belongs to.
-	asleep      time.Duration
-	asleepStamp activityStamp
+	// sleep records the sleeps seen between the idle checks' wall and awake readings.
+	sleep pauserecord.SleepWatch
 	// resumeRetryAt is when the awaiting arm may try a resume again after the child's driver refused one as not parked yet,
 	// and notParkedLogged whether that refusal was logged already.
 	resumeRetryAt   time.Time
