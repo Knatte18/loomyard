@@ -297,10 +297,10 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Error("c.runner = nil; want the constructed shuttle runner")
 		}
 
-		boardDir := fabricengine.BoardDir(loc.HubPath)
-		want, err := landingshed.LoadConfig(boardDir, "landing")
+		dirs := fabricengine.ConfigDirs(loc)
+		want, err := landingshed.LoadConfig(dirs, "landing")
 		if err != nil {
-			t.Fatalf("landingshed.LoadConfig(%q, \"landing\") = %v; want nil", boardDir, err)
+			t.Fatalf("landingshed.LoadConfig(%+v, \"landing\") = %v; want nil", dirs, err)
 		}
 		if !reflect.DeepEqual(c.landingCfg, want) {
 			t.Errorf("c.landingCfg = %+v; want %+v", c.landingCfg, want)

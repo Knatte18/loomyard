@@ -432,8 +432,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	// landing is hub-wide: Publish and Finalize read the hub's file, never a pair's copy.
-	landingCfg, err := landingshed.LoadConfig(fabricengine.BoardDir(location.HubPath), "landing")
+	// landing is hub-wide: Publish and Finalize read the hub's file, never a pair's copy, and the pair's local override only for the keys that meet no category.
+	landingCfg, err := landingshed.LoadConfig(fabricengine.ConfigDirs(location), "landing")
 	if err != nil {
 		return fmt.Errorf("%w; %s", err, hubConfigWayForward)
 	}

@@ -42,7 +42,7 @@ func reworkRowFor(recipe string) string {
 func darnVerifySource(l *lyxcwd.Location) verifySource {
 	return verifySource{
 		command: func() (string, error) {
-			return darnengine.VerifyCommand(fabricengine.BoardDir(l.HubPath))
+			return darnengine.VerifyCommand(fabricengine.ConfigDirs(l))
 		},
 		failedWayForward: `run "lyx loom goto --to Darn-Write", then "lyx loom resume", in the task worktree; the Darn-Write spawn renders the Publish failure record and its gate runs the failing tests`,
 	}
@@ -148,7 +148,7 @@ func (c *loomCLI) darnReviewBudget() (int, error) {
 		return c.darnCfg.ReviewMaxBounces, nil
 	}
 
-	cfg, err := darnengine.LoadConfig(fabricengine.BoardDir(c.location.HubPath), "darn")
+	cfg, err := darnengine.LoadConfig(fabricengine.ConfigDirs(c.location), "darn")
 	if err == nil {
 		return cfg.ReviewMaxBounces, nil
 	}
@@ -165,12 +165,12 @@ func (c *loomCLI) darnReviewBudget() (int, error) {
 // wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe, and replaces the loom DescribeSpec with the darn one, which reads no decision record or run record.
 // It loads the hub-wide darn.yaml strictly and reads its verify command once, so start, run, step and resume refuse an absent or empty command before any row builds.
 func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, frictionDir string, landingCfg landingshed.Config, registry modelspec.Registry) error {
-	boardDir := fabricengine.BoardDir(location.HubPath)
-	cfg, err := darnengine.LoadConfig(boardDir, "darn")
+	dirs := fabricengine.ConfigDirs(location)
+	cfg, err := darnengine.LoadConfig(dirs, "darn")
 	if err != nil {
 		return fmt.Errorf("%w; %s", err, hubConfigWayForward)
 	}
-	if _, err := darnengine.VerifyCommand(boardDir); err != nil {
+	if _, err := darnengine.VerifyCommand(dirs); err != nil {
 		return err
 	}
 

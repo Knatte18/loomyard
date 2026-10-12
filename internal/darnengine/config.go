@@ -46,11 +46,29 @@ type Config struct {
 	ReviewMaxBounces int `yaml:"review_max_bounces"`
 }
 
-// LoadConfig loads and unmarshals the darn module's configuration from baseDir.
-// It is strict: an absent file is an error.
+// ConfigSpec returns darn's layered-load spec.
+// verify runs a shell command and review_max_bounces at 0 skips Darn-Review and Describe, so neither may be set in the local layer.
+func ConfigSpec() configengine.Spec {
+	return configengine.Spec{
+		Name:     configModule,
+		Template: []byte(ConfigTemplate()),
+		HubWide:  true,
+		Categories: map[string]configengine.Category{
+			"writer":             configengine.CategoryNone,
+			"writer_timeout_min": configengine.CategoryNone,
+			"verify":             configengine.CategoryExecutable,
+			"verify_attempts":    configengine.CategoryNone,
+			"review_max_bounces": configengine.CategoryGuard,
+		},
+	}
+}
+
+// LoadConfig loads and unmarshals the darn module's configuration strictly through the hub-wide layer stack under dirs.
 // It validates the writer key's model-spec grammar at load time and leaves verify, verify_attempts and review_max_bounces to their readers.
-func LoadConfig(baseDir, module string) (Config, error) {
-	resolved, err := configengine.Load(configengine.Dirs{Board: baseDir}, configengine.Spec{Name: module, Template: []byte(ConfigTemplate()), HubWide: true})
+func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
+	spec := ConfigSpec()
+	spec.Name = module
+	resolved, err := configengine.Load(dirs, spec)
 	if err != nil {
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")
@@ -70,10 +88,10 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	return cfg, nil
 }
 
-// VerifyCommand returns darn.yaml's verify command, loaded from baseDir at each call.
+// VerifyCommand returns darn.yaml's verify command, loaded through the layer stack under dirs at each call.
 // A missing file and an empty value are errors naming the way forward, never "", so the darn gate, Publish and Finalize stop at call time instead of skipping their verify.
-func VerifyCommand(baseDir string) (string, error) {
-	cfg, err := LoadConfig(baseDir, configModule)
+func VerifyCommand(dirs configengine.Dirs) (string, error) {
+	cfg, err := LoadConfig(dirs, configModule)
 	if err != nil {
 		return "", fmt.Errorf("darn verify command: %w; %s", err, verifyWayForward)
 	}
