@@ -66,7 +66,7 @@ func TestLoomRubrics(t *testing.T) {
 
 			const note = "Publish failed on landing config's `publish_verify` command."
 			const record = "Webster has begun these batches: batch 1 (done)."
-			got, err := shedadapters.ReadRubric(dir, tt.name, "/abs/specs/dir", note, record)
+			got, err := shedadapters.ReadRubric(dir, tt.name, "/abs/specs/dir", shedadapters.RubricNotes{PublishFailure: note, WebsterRecord: record})
 			if err != nil {
 				t.Fatalf("shedadapters.ReadRubric(%q, %q) = _, %v; want nil error", dir, tt.name, err)
 			}

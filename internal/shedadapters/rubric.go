@@ -11,14 +11,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// noNote is what the optional publish_failure and webster_record markers render as when their note is blank.
+// noNote is what the optional publish_failure, webster_record and merge_review markers render as when their note is blank.
 const noNote = "none"
 
-// ReadRubric reads the rubric stencil name from stencilsDir, strips its stamp banner, fills it as its own template with specsDir, stencilsDir, publishFailure and websterRecord, and returns the filled result.
-//
-// publishFailure fills the optional publish_failure marker, the rendered Publish failure note only the Webster-Review rubric carries.
-// websterRecord fills the optional webster_record marker, the rendered webster run record only the Plan-Review rubric carries.
+// RubricNotes are the optional notes a rubric's markers are filled from.
 // A blank note fills its marker as `none`, and a rubric with no such marker ignores it.
+type RubricNotes struct {
+	// PublishFailure fills the publish_failure marker, the rendered Publish failure note only the Webster-Review rubric carries.
+	PublishFailure string
+	// WebsterRecord fills the webster_record marker, the rendered webster run record only the Plan-Review rubric carries.
+	WebsterRecord string
+	// MergeReview fills the merge_review marker, the rendered merge record only the Merge-Review rubric carries.
+	MergeReview string
+}
+
+// ReadRubric reads the rubric stencil name from stencilsDir, strips its stamp banner, fills it as its own template with specsDir, stencilsDir and notes, and returns the filled result.
 //
 // The strip is about value semantics, not about protecting Fill. stencil.Fill already strips a
 // leading banner from the template it parses, but never from a marker value -- and a rubric's
@@ -37,21 +44,29 @@ const noNote = "none"
 // reaching a producer through a config key rather than through the stencil store -- never goes
 // through here, because running author prose through Fill turns any bare {{ in it into a
 // parse-template error and imposes specs-dir semantics on text that never had them.
-func ReadRubric(stencilsDir, name, specsDir, publishFailure, websterRecord string) (string, error) {
+func ReadRubric(stencilsDir, name, specsDir string, notes RubricNotes) (string, error) {
 	raw, err := stencilstore.Read(stencilsDir, name)
 	if err != nil {
 		return "", fmt.Errorf("shedadapters: read rubric %q: %w", name, err)
 	}
-	if strings.TrimSpace(publishFailure) == "" {
-		publishFailure = noNote
-	}
-	if strings.TrimSpace(websterRecord) == "" {
-		websterRecord = noNote
-	}
 	stripped := stencil.StripLeadingComment(string(raw))
-	filled, err := stencil.Fill([]byte(stripped), map[string]string{"specs_dir": specsDir, "stencils_dir": stencilsDir, "publish_failure": publishFailure, "webster_record": websterRecord})
+	filled, err := stencil.Fill([]byte(stripped), map[string]string{
+		"specs_dir":       specsDir,
+		"stencils_dir":    stencilsDir,
+		"publish_failure": noteOrNone(notes.PublishFailure),
+		"webster_record":  noteOrNone(notes.WebsterRecord),
+		"merge_review":    noteOrNone(notes.MergeReview),
+	})
 	if err != nil {
 		return "", fmt.Errorf("shedadapters: read rubric %q: %w", name, err)
 	}
 	return string(filled), nil
+}
+
+// noteOrNone returns note, or `none` when it is blank.
+func noteOrNone(note string) string {
+	if strings.TrimSpace(note) == "" {
+		return noNote
+	}
+	return note
 }
