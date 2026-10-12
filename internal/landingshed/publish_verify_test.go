@@ -433,7 +433,7 @@ func TestPublishVerify_FailureRecord(t *testing.T) {
 			// The failing verify is the last call, since Publish stops at it.
 			failingLog := filepath.Join(fx.gate.paths.Dir, fmt.Sprintf("verify-%d.log", fx.gate.fake.verifyCalls))
 			want := verifytree.PublishFailure{
-				Kind: tt.wantKind, Tests: wantTests, LogPath: failingLog, Head: "merged-head", MergeCommit: tt.wantMerge,
+				Kind: tt.wantKind, Row: "Publish", Tests: wantTests, LogPath: failingLog, Head: "merged-head", MergeCommit: tt.wantMerge,
 				Target: "Told-Row", WrittenAt: gateMarkStart.UTC().Format(time.RFC3339),
 			}
 			if !ok || !reflect.DeepEqual(got, want) {
