@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -17,7 +18,7 @@ import (
 // A non-empty defaultTTL or a non-nil roles replaces the template's value for that field.
 func ttlConfig(t testing.TB, defaultTTL string, roles map[string]string) shuttleengine.Config {
 	t.Helper()
-	loaded, err := shuttleengine.LoadConfig(t.TempDir(), "shuttle")
+	loaded, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: t.TempDir()}, "shuttle")
 	if err != nil {
 		t.Fatalf("load the shipped shuttle template: %v", err)
 	}

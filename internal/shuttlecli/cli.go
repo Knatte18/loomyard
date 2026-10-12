@@ -85,7 +85,7 @@ provider specifics.`,
 			// Both configs are anchored at layout.AnchorPath(), matching reedcli's own
 			// resolution: the worktree the operator is actually standing in,
 			// never WorktreeRoot or any fabric sibling.
-			shuttleCfg, err := shuttleengine.LoadConfig(layout.AnchorPath(), "shuttle")
+			shuttleCfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(layout), "shuttle")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)

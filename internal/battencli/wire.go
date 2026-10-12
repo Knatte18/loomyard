@@ -476,7 +476,7 @@ func readStopReport(taskLocation *lyxcwd.Location) (path string, at time.Time, f
 // Both waits are read from their marker files, never from the pane options that display them.
 func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentActivity, waitLive bool, err error) {
 	anchor := taskLocation.AnchorPath()
-	cfg, err := shuttleengine.LoadConfig(anchor, "shuttle")
+	cfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "shuttle")
 	if err != nil {
 		return nil, false, err
 	}

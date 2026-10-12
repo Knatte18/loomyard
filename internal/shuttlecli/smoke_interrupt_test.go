@@ -315,7 +315,7 @@ func newSmokeRunner(t *testing.T) (*shuttleengine.Runner, shuttleengine.Engine, 
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve: %v", err)
 	}
-	shuttleCfg, err := shuttleengine.LoadConfig(layout.AnchorPath(), "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: layout.AnchorPath()}, "shuttle")
 	if err != nil {
 		t.Fatalf("shuttleengine.LoadConfig: %v", err)
 	}

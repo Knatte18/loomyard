@@ -188,7 +188,7 @@ func TestSmokeOrch_OneFullCycle(t *testing.T) {
 	}
 	reed := reedengine.New(reedCfg, reedGeom)
 	tmuxkit.KillOnCleanup(t, tmuxPath, reedGeom.SocketKey)
-	shuttleCfg, err := shuttleengine.LoadConfig(prime, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: prime}, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}

@@ -127,7 +127,7 @@ Every verb runs from the hub's prime worktree only.`,
 			if err != nil {
 				return fail(err)
 			}
-			shuttleCfg, err := shuttleengine.LoadConfig(location.AnchorPath(), "shuttle")
+			shuttleCfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(location), "shuttle")
 			if err != nil {
 				return fail(err)
 			}

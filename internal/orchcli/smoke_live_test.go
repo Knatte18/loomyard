@@ -105,7 +105,7 @@ func newLiveFixture(t *testing.T, orchCfg string, extraCfg map[string]string) *l
 	reed := reedengine.New(reedCfg, reedGeom)
 	// Registered before the first boot, so reed's boot finds the kit's hermetic server on the hub's key.
 	tmuxkit.KillOnCleanup(t, reedCfg.Tmux, reedGeom.SocketKey)
-	shuttleCfg, err := shuttleengine.LoadConfig(prime, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: prime}, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}

@@ -5,6 +5,7 @@
 package shuttleengine_test
 
 import (
+	"errors"
 	"maps"
 	"os"
 	"path/filepath"
@@ -50,7 +51,7 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	// it verbatim and every default must resolve.
 	seedLyxConfig(t, tmpDir, "shuttle", shuttleengine.ConfigTemplate())
 
-	cfg, err := shuttleengine.LoadConfig(tmpDir, "shuttle")
+	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"shuttle")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -108,6 +109,42 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if want := map[string]string{"driver": "1h", "webster": "1h"}; !maps.Equal(cfg.ClaudePromptCacheTTLRoles, want) {
 		t.Errorf("ClaudePromptCacheTTLRoles = %v, want %v", cfg.ClaudePromptCacheTTLRoles, want)
 	}
+
+	t.Run("RepoDefaultResolvesBeneathSparseWorktreeFile", func(t *testing.T) {
+		board, anchor := t.TempDir(), t.TempDir()
+		seedLyxConfig(t, board, "shuttle", strings.Replace(shuttleengine.ConfigTemplate(), "run_timeout_min: 30", "run_timeout_min: 45", 1))
+		seedLyxConfig(t, anchor, "shuttle", "startup_timeout_s: 120\n")
+
+		cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "shuttle")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.RunTimeoutMin != 45 {
+			t.Errorf("RunTimeoutMin = %d, want 45 (repo default)", cfg.RunTimeoutMin)
+		}
+		if cfg.StartupTimeoutS != 120 {
+			t.Errorf("StartupTimeoutS = %d, want 120 (worktree file)", cfg.StartupTimeoutS)
+		}
+	})
+
+	t.Run("LocalGuardKeyIsRefused", func(t *testing.T) {
+		anchor := t.TempDir()
+		localFile := configengine.LocalFile(anchor, "shuttle")
+		if err := os.MkdirAll(filepath.Dir(localFile), 0o755); err != nil {
+			t.Fatalf("mkdir local dir: %v", err)
+		}
+		if err := os.WriteFile(localFile, []byte("claude_deny_python: false\n"), 0o644); err != nil {
+			t.Fatalf("write local file: %v", err)
+		}
+
+		_, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: anchor}, "shuttle")
+		if !errors.Is(err, configengine.ErrInvalid) {
+			t.Fatalf("err = %v, want ErrInvalid", err)
+		}
+		if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), `"claude_deny_python"`) {
+			t.Errorf("err = %q, want it to name %s and key claude_deny_python", err, localFile)
+		}
+	})
 }
 
 func TestLoadConfig_PromptCacheTTLKeys(t *testing.T) {
@@ -149,7 +186,7 @@ func TestLoadConfig_PromptCacheTTLKeys(t *testing.T) {
 			tmpDir := t.TempDir()
 			seedLyxConfig(t, tmpDir, "shuttle", templateWithoutTTLKeys+tt.ttlKeys)
 
-			cfg, err := shuttleengine.LoadConfig(tmpDir, "shuttle")
+			cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"shuttle")
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -168,7 +205,7 @@ func TestLoadConfig_EnvOverride(t *testing.T) {
 	t.Setenv("LYX_SHUTTLE_CLAUDE", `D:\tools\claude.exe`)
 	seedLyxConfig(t, tmpDir, "shuttle", shuttleengine.ConfigTemplate())
 
-	cfg, err := shuttleengine.LoadConfig(tmpDir, "shuttle")
+	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"shuttle")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -194,7 +231,7 @@ func TestLoadConfig_BackgroundShellWaitMin(t *testing.T) {
 			seeded := strings.Replace(shuttleengine.ConfigTemplate(), "background_shell_wait_min: 10", "background_shell_wait_min: "+tt.value, 1)
 			seedLyxConfig(t, tmpDir, "shuttle", seeded)
 
-			cfg, err := shuttleengine.LoadConfig(tmpDir, "shuttle")
+			cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"shuttle")
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("LoadConfig accepted background_shell_wait_min: %s", tt.value)
@@ -251,7 +288,7 @@ func TestLoadConfig_SubmitSettleKeys(t *testing.T) {
 			seeded := strings.Replace(shuttleengine.ConfigTemplate(), tt.key+": "+def, tt.key+": "+tt.value, 1)
 			seedLyxConfig(t, tmpDir, "shuttle", seeded)
 
-			cfg, err := shuttleengine.LoadConfig(tmpDir, "shuttle")
+			cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"shuttle")
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("LoadConfig accepted %s: %s", tt.key, tt.value)
@@ -282,7 +319,7 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	seedLyxConfig(t, tmpDir, "othershuttle", seeded)
 
 	logs := logcapture.Capture(t)
-	cfg, err := shuttleengine.LoadConfig(tmpDir, "othershuttle")
+	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"othershuttle")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -299,7 +336,7 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 		t.Fatalf("write config file: %v", err)
 	}
 	logs.Reset()
-	if _, err := shuttleengine.LoadConfig(tmpDir, "belowshuttle"); err != nil {
+	if _, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"belowshuttle"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got := strings.Count(logs.String(), "level=WARN"); got != 1 || !strings.Contains(logs.String(), "key=poll_interval_ms") || !strings.Contains(logs.String(), "floor_ms=1000") {
@@ -308,7 +345,7 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 
 	// The never-seeded "shuttle" module must fall back to the template
 	// default, not the "othershuttle" module's seeded value.
-	defaultCfg, err := shuttleengine.LoadConfig(tmpDir, "shuttle")
+	defaultCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"shuttle")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -321,7 +358,7 @@ func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 	// Do NOT create _lyx/ -- LoadConfig must degrade to the embedded template.
 
-	cfg, err := shuttleengine.LoadConfig(tmpDir, "shuttle")
+	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"shuttle")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -131,7 +131,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 		c.frictionDir = loomengine.LoomFrictionDir(loc)
 	}
 
-	shuttleCfg, err := shuttleengine.LoadConfig(anchorPath, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(loc), "shuttle")
 	if err != nil {
 		return err
 	}
@@ -257,7 +257,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 		c.planDirDefault = res.DefaultPlanDir
 	}
 
-	shuttleCfg, err := shuttleengine.LoadConfig(res.StateDir, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: res.StateDir}, "shuttle")
 	if err != nil {
 		return err
 	}

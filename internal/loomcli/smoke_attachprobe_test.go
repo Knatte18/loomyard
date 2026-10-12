@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -157,7 +158,7 @@ func TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning(t *testing.T) 
 	// in-flight round 1, which is the state a driver crash actually leaves behind. It is not a
 	// synchronisation point either way -- Wait polls against its own deadline rather than assuming
 	// any timing.
-	shuttleCfg, err := shuttleengine.LoadConfig(loc.AnchorPath(), "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: loc.AnchorPath()}, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}
@@ -269,7 +270,7 @@ func TestSmokeSingleLLM_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
 	}
 	outputFile := filepath.Join(outputDir, "finished.md")
 
-	shuttleCfg, err := shuttleengine.LoadConfig(loc.AnchorPath(), "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: loc.AnchorPath()}, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}
@@ -369,7 +370,7 @@ func TestSmokeSingleLLM_RerunRemovesTheSupersededStrand(t *testing.T) {
 	outputFile := filepath.Join(outputDir, "rerun.md")
 	otherOutputFile := filepath.Join(outputDir, "other.md")
 
-	shuttleCfg, err := shuttleengine.LoadConfig(loc.AnchorPath(), "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: loc.AnchorPath()}, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}

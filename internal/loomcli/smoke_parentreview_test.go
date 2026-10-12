@@ -105,7 +105,7 @@ func TestSmokeParentReview_NoticeReachesTheWriterPaneAndApproveLetsTheRunThrough
 	}
 	noticePath := filepath.Join(t.TempDir(), "notice.txt")
 
-	shuttleCfg, err := shuttleengine.LoadConfig(loc.AnchorPath(), "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: loc.AnchorPath()}, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}

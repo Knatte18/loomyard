@@ -129,7 +129,7 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 	if err != nil {
 		t.Fatalf("load reed config: %v", err)
 	}
-	shuttleCfg, err := shuttleengine.LoadConfig(h.Location.AnchorPath(), "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: h.Location.AnchorPath()}, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}

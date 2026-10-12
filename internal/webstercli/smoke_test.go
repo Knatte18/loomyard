@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
@@ -40,7 +41,7 @@ func realForkSettingsPath(t *testing.T) string {
 	t.Helper()
 	runDir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "smoke", Interactive: false, ForkSubagents: true}
-	cfg, err := shuttleengine.LoadConfig(t.TempDir(), "shuttle")
+	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: t.TempDir()}, "shuttle")
 	if err != nil {
 		t.Fatalf("load the shipped shuttle template: %v", err)
 	}

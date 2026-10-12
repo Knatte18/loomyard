@@ -423,7 +423,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	shuttleCfg, err := shuttleengine.LoadConfig(anchorPath, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(location), "shuttle")
 	if err != nil {
 		return err
 	}

@@ -100,7 +100,7 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 	// same anchor path as its own WorktreeRoot, so the geometry beside this wiring agrees with it.
 	anchorPath := loc.AnchorPath()
 
-	shuttleCfg, err := shuttleengine.LoadConfig(anchorPath, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(loc), "shuttle")
 	if err != nil {
 		return err
 	}
@@ -175,7 +175,7 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 		return err
 	}
 
-	shuttleCfg, err := shuttleengine.LoadConfig(res.StateDir, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: res.StateDir}, "shuttle")
 	if err != nil {
 		return err
 	}

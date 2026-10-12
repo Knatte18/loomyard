@@ -274,7 +274,7 @@ The chair is red and the table is blue; they must match.
 
 	// Wire the real stack directly: treadleengine never imports claudeengine
 	// itself, but this test is the caller and may.
-	shuttleCfg, err := shuttleengine.LoadConfig(h.Location.AnchorPath(), "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: h.Location.AnchorPath()}, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}
