@@ -8,13 +8,16 @@ package render
 import "fmt"
 
 // ValidateDisplay refuses a display render cannot lay out.
-// That is the reserved own-window anchor, a top anchor with a kind other than SizeContent, an unknown SizeKind, and a content size with ShareDen < 1, ShareNum < 0, ShareNum > ShareDen or MinRows < 1.
-// A hidden display is never refused for its size, since its declaration is ignored.
+// That is a top anchor with a kind other than SizeContent, an unknown SizeKind, a content size with ShareDen < 1, ShareNum < 0, ShareNum > ShareDen or MinRows < 1, and an own-window display with a negative WindowSize.
+// A hidden or own-window display is never refused for its size, since its declaration is ignored.
 // The error names the display's anchor and kind.
 func ValidateDisplay(d Display) error {
 	switch d.Anchor {
 	case AnchorOwnWindow:
-		return fmt.Errorf("anchor %q kind %q: the anchor is deferred", d.Anchor, d.Size.Kind)
+		if d.WindowSize < 0 {
+			return fmt.Errorf("anchor %q: windowSize %d must not be negative", d.Anchor, d.WindowSize)
+		}
+		return nil
 	case AnchorHidden:
 		return nil
 	}
@@ -50,8 +53,8 @@ func partitionByAnchor(strands []Strand) (placed []Strand) {
 		case AnchorBelowParent:
 			stack = append(stack, s)
 		default:
-			// AnchorOwnWindow (deferred) or any unrecognized value is not
-			// placed by this policy.
+			// An own-window strand lives outside this window and is never placed by this policy.
+			// Neither is any unrecognized value.
 		}
 	}
 	return append(top, stack...)

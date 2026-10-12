@@ -237,8 +237,8 @@ func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
 		{"NoStrandOwnsAPresentPane", nil, 80, 24, nil},
 		{"ListPanesErrors", goodAttachStrands(), 80, 24, func(f *fakeTmux) { f.answer("list-panes", "", errors.New("boom")) }},
 		{
-			"PlanError_DeferredAnchorRejected",
-			[]Strand{{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}},
+			"PlanError_TopAnchorWithoutContentSizeRejected",
+			[]Strand{{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorTop, Size: render.Size{Kind: render.SizePositional}}}},
 			80, 24, nil,
 		},
 	}

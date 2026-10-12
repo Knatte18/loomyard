@@ -132,14 +132,22 @@ func TestFixedHeightPinsMatchesRulesPlacedHeights(t *testing.T) {
 			wantPins: nil,
 		},
 		{
-			name: "AnchorOwnWindowYieldsNilNotAPanicMatchingRulesError",
-			strands: []Strand{
-				{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorOwnWindow}},
-			},
+			name: "AnchorOwnWindowIsNeverPlacedNorPinned",
+			strands: append(twoSiblings(),
+				Strand{GUID: "o", PaneID: "%9", Live: true, Display: Display{Anchor: AnchorOwnWindow}},
+			),
 			box:      Box{X: 0, Y: 0, W: 100, H: 21},
 			params:   Params{CollapsedRows: 2, MinFullRows: 3},
-			wantPins: nil,
-			wantErr:  true,
+			wantPins: []Pin{{PaneID: "%1", Height: 2}},
+		},
+		{
+			name: "NegativeWindowSizeIsRefusedLikeRules",
+			strands: []Strand{
+				{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorOwnWindow, WindowSize: -1}},
+			},
+			box:     Box{X: 0, Y: 0, W: 100, H: 21},
+			params:  Params{CollapsedRows: 2, MinFullRows: 3},
+			wantErr: true,
 		},
 		{
 			// Band 3, stack region 26: the content cell is pinned at its 2 reported lines and the expanding positional cell is not pinned.
