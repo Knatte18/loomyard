@@ -45,6 +45,9 @@
 // A [Stack] also names, in `Origins`, the highest layer holding each top-level key.
 // The merged document is expanded once, against `Board` for a hub-wide module and `Anchor` otherwise.
 //
+// [Provenance] returns the resolved document of [Load], with strictness and refusals unchanged, each unit's line comment naming the highest layer whose file holds it, or `template` when none does.
+// It is what `lyx config <module> --resolved` prints.
+//
 // # The local rule
 //
 // The local layer holds only keys classified [CategoryNone].

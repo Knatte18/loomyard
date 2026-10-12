@@ -16,6 +16,8 @@
 // Under a board the base layer is the repo default and stays full, so a write to any layer above it is sparse: `--set` writes only the keys set through `yamlengine.SetSparse`, and an editor edit scaffolds an absent file empty.
 // `--print --layer <name>` prints that layer's file verbatim; `--print` of all modules prints each module's own file.
 // `lyx config menu` marks each module with the layers that hold a file, as `loom (default, local)`, or `(template)` when none does.
+// `lyx config <module> --resolved` prints the merged result through `configengine.Provenance`, each unit's line comment naming the layer it came from: `template`, `default`, `worktree` or `local`.
+// It is read-only, refused beside `--print`, `--set` or `--layer` and without a module, and errors on an absent base layer as the module's loader does.
 //
 // A write to the default layer, by `--set`, by an editor edit or through the menu, is refused from any worktree that is not the hub's prime and from a session whose `LYX_STRAND_NAME` parses as a name carrying a slug, wherever its worktree resolves.
 // The refusal names the way forward, the operator or the hub orch running the write from the prime, and leaves the board file unchanged with no editor opened.

@@ -1047,3 +1047,77 @@ func TestDispatchLayers(t *testing.T) {
 		})
 	}
 }
+
+// TestPrintResolved pins that --resolved prints a module's resolved configuration with each unit annotated by the layer it came from, refuses an unknown module and an absent base layer with an error envelope, and is refused beside --print, --set, --layer or without a module.
+func TestPrintResolved(t *testing.T) {
+	t.Parallel()
+	loomTemplate, _ := configreg.Template("loom")
+
+	t.Run("annotates each unit with its layer", func(t *testing.T) {
+		t.Parallel()
+		fx := newHubFixture(t)
+		seedModuleConfig(t, fx.board, "loom", loomTemplate())
+		seedModuleConfig(t, fx.worktree, "loom", "review_max_bounces: 2\n")
+		localFile := configengine.LocalFile(fx.worktree, "loom")
+		if err := os.MkdirAll(filepath.Dir(localFile), 0o755); err != nil {
+			t.Fatalf("mkdir local dir: %v", err)
+		}
+		if err := os.WriteFile(localFile, []byte("discussion_timeout_min: 7\n"), 0o644); err != nil {
+			t.Fatalf("write local file: %v", err)
+		}
+
+		var out bytes.Buffer
+		if code := printResolved(configDirs{worktree: fx.worktree, board: fx.board}, &out, "loom"); code != 0 {
+			t.Fatalf("printResolved = %d; output: %s", code, out.String())
+		}
+		for _, want := range []string{"review_max_bounces: 2 # worktree", "discussion_timeout_min: 7 # local", "plan_timeout_min:"} {
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("output missing %q; output:\n%s", want, out.String())
+			}
+		}
+		if !strings.Contains(out.String(), "# default") {
+			t.Errorf("output holds no default-layer unit; output:\n%s", out.String())
+		}
+	})
+
+	failures := []struct {
+		name    string
+		module  string
+		wantErr string
+	}{
+		{name: "unknown module", module: "bogus", wantErr: "unknown config module"},
+		{name: "absent base layer", module: "loom", wantErr: "not found"},
+	}
+	for _, tt := range failures {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newHubFixture(t)
+			var out bytes.Buffer
+			if code := printResolved(configDirs{worktree: fx.worktree, board: fx.board}, &out, tt.module); code != 1 {
+				t.Fatalf("printResolved = %d; want 1; output: %s", code, out.String())
+			}
+			assertJSONErrContains(t, out.String(), tt.wantErr)
+		})
+	}
+
+	refusals := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{name: "beside --set", args: []string{"loom", "--resolved", "--set", "review_max_bounces=2"}, wantErr: "--resolved and --set are mutually exclusive"},
+		{name: "beside --print", args: []string{"loom", "--resolved", "--print"}, wantErr: "--resolved and --print are mutually exclusive"},
+		{name: "beside --layer", args: []string{"loom", "--resolved", "--layer", "local"}, wantErr: "--resolved and --layer are mutually exclusive"},
+		{name: "without a module", args: []string{"--resolved"}, wantErr: "module required with --resolved"},
+	}
+	for _, tt := range refusals {
+		t.Run("refused "+tt.name, func(t *testing.T) {
+			t.Parallel()
+			var out bytes.Buffer
+			if code := RunCLI(&out, tt.args); code != 1 {
+				t.Fatalf("RunCLI(%v) = %d; want 1; output: %s", tt.args, code, out.String())
+			}
+			assertJSONErrContains(t, out.String(), tt.wantErr)
+		})
+	}
+}

@@ -5,6 +5,7 @@ package configengine_test
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -576,5 +577,67 @@ func TestLayerFile(t *testing.T) {
 	}
 	if got, want := configengine.LocalDenied(layerSpec()), []string{"list", "nested", "run"}; !slices.Equal(got, want) {
 		t.Errorf("LocalDenied = %v; want %v", got, want)
+	}
+}
+
+// annotationsOf returns the line comment of every annotated line of a provenance document, keyed by the line's key.
+func annotationsOf(provenance []byte) map[string]string {
+	notes := map[string]string{}
+	for _, line := range strings.Split(string(provenance), "\n") {
+		code, comment, found := strings.Cut(line, " # ")
+		if !found {
+			continue
+		}
+		key, _, _ := strings.Cut(strings.TrimSpace(code), ":")
+		notes[key] = comment
+	}
+	return notes
+}
+
+// TestProvenance pins that every unit of the resolved configuration is annotated with the highest layer holding it, the template layer when none does, and that the refusals of the loader apply unchanged.
+func TestProvenance(t *testing.T) {
+	const base = "name: d\nnested:\n  deep: 2\nlist: [x, y]\nlabels:\n  a: A\nrun: sh\n"
+	tests := []struct {
+		name      string
+		files     map[configengine.Layer]string
+		want      map[string]string
+		wantError string
+	}{
+		{
+			name:  "each unit names the highest layer holding it",
+			files: map[configengine.Layer]string{configengine.LayerDefault: base, configengine.LayerWorktree: "name: w\nlabels:\n  b: B\n", configengine.LayerLocal: "nested:\n  deep: 5\n"},
+			want:  map[string]string{"name": "worktree", "port": "template", "deep": "local", "list": "default", "labels": "worktree", "run": "default"},
+		},
+		{
+			name:      "a refused local key errors naming the file",
+			files:     map[configengine.Layer]string{configengine.LayerDefault: base, configengine.LayerLocal: "run: sh\n"},
+			wantError: "local config file",
+		},
+		{
+			name:      "an absent base layer errors rather than degrading",
+			files:     map[configengine.Layer]string{configengine.LayerLocal: "nested:\n  deep: 5\n"},
+			wantError: "not found",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newLayerFixture(t, geometryHub, tt.files)
+			provenance, err := configengine.Provenance(fixture.dirs, layerSpec())
+			if tt.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+					t.Fatalf("Provenance error = %v, want one containing %q", err, tt.wantError)
+				}
+				if strings.Contains(tt.wantError, "local") && !errors.Is(err, configengine.ErrInvalid) {
+					t.Fatalf("Provenance error = %v, want ErrInvalid", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Provenance: %v", err)
+			}
+			if got := annotationsOf(provenance); !maps.Equal(got, tt.want) {
+				t.Fatalf("annotations = %v, want %v\n%s", got, tt.want, provenance)
+			}
+		})
 	}
 }

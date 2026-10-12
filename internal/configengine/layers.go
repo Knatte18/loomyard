@@ -326,6 +326,52 @@ func StackLayers(dirs Dirs, spec Spec) (Stack, error) {
 	return stack, nil
 }
 
+// Provenance returns the module's resolved configuration with each unit's line comment naming the layer it came from:
+// the highest layer whose document holds the unit, or the template layer when none does.
+// It resolves through [Load], so its strictness and refusals are Load's, and an absent base layer errors rather than degrading.
+func Provenance(dirs Dirs, spec Spec) ([]byte, error) {
+	resolved, err := Load(dirs, spec)
+	if err != nil {
+		return nil, err
+	}
+	layerDirs := dirs
+	if dirs.Board != "" && dirs.Anchor != "" {
+		if _, err := FindBaseDir(dirs.Anchor); err != nil {
+			layerDirs.Anchor = ""
+		}
+	}
+	layers, err := Layers(layerDirs, spec)
+	if err != nil {
+		return nil, err
+	}
+	held := make(map[Layer]map[string]bool, len(layers))
+	for _, doc := range layers {
+		paths, err := yamlengine.LeafPaths(doc.Bytes, spec.OpenMaps, spec.WholeEntries)
+		if err != nil {
+			return nil, MarkInvalid(fmt.Errorf("config file %s: %w", doc.Path, err))
+		}
+		held[doc.Layer] = make(map[string]bool, len(paths))
+		for _, path := range paths {
+			held[doc.Layer][path] = true
+		}
+	}
+	units, err := yamlengine.LeafPaths(resolved, spec.OpenMaps, spec.WholeEntries)
+	if err != nil {
+		return nil, err
+	}
+	notes := make(map[string]string, len(units))
+	for _, unit := range units {
+		origin := LayerTemplate
+		for _, doc := range layers {
+			if held[doc.Layer][unit] {
+				origin = doc.Layer
+			}
+		}
+		notes[unit] = string(origin)
+	}
+	return yamlengine.AnnotateLeaves(resolved, notes, spec.OpenMaps, spec.WholeEntries)
+}
+
 // topLevelKeys returns the keys of a parsed document's root mapping.
 func topLevelKeys(doc *yaml.Node) []string {
 	if doc.Kind != yaml.DocumentNode || len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {

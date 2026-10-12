@@ -64,6 +64,21 @@ func printModule(dirs configDirs, out io.Writer, module string) int {
 	return 0
 }
 
+// printResolved writes module's resolved configuration to out, each unit annotated with the layer it came from.
+// It resolves through the same stack the module's loader does, so an absent base layer or an invalid layer file is an error envelope naming the failure.
+func printResolved(dirs configDirs, out io.Writer, module string) int {
+	mod, ok := configreg.Lookup(module)
+	if !ok {
+		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
+	}
+	resolved, err := configengine.Provenance(dirs.engineDirs(), mod.Spec())
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	_, _ = out.Write(resolved)
+	return 0
+}
+
 // printAll writes a header-delimited YAML dump of all config modules to out.
 //
 // Each module section starts with a "# <name>" delimiter line. If the config file
@@ -352,7 +367,38 @@ func buildConfigLong() string {
 		"them.\n\n" +
 		"--layer default|worktree|local picks the file to print or write: default is the board's\n" +
 		"repo default, committed from the prime; local is an untracked override.\n\n" +
+		"--resolved <module> prints the merged result, each unit's line comment naming the\n" +
+		"layer it came from: template, default, worktree or local.\n\n" +
 		"Known modules: " + strings.Join(configreg.Names(), ", ") + "."
+}
+
+// resolvedRefusal returns why --resolved cannot run beside the other flags and arguments, or "" when it can.
+func resolvedRefusal(args []string, printOnly bool, setFlags []string, layer string) string {
+	switch {
+	case printOnly:
+		return "--resolved and --print are mutually exclusive"
+	case len(setFlags) > 0:
+		return "--resolved and --set are mutually exclusive"
+	case layer != "":
+		return "--resolved and --layer are mutually exclusive"
+	case len(args) < 1:
+		return "module required with --resolved"
+	}
+	return ""
+}
+
+// runResolved is the package-private handler for lyx config <module> --resolved.
+// It resolves the location as runConfig does and prints the module's annotated resolved configuration.
+func runResolved(ctx context.Context, out io.Writer, module string) int {
+	cwd, err := lyxcwd.CwdFrom(ctx)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	l, err := lyxcwd.Resolve(cwd)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	return printResolved(dirsOf(l), out, module)
 }
 
 // runReconcile is the package-private handler for the lyx config reconcile subcommand.
@@ -452,6 +498,7 @@ func Command() *cobra.Command {
 	}
 	configCmd.Flags().Bool("print", false, "print on-disk config as YAML without launching the editor")
 	configCmd.Flags().StringArray("set", nil, "set config key=value directly, bypassing the editor (repeatable)")
+	configCmd.Flags().Bool("resolved", false, "print the module's resolved config, each unit annotated with the layer it came from")
 	configCmd.Flags().String("layer", "", "the layer to print or write: default, worktree or local (default: the module's own file)")
 	// The RunE closure captures configCmd so the --print/--set flags are
 	// readable without consulting os.Args directly.
@@ -462,6 +509,13 @@ func Command() *cobra.Command {
 		printOnly, _ := cmd.Flags().GetBool("print")
 		setFlags, _ := cmd.Flags().GetStringArray("set")
 		layer, _ := cmd.Flags().GetString("layer")
+		resolved, _ := cmd.Flags().GetBool("resolved")
+		if resolved {
+			if refusal := resolvedRefusal(args, printOnly, setFlags, layer); refusal != "" {
+				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), refusal))
+				return nil
+			}
+		}
 		if len(args) == 0 && !printOnly && len(setFlags) == 0 {
 			return cmd.Help()
 		}
@@ -469,6 +523,10 @@ func Command() *cobra.Command {
 			if _, ok := configreg.Template(args[0]); !ok {
 				return fmt.Errorf("unknown subcommand %q for %q; run \"lyx config\" to list modules and verbs", args[0], cmd.CommandPath())
 			}
+		}
+		if resolved {
+			clihelp.SetExit(cmd.Context(), runResolved(cmd.Context(), cmd.OutOrStdout(), args[0]))
+			return nil
 		}
 		clihelp.SetExit(cmd.Context(), runConfig(cmd.Context(), cmd.OutOrStdout(), args, printOnly, setFlags, layer))
 		return nil
