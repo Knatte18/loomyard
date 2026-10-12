@@ -299,6 +299,13 @@
 // The command line is composed in panebin.go from the pane-binary prelude, so `lyx` resolves to the spawning binary.
 // Bound: the op only chooses where a command runs; the window lives as long as the reed session, and the session's other windows keep remain-on-exit on.
 //
+// Own windows: an own-window strand gets a detached window named by its role, opened through the launch chokepoint (spawn.go's openOwnWindowLocked) by `new-window -d`, so it never takes focus.
+// The window carries @lyx_own, @strand_color and @lyx_unseen, each set by window id; the last is left unset on Windows.
+// Its pane runs the same launch tail as a window 0 strand.
+// Its dead pane stays until the strand is removed or, once a relaunch leaves it unbound, until its window holds no bound pane.
+// Resume reopens the strand detached.
+// UpdateStrand refuses a move into or out of the anchor, since the pane would sit where the new display does not expect it.
+//
 // Session targeting: every -t argument that names a SESSION is passed in
 // an exact-match form — "=<name>" for session targets (has-session,
 // kill-session, attach-session) and "=<name>:" for window/pane targets

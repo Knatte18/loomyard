@@ -82,6 +82,9 @@ func (p TmuxCmd) listWindowPanes(session string) ([]windowPane, error) {
 	return parseWindowPanes(out), nil
 }
 
+// unseenWindowOption is the display-only window option marking an own window the operator has not selected since it opened.
+const unseenWindowOption = "@lyx_unseen"
+
 // isOwnWindow reports whether d places a strand outside window 0.
 func isOwnWindow(d render.Display) bool {
 	return d.Anchor == render.AnchorOwnWindow

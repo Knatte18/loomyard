@@ -12,9 +12,11 @@ package reedengine
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
@@ -39,8 +41,10 @@ func sendKeysLiteralArg(text string) string {
 	return text
 }
 
-// launchStrandLocked reconciles the session's panes first, then always splits a fresh pane for s and
-// runs launchCmd in it. It validates the split created a new pane and sets only s.PaneID; Live is
+// launchStrandLocked reconciles the session's panes first, then creates a fresh pane for s and runs launchCmd in it.
+// The pane is a split of window 0, or a detached window of its own for an own-window strand, and both run the same tail:
+// the title lock, the pane options, the prelude, the launch script and the send-keys.
+// It validates the split created a new pane and sets only s.PaneID; Live is
 // derived from pane binding downstream.
 //
 // Reconciling here — rather than trusting the caller's last reconcile — is the chokepoint that makes
@@ -98,40 +102,13 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 		}
 	}
 
-	split, err := planPaneTarget(st, live, s.Display)
+	var paneID string
+	if isOwnWindow(s.Display) {
+		paneID, err = e.openOwnWindowLocked(s, strandLabel(s.Name), "")
+	} else {
+		paneID, err = e.splitWindowZeroPaneLocked(st, live, s)
+	}
 	if err != nil {
-		return err
-	}
-	splitTargetID := split.target
-
-	// -c pins the new pane's cwd to Geometry.PaneCwd, exactly as
-	// new-session and Selvage's own split (lifecycle.go) already do. Without
-	// it tmux resolves the cwd from the invoking CLIENT — verified live
-	// (tmux 3.6): a split issued from outside tmux lands in the calling
-	// process's cwd, neither the target pane's cwd nor the session's. That
-	// happens to be PaneCwd whenever lyx runs under lyxcwd.Resolve's
-	// exact-equality cwd gate, and stops being it the moment a
-	// caller injects a cwd through the RunCLIIn seam instead — at which
-	// point every strand command would run against the wrong tree while
-	// reed reported success.
-	//
-	// -b is the exception to "a strand split always lands below its target";
-	// see planPaneTarget's doc comment for when it is set.
-	// -f, set with -b for a top-anchored strand, makes the split full-width and takes its rows from the whole window.
-	argv := []string{"split-window"}
-	if split.above {
-		argv = append(argv, "-b")
-	}
-	if split.full {
-		argv = append(argv, "-f")
-	}
-	argv = append(argv, "-t", splitTargetID, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}")
-	out, err := e.tmux.output(argv...)
-	if err != nil {
-		return fmt.Errorf("split window: %w", err)
-	}
-	paneID := strings.TrimSpace(out)
-	if err := validateSplitCreatedNewPane(paneID, live, splitTargetID); err != nil {
 		return err
 	}
 
@@ -162,6 +139,86 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 		return fmt.Errorf("submit launch command: %w", err)
 	}
 	return nil
+}
+
+// splitWindowZeroPaneLocked splits a fresh pane for s into window 0 at the target planPaneTarget picks from live and returns its id.
+func (e *Engine) splitWindowZeroPaneLocked(st *ReedState, live []LivePane, s *Strand) (string, error) {
+	split, err := planPaneTarget(st, live, s.Display)
+	if err != nil {
+		return "", err
+	}
+	splitTargetID := split.target
+
+	// -c pins the new pane's cwd to Geometry.PaneCwd, exactly as
+	// new-session and Selvage's own split (lifecycle.go) already do. Without
+	// it tmux resolves the cwd from the invoking CLIENT — verified live
+	// (tmux 3.6): a split issued from outside tmux lands in the calling
+	// process's cwd, neither the target pane's cwd nor the session's. That
+	// happens to be PaneCwd whenever lyx runs under lyxcwd.Resolve's
+	// exact-equality cwd gate, and stops being it the moment a
+	// caller injects a cwd through the RunCLIIn seam instead — at which
+	// point every strand command would run against the wrong tree while
+	// reed reported success.
+	//
+	// -b is the exception to "a strand split always lands below its target";
+	// see planPaneTarget's doc comment for when it is set.
+	// -f, set with -b for a top-anchored strand, makes the split full-width and takes its rows from the whole window.
+	argv := []string{"split-window"}
+	if split.above {
+		argv = append(argv, "-b")
+	}
+	if split.full {
+		argv = append(argv, "-f")
+	}
+	argv = append(argv, "-t", splitTargetID, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}")
+	out, err := e.tmux.output(argv...)
+	if err != nil {
+		return "", fmt.Errorf("split window: %w", err)
+	}
+	paneID := strings.TrimSpace(out)
+	if err := validateSplitCreatedNewPane(paneID, live, splitTargetID); err != nil {
+		return "", err
+	}
+	return paneID, nil
+}
+
+// openOwnWindowLocked opens a detached window for s named name and returns the id of its pane.
+// The window is created with -d, so the client's current window and active pane stay where they are, and nothing selects it.
+// It carries no command, so the pane is the default login shell like every strand pane.
+// A non-empty group is recorded on the window, which is how a group's shared window is found later.
+// A window option that fails to set is logged and never fails the open; a window missing the own marker is only never ended by reconcile.
+func (e *Engine) openOwnWindowLocked(s *Strand, name, group string) (string, error) {
+	out, err := e.tmux.output("new-window", "-d", "-P", "-F", "#{pane_id} #{window_id}",
+		"-t", exactSessionWindowTarget(e.SessionName()), "-n", name, "-c", e.geom.PaneCwd)
+	if err != nil {
+		return "", fmt.Errorf("new window: %w", err)
+	}
+	fields := strings.Fields(out)
+	if len(fields) != 2 {
+		return "", fmt.Errorf("new-window created no usable window (got %q)", strings.TrimSpace(out))
+	}
+	paneID, windowID := fields[0], fields[1]
+
+	setOption := func(option, value string) {
+		if err := e.tmux.run("set-option", "-w", "-t", windowID, option, value); err != nil {
+			logger.Warn("reed: could not set an own-window option", "strand", s.GUID, "window", windowID, "option", option, "err", err)
+		}
+	}
+	setOption(ownWindowOption, "1")
+	if color, ok := e.segmentColor(s.Segment); ok {
+		if tmuxColor, ok := segmentcolor.TmuxColor(color); ok {
+			setOption("@strand_color", tmuxColor)
+		}
+	}
+	if runtime.GOOS != "windows" {
+		setOption(unseenWindowOption, "1")
+	}
+	if group != "" {
+		setOption(groupWindowOption, group)
+	}
+
+	logger.Info("reed: opened own window", "socket", e.Socket(), "session", e.SessionName(), "strand", s.GUID, "window", windowID, "pane", paneID)
+	return paneID, nil
 }
 
 // loadOrInitStateLocked loads or initializes a ReedState stamped with

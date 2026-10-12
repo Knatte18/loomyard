@@ -56,16 +56,27 @@ type Removed struct {
 
 // validateDisplay rejects an invalid Display at the op boundary,
 // before any pane is launched or state persisted.
-// The anchor must be below-parent, hidden or top, and render must accept the whole display.
+// The anchor must be below-parent, hidden, top or own-window, and render must accept the whole display.
 func validateDisplay(display render.Display) error {
 	switch display.Anchor {
-	case render.AnchorBelowParent, render.AnchorHidden, render.AnchorTop:
+	case render.AnchorBelowParent, render.AnchorHidden, render.AnchorTop, render.AnchorOwnWindow:
 		return render.ValidateDisplay(display)
-	case render.AnchorOwnWindow:
-		return fmt.Errorf("anchor %q is deferred, not supported in v1", render.AnchorOwnWindow)
 	default:
-		return fmt.Errorf("invalid anchor %q; want below-parent|hidden|top", display.Anchor)
+		return fmt.Errorf("invalid anchor %q; want below-parent|hidden|top|own-window", display.Anchor)
 	}
+}
+
+// refuseWindowMove refuses an update that moves a strand into or out of the own-window anchor, or changes an own-window strand's window group.
+// A strand's pane lives in window 0 or in a window of its own from launch on, so such a move would strand the pane where the new display does not expect it.
+// The error names the way forward: remove the strand and add it again.
+func refuseWindowMove(name string, current, next render.Display) error {
+	if isOwnWindow(current) != isOwnWindow(next) {
+		return fmt.Errorf("strand %q cannot move between own-window and another anchor; way forward: lyx reed remove --name %s, then add it again with the new anchor", name, name)
+	}
+	if isOwnWindow(current) && (current.Window != next.Window || current.WindowSize != next.WindowSize) {
+		return fmt.Errorf("strand %q cannot change its window group; way forward: lyx reed remove --name %s, then add it again with the new group", name, name)
+	}
+	return nil
 }
 
 // validateIfAbsent rejects spec at the op boundary, before any state is loaded, when IfAbsent is set
@@ -370,6 +381,10 @@ func (e *Engine) updateStrandLocked(st *ReedState, guid string, display render.D
 		return Strand{}, fmt.Errorf("unknown strand %q", guid)
 	}
 	strand := &st.Strands[idx]
+
+	if err := refuseWindowMove(strand.Name, strand.Display, display); err != nil {
+		return Strand{}, err
+	}
 
 	wasHidden := strand.Display.Anchor == render.AnchorHidden
 	if !wasHidden && display.Anchor == render.AnchorHidden {
@@ -767,6 +782,8 @@ func sessionReapRoots(live []LivePane) []int {
 // session, so a stale or copied reed.json can never make this remove destroy a sibling
 // worktree's pane on the shared per-hub server (paneIDsInSession, R5 review finding
 // R5-F4). It is free: this call site already had to list panes for the reap snapshot.
+// The listing spans every window of the session, so an own-window strand's pane is killed too,
+// and its window ends with its last pane.
 // A failed enumeration kills nothing rather than falling back to the unchecked list —
 // list-panes exits non-zero precisely when the session is gone, in which case the panes
 // are gone with it and there is nothing this remove still needs to destroy.
@@ -793,11 +810,15 @@ func (e *Engine) killStrandPanes(paneIDs []string) []int {
 	var reapPIDs []int
 	var killPaneIDs []string
 	if len(paneIDs) > 0 {
-		live, err := e.listStoredStrandPanes()
+		windows, err := e.tmux.listWindowPanes(e.SessionName())
 		if err != nil {
 			logger.Warn("reed: could not enumerate panes before removing a strand, killing none",
 				"socket", e.Socket(), "session", e.SessionName(), "err", err)
 		} else {
+			live := make([]LivePane, len(windows))
+			for i, w := range windows {
+				live[i] = w.livePane()
+			}
 			killPaneIDs = paneIDsInSession(paneIDs, live)
 			reapPIDs = e.descendantClosurePIDs(alivePanePIDs(killPaneIDs, live))
 		}

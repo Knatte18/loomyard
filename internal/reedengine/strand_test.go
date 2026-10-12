@@ -29,7 +29,7 @@ import (
 // Hidden adds mint unique 32-hex guids, store the record without launching (no PaneID) and keep Cmd verbatim though unrun;
 // AddSpec.SessionID is opaque caller metadata, stamped verbatim and surviving a SaveState/LoadState round trip like every other carrier field (Cmd, ResumeCmd, Name);
 // a known parent is accepted.
-// An unknown parent, the deferred own-window anchor, a mistyped anchor or an empty one is rejected before any pane is launched or record registered —
+// An unknown parent, an own-window display with a negative window size, a mistyped anchor or an empty one is rejected before any pane is launched or record registered —
 // without that guard an in-process caller (shuttle) would persist the strand, launch its pane, and fail every subsequent apply in render until the strand was removed.
 func TestAddStrandLocked(t *testing.T) {
 	e := newTestEngine(t)
@@ -86,7 +86,7 @@ func TestAddStrandLocked(t *testing.T) {
 		spec AddSpec
 	}{
 		{"UnknownParent", AddSpec{Parent: "does-not-exist", Display: hidden}},
-		{"OwnWindowAnchor", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.AnchorOwnWindow}}},
+		{"OwnWindowNegativeWindowSize", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.AnchorOwnWindow, WindowSize: -1}}},
 		{"MistypedAnchor", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.Anchor("sideways")}}},
 		{"EmptyAnchor", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.Anchor("")}}},
 		{"TopPositionalDisplay", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.AnchorTop}}},
@@ -104,6 +104,24 @@ func TestAddStrandLocked(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("OwnWindowEmptyNewWindowAnswerIsRefused", func(t *testing.T) {
+		e := newTestEngine(t)
+		fake := installFakeTmux(t, e)
+		fake.answer("new-window", "\n", nil)
+		own := &ReedState{}
+
+		_, err := e.addStrandLocked(own, AddSpec{Cmd: "x", Display: render.Display{Anchor: render.AnchorOwnWindow}})
+		if err == nil {
+			t.Fatal("addStrandLocked = nil error, want the empty new-window answer refused")
+		}
+		if !strings.Contains(err.Error(), "new-window") {
+			t.Errorf("error = %q, want it to name new-window", err)
+		}
+		if saved, err := LoadState(e.stateDir()); err != nil || saved != nil {
+			t.Errorf("LoadState = %+v, %v; want nothing recorded on disk", saved, err)
+		}
+	})
 }
 
 func TestWouldFormCycle(t *testing.T) {
@@ -176,26 +194,34 @@ func TestNeedsLaunchOnSurface(t *testing.T) {
 	}
 }
 
-// TestUpdateStrandLocked pins UpdateStrand's engine-boundary rules:
-// a visible->hidden update, the deferred own-window anchor, a mistyped anchor and an unknown guid are rejected with the strand's display unchanged
-// (a persisted own-window display would poison every later apply),
-// while a hidden->hidden update is a no-op that launches nothing.
+// TestUpdateStrandLocked pins UpdateStrand's engine-boundary rules.
+// A visible->hidden update, a mistyped anchor, an unknown guid and a move into or out of the own-window anchor or between window groups are rejected with the strand's display unchanged.
+// A persisted display the pane does not match would poison every later apply.
+// A hidden->hidden update and a focus-only change of an own-window strand are accepted and launch nothing.
+// A window-move refusal names the way forward, lyx reed remove.
 func TestUpdateStrandLocked(t *testing.T) {
 	visible := render.Display{Anchor: render.AnchorBelowParent}
 	hidden := render.Display{Anchor: render.AnchorHidden}
+	own := render.Display{Anchor: render.AnchorOwnWindow, Window: "pair", WindowSize: 2}
+	const moveWayForward = "way forward: lyx reed remove"
 	tests := []struct {
 		name    string
 		strand  Strand
 		guid    string
 		display render.Display
-		wantErr bool
+		wantErr string
 	}{
-		{"VisibleToHiddenRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", hidden, true},
-		{"OwnWindowAnchorRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", render.Display{Anchor: render.AnchorOwnWindow}, true},
-		{"MistypedAnchorRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", render.Display{Anchor: render.Anchor("sideways")}, true},
-		{"TopPositionalDisplayRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", render.Display{Anchor: render.AnchorTop}, true},
-		{"UnknownGuidRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "does-not-exist", render.Display{}, true},
-		{"HiddenToHiddenIsANoOpWithNoLaunch", Strand{GUID: "g1", Display: hidden, Cmd: "claude"}, "g1", render.Display{Anchor: render.AnchorHidden, Focus: true}, false},
+		{"VisibleToHiddenRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", hidden, "cannot hide"},
+		{"MistypedAnchorRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", render.Display{Anchor: render.Anchor("sideways")}, "invalid anchor"},
+		{"TopPositionalDisplayRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", render.Display{Anchor: render.AnchorTop}, "content-sized"},
+		{"UnknownGuidRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "does-not-exist", render.Display{}, "invalid anchor"},
+		{"BelowParentToOwnWindowRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", own, moveWayForward},
+		{"OwnWindowToBelowParentRejected", Strand{GUID: "g1", PaneID: "%1", Display: own}, "g1", visible, moveWayForward},
+		{"HiddenToOwnWindowRejected", Strand{GUID: "g1", Display: hidden, Cmd: "claude"}, "g1", own, moveWayForward},
+		{"OwnWindowGroupChangeRejected", Strand{GUID: "g1", PaneID: "%1", Display: own}, "g1", render.Display{Anchor: render.AnchorOwnWindow, Window: "other", WindowSize: 2}, moveWayForward},
+		{"OwnWindowSizeChangeRejected", Strand{GUID: "g1", PaneID: "%1", Display: own}, "g1", render.Display{Anchor: render.AnchorOwnWindow, Window: "pair", WindowSize: 3}, moveWayForward},
+		{"HiddenToHiddenIsANoOpWithNoLaunch", Strand{GUID: "g1", Display: hidden, Cmd: "claude"}, "g1", render.Display{Anchor: render.AnchorHidden, Focus: true}, ""},
+		{"OwnWindowFocusOnlyChangeAccepted", Strand{GUID: "g1", PaneID: "%1", Display: own}, "g1", render.Display{Anchor: render.AnchorOwnWindow, Window: "pair", WindowSize: 2, Focus: true}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -204,20 +230,26 @@ func TestUpdateStrandLocked(t *testing.T) {
 
 			strand, err := e.updateStrandLocked(st, tt.guid, tt.display)
 
-			if tt.wantErr {
+			if tt.wantErr != "" {
 				if err == nil {
 					t.Fatal("updateStrandLocked = nil error, want rejection")
 				}
-				if st.Strands[0].Display.Anchor != tt.strand.Display.Anchor {
-					t.Errorf("strand Display.Anchor = %v, want unchanged after a rejected update", st.Strands[0].Display.Anchor)
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error = %q, want it to contain %q", err, tt.wantErr)
+				}
+				if st.Strands[0].Display != tt.strand.Display {
+					t.Errorf("strand Display = %+v, want unchanged %+v after a rejected update", st.Strands[0].Display, tt.strand.Display)
 				}
 				return
 			}
 			if err != nil {
 				t.Fatalf("updateStrandLocked: %v", err)
 			}
-			if strand.PaneID != "" {
-				t.Errorf("strand.PaneID = %q, want empty (still hidden, no launch)", strand.PaneID)
+			if strand.PaneID != tt.strand.PaneID {
+				t.Errorf("strand.PaneID = %q, want %q (no launch)", strand.PaneID, tt.strand.PaneID)
+			}
+			if strand.Display != tt.display {
+				t.Errorf("strand.Display = %+v, want %+v", strand.Display, tt.display)
 			}
 		})
 	}
