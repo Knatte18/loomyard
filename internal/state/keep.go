@@ -26,7 +26,7 @@ type jsonMember struct {
 // keepUnknown returns newRaw with every object member of oldRaw that the Go type t does not declare appended to the object that holds it, recursing through t's struct, pointer, map, slice and array layers.
 // Both inputs are compact or indented JSON; the result is compact wherever it differs from newRaw.
 // A type that encodes itself (a json.Marshaler or json.Unmarshaler, json.RawMessage, an interface or a scalar kind) is opaque and yields newRaw whole, as does any pair whose JSON shapes differ.
-// A slice or array element is merged with its old counterpart only when both decode to the same value, so an element updated in place, removed or moved keeps no unknown keys.
+// A slice or array element is merged with an old element only when both decode to the same value, so an element updated in place keeps no unknown keys, while one that merely shifted index keeps them.
 func keepUnknown(t reflect.Type, oldRaw, newRaw []byte) []byte {
 	if isOpaque(t) {
 		return newRaw
@@ -117,7 +117,7 @@ func keepUnknownInMap(t reflect.Type, oldRaw, newRaw []byte) []byte {
 	return encodeObject(newMembers)
 }
 
-// keepUnknownInList merges oldRaw into newRaw for a slice or array type, element by element, for each element whose old counterpart at the same index encodes to the same compact JSON.
+// keepUnknownInList merges oldRaw into newRaw for a slice or array type, element by element, for each element that has a not yet paired old element encoding to the same compact JSON, the one at the same index preferred.
 func keepUnknownInList(t reflect.Type, oldRaw, newRaw []byte) []byte {
 	if isOpaque(t.Elem()) {
 		return newRaw
@@ -127,12 +127,27 @@ func keepUnknownInList(t reflect.Type, oldRaw, newRaw []byte) []byte {
 	if !oldIsArray || !newIsArray {
 		return newRaw
 	}
+	paired := make([]bool, len(oldElements))
 	for i, element := range newElements {
-		if i < len(oldElements) && encodesAs(t.Elem(), oldElements[i], element) {
-			newElements[i] = keepUnknown(t.Elem(), oldElements[i], element)
+		if oldIndex, found := pairOldElement(t.Elem(), oldElements, paired, i, element); found {
+			paired[oldIndex] = true
+			newElements[i] = keepUnknown(t.Elem(), oldElements[oldIndex], element)
 		}
 	}
 	return encodeArray(newElements)
+}
+
+// pairOldElement returns the index of the old element not yet paired that encodes as newElement, preferring preferred and otherwise the first such element.
+func pairOldElement(t reflect.Type, oldElements [][]byte, paired []bool, preferred int, newElement []byte) (int, bool) {
+	if preferred < len(oldElements) && !paired[preferred] && encodesAs(t, oldElements[preferred], newElement) {
+		return preferred, true
+	}
+	for i, oldElement := range oldElements {
+		if !paired[i] && encodesAs(t, oldElement, newElement) {
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 // encodesAs reports whether oldRaw, decoded into a value of type t and encoded compact again, is byte for byte newRaw.

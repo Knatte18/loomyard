@@ -257,9 +257,9 @@ func TestWriteJSON_KeepsUnknownKeys(t *testing.T) {
 			}),
 		},
 		{
-			name: "removing entry 0 drops the unknown key of the entry that moved to index 0",
+			name: "removing entry 0 keeps the unknown key of the entry that moved to index 0",
 			old:  `{"title":"T","entries":[{"name":"a","count":1,"zz":1},{"name":"b","count":2,"zz":2}]}`,
-			want: `{"title":"T","entries":[{"name":"b","count":2}]}`,
+			want: `{"title":"T","entries":[{"name":"b","count":2,"zz":2}]}`,
 			apply: updateWith(func(record *keepRecord) {
 				record.Entries = record.Entries[1:]
 			}),
