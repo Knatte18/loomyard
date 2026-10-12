@@ -215,7 +215,7 @@ func ReportLoopArmError(out io.Writer, stop ArmStop, err error) int {
 	logger.Warn("shed: step arming refused", "error", message)
 
 	obj := loopObject{Stop: LoopStopError, Detail: message}
-	if _, present := readStatusAt(stop.StatusPath, stop.StatusLockPath); present {
+	if _, present, _ := readStatusAt(stop.StatusPath, stop.StatusLockPath); present {
 		if loopLockFree(stop.LoopLockPath) {
 			if rec, found, readErr := ReadLoopPIDRecord(stop.PIDPath); readErr == nil && found {
 				killStepTree(rec)
@@ -234,7 +234,7 @@ func ReportLoopArmError(out io.Writer, stop ArmStop, err error) int {
 		} else {
 			obj.Stop = LoopStopBusy
 		}
-		after, _ := readStatusAt(stop.StatusPath, stop.StatusLockPath)
+		after, _, _ := readStatusAt(stop.StatusPath, stop.StatusLockPath)
 		obj.CurrentProducer = after.CurrentProducer
 		obj.HistoryLength = len(after.History)
 		obj.State = string(after.State)

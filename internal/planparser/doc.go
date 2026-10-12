@@ -17,6 +17,8 @@
 // package uses. No `strings.TrimSuffix(s, "#")`, no reading Glyph.Unit as a disk path, and
 // no local regex over a glyph string anywhere in this package or its callers --
 // cmd/lyx/constraintchokepoint_test.go guards this mechanically.
+// goPackageDir (targetdirs.go) is the one sanctioned adjustment beside Glyph.UnitPath:
+// it maps quarry's external-test pseudo-unit `<dir>_test` to its package directory.
 //
 // # Path ownership
 //
@@ -69,7 +71,8 @@
 // glyphref.go holds the sole
 // path->glyph call (glyph.Self) and the sole glyph->path call
 // (Glyph.UnitPath, used only by validate.go's disk-existence checks), per the
-// glyph-conversion-chokepoint Shared Decision.
+// glyph-conversion-chokepoint Shared Decision;
+// goPackageDir (targetdirs.go) stands beside Glyph.UnitPath as the external-test unit mapping.
 //
 // # The root:/// resolution rule
 //
@@ -125,7 +128,7 @@
 //
 // # Verify chains
 //
-// verify-nested-module and verify-module-wide read a shell chain through one splitter.
+// verify-nested-module, verify-module-wide and verify-package-missing read a shell chain through one splitter.
 // It joins a backslash-newline continuation into one line, then splits at `&&`, `||`, `;`, `|` and a newline, reading `||` as one separator and a separator inside a single- or double-quoted span as text.
 // A segment carries the separator that preceded it, so verify-nested-module follows a `cd` only after a sequencing separator and ends its scan at a `cd` in a pipeline stage or after `||`.
 //

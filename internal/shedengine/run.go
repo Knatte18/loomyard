@@ -148,8 +148,8 @@ func pauseCommandFor(told, runID, producer string) string {
 // missingStatusWayForward is the trailing clause Step and Goto put on a missing-status-file refusal.
 const missingStatusWayForward = "way forward: seed the run through its recipe's bootstrap verb, or \"lyx shed seed\" for a recipe without one"
 
-// missingStatusClause returns the told missing-status clause, or the generic one when none is told.
-func missingStatusClause(told string) string {
+// MissingStatusClause returns the told missing-status clause, or the generic one when none is told.
+func MissingStatusClause(told string) string {
 	if told != "" {
 		return told
 	}
@@ -183,7 +183,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		return StepResult{}, fmt.Errorf("shedengine: read status file %q: %w", s.StatusPath, err)
 	}
 	if !found {
-		return StepResult{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one; %s", s.StatusPath, missingStatusClause(s.MissingStatusWayForward))
+		return StepResult{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one; %s", s.StatusPath, MissingStatusClause(s.MissingStatusWayForward))
 	}
 	if !st.State.valid() {
 		return StepResult{}, fmt.Errorf("shedengine: status file %q carries an invalid state %q", s.StatusPath, st.State)

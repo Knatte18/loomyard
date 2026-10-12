@@ -43,6 +43,16 @@ func TestCardGateCommand(t *testing.T) {
 		}
 	})
 
+	t.Run("external test package maps to its package directory", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"internal/a#Run", "internal/a_test#TestRun"}})
+		want := []string{"lyx gate test ./internal/a", lintComments, lintPattern}
+		if got := cardGateCommand(plan, card, root); !slices.Equal(got, want) {
+			t.Errorf("cardGateCommand() = %q; want %q", got, want)
+		}
+	})
+
 	t.Run("Delete-only directory drops out", func(t *testing.T) {
 		t.Parallel()
 		root := t.TempDir()

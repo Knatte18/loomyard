@@ -410,13 +410,121 @@ func TestLoop_InterruptedChildFillsTheErrorForm(t *testing.T) {
 			return os.Remove(fx.paths.StatusPath)
 		})
 
+		fx.spec.MissingStatusWayForward = "way forward: told reseed"
+		var hookArgs []string
+		fx.spec.Hooks.AfterInterrupt = func(_ context.Context, producer, cause, file string) string {
+			hookArgs = []string{producer, cause, file}
+			return ""
+		}
+
 		env, code := fx.execute()
 
-		if code != 1 || env["kind"] != KindInterrupted || !strings.Contains(fmt.Sprint(env["error"]), "step B interrupted (status-missing)") {
-			t.Errorf("exit/kind/error = %d/%v/%v; want an interrupted stop with cause status-missing at B", code, env["kind"], env["error"])
+		logPath := fx.spec.Loop.LogPath
+		wantText := "shedverbs: step B interrupted (status-missing); status file " + fx.paths.StatusPath + ", loop log " + logPath + "; way forward: told reseed"
+		if code != 1 || env["kind"] != KindInterrupted || env["error"] != wantText {
+			t.Errorf("exit/kind/error = %d/%v/%v; want an interrupted stop with %q", code, env["kind"], env["error"], wantText)
+		}
+		if env["trace_file"] != logPath || !reflect.DeepEqual(hookArgs, []string{"B", "status-missing", logPath}) {
+			t.Errorf("trace_file/hook args = %v/%v; want the loop log %s for both", env["trace_file"], hookArgs, logPath)
+		}
+		if _, err := os.Stat(fx.paths.StatusPath); !os.IsNotExist(err) {
+			t.Errorf("status file stat error = %v; want it still absent", err)
 		}
 		if len(fx.requests) != 1 {
 			t.Errorf("children started = %d; want the loop to stop without starting another", len(fx.requests))
+		}
+	})
+
+	t.Run("an undecodable status file stops without a re-read", func(t *testing.T) {
+		fx := newLoopFixture(t, func(fx *loopFixture, traceID string, req ChildRequest) error {
+			if err := continuing("B", 1)(fx, traceID, req); err != nil {
+				return err
+			}
+			return os.WriteFile(fx.paths.StatusPath, []byte("{"), 0o644)
+		})
+
+		env, code := fx.execute()
+
+		text := fmt.Sprint(env["error"])
+		for _, want := range []string{"(status-unreadable: ", "decode failed", "with a lyx binary that decodes the status file", "report the stop to the run's parent"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("error %q lacks %q", text, want)
+			}
+		}
+		if code != 1 || env["trace_file"] != fx.spec.Loop.LogPath {
+			t.Errorf("exit/trace_file = %d/%v; want 1 and the loop log %s", code, env["trace_file"], fx.spec.Loop.LogPath)
+		}
+		if data, err := os.ReadFile(fx.paths.StatusPath); err != nil || string(data) != "{" {
+			t.Errorf("status file = %q, %v; want it left as found", data, err)
+		}
+		if _, restepped := loopOf(t, env)["restep"]; restepped || len(fx.requests) != 1 {
+			t.Errorf("restep present %v, children started %d; want no re-step and one child", restepped, len(fx.requests))
+		}
+	})
+
+	t.Run("a read error that fails its re-read stops", func(t *testing.T) {
+		fx := newLoopFixture(t)
+		fx.spec.Loop.ReadStatus = func(string, string) (shedengine.Status, bool, error) {
+			return shedengine.Status{}, false, errors.New("read lock unavailable")
+		}
+
+		env, code := fx.execute()
+
+		text := fmt.Sprint(env["error"])
+		for _, want := range []string{"status-unreadable: read lock unavailable", "way forward: re-run lyx shed step run-1 --until-stop"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("error %q lacks %q", text, want)
+			}
+		}
+		if code != 1 || env["trace_file"] != fx.spec.Loop.LogPath || len(fx.requests) != 0 {
+			t.Errorf("exit/trace_file/children = %d/%v/%d; want 1, the loop log %s and no child", code, env["trace_file"], len(fx.requests), fx.spec.Loop.LogPath)
+		}
+		restep, _ := loopOf(t, env)["restep"].(map[string]any)
+		if restep["error"] != "status-unreadable: read lock unavailable" {
+			t.Errorf("loop.restep = %v; want it to name the read error", restep)
+		}
+		// Only the skipped failed write leaves the readable file running.
+		if st := fx.readStatus(); st.State != shedengine.StateRunning || st.CurrentProducer != "A" {
+			t.Errorf("status = %s at %s; want running at A", st.State, st.CurrentProducer)
+		}
+	})
+
+	t.Run("a read error that clears on the re-read steps on", func(t *testing.T) {
+		fx := newLoopFixture(t, halting(shedengine.StateDone, "", 1))
+		reads := 0
+		fx.spec.Loop.ReadStatus = func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+			reads++
+			if reads == 1 {
+				return shedengine.Status{}, false, errors.New("read lock unavailable")
+			}
+			return readStatusAt(statusPath, statusLockPath)
+		}
+
+		env, _ := fx.execute()
+
+		loop := loopOf(t, env)
+		restep, _ := loop["restep"].(map[string]any)
+		if loop["stop"] != string(LoopStopHalted) || len(fx.requests) != 1 || restep["error"] != "status-unreadable: read lock unavailable" {
+			t.Errorf("stop/children/restep = %v/%d/%v; want halted, one child and a re-step naming the read error", loop["stop"], len(fx.requests), restep)
+		}
+	})
+
+	t.Run("a read error after a used re-step stops without a re-read", func(t *testing.T) {
+		fx := newLoopFixture(t, failing(KindProducer, string(shedengine.TransientGitTransport), "child failure"))
+		reads := 0
+		fx.spec.Loop.ReadStatus = func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+			reads++
+			if reads == 1 {
+				return readStatusAt(statusPath, statusLockPath)
+			}
+			return shedengine.Status{}, false, errors.New("read lock unavailable")
+		}
+
+		env, _ := fx.execute()
+
+		restep, _ := loopOf(t, env)["restep"].(map[string]any)
+		if !strings.Contains(fmt.Sprint(env["error"]), "status-unreadable: read lock unavailable") || len(fx.requests) != 1 || restep["error"] != "child failure" {
+			t.Errorf("error/children/restep = %v/%d/%v; want the read error stop after one child, with the re-step naming the child's failure", env["error"], len(fx.requests), restep)
 		}
 	})
 }

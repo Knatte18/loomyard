@@ -27,7 +27,11 @@
 // The stop is one of LoopStop's values.
 // halted is a run that is no longer running: blocked, awaiting, done or paused by request.
 // stop-condition is a pause_before or pause_after condition that fired.
-// error is a step that ended in an error, and interrupted a child that ended without an envelope, including a status file that vanished; both write the status file failed while it still reads running.
+// error is a step that ended in an error, and interrupted a child that ended without an envelope; both write the status file failed while it still reads running.
+// interrupted is also the stop on the status read at an iteration's top, with the cause status-missing for an absent file and status-unreadable: <error> for an unreadable one.
+// A decode error stops at once, since the file stays undecodable to this binary; any other read error gets one re-read through the same re-step the transient errors share, and stops when that fails or the re-step is already used.
+// No child runs at such a stop, the trace file is the loop log, and the error names the status file and the loop log and ends with a way forward split by cause: the recipe's own reseed for an absent file, a lyx binary that decodes the file for a decode error, and a re-run of the step for a read error.
+// The status file is left as found, since writing it failed would destroy the evidence.
 // busy is another holder of the run, or of the run lock at the failed write, which writes nothing.
 // A transient error gets one immediate re-step, reported as restep.
 //

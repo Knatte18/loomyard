@@ -3,7 +3,10 @@
 
 package planparser
 
-import "path"
+import (
+	"path"
+	"strings"
+)
 
 // TargetDir is one worktree-relative directory a card's targets live in.
 type TargetDir struct {
@@ -20,6 +23,7 @@ type TargetDir struct {
 // CardTargetDirs returns one entry per directory card's targets live in, in first-seen order.
 // A path target maps to its own directory, or to itself when it names a directory.
 // A glyph or `plan:` handle maps through Glyph.UnitPath, to the unit's directory when the unit is a file.
+// An external test package's unit maps to its package directory.
 // A Rename group contributes its pairs' New side alone.
 // Uses is excluded, since it is read rather than written.
 // A nil plan reads as the default language.
@@ -89,7 +93,22 @@ func targetDir(plan *Plan, raw string) (dir string, namesGo, ok bool) {
 	if !ok {
 		return "", false, false
 	}
+	if fromGlyph {
+		unit = goPackageDir(unit)
+	}
 	return unitDir(unit, fromGlyph)
+}
+
+// goPackageDir maps a Go unit string, a glyph's UnitPath result or a handle's package half, to the directory its package lives in.
+// It is the one sanctioned adjustment of a Go unit string under PATTERN-glyph-conversion-chokepoint:
+// quarry names an external test package's unit `<dir>_test`, a pseudo-unit with no directory of its own, so a last path segment ending in `_test` with no file extension comes back without that suffix.
+// Any other unit is returned unchanged.
+// It reads no disk, so a real package directory whose own name ends in `_test` maps to its sibling.
+func goPackageDir(unit string) string {
+	if hasFileExtension(unit) {
+		return unit
+	}
+	return strings.TrimSuffix(unit, "_test")
 }
 
 // refUnit maps one ref to the unit or path spelling it names, and whether that spelling came from a glyph.

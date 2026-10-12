@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -53,6 +55,9 @@ type LoopSpec struct {
 	TraceFiles func(traceID string) ([]string, error)
 	// Runner starts a child step; nil selects the production runner, which ties the child to the loop.
 	Runner ChildRunner
+	// ReadStatus is the read of the status file at the top of each iteration; nil selects readStatusAt.
+	// It reports found false with a nil error for an absent file.
+	ReadStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)
 	// Executable is the program a child runs, and the program the detached loop itself is.
 	Executable string
 	// Now is the loop's clock; nil selects time.Now.
@@ -141,6 +146,9 @@ type childResult struct {
 	cause   string
 	// note is a line the stop's detail carries, such as what the watchdog saw.
 	note string
+	// statusStop is set when the iteration stopped on its status read, and statusErr is that read's error, nil for an absent file.
+	statusStop bool
+	statusErr  error
 }
 
 // ok reports whether the iteration produced a success envelope.
@@ -153,6 +161,8 @@ func (r childResult) ok() bool {
 // It returns the stop step's exit code.
 // argv is the child's command line after the executable, the loop's own without the flag that selects the loop.
 // A transient error gets one immediate re-step; an error or interrupted stop on a run still reading running writes it failed.
+// The exception is a stop on the status read at an iteration's top, absent or unreadable: nothing can be written without destroying the evidence, so the file is left as found.
+// A read error that is not a decode failure gets the same one re-step, as a re-read.
 // LoopSpec.OnExit runs once at every stop kind, after the stop is final and before the envelope is written.
 // A loop that cannot take the lock within the grace period, or that finds the teardown's mark, an undelivered envelope or a dead loop's pid file, returns 1 at once, before any step and without an envelope.
 func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out io.Writer) int {
@@ -194,6 +204,10 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 	logger.Info("shed: loop started", "loop_id", loopID, "pid", pid.Loop.PID)
 	idleWindow := idleWindowOf(loop)
 	obj := loopObject{FirstProducer: first.CurrentProducer}
+	readStatus := loop.ReadStatus
+	if readStatus == nil {
+		readStatus = readStatusAt
+	}
 
 	var (
 		res        childResult
@@ -205,7 +219,7 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 	)
 	for {
 		traceID := logger.NewTraceID()
-		current, present := readStatusFile(spec)
+		current, present, readErr := readStatus(spec.StatusPath, spec.StatusLockPath)
 		if present {
 			before = current
 			lastKnown = current.CurrentProducer
@@ -217,7 +231,19 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 			})
 			obj.Steps++
 		} else {
-			res = childResult{traceID: traceID, cause: "status-missing"}
+			if readErr != nil && !errors.Is(readErr, state.ErrDecode) && !restepped {
+				restepped = true
+				cause := "status-unreadable: " + readErr.Error()
+				obj.Restep = &loopRestep{Producer: lastKnown, Error: cause}
+				logger.Warn("shed: loop re-reads an unreadable status file", "status", spec.StatusPath, "error", readErr.Error())
+				continue
+			}
+			cause := "status-missing"
+			if readErr != nil {
+				cause = "status-unreadable: " + readErr.Error()
+			}
+			logger.Warn("shed: loop stops on its status file", "status", spec.StatusPath, "cause", cause)
+			res = childResult{traceID: traceID, cause: cause, statusStop: true, statusErr: readErr}
 		}
 
 		if res.ok() {
@@ -265,7 +291,10 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 		message, wayForward := interruptedError(spec.RunID, lastKnown, res.cause)
 		errText = message + "; way forward: " + wayForward
 		traceFile := ""
-		if files := traceFilesOf(loop, res.traceID); len(files) > 0 {
+		if res.statusStop {
+			errText = fmt.Sprintf("%s; status file %s, loop log %s; %s", message, spec.StatusPath, loop.LogPath, statusStopWayForward(spec, res.statusErr))
+			traceFile = loop.LogPath
+		} else if files := traceFilesOf(loop, res.traceID); len(files) > 0 {
 			traceFile = files[0]
 		}
 		friction := ""
@@ -278,7 +307,7 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 		transient, _ = res.full["transient"].(string)
 	}
 
-	if stop == LoopStopError || stop == LoopStopInterrupted {
+	if (stop == LoopStopError || stop == LoopStopInterrupted) && !res.statusStop {
 		failed, err := shedengine.WriteFailedStop(shedengine.FailedStopRequest{
 			StatusPath:     spec.StatusPath,
 			LockPath:       spec.LockPath,
@@ -436,16 +465,31 @@ func childEnvironment(traceID string) []string {
 
 // readStatusFile reads the status file, reporting false when it is missing or unreadable.
 func readStatusFile(spec *Spec) (shedengine.Status, bool) {
-	return readStatusAt(spec.StatusPath, spec.StatusLockPath)
+	st, found, _ := readStatusAt(spec.StatusPath, spec.StatusLockPath)
+	return st, found
 }
 
-// readStatusAt reads the status file at statusPath, reporting false when it is missing or unreadable.
-func readStatusAt(statusPath, statusLockPath string) (shedengine.Status, bool) {
+// readStatusAt reads the status file at statusPath.
+// found is false when the file is missing, with a nil error, or unreadable, with the read error.
+func readStatusAt(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
 	if err != nil || !found {
-		return shedengine.Status{}, false
+		return shedengine.Status{}, false, err
 	}
-	return st, true
+	return st, true, nil
+}
+
+// statusStopWayForward returns the trailing `way forward:` clause of a stop on an absent or unreadable status file.
+// A nil readErr is an absent file, which the recipe's own reseed answers; a decode error and any other read error each get their own clause.
+func statusStopWayForward(spec *Spec, readErr error) string {
+	switch {
+	case readErr == nil:
+		return shedengine.MissingStatusClause(spec.MissingStatusWayForward)
+	case errors.Is(readErr, state.ErrDecode):
+		return fmt.Sprintf("way forward: re-run lyx shed step %s --until-stop with a lyx binary that decodes the status file, as after a version skew where an older loop binary cannot decode a file a newer one wrote; otherwise report the stop to the run's parent with the status file and the loop log", spec.RunID)
+	default:
+		return fmt.Sprintf("way forward: re-run lyx shed step %s --until-stop", spec.RunID)
+	}
 }
 
 // traceFilesOf lists the trace files of the child under traceID, or none when the arming module told no lister or it failed.

@@ -1717,6 +1717,105 @@ func TestValidate_VerifyNestedModule(t *testing.T) {
 	}
 }
 
+// TestValidate_VerifyPackageMissing covers verify-package-missing: a relative package argument of a go test, build or vet or a lyx gate test command in a card's Verify: value or the overview's verify chain must name a directory on disk or one the plan creates by then.
+// The test sits in the external package for its card helpers, so it is named by its file rather than a handle.
+func TestValidate_VerifyPackageMissing(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	materializeFiles(t, root, "internal/x/x.go", "m/go.mod", "m/pkg/p.go")
+
+	withVerify := func(number int, verify string) planparser.Card {
+		card := validCard(number, "a")
+		card.Verify = verify
+		return card
+	}
+	creates := func(number int, typ planparser.CardType, verify string, refs ...string) planparser.Card {
+		card := cardOfType(number, "c", typ, refs)
+		card.Verify = verify
+		return card
+	}
+	renames := func(number int, verify string) planparser.Card {
+		card := cardOfType(number, "r", planparser.CardTypeRename, []string{"internal/old/o.go#Old", "plan:internal/new/n.go#New"})
+		card.TargetGroups[0].Pairs = []planparser.MovePair{{Old: "internal/old/o.go#Old", New: "plan:internal/new/n.go#New"}}
+		card.Verify = verify
+		return card
+	}
+
+	type finding struct{ card, ref string }
+	tests := []struct {
+		name       string
+		cards      []planparser.Card
+		overview   string
+		want       []finding
+		wantDetail string
+	}{
+		{name: "external test package names its package as the replacement", cards: []planparser.Card{withVerify(1, "lyx gate test ./internal/x_test")}, want: []finding{{"1-a", "./internal/x_test"}}, wantDetail: "pass ./internal/x"},
+		{name: "overview chain with a missing directory", overview: "go test ./nope", want: []finding{{"", "./nope"}}},
+		{name: "overview chain escaping the root", overview: "go test ../outside", want: []finding{{"", "../outside"}}},
+		{name: "go build", cards: []planparser.Card{withVerify(1, "go build ./nope")}, want: []finding{{"1-a", "./nope"}}},
+		{name: "go vet", cards: []planparser.Card{withVerify(1, "go vet ./nope")}, want: []finding{{"1-a", "./nope"}}},
+		{name: "go -C resolves against the module", cards: []planparser.Card{withVerify(1, "go -C m test ./absent")}, want: []finding{{"1-a", "./absent"}}},
+		{name: "gate test -C", cards: []planparser.Card{withVerify(1, "lyx gate test -C m ./absent")}, want: []finding{{"1-a", "./absent"}}},
+		{name: "gate test -C=", cards: []planparser.Card{withVerify(1, "lyx gate test -C=m ./absent")}, want: []finding{{"1-a", "./absent"}}},
+		{name: "gate test --dir", cards: []planparser.Card{withVerify(1, "lyx gate test --dir m ./absent")}, want: []finding{{"1-a", "./absent"}}},
+		{name: "gate test --dir=", cards: []planparser.Card{withVerify(1, "lyx gate test --dir=m ./absent")}, want: []finding{{"1-a", "./absent"}}},
+		{name: "gate test skips the --tags value", cards: []planparser.Card{withVerify(1, "lyx gate test --tags integration ./nope")}, want: []finding{{"1-a", "./nope"}}},
+		{
+			name:  "a directory only a later card creates",
+			cards: []planparser.Card{withVerify(1, "go test ./internal/new"), creates(2, planparser.CardTypeCreate, "", "internal/new/n.go#")},
+			want:  []finding{{"1-a", "./internal/new"}},
+		},
+		{name: "directory on disk", cards: []planparser.Card{withVerify(1, "go test ./internal/x")}},
+		{name: "card creates the directory itself", cards: []planparser.Card{creates(1, planparser.CardTypeCreate, "go test ./internal/new", "internal/new/n.go#")}},
+		{
+			name:  "an earlier card creates the directory",
+			cards: []planparser.Card{creates(1, planparser.CardTypeCreate, "", "internal/new/n.go#"), withVerify(2, "go test ./internal/new")},
+		},
+		{name: "a created member glyph counts", cards: []planparser.Card{creates(1, planparser.CardTypeCreate, "go test ./internal/new", "internal/new/x.go#Foo")}},
+		{name: "a custom card's path counts", cards: []planparser.Card{creates(1, planparser.CardTypeCustom, "go test ./internal/new", "internal/new/x.go")}},
+		{name: "a rename's new side counts", cards: []planparser.Card{renames(1, "go test ./internal/new")}},
+		{name: "an ancestor of a created directory counts", cards: []planparser.Card{creates(1, planparser.CardTypeCreate, "go test ./newroot", "newroot/sub/s.go#")}},
+		{name: "module-wide pattern, import path and go file pass", cards: []planparser.Card{withVerify(1, "go test ./... example.com/x ./internal/absent/a_test.go")}},
+		{name: "go -C into the module", cards: []planparser.Card{withVerify(1, "go -C m test ./pkg")}},
+		{name: "gate test -C into the module", cards: []planparser.Card{withVerify(1, "lyx gate test -C m ./pkg")}},
+		{name: "gate test reading stops at --", cards: []planparser.Card{withVerify(1, "lyx gate test ./internal/x -- ./nope")}},
+		{name: "go run is not read", cards: []planparser.Card{withVerify(1, "go run ./nope")}},
+		{name: "unplaceable cd ends the scan", cards: []planparser.Card{withVerify(1, "cd $DIR && go test ./nope")}},
+		{name: "cd in a pipeline stage ends the scan", cards: []planparser.Card{withVerify(1, "true | cd internal && go test ./nope")}},
+		{name: "cd after double pipe ends the scan", cards: []planparser.Card{withVerify(1, "false || cd internal && go test ./nope")}},
+		{name: "unplaceable go -C ends the scan", cards: []planparser.Card{withVerify(1, "go -C .. test ./x && go test ./nope")}},
+		{name: "unplaceable gate test -C ends the scan", cards: []planparser.Card{withVerify(1, "lyx gate test -C .. ./x && go test ./nope")}},
+		{
+			name:  "a Move on an earlier card skips the Verify",
+			cards: []planparser.Card{creates(1, planparser.CardTypeMove, "", "internal/old/o.go#Old"), withVerify(2, "go test ./nope")},
+		},
+		{name: "a Move on the card itself skips its Verify", cards: []planparser.Card{creates(1, planparser.CardTypeMove, "go test ./nope", "internal/old/o.go#Old")}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			plan := &planparser.Plan{Format: 5, Approved: true, Language: "go", Cards: tt.cards, Verify: tt.overview}
+			var got []finding
+			for _, f := range planparser.ValidateFormat(plan, root) {
+				if f.Check != "verify-package-missing" {
+					continue
+				}
+				got = append(got, finding{f.Card, f.Ref})
+				if !strings.Contains(f.Detail, "correct the Verify line") {
+					t.Errorf("detail %q lacks the way forward", f.Detail)
+				}
+				if !strings.Contains(f.Detail, tt.wantDetail) {
+					t.Errorf("detail %q lacks %q", f.Detail, tt.wantDetail)
+				}
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("verify-package-missing findings = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestValidate_VerifyModuleWide covers verify-module-wide: a card's Verify: must not hold a module-wide go build, test or vet, or a go test selecting the tmux or llm tier; the overview's verify chain is never read.
 func TestValidate_VerifyModuleWide(t *testing.T) {
 	t.Parallel()

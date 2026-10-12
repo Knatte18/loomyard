@@ -51,7 +51,7 @@ func CheckFabricVocabularyName(plan *Plan) []ValidationError {
 func brokenFabricVocabularyRule(unit, member, last string) string {
 	first, _, _ := strings.Cut(unit, "/")
 	// An external test package sits in its package's directory, which is what the scan's owner check reads.
-	dir := strings.TrimSuffix(unit, "_test")
+	dir := goPackageDir(unit)
 	isTestName := hasTestPrefix(last)
 
 	bareScope := first == "internal" || fabricvocab.IsDocRoot(first) || isTestName

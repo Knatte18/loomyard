@@ -7,6 +7,7 @@ When a `--until-stop` loop stops on a failure and no other holder has the run lo
 - `lyx loom resume` therefore never answers "already running" for such a stopped run: the run reads `failed`, and resuming it is an ordinary re-step.
 - No failure waits for the quiet notice, since the status file already says the run stopped.
 - A stop that finds another holder of the run lock writes nothing and reports `busy`, and the next invocation retries it.
+- An absent or unreadable status file at an iteration's top departs from it: the file is left as found, since `shedengine.WriteFailedStop` cannot write over it and overwriting would destroy the evidence.
 - The Go driver and a bare `step` stay outside it: they do not run the loop, and a bare `step` reports its own failure on its envelope.
 
 ## Enforcement

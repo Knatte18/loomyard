@@ -7,6 +7,8 @@
 // `lyx gate test [-C <dir>] [--tags <tags>] <packages...> [-- <go test flags>]` runs `go test -C <dir> -p <cap>`, then `-tags <tags>` when given, then the packages, then the flags after `--`.
 // The -C directory is made absolute against the seam cwd, never the process cwd when -C is given, and must exist.
 // At least one package is required; a module-wide pattern is accepted and slotted.
+// A package argument spelled relative (`.`, `..`, `./…` or `../…`), not ending in `.go` and with a trailing `/...` removed must name a directory under the -C directory, or the verb refuses before hub resolution, any slot and the prebuild; for an external test package it names the package directory to pass instead.
+// Import paths, absolute paths, module-wide patterns whose stem exists and `.go` file arguments are not read and reach go test unchanged.
 // The output streams through and the exit code is go test's own.
 // With `--tags` non-empty the verb first builds `lyx` once, inside the held slot: `go build -C <root> -p <cap> -o <tmp>/lyx ./cmd/lyx`, where <root> is the worktree root inside a hub and the -C directory outside one, and <tmp> is a per-invocation directory in the process run directory of `internal/lyxtemp`, removed after go test ends.
 // go test's environment then carries `gateslot.PrebuiltLyxEnv` naming that binary, so every package of the run shares it instead of building its own.
