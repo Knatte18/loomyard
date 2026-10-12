@@ -66,6 +66,7 @@ internal/orchengine: 136
 internal/output: 4
 internal/pairteardown: 6
 internal/parentdirective: 4
+internal/parentlock: 10
 internal/parentreview: 54
 internal/pattern: 8
 internal/planglyph: 85
