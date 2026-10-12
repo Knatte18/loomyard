@@ -1,5 +1,5 @@
 // checklist.go implements the hidden `checklist` loom verb, the pane process of the pair's loom-status strand, and renderChecklist, the pure frame it draws:
-// the run's state line over one line per recipe row with its box, the time spent in it and its visit count.
+// the run's state line, with what the run waits on, over one line per recipe row with its box, the time spent in it and its visit count.
 
 package loomcli
 
@@ -98,7 +98,9 @@ reed so the strand is sized to it. It reads files only.`,
 
 // checklistPoll returns the pane's poll for the worktree at location.
 // The self run's seed is read until one read succeeds, and its recipe's rows once after that.
+// While the run is running, the state line carries the note the worktree's Waiting hook reports.
 func (c *loomCLI) checklistPoll(location *lyxcwd.Location) func() statuspane.Frame {
+	waiting := reviewWaitingFor(location)
 	var (
 		seedRead  bool
 		rows      []string
@@ -122,17 +124,29 @@ func (c *loomCLI) checklistPoll(location *lyxcwd.Location) func() statuspane.Fra
 				rows, rowsErr = loomrecipe.RowNames(seed.Recipe)
 			}
 		}
-		return renderChecklist(rows, rowsErr, cache.Poll(statusFile), startedAt, time.Now())
+		poll := cache.Poll(statusFile)
+		var waitNote string
+		// A hook error drops the note rather than the frame; a settled run waits on nothing.
+		if waiting != nil && poll.Found && poll.Status.State == shedengine.StateRunning {
+			if note, err := waiting(poll.Status); err == nil {
+				waitNote = note
+			}
+		}
+		return renderChecklist(rows, rowsErr, poll, waitNote, startedAt, time.Now())
 	}
 }
 
 // renderChecklist returns the checklist frame: the state line, then one line per row of the recipe in recipe order, then one per history-only row.
+// A non-empty waitNote is appended to the state line as " | waiting <note>".
 // With rowsErr set the only line after the state line is checklistRecipeBroken.
 // startedAt is the run's seed time, where its first visit starts; an empty or unparsable value starts it at the first entry's own time.
-func renderChecklist(rows []string, rowsErr error, poll statuspane.StatusPoll, startedAt string, now time.Time) statuspane.Frame {
+func renderChecklist(rows []string, rowsErr error, poll statuspane.StatusPoll, waitNote, startedAt string, now time.Time) statuspane.Frame {
 	stateLine := shedverbs.UnavailableLine(checklistLabel)
 	if poll.Found {
 		stateLine = shedverbs.RenderStatusLine(checklistLabel, poll.Status)
+		if waitNote != "" {
+			stateLine += " | waiting " + waitNote
+		}
 	}
 	if rowsErr != nil {
 		return statuspane.Frame{Lines: []string{stateLine, checklistRecipeBroken}}

@@ -65,9 +65,21 @@ func TestRenderChecklist(t *testing.T) {
 		rows    []string
 		rowsErr error
 		poll    statuspane.StatusPoll
+		wait    string
 		nowMin  int
 		want    []string
 	}{
+		{
+			name:   "a wait note follows the state line",
+			rows:   recipe,
+			poll:   checklistStatus(shedengine.StateRunning, "Review", doneEntry("Plan", 5)),
+			wait:   "Review: waiting for the parent lock on main held by other 1m",
+			nowMin: 12,
+			want: []string{
+				"loom running | now working | waiting Review: waiting for the parent lock on main held by other 1m",
+				"[x] Plan 5m", "[>] Review 7m", "[ ] Build",
+			},
+		},
 		{
 			name:   "a running run shows done, running and not reached rows in recipe order",
 			rows:   recipe,
@@ -150,7 +162,7 @@ func TestRenderChecklist(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			now := checklistClock.Add(time.Duration(tt.nowMin) * time.Minute)
-			got := renderChecklist(tt.rows, tt.rowsErr, tt.poll, minuteMark(0), now)
+			got := renderChecklist(tt.rows, tt.rowsErr, tt.poll, tt.wait, minuteMark(0), now)
 			if diff := cmp.Diff(tt.want, got.Lines); diff != "" {
 				t.Errorf("renderChecklist lines mismatch (-want +got):\n%s", diff)
 			}
@@ -163,7 +175,7 @@ func TestRenderChecklist_Fit(t *testing.T) {
 
 	rows := []string{"A", "B", "C", "D", "E", "F"}
 	running := checklistStatus(shedengine.StateRunning, "D", doneEntry("A", 1), doneEntry("B", 2), doneEntry("C", 3))
-	frame := renderChecklist(rows, nil, running, minuteMark(0), checklistClock.Add(4*time.Minute))
+	frame := renderChecklist(rows, nil, running, "", minuteMark(0), checklistClock.Add(4*time.Minute))
 	if len(frame.Lines) != 1+len(rows) {
 		t.Fatalf("frame lines = %d; want the state line and %d rows", len(frame.Lines), len(rows))
 	}
@@ -199,7 +211,7 @@ func TestRenderChecklist_Fit(t *testing.T) {
 	t.Run("without a running row the last visited row anchors the fit", func(t *testing.T) {
 		t.Parallel()
 		done := checklistStatus(shedengine.StateDone, "", doneEntry("A", 1), doneEntry("B", 2), doneEntry("C", 3))
-		fitted := renderChecklist(rows, nil, done, minuteMark(0), checklistClock.Add(4*time.Minute)).Fit(3)
+		fitted := renderChecklist(rows, nil, done, "", minuteMark(0), checklistClock.Add(4*time.Minute)).Fit(3)
 		if want := "[x] C 1m"; !slices.Contains(fitted, want) {
 			t.Errorf("Fit(3) = %q; want it to keep the last visited row %q", fitted, want)
 		}
