@@ -323,8 +323,10 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(c.location.HubPath))}
 		self := selfLockOwner(c.location, c.runID)
 		spec.Loop.OnExit = loopLockExit(locks, self, battenWatcher(c.location, c.runID))
+		covered := pauseCovered(c.location)
 		spec.Loop.OnWake = builtOnFirstCall(func() func() {
-			return loopIdleRelease(locks, self, readAgentStates(c.location, c.shuttleCfg), c.landingCfg.IdleRelease())
+			return loopIdleRelease(locks, self, readAgentStates(c.location, c.shuttleCfg), c.landingCfg.IdleRelease(),
+				func() bool { return covered(c.location.WorktreeName) })
 		})
 		spec.Hooks.AfterInterrupt = c.loomAfterInterrupt
 		spec.Hooks.ConsumeAttempt = c.loomConsumeAttempt
