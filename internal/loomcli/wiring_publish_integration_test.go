@@ -94,6 +94,9 @@ func TestWire_Real_PublishRejectedPushNamesRemoteTip(t *testing.T) {
 		t.Fatalf("Merge-In Call = %q, %q, %v; want Done", outcome, ptr.Reason, err)
 	}
 
+	// Publish tests the parent against both its local and its upstream tip, so the parent's progress is pushed before it runs.
+	gitkit.Git(t, hub.PrimeWorktree(), "push", "origin", parentBranch)
+
 	publish, err := landingshed.NewPublish(c.env.Landing)
 	if err != nil {
 		t.Fatalf("NewPublish error = %v; want nil", err)

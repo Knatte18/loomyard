@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
@@ -40,11 +39,14 @@ var NewGitHubClient = githubclient.New
 type Publish struct {
 	deps Deps
 	gate verifyGate
+	// guard holds the parent lock and tests whether the parent moved.
+	// A zero value takes no lock and reads no tips, so struct-literal tests run without it.
+	guard parentGuard
 }
 
 var _ shedengine.ShedProducer = (*Publish)(nil)
 
-// NewPublish constructs a Publish from deps, rejecting a nil PushBranch or RemoteOnlyCommits closure and an empty DescriptionPath up front with a distinct error each -- rather than nil-panicking at call time.
+// NewPublish constructs a Publish from deps, rejecting a nil PushBranch or RemoteOnlyCommits closure, an empty DescriptionPath, a nil Lock.Store, a nil Lock.Owner and a nil ReadParentTips up front with a distinct error each -- rather than nil-panicking at call time.
 func NewPublish(deps Deps) (*Publish, error) {
 	if deps.PushBranch == nil {
 		return nil, fmt.Errorf("landingshed: NewPublish: Deps.PushBranch must not be nil")
@@ -55,13 +57,25 @@ func NewPublish(deps Deps) (*Publish, error) {
 	if deps.DescriptionPath == "" {
 		return nil, fmt.Errorf("landingshed: NewPublish: Deps.DescriptionPath must not be empty")
 	}
+	if deps.Lock.Store == nil {
+		return nil, fmt.Errorf("landingshed: NewPublish: Deps.Lock.Store must not be nil")
+	}
+	if deps.Lock.Owner == nil {
+		return nil, fmt.Errorf("landingshed: NewPublish: Deps.Lock.Owner must not be nil")
+	}
+	if deps.ReadParentTips == nil {
+		return nil, fmt.Errorf("landingshed: NewPublish: Deps.ReadParentTips must not be nil")
+	}
 
 	gate := newVerifyGate(deps)
 	gate.recorder = &failureRecorder{failingTests: deps.FailingTests, head: deps.TaskHead}
-	return &Publish{deps: deps, gate: gate}, nil
+	return &Publish{deps: deps, gate: gate, guard: newParentGuard(deps)}, nil
 }
 
 // Call runs one Publish iteration.
+//
+// For a parent that requires a pull request, Call first takes the parent lock and tests that the parent did not move since Merge-In merged it.
+// A moved parent is a reroute Stuck, and a paused lock wait or an unreadable lock record is a halting Stuck.
 //
 // A failed task-branch push, pull-request query or pull-request create is split by shedtransient.Class:
 // a transient failure is returned as an error, so the driver re-steps once (a re-step re-queries before creating, so nothing is duplicated),
@@ -89,6 +103,12 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	// is the exact failure this gate exists to prevent.
 	if p.deps.PushSkipped {
 		return p.stuckOrCancelled(ctx, fmt.Sprintf("push skipped; a pull request is required against parent branch %q", p.deps.ParentBranch))
+	}
+
+	// Step 3a: take the parent lock and test that the parent did not move since Merge-In merged it.
+	// Nothing is then verified or pushed over a parent whose new code the merge review has not covered.
+	if outcome, out, err, stop := holdParent(ctx, p.guard, publishName); stop {
+		return outcome, out, err
 	}
 
 	// Step 4: run the repo's publish_verify, when set, before anything leaves the worktree.
@@ -214,24 +234,6 @@ func (p *Publish) pushRejectedReason() string {
 		return fmt.Sprintf("%s; the remote task branch holds no commit the local branch lacks, %s", prefix, ruleWayForward)
 	}
 	return fmt.Sprintf("%s; the remote task branch is at %s and holds %d commit(s) the local branch lacks; %s", prefix, tip, len(commits), wayForward)
-}
-
-// noteMergeCommit hands the failure recorder the merge-in commit: HEAD after a merge-in that was not already up to date, empty otherwise.
-// A failed HEAD read is logged and leaves it empty.
-func (p *Publish) noteMergeCommit(merge mergeresolve.Result) {
-	if p.gate.recorder == nil {
-		return
-	}
-	p.gate.recorder.mergeCommit = ""
-	if merge.AlreadyUpToDate || p.deps.TaskHead == nil {
-		return
-	}
-	head, err := p.deps.TaskHead()
-	if err != nil {
-		logger.Warn("landingshed: could not read the merge-in commit for the publish failure record", "producer", publishName, "cause", err)
-		return
-	}
-	p.gate.recorder.mergeCommit = head
 }
 
 // takeMergeCommitFromRecord hands the failure recorder the merge commit of Merge-In's merge record, empty when there is none.

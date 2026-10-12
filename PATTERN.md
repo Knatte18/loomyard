@@ -38,6 +38,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-gitrepo-client-boundary` — Git in `internal/gitrepo`: local reads via go-git and `dotgit`, the rest via `gitexec`. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
 - `PATTERN-gitexec-checked-call` — Running git: use `gitexec.Run`/`runChecked`; the raw `RunGit`/`r.run` forms survive only at pinned `//gitexec:raw` call sites.
 - `PATTERN-never-force-add` — Keeping transients out of the index: each repo's own `.git/info/exclude`; fabric and gitrepo never run `git add -f`.
+- `PATTERN-parent-lock` — Merging a parent into a task branch, or landing on it, from a run: only under that parent's lock through `internal/parentlock`; a moved parent reroutes to Merge-In instead of merging new code at a later row.
 
 ## Shed and loom
 

@@ -20,11 +20,13 @@ import (
 
 	"github.com/google/go-github/v75/github"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -50,12 +52,19 @@ func (r *recordingResolver) Resolve(ctx context.Context, source string) (mergere
 // newTestDeps is the package's one Deps builder, for Publish and Finalize tests alike: a base-branch list requiring a pull request, a well-formed final-summary artifact already written at DescriptionPath (Finalize's top-of-Call parse requires one; a Publish test rewrites it), and a scratch dir under t.TempDir().
 // NewGitHubClient is swapped for a failing factory so no test reaches the real GitHub API;
 // a test driving the client installs its own over it.
+// Its parent lock seams are a temporary store and tip reads that equal a written merge record, so the lock-taking rows find the parent unmoved.
 // A test needing a different variant mutates the returned value.
 func newTestDeps(t *testing.T) Deps {
 	t.Helper()
 	installFailingGitHubClientFactory(t, errors.New("no GitHub client in this test"))
 	summaryPath := summaryparser.Path(t.TempDir())
 	writeSummary(t, summaryPath, "A landing title", "A landing body.")
+	scratchDir := filepath.Join(t.TempDir(), "scratch")
+	recordPath := MergeRecordPath(scratchDir)
+	if err := WriteMergeRecord(recordPath, MergeRecord{ParentBranch: "main", MergedTip: testParentTip}); err != nil {
+		t.Fatalf("write merge record: %v", err)
+	}
+	owner := parentlock.Owner{Slug: "me", Pair: "/p/me", RunID: "r1", PID: 222, StartTime: "t2"}
 	return Deps{
 		WorktreeRoot:    t.TempDir(),
 		TaskBranch:      "task-branch",
@@ -65,7 +74,7 @@ func newTestDeps(t *testing.T) Deps {
 			return "", nil, errors.New("no remote read in this test")
 		},
 		StencilsDir: t.TempDir(),
-		ScratchDir:  filepath.Join(t.TempDir(), "scratch"),
+		ScratchDir:  scratchDir,
 		OriginURL:   "https://github.com/acme/proj.git",
 		Config: Config{
 			RequirePRToBase:    []string{"main"},
@@ -74,8 +83,22 @@ func newTestDeps(t *testing.T) Deps {
 			ConflictTimeoutMin: 30,
 			CoAuthoredBy:       "Test Author <test@example.com>",
 		},
+		Lock: ParentLockDeps{
+			Store:    &parentlock.Store{Dir: filepath.Join(t.TempDir(), "locks"), Alive: func(int, string) bool { return true }},
+			Owner:    func() (parentlock.Owner, error) { return owner, nil },
+			WaitPath: parentlock.WaitRecordPath(scratchDir),
+		},
+		ReadParentTips: func(bool) (fabricengine.ParentTips, error) {
+			return fabricengine.ParentTips{Local: testParentTip, Upstream: testParentTip, Relation: fabricengine.ParentEqual}, nil
+		},
+		HoldsWork:       func(string, string) (bool, error) { return false, nil },
+		TaskHead:        func() (string, error) { return "task-head", nil },
+		MergeRecordPath: recordPath,
 	}
 }
+
+// testParentTip is the parent tip newTestDeps's merge record names and its tip reads report.
+const testParentTip = "parent-tip"
 
 // writeSummary writes a well-formed summary artifact at path.
 func writeSummary(t *testing.T, path, title, body string) {
@@ -186,6 +209,9 @@ func TestNewPublish_Refusals(t *testing.T) {
 		{"nil PushBranch", func(d *Deps) {}, "Deps.PushBranch"},
 		{"nil RemoteOnlyCommits", func(d *Deps) { d.PushBranch, d.RemoteOnlyCommits = noPush, nil }, "Deps.RemoteOnlyCommits"},
 		{"empty DescriptionPath", func(d *Deps) { d.PushBranch, d.DescriptionPath = noPush, "" }, "Deps.DescriptionPath"},
+		{"nil Lock.Store", func(d *Deps) { d.PushBranch, d.Lock.Store = noPush, nil }, "Deps.Lock.Store"},
+		{"nil Lock.Owner", func(d *Deps) { d.PushBranch, d.Lock.Owner = noPush, nil }, "Deps.Lock.Owner"},
+		{"nil ReadParentTips", func(d *Deps) { d.PushBranch, d.ReadParentTips = noPush, nil }, "Deps.ReadParentTips"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

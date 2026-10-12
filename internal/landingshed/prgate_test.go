@@ -82,9 +82,12 @@ func TestNewPRGate_Refusals(t *testing.T) {
 		return d
 	}
 	cases := map[string]func(*Deps){
-		"ApprovalPath":  func(d *Deps) { d.ApprovalPath = "" },
-		"RejectionPath": func(d *Deps) { d.RejectionPath = "" },
-		"TaskHead":      func(d *Deps) { d.TaskHead = nil },
+		"ApprovalPath":   func(d *Deps) { d.ApprovalPath = "" },
+		"RejectionPath":  func(d *Deps) { d.RejectionPath = "" },
+		"TaskHead":       func(d *Deps) { d.TaskHead = nil },
+		"Lock.Store":     func(d *Deps) { d.Lock.Store = nil },
+		"Lock.Owner":     func(d *Deps) { d.Lock.Owner = nil },
+		"ReadParentTips": func(d *Deps) { d.ReadParentTips = nil },
 	}
 	for field, mutate := range cases {
 		d := ok()

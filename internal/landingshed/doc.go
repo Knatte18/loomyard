@@ -8,6 +8,23 @@
 // The PR-Gate producer in this package then owns approval, rejection and the wait for the reviewer;
 // PRGate.Call documents its decision table.
 //
+// Publish, PR-Gate and Finalize hold the parent lock too, and a moved parent sends them back to Merge-In.
+// Each takes the lock through the shared guard, which grants a run that already holds it, so a re-call after a resume takes back a record handed to batten.
+// Moved means a code-side tip, the local one or the upstream one after a fetch unless the push is skipped or the branch has no upstream, differs from the merge record's merged tip and does not hold the task's work;
+// a missing merge record counts as moved, so the row reroutes to Merge-In, which writes one.
+// A moved parent is a Stuck with Reroute set, which takes the row's on_reroute edge to Merge-In and spends no bounce budget.
+// A paused lock wait and an unreadable lock record are Stuck with Halt, so the run stops at the row.
+// Each constructor refuses a nil Deps.Lock.Store, a nil Deps.Lock.Owner and a nil Deps.ReadParentTips, and a row built without its guard, as a struct-literal test builds it, takes no lock and reads no tips.
+// Publish, for a parent in require_pr_to_base, takes the lock and tests the parent before `publish_verify` and the push; a parent outside the list stays a no-op that touches neither git nor GitHub.
+// PR-Gate does the same before it queries the pull request, so the orch never decides on a pull request whose base moved, and its matching-rejection Stuck releases the lock before returning:
+// the edge to PR-Rework (darn: Darn-Write) leaves the Merge-In-to-Finalize window, and the reworked run takes the lock again at Merge-In.
+// Finalize takes the lock and tests the parent after parsing the change description and committing the status file, before its catch-up merge-in.
+// A parent that already holds the task's work, after a GitHub merge or an earlier landing, reads as not moved and lands through the already-landed path.
+// The catch-up merge-in stays: the local tip is checked equal to the merged tip under the lock, so it brings no parent code the merge review has not covered while still syncing the records side.
+// After a merge-in-required error from the parent-side merge Finalize tests the parent again, and retries once only when it has not moved, which covers a parent moved by run records alone;
+// otherwise it reroutes, so a code-side commit that arrives between the check and the parent-side merge never lands.
+// Finalize's Done releases the lock before Friction-Reflect runs.
+//
 // Merge-In and Finalize clear the merge-in their own earlier attempt left parked before the clean-tree check that precedes each merge-in, Finalize's retry pass included.
 // A parked fabric `merge-in` of the parent branch is aborted, whoever started it, so a conflict session's resolution and a hand-started merge-in with its partial resolution are both discarded and the merge starts afresh.
 // Every live conflict-session strand of the run is stopped through Deps.StopConflictSession first, and only after every stop succeeded is the merge aborted, so no session is left writing into the redone merge;
