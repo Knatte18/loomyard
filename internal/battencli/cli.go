@@ -10,6 +10,14 @@
 //
 // "lyx batten cleanup [--apply]" (cleanup.go) removes done runs' records and scratch and aged orphan scratch, as a dry run unless given --apply.
 //
+// "lyx batten overview" (overview.go) is the hidden pane verb the orch start runs in the prime's runs strand.
+// It lists the batten runs in flight, one line each: the slug, batten's state, the stage, the time in that stage, the run's age and the pair's reed session.
+// A run shows while batten's state is not done and its pair exists or is being created; a run with a seed and no status shows as `starting`; the stage is the task worktree's current producer while batten is in Run-Shed and that status is found, and batten's own producer otherwise.
+// Runs are ordered by the seed's start time and then slug, those with no readable start last.
+// The pane polls each second and backs off while nothing changes, which holds because every time renders in whole minutes.
+// A status file unreadable on two polls in a row shows the slug and `status unreadable`; one failed poll keeps the line of the previous status.
+// It only reads the run records and the status files, without their locks, so it never blocks or slows a run; its one write is the content-rows report, which reed confines to the runs strand.
+//
 // "lyx batten run <slug> --window" runs the same status check as a plain run and refuses a done slug before opening anything.
 //
 // The Worktree-Create row opens by claiming the slug's board entry with "running · Worktree-Create", before the pair exists, so the board's run lock starts at the claim.
@@ -290,7 +298,7 @@ Example:
 	stepVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
 	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", shedrun.DriverLLM, "the driver the task worktree's own inner run uses")
 
-	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.cleanupCmd())
+	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.cleanupCmd(), c.overviewCmd())
 
 	return parent
 }
@@ -302,9 +310,9 @@ Example:
 //
 // Skips resolution entirely when the batten group command itself is invoked (bare listing or
 // unknown-subcommand error path via clihelp.GroupRunE), so neither path requires a git repository to
-// be present, and for "cleanup", which takes no run-id, arms no shed spec and resolves its own location.
+// be present, and for "cleanup" and "overview", which take no run-id, arm no shed spec and resolve their own location.
 func (c *battenCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
-	if cmd.Name() == "batten" || cmd.Name() == "cleanup" {
+	if cmd.Name() == "batten" || cmd.Name() == "cleanup" || cmd.Name() == "overview" {
 		return nil
 	}
 

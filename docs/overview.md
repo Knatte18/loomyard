@@ -519,6 +519,7 @@ User-facing modules each get one `lyx <module>` namespace:
   on-demand, post-loom, **off the spine**, shares only the `burler` round discipline.
   See the board's `hardener` note.
 - **batten** — drives one task worktree's whole lifecycle — create, seed the child's own inner run from the Board task's own `recipe` (`loom`, or `darn` for a darn child, empty meaning `loom`), run it to a terminal state, land it into the prime, and tear down — as a single Shed run from the hub's prime worktree (`internal/battenshed` + `internal/battenrecipe` + `internal/battencli`; `lyx batten run|step|status|pause <run-id>`, and `lyx batten cleanup [--apply]`).
+  The hidden `lyx batten overview` is the pane process of the prime's `runs` strand, which `lyx orch start` ensures: it lists the runs in flight with their state, stage, time in stage, age and reed session, and reads files only.
   `lyx batten cleanup` is a dry run unless given `--apply`: it removes each done run's records run directory with a records commit and push, and empties that run's scratch beside its lock files and any orphan scratch older than a day.
   `lyx batten run <slug> --window` starts the same run in its own tmux window of the orch's reed session and returns at once; the window lives as long as the reed session.
   It also has the run open one desktop terminal window on the task worktree, titled with the slug and running `lyx reed attach`, through `internal/termwindow`'s per-platform launcher: Konsole on Linux, Windows Terminal into `wsl.exe` on WSL.
