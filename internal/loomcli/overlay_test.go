@@ -162,6 +162,12 @@ func TestValidatePlanCmd_Overlay(t *testing.T) {
 			wantOut:  []string{"malformed overlay", "way forward: pipe one JSON object", "distinct names and string values"},
 		},
 		{
+			name:     "invalid JSON is malformed",
+			input:    `{"a":`,
+			wantExit: 1,
+			wantOut:  []string{"malformed overlay", "way forward: pipe one JSON object"},
+		},
+		{
 			name:     "a second value after the object is malformed",
 			input:    `{"a":"x"} {}`,
 			wantExit: 1,
