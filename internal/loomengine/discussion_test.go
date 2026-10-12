@@ -220,6 +220,10 @@ func TestDiscussionSpec_Twill(t *testing.T) {
 				"Step 5",
 				"Step 6",
 				"and you create its parent directory too",
+				"read `" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "` and review them",
+				"When the design is settled and before you write any output file, run this procedure once:",
+				"Fix the record, or reject the finding with a one-line reason.",
+				"each with a severity (`BLOCKING`, `MEDIUM` or `LOW`), the section or decision it concerns",
 			} {
 				if !strings.Contains(prompt, want) {
 					t.Errorf("DiscussionSpec(twill).Prompt lacks %q", want)

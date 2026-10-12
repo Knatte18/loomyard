@@ -83,10 +83,11 @@ lyx board find --text retry backoff
 lyx board find --label bug retry
 ```
 
-List every entry, with `--text` for a one-line-per-entry scan, and fetch one entry in full:
+List every entry, with `--text` for a one-line-per-entry scan that shows each entry's age and time since its last revision, `--sort age` or `--sort revised` to put the longest-lying entries first, and fetch one entry in full:
 
 ```
 lyx board list --text
+lyx board list --text --sort age
 lyx board list --label bug --label enhancement
 lyx board get '{"slug":"my-task"}'
 ```

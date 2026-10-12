@@ -215,6 +215,7 @@ var wordingClaims = []stencilClaims{
 		wantAll("a carry-over entry in the record's Open risks is checked against the code and never planned as scope", "never plan an entry as scope"),
 		[]claim{
 			{must: "ends with a `Prior plan` section", why: "the template tells the agent to act on a trailing Prior plan section before writing"},
+			{must: "{{.twill_directive}}", section: "## Step 2 — Explore the codebase", why: "the lens review spawns once Step 2's reading is done and before Step 3 writes a plan file"},
 			{must: "must cover every package any card targets", why: "the verify section covers every targeted package"},
 			{must: "hermetic build-tagged tests", why: "the verify section includes hermetic build-tagged tests"},
 			{must: "compiled rather than run", why: "live-substrate tags are compiled rather than run"},
@@ -328,6 +329,9 @@ var wordingClaims = []stencilClaims{
 		{must: "{{.self_check_command}}", why: "the host names the self-check command"},
 		{must: "{{.disposition_place}}", why: "the host names where the lens review is recorded"},
 		{must: "{{.reviewed_files}}", why: "the host names the files a fork reviews"},
+		{must: "{{.spawn_point}}", why: "the host names when the writer runs the procedure"},
+		{must: "{{.rejection_rule}}", why: "the host names how the writer may reject a finding"},
+		{must: "{{.severity_rule}}", why: "the host names how a fork grades a finding"},
 	}, hostNeutralClaims())},
 	{"twill-write-scope.md", TwillWriteScope, joinClaims([]claim{
 		{must: "{{.ready_marker}}", why: "the marker path arrives through its marker"},
@@ -779,7 +783,7 @@ var wordingClaims = []stencilClaims{
 
 // hostNeutralClaims bars every host-specific name from a twill stencil, matched in any case, so another host can render it with its own values.
 func hostNeutralClaims() []claim {
-	phrases := []string{"decision record", "support log", "decision-record.md", "support-log.md", "_lyx/discussion", "Step 5", "Step 6", "validate-discussion", "## Interview", "Discussion"}
+	phrases := []string{"decision record", "support log", "decision-record.md", "support-log.md", "_lyx/discussion", "Step 5", "Step 6", "validate-discussion", "## Interview", "Discussion", "validate-plan", "00-overview.md", "lens-review.md", "Card Index"}
 	claims := wantNone("a twill stencil is host-neutral: every host value arrives through a marker", phrases...)
 	for i := range claims {
 		claims[i].anyCase = true
