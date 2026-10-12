@@ -93,7 +93,7 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	}
 
 	// Step 2: no pull request is required against this parent branch at all -- return done
-	// immediately, with no merge-in, no push, and no GitHub call whatsoever.
+	// immediately, with no lock, no push, and no GitHub call whatsoever.
 	if !contains(p.deps.Config.RequirePRToBase, p.deps.ParentBranch) {
 		return shedengine.Done, shedengine.OutputPointer{}, nil
 	}
@@ -193,7 +193,7 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 
 	switch {
 	case pr.GetState() == "open":
-		// No second pull request created and no second merge-in.
+		// No second pull request created.
 		// The push at step 5 still ran, so the pull request already carries any commits added since;
 		// its title and body are refreshed from the change description.
 		// Done is safe: the next row is the PR-Gate.
