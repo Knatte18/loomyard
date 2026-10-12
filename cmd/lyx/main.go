@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/idecli"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomcli"
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/quarrycli"
 	"github.com/Knatte18/loomyard/internal/reedcli"
@@ -50,6 +51,8 @@ func main() {
 	code := clihelp.RunRoot(root, os.Stdout)
 	// The exit hook force-opens the durable sink on a non-zero exit for post-mortem inspection, then sweeps an armed sink's directory.
 	notifyExitAndSweep(code)
+	// The process run directory exists only if this process created one; a removal error is left to the next start's sweep.
+	_ = lyxtemp.Remove()
 	os.Exit(code)
 }
 

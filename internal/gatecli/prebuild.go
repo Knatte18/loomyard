@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 )
 
 // buildRoot returns the directory whose `cmd/lyx` a run builds: the worktree root inside a hub, dir outside one.
@@ -23,14 +24,14 @@ func buildRoot(location *lyxcwd.Location, dir string) string {
 	return dir
 }
 
-// prebuildLyx builds `<root>/cmd/lyx` into a fresh temporary directory with goBinary under the run's `-p` cap and returns the binary path and a cleanup that removes the directory.
+// prebuildLyx builds `<root>/cmd/lyx` into a fresh directory in the process run directory with goBinary under the run's `-p` cap and returns the binary path and a cleanup that removes the directory.
 // A root without `cmd/lyx` builds nothing and returns an empty path and a cleanup that does nothing.
 // A build failure returns an error carrying the build's output.
 func prebuildLyx(ctx context.Context, goBinary, root string, parallel int) (bin string, cleanup func(), err error) {
 	if info, statErr := os.Stat(filepath.Join(root, "cmd", "lyx")); statErr != nil || !info.IsDir() {
 		return "", func() {}, nil
 	}
-	dir, err := os.MkdirTemp("", "lyx-prebuilt-")
+	dir, err := lyxtemp.MkdirTemp("lyx-prebuilt-")
 	if err != nil {
 		return "", nil, fmt.Errorf("create the prebuilt lyx directory: %w", err)
 	}
