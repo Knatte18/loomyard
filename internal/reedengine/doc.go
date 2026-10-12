@@ -310,6 +310,9 @@
 // A strand declaring another size than the record's is refused with both sizes named.
 // A strand arriving once the group's recorded size is already held, a re-stepped seat added before its predecessor is removed, gets a window of its own and leaves the shared window as it is.
 // A pane joins the shared window by a detached split in the window_split direction, so an operator viewing the window keeps the active pane, and the window is then laid out evenly in that direction.
+// Removing an own-window strand moves a viewer on its window to the strands' window before the window ends, and never moves a viewer on another window.
+// A shared window a strand leaves is laid out again.
+// An invalid window_split or window_share_max never refuses a removal: the layout is skipped and the key is reported in Removed.ConfigWarning.
 //
 // Session targeting: every -t argument that names a SESSION is passed in
 // an exact-match form — "=<name>" for session targets (has-session,

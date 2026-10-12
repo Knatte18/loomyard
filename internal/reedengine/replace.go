@@ -60,7 +60,10 @@ func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 				return err
 			}
 
-			reapPIDs := e.killStrandPanes(paneIDs)
+			reapPIDs, leftWindows := e.killStrandPanes(st, paneIDs)
+			if warning := e.relayoutSharedWindowsLocked(leftWindows); warning != "" {
+				logger.Warn("reed: replace skipped the shared-window layout", "socket", e.Socket(), "session", e.SessionName(), "cause", warning)
+			}
 			logger.Info("reed: replacing strand", "socket", e.Socket(), "session", e.SessionName(),
 				"guid", guid, "removed", removed.Strands)
 

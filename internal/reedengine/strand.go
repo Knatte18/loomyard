@@ -52,6 +52,8 @@ type AddSpec struct {
 // subtree.
 type Removed struct {
 	Strands []struct{ GUID, Name string }
+	// ConfigWarning names the invalid window config key a removal skipped the shared-window layout for, empty normally.
+	ConfigWarning string
 }
 
 // validateDisplay rejects an invalid Display at the op boundary,
@@ -807,8 +809,11 @@ func sessionReapRoots(live []LivePane) []int {
 // confirmed gone (the tmux case); on psmux the reconcile tail simply
 // re-enumerates and re-applies — a strand's pane is now always a
 // fresh split, so a corpse is never reused.
-func (e *Engine) killStrandPanes(paneIDs []string) []int {
-	var reapPIDs []int
+//
+// Before any kill, an own window whose every listed pane is being killed is about to end.
+// selectStrandsWindowIfCurrentLocked then moves a viewer on it to the strands' window first, and a viewer on any other window is never moved.
+// leftWindows names the own windows that lose a pane but keep at least one, for the caller to lay out again.
+func (e *Engine) killStrandPanes(st *ReedState, paneIDs []string) (reapPIDs []int, leftWindows []string) {
 	var killPaneIDs []string
 	if len(paneIDs) > 0 {
 		windows, err := e.tmux.listWindowPanes(e.SessionName())
@@ -822,12 +827,15 @@ func (e *Engine) killStrandPanes(paneIDs []string) []int {
 			}
 			killPaneIDs = paneIDsInSession(paneIDs, live)
 			reapPIDs = e.descendantClosurePIDs(alivePanePIDs(killPaneIDs, live))
+			var endingWindows []string
+			endingWindows, leftWindows = ownWindowsLosingPanes(windows, killPaneIDs)
+			e.selectStrandsWindowIfCurrentLocked(st, endingWindows)
 		}
 	}
 	for _, id := range killPaneIDs {
 		_ = e.tmux.run("kill-pane", "-t", id)
 	}
-	return reapPIDs
+	return reapPIDs, leftWindows
 }
 
 // MarkRetiring sets or clears guid's Retiring flag under the op lock and persists the state.
@@ -881,7 +889,8 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 			return err
 		}
 
-		reapPIDs := e.killStrandPanes(paneIDs)
+		reapPIDs, leftWindows := e.killStrandPanes(st, paneIDs)
+		removed.ConfigWarning = e.relayoutSharedWindowsLocked(leftWindows)
 
 		// Reap after the layout repair, so the surviving panes re-tile
 		// immediately and only the return is gated on the async pane teardown

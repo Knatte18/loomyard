@@ -160,6 +160,61 @@ func groupLiveCount(strands []Strand, group, self string, windows []windowPane) 
 	return count, groupWindow
 }
 
+// ownWindowsLosingPanes sorts the own windows that hold a pane of kill, in listing order and once each.
+// A window all of whose listed panes are in kill ends with them, and a window that keeps at least one pane is left.
+// A window without the own marker is in neither list.
+func ownWindowsLosingPanes(windows []windowPane, kill []string) (ending, left []string) {
+	killing := make(map[string]bool, len(kill))
+	for _, id := range kill {
+		killing[id] = true
+	}
+	type tally struct{ killed, kept int }
+	counts := make(map[string]*tally)
+	var order []string
+	for _, w := range windows {
+		if !w.Own {
+			continue
+		}
+		c, seen := counts[w.WindowID]
+		if !seen {
+			c = &tally{}
+			counts[w.WindowID] = c
+			order = append(order, w.WindowID)
+		}
+		if killing[w.PaneID] {
+			c.killed++
+		} else {
+			c.kept++
+		}
+	}
+	for _, id := range order {
+		switch c := counts[id]; {
+		case c.killed == 0:
+		case c.kept == 0:
+			ending = append(ending, id)
+		default:
+			left = append(left, id)
+		}
+	}
+	return ending, left
+}
+
+// relayoutSharedWindowsLocked lays out each of windows evenly in the window_split direction and returns "".
+// An invalid window config skips every layout and returns the config error's text, so a removal still completes and only the layout is skipped.
+// A layout that fails is logged and never fails the step.
+func (e *Engine) relayoutSharedWindowsLocked(windows []string) string {
+	if err := validateWindowConfig(e.cfg); err != nil {
+		return err.Error()
+	}
+	_, layout, _ := windowSplitLayout(e.cfg.WindowSplit)
+	for _, window := range windows {
+		if err := e.tmux.run("select-layout", "-t", window, layout); err != nil {
+			logger.Warn("reed: could not lay out a shared window after a strand left it", "window", window, "layout", layout, "err", err)
+		}
+	}
+	return ""
+}
+
 // pruneWindowGroups deletes every group record that no strand of st names any more, so a later instance under the same name records afresh.
 func pruneWindowGroups(st *ReedState) {
 	named := make(map[string]bool, len(st.Strands))

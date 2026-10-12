@@ -485,4 +485,113 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 			t.Errorf("own window %s is still listed after its strand was removed, want it gone", ownWindow)
 		}
 	})
+
+	addOwn := func(role string) Strand {
+		t.Helper()
+		s, err := e.AddStrand(AddSpec{Role: role, Cmd: "sleep 300", Display: ownDisplay})
+		if err != nil {
+			t.Fatalf("AddStrand(%s): %v", role, err)
+		}
+		return s
+	}
+
+	t.Run("RemoveMovesAViewerOnTheEndingWindowToWindowZero", func(t *testing.T) {
+		viewed := addOwn("viewed")
+		if err := e.tmux.run("select-window", "-t", windowOfPane(t, e, viewed.PaneID)); err != nil {
+			t.Fatalf("select-window: %v", err)
+		}
+
+		if _, err := e.RemoveStrand(viewed.GUID, false); err != nil {
+			t.Fatalf("RemoveStrand: %v", err)
+		}
+
+		if got, want := currentWindow(), strandWindow(); got != want {
+			t.Errorf("current window = %q after removing the viewed strand, want the strands' window %q", got, want)
+		}
+	})
+
+	t.Run("RemoveFromAnotherWindowLeavesTheViewer", func(t *testing.T) {
+		kept := addOwn("kept")
+		gone := addOwn("gone")
+		keptWindow := windowOfPane(t, e, kept.PaneID)
+		if err := e.tmux.run("select-window", "-t", keptWindow); err != nil {
+			t.Fatalf("select-window: %v", err)
+		}
+
+		if _, err := e.RemoveStrand(gone.GUID, false); err != nil {
+			t.Fatalf("RemoveStrand: %v", err)
+		}
+
+		if got := currentWindow(); got != keptWindow {
+			t.Errorf("current window = %q after removing another window's strand, want the viewer left on %q", got, keptWindow)
+		}
+		if _, err := e.RemoveStrand(kept.GUID, false); err != nil {
+			t.Fatalf("RemoveStrand(kept): %v", err)
+		}
+	})
+
+	t.Run("LeavingASharedWindowRelaysItOut", func(t *testing.T) {
+		first := addGrouped("lva", "leaving", 2, "sleep 300", "")
+		second := addGrouped("lvb", "leaving", 2, "sleep 300", "")
+		window := windowOfPane(t, e, first.PaneID)
+
+		if _, err := e.RemoveStrand(second.GUID, false); err != nil {
+			t.Fatalf("RemoveStrand: %v", err)
+		}
+
+		if panes := windowPanes(window); len(panes) != 1 {
+			t.Fatalf("shared window panes = %v after one strand left, want one", panes)
+		}
+		if width, windowWidth := display(first.PaneID, "#{pane_width}"), display(window, "#{window_width}"); width != windowWidth {
+			t.Errorf("remaining pane width = %s, want the window's full width %s", width, windowWidth)
+		}
+	})
+
+	t.Run("InvalidConfigStillRemovesAndReportsTheKey", func(t *testing.T) {
+		restoreConfig(t)
+		first := addGrouped("iva", "invalid-split", 2, "sleep 300", "")
+		second := addGrouped("ivb", "invalid-split", 2, "sleep 300", "")
+		e.cfg.WindowSplit = "diagonal"
+
+		removed, err := e.RemoveStrand(second.GUID, false)
+		if err != nil {
+			t.Fatalf("RemoveStrand under an invalid window_split = %v, want nil", err)
+		}
+		if !strings.Contains(removed.ConfigWarning, "window_split") {
+			t.Errorf("ConfigWarning = %q, want it to name window_split", removed.ConfigWarning)
+		}
+		if _, err := e.tmux.output("display-message", "-p", "-t", second.PaneID, "#{pane_id}"); err == nil {
+			t.Errorf("pane %s survived its strand's removal", second.PaneID)
+		}
+
+		e.cfg.WindowSplit = "width"
+		e.cfg.WindowShareMax = -1
+		window := windowOfPane(t, e, first.PaneID)
+		removed, err = e.RemoveStrand(first.GUID, false)
+		if err != nil {
+			t.Fatalf("RemoveStrand under an invalid window_share_max = %v, want nil", err)
+		}
+		if !strings.Contains(removed.ConfigWarning, "window_share_max") {
+			t.Errorf("ConfigWarning = %q, want it to name window_share_max", removed.ConfigWarning)
+		}
+		if windowListed(window) {
+			t.Errorf("window %s is still listed after its last strand was removed, want it ended", window)
+		}
+	})
+
+	// This subtest tears the session down, so it runs last.
+	t.Run("SessionTeardownEndsTheShellBeforeTheChainRuns", func(t *testing.T) {
+		marker := filepath.Join(t.TempDir(), "chain-ran")
+		if _, err := e.AddStrand(AddSpec{Role: "chain", Cmd: "sleep 300; touch '" + marker + "'", Display: ownDisplay}); err != nil {
+			t.Fatalf("AddStrand(chain): %v", err)
+		}
+
+		if _, err := e.Down(); err != nil {
+			t.Fatalf("Down: %v", err)
+		}
+
+		if _, err := os.Stat(marker); err == nil {
+			t.Errorf("marker %s exists after Down, want the pane's shell ended before its command chain ran on", marker)
+		}
+	})
 }
