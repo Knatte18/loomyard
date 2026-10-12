@@ -153,6 +153,7 @@ func TestShortcut_Run(t *testing.T) {
 		{name: "a verbosity word with a value reaches every argv", args: []string{"prime", "--verbose=2"}, wantRuns: []fakeRun{orchStart(2), reedAttach(2, "")}},
 		{name: "json prints the shortcut's help as JSON and runs nothing", args: []string{"prime", "--json"}, wantOut: []string{`"name": "lyx prime"`}},
 		{name: "json with a value prints the JSON help", args: []string{"prime", "--json=true"}, wantOut: []string{`"name": "lyx prime"`}},
+		{name: "a false-valued json word is dropped and the argvs run", args: []string{"prime", "--json=false"}, wantRuns: []fakeRun{orchStart(0), reedAttach(0, "")}},
 		{name: "help prints the shortcut's text help and runs nothing", args: []string{"prime", "--help"}, wantOut: []string{"shortcut: lyx orch start, then lyx reed attach"}},
 		{name: "a short help word prints the text help", args: []string{"prime", "-h"}, wantOut: []string{"shortcut: lyx orch start, then lyx reed attach"}},
 		{name: "a shorthand run holding help prints the text help", args: []string{"prime", "-vh"}, wantOut: []string{"shortcut: lyx orch start, then lyx reed attach"}},

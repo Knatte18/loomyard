@@ -20,7 +20,8 @@
 // A shortcut command takes every word as given, since its flag parsing is off, and routes them itself:
 //
 //   - A verbosity word (`-v`, `-vv`, `--verbose`, `--verbose=<n>`) goes to the front of every argv.
-//   - A help or json word (`-h`, `--help`, `--json`, `--json=<bool>`) prints the shortcut's own help, as JSON under json, and runs nothing.
+//   - A word that raises help (`-h`, `--help`, `--json`, `--json=true`, a shorthand run holding `h`) prints the shortcut's own help, as JSON under json, and runs nothing.
+//     A false-valued one (`--json=false`, `--help=false`) is dropped, and the argvs run.
 //   - Every other word, and everything after `--`, goes to the end of the last argv.
 //
 // A word a global flag spells with a value its parser refuses, such as `--json=bogus`, is not a global word.
