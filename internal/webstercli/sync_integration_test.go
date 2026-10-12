@@ -22,7 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // newPairFixture builds a hub with a code repo and its records sibling and returns the layout and the sibling's path.
