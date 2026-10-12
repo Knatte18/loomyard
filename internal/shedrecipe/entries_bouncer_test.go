@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -433,6 +434,23 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		}
 	})
 
+	t.Run("UnknownColorSegment", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := minimalBouncerConfig(t, env)
+		cfg["color_segment"] = "teal"
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "color_segment")
+		assertErrContains(t, err, "teal")
+	})
+
+	t.Run("NonBooleanBlockingEscalates", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := minimalBouncerConfig(t, env)
+		cfg["blocking_escalates"] = "yes"
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "blocking_escalates")
+	})
+
 	t.Run("NilEnvNowConstructsSuccessfully", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
@@ -641,6 +659,38 @@ func TestBouncerEntry_SkipSeam(t *testing.T) {
 		assertErrContains(t, err, "SkipPlanReview")
 	})
 
+	t.Run("MergeOverlapResolvesToSkipMergeReview", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.Shuttle = judgeSeamShuttle()
+		skipCalls, planCalls := 0, 0
+		env.SkipMergeReview = func() (bool, error) { skipCalls++; return true, nil }
+		env.SkipPlanReview = func() (bool, error) { planCalls++; return false, nil }
+		cfg := minimalBouncerConfig(t, env)
+		cfg["skip_seam"] = "merge-overlap"
+
+		producer, err := bouncerEntry("review-bounce", cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		outcome, _, err := producer.Call(context.Background())
+		if err != nil || outcome != shedengine.Done {
+			t.Fatalf("Call() = %q, %v; want Done, nil (the skip settles with no review)", outcome, err)
+		}
+		if skipCalls != 1 || planCalls != 0 {
+			t.Errorf("SkipMergeReview calls = %d, SkipPlanReview calls = %d; want 1 and 0", skipCalls, planCalls)
+		}
+	})
+
+	t.Run("MergeOverlapWithNilEnvClosureFails", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.SkipMergeReview = nil
+		cfg := minimalBouncerConfig(t, env)
+		cfg["skip_seam"] = "merge-overlap"
+
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "SkipMergeReview")
+	})
+
 	t.Run("UnknownValueFails", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
@@ -649,6 +699,7 @@ func TestBouncerEntry_SkipSeam(t *testing.T) {
 		_, err := bouncerEntry("review-bounce", cfg, env)
 		assertErrContains(t, err, "skip_seam")
 		assertErrContains(t, err, "rework-exempt")
+		assertErrContains(t, err, "merge-overlap")
 	})
 }
 
@@ -743,6 +794,39 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 		}
 	})
 
+	t.Run("MergeResolvesToApproveMergeReview", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.Shuttle = judgeSeamShuttle()
+		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
+		mergeCalls, planCalls := 0, 0
+		env.ApproveMergeReview = func() error { mergeCalls++; return nil }
+		env.ApprovePlan = func() error { planCalls++; return nil }
+		cfg := minimalBouncerConfig(t, env)
+		cfg["approve_seam"] = "merge"
+		layoutBouncerRound1Report(t, env)
+
+		producer, err := bouncerEntry("review-bounce", cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		if _, _, err := producer.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if mergeCalls != 1 || planCalls != 0 {
+			t.Errorf("ApproveMergeReview calls = %d, ApprovePlan calls = %d; want 1 and 0", mergeCalls, planCalls)
+		}
+	})
+
+	t.Run("MergeWithNilEnvClosureIsConstructionError", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.ApproveMergeReview = nil
+		cfg := minimalBouncerConfig(t, env)
+		cfg["approve_seam"] = "merge"
+
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "ApproveMergeReview")
+	})
+
 	t.Run("AbsentLeavesSeamNil", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.Shuttle = judgeSeamShuttle()
@@ -772,6 +856,7 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 		_, err := bouncerEntry("review-bounce", cfg, env)
 		assertErrContains(t, err, "approve_seam")
 		assertErrContains(t, err, "plan")
+		assertErrContains(t, err, "merge")
 	})
 
 	t.Run("PresentButMissingEnvClosureIsConstructionError", func(t *testing.T) {
@@ -1038,4 +1123,58 @@ func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
 			t.Errorf("Reason = %q; want the circling cause without the seam", reason)
 		}
 	})
+}
+
+// TestBouncerEntry_BlockingEscalatesAndColorSegment covers the two optional keys the Merge-Review perch's Bouncer row carries.
+// A round-1 judge call writes a CONTINUE verdict over a ledger holding an open BLOCKING entry, with the row's budget spent and its auto-accept set.
+// blocking_escalates turns that auto-accept into an escalation, and color_segment colors the judge's session, the review color where absent.
+func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
+	tests := []struct {
+		name        string
+		extra       Config
+		wantOutcome shedengine.Outcome
+		wantSegment segmentcolor.Segment
+	}{
+		{name: "absent keys auto-accept in the review color", wantOutcome: shedengine.Done, wantSegment: segmentcolor.Review},
+		{name: "blocking_escalates escalates", extra: Config{"blocking_escalates": true}, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review},
+		{name: "color_segment colors the judge", extra: Config{"color_segment": "merge"}, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Merge},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newTestEnv(t)
+			var segments []segmentcolor.Segment
+			env.Shuttle = &shedfake.Shuttle{
+				RunFn: func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
+					segments = append(segments, spec.Segment)
+					if len(spec.OutputFiles) == 3 {
+						verdict := "---\nverdict: CONTINUE\nrationale: \"more to do\"\n---\n"
+						ledger := "---\nround: 1\nledger:\n  - key: hard\n    status: open\n    rounds: [1]\n    class: design\n    severity: BLOCKING\n---\nprose\n"
+						_ = os.WriteFile(spec.OutputFiles[0], []byte(verdict), 0o644)
+						_ = os.WriteFile(spec.OutputFiles[1], []byte(ledger), 0o644)
+					}
+					return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
+				},
+			}
+			env.RowAutoAccept = map[string]bool{"review-bounce": true}
+			env.SegmentBounces = func(string) (int, int, bool, error) { return 1, 1, true, nil }
+			writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
+			cfg := minimalBouncerConfig(t, env)
+			for key, value := range tt.extra {
+				cfg[key] = value
+			}
+			layoutBouncerRound1Report(t, env)
+
+			producer, err := bouncerEntry("review-bounce", cfg, env)
+			if err != nil {
+				t.Fatalf("bouncerEntry() error = %v; want nil", err)
+			}
+			outcome, _, err := producer.Call(context.Background())
+			if err != nil || outcome != tt.wantOutcome {
+				t.Fatalf("Call() = %q, %v; want %q, nil", outcome, err, tt.wantOutcome)
+			}
+			if len(segments) != 1 || segments[0] != tt.wantSegment {
+				t.Errorf("judge spawn segments = %v; want [%s]", segments, tt.wantSegment)
+			}
+		})
+	}
 }

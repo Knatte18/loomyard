@@ -25,7 +25,7 @@ func DarnRetiredRows() map[string]string {
 }
 
 // NewDarn parses recipes.DarnRecipe, stamps env.DarnVerifyAttempts onto the verify gates of Darn-Write and Darn-Burler-Fix, builds it against env, applies env.DarnReviewMaxBounces to the Darn-Review perch, and returns the assembled *shedengine.Shed.
-// A review budget of 0 routes Darn-Write's Done straight to Publish, so neither the perch nor Describe runs.
+// A review budget of 0 routes Darn-Write's Done straight to Merge-In, so neither the perch nor Describe runs.
 // It makes the status-path coherence checks New makes, then refuses an env.DarnVerifyAttempts below 1 and an env.DarnReviewMaxBounces below 0 before any row builds.
 func NewDarn(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error) {
 	if err := checkStatusPaths(env, paths); err != nil {
@@ -95,12 +95,12 @@ func checkDarnReviewBudget(budget int) error {
 	return nil
 }
 
-// applyDarnReviewBudget sets MaxBounces to budget on every row of the darn recipe's review segments, or, for a budget of 0, routes Darn-Write's Done to Publish so neither a review row nor Describe is reached.
+// applyDarnReviewBudget sets MaxBounces to budget on every row of the darn recipe's review segments, or, for a budget of 0, routes Darn-Write's Done to Merge-In so neither a review row nor Describe is reached and the merge-in still runs under the parent lock.
 func applyDarnReviewBudget(producers []shedengine.ProducerDef, budget int) error {
 	if budget == 0 {
 		for i := range producers {
 			if producers[i].Name == loomshed.NameDarnWrite {
-				producers[i].OnDone = loomshed.NamePublish
+				producers[i].OnDone = loomshed.NameMergeIn
 			}
 		}
 		return nil

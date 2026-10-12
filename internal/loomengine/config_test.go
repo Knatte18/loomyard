@@ -121,6 +121,9 @@ func templateConfig() Config {
 		DiscussionAutoAccept:     false,
 		PlanAutoAccept:           false,
 		WebsterAutoAccept:        false,
+		MergeMaxBounces:          1,
+		MergeAutoAccept:          true,
+		SkipMergeReview:          false,
 	}
 }
 
@@ -320,6 +323,11 @@ review_timeout_min: 240
 				c.DiscussionMaxBounces, c.PlanMaxBounces, c.WebsterMaxBounces = 1, 2, 4
 				c.DiscussionAutoAccept, c.PlanAutoAccept, c.WebsterAutoAccept = true, true, true
 			},
+		},
+		{
+			name:   "explicit merge perch keys",
+			values: map[string]string{"merge_max_bounces": "0", "merge_auto_accept": "false", "skip_merge_review": "true"},
+			mutate: func(c *Config) { c.MergeMaxBounces, c.MergeAutoAccept, c.SkipMergeReview = 0, false, true },
 		},
 		{
 			name:   "checkpoint above budget",
@@ -552,6 +560,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"negative discussion_max_bounces", "discussion_max_bounces", "-1", []string{"must not be negative", "set it to 0 to take review_max_bounces"}, ""},
 		{"negative plan_max_bounces", "plan_max_bounces", "-1", []string{"must not be negative", "set it to 0 to take review_max_bounces"}, ""},
 		{"negative webster_max_bounces", "webster_max_bounces", "-1", []string{"must not be negative", "set it to 0 to take review_max_bounces"}, ""},
+		{"negative merge_max_bounces", "merge_max_bounces", "-1", []string{"must not be negative", "set it to 0 to take review_max_bounces"}, ""},
 		{"negative discussion timeout", "discussion_timeout_min", "-1", []string{"must not be negative"}, ""},
 		{"negative plan timeout", "plan_timeout_min", "-1", []string{"must not be negative"}, ""},
 		{"negative review timeout", "review_timeout_min", "-1", []string{"must not be negative"}, ""},

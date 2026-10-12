@@ -28,6 +28,8 @@ const (
 	NameWebster           = "Webster"
 	NameWebsterBouncer    = "Webster-Bouncer"
 	NameDescribe          = "Describe"
+	NameMergeIn           = "Merge-In"
+	NameMergeBouncer      = "Merge-Bouncer"
 	NamePublish           = "Publish"
 	NamePRGate            = "PR-Gate"
 	NamePRRework          = "PR-Rework"
@@ -42,6 +44,8 @@ const (
 	NamePlanBurlerFix          = "Plan-Burler-Fix"
 	NameWebsterBurlerReview    = "Webster-Burler-Review"
 	NameWebsterBurlerFix       = "Webster-Burler-Fix"
+	NameMergeBurlerReview      = "Merge-Burler-Review"
+	NameMergeBurlerFix         = "Merge-Burler-Fix"
 	NameDarnBurlerReview       = "Darn-Burler-Review"
 	NameDarnBurlerFix          = "Darn-Burler-Fix"
 )

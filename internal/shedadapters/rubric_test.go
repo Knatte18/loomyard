@@ -43,9 +43,26 @@ func TestReadRubric(t *testing.T) {
 		publishFailure string
 		// websterRecord is the note ReadRubric fills the webster_record marker from.
 		websterRecord string
-		want          string
-		wantErr       string
+		// mergeReview is the note ReadRubric fills the merge_review marker from.
+		mergeReview string
+		want        string
+		wantErr     string
 	}{
+		{
+			name:        "renders the merge review note",
+			rubric:      "bouncer-rubric-test",
+			body:        "# Rubric\n\nMerge: {{.merge_review}}\n",
+			specsDir:    "/abs/specs",
+			mergeReview: "Review `a..b`.",
+			want:        "# Rubric\n\nMerge: Review `a..b`.\n",
+		},
+		{
+			name:     "a blank merge review renders none",
+			rubric:   "bouncer-rubric-test",
+			body:     "# Rubric\n\nMerge: {{.merge_review}}\n",
+			specsDir: "/abs/specs",
+			want:     "# Rubric\n\nMerge: none\n",
+		},
 		{
 			name:          "renders the webster record note",
 			rubric:        "bouncer-rubric-test",
@@ -133,7 +150,7 @@ func TestReadRubric(t *testing.T) {
 				writeStampedRubric(t, dir, tt.rubric, tt.body)
 			}
 
-			got, err := ReadRubric(dir, tt.rubric, tt.specsDir, tt.publishFailure, tt.websterRecord)
+			got, err := ReadRubric(dir, tt.rubric, tt.specsDir, RubricNotes{PublishFailure: tt.publishFailure, WebsterRecord: tt.websterRecord, MergeReview: tt.mergeReview})
 			if tt.wantErr != "" {
 				if err == nil {
 					t.Fatalf("ReadRubric() = nil error; want one containing %q", tt.wantErr)
@@ -163,7 +180,7 @@ func TestReadRubric_EmptyStencilsDirIsAnError(t *testing.T) {
 	t.Chdir(t.TempDir())
 	writeStampedRubric(t, "", "bouncer-rubric-test", "# Rubric\n\nSee {{.stencils_dir}}.\n")
 
-	got, err := ReadRubric("", "bouncer-rubric-test", "/abs/specs", "", "")
+	got, err := ReadRubric("", "bouncer-rubric-test", "/abs/specs", RubricNotes{})
 	if err == nil {
 		t.Fatal("ReadRubric(stencilsDir=\"\") = nil error; want non-nil")
 	}

@@ -14,8 +14,10 @@ package landingshed
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"gopkg.in/yaml.v3"
 )
@@ -43,6 +45,22 @@ type Config struct {
 	// Deploy is the shell command batten's Land row runs in the prime after a landing into the prime's branch.
 	// Empty runs nothing.
 	Deploy string `yaml:"deploy"`
+	// ParentLockIdleReleaseMin is the minutes a waiting run, or an undecided PR-Gate hand-off, keeps its parent lock before the lock is released.
+	// A value below 1 reads as the default.
+	ParentLockIdleReleaseMin int `yaml:"parent_lock_idle_release_min"`
+}
+
+// defaultIdleReleaseMin is the idle bound in minutes that a missing or non-positive parent_lock_idle_release_min reads as.
+const defaultIdleReleaseMin = 10
+
+// IdleRelease returns the parent lock's idle bound.
+// A parent_lock_idle_release_min below 1, an absent key included, returns the default and logs one Warn naming the key.
+func (c Config) IdleRelease() time.Duration {
+	if c.ParentLockIdleReleaseMin < 1 {
+		logger.Warn("landingshed: parent_lock_idle_release_min is below 1 or absent, using the default", "key", "parent_lock_idle_release_min", "value", c.ParentLockIdleReleaseMin, "defaultMin", defaultIdleReleaseMin)
+		return defaultIdleReleaseMin * time.Minute
+	}
+	return time.Duration(c.ParentLockIdleReleaseMin) * time.Minute
 }
 
 // ConfigSpec returns landing's layered-load spec.
@@ -62,6 +80,8 @@ func ConfigSpec() configengine.Spec {
 			"co_authored_by":       configengine.CategoryCrossPair,
 			"publish_verify":       configengine.CategoryExecutable,
 			"deploy":               configengine.CategoryExecutable,
+			// The idle bound decides when one pair's parent lock frees for the next pair waiting on it.
+			"parent_lock_idle_release_min": configengine.CategoryCrossPair,
 		},
 	}
 }

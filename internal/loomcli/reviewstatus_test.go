@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -386,6 +389,88 @@ func TestFormatElapsed(t *testing.T) {
 		if got := formatElapsed(tt.d); got != tt.want {
 			t.Errorf("formatElapsed(%v) = %q; want %q", tt.d, got, tt.want)
 		}
+	}
+}
+
+// TestParentLockWaiting asserts a live lock wait record renders the waiting note with its elapsed time, and an absent record, a dead writer's record and an unreadable record fall through to next or fail.
+func TestParentLockWaiting(t *testing.T) {
+	t.Parallel()
+	started := time.Date(2026, 10, 3, 9, 0, 0, 0, time.UTC)
+	now := func() time.Time { return started.Add(6 * time.Minute) }
+	next := func(shedengine.Status) (string, error) { return "next note", nil }
+	alive := func(int, string) bool { return true }
+	dead := func(int, string) bool { return false }
+	writeWait := func(t *testing.T, path string) {
+		t.Helper()
+		if err := parentlock.WriteWait(path, parentlock.Wait{Branch: "main", Holder: "other-task", PID: 42, StartTime: "42-start", Started: started}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tests := []struct {
+		name    string
+		prepare func(t *testing.T, path string)
+		alive   func(int, string) bool
+		want    string
+		wantErr bool
+	}{
+		{"live record names the branch, holder and elapsed time", writeWait, alive, "Merge-In: waiting for the parent lock on main held by other-task 6m", false},
+		{"absent record falls through", func(*testing.T, string) {}, alive, "next note", false},
+		{"dead writer falls through", writeWait, dead, "next note", false},
+		{"unreadable record is an error", func(t *testing.T, path string) {
+			if err := os.WriteFile(path, []byte("{"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, alive, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			path := parentlock.WaitRecordPath(t.TempDir())
+			tt.prepare(t, path)
+
+			got, err := parentLockWaiting(path, tt.alive, now, next)(shedengine.Status{CurrentProducer: "Merge-In"})
+
+			if (err != nil) != tt.wantErr || got != tt.want {
+				t.Errorf("note, err = %q, %v; want %q, error %v", got, err, tt.want, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestAgentActivity_LiveLockWaitReadsAsActivity asserts a live parent lock wait record reads as activity now, and a dead writer's record does not.
+func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		wait         parentlock.Wait
+		wantActivity bool
+	}{
+		{"live writer", parentlock.NewWait("main", "other-task"), true},
+		{"dead writer", parentlock.Wait{Branch: "main", Holder: "other-task", PID: 1 << 30, StartTime: "gone", Started: time.Now()}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "task", AnchorRel: "."}
+			scratch := loomengine.LoomScratchDir(loc)
+			if err := os.MkdirAll(scratch, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := parentlock.WriteWait(parentlock.WaitRecordPath(scratch), tt.wait); err != nil {
+				t.Fatal(err)
+			}
+
+			before := time.Now()
+			last, live, err := agentActivityFor(loc, shuttleengine.Config{})()
+
+			if err != nil {
+				t.Fatalf("agentActivityFor() error = %v", err)
+			}
+			if live != tt.wantActivity || (tt.wantActivity && last.Before(before)) {
+				t.Errorf("activity = %v at %v; want %v at or after %v", live, last, tt.wantActivity, before)
+			}
+		})
 	}
 }
 

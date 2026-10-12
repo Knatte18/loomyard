@@ -42,6 +42,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -535,9 +536,10 @@ func readStopReport(taskLocation *lyxcwd.Location) (path string, at time.Time, f
 }
 
 // readAgentActivity reads the live agent runs of the task worktree through the shuttle config and a Claude engine, mapped onto battenshed's neutral type,
-// and reports whether a Go-side wait is live: a running verify, or a shuttle wait that is not a held turn end.
+// and reports whether a Go-side wait is live: a running verify, a parent lock wait, or a shuttle wait that is not a held turn end.
 // A held run is idle at its turn end, so it does not suppress the quiet notice.
-// Both waits are read from their marker files, never from the pane options that display them.
+// A lock wait record whose writer is dead is ignored.
+// The waits are read from their marker and record files, never from the pane options that display them.
 func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentActivity, waitLive bool, err error) {
 	anchor := taskLocation.AnchorPath()
 	cfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "shuttle")
@@ -565,6 +567,13 @@ func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentAc
 		return nil, false, err
 	}
 	if verifyLive {
+		return runs, true, nil
+	}
+	_, lockWaiting, err := parentlock.ReadWait(parentlock.WaitRecordPath(loomengine.LoomScratchDir(taskLocation)), parentlock.ProcessAlive)
+	if err != nil {
+		return nil, false, err
+	}
+	if lockWaiting {
 		return runs, true, nil
 	}
 	markers, err := shuttleengine.ReadWaitMarkers(cfg, anchor)
@@ -778,7 +787,8 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				return readStopReport(taskLocation)
 			},
 			MarkWatched: markWatched,
-			PublishRow:  loomshed.NamePublish,
+			VerifyRows:  []string{loomshed.NameMergeIn, loomshed.NamePublish},
+			ParentLock:  childParentLock(slug, locateTask, fabricengine.BoardDir(location.HubPath), lockIdleBound(location)),
 			PublishFailure: func() (battenshed.ChildPublishFailure, bool, error) {
 				taskLocation, err := locateTask()
 				if err != nil {

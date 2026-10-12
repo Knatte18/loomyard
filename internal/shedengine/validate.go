@@ -77,6 +77,12 @@ func (s *Shed) validate() error {
 		if p.OnDone != "" && p.OnDone == p.Name {
 			return fmt.Errorf("shedengine: producer %q at index %d has OnDone naming itself", p.Name, i)
 		}
+		if p.OnReroute != "" && !seen[p.OnReroute] {
+			return fmt.Errorf("shedengine: producer %q at index %d has OnReroute %q naming no producer in the list", p.Name, i, p.OnReroute)
+		}
+		if p.OnReroute != "" && p.OnReroute == p.Name {
+			return fmt.Errorf("shedengine: producer %q at index %d has OnReroute naming itself", p.Name, i)
+		}
 		if p.OnStuck != "" && !seen[p.OnStuck] {
 			return fmt.Errorf("shedengine: producer %q at index %d has OnStuck %q naming no producer in the list", p.Name, i, p.OnStuck)
 		}

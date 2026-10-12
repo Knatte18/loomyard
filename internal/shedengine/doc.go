@@ -72,6 +72,19 @@
 // the missing-producer refusal, which lists every valid producer name, and the budget-exhausted reason, whose ReasonBounceBudgetExhausted stays its exact prefix.
 // Every refusal's way forward is tabulated in contracts/specs/refusal-spec.md, which this documentation links rather than restates.
 //
+// # The reroute edge and the halting Stuck
+//
+// A row may name one OnReroute row, forward or backward and across segments.
+// A Stuck verdict whose OutputPointer.Reroute is set takes that edge instead of OnStuck: the run moves to the target and a history entry with outcome OutcomeReroute and the target in routed_to records it.
+// A reroute spends no bounce budget, and like a goto it ends the episode of every row sharing its target's Segment.
+// A row reroutes at most rerouteCap (three) times since its latest Done or its latest reroute-cap halt; the next reroute halts blocked at the row with a budget-exempt Stuck entry marked reroute_capped and a reason starting "reroute cap reached", whose trailing way forward is the told Shed.RerouteCapWayForward.
+// Resuming that halt grants three more reroutes, because the capped entry resets the count.
+// A Reroute verdict from a row with no OnReroute is a wiring fault: the run is written failed naming the row.
+//
+// A Stuck verdict whose OutputPointer.Halt is set blocks the run at its own row with the producer's Reason whatever the row's OnStuck, and is budget-exempt.
+// It can only stop a run, never advance or route it, so a row with an OnStuck route can still halt for a human.
+// OutcomeGoto stays the goto verb's alone.
+//
 // # Row renames
 //
 // Row names are durable resume identities, so a product that renames a row carries in-flight runs across with RenameProducers.

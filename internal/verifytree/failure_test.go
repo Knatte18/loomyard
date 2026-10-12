@@ -31,6 +31,7 @@ func TestPublishFailureRecord(t *testing.T) {
 		p := newPaths(t)
 		want := PublishFailure{
 			Kind:        FailureKindPublishVerify,
+			Row:         "Merge-In",
 			Tests:       []FailedTest{{Package: "example.com/m/a", Test: "TestA/sub"}},
 			LogPath:     filepath.Join(p.Dir, "verify-3.log"),
 			Head:        "abc123",
@@ -48,6 +49,21 @@ func TestPublishFailureRecord(t *testing.T) {
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("record = %+v; want %+v", got, want)
+		}
+	})
+
+	t.Run("a record written before the row field decodes with an empty row", func(t *testing.T) {
+		t.Parallel()
+		p := newPaths(t)
+		if err := os.WriteFile(p.PublishFailure, []byte("kind: plan_verify\nlog_path: verify-1.log\nhead: abc123\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got, ok, err := ReadPublishFailure(p)
+		if !ok || err != nil {
+			t.Fatalf("ReadPublishFailure = (_, %v, %v); want (_, true, nil)", ok, err)
+		}
+		if got.Row != "" || got.Kind != FailureKindPlanVerify {
+			t.Fatalf("record = %+v; want an empty Row and kind %q", got, FailureKindPlanVerify)
 		}
 	})
 

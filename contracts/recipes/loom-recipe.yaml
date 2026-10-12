@@ -5,13 +5,13 @@
 #
 # Every gate and validator bounces back to the producer whose artifact it guards, and a gate whose
 # guarded artifact is produced by no row in the list escalates instead -- Preflight, Loom-Preflight,
-# Batchifier, Publish, and Finalize carry no on_stuck for exactly that reason: nothing in the list
-# produces what each of them gates, so there is nothing to bounce to and a human is the only thing
-# that can fix any of the five.
+# Batchifier, Merge-In, Publish, and Finalize carry no on_stuck for exactly that reason: nothing in
+# the list produces what each of them gates, so there is nothing to bounce to and a human is the
+# only thing that can fix any of the six.
 #
-# Those five are not the whole escalate-to-a-human set, and the difference matters when auditing
+# Those six are not the whole escalate-to-a-human set, and the difference matters when auditing
 # routing from this header. Four PRODUCER rows also carry no on_stuck -- Discussion-Write,
-# Plan-Write, Webster, and Describe -- so nine rows in total escalate rather than bounce: the
+# Plan-Write, Webster, and Describe -- so ten rows in total escalate rather than bounce: the
 # first two writer rows were already members of this set, only their reachability changed, and
 # Describe is the newest member, a writer row whose exhausted gate halts the run for a human. They
 # are omitted from the sentence above because its subject is gates, not because their Stuck is any
@@ -30,8 +30,14 @@
 # migrated: Webster-Bouncer's on_done now names Describe rather than Publish, and the operator can
 # simply re-run.
 #
-# Publish still escalates: its failures are merge, verify and push faults nothing in the list
-# produces. PR-Gate bounces to PR-Rework, the row that produces the diff it guards. PR-Rework joins
+# Merge-In and Publish still escalate: their failures are merge, verify and push faults nothing in
+# the list produces. Merge-In and the Merge-Review perch sit between Describe and Publish, and
+# Publish, PR-Gate and Finalize each declare on_reroute: Merge-In: a row that finds the parent
+# moved since the last merge-in reroutes there, which spends no bounce budget, and the reroute cap
+# bounds a parent that keeps moving. An in-flight run parked on a row whose name or edges changed
+# with the Merge-In rows, Describe and Publish included, is restarted, not migrated.
+#
+# PR-Gate bounces to PR-Rework, the row that produces the diff it guards. PR-Rework joins
 # the writer rows whose Stuck halts for a human. A Done by any row of segment PR-Review ends the
 # gate's episode, so PR-Rework's Done resets the count after every rework; max_bounces bounds
 # consecutive gate Stucks with no rework Done between them, which this recipe never produces, since
@@ -47,9 +53,10 @@
 # three retired names onto their successors is carrying cost a pre-release, single-operator system
 # does not need when the operator can simply re-run.
 #
-# All three review segments follow the same shared-segment on_stuck ring: Discussion-Bouncer,
+# Every review segment follows the same shared-segment on_stuck ring: Discussion-Bouncer,
 # Discussion-Burler-Review and Discussion-Burler-Fix carry segment: Discussion-Review, the three
-# Plan rows carry segment: Plan-Review, and the three Webster rows carry segment: Webster-Review.
+# Plan rows carry segment: Plan-Review, the three Webster rows carry segment: Webster-Review, and
+# the three Merge rows carry segment: Merge-Review.
 # In each ring the Bouncer's on_stuck names the review row, the review row's on_stuck names the fix
 # row, and the fix row's on_stuck names the Bouncer, and each Burler row's on_done names the same
 # row as its on_stuck -- neither Burler row ever returns Done, and an empty on_done would end the
@@ -65,8 +72,8 @@
 # An in-flight run parked on one of the retired Discussion-Burler, Plan-Burler or Webster-Burler
 # rows is restarted, not migrated, as it is for the earlier retired rows above.
 #
-# The Bouncer, review and fix rows of those three segments declare no max_bounces: their budget
-# is the perch's own loom.yaml key (discussion_max_bounces, plan_max_bounces or webster_max_bounces),
+# The Bouncer, review and fix rows of those segments declare no max_bounces: their budget is the
+# perch's own loom.yaml key (discussion_max_bounces, plan_max_bounces, webster_max_bounces or merge_max_bounces),
 # falling back to review_max_bounces where that is 0, applied by internal/loomrecipe. PR-Gate keeps
 # its literal max_bounces.
 
@@ -420,7 +427,7 @@ producers:
 
   - name: Describe
     engine: Describe
-    on_done: Publish
+    on_done: Merge-In
     config:
       # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
       # validator and re-prompts the live session up to its attempts times, so a failure never
@@ -429,8 +436,104 @@ producers:
         - name: description
           attempts: 3
 
+  # Merge-In takes the parent lock, brings the local parent level with its upstream, merges it into
+  # the task worktree, verifies the merged tree and writes the merge record. It keeps the lock on
+  # every way out: Publish, PR-Gate or Finalize frees it, or the loop's exit does.
+  - name: Merge-In
+    engine: MergeIn
+    on_done: Merge-Bouncer
+
+  # The Merge-Review perch reviews how the task's code interacts with what the parent gained in the
+  # merge-in. loom.yaml's skip_merge_review routes Merge-In's Done past it to Publish, and the
+  # Bouncer's skip_seam skips the judge for a merge that gained nothing the task touches. A BLOCKING
+  # finding escalates past an exhausted budget even where loom.yaml auto-accepts the round.
+  - name: Merge-Bouncer
+    engine: Bouncer
+    segment: Merge-Review
+    on_stuck: Merge-Burler-Review
+    on_done: Publish
+    config:
+      run_subdir: merge
+      # The subject under review is the merge-in, which artifact_paths cannot name: the key is
+      # required and non-empty, so it takes the decision record the review measures the merge
+      # against. The rubric names the merge as the subject for the judge and the fixer alike.
+      artifact_paths:
+        - _lyx/discussion/decision-record.md
+      rubric_stencil: loom-rubric-merge-review
+      # approve_seam: merge records the parent tip a finished review reached, as the reviewed tip the next merge record reads.
+      approve_seam: merge
+      # skip_seam: merge-overlap skips the judge when the merge record shows the parent gained
+      # nothing the task touches; a missing record or a seam error falls back to a real review.
+      skip_seam: merge-overlap
+      blocking_escalates: true
+      # No commit_seam key, for the reason Webster-Bouncer gives: Merge-Burler-Fix runs fix-scope:
+      # source and commits each fix itself.
+      carry_over: Merge-Review
+      color_segment: merge
+      # No model/effort/version key: the row refuses them as unknown keys, and loom.yaml's judge,
+      # seed and per-segment judge and seed keys are the only source of this row's passes' models.
+
+  - name: Merge-Burler-Review
+    engine: BurlerReview
+    segment: Merge-Review
+    on_stuck: Merge-Burler-Fix
+    # BurlerReviewProducer never returns Done, so this edge is unreachable -- but an empty on_done
+    # is load-bearing and ends the whole run silently, which is a worse failure than a redundant
+    # edge, so it is set explicitly to the row it can never actually reach.
+    on_done: Merge-Burler-Fix
+    config:
+      # The same run_subdir value as Merge-Bouncer is what makes the three rows write into one
+      # shared run directory.
+      run_subdir: merge
+      color_segment: merge
+      profile:
+        target:
+          # No paths key, for the reason Webster-Burler-Review gives: the subject is a merge, not a file.
+          instructions: >
+            The subject under review is the interaction between the parent commits merged in and
+            the task's own change, as the merge section of the rubric supplied in this prompt
+            defines them. This instruction deliberately does not restate how to find them.
+        fasit:
+          paths:
+            - _lyx/discussion/decision-record.md
+          instructions: >
+            The decision record named above is the answer key for what the task's change must do.
+            Read PATTERN.md and the pattern/ files the rubric's merge section names: they are the
+            invariants the parent's commits may have added or changed.
+        rubric_stencil: loom-rubric-merge-review
+        # fix-scope: source, for the reason Webster-Burler-Review gives.
+        fix-scope: source
+        tool-use: true
+        # No cluster-fan key: the subject exists only through read-only git, which a fan's forks may not run.
+      # No model/effort key: model choice lives in loom.yaml's review and fix keys only.
+      # No timeout_s key, for the same Env fallback reason as Merge-Bouncer.
+
+  - name: Merge-Burler-Fix
+    engine: BurlerFix
+    segment: Merge-Review
+    on_stuck: Merge-Bouncer
+    # BurlerFixProducer never returns Done, so this edge is unreachable -- but an empty on_done is
+    # load-bearing and ends the whole run silently, which is a worse failure than a redundant edge,
+    # so it is set explicitly to the row it can never actually reach.
+    on_done: Merge-Bouncer
+    config:
+      run_subdir: merge
+      review_row: Merge-Burler-Review
+      color_segment: merge
+      # The verify gate runs as Webster-Burler-Fix's does.
+      gates:
+        - name: verify
+          attempts: 3
+      profile:
+        # No target key, for the reason Webster-Burler-Fix gives.
+        # fix-scope: source, for the reason the review row gives.
+        fix-scope: source
+
+  # Publish pushes the task branch and opens or refreshes the pull request, after the push-time
+  # publish_verify. A moved parent reroutes it to Merge-In.
   - name: Publish
     engine: Publish
+    on_reroute: Merge-In
     on_done: PR-Gate
 
   # PR-Gate owns every review decision on the pull request Publish opened: it returns Done on an
@@ -441,6 +544,7 @@ producers:
     segment: PR-Review
     max_bounces: 5
     on_stuck: PR-Rework
+    on_reroute: Merge-In
     on_done: Finalize
 
   # PR-Rework archives the live plan generation and has its session write a whole new one for the
@@ -462,6 +566,7 @@ producers:
 
   - name: Finalize
     engine: Finalize
+    on_reroute: Merge-In
     # Hands off to the reflection row rather than ending the run.
     on_done: Friction-Reflect
 
