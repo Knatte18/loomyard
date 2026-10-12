@@ -27,7 +27,7 @@ internal/configengine: 18
 internal/configreg: 10
 internal/configsync: 8
 internal/darnengine: 4
-internal/discussionparser: 17
+internal/discussionparser: 18
 internal/dotgit: 3
 internal/editdirective: 2
 internal/envsource: 3
@@ -87,7 +87,7 @@ internal/seatengine: 17
 internal/segmentcolor: 4
 internal/selfreportcli: 3
 internal/selfreportengine: 12
-internal/shedadapters: 154
+internal/shedadapters: 155
 internal/shedbuild: 13
 internal/shedcheck: 3
 internal/shedcli: 17
