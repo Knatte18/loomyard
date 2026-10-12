@@ -49,6 +49,7 @@
 // an empty body writes nothing,
 // and an absent target is an error.
 // Editing a body is a file round trip: `get --body > body.md`, edit the file, then `upsert --body-file body.md`.
+// `get`, `list-full` and the task envelope of `upsert`, `promote` and `merge` print an entry's kept keys, the board.json keys this binary does not know, while `list` and the README use known fields only.
 //
 // `labels` takes no payload and prints `{"ok":true,"types":[{"label":…,"description":…}],"labels":[…]}`.
 // Each list is in `board.yaml` file order,
