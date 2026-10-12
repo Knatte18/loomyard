@@ -34,6 +34,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
@@ -153,6 +154,22 @@ func DiscussionReadyMarker(l *lyxcwd.Location) string {
 func RemoveDiscussionReadyMarker(l *lyxcwd.Location) error {
 	if err := os.Remove(DiscussionReadyMarker(l)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("loom: remove discussion ready marker: %w", err)
+	}
+	return nil
+}
+
+// PlanReadyMarker returns the path to the twill plan writer's ready marker.
+// It is untracked state the writer creates once its plan passes the self-check, and the condition its lens forks wait on.
+// It sits under the anchor's lyxdirs.DotLyxDirName at the subpath mirroring the plan directory.
+func PlanReadyMarker(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, planparser.PlanDirName, filepath.Base(planparser.PlanOverview(l.AnchorPath()))+".ready")
+}
+
+// RemovePlanReadyMarker removes the plan ready marker and treats a missing one as success.
+// It runs before every fresh Plan-Write spawn, so a marker left by an earlier spawn never wakes a later spawn's forks.
+func RemovePlanReadyMarker(l *lyxcwd.Location) error {
+	if err := os.Remove(PlanReadyMarker(l)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("loom: remove plan ready marker: %w", err)
 	}
 	return nil
 }
@@ -356,7 +373,7 @@ type Config struct {
 	Plan                  string        `yaml:"plan"`
 	PlanTimeoutMin        int           `yaml:"plan_timeout_min"`
 	PlanProducer          string        `yaml:"plan_producer"`
-	Review               ModelSpecList `yaml:"review"`
+	Review                ModelSpecList `yaml:"review"`
 	Fix                   ModelSpecList `yaml:"fix"`
 	DiscussionReview      ModelSpecList `yaml:"discussion_review"`
 	DiscussionFix         ModelSpecList `yaml:"discussion_fix"`

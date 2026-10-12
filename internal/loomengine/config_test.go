@@ -90,7 +90,7 @@ func templateConfig() Config {
 		Plan:                     "opus[medium]",
 		PlanTimeoutMin:           120,
 		PlanProducer:             "single",
-		Review:                  ModelSpecList{"opus[medium]"},
+		Review:                   ModelSpecList{"opus[medium]"},
 		Fix:                      ModelSpecList{"opus[medium]"},
 		DiscussionReview:         ModelSpecList{""},
 		DiscussionFix:            ModelSpecList{""},

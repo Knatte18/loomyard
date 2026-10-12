@@ -10,9 +10,10 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// TestDiscussionPaths pins the discussion directory, the decision record and the support log at the anchor, and that DiscussionDirRel is the relative form DiscussionDir composes from.
+// TestDiscussionPaths pins the discussion directory, the decision record, the support log and the plan ready marker at the anchor, and that DiscussionDirRel is the relative form DiscussionDir composes from.
 // The anchored row's AnchorRel differs from "." to prove the accessors follow the anchored subpath, not the bare worktree root; the unanchored row's anchor path equals the worktree path.
 //
 //testtiming:keep pins the exact discussion directory, decision record and support log paths at an anchored and an unanchored location, which the covering spec tests only pass through unasserted
@@ -51,6 +52,9 @@ func TestDiscussionPaths(t *testing.T) {
 			}
 			if got, want := DiscussionReadyMarker(l), filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "discussion", "decision-record.md.ready"); got != want {
 				t.Errorf("DiscussionReadyMarker() = %q; want %q", got, want)
+			}
+			if got, want := PlanReadyMarker(l), filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, planparser.PlanDirName, "00-overview.md.ready"); got != want {
+				t.Errorf("PlanReadyMarker() = %q; want %q", got, want)
 			}
 			if got, want := DiscussionAdvisorNotes(l, 2), filepath.Join(wantDir, "advisor-2.md"); got != want {
 				t.Errorf("DiscussionAdvisorNotes(2) = %q; want %q", got, want)
