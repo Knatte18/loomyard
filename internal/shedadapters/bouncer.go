@@ -157,6 +157,9 @@ type BouncerConfig struct {
 	// The skip seam never calls it, since no round ran.
 	// Nil is the absent value and leaves every row behaving exactly as before.
 	CarryOver func(discussionparser.CarryOver) error
+	// ColorSegment is the segment the seed and judge sessions, and the probes that attach to them, are colored by.
+	// The zero value keeps segmentcolor.Review.
+	ColorSegment segmentcolor.Segment
 }
 
 // Bouncer is the shedadapters adapter implementing the generic review-gate producer: it composes
@@ -467,6 +470,14 @@ func (b *Bouncer) settledGeneration(round int) bool {
 	return err == nil && exists && settled && decision == CirclingAccept
 }
 
+// colorSegment returns the segment the Bouncer's sessions are colored by.
+func (b *Bouncer) colorSegment() segmentcolor.Segment {
+	if b.cfg.ColorSegment == "" {
+		return segmentcolor.Review
+	}
+	return b.cfg.ColorSegment
+}
+
 // awaitLiveJudge probes for a still-live judge run for round and, when it finds one, waits on it
 // before returning its result and true; a not-found probe returns false, and an attach error is returned to the
 // caller rather than swallowed, since a probe that could not determine liveness must never be read
@@ -484,7 +495,7 @@ func (b *Bouncer) awaitLiveJudge(round int) (shuttleengine.Result, bool, error) 
 	spec := shuttleengine.Spec{
 		OutputFiles: judgeOutputs(b.cfg.RunDir, round),
 		Role:        bouncerJudgeRole,
-		Segment:     segmentcolor.Review,
+		Segment:     b.colorSegment(),
 		Round:       strconv.Itoa(round),
 	}
 
@@ -511,7 +522,7 @@ func (b *Bouncer) awaitLiveSeed() (shuttleengine.Result, bool, error) {
 	spec := shuttleengine.Spec{
 		OutputFiles: []string{focusPath(b.cfg.RunDir, 1)},
 		Role:        bouncerSeedRole,
-		Segment:     segmentcolor.Review,
+		Segment:     b.colorSegment(),
 		Round:       "1",
 	}
 
@@ -1055,7 +1066,7 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 		Effort:      b.cfg.Models.Seed.Effort,
 		Version:     b.cfg.Models.Seed.Version,
 		Role:        bouncerSeedRole,
-		Segment:     segmentcolor.Review,
+		Segment:     b.colorSegment(),
 		Round:       "1",
 		Skills:      bouncerSeedSkills,
 	}
@@ -1187,7 +1198,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		Effort:      b.cfg.Models.Judge.Effort,
 		Version:     b.cfg.Models.Judge.Version,
 		Role:        bouncerJudgeRole,
-		Segment:     segmentcolor.Review,
+		Segment:     b.colorSegment(),
 		Round:       strconv.Itoa(n),
 		Skills:      bouncerJudgeSkills,
 	}

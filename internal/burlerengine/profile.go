@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -54,6 +55,16 @@ type Profile struct {
 	// FocusDirective is an optional path to this round's focus directive file, kept apart from PriorReviews.
 	// It is steering input the reviewer reads before forming findings, and is never subject to the prior-rounds clean-room rule.
 	FocusDirective string
+	// Segment is the segment both halves' sessions are colored by; the zero value keeps segmentcolor.Review.
+	Segment segmentcolor.Segment
+}
+
+// segment returns the segment the round's sessions are colored by.
+func (p *Profile) segment() segmentcolor.Segment {
+	if p.Segment == "" {
+		return segmentcolor.Review
+	}
+	return p.Segment
 }
 
 // RunOpts carries run-tuning knobs kept off Profile.

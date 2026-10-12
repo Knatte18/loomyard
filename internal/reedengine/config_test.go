@@ -97,6 +97,7 @@ var wantSegmentColors = map[string]string{
 	"describe":    "yellow",
 	"landing":     "pink",
 	"darn":        "red",
+	"merge":       "red",
 }
 
 // TestLoadConfig_MissingSegmentColorsTakeTemplateDefaults pins that a reed.yaml lacking the whole block, or a single key of it, loads with the template defaults.
