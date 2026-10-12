@@ -574,6 +574,7 @@ func (c *loomCLI) loomPostStep(res shedengine.StepResult) {
 
 // loomStatusExtras implements the StatusExtras hook for loom's spec: loom's own three status keys
 // (pause_requested, slug, parent), decoded from st.Product only when non-empty, and no others.
+// A run a live pause covers also carries paused_since and paused_by.
 func (c *loomCLI) loomStatusExtras(st shedengine.Status) (map[string]any, error) {
 	var product loomengine.Status
 	if len(st.Product) > 0 {
@@ -583,9 +584,13 @@ func (c *loomCLI) loomStatusExtras(st shedengine.Status) (map[string]any, error)
 			return nil, errors.New("loom: decode status file " + c.shedPaths.StatusPath + "'s product payload: " + err.Error())
 		}
 	}
-	return map[string]any{
+	extras := map[string]any{
 		"pause_requested": st.PauseRequested,
 		"slug":            product.Slug,
 		"parent":          product.Parent,
-	}, nil
+	}
+	for key, value := range c.pausedExtras() {
+		extras[key] = value
+	}
+	return extras, nil
 }

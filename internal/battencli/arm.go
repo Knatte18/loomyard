@@ -480,6 +480,31 @@ func (c *battenCLI) refuseCovered() error {
 	return pauserecord.CoveredError(coverage.Entry, c.slug, fmt.Sprintf(`run "lyx batten run %s" again`, c.slug))
 }
 
+// pausedExtras returns the status keys a live pause entry covering this run's slug adds: paused_since (the entry's time, RFC 3339) and paused_by (its scope).
+// An uncovered run, a receiver without a location and an unreadable record add nothing; the last logs one Warn, so a status read never fails on the record.
+func (c *battenCLI) pausedExtras() map[string]any {
+	if c.location == nil {
+		return nil
+	}
+	geometry, err := hubgeom.PauseGeometry(c.location)
+	if err != nil {
+		logger.Warn("battencli: pause geometry unreadable, status omits paused_since", "slug", c.slug, "cause", err)
+		return nil
+	}
+	coverage, err := pauserecord.ReadCoverage(geometry.RecordPath, c.slug, time.Now())
+	if err != nil {
+		logger.Warn("battencli: pause record unreadable, status omits paused_since", "slug", c.slug, "cause", err)
+		return nil
+	}
+	if !coverage.Covered {
+		return nil
+	}
+	return map[string]any{
+		"paused_since": coverage.Entry.PausedAt.Format(time.RFC3339),
+		"paused_by":    coverage.Entry.Scope,
+	}
+}
+
 // battenPreRun implements the PreRun hook for batten's spec: run's whole existing pre-flight, in today's order: checkRunStatus, then seeding a fresh status when absent.
 // Each step's error becomes a returned error the generic body reports on the error envelope exactly as run's own inline handling did.
 //
@@ -641,6 +666,7 @@ const maxStatusHistoryEntries = 20
 // extra is kept for the Run-Shed block through the budget arm, whose error stays the fixed budget
 // literal.
 // A batten run that stopped before its teardown while its child loom run is done also carries childDoneFlagKey, naming the step that closes it.
+// A run a live pause covers also carries paused_since and paused_by.
 func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, error) {
 	history, truncated := recentHistory(st.History)
 	extras := map[string]any{
@@ -663,6 +689,9 @@ func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, er
 	child, childFound := c.readChildStatus()
 	if flag, flagged := haltedOverDoneChild(c.slug, st, child, childFound); flagged {
 		extras[childDoneFlagKey] = flag
+	}
+	for key, value := range c.pausedExtras() {
+		extras[key] = value
 	}
 	return extras, nil
 }

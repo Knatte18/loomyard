@@ -152,7 +152,9 @@ state, the error field, the activity, and the history, plus the resolved
 status path so an operator can find the file. A slug with no seed at all
 refuses, listing the seeded run-ids; a seeded slug whose status file is
 absent -- hand-seeded, or never stepped yet -- is reported as a determined
-answer on the success envelope, not as an error.
+answer on the success envelope, not as an error. While a pause covers the
+slug, the envelope also carries "paused_since" (when the pause began, RFC
+3339) and "paused_by" (the pause's scope); an uncovered slug carries neither.
 
 With --watch, it performs the same read once as a pre-flight, then tails
 the file and never exits, printing a line only when the composed activity

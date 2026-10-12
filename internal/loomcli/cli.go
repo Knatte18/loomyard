@@ -358,7 +358,9 @@ Example:
 Without --watch, it reads the status file once and emits a single JSON
 envelope carrying the current producer, state, error text, pause flag,
 composed activity, history length, the task's slug/parent, and the
-interrupt policy for the current producer.
+interrupt policy for the current producer. While a pause covers the run,
+the envelope also carries "paused_since" (when the pause began, RFC 3339)
+and "paused_by" (the pause's scope); a run no pause covers carries neither.
 
 With --watch, it performs the same read once as a pre-flight, then tails
 the file and never exits, printing a line only when the composed activity
