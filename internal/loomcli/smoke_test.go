@@ -630,10 +630,16 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 
 		// The rig is confirmed by the driver log's own content: the read gate's invalid-state refusal, not an ordinary completed run.
 		// Without this the step would pass against any fast-exiting driver and prove nothing about the rig.
+		// The poisoned state is not running, so the handshake reports halted on its first poll and the bootstrap can return while the driver is still starting; the log is polled for rather than read once.
 		wantLog := loomengine.LoomDriverLog(loc)
-		driverLog, err := os.ReadFile(wantLog)
-		if err != nil {
-			t.Fatalf("read driver log %s: %v", wantLog, err)
+		var driverLog []byte
+		logDeadline := time.Now().Add(20 * time.Second)
+		for {
+			driverLog, _ = os.ReadFile(wantLog)
+			if strings.Contains(strings.ToLower(string(driverLog)), "invalid state") || time.Now().After(logDeadline) {
+				break
+			}
+			time.Sleep(25 * time.Millisecond)
 		}
 		if !strings.Contains(strings.ToLower(string(driverLog)), "invalid state") {
 			t.Errorf("driver log = %q; want it to name the poisoned status file's invalid state -- the reason the run halted must survive in the log even though the bootstrap proceeded", driverLog)
