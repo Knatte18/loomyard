@@ -79,17 +79,7 @@ func SetValues(template, existing []byte, pairs []KV, openMaps ...string) (SetRe
 	templateSequences := make(map[string]*yaml.Node)
 	collectSequencePaths(&templateNode, "", templateSequences)
 
-	known := make([]string, 0, len(templateLeaves)+len(templateSequences))
-	for path := range templateLeaves {
-		known = append(known, path)
-	}
-	for path := range templateSequences {
-		known = append(known, path)
-	}
-	for _, p := range openMaps {
-		known = append(known, p+".<name>")
-	}
-	sort.Strings(known)
+	known := knownKeys(templateLeaves, templateSequences, openMaps)
 
 	// preserved collects the root-key-granularity graft step's key names
 	// (below), reported to the caller via SetResult.Preserved. It stays nil
@@ -121,21 +111,7 @@ func SetValues(template, existing []byte, pairs []KV, openMaps ...string) (SetRe
 	// Validate every requested key against the template's leaf set before
 	// mutating anything, so a single unknown key rejects the whole call
 	// rather than silently applying a partial write.
-	unknownSet := make(map[string]bool)
-	for _, pair := range pairs {
-		_, isLeaf := templateLeaves[pair.Key]
-		_, isSequence := templateSequences[pair.Key]
-		_, _, isOpen := splitOpenMapKey(pair.Key, openMaps)
-		if !isLeaf && !isSequence && !isOpen {
-			unknownSet[pair.Key] = true
-		}
-	}
-	if len(unknownSet) > 0 {
-		unknown := make([]string, 0, len(unknownSet))
-		for key := range unknownSet {
-			unknown = append(unknown, key)
-		}
-		sort.Strings(unknown)
+	if unknown := unknownKeys(pairs, templateLeaves, templateSequences, openMaps); len(unknown) > 0 {
 		return SetResult{Unknown: unknown, Known: known}, nil
 	}
 
