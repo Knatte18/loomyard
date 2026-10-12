@@ -581,7 +581,7 @@ func vocabScanAllowlisted(rel string) bool {
 //
 // Bare weft/warp rule, outside the owner set (configsync's literal-and-comment carve-out aside):
 // every *_test.go file anywhere; every non-test .go file under internal/ and the doc roots; every
-// .md and .yaml file under the doc roots; every .md under internal/; CLAUDE.md and README.md.
+// .md and .yaml file under the doc roots; every .md under internal/; CLAUDE.md and README.md, which may name the records repository loomyard-weft.
 // Host-phrase rule: non-test .go under internal/ and cmd/, and .md under internal/ and contracts/stencils/.
 // Weftname import rule: non-test .go under internal/ and cmd/, and every test file but weftnameTestImporter.
 func fabricVocabularyFailures(t *testing.T, base string) ([]string, int) {
@@ -626,7 +626,11 @@ func fabricVocabularyFailures(t *testing.T, base string) ([]string, int) {
 			ext := filepath.Ext(rel)
 			bareScope := (ext == ".md" && (inInternal || vocabScanRootFiles[rel])) || inDocRoot
 			hostScope := ext == ".md" && (inInternal || strings.HasPrefix(rel, "contracts/stencils/"))
-			if bareScope && !fabricvocab.IsOwner(dir) && fabricvocab.BareToken(text) {
+			bareHit := fabricvocab.BareToken
+			if vocabScanRootFiles[rel] {
+				bareHit = fabricvocab.BareTokenInRootDoc
+			}
+			if bareScope && !fabricvocab.IsOwner(dir) && bareHit(text) {
 				fail(rel, "bare weft/warp token outside the owner set")
 			}
 			if hostScope && fabricSenseHostPhrase(text) {
@@ -763,6 +767,19 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 		t.Run("embedded_md_style_body_with_weft_fails", func(t *testing.T) {
 			if !fabricvocab.BareToken("This template mentions the weft side directory.") {
 				t.Error("expected weft in a markdown-style body to be detected")
+			}
+		})
+
+		t.Run("root_doc_admits_records_repo_name_only", func(t *testing.T) {
+			named := "Records live in [loomyard-weft](https://github.com/Knatte18/loomyard-weft)."
+			if fabricvocab.BareTokenInRootDoc(named) {
+				t.Error("expected the records repository's name and URL to pass in a repo-root doc")
+			}
+			if !fabricvocab.BareTokenInRootDoc(named + " Each task has a weft branch.") {
+				t.Error("expected a bare weft next to the records repository's name to still fail")
+			}
+			if !fabricvocab.BareToken(named) {
+				t.Error("expected the records repository's name to still fail outside the repo-root docs")
 			}
 		})
 

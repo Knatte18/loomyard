@@ -12,7 +12,7 @@
   - every non-test `.go` file under `internal/` and the doc roots;
   - every `.md` and `.yaml` file under `contracts/`, `docs/`, `plugins/`, `crucible/` and `cmd/`;
   - every `.md` file under `internal/`;
-  - `CLAUDE.md` and `README.md`.
+  - `CLAUDE.md` and `README.md`, which may spell the public records repository's proper name `loomyard-weft` (`fabricvocab.BareTokenInRootDoc`) and no other side token.
 - Skipped: `_lyx`, `.lyx` and the repo-root `sandbox/` fixture tree, matched on the path's first segment, and the paths in `vocabScanAllowlist` in `internal/lyxcwd/enforcement_test.go`.
 - `internal/configsync` keeps a narrower carve-out in its test files too: string literals and comments may name the sides, identifiers may not.
 - A non-owner file carries no side-named spelling, owner-set exports included.
