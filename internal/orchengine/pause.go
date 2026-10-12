@@ -10,10 +10,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
-
-// maxPauseInterrupts is how many times the watcher interrupts the orch for one hub entry.
-const maxPauseInterrupts = 2
 
 var (
 	// errPauseEntryGone means the entry was resumed before the watcher could record the orch in it.
@@ -37,7 +35,8 @@ func (w *Watcher) WatchPause(p PauseWatch) {
 
 // pauseTick reads the pause record and acts on it for this tick.
 // held is true while a live hub entry stands, and the caller then runs nothing else this tick.
-// Under a live hub entry the orch is interrupted once per entry at its grace end when busy; with none, the resume line of an orch the last entry interrupted is queued once.
+// Under a live hub entry a busy orch gets the first guarded key at the entry's grace end, and a second only on a tick at least the provider's settle time later that still reads it busy;
+// with no live entry, the resume line of an orch the last entry interrupted is queued once.
 // An unreadable record holds nothing and logs one Warn per change of error.
 func (w *Watcher) pauseTick(st State, now time.Time) (held bool, err error) {
 	if w.firstTick.IsZero() {
@@ -63,10 +62,27 @@ func (w *Watcher) pauseTick(st State, now time.Time) (held bool, err error) {
 	return true, w.handleHubEntry(entry, record, st, now)
 }
 
-// handleHubEntry acts once per live hub entry, remembered in memory by its PausedAt.
+// handleHubEntry acts on each live hub entry until it is handled, remembered in memory by its PausedAt.
+// A tick after the first key waits out the provider's settle, then re-probes the orch and sends the second and last key only to a busy one.
+// That step runs before settledWithoutInterrupt, because the first key's record already makes the entry own the orch.
 func (w *Watcher) handleHubEntry(entry pauserecord.Entry, record pauserecord.Record, st State, now time.Time) error {
 	key := entry.PausedAt.UnixNano()
 	if w.pauseHandled[key] {
+		return nil
+	}
+	if firstKey, waiting := w.pauseFirstEsc[key]; waiting {
+		if now.Sub(firstKey) < w.session.InterruptSettle() {
+			return nil
+		}
+		delete(w.pauseFirstEsc, key)
+		idle, err := w.pauseProbeIdle(st)
+		if err != nil {
+			return err
+		}
+		w.markPauseHandled(key)
+		if !idle {
+			w.pauseInterrupt(st)
+		}
 		return nil
 	}
 	if w.settledWithoutInterrupt(entry, st) {
@@ -84,29 +100,43 @@ func (w *Watcher) handleHubEntry(entry pauserecord.Entry, record pauserecord.Rec
 		}
 		return nil
 	}
-	w.markPauseHandled(key)
 	if idle {
+		w.markPauseHandled(key)
 		return nil
 	}
 	if err := w.recordOrchInEntry(entry, st, now); err != nil {
+		w.markPauseHandled(key)
 		if errors.Is(err, errPauseEntryGone) || errors.Is(err, errPauseAlreadyOwned) {
 			return nil
 		}
 		return err
 	}
-	for attempt := 1; attempt <= maxPauseInterrupts; attempt++ {
-		if err := w.session.Interrupt(st.Strand); err != nil {
-			logger.Warn("orch: the pause could not interrupt the orch", "strandGUID", st.Strand, "attempt", attempt, "error", err)
-			return nil
-		}
-		if attempt == maxPauseInterrupts {
-			break
-		}
-		if idle, err = w.pauseProbeIdle(st); err != nil || idle {
-			return err
-		}
+	if !w.pauseInterrupt(st) {
+		w.markPauseHandled(key)
+		return nil
 	}
+	if w.pauseFirstEsc == nil {
+		w.pauseFirstEsc = map[int64]time.Time{}
+	}
+	w.pauseFirstEsc[key] = now
 	return nil
+}
+
+// pauseInterrupt sends the orch one guarded interrupt and reports whether the key went.
+// A pane the guard finds with no running turn reads as an idle orch and is logged at Info; an open rewind picker is closed by the guard and logged at Warn.
+func (w *Watcher) pauseInterrupt(st State) (sent bool) {
+	err := w.session.Interrupt(st.Strand)
+	switch {
+	case err == nil:
+		return true
+	case errors.Is(err, shuttleengine.ErrNoRunningTurn):
+		logger.Info("orch: the pause found no running turn on the orch pane, so the orch reads idle", "strandGUID", st.Strand)
+	case errors.Is(err, shuttleengine.ErrRewindPickerOpen):
+		logger.Warn("orch: the pause found the rewind picker open on the orch pane and closed it", "strandGUID", st.Strand, "error", err)
+	default:
+		logger.Warn("orch: the pause could not interrupt the orch", "strandGUID", st.Strand, "error", err)
+	}
+	return false
 }
 
 // settledWithoutInterrupt reports whether entry needs no interrupt and no record of the orch: the orch ran the pause, the entry already owns the orch, the orch started under it, or the watcher was not running at its grace end.
