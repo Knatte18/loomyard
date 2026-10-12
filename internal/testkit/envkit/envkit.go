@@ -61,6 +61,8 @@ var nilLegal = map[string]bool{
 	"ParentReview.RenderDelivery":                      true,
 	"ParentReview.RenderBrief":                         true,
 	"ParentReview.RenderKeepAlive":                     true,
+	"ParentReview.Aligner":                             true,
+	"ParentReview.RenderAlignmentBrief":                true,
 	"WebsterDeps.Batcher":                              true,
 	"WebsterDeps.Roles":                                true,
 	"WebsterDeps.ParentBranch":                         true,
