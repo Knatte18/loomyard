@@ -1,4 +1,6 @@
-package loomcli
+// build_test.go pins the build identity and the sidecar the bootstrap keeps or replaces a status strand by.
+
+package statuspane
 
 import (
 	"os"
@@ -7,17 +9,23 @@ import (
 	"time"
 )
 
+const testSidecarFile = "status-strand.json"
+
 func TestIdentityOf(t *testing.T) {
+	t.Parallel()
+
 	t.Run("changes with size and mtime", func(t *testing.T) {
+		t.Parallel()
+
 		path := filepath.Join(t.TempDir(), "lyx")
 		if err := os.WriteFile(path, []byte("one"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		base, err := identityOf(path)
+		base, err := IdentityOf(path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		again, err := identityOf(path)
+		again, err := IdentityOf(path)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -25,11 +33,11 @@ func TestIdentityOf(t *testing.T) {
 			t.Fatalf("identity of an untouched file changed: %+v vs %+v", base, again)
 		}
 
-		later := time.Now().Add(time.Hour)
+		later := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 		if err := os.Chtimes(path, later, later); err != nil {
 			t.Fatal(err)
 		}
-		touched, err := identityOf(path)
+		touched, err := IdentityOf(path)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -43,7 +51,7 @@ func TestIdentityOf(t *testing.T) {
 		if err := os.Chtimes(path, later, later); err != nil {
 			t.Fatal(err)
 		}
-		resized, err := identityOf(path)
+		resized, err := IdentityOf(path)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -53,6 +61,8 @@ func TestIdentityOf(t *testing.T) {
 	})
 
 	t.Run("resolves a symlink", func(t *testing.T) {
+		t.Parallel()
+
 		dir := t.TempDir()
 		target := filepath.Join(dir, "real")
 		if err := os.WriteFile(target, []byte("x"), 0o755); err != nil {
@@ -62,11 +72,11 @@ func TestIdentityOf(t *testing.T) {
 		if err := os.Symlink(target, link); err != nil {
 			t.Skipf("symlinks unavailable: %v", err)
 		}
-		viaLink, err := identityOf(link)
+		viaLink, err := IdentityOf(link)
 		if err != nil {
 			t.Fatal(err)
 		}
-		direct, err := identityOf(target)
+		direct, err := IdentityOf(target)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -76,27 +86,34 @@ func TestIdentityOf(t *testing.T) {
 	})
 }
 
-func TestStatusSidecar_RoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "nested", statusSidecarFile)
-	build := buildIdentity{Path: "/bin/lyx", Size: 5, ModTime: 9}
-	if got := readStatusSidecar(path); got != nil {
+func TestSidecar_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "nested", testSidecarFile)
+	build := BuildIdentity{Path: "/bin/lyx", Size: 5, ModTime: 9}
+	if got := ReadSidecar(path); got != nil {
 		t.Fatalf("missing sidecar read = %+v; want nil", got)
 	}
-	if err := writeStatusSidecar(path, "g0", build); err != nil {
+	if err := WriteSidecar(path, "g0", build); err != nil {
 		t.Fatal(err)
 	}
-	got := readStatusSidecar(path)
+	got := ReadSidecar(path)
 	if got == nil || got.GUID != "g0" || got.Build != build {
 		t.Errorf("round trip = %+v; want guid g0 build %+v", got, build)
 	}
+	if err := WriteSidecar(path, "", build); err == nil {
+		t.Error("WriteSidecar with an empty guid = nil error; want a refusal")
+	}
 }
 
-func TestReadStatusSidecar_UnreadableIsNil(t *testing.T) {
-	path := filepath.Join(t.TempDir(), statusSidecarFile)
+func TestReadSidecar_UnreadableIsNil(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), testSidecarFile)
 	if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := readStatusSidecar(path); got != nil {
+	if got := ReadSidecar(path); got != nil {
 		t.Errorf("corrupt sidecar read = %+v; want nil", got)
 	}
 }

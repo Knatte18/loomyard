@@ -13,8 +13,12 @@ import (
 )
 
 const (
-	// zoomBindingCondition is true in a strand pane or in any zoomed window, so Selvage and a batten window are left alone.
-	zoomBindingCondition = "#{||:#{@strand},#{window_zoomed_flag}}"
+	// zoomBindingCondition is true only in the window marked @lyx_strands, and there on a strand pane, on the pane marked as the console, or in a zoomed window.
+	// A batten window carries no @lyx_strands, so Alt+z does nothing there.
+	zoomBindingCondition = "#{&&:#{@lyx_strands},#{||:#{@strand},#{||:#{" + consolePaneOption + "},#{window_zoomed_flag}}}}"
+
+	// stepStopCondition is true on a pane the cycle stops at: a strand pane or the pane marked as the console.
+	stepStopCondition = "#{||:#{@strand},#{" + consolePaneOption + "}}"
 
 	// stepBindingCondition is true in a window reed marked as the strands' window.
 	stepBindingCondition = "#{@lyx_strands}"
@@ -37,10 +41,10 @@ const (
 )
 
 // stepCommand returns the tmux command that steps to the previous pane of the window (target `:.-`) or the next (`:.+`), both wrapping and keeping the zoom.
-// Selvage is the one pane without @strand, so when a step lands on it one more step the same way passes it.
+// The cycle runs over every strand pane and the console pane in physical order, the console last, so when a step lands on a pane carrying neither @strand nor the console marker one more step the same way passes it.
 func stepCommand(target string) string {
 	step := "select-pane -Z -t " + target
-	return step + " ; if-shell -F -t : \"#{@strand}\" \"\" \"" + step + "\""
+	return step + " ; if-shell -F -t : \"" + stepStopCondition + "\" \"\" \"" + step + "\""
 }
 
 // statusClickBranch is one status range type of the left-click dispatch and the tmux command run for it.

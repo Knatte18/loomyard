@@ -1,7 +1,6 @@
 package loomcli
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -15,12 +14,11 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/statuspane"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
@@ -274,7 +272,7 @@ func TestStatusStrandCmd(t *testing.T) {
 		exe  string
 		want string
 	}{
-		{"Posix", shell.Posix(), "/usr/local/bin/lyx", `/usr/local/bin/lyx loom status --watch`},
+		{"Posix", shell.Posix(), "/usr/local/bin/lyx", `/usr/local/bin/lyx loom checklist`},
 		{"Pwsh", shell.Pwsh(), `C:\lyx.exe`, ""},
 	}
 
@@ -288,7 +286,7 @@ func TestStatusStrandCmd(t *testing.T) {
 			if len(got) < len(wantPrefix) || got[:len(wantPrefix)] != wantPrefix {
 				t.Errorf("statusStrandCmd(%q) = %q; want prefix %q", tt.exe, got, wantPrefix)
 			}
-			for _, want := range []string{"loom", "status", "--watch"} {
+			for _, want := range []string{"loom", "checklist"} {
 				if !containsSubstring(got, want) {
 					t.Errorf("statusStrandCmd(%q) = %q; want it to contain %q", tt.exe, got, want)
 				}
@@ -344,12 +342,12 @@ func TestDispositionForHandshake(t *testing.T) {
 // worktree saw the stale "loom-status" entry, reported "already there", and left the operator with
 // no status read-out at all.
 func TestResolveStatusStrandAction(t *testing.T) {
-	cur := buildIdentity{Path: "/bin/lyx", Size: 10, ModTime: 100}
-	matching := &statusSidecar{GUID: "g0", Build: cur}
+	cur := statuspane.BuildIdentity{Path: "/bin/lyx", Size: 10, ModTime: 100}
+	matching := &statuspane.Sidecar{GUID: "g0", Build: cur}
 	tests := []struct {
 		name     string
 		strands  []reedengine.StrandStatus
-		sidecar  *statusSidecar
+		sidecar  *statuspane.Sidecar
 		want     statusStrandAction
 		wantGUID string
 	}{
@@ -397,7 +395,7 @@ func TestResolveStatusStrandAction(t *testing.T) {
 		{
 			name:     "LiveStrandDifferentBuildReplaces",
 			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: true}},
-			sidecar:  &statusSidecar{GUID: "g0", Build: buildIdentity{Path: "/bin/lyx", Size: 11, ModTime: 100}},
+			sidecar:  &statuspane.Sidecar{GUID: "g0", Build: statuspane.BuildIdentity{Path: "/bin/lyx", Size: 11, ModTime: 100}},
 			want:     statusStrandReplace,
 			wantGUID: "g0",
 		},
@@ -410,7 +408,7 @@ func TestResolveStatusStrandAction(t *testing.T) {
 		{
 			name:     "LiveStrandSidecarNamesOtherGUIDReplaces",
 			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: true}},
-			sidecar:  &statusSidecar{GUID: "other", Build: cur},
+			sidecar:  &statuspane.Sidecar{GUID: "other", Build: cur},
 			want:     statusStrandReplace,
 			wantGUID: "g0",
 		},
@@ -669,20 +667,21 @@ func TestStatusStrandAddSpec(t *testing.T) {
 		if got.IfAbsent {
 			t.Error("IfAbsent = true; want false")
 		}
-		if got.Display.Anchor != render.AnchorBelowParent {
-			t.Errorf("Display.Anchor = %v; want AnchorBelowParent", got.Display.Anchor)
+		wantDisplay := render.Display{
+			Anchor: render.AnchorTop,
+			Size:   render.Size{Kind: render.SizeContent, ShareNum: 1, ShareDen: 4, MinRows: 3},
+		}
+		if got.Display != wantDisplay {
+			t.Errorf("Display = %+v; want %+v", got.Display, wantDisplay)
 		}
 		if got.Display.Focus {
 			t.Error("Display.Focus = true; want false")
 		}
 	})
 
-	// The spec ties to render's layout: stacked above a driver strand the status strand is the
-	// collapsed placement and is pinned at collapsed_rows, and alone it is the bottom-most strand and
-	// is not pinned. Both strands are parentless, as the bootstrap adds them; the layout rule sizes
-	// them by insertion position alone.
+	// The spec ties to render's layout: the status strand is pinned at its content height above a driver strand, and alone.
 	t.Run("pinned by render", func(t *testing.T) {
-		status := render.Strand{GUID: "s", Display: statusStrandAddSpec("x").Display, PaneID: "%1", Live: true}
+		status := render.Strand{GUID: "s", Display: statusStrandAddSpec("x").Display, PaneID: "%1", Live: true, ContentRows: 5}
 		driver := render.Strand{
 			GUID:    "d",
 			Display: driverSpec("p", "r", loomengine.DriverSettings{}).Display,
@@ -693,109 +692,16 @@ func TestStatusStrandAddSpec(t *testing.T) {
 		params := render.Params{CollapsedRows: 2, MinFullRows: 3}
 
 		pins := render.FixedHeightPins([]render.Strand{status, driver}, box, params)
-		want := []render.Pin{{PaneID: "%1", Height: params.CollapsedRows}}
+		want := []render.Pin{{PaneID: "%1", Height: status.ContentRows}}
 		if diff := cmp.Diff(want, pins); diff != "" {
 			t.Errorf("pins mismatch (-want +got):\n%s", diff)
 		}
 
+		// Alone it is the bottom-most cell, so render pins it at the whole stack region.
 		pins = render.FixedHeightPins([]render.Strand{status}, box, params)
-		if len(pins) != 0 {
-			t.Errorf("lone status strand pins = %v; want none", pins)
+		wantAlone := []render.Pin{{PaneID: "%1", Height: box.H}}
+		if diff := cmp.Diff(wantAlone, pins); diff != "" {
+			t.Errorf("lone status strand pins mismatch (-want +got):\n%s", diff)
 		}
 	})
-}
-
-// TestApplyStatusStrandSurface pins start's status-strand branch: an llm-driven run removes the status strand and never ensures one, and a go-driven run, the empty driver value included, ensures it and never removes.
-func TestApplyStatusStrandSurface(t *testing.T) {
-	ensureErr := errors.New("ensure failed")
-	tests := []struct {
-		name       string
-		driver     string
-		ensureErr  error
-		wantRemove bool
-		wantEnsure bool
-		wantErr    error
-	}{
-		{name: "llm removes", driver: shedrun.DriverLLM, ensureErr: ensureErr, wantRemove: true},
-		{name: "go ensures", driver: shedrun.DriverGo, wantEnsure: true},
-		{name: "empty ensures", driver: "", wantEnsure: true},
-		{name: "go returns the ensure error", driver: shedrun.DriverGo, ensureErr: ensureErr, wantEnsure: true, wantErr: ensureErr},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var removed, ensured bool
-			err := applyStatusStrandSurface(tt.driver, func() { removed = true }, func() error {
-				ensured = true
-				return tt.ensureErr
-			})
-			if removed != tt.wantRemove || ensured != tt.wantEnsure {
-				t.Errorf("applyStatusStrandSurface(%q): removed = %v, ensured = %v; want %v, %v", tt.driver, removed, ensured, tt.wantRemove, tt.wantEnsure)
-			}
-			if !errors.Is(err, tt.wantErr) || (tt.wantErr == nil && err != nil) {
-				t.Errorf("applyStatusStrandSurface(%q) = %v; want %v", tt.driver, err, tt.wantErr)
-			}
-		})
-	}
-}
-
-// TestRemoveStatusStrands pins the llm arm's removal: every strand named exactly statusStrandDisplayName goes, non-recursively, and a failed read or removal only warns.
-func TestRemoveStatusStrands(t *testing.T) {
-	strands := func(pairs ...string) []reedengine.StrandStatus {
-		var out []reedengine.StrandStatus
-		for i := 0; i < len(pairs); i += 2 {
-			out = append(out, reedengine.StrandStatus{GUID: pairs[i], Name: pairs[i+1]})
-		}
-		return out
-	}
-	tests := []struct {
-		name         string
-		strands      []reedengine.StrandStatus
-		statusErr    error
-		failGUIDs    map[string]bool
-		wantRemove   []string
-		wantWarns    int
-		wantInLog    string
-		wantNotInLog string
-	}{
-		{name: "none named", strands: strands("a", "ly-drive", "b", "other")},
-		{name: "one among others", strands: strands("a", "ly-drive", "b", "loom-status", "c", "loom-status-extra"), wantRemove: []string{"b"}},
-		{name: "two named", strands: strands("a", "loom-status", "b", "x", "c", "loom-status"), wantRemove: []string{"a", "c"}},
-		{name: "status fails", strands: strands("a", "loom-status"), statusErr: errors.New("boom"), wantWarns: 1, wantInLog: "cause=boom"},
-		{name: "first remove fails", strands: strands("guid-a", "loom-status", "guid-b", "loom-status"), failGUIDs: map[string]bool{"guid-a": true}, wantRemove: []string{"guid-a", "guid-b"}, wantWarns: 1, wantInLog: "guid=guid-a", wantNotInLog: "guid-b"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var buf bytes.Buffer
-			logger.SetOutput(&buf)
-			t.Cleanup(func() { logger.SetOutput(os.Stderr) })
-
-			var removed []string
-			status := func() (reedengine.StatusResult, error) {
-				return reedengine.StatusResult{Strands: tt.strands}, tt.statusErr
-			}
-			remove := func(guid string, recursive bool) (reedengine.Removed, error) {
-				if recursive {
-					t.Errorf("remove(%q) called with recursive=true", guid)
-				}
-				removed = append(removed, guid)
-				if tt.failGUIDs[guid] {
-					return reedengine.Removed{}, errors.New("refused")
-				}
-				return reedengine.Removed{}, nil
-			}
-			removeStatusStrands(status, remove)
-			if diff := cmp.Diff(tt.wantRemove, removed); diff != "" {
-				t.Errorf("removed guids mismatch (-want +got):\n%s", diff)
-			}
-			if got := strings.Count(buf.String(), "\n"); got != tt.wantWarns {
-				t.Errorf("warning lines = %d; want %d; log: %q", got, tt.wantWarns, buf.String())
-			}
-			if tt.wantInLog != "" && !strings.Contains(buf.String(), tt.wantInLog) {
-				t.Errorf("log %q does not contain %q", buf.String(), tt.wantInLog)
-			}
-			if tt.wantNotInLog != "" && strings.Contains(buf.String(), tt.wantNotInLog) {
-				t.Errorf("log %q names %q, which was removed without error", buf.String(), tt.wantNotInLog)
-			}
-		})
-	}
 }

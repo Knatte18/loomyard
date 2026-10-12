@@ -29,7 +29,7 @@ const (
 func liveRenderStrands(strands []Strand) []render.Strand {
 	out := make([]render.Strand, len(strands))
 	for i, s := range strands {
-		out[i] = render.Strand{GUID: s.GUID, Parent: s.Parent, PaneID: s.PaneID, Live: true, Display: s.Display}
+		out[i] = render.Strand{GUID: s.GUID, Parent: s.Parent, PaneID: s.PaneID, Live: true, Display: s.Display, ContentRows: s.ContentRows}
 	}
 	return out
 }
@@ -46,6 +46,7 @@ func TestPlanLayout_MatchesRenderRules(t *testing.T) {
 		strands     []Strand
 		live        []LivePane
 		box         render.Box
+		titleRow    bool
 		wantPaneIDs []string
 	}{
 		{
@@ -78,6 +79,17 @@ func TestPlanLayout_MatchesRenderRules(t *testing.T) {
 			box:         render.Box{X: 0, Y: 0, W: 80, H: 12},
 			wantPaneIDs: []string{"%7"},
 		},
+		{
+			// A top content strand above a positional one: the reported count and the told title row reach render, so a toRenderStrands that drops the count or a planLayout that drops the title row yields a different body.
+			name: "TopContentStrandWithTitleRow",
+			strands: []Strand{
+				{GUID: "top", PaneID: "%1", ContentRows: 4, Display: render.Display{Anchor: render.AnchorTop, Size: render.Size{Kind: render.SizeContent, ShareNum: 1, ShareDen: 2, MinRows: 2}}},
+				{GUID: "pos", PaneID: "%2", Display: below},
+			},
+			live:     []LivePane{{ID: "%1", Top: 0}, {ID: "%2", Top: 6}},
+			box:      render.Box{X: 0, Y: 0, W: 100, H: 21},
+			titleRow: true,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -88,12 +100,12 @@ func TestPlanLayout_MatchesRenderRules(t *testing.T) {
 			e.cfg.CollapsedRows, e.cfg.MinFullRows = planCollapsedRows, planMinFullRows
 			fake := installFakeTmux(t, e)
 
-			gotLayout, gotFocus, err := e.planLayout(&ReedState{Strands: tc.strands}, tc.live, tc.box)
+			gotLayout, gotFocus, err := e.planLayout(&ReedState{Strands: tc.strands}, tc.live, tc.box, tc.titleRow)
 			if err != nil {
 				t.Fatalf("planLayout() unexpected error: %v", err)
 			}
 			wantLayout, wantFocus, err := render.Rules(liveRenderStrands(tc.strands), tc.box,
-				render.Params{CollapsedRows: planCollapsedRows, MinFullRows: planMinFullRows}, tc.wantPaneIDs)
+				render.Params{CollapsedRows: planCollapsedRows, MinFullRows: planMinFullRows, TitleRow: tc.titleRow}, tc.wantPaneIDs)
 			if err != nil {
 				t.Fatalf("render.Rules() unexpected error: %v", err)
 			}
@@ -175,7 +187,7 @@ func TestPlanLayout_StaleSelvagePaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 	// Stale Selvage: %9 is nowhere in live, so the plan must equal the
 	// no-Selvage plan bit for bit.
 	st := &ReedState{Strands: strands, SelvagePaneID: "%9"}
-	gotLayout, gotFocus, err := e.planLayout(st, live, render.Box{X: 0, Y: 0, W: 100, H: 21})
+	gotLayout, gotFocus, err := e.planLayout(st, live, render.Box{X: 0, Y: 0, W: 100, H: 21}, false)
 	if err != nil {
 		t.Fatalf("planLayout() unexpected error: %v", err)
 	}
@@ -193,7 +205,7 @@ func TestPlanLayout_StaleSelvagePaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 	// Present-but-dead Selvage corpse: the cell must still be emitted, same
 	// as any dead-but-present pane the layout has to enumerate.
 	liveWithCorpse := append([]LivePane{{ID: "%9", Dead: true, Top: 0}}, []LivePane{{ID: "%1", Top: 2}, {ID: "%2", Top: 12}}...)
-	gotLayout, _, err = e.planLayout(st, liveWithCorpse, render.Box{X: 0, Y: 0, W: 100, H: 21})
+	gotLayout, _, err = e.planLayout(st, liveWithCorpse, render.Box{X: 0, Y: 0, W: 100, H: 21}, false)
 	if err != nil {
 		t.Fatalf("planLayout() with corpse Selvage unexpected error: %v", err)
 	}

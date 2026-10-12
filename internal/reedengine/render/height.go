@@ -1,10 +1,23 @@
-// height.go implements the derived height policy for the below-parent stack, one rule for every strand:
-// each strand except the bottom-most takes exactly Params.CollapsedRows rows, and the bottom-most
-// takes every remaining row.
-// When the window is too short to satisfy that natural policy, a strict-priority clamp reclaims
-// rows so every pane still gets a positive height.
+// height.go implements the derived height policy for the placed cells, top-anchored first.
+// A content cell takes its reported line count, bounded below by its minimum and above by its share of the free height.
+// Expanding cells are every live sharing cell, else the bottom-most positional cell, else the bottom-most cell whatever its kind.
+// They split the rows the fixed cells leave evenly, and the bottom-most expanding cell takes the remainder.
+// Every other positional cell takes exactly Params.CollapsedRows rows.
+// When the window is too short to satisfy that natural policy, a strict-priority clamp reclaims rows so every pane still gets a positive height.
 
 package render
+
+// cellRole is how stackHeights treats a cell: which rule sets its height and which clamp stage may reclaim rows from it.
+type cellRole int
+
+const (
+	// roleCollapsed is a positional cell that is not expanding; it takes Params.CollapsedRows.
+	roleCollapsed cellRole = iota
+	// roleContent is a content cell that is not expanding; it takes its content height.
+	roleContent cellRole = 1
+	// roleExpanding is a cell that splits the rows the fixed cells leave.
+	roleExpanding cellRole = 2
+)
 
 // clampBandHeight returns bandRows clamped to preserve the strand-stack
 // region's minStackRows floor, which the band yields first when the window
@@ -42,8 +55,12 @@ func clampBandHeight(bandRows, windowRows, minStackRows int) int {
 }
 
 // stackHeights computes a height for every strand in stack within box.
-// Every strand except the last (the bottom-most, which orderStack places by insertion) is a collapsed
-// placement taking p.CollapsedRows rows; the last takes every remaining row.
+// Stack holds the placed cells in order, top-anchored first, and box is the stack region.
+// A content cell takes min(R, max(m, floor(box.H × share))) rows, with m its MinRows and R its ContentRows (m while unreported).
+// The first cell adds one row when p.TitleRow.
+// Expanding cells are every sharing cell, else the bottom-most positional cell, else the bottom-most cell.
+// They split the rows the fixed cells leave evenly, and the bottom-most expanding cell takes the remainder.
+// Every other positional cell takes p.CollapsedRows rows.
 // clampToFit reclaims rows if any would be non-positive.
 func stackHeights(stack []Strand, box Box, p Params) []placement {
 	n := len(stack)
@@ -51,39 +68,101 @@ func stackHeights(stack []Strand, box Box, p Params) []placement {
 		return nil
 	}
 
-	dividers := n - 1
-	usable := box.H - dividers
-	bottomIdx := n - 1 // orderStack places the most recently inserted strand last
+	usable := box.H - (n - 1)
 
 	collapsedRows := p.CollapsedRows
 	if collapsedRows < 1 {
 		collapsedRows = 1
 	}
 
+	roles := cellRoles(stack)
 	heights := make([]int, n)
-	isCollapsed := make([]bool, n)
-	for i := range stack {
-		if i == bottomIdx {
+	fixedRows := 0
+	var expanding []int
+	for i, s := range stack {
+		switch roles[i] {
+		case roleCollapsed:
+			heights[i] = collapsedRows
+		case roleContent:
+			heights[i] = contentHeight(s, box.H, i == 0 && p.TitleRow)
+		case roleExpanding:
+			expanding = append(expanding, i)
 			continue
 		}
-		isCollapsed[i] = true
-		heights[i] = collapsedRows
+		fixedRows += heights[i]
 	}
-	heights[bottomIdx] = usable - collapsedRows*(n-1)
+	if len(expanding) > 0 {
+		free := usable - fixedRows
+		each := free / len(expanding)
+		for _, i := range expanding {
+			heights[i] = each
+		}
+		last := expanding[len(expanding)-1]
+		heights[last] = free - each*(len(expanding)-1)
+	}
 
-	heights = clampToFit(heights, isCollapsed, bottomIdx)
+	heights = clampToFit(heights, roles)
 
 	placements := make([]placement, n)
 	for i, s := range stack {
-		placements[i] = placement{id: s.PaneID, height: heights[i], strip: isCollapsed[i]}
+		isContent := s.Display.Size.Kind == SizeContent
+		placements[i] = placement{id: s.PaneID, height: heights[i], strip: roles[i] == roleCollapsed || isContent}
 	}
 	return placements
 }
 
-// clampToFit repairs any non-positive height left by stackHeights' natural
-// split, reclaiming rows from donors in strict priority order: collapsed
-// placements first, then the bottom-most pane itself, all floored at 1.
-func clampToFit(heights []int, isCollapsed []bool, bottomIdx int) []int {
+// cellRoles assigns each cell of stack its role.
+// Expanding cells are every sharing cell when there is one, else the bottom-most positional cell when there is one, else the bottom-most cell whatever its kind.
+func cellRoles(stack []Strand) []cellRole {
+	roles := make([]cellRole, len(stack))
+	anySharing := false
+	bottomPositional := -1
+	for i, s := range stack {
+		switch s.Display.Size.Kind {
+		case SizeSharing:
+			anySharing = true
+		case SizePositional:
+			bottomPositional = i
+		}
+	}
+
+	for i, s := range stack {
+		switch s.Display.Size.Kind {
+		case SizeContent:
+			roles[i] = roleContent
+		case SizeSharing:
+			roles[i] = roleExpanding
+		default:
+			roles[i] = roleCollapsed
+		}
+		if !anySharing && i == bottomPositional {
+			roles[i] = roleExpanding
+		}
+	}
+	if !anySharing && bottomPositional < 0 {
+		roles[len(stack)-1] = roleExpanding
+	}
+	return roles
+}
+
+// contentHeight is a content cell's height: its reported line count, at least its minimum and at most its share of the stack region's rows.
+// It adds the title row when the cell sits at window row 0.
+func contentHeight(s Strand, regionRows int, titleRow bool) int {
+	size := s.Display.Size
+	reported := s.ContentRows
+	if reported == 0 {
+		reported = size.MinRows
+	}
+	rows := min(reported, max(size.MinRows, regionRows*size.ShareNum/size.ShareDen))
+	if titleRow {
+		rows++
+	}
+	return rows
+}
+
+// clampToFit repairs any non-positive height left by stackHeights' natural split.
+// It reclaims rows from donors in strict priority order: collapsed cells first, then content cells, then expanding cells from the bottom up, all floored at 1.
+func clampToFit(heights []int, roles []cellRole) []int {
 	// Bring every non-positive pane up to 1 row, tracking how many rows
 	// this borrows so the priority passes below can give them back from
 	// elsewhere and keep the total exactly conserved.
@@ -98,35 +177,35 @@ func clampToFit(heights []int, isCollapsed []bool, bottomIdx int) []int {
 		return heights
 	}
 
-	// Priority 1: collapsed placements shrink toward 1 row.
-	for i := range heights {
-		if borrowed == 0 {
-			return heights
+	// Priority 1 and 2: collapsed cells, then content cells, shrink toward 1 row.
+	for _, role := range []cellRole{roleCollapsed, roleContent} {
+		for i := range heights {
+			if borrowed == 0 {
+				return heights
+			}
+			if roles[i] == role {
+				borrowed -= reclaimRows(heights, i, borrowed)
+			}
 		}
-		if !isCollapsed[i] {
-			continue
-		}
-		give := heights[i] - 1
-		if give <= 0 {
-			continue
-		}
-		if give > borrowed {
-			give = borrowed
-		}
-		heights[i] -= give
-		borrowed -= give
-	}
-	if borrowed == 0 {
-		return heights
 	}
 
-	// Last resort: the bottom-most pane itself absorbs whatever is still
-	// owed. If the window is shorter than the pane count even this
-	// cannot fully repay the debt, but the bottom pane is still floored
-	// at 1 row so no height is ever non-positive.
-	heights[bottomIdx] -= borrowed
-	if heights[bottomIdx] < 1 {
-		heights[bottomIdx] = 1
+	// Last resort: the expanding cells absorb whatever is still owed, bottom-most first.
+	// If the window is shorter than the pane count even this cannot fully repay the debt,
+	// but every cell is still floored at 1 row so no height is ever non-positive.
+	for i := len(heights) - 1; i >= 0 && borrowed > 0; i-- {
+		if roles[i] == roleExpanding {
+			borrowed -= reclaimRows(heights, i, borrowed)
+		}
 	}
 	return heights
+}
+
+// reclaimRows takes up to owed rows from heights[i], never below 1, and returns how many it took.
+func reclaimRows(heights []int, i, owed int) int {
+	give := min(heights[i]-1, owed)
+	if give <= 0 {
+		return 0
+	}
+	heights[i] -= give
+	return give
 }

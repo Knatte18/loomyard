@@ -59,8 +59,10 @@ func newBindingsFixture(t *testing.T) *bindingsFixture {
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
+	// alpha is a top content strand above the positional beta, the prime's runs-above-orch shape.
+	topContent := render.Display{Anchor: render.AnchorTop, Size: render.Size{Kind: render.SizeContent, ShareNum: 1, ShareDen: 3, MinRows: 3}}
 	below := render.Display{Anchor: render.AnchorBelowParent}
-	alpha, err := e.AddStrand(AddSpec{NameOverride: "alpha", Segment: "review", Cmd: "sleep 300", Display: below})
+	alpha, err := e.AddStrand(AddSpec{NameOverride: "alpha", Segment: "review", Cmd: "sleep 300", Display: topContent})
 	if err != nil {
 		t.Fatalf("AddStrand(alpha): %v", err)
 	}
@@ -75,13 +77,17 @@ func newBindingsFixture(t *testing.T) *bindingsFixture {
 		t.Fatalf("new-session: %v", err)
 	}
 
-	pty := startInPTY(t, append([]string{e.cfg.Tmux}, e.AttachArgv(bindingsClientCols, bindingsClientRows)...), bindingsClientCols, bindingsClientRows)
-	waitForClientAttached(t, e, 15*time.Second)
-
 	st, err := LoadState(e.stateDir())
 	if err != nil || st == nil {
 		t.Fatalf("LoadState = (%+v, %v)", st, err)
 	}
+	// The console marker is unset before attaching, so every bindings test passes only when the attach pre-flight re-asserts it.
+	if err := e.tmux.run("set-option", "-p", "-u", "-t", st.SelvagePaneID, consolePaneOption); err != nil {
+		t.Fatalf("unset the console marker: %v", err)
+	}
+
+	pty := startInPTY(t, append([]string{e.cfg.Tmux}, e.AttachArgv(bindingsClientCols, bindingsClientRows)...), bindingsClientCols, bindingsClientRows)
+	waitForClientAttached(t, e, 15*time.Second)
 	strandWindow, err := e.strandWindowTargetFor(st)
 	if err != nil {
 		t.Fatalf("strandWindowTargetFor: %v", err)
@@ -162,7 +168,7 @@ func (f *bindingsFixture) click(t *testing.T, row int, label string) {
 	f.send(t, "\x1b[<0;"+strconv.Itoa(x)+";"+strconv.Itoa(y)+"M\x1b[<0;"+strconv.Itoa(x)+";"+strconv.Itoa(y)+"m")
 }
 
-func TestBindings_AltZTogglesAStrandsZoomAndLeavesSelvageAndOtherWindowsAlone(t *testing.T) {
+func TestBindings_AltZTogglesStrandAndSelvageZoomInTheStrandsWindowOnly(t *testing.T) {
 	f := newBindingsFixture(t)
 	f.selectStrandsWindow(t, f.alpha.PaneID)
 
@@ -173,10 +179,9 @@ func TestBindings_AltZTogglesAStrandsZoomAndLeavesSelvageAndOtherWindowsAlone(t 
 
 	f.selectStrandsWindow(t, f.selvagePane)
 	f.send(t, "\x1bz")
-	settle()
-	if got := f.zoomed(t); got != "0" {
-		t.Errorf("Alt+z on Selvage left zoom flag %q, want 0", got)
-	}
+	waitUntil(t, 5*time.Second, "Alt+z never zoomed Selvage", func() bool { return f.zoomed(t) == "1" && f.activePane(t) == f.selvagePane })
+	f.send(t, "\x1bz")
+	waitUntil(t, 5*time.Second, "Alt+z never unzoomed Selvage", func() bool { return f.zoomed(t) == "0" })
 
 	if err := f.e.tmux.run("select-window", "-t", f.otherWindow); err != nil {
 		t.Fatalf("select-window extra: %v", err)
@@ -191,7 +196,7 @@ func TestBindings_AltZTogglesAStrandsZoomAndLeavesSelvageAndOtherWindowsAlone(t 
 	}
 }
 
-func TestBindings_AltUpDownStepThroughStrandPanesOnlyWrappingAndKeepingTheZoom(t *testing.T) {
+func TestBindings_AltUpDownCycleStrandPanesAndSelvageWrappingAndKeepingTheZoom(t *testing.T) {
 	f := newBindingsFixture(t)
 	f.selectStrandsWindow(t, f.alpha.PaneID)
 
@@ -200,20 +205,22 @@ func TestBindings_AltUpDownStepThroughStrandPanesOnlyWrappingAndKeepingTheZoom(t
 		want string
 	}{
 		{"\x1b[1;3B", f.beta.PaneID},
+		{"\x1b[1;3B", f.selvagePane},
 		{"\x1b[1;3B", f.alpha.PaneID},
+		{"\x1b[1;3A", f.selvagePane},
 		{"\x1b[1;3A", f.beta.PaneID},
-		{"\x1b[1;3A", f.alpha.PaneID},
 	}
 	for _, step := range steps {
 		f.send(t, step.key)
 		waitUntil(t, 5*time.Second, "the Alt step never reached "+step.want, func() bool { return f.activePane(t) == step.want })
 	}
 
-	if err := f.e.tmux.run("resize-pane", "-Z", "-t", f.alpha.PaneID); err != nil {
+	f.selectStrandsWindow(t, f.beta.PaneID)
+	if err := f.e.tmux.run("resize-pane", "-Z", "-t", f.beta.PaneID); err != nil {
 		t.Fatalf("zoom: %v", err)
 	}
 	f.send(t, "\x1b[1;3B")
-	waitUntil(t, 5*time.Second, "the zoomed Alt+Down never reached beta", func() bool { return f.activePane(t) == f.beta.PaneID })
+	waitUntil(t, 5*time.Second, "the zoomed Alt+Down never reached Selvage", func() bool { return f.activePane(t) == f.selvagePane })
 	if got := f.zoomed(t); got != "1" {
 		t.Errorf("zoom flag after a step in a zoomed window = %q, want 1", got)
 	}

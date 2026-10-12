@@ -14,6 +14,7 @@
 // A required advisor's held turn end still notifies the parent, where every other advisor holds quietly.
 // The chair seat is named RoleChair; the advisors are named AdvisorName(1), AdvisorName(2) and so on, in table order.
 // A seat's strand role is SeatRole(prefix, name), so a spec never spells a role as a literal.
+// Every seat strand, the chair and each advisor, declares the sharing size and no anchor, so seat agents that run side by side split the free rows evenly and the driver strand collapses while they are live.
 //
 // # The table rules
 //

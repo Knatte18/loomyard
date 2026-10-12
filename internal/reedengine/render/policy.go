@@ -1,20 +1,52 @@
-// policy.go implements the anchor-to-placement dispatch: filtering strands down to the below-parent
-// stack (or excluding them entirely), ordering the stack by insertion,
+// policy.go implements the anchor-to-placement dispatch: validating a strand's display, filtering strands down to the placed cells (top-anchored first, then the below-parent stack) or excluding them entirely, ordering the stack by insertion,
 // and repairing a corrupt cyclic parent table so a persisted parent chain never hangs a caller.
 // This is the legible half of the policy layer — adding a new anchor means adding a case here, not
 // touching the mechanics layer in layout.go/checksum.go.
 
 package render
 
-// partitionByAnchor filters strands down to the below-parent stack,
-// excluding AnchorHidden, not-live, and empty-PaneID strands that render
-// cannot lay out.
-func partitionByAnchor(strands []Strand) (stack []Strand) {
+import "fmt"
+
+// ValidateDisplay refuses a display render cannot lay out.
+// That is the reserved own-window anchor, a top anchor with a kind other than SizeContent, an unknown SizeKind, and a content size with ShareDen < 1, ShareNum < 0, ShareNum > ShareDen or MinRows < 1.
+// A hidden display is never refused for its size, since its declaration is ignored.
+// The error names the display's anchor and kind.
+func ValidateDisplay(d Display) error {
+	switch d.Anchor {
+	case AnchorOwnWindow:
+		return fmt.Errorf("anchor %q kind %q: the anchor is deferred", d.Anchor, d.Size.Kind)
+	case AnchorHidden:
+		return nil
+	}
+
+	switch d.Size.Kind {
+	case SizePositional, SizeSharing:
+		if d.Anchor == AnchorTop {
+			return fmt.Errorf("anchor %q kind %q: a top strand must be content-sized", d.Anchor, d.Size.Kind)
+		}
+	case SizeContent:
+		s := d.Size
+		if s.ShareDen < 1 || s.ShareNum < 0 || s.ShareNum > s.ShareDen || s.MinRows < 1 {
+			return fmt.Errorf("anchor %q kind %q: share %d/%d and min rows %d must satisfy 0 <= num <= den, den >= 1, min >= 1",
+				d.Anchor, d.Size.Kind, s.ShareNum, s.ShareDen, s.MinRows)
+		}
+	default:
+		return fmt.Errorf("anchor %q kind %q: unknown size kind", d.Anchor, d.Size.Kind)
+	}
+	return nil
+}
+
+// partitionByAnchor filters strands down to the placed cells: the top-anchored strands in insertion order, then the below-parent stack in insertion order.
+// It excludes AnchorHidden, not-live, and empty-PaneID strands that render cannot lay out.
+func partitionByAnchor(strands []Strand) (placed []Strand) {
+	var top, stack []Strand
 	for _, s := range strands {
 		if s.Display.Anchor == AnchorHidden || !s.Live || s.PaneID == "" {
 			continue
 		}
 		switch s.Display.Anchor {
+		case AnchorTop:
+			top = append(top, s)
 		case AnchorBelowParent:
 			stack = append(stack, s)
 		default:
@@ -22,7 +54,7 @@ func partitionByAnchor(strands []Strand) (stack []Strand) {
 			// placed by this policy.
 		}
 	}
-	return stack
+	return append(top, stack...)
 }
 
 // removeDuplicatePaneCells returns stack with every entry dropped whose PaneID has already been

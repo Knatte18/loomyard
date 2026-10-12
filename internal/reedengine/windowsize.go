@@ -277,14 +277,14 @@ func pinsForContent(pins []render.Pin, rowZeroPaneID string, titleRow bool) []re
 }
 
 // contentPinsLocked returns the fixed-height pins of st against live within box, adjusted for the strands' window's title row.
+// titleRow is the window's title-row answer the layout was planned from, so the pins and the layout agree.
 // The row-0 pane is the first of the physical pane order the layout was built from, never a pin's emission order.
-// Assumes the op lock is already held.
-func (e *Engine) contentPinsLocked(windowTarget string, st *ReedState, live []LivePane, box render.Box) []render.Pin {
+func (e *Engine) contentPinsLocked(st *ReedState, live []LivePane, box render.Box, titleRow bool) []render.Pin {
 	var rowZeroPaneID string
 	if order := paneIDsByTop(live); len(order) > 0 {
 		rowZeroPaneID = order[0]
 	}
-	return pinsForContent(e.fixedHeightPins(st, live, box), rowZeroPaneID, e.readBorderTitleRowLocked(windowTarget))
+	return pinsForContent(e.fixedHeightPins(st, live, box, titleRow), rowZeroPaneID, titleRow)
 }
 
 // runResizePinsLocked issues one `resize-pane -t <pane> -y <height>` per pin, so a layout just applied holds its heights before any resize fires the hook.

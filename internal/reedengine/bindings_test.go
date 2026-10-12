@@ -52,6 +52,29 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 		}
 	})
 
+	t.Run("M-z and the steps read the console marker and stay in the strands' window", func(t *testing.T) {
+		t.Parallel()
+
+		got := map[string][]string{}
+		for _, argv := range bindingArgvs(prev, next) {
+			got[argv[2]] = argv
+		}
+		step := func(target string) string {
+			move := "select-pane -Z -t " + target
+			return move + ` ; if-shell -F -t : "#{||:#{@strand},#{` + consolePaneOption + `}}" "" "` + move + `"`
+		}
+		want := map[string][]string{
+			"M-z":    {"bind-key", "-n", "M-z", "if-shell", "-F", "#{&&:#{@lyx_strands},#{||:#{@strand},#{||:#{" + consolePaneOption + "},#{window_zoomed_flag}}}}", "resize-pane -Z"},
+			"M-Up":   {"bind-key", "-n", "M-Up", "if-shell", "-F", "#{@lyx_strands}", step(":.-")},
+			"M-Down": {"bind-key", "-n", "M-Down", "if-shell", "-F", "#{@lyx_strands}", step(":.+")},
+		}
+		for key, wantArgv := range want {
+			if !slices.Equal(got[key], wantArgv) {
+				t.Errorf("%s argv = %q, want %q", key, got[key], wantArgv)
+			}
+		}
+	})
+
 	t.Run("the status click dispatches on every range type", func(t *testing.T) {
 		t.Parallel()
 

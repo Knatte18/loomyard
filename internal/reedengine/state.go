@@ -31,6 +31,9 @@ type Strand struct {
 	SessionID string         `json:"sessionId,omitempty"`
 	PaneID    string         `json:"paneId"`
 	Display   render.Display `json:"display"`
+	// ContentRows is the visible content line count the strand's pane last reported, the height a content-sized strand takes.
+	// 0 means not reported yet; a strand recorded before the field existed decodes with none.
+	ContentRows int `json:"contentRows,omitempty"`
 	// Retiring records that a caller of `reed remove --detach` asked for this strand's removal.
 	// It grants nothing by itself: a caller that finds it set only completes the request.
 	Retiring bool `json:"retiring,omitempty"`
@@ -198,11 +201,12 @@ func toRenderStrands(strands []Strand, liveIDs map[string]bool) []render.Strand 
 	out := make([]render.Strand, len(strands))
 	for i, s := range strands {
 		out[i] = render.Strand{
-			GUID:    s.GUID,
-			Parent:  s.Parent,
-			Display: s.Display,
-			PaneID:  s.PaneID,
-			Live:    liveIDs[s.PaneID],
+			GUID:        s.GUID,
+			Parent:      s.Parent,
+			Display:     s.Display,
+			PaneID:      s.PaneID,
+			Live:        liveIDs[s.PaneID],
+			ContentRows: s.ContentRows,
 		}
 	}
 	return out

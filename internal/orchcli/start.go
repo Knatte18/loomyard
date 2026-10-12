@@ -1,4 +1,4 @@
-// start.go implements the `start` orch verb: the idempotent bootstrap that leaves one live orchestrator strand and one watcher bound to it, then reports on the envelope.
+// start.go implements the `start` orch verb: the idempotent bootstrap that ensures the runs strand, leaves one live orchestrator strand and one watcher bound to it, then reports on the envelope.
 // It never attaches or switches a tmux client;
 // `lyx reed attach` is the only way into the session.
 
@@ -127,7 +127,9 @@ func (c *orchCLI) startCmd() *cobra.Command {
 		Use:         "start",
 		Short:       "launch the orchestrator session and its watcher",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `start is idempotent. With a live orchestrator strand and a live watcher it changes
+		Long: `start first ensures the runs strand, the overview of the batten runs in
+flight, above the orchestrator; a failure there only warns. start is
+idempotent. With a live orchestrator strand and a live watcher it changes
 nothing and reports them. With a live strand and no watcher it spawns the watcher.
 With a dead or absent strand it removes the corpse, launches a fresh session and
 spawns a watcher for it. The fresh session resumes from --handoff when given, else
@@ -183,6 +185,7 @@ session.`,
 			if err := c.reedUp(); err != nil {
 				return fail(err)
 			}
+			c.ensureRunsStrand()
 			strands, err := c.strands.Strands()
 			if err != nil {
 				return fail(err)

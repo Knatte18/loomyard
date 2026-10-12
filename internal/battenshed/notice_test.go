@@ -25,9 +25,11 @@ type noticeHarness struct {
 	t          *testing.T
 	scratch    string
 	statusPath string
-	clock      *fakeClock
-	status     shedengine.Status
-	alive      bool
+	// noticeLog is the notice log file every producer the harness builds appends to.
+	noticeLog string
+	clock     *fakeClock
+	status    shedengine.Status
+	alive     bool
 	// touched is the status file's modification time as the test last set it.
 	touched time.Time
 
@@ -70,6 +72,7 @@ func newNoticeHarness(t *testing.T) *noticeHarness {
 		t:            t,
 		scratch:      filepath.Join(dir, "scratch"),
 		statusPath:   filepath.Join(dir, "status.json"),
+		noticeLog:    filepath.Join(dir, "notices.log"),
 		clock:        &fakeClock{t: t},
 		status:       shedengine.Status{State: shedengine.StateRunning},
 		alive:        true,
@@ -158,7 +161,8 @@ func (h *noticeHarness) producer() shedengine.ShedProducer {
 			h.activityReads++
 			return h.runs, h.waitLive, h.activityErr
 		},
-		PairDir: func() (string, error) { return "/wt/task", nil },
+		PairDir:   func() (string, error) { return "/wt/task", nil },
+		NoticeLog: NoticeLog{Path: h.noticeLog, AttachCommand: "attach-it", Now: h.clock.Now},
 	}
 	return NewInnerRun("Run-Shed", "task", deps, h.poll, h.scratch, testGrace)
 }
@@ -935,6 +939,9 @@ func TestNotice_DeliveryIsRecordedOnlyWhenQueuedAndRetriedWithinItsCaps(t *testi
 		if keys := readNoticeKeys(noticeEpisodeFile(h.scratch, "Run-Shed")); len(keys) != 1 || !strings.HasPrefix(keys[0], noticeStateChanged+"|blocked|") {
 			t.Errorf("episode keys = %v; want the sent notice's key", keys)
 		}
+		if got := len(readNoticeLogLines(t, h.noticeLog)); got != 1 {
+			t.Errorf("notice log lines = %d; want 1", got)
+		}
 	})
 
 	for _, tt := range []struct {
@@ -967,6 +974,9 @@ func TestNotice_DeliveryIsRecordedOnlyWhenQueuedAndRetriedWithinItsCaps(t *testi
 			if keys := readNoticeKeys(noticeEpisodeFile(h.scratch, "Run-Shed")); len(keys) != 0 {
 				t.Errorf("episode keys = %v; want none for a notice that was never queued", keys)
 			}
+			if got := len(readNoticeLogLines(t, h.noticeLog)); got != 1 {
+				t.Errorf("notice log lines = %d; want 1 for the three attempts at one notice", got)
+			}
 		})
 	}
 
@@ -991,6 +1001,9 @@ func TestNotice_DeliveryIsRecordedOnlyWhenQueuedAndRetriedWithinItsCaps(t *testi
 		if len(h.notified) != 1 {
 			t.Errorf("notified = %v; want the notice once a strand is recorded", h.notified)
 		}
+		if got := len(readNoticeLogLines(t, h.noticeLog)); got != 1 {
+			t.Errorf("notice log lines = %d; want 1 across both runs of one producer", got)
+		}
 	})
 
 	t.Run("ARestartedBattenSendsWhatWasNotSent", func(t *testing.T) {
@@ -1001,6 +1014,9 @@ func TestNotice_DeliveryIsRecordedOnlyWhenQueuedAndRetriedWithinItsCaps(t *testi
 		h.run(h.producer(), 1)
 		if len(h.notified) != 1 {
 			t.Errorf("notified = %v; want the unsent notice sent by the restarted producer", h.notified)
+		}
+		if got := len(readNoticeLogLines(t, h.noticeLog)); got != 2 {
+			t.Errorf("notice log lines = %d; want 2, one per producer", got)
 		}
 	})
 }

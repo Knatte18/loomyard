@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/statuspane"
 )
 
 // bootstrapStage names the sub-step of seedAndCommitBootstrap a failure occurred at, so a caller can
@@ -244,7 +245,7 @@ func ensureFrictionDirAfterSeed(frictionDir string, seedErr error) {
 	friction.EnsureDir(frictionDir)
 }
 
-// ensureStatusStrand is the go arm's status-strand work: it keeps, replaces or adds the worktree's status strand.
+// ensureStatusStrand is `start`'s status-strand work: it keeps, replaces or adds the worktree's status strand.
 // The caller has already brought reed up,
 // and only `start` calls it.
 // It runs after the bootstrap-lock acquisition and ends before the run-lock probe.
@@ -258,13 +259,13 @@ func (c *loomCLI) ensureStatusStrand() error {
 	if err != nil {
 		return err
 	}
-	build, buildErr := currentBuildIdentity()
+	build, buildErr := statuspane.CurrentBuild()
 	if buildErr != nil {
 		// Without an identity nothing can be proven current, so a live strand is replaced.
 		logger.Warn("loom: could not identify the running lyx build; a live status strand will be replaced", "cause", buildErr)
 	}
 	sidecarPath := statusSidecarPath(c.location)
-	strandAction, staleGUID := resolveStatusStrandAction(statusResult.Strands, readStatusSidecar(sidecarPath), build)
+	strandAction, staleGUID := resolveStatusStrandAction(statusResult.Strands, statuspane.ReadSidecar(sidecarPath), build)
 	if strandAction == statusStrandKeep {
 		return nil
 	}
@@ -290,7 +291,7 @@ func (c *loomCLI) ensureStatusStrand() error {
 		}
 	}
 	if buildErr == nil {
-		if err := writeStatusSidecar(sidecarPath, strand.GUID, build); err != nil {
+		if err := statuspane.WriteSidecar(sidecarPath, strand.GUID, build); err != nil {
 			logger.Warn("loom: could not record the status strand's build; the next start will replace it", "cause", err)
 		}
 	}

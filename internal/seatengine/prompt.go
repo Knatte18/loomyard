@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -147,6 +148,7 @@ func composeSeatPrompt(stencilsDir string, seat Seat, values map[string]string, 
 
 // seatSpec returns the shuttle spec that runs seat with prompt.
 // Only the chair is interactive; only an advisor keeps its pane, and an advisor holds its turn end quietly unless it is Required.
+// Every seat declares the sharing size, so seat agents that run side by side split the free rows evenly; the anchor stays empty, which shuttle turns into below-parent.
 // The seat's gate rides the start call, not the spec.
 func seatSpec(table Table, seat Seat, prompt string) shuttleengine.Spec {
 	isChair := seat.Name == RoleChair
@@ -165,6 +167,7 @@ func seatSpec(table Table, seat Seat, prompt string) shuttleengine.Spec {
 		Round:         table.Round,
 		Timeout:       table.Timeout,
 		Skills:        slices.Clone(seat.Skills),
+		Display:       render.Display{Size: render.Size{Kind: render.SizeSharing}},
 	}
 }
 

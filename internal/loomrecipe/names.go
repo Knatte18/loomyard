@@ -1,5 +1,5 @@
 // names.go declares RecipeEngines, the derived engine set the cross-consumer coverage guard in
-// internal/shedrecipe trusts.
+// internal/shedrecipe trusts, and RowNames, a recipe's row names in file order.
 
 package loomrecipe
 
@@ -9,6 +9,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // discussionSeatsEngine is the engine New gives the Discussion-Write row when env.DiscussionSeats is true.
@@ -44,4 +45,27 @@ func RecipeEngines() []string {
 
 	sort.Strings(engines)
 	return engines
+}
+
+// RowNames returns the row names of the named recipe in file order: shedrun.RecipeLoom is the loom recipe and shedrun.RecipeDarn the darn recipe.
+// Any other recipe name is refused with an error naming it.
+func RowNames(recipe string) ([]string, error) {
+	var source []byte
+	switch recipe {
+	case shedrun.RecipeLoom:
+		source = recipes.LoomRecipe
+	case shedrun.RecipeDarn:
+		source = recipes.DarnRecipe
+	default:
+		return nil, fmt.Errorf("loomrecipe: no row names for recipe %q", recipe)
+	}
+	parsed, err := shedbuild.Parse(source)
+	if err != nil {
+		return nil, fmt.Errorf("loomrecipe: parse the %s recipe: %w", recipe, err)
+	}
+	names := make([]string, 0, len(parsed.Producers))
+	for _, row := range parsed.Producers {
+		names = append(names, row.Name)
+	}
+	return names, nil
 }

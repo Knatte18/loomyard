@@ -129,7 +129,7 @@ func expectedLayoutForCurrentBox(t *testing.T, e *Engine) (layout string, ok boo
 		return "", false
 	}
 	w, h := windowSizeNow(t, e)
-	layout, _, err = e.planLayout(st, live, render.Box{W: w, H: h})
+	layout, _, err = e.planLayout(st, live, render.Box{W: w, H: h}, false)
 	if err != nil {
 		return "", false
 	}

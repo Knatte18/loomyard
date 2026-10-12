@@ -39,6 +39,15 @@ func TestPartitionByAnchor(t *testing.T) {
 			},
 			want: nil,
 		},
+		{
+			name: "TopStrandInsertedAfterABelowParentStrandIsPlacedFirstAndHiddenContentIsDropped",
+			strands: []Strand{
+				{GUID: "below", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+				{GUID: "top", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorTop, Size: Size{Kind: SizeContent, ShareNum: 1, ShareDen: 3, MinRows: 3}}},
+				{GUID: "hidden", PaneID: "%3", Live: true, Display: Display{Anchor: AnchorHidden, Size: Size{Kind: SizeContent, ShareNum: 1, ShareDen: 3, MinRows: 3}}},
+			},
+			want: []string{"top", "below"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
