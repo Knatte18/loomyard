@@ -294,10 +294,22 @@ func (e *Engine) ensureSelvagePaneLocked(st *ReedState) error {
 	}
 
 	st.SelvagePaneID = paneID
+	e.markSelvagePaneLocked(st)
 	if err := SaveState(e.stateDir(), st); err != nil {
 		return fmt.Errorf("persist Selvage pane id: %w", err)
 	}
 	return nil
+}
+
+// markSelvagePaneLocked sets the display-only console marker (consolePaneOption) on the recorded Selvage pane, when there is one.
+// A failure is logged and never fails the step.
+func (e *Engine) markSelvagePaneLocked(st *ReedState) {
+	if st.SelvagePaneID == "" {
+		return
+	}
+	if err := e.tmux.run("set-option", "-p", "-t", st.SelvagePaneID, consolePaneOption, "1"); err != nil {
+		logger.Warn("reed: could not set the console marker", "pane", st.SelvagePaneID, "err", err)
+	}
 }
 
 // bottommostPaneID returns the id of the pane sitting physically lowest in the window — the largest

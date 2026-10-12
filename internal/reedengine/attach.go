@@ -119,6 +119,7 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 			logger.Warn("reed: could not list the strand window's panes to re-assert strand options", "window", windowTarget, "err", err)
 		} else {
 			e.reassertStrandPaneOptionsLocked(st, windowPanes)
+			e.markSelvagePaneLocked(st)
 		}
 
 		// The pins are made here, by the builder itself, not by a second exported call a CLI must

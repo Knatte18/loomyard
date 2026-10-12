@@ -60,12 +60,13 @@
 // Every strand pane carries the user options @strand (the role segment of its name, or the full name when it does not parse) and @strand_color (the tmux color of its segment, unset when it has none),
 // and the strand window carries @lyx_strands.
 // Launch sets the pane options and boot marks the strand window; every attach pre-flight marks the window and re-asserts both pane options on every strand bound to a live pane, so a session or strand spawned by an older lyx gets them at its next attach.
-// They are display only: the status bar and the key bindings read them, no Go decision does, and Selvage never gets either pane option.
+// The Selvage pane carries the user option @lyx_console (consolePaneOption), set when it is split and re-asserted by every attach pre-flight.
+// The options are display only: the status bar and the key bindings read them, no Go decision does, and Selvage never gets @strand or @strand_color.
 // A strand's Segment is an opaque field its spawner names through AddSpec.Segment; reed reads it only to look up the segment's color, which the strand an add or replace returns and Status carry as Color.
 //
 // The navigation bindings (bindings.go) are root-table bindings on the hub's reed server, issued by pinBindingsLocked at the end of the geometry pins, so boot and every attach pre-flight pin them and a server booted by an older lyx gets them at its next attach.
-// Alt+z zooms or unzooms a strand pane, and does nothing in Selvage or in a window that holds no strands;
-// Alt+Up and Alt+Down step to the previous or next strand pane of the strands' window, wrapping, keeping the zoom and passing over Selvage;
+// Alt+z zooms or unzooms a strand pane or Selvage in the strands' window, and does nothing in any other window;
+// Alt+Up and Alt+Down step to the previous or next pane of the strands' window that is a strand pane or Selvage, in physical order with Selvage last, wrapping and keeping the zoom, so a zoomed step onto Selvage shows it full screen;
 // Alt+Left and Alt+Right run `lyx reed switch --prev|--next` in the background through run-shell, naming the absolute path of the `lyx` that pinned them (panebin.go's composeSwitchCommand), never PATH's;
 // and a left click on the status bar dispatches on its range: VIEW selects and unzooms the strands' window, a strand button selects that pane and zooms it (never toggling the zoom off), a window button selects that window, and a session button switches the client to that session.
 // Bound: these five keys and the left status click are taken from every pane on the server, so a program in a pane, Claude Code included, never receives them; no other key or mouse binding is changed, and tmux's right-click menus keep their defaults.

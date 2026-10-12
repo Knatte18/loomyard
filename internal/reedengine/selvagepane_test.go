@@ -9,6 +9,8 @@ package reedengine
 import (
 	"errors"
 	"fmt"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -545,5 +547,19 @@ func TestEnsureSelvagePaneLocked_SplitsOnceBelowTheBottommostPane(t *testing.T) 
 	}
 	if st.SelvagePaneID != newPaneID {
 		t.Errorf("SelvagePaneID = %q, want %q", st.SelvagePaneID, newPaneID)
+	}
+	// The console marker is set on the new pane, after the split that created it.
+	wantMarker := []string{"set-option", "-p", "-t", newPaneID, consolePaneOption, "1"}
+	markerAt := -1
+	for i, call := range fake.Calls() {
+		if reflect.DeepEqual(call, wantMarker) {
+			markerAt = i
+		}
+	}
+	if markerAt == -1 {
+		t.Fatalf("no %v call among %v, want the console marker set on the new Selvage pane", wantMarker, fake.Calls())
+	}
+	if splitAt := slices.Index(fake.Sequence(), "split-window"); markerAt < splitAt {
+		t.Errorf("console marker issued at call %d, before the split at call %d", markerAt, splitAt)
 	}
 }
