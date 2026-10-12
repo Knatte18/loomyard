@@ -76,7 +76,7 @@ internal/planglyph: 86
 internal/planparser: 92
 internal/preflight: 7
 internal/preflightshed: 8
-internal/proc: 17
+internal/proc: 18
 internal/quarrycli: 7
 internal/reedcli: 38
 internal/reedengine: 257
