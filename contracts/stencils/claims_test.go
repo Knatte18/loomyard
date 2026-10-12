@@ -179,6 +179,12 @@ var wordingClaims = []stencilClaims{
 		wantNone("the arbiter moves and resumes nothing itself and messages no session",
 			"lyx loom goto", "lyx loom resume", "lyx loom approve", "lyx loom reject", "lyx loom review", "SendMessage"),
 	)},
+	{"loom-template-alignment.md", LoomTemplateAlignment, joinClaims(
+		wantAll("the agent reads the peers and the board, writes its two files, escalates with a question, lists superseded entries and names the bookkeeping file that does not escalate",
+			"lyx loom peers", "lyx board list", "{{.verdict_path}}", "{{.report_path}}", "escalate", "question", "superseded", "test-budget.yaml"),
+		wantNone("the agent moves nothing, writes no board entry and messages no session",
+			"SendMessage", "lyx loom approve", "lyx loom reject", "lyx loom review", "lyx loom decision", "lyx loom goto", "lyx loom resume", "lyx board upsert"),
+	)},
 	{"landing-template-describe.md", LandingTemplateDescribe, []claim{
 		{must: "one item to check by hand", why: "a Plan-Review or Webster-Review carry-over finding reaches the reviewer as a manual-check item"},
 		{must: "A Discussion-Review entry is not carried into the description", why: "a Discussion-Review carry-over finding concerns the record, not the change under review"},

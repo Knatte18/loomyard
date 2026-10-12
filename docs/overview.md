@@ -249,6 +249,7 @@ github.com/Knatte18/loomyard/
 ├── internal/shedadapters/        the Shed engine adapters (SingleLLMProducer, Webster, the Burler review and fix row producers, MultiLLMProducer, and the Bouncer) over shuttle/websterengine/burlerengine/seatengine
 ├── internal/shedcheck/           authoring-time structural checker over an assembled OnDone/OnStuck producer graph
 ├── internal/loomcli/             loom's cobra module: the session bootstrap, arming `internal/shedverbs`' generic driver, status, and pause verb bodies
+├── internal/alignment/           the alignment agent's attempt records, verdict schema, decision snapshot, prompt and launch spec, over told directories
 ├── internal/parentreview/        the parent-review round store and gate closures behind `lyx loom review`, over told directories
 ├── internal/loomshed/            loom's own row-name constants and producer constructors over `shedengine`
 ├── internal/loomrecipe/          assembles the `*shedengine.Shed` of the loom and darn recipes from their embedded files
