@@ -671,6 +671,8 @@ var wordingClaims = []stencilClaims{
 			{mustNot: "`lyx board prune`", section: "## After landing", why: "batten's Land row prunes the board"},
 			{must: "you run no `lyx loom start` loop after either", section: "## PR-Gate", why: "batten resumes the child after a PR-Gate decision"},
 			{must: "batten retries the first such failure of a run itself", section: "## Escalations from a child", why: "a Publish verify failure reaches the orch only on its second failure in the run"},
+			{must: "read the verdict first", section: "## Escalations from a child", why: "an escalation from the driver arrives after the arbiter handed on, so the orch reads the arbiter's verdict before the stop"},
+			{must: "after round 3", section: "## Escalations from a child", why: "the fixed review-escalation rule hands a blocker that remains after round 3 to the operator"},
 			{mustNot: "read the friction notes", why: "a run's Friction-Reflect files its findings as issues, which intake takes onto the board"},
 			{must: "run `lyx loom resume` in the task worktree to resume the run", why: "a circling decision resumes nothing by itself"},
 			{must: "A goto leaves the run paused,\n  so run `lyx loom resume`", why: "a goto leaves the run paused"},
