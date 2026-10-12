@@ -347,6 +347,11 @@ func SaveState(websterDir, scratchDir string, st *State) error {
 // batchCardHashes returns the hex SHA-256 of each card file of b, keyed by the card's NN-<slug> id.
 // A card's file is read from planDir under the file name its SourcePath carries, else NN-<slug>.md.
 func batchCardHashes(b batcher.Batch, planDir string) (map[string]string, error) {
+	return cardHashesFrom(b, func(name string) ([]byte, error) { return os.ReadFile(filepath.Join(planDir, name)) })
+}
+
+// cardHashesFrom is batchCardHashes over a reader: read returns the bytes of the plan file called name.
+func cardHashesFrom(b batcher.Batch, read func(name string) ([]byte, error)) (map[string]string, error) {
 	hashes := make(map[string]string, len(b.Cards))
 	for _, c := range b.Cards {
 		id := fmt.Sprintf("%02d-%s", c.Number, c.Slug)
@@ -354,10 +359,9 @@ func batchCardHashes(b batcher.Batch, planDir string) (map[string]string, error)
 		if c.SourcePath != "" {
 			name = filepath.Base(c.SourcePath)
 		}
-		path := filepath.Join(planDir, name)
-		data, err := os.ReadFile(path)
+		data, err := read(name)
 		if err != nil {
-			return nil, fmt.Errorf("webster: read card file %s: %w", path, err)
+			return nil, fmt.Errorf("webster: read card file %s: %w", name, err)
 		}
 		sum := sha256.Sum256(data)
 		hashes[id] = hex.EncodeToString(sum[:])

@@ -1,4 +1,5 @@
 // deleteorder.go implements LaterDeleteReferences, the delete-before-reference check: a card that deletes a symbol while a later card's Edit code still references it.
+// The references come from the computation caller-uncovered shares (memberReferences), so a member is found by identity and never by its bare word.
 
 package planglyph
 
@@ -11,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -56,18 +58,6 @@ func classifyDeleteOrderRef(lang glyph.Language, ref string) (refShape, glyph.Gl
 		return shapeFile, g, unitPath
 	}
 	return shapePackage, g, unitPath
-}
-
-// deletedSymbol is one Delete target that a later card may still reference.
-type deletedSymbol struct {
-	card   planparser.Card
-	target string
-	// samePackage matches a reference to the symbol in a file of the package at dir.
-	samePackage *regexp.Regexp
-	// otherPackage matches a reference to the symbol in a file of any other package.
-	otherPackage *regexp.Regexp
-	// dir is the repository-relative directory of the deleted symbol's package.
-	dir string
 }
 
 // editRegion is the code one later card's Edit target covers: lines start..end of file, or the whole file when end is zero.
@@ -127,12 +117,14 @@ func buildEditRegions(edits []editTarget, index map[string]quarry.ResolveResult,
 	return regions, findings
 }
 
-// LaterDeleteReferences reports, as blocking delete-before-reference findings, every place a card in later numbered above a card in deleting still references a symbol that card deletes.
+// LaterDeleteReferences reports every place a card in later numbered above a card in deleting still references a symbol that card deletes.
 // The deleting card's Delete targets that are member glyphs or package self glyphs are looked up; a file-path Delete target, and a member target that no longer resolves found, are not checked.
 // The searched code is each later card's Edit targets: a member glyph's resolved span, or the whole file for a file path or file self glyph; any other Edit target shape is not searched.
-// A reference is the deleted identifier as a whole word, bare or as a selector inside the deleted symbol's own package and package-qualified outside it; a method or field is reached as a selector, and a package as an import of its path.
-// The match is textual, so a same-named unrelated symbol inside a later card's span is also flagged.
-// That is acceptable because the fix every finding names, moving the delete to a card after the later one, is always available; code outside a later card's Edit targets is never searched.
+// Only Go files outside the directories the go tool ignores are searched, so a comment, a string literal and a non-Go target never match.
+// A reference is found the way a caller of the deleted member is: a package-level member by its bare identifier inside its own package and elsewhere through an import of its path, a method by its name after a dot.
+// No type load runs, so a package-level reference is blocking and a method matched by name alone is informational, since its receiver is not resolved.
+// A package self glyph Delete is referenced by a quoted import of its path, which is blocking.
+// The fix every finding names, moving the delete to a card after the later one, is always available; code outside a later card's Edit targets is never searched.
 // Under a non-glyph language it returns no findings and opens no repository.
 // An infrastructure error is wrapped in ErrQuarryUnavailable.
 func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.Card, worktreeRoot string) ([]Finding, error) {
@@ -145,8 +137,6 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 		card  planparser.Card
 		ref   string
 		shape refShape
-		g     glyph.Glyph
-		path  string
 	}
 	var deletes []pendingDelete
 	for _, c := range sortedCards(deleting) {
@@ -155,9 +145,9 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 				continue
 			}
 			for _, ref := range group.Refs {
-				shape, g, refPath := classifyDeleteOrderRef(lang, ref)
+				shape, _, _ := classifyDeleteOrderRef(lang, ref)
 				if shape == shapeMember || shape == shapePackage {
-					deletes = append(deletes, pendingDelete{card: c, ref: ref, shape: shape, g: g, path: refPath})
+					deletes = append(deletes, pendingDelete{card: c, ref: ref, shape: shape})
 				}
 			}
 		}
@@ -201,44 +191,105 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 	partitioned := partitionedAnswers(worktreeRoot, index)
 
 	var findings []Finding
-	var symbols []deletedSymbol
 	for _, d := range deletes {
-		if d.shape == shapePackage {
-			quoted := regexp.MustCompile(`"(?:[^"]*/)?` + regexp.QuoteMeta(d.path) + `"`)
-			symbols = append(symbols, deletedSymbol{card: d.card, target: d.ref, samePackage: quoted, otherPackage: quoted, dir: d.path})
+		if d.shape != shapeMember {
 			continue
 		}
-		answered, readable := answerSymbols(index[d.ref], partitioned[d.ref])
-		if !readable {
+		if _, readable := answerSymbols(index[d.ref], partitioned[d.ref]); !readable {
 			findings = append(findings, unreadableAnswerFinding(d.card, "Delete target", d.ref, index[d.ref]))
-			continue
 		}
-		if len(answered) == 0 {
-			continue
-		}
-		declaringFile := answered[0].File
-		name := regexp.QuoteMeta(d.g.Name)
-		if len(d.g.Owner) > 0 {
-			selector := regexp.MustCompile(`\.` + name + `\b`)
-			symbols = append(symbols, deletedSymbol{card: d.card, target: d.ref, samePackage: selector, otherPackage: selector, dir: path.Dir(declaringFile)})
-			continue
-		}
-		packageName, err := packageNameOfFile(filepath.Join(worktreeRoot, filepath.FromSlash(declaringFile)))
-		if err != nil {
-			return nil, fmt.Errorf("%w: read package clause of %q: %v", ErrQuarryUnavailable, declaringFile, err)
-		}
-		symbols = append(symbols, deletedSymbol{
-			card:         d.card,
-			target:       d.ref,
-			samePackage:  regexp.MustCompile(`\b` + name + `\b`),
-			otherPackage: regexp.MustCompile(`\b` + regexp.QuoteMeta(packageName) + `\.` + name + `\b`),
-			dir:          path.Dir(declaringFile),
-		})
 	}
 
 	regions, regionFindings := buildEditRegions(edits, index, partitioned)
 	findings = append(findings, regionFindings...)
 
+	deletingView := *plan
+	deletingView.Cards = deleting
+	allSubjects, err := coverageSubjects(&deletingView, lang, worktreeRoot, index, partitioned)
+	if err != nil {
+		return findings, err
+	}
+	subjects := slices.DeleteFunc(allSubjects, func(subject coverageSubject) bool { return !subject.deleted })
+	if len(subjects) > 0 {
+		resolved, nameOnly, err := memberReferences(plan, worktreeRoot, subjects, regionFiles(worktreeRoot, regions), nil)
+		if err != nil {
+			return findings, err
+		}
+		findings = append(findings, deleteOrderFindings(subjects, resolved, nameOnly, regions)...)
+	}
+
+	importFindings, err := laterImportFindings(lang, deleting, regions, worktreeRoot)
+	return append(findings, importFindings...), err
+}
+
+// deleteOrderFindings returns, for each deleted subject, the delete-before-reference findings for its references that lie inside a later card's Edit region.
+// A resolved line gets one blocking finding, naming the first later card whose region holds it.
+// A method's name-only lines get one informational finding per subject, naming every file with its lines and each later card whose region holds one of them.
+// resolved and nameOnly are memberReferences' answers, one map per subject; a re-signed subject is skipped, since its references are caller-uncovered's.
+func deleteOrderFindings(subjects []coverageSubject, resolved, nameOnly []map[string][]int, regions []editRegion) []Finding {
+	var findings []Finding
+	for i, subject := range subjects {
+		if !subject.deleted {
+			continue
+		}
+		for _, file := range sortedFiles(resolved[i]) {
+			for _, line := range resolved[i][file] {
+				holders := laterEditRegions(regions, subject.card.Number, file, line)
+				if len(holders) == 0 {
+					continue
+				}
+				findings = append(findings, Finding{
+					Check: "delete-before-reference",
+					Card:  subject.card.ID(),
+					Detail: fmt.Sprintf(
+						"card %d deletes %q, but card %s still references it at %s:%d in its Edit code — move the delete to a card after card %d",
+						subject.card.Number, subject.ref, holders[0].card.ID(), file, line, holders[0].card.Number,
+					),
+					Severity: SeverityBlocking,
+				})
+			}
+		}
+
+		var sites, holderIDs []string
+		lastHolder := 0
+		for _, file := range sortedFiles(nameOnly[i]) {
+			var inside []int
+			for _, line := range nameOnly[i][file] {
+				holders := laterEditRegions(regions, subject.card.Number, file, line)
+				if len(holders) == 0 {
+					continue
+				}
+				inside = append(inside, line)
+				for _, holder := range holders {
+					if !slices.Contains(holderIDs, holder.card.ID()) {
+						holderIDs = append(holderIDs, holder.card.ID())
+					}
+					lastHolder = max(lastHolder, holder.card.Number)
+				}
+			}
+			if len(inside) > 0 {
+				sites = append(sites, fmt.Sprintf("%s at line %s", file, lineList(inside)))
+			}
+		}
+		if len(sites) > 0 {
+			findings = append(findings, Finding{
+				Check: "delete-before-reference",
+				Card:  subject.card.ID(),
+				Detail: fmt.Sprintf(
+					"card %d deletes %q, but its name follows a dot in %s, in the Edit code of card %s, and the receiver could not be resolved — if one is a call, move the delete to a card after card %d",
+					subject.card.Number, subject.ref, strings.Join(sites, "; "), strings.Join(holderIDs, ", "), lastHolder,
+				),
+				Severity: SeverityInformational,
+			})
+		}
+	}
+	return findings
+}
+
+// laterImportFindings returns a blocking delete-before-reference finding for each quoted import of a package that a card in deleting deletes, found in the code of a later card's region.
+// A package is deleted by a package self glyph in a Delete group.
+// Only regions in Go files outside the directories the go tool ignores are searched, and a region file absent from disk is skipped.
+func laterImportFindings(lang glyph.Language, deleting []planparser.Card, regions []editRegion, worktreeRoot string) ([]Finding, error) {
 	linesOf := make(map[string][]string)
 	readLines := func(file string) ([]string, error) {
 		if lines, ok := linesOf[file]; ok {
@@ -257,46 +308,90 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 		return lines, nil
 	}
 
+	var findings []Finding
 	reported := make(map[string]bool)
-	for _, sym := range symbols {
-		for _, region := range regions {
-			if region.card.Number <= sym.card.Number {
+	for _, c := range sortedCards(deleting) {
+		for _, group := range c.TargetGroups {
+			if group.Type != planparser.CardTypeDelete {
 				continue
 			}
-			lines, err := readLines(region.file)
-			if err != nil {
-				return findings, err
-			}
-			first, last := 1, len(lines)
-			if region.end != 0 {
-				first, last = region.start, min(region.end, len(lines))
-			}
-			pattern := sym.otherPackage
-			if path.Dir(region.file) == sym.dir {
-				pattern = sym.samePackage
-			}
-			for n := first; n <= last; n++ {
-				if !pattern.MatchString(lines[n-1]) {
+			for _, ref := range group.Refs {
+				shape, _, unitPath := classifyDeleteOrderRef(lang, ref)
+				if shape != shapePackage {
 					continue
 				}
-				key := fmt.Sprintf("%s|%s|%s:%d", sym.card.ID(), sym.target, region.file, n)
-				if reported[key] {
-					continue
+				quoted := regexp.MustCompile(`"(?:[^"]*/)?` + regexp.QuoteMeta(unitPath) + `"`)
+				for _, region := range regions {
+					if region.card.Number <= c.Number || !isGoToolSource(region.file) {
+						continue
+					}
+					lines, err := readLines(region.file)
+					if err != nil {
+						return findings, err
+					}
+					first, last := 1, len(lines)
+					if region.end != 0 {
+						first, last = region.start, min(region.end, len(lines))
+					}
+					for n := first; n <= last; n++ {
+						if !quoted.MatchString(lines[n-1]) {
+							continue
+						}
+						key := fmt.Sprintf("%s|%s|%s:%d", c.ID(), ref, region.file, n)
+						if reported[key] {
+							continue
+						}
+						reported[key] = true
+						findings = append(findings, Finding{
+							Check: "delete-before-reference",
+							Card:  c.ID(),
+							Detail: fmt.Sprintf(
+								"card %d deletes %q, but card %s still references it at %s:%d in its Edit code — move the delete to a card after card %d",
+								c.Number, ref, region.card.ID(), region.file, n, region.card.Number,
+							),
+							Severity: SeverityBlocking,
+						})
+					}
 				}
-				reported[key] = true
-				findings = append(findings, Finding{
-					Check: "delete-before-reference",
-					Card:  sym.card.ID(),
-					Detail: fmt.Sprintf(
-						"card %d deletes %q, but card %s still references it at %s:%d in its Edit code — move the delete to a card after card %d",
-						sym.card.Number, sym.target, region.card.ID(), region.file, n, region.card.Number,
-					),
-					Severity: SeverityBlocking,
-				})
 			}
 		}
 	}
 	return findings, nil
+}
+
+// regionFiles returns, sorted, the Go files of regions that the go tool reads and that exist under worktreeRoot.
+func regionFiles(worktreeRoot string, regions []editRegion) []string {
+	seen := make(map[string]bool)
+	var files []string
+	for _, region := range regions {
+		if seen[region.file] || !isGoToolSource(region.file) {
+			continue
+		}
+		seen[region.file] = true
+		if _, err := os.Stat(filepath.Join(worktreeRoot, filepath.FromSlash(region.file))); errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		files = append(files, region.file)
+	}
+	sort.Strings(files)
+	return files
+}
+
+// ignoredByGoTool reports whether the go tool skips a directory named dirName: testdata, vendor, and a name starting with . or _.
+func ignoredByGoTool(dirName string) bool {
+	return dirName == "testdata" || dirName == "vendor" || strings.HasPrefix(dirName, ".") || strings.HasPrefix(dirName, "_")
+}
+
+// isGoToolSource reports whether file, slash-separated and relative to the worktree root, is Go source in a directory the go tool reads.
+func isGoToolSource(file string) bool {
+	if path.Ext(file) != ".go" {
+		return false
+	}
+	dir := path.Dir(file)
+	if dir == "." {
+		return true
+	}
+	return !slices.ContainsFunc(strings.Split(dir, "/"), ignoredByGoTool)
 }
 
 // partitionedAnswers classifies each ambiguous answer of answers once, reading its candidate files under worktreeRoot, and returns the targets whose candidates no single build environment selects together.

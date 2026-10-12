@@ -131,9 +131,10 @@
 //
 // # the kick-start pack
 //
-// A pack holds the member glyphs the batch's cards name in their targets and `Uses:`.
+// A pack holds the member glyphs the batch's cards name in their targets and `Uses:`, grouped per card from one resolve call.
 // Each is resolved to its declarations with file, line span and signature.
-// Beside them sit the refs that did not resolve, each with a reason in plain words, `plan:` handles included.
+// A `var` or `const` entry shows the first line of its signature only, while its span still covers the whole declaration.
+// Beside them sit the card's refs that did not resolve, each with a reason in plain words, `plan:` handles included.
 // begin-batch builds it (buildKickstartPack) immediately before it renders the fork prompt, after the dispatch re-resolution and its fingerprint re-stamp.
 // It parses the plan afresh, because that re-resolution may have canonicalized handles on disk.
 // A plan that no longer parses degrades to the loaded plan and the batch's cards with a Warn.
@@ -146,11 +147,20 @@
 // The locate step and the pack section are stencils RenderForkPrompt fills.
 // Without a pack the locate marker takes the quarry fragment, which is the step as it stood before the pack, so the prompt renders the same bytes as before.
 // With a pack it takes the pack fragment, which sends the fork to the listed spans and keeps the quarry or grep path for an unresolved member glyph,
-// and the pack section lists the entries and the unresolved refs, or says the cards name no member glyph.
+// and the pack section holds one subsection per card.
+// Each subsection sits under the card's pointer path, the same spelling as its bullet in the card list, and lists the card's entries, or `none` when none of its member glyphs resolved, or says the card names no member glyph.
+// A card's unresolved list follows its entries only when the card has unresolved refs.
+//
+// Step 1 of the implementer body and its FRESH-READ rule are markers too, card_read and fresh_read, filled per mode by renderReadRules.
+// Without a pack the fragments carry the text as it stood before, so a fork without a pack and every recovery prompt render the bytes they did before the pack existed.
+// With a pack, step 1 reads the card file and its listed spans in one parallel turn, and a file an earlier card of the batch edited whole instead.
+// FRESH-READ then names those spans plus the target and `Uses:` files no listed span covers.
+// That bounds the fork's reading: it is no longer told to re-read whole a file that holds a listed span, so an edit outside a listed span in such a file is read only when the fork chooses to.
+// What bounds that is the member-name rule for a file an earlier card edited, the locate fragment's "read further whenever the card needs it", and the card and batch gates, which still run every card's tests.
 //
 // Every begin-batch logs one Info line, `webster: kickstart pack`.
 // Its keys are batch, kickstart_pack (`on`, `off` or `language-none`), resolved and unresolved.
-// The last two are entry counts that stay 0 when no pack is built.
+// The last two count distinct refs across the batch, so a ref listed under two cards counts once, and stay 0 when no pack is built.
 // The `kickstart_pack` key of webster.yaml switches the pack on and off, so runs with and without it can be compared;
 // each begin-batch reads it afresh, so a flip applies from the next call on.
 //
@@ -318,8 +328,9 @@
 // A delete-not-done finding gets one more check, planindex.Index.LaterDeleteReferences over the batch's own cards and the cards of every batch with no record:
 // when an unbegun later card's Edit code still references the target, the failure's reasons name that card and the reference,
 // and the BatchFailedError's way forward is the plan edit (move the delete after that card, rebaseline, then recover-batch), or the reset-to-start steps when the record also lists uncheckable entries, since recover-batch would repeat the same failure.
+// Only a reference resolved to the deleted member counts, which is the blocking finding; a method matched by name alone is informational, adds no reason and changes no way forward.
 // PersistRecoveryTerminal fails a recovered batch the same way, and recover-batch runs the same check before spawning:
-// while it fires it refuses with ErrRecoveryDeleteReferenced, which the CLI maps to the `batch_failed` flag.
+// while a blocking reference fires it refuses with ErrRecoveryDeleteReferenced, which the CLI maps to the `batch_failed` flag.
 // At run exit the audit cross-check drops dispositioned findings, records the rest of the policy findings as run-level warnings, appended to summary.md under "Audit warnings", and demotes Master's outcome done to stuck for an undispositioned correctness finding.
 // A correctness finding stays pending in state.json until `lyx webster accept-audit` clears it, and run entry refuses with ErrPendingAuditFindings meanwhile.
 // accept-audit needs evidence: it checks every suspect path against the last batch head (a plan file against the run's recorded plan hashes) and refuses with ErrAuditNotAcceptable while any path differs, cannot be checked, or a finding names no path;

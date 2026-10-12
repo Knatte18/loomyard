@@ -95,7 +95,12 @@ func (p reapPolicy) authorizesReap() bool {
 // runs, so a fresh split — idle by construction — costs one kill-pane plus
 // one split-window and buys correctness back.
 //
-// insertAbove is true only when the third tier fires — no non-Selvage pane exists at all, so Selvage
+// A top-anchored display takes none of those tiers.
+// It splits below the physically lowest alive pane bound to another top-anchored strand of st, so top strands stack in insertion order.
+// With no such pane it splits the window's physically top-most present pane with `-f -b`, a full-width split above every pane that takes its rows from the whole window.
+// A collapsed one-row top pane therefore cannot make it fail, and Selvage stays bottom-most.
+//
+// For any other display, above is true only when the third tier fires — no non-Selvage pane exists at all, so Selvage
 // itself is the chosen target — and false for the tallest-alive and present-corpse tiers. This is
 // exactly equivalent to the condition launchStrandLocked used to compute at its call site: it
 // appended -b when the chosen target equalled the Selvage pane id, and that can only hold when tier
@@ -107,13 +112,17 @@ func (p reapPolicy) authorizesReap() bool {
 // strand pane physically above Selvage instead, preserving the bottom-most invariant on exactly the
 // one path that would otherwise violate it. Every other split target is a strand, and inserting below
 // another strand never touches Selvage's position.
-func planPaneTarget(st *ReedState, live []LivePane) (splitTargetID string, insertAbove bool, err error) {
+func planPaneTarget(st *ReedState, live []LivePane, display render.Display) (paneSplit, error) {
 	if len(live) == 0 {
-		return "", false, fmt.Errorf("session has no panes to split")
+		return paneSplit{}, fmt.Errorf("session has no panes to split")
+	}
+	if display.Anchor == render.AnchorTop {
+		return planTopPaneTarget(st, live), nil
 	}
 	selvagePaneID := st.SelvagePaneID
 
-	splitTargetID = ""
+	splitTargetID := ""
+	insertAbove := false
 	tallestAlive := -1
 	for _, p := range live {
 		if p.ID == selvagePaneID || p.Dead {
@@ -142,7 +151,43 @@ func planPaneTarget(st *ReedState, live []LivePane) (splitTargetID string, inser
 		splitTargetID = live[0].ID
 		insertAbove = true
 	}
-	return splitTargetID, insertAbove, nil
+	return paneSplit{target: splitTargetID, above: insertAbove}, nil
+}
+
+// paneSplit is one planned strand split.
+// It names the pane to split, whether the new pane goes above it (`-b`), and whether the split spans the full window width and takes its rows from the whole window (`-f`).
+type paneSplit struct {
+	target string
+	above  bool
+	full   bool
+}
+
+// planTopPaneTarget plans the split of a top-anchored strand's pane; live is non-empty.
+func planTopPaneTarget(st *ReedState, live []LivePane) paneSplit {
+	topPaneIDs := make(map[string]bool)
+	for _, s := range st.Strands {
+		if s.Display.Anchor == render.AnchorTop && s.PaneID != "" {
+			topPaneIDs[s.PaneID] = true
+		}
+	}
+
+	lowestTop := -1
+	for i, p := range live {
+		if topPaneIDs[p.ID] && !p.Dead && (lowestTop < 0 || p.Top > live[lowestTop].Top) {
+			lowestTop = i
+		}
+	}
+	if lowestTop >= 0 {
+		return paneSplit{target: live[lowestTop].ID}
+	}
+
+	topmost := 0
+	for i, p := range live {
+		if p.Top < live[topmost].Top {
+			topmost = i
+		}
+	}
+	return paneSplit{target: live[topmost].ID, above: true, full: true}
 }
 
 // selvageRenderParams builds the render.Selvage value toRenderInputs assembles into render.Params:
@@ -249,10 +294,22 @@ func (e *Engine) ensureSelvagePaneLocked(st *ReedState) error {
 	}
 
 	st.SelvagePaneID = paneID
+	e.markSelvagePaneLocked(st)
 	if err := SaveState(e.stateDir(), st); err != nil {
 		return fmt.Errorf("persist Selvage pane id: %w", err)
 	}
 	return nil
+}
+
+// markSelvagePaneLocked sets the display-only console marker (consolePaneOption) on the recorded Selvage pane, when there is one.
+// A failure is logged and never fails the step.
+func (e *Engine) markSelvagePaneLocked(st *ReedState) {
+	if st.SelvagePaneID == "" {
+		return
+	}
+	if err := e.tmux.run("set-option", "-p", "-t", st.SelvagePaneID, consolePaneOption, "1"); err != nil {
+		logger.Warn("reed: could not set the console marker", "pane", st.SelvagePaneID, "err", err)
+	}
 }
 
 // bottommostPaneID returns the id of the pane sitting physically lowest in the window — the largest
@@ -337,9 +394,8 @@ func (e *Engine) splitSelvagePaneAtBottomLocked(st *ReedState, live []LivePane, 
 //
 // No -b flag is needed here: tmux's default split direction is vertical with the new pane below,
 // which is exactly where Selvage must land now that render.Rules emits the band cell LAST rather
-// than first. Selvage is still the only split in the whole engine that must land at a specific
-// physical edge — every strand split (spawn.go) always targets a non-Selvage pane and inserts
-// below it too, but strands have no positional requirement of their own the way Selvage does.
+// than first.
+// A top-anchored strand's split (spawn.go) must land at the physical top edge too.
 //
 // The genuinely-new-pane guard is the same one launchStrandLocked runs: psmux's silent
 // too-small-to-split failure prints an EXISTING pane's id with exit 0, and recording that id as

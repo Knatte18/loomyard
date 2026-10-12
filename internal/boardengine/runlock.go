@@ -5,6 +5,7 @@ package boardengine
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 )
@@ -62,7 +63,7 @@ func (e *RunLockedError) Is(target error) bool {
 }
 
 // checkRunLocks judges each run-held entry of loaded by its net change to after.
-// It refuses when the entry is absent from after, or when any field but Status differs.
+// It refuses when the entry is absent from after, or when any field but Status differs; Unknown is never compared, since this binary cannot change a kept key.
 // A dependency on a done entry that the same write removes does not count as a change, so prune passes.
 // It returns the first refusal in loaded order.
 func checkRunLocks(loaded, after []Task) error {
@@ -103,6 +104,7 @@ func removedDoneSlugs(loaded, after []Task) map[string]bool {
 // Slices compare element-wise with nil equal to empty;
 // before's DependsOn is first stripped of the slugs in removedDone.
 // RunSettings is never compared: a run settings change is not a scope change, so a run-held entry takes it.
+// Unknown is never compared either, since this binary cannot change a kept key.
 func scopeChanged(before, now Task, removedDone map[string]bool) bool {
 	dependsOn := slices.DeleteFunc(slices.Clone(before.DependsOn), func(slug string) bool {
 		return removedDone[slug]
@@ -156,6 +158,7 @@ func cloneTasks(tasks []Task) []Task {
 		task.Issues = slices.Clone(task.Issues)
 		task.DependsOn = slices.Clone(task.DependsOn)
 		task.RunSettings = cloneSettings(task.RunSettings)
+		task.Unknown = maps.Clone(task.Unknown)
 		if task.Status != nil {
 			status := *task.Status
 			task.Status = &status

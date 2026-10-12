@@ -1,4 +1,5 @@
 // paneoptions.go sets the display-only tmux user options that identify strands: @strand and @strand_color on each strand pane, @lyx_strands on the strand window.
+// It also names @lyx_console, the marker of the operator console pane that the key bindings read.
 // No Go decision reads them back; the status bar and the key bindings do.
 
 package reedengine
@@ -8,6 +9,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
+
+// consolePaneOption is the pane option marking the operator console pane, set to 1 by markSelvagePaneLocked.
+// The key bindings read it so the console joins the Alt+Up/Alt+Down cycle and takes Alt+z; no Go decision reads it.
+const consolePaneOption = "@lyx_console"
 
 // strandLabel returns the role segment of a strand name, or the full name when it does not parse.
 func strandLabel(name string) string {

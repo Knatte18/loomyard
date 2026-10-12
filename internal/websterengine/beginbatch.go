@@ -255,13 +255,14 @@ func LastBegunCard(st *State) int {
 	return last
 }
 
-// EditedDoneCards returns, sorted, the NN-slug ids of the cards of every batch st records terminal with status done whose card file under planDir no longer hashes to the CardHashes entry the batch recorded at begin.
+// EditedDoneCards returns, sorted, the NN-slug ids of the cards of every batch st records terminal with status done whose card file no longer hashes to the CardHashes entry the batch recorded at begin.
+// A card file is read through the plan's own source, so a card of a plan parsed through an overlay is judged by its proposed bytes.
 // It hashes the card files as batchCardHashes does and reads the record and those bytes alone, never parsing the plan.
 // A nil state, a record without CardHashes, a batch not terminal done and a recorded id plan lacks each contribute nothing;
 // an unreadable card file is returned as an error.
 //
 // It is what the loom plan gate reads to refuse an edit to a card whose work has landed.
-func EditedDoneCards(plan *planparser.Plan, st *State, planDir string) ([]string, error) {
+func EditedDoneCards(plan *planparser.Plan, st *State) ([]string, error) {
 	if st == nil {
 		return nil, nil
 	}
@@ -282,7 +283,7 @@ func EditedDoneCards(plan *planparser.Plan, st *State, planDir string) ([]string
 				recorded = append(recorded, c)
 			}
 		}
-		now, err := batchCardHashes(batcher.Batch{Cards: recorded}, planDir)
+		now, err := cardHashesFrom(batcher.Batch{Cards: recorded}, plan.ReadFile)
 		if err != nil {
 			return nil, err
 		}
@@ -376,18 +377,24 @@ func existingReportRemedy(number int, recorded *BatchState, retry bool) (string,
 	return fmt.Sprintf("`lyx webster recover-batch %d`", number), false
 }
 
-// buildKickstartPack builds the kick-start pack of batch's cards for the fork prompt, or returns nil when the prompt renders without one, and logs one Info line saying which.
+// buildKickstartPack builds the kick-start pack of batch's cards for the fork prompt, one pack per card in the batch's declared order, or returns nil when the prompt renders without one, and logs one Info line saying which.
 // A nil pack is returned with deps.Config.KickstartPack false and for a plan whose language opts out of glyphs.
 // The plan is parsed afresh, since the dispatch re-resolution may have canonicalized handles on disk;
 // a parse error degrades to deps.Plan and batch.Cards instead, with a Warn, so building the pack never refuses the batch.
 // An index error is a Warn too, and the degraded pack the index returned is kept.
-func buildKickstartPack(deps BeginDeps, index planindex.Index, batch batcher.Batch, number int) *planindex.Pack {
-	logPack := func(state string, pack *planindex.Pack) {
-		var resolved, unresolved int
-		if pack != nil {
-			resolved, unresolved = len(pack.Resolved), len(pack.Unresolved)
+// The logged resolved and unresolved counts are distinct refs across the batch, so a ref listed under two cards counts once.
+func buildKickstartPack(deps BeginDeps, index planindex.Index, batch batcher.Batch, number int) []planindex.CardPack {
+	logPack := func(state string, pack []planindex.CardPack) {
+		resolved, unresolved := make(map[string]bool), make(map[string]bool)
+		for _, cp := range pack {
+			for _, e := range cp.Pack.Resolved {
+				resolved[e.Glyph] = true
+			}
+			for _, u := range cp.Pack.Unresolved {
+				unresolved[u.Ref] = true
+			}
 		}
-		logger.Info("webster: kickstart pack", "batch", number, "kickstart_pack", state, "resolved", resolved, "unresolved", unresolved)
+		logger.Info("webster: kickstart pack", "batch", number, "kickstart_pack", state, "resolved", len(resolved), "unresolved", len(unresolved))
 	}
 	if !deps.Config.KickstartPack {
 		logPack("off", nil)
@@ -401,9 +408,9 @@ func buildKickstartPack(deps BeginDeps, index planindex.Index, batch batcher.Bat
 	} else {
 		plan = fresh
 		cards = nil
-		for _, c := range fresh.Cards {
-			if slices.ContainsFunc(batch.Cards, func(b planparser.Card) bool { return b.Number == c.Number }) {
-				cards = append(cards, c)
+		for _, b := range batch.Cards {
+			if i := slices.IndexFunc(fresh.Cards, func(c planparser.Card) bool { return c.Number == b.Number }); i >= 0 {
+				cards = append(cards, fresh.Cards[i])
 			}
 		}
 	}
@@ -416,8 +423,11 @@ func buildKickstartPack(deps BeginDeps, index planindex.Index, batch batcher.Bat
 	if err != nil {
 		logger.Warn("webster: kickstart pack index failed, keeping the degraded pack", "batch", number, "error", err)
 	}
-	logPack("on", &pack)
-	return &pack
+	if pack == nil {
+		pack = []planindex.CardPack{}
+	}
+	logPack("on", pack)
+	return pack
 }
 
 // BeginBatch drives one begin-batch call to completion, immediately before Master forks batchNumber's implementer: the pause gate, the fingerprint gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself.

@@ -15,6 +15,8 @@
 // A child within the creation grace of its modification time is skipped, which covers the window between a run directory's creation and its owner's lock.
 // Past the grace a child with no lock file, or whose lock file the sweep can take, is a candidate: the OS releases a dead owner's lock, so a killed process's run directory is removed by the next start's sweep.
 // With apply false the sweep removes nothing and lists the same candidates.
+// A removal that fails because the directory is not empty, the symptom of a concurrent sweeper's lock probe recreating the lock file, is retried until one budget shared by the whole sweep runs out, then reported as a failure; any other removal error is reported after one attempt.
+// Bound: a sweep waits at most the budget plus one retry delay and one removal in total across all its directories, reached only while something keeps re-adding entries to a dead directory, such as a concurrent sweeper's lock probe or a process outliving the directory's dead owner, and paid by every new run for as long as that lasts; a persistent failure of another kind costs one attempt per dead directory.
 // Bound: the sweep never reads inside a live run directory and never touches an unprefixed entry, a file or a link.
 //
 // The package imports the standard library and `internal/lock` only.

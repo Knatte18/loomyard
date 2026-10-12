@@ -204,8 +204,9 @@ func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec, gate shuttleen
 // be present.
 // It also skips the review, circling and decision groups and their verbs, which resolve their own target worktree in their own PersistentPreRunE:
 // cmd/lyx sets cobra.EnableTraverseRunHooks, so this pre-run still runs for them and would otherwise arm them, reading a slug as a run-id.
+// The checklist pane verb is skipped too, because arming refuses a missing seed and a pane must outlive one.
 func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
-	if cmd.Name() == "loom" || inReviewGroup(cmd) {
+	if cmd.Name() == "loom" || cmd.Name() == "checklist" || inReviewGroup(cmd) {
 		return nil
 	}
 
@@ -466,7 +467,7 @@ Example:
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 	gotoVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.approveCmd(), c.rejectCmd(), c.commitRecordsCmd(), c.reviewCmd(), c.circlingCmd(), c.decisionCmd(), c.peersCmd(), c.arbiterCmd())
+	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.approveCmd(), c.rejectCmd(), c.commitRecordsCmd(), c.reviewCmd(), c.circlingCmd(), c.decisionCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd())
 
 	return parent
 }
