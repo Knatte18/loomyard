@@ -80,7 +80,7 @@ func TestNewRunner_RefusesUnusableToldPaths(t *testing.T) {
 			if err := runner.Send("strand-1", "hi"); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
 				t.Errorf("Send() error = %v; want it to name %q", err, tt.wantIn)
 			}
-			if err := runner.Inject("strand-1", []PaneInput{{Key: "Escape"}}); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
+			if err := runner.Inject("strand-1", []PaneInput{{Key: "C-u"}}); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
 				t.Errorf("Inject() error = %v; want it to name %q", err, tt.wantIn)
 			}
 		})
@@ -134,7 +134,7 @@ func TestNewDetachedRunner_RefusesUnusableToldPaths(t *testing.T) {
 			if err := runner.Send("strand-1", "hi"); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
 				t.Errorf("Send() error = %v; want it to name %q", err, tt.wantIn)
 			}
-			if err := runner.Inject("strand-1", []PaneInput{{Key: "Escape"}}); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
+			if err := runner.Inject("strand-1", []PaneInput{{Key: "C-u"}}); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
 				t.Errorf("Inject() error = %v; want it to name %q", err, tt.wantIn)
 			}
 		})

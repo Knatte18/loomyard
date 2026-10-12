@@ -1022,6 +1022,7 @@ func (r *Runner) Send(guid, text string) error {
 // in-process Run handle.
 // Unlike Send/Interrupt, Inject deliberately skips the requireReadyAgentPane guard to deliver keys
 // while the provider is busy.
+// It refuses any input list holding the engine's interrupt key or a control character in a text, and names "lyx shuttle interrupt", the guarded way to send the interrupt key.
 // Empty inputs is rejected.
 func (r *Runner) Inject(guid string, inputs []PaneInput) error {
 	if r.toldErr != nil {
@@ -1029,6 +1030,9 @@ func (r *Runner) Inject(guid string, inputs []PaneInput) error {
 	}
 	if len(inputs) == 0 {
 		return fmt.Errorf("shuttle: Inject: inputs must not be empty — there is nothing to deliver")
+	}
+	if err := refuseInterruptKey(r.engine, inputs); err != nil {
+		return err
 	}
 	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)

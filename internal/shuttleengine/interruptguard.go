@@ -4,6 +4,8 @@ package shuttleengine
 import (
 	"errors"
 	"fmt"
+	"strings"
+	"unicode"
 )
 
 // ErrNoRunningTurn marks an interrupt refused because the pane shows no running turn: there is nothing to stop.
@@ -38,6 +40,36 @@ func guardedInterrupt(reed ReedOps, engine Engine, clock Clock, guid string) err
 		return fmt.Errorf("%w (strand %q)", ErrNoRunningTurn, guid)
 	}
 	return playInputs(reed, guid, engine.InterruptSequence())
+}
+
+// refuseInterruptKey fails when inputs hold a key of the engine's interrupt sequence or a text holding a control character.
+// Keys compare case-insensitively with tmux's "C-[" read as "Escape", since tmux delivers both as the ESC byte;
+// a text is typed literally, so an ESC byte in it reaches the pane as the Escape key.
+func refuseInterruptKey(engine Engine, inputs []PaneInput) error {
+	interruptKeys := map[string]bool{}
+	for _, input := range engine.InterruptSequence() {
+		if input.Key != "" {
+			interruptKeys[canonicalKeyName(input.Key)] = true
+		}
+	}
+	for index, input := range inputs {
+		if input.Key != "" && interruptKeys[canonicalKeyName(input.Key)] {
+			return fmt.Errorf("shuttle: Inject: the inputs hold the interrupt key %q, which Inject never sends; way forward: \"lyx shuttle interrupt <guid>\" sends it behind the pane guard", input.Key)
+		}
+		if control := strings.IndexFunc(input.Text, unicode.IsControl); control >= 0 {
+			return fmt.Errorf("shuttle: Inject: input %d's text holds the control character %q, which Inject never types; way forward: send a key as a Key input, and the interrupt key through \"lyx shuttle interrupt <guid>\"", index, []rune(input.Text[control:])[0])
+		}
+	}
+	return nil
+}
+
+// canonicalKeyName lowercases a tmux key name and reads "C-[" as "escape".
+func canonicalKeyName(key string) string {
+	key = strings.ToLower(key)
+	if key == "c-[" {
+		return "escape"
+	}
+	return key
 }
 
 // closePickerBeforeSend gives a verified send's pane one capture and closes an open rewind picker in it, so nothing is typed into the picker.
