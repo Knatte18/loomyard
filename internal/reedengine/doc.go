@@ -195,6 +195,7 @@
 //
 // A strand may carry a done-when list (Strand.DoneWhen, set by its spawner through AddSpec.DoneWhen), the one place reed learns a strand finished.
 // Reed only stats the paths: Resume drops from state, instead of relaunching, a non-live strand whose list is non-empty and whose every path exists, and reports the count on ResumeResult.Dropped.
+// While a live pause entry covers the pair (Geometry.PauseRecordPath and NameSlug both set), Resume relaunches nothing and names the strands it would have relaunched on ResumeResult.Held; the prime is never held.
 // A live strand, a strand with no list and a strand with a path missing are untouched or relaunched as before.
 //
 // The name is mirrored outward, never read back as truth.

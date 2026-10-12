@@ -972,7 +972,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					logger.Warn("battencli: reed resume of the task worktree failed", "slug", slug, "error", err)
 					return err
 				}
-				logger.Info("battencli: reed resume of the task worktree finished", "slug", slug, "resumed", res.Resumed, "dropped", res.Dropped)
+				logger.Info("battencli: reed resume of the task worktree finished", "slug", slug, "resumed", res.Resumed, "dropped", res.Dropped, "held", res.Held)
 				return nil
 			},
 			ChildRunLockHeld: func() (bool, error) {

@@ -100,6 +100,9 @@ func TestReedGeometry(t *testing.T) {
 			}
 
 			pause := pauseGeometry(l, tt.isPrime)
+			if got.PauseRecordPath != pause.RecordPath {
+				t.Errorf("ReedGeometry(l).PauseRecordPath = %q; want %q (the pause geometry's record path)", got.PauseRecordPath, pause.RecordPath)
+			}
 			if want := filepath.Join(fabricengine.HubScratchDir(hub), lyxdirs.PauseDirName, pauserecord.RecordFileName); pause.RecordPath != want {
 				t.Errorf("pauseGeometry(l).RecordPath = %q; want %q", pause.RecordPath, want)
 			}
