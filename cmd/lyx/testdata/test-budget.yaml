@@ -78,7 +78,7 @@ internal/preflightshed: 8
 internal/proc: 17
 internal/quarrycli: 7
 internal/reedcli: 38
-internal/reedengine: 256
+internal/reedengine: 257
 internal/reedengine/render: 12
 internal/seatengine: 17
 internal/segmentcolor: 4
@@ -106,7 +106,7 @@ internal/stencil: 4
 internal/stencilcli: 1
 internal/stencilstore: 18
 internal/summaryparser: 8
-internal/termwindow: 2
+internal/termwindow: 3
 internal/testkit: 2
 internal/testkit/envelope: 6
 internal/testkit/envkit: 4

@@ -38,6 +38,7 @@ var allowedNonHermetic = []scankit.Entry{
 	{Key: "tools/sandbox/pathresolve_guard_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)"},
 	{Key: "internal/testkit/tmuxkit/", Why: "its tests spawn the tmux binary against the kit's own sockets, never git"},
 	{Key: "internal/reedengine/attachgeometry_integration_test.go", Why: "spawns a real tmux/pty client process via exec.Command to prove the attach handover — a real non-git process, not a git spawn"},
+	{Key: "internal/termwindow/termwindow_integration_test.go", Why: "spawns bash over the window's shell line with a stub executable standing in for lyx — a real non-git process, not a git spawn"},
 }
 
 // gitSpawnTokens are the raw substrings that mark a *_test.go file as git-spawning for the Hermetic Git Test Environment Invariant.

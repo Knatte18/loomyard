@@ -24,6 +24,7 @@
 package reedengine
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"slices"
@@ -698,4 +699,59 @@ func TestAttachGeometry_OneRowTopCellEndsOneRowTallerRightAfterTheApply(t *testi
 		}
 	}
 	assertPlannedCells(t, e, st, 2, "one row taller than planned")
+}
+
+// TestAttachGeometry_ClientExitStatusOnSessionEndAndServerShutdown pins the tmux exit statuses the run window's close rule rests on:
+// a client attached to a session that is killed while the server lives on exits 0, and a client attached to a session whose server is killed exits non-zero.
+// A second session is created up front, so killing the first leaves the server running under tmux's exit-empty.
+func TestAttachGeometry_ClientExitStatusOnSessionEndAndServerShutdown(t *testing.T) {
+	e := setupAttachGeometryFixture(t)
+	const otherSession = "attach-exit-status-other"
+	if err := e.tmux.run("new-session", "-d", "-s", otherSession, "sleep 300"); err != nil {
+		t.Fatalf("new-session %s: %v", otherSession, err)
+	}
+
+	const cols, rows = 100, 30
+	endedSession := startInPTY(t, append([]string{e.cfg.Tmux}, e.AttachArgv(cols, rows)...), cols, rows)
+	waitForClientAttached(t, e, 15*time.Second)
+	otherClient := startInPTY(t, append([]string{e.cfg.Tmux}, bareAttachArgv(e.Socket(), otherSession)...), cols, rows)
+	waitUntil(t, 15*time.Second, "no tmux client ever attached to the second session", func() bool {
+		out, err := e.tmux.output("list-clients", "-t", exactSessionTarget(otherSession))
+		return err == nil && strings.TrimSpace(out) != ""
+	})
+
+	exitCodeOf := func(client *attachGeometryPTY) int {
+		t.Helper()
+		done := make(chan error, 1)
+		go func() { done <- client.cmd.Wait() }()
+		select {
+		case err := <-done:
+			var exitErr *exec.ExitError
+			switch {
+			case err == nil:
+				return 0
+			case errors.As(err, &exitErr):
+				return exitErr.ExitCode()
+			default:
+				t.Fatalf("wait for the attach client: %v", err)
+			}
+		case <-time.After(15 * time.Second):
+			t.Fatal("the attach client did not exit within 15s")
+		}
+		return -1
+	}
+
+	if err := e.tmux.run("kill-session", "-t", exactSessionTarget(e.SessionName())); err != nil {
+		t.Fatalf("kill-session: %v", err)
+	}
+	if code := exitCodeOf(endedSession); code != 0 {
+		t.Errorf("client exit status after its session was killed = %d; want 0", code)
+	}
+
+	if err := e.tmux.run("kill-server"); err != nil {
+		t.Logf("kill-server: %v", err)
+	}
+	if code := exitCodeOf(otherClient); code == 0 {
+		t.Errorf("client exit status after the server was killed = 0; want non-zero")
+	}
 }
