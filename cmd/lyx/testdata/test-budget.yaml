@@ -91,7 +91,7 @@ internal/shedrun: 23
 internal/shedtransient: 2
 internal/shedverbs: 81
 internal/shell: 12
-internal/shuttlecli: 24
+internal/shuttlecli: 25
 internal/shuttleengine: 163
 internal/shuttleengine/claudeengine: 108
 internal/standalonegeom: 7
