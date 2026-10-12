@@ -251,10 +251,10 @@ func tmuxIsolationFailures(t *testing.T, opts scankit.Options, allow *scankit.Al
 	return failures, tagged, scanned
 }
 
-// TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain fails for every package with a test file unless a TestMain compiles under each tag set and on each platform that compile any of its test files and every TestMain in the package calls tmuxkit.Main.
+// TestTmuxIsolation_EveryTestPackageRunsThroughTmuxkitMain fails for every package with a test file unless a TestMain compiles under each tag set and on each platform that compile any of its test files and every TestMain in the package calls tmuxkit.Main.
 //
 //lyx:guard
-func TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain(t *testing.T) {
+func TestTmuxIsolation_EveryTestPackageRunsThroughTmuxkitMain(t *testing.T) {
 	allow := scankit.NewAllowlist(allowedNoTmuxMain)
 	failures, tagged, scanned := tmuxIsolationFailures(t, scankit.Options{}, allow)
 	scankit.RequireFloor(t, scanned, 1, "tmux isolation scan")
@@ -265,7 +265,7 @@ func TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain(t *testing.T) {
 	}
 }
 
-//testtiming:keep proves the platform suffix parsing the TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain guard relies on to decide which test files compile
+//testtiming:keep proves the platform suffix parsing the TestTmuxIsolation_EveryTestPackageRunsThroughTmuxkitMain guard relies on to decide which test files compile
 func TestFileNamePlatform(t *testing.T) {
 	tests := []struct {
 		name, goos, goarch string
