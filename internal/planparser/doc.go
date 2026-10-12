@@ -17,6 +17,8 @@
 // package uses. No `strings.TrimSuffix(s, "#")`, no reading Glyph.Unit as a disk path, and
 // no local regex over a glyph string anywhere in this package or its callers --
 // cmd/lyx/constraintchokepoint_test.go guards this mechanically.
+// goPackageDir (targetdirs.go) is the one sanctioned adjustment beside Glyph.UnitPath:
+// it maps quarry's external-test pseudo-unit `<dir>_test` to its package directory.
 //
 // # Path ownership
 //
@@ -69,7 +71,8 @@
 // glyphref.go holds the sole
 // path->glyph call (glyph.Self) and the sole glyph->path call
 // (Glyph.UnitPath, used only by validate.go's disk-existence checks), per the
-// glyph-conversion-chokepoint Shared Decision.
+// glyph-conversion-chokepoint Shared Decision;
+// goPackageDir (targetdirs.go) stands beside Glyph.UnitPath as the external-test unit mapping.
 //
 // # The root:/// resolution rule
 //
