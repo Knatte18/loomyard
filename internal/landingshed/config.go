@@ -45,10 +45,33 @@ type Config struct {
 	Deploy string `yaml:"deploy"`
 }
 
-// LoadConfig loads and unmarshals configuration for the landing module.
+// ConfigSpec returns landing's layered-load spec.
+// Keys that gate or shape what lands on the parent branch, and the shell commands Publish and Land run, are barred from the local layer.
+func ConfigSpec() configengine.Spec {
+	return configengine.Spec{
+		Name:     "landing",
+		Template: []byte(ConfigTemplate()),
+		HubWide:  true,
+		Categories: map[string]configengine.Category{
+			"require_pr_to_base":   configengine.CategoryCrossPair,
+			"squash":               configengine.CategoryCrossPair,
+			"conflict":             configengine.CategoryNone,
+			"conflict_timeout_min": configengine.CategoryNone,
+			"describe":             configengine.CategoryNone,
+			"describe_timeout_min": configengine.CategoryNone,
+			"co_authored_by":       configengine.CategoryCrossPair,
+			"publish_verify":       configengine.CategoryExecutable,
+			"deploy":               configengine.CategoryExecutable,
+		},
+	}
+}
+
+// LoadConfig loads and unmarshals configuration for the landing module strictly through the hub-wide layer stack under dirs.
 // It validates the conflict key's model-spec grammar at load time.
-func LoadConfig(baseDir, module string) (Config, error) {
-	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
+func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
+	spec := ConfigSpec()
+	spec.Name = module
+	resolved, err := configengine.Load(dirs, spec)
 	if err != nil {
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it")

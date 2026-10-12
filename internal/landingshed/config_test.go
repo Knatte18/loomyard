@@ -6,10 +6,13 @@
 package landingshed
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
 // seedLandingConfig creates <baseDir>/_lyx/config/landing.yaml with the given contents.
@@ -32,7 +35,7 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	baseDir := t.TempDir()
 	seedLandingConfig(t, baseDir, ConfigTemplate())
 
-	cfg, err := LoadConfig(baseDir, "landing")
+	cfg, err := LoadConfig(configengine.Dirs{Board: baseDir}, "landing")
 	if err != nil {
 		t.Fatalf("LoadConfig(%q, \"landing\") = _, %v; want nil error", baseDir, err)
 	}
@@ -81,7 +84,7 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 
 			baseDir := t.TempDir()
 			seedLandingConfig(t, baseDir, strings.Replace(wellFormed, tc.valid, tc.invalid, 1))
-			_, err := LoadConfig(baseDir, "landing")
+			_, err := LoadConfig(configengine.Dirs{Board: baseDir}, "landing")
 			if err == nil {
 				t.Fatal("LoadConfig() = _, nil; want non-nil error")
 			}
@@ -90,6 +93,56 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a local conflict wins over the hub file's", func(t *testing.T) {
+		t.Parallel()
+
+		board, anchor := t.TempDir(), t.TempDir()
+		seedLandingConfig(t, board, ConfigTemplate())
+		writeLocalLandingConfig(t, anchor, "conflict: sonnet[high]\n")
+
+		cfg, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "landing")
+		if err != nil {
+			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
+		}
+		if cfg.Conflict != "sonnet[high]" {
+			t.Errorf("cfg.Conflict = %q; want %q", cfg.Conflict, "sonnet[high]")
+		}
+	})
+
+	t.Run("a local publish_verify is refused naming the local file and the key", func(t *testing.T) {
+		t.Parallel()
+
+		board, anchor := t.TempDir(), t.TempDir()
+		seedLandingConfig(t, board, ConfigTemplate())
+		localPath := writeLocalLandingConfig(t, anchor, "publish_verify: rm -rf .\n")
+
+		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "landing")
+		if !errors.Is(err, configengine.ErrInvalid) {
+			t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
+		}
+		for _, want := range []string{localPath, "publish_verify"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+			}
+		}
+	})
+}
+
+// writeLocalLandingConfig writes contents as anchor's local landing override and returns its path.
+// anchor gets an empty _lyx/config/ so the layered load sees an initialised worktree.
+func writeLocalLandingConfig(t *testing.T, anchor, contents string) string {
+	t.Helper()
+	for _, dir := range []string{configengine.ConfigDir(anchor), configengine.ScratchDir(anchor)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", dir, err)
+		}
+	}
+	localPath := configengine.LocalFile(anchor, "landing")
+	if err := os.WriteFile(localPath, []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", localPath, err)
+	}
+	return localPath
 }
 
 // TestLoadConfig_NotInitialized verifies uninitialized baseDir yields recovery hint -- an absent
@@ -100,7 +153,7 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 
 	baseDir := t.TempDir()
 
-	_, err := LoadConfig(baseDir, "landing")
+	_, err := LoadConfig(configengine.Dirs{Board: baseDir}, "landing")
 	if err == nil {
 		t.Fatal("LoadConfig() = _, nil; want non-nil error for uninitialized baseDir")
 	}
@@ -131,7 +184,7 @@ func TestLoadConfig_OptionalStringKeys(t *testing.T) {
 
 			baseDir := t.TempDir()
 			seedLandingConfig(t, baseDir, tc.contents)
-			cfg, err := LoadConfig(baseDir, "landing")
+			cfg, err := LoadConfig(configengine.Dirs{Board: baseDir}, "landing")
 			if err != nil {
 				t.Fatalf("LoadConfig() = _, %v; want nil error", err)
 			}

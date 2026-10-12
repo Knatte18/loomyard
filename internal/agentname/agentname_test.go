@@ -149,6 +149,29 @@ func TestMatches(t *testing.T) {
 	}
 }
 
+func TestTaskSlug(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "a task name yields its slug", in: "ly:task-a:loom", want: "task-a"},
+		{name: "a slug-free name yields empty", in: "ly:orch", want: ""},
+		{name: "an empty name yields empty", in: "", want: ""},
+		{name: "an unparseable name yields empty", in: "not a name", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := TaskSlug(tt.in); got != tt.want {
+				t.Errorf("TaskSlug(%q) = %q; want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestStandaloneShortname(t *testing.T) {
 	t.Parallel()
 

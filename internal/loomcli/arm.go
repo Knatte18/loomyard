@@ -260,7 +260,7 @@ func (c *loomCLI) reviewBudget() (int, map[string]int, error) {
 		return c.cfg.ReviewMaxBounces, perchMaxBounces(c.cfg), nil
 	}
 
-	cfg, err := loomengine.LoadConfig(c.location.AnchorPath(), "loom")
+	cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(c.location), "loom")
 	if err == nil {
 		return cfg.ReviewMaxBounces, perchMaxBounces(cfg), nil
 	}

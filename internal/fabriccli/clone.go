@@ -11,11 +11,14 @@ package fabriccli
 import (
 	"context"
 	"io"
+	"os"
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 )
@@ -51,7 +54,7 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 
 	// No warning is raised for a template-seeded module: no vocabulary can predate a fresh clone.
 	// The whole-repo commit below carries every file this call wrote.
-	hubWideResults, err := configsync.ReconcileHubWideAt(res.BoardDir, res.WeftBase, true)
+	hubWideResults, err := configsync.ReconcileHubWideAt(res.BoardDir, res.WeftBase, configsync.HubWideOptions{Apply: true})
 	if err != nil {
 		return fabricengine.CloneResult{}, err
 	}
@@ -83,7 +86,7 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	if err != nil {
 		return fabricengine.CloneResult{}, err
 	}
-	names, err := fabricengine.WiredNames(res.BoardDir)
+	names, err := fabricengine.WiredNames(configengine.Dirs{Anchor: res.WeftBase, Board: res.BoardDir})
 	if err != nil {
 		return fabricengine.CloneResult{}, err
 	}
@@ -100,13 +103,13 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	//
 	// ReconcileAll returns one Result per registered module, each reporting whether that module's own file was written (or, for a retired hub-wide copy, deleted).
 	// Record one KindFileWritten per Result whose Applied is true, not one entry for the call as a whole, so every changed per-worktree config file is individually covered.
-	results, err := configsync.ReconcileAll(res.WeftBase, res.BoardDir, true)
+	results, err := configsync.ReconcileAll(res.WeftBase, res.BoardDir, configsync.Options{Apply: true})
 	if err != nil {
 		return fabricengine.CloneResult{}, err
 	}
 	var relPaths []string
 	for _, r := range results {
-		if r.Applied {
+		if r.Applied && r.Layer == configengine.LayerWorktree {
 			rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(res.WeftBase, r.Module), "")
 			relPaths = append(relPaths, configengine.ConfigFileRel(r.Module))
 		}
@@ -119,7 +122,44 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 		return fabricengine.CloneResult{}, err
 	}
 
+	// A new hub has no build stamp, so the walk seeds every absent per-worktree repo default from the prime or the template, commits them on the board and pushes it.
+	// A walk failure leaves the clone intact, and the next start verb's walk seeds the defaults.
+	// The same walk migrates the prime, so it arrives with the sparse marker committed.
+	absentDefaults := absentRepoDefaults(res.BoardDir)
+	markerBefore := fileExists(configengine.SparseMarker(res.WeftBase))
+	if err := hubreconcile.Ensure(hubreconcile.Geometry{BoardDir: res.BoardDir, WorktreePath: l.WorktreePath()}, hubreconcile.Options{}); err != nil {
+		return fabricengine.CloneResult{}, err
+	}
+	for _, module := range absentDefaults {
+		if _, statErr := os.Stat(configengine.ConfigFile(res.BoardDir, module)); statErr == nil {
+			rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(res.BoardDir, module), "")
+		}
+	}
+	if marker := configengine.SparseMarker(res.WeftBase); !markerBefore && fileExists(marker) {
+		rec.Append(fabricengine.KindFileWritten, marker, "")
+	}
+
 	return res, nil
+}
+
+// fileExists reports whether path names an existing file.
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// absentRepoDefaults returns the per-worktree modules whose repo default is absent under boardDir.
+func absentRepoDefaults(boardDir string) []string {
+	var absent []string
+	for _, module := range configreg.Modules() {
+		if module.HubWide {
+			continue
+		}
+		if _, err := os.Stat(configengine.ConfigFile(boardDir, module.Name)); os.IsNotExist(err) {
+			absent = append(absent, module.Name)
+		}
+	}
+	return absent
 }
 
 // runCloneWithReset executes the clone subcommand. The hub teardown for an idempotent re-clone is no

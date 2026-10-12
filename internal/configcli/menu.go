@@ -16,9 +16,27 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 )
 
+// layersHolding returns the names of the layers that hold a file for module, joined by ", ", or "template" when none does.
+func (d configDirs) layersHolding(module configreg.Module) string {
+	var held []string
+	for _, layer := range layerNames {
+		path, applies := configengine.LayerFile(d.engineDirs(), module.Spec(), layer)
+		if !applies {
+			continue
+		}
+		if _, err := os.Stat(path); err == nil {
+			held = append(held, string(layer))
+		}
+	}
+	if len(held) == 0 {
+		return string(configengine.LayerTemplate)
+	}
+	return strings.Join(held, ", ")
+}
+
 // menu presents an interactive picker of available config modules.
-// It prints a numbered list from configreg.Names(), each marked "(configured)" or "(default)"
-// by whether its config file exists, at the board dir for a hub-wide module and at the worktree otherwise.
+// It prints a numbered list from configreg.Names().
+// Each module is marked with the layers that hold a file, as "(default, local)", or "(template)" when none does.
 // It reads one line from in and quits with 0 on 'q'.
 // Otherwise it parses the line as a 1-indexed number and routes a valid choice to editOne,
 // returning 1 on invalid input.
@@ -26,11 +44,7 @@ func menu(dirs configDirs, in io.Reader, out io.Writer, edit configengine.Editor
 	modules := configreg.Modules()
 
 	for i, mod := range modules {
-		status := "(default)"
-		if _, err := os.Stat(configengine.ConfigFile(dirs.baseFor(mod), mod.Name)); err == nil {
-			status = "(configured)"
-		}
-		fmt.Fprintf(out, "%d) %s %s\n", i+1, mod.Name, status)
+		fmt.Fprintf(out, "%d) %s (%s)\n", i+1, mod.Name, dirs.layersHolding(mod))
 	}
 
 	line, err := bufio.NewReader(in).ReadString('\n')

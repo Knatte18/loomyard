@@ -60,6 +60,8 @@ func zeroEnvField(env Env, field string) Env {
 		env.Cwd = ""
 	case "AnchorPath":
 		env.AnchorPath = ""
+	case "ConfigDirs.Anchor":
+		env.ConfigDirs.Anchor = ""
 	case "WorktreeRoot":
 		env.WorktreeRoot = ""
 	case "StatusPath":
@@ -164,14 +166,14 @@ func simpleEntryCases() []simpleEntryCase {
 			registryKey:     "LoomPreflight",
 			entry:           loomPreflightEntry,
 			buildEnv:        newTestEnv,
-			validatedFields: []string{"StatusPath", "StatusLockPath", "AnchorPath"},
+			validatedFields: []string{"StatusPath", "StatusLockPath", "ConfigDirs.Anchor"},
 			unreadField:     "Cwd",
 		},
 		{
 			registryKey:     "Batchifier",
 			entry:           batchifierEntry,
 			buildEnv:        newTestEnv,
-			validatedFields: []string{"AnchorPath"},
+			validatedFields: []string{"ConfigDirs.Anchor"},
 			unreadField:     "Cwd",
 		},
 		{
@@ -185,7 +187,7 @@ func simpleEntryCases() []simpleEntryCase {
 			registryKey:     "Webster",
 			entry:           websterEntry,
 			buildEnv:        newTestEnv,
-			validatedFields: []string{"AnchorPath", "WebsterRun", "CommitWebster", "WebsterDeps.Starter", "WebsterDeps.Stopper", "WebsterDeps.Engine", "WebsterDeps.RefMatcher"},
+			validatedFields: []string{"ConfigDirs.Anchor", "WebsterRun", "CommitWebster", "WebsterDeps.Starter", "WebsterDeps.Stopper", "WebsterDeps.Engine", "WebsterDeps.RefMatcher"},
 			unreadField:     "Cwd",
 		},
 	}
@@ -348,17 +350,17 @@ func TestFinalizeEntry_LandingRejected(t *testing.T) {
 	}
 }
 
-// TestBatchifierEntry_RelativeAnchorPath asserts a relative Env.AnchorPath fails, as the
+// TestBatchifierEntry_RelativeAnchorPath asserts a relative Env.ConfigDirs.Anchor fails, as the
 // representative case for every entry's requireAbsRoot validation.
 func TestBatchifierEntry_RelativeAnchorPath(t *testing.T) {
 	env := newTestEnv(t)
-	env.AnchorPath = "relative/path"
+	env.ConfigDirs.Anchor = "relative/path"
 	_, err := batchifierEntry("row-name", Config{}, env)
 	if err == nil {
-		t.Fatalf("batchifierEntry() error = nil; want non-nil for a relative Env.AnchorPath")
+		t.Fatalf("batchifierEntry() error = nil; want non-nil for a relative Env.ConfigDirs.Anchor")
 	}
-	if !strings.Contains(err.Error(), "AnchorPath") {
-		t.Errorf("batchifierEntry() error = %v; want it to name field %q", err, "AnchorPath")
+	if !strings.Contains(err.Error(), "ConfigDirs.Anchor") {
+		t.Errorf("batchifierEntry() error = %v; want it to name field %q", err, "ConfigDirs.Anchor")
 	}
 }
 

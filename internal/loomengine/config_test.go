@@ -8,12 +8,14 @@
 package loomengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -372,7 +374,7 @@ review_timeout_min: 240
 			want := templateConfig()
 			tt.mutate(&want)
 
-			got, err := LoadConfig(baseDir, "loom")
+			got, err := LoadConfig(configengine.Dirs{Anchor: baseDir}, "loom")
 			if err != nil {
 				t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
 			}
@@ -381,6 +383,112 @@ review_timeout_min: 240
 			}
 		})
 	}
+
+	t.Run("hub stack", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name     string
+			board    string
+			worktree string
+			local    string
+			mutate   func(*Config)
+		}{
+			{
+				name:   "a local value wins over the repo default",
+				board:  "review_max_bounces: 3\n",
+				local:  "review_max_bounces: 2\n",
+				mutate: func(c *Config) { c.ReviewMaxBounces = 2 },
+			},
+			{
+				name:     "a worktree list replaces the default's whole",
+				board:    "review: [\"opus[medium]\"]\n",
+				worktree: "review: [\"sonnet[low]\", \"sonnet[high]\"]\n",
+				mutate:   func(c *Config) { c.Review = ModelSpecList{"sonnet[low]", "sonnet[high]"} },
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				board, anchor := t.TempDir(), t.TempDir()
+				seedLoomConfig(t, board, loomTemplateWith(t, tt.board))
+				if tt.worktree != "" {
+					seedLoomConfig(t, anchor, tt.worktree)
+				}
+				if tt.local != "" {
+					writeLocalLoomConfig(t, anchor, tt.local)
+				}
+
+				want := templateConfig()
+				tt.mutate(&want)
+				got, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom")
+				if err != nil {
+					t.Fatalf("LoadConfig() = _, %v; want nil error", err)
+				}
+				if !reflect.DeepEqual(got, want) {
+					t.Errorf("LoadConfig() = %+v; want %+v", got, want)
+				}
+			})
+		}
+
+		t.Run("an absent repo default errors naming its path", func(t *testing.T) {
+			t.Parallel()
+			board, anchor := t.TempDir(), t.TempDir()
+			seedLoomConfig(t, anchor, ConfigTemplate())
+			if err := os.MkdirAll(configengine.ConfigDir(board), 0o755); err != nil {
+				t.Fatalf("MkdirAll(%q) = %v; want nil", configengine.ConfigDir(board), err)
+			}
+
+			_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom")
+			if err == nil {
+				t.Fatal("LoadConfig() error = nil; want a refusal for the absent repo default")
+			}
+			if want := configengine.ConfigFile(board, "loom"); !strings.Contains(err.Error(), want) {
+				t.Errorf("LoadConfig() error = %q; want it to name %q", err.Error(), want)
+			}
+		})
+	})
+}
+
+// writeLocalLoomConfig writes contents as anchor's local loom override and returns its path.
+// anchor gets an empty _lyx/config/ so the layered load sees an initialised worktree.
+func writeLocalLoomConfig(t *testing.T, anchor, contents string) string {
+	t.Helper()
+	for _, dir := range []string{configengine.ConfigDir(anchor), configengine.ScratchDir(anchor)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", dir, err)
+		}
+	}
+	localPath := configengine.LocalFile(anchor, "loom")
+	if err := os.WriteFile(localPath, []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", localPath, err)
+	}
+	return localPath
+}
+
+// loomTemplateWith returns the shipped template text with each top-level line of overrides replacing the template's line for the same key.
+func loomTemplateWith(t *testing.T, overrides string) string {
+	t.Helper()
+	replacements := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(overrides), "\n") {
+		if line == "" {
+			continue
+		}
+		key, _, _ := strings.Cut(line, ":")
+		replacements[key] = line
+	}
+	var b strings.Builder
+	for _, line := range strings.Split(ConfigTemplate(), "\n") {
+		key, _, _ := strings.Cut(line, ":")
+		if replacement, ok := replacements[key]; ok {
+			line = replacement
+			delete(replacements, key)
+		}
+		b.WriteString(line + "\n")
+	}
+	if len(replacements) != 0 {
+		t.Fatalf("overrides %v are not keys of ConfigTemplate(); the fixture would silently test nothing", replacements)
+	}
+	return b.String()
 }
 
 // TestLoadConfig_Refuses verifies each invalid loom.yaml is refused at load time, naming the offending key:
@@ -410,7 +518,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed later webster_fix entry", "webster_fix", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},
 		{"unknown discussion_fan", "discussion_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "standard", "to empty to run the segment solo"}, ""},
 		{"unknown plan_fan", "plan_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "full", "to empty to run the segment solo"}, ""},
-		{"set discussion_fan with a malformed burler.yaml", "discussion_fan", "standard", []string{"burler: parse ", "fix burler.yaml, or set the key to empty"}, malformedBurlerYAML},
+		{"set discussion_fan with a malformed burler.yaml", "discussion_fan", "standard", []string{"burler: config file ", "parse doc YAML", "fix burler.yaml, or set the key to empty"}, malformedBurlerYAML},
 		{"malformed fan_review spec", "fan_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"empty fan_review list", "fan_review", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
 		{"unknown discussion_producer", "discussion_producer", "sideways", []string{`"single"`, `"seats"`, `"twill"`}, ""},
@@ -459,7 +567,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 				seedBurlerConfig(t, dir, tt.burler)
 			}
 
-			_, err := LoadConfig(dir, "loom")
+			_, err := LoadConfig(configengine.Dirs{Anchor: dir}, "loom")
 			if err == nil {
 				t.Fatalf("LoadConfig() error = nil; want a refusal for %s: %s", tt.key, tt.value)
 			}
@@ -476,7 +584,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		dir := t.TempDir()
 		writeLoomConfigWithKey(t, dir, "discussion_advisors", "\n  model: opus")
 
-		_, err := LoadConfig(dir, "loom")
+		_, err := LoadConfig(configengine.Dirs{Anchor: dir}, "loom")
 		if err == nil || strings.Contains(err.Error(), "entry") {
 			t.Errorf("LoadConfig() error = %v; want a refusal that names no entry", err)
 		}
@@ -491,7 +599,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 			t.Fatalf("WriteFile(%q) = %v; want nil", modelsPath, err)
 		}
 
-		_, err := LoadConfig(dir, "loom")
+		_, err := LoadConfig(configengine.Dirs{Anchor: dir}, "loom")
 		if err == nil {
 			t.Fatal("LoadConfig() error = nil; want the models.yaml refusal for discussion_advisors")
 		}
@@ -502,8 +610,25 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		}
 
 		writeLoomConfigWithKey(t, dir, "discussion_advisors", "[]")
-		if _, err := LoadConfig(dir, "loom"); err != nil {
+		if _, err := LoadConfig(configengine.Dirs{Anchor: dir}, "loom"); err != nil {
 			t.Errorf("LoadConfig() with no advisors and a malformed models.yaml = %v; want nil", err)
+		}
+	})
+
+	t.Run("a local parent_review_wait_min is refused naming the local file and the key", func(t *testing.T) {
+		t.Parallel()
+		board, anchor := t.TempDir(), t.TempDir()
+		seedLoomConfig(t, board, ConfigTemplate())
+		localPath := writeLocalLoomConfig(t, anchor, "parent_review_wait_min: 5\n")
+
+		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom")
+		if !errors.Is(err, configengine.ErrInvalid) {
+			t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
+		}
+		for _, want := range []string{localPath, "parent_review_wait_min"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+			}
 		}
 	})
 }
@@ -513,7 +638,7 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 	t.Parallel()
 	baseDir := t.TempDir()
 
-	_, err := LoadConfig(baseDir, "loom")
+	_, err := LoadConfig(configengine.Dirs{Anchor: baseDir}, "loom")
 	if err == nil {
 		t.Fatal("LoadConfig() = _, nil; want non-nil error for uninitialized baseDir")
 	}

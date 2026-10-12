@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/preflightshed"
@@ -60,7 +61,7 @@ func frictionReflectProducerType() reflect.Type {
 
 var wantProducerTable = []wantProducerRow{
 	{loomshed.NamePreflight, "Preflight", reflect.TypeOf(preflightshed.NewPreflight("", ""))},
-	{loomshed.NameLoomPreflight, "LoomPreflight", reflect.TypeOf(loomshed.NewLoomPreflight("", "", "", ""))},
+	{loomshed.NameLoomPreflight, "LoomPreflight", reflect.TypeOf(loomshed.NewLoomPreflight("", "", "", configengine.Dirs{}))},
 	{loomshed.NameDiscussionWrite, "DiscussionWrite", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NameDiscussionBouncer, "Bouncer", bouncerType},
 	{loomshed.NameDiscussionBurlerReview, "BurlerReview", burlerReviewType},
@@ -69,8 +70,8 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NamePlanBouncer, "Bouncer", bouncerType},
 	{loomshed.NamePlanBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NamePlanBurlerFix, "BurlerFix", burlerFixType},
-	{loomshed.NameBatchifier, "Batchifier", reflect.TypeOf(loomshed.NewBatchifier("", ""))},
-	{loomshed.NameWebster, "Webster", reflect.TypeOf(loomshed.NewWebsterProducer("", "", nil, websterengine.RunDeps{}, nil))},
+	{loomshed.NameBatchifier, "Batchifier", reflect.TypeOf(loomshed.NewBatchifier("", configengine.Dirs{}))},
+	{loomshed.NameWebster, "Webster", reflect.TypeOf(loomshed.NewWebsterProducer("", configengine.Dirs{}, nil, websterengine.RunDeps{}, nil))},
 	{loomshed.NameWebsterBouncer, "Bouncer", bouncerType},
 	{loomshed.NameWebsterBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NameWebsterBurlerFix, "BurlerFix", burlerFixType},

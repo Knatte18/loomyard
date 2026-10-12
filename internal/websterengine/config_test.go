@@ -186,7 +186,7 @@ func TestLoadConfig(t *testing.T) {
 				seedConfig(t, baseDir, "webster", tt.body)
 			}
 
-			cfg, err := websterengine.LoadConfig(baseDir, "webster")
+			cfg, err := websterengine.LoadConfig(configengine.Dirs{Anchor: baseDir}, "webster")
 			if tt.wantErrKey != "" {
 				if err == nil {
 					t.Fatal("LoadConfig() = nil error; want an error naming the offending key")
@@ -207,4 +207,23 @@ func TestLoadConfig(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a repo default resolves beneath a worktree file lacking the key", func(t *testing.T) {
+		t.Parallel()
+
+		board, anchor := t.TempDir(), t.TempDir()
+		seedConfig(t, board, "webster", strings.Replace(websterengine.ConfigTemplate(), "self_fix_cap: 2", "self_fix_cap: 7", 1))
+		seedConfig(t, anchor, "webster", "master_timeout_min: 90\n")
+
+		cfg, err := websterengine.LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "webster")
+		if err != nil {
+			t.Fatalf("LoadConfig() error = %v; want nil", err)
+		}
+		if cfg.SelfFixCap != 7 {
+			t.Errorf("SelfFixCap = %d; want 7 (repo default)", cfg.SelfFixCap)
+		}
+		if cfg.MasterTimeoutMin != 90 {
+			t.Errorf("MasterTimeoutMin = %d; want 90 (worktree file)", cfg.MasterTimeoutMin)
+		}
+	})
 }

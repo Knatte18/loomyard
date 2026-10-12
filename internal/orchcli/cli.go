@@ -123,15 +123,15 @@ Every verb runs from the hub's prime worktree only.`,
 				}
 			}
 
-			orchCfg, err := orchengine.LoadConfig(location.AnchorPath(), "orch")
+			orchCfg, err := orchengine.LoadConfig(fabricengine.ConfigDirs(location), "orch")
 			if err != nil {
 				return fail(err)
 			}
-			shuttleCfg, err := shuttleengine.LoadConfig(location.AnchorPath(), "shuttle")
+			shuttleCfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(location), "shuttle")
 			if err != nil {
 				return fail(err)
 			}
-			reedCfg, err := reedengine.LoadConfig(location.AnchorPath(), "reed")
+			reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
 			if err != nil {
 				return fail(err)
 			}

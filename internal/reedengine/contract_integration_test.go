@@ -69,7 +69,7 @@ func TestMultiplexerContract(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
 
-	cfg, err := LoadConfig(tmpDir, "reed")
+	cfg, err := LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
@@ -391,7 +391,7 @@ func TestExactSessionTargetsNeverPrefixMatchSiblings(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
 
-	cfg, err := LoadConfig(tmpDir, "reed")
+	cfg, err := LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
@@ -467,7 +467,7 @@ func TestDisplayMessageDoesNotErrorForAnAbsentSession(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
 
-	cfg, err := LoadConfig(tmpDir, "reed")
+	cfg, err := LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
@@ -533,7 +533,7 @@ func TestSessionNameRewriteIsSilentAndExactTargetsMissIt(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
 
-	cfg, err := LoadConfig(tmpDir, "reed")
+	cfg, err := LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
@@ -610,7 +610,7 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
 
-	cfg, err := LoadConfig(tmpDir, "reed")
+	cfg, err := LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
@@ -737,7 +737,7 @@ func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
 
-	cfg, err := LoadConfig(tmpDir, "reed")
+	cfg, err := LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
@@ -893,7 +893,7 @@ func TestSelvageNeverGetsZeroHeightLayoutCell(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
 
-	cfg, err := LoadConfig(tmpDir, "reed")
+	cfg, err := LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}

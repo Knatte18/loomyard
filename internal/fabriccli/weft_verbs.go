@@ -110,7 +110,7 @@ func addWeftVerbs(cmd *cobra.Command) {
 		// names only whatever optional directory an operator has added, so a raw-Dirs()
 		// sync would silently stop syncing _lyx entirely. The routing set can never name
 		// .lyx either, since it excludes structuralNeverCommittedDirs by construction.
-		routingNames, err := fabricengine.PathspecNames(fabricengine.BoardDir(l.HubPath))
+		routingNames, err := fabricengine.PathspecNames(fabricengine.ConfigDirs(l))
 		if err != nil {
 			output.Err(out, err.Error())
 			clihelp.Abort(ctx, 1)

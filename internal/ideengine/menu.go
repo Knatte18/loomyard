@@ -28,7 +28,7 @@ import (
 // or nil on success.
 func Menu(l *lyxcwd.Location, in io.Reader, out io.Writer) error {
 	boardDir := fabricengine.BoardDir(l.HubPath)
-	cfg, err := boardengine.LoadConfig(boardDir, "board")
+	cfg, err := boardengine.LoadConfig(fabricengine.ConfigDirs(l), "board")
 	if err != nil {
 		return fmt.Errorf("load board config: %w", err)
 	}

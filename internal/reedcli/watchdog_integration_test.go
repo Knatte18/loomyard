@@ -22,6 +22,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -50,7 +51,7 @@ func bootWatchdogEngine(t *testing.T, worktreeRoot string) *reedengine.Engine {
 	if err != nil {
 		t.Fatalf("ResolveWorktree(%s): %v", worktreeRoot, err)
 	}
-	cfg, err := reedengine.LoadConfig(location.AnchorPath(), "reed")
+	cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: location.AnchorPath()}, "reed")
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
@@ -142,7 +143,7 @@ func TestWatchdogDaemon(t *testing.T) {
 	socket := reedengine.ServerName(h.Path)
 	lockPath := filepath.Join(fabricengine.HubScratchDir(h.Path), watchdogLockFileName)
 
-	cfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
+	cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: h.Location.AnchorPath()}, "reed")
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
@@ -420,7 +421,7 @@ func TestWatchdogDaemon(t *testing.T) {
 			t.Fatalf("ResolveWorktree: %v", err)
 		}
 		// enterSession loads its own config straight off disk, so the flip must actually be seeded into the fixture's reed.yaml — the whole resolved config, every key present, since a partial override fails LoadConfig's strictness check.
-		offCfg, err := reedengine.LoadConfig(location.AnchorPath(), "reed")
+		offCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: location.AnchorPath()}, "reed")
 		if err != nil {
 			t.Fatalf("LoadConfig: %v", err)
 		}
@@ -430,7 +431,7 @@ func TestWatchdogDaemon(t *testing.T) {
 			t.Fatalf("marshal flipped config: %v", err)
 		}
 		hubforge.SeedConfig(t, h, map[string]string{"reed": string(seeded)})
-		reread, err := reedengine.LoadConfig(location.AnchorPath(), "reed")
+		reread, err := reedengine.LoadConfig(configengine.Dirs{Anchor: location.AnchorPath()}, "reed")
 		if err != nil {
 			t.Fatalf("LoadConfig after seeding: %v", err)
 		}

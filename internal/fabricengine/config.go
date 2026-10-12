@@ -28,10 +28,24 @@ func (c Config) Dirs() []string {
 	return strings.Fields(c.Pathspec)
 }
 
-// LoadConfig loads and unmarshals fabric configuration from baseDir, returning an error if not
+// ConfigSpec returns fabric's layered-load spec.
+// Both keys shape a pair at creation and are the one repo-wide fact every pair converges to, so neither may be set in the local layer.
+func ConfigSpec() configengine.Spec {
+	return configengine.Spec{
+		Name:     "fabric",
+		Template: []byte(ConfigTemplate()),
+		HubWide:  true,
+		Categories: map[string]configengine.Category{
+			"branch_prefix": configengine.CategoryCrossPair,
+			"pathspec":      configengine.CategoryCrossPair,
+		},
+	}
+}
+
+// LoadConfig loads and unmarshals fabric configuration strictly through the hub-wide layer stack under dirs, returning an error if not
 // initialized (no _lyx/ directory).
-func LoadConfig(baseDir string) (Config, error) {
-	resolved, err := configengine.Load(baseDir, "fabric", []byte(ConfigTemplate()))
+func LoadConfig(dirs configengine.Dirs) (Config, error) {
+	resolved, err := configengine.Load(dirs, ConfigSpec())
 	if err != nil {
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it")

@@ -6,6 +6,7 @@ package configengine_test
 
 import (
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -30,6 +31,16 @@ func TestSet(t *testing.T) {
 		wantErr       string
 		wantPreserved []string
 		contains      []string
+		// layer is the layer written; empty means the worktree layer.
+		layer configengine.Layer
+		// board tells the call a board dir, which makes the worktree layer sparse.
+		board bool
+		// categories classify the template for a local write.
+		categories map[string]configengine.Category
+		// localExisting is the local file before the call; empty means it is absent.
+		localExisting string
+		// wantExact is the written file's whole content; empty skips the check.
+		wantExact string
 	}{
 		{
 			name:     "missing file is scaffolded then set",
@@ -97,26 +108,93 @@ func TestSet(t *testing.T) {
 			openMaps: []string{"labels"},
 			wantErr:  "map of name to description",
 		},
+		{
+			name:      "worktree file under a board is sparse and holds only the key set",
+			state:     baseLyx,
+			template:  "key1: value1\nkey2: value2\n",
+			pairs:     []yamlengine.KV{{Key: "key1", Value: "set1"}},
+			board:     true,
+			wantExact: "key1: set1\n",
+		},
+		{
+			name:      "sparse worktree file keeps its own keys beside the key set",
+			state:     baseWithFile,
+			existing:  "key2: mine\n",
+			template:  "key1: value1\nkey2: value2\n",
+			pairs:     []yamlengine.KV{{Key: "key1", Value: "set1"}},
+			board:     true,
+			wantExact: "key2: mine\nkey1: set1\n",
+		},
+		{
+			name:       "local write of an open key creates the local file",
+			state:      baseLyx,
+			template:   "name: x\nrun: y\n",
+			pairs:      []yamlengine.KV{{Key: "name", Value: "z"}},
+			layer:      configengine.LayerLocal,
+			categories: map[string]configengine.Category{"run": configengine.CategoryExecutable},
+			wantExact:  "name: z\n",
+		},
+		{
+			name:       "refused local write creates no file",
+			state:      baseLyx,
+			template:   "name: x\nrun: y\n",
+			pairs:      []yamlengine.KV{{Key: "run", Value: "evil"}},
+			layer:      configengine.LayerLocal,
+			categories: map[string]configengine.Category{"run": configengine.CategoryExecutable},
+			wantErr:    "run",
+		},
+		{
+			name:          "refused local write leaves the previous local file byte for byte",
+			state:         baseLyx,
+			template:      "name: x\nrun: y\n",
+			pairs:         []yamlengine.KV{{Key: "run", Value: "evil"}},
+			layer:         configengine.LayerLocal,
+			categories:    map[string]configengine.Category{"run": configengine.CategoryExecutable},
+			localExisting: "name: mine\n",
+			wantErr:       "run",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			baseDir, path := newBase(t, tt.state, "testmod", tt.existing)
+			dirs := configengine.Dirs{Anchor: baseDir}
+			if tt.board {
+				dirs.Board = t.TempDir()
+			}
+			layer := tt.layer
+			if layer == "" {
+				layer = configengine.LayerWorktree
+			}
+			previous, scaffolded := tt.existing, tt.state == baseLyx
+			if layer == configengine.LayerLocal {
+				path = configengine.LocalFile(baseDir, "testmod")
+				previous, scaffolded = tt.localExisting, tt.localExisting == ""
+				if tt.localExisting != "" {
+					if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+						t.Fatalf("mkdir: %v", err)
+					}
+					if err := os.WriteFile(path, []byte(tt.localExisting), 0o644); err != nil {
+						t.Fatalf("write local file: %v", err)
+					}
+				}
+			}
+			spec := configengine.Spec{Name: "testmod", Template: []byte(tt.template), OpenMaps: tt.openMaps, Categories: tt.categories}
 
-			preserved, err := configengine.Set(baseDir, "testmod", tt.template, tt.pairs, tt.openMaps...)
+			preserved, err := configengine.Set(dirs, spec, layer, tt.pairs)
 
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Set() = %v; want an error containing %q", err, tt.wantErr)
 				}
-				if tt.state == baseLyx {
+				if scaffolded {
 					if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
 						t.Errorf("config file still exists after the refusal; want the scaffold removed")
 					}
 					return
 				}
-				assertFileUnchanged(t, path, tt.existing)
+				assertFileUnchanged(t, path, previous)
 				return
 			}
 			if err != nil {
@@ -133,6 +211,9 @@ func TestSet(t *testing.T) {
 				if !strings.Contains(string(data), want) {
 					t.Errorf("Set() file = %q; want it to contain %q", data, want)
 				}
+			}
+			if tt.wantExact != "" && string(data) != tt.wantExact {
+				t.Errorf("Set() file = %q; want exactly %q", data, tt.wantExact)
 			}
 		})
 	}
