@@ -126,6 +126,9 @@
 // a record already terminal keeps its outcome, and one still reading running whose output files all exist keeps running, so a stop never turns finished work into a stopped record.
 // The record is written first: a failed write returns its error with the strand untouched, and a failed removal leaves the terminal record over a live strand, which Attach reads as respawn-eligible and stops as superseded.
 // A guid with no run record is stopped by removing its strand alone.
+// Runner.SetStepTie tells a runner the shed step its process runs (StepTie: the steps directory and the step's trace id), which every run it starts records in run.json as `step`; a runner never told one writes no step.
+// Runner.StopStepRuns stops, through the same record-then-remove step, every run under the runner's run-directory root that still reads running, has a live strand and records the given step.
+// A live running run with no step is listed under StepStopReport.Untied and left alone, a run of another step is left alone, and a stop that fails is listed under Failed while the stop goes on.
 // Attach's removal of a superseded run's strand goes through the same record-then-remove step.
 // A Wait on a stopped handle finalizes with the stop mark and records "stopped" unless the files show the run done.
 // A Wait in another process may overwrite "stopped" with its own terminal outcome, and either answer is terminal.

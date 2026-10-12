@@ -56,6 +56,8 @@ type Runner struct {
 	notifier func(line string) error
 	// pause is the pause geometry the runner was told, the zero value when it was told none and reads no record.
 	pause pauserecord.Geometry
+	// step is the shed step the runner's process runs, nil when it was told none; start copies it into each run's record.
+	step *StepTie
 	// holdsMu guards holds.
 	holdsMu sync.Mutex
 	// holds keeps one turn-start hold per strand guid, so a caller probing the same strand tick after tick keeps one hold across them.
@@ -566,6 +568,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		PID:          os.Getpid(),
 
 		RecordsSessionStarts: launch.RecordsSessionStarts,
+		Step:                 r.step,
 	}
 	if err := saveRunState(runDir, state); err != nil {
 		// The strand registered and its pane is already launching, but

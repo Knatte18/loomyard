@@ -121,6 +121,8 @@ type RunState struct {
 	// so a crash between the write and the call loses that one notice and never repeats it.
 	// It is kept apart from NotifiedOffset so a held-turn-end notice and a dialog notice never suppress each other.
 	DialogNotifiedOffset int64 `json:"dialogNotifiedOffset,omitempty"`
+	// Step is the shed step that started the run, nil for a run whose runner was told none.
+	Step *StepTie `json:"step,omitempty"`
 	// APIContinued is true while the turn an automatic continue line resumed has not ended on a non-API-error turn end.
 	// Wait persists it before typing the line and clears it at the next held turn end that is not an API error.
 	// One turn thus gets at most one continue, and a reattached Wait never sends twice.

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -188,6 +190,79 @@ func TestStopStrand_GuidWithNoRunRecordIsRemovedByStrandAlone(t *testing.T) {
 	}
 	if len(fake.RemoveStrandCalls) != 1 || fake.RemoveStrandCalls[0].GUID != "strand-9" {
 		t.Errorf("RemoveStrand calls = %v; want the one removal of strand-9", fake.RemoveStrandCalls)
+	}
+}
+
+// TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns covers the step form over one run-directory root:
+// only a live running run tied to the step is stopped, an untied one is listed and left alone, and a failed stop is reported and skipped.
+func TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns(t *testing.T) {
+	t.Parallel()
+
+	tie := StepTie{StepsDir: "/steps", TraceID: "trace-a"}
+	otherTie := StepTie{StepsDir: "/steps", TraceID: "trace-b"}
+	strands := []reedengine.StrandStatus{
+		{GUID: "guid-tied", PaneID: "%1", Live: true},
+		{GUID: "guid-other", PaneID: "%2", Live: true},
+		{GUID: "guid-untied", PaneID: "%3", Live: true},
+		{GUID: "guid-terminal", PaneID: "%4", Live: true},
+		{GUID: "guid-failing", PaneID: "%5", Live: true},
+	}
+	fake := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: strands}}}
+	fx := newFixture(t, fake, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+	seed := func(id string, record RunState) string {
+		t.Helper()
+		runDir := filepath.Join(fx.RunRoot, id)
+		if err := os.MkdirAll(runDir, 0o755); err != nil {
+			t.Fatalf("mkdir run dir: %v", err)
+		}
+		record.RunID = id
+		// A run with no output file reads finished, which a stop never turns into a stopped record.
+		record.OutputFiles = []string{filepath.Join(fx.RunRoot, "never-written.md")}
+		if err := saveRunState(runDir, record); err != nil {
+			t.Fatalf("saveRunState: %v", err)
+		}
+		return runDir
+	}
+	dirs := map[string]string{
+		"tied":     seed("run-1", RunState{StrandGUID: "guid-tied", StrandName: "name-tied", Outcome: runOutcomeRunning, Step: &tie}),
+		"other":    seed("run-2", RunState{StrandGUID: "guid-other", StrandName: "name-other", Outcome: runOutcomeRunning, Step: &otherTie}),
+		"untied":   seed("run-3", RunState{StrandGUID: "guid-untied", StrandName: "name-untied", Outcome: runOutcomeRunning}),
+		"terminal": seed("run-4", RunState{StrandGUID: "guid-terminal", StrandName: "name-terminal", Outcome: "died", Step: &tie}),
+	}
+
+	report, err := fx.Runner.StopStepRuns(tie)
+	if err != nil {
+		t.Fatalf("StopStepRuns() error = %v", err)
+	}
+	if !slices.Equal(report.Stopped, []string{"name-tied"}) || !slices.Equal(report.Untied, []string{"name-untied"}) || len(report.Failed) != 0 {
+		t.Errorf("report = %+v; want exactly the tied run stopped and the untied one listed", report)
+	}
+	if len(fake.RemoveStrandCalls) != 1 || fake.RemoveStrandCalls[0].GUID != "guid-tied" {
+		t.Errorf("RemoveStrand calls = %v; want the one removal of guid-tied", fake.RemoveStrandCalls)
+	}
+	for name, wantOutcome := range map[string]string{"tied": runOutcomeStopped, "other": runOutcomeRunning, "untied": runOutcomeRunning, "terminal": "died"} {
+		record, _, err := loadRunState(dirs[name])
+		if err != nil {
+			t.Fatalf("loadRunState %s: %v", name, err)
+		}
+		if record.Outcome != wantOutcome {
+			t.Errorf("%s run outcome = %q; want %q", name, record.Outcome, wantOutcome)
+		}
+	}
+
+	seed("run-5", RunState{StrandGUID: "guid-failing", Outcome: runOutcomeRunning, Step: &tie})
+	fake.RemoveStrandErr = errors.New("reed down")
+	report, err = fx.Runner.StopStepRuns(tie)
+	if err != nil {
+		t.Fatalf("StopStepRuns() with a failing removal error = %v; want the failure in the report", err)
+	}
+	if len(report.Stopped) != 0 || len(report.Failed) != 1 {
+		t.Errorf("report = %+v; want the one tied running run listed as failed, none stopped", report)
+	}
+	for _, failure := range report.Failed {
+		if failure.Strand == "" || !strings.Contains(failure.Error, "reed down") {
+			t.Errorf("failure = %+v; want a strand name and the removal error text", failure)
+		}
 	}
 }
 

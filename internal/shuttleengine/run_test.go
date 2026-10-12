@@ -302,6 +302,35 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 		}
 	})
 
+	// A runner told no step tie writes no step key, and one told a tie records it.
+	t.Run("persists the told step tie only", func(t *testing.T) {
+		data, err := os.ReadFile(filepath.Join(run.RunDir(), runStateFileName))
+		if err != nil {
+			t.Fatalf("read run.json: %v", err)
+		}
+		if strings.Contains(string(data), `"step"`) {
+			t.Errorf("run.json of a runner told no step carries a step key: %s", data)
+		}
+
+		tiedReed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-2"}}
+		tiedEngine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", SessionID: "session-2"}}
+		tiedFixture := newFixture(t, tiedReed, tiedEngine, withConfig(fastConfig))
+		readyStart(tiedReed, tiedEngine)
+		tie := StepTie{StepsDir: filepath.Join(tiedFixture.Worktree, "steps"), TraceID: "trace-1"}
+		tiedFixture.Runner.SetStepTie(tie)
+		tiedRun, err := tiedFixture.Runner.Start(Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Role: "reviewer"})
+		if err != nil {
+			t.Fatalf("Start() with a step tie error: %v", err)
+		}
+		record, found, err := loadRunState(tiedRun.RunDir())
+		if err != nil || !found {
+			t.Fatalf("loadRunState: found=%v err=%v", found, err)
+		}
+		if record.Step == nil || *record.Step != tie {
+			t.Errorf("persisted step = %+v, want %+v", record.Step, tie)
+		}
+	})
+
 	// RunDir() names the one directory holding prompt.md, settings.json and the events file, for a
 	// caller that starts a run and never Waits on it.
 	t.Run("RunDir names the directory Start created", func(t *testing.T) {
