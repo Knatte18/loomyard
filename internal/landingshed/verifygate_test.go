@@ -7,11 +7,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
@@ -192,6 +194,8 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 		command string
 		site    string
 		result  verifytree.Result
+		// logBody, when set, is written to a temp file whose path becomes the result's Log.
+		logBody string
 		// wantReasonExact, when set, is the whole reason for the log path the result names.
 		wantReasonExact func(logPath string) string
 		wantReasonHas   []string
@@ -207,6 +211,12 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 				return `verify failed after merging parent branch "main" (exit code 3); output: ` + logPath +
 					`; fix forward on the task branch, then resume`
 			},
+		},
+		{
+			name: "failed after a watchdog quit names the window and busy_quit_sec", command: "false", site: "Publish",
+			result:        verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1},
+			logBody:       "ok  \texample.com/mod/b\t0.1s\n" + gateslot.WatchdogLine("/tmp/x/a.test", 42, 2*time.Minute) + "\nSIGQUIT: quit\n",
+			wantReasonHas: []string{"exit code 1", "2m0s", "busy_quit_sec", `"lyx config gate" from the prime`},
 		},
 		{
 			name: "could not start", command: "true", site: "Publish",
@@ -232,8 +242,15 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
+			result := tc.result
+			if tc.logBody != "" {
+				result.Log = filepath.Join(t.TempDir(), "verify.log")
+				if err := os.WriteFile(result.Log, []byte(tc.logBody), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
 			f := newGateFixture(t, tc.command, nil)
-			f.fake.result = tc.result
+			f.fake.result = result
 			reason, err := f.gate.check(context.Background(), tc.site, "main")
 
 			if f.fake.verifyCalls != 1 || f.fake.command != tc.command || f.fake.paths != f.paths || f.fake.site != (verifytree.Site{Label: tc.site}) {
@@ -249,7 +266,7 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if tc.wantReasonExact != nil {
-				if want := tc.wantReasonExact(tc.result.Log); reason != want {
+				if want := tc.wantReasonExact(result.Log); reason != want {
 					t.Fatalf("reason = %q, want %q", reason, want)
 				}
 				return
@@ -262,8 +279,8 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 					t.Errorf("reason %q lacks %q", reason, want)
 				}
 			}
-			if tc.result.Status == verifytree.StatusFailed && tc.wantReasonHas != nil && !strings.Contains(reason, tc.result.Log) {
-				t.Errorf("reason %q lacks the log path %q", reason, tc.result.Log)
+			if result.Status == verifytree.StatusFailed && tc.wantReasonHas != nil && !strings.Contains(reason, result.Log) {
+				t.Errorf("reason %q lacks the log path %q", reason, result.Log)
 			}
 		})
 	}
