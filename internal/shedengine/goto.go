@@ -58,7 +58,7 @@ func Goto(req GotoRequest) (Status, error) {
 		return Status{}, fmt.Errorf("shedengine: read status file %q: %w", req.StatusPath, err)
 	}
 	if !found {
-		return Status{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one; %s", req.StatusPath, missingStatusClause(req.MissingStatusWayForward))
+		return Status{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one; %s", req.StatusPath, MissingStatusClause(req.MissingStatusWayForward))
 	}
 	if !st.State.valid() {
 		return Status{}, fmt.Errorf("shedengine: status file %q carries an invalid state %q", req.StatusPath, st.State)
@@ -170,7 +170,7 @@ func Relaunch(req RelaunchRequest) (Status, error) {
 	var written Status
 	err = state.UpdateJSON(req.StatusPath, req.StatusLockPath, func(cur Status, found bool) (Status, error) {
 		if !found {
-			return Status{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one; %s", req.StatusPath, missingStatusClause(req.MissingStatusWayForward))
+			return Status{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one; %s", req.StatusPath, MissingStatusClause(req.MissingStatusWayForward))
 		}
 		if !cur.State.valid() {
 			return Status{}, fmt.Errorf("shedengine: status file %q carries an invalid state %q", req.StatusPath, cur.State)
