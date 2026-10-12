@@ -109,6 +109,19 @@ When the reviewer sees no admissible fix, it still reports the defect and names 
 A finding's `fix` key is a proposal: the fixer may apply any other fix the checks admit, and when none exists it defers the finding with the constraining check as the reason.
 The rule narrows only which fix shapes a reviewer proposes; no defect becomes unreportable.
 
+Before writing a finding whose `fix` adds, drops, moves or pairs targets, or changes a verify command, the agent writing the review file checks the fixes against the plan gate with `lyx loom validate-plan --overlay`, which checks proposed plan file contents in memory and writes no file.
+`lyx loom validate-plan --help` shows the stdin format; this rubric does not restate it.
+It first runs `validate-plan --overlay` with `{}` as a baseline, never the flag-less run, so that no run writes a file.
+It then runs it once with every such fix applied together, with its Bash timeout raised to cover a type load, and proposes no fix whose run reports a blocking finding the baseline does not.
+When the combined run reports a new blocking finding, it re-runs with each fix overlaid alone.
+A fix whose solo run reports a new blocking finding is withheld, and its defect is reported with the constraining check named, as above for a defect with no admissible fix.
+A new blocking finding of the combined run that no solo run reproduces is a joint conflict: the fixes that finding names by card are withheld, and their defects are reported together the same way.
+A fix that inserts, removes or renumbers cards is not overlaid, since it goes through `insert-card` and `remove-card`.
+The directive binds writing a finding's `fix`, not a Bouncer row's focus file.
+
+A finding whose proposed glyph stands for a comment or a line it cites names the function or method whose body encloses that line, confirmed with `lyx quarry resolve` that the line lies inside the glyph's span, never the member after or near it.
+When no member span holds the line, as for a free-standing comment between declarations, it names the file's self glyph.
+
 ## Finding class
 
 Every finding carries one class: `design`, `scope`, `decision` or `consistency`.
