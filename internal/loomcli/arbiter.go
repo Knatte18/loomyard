@@ -9,14 +9,21 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/spf13/cobra"
+
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // The causes an envelope carries when the verb, not the agent, made the verdict hand-on.
@@ -435,4 +442,126 @@ func (c *arbiterCall) finish(envelope loomengine.ArbiterEnvelope) (loomengine.Ar
 		return loomengine.ArbiterEnvelope{}, err
 	}
 	return envelope, nil
+}
+
+// runnerArbiterShuttle adapts the shuttle runner to arbiterShuttle.
+type runnerArbiterShuttle struct {
+	runner *shuttleengine.Runner
+}
+
+// Start launches spec through the runner and returns the started run.
+func (s runnerArbiterShuttle) Start(spec shuttleengine.Spec) (arbiterRun, error) {
+	run, err := s.runner.Start(spec)
+	if err != nil {
+		return nil, err
+	}
+	return run, nil
+}
+
+// AttachIfLive waits on a live run matching spec's output files.
+func (s runnerArbiterShuttle) AttachIfLive(spec shuttleengine.Spec) (shuttleengine.Result, bool, error) {
+	return s.runner.AttachIfLive(spec)
+}
+
+// StopStrand ends the strand guid names through shuttle's stop verb.
+func (s runnerArbiterShuttle) StopStrand(guid string) error {
+	return s.runner.StopStrand(guid)
+}
+
+// arbiterCmd builds the `arbiter` subcommand.
+func (c *loomCLI) arbiterCmd() *cobra.Command {
+	var envelopePath, reportPath string
+	cmd := &cobra.Command{
+		Use:         "arbiter <run-id>",
+		Short:       "settle a stop the run's driver cannot, through a cold arbiter agent",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
+		Long: `arbiter is run only by the run's driver, at a stop it cannot settle. It spawns
+a cold arbiter agent, waits for its verdict file and prints the validated verdict:
+verdict (resume or hand-on), reason, question, goto, verbs, cause (empty for the
+agent's own verdict), attempt, attempt_dir, verdict_path and, on a resume only,
+the relaunch line the driver runs next.
+
+A re-run for a stop an arbiter already judged spawns nothing: it returns that
+verdict, or waits on the arbiter still running. Each refusal names its way
+forward, the hand-back to the run's parent.
+
+Example:
+  lyx loom arbiter <run-id> --envelope <stop-envelope> --report <stop-report>`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			out := cmd.OutOrStdout()
+			deps, err := c.arbiterDepsFor()
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			clihelp.SetExit(cmd.Context(), arbiterVerb(out, deps, arbiterInput{RunID: args[0], EnvelopePath: envelopePath, ReportPath: reportPath}))
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&envelopePath, "envelope", "", "the stop envelope the driver saved")
+	cmd.Flags().StringVar(&reportPath, "report", "", "the driver's stop or fork report, when there is one")
+	_ = cmd.MarkFlagRequired("envelope")
+	return cmd
+}
+
+// arbiterDepsFor assembles the verb's seams for the run the pre-run armed.
+// Every closure reads on demand and opens nothing at build time.
+func (c *loomCLI) arbiterDepsFor() (arbiterDeps, error) {
+	settings, err := loomengine.ResolveArbiter(c.cfg, c.registry)
+	if err != nil {
+		return arbiterDeps{}, err
+	}
+	location := c.location
+	runID := shedrun.ResolveRunID(location, c.runID)
+	reviewsDir := loomengine.LoomReviewsDir(location)
+	bouncerRunDir := func(producer string) (string, bool, error) {
+		subdir, isBouncer, err := c.bouncerSubdir(producer)
+		if err != nil || !isBouncer {
+			return "", false, err
+		}
+		return filepath.Join(reviewsDir, subdir), true, nil
+	}
+	verifyPaths := verifytree.NewPaths(location.WorktreePath(), verifytree.Dir(location.AnchorPath()))
+	return arbiterDeps{
+		ReadStatus:  circlingStatusReader(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath),
+		Settings:    settings,
+		ArbiterDir:  shedrun.ArbiterDir(location, c.runID),
+		AttemptDir:  func(number int) string { return shedrun.ArbiterAttemptDir(location, c.runID, number) },
+		MarkerPath:  shedrun.ArbiterMarker(location, c.runID),
+		Producers:   c.routing.Producers,
+		StencilsDir: c.runDeps.Geom.StencilsDir,
+		PendingEscalation: func(producer string) (string, bool, error) {
+			runDir, isBouncer, err := bouncerRunDir(producer)
+			if err != nil || !isBouncer {
+				return "", false, err
+			}
+			_, briefPath, pending, err := shedadapters.PendingEscalation(runDir)
+			return briefPath, pending, err
+		},
+		PendingCirclingDecision: func(producer string) (bool, error) {
+			runDir, isBouncer, err := bouncerRunDir(producer)
+			if err != nil || !isBouncer {
+				return false, err
+			}
+			return shedadapters.PendingCirclingDecision(runDir)
+		},
+		PublishFailureTarget: func() (string, error) {
+			failure, _, err := verifytree.ReadPublishFailure(verifyPaths)
+			return failure.Target, err
+		},
+		InterruptPolicy: loomshed.InterruptPolicyFor,
+		Prompt: arbiterPromptInput{
+			Slug:               seedSlug(location.WorktreeName),
+			Worktree:           location.WorktreePath(),
+			DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
+			SupportLogPath:     loomengine.DiscussionSupportLog(location),
+		},
+		Shuttle:       runnerArbiterShuttle{runner: c.runner},
+		Now:           time.Now,
+		RelaunchRunID: runID,
+	}, nil
 }
