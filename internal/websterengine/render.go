@@ -151,6 +151,24 @@ func renderLocate(stencilsDir, specsDir string, packOn bool) (string, error) {
 	return strings.TrimRight(string(filled), "\r\n"), nil
 }
 
+// renderReadRules returns the texts filled into the body's card_read and fresh_read markers:
+// the pack-on fragments when packOn, and the pack-off fragments, which carry the text as it stood before the pack, otherwise.
+func renderReadRules(stencilsDir string, packOn bool) (cardRead, freshRead string, err error) {
+	mode := "plain"
+	if packOn {
+		mode = "pack"
+	}
+	cardRead, err = readFragment(stencilsDir, "webster-fragment-card-read-"+mode)
+	if err != nil {
+		return "", "", err
+	}
+	freshRead, err = readFragment(stencilsDir, "webster-fragment-fresh-read-"+mode)
+	if err != nil {
+		return "", "", err
+	}
+	return cardRead, freshRead, nil
+}
+
 // renderPackSection renders the kick-start pack section from stencilsDir:
 // one subsection per card of pack, in slice order and joined by a blank line, each under the card's pointer path in planDirDisplay (see renderCardPack).
 func renderPackSection(stencilsDir string, pack []planindex.CardPack, planDirDisplay string) (string, error) {
@@ -288,6 +306,10 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 	if err != nil {
 		return nil, fmt.Errorf("webster: render fork locate step: %w", err)
 	}
+	cardRead, freshRead, err := renderReadRules(stencilsDir, pack != nil)
+	if err != nil {
+		return nil, fmt.Errorf("webster: render fork read rules: %w", err)
+	}
 	var packSection string
 	if pack != nil {
 		section, err := renderPackSection(stencilsDir, pack, planDirDisplay)
@@ -316,6 +338,8 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 		"outcome_path":      outcomePath,
 		"summary_path":      summaryPath,
 		"locate":            locate,
+		"card_read":         cardRead,
+		"fresh_read":        freshRead,
 		"kickstart_pack":    packSection,
 		friction.MarkerName: directive,
 	}
@@ -369,6 +393,10 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 	if err != nil {
 		return nil, fmt.Errorf("webster: render recovery locate step: %w", err)
 	}
+	cardRead, freshRead, err := renderReadRules(stencilsDir, false)
+	if err != nil {
+		return nil, fmt.Errorf("webster: render recovery read rules: %w", err)
+	}
 
 	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleImplementer)
 	if err != nil {
@@ -404,6 +432,8 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		"pattern_directive": directive,
 		"specs_dir":         specsDir,
 		"locate":            locate,
+		"card_read":         cardRead,
+		"fresh_read":        freshRead,
 		friction.MarkerName: frictionDirective,
 
 		parentdirective.MarkerName: parentDirective,

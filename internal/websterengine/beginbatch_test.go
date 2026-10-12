@@ -991,6 +991,8 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 
 	const quarryLocate = "Locate them with one `lyx quarry resolve <glyph>...` call"
 	const packHeading = "## Kick-start pack"
+	const packStepOne = "in parallel, in one turn, before doing anything else"
+	const plainStepOne = "1. Read the card file."
 	resolvedBaz := []string{
 		packHeading,
 		"- `internal/foo#Baz`",
@@ -1017,8 +1019,8 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 		{
 			name:          "switch on lists the resolved member glyph",
 			cardHeadings:  []string{"01-json-flag.md"},
-			wantPrompt:    resolvedBaz,
-			wantNotPrompt: []string{quarryLocate},
+			wantPrompt:    append([]string{packStepOne}, resolvedBaz...),
+			wantNotPrompt: []string{quarryLocate, plainStepOne},
 			wantLog:       []string{"batch=1 kickstart_pack=on resolved=1 unresolved=0"},
 		},
 		{
@@ -1046,15 +1048,15 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 		{
 			name:          "switch off renders the quarry locate step",
 			off:           true,
-			wantPrompt:    []string{quarryLocate},
-			wantNotPrompt: []string{packHeading},
+			wantPrompt:    []string{quarryLocate, plainStepOne},
+			wantNotPrompt: []string{packHeading, packStepOne},
 			wantLog:       []string{"batch=1 kickstart_pack=off resolved=0 unresolved=0"},
 		},
 		{
 			name:          "a plan without a glyph language renders as switch off",
 			language:      "none",
-			wantPrompt:    []string{quarryLocate},
-			wantNotPrompt: []string{packHeading},
+			wantPrompt:    []string{quarryLocate, plainStepOne},
+			wantNotPrompt: []string{packHeading, packStepOne},
 			wantLog:       []string{"batch=1 kickstart_pack=language-none resolved=0 unresolved=0"},
 		},
 		{

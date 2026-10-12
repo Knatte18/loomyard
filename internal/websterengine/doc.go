@@ -151,6 +151,13 @@
 // Each subsection sits under the card's pointer path, the same spelling as its bullet in the card list, and lists the card's entries, or `none` when none of its member glyphs resolved, or says the card names no member glyph.
 // A card's unresolved list follows its entries only when the card has unresolved refs.
 //
+// Step 1 of the implementer body and its FRESH-READ rule are markers too, card_read and fresh_read, filled per mode by renderReadRules.
+// Without a pack the fragments carry the text as it stood before, so a fork without a pack and every recovery prompt render the bytes they did before the pack existed.
+// With a pack, step 1 reads the card file and its listed spans in one parallel turn, and a file an earlier card of the batch edited whole instead.
+// FRESH-READ then names those spans plus the target and `Uses:` files no listed span covers.
+// That bounds the fork's reading: it is no longer told to re-read whole a file that holds a listed span, so an edit outside a listed span in such a file is read only when the fork chooses to.
+// What bounds that is the member-name rule for a file an earlier card edited, the locate fragment's "read further whenever the card needs it", and the card and batch gates, which still run every card's tests.
+//
 // Every begin-batch logs one Info line, `webster: kickstart pack`.
 // Its keys are batch, kickstart_pack (`on`, `off` or `language-none`), resolved and unresolved.
 // The last two count distinct refs across the batch, so a ref listed under two cards counts once, and stay 0 when no pack is built.
