@@ -45,6 +45,9 @@
 // Its wait reason names the draft and the remedy, and one notice per stall tells the orch to clear the draft in the driver's pane and quotes the box text the refusal found, as one line; a landed resume re-arms it.
 // Delivery: the Notify seam reports whether the line was queued; with no orch strand recorded it is not called, one Warn is logged per episode and the strand is asked about again once per notice_probe_s;
 // a Notify error or an unqueued line is retried at most once per notice_probe_s and at most three times, then dropped with a Warn.
+// Notice log: every notice a batten process composes, the InnerRun row's and the later rows' alike, is appended once per composition, at the first delivery attempt in that process, to the hub's notice log through the NoticeLog seam (rownotice.go).
+// A line holds the UTC time, the notice text and the run's attach command, tab-separated, and is written in one write so concurrent batten processes never interleave inside a line.
+// A held-back or dropped notice is logged all the same, a restarted batten composing an episode's notice again logs it again, and a failed append is only a Warn.
 // Control flow is unchanged: a notice is informational, a delivery failure is only warned about, and the outcomes, halts and waits are the same with or without it.
 // Bound: the report wait delays a notice by at most three minutes, the relay wait by at most ten minutes after the report, and an arbiter hold by at most the arbiter's deadline plus the report wait; none loses it, and there is one notice per episode.
 // A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the quiet window, or by an API-error notice when the stall is one; an operator attaches to the child's session to tell the cases apart.

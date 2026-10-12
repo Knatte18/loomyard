@@ -63,6 +63,11 @@ var LoomTemplateRework []byte
 //go:embed loom/loom-template-arbiter.md
 var LoomTemplateArbiter []byte
 
+// LoomTemplateAlignment is the alignment agent's shipped-default opening prompt: the cold session that settles one parent review or PR-Gate, or escalates it to the run's parent.
+//
+//go:embed loom/loom-template-alignment.md
+var LoomTemplateAlignment []byte
+
 // LoomRubricDiscussionReview is the Discussion-Review rubric, read by both rows of the
 // Discussion-Review perch.
 //
@@ -222,12 +227,42 @@ var WebsterFragmentLocateQuarry []byte
 //go:embed webster/webster-fragment-locate-pack.md
 var WebsterFragmentLocatePack []byte
 
-// WebsterFragmentPackSection is webster's shipped-default kick-start pack section, filled into the shared implementer-job body's kickstart_pack marker.
+// WebsterFragmentCardReadPlain is webster's shipped-default pack-off first step of each card, filled into the shared implementer-job body's card_read marker when the fork has no kick-start pack and for every recovery prompt.
+//
+//go:embed webster/webster-fragment-card-read-plain.md
+var WebsterFragmentCardReadPlain []byte
+
+// WebsterFragmentCardReadPack is webster's shipped-default pack-on first step of each card, filled into the shared implementer-job body's card_read marker when the fork prompt carries a kick-start pack.
+//
+//go:embed webster/webster-fragment-card-read-pack.md
+var WebsterFragmentCardReadPack []byte
+
+// WebsterFragmentFreshReadPlain is webster's shipped-default pack-off FRESH-READ rule, filled into the shared implementer-job body's fresh_read marker when the fork has no kick-start pack and for every recovery prompt.
+//
+//go:embed webster/webster-fragment-fresh-read-plain.md
+var WebsterFragmentFreshReadPlain []byte
+
+// WebsterFragmentFreshReadPack is webster's shipped-default pack-on FRESH-READ rule, filled into the shared implementer-job body's fresh_read marker when the fork prompt carries a kick-start pack.
+//
+//go:embed webster/webster-fragment-fresh-read-pack.md
+var WebsterFragmentFreshReadPack []byte
+
+// WebsterFragmentPackSection is webster's shipped-default kick-start pack section, filled into the shared implementer-job body's kickstart_pack marker and holding one subsection per card.
 //
 //go:embed webster/webster-fragment-pack-section.md
 var WebsterFragmentPackSection []byte
 
-// WebsterFragmentPackEmpty is webster's shipped-default empty-pack line, filled into the pack section when the batch's cards name no member glyph.
+// WebsterFragmentPackCard is webster's shipped-default per-card subsection of the kick-start pack, one of which is filled into the pack section's pack_cards marker for each card of the batch.
+//
+//go:embed webster/webster-fragment-pack-card.md
+var WebsterFragmentPackCard []byte
+
+// WebsterFragmentPackUnresolved is webster's shipped-default unresolved list of a card's pack subsection, filled into the card subsection's pack_unresolved marker when the card has unresolved refs.
+//
+//go:embed webster/webster-fragment-pack-unresolved.md
+var WebsterFragmentPackUnresolved []byte
+
+// WebsterFragmentPackEmpty is webster's shipped-default empty-pack line, filled into a card's pack subsection when the card names no member glyph.
 //
 //go:embed webster/webster-fragment-pack-empty.md
 var WebsterFragmentPackEmpty []byte
@@ -406,6 +441,7 @@ var entries = []registryEntry{
 	{"loom-template-plan", &LoomTemplatePlan},
 	{"loom-template-rework", &LoomTemplateRework},
 	{"loom-template-arbiter", &LoomTemplateArbiter},
+	{"loom-template-alignment", &LoomTemplateAlignment},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
 	{"loom-rubric-webster-review", &LoomRubricWebsterReview},
@@ -436,7 +472,13 @@ var entries = []registryEntry{
 	{"webster-body-implementer", &WebsterBodyImplementer},
 	{"webster-fragment-locate-quarry", &WebsterFragmentLocateQuarry},
 	{"webster-fragment-locate-pack", &WebsterFragmentLocatePack},
+	{"webster-fragment-card-read-plain", &WebsterFragmentCardReadPlain},
+	{"webster-fragment-card-read-pack", &WebsterFragmentCardReadPack},
+	{"webster-fragment-fresh-read-plain", &WebsterFragmentFreshReadPlain},
+	{"webster-fragment-fresh-read-pack", &WebsterFragmentFreshReadPack},
 	{"webster-fragment-pack-section", &WebsterFragmentPackSection},
+	{"webster-fragment-pack-card", &WebsterFragmentPackCard},
+	{"webster-fragment-pack-unresolved", &WebsterFragmentPackUnresolved},
 	{"webster-fragment-pack-empty", &WebsterFragmentPackEmpty},
 	{"orch-template-start", &OrchTemplateStart},
 	{"orch-template-handoff", &OrchTemplateHandoff},
@@ -476,6 +518,7 @@ var entries = []registryEntry{
 var roleOpeningStencils = map[string][]string{
 	"driver":              {"shed-template-driver"},
 	"arbiter":             {"loom-template-arbiter"},
+	"alignment":           {"loom-template-alignment"},
 	"discussion":          {"loom-template-discussion"},
 	"discussion-chair":    {"loom-template-discussion-chair"},
 	"discussion-advisor":  {"loom-template-discussion-advisor"},

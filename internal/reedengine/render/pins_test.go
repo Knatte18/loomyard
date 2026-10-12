@@ -47,6 +47,13 @@ func twoSiblings() []Strand {
 	}
 }
 
+// belowParentWithSize returns two below-parent strands, the second carrying size.
+func belowParentWithSize(size Size) []Strand {
+	strands := twoSiblings()
+	strands[1].Display.Size = size
+	return strands
+}
+
 func TestFixedHeightPinsMatchesRulesPlacedHeights(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -133,6 +140,87 @@ func TestFixedHeightPinsMatchesRulesPlacedHeights(t *testing.T) {
 			params:   Params{CollapsedRows: 2, MinFullRows: 3},
 			wantPins: nil,
 			wantErr:  true,
+		},
+		{
+			// Band 3, stack region 26: the content cell is pinned at its 2 reported lines and the expanding positional cell is not pinned.
+			name: "ContentCellIsPinnedAtItsPlacedHeightBesideTheSelvagePin",
+			strands: []Strand{
+				contentStrand("top", "%1", AnchorTop, 2),
+				{GUID: "pos", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+			},
+			box:      Box{X: 0, Y: 0, W: 100, H: 30},
+			params:   Params{CollapsedRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 3}},
+			wantPins: []Pin{{PaneID: "%h", Height: 3}, {PaneID: "%1", Height: 2}},
+		},
+		{
+			name: "SharingWindowPinsTheCollapsedPositionalCellAndNoSharingCell",
+			strands: []Strand{
+				{GUID: "pos", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+				sharingStrand("s1", "%2", true),
+				sharingStrand("s2", "%3", true),
+			},
+			box:      Box{X: 0, Y: 0, W: 100, H: 30},
+			params:   Params{CollapsedRows: 2, MinFullRows: 3},
+			wantPins: []Pin{{PaneID: "%1", Height: 2}},
+		},
+		{
+			name:    "TopPositionalStrandIsRefused",
+			strands: []Strand{{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorTop}}},
+			box:     Box{X: 0, Y: 0, W: 100, H: 21},
+			params:  Params{CollapsedRows: 2, MinFullRows: 3},
+			wantErr: true,
+		},
+		{
+			name:    "TopSharingStrandIsRefused",
+			strands: []Strand{{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorTop, Size: Size{Kind: SizeSharing}}}},
+			box:     Box{X: 0, Y: 0, W: 100, H: 21},
+			params:  Params{CollapsedRows: 2, MinFullRows: 3},
+			wantErr: true,
+		},
+		{
+			name:    "ContentSizeWithZeroShareDenominatorIsRefused",
+			strands: belowParentWithSize(Size{Kind: SizeContent, ShareNum: 1, ShareDen: 0, MinRows: 3}),
+			box:     Box{X: 0, Y: 0, W: 100, H: 21},
+			params:  Params{CollapsedRows: 2, MinFullRows: 3},
+			wantErr: true,
+		},
+		{
+			name:    "UnknownSizeKindIsRefused",
+			strands: belowParentWithSize(Size{Kind: "fixed"}),
+			box:     Box{X: 0, Y: 0, W: 100, H: 21},
+			params:  Params{CollapsedRows: 2, MinFullRows: 3},
+			wantErr: true,
+		},
+		{
+			name:    "ContentSizeWithNegativeShareNumeratorIsRefused",
+			strands: belowParentWithSize(Size{Kind: SizeContent, ShareNum: -1, ShareDen: 3, MinRows: 3}),
+			box:     Box{X: 0, Y: 0, W: 100, H: 21},
+			params:  Params{CollapsedRows: 2, MinFullRows: 3},
+			wantErr: true,
+		},
+		{
+			name:    "ContentSizeWithShareAboveOneIsRefused",
+			strands: belowParentWithSize(Size{Kind: SizeContent, ShareNum: 2, ShareDen: 1, MinRows: 3}),
+			box:     Box{X: 0, Y: 0, W: 100, H: 21},
+			params:  Params{CollapsedRows: 2, MinFullRows: 3},
+			wantErr: true,
+		},
+		{
+			name:    "ContentSizeWithZeroMinRowsIsRefused",
+			strands: belowParentWithSize(Size{Kind: SizeContent, ShareNum: 1, ShareDen: 3, MinRows: 0}),
+			box:     Box{X: 0, Y: 0, W: 100, H: 21},
+			params:  Params{CollapsedRows: 2, MinFullRows: 3},
+			wantErr: true,
+		},
+		{
+			// A hidden display's size declaration is ignored, so the invalid share neither refuses the window nor changes its layout or pins.
+			name: "HiddenStrandWithAnInvalidContentSizeIsIgnored",
+			strands: append(twoSiblings(),
+				Strand{GUID: "h", PaneID: "%9", Live: true, Display: Display{Anchor: AnchorHidden, Size: Size{Kind: SizeContent, ShareNum: 1, ShareDen: 0}}},
+			),
+			box:      Box{X: 0, Y: 0, W: 100, H: 21},
+			params:   Params{CollapsedRows: 2, MinFullRows: 3},
+			wantPins: []Pin{{PaneID: "%1", Height: 2}},
 		},
 	}
 

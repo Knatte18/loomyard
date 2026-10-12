@@ -60,12 +60,13 @@
 // Every strand pane carries the user options @strand (the role segment of its name, or the full name when it does not parse) and @strand_color (the tmux color of its segment, unset when it has none),
 // and the strand window carries @lyx_strands.
 // Launch sets the pane options and boot marks the strand window; every attach pre-flight marks the window and re-asserts both pane options on every strand bound to a live pane, so a session or strand spawned by an older lyx gets them at its next attach.
-// They are display only: the status bar and the key bindings read them, no Go decision does, and Selvage never gets either pane option.
+// The Selvage pane carries the user option @lyx_console (consolePaneOption), set when it is split and re-asserted by every attach pre-flight.
+// The options are display only: the status bar and the key bindings read them, no Go decision does, and Selvage never gets @strand or @strand_color.
 // A strand's Segment is an opaque field its spawner names through AddSpec.Segment; reed reads it only to look up the segment's color, which the strand an add or replace returns and Status carry as Color.
 //
 // The navigation bindings (bindings.go) are root-table bindings on the hub's reed server, issued by pinBindingsLocked at the end of the geometry pins, so boot and every attach pre-flight pin them and a server booted by an older lyx gets them at its next attach.
-// Alt+z zooms or unzooms a strand pane, and does nothing in Selvage or in a window that holds no strands;
-// Alt+Up and Alt+Down step to the previous or next strand pane of the strands' window, wrapping, keeping the zoom and passing over Selvage;
+// Alt+z zooms or unzooms a strand pane or Selvage in the strands' window, and does nothing in any other window;
+// Alt+Up and Alt+Down step to the previous or next pane of the strands' window that is a strand pane or Selvage, in physical order with Selvage last, wrapping and keeping the zoom, so a zoomed step onto Selvage shows it full screen;
 // Alt+Left and Alt+Right run `lyx reed switch --prev|--next` in the background through run-shell, naming the absolute path of the `lyx` that pinned them (panebin.go's composeSwitchCommand), never PATH's;
 // and a left click on the status bar dispatches on its range: VIEW selects and unzooms the strands' window, a strand button selects that pane and zooms it (never toggling the zoom off), a window button selects that window, and a session button switches the client to that session.
 // Bound: these five keys and the left status click are taken from every pane on the server, so a program in a pane, Claude Code included, never receives them; no other key or mouse binding is changed, and tmux's right-click menus keep their defaults.
@@ -77,13 +78,19 @@
 // A zoomed strand survives every reed step (zoom.go).
 // tmux clears a window's zoom on resize-pane -y, select-layout, split-window, select-pane without -Z and kill-pane of another pane, so every step that changes panes runs inside keepZoomLocked, under the op lock.
 // It reads the strands' window's `#{window_zoomed_flag} #{pane_id}` through the stored-state window seam; for a zoomed window it unzooms the active pane with `resize-pane -Z`, runs the step, and zooms the same pane again, also when the step failed.
-// The call sites are Up, EnsureSession, Resume, AddStrand and AddStrandUnless, UpdateStrand, RemoveStrand, ReplaceStrand, the watchdog's reapplyLayout and AttachArgv's pre-flight, so every pane list a layout or a pin is planned from is read on the unzoomed window.
+// The call sites are Up, EnsureSession, Resume, AddStrand and AddStrandUnless, UpdateStrand, SetContentRows, RemoveStrand, ReplaceStrand, the watchdog's reapplyLayout and AttachArgv's pre-flight, so every pane list a layout or a pin is planned from is read on the unzoomed window.
 // An op that refuses a bad config value or an unformable name does so before the bracket's first read.
 // Bound: a step re-zooms only a window that was zoomed when it started, and only the pane that was zoomed; a pane gone by then leaves the window in the overview.
 // No session, a failed read, an unparseable answer and a failed unzoom all mean "run plain", logged and never fatal.
 // The two executions tmux runs after reed returns carry the same bracket as tmux commands that test the zoom when they run:
 // the window-resized hook array, when it holds any pin, starts with an entry that records a zoomed window in the window option @lyx_rezoom and unzooms it, and ends its pins with an entry that zooms the active pane again and clears the record, ahead of the watchdog's signal entry;
 // the attach chain runs the same two entries around its select-layout and pins, each naming the strands' window, since the chain runs in the client's context.
+//
+// SetContentRows(name, paneID, rows) is the one operation through which a content strand's pane process reports its line count (strand.go).
+// It refuses rows < 1 before taking any lock, then, under the op lock and the zoom bracket, an unknown name, a strand that is not content-sized and a strand whose recorded pane is not paneID, each naming the strand and the reason.
+// A count equal to the recorded one touches neither reed.json nor tmux; otherwise it persists the count and re-applies the layout with applyOpts{SkipFocus, InstallPins}, so the operator's cursor never moves and the window-resized hook array is rebuilt from the new pins.
+// It changes nothing but that strand's ContentRows and the layout and pins derived from it.
+// Bound: a hand-run or replaced pane process reports from a pane the strand does not hold and is refused, so it can resize no strand; the pane process retries at its next poll after any refusal, which is how a report made before AddStrand has recorded the pane succeeds once it has.
 //
 // A restarted server's sessions come back in spawn order (revive.go).
 // The teller tells Geometry.SpawnOrder, a lazy list of ReviveEntry for the hub's worktrees in spawn order, nil in standalone mode; reedengine sorts nothing and reads no loom or fabric record.
@@ -149,16 +156,18 @@
 // selvagepane_enforcement_test.go is the mechanical check keeping them
 // there.
 //
-// The layout rule: the below-parent stack is ordered by insertion, the persisted strand-table
-// order, and its height is decided by position alone.
-// Every strand except the bottom-most gets exactly collapsed_rows rows, and the bottom-most gets
-// every remaining row, so a new strand is the bottom-most, nothing above it moves except the previous
-// bottom-most (which collapses), and removing the bottom-most makes the one above it bottom-most, which
-// expands.
-// No per-strand setting sizes a strand, and the parent chain plays no part in the order.
-// A window too short for the natural split reclaims rows from the collapsed placements first, then
-// from the bottom-most, and every pane keeps a positive height.
+// The layout rule: the placed strands are ordered by insertion, the persisted strand-table order, with the top-anchored strands above the below-parent ones, and the parent chain plays no part in the order.
+// A strand's Display.Size picks its height rule.
+// A positional strand, the default, is decided by position alone: it takes exactly collapsed_rows rows unless it is the bottom-most positional strand, which expands.
+// A content strand takes its reported line count (Strand.ContentRows, its minimum while unreported), at least its minimum rows and at most its share of the free height, and a content strand in the first row of a window drawing a pane-border title row adds one row for it.
+// A sharing strand expands: while any is live, every sharing strand splits the rows the fixed cells leave evenly, the bottom-most taking the remainder, and every positional strand collapses.
+// The free height is the stack region, the window's box less the Selvage band and its divider.
+// With no positional and no sharing strand, the bottom-most cell expands whatever its kind.
+// A window whose strands declare nothing lays out as before: a new strand is the bottom-most, nothing above it moves except the previous bottom-most (which collapses), and removing the bottom-most makes the one above it bottom-most, which expands.
+// A window too short for the natural split reclaims rows from the collapsed cells first, then the content cells down to one row each, then the expanding cells from the bottom up, and every pane keeps a positive height.
+// The fixed-height panes the hook pins are the Selvage band, every collapsed positional cell and every content cell.
 // The Selvage band sits outside the stack with its own selvage.height_rows.
+// A top-anchored strand's pane is split above every other pane (split-window -f -b), or below the lowest top strand's pane, because the layout string places cells by physical pane order.
 //
 // The live-geometry rule: the render box a layout is computed against is no
 // longer the config-pinned Width/Height. planLayout (apply.go) is always
@@ -582,7 +591,7 @@
 //     a further 90-to-120 one.
 //     The answer is a window-resized window hook holding one
 //     "resize-pane -y" array entry per fixed-height pane — the Selvage band,
-//     every collapsed placement — installed by reed
+//     every collapsed positional placement and every content placement — installed by reed
 //     and executed by the tmux server itself, refreshed on every successful apply
 //     (applyLayoutLocked) and again in AttachArgv's pre-flight, with the
 //     pinned heights coming from render.FixedHeightPins: the heights render

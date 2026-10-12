@@ -7,6 +7,7 @@ A mechanical gate's **closure** and its CLI self-check verb call the same packag
 - Discussion-Write's and Discussion-Burler-Fix's gates and `validate-discussion`: `discussionparser.Validate`.
 - Plan-Write's and Plan-Burler-Fix's gates and `validate-plan`: `planindex.Index.ValidateFormat`, implemented by `planglyph`.
 - PR-Rework's gate and `validate-plan --rework`: `loomshed.ValidateReworkPlan`, which checks the whole new plan plus the told `first_card`.
+- `validate-plan --overlay`, a self-check mode no gate runs: it calls the flag-less mode's function, `loomshed.ValidatePlan`, over a plan parsed through a `planparser.Overlay`.
 - Describe's gate and `validate-description`: `summaryparser.ValidateDescription`.
 - The webster `verify` gate (`websterengine.NewVerifyGate`) and `lyx webster verify`: `verifytree.Verify`.
   Webster-Burler-Fix's `verify` gate (`loomshed.NewVerifyGate`) runs the comment lint and the derived round command through `verifytree.Verify`.

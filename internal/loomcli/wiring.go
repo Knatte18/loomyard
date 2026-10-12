@@ -15,6 +15,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
@@ -70,8 +71,9 @@ type commitStatusDeps struct {
 	SetBoardStatus func(status string) error
 }
 
-// statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID), plus each of loomengine.LoomReviewsDirRel(), loomengine.LoomDurableDirRel(), shedrun.DriveReportsRel(location, runID) and shedrun.ArbiterRel(location, runID) when its directory holds at least one non-directory entry anywhere beneath it.
+// statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID), plus each of loomengine.LoomReviewsDirRel(), loomengine.LoomDurableDirRel(), shedrun.DriveReportsRel(location, runID), shedrun.ArbiterRel(location, runID) and shedrun.AlignmentRel(location, runID) when its directory holds at least one non-directory entry anywhere beneath it.
 // The arbiter directory carries each attempt's record, prompt, verdict and envelope, so they are committed with the run records.
+// The alignment directory, staged under the same rule, carries each alignment agent attempt's record, prompt, verdict and report.
 // The loom durable directory is staged whole rather than its friction directory alone:
 // staging the parent carries the friction directory and every timestamped archive sibling in one entry,
 // where a friction-only entry would miss the archives.
@@ -104,6 +106,9 @@ func statusCommitPathspec(location *lyxcwd.Location, runID string) []string {
 	}
 	if holdsFile(shedrun.ArbiterDir(location, runID)) {
 		paths = append(paths, shedrun.ArbiterRel(location, runID))
+	}
+	if holdsFile(shedrun.AlignmentDir(location, runID, "")) {
+		paths = append(paths, shedrun.AlignmentRel(location, runID))
 	}
 	return paths
 }
@@ -387,7 +392,10 @@ func newParentReviewConfig(location *lyxcwd.Location, reedCfg reedengine.Config,
 			return loomengine.ParentReviewDeliveryPrompt(stencilsDir, slug, briefPath, parent.Name)
 		},
 		RenderBrief: func() (string, error) {
-			return loomengine.ParentReviewBrief(stencilsDir, slug, decisionRecord, supportLog)
+			return loomengine.ParentReviewBrief(stencilsDir, slug, decisionRecord, supportLog, "", "")
+		},
+		RenderAlignmentBrief: func(report, reason string) (string, error) {
+			return loomengine.ParentReviewBrief(stencilsDir, slug, decisionRecord, supportLog, report, reason)
 		},
 		RenderKeepAlive: func(ping int) (string, error) {
 			return loomengine.ParentReviewKeepAlivePrompt(stencilsDir, ping)
@@ -591,6 +599,11 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
+	aligner, err := newParentReviewAligner(location, c.runID, loomCfg, registry, websterGeom.StencilsDir, alignment.RunnerShuttle(runner), hubBoardTasks(location))
+	if err != nil {
+		return err
+	}
+	parentReviewCfg.Aligner = aligner
 
 	// A pair run records its parent branch in the origin record, so the record file's presence tells the headroom lint its merge base.
 	// The check only stats, because reading the record would create the records-side lock directory and seed its exclude.

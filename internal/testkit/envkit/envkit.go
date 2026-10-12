@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
@@ -61,6 +62,8 @@ var nilLegal = map[string]bool{
 	"ParentReview.RenderDelivery":                      true,
 	"ParentReview.RenderBrief":                         true,
 	"ParentReview.RenderKeepAlive":                     true,
+	"ParentReview.Aligner":                             true,
+	"ParentReview.RenderAlignmentBrief":                true,
 	"WebsterDeps.Batcher":                              true,
 	"WebsterDeps.Roles":                                true,
 	"WebsterDeps.ParentBranch":                         true,
@@ -75,6 +78,9 @@ var nilLegal = map[string]bool{
 	"InnerRun.OpenTerminal":                            true,
 	"InnerRun.Notify":                                  true,
 	"InnerRun.PairDir":                                 true,
+	"InnerRun.NoticeLog.Now":                           true,
+	"Land.Notices.NoticeLog.Now":                       true,
+	"Teardown.Notices.NoticeLog.Now":                   true,
 	"Land.Sleep":                                       true,
 	"Land.Now":                                         true,
 	"Land.LandLock.Sleep":                              true,
@@ -109,6 +115,23 @@ func nilFabricOpener() (*fabricengine.Fabric, error) {
 	return nil, nil
 }
 
+// noopAlignmentSession is an alignment session that starts nothing and has no attempts.
+type noopAlignmentSession struct{}
+
+func (noopAlignmentSession) Begin(alignment.SpawnInput) (alignment.Attempt, error) {
+	return alignment.Attempt{}, nil
+}
+
+func (noopAlignmentSession) Poll(alignment.Attempt) (alignment.Outcome, error) {
+	return alignment.Outcome{Done: true, Cause: alignment.CauseClosed}, nil
+}
+
+func (noopAlignmentSession) Close(alignment.Attempt, string) error { return nil }
+
+func (noopAlignmentSession) MarkApplied(alignment.Attempt, string, bool) error { return nil }
+
+func (noopAlignmentSession) Attempts() ([]alignment.Attempt, error) { return nil, nil }
+
 // LandingDeps returns a `landingshed.Deps` with every field the Publish and Finalize constructors require, filled with told values derived from dir.
 func LandingDeps(dir string) landingshed.Deps {
 	return landingshed.Deps{
@@ -142,6 +165,12 @@ func LandingDeps(dir string) landingshed.Deps {
 		MergeBase:         func(string) (string, error) { return "base", nil },
 		MergeRecordPath:   landingshed.MergeRecordPath(filepath.Join(dir, "landing-scratch")),
 		MergeReviewedPath: landingshed.MergeReviewedPath(filepath.Join(dir, "landing-scratch")),
+		Alignment: landingshed.AlignmentDeps{
+			Config:   func() (landingshed.AlignmentConfig, error) { return landingshed.AlignmentConfig{Off: true}, nil },
+			Session:  noopAlignmentSession{},
+			Snapshot: func() (string, error) { return "snapshot", nil },
+			NotePath: filepath.Join(dir, "alignment-note.json"),
+		},
 	}
 }
 

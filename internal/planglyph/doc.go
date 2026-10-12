@@ -28,7 +28,7 @@
 // The index's format, rework and dispatch validation append fabric-vocabulary-name (planparser.CheckFabricVocabularyName), a declared name the fabric-vocabulary scan would refuse.
 // Dispatch drops its findings against completed cards.
 // The index's format and rework validation also append card-fabric-reference, which dispatch does not run.
-// The index also serves KickstartPack (pack.go), which resolves the member glyphs a batch's cards name in one call and returns them with the refs that did not resolve, so a caller that never links quarry gets a batch's pack through planindex.Index.
+// The index also serves KickstartPack (pack.go), which resolves the member glyphs a batch's cards name in one call and returns the pack card by card, each with the refs that did not resolve, so a caller that never links quarry gets a batch's pack through planindex.Index.
 // NewIndex returns the real planindex.Index, which a package that calls the code index receives from the CLI layer instead of importing planglyph (index.go).
 //
 // Every resolve-backed Finding.Check ID this package can raise, the canonical list a caller checks
@@ -52,8 +52,10 @@
 //     create-already-exists covers found, multipart and ambiguous alike: all three mean a
 //     declaration already occupies the name the card is creating.
 //     An ambiguous target is create-already-exists whether or not its candidates are partitioned by build constraints, and its detail names each candidate's file and build constraint.
-//   - delete-before-reference (blocking) — LaterDeleteReferences (deleteorder.go), a card that deletes a symbol whose reference a later card's Edit code still holds, so the delete must move after that card.
-//     glyph-rejected is additionally its own fail-closed arm, for a Delete or Edit member whose answer it cannot read.
+//   - delete-before-reference (blocking for a resolved reference, informational for a name-only method match) — a card that deletes a symbol whose reference a later card's Edit code still holds, so the delete must move after that card.
+//     It is computed by callerCoverageFindings (callercoverage.go) through planGatePass at the plan gates, from the reference computation caller-uncovered shares, and by LaterDeleteReferences (deleteorder.go) scan-only at ValidateDispatch and for Webster.
+//     Only Go files outside the directories the go tool ignores are searched; a package self glyph Delete keeps its quoted import-path match, over Go regions only.
+//     glyph-rejected is additionally its own fail-closed arm of LaterDeleteReferences, for a Delete or Edit member whose answer it cannot read.
 //     A member partitioned by build constraints is looked up through its candidates, which are its declarations.
 //   - resign-head-mismatch (blocking) — CanonicalizeHandles (handle.go), an Edit re-sign arrow whose head quarry.Name cannot name or names as a member other than the arrow's own glyph.
 //     It reads plan text alone, so it runs wherever resolvePass does, ValidateDispatch included.

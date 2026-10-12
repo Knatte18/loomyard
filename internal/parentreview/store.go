@@ -23,6 +23,20 @@ const (
 	deliveryFile = "delivery.json"
 	verdictFile  = "verdict.json"
 	reviewFile   = "review.md"
+	// alignmentFile records the alignment agent's attempt for the round.
+	alignmentFile = "alignment.json"
+)
+
+// Alignment states.
+const (
+	// AlignmentRunning means the agent was spawned and its verdict has not been applied or given up on.
+	AlignmentRunning = "running"
+	// AlignmentApplied means the agent's approve or reject was recorded as the round's verdict.
+	AlignmentApplied = "applied"
+	// AlignmentFallback means the round went to the reviewer after the agent escalated, failed or never answered.
+	AlignmentFallback = "fallback"
+	// AlignmentStopped means a verdict from the parent, the wait bound or the writer's end closed the agent first.
+	AlignmentStopped = "stopped"
 )
 
 // Request states.
@@ -87,13 +101,28 @@ type Verdict struct {
 	Superseding bool `json:"superseding,omitempty"`
 }
 
+// Alignment is alignment.json: the alignment agent's attempt for one round.
+type Alignment struct {
+	// Attempt is the attempt directory the agent works in.
+	Attempt   string    `json:"attempt"`
+	Strand    string    `json:"strand"`
+	SpawnedAt time.Time `json:"spawned_at"`
+	// State is one of the Alignment* constants.
+	State string `json:"state"`
+	// Report is the agent's report path, empty when it wrote none.
+	Report string `json:"report,omitempty"`
+	// Reason says why the agent was stopped or the round fell back.
+	Reason string `json:"reason,omitempty"`
+}
+
 // Round is the decoded view of one round directory.
 type Round struct {
-	Number   int
-	Dir      string
-	Request  *Request
-	Delivery Delivery
-	Verdict  *Verdict
+	Number    int
+	Dir       string
+	Request   *Request
+	Delivery  Delivery
+	Verdict   *Verdict
+	Alignment *Alignment
 }
 
 // RequestPath is the round's request.json path.
@@ -197,6 +226,13 @@ func (s Store) load(n int) (Round, error) {
 	}
 	if found {
 		r.Verdict = &v
+	}
+	a, found, err := state.ReadJSON[Alignment](filepath.Join(dir, alignmentFile), lp)
+	if err != nil {
+		return Round{}, err
+	}
+	if found {
+		r.Alignment = &a
 	}
 	return r, nil
 }
@@ -499,6 +535,59 @@ func (s Store) MarkCapWarned() error {
 		return ErrNoOpenRequest
 	}
 	return s.updateDelivery(r.Number, func(d *Delivery) { d.CapWarned = true })
+}
+
+// RecordAlignment writes alignment.json on the latest round.
+func (s Store) RecordAlignment(a Alignment) error {
+	r, ok, err := s.Latest()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNoOpenRequest
+	}
+	return state.WriteJSON(filepath.Join(r.Dir, alignmentFile), s.lockPath(r.Number), a)
+}
+
+// SettleAlignment sets the latest round's alignment record to settled with the given report and reason.
+// It refuses with ErrNoOpenRequest when the round has no alignment record.
+func (s Store) SettleAlignment(settled, report, reason string) error {
+	r, ok, err := s.Latest()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNoOpenRequest
+	}
+	return state.UpdateJSON(filepath.Join(r.Dir, alignmentFile), s.lockPath(r.Number), func(cur Alignment, found bool) (Alignment, error) {
+		if !found {
+			return cur, ErrNoOpenRequest
+		}
+		cur.State, cur.Report, cur.Reason = settled, report, reason
+		return cur, nil
+	})
+}
+
+// WriteBrief replaces the latest round's brief.md, under the round lock.
+// It refuses with ErrNoOpenRequest when the round has no request.
+func (s Store) WriteBrief(brief string) error {
+	r, ok, err := s.Latest()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNoOpenRequest
+	}
+	// The write rides on a lock-held no-op update of request.json, since state offers no locked write of other files.
+	return state.UpdateJSON(filepath.Join(r.Dir, requestFile), s.lockPath(r.Number), func(cur Request, found bool) (Request, error) {
+		if !found {
+			return cur, ErrNoOpenRequest
+		}
+		if err := os.WriteFile(r.BriefPath(), []byte(brief), 0o644); err != nil {
+			return cur, fmt.Errorf("parentreview: write brief: %w", err)
+		}
+		return cur, nil
+	})
 }
 
 // openRound returns the latest round when it carries an open request, else the matching refusal.

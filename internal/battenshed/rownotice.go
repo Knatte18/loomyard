@@ -1,5 +1,5 @@
 // rownotice.go implements the failure notice the rows after Run-Shed send the orch.
-// It also owns the per-run markers, which batten clears where it seeds a fresh status.
+// It also owns the per-run markers, which batten clears where it seeds a fresh status, and the hub notice log every notice is appended to.
 
 package battenshed
 
@@ -57,6 +57,39 @@ func ClearRunMarkers(scratchDir string) error {
 	return nil
 }
 
+// NoticeLog names the hub file every notice this process composes is appended to, and what the notice's line carries beside the text.
+type NoticeLog struct {
+	// Path is the log file; empty switches the log off.
+	Path string
+	// AttachCommand is the command line that attaches to the run the notice is about.
+	AttachCommand string
+	// Now returns the time stamped on a line; nil reads time.Now.
+	Now func() time.Time
+}
+
+// appendNoticeLog appends one line, `<UTC time, RFC 3339>\t<notice text>\t<attach command>\n`, to log.Path in a single write, so concurrent batten processes never interleave inside a line.
+// A failure to open or write is a Warn naming the path; it never blocks or changes the notice.
+func appendNoticeLog(log NoticeLog, line string) {
+	if log.Path == "" {
+		return
+	}
+	now := time.Now
+	if log.Now != nil {
+		now = log.Now
+	}
+	entry := now().UTC().Format(time.RFC3339) + "\t" + line + "\t" + log.AttachCommand + "\n"
+
+	file, err := os.OpenFile(log.Path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		logger.Warn("battenshed: open the notice log failed", "path", log.Path, "error", err)
+		return
+	}
+	defer file.Close()
+	if _, err := file.WriteString(entry); err != nil {
+		logger.Warn("battenshed: write the notice log failed", "path", log.Path, "error", err)
+	}
+}
+
 // RowNoticeDeps carries the seams a row's notices go through.
 type RowNoticeDeps struct {
 	// Notify hands one notice line to whoever tells the orch, and reports whether the line was queued.
@@ -70,6 +103,8 @@ type RowNoticeDeps struct {
 	// Sleep is the pause between two delivery attempts; a test replaces it to keep the spacing out of real time.
 	// A nil Sleep resolves to waitOrCancel.
 	Sleep func(ctx context.Context, d time.Duration)
+	// NoticeLog receives every notice the row composes, once per composition.
+	NoticeLog NoticeLog
 }
 
 // rowNotifier sends the notices of one row of the lifecycle recipe.
@@ -156,10 +191,11 @@ func (n rowNotifier) failed(ctx context.Context, step, reason string) {
 	}
 }
 
-// send makes at most noticeMaxAttempts attempts, rowNoticeRetrySpacing apart, to queue line, and reports whether it was queued.
+// send appends line to the notice log, then makes at most noticeMaxAttempts attempts, rowNoticeRetrySpacing apart, to queue it, and reports whether it was queued.
 // With no orch strand recorded it does not call Notify and warns once.
 // A line still unqueued after the attempts is dropped with a Warn.
 func (n rowNotifier) send(ctx context.Context, line string) bool {
+	appendNoticeLog(n.deps.NoticeLog, line)
 	if n.deps.OrchStrandRecorded != nil {
 		recorded, err := n.deps.OrchStrandRecorded()
 		if err != nil {

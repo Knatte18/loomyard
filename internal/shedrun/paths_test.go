@@ -74,12 +74,18 @@ func TestPathConstructors(t *testing.T) {
 			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "arbiter") }},
 		{"ArbiterAttemptDir", func(l *lyxcwd.Location) string { return ArbiterAttemptDir(l, "self", 2) },
 			func(l *lyxcwd.Location) string { return filepath.Join(ArbiterDir(l, "self"), "attempt-2") }},
+		{"AlignmentDir", func(l *lyxcwd.Location) string { return AlignmentDir(l, "self", "pr-gate") },
+			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "alignment", "pr-gate") }},
 		{"ArbiterMarker", func(l *lyxcwd.Location) string { return ArbiterMarker(l, "self") },
 			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "arbiter-inflight.json") }},
 		{"PrimeRunLock", PrimeRunLock,
 			func(l *lyxcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lyx", "shed", "run.lock") }},
 		{"LandLock", LandLock,
 			func(l *lyxcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lyx", "shed", "land.lock") }},
+		{"NoticeLog", NoticeLog,
+			func(l *lyxcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lyx", "notices.log") }},
+		{"NoticeLogRel", func(*lyxcwd.Location) string { return NoticeLogRel() },
+			func(*lyxcwd.Location) string { return filepath.Join(".lyx", "notices.log") }},
 		{"SeedRel", func(l *lyxcwd.Location) string { return SeedRel(l, "self") },
 			func(l *lyxcwd.Location) string { return filepath.Join("_lyx", "shed", worktreeName, "seed.json") }},
 		{"StatusRel", func(l *lyxcwd.Location) string { return StatusRel(l, "self") },
@@ -169,6 +175,7 @@ func TestDriveReportsRel(t *testing.T) {
 			for relName, pair := range map[string][2]string{
 				"DriveReportsRel": {DriveReportsRel(l, "self"), DriveReportsDir(l, "self")},
 				"ArbiterRel":      {ArbiterRel(l, "self"), ArbiterDir(l, "self")},
+				"AlignmentRel":    {AlignmentRel(l, "self"), filepath.Dir(AlignmentDir(l, "self", "pr-gate"))},
 			} {
 				want, err := filepath.Rel(l.AnchorPath(), pair[1])
 				if err != nil {

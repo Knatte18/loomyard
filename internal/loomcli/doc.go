@@ -9,7 +9,9 @@
 // `lyx loom start` works in order.
 // It resolves the recorded parent branch, seeds the status file when absent and commits the seed into the fabric before anything else touches it.
 // It brings up the worktree's tmux session;
-// a go-driven run ensures its status strand, an llm-driven run removes any status strand the session still holds, and the per-hub watchdog daemon is spawned best-effort.
+// it ensures the status strand on either driver, and the per-hub watchdog daemon is spawned best-effort.
+// The status strand runs the hidden `lyx loom checklist` verb: a top content strand at a quarter share that shows the run's state line, with the note of what a running run waits on (the same note `lyx loom status` reports), over one line per recipe row, with its box, the time spent in it and its visit count.
+// The verb reads the status file and the seed without arming a run, and reports its line count to reed so the strand is sized to it.
 // Unless a driver is already alive, it spawns the driver the seed records, which is never chosen by a flag;
 // a second invocation while a driver runs ensures the substrate instead.
 //
@@ -77,6 +79,16 @@
 // The three verbs read only the resolved anchor, so they join the lightweight wiring and are not held up by an unrelated module's config.
 // `renumberRefusal` words every refusal with its way forward; the rows are in `contracts/specs/refusal-spec.md`.
 //
+// # Validate plan overlay
+//
+// `lyx loom validate-plan --overlay` checks the plan with proposed plan file contents laid over it, in memory, so a fix can be checked before any file is edited.
+// Stdin is one JSON object whose keys are plan file names and whose values are their full proposed content;
+// the names are `00-overview.md` and the card files the Card Index on disk lists.
+// The verb builds a `planparser.Overlay` over the plan directory, parses it, and runs the flag-less check set (`loomshed.ValidatePlan`) over the overlaid plan, reporting through the same envelope.
+// Handle canonicalization and the done-card comparison read and rewrite through the overlay, and no byte under the plan directory is written.
+// The overlay cannot change the tree the glyphs resolve against, so it validates target-list, verify-command and card-text changes, never a proposed code change, and it adds, removes or renames no plan file.
+// It is exclusive with `--rework` and `--require-approved`, refused before stdin is read; a terminal or empty stdin, input that is not one object of distinct names and string values, an unusable name and a card file missing from disk are each refused with their way forward in `overlayRefusal`, and the rows are in `contracts/specs/refusal-spec.md`.
+//
 // # Arbiter
 //
 // `lyx loom arbiter <run-id> --envelope <path> [--report <path>]` is run only by the run's driver, at a stop it cannot settle.
@@ -102,4 +114,27 @@
 // The verb moves no run itself;
 // `lyx shed step <run-id> --until-stop --arbiter-attempt <N>` performs the verdict's goto under the run and status locks, once per attempt.
 // A pair's session end ends a live arbiter strand with the pair's other strands.
+//
+// # Peers
+//
+// `lyx loom peers` lists the other runs in flight in the hub, and `lyx loom peers show <slug> --record decision|plan` prints one peer's decision record or its plan's `00-overview.md` under a `content` key.
+// An agent in one pair uses them to compare its run with the others without forming another worktree's path itself.
+//
+// The peer set is every board task whose status is a run status, whatever the run's state, with the caller's own slug left out.
+// Each peer line carries `slug`, `title`, `status`, `parent_branch`, `changed_paths` (the committed paths between the peer's merge base with its parent branch and its head), `decision_record` and `plan` (whether the peer holds them) and `unreadable`.
+// A peer whose pair, origin record, branch or records cannot be read is listed with that reason in `unreadable`, never dropped and never an error.
+// From a task pair the list also carries `parent_commits`, the commits on the pair's parent branch since the pair forked, as short SHA and subject, newest first; the prime has none.
+// Both verbs refuse in a hub with no board, and `show` refuses an unknown slug, a task holding no run status, the caller's own slug, an unknown record name and a record the peer lacks, each naming its way forward.
+//
+// The verbs write nothing and read only the board, the peers' two records and git history through `internal/fabricengine`.
+// They resolve the location through `lyxcwd` in the group's own pre-run, as the `review` and `decision` groups do; every loom verb is hub-only, so `internal/cliwire` does not apply.
+// A bare `lyx loom peers` outside a lyx worktree lists the group's verbs instead of resolving.
+//
+// # Parent-review alignment
+//
+// The wiring sets the parent-review gate's Aligner to an adapter over an `internal/alignment` session rooted at the run's `parent-review` alignment directory, one agent per round (key `round-<N>`).
+// Alignment is off, and the gate delivers straight to the run's parent, when `skip_alignment` is set or the hub has no board dir.
+// The decision snapshot taken at spawn covers the decision record and every board note naming the task; an agent approve is turned into an escalation when the snapshot has changed by the time it is polled, so a decision recorded during the review is never passed over.
+// An escalation, a timeout or any failure leaves the gate to deliver to the parent, with the reviewer brief naming the agent's report and the reason.
+// The status commit stages the alignment directory with the run records.
 package loomcli

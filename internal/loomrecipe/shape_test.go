@@ -81,6 +81,7 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NameMergeBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NameMergeBurlerFix, "BurlerFix", burlerFixType},
 	{loomshed.NamePublish, "Publish", reflect.TypeOf(&landingshed.Publish{})},
+	{loomshed.NamePRAlign, "PRAlign", reflect.TypeOf(&landingshed.PRAlign{})},
 	{loomshed.NamePRGate, "PRGate", reflect.TypeOf(&landingshed.PRGate{})},
 	{loomshed.NamePRRework, "PRRework", reflect.TypeOf(loomshed.NewPRRework("", func(loomshed.ReworkTold) shedengine.ShedProducer { return nil }, loomshed.PRReworkDeps{}))},
 	{loomshed.NameFinalize, "Finalize", reflect.TypeOf(&landingshed.Finalize{})},

@@ -1,4 +1,4 @@
-// paths.go declares the shed run-directory path constructors: the durable paths under _lyx (the run directory, its seed and status files, and the drive-reports directory), the ephemeral paths under .lyx (including the driver park marker), the anchor-relative paths for fabric commit pathspecs (including the run-records root), the tree-relative seed and status paths a git tree read takes, and one hub-scoped ephemeral lock that sits one level above any single run-id.
+// paths.go declares the shed run-directory path constructors: the durable paths under _lyx (the run directory, its seed and status files, and the drive-reports directory), the ephemeral paths under .lyx (including the driver park marker), the anchor-relative paths for fabric commit pathspecs (including the run-records root), the tree-relative seed and status paths a git tree read takes, and the hub-scoped ephemeral files that sit one level above any single run-id: its locks and the notice log.
 // Every constructor that returns an absolute path joins onto the given *lyxcwd.Location's AnchorPath(), per the Cwd Resolution Invariant; the *Rel constructors and TreeRunFileRels return relative paths; none of them calls os.Getwd or any git command.
 
 package shedrun
@@ -24,6 +24,9 @@ const driveReportsDirName = "drive-reports"
 
 // arbiterDirName is the segment under a run's directory that holds its arbiter attempts.
 const arbiterDirName = "arbiter"
+
+// alignmentDirName is the segment under a run's directory that holds its alignment attempts, one directory per point.
+const alignmentDirName = "alignment"
 
 // arbiterMarkerFileName is the filename of the arbiter in-flight marker, whose path ArbiterMarker returns.
 const arbiterMarkerFileName = "arbiter-inflight.json"
@@ -59,6 +62,9 @@ const ResumeReportFileName = "driver-resume-report"
 // That refusal is NOT retryable: the operator must resolve, conclude or abort the merge first.
 // It is exported so an unattended caller tells it apart from the retryable StartNotParkedKind by this one declared value rather than by message text.
 const StartMergeInProgressKind = "merge_in_progress"
+
+// noticeLogFileName is the filename of the hub notice log, whose path NoticeLog returns.
+const noticeLogFileName = "notices.log"
 
 // RunDir returns the path to the durable, fabric-synced directory holding a single run's
 // seed.json and status.json: the given *lyxcwd.Location's AnchorPath() joined with
@@ -176,6 +182,18 @@ func ArbiterAttemptDir(l *lyxcwd.Location, runID string, attempt int) string {
 	return filepath.Join(ArbiterDir(l, runID), "attempt-"+strconv.Itoa(attempt))
 }
 
+// AlignmentDir returns the path to the durable directory holding the alignment agent's attempts at one point of a run:
+// RunDir(l, runID) joined with alignmentDirName and point, which is a single path segment.
+func AlignmentDir(l *lyxcwd.Location, runID, point string) string {
+	return filepath.Join(RunDir(l, runID), alignmentDirName, point)
+}
+
+// AlignmentRel returns the worktree-anchor-relative form of the run's alignment directory, which holds one directory per point: the join of lyxdirs.LyxDirName, shedDirName, the run's directory segment under l, and alignmentDirName.
+// It exists so a caller building a fabric commit pathspec never has to name a segment shedrun owns.
+func AlignmentRel(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(lyxdirs.LyxDirName, shedDirName, runSegment(l, runID), alignmentDirName)
+}
+
 // ArbiterMarker returns the path to the ephemeral arbiter in-flight marker, arbiterMarkerFileName under ScratchDir(l, runID).
 func ArbiterMarker(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), arbiterMarkerFileName)
@@ -231,6 +249,17 @@ func PrimeRunLock(l *lyxcwd.Location) string {
 // the given *lyxcwd.Location's AnchorPath() joined with lyxdirs.DotLyxDirName, shedDirName, and "land.lock".
 func LandLock(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, shedDirName, "land.lock")
+}
+
+// NoticeLog returns the path to the hub's ephemeral notice log, notices.log directly under the given *lyxcwd.Location's AnchorPath() joined with lyxdirs.DotLyxDirName.
+// It sits outside RunsRoot and ScratchRoot, so no run-directory sweep reads it as a run or removes it.
+func NoticeLog(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), NoticeLogRel())
+}
+
+// NoticeLogRel returns the anchor-relative form of NoticeLog's path.
+func NoticeLogRel() string {
+	return filepath.Join(lyxdirs.DotLyxDirName, noticeLogFileName)
 }
 
 // LoopLock returns the path to the loop's liveness lock, loop.lock under StepsDir(l, runID), which the detached loop holds for its whole life.

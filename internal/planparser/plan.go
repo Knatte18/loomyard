@@ -96,6 +96,9 @@ type Plan struct {
 	// Verify is the overview's optional "## verify:" section as one shell command line:
 	// the section's non-blank lines, in order, chained with " && ".
 	Verify string
+
+	// overlay is the in-memory plan source the plan was parsed through, nil for a plan ParsePlan or ParsePlanFrom built.
+	overlay *Overlay
 }
 
 // Card is one flat, format-5 plan-format card: the Card Index entry's fields plus everything

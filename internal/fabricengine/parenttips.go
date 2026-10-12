@@ -5,6 +5,7 @@ package fabricengine
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -90,6 +91,36 @@ func (f *Fabric) ChangedPaths(from, to string) ([]string, error) {
 	}
 	return paths, nil
 }
+
+// CommitLog lists the commits reachable from to and not from from in the pair's code repository, newest first, each as a seven-character SHA prefix and the commit's subject.
+// An empty range returns an empty slice, and a ref that does not resolve is an error naming it.
+func (f *Fabric) CommitLog(from, to string) ([]string, error) {
+	fromSHA, err := f.code.ResolveSHA(from)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: commit log from %s to %s: %w", from, to, err)
+	}
+	toSHA, err := f.code.ResolveSHA(to)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: commit log from %s to %s: %w", from, to, err)
+	}
+	shas, err := f.code.CommitsNotIn(toSHA, fromSHA)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: commit log from %s to %s: %w", from, to, err)
+	}
+	lines := make([]string, 0, len(shas))
+	for _, sha := range shas {
+		detail, err := f.code.CommitDetail(sha)
+		if err != nil {
+			return nil, fmt.Errorf("fabricengine: commit log from %s to %s: %w", from, to, err)
+		}
+		subject, _, _ := strings.Cut(detail.Message, "\n")
+		lines = append(lines, sha[:shortSHALength]+" "+subject)
+	}
+	return lines, nil
+}
+
+// shortSHALength is how many leading characters of a SHA CommitLog prints.
+const shortSHALength = 7
 
 // HoldsWork reports whether merging source into base adds nothing: the merge is clean and its tree equals base's tree.
 // A conflicted merge holds nothing.

@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // TestNew_ShapeMatchesRecipe builds the embedded recipe through New from testEnv(t) and asserts row order and concrete Producer type against wantProducerTable.
@@ -240,7 +241,41 @@ func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
 	}
 }
 
-// TestRecipe_PublishRoutesThroughPRGate pins the review fix-back routing: Publish hands to the gate, the gate lands on Finalize or bounces to the rework row, the rework row re-enters Webster, both rows share segment PR-Review, and the main line still ends at Friction-Reflect.
+// TestRowNames_FollowEachRecipesRowOrder pins that each recipe's names equal its shedbuild.Parse row names in file order, and that a recipe the loom module does not own is refused.
+func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
+	for _, tt := range []struct {
+		recipe string
+		source []byte
+	}{
+		{shedrun.RecipeLoom, recipes.LoomRecipe},
+		{shedrun.RecipeDarn, recipes.DarnRecipe},
+	} {
+		t.Run(tt.recipe, func(t *testing.T) {
+			parsed, err := shedbuild.Parse(tt.source)
+			if err != nil {
+				t.Fatalf("shedbuild.Parse(%s recipe) = %v", tt.recipe, err)
+			}
+			var want []string
+			for _, row := range parsed.Producers {
+				want = append(want, row.Name)
+			}
+
+			got, err := RowNames(tt.recipe)
+			if err != nil {
+				t.Fatalf("RowNames(%q) error = %v; want nil", tt.recipe, err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("RowNames(%q) = %v; want %v", tt.recipe, got, want)
+			}
+		})
+	}
+
+	if _, err := RowNames(shedrun.RecipeBatten); err == nil || !strings.Contains(err.Error(), shedrun.RecipeBatten) {
+		t.Errorf("RowNames(%q) error = %v; want a refusal naming the recipe", shedrun.RecipeBatten, err)
+	}
+}
+
+// TestRecipe_PublishRoutesThroughPRGate pins the review fix-back routing: Publish hands to PR-Align, which hands to the gate with no on_stuck and no segment, the gate lands on Finalize or bounces to the rework row, the rework row re-enters Webster, both rows share segment PR-Review, and the main line still ends at Friction-Reflect.
 func TestRecipe_PublishRoutesThroughPRGate(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)
@@ -259,11 +294,15 @@ func TestRecipe_PublishRoutesThroughPRGate(t *testing.T) {
 		return i
 	}
 	publish := shed.Producers[get(loomshed.NamePublish)]
+	align := shed.Producers[get(loomshed.NamePRAlign)]
 	gate := shed.Producers[get(loomshed.NamePRGate)]
 	rework := shed.Producers[get(loomshed.NamePRRework)]
 
-	if publish.OnDone != loomshed.NamePRGate {
-		t.Errorf("Publish.OnDone = %q; want %q", publish.OnDone, loomshed.NamePRGate)
+	if publish.OnDone != loomshed.NamePRAlign {
+		t.Errorf("Publish.OnDone = %q; want %q", publish.OnDone, loomshed.NamePRAlign)
+	}
+	if align.OnDone != loomshed.NamePRGate || align.OnStuck != "" || align.Segment != "" {
+		t.Errorf("PR-Align OnDone/OnStuck/Segment = %q/%q/%q; want %q/empty/empty", align.OnDone, align.OnStuck, align.Segment, loomshed.NamePRGate)
 	}
 	if gate.OnDone != loomshed.NameFinalize || gate.OnStuck != loomshed.NamePRRework {
 		t.Errorf("PR-Gate OnDone/OnStuck = %q/%q; want %q/%q", gate.OnDone, gate.OnStuck, loomshed.NameFinalize, loomshed.NamePRRework)

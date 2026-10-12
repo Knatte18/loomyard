@@ -490,6 +490,7 @@ func (p *innerRunProducer) deliver(ctx context.Context, key, condition, line str
 	if d == nil {
 		d = &noticeDelivery{}
 		p.episode.deliveries[key] = d
+		appendNoticeLog(p.deps.NoticeLog, line)
 	}
 	if d.dropped {
 		return false
