@@ -1,0 +1,158 @@
+// runs.go selects the finished runs of a report: one run per archive tag, full when its loom records show a finished loom run and partial otherwise.
+
+package reportengine
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+	"time"
+
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
+)
+
+// SourceBatten is the name of the source holding a run's batten status snapshots.
+const SourceBatten = "batten"
+
+// RunRow is one full run.
+// Sources maps each source name to whether the run holds it; a source a run lacks is absent, never counted as zero.
+type RunRow struct {
+	Tag       string          `json:"tag"`
+	Slug      string          `json:"slug"`
+	Commit    string          `json:"commit"`
+	Committed time.Time       `json:"committed"`
+	Week      string          `json:"week"`
+	Sources   map[string]bool `json:"sources"`
+
+	// battenSnapshots are the batten status files in the run's span, oldest first, the last being the run's batten record.
+	battenSnapshots []shedengine.Status
+
+	// childHistory is the loom history at the run's archive tag.
+	childHistory []shedengine.HistoryEntry
+}
+
+// PartialRun is a tag that names a run which did not finish as a full loom run, with the reason.
+// It enters no per-run figure.
+type PartialRun struct {
+	Tag    string `json:"tag"`
+	Slug   string `json:"slug"`
+	Week   string `json:"week"`
+	Reason string `json:"reason"`
+}
+
+// isoWeekLabel spells the ISO week of at, with Monday as its first day, as 2026-W41.
+func isoWeekLabel(at time.Time) string {
+	year, week := at.UTC().ISOWeek()
+	return fmt.Sprintf("%d-W%02d", year, week)
+}
+
+// selectRuns adds a run, a partial run or a finding to report for every archive tag of src committed on or after opts.Since.
+func selectRuns(src Sources, opts Options, report *Report) error {
+	batten, err := newBattenIndex(src)
+	if err != nil {
+		return err
+	}
+
+	previousTag := map[string]gitrepo.TagRef{}
+	for _, tag := range src.Tags {
+		slug, named := fabricengine.ArchiveTagSlug(tag.Name)
+		var previous *gitrepo.TagRef
+		if named {
+			if earlier, ok := previousTag[slug]; ok {
+				previous = &earlier
+			}
+			previousTag[slug] = tag
+		}
+		committed := tag.Committed.UTC()
+		if committed.Before(opts.Since) {
+			continue
+		}
+		if !named {
+			report.Findings = append(report.Findings, Finding{Tag: tag.Name, Error: "the tag names no run: expected a slug and a commit segment after the archive prefix"})
+			continue
+		}
+
+		week := isoWeekLabel(committed)
+		status, reason, findings, err := readLoomRecords(src.Records, tag, slug)
+		if err != nil {
+			return err
+		}
+		report.Findings = append(report.Findings, findings...)
+		if reason != "" {
+			report.Partial = append(report.Partial, PartialRun{Tag: tag.Name, Slug: slug, Week: week, Reason: reason})
+			continue
+		}
+
+		row := RunRow{
+			Tag:          tag.Name,
+			Slug:         slug,
+			Commit:       tag.Commit,
+			Committed:    committed,
+			Week:         week,
+			Sources:      map[string]bool{},
+			childHistory: status.History,
+		}
+		var earlierCommitted *time.Time
+		if previous != nil {
+			at := previous.Committed
+			earlierCommitted = &at
+		}
+		snapshots, battenFindings, err := batten.snapshotsOfRun(slug, tag.Name, earlierCommitted, tag.Committed)
+		if err != nil {
+			return err
+		}
+		report.Findings = append(report.Findings, battenFindings...)
+		row.battenSnapshots = snapshots
+		row.Sources[SourceBatten] = len(snapshots) > 0
+		report.Runs = append(report.Runs, row)
+	}
+	return nil
+}
+
+// readLoomRecords reads the loom seed and status at tag's commit through the tolerant parses.
+// A non-empty reason means the tag is not a full run: its seed names another recipe, a record is absent or does not decode, or the history holds no Finalize entry.
+// A record that exists but does not decode is also a finding.
+func readLoomRecords(records Reader, tag gitrepo.TagRef, slug string) (status shedengine.Status, reason string, findings []Finding, err error) {
+	rels, relErr := shedrun.TreeRunRels(slug)
+	if relErr != nil {
+		return shedengine.Status{}, "the slug is no legal run id", []Finding{{Tag: tag.Name, Error: relErr.Error()}}, nil
+	}
+
+	seedBytes, err := records.FileAtRevision(tag.Commit, rels.Seed)
+	if errors.Is(err, gitrepo.ErrPathNotAtRevision) {
+		return shedengine.Status{}, "the tag holds no seed", nil, nil
+	}
+	if err != nil {
+		return shedengine.Status{}, "", nil, fmt.Errorf("reportengine: read %s at %s: %w", rels.Seed, tag.Name, err)
+	}
+	seed, err := shedrun.ParseSeedTolerant(seedBytes)
+	if err != nil {
+		return shedengine.Status{}, "the seed does not decode", []Finding{{Tag: tag.Name, File: rels.Seed, Error: err.Error()}}, nil
+	}
+	if seed.Recipe != shedrun.RecipeLoom {
+		return shedengine.Status{}, fmt.Sprintf("the seed names the %q recipe, not loom", seed.Recipe), nil, nil
+	}
+
+	statusBytes, err := records.FileAtRevision(tag.Commit, rels.Status)
+	if errors.Is(err, gitrepo.ErrPathNotAtRevision) {
+		return shedengine.Status{}, "the tag holds no status", nil, nil
+	}
+	if err != nil {
+		return shedengine.Status{}, "", nil, fmt.Errorf("reportengine: read %s at %s: %w", rels.Status, tag.Name, err)
+	}
+	status, err = shedengine.ParseStatusTolerant(statusBytes)
+	if err != nil {
+		return shedengine.Status{}, "the status does not decode", []Finding{{Tag: tag.Name, File: rels.Status, Error: err.Error()}}, nil
+	}
+	finalized := slices.ContainsFunc(status.History, func(entry shedengine.HistoryEntry) bool {
+		return entry.Producer == loomshed.NameFinalize
+	})
+	if !finalized {
+		return shedengine.Status{}, fmt.Sprintf("the loom history holds no %s entry", loomshed.NameFinalize), nil, nil
+	}
+	return status, "", nil, nil
+}
