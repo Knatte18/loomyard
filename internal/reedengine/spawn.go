@@ -104,7 +104,7 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 
 	var paneID string
 	if isOwnWindow(s.Display) {
-		paneID, err = e.openOwnWindowLocked(s, strandLabel(s.Name), "")
+		paneID, err = e.createOwnWindowPaneLocked(st, s)
 	} else {
 		paneID, err = e.splitWindowZeroPaneLocked(st, live, s)
 	}
@@ -177,6 +177,81 @@ func (e *Engine) splitWindowZeroPaneLocked(st *ReedState, live []LivePane, s *St
 	}
 	paneID := strings.TrimSpace(out)
 	if err := validateSplitCreatedNewPane(paneID, live, splitTargetID); err != nil {
+		return "", err
+	}
+	return paneID, nil
+}
+
+// createOwnWindowPaneLocked creates the pane of an own-window strand and returns its id.
+// A strand with no window group gets a window of its own named by its role.
+// A grouped strand follows planOwnWindowPlacement: it opens the group's shared window, joins it, or gets a window of its own.
+// The group record the plan returns is stored in st, which the caller persists with the strand.
+// A refusal returns before anything is created.
+// A shared window is laid out evenly in the window_split direction after a new pane joins or opens it.
+func (e *Engine) createOwnWindowPaneLocked(st *ReedState, s *Strand) (string, error) {
+	group := s.Display.Window
+	if group == "" {
+		return e.openOwnWindowLocked(s, strandLabel(s.Name), "")
+	}
+
+	// Listed here, after any head reconcile that ended an own window, so the plan and the join read the current windows.
+	windows, err := e.tmux.listWindowPanes(e.SessionName())
+	if err != nil {
+		return "", fmt.Errorf("list windows: %w", err)
+	}
+	count, groupWindow := groupLiveCount(st.Strands, group, s.GUID, windows)
+	placement, record, err := planOwnWindowPlacement(st.WindowGroups, s.Display, e.cfg.WindowShareMax, count, groupWindow)
+	if err != nil {
+		return "", err
+	}
+	if st.WindowGroups == nil {
+		st.WindowGroups = make(map[string]WindowGroup)
+	}
+	st.WindowGroups[group] = record
+
+	if placement == placeApart {
+		return e.openOwnWindowLocked(s, strandLabel(s.Name), "")
+	}
+
+	splitFlag, layout, err := windowSplitLayout(e.cfg.WindowSplit)
+	if err != nil {
+		return "", err
+	}
+	var paneID string
+	if placement == placeJoinShared {
+		paneID, err = e.joinGroupWindowLocked(groupWindow, windows, splitFlag)
+	} else {
+		paneID, err = e.openOwnWindowLocked(s, group, group)
+	}
+	if err != nil {
+		return "", err
+	}
+	if err := e.tmux.run("select-layout", "-t", paneID, layout); err != nil {
+		logger.Warn("reed: could not lay out the shared window", "strand", s.GUID, "pane", paneID, "layout", layout, "err", err)
+	}
+	return paneID, nil
+}
+
+// joinGroupWindowLocked splits the first listed pane of the group window groupWindow in the direction splitFlag and returns the new pane's id.
+// The split is detached, so the group window's active pane stays where it is and a joiner never takes focus from an operator viewing the window.
+// A split that reuses an existing pane is refused as in window 0.
+func (e *Engine) joinGroupWindowLocked(groupWindow string, windows []windowPane, splitFlag string) (string, error) {
+	var members []LivePane
+	for _, w := range windows {
+		if w.WindowID == groupWindow {
+			members = append(members, w.livePane())
+		}
+	}
+	if len(members) == 0 {
+		return "", fmt.Errorf("group window %s lists no pane to split", groupWindow)
+	}
+	target := members[0].ID
+	out, err := e.tmux.output("split-window", "-d", splitFlag, "-t", target, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}")
+	if err != nil {
+		return "", fmt.Errorf("split group window: %w", err)
+	}
+	paneID := strings.TrimSpace(out)
+	if err := validateSplitCreatedNewPane(paneID, members, target); err != nil {
 		return "", err
 	}
 	return paneID, nil

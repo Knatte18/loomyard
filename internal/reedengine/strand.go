@@ -434,6 +434,7 @@ func (e *Engine) removeStrandLocked(st *ReedState, guid string, recursive bool) 
 		remaining = append(remaining, s)
 	}
 	st.Strands = remaining
+	pruneWindowGroups(st)
 	removeLaunchScripts(shell.ForGOOS(), e.stateDir(), toRemove)
 
 	return removed, paneIDs, nil

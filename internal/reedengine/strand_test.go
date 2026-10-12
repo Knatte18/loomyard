@@ -258,6 +258,7 @@ func TestUpdateStrandLocked(t *testing.T) {
 // TestRemoveStrandLocked pins the non-leaf guard and the cascade on one table:
 // a non-leaf removed without recursive is refused with the table unchanged,
 // and the recursive remove cascades to every descendant, lists each removed strand with its name and leaves unrelated strands alone.
+// A window group's record outlives all but the group's last strand.
 func TestRemoveStrandLocked(t *testing.T) {
 	e := newTestEngine(t)
 	st := &ReedState{Strands: []Strand{
@@ -289,6 +290,25 @@ func TestRemoveStrandLocked(t *testing.T) {
 	}
 	if len(st.Strands) != 1 || st.Strands[0].GUID != "unrelated" {
 		t.Errorf("st.Strands after cascade = %+v, want only the unrelated strand left", st.Strands)
+	}
+
+	// A window group's record lives until the group's last strand is removed.
+	grouped := render.Display{Anchor: render.AnchorOwnWindow, Window: "g", WindowSize: 2}
+	st = &ReedState{
+		Strands:      []Strand{{GUID: "a", Display: grouped}, {GUID: "b", Display: grouped}},
+		WindowGroups: map[string]WindowGroup{"g": {Shared: true, Size: 2}},
+	}
+	if _, _, err := e.removeStrandLocked(st, "a", false); err != nil {
+		t.Fatalf("removeStrandLocked(a): %v", err)
+	}
+	if _, kept := st.WindowGroups["g"]; !kept {
+		t.Error("window group record dropped with one strand of the group left, want it kept")
+	}
+	if _, _, err := e.removeStrandLocked(st, "b", false); err != nil {
+		t.Fatalf("removeStrandLocked(b): %v", err)
+	}
+	if _, kept := st.WindowGroups["g"]; kept {
+		t.Error("window group record kept after the group's last strand was removed, want it dropped")
 	}
 }
 

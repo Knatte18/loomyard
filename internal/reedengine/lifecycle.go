@@ -229,6 +229,7 @@ func dropStrands(st *ReedState, drop []Strand) int {
 		}
 	}
 	st.Strands = kept
+	pruneWindowGroups(st)
 	return len(drop)
 }
 

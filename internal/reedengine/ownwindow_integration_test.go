@@ -259,6 +259,221 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		explorer.PaneID = status.PaneID
 	})
 
+	addGrouped := func(role, group string, size int, cmd, resumeCmd string) Strand {
+		t.Helper()
+		s, err := e.AddStrand(AddSpec{
+			Role:      role,
+			Cmd:       cmd,
+			ResumeCmd: resumeCmd,
+			Display:   render.Display{Anchor: render.AnchorOwnWindow, Window: group, WindowSize: size},
+		})
+		if err != nil {
+			t.Fatalf("AddStrand(%s in %s): %v", role, group, err)
+		}
+		return s
+	}
+	paneOrigin := func(pane string) (left, top string) {
+		t.Helper()
+		fields := strings.Fields(display(pane, "#{pane_left} #{pane_top}"))
+		if len(fields) != 2 {
+			t.Fatalf("pane origin of %s = %v, want left and top", pane, fields)
+		}
+		return fields[0], fields[1]
+	}
+	// restoreConfig puts the config fields a subtest edits back when the subtest ends.
+	restoreConfig := func(t *testing.T) {
+		shareMax, split := e.cfg.WindowShareMax, e.cfg.WindowSplit
+		t.Cleanup(func() { e.cfg.WindowShareMax, e.cfg.WindowSplit = shareMax, split })
+	}
+
+	t.Run("GroupOfTwoSharesOneWindowSideBySide", func(t *testing.T) {
+		first := addGrouped("pa", "pair", 2, "sleep 300", "")
+		window := windowOfPane(t, e, first.PaneID)
+		if got := display(window, "#{window_name}"); got != "pair" {
+			t.Errorf("shared window name = %q, want the group name pair", got)
+		}
+		if got := display(window, "#{@lyx_group}"); got != "pair" {
+			t.Errorf("shared window @lyx_group = %q, want pair", got)
+		}
+
+		if err := e.tmux.run("select-window", "-t", window); err != nil {
+			t.Fatalf("select-window: %v", err)
+		}
+		second := addGrouped("pb", "pair", 2, "sleep 300", "")
+
+		if got := windowOfPane(t, e, second.PaneID); got != window {
+			t.Fatalf("second strand is in window %q, want the shared window %q", got, window)
+		}
+		if got := display(window, "#{pane_id}"); got != first.PaneID {
+			t.Errorf("shared window active pane = %q after the join, want the first strand's pane %q", got, first.PaneID)
+		}
+		if got := currentWindow(); got != window {
+			t.Errorf("current window = %q after the join, want it left on %q", got, window)
+		}
+		firstLeft, firstTop := paneOrigin(first.PaneID)
+		secondLeft, secondTop := paneOrigin(second.PaneID)
+		if firstTop != secondTop || firstLeft == secondLeft {
+			t.Errorf("panes at (%s,%s) and (%s,%s), want them side by side: equal top, different left", firstLeft, firstTop, secondLeft, secondTop)
+		}
+	})
+
+	t.Run("ADeadMemberStillCountsTowardTheGroup", func(t *testing.T) {
+		first := addGrouped("da", "dying-group", 2, "exit", "")
+		waitUntil(t, 10*time.Second, "the first group member never died", func() bool { return paneDead(first.PaneID) })
+
+		second := addGrouped("db", "dying-group", 2, "sleep 300", "")
+		third := addGrouped("dc", "dying-group", 2, "sleep 300", "")
+
+		window := windowOfPane(t, e, first.PaneID)
+		if got := windowOfPane(t, e, second.PaneID); got != window {
+			t.Errorf("second member is in window %q, want the shared window %q", got, window)
+		}
+		if got := windowOfPane(t, e, third.PaneID); got == window {
+			t.Errorf("third member joined the full shared window %q, want a window of its own", window)
+		}
+	})
+
+	t.Run("HeightSplitStacks", func(t *testing.T) {
+		restoreConfig(t)
+		e.cfg.WindowSplit = "height"
+
+		first := addGrouped("ha", "stack", 2, "sleep 300", "")
+		second := addGrouped("hb", "stack", 2, "sleep 300", "")
+
+		firstLeft, firstTop := paneOrigin(first.PaneID)
+		secondLeft, secondTop := paneOrigin(second.PaneID)
+		if firstLeft != secondLeft || firstTop == secondTop {
+			t.Errorf("panes at (%s,%s) and (%s,%s), want them stacked: equal left, different top", firstLeft, firstTop, secondLeft, secondTop)
+		}
+	})
+
+	t.Run("GroupOfFiveGivesEachItsOwnWindow", func(t *testing.T) {
+		seen := map[string]bool{}
+		for _, role := range []string{"fa", "fb", "fc"} {
+			s := addGrouped(role, "five", 5, "sleep 300", "")
+			window := windowOfPane(t, e, s.PaneID)
+			if seen[window] {
+				t.Errorf("strand %s shares window %s with another member of a size-5 group, want a window each", role, window)
+			}
+			seen[window] = true
+			if got := display(window, "#{window_name}"); got != role {
+				t.Errorf("window name = %q, want the role %q", got, role)
+			}
+		}
+	})
+
+	t.Run("OverflowGetsAWindowOfItsOwn", func(t *testing.T) {
+		overflow := addGrouped("pc", "pair", 2, "sleep 300", "")
+
+		window := windowOfPane(t, e, overflow.PaneID)
+		if got := display(window, "#{window_name}"); got != "pc" {
+			t.Errorf("overflow window name = %q, want its role pc", got)
+		}
+		pairWindow := ""
+		out, err := e.tmux.output("list-windows", "-t", exactSessionTarget(e.SessionName()), "-F", "#{window_id} #{window_name}")
+		if err != nil {
+			t.Fatalf("list-windows: %v", err)
+		}
+		for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+			if fields := strings.Fields(line); len(fields) == 2 && fields[1] == "pair" {
+				pairWindow = fields[0]
+			}
+		}
+		if pairWindow == "" || pairWindow == window {
+			t.Fatalf("pair window = %q, overflow window = %q; want the pair window kept apart from the overflow", pairWindow, window)
+		}
+		if got := windowPanes(pairWindow); len(got) != 2 {
+			t.Errorf("pair window panes = %v, want its two panes kept", got)
+		}
+	})
+
+	t.Run("ShareMaxEditBetweenJoinsDoesNotMoveTheSecondJoiner", func(t *testing.T) {
+		restoreConfig(t)
+		e.cfg.WindowShareMax = 2
+		first := addGrouped("la", "late", 2, "sleep 300", "")
+
+		e.cfg.WindowShareMax = 0
+		second := addGrouped("lb", "late", 2, "sleep 300", "")
+
+		if got, want := windowOfPane(t, e, second.PaneID), windowOfPane(t, e, first.PaneID); got != want {
+			t.Errorf("second strand is in window %q, want it in the first strand's window %q despite window_share_max 0", got, want)
+		}
+	})
+
+	t.Run("SizeMismatchIsRefused", func(t *testing.T) {
+		panesBefore := func() int {
+			out, err := e.tmux.output("list-panes", "-s", "-t", exactSessionTarget(e.SessionName()), "-F", "#{pane_id}")
+			if err != nil {
+				t.Fatalf("list panes: %v", err)
+			}
+			return len(strings.Fields(out))
+		}()
+
+		_, err := e.AddStrand(AddSpec{Role: "mismatch", Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOwnWindow, Window: "pair", WindowSize: 3}})
+
+		if err == nil || !strings.Contains(err.Error(), "size 2") || !strings.Contains(err.Error(), "size 3") {
+			t.Fatalf("AddStrand = %v, want a refusal naming size 2 and size 3", err)
+		}
+		out, listErr := e.tmux.output("list-panes", "-s", "-t", exactSessionTarget(e.SessionName()), "-F", "#{pane_id}")
+		if listErr != nil {
+			t.Fatalf("list panes: %v", listErr)
+		}
+		if got := len(strings.Fields(out)); got != panesBefore {
+			t.Errorf("session holds %d panes after the refusal, want the %d from before", got, panesBefore)
+		}
+	})
+
+	t.Run("RelaunchOfADeadGroupMemberRejoinsItsWindow", func(t *testing.T) {
+		dead := addGrouped("ra", "relaunch", 2, "exit", "sleep 300")
+		partner := addGrouped("rb", "relaunch", 2, "sleep 300", "")
+		waitUntil(t, 10*time.Second, "the first group member never died", func() bool { return paneDead(dead.PaneID) })
+		window := windowOfPane(t, e, dead.PaneID)
+
+		if _, err := e.Resume(); err != nil {
+			t.Fatalf("Resume: %v", err)
+		}
+
+		status, ok := statusOf(dead.GUID)
+		if !ok || !status.Live || status.PaneID == dead.PaneID {
+			t.Fatalf("Status of the relaunched member = %+v (found %v), want it live in a new pane", status, ok)
+		}
+		if got := windowOfPane(t, e, status.PaneID); got != window {
+			t.Errorf("relaunched member is in window %q, want the group window %q", got, window)
+		}
+		panes := windowPanes(window)
+		if !slices.Contains(panes, dead.PaneID) || !slices.Contains(panes, partner.PaneID) || len(panes) != 3 {
+			t.Errorf("group window panes = %v, want the old dead pane %s kept unbound beside %s and the relaunched pane", panes, dead.PaneID, partner.PaneID)
+		}
+	})
+
+	t.Run("RelaunchRejoinsAWindowKeptByItsDeadPaneAndTheLastRemovalEndsIt", func(t *testing.T) {
+		dead := addGrouped("sa", "relaunch-alone", 2, "exit", "sleep 300")
+		partner := addGrouped("sb", "relaunch-alone", 2, "sleep 300", "")
+		waitUntil(t, 10*time.Second, "the first group member never died", func() bool { return paneDead(dead.PaneID) })
+		window := windowOfPane(t, e, dead.PaneID)
+
+		if _, err := e.RemoveStrand(partner.GUID, false); err != nil {
+			t.Fatalf("RemoveStrand(partner): %v", err)
+		}
+		if !windowListed(window) {
+			t.Fatalf("group window %s ended with its partner, want it kept by the dead pane that is still bound", window)
+		}
+		if _, err := e.Resume(); err != nil {
+			t.Fatalf("Resume: %v", err)
+		}
+		status, ok := statusOf(dead.GUID)
+		if !ok || !status.Live || windowOfPane(t, e, status.PaneID) != window {
+			t.Fatalf("Status of the relaunched member = %+v (found %v), want it live in the kept window %s", status, ok, window)
+		}
+
+		if _, err := e.RemoveStrand(dead.GUID, false); err != nil {
+			t.Fatalf("RemoveStrand(relaunched): %v", err)
+		}
+		if windowListed(window) {
+			t.Errorf("group window %s is still listed after its last strand was removed, want it ended with the unbound dead pane", window)
+		}
+	})
+
 	t.Run("RemoveEndsTheOwnWindow", func(t *testing.T) {
 		ownWindow := windowOfPane(t, e, explorer.PaneID)
 

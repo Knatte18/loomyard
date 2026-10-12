@@ -5,6 +5,7 @@
 package reedengine
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -88,6 +89,90 @@ const unseenWindowOption = "@lyx_unseen"
 // isOwnWindow reports whether d places a strand outside window 0.
 func isOwnWindow(d render.Display) bool {
 	return d.Anchor == render.AnchorOwnWindow
+}
+
+// WindowGroup is the record of one window group.
+// It is reed's own, written by the group's first strand and dropped with its last.
+type WindowGroup struct {
+	// Shared reports that the group's first strand chose one shared window for it.
+	Shared bool `json:"shared"`
+	// Size is the group size the first strand declared, 0 read as 1.
+	Size int `json:"size"`
+}
+
+// ownWindowPlacement is where an own-window strand's pane goes.
+type ownWindowPlacement int
+
+const (
+	// placeApart gives the strand a window to itself, named by its role.
+	placeApart ownWindowPlacement = iota
+	// placeNewShared opens the group's shared window with this strand.
+	placeNewShared ownWindowPlacement = 1
+	// placeJoinShared splits this strand's pane into the group's existing shared window.
+	placeJoinShared ownWindowPlacement = 2
+)
+
+// planOwnWindowPlacement decides where a strand with display d goes, and returns the group record to store.
+// An ungrouped strand is placed apart with no record.
+// A group's first strand records whether the group shares one window, which is its declared size being at most shareMax;
+// a later strand follows the record, so a changed shareMax never splits a group across shared and separate windows.
+// A strand declaring another size than the record's is refused.
+// A shared group joins its window while liveCount, the strands already holding a pane of the group, is below the group's size;
+// the strand past that is placed apart.
+// groupWindow is the id of the group's existing shared window, empty when it has none.
+func planOwnWindowPlacement(groups map[string]WindowGroup, d render.Display, shareMax, liveCount int, groupWindow string) (ownWindowPlacement, WindowGroup, error) {
+	if d.Window == "" {
+		return placeApart, WindowGroup{}, nil
+	}
+	size := max(d.WindowSize, 1)
+	group, recorded := groups[d.Window]
+	if recorded {
+		if recordedSize := max(group.Size, 1); recordedSize != size {
+			return placeApart, WindowGroup{}, fmt.Errorf("window group %q is live with size %d, and this strand declares size %d; way forward: give the strand the group's size, or another group name", d.Window, recordedSize, size)
+		}
+	} else {
+		group = WindowGroup{Shared: size <= shareMax, Size: size}
+	}
+	switch {
+	case !group.Shared, liveCount >= max(group.Size, 1):
+		return placeApart, group, nil
+	case groupWindow != "":
+		return placeJoinShared, group, nil
+	}
+	return placeNewShared, group, nil
+}
+
+// groupLiveCount counts the strands of group other than self whose binding names a listed pane, alive or dead, since a dead pane still occupies the shared window.
+// It also returns the id of the window carrying the group's @lyx_group option and the own marker, empty when none is listed.
+func groupLiveCount(strands []Strand, group, self string, windows []windowPane) (count int, groupWindow string) {
+	listed := make(map[string]bool, len(windows))
+	for _, w := range windows {
+		listed[w.PaneID] = true
+		if groupWindow == "" && w.Own && w.Group == group {
+			groupWindow = w.WindowID
+		}
+	}
+	for _, s := range strands {
+		if s.GUID != self && s.Display.Window == group && s.PaneID != "" && listed[s.PaneID] {
+			count++
+		}
+	}
+	return count, groupWindow
+}
+
+// pruneWindowGroups deletes every group record that no strand of st names any more, so a later instance under the same name records afresh.
+func pruneWindowGroups(st *ReedState) {
+	named := make(map[string]bool, len(st.Strands))
+	for _, s := range st.Strands {
+		if s.Display.Window != "" {
+			named[s.Display.Window] = true
+		}
+	}
+	for name := range st.WindowGroups {
+		if !named[name] {
+			delete(st.WindowGroups, name)
+		}
+	}
 }
 
 // presentPanes returns live plus the pane of every listed window pane that is bound to an own-window strand of strands and that live does not already hold.

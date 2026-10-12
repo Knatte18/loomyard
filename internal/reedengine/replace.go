@@ -70,6 +70,7 @@ func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 			strand, addErr := e.addStrandLocked(st, spec)
 			if addErr != nil {
 				st.Strands = st.Strands[:beforeAdd]
+				pruneWindowGroups(st)
 			}
 			postAddSaveFailed := false
 			if addErr == nil {

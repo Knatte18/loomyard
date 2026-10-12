@@ -305,6 +305,11 @@
 // Its dead pane stays until the strand is removed or, once a relaunch leaves it unbound, until its window holds no bound pane.
 // Resume reopens the strand detached.
 // UpdateStrand refuses a move into or out of the anchor, since the pane would sit where the new display does not expect it.
+// A strand declaring a window group (Display.Window, sized by Display.WindowSize) shares one window with its group while the declared size is at most window_share_max; every other own-window strand gets a window to itself.
+// The group's first strand decides, and ReedState.WindowGroups records the choice and the size until the group's last strand goes, so a later window_share_max edit never splits a group across shared and separate windows.
+// A strand declaring another size than the record's is refused with both sizes named.
+// A strand arriving once the group's recorded size is already held, a re-stepped seat added before its predecessor is removed, gets a window of its own and leaves the shared window as it is.
+// A pane joins the shared window by a detached split in the window_split direction, so an operator viewing the window keeps the active pane, and the window is then laid out evenly in that direction.
 //
 // Session targeting: every -t argument that names a SESSION is passed in
 // an exact-match form — "=<name>" for session targets (has-session,
