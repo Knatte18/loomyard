@@ -43,7 +43,7 @@ type CleanupSkip struct {
 
 // CleanupReport is what one cleanup pass did, or with Applied false what --apply would do.
 type CleanupReport struct {
-	// Applied reports whether the pass changed anything.
+	// Applied reports whether the pass ran with apply true, a dry run being false.
 	Applied bool
 	// Removed lists the slugs whose records run directory was removed and committed.
 	Removed []string
