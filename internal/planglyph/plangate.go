@@ -1,5 +1,6 @@
 // plangate.go holds planGatePass, the resolve-backed checks that run at the plan gates only: ValidateFormat and Validate call it, ValidateDispatch never does.
 // A check whose verdict depends on state the run itself changes belongs here, because dispatch re-validates a plan against a tree the run has already changed.
+// Its caller-uncovered and delete-before-reference checks share one reference computation, so one pass runs one type load.
 
 package planglyph
 
@@ -19,6 +20,7 @@ import (
 // One finding per file and member, attributed to the card, with Ref the member.
 // It also reports resign-interface-method: a re-sign arrow whose member resolves to an interface method.
 // It also reports caller-uncovered: a deleted or re-signed member that Go code still references, with no admissible card's target covering that code.
+// It also reports delete-before-reference: a deleted member whose reference a later card's Edit code holds, from the same computation, and a deleted package whose import a later card's Go Edit code holds.
 // A member that resolves not_found, ambiguous without being partitioned by build constraints, or unreadably is skipped, since the status policy already reports it.
 // Under a non-glyph language it returns nothing and opens no repository.
 // An infrastructure error is wrapped in ErrQuarryUnavailable; a failed type load is not one, since caller-uncovered then answers from its scan.
@@ -101,7 +103,13 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader
 	}
 
 	coverage, err := callerCoverageFindings(plan, lang, worktreeRoot, answers, partitioned, loader)
-	return append(findings, coverage...), err
+	findings = append(findings, coverage...)
+	if err != nil {
+		return findings, err
+	}
+	regions, _ := buildEditRegions(collectEditTargets(lang, plan.Cards), answers, partitioned)
+	imports, err := laterImportFindings(lang, plan.Cards, regions, worktreeRoot)
+	return append(findings, imports...), err
 }
 
 // isInterfaceMethod reports whether s is a method whose signature does not open with the func keyword and a receiver, quarry's answer for an interface method.

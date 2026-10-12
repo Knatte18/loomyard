@@ -672,6 +672,7 @@ var coverageFiles = []string{
 	"callees/callees.go",
 	"callees/callees_external_test.go",
 	"callees/local.go",
+	"callees/runner.go",
 	"callers/aliased.go",
 	"callers/callers.go",
 	"callers/clause.go",
@@ -681,8 +682,12 @@ var coverageFiles = []string{
 	"callers/partuse_b.go",
 	"callers/useparted.go",
 	"callers/promoted.go",
+	"callers/switch.go",
+	"callers/unrelated.go",
+	"callers/uses.go",
 	"callers/usev2.go",
 	"callers/value.go",
+	"docs/notes.md",
 	"dotted/dotted.go",
 	"nested/use.go",
 	"other/holder.go",
@@ -760,8 +765,8 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 		unusableGate bool
 		// want lists "<severity> <file>" for every caller-uncovered finding, sorted.
 		want []string
-		// wantDeleteOrder names the file a delete-before-reference finding must report, when any.
-		wantDeleteOrder string
+		// wantDeleteOrder lists "<severity> <location>" for every delete-before-reference finding, sorted: "<file>:<line>" when blocking and "<file> at line <n>" when informational.
+		wantDeleteOrder []string
 	}{
 		{
 			name:  "delete with no covers",
@@ -913,7 +918,7 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 			name:            "a later card editing a member partitioned by build constraints leaves its callers to delete-before-reference",
 			cards:           []string{coveredTargetCard(covers), editCard("callers#PartUse")},
 			files:           partitionedCaller,
-			wantDeleteOrder: "callers/partuse_a.go",
+			wantDeleteOrder: []string{"blocking callers/partuse_a.go:7"},
 		},
 		{
 			name:     "rename is not a subject",
@@ -932,12 +937,30 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 			name:            "delete with a later card editing a caller is delete-before-reference's alone",
 			cards:           []string{deleteCard("callees#Target"), editCard("callers/callers.go")},
 			want:            []string{"blocking callees/callees_external_test.go", "blocking callees/local.go"},
-			wantDeleteOrder: "callers/callers.go",
+			wantDeleteOrder: []string{"blocking callers/callers.go:6"},
 		},
 		{
 			name:  "re-sign with a later card editing a caller",
 			cards: []string{editWithResign("callees#Target", resignHead), editCard("callers/callers.go")},
 			want:  []string{"blocking callees/callees_external_test.go", "blocking callees/local.go", "blocking callers/callers.go"},
+		},
+		{
+			name:            "delete of a method with a later card editing its caller is one informational delete-before-reference",
+			cards:           []string{deleteCard("callees#Thing.Method"), editCard("callers/callers.go")},
+			wantDeleteOrder: []string{"informational callers/callers.go at line 9"},
+		},
+		{
+			name:            "a covered reference inside a later card's code is delete-before-reference's",
+			cards:           []string{coveredTargetCard(covers), editCard("callers#UseTarget")},
+			wantDeleteOrder: []string{"blocking callers/callers.go:6"},
+		},
+		{
+			name:  "a deleted package's import is searched in Go regions alone",
+			cards: []string{deleteCard("other#"), editCard("callees/callees.go", "docs/notes.md")},
+			files: map[string]string{
+				"docs/notes.md": "The package \"example.com/glyphchain/other\" is going away.\n",
+			},
+			wantDeleteOrder: []string{"blocking callees/callees.go:5"},
 		},
 	}
 
@@ -960,7 +983,6 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 				t.Fatalf("ValidateFormat(...) returned error: %v", err)
 			}
 			var got []string
-			deleteOrderFile := ""
 			for _, f := range findings {
 				switch f.Check {
 				case "caller-uncovered":
@@ -968,16 +990,14 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 						t.Errorf("caller-uncovered attributed to %q; want the subject's card %s", f.Card, want)
 					}
 					got = append(got, fmt.Sprintf("%s %s", f.Severity, coverageFileOf(f.Detail)))
-				case "delete-before-reference":
-					deleteOrderFile = coverageFileOf(f.Detail)
 				}
 			}
 			slices.Sort(got)
 			if !slices.Equal(got, tc.want) {
 				t.Errorf("caller-uncovered findings = %q; want %q", got, tc.want)
 			}
-			if deleteOrderFile != tc.wantDeleteOrder {
-				t.Errorf("delete-before-reference file = %q; want %q", deleteOrderFile, tc.wantDeleteOrder)
+			if sites := deleteOrderSites(findings); !slices.Equal(sites, tc.wantDeleteOrder) {
+				t.Errorf("delete-before-reference sites = %q; want %q", sites, tc.wantDeleteOrder)
 			}
 
 			dispatch, err := ValidateDispatch(plan, root, nil, nil)

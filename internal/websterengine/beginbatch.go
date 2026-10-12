@@ -255,13 +255,14 @@ func LastBegunCard(st *State) int {
 	return last
 }
 
-// EditedDoneCards returns, sorted, the NN-slug ids of the cards of every batch st records terminal with status done whose card file under planDir no longer hashes to the CardHashes entry the batch recorded at begin.
+// EditedDoneCards returns, sorted, the NN-slug ids of the cards of every batch st records terminal with status done whose card file no longer hashes to the CardHashes entry the batch recorded at begin.
+// A card file is read through the plan's own source, so a card of a plan parsed through an overlay is judged by its proposed bytes.
 // It hashes the card files as batchCardHashes does and reads the record and those bytes alone, never parsing the plan.
 // A nil state, a record without CardHashes, a batch not terminal done and a recorded id plan lacks each contribute nothing;
 // an unreadable card file is returned as an error.
 //
 // It is what the loom plan gate reads to refuse an edit to a card whose work has landed.
-func EditedDoneCards(plan *planparser.Plan, st *State, planDir string) ([]string, error) {
+func EditedDoneCards(plan *planparser.Plan, st *State) ([]string, error) {
 	if st == nil {
 		return nil, nil
 	}
@@ -282,7 +283,7 @@ func EditedDoneCards(plan *planparser.Plan, st *State, planDir string) ([]string
 				recorded = append(recorded, c)
 			}
 		}
-		now, err := batchCardHashes(batcher.Batch{Cards: recorded}, planDir)
+		now, err := cardHashesFrom(batcher.Batch{Cards: recorded}, plan.ReadFile)
 		if err != nil {
 			return nil, err
 		}

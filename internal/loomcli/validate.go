@@ -136,39 +136,45 @@ func planFindingsHaveBlocking(findings []planglyph.Finding) bool {
 // Plan-Write's, Plan-Burler-Fix's and PR-Rework's own gates run, plus the plan-unapproved approval
 // check no gate runs at all, callable by the writer agent before handoff.
 func (c *loomCLI) validatePlanCmd() *cobra.Command {
-	var requireApproved, rework bool
+	var requireApproved, rework, overlay bool
 
 	cmd := &cobra.Command{
 		Use:         "validate-plan",
 		Short:       "run the checks Plan-Write's, Plan-Burler-Fix's or PR-Rework's own gate runs standalone against the current plan",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `validate-plan parses the current worktree's plan and checks it in one of
-three modes. With no flags, it runs the index's ValidateFormat -- the same
-format-only check set Plan-Write's and Plan-Burler-Fix's own gate runs before
-handoff, and the mode the plan writer calls before handoff; the cards of
-batches webster's run record holds done are history, and their
-tree-dependent checks are skipped. With
---require-approved, it runs the index's Validate -- the same format-only set
-plus the plan-unapproved approval check, which no gate runs at all: this
-flag is the one place an operator can still reach that check standalone,
-since its own guarantee otherwise rests on the review segment's approve
-seam failing loudly if it is ever wired nil. With --rework, it runs the
-check set PR-Rework's own gate runs: the format-only set over the whole
-new plan, plus a check that its first_card equals the card number the
-rework session was told to start at -- the mode the rework session calls
-before handoff. The default and --rework modes include the
-card-fabric-reference check, which refuses a command in the plan that
-reaches the fabric repo, and the fabric-vocabulary-name check, which
-refuses a declared name the fabric-vocabulary scan would refuse;
---require-approved leaves both out. The two flags
-are mutually exclusive. Every mode reports the result as one JSON
-envelope, carrying any informational findings under their own envelope
-key even on the success path. It takes no arguments.
+four modes, reporting the result as one JSON envelope that carries
+informational findings under their own key even on success. It takes no
+arguments.
+
+No flag: the index's ValidateFormat, the format-only check set Plan-Write's and
+Plan-Burler-Fix's own gate runs, which the plan writer calls before handoff.
+The cards of batches webster's run record holds done are history, and their
+tree-dependent checks are skipped. --require-approved: the index's Validate,
+the same set plus the plan-unapproved check no gate runs, which this flag alone
+reaches standalone. --rework: the set PR-Rework's own gate runs, the
+format-only checks over the whole new plan plus a check that its first_card
+equals the card number the rework session was told. The default and --rework
+modes include the card-fabric-reference and fabric-vocabulary-name checks;
+--require-approved leaves both out.
+
+--overlay: the no-flag checks over the plan with proposed contents laid over
+its files, in memory; nothing is written. Pipe one JSON object on stdin, keys
+the file names and values their full content. A name is 00-overview.md or a
+card file the Card Index on disk lists; adding, removing or renumbering a card
+still goes through insert-card and remove-card. Handles are canonicalized in
+memory, and {} checks the plan as it is. It validates target-list,
+verify-command and card-text changes, never a proposed code change.
+
+The three flags are mutually exclusive.
 
 Example:
   lyx loom validate-plan
   lyx loom validate-plan --require-approved
-  lyx loom validate-plan --rework`,
+  lyx loom validate-plan --rework
+  lyx loom validate-plan --overlay <<'EOF'
+  {"01-slug.md": "<full card file text>"}
+  EOF`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -181,8 +187,28 @@ Example:
 				return nil
 			}
 
+			if overlay && (requireApproved || rework) {
+				flag := "--rework"
+				if requireApproved {
+					flag = "--require-approved"
+				}
+				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-plan: --overlay and "+flag+" are mutually exclusive; way forward: run --overlay alone, which runs the flag-less check set"))
+				return nil
+			}
+
 			planDir := planparser.PlanDir(c.env.AnchorPath)
-			plan, err := planparser.ParsePlan(planDir)
+			var plan *planparser.Plan
+			var err error
+			if overlay {
+				var refusal string
+				plan, refusal, err = overlaidPlan(cmd.InOrStdin(), planDir)
+				if refusal != "" {
+					clihelp.SetExit(cmd.Context(), output.Err(out, refusal))
+					return nil
+				}
+			} else {
+				plan, err = planparser.ParsePlan(planDir)
+			}
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: parse plan at "+planDir+": "+err.Error()))
 				return nil
@@ -235,6 +261,7 @@ Example:
 
 	cmd.Flags().BoolVar(&requireApproved, "require-approved", false, "also run the plan-unapproved approval check, the one check no gate runs -- this flag is the sole way to reach it standalone")
 	cmd.Flags().BoolVar(&rework, "rework", false, "check the whole new plan and its first_card against the told number, as PR-Rework's own gate does")
+	cmd.Flags().BoolVar(&overlay, "overlay", false, "run the no-flag check set over the plan with the proposed plan file contents on stdin (one JSON object, file name to full content) laid over it, in memory, writing nothing")
 
 	return cmd
 }

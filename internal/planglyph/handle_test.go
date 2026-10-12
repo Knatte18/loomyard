@@ -164,7 +164,7 @@ func TestCanonicalizeHandles_Rewrites(t *testing.T) {
 				t.Fatalf("plan.Dir = %q; want %q", plan.Dir, dir)
 			}
 
-			findings, _, err := CanonicalizeHandles(plan, dir, root, results)
+			findings, _, err := CanonicalizeHandles(plan, root, results)
 			if err != nil {
 				t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 			}
@@ -216,7 +216,7 @@ func TestCanonicalizeHandles_OneDraftTwoCanonicalsRewritesNothing(t *testing.T) 
 	before1 := readCardFile(t, dir, 1, "card1")
 	before2 := readCardFile(t, dir, 2, "card2")
 
-	findings, rewrote, err := CanonicalizeHandles(plan, dir, root, results)
+	findings, rewrote, err := CanonicalizeHandles(plan, root, results)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -322,7 +322,7 @@ func TestCanonicalizeHandles_RenameOldUnresolved(t *testing.T) {
 	})
 
 	// No result at all for "sub#DoesNotExist": the same as it never resolving found.
-	findings, _, err := CanonicalizeHandles(plan, dir, "", nil)
+	findings, _, err := CanonicalizeHandles(plan, "", nil)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -356,7 +356,7 @@ func TestCanonicalizeHandles_RenameOldUnresolved(t *testing.T) {
 			1: "**Rename:**\n- `sub#Old` -> `plan:sub#New`\n\n**Intent:** one\n\n## Rename mechanic\n",
 		})
 
-		findings, rewrote, err := CanonicalizeHandles(plan, dir, root, results)
+		findings, rewrote, err := CanonicalizeHandles(plan, root, results)
 		if err != nil {
 			t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 		}
@@ -387,14 +387,14 @@ func TestCanonicalizeHandles_RenameOldUnresolved(t *testing.T) {
 // not a symbol — and the finding must say so instead of claiming the old side "did not resolve
 // found", which is false for it and sends the operator at a resolution problem.
 func TestCanonicalizeHandles_RenameOldSelfGlyphNamesTheShapeMistake(t *testing.T) {
-	dir, plan := writePlanFixture(t, map[int]string{
+	_, plan := writePlanFixture(t, map[int]string{
 		1: "**Rename:**\n- `sub/a.go#` -> `plan:sub#New`\n\n**Intent:** one\n\n## Rename mechanic\n",
 	})
 
 	// A found self glyph's answer carries a Listing and no Symbols; only the Symbols absence
 	// matters to renameDeclSource.
 	results := []quarry.ResolveResult{{Target: "sub/a.go#", Status: quarry.StatusFound}}
-	findings, _, err := CanonicalizeHandles(plan, dir, "", results)
+	findings, _, err := CanonicalizeHandles(plan, "", results)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -418,7 +418,7 @@ func TestCanonicalizeHandles_OneFailingDeclarationLeavesOthersRewritten(t *testi
 		2: "**Create:**\n- `plan:sub#Bad` -> `this is not valid go at all {{{`\n\n**Intent:** two\n",
 	})
 
-	findings, _, err := CanonicalizeHandles(plan, dir, "", nil)
+	findings, _, err := CanonicalizeHandles(plan, "", nil)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -449,7 +449,7 @@ func TestCanonicalizeHandles_CanonicalCollisionRewritesNeither(t *testing.T) {
 		2: "**Create:**\n- `plan:sub#Two` -> `func Same() {}`\n\n**Intent:** two\n",
 	})
 
-	findings, _, err := CanonicalizeHandles(plan, dir, "", nil)
+	findings, _, err := CanonicalizeHandles(plan, "", nil)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -475,7 +475,7 @@ func TestCanonicalizeHandles_LanguageNoneNoOp(t *testing.T) {
 	dir := t.TempDir()
 	plan := &planparser.Plan{Dir: dir, Language: "none"}
 
-	findings, _, err := CanonicalizeHandles(plan, dir, "", nil)
+	findings, _, err := CanonicalizeHandles(plan, "", nil)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}

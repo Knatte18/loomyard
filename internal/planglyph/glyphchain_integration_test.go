@@ -280,7 +280,28 @@ func (l fatalTypesLoader) load(string, []string) ([]*packages.Package, error) {
 	return nil, errors.New("unexpected load")
 }
 
+// countingTypesLoader forwards every load to next and counts the calls.
+type countingTypesLoader struct {
+	next  typesLoader
+	calls int
+}
+
+func (l *countingTypesLoader) load(root string, dirs []string) ([]*packages.Package, error) {
+	l.calls++
+	return l.next.load(root, dirs)
+}
+
+// runnerDecl declares callees.Runner, whose Run and Call share their names with methods of types in the standard library.
+const runnerDecl = "package callees\n\n// Runner has two methods another package calls.\ntype Runner struct{}\n\n// Run is called from another package.\nfunc (Runner) Run() int { return 1 }\n\n// Call is called from another package.\nfunc (Runner) Call() int { return 2 }\n"
+
+// unrelatedCalls calls Run and Call on receivers other than callees.Runner: Run on line 14 and 15, Call on line 16.
+const unrelatedCalls = "package callers\n\nimport (\n\t\"os/exec\"\n\t\"reflect\"\n)\n\ntype local struct{}\n\n// Run and Call are only named in this comment and on the receivers below.\nfunc (local) Run() int { return 0 }\n\nfunc unrelated(c *exec.Cmd, l local, v reflect.Value) {\n\t_ = c.Run()\n\t_ = l.Run()\n\t_ = v.Call(nil)\n}\n"
+
+// usesOfMethod calls callees.Thing.Method on a value (line 7), a pointer (line 9), a type embedding Thing (line 11) and as a method value (line 13).
+const usesOfMethod = "package callers\n\nimport \"example.com/glyphchain/callees\"\n\ntype usesEmbeds struct{ callees.Thing }\n\nfunc usesValue(t callees.Thing) int { return t.Method() }\n\nfunc usesPointer(t *callees.Thing) int { return t.Method() }\n\nfunc usesPromoted(e usesEmbeds) int { return e.Method() }\n\nfunc usesMethodValue(t callees.Thing) func() int { return t.Method }\n"
+
 // TestGlyphChain_CallerCoverageTyped pins caller-uncovered with a real go list load: type information tells receivers apart, and the import-path scan answers where the load has none.
+// The same rows pin delete-before-reference over that load: one load serves both checks, a deleted method's calls inside a later card's code are blocking where the load types them, and dispatch, which loads nothing, reports a name match informationally.
 func TestGlyphChain_CallerCoverageTyped(t *testing.T) {
 	t.Parallel()
 
@@ -302,10 +323,18 @@ func TestGlyphChain_CallerCoverageTyped(t *testing.T) {
 		files map[string]string
 		// dropRootModule removes the fixture's root go.mod, which skips the load.
 		dropRootModule bool
+		// done is the number of leading cards passed as done, which runs the plan through validateFormatAfter instead of planGatePass.
+		done int
 		// want lists "<severity> <file>" for every caller-uncovered finding, sorted.
 		want []string
 		// wantDetails are substrings some caller-uncovered finding's detail holds.
 		wantDetails []string
+		// wantDeleteOrder lists "<severity> <location>" for every delete-before-reference finding of the plan gate, sorted: "<file>:<line>" when blocking and "<file> at line <n>" when informational.
+		wantDeleteOrder []string
+		// wantDispatchDeleteOrder is wantDeleteOrder's shape for ValidateDispatch over the same plan, which takes no loader.
+		wantDispatchDeleteOrder []string
+		// bothChecks marks a row whose plan reports caller-uncovered and delete-before-reference, which must share exactly one load.
+		bothChecks bool
 	}{
 		{
 			name:  "a same-named method on another type is not a reference",
@@ -390,6 +419,53 @@ func TestGlyphChain_CallerCoverageTyped(t *testing.T) {
 			dropRootModule: true,
 			want:           []string{"blocking callees/callees_external_test.go", "blocking callees/local.go", "blocking callers/callers.go"},
 		},
+		{
+			name:  "method names on unrelated receivers in a later card's code report nothing",
+			cards: []string{editCard("callers/switch.go#"), deleteCard("callees#Runner.Run", "callees#Runner.Call"), editCard("callers/unrelated.go#")},
+			files: map[string]string{
+				"callees/runner.go":    runnerDecl,
+				"callers/switch.go":    "package callers\n\nimport \"example.com/glyphchain/callees\"\n\nfunc switchRunner(r callees.Runner) int { return r.Run() + r.Call() }\n",
+				"callers/unrelated.go": unrelatedCalls,
+			},
+			// Dispatch runs no load, so each name after a dot in the later card's code is informational.
+			wantDispatchDeleteOrder: []string{"informational callers/unrelated.go at line 14, 15", "informational callers/unrelated.go at line 16"},
+		},
+		{
+			name:  "a method called on a value, a pointer, a promoting type and as a value is blocking per line",
+			cards: []string{deleteCard("callees#Thing.Method"), editCard("callers/uses.go#")},
+			files: map[string]string{"callers/uses.go": usesOfMethod},
+			want:  []string{"blocking callers/callers.go"},
+			wantDeleteOrder: []string{
+				"blocking callers/uses.go:11", "blocking callers/uses.go:13", "blocking callers/uses.go:7", "blocking callers/uses.go:9",
+			},
+			wantDispatchDeleteOrder: []string{"informational callers/uses.go at line 7, 9, 11, 13"},
+			bothChecks:              true,
+		},
+		{
+			name:  "a call after a parse error in a later card's file is informational",
+			cards: []string{deleteCard("callees#Thing.Method"), editCard("broken/broken.go#")},
+			// The parser drops everything after the bad operand on line 6, so the call on line 7 is missing from the file's syntax.
+			files:                   map[string]string{"broken/broken.go": "package broken\n\nimport \"example.com/glyphchain/callees\"\n\nfunc f(t callees.Thing) {\n\tx := )\n\tt.Method()\n}\n"},
+			want:                    []string{"blocking callers/callers.go"},
+			wantDeleteOrder:         []string{"informational broken/broken.go at line 7"},
+			wantDispatchDeleteOrder: []string{"informational broken/broken.go at line 7"},
+			bothChecks:              true,
+		},
+		{
+			name:                    "a done card is not re-reported and the deleted method's later caller is reported once",
+			cards:                   []string{editCard("callees/local.go"), deleteCard("callees#Thing.Method"), editCard("callers/callers.go")},
+			done:                    1,
+			wantDeleteOrder:         []string{"blocking callers/callers.go:9"},
+			wantDispatchDeleteOrder: []string{"informational callers/callers.go at line 9"},
+		},
+		{
+			name:                    "a deleted function's callers inside a later card's code are delete-before-reference's and the rest caller-uncovered's",
+			cards:                   []string{deleteCard("callees#Target"), editCard("callers#UseTarget", "callees#CallsTarget")},
+			want:                    []string{"blocking callees/callees_external_test.go"},
+			wantDeleteOrder:         []string{"blocking callees/local.go:6", "blocking callers/callers.go:6"},
+			wantDispatchDeleteOrder: []string{"blocking callees/local.go:6", "blocking callers/callers.go:6"},
+			bothChecks:              true,
+		},
 	}
 
 	for _, tc := range cases {
@@ -397,18 +473,40 @@ func TestGlyphChain_CallerCoverageTyped(t *testing.T) {
 			t.Parallel()
 			root := copyGlyphChainFixture(t)
 			writeFixtureFiles(t, root, tc.files)
-			var loader typesLoader = goListLoader{timeout: time.Minute}
+			var next typesLoader = goListLoader{timeout: time.Minute}
 			if tc.dropRootModule {
 				if err := os.Remove(filepath.Join(root, "go.mod")); err != nil {
 					t.Fatalf("Remove(go.mod) failed: %v", err)
 				}
-				loader = fatalTypesLoader{t}
+				next = fatalTypesLoader{t}
 			}
+			loader := &countingTypesLoader{next: next}
 			_, plan := writeGlyphPlan(t, tc.cards)
 
-			findings, err := planGatePass(plan, root, loader)
+			var findings []Finding
+			var err error
+			if tc.done > 0 {
+				findings, err = validateFormatAfter(plan, root, plan.Cards[:tc.done], loader)
+			} else {
+				findings, err = planGatePass(plan, root, loader)
+			}
 			if err != nil {
-				t.Fatalf("planGatePass(...) returned error: %v", err)
+				t.Fatalf("plan gate returned error: %v", err)
+			}
+			if loader.calls > 1 || (tc.bothChecks && loader.calls != 1) {
+				t.Errorf("type loads = %d; want one shared by both checks when they both report, and at most one otherwise", loader.calls)
+			}
+			if sites := deleteOrderSites(findings); !slices.Equal(sites, tc.wantDeleteOrder) {
+				t.Errorf("delete-before-reference sites = %q; want %q", sites, tc.wantDeleteOrder)
+			}
+			if len(tc.cards) > 1 {
+				dispatch, err := ValidateDispatch(plan, root, plan.Cards[:tc.done], nil)
+				if err != nil {
+					t.Fatalf("ValidateDispatch(...) returned error: %v", err)
+				}
+				if sites := deleteOrderSites(dispatch); !slices.Equal(sites, tc.wantDispatchDeleteOrder) {
+					t.Errorf("ValidateDispatch delete-before-reference sites = %q; want %q", sites, tc.wantDispatchDeleteOrder)
+				}
 			}
 			var got, details []string
 			for _, f := range findings {

@@ -6,6 +6,8 @@
 // The package's write paths are the only places any `_lyx/plan/` byte is ever rewritten:
 // SetApproved (the approval flag), RewriteRefs (ref substitution across the plan, rewrite.go), AppendAmendment (the append-only amendment log, amendment.go), InsertCard and RemoveCard (one card added or dropped with the cards after it renumbered, renumber.go), and RestoreRenumber (the undo of an interrupted renumber, restore.go).
 // So the on-disk grammar has exactly one reader and named writers, and the rest of webster never re-derives it.
+// Overlay (overlay.go) is a read path beside them and writes no `_lyx/plan/` byte:
+// it lays proposed contents of the overview and the cards the Card Index lists over a plan directory, and a plan parsed through it reads, rewrites (Plan.RewriteRefs) and re-parses (Plan.Reparse) in memory.
 //
 // # The Glyph Conversion Chokepoint Invariant
 //

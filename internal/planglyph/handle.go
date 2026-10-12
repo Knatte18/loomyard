@@ -171,7 +171,9 @@ func partitionedRenameOldDetail(oldRef string, candidates []constrainedCandidate
 
 // CanonicalizeHandles turns every draft plan: handle plan declares into its canonical
 // plan:<expected-glyph> form, mechanically, via one batched quarry.Name call, and rewrites every
-// occurrence across planDir's card files. results is the same single batched Resolve answer
+// occurrence across the plan's card files.
+// The rewrite goes through the plan's own source: in memory for a plan parsed through a planparser.Overlay, on disk otherwise.
+// results is the same single batched Resolve answer
 // resolvePass already collected over the plan's full glyph target set — including every Rename
 // pair's Old side, which is glyph-shaped like any other target — so this function issues no
 // Resolve call of its own, preserving the one-batched-Resolve invariant.
@@ -188,11 +190,10 @@ func partitionedRenameOldDetail(oldRef string, candidates []constrainedCandidate
 // Under plan.Language "none" this function returns nil findings and performs no call and no
 // rewrite.
 //
-// Its second return reports whether planDir's bytes were actually handed to RewriteRefs, so
-// resolvePass knows whether re-reading the plan from disk can tell it anything new -- and therefore
-// whether a failure to re-read it is a real infrastructure failure or merely an in-memory plan that
-// was never on disk to begin with.
-func CanonicalizeHandles(plan *planparser.Plan, planDir, worktreeRoot string, results []quarry.ResolveResult) ([]Finding, bool, error) {
+// Its second return reports whether the plan's source was actually handed a substitution.
+// resolvePass uses it to know whether re-reading the plan from that source can tell it anything new.
+// When it is true, a failure to re-read the plan is a real infrastructure failure, never merely an in-memory plan that was never on disk to begin with.
+func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []quarry.ResolveResult) ([]Finding, bool, error) {
 	lang, ok := plan.GlyphLanguage()
 	if !ok {
 		return nil, false, nil
@@ -342,7 +343,7 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir, worktreeRoot string, re
 		return findings, false, nil
 	}
 
-	if err := planparser.RewriteRefs(planDir, subs); err != nil {
+	if err := plan.RewriteRefs(subs); err != nil {
 		return findings, false, err
 	}
 

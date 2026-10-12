@@ -439,8 +439,13 @@ The rows below stay in one fixed order regardless of which entry point runs them
     The finding names the head, the glyph and what `Name` answered; the way forward is to write the member's new declaration head, receiver included for a method.
     Emitted by `internal/planglyph`'s resolve pass at every gate, `ValidateDispatch` included, since it reads plan text alone; skipped entirely under `language: "none"`.
 32. `delete-before-reference` — a `Delete:` target that is a member glyph or a package self glyph, while a card with a higher number still references it in its `Edit:` code (a member glyph's resolved span, or the whole file of a path or file self glyph).
-    Emitted by `internal/planglyph`'s resolve pass, not by `internal/planparser`, at `ValidateFormat`, `Validate`, `ValidateRework` and `ValidateDispatch`, and never under `language: "none"`.
-    The match is textual, and the finding is attributed to the deleting card; the fix is to move the delete to a card after the editing one.
+    A reference is found through the computation of `caller-uncovered` (row 35), typed where its load answers and by the import-path scan elsewhere, never textually, and only in `.go` files outside the directories the go tool ignores (`testdata`, `vendor`, and names starting with `.` or `_`); a comment, a string literal and a non-Go `Edit:` target never match.
+    A resolved reference inside a later card's `Edit:` code is blocking, one finding per line.
+    A method matched by name alone is one informational finding per deleted method, naming every file with its lines and each later card, and stating that the receiver could not be resolved.
+    A package self glyph `Delete:` keeps its quoted import-path match, searched only in `.go` regions, and is blocking.
+    Emitted by `internal/planglyph`'s plan-gate pass, not by `internal/planparser`, at `ValidateFormat`, `Validate`, `ValidateRework` and `ValidateFormatAfter` over its pending cards, and scan-only at `ValidateDispatch`, which runs no type load, so a method match there is informational; never under `language: "none"`.
+    The finding is attributed to the deleting card; the fix is to move the delete to a card after the editing one.
+    Bound: a method call in a later card's code is only informational where no type information exists (a failed or timed-out load, a file with a parse error, a nested module, an untyped identifier, or dispatch), and the later card's verify build catches a real call there; a prose mention in a non-Go target and a reference in a directory the go tool ignores are no longer flagged, and neither breaks a build.
 33. `redundant-file-target` — a card's own target list holds a file self glyph beside a member glyph that resolves into that file; one finding per file and member, attributed to the card, with `Ref` the member.
     A member that resolves `not_found`, ambiguous without being partitioned by build constraints, or unreadably is skipped, since the resolve status policy already reports it.
     The way forward is to keep the member glyphs and drop the file, or keep the file when the card changes the whole file.

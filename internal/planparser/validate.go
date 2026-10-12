@@ -1065,7 +1065,7 @@ func checkCardNumbering(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	for _, c := range plan.Cards {
-		headingNumber, ok := cardHeadingNumber(plan.Dir, c)
+		headingNumber, ok := cardHeadingNumber(plan, c)
 		if !ok {
 			continue
 		}
@@ -1084,10 +1084,9 @@ func checkCardNumbering(plan *Plan) []ValidationError {
 	return findings
 }
 
-// cardHeadingNumber re-reads c's own card file and extracts its heading number.
-func cardHeadingNumber(planDir string, c Card) (int, bool) {
-	path := filepath.Join(planDir, cardFileName(c.Number, c.Slug))
-	data, err := os.ReadFile(path)
+// cardHeadingNumber re-reads c's own card file through plan and extracts its heading number.
+func cardHeadingNumber(plan *Plan, c Card) (int, bool) {
+	data, err := plan.ReadFile(cardFileName(c.Number, c.Slug))
 	if err != nil {
 		return 0, false
 	}

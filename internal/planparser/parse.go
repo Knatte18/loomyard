@@ -136,30 +136,11 @@ func ParsePlan(planDir string) (*Plan, error) {
 // read returns the contents of the named plan file (00-overview.md, NN-<slug>.md), and an error wrapping fs.ErrNotExist when the file is absent.
 // Plan.Dir is planDir, as in ParsePlan.
 func ParsePlanFrom(planDir string, read func(name string) ([]byte, error)) (*Plan, error) {
-	overviewPath := filepath.Join(planDir, overviewFileName)
-
-	data, err := read(overviewFileName)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("planparser: plan overview not found: %s", overviewPath)
-		}
-		return nil, fmt.Errorf("planparser: read plan overview %s: %w", overviewPath, err)
-	}
-
-	fm, body, err := parseOverviewFrontmatter(string(data), overviewPath)
+	overview, err := readOverview(planDir, read)
 	if err != nil {
 		return nil, err
 	}
-
-	framing, indexLines, err := splitFraming(body)
-	if err != nil {
-		return nil, fmt.Errorf("planparser: plan overview %s: %w", overviewPath, err)
-	}
-
-	entries, err := parseCardIndex(indexLines)
-	if err != nil {
-		return nil, fmt.Errorf("planparser: plan overview %s: card index: %w", overviewPath, err)
-	}
+	data, fm, body, framing, entries := overview.data, overview.frontmatter, overview.body, overview.framing, overview.entries
 
 	root := ""
 	if fm.Root != nil {
@@ -222,6 +203,44 @@ func ParsePlanFrom(planDir string, read func(name string) ([]byte, error)) (*Pla
 	extractPlanSections(plan, body)
 
 	return plan, nil
+}
+
+// overviewParts is the 00-overview.md of a plan split into the parts a parse reads: its raw bytes, decoded frontmatter, body, framing paragraph and Card Index entries.
+type overviewParts struct {
+	data        []byte
+	frontmatter overviewFrontmatter
+	body        string
+	framing     string
+	entries     []cardIndexEntry
+}
+
+// readOverview reads 00-overview.md through read and splits it, returning a "planparser:"-prefixed wrapped error for an absent overview, a malformed frontmatter or a missing or malformed Card Index.
+func readOverview(planDir string, read func(name string) ([]byte, error)) (overviewParts, error) {
+	overviewPath := filepath.Join(planDir, overviewFileName)
+
+	data, err := read(overviewFileName)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return overviewParts{}, fmt.Errorf("planparser: plan overview not found: %s", overviewPath)
+		}
+		return overviewParts{}, fmt.Errorf("planparser: read plan overview %s: %w", overviewPath, err)
+	}
+
+	fm, body, err := parseOverviewFrontmatter(string(data), overviewPath)
+	if err != nil {
+		return overviewParts{}, err
+	}
+
+	framing, indexLines, err := splitFraming(body)
+	if err != nil {
+		return overviewParts{}, fmt.Errorf("planparser: plan overview %s: %w", overviewPath, err)
+	}
+
+	entries, err := parseCardIndex(indexLines)
+	if err != nil {
+		return overviewParts{}, fmt.Errorf("planparser: plan overview %s: card index: %w", overviewPath, err)
+	}
+	return overviewParts{data: data, frontmatter: fm, body: body, framing: framing, entries: entries}, nil
 }
 
 // parseOverviewFrontmatter extracts and strict-decodes 00-overview.md's leading frontmatter block. It returns the decoded frontmatter and the document body following the closing fence.

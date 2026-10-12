@@ -1,5 +1,6 @@
 // callercoverage.go implements caller-uncovered: a card that deletes or re-signs a member while some Go code still references it and no admissible card's target covers that code.
-// References come from a type-checked load where it answers (typesload.go) and from a token scan elsewhere, which resolves a package-level reference by import path and nested modules included, so it reads the tree and belongs to the plan gates only.
+// It also holds memberReferences, the reference computation delete-before-reference shares, so one plan-gate pass runs one type load for both checks.
+// References come from a type-checked load where it answers (typesload.go) and from a token scan elsewhere, which resolves a package-level reference by import path and nested modules included, so the whole-tree form reads the tree and belongs to the plan gates.
 // A method reference the scan matches by name alone is reported informationally, since its receiver is not resolved; a typed one is blocking.
 // Where a load covers a file, the scan keeps only the lines whose identifier the load left without type information, which bounds the scan's shadowed-import false negative to files and identifiers without types.
 
@@ -82,10 +83,9 @@ func importPathOf(worktreeRoot string, modules []string, dir string) (string, er
 }
 
 // callerCoverageFindings reports caller-uncovered for every deleted or re-signed member of plan, given answers, the plan gate's one batched resolve answer.
-// A deleted member's reference inside a later card's Edit code is delete-before-reference's alone and is not reported here.
+// A deleted member's reference inside a later card's Edit code is delete-before-reference's, so it is reported as that check's finding and never as caller-uncovered, whether or not an admissible target also covers it.
 // The walk runs only when a subject exists.
-// References come from a type-checked load through loader where it answers, and from the import-path scan elsewhere: in every file the load did not check, and on each line of a checked file that has an identifier without type information.
-// A load that fails leaves every file to the scan and is never an error.
+// The references are memberReferences' over every Go file that names a subject, so one type load serves both checks.
 func callerCoverageFindings(plan *planparser.Plan, lang glyph.Language, worktreeRoot string, answers map[string]quarry.ResolveResult, partitioned map[string]bool, loader typesLoader) ([]Finding, error) {
 	subjects, err := coverageSubjects(plan, lang, worktreeRoot, answers, partitioned)
 	if err != nil || len(subjects) == 0 {
@@ -96,14 +96,7 @@ func callerCoverageFindings(plan *planparser.Plan, lang glyph.Language, worktree
 	if err != nil {
 		return nil, err
 	}
-	checked, typed, unresolved := loadTypedReferences(plan, worktreeRoot, subjects, candidates, loader)
-	scanFiles := make([]string, 0, len(candidates))
-	for _, file := range candidates {
-		if !checked[file] || hasUnresolvedLine(unresolved, file) {
-			scanFiles = append(scanFiles, file)
-		}
-	}
-	scanned, err := scanReferences(worktreeRoot, scanFiles, subjects)
+	resolved, nameOnly, err := memberReferences(plan, worktreeRoot, subjects, candidates, loader)
 	if err != nil {
 		return nil, err
 	}
@@ -112,10 +105,10 @@ func callerCoverageFindings(plan *planparser.Plan, lang glyph.Language, worktree
 	uncovered := func(subject coverageSubject, file string, lines []int) []int {
 		var kept []int
 		for _, line := range lines {
-			if coveredByTarget(plan, lang, subject, file, line, answers, partitioned) {
+			if subject.deleted && insideLaterEditRegion(regions, subject.card.Number, file, line) {
 				continue
 			}
-			if subject.deleted && insideLaterEditRegion(regions, subject.card.Number, file, line) {
+			if coveredByTarget(plan, lang, subject, file, line, answers, partitioned) {
 				continue
 			}
 			kept = append(kept, line)
@@ -125,15 +118,14 @@ func callerCoverageFindings(plan *planparser.Plan, lang glyph.Language, worktree
 
 	var findings []Finding
 	for i, subject := range subjects {
-		resolved, nameOnly := combineReferences(subject, checked, typed[i], unresolved[i], scanned[i])
-		for _, file := range sortedFiles(resolved) {
-			if lines := uncovered(subject, file, resolved[file]); len(lines) > 0 {
+		for _, file := range sortedFiles(resolved[i]) {
+			if lines := uncovered(subject, file, resolved[i][file]); len(lines) > 0 {
 				findings = append(findings, uncoveredFinding(subject, file, lines))
 			}
 		}
 		unresolvedLines := make(map[string][]int)
-		for _, file := range sortedFiles(nameOnly) {
-			if lines := uncovered(subject, file, nameOnly[file]); len(lines) > 0 {
+		for _, file := range sortedFiles(nameOnly[i]) {
+			if lines := uncovered(subject, file, nameOnly[i][file]); len(lines) > 0 {
 				unresolvedLines[file] = lines
 			}
 		}
@@ -141,7 +133,31 @@ func callerCoverageFindings(plan *planparser.Plan, lang glyph.Language, worktree
 			findings = append(findings, unresolvedMethodFinding(subject, unresolvedLines))
 		}
 	}
-	return findings, nil
+	return append(findings, deleteOrderFindings(subjects, resolved, nameOnly, regions)...), nil
+}
+
+// memberReferences returns, per subject, the lines of each Go file in candidates that reference it: resolved, where the reference is typed or resolved by import path, and nameOnly, where a method is matched by its name alone.
+// References come from a type-checked load through loader where it answers, and from the import-path scan elsewhere: in every file the load did not check, and on each line of a checked file that has an identifier without type information.
+// A nil loader runs no load, leaving every file to the scan; a load that fails does the same and is never an error.
+func memberReferences(plan *planparser.Plan, worktreeRoot string, subjects []coverageSubject, candidates []string, loader typesLoader) (resolved, nameOnly []map[string][]int, err error) {
+	checked, typed, unresolved := loadTypedReferences(plan, worktreeRoot, subjects, candidates, loader)
+	scanFiles := make([]string, 0, len(candidates))
+	for _, file := range candidates {
+		if !checked[file] || hasUnresolvedLine(unresolved, file) {
+			scanFiles = append(scanFiles, file)
+		}
+	}
+	scanned, err := scanReferences(worktreeRoot, scanFiles, subjects)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	resolved = make([]map[string][]int, len(subjects))
+	nameOnly = make([]map[string][]int, len(subjects))
+	for i, subject := range subjects {
+		resolved[i], nameOnly[i] = combineReferences(subject, checked, typed[i], unresolved[i], scanned[i])
+	}
+	return resolved, nameOnly, nil
 }
 
 // combineReferences merges one subject's typed and scanned references into the lines resolved to it and the lines matched by name alone, each by file.
@@ -258,7 +274,7 @@ func coverageSubjects(plan *planparser.Plan, lang glyph.Language, worktreeRoot s
 }
 
 // candidateFiles returns, sorted and slash-separated relative to root, every Go file under root that holds an identifier named like a subject, without deciding whether it references one.
-// It skips directories named testdata or vendor and directories whose name starts with . or _, which the go tool ignores too, and every file that is not Go source.
+// It skips the directories ignoredByGoTool names and every file that is not Go source.
 // Comments and string literals never count, since the scanner drops the first and yields the second as one token.
 func candidateFiles(root string, subjects []coverageSubject) ([]string, error) {
 	names := make(map[string]bool, len(subjects))
@@ -273,7 +289,7 @@ func candidateFiles(root string, subjects []coverageSubject) ([]string, error) {
 		}
 		name := d.Name()
 		if d.IsDir() {
-			if p != root && (name == "testdata" || name == "vendor" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")) {
+			if p != root && ignoredByGoTool(name) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -495,11 +511,20 @@ func coveredByTarget(plan *planparser.Plan, lang glyph.Language, subject coverag
 	return false
 }
 
+// laterEditRegions returns, in order, the regions of cards numbered above cardNumber whose code holds line of file.
+func laterEditRegions(regions []editRegion, cardNumber int, file string, line int) []editRegion {
+	var holders []editRegion
+	for _, r := range regions {
+		if r.card.Number > cardNumber && r.file == file && (r.end == 0 || (r.start <= line && line <= r.end)) {
+			holders = append(holders, r)
+		}
+	}
+	return holders
+}
+
 // insideLaterEditRegion reports whether line of file lies in the Edit code of a card numbered above cardNumber.
 func insideLaterEditRegion(regions []editRegion, cardNumber int, file string, line int) bool {
-	return slices.ContainsFunc(regions, func(r editRegion) bool {
-		return r.card.Number > cardNumber && r.file == file && (r.end == 0 || (r.start <= line && line <= r.end))
-	})
+	return len(laterEditRegions(regions, cardNumber, file, line)) > 0
 }
 
 // uncoveredFinding is the caller-uncovered finding for subject's references at lines of file.

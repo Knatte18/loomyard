@@ -108,6 +108,7 @@ type Index interface {
 	// DoneChecks reports the declared work of cards that is missing from the tree at worktreeRoot.
 	DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) ([]Finding, error)
 	// LaterDeleteReferences reports the later cards that still reference a symbol the deleting cards delete.
+	// A finding is blocking for a resolved reference and informational for a method matched by name alone, since it runs no type load.
 	LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.Card, worktreeRoot string) ([]Finding, error)
 	// Delta reads the git delta of the range fromSHA..toSHA in worktree.
 	// On an ErrQuarryUnavailable error the returned Delta is the empty delta, never nil.
