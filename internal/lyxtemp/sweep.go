@@ -16,10 +16,10 @@ import (
 // creationGrace is how long a run directory is left alone after its modification time, covering the window between its creation and its owner's lock.
 const creationGrace = 10 * time.Minute
 
-// removeAttempts is how many times a run directory's removal is tried before it is reported as a failure.
-const removeAttempts = 3
+// removeRetryBudget is how long one sweep keeps retrying removals that hit the not-empty symptom, shared by all the directories it removes.
+const removeRetryBudget = time.Second
 
-// removeRetryDelay is the pause between failed removal attempts, long enough for a peer's lock probe to release a recreated lock file.
+// removeRetryDelay is the pause between symptom retries, long enough for a peer's lock probe to release a recreated lock file.
 const removeRetryDelay = 5 * time.Millisecond
 
 // SweepReport is the outcome of one sweep.
@@ -49,6 +49,7 @@ func (r *Root) Sweep(apply bool) SweepReport {
 		return report
 	}
 	now := r.now()
+	var deadline time.Time
 	for _, entry := range entries {
 		if !strings.HasPrefix(entry.Name(), runPrefix) {
 			continue
@@ -63,7 +64,7 @@ func (r *Root) Sweep(apply bool) SweepReport {
 			continue
 		}
 		if apply {
-			if err := removeRunDirectory(path); err != nil {
+			if err := removeRunDirectory(r, path, &deadline); err != nil {
 				report.Failures = append(report.Failures, SweepFailure{Path: path, Err: err})
 				continue
 			}
@@ -73,22 +74,39 @@ func (r *Root) Sweep(apply bool) SweepReport {
 	return report
 }
 
-// removeRunDirectory removes path, retrying when a concurrent sweeper's lock probe recreates the lock file mid-removal.
-// A path that no longer exists counts as removed.
-func removeRunDirectory(path string) error {
-	var err error
-	for attempt := 0; attempt < removeAttempts; attempt++ {
-		if err = os.RemoveAll(path); err == nil {
+// removeRunDirectory removes path through r.remove, retrying while a concurrent sweeper's lock probe keeps recreating the lock file mid-removal.
+// deadline is the sweep's shared retry deadline, zero until the first symptom sets it to r.retryNow() plus removeRetryBudget.
+// A path that no longer exists counts as removed, and a failure that is not the symptom is returned after its one attempt.
+func removeRunDirectory(r *Root, path string, deadline *time.Time) error {
+	for {
+		err := r.remove(path)
+		if err == nil {
 			return nil
 		}
 		if _, statErr := os.Lstat(path); errors.Is(statErr, fs.ErrNotExist) {
 			return nil
 		}
-		if attempt < removeAttempts-1 {
-			time.Sleep(removeRetryDelay)
+		if !isRemovalSymptom(err, path) {
+			return err
 		}
+		if deadline.IsZero() {
+			*deadline = r.retryNow().Add(removeRetryBudget)
+		}
+		if !r.retryNow().Before(*deadline) {
+			return err
+		}
+		r.sleep(removeRetryDelay)
 	}
-	return err
+}
+
+// isRemovalSymptom reports whether err is the directory-not-empty failure of removing path itself, which a peer's lock probe recreating the lock file causes.
+// Both errors POSIX allows rmdir of a non-empty directory, and Windows' directory-not-empty error, satisfy fs.ErrExist.
+// A not-empty error on a path inside path is no symptom.
+func isRemovalSymptom(err error, path string) bool {
+	var pathErr *fs.PathError
+	return errors.As(err, &pathErr) &&
+		filepath.Clean(pathErr.Path) == filepath.Clean(path) &&
+		errors.Is(pathErr.Err, fs.ErrExist)
 }
 
 // ownerDead reports whether path is a run directory past the creation grace whose owner holds no lock.
