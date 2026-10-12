@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -54,6 +55,25 @@ type Module struct {
 	// Migrate, when non-nil, rewrites a present config file's bytes before reconcile compares them to the template.
 	// It returns the rewritten bytes and one human-readable line per rewrite, and changes only the keys its module declares retired or raises a key to its module's floor.
 	Migrate func(existing []byte) ([]byte, []string, error)
+	// Spec returns the module's own layered-load spec: its name, template, open maps, hub-wide flag and per-key classification.
+	Spec func() configengine.Spec
+	// LocalKeys are the keys of a hub-wide module a local override may set, derived from Spec.
+	// It is nil for a per-worktree module.
+	LocalKeys []string
+	// LocalDenied are the dotted key paths of a per-worktree module a local override may not set, derived from Spec.
+	// It is nil for a hub-wide module.
+	LocalDenied []string
+}
+
+// withLocalBounds fills the module's LocalKeys or LocalDenied from its Spec, so the registry never restates a key.
+func withLocalBounds(m Module) Module {
+	spec := m.Spec()
+	if m.HubWide {
+		m.LocalKeys = configengine.LocalKeys(spec)
+		return m
+	}
+	m.LocalDenied = configengine.LocalDenied(spec)
+	return m
 }
 
 // Modules returns the ordered list of all available config modules, each with its name and template
@@ -62,22 +82,26 @@ type Module struct {
 // renders it this way — a misordered entry is user-visible.
 // Keep new entries in sort order.
 func Modules() []Module {
-	return []Module{
-		{Name: "batcher", Template: batcher.ConfigTemplate, OpenMaps: batcher.ConfigOpenMaps(), Migrate: batcher.MigrateConfig},
-		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true},
-		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true},
-		{Name: "darn", Template: darnengine.ConfigTemplate, HubWide: true},
-		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true},
-		{Name: "gate", Template: gateslot.ConfigTemplate, HubWide: true},
-		{Name: "landing", Template: landingshed.ConfigTemplate, HubWide: true, SeedsFromPrime: true},
-		{Name: "logger", Template: loggerconfig.ConfigTemplate},
-		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps(), Migrate: loomengine.MigrateConfig},
-		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true},
-		{Name: "orch", Template: orchengine.ConfigTemplate, Migrate: orchengine.MigrateConfig},
-		{Name: "reed", Template: reedengine.ConfigTemplate},
-		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, OpenMaps: shuttleengine.ConfigOpenMaps(), Migrate: shuttleengine.MigrateConfig},
-		{Name: "webster", Template: websterengine.ConfigTemplate},
+	modules := []Module{
+		{Name: "batcher", Template: batcher.ConfigTemplate, OpenMaps: batcher.ConfigOpenMaps(), Migrate: batcher.MigrateConfig, Spec: batcher.ConfigSpec},
+		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, Spec: boardengine.ConfigSpec},
+		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true, Spec: burlerengine.ConfigSpec},
+		{Name: "darn", Template: darnengine.ConfigTemplate, HubWide: true, Spec: darnengine.ConfigSpec},
+		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true, Spec: fabricengine.ConfigSpec},
+		{Name: "gate", Template: gateslot.ConfigTemplate, HubWide: true, Spec: gateslot.ConfigSpec},
+		{Name: "landing", Template: landingshed.ConfigTemplate, HubWide: true, SeedsFromPrime: true, Spec: landingshed.ConfigSpec},
+		{Name: "logger", Template: loggerconfig.ConfigTemplate, Spec: loggerconfig.ConfigSpec},
+		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps(), Migrate: loomengine.MigrateConfig, Spec: loomengine.ConfigSpec},
+		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true, Spec: modelspec.ConfigSpec},
+		{Name: "orch", Template: orchengine.ConfigTemplate, Migrate: orchengine.MigrateConfig, Spec: orchengine.ConfigSpec},
+		{Name: "reed", Template: reedengine.ConfigTemplate, Spec: reedengine.ConfigSpec},
+		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, OpenMaps: shuttleengine.ConfigOpenMaps(), Migrate: shuttleengine.MigrateConfig, Spec: shuttleengine.ConfigSpec},
+		{Name: "webster", Template: websterengine.ConfigTemplate, Spec: websterengine.ConfigSpec},
 	}
+	for i := range modules {
+		modules[i] = withLocalBounds(modules[i])
+	}
+	return modules
 }
 
 // Template returns the template function for the named module.

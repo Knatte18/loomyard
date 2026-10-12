@@ -23,7 +23,7 @@ internal/cliwire: 12
 internal/commentlint: 3
 internal/configcli: 10
 internal/configengine: 17
-internal/configreg: 7
+internal/configreg: 9
 internal/configsync: 6
 internal/darnengine: 4
 internal/discussionparser: 17

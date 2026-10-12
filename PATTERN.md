@@ -17,6 +17,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-cli-cobra` — Adding a CLI module: a cobra subtree under one root in `cmd/lyx/main.go`, with `Command`, `RunCLI`, `audience`, `Short` and JSON errors. (test) — [background](pattern/PATTERN-cli-cobra.md)
 - `PATTERN-cliwire-sole-wiring` — Wiring a standalone-capable CLI: `internal/cliwire` alone resolves target dir, repo root and state. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
 - `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of `configengine.Load` (strict) or `LoadOrTemplate` (degrades to the embedded template). — [background](pattern/PATTERN-config-strictness.md)
+- `PATTERN-config-layers` — Resolving a module's config: only `configengine` reads or stacks layer files and forms their paths; a key meeting a category the background names is closed to the local layer through `configreg`'s `LocalKeys` and `LocalDenied`. — [background](pattern/PATTERN-config-layers.md)
 - `PATTERN-binary-change-reconcile` — Reconciling a hub's config after a binary change: only through `hubreconcile.Ensure`, which owns the build stamp and the hub lock.
 - `PATTERN-refusal-way-forward` — Adding a webster, shed or loom refusal: name the way forward, land its spec row with it, add a test. — [background](pattern/PATTERN-refusal-way-forward.md)
 - `PATTERN-no-denied-recovery` — Naming a step in a refusal, stencil or spec: never a command the agents' settings deny; lyx does it. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
