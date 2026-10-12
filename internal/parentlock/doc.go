@@ -22,6 +22,19 @@
 // A free or stale record goes to the oldest live ticket, kept at `<Dir>/<hex(branch)>.tickets/<pid>-<start>.json`.
 // An acquirer that is not first in the queue keeps its ticket and is not granted; a dead waiter's ticket is removed in the attempt that finds it, and a granted acquirer's own ticket is removed.
 //
+// # Waiting
+//
+// Acquire loops TryAcquire until granted, with no time limit, polling from one second and doubling to thirty seconds while the holder is unchanged.
+// A Waiter tells it three optional seams: OnWait when the wait starts and the holder changes, Paused before every sleep, and Sleep in place of the timer.
+// A pause, a cancelled context and an attempt error each return with the caller's ticket removed.
+// The wait only waits and takes; it never frees another owner's live record.
+// A caller keeps its wait on disk as a Wait record at WaitRecordPath, which ReadWait ignores once its writing process is dead.
+//
+// # Idle
+//
+// An IdleWatch decides that a holder has stopped making progress: Observe reports true when no agent is busy and one has waited for the Bound on the caller's awake clock, so suspended time never counts.
+// An unreadable agent state counts as nobody waiting.
+//
 // # Release and hand-off
 //
 // Release and HandOff compare on the owner process: a record owned by another process of the same run, such as batten's or a newer loop's, is left alone.
