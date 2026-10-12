@@ -363,8 +363,8 @@ func TestSmokeRunStandalone(t *testing.T) {
 		if strings.TrimSpace(string(content)) == "" {
 			t.Fatalf("driver log is empty; want it to name the failure")
 		}
-		if !strings.Contains(strings.ToLower(string(content)), "decode") {
-			t.Errorf("driver log = %q; want it to name the decode failure", content)
+		if !strings.Contains(strings.ToLower(string(content)), "invalid state") {
+			t.Errorf("driver log = %q; want it to name the invalid state", content)
 		}
 
 		after, err := os.ReadFile(shedrun.StatusFile(loc, shedrun.SelfRunID))
