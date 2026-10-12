@@ -59,11 +59,35 @@ type Config struct {
 	PollIntervalMS      int `yaml:"poll_interval_ms"`      // Watcher tick interval in milliseconds.
 }
 
-// LoadConfig loads and unmarshals orch module configuration.
-// An absent <baseDir>/_lyx/ directory or an absent config file resolves the embedded template;
-// a config file that exists but is invalid still errors.
-func LoadConfig(baseDir, module string) (Config, error) {
-	resolved, err := configengine.LoadOrTemplate(configengine.Dirs{Anchor: baseDir}, configengine.Spec{Name: module, Template: []byte(ConfigTemplate())})
+// ConfigSpec returns orch's layered-load spec.
+// It carries the template and the per-key classification that decides which keys a local override may hold.
+func ConfigSpec() configengine.Spec {
+	return configengine.Spec{
+		Name:     "orch",
+		Template: []byte(ConfigTemplate()),
+		Categories: map[string]configengine.Category{
+			"model":                 configengine.CategoryNone,
+			"effort":                configengine.CategoryNone,
+			"cycle_mode":            configengine.CategoryNone,
+			"permission_mode":       configengine.CategoryNone,
+			"soft_threshold_tokens": configengine.CategoryNone,
+			"soft_idle_s":           configengine.CategoryNone,
+			"threshold_tokens":      configengine.CategoryNone,
+			"idle_grace_s":          configengine.CategoryNone,
+			"handoff_timeout_s":     configengine.CategoryNone,
+			"poll_interval_ms":      configengine.CategoryNone,
+		},
+	}
+}
+
+// LoadConfig loads and unmarshals orch module configuration through the layer stack under dirs.
+// An absent config file in every layer resolves the embedded template;
+// a layer file that exists but is invalid still errors.
+// module names the config file to read, so a caller may load a sibling file with orch's shape.
+func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
+	spec := ConfigSpec()
+	spec.Name = module
+	resolved, err := configengine.LoadOrTemplate(dirs, spec)
 	if err != nil {
 		return Config{}, err
 	}

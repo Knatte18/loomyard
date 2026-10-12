@@ -123,7 +123,7 @@ Every verb runs from the hub's prime worktree only.`,
 				}
 			}
 
-			orchCfg, err := orchengine.LoadConfig(location.AnchorPath(), "orch")
+			orchCfg, err := orchengine.LoadConfig(fabricengine.ConfigDirs(location), "orch")
 			if err != nil {
 				return fail(err)
 			}

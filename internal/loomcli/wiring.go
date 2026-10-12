@@ -427,7 +427,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	websterCfg, err := websterengine.LoadConfig(anchorPath, "webster")
+	websterCfg, err := websterengine.LoadConfig(fabricengine.ConfigDirs(location), "webster")
 	if err != nil {
 		return err
 	}

@@ -41,12 +41,25 @@ func ConfigPath(anchorPath string) string {
 	return configengine.ConfigFile(anchorPath, moduleName)
 }
 
-// Load resolves the trace-retention bounds from logger.yaml under anchorPath.
-// An absent _lyx/ directory or an absent logger.yaml resolves the embedded ConfigTemplate() instead of erroring;
+// ConfigSpec returns the logger's layered-load spec.
+// It carries the template and the per-key classification that decides which keys a local override may hold.
+func ConfigSpec() configengine.Spec {
+	return configengine.Spec{
+		Name:     moduleName,
+		Template: []byte(ConfigTemplate()),
+		Categories: map[string]configengine.Category{
+			countKey: configengine.CategoryNone,
+			daysKey:  configengine.CategoryNone,
+		},
+	}
+}
+
+// Load resolves the trace-retention bounds from logger.yaml through the layer stack under dirs.
+// An absent logger.yaml in every layer resolves the embedded ConfigTemplate() instead of erroring;
 // a file that exists but is invalid, or carries a non-positive or non-integer value, errors naming the key.
 // A trace_retention_days value above maxRetentionDays also errors naming the key.
-func Load(anchorPath string) (logger.RetentionBounds, error) {
-	resolved, err := configengine.LoadOrTemplate(configengine.Dirs{Anchor: anchorPath}, configengine.Spec{Name: moduleName, Template: []byte(ConfigTemplate())})
+func Load(dirs configengine.Dirs) (logger.RetentionBounds, error) {
+	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
 	if err != nil {
 		return logger.RetentionBounds{}, err
 	}

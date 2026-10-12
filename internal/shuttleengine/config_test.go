@@ -51,7 +51,7 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	// it verbatim and every default must resolve.
 	seedLyxConfig(t, tmpDir, "shuttle", shuttleengine.ConfigTemplate())
 
-	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"shuttle")
+	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "shuttle")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestLoadConfig_PromptCacheTTLKeys(t *testing.T) {
 			tmpDir := t.TempDir()
 			seedLyxConfig(t, tmpDir, "shuttle", templateWithoutTTLKeys+tt.ttlKeys)
 
-			cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"shuttle")
+			cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "shuttle")
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -205,7 +205,7 @@ func TestLoadConfig_EnvOverride(t *testing.T) {
 	t.Setenv("LYX_SHUTTLE_CLAUDE", `D:\tools\claude.exe`)
 	seedLyxConfig(t, tmpDir, "shuttle", shuttleengine.ConfigTemplate())
 
-	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"shuttle")
+	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "shuttle")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -231,7 +231,7 @@ func TestLoadConfig_BackgroundShellWaitMin(t *testing.T) {
 			seeded := strings.Replace(shuttleengine.ConfigTemplate(), "background_shell_wait_min: 10", "background_shell_wait_min: "+tt.value, 1)
 			seedLyxConfig(t, tmpDir, "shuttle", seeded)
 
-			cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"shuttle")
+			cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "shuttle")
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("LoadConfig accepted background_shell_wait_min: %s", tt.value)
@@ -288,7 +288,7 @@ func TestLoadConfig_SubmitSettleKeys(t *testing.T) {
 			seeded := strings.Replace(shuttleengine.ConfigTemplate(), tt.key+": "+def, tt.key+": "+tt.value, 1)
 			seedLyxConfig(t, tmpDir, "shuttle", seeded)
 
-			cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"shuttle")
+			cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "shuttle")
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("LoadConfig accepted %s: %s", tt.key, tt.value)
@@ -319,7 +319,7 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	seedLyxConfig(t, tmpDir, "othershuttle", seeded)
 
 	logs := logcapture.Capture(t)
-	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"othershuttle")
+	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "othershuttle")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -336,7 +336,7 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 		t.Fatalf("write config file: %v", err)
 	}
 	logs.Reset()
-	if _, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"belowshuttle"); err != nil {
+	if _, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "belowshuttle"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got := strings.Count(logs.String(), "level=WARN"); got != 1 || !strings.Contains(logs.String(), "key=poll_interval_ms") || !strings.Contains(logs.String(), "floor_ms=1000") {
@@ -345,7 +345,7 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 
 	// The never-seeded "shuttle" module must fall back to the template
 	// default, not the "othershuttle" module's seeded value.
-	defaultCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"shuttle")
+	defaultCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "shuttle")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -358,7 +358,7 @@ func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 	// Do NOT create _lyx/ -- LoadConfig must degrade to the embedded template.
 
-	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir},"shuttle")
+	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "shuttle")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -46,12 +46,33 @@ type Config struct {
 	KickstartPack bool `yaml:"kickstart_pack"`
 }
 
-// LoadConfig loads configuration from the webster module's config file, validates role model-spec
+// ConfigSpec returns webster's layered-load spec.
+// It carries the template and the per-key classification that decides which keys a local override may hold.
+func ConfigSpec() configengine.Spec {
+	return configengine.Spec{
+		Name:     "webster",
+		Template: []byte(ConfigTemplate()),
+		Categories: map[string]configengine.Category{
+			"master":               configengine.CategoryNone,
+			"recovery":             configengine.CategoryNone,
+			"self_fix_cap":         configengine.CategoryNone,
+			"master_timeout_min":   configengine.CategoryNone,
+			"recovery_timeout_min": configengine.CategoryNone,
+			"verify_gate_attempts": configengine.CategoryNone,
+			"kickstart_pack":       configengine.CategoryNone,
+		},
+	}
+}
+
+// LoadConfig loads configuration from the webster module's layer stack under dirs, validates role model-spec
 // grammar, and returns a Config struct.
-// An absent <baseDir>/_lyx/ directory or an absent config file resolves the embedded template;
-// a config file that exists but is invalid still errors.
-func LoadConfig(baseDir, module string) (Config, error) {
-	resolved, err := configengine.LoadOrTemplate(configengine.Dirs{Anchor: baseDir}, configengine.Spec{Name: module, Template: []byte(ConfigTemplate())})
+// An absent config file in every layer resolves the embedded template;
+// a layer file that exists but is invalid still errors.
+// module names the config file to read, so a caller may load a sibling file with webster's shape.
+func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
+	spec := ConfigSpec()
+	spec.Name = module
+	resolved, err := configengine.LoadOrTemplate(dirs, spec)
 	if err != nil {
 		return Config{}, err
 	}
@@ -74,10 +95,9 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		}
 	}
 
-	// The numeric knobs are validated for the same reason the role specs are: LoadOrTemplate
-	// degrades to the embedded template only on PROVEN ABSENCE of the file, so a hand-written
-	// webster.yaml carrying only the two role keys leaves every one of these at Go's zero value —
-	// and the zero values are not merely conservative, they break the run silently.
+	// The numeric knobs are validated for the same reason the role specs are.
+	// The template fill supplies a knob a file omits, so only an explicit non-positive value reaches this check.
+	// Such a value is not merely conservative, it breaks the run silently.
 	// RecoveryTimeoutMin at 0 makes classify's `Elapsed > BatchTimeout` true on the very first poll,
 	// so EVERY recovery batch classifies dead/timeout immediately.
 	// MasterTimeoutMin at 0 does the same to the Master spawn.
