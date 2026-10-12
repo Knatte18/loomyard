@@ -392,6 +392,15 @@ Their JSON error envelopes carry the way forward in the message, and a read or w
 | release arguments | `lyx batten lock release` names a branch beside `--all`, or neither | correctness halt | run "lyx batten lock release <parent-branch>" or "lyx batten lock release --all" |
 | not the prime worktree | a lock verb runs from a task worktree, from the pair's fabric sibling or from `_board` | correctness halt | re-run the verb from the hub's prime worktree |
 
+## pause
+
+A refusal here comes from a live pause entry covering the refused slug.
+Its JSON error envelope carries the way forward in the message, through `pauserecord.CoveredError`.
+
+| Refusal | Trigger | Class | Way forward |
+|---|---|---|---|
+| shuttle send under a pause | `lyx shuttle send` names a strand of a pair a live pause entry covers | transient | run "lyx resume <slug>", or "lyx resume" for a hub-wide pause, then re-run the send |
+
 ## Out of scope
 
 Landing, batten, orch, fabric, burler and board refusals are not in this table, except the batten lock rows above, and the verify-gate, dirty-tree, conflict-session, superseded-strand, hub-wide config write and Seed-Child run settings rows above;

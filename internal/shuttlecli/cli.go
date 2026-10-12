@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
@@ -32,6 +33,8 @@ type shuttleCLI struct {
 	cfg        shuttleengine.Config
 	anchorPath string
 	engine     shuttleengine.Engine
+	// pause is the pair's pause geometry, set by PersistentPreRunE; send refuses into a covered strand through it.
+	pause pauserecord.Geometry
 }
 
 // Command returns the cobra command tree for the shuttle module.
@@ -114,6 +117,7 @@ provider specifics.`,
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
+			c.pause = pauseGeom
 			c.runner.SetPause(pauseGeom)
 			return nil
 		},

@@ -5,8 +5,12 @@
 package shuttlecli
 
 import (
+	"time"
+
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/spf13/cobra"
 )
@@ -34,6 +38,16 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 			guid, text := args[0], args[1]
+
+			if c.pause.RecordPath != "" {
+				coverage, err := pauserecord.ReadCoverage(c.pause.RecordPath, c.pause.Slug, time.Now())
+				if err != nil {
+					logger.Warn("shuttle: sending despite an unreadable pause record", "path", c.pause.RecordPath, "cause", err)
+				} else if coverage.Covered {
+					clihelp.SetExit(cmd.Context(), output.Err(out, pauserecord.CoveredError(coverage.Entry, c.pause.Slug, "re-run lyx shuttle send").Error()))
+					return nil
+				}
+			}
 
 			if err := c.runner.Send(guid, shuttleengine.WithMessageTail(text)); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))

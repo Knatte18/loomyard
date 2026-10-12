@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
@@ -445,12 +446,14 @@ func TestSendCmd_AppendsMessageTail(t *testing.T) {
 	t.Parallel()
 	tail := shuttleengine.MessageTail
 	tests := []struct {
-		name string
-		text string
-		want string
+		name    string
+		text    string
+		want    string
+		covered bool
 	}{
-		{"plain text gains the tail", "read the plan", "read the plan " + tail},
-		{"text already ending with the tail is typed once with it", "read the plan " + tail, "read the plan " + tail},
+		{"plain text gains the tail", "read the plan", "read the plan " + tail, false},
+		{"text already ending with the tail is typed once with it", "read the plan " + tail, "read the plan " + tail, false},
+		{"a strand a live pause covers is refused and types nothing", "read the plan", "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -476,7 +479,18 @@ func TestSendCmd_AppendsMessageTail(t *testing.T) {
 				t.Fatalf("runner.Start: %v", err)
 			}
 
-			cmd := (&shuttleCLI{runner: runner}).sendCmd()
+			cli := &shuttleCLI{runner: runner}
+			if tt.covered {
+				cli.pause = pauserecord.Geometry{RecordPath: filepath.Join(root, "pause", pauserecord.RecordFileName), Slug: "s1"}
+				now := time.Now()
+				if _, err := pauserecord.Update(cli.pause.RecordPath, now, func(record *pauserecord.Record) error {
+					record.Live = append(record.Live, pauserecord.Entry{Scope: "s1", PausedAt: now, Caller: "EXTERNAL"})
+					return nil
+				}); err != nil {
+					t.Fatalf("pauserecord.Update: %v", err)
+				}
+			}
+			cmd := cli.sendCmd()
 			var out bytes.Buffer
 			cmd.SetOut(&out)
 			cmd.SetErr(&out)
@@ -486,6 +500,18 @@ func TestSendCmd_AppendsMessageTail(t *testing.T) {
 			}
 
 			envelope := parseSingleEnvelope(t, out.Bytes())
+			if tt.covered {
+				if ok, _ := envelope["ok"].(bool); ok {
+					t.Fatalf("envelope ok = true; want a refusal; output: %s", out.String())
+				}
+				if msg, _ := envelope["error"].(string); !strings.Contains(msg, "lyx resume s1") {
+					t.Errorf("refusal = %q; want it to name %q", msg, "lyx resume s1")
+				}
+				if len(reed.SendTextCalls) != 0 {
+					t.Errorf("typed texts = %+v; want none", reed.SendTextCalls)
+				}
+				return
+			}
 			if ok, _ := envelope["ok"].(bool); !ok {
 				t.Fatalf("envelope ok = false; output: %s", out.String())
 			}
