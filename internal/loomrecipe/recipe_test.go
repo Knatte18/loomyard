@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // TestNew_ShapeMatchesRecipe builds the embedded recipe through New from testEnv(t) and asserts row order and concrete Producer type against wantProducerTable.
@@ -237,6 +238,40 @@ func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
 		if got[i] != w {
 			t.Errorf("RecipeEngines()[%d] = %q; want %q", i, got[i], w)
 		}
+	}
+}
+
+// TestRowNames_FollowEachRecipesRowOrder pins that each recipe's names equal its shedbuild.Parse row names in file order, and that a recipe the loom module does not own is refused.
+func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
+	for _, tt := range []struct {
+		recipe string
+		source []byte
+	}{
+		{shedrun.RecipeLoom, recipes.LoomRecipe},
+		{shedrun.RecipeDarn, recipes.DarnRecipe},
+	} {
+		t.Run(tt.recipe, func(t *testing.T) {
+			parsed, err := shedbuild.Parse(tt.source)
+			if err != nil {
+				t.Fatalf("shedbuild.Parse(%s recipe) = %v", tt.recipe, err)
+			}
+			var want []string
+			for _, row := range parsed.Producers {
+				want = append(want, row.Name)
+			}
+
+			got, err := RowNames(tt.recipe)
+			if err != nil {
+				t.Fatalf("RowNames(%q) error = %v; want nil", tt.recipe, err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("RowNames(%q) = %v; want %v", tt.recipe, got, want)
+			}
+		})
+	}
+
+	if _, err := RowNames(shedrun.RecipeBatten); err == nil || !strings.Contains(err.Error(), shedrun.RecipeBatten) {
+		t.Errorf("RowNames(%q) error = %v; want a refusal naming the recipe", shedrun.RecipeBatten, err)
 	}
 }
 

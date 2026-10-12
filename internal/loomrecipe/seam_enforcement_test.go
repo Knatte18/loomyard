@@ -27,6 +27,7 @@ var loomrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/shedbuild",
 	"github.com/Knatte18/loomyard/internal/shedrecipe",
 	"github.com/Knatte18/loomyard/internal/shedengine",
+	"github.com/Knatte18/loomyard/internal/shedrun",
 }
 
 // loomrecipeDeniedLyxcwdImport is the exact import path the Told-Geometry Invariant excludes from
