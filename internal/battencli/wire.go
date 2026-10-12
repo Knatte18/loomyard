@@ -45,6 +45,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -502,9 +503,18 @@ func battenHistoryLen(location *lyxcwd.Location, slug string) (int, error) {
 	return len(status.History), nil
 }
 
+// noticeLog returns the hub notice log seam for the run of slug: the prime's log file, and the line that attaches to the task worktree's pair, its directory quoted by the shell seam.
+func noticeLog(location *lyxcwd.Location, slug string) battenshed.NoticeLog {
+	return battenshed.NoticeLog{
+		Path:          shedrun.NoticeLog(location),
+		AttachCommand: shell.ForGOOS().ChangeDir(fabricengine.WorktreePath(location, slug)) + " && lyx reed attach",
+	}
+}
+
 // rowNotices returns the notice seams of the rows after Run-Shed: notices go to the prime's orch, as Run-Shed's do, and an episode is told apart by batten's own history length.
 func rowNotices(location *lyxcwd.Location, slug string) battenshed.RowNoticeDeps {
 	return battenshed.RowNoticeDeps{
+		NoticeLog: noticeLog(location, slug),
 		Notify: func(ctx context.Context, line string) (bool, error) {
 			return orchengine.QueueNotice(orchcli.PrimePaths(location), line, time.Now())
 		},
@@ -760,6 +770,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		},
 		Land: landDeps(location, slug, locateTask),
 		InnerRun: battenshed.InnerRunDeps{
+			NoticeLog: noticeLog(location, slug),
 			// Notify queues the notice on the prime's orch, the parent of a batten run started from the prime, and reports QueueNotice's own answer: whether the notice was queued.
 			Notify: func(ctx context.Context, line string) (bool, error) {
 				return orchengine.QueueNotice(orchcli.PrimePaths(location), line, time.Now())
