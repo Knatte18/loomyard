@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -360,6 +361,51 @@ func TestResumeContext_PrintsHookJSONPerPhaseAndFailsWithoutMark(t *testing.T) {
 				if err != nil || !strings.Contains(string(role), wantIndex) || strings.Contains(string(role), fakeRunnerIndex) {
 					t.Errorf("role file = %q, %v; want it to carry the root's own index %q, not the runner's", role, err, wantIndex)
 				}
+			}
+		})
+	}
+}
+
+func TestCleanup_Envelope(t *testing.T) {
+	t.Parallel()
+
+	for _, apply := range []bool{false, true} {
+		name := "dry run"
+		args := []string{}
+		if apply {
+			name, args = "apply", []string{"--apply"}
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			c := newTestCLI(t, &fakeStrands{})
+			c.paths.HandoffsDir = filepath.Join(c.paths.Dir, "handoffs")
+			if err := orchengine.SaveState(c.paths, orchengine.State{Phase: orchengine.PhaseIdle, LastHandoff: "keep.md"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(c.paths.HandoffsDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			for _, file := range []string{"keep.md", "old.md"} {
+				if err := os.WriteFile(filepath.Join(c.paths.HandoffsDir, file), []byte("note"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			var out bytes.Buffer
+			code := clihelp.Execute(c.cleanupCmd(), &out, args)
+			var env map[string]any
+			if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+				t.Fatalf("output %q is not one JSON object: %v", out.String(), err)
+			}
+
+			want := map[string]any{"ok": true, "applied": apply, "kept": "keep.md", "removed": []any{"old.md"}, "reason": ""}
+			if code != 0 || !reflect.DeepEqual(env, want) {
+				t.Errorf("exit = %d, envelope = %v; want %v", code, env, want)
+			}
+			_, err := os.Stat(filepath.Join(c.paths.HandoffsDir, "old.md"))
+			if gone := errors.Is(err, os.ErrNotExist); gone != apply {
+				t.Errorf("old.md removed = %v, want %v", gone, apply)
 			}
 		})
 	}
