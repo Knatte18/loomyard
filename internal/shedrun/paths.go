@@ -160,6 +160,23 @@ func RunsRootRel() string {
 	return filepath.Join(lyxdirs.LyxDirName, shedDirName)
 }
 
+// RunsRoot returns the absolute durable directory every run directory sits under: the given *lyxcwd.Location's AnchorPath() joined with RunsRootRel().
+func RunsRoot(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), RunsRootRel())
+}
+
+// ScratchRoot returns the absolute ephemeral directory every run's scratch directory sits under, the mirror of RunsRoot at the .lyx subpath.
+// The hub-scoped prime run lock and landing lock live in it too.
+func ScratchRoot(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, shedDirName)
+}
+
+// RunDirRel returns the anchor-relative form of the run's durable directory, with the same directory-segment alias resolution the run's status path applies.
+// It is the pathspec a records commit takes to delete a whole run directory.
+func RunDirRel(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(lyxdirs.LyxDirName, shedDirName, runSegment(l, runID))
+}
+
 // TreeRunFileRels returns the slash-separated, tree-relative paths of a run's seed.json and status.json, as a git tree read takes them.
 // It validates runID and applies no "self" alias and no legacy directory fallback, since a tree read from git has no disk to resolve against.
 // A runID that fails validation returns that error and empty paths.

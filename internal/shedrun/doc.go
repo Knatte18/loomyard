@@ -24,6 +24,8 @@
 // LoopJobName names the loop's Windows job object from a hash of the steps directory, so it is unique across hubs.
 //
 // RunsRootRel names the anchor-relative run-records root, because fabricengine's Add drops everything under it from a freshly forked pair.
+// RunsRoot and ScratchRoot are its absolute durable and ephemeral forms, the directories every run directory and scratch directory sit under.
+// RunDirRel is a run directory's anchor-relative form, the pathspec of a records commit that deletes the whole directory.
 //
 // TreeRunFileRels names a run's seed.json and status.json as slash-separated paths relative to a git tree, with no alias and no legacy fallback.
 // ParseSeed decodes seed bytes a caller read elsewhere, with the same strictness as ReadSeed.

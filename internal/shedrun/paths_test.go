@@ -120,6 +120,12 @@ func TestRunsRootRel(t *testing.T) {
 	if want := filepath.Join(lyxdirs.LyxDirName, "shed"); root != want {
 		t.Errorf("RunsRootRel() = %q; want %q", root, want)
 	}
+	if got, want := RunsRoot(l), filepath.Dir(RunDir(l, "x")); got != want {
+		t.Errorf("RunsRoot(l) = %q; want %q", got, want)
+	}
+	if got, want := ScratchRoot(l), filepath.Dir(ScratchDir(l, "x")); got != want {
+		t.Errorf("ScratchRoot(l) = %q; want %q", got, want)
+	}
 	prefix := root + string(filepath.Separator)
 	for name, got := range map[string]string{
 		"SeedRel":   SeedRel(l, "x"),
