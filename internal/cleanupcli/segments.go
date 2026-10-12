@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loggerconfig"
@@ -102,8 +103,8 @@ func primeSegments(location *lyxcwd.Location) []segment {
 		}},
 		{name: "logs", run: func(apply bool) (any, error) {
 			removed := []string{}
-			for _, anchor := range []string{location.AnchorPath(), fabricengine.BoardDir(location.HubPath)} {
-				paths, err := logger.SweepDir(logger.LogsDirAt(anchor), loggerconfig.LoadOrDefault(anchor), apply)
+			for _, dirs := range []configengine.Dirs{fabricengine.ConfigDirs(location), {Anchor: fabricengine.BoardDir(location.HubPath)}} {
+				paths, err := logger.SweepDir(logger.LogsDirAt(dirs.Anchor), loggerconfig.LoadOrDefault(dirs), apply)
 				if err != nil {
 					return nil, err
 				}

@@ -365,7 +365,7 @@ strand is sized to it. It reads files only, and runs from the prime only.`,
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			reedCfg, err := reedengine.LoadConfig(location.AnchorPath(), "reed")
+			reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil

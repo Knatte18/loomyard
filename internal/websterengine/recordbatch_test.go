@@ -1613,18 +1613,27 @@ func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 	})
 }
 
-// deleteReferencedBatches returns two batches, card 1 (json-flag) that deletes internal/foo#Gone and the unbegun card 2 (later) that edits internal/foo/user.go, and writes both files into worktree: impl.go still declares Gone, and user.go calls it on line 4 when referenced is true.
-func deleteReferencedBatches(t *testing.T, worktree string, referenced bool) []batcher.Batch {
+// The bodies of internal/foo/user.go that deleteReferencedBatches takes: the function Gone called on line 4, no call, and the method Thing.Gone called on line 4.
+const (
+	userCallsGone      = "package foo\n\nfunc user() {\n\tGone()\n}\n"
+	userCallsNothing   = "package foo\n\nfunc user() {}\n"
+	userCallsThingGone = "package foo\n\nfunc user(t Thing) {\n\tt.Gone()\n}\n"
+)
+
+// The Delete targets deleteReferencedBatches takes: the function Gone and the method Thing.Gone.
+const (
+	deleteGone      = "internal/foo#Gone"
+	deleteThingGone = "internal/foo#Thing.Gone"
+)
+
+// deleteReferencedBatches returns two batches, card 1 (json-flag) that deletes target and the unbegun card 2 (later) that edits internal/foo/user.go, and writes both files into worktree: impl.go still declares the function Gone and the method Thing.Gone, and user.go holds the body user.
+func deleteReferencedBatches(t *testing.T, worktree, target, user string) []batcher.Batch {
 	t.Helper()
-	writeWorktreeFile(t, worktree, "internal/foo/impl.go", "package foo\n\nfunc Gone() {}\n")
-	user := "package foo\n\nfunc user() {}\n"
-	if referenced {
-		user = "package foo\n\nfunc user() {\n\tGone()\n}\n"
-	}
+	writeWorktreeFile(t, worktree, "internal/foo/impl.go", "package foo\n\nfunc Gone() {}\n\ntype Thing struct{}\n\nfunc (Thing) Gone() {}\n")
 	writeWorktreeFile(t, worktree, "internal/foo/user.go", user)
 	deleting := planparser.Card{
 		Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "delete Gone",
-		TargetGroups: []planparser.TargetGroup{{Type: planparser.CardTypeDelete, Refs: []string{"internal/foo#Gone"}}},
+		TargetGroups: []planparser.TargetGroup{{Type: planparser.CardTypeDelete, Refs: []string{target}}},
 	}
 	later := planparser.Card{
 		Number: 2, Slug: "later", Title: "later", Intent: "edit the user",
@@ -1634,30 +1643,43 @@ func deleteReferencedBatches(t *testing.T, worktree string, referenced bool) []b
 }
 
 // TestRecordBatch_DeleteNotDoneNamesLaterCard proves a delete-not-done failure caused by an unbegun later card still referencing the target names that card and the reference and moves the way forward to the plan edit, or to the --fresh steps when the record also lists uncheckable entries;
-// a delete-not-done with no later reference keeps recover-batch.
+// a delete-not-done with no later reference keeps recover-batch, and so does one whose later card only calls a method of the same name, which is matched by name alone and so not a blocking reference.
 func TestRecordBatch_DeleteNotDoneNamesLaterCard(t *testing.T) {
 	tests := []struct {
-		name        string
-		referenced  bool
+		name string
+		// target and user are deleteReferencedBatches' Delete target and user.go body.
+		target      string
+		user        string
 		uncheckable []string
 		wantIn      []string
 		wantNotIn   []string
 	}{
 		{
-			name:       "a later card still references the target",
-			referenced: true,
-			wantIn:     []string{"delete-not-done", "2-later", "internal/foo/user.go:4", "way forward: move the delete to a card after", "lyx webster rebaseline --card NN", "lyx webster recover-batch 01"},
-			wantNotIn:  []string{"reset --to start"},
+			name:      "a later card still references the target",
+			target:    deleteGone,
+			user:      userCallsGone,
+			wantIn:    []string{"delete-not-done", "2-later", "internal/foo/user.go:4", "way forward: move the delete to a card after", "lyx webster rebaseline --card NN", "lyx webster recover-batch 01"},
+			wantNotIn: []string{"reset --to start"},
 		},
 		{
 			name:        "an uncheckable record names the fresh restart",
-			referenced:  true,
+			target:      deleteGone,
+			user:        userCallsGone,
 			uncheckable: []string{"fabric-reference: Bash command references the fabric"},
 			wantIn:      []string{"2-later", "internal/foo/user.go:4", "way forward: 1) lyx webster reset --to start; 2) lyx webster run"},
 			wantNotIn:   []string{"rebaseline"},
 		},
 		{
 			name:      "no later reference keeps recover-batch",
+			target:    deleteGone,
+			user:      userCallsNothing,
+			wantIn:    []string{"delete-not-done", "way forward: lyx webster recover-batch 01"},
+			wantNotIn: []string{"2-later", "rebaseline"},
+		},
+		{
+			name:      "a later card's call matched by method name alone keeps recover-batch",
+			target:    deleteThingGone,
+			user:      userCallsThingGone,
 			wantIn:    []string{"delete-not-done", "way forward: lyx webster recover-batch 01"},
 			wantNotIn: []string{"2-later", "rebaseline"},
 		},
@@ -1669,7 +1691,7 @@ func TestRecordBatch_DeleteNotDoneNamesLaterCard(t *testing.T) {
 				{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 			})
 			writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
-			fx.Deps.Batches = deleteReferencedBatches(t, fx.Worktree, tt.referenced)
+			fx.Deps.Batches = deleteReferencedBatches(t, fx.Worktree, tt.target, tt.user)
 			fx.Deps.Plan.Cards = []planparser.Card{fx.Deps.Batches[0].Cards[0], fx.Deps.Batches[1].Cards[0]}
 			fx.Deps.State.Batches[1].Uncheckable = tt.uncheckable
 

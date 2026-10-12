@@ -80,18 +80,33 @@ func TestLoad_ResolvesBounds(t *testing.T) {
 				tt.seed(t, anchor)
 			}
 
-			got, err := loggerconfig.Load(anchor)
+			got, err := loggerconfig.Load(configengine.Dirs{Anchor: anchor})
 			if err != nil {
 				t.Fatalf("Load: %v", err)
 			}
 			if got != tt.want {
 				t.Errorf("Load = %+v, want %+v", got, tt.want)
 			}
-			if orDefault := loggerconfig.LoadOrDefault(anchor); orDefault != got {
+			if orDefault := loggerconfig.LoadOrDefault(configengine.Dirs{Anchor: anchor}); orDefault != got {
 				t.Errorf("LoadOrDefault = %+v, want Load's %+v", orDefault, got)
 			}
 		})
 	}
+
+	t.Run("repo default resolves beneath a worktree file lacking the key", func(t *testing.T) {
+		t.Parallel()
+		board, anchor := t.TempDir(), t.TempDir()
+		seedConfig(t, board, "trace_retention_count: 9\ntrace_retention_days: 5\n")
+		seedConfig(t, anchor, "trace_retention_days: 2\n")
+
+		got, err := loggerconfig.Load(configengine.Dirs{Anchor: anchor, Board: board})
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if want := (logger.RetentionBounds{Count: 9, MaxAge: 2 * day}); got != want {
+			t.Errorf("Load = %+v, want %+v", got, want)
+		}
+	})
 }
 
 // TestLoad_InvalidValueErrorsNamingKey includes a day count too large for a time.Duration, which must error instead of overflowing MaxAge into a negative duration that would sweep every non-live trace.
@@ -123,14 +138,14 @@ func TestLoad_InvalidValueErrorsNamingKey(t *testing.T) {
 			anchor := t.TempDir()
 			seedConfig(t, anchor, fmt.Sprintf("trace_retention_count: %s\ntrace_retention_days: %s\n", count, days))
 
-			_, err := loggerconfig.Load(anchor)
+			_, err := loggerconfig.Load(configengine.Dirs{Anchor: anchor})
 			if err == nil {
 				t.Fatal("Load: want error, got nil")
 			}
 			if !strings.Contains(err.Error(), tt.key) {
 				t.Errorf("error %q does not name key %q", err, tt.key)
 			}
-			if orDefault := loggerconfig.LoadOrDefault(anchor); orDefault != logger.DefaultRetentionBounds() {
+			if orDefault := loggerconfig.LoadOrDefault(configengine.Dirs{Anchor: anchor}); orDefault != logger.DefaultRetentionBounds() {
 				t.Errorf("LoadOrDefault = %+v, want the defaults %+v", orDefault, logger.DefaultRetentionBounds())
 			}
 		})

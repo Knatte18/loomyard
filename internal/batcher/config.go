@@ -1,6 +1,6 @@
 // config.go — configuration for the batcher module.
 //
-// Defines the package-local config type mirroring batcher.yaml's keys, ConfigOpenMaps, and Active, which uses internal/configengine.LoadOrTemplate with ConfigTemplate() to resolve batcher's own config file, degrading to the embedded template on proven absence, then builds the batchifier the active profile names.
+// Defines the package-local config type mirroring batcher.yaml's keys, ConfigOpenMaps, ConfigSpec, and Active, which uses internal/configengine.LoadOrTemplate with ConfigSpec() to resolve batcher's layered config, degrading to the embedded template on proven absence, then builds the batchifier the active profile names.
 // Also defines MigrateConfig, the pure rewrite that removes a batcher.yaml's retired keys.
 
 package batcher
@@ -28,22 +28,34 @@ type config struct {
 // profile is one named entry under batcher.yaml's profiles: key.
 // The cost parameters are pointers so a missing key is told apart from a zero.
 // AloneAbove is the retired cost parameter, read only so a profile still carrying it is refused rather than silently ignored.
+// file and layer are the layer file the stack took the profiles: map from, kept so a retired-key refusal names the file that carries the key.
 type profile struct {
 	Batchifier string             `yaml:"batchifier"`
 	AloneAbove *float64           `yaml:"alone_above"`
 	Budget     *float64           `yaml:"budget"`
 	MaxCards   *int               `yaml:"max_cards"`
 	Weights    map[string]float64 `yaml:"weights"`
+
+	file  string
+	layer configengine.Layer
 }
 
 // ErrRetiredKey marks a batcher.yaml profile that still carries a key the cost model no longer has;
 // such an error is also marked configengine.ErrInvalid.
 var ErrRetiredKey = errors.New("retired key")
 
-// retiredKeyError builds the refusal for a profile still carrying the retired key, named as in the file.
-// It wraps ErrRetiredKey, is marked configengine.ErrInvalid, and ends in the reconcile way forward.
-func retiredKeyError(profileName, key string) error {
-	return configengine.MarkInvalid(fmt.Errorf("batcher.yaml profile %q carries %s, which no longer exists (%w); way forward: run \"lyx config reconcile --apply\"", profileName, key, ErrRetiredKey))
+// retiredKeyError builds the refusal for a profile still carrying the retired key, naming the layer file that carries it.
+// It wraps ErrRetiredKey, is marked configengine.ErrInvalid, and ends in the way forward that layer calls for:
+// lyx config reconcile --apply for a worktree or local file, and for the repo default, which only the hub-wide reconcile rewrites, lyx fabric reconcile run by the orch.
+func retiredKeyError(file string, layer configengine.Layer, profileName, key string) error {
+	if file == "" {
+		file = moduleName + ".yaml"
+	}
+	wayForward := `run "lyx config reconcile --apply"`
+	if layer == configengine.LayerDefault {
+		wayForward = `run "lyx fabric reconcile"; a session lyx refuses the verb from reports status: FAILED and the orch runs it`
+	}
+	return configengine.MarkInvalid(fmt.Errorf("%s profile %q carries %s, which no longer exists (%w); way forward: %s", file, profileName, key, ErrRetiredKey, wayForward))
 }
 
 // ConfigOpenMaps returns the batcher.yaml keys whose entries are the operator's own, which configengine carries whole through reconcile and --set.
@@ -51,16 +63,30 @@ func ConfigOpenMaps() []string {
 	return []string{"profiles"}
 }
 
-// Active loads batcher.yaml under baseDir and builds the batchifier its active: profile names.
+// ConfigSpec returns batcher's layered-load spec.
+// Both keys, the active profile name and the profiles open map, only shape batching and meet no category, so the local layer may hold either.
+func ConfigSpec() configengine.Spec {
+	return configengine.Spec{
+		Name:     moduleName,
+		Template: []byte(ConfigTemplate()),
+		OpenMaps: ConfigOpenMaps(),
+		Categories: map[string]configengine.Category{
+			"active":   configengine.CategoryNone,
+			"profiles": configengine.CategoryNone,
+		},
+	}
+}
+
+// Active loads batcher.yaml through the layer stack under dirs and builds the batchifier its active: profile names.
 // An empty active: and active: identity resolve to the identity batchifier even when no profile of that name is configured;
 // a configured profile named identity wins over that default.
-// An absent <baseDir>/_lyx/ directory or an absent batcher.yaml both resolve the embedded
-// ConfigTemplate(), whose active: names the cautious profile, instead of erroring;
-// a config file that exists but is invalid still errors, and so does an active: naming no profile, a profile of an unknown batchifier kind, or a cost profile with a missing or invalid parameter, or a retired alone_above, master_base or startup_context, each naming batcher.yaml and marked configengine.ErrInvalid.
-// baseDir must already be resolved by the caller — Active never resolves cwd itself (see
+// An absent base layer resolves the embedded ConfigTemplate(), whose active: names the cautious profile, instead of erroring;
+// a layer file that exists but is invalid still errors, and so does an active: naming no profile, a profile of an unknown batchifier kind, or a cost profile with a missing or invalid parameter, or a retired alone_above, master_base or startup_context in any layer, each marked configengine.ErrInvalid.
+// A retired-key error names the layer file that carries the key and the way forward that file calls for.
+// dirs must already be told by the caller — Active never resolves cwd itself (see
 // PATTERN-cwd-resolution).
-func Active(baseDir string) (Batcher, error) {
-	cfg, err := loadConfig(baseDir)
+func Active(dirs configengine.Dirs) (Batcher, error) {
+	cfg, err := loadConfig(dirs)
 	if err != nil {
 		return nil, err
 	}
@@ -83,14 +109,35 @@ func Active(baseDir string) (Batcher, error) {
 	return construct(name, prof)
 }
 
-// loadConfig loads and unmarshals batcher.yaml under baseDir, degrading to the embedded template on proven absence.
-func loadConfig(baseDir string) (config, error) {
-	resolved, err := configengine.LoadOrTemplate(baseDir, moduleName, []byte(ConfigTemplate()), ConfigOpenMaps()...)
+// loadConfig loads and unmarshals batcher.yaml through the layer stack under dirs, degrading to the embedded template on proven absence.
+// Each profile records the layer file the stack took profiles: from.
+func loadConfig(dirs configengine.Dirs) (config, error) {
+	spec := ConfigSpec()
+	resolved, err := configengine.LoadOrTemplate(dirs, spec)
 	if err != nil {
 		return config{}, err
 	}
+	cfg, err := unmarshalConfig(resolved)
+	if err != nil {
+		return config{}, err
+	}
+	if len(cfg.Profiles) == 0 {
+		return cfg, nil
+	}
 
-	return unmarshalConfig(resolved)
+	stack, err := configengine.StackLayers(dirs, spec)
+	if err != nil {
+		return config{}, err
+	}
+	origin, ok := stack.Origins["profiles"]
+	if !ok {
+		return cfg, nil
+	}
+	for name, prof := range cfg.Profiles {
+		prof.file, prof.layer = origin.Path, origin.Layer
+		cfg.Profiles[name] = prof
+	}
+	return cfg, nil
 }
 
 // unmarshalConfig decodes batcher.yaml's bytes, marking a failure configengine.ErrInvalid.

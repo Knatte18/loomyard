@@ -80,7 +80,7 @@ func worktreeDirectory(path string) []reedengine.DirectoryRow {
 		logger.Warn("reed list: skipping a worktree that does not resolve", "path", path, "err", err)
 		return nil
 	}
-	cfg, err := reedengine.LoadConfig(location.AnchorPath(), "reed")
+	cfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
 	if err != nil {
 		logger.Warn("reed list: skipping a worktree whose config does not load", "path", path, "err", err)
 		return nil

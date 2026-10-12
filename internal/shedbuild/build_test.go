@@ -18,7 +18,7 @@ func TestBuild_RowsCarryRoutingInRecipeOrder(t *testing.T) {
 
 	r := Recipe{
 		Producers: []Row{
-			{Name: "First", Engine: "Stub", OnDone: "Second", OnStuck: "First", Segment: "seg", MaxBounces: 3},
+			{Name: "First", Engine: "Stub", OnDone: "Second", OnStuck: "First", OnReroute: "Third", Segment: "seg", MaxBounces: 3},
 			{Name: "Second", Engine: "Stub"},
 			{Name: "Third", Engine: "Stub"},
 		},
@@ -33,11 +33,11 @@ func TestBuild_RowsCarryRoutingInRecipeOrder(t *testing.T) {
 	}
 	for i, row := range r.Producers {
 		def := defs[i]
-		if def.Name != row.Name || def.OnDone != row.OnDone || def.OnStuck != row.OnStuck ||
+		if def.Name != row.Name || def.OnDone != row.OnDone || def.OnStuck != row.OnStuck || def.OnReroute != row.OnReroute ||
 			def.Segment != row.Segment || def.MaxBounces != row.MaxBounces {
-			t.Errorf("defs[%d] = {%q %q %q %q %d}; want row {%q %q %q %q %d}", i,
-				def.Name, def.OnDone, def.OnStuck, def.Segment, def.MaxBounces,
-				row.Name, row.OnDone, row.OnStuck, row.Segment, row.MaxBounces)
+			t.Errorf("defs[%d] = {%q %q %q %q %q %d}; want row {%q %q %q %q %q %d}", i,
+				def.Name, def.OnDone, def.OnStuck, def.OnReroute, def.Segment, def.MaxBounces,
+				row.Name, row.OnDone, row.OnStuck, row.OnReroute, row.Segment, row.MaxBounces)
 		}
 		if def.Producer == nil {
 			t.Errorf("defs[%d].Producer = nil; want non-nil", i)

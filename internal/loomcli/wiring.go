@@ -273,6 +273,7 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 
 		RunID:                   c.runID,
 		MissingStatusWayForward: loomMissingStatusWayForward,
+		RerouteCapWayForward:    loomRerouteCapWayForward,
 	}
 	// c.env is otherwise left at its zero value deliberately: status/pause/approve read nothing from
 	// it, and filling only the fields the validate verbs actually read (rather than the whole of
@@ -445,35 +446,34 @@ func strandLive(name string, status func() (reedengine.StatusResult, error)) (bo
 func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	anchorPath := location.AnchorPath()
 
-	loomCfg, err := loomengine.LoadConfig(anchorPath, "loom")
+	loomCfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(location), "loom")
 	if err != nil {
 		return err
 	}
-	reedCfg, err := reedengine.LoadConfig(anchorPath, "reed")
+	reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
 	if err != nil {
 		return err
 	}
-	shuttleCfg, err := shuttleengine.LoadConfig(anchorPath, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(location), "shuttle")
 	if err != nil {
 		return err
 	}
-	websterCfg, err := websterengine.LoadConfig(anchorPath, "webster")
+	websterCfg, err := websterengine.LoadConfig(fabricengine.ConfigDirs(location), "webster")
 	if err != nil {
 		return err
 	}
-	// landing is hub-wide: Publish and Finalize read the hub's file, never a pair's copy.
-	landingCfg, err := landingshed.LoadConfig(fabricengine.BoardDir(location.HubPath), "landing")
+	// landing is hub-wide: Publish and Finalize read the hub's file, never a pair's copy, and the pair's local override only for the keys that meet no category.
+	landingCfg, err := landingshed.LoadConfig(fabricengine.ConfigDirs(location), "landing")
 	if err != nil {
 		return fmt.Errorf("%w; %s", err, hubConfigWayForward)
 	}
-	// burlerengine.LoadConfig takes one argument, not the (baseDir, module) shape every other
-	// loader above takes: it is an optional-file loader, so an absent burler.yaml yields a zero
+	// burlerengine.LoadConfig is an optional-file loader: an absent burler.yaml yields a zero
 	// Config and a nil error rather than a load failure.
-	burlerCfg, err := burlerengine.LoadConfig(anchorPath)
+	burlerCfg, err := burlerengine.LoadConfig(fabricengine.ConfigDirs(location))
 	if err != nil {
 		return err
 	}
-	registry, err := modelspec.LoadRegistry(anchorPath)
+	registry, err := modelspec.LoadRegistry(fabricengine.ConfigDirs(location))
 	if err != nil {
 		return err
 	}
@@ -481,7 +481,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	activeBatcher, err := batcher.Active(anchorPath)
+	activeBatcher, err := batcher.Active(fabricengine.ConfigDirs(location))
 	if err != nil {
 		return err
 	}
@@ -600,6 +600,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ParentReview: parentReviewCfg,
 		Cwd:          cwd,
 		AnchorPath:   anchorPath,
+		ConfigDirs:   fabricengine.ConfigDirs(location),
 		WorktreeRoot: location.WorktreePath(),
 		// RunScratchDir is the directory the step envelope reports as scratch_dir.
 		RunScratchDir: shedrun.ScratchDir(location, c.runID),
@@ -658,7 +659,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// live-agent evidence, so flipping the key between a crash and a resume is permitted and
 		// benign -- it means only that the next spawn is interviewed differently.
 		DiscussionSpec: func() (shuttleengine.Spec, error) {
-			return loomengine.DiscussionSpec(location, websterGeom.StencilsDir, c.parentName, loomCfg, registry, seedSlug(location.WorktreeName), !loomCfg.DiscussionInteractive)
+			return loomengine.DiscussionSpec(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, c.parentName, loomCfg, registry, seedSlug(location.WorktreeName), !loomCfg.DiscussionInteractive)
 		},
 		// PrepareDiscussionSpawn removes a ready marker an earlier writer spawn left, whichever producer is configured, since removing an absent marker is a no-op.
 		PrepareDiscussionSpawn: func() error {
@@ -738,7 +739,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// takes no autonomous argument: the Plan producer is autonomous by design and hard-codes
 		// Interactive: false internally.
 		PlanSpec: func() (shuttleengine.Spec, error) {
-			return loomengine.PlanSpec(location, websterGeom.StencilsDir, websterGeom.SpecsDir, c.parentName, loomCfg, registry)
+			return loomengine.PlanSpec(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, c.parentName, loomCfg, registry)
 		},
 		// CommitPlan mirrors CommitDiscussion above: it keeps the working tree clean for the rows
 		// that follow, makes the artifact durable across a crash or a resume, and sweeps the
@@ -775,6 +776,23 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		CarryOver: func(entry discussionparser.CarryOver) error { return writeCarryOver(location, entry) },
 		// SkipPlanReview lets Plan-Bouncer approve an exempt rework generation without a judge; it reads committed state on demand and opens nothing at wire time.
 		SkipPlanReview: func() (bool, error) { return loomshed.PlanReviewSkippable(reworkDeps) },
+		// SkipMergeReview answers from the merge record alone, so an absent or unreadable record reviews the whole merge-in diff.
+		SkipMergeReview: func() (bool, error) {
+			record, found, err := landingshed.ReadMergeRecord(landingshed.MergeRecordPath(loomengine.LoomScratchDir(location)))
+			if err != nil || !found {
+				return false, nil
+			}
+			return record.SkipsReview(), nil
+		},
+		// ApproveMergeReview records the merged tip as reviewed on every approved settle of the Merge-Bouncer, a skip included.
+		ApproveMergeReview: func() error {
+			scratchDir := loomengine.LoomScratchDir(location)
+			return landingshed.RecordMergeReviewed(landingshed.MergeRecordPath(scratchDir), landingshed.MergeReviewedPath(scratchDir))
+		},
+		MergeReview: func() string {
+			return landingshed.MergeReviewNote(landingshed.MergeRecordPath(loomengine.LoomScratchDir(location)))
+		},
+		MergeReviewOff: loomCfg.SkipMergeReview,
 		// ReworkSpec is evaluated per Call like PlanSpec above, so the stencil is read at call time.
 		// The values the session is told arrive from the PR-Rework producer, which decides them.
 		ReworkSpec: func(told loomshed.ReworkTold) (shuttleengine.Spec, error) {
@@ -798,7 +816,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
 		Slug: seedSlug(location.WorktreeName),
 		SegmentBounces: segmentBounces(statusPath, statusLockPath, func() (shedengine.Routing, error) {
-			return loomrecipe.Routing(loomCfg.ReviewMaxBounces, perchMaxBounces(loomCfg))
+			return loomrecipe.Routing(loomCfg.ReviewMaxBounces, perchMaxBounces(loomCfg), loomCfg.SkipMergeReview)
 		}),
 
 		ReviewMaxBounces:         loomCfg.ReviewMaxBounces,
@@ -816,6 +834,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			loomshed.NamePlanBurlerFix:          reviewSettings.Plan,
 			loomshed.NameWebsterBurlerReview:    reviewSettings.Webster,
 			loomshed.NameWebsterBurlerFix:       reviewSettings.Webster,
+			// The merge review reviews a committed diff as Webster-Review does, so it takes that segment's models.
+			loomshed.NameMergeBurlerReview: reviewSettings.Webster,
+			loomshed.NameMergeBurlerFix:    reviewSettings.Webster,
 			// The darn recipe's Darn-Review perch reviews a committed diff as Webster-Review does, so it takes that segment's models.
 			loomshed.NameDarnBurlerReview: reviewSettings.Webster,
 			loomshed.NameDarnBurlerFix:    reviewSettings.Webster,
@@ -833,6 +854,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			loomshed.NameDiscussionBouncer: shedadapters.BouncerModels(judgeSettings.Discussion),
 			loomshed.NamePlanBouncer:       shedadapters.BouncerModels(judgeSettings.Plan),
 			loomshed.NameWebsterBouncer:    shedadapters.BouncerModels(judgeSettings.Webster),
+			loomshed.NameMergeBouncer:      shedadapters.BouncerModels(judgeSettings.Webster),
 			loomshed.NameDarnBouncer:       shedadapters.BouncerModels(judgeSettings.Webster),
 		},
 
@@ -863,6 +885,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 		RunID:                   c.runID,
 		MissingStatusWayForward: loomMissingStatusWayForward,
+		RerouteCapWayForward:    loomRerouteCapWayForward,
 	}
 
 	// A darn run swaps in the darn recipe's verify source and Describe spec and fills the Darn-Write row's seams; a loom run leaves them nil.
@@ -895,22 +918,24 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	return nil
 }
 
-// perchMaxBounces maps loom.yaml's per-perch budget keys onto the Discussion, Plan and Webster Bouncer rows' names.
+// perchMaxBounces maps loom.yaml's per-perch budget keys onto the Discussion, Plan, Webster and Merge Bouncer rows' names.
 // A 0 entry means the perch takes the run-wide review_max_bounces.
 func perchMaxBounces(cfg loomengine.Config) map[string]int {
 	return map[string]int{
 		loomshed.NameDiscussionBouncer: cfg.DiscussionMaxBounces,
 		loomshed.NamePlanBouncer:       cfg.PlanMaxBounces,
 		loomshed.NameWebsterBouncer:    cfg.WebsterMaxBounces,
+		loomshed.NameMergeBouncer:      cfg.MergeMaxBounces,
 	}
 }
 
-// perchAutoAccept maps loom.yaml's per-perch auto-accept keys onto the Discussion, Plan and Webster Bouncer rows' names.
+// perchAutoAccept maps loom.yaml's per-perch auto-accept keys onto the Discussion, Plan, Webster and Merge Bouncer rows' names.
 func perchAutoAccept(cfg loomengine.Config) map[string]bool {
 	return map[string]bool{
 		loomshed.NameDiscussionBouncer: cfg.DiscussionAutoAccept,
 		loomshed.NamePlanBouncer:       cfg.PlanAutoAccept,
 		loomshed.NameWebsterBouncer:    cfg.WebsterAutoAccept,
+		loomshed.NameMergeBouncer:      cfg.MergeAutoAccept,
 	}
 }
 
@@ -938,6 +963,9 @@ func segmentBounces(statusPath, statusLockPath string, routing func() (shedengin
 
 // loomMissingStatusWayForward is the told trailing clause for a missing status file: loom's own start verb is what bootstraps one.
 const loomMissingStatusWayForward = "way forward: run \"lyx loom start\" first to bootstrap this task"
+
+// loomRerouteCapWayForward is the told clause a reroute-cap halt ends with: a row that keeps finding the parent moved is resumed once the parent branch has settled.
+const loomRerouteCapWayForward = "run \"lyx loom resume\" in the task worktree once the parent branch has settled"
 
 // hubConfigWayForward is the trailing clause for a failed load of the hub-wide landing config: reconciling the hub's config is what restores it.
 const hubConfigWayForward = "way forward: run lyx config reconcile --apply in the hub, then step again"

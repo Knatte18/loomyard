@@ -7,10 +7,10 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-cwd-resolution` — Resolving a cwd or worktree root: only `internal/lyxcwd` does it, and nothing else calls `os.Getwd` or `git rev-parse --show-toplevel`. — [background](pattern/PATTERN-cwd-resolution.md)
 - `PATTERN-told-geometry` — Writing an engine: it is handed the absolute paths it works on and derives none, so it never imports `internal/lyxcwd`. — [background](pattern/PATTERN-told-geometry.md)
 - `PATTERN-lyxdirs-single-declarer` — Naming `_lyx` or `.lyx` in a path: only `internal/lyxdirs` declares those literals, and no other production file spells them.
-- `PATTERN-lyx-temp-root` — Creating a temp file or directory: under `internal/lyxtemp`'s process run directory; `os.MkdirTemp`/`os.CreateTemp` never take `""` or `os.TempDir()` as dir elsewhere. (test) — [background](pattern/PATTERN-lyx-temp-root.md)
+- `PATTERN-lyx-temp-root` — Creating a temp file or directory: under `internal/lyxtemp`'s run directory; `os.MkdirTemp`/`os.CreateTemp` never take `""` or `os.TempDir()` elsewhere. (test) — [background](pattern/PATTERN-lyx-temp-root.md)
 - `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked content lives under `_lyx`, anything never tracked under `.lyx` at the mirrored subpath. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-hub-containment` — Linking hub-level containers: `_board`, `_portals` and `_launchers` are reachable from the hub only, never junctioned into a worktree. — [background](pattern/PATTERN-hub-containment.md)
-- `PATTERN-hub-wide-config` — Adding or reading a hub-level config module: mark it `HubWide` in `configreg`; read and write it only at `<BoardDir>/_lyx/config/`. — [background](pattern/PATTERN-hub-wide-config.md)
+- `PATTERN-hub-wide-config` — A hub-level config module: mark it `HubWide` in `configreg`; its file lives only at `<BoardDir>/_lyx/config/`, with the local override limited to `LocalKeys`. — [background](pattern/PATTERN-hub-wide-config.md)
 - `PATTERN-hub-suffix` — Touching hub naming: `-LYXHUB` is the sole hub container suffix, and no code parses, trims or recognises the retired `-HUB`. (test) — [background](pattern/PATTERN-hub-suffix.md)
 
 ## CLI
@@ -18,6 +18,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-cli-cobra` — Adding a CLI module: a cobra subtree under one root in `cmd/lyx/main.go`, with `Command`, `RunCLI`, `audience`, `Short` and JSON errors. (test) — [background](pattern/PATTERN-cli-cobra.md)
 - `PATTERN-cliwire-sole-wiring` — Wiring a standalone-capable CLI: `internal/cliwire` alone resolves target dir, repo root and state. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
 - `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of `configengine.Load` (strict) or `LoadOrTemplate` (degrades to the embedded template). — [background](pattern/PATTERN-config-strictness.md)
+- `PATTERN-config-layers` — Resolving a module's config: only `configengine` reads or stacks layer files and forms their paths; keys closed to the local layer are set through `configreg`. — [background](pattern/PATTERN-config-layers.md)
 - `PATTERN-binary-change-reconcile` — Reconciling a hub's config after a binary change: only through `hubreconcile.Ensure`, which owns the build stamp and the hub lock.
 - `PATTERN-refusal-way-forward` — Adding a webster, shed or loom refusal: name the way forward, land its spec row with it, add a test. — [background](pattern/PATTERN-refusal-way-forward.md)
 - `PATTERN-no-denied-recovery` — Naming a step in a refusal, stencil or spec: never a command the agents' settings deny; lyx does it. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
@@ -33,12 +34,13 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-pair-teardown` — Tearing down a pair: only through `internal/pairteardown`, which ends the pair's reed session before any worktree is removed. (test) — [background](pattern/PATTERN-pair-teardown.md)
 - `PATTERN-batten-bookend` — Creating or destroying a task worktree: the producer never runs from inside it, and session shutdown precedes removal in one row. — [background](pattern/PATTERN-batten-bookend.md)
 - `PATTERN-github-auth` — Calling GitHub: all authentication goes through `internal/githubclient`, and no other production package shells out to `gh`.
-- `PATTERN-agent-filed-issues` — Filing a GitHub issue from lyx: only through `lyx selfreport create`, run by an agent or the operator; no other production package calls `selfreportengine.CreateIssue`. (test)
+- `PATTERN-agent-filed-issues` — Filing a GitHub issue from lyx: only through `lyx selfreport create`; no other production package calls `selfreportengine.CreateIssue`. (test)
 - `PATTERN-hub-store-gc` — Hub stores carry `gc.auto=0` and `maintenance.auto=false`: only `fabricengine/housekeeping.go` sets them or runs `gc`. — [background](pattern/PATTERN-hub-store-gc.md)
 - `PATTERN-gogit-read-helper` — Reading through go-git in `internal/gitrepo`: only through `readGoGit`, the sole caller of `goGit()`. (test) — [background](pattern/PATTERN-gogit-read-helper.md)
 - `PATTERN-gitrepo-client-boundary` — Git in `internal/gitrepo`: local reads via go-git and `dotgit`, the rest via `gitexec`. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
 - `PATTERN-gitexec-checked-call` — Running git: use `gitexec.Run`/`runChecked`; the raw `RunGit`/`r.run` forms survive only at pinned `//gitexec:raw` call sites.
 - `PATTERN-never-force-add` — Keeping transients out of the index: each repo's own `.git/info/exclude`; fabric and gitrepo never run `git add -f`.
+- `PATTERN-parent-lock` — Merging a parent into a task branch, or landing on it: only under that parent's lock through `internal/parentlock`; a moved parent reroutes to Merge-In.
 
 ## Shed and loom
 
@@ -57,7 +59,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-verified-tree` — Running a verify command: through `verifytree.Verify` only, never on a dirty tree, skipping only on a record of HEAD's tree. (test) — [background](pattern/PATTERN-verified-tree.md)
 - `PATTERN-gate-slot` — Running a gate build or test: only in a `-p`-capped hub slot of `internal/gateslot`.
 - `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch the active `batcher.yaml` profile derives via `internal/batcher`. — [background](pattern/PATTERN-batcher-registry.md)
-- `PATTERN-review-round` — Review and fix round: review accepted on disk before any edit, fix or dispute each finding with evidence from the code, end on a verdict. — [background](pattern/PATTERN-review-round.md)
+- `PATTERN-review-round` — Review and fix round: review accepted on disk before any edit, each finding fixed or disputed with evidence, end on a verdict. — [background](pattern/PATTERN-review-round.md)
 - `PATTERN-sole-parsers` — Parsing plan, discussion, summary or recipe: only `planparser`, `discussionparser`, `summaryparser`, `shedbuild`. (test) — [background](pattern/PATTERN-sole-parsers.md)
 
 ## Agents and prompts
@@ -71,7 +73,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-shuttle-stop` — Stopping a shuttle run's strand from Go outside `internal/shuttleengine`: only through shuttle's stop verb. (test) — [background](pattern/PATTERN-shuttle-stop.md)
 - `PATTERN-orch-pane-single-writer` — Typing into the orch session from Go: only the orch watcher does it, idle-gated; another module queues a notice through `orchengine` instead.
 - `PATTERN-shell-mechanics-seam` — Building a pane-shell command string: only through `internal/shell`, which imports the standard library alone.
-- `PATTERN-pane-text-injection` — Typing text into an agent pane: only reed's paste-submit, behind shuttle's pre-write guard or, for name repair, reed's activity check; no Enter of lyx's own into a box not holding exactly the sent text. — [background](pattern/PATTERN-pane-text-injection.md)
+- `PATTERN-pane-text-injection` — Typing text into an agent pane: only reed's paste-submit, behind shuttle's pre-write guard or reed's activity check; no Enter of lyx's own into a box not holding exactly the sent text. — [background](pattern/PATTERN-pane-text-injection.md)
 - `PATTERN-pane-binary-resolution` — Creating a strand pane or detached `lyx` window in reed: resolve `lyx` via `panebin.go` only. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
 - `PATTERN-role-skills-typed` — Loading a skill into a spawned session: the spawning module names it on the launch spec and lyx types it; no stencil asks an agent to load a skill. (test)
 - `PATTERN-parent-directive` — Writing a spawned role's top-level stencil: it renders the parent directive, and no stencil tells an agent to ask the operator. (test) — [background](pattern/PATTERN-parent-directive.md)

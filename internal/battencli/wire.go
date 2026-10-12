@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +27,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -39,6 +42,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -542,12 +546,13 @@ func readStopReport(taskLocation *lyxcwd.Location) (path string, at time.Time, f
 }
 
 // readAgentActivity reads the live agent runs of the task worktree through the shuttle config and a Claude engine, mapped onto battenshed's neutral type,
-// and reports whether a Go-side wait is live: a running verify, or a shuttle wait that is not a held turn end.
+// and reports whether a Go-side wait is live: a running verify, a parent lock wait, or a shuttle wait that is not a held turn end.
 // A held run is idle at its turn end, so it does not suppress the quiet notice.
-// Both waits are read from their marker files, never from the pane options that display them.
+// A lock wait record whose writer is dead is ignored.
+// The waits are read from their marker and record files, never from the pane options that display them.
 func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentActivity, waitLive bool, err error) {
 	anchor := taskLocation.AnchorPath()
-	cfg, err := shuttleengine.LoadConfig(anchor, "shuttle")
+	cfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "shuttle")
 	if err != nil {
 		return nil, false, err
 	}
@@ -572,6 +577,13 @@ func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentAc
 		return nil, false, err
 	}
 	if verifyLive {
+		return runs, true, nil
+	}
+	_, lockWaiting, err := parentlock.ReadWait(parentlock.WaitRecordPath(loomengine.LoomScratchDir(taskLocation)), parentlock.ProcessAlive)
+	if err != nil {
+		return nil, false, err
+	}
+	if lockWaiting {
 		return runs, true, nil
 	}
 	markers, err := shuttleengine.ReadWaitMarkers(cfg, anchor)
@@ -702,7 +714,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				logger.Warn("battencli: claim board entry failed", "slug", slug, "err", err)
 			}
 
-			cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(location.HubPath))
+			cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
 			if err != nil {
 				return err
 			}
@@ -786,7 +798,8 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				return readStopReport(taskLocation)
 			},
 			MarkWatched: markWatched,
-			PublishRow:  loomshed.NamePublish,
+			VerifyRows:  []string{loomshed.NameMergeIn, loomshed.NamePublish},
+			ParentLock:  childParentLock(slug, locateTask, fabricengine.BoardDir(location.HubPath), lockIdleBound(location)),
 			PublishFailure: func() (battenshed.ChildPublishFailure, bool, error) {
 				taskLocation, err := locateTask()
 				if err != nil {
@@ -868,7 +881,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					if err != nil {
 						return reedengine.StatusResult{}, err
 					}
-					reedCfg, err := reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")
+					reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
 					if err != nil {
 						return reedengine.StatusResult{}, err
 					}
@@ -889,7 +902,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					if err != nil {
 						return nil, err
 					}
-					reedCfg, err := reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")
+					reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
 					if err != nil {
 						return nil, err
 					}
@@ -919,7 +932,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 						if err != nil {
 							return nil, err
 						}
-						reedCfg, err := reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")
+						reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
 						if err != nil {
 							return nil, err
 						}
@@ -937,7 +950,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				reedCfg, err := reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")
+				reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
 				if err != nil {
 					return err
 				}
@@ -945,7 +958,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				shuttleCfg, err := shuttleengine.LoadConfig(taskLocation.AnchorPath(), "shuttle")
+				shuttleCfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "shuttle")
 				if err != nil {
 					return err
 				}
@@ -1049,6 +1062,57 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return shedrun.DriverGo, nil
 				}
 				return childDriverOf(seed), nil
+			},
+			// ReadRunSettings opens the Board fresh on every Call, as ReadBoardType does, and returns the task's run_settings.
+			ReadRunSettings: func(ctx context.Context) (map[string]any, error) {
+				b := boardengine.New(boardengine.Config{Path: fabricengine.BoardDir(location.HubPath)})
+				task, found, err := b.GetTask(slug)
+				if err != nil {
+					return nil, err
+				}
+				if !found {
+					return nil, fmt.Errorf("battencli: board task %q not found", slug)
+				}
+				return task.RunSettings, nil
+			},
+			// PrepareRunSettings is configreg's one migrate-then-validate step; a refusal of the settings is wrapped in battenshed.ErrInvalidRunSettings so Seed-Child routes it to Stuck.
+			PrepareRunSettings: func(settings map[string]any) (map[string][]byte, error) {
+				documents, err := configreg.PrepareRunSettings(settings)
+				var refusal *configreg.RunSettingsError
+				if errors.As(err, &refusal) {
+					return nil, fmt.Errorf("%w: %s", battenshed.ErrInvalidRunSettings, err.Error())
+				}
+				return documents, err
+			},
+			// WriteLocalOverride writes one module's local file in the task worktree, creating its directory.
+			WriteLocalOverride: func(ctx context.Context, module string, document []byte) error {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return err
+				}
+				return fsx.AtomicWriteBytes(configengine.LocalFile(taskLocation.AnchorPath(), module), document)
+			},
+			// RemoveLocalOverrides removes the local file of every registered module outside keep and returns the paths that existed.
+			RemoveLocalOverrides: func(ctx context.Context, keep []string) ([]string, error) {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return nil, err
+				}
+				var removed []string
+				for _, module := range configreg.Names() {
+					if slices.Contains(keep, module) {
+						continue
+					}
+					path := configengine.LocalFile(taskLocation.AnchorPath(), module)
+					if err := os.Remove(path); err != nil {
+						if errors.Is(err, os.ErrNotExist) {
+							continue
+						}
+						return removed, err
+					}
+					removed = append(removed, path)
+				}
+				return removed, nil
 			},
 			// WriteSeed is the only place in the batten path that encodes a seed, per the
 			// seed-encoding-stays-behind-a-seam-in-battenshed Shared Decision. It validates recipe

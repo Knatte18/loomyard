@@ -560,7 +560,7 @@ func (t *Topology) RemoveRefusal(l *lyxcwd.Location, slug string, force bool) er
 		}
 	}
 
-	names, err := PathspecNames(BoardDir(l.HubPath))
+	names, err := PathspecNames(ConfigDirs(l))
 	if err != nil {
 		return fmt.Errorf("load the record pathspec: %w", err)
 	}
@@ -577,7 +577,7 @@ func commitPendingRecords(rec *Mutations, l *lyxcwd.Location, slug, warpBranch s
 		return false, nil
 	}
 
-	names, err := PathspecNames(BoardDir(l.HubPath))
+	names, err := PathspecNames(ConfigDirs(l))
 	if err != nil {
 		return false, fmt.Errorf("load the record pathspec: %w", err)
 	}

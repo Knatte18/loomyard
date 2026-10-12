@@ -1,5 +1,5 @@
 // entries_simple.go implements the registry entries that take an empty Config and validate only the
-// Env fields they read: preflightEntry, publishEntry, finalizeEntry, frictionReflectEntry,
+// Env fields they read: preflightEntry, mergeInEntry, publishEntry, finalizeEntry, frictionReflectEntry,
 // loomPreflightEntry, batchifierEntry, stubEntry, and websterEntry.
 
 package shedrecipe
@@ -45,6 +45,23 @@ func publishEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, error
 		return nil, fmt.Errorf("shedrecipe: Publish: %w", err)
 	}
 	return p, nil
+}
+
+// mergeInEntry is the Constructor for the "MergeIn" registry row: publishEntry's twin over landingshed.NewMergeIn(env.Landing).
+//
+// name is deliberately discarded, for the same reason as publishEntry:
+// landingshed.Deps carries no name field, and Merge-In's own identity is a package constant.
+//
+// It validates no Env field of its own: landingshed.NewMergeIn already rejects the nil seams and the empty merge record path it requires.
+func mergeInEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+	if err := configRejectUnknown(cfg); err != nil {
+		return nil, err
+	}
+	m, err := landingshed.NewMergeIn(env.Landing)
+	if err != nil {
+		return nil, fmt.Errorf("shedrecipe: MergeIn: %w", err)
+	}
+	return m, nil
 }
 
 // prGateEntry is the Constructor for the "PRGate" registry row: publishEntry's twin over landingshed.NewPRGate(env.Landing).
@@ -103,8 +120,8 @@ func frictionReflectEntry(name string, cfg Config, env Env) (shedengine.ShedProd
 }
 
 // loomPreflightEntry is the Constructor for the "LoomPreflight" registry row.
-// It validates Env.StatusPath, Env.StatusLockPath and Env.AnchorPath and returns
-// loomshed.NewLoomPreflight(name, env.StatusPath, env.StatusLockPath, env.AnchorPath).
+// It validates Env.StatusPath, Env.StatusLockPath and Env.ConfigDirs.Anchor and returns
+// loomshed.NewLoomPreflight(name, env.StatusPath, env.StatusLockPath, env.ConfigDirs).
 func loomPreflightEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
@@ -115,22 +132,22 @@ func loomPreflightEntry(name string, cfg Config, env Env) (shedengine.ShedProduc
 	if err := requireAbsRoot("LoomPreflight", "StatusLockPath", env.StatusLockPath); err != nil {
 		return nil, err
 	}
-	if err := requireAbsRoot("LoomPreflight", "AnchorPath", env.AnchorPath); err != nil {
+	if err := requireAbsRoot("LoomPreflight", "ConfigDirs.Anchor", env.ConfigDirs.Anchor); err != nil {
 		return nil, err
 	}
-	return loomshed.NewLoomPreflight(name, env.StatusPath, env.StatusLockPath, env.AnchorPath), nil
+	return loomshed.NewLoomPreflight(name, env.StatusPath, env.StatusLockPath, env.ConfigDirs), nil
 }
 
-// batchifierEntry is the Constructor for the "Batchifier" registry row: it validates
-// Env.AnchorPath and returns loomshed.NewBatchifier(name, env.AnchorPath).
+// batchifierEntry is the Constructor for the "Batchifier" registry row.
+// It validates Env.ConfigDirs.Anchor and returns loomshed.NewBatchifier(name, env.ConfigDirs).
 func batchifierEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}
-	if err := requireAbsRoot("Batchifier", "AnchorPath", env.AnchorPath); err != nil {
+	if err := requireAbsRoot("Batchifier", "ConfigDirs.Anchor", env.ConfigDirs.Anchor); err != nil {
 		return nil, err
 	}
-	return loomshed.NewBatchifier(name, env.AnchorPath), nil
+	return loomshed.NewBatchifier(name, env.ConfigDirs), nil
 }
 
 // stubEntry is the Constructor for the "Stub" registry row: it validates no Env field and returns
@@ -142,7 +159,7 @@ func stubEntry(name string, cfg Config, _ Env) (shedengine.ShedProducer, error) 
 	return loomshed.NewStub(name), nil
 }
 
-// websterEntry is the Constructor for the "Webster" registry row: it resolves the row's "gates" Config key through resolveGateSpec onto RunDeps.Gate, validates Env.AnchorPath, Env.WebsterRun, Env.CommitWebster, and exactly four inner fields of Env.WebsterDeps -- Starter, Stopper, Engine, and RefMatcher -- and returns loomshed.NewWebsterProducer(name, env.AnchorPath, env.WebsterRun, deps, env.CommitWebster).
+// websterEntry is the Constructor for the "Webster" registry row: it resolves the row's "gates" Config key through resolveGateSpec onto RunDeps.Gate, validates Env.ConfigDirs.Anchor, Env.WebsterRun, Env.CommitWebster, and exactly four inner fields of Env.WebsterDeps -- Starter, Stopper, Engine, and RefMatcher -- and returns loomshed.NewWebsterProducer(name, env.ConfigDirs, env.WebsterRun, deps, env.CommitWebster).
 //
 // The gate is resolved here for the same reason the three already-gated rows resolve theirs here:
 // one key means one thing at every gated site, and a reader of the recipe can see which validator
@@ -163,7 +180,7 @@ func websterEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	if err := configRejectUnknown(cfg, "gates"); err != nil {
 		return nil, err
 	}
-	if err := requireAbsRoot("Webster", "AnchorPath", env.AnchorPath); err != nil {
+	if err := requireAbsRoot("Webster", "ConfigDirs.Anchor", env.ConfigDirs.Anchor); err != nil {
 		return nil, err
 	}
 	if err := requireSeam("Webster", "WebsterRun", env.WebsterRun); err != nil {
@@ -186,5 +203,5 @@ func websterEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	}
 	deps := env.WebsterDeps
 	deps.Gate = gate
-	return loomshed.NewWebsterProducer(name, env.AnchorPath, env.WebsterRun, deps, env.CommitWebster), nil
+	return loomshed.NewWebsterProducer(name, env.ConfigDirs, env.WebsterRun, deps, env.CommitWebster), nil
 }

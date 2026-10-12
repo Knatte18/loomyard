@@ -16,11 +16,13 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -128,6 +130,20 @@ func LandingDeps(dir string) landingshed.Deps {
 		ApprovalPath:      filepath.Join(dir, "approval.json"),
 		RejectionPath:     filepath.Join(dir, "rejection.json"),
 		TaskHead:          func() (string, error) { return "head", nil },
+		Lock: landingshed.ParentLockDeps{
+			Store:          &parentlock.Store{Dir: filepath.Join(dir, "parent-lock")},
+			Owner:          func() (parentlock.Owner, error) { return parentlock.Owner{Slug: "fixture", RunID: "fixture"}, nil },
+			WaitPath:       parentlock.WaitRecordPath(filepath.Join(dir, "landing-scratch")),
+			PauseRequested: func() (bool, error) { return false, nil },
+		},
+		ReadParentTips: func(bool) (fabricengine.ParentTips, error) {
+			return fabricengine.ParentTips{Local: "tip", Upstream: "tip", Relation: fabricengine.ParentEqual}, nil
+		},
+		HoldsWork:         func(string, string) (bool, error) { return false, nil },
+		ChangedPaths:      func(string, string) ([]string, error) { return nil, nil },
+		MergeBase:         func(string) (string, error) { return "base", nil },
+		MergeRecordPath:   landingshed.MergeRecordPath(filepath.Join(dir, "landing-scratch")),
+		MergeReviewedPath: landingshed.MergeReviewedPath(filepath.Join(dir, "landing-scratch")),
 	}
 }
 
@@ -166,6 +182,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 	return shedrecipe.Env{
 		Cwd:                mustMkdir(t, filepath.Join(dir, "cwd")),
 		AnchorPath:         mustMkdir(t, filepath.Join(dir, "anchor")),
+		ConfigDirs:         configengine.Dirs{Anchor: filepath.Join(dir, "anchor")},
 		WorktreeRoot:       mustMkdir(t, filepath.Join(dir, "worktree")),
 		VerifyDir:          mustMkdir(t, filepath.Join(dir, "verify")),
 		VerifyCommand:      func() (string, error) { return "go test ./...", nil },
@@ -186,6 +203,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			loomshed.NameDiscussionBouncer: {},
 			loomshed.NamePlanBouncer:       {},
 			loomshed.NameWebsterBouncer:    {},
+			loomshed.NameMergeBouncer:      {},
 			loomshed.NameDarnBouncer:       {},
 		},
 		WebsterRun: func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
@@ -208,15 +226,18 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				}},
 			}, nil
 		},
-		CommitDiscussion:  func() error { return nil },
-		DescribeSpec:      specOver("test describe prompt", "description.md"),
-		CommitDescription: func() error { return nil },
-		PlanSpec:          specOver("test plan prompt", "plan-output.md"),
-		CommitPlan:        func() error { return nil },
-		ApprovePlan:       func() error { return nil },
-		SkipPlanReview:    func() (bool, error) { return false, nil },
-		CarryOver:         func(discussionparser.CarryOver) error { return nil },
-		ReflectFriction:   func() string { return "skipped" },
+		CommitDiscussion:   func() error { return nil },
+		DescribeSpec:       specOver("test describe prompt", "description.md"),
+		CommitDescription:  func() error { return nil },
+		PlanSpec:           specOver("test plan prompt", "plan-output.md"),
+		CommitPlan:         func() error { return nil },
+		ApprovePlan:        func() error { return nil },
+		SkipPlanReview:     func() (bool, error) { return false, nil },
+		SkipMergeReview:    func() (bool, error) { return false, nil },
+		ApproveMergeReview: func() error { return nil },
+		MergeReview:        func() string { return "none" },
+		CarryOver:          func(discussionparser.CarryOver) error { return nil },
+		ReflectFriction:    func() string { return "skipped" },
 		ReworkSpec: func(loomshed.ReworkTold) (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
 				Prompt:      "test rework prompt",
@@ -272,7 +293,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			PauseRequested:     func() (bool, error) { return false, nil },
 			MarkWatched:        func(context.Context) (bool, error) { return false, nil },
 			OrchStrandRecorded: func() (bool, error) { return true, nil },
-			PublishRow:         "Publish",
+			VerifyRows:         []string{"Merge-In", "Publish"},
+			ParentLock:         &battenshed.ChildParentLock{},
 			PublishFailure: func() (battenshed.ChildPublishFailure, bool, error) {
 				return battenshed.ChildPublishFailure{}, false, nil
 			},
@@ -321,12 +343,16 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			},
 		},
 		SeedChild: battenshed.SeedChildDeps{
-			ReadBoardType: func(context.Context) (string, error) { return "loom", nil },
-			ChildDriver:   func() (string, error) { return "claude", nil },
-			WriteSeed:     func(context.Context, string, string) error { return nil },
-			CommitSeed:    func(context.Context) error { return nil },
-			PushSeed:      func(context.Context) error { return nil },
-			MarkWatched:   func(context.Context) (bool, error) { return false, nil },
+			ReadBoardType:        func(context.Context) (string, error) { return "loom", nil },
+			ChildDriver:          func() (string, error) { return "claude", nil },
+			ReadRunSettings:      func(context.Context) (map[string]any, error) { return nil, nil },
+			PrepareRunSettings:   func(map[string]any) (map[string][]byte, error) { return nil, nil },
+			WriteLocalOverride:   func(context.Context, string, []byte) error { return nil },
+			RemoveLocalOverrides: func(context.Context, []string) ([]string, error) { return nil, nil },
+			WriteSeed:            func(context.Context, string, string) error { return nil },
+			CommitSeed:           func(context.Context) error { return nil },
+			PushSeed:             func(context.Context) error { return nil },
+			MarkWatched:          func(context.Context) (bool, error) { return false, nil },
 		},
 	}
 }

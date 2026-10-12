@@ -9,6 +9,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -24,6 +25,10 @@ var ErrUnknownRecipe = errors.New("battenshed: unknown recipe name")
 // written or committed, so a Board task typed with such a recipe halts at Seed-Child with the recipe
 // named rather than failing inside the child after a wrong seed has already been pushed.
 var ErrUnsupportedChildRecipe = errors.New("battenshed: recipe cannot be a task worktree's own run")
+
+// ErrInvalidRunSettings is the sentinel a SeedChildDeps.PrepareRunSettings closure wraps when a key of the board task's run settings does not validate.
+// SeedChild routes it to Stuck, naming the module and the key, before any seed is written.
+var ErrInvalidRunSettings = errors.New("battenshed: the board task's run settings do not validate")
 
 // ErrDisagreeingChildSeed is the sentinel a SeedChildDeps.WriteSeed closure wraps when the task
 // worktree's own seed already exists and disagrees with the one Seed-Child is about to write --
@@ -216,8 +221,8 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil MarkWatched resolves to a function reporting not held in NewInnerRun.
 	MarkWatched func(ctx context.Context) (held bool, err error)
-	// PublishRow is the child recipe's Publish row name; empty, like a nil PublishFailure, ChildHead or Goto, switches the automatic Publish verify retry off.
-	PublishRow string
+	// VerifyRows names the child recipe's rows that run a verify and write the failure record; empty, like a nil PublishFailure, ChildHead or Goto, switches the automatic verify retry off.
+	VerifyRows []string
 	// PublishFailure reads the task worktree's Publish failure record and reports found == false when there is none.
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	PublishFailure func() (record ChildPublishFailure, found bool, err error)
@@ -227,10 +232,34 @@ type InnerRunDeps struct {
 	// Goto runs the child's goto verb onto target.
 	// A goto refused because the child's run lock is held returns an error wrapping ErrChildRunBusy.
 	Goto func(ctx context.Context, target string) error
+	// ParentLock carries the seams of the parent lock backstop and of the stale-base resume; nil switches both off.
+	ParentLock *ChildParentLock
 }
 
-// ChildPublishFailure is the part of the child's Publish failure record the automatic retry reads.
+// ChildParentLock carries the seams InnerRun reads the parent lock of the child's run through.
+// A lock handed to batten at PR-Gate is kept while the orch reviews, a lock a stalled loop kept is released, and a child awaiting at PR-Gate whose parent moved is resumed.
+type ChildParentLock struct {
+	// Read returns the lock record naming the child's run, and found false when none does.
+	Read func() (record parentlock.Record, found bool, err error)
+	// Release removes record when its owner is still the one it names, and reports whether it did.
+	Release func(record parentlock.Record) (released bool, err error)
+	// Agents returns the child pair's agent states, for the idle rule.
+	Agents func() ([]parentlock.AgentState, error)
+	// SelfPID is this batten's pid: a record it owns was handed over by the child's loop.
+	SelfPID int
+	// IdleBound is how long a handed record is kept while the child awaits without a decision, and how long a loop's agents must all wait for its record to be released.
+	IdleBound time.Duration
+	// ParentMoved reports whether the child's parent branch moved upstream since the child merged it in and no longer holds the child's work.
+	// It may fetch, so InnerRun reads it only for a child awaiting at GateRow.
+	ParentMoved func() (bool, error)
+	// GateRow is the row a child awaits the orch's decision at.
+	GateRow string
+}
+
+// ChildPublishFailure is the part of the child's verify failure record the automatic retry reads.
 type ChildPublishFailure struct {
+	// Row is the producer row whose verify failed; empty for a record written before the field existed.
+	Row string
 	// Head is the commit the failing verify ran at.
 	Head string
 	// Target is the producer row a fix is routed back to; empty when the writer told none.
@@ -283,6 +312,15 @@ type SeedChildDeps struct {
 	// ChildDriver returns the driver read from prime's own seed params: the child always
 	// inherits prime's driver, never the Board's.
 	ChildDriver func() (string, error)
+	// ReadRunSettings returns the Board task's run settings, module name to that module's keys, evaluated fresh on every Call.
+	ReadRunSettings func(ctx context.Context) (map[string]any, error)
+	// PrepareRunSettings returns each module the settings name as its migrated local-layer document.
+	// An error wrapping ErrInvalidRunSettings means a key does not validate and SeedChild routes it to Stuck; any other error is a hard error.
+	PrepareRunSettings func(settings map[string]any) (map[string][]byte, error)
+	// WriteLocalOverride writes one module's local-layer file in the task worktree atomically.
+	WriteLocalOverride func(ctx context.Context, module string, document []byte) error
+	// RemoveLocalOverrides removes the local-layer file of every registered module not in keep and returns the paths it removed.
+	RemoveLocalOverrides func(ctx context.Context, keep []string) (removed []string, err error)
 	// WriteSeed resolves the child's seed path and encodes recipe and driver into it. An error
 	// wrapping ErrUnknownRecipe means recipe names no recipe the encoder knows, one wrapping
 	// ErrUnsupportedChildRecipe means it names a recipe the task worktree cannot bootstrap, and one

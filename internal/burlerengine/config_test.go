@@ -7,7 +7,9 @@
 package burlerengine
 
 import (
+	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -36,7 +38,7 @@ func loadSeededConfig(t *testing.T) Config {
 	baseDir := t.TempDir()
 	writeBurlerYAML(t, baseDir, ConfigTemplate())
 
-	cfg, err := LoadConfig(baseDir)
+	cfg, err := LoadConfig(configengine.Dirs{Anchor: baseDir})
 	if err != nil {
 		t.Fatalf("LoadConfig(seeded template) returned unexpected error: %v", err)
 	}
@@ -65,7 +67,7 @@ func TestLoadConfig(t *testing.T) {
 				writeBurlerYAML(t, baseDir, tt.contents)
 			}
 
-			cfg, err := LoadConfig(baseDir)
+			cfg, err := LoadConfig(configengine.Dirs{Anchor: baseDir})
 
 			if tt.wantErr {
 				if err == nil {
@@ -84,6 +86,54 @@ func TestLoadConfig(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a fan defined only in the repo default resolves", func(t *testing.T) {
+		t.Parallel()
+		boardDir, anchor := t.TempDir(), t.TempDir()
+		writeBurlerYAML(t, boardDir, "lenses:\n  a: default prose\nfans:\n  mine: [a]\n")
+
+		cfg, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: boardDir})
+		if err != nil {
+			t.Fatalf("LoadConfig() returned unexpected error: %v", err)
+		}
+		lenses, err := ResolveFan(cfg, "mine")
+		if err != nil || len(lenses) != 1 || lenses[0].Text != "default prose" {
+			t.Errorf("ResolveFan(mine) = %+v, %v; want the default's lens a", lenses, err)
+		}
+	})
+
+	t.Run("a worktree-file lens replaces the repo default's whole", func(t *testing.T) {
+		t.Parallel()
+		boardDir, anchor := t.TempDir(), t.TempDir()
+		writeBurlerYAML(t, boardDir, "lenses:\n  a: default prose\n  b: kept prose\n")
+		writeBurlerYAML(t, anchor, "lenses:\n  a: worktree prose\n")
+
+		cfg, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: boardDir})
+		if err != nil {
+			t.Fatalf("LoadConfig() returned unexpected error: %v", err)
+		}
+		if cfg.Lenses["a"] != "worktree prose" || cfg.Lenses["b"] != "kept prose" {
+			t.Errorf("LoadConfig().Lenses = %v; want a from the worktree file and b from the default", cfg.Lenses)
+		}
+	})
+
+	t.Run("a local lenses entry fails the load naming the local file", func(t *testing.T) {
+		t.Parallel()
+		boardDir, anchor := t.TempDir(), t.TempDir()
+		writeBurlerYAML(t, boardDir, "lenses:\n  a: default prose\n")
+		localFile := configengine.LocalFile(anchor, "burler")
+		if err := os.MkdirAll(filepath.Dir(localFile), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%s): %v", filepath.Dir(localFile), err)
+		}
+		if err := os.WriteFile(localFile, []byte("lenses:\n  a: local prose\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s): %v", localFile, err)
+		}
+
+		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: boardDir})
+		if !errors.Is(err, configengine.ErrInvalid) || !strings.Contains(err.Error(), localFile) {
+			t.Errorf("LoadConfig() error = %v; want ErrInvalid naming %s", err, localFile)
+		}
+	})
 }
 
 // TestConfigTemplate_DecodesAndIsSelfConsistent proves the embedded seed template is itself valid burler.yaml content -- it decodes cleanly through LoadConfig's own strict decode path, the same one every real hub's seeded file goes through -- and that its internal cross-references and lengths hold: both seeded fans exist, every fan entry names a defined lens, and no lens carries hard-exclusion phrasing.

@@ -19,6 +19,7 @@ import (
 // packages this package already imports directly -- an indirection with no benefit here.
 var registry = map[string]Constructor{
 	"Preflight":        preflightEntry,
+	"MergeIn":          mergeInEntry,
 	"Publish":          publishEntry,
 	"PRGate":           prGateEntry,
 	"PRRework":         prReworkEntry,

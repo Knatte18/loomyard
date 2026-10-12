@@ -18,7 +18,7 @@
 // a rewrite of the file in the same state does not move it, and only a batten start reads it from the file.
 // The api-error and quiet notices need a running child with a live driver strand, and read the agents through the injected Activity seam at most once per notice_probe_s; a failed read sends neither.
 // The api-error notice goes when the newest turn end of any live run is an API error and that run has not been active for two minutes since; it names the producer and the error text cut to one line, and takes precedence over quiet.
-// The quiet notice goes when every live run has been idle for the quiet window and no verify or shuttle wait marker is live, and says how long the agents have been idle;
+// The quiet notice goes when every live run has been idle for the quiet window and no verify marker, shuttle wait marker or parent lock wait record is live, and says how long the agents have been idle;
 // with no live run found, it falls back to "no agent activity readable" counted from the later of the child's newest history entry and since.
 // Both episodes are keyed by the newest agent activity, so they end when an agent is active again, with `since` on the line as content only.
 // Both idle clocks measure awake time, read through the injected Awake seam: suspended time observed between two checks is subtracted until the newest activity moves.
@@ -65,6 +65,13 @@
 // Bound: a running child is waited on without a time limit, bounded by "lyx batten pause" (honoured within one check), cancellation and the notices;
 // a running child whose driver is dead and whose status file does not change returns nothing from the wait, the driver-dead notice being the only signal.
 //
+// Seed-Child writes the task worktree's local config layer from the board task's run settings, after reading the child driver and before the seed:
+// it reads the settings fresh on every Call, writes the local file of each module they name, then removes the local file of every other registered module with one Warn per removed file, so the layer is exactly the task's run settings.
+// A key that no longer validates (a key a later binary retired or closed to the local layer, or one written to `board.json` by hand) stands the row Stuck, naming the module, the key and the way forward, correcting the task's `run_settings` with `lyx board upsert` and then `lyx batten run <slug>`; an unreadable board is Stuck as for the type, and any other prepare, write or remove failure is a hard error.
+// A resume redoes the whole write from the current board entry, and no other row writes these files.
+// Bound: a local file written while the row stood Stuck is discarded by the resume, so a hand edit to the pair's local layer before the resume is lost.
+// Batten writes no seed field for run settings.
+//
 // Seed-Child and the InnerRun row also keep the batten-watched marker of the task worktree's run (MarkWatched), which holds this batten's pid while its notices have a destination that is also the child driver's parent.
 // Seed-Child asks once the seed is committed, so the child's first driver launch already renders the watched rule;
 // InnerRun asks at the start of every Call and once per notice_probe_s inside the wait.
@@ -90,13 +97,20 @@
 // a revive that fails, and a child with no driver strand, make the reason also name "lyx loom start" in the task worktree.
 // The wait has no time limit and spends no bounce budget; "lyx batten pause" stops it within one check, and the row reads the child as running again once the operator resumes it.
 //
-// The one exception is the first Publish verify failure of a batten run (publishretry.go).
-// A child blocked at the Publish row whose failure record names a target, carries the child's HEAD and was written during the halting attempt is sent to that target through the child's goto verb and then resumed through its bootstrap, with no notice for the halt or the paused state in between.
+// The one exception is the first verify failure of a batten run, at Merge-In or Publish (publishretry.go).
+// A child blocked at one of those rows whose failure record names that row and a target, carries the child's HEAD and was written during the halting attempt is sent to that target through the child's goto verb and then resumed through its bootstrap, with no notice for the halt or the paused state in between.
 // The `<row>-publish-retry` marker holds the retry's state and start time: `started` before the goto, `goto-done` after it, `resumed` after a resume that landed and `capped` when the retry gave up.
 // `resumed` and `capped` each spend the run's one retry, and the marker is cleared only where batten seeds a fresh status, so a restart neither repeats a finished retry nor resets the cap.
 // A goto refused as busy and a resume refused as not parked or as a busy pane are retried once per notice probe until the cap of thirty minutes after the start; any other goto refusal gives up at once.
 // A retry that gave up, or a second Publish halt after the retry ran, sends the usual blocked notice with words saying so, which tells the orch the failure needs judgement.
 // Any record that does not match, and any read error on the way to the decision, leaves the halt to the handling above.
+//
+// With deps.ParentLock wired, the wait also looks after the parent lock of the child's run on every probe check (innerrun_parentlock.go).
+// A lock record handed to this batten at PR-Gate is kept while the child awaits there, until that awaiting has lasted the idle bound with no decision to resume on, and while the child runs after a resume, so the resumed loop takes it back; in any other state the record is released.
+// A record owned by another process is released once every agent of that owner has waited for the idle bound with none busy, a watch that restarts whenever the owner changes; a failed agent read releases nothing.
+// Every release logs one Warn, and batten releases only a record naming its own child's run.
+// A child awaiting at PR-Gate with no decision pending whose parent branch moved upstream is resumed through the same spawn as a decided one, so the gate's next call reroutes it to Merge-In under the lock, and its awaiting notice is suppressed.
+// The moved-parent read may fetch, so it runs only for a child awaiting at the gate row, at most once per probe.
 //
 // Its counterpart is equally by design: a driver that finishes NORMALLY leaves its strand and its
 // run directory behind. Nothing here tears either down as part of a clean finish -- only the

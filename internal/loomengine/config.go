@@ -1,7 +1,7 @@
 // config.go — configuration for the loom module.
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1, rejects a discussion_max_bounces, plan_max_bounces or webster_max_bounces below 0, validates every entry of fan_review, and resolves each non-empty discussion_fan and plan_fan through burlerengine.ResolveFan,
+// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1, rejects a discussion_max_bounces, plan_max_bounces, webster_max_bounces or merge_max_bounces below 0, validates every entry of fan_review, and resolves each non-empty discussion_fan and plan_fan through burlerengine.ResolveFan,
 // so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
 // step_idle_timeout_min is the minutes a --until-stop step may show no activity before the loop kills it; a value below 1 is raised to 1 with one Warn and never refused.
 // discussion_fan and plan_fan each name a fan from burler.yaml and turn the lens fan on for Discussion-Review and Plan-Review; empty, the default, runs that segment solo.
@@ -9,6 +9,8 @@
 // There is no webster_fan key: Webster-Review always runs solo.
 // discussion_max_bounces, plan_max_bounces and webster_max_bounces set one perch's bounce budget, and 0 takes review_max_bounces;
 // discussion_auto_accept, plan_auto_accept and webster_auto_accept make that perch settle a spent budget as accepted instead of escalating to the parent.
+// merge_max_bounces and merge_auto_accept do the same for the Merge-Review perch, which the Bouncer escalates instead of accepting while its ledger holds an open BLOCKING finding;
+// skip_merge_review skips only that review, and Merge-In, the parent lock and the reroute on a moved parent still run.
 // discussion_producer selects the Discussion-Write row's producer and must be single, seats or twill.
 // plan_producer selects the Plan-Write row's producer, single or twill, and an empty value reads as single.
 // discussion_advisors lists the seats producer's advisor model-specs; every entry is resolved through the model registry at load, whatever discussion_producer holds, and an unset list loads as no advisors.
@@ -418,6 +420,12 @@ type Config struct {
 	DiscussionAutoAccept bool `yaml:"discussion_auto_accept"`
 	PlanAutoAccept       bool `yaml:"plan_auto_accept"`
 	WebsterAutoAccept    bool `yaml:"webster_auto_accept"`
+
+	// The Merge-Review perch's budget and auto-accept flag, and the switch that skips only the review.
+	// A budget of 0 takes ReviewMaxBounces.
+	MergeMaxBounces int  `yaml:"merge_max_bounces"`
+	MergeAutoAccept bool `yaml:"merge_auto_accept"`
+	SkipMergeReview bool `yaml:"skip_merge_review"`
 }
 
 // ModelSpecList is a model-spec key's value: one model-spec for every round, or a list of model-specs, one per round, whose last entry serves every later round.
@@ -461,6 +469,68 @@ func (l *ModelSpecList) UnmarshalYAML(node *yaml.Node) error {
 // ConfigOpenMaps returns the loom.yaml keys whose value is a scalar or a per-round list, which configengine carries whole through reconcile and --set.
 func ConfigOpenMaps() []string {
 	return []string{"review", "fix", "discussion_review", "discussion_fix", "plan_review", "plan_fix", "webster_review", "webster_fix", "fan_review", "discussion_advisors"}
+}
+
+// ConfigSpec returns loom's layered-load spec.
+// Only the keys that can switch off or hollow a review or approval gate are barred from the local layer.
+func ConfigSpec() configengine.Spec {
+	none := configengine.CategoryNone
+	guard := configengine.CategoryGuard
+	return configengine.Spec{
+		Name:     "loom",
+		Template: []byte(ConfigTemplate()),
+		OpenMaps: ConfigOpenMaps(),
+		Categories: map[string]configengine.Category{
+			"discussion":                 none,
+			"discussion_timeout_min":     none,
+			"discussion_interactive":     none,
+			"discussion_producer":        guard,
+			"discussion_advisors":        none,
+			"plan":                       none,
+			"plan_timeout_min":           none,
+			"plan_producer":              guard,
+			"review":                     none,
+			"fix":                        none,
+			"discussion_review":          none,
+			"discussion_fix":             none,
+			"plan_review":                none,
+			"plan_fix":                   none,
+			"webster_review":             none,
+			"webster_fix":                none,
+			"discussion_fan":             guard,
+			"plan_fan":                   guard,
+			"fan_review":                 none,
+			"judge":                      none,
+			"seed":                       none,
+			"discussion_judge":           none,
+			"plan_judge":                 none,
+			"webster_judge":              none,
+			"discussion_seed":            none,
+			"plan_seed":                  none,
+			"webster_seed":               none,
+			"rework":                     none,
+			"review_timeout_min":         none,
+			"friction":                   none,
+			"friction_timeout_min":       none,
+			"driver":                     none,
+			"arbiter":                    none,
+			"arbiter_timeout_min":        none,
+			"arbiter_max_spawns":         none,
+			"parent_review_wait_min":     guard,
+			"step_idle_timeout_min":      none,
+			"review_circling_checkpoint": none,
+			"review_max_bounces":         none,
+			"discussion_max_bounces":     none,
+			"plan_max_bounces":           none,
+			"webster_max_bounces":        none,
+			"discussion_auto_accept":     guard,
+			"plan_auto_accept":           guard,
+			"webster_auto_accept":        guard,
+			"merge_max_bounces":          none,
+			"merge_auto_accept":          guard,
+			"skip_merge_review":          guard,
+		},
+	}
 }
 
 // segmentModelList is one per-segment reviewer or fixer model-spec list with the loom.yaml key it came from.
@@ -540,7 +610,7 @@ func validateAdvisorSpecs(key string, specs ModelSpecList, reg modelspec.Registr
 // A fan that does not resolve is refused naming the key, the unknown name and the fans that exist,
 // and an unreadable burler.yaml is refused naming the first set key.
 // With both fan keys empty, burler.yaml is never read.
-func validateFanKeys(baseDir string, cfg Config) error {
+func validateFanKeys(dirs configengine.Dirs, cfg Config) error {
 	var burlerCfg *burlerengine.Config
 	for _, fan := range []struct {
 		key  string
@@ -553,7 +623,7 @@ func validateFanKeys(baseDir string, cfg Config) error {
 			continue
 		}
 		if burlerCfg == nil {
-			loaded, err := burlerengine.LoadConfig(baseDir)
+			loaded, err := burlerengine.LoadConfig(dirs)
 			if err != nil {
 				return fmt.Errorf("loom config key %q: %w; fix burler.yaml, or set the key to empty to run the segment solo", fan.key, err)
 			}
@@ -581,10 +651,12 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	return rewritten, []string{line}, nil
 }
 
-// LoadConfig loads and unmarshals configuration for the loom module.
-// It validates model-spec grammar at load time.
-func LoadConfig(baseDir, module string) (Config, error) {
-	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()), ConfigOpenMaps()...)
+// LoadConfig loads and unmarshals configuration for the loom module strictly through the layer stack under dirs.
+// It validates model-spec grammar at load time, and reads burler.yaml and models.yaml through the same dirs.
+func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
+	spec := ConfigSpec()
+	spec.Name = module
+	resolved, err := configengine.Load(dirs, spec)
 	if err != nil {
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it")
@@ -634,14 +706,14 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		return Config{}, err
 	}
 
-	if err := validateFanKeys(baseDir, cfg); err != nil {
+	if err := validateFanKeys(dirs, cfg); err != nil {
 		return Config{}, err
 	}
 
 	if isUnsetModelSpecList(cfg.DiscussionAdvisors) {
 		cfg.DiscussionAdvisors = nil
 	} else {
-		reg, err := modelspec.LoadRegistry(baseDir)
+		reg, err := modelspec.LoadRegistry(dirs)
 		if err != nil {
 			return Config{}, fmt.Errorf("loom config key %q: %w; fix models.yaml, or set the key to an empty list for no advisors", discussionAdvisorsKey, err)
 		}
@@ -771,6 +843,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		{"discussion_max_bounces", cfg.DiscussionMaxBounces},
 		{"plan_max_bounces", cfg.PlanMaxBounces},
 		{"webster_max_bounces", cfg.WebsterMaxBounces},
+		{"merge_max_bounces", cfg.MergeMaxBounces},
 	} {
 		if knob.value < 0 {
 			return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; set it to 0 to take review_max_bounces, or to a positive integer, in loom.yaml", knob.key, knob.value)

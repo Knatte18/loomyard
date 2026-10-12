@@ -125,11 +125,11 @@ func TestValidate_QuarryUnavailableReturnsPureFindingsAlongsideTheError(t *testi
 //testtiming:keep pins the rewrote return value, which TestCanonicalizeHandles_Rewrites ignores
 func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
 	t.Run("a plan carrying no handle rewrites nothing", func(t *testing.T) {
-		dir, plan := writePlanFixture(t, map[int]string{
+		_, plan := writePlanFixture(t, map[int]string{
 			1: "**Edit:**\n- `sub/other.go`\n\n**Intent:** one\n\n**ImpactSummary:** none\n",
 		})
 
-		_, rewrote, err := CanonicalizeHandles(plan, dir, "", nil)
+		_, rewrote, err := CanonicalizeHandles(plan, "", nil)
 		if err != nil {
 			t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 		}
@@ -144,7 +144,7 @@ func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
 			2: "**Uses:**\n- `plan:sub#Draft`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** two\n\n**ImpactSummary:** none\n",
 		})
 
-		_, rewrote, err := CanonicalizeHandles(plan, dir, "", nil)
+		_, rewrote, err := CanonicalizeHandles(plan, "", nil)
 		if err != nil {
 			t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 		}
@@ -168,7 +168,7 @@ func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
 		})
 		before := readCardFile(t, dir, 1, "card1")
 
-		_, rewrote, err := CanonicalizeHandles(plan, dir, "", nil)
+		_, rewrote, err := CanonicalizeHandles(plan, "", nil)
 		if err != nil {
 			t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 		}
@@ -177,6 +177,44 @@ func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
 		}
 		if got := readCardFile(t, dir, 1, "card1"); got != before {
 			t.Errorf("card 1 bytes changed across an identity canonicalization:\nbefore: %q\nafter:  %q", before, got)
+		}
+	})
+
+	t.Run("an overlaid plan is rewritten in memory and the plan directory stays byte-identical", func(t *testing.T) {
+		dir, onDisk := writePlanFixture(t, map[int]string{
+			1: "**Edit:**\n- `sub/other.go`\n\n**Intent:** one\n\n**ImpactSummary:** none\n",
+		})
+		before := readCardFile(t, dir, 1, "card1")
+		overlay, err := planparser.NewOverlay(dir, map[string]string{
+			"01-card1.md": "# Card 1 — card1\n\n**Create:**\n- `plan:sub#Draft` -> `func Actual() {}`\n\n**Intent:** one\n",
+		})
+		if err != nil {
+			t.Fatalf("NewOverlay(...) returned error: %v", err)
+		}
+		plan, err := overlay.Parse()
+		if err != nil {
+			t.Fatalf("Overlay.Parse() returned error: %v", err)
+		}
+		if plan.Dir != onDisk.Dir {
+			t.Fatalf("overlaid plan Dir = %q; want %q", plan.Dir, onDisk.Dir)
+		}
+
+		_, rewrote, err := CanonicalizeHandles(plan, "", nil)
+		if err != nil {
+			t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
+		}
+		if !rewrote {
+			t.Error("CanonicalizeHandles reported no rewrite for an overlaid draft handle")
+		}
+		if got := readCardFile(t, dir, 1, "card1"); got != before {
+			t.Errorf("card 1 on disk = %q; want it byte-identical to %q", got, before)
+		}
+		reparsed, err := plan.Reparse()
+		if err != nil {
+			t.Fatalf("Reparse() returned error: %v", err)
+		}
+		if got := reparsed.Cards[0].Declarations; len(got) != 1 || got[0].Handle != "plan:sub#Actual" {
+			t.Errorf("reparsed card 1 declarations = %+v; want the canonical handle plan:sub#Actual", got)
 		}
 	})
 }

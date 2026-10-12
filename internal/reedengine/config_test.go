@@ -5,6 +5,7 @@
 package reedengine_test
 
 import (
+	"errors"
 	"maps"
 	"os"
 	"path/filepath"
@@ -39,7 +40,7 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedLyxConfig(t, tmpDir, "reed", reedengine.ConfigTemplate())
 
-	cfg, err := reedengine.LoadConfig(tmpDir, "reed")
+	cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -86,6 +87,42 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if !maps.Equal(cfg.SegmentColors, wantSegmentColors) {
 		t.Errorf("SegmentColors = %v, want %v", cfg.SegmentColors, wantSegmentColors)
 	}
+
+	t.Run("RepoDefaultResolvesBeneathSparseWorktreeFile", func(t *testing.T) {
+		board, anchor := t.TempDir(), t.TempDir()
+		seedLyxConfig(t, board, "reed", strings.Replace(reedengine.ConfigTemplate(), "width: 220", "width: 300", 1))
+		seedLyxConfig(t, anchor, "reed", "height: 40\n")
+
+		cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "reed")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Width != 300 {
+			t.Errorf("Width = %d, want 300 (repo default)", cfg.Width)
+		}
+		if cfg.Height != 40 {
+			t.Errorf("Height = %d, want 40 (worktree file)", cfg.Height)
+		}
+	})
+
+	t.Run("LocalExecutableKeyIsRefused", func(t *testing.T) {
+		anchor := t.TempDir()
+		localFile := configengine.LocalFile(anchor, "reed")
+		if err := os.MkdirAll(filepath.Dir(localFile), 0o755); err != nil {
+			t.Fatalf("mkdir local dir: %v", err)
+		}
+		if err := os.WriteFile(localFile, []byte("shell: other\n"), 0o644); err != nil {
+			t.Fatalf("write local file: %v", err)
+		}
+
+		_, err := reedengine.LoadConfig(configengine.Dirs{Anchor: anchor}, "reed")
+		if !errors.Is(err, configengine.ErrInvalid) {
+			t.Fatalf("err = %v, want ErrInvalid", err)
+		}
+		if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), `"shell"`) {
+			t.Errorf("err = %q, want it to name %s and key shell", err, localFile)
+		}
+	})
 }
 
 var wantSegmentColors = map[string]string{
@@ -97,6 +134,7 @@ var wantSegmentColors = map[string]string{
 	"describe":    "yellow",
 	"landing":     "pink",
 	"darn":        "red",
+	"merge":       "red",
 }
 
 // TestLoadConfig_MissingSegmentColorsTakeTemplateDefaults pins that a reed.yaml lacking the whole block, or a single key of it, loads with the template defaults.
@@ -122,7 +160,7 @@ func TestLoadConfig_MissingSegmentColorsTakeTemplateDefaults(t *testing.T) {
 			tmpDir := t.TempDir()
 			seedLyxConfig(t, tmpDir, "reed", tt.content)
 
-			cfg, err := reedengine.LoadConfig(tmpDir, "reed")
+			cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -139,7 +177,7 @@ func TestLoadConfig_EnvOverride(t *testing.T) {
 	t.Setenv("LYX_REED_TMUX_CONF", "/home/operator/tmux.conf")
 	seedLyxConfig(t, tmpDir, "reed", reedengine.ConfigTemplate())
 
-	cfg, err := reedengine.LoadConfig(tmpDir, "reed")
+	cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -161,7 +199,7 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	seeded := strings.Replace(reedengine.ConfigTemplate(), "width: 220", "width: 300", 1)
 	seedLyxConfig(t, tmpDir, "otherreed", seeded)
 
-	cfg, err := reedengine.LoadConfig(tmpDir, "otherreed")
+	cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "otherreed")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -171,7 +209,7 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 
 	// The never-seeded "reed" module must fall back to the template default,
 	// not the "otherreed" module's seeded value.
-	defaultCfg, err := reedengine.LoadConfig(tmpDir, "reed")
+	defaultCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -186,7 +224,7 @@ func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	// template. Only assert GOOS-invariant keys: Tmux/Shell differ between
 	// template_posix.yaml and template_windows.yaml.
 
-	cfg, err := reedengine.LoadConfig(tmpDir, "reed")
+	cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -221,7 +259,7 @@ func TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored(t *testing.T) {
 			tmpDir := t.TempDir()
 			seedLyxConfig(t, tmpDir, "reed", reedengine.ConfigTemplate()+tt.extra)
 
-			cfg, err := reedengine.LoadConfig(tmpDir, "reed")
+			cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

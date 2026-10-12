@@ -13,9 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -28,51 +30,61 @@ import (
 // envkit.NilSeams already skips the seams whose nil is a documented default, so only wire's own gaps are listed.
 // batten wires only its own producers, so every loom seam of shedrecipe.Env stays nil here.
 var intentionallyNil = map[string]string{
-	"VerifyCommand":             "loom-only seam, batten runs no verify gate",
-	"Shuttle":                   "loom-only seam, batten drives no agent itself",
-	"Burler":                    "loom-only seam, batten runs no review round",
-	"Seats":                     "loom-only seam, batten runs no seat table",
-	"Models":                    "loom-only seam, batten resolves no seat model",
-	"WebsterRun":                "loom-only seam, batten runs no webster",
-	"WebsterDeps.Starter":       "loom-only seam, batten runs no webster",
-	"WebsterDeps.Stopper":       "loom-only seam, batten runs no webster",
-	"WebsterDeps.Engine":        "loom-only seam, batten runs no webster",
-	"WebsterDeps.RefMatcher":    "loom-only seam, batten runs no webster",
-	"WebsterDeps.ReadOnly":      "loom-only seam, batten runs no webster",
-	"WebsterDeps.Geom.Index":    "loom-only seam, batten runs no webster",
-	"PlanIndex":                 "loom-only seam, batten has no plan segment",
-	"CommitWebster":             "loom-only seam, batten runs no webster",
-	"Landing.PushBranch":        "loom-only seam, batten lands no branch",
-	"Landing.RemoteOnlyCommits": "loom-only seam, batten lands no branch",
-	"Landing.OpenFabric":        "loom-only seam, batten lands no branch",
-	"Landing.OpenParentFabric":  "loom-only seam, batten lands no branch",
-	"Landing.TaskHead":          "loom-only seam, batten lands no branch",
-	"Landing.Shuttle":           "loom-only seam, batten lands no branch",
-	"DiscussionSpec":            "loom-only seam, batten has no discussion segment",
-	"PrepareDiscussionSpawn":    "loom-only seam, batten has no discussion segment",
-	"PreparePlanSpawn":          "loom-only seam, batten has no plan segment",
-	"DiscussionTable":           "loom-only seam, batten has no discussion segment",
-	"CommitDiscussion":          "loom-only seam, batten has no discussion segment",
-	"DescribeSpec":              "loom-only seam, batten has no describe segment",
-	"CommitDescription":         "loom-only seam, batten has no describe segment",
-	"PlanSpec":                  "loom-only seam, batten has no plan segment",
-	"CommitPlan":                "loom-only seam, batten has no plan segment",
-	"ApprovePlan":               "loom-only seam, batten has no plan segment",
-	"SkipPlanReview":            "loom-only seam, batten has no plan segment",
-	"CarryOver":                 "loom-only seam, batten runs no review segment",
-	"ReflectFriction":           "loom-only seam, batten has no reflect segment",
-	"ReworkSpec":                "loom-only seam, batten has no rework segment",
-	"Rework.ReadCommitted":      "loom-only seam, batten has no rework segment",
-	"Rework.ReadRejection":      "loom-only seam, batten has no rework segment",
-	"Rework.ClearRejection":     "loom-only seam, batten has no rework segment",
-	"Rework.ArchiveWebster":     "loom-only seam, batten has no rework segment",
-	"Rework.Commit":             "loom-only seam, batten has no rework segment",
-	"DarnSpec":                  "darn-only seam, batten has no darn segment",
-	"Darn.ReadRejection":        "darn-only seam, batten has no darn segment",
-	"Darn.ClearRejection":       "darn-only seam, batten has no darn segment",
-	"Darn.Commit":               "darn-only seam, batten has no darn segment",
-	"Darn.LatestOutcome":        "darn-only seam, batten has no darn segment",
-	"Darn.PublishFailure":       "darn-only seam, batten has no darn segment",
+	"VerifyCommand":               "loom-only seam, batten runs no verify gate",
+	"Shuttle":                     "loom-only seam, batten drives no agent itself",
+	"Burler":                      "loom-only seam, batten runs no review round",
+	"Seats":                       "loom-only seam, batten runs no seat table",
+	"Models":                      "loom-only seam, batten resolves no seat model",
+	"WebsterRun":                  "loom-only seam, batten runs no webster",
+	"WebsterDeps.Starter":         "loom-only seam, batten runs no webster",
+	"WebsterDeps.Stopper":         "loom-only seam, batten runs no webster",
+	"WebsterDeps.Engine":          "loom-only seam, batten runs no webster",
+	"WebsterDeps.RefMatcher":      "loom-only seam, batten runs no webster",
+	"WebsterDeps.ReadOnly":        "loom-only seam, batten runs no webster",
+	"WebsterDeps.Geom.Index":      "loom-only seam, batten runs no webster",
+	"PlanIndex":                   "loom-only seam, batten has no plan segment",
+	"CommitWebster":               "loom-only seam, batten runs no webster",
+	"Landing.PushBranch":          "loom-only seam, batten lands no branch",
+	"Landing.RemoteOnlyCommits":   "loom-only seam, batten lands no branch",
+	"Landing.OpenFabric":          "loom-only seam, batten lands no branch",
+	"Landing.OpenParentFabric":    "loom-only seam, batten lands no branch",
+	"Landing.TaskHead":            "loom-only seam, batten lands no branch",
+	"Landing.Shuttle":             "loom-only seam, batten lands no branch",
+	"Landing.Lock.Store":          "loom-only seam, batten lands no branch",
+	"Landing.Lock.Owner":          "loom-only seam, batten lands no branch",
+	"Landing.Lock.PauseRequested": "loom-only seam, batten lands no branch",
+	"Landing.ReadParentTips":      "loom-only seam, batten lands no branch",
+	"Landing.HoldsWork":           "loom-only seam, batten lands no branch",
+	"Landing.ChangedPaths":        "loom-only seam, batten lands no branch",
+	"Landing.MergeBase":           "loom-only seam, batten lands no branch",
+	"DiscussionSpec":              "loom-only seam, batten has no discussion segment",
+	"PrepareDiscussionSpawn":      "loom-only seam, batten has no discussion segment",
+	"PreparePlanSpawn":            "loom-only seam, batten has no plan segment",
+	"DiscussionTable":             "loom-only seam, batten has no discussion segment",
+	"CommitDiscussion":            "loom-only seam, batten has no discussion segment",
+	"DescribeSpec":                "loom-only seam, batten has no describe segment",
+	"CommitDescription":           "loom-only seam, batten has no describe segment",
+	"PlanSpec":                    "loom-only seam, batten has no plan segment",
+	"CommitPlan":                  "loom-only seam, batten has no plan segment",
+	"ApprovePlan":                 "loom-only seam, batten has no plan segment",
+	"SkipPlanReview":              "loom-only seam, batten has no plan segment",
+	"SkipMergeReview":             "loom-only seam, batten has no merge review",
+	"ApproveMergeReview":          "loom-only seam, batten has no merge review",
+	"MergeReview":                 "loom-only seam, batten has no merge review",
+	"CarryOver":                   "loom-only seam, batten runs no review segment",
+	"ReflectFriction":             "loom-only seam, batten has no reflect segment",
+	"ReworkSpec":                  "loom-only seam, batten has no rework segment",
+	"Rework.ReadCommitted":        "loom-only seam, batten has no rework segment",
+	"Rework.ReadRejection":        "loom-only seam, batten has no rework segment",
+	"Rework.ClearRejection":       "loom-only seam, batten has no rework segment",
+	"Rework.ArchiveWebster":       "loom-only seam, batten has no rework segment",
+	"Rework.Commit":               "loom-only seam, batten has no rework segment",
+	"DarnSpec":                    "darn-only seam, batten has no darn segment",
+	"Darn.ReadRejection":          "darn-only seam, batten has no darn segment",
+	"Darn.ClearRejection":         "darn-only seam, batten has no darn segment",
+	"Darn.Commit":                 "darn-only seam, batten has no darn segment",
+	"Darn.LatestOutcome":          "darn-only seam, batten has no darn segment",
+	"Darn.PublishFailure":         "darn-only seam, batten has no darn segment",
 }
 
 func TestWire_EverySeamFilled(t *testing.T) {
@@ -253,7 +265,7 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	}
 }
 
-// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto battenshed's type, with the session state of its stamped turn end, skips a run whose process has ended, and reports a live wait marker.
+// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto battenshed's type, with the session state of its stamped turn end, skips a run whose process has ended, and reports a live wait marker or a live parent lock wait record, ignoring one whose writer is dead.
 // It points HOME at a session registry through t.Setenv, so it does not run in parallel.
 func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	home := t.TempDir()
@@ -327,6 +339,28 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	}
 	if _, waitLive, err := readAgentActivity(taskLocation); err != nil || !waitLive {
 		t.Errorf("readAgentActivity() waitLive = %v, error = %v with a live wait marker; want true, nil", waitLive, err)
+	}
+
+	if err := os.Remove(filepath.Join(liveDir, "wait.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	scratch := loomengine.LoomScratchDir(taskLocation)
+	if err := os.MkdirAll(scratch, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lockWaitPath := parentlock.WaitRecordPath(scratch)
+	deadWriter := parentlock.Wait{Branch: "main", Holder: "other-task", PID: 1 << 30, StartTime: "gone", Started: activeAt}
+	if err := parentlock.WriteWait(lockWaitPath, deadWriter); err != nil {
+		t.Fatal(err)
+	}
+	if _, waitLive, err := readAgentActivity(taskLocation); err != nil || waitLive {
+		t.Errorf("readAgentActivity() waitLive = %v, error = %v with a lock wait record of a dead writer; want false, nil", waitLive, err)
+	}
+	if err := parentlock.WriteWait(lockWaitPath, parentlock.NewWait("main", "other-task")); err != nil {
+		t.Fatal(err)
+	}
+	if _, waitLive, err := readAgentActivity(taskLocation); err != nil || !waitLive {
+		t.Errorf("readAgentActivity() waitLive = %v, error = %v with a live lock wait record; want true, nil", waitLive, err)
 	}
 }
 

@@ -42,7 +42,8 @@ type Options struct {
 }
 
 // Ensure reconciles the hub's config once per binary build, under the hub lock, and commits what it wrote.
-// A build stamp naming the running build returns nil after one file read, with no lock and no git.
+// A build stamp naming the running build returns nil after one file read and one stat per per-worktree module's repo default, with no lock and no git;
+// an absent repo default makes the stamp stale.
 // Options.Pair selects the unconditional single-pair call instead of the stamp-gated walk over the whole hub.
 // A lock not acquired within the wait returns *LockTimeoutError; a reconcile or commit failure returns *WorktreeError.
 func Ensure(geom Geometry, opts Options) error {

@@ -73,8 +73,8 @@ func checkCoherence(shed shedengine.Status, product Status, expectedProducer str
 	// so validating it here would assert Shed's own arithmetic against itself.
 
 	for i, h := range shed.History {
-		// OutcomeGoto is history-only: lyx shed goto writes it and no producer returns it.
-		if h.Outcome != shedengine.Done && h.Outcome != shedengine.Stuck && h.Outcome != shedengine.Awaiting && h.Outcome != shedengine.OutcomeGoto {
+		// OutcomeGoto and OutcomeReroute are history-only: lyx shed goto and a Stuck verdict's reroute edge write them and no producer returns them.
+		if h.Outcome != shedengine.Done && h.Outcome != shedengine.Stuck && h.Outcome != shedengine.Awaiting && h.Outcome != shedengine.OutcomeGoto && h.Outcome != shedengine.OutcomeReroute {
 			failures = append(failures, Failure{
 				Check:  CheckSeedIncoherent,
 				Reason: fmt.Sprintf("history[%d].outcome %q is not a valid outcome; way forward: seed a new run", i, h.Outcome),

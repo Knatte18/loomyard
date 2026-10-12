@@ -10,6 +10,7 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - the resize watch loop's poll mode in `internal/reedengine/watchloop.go`, whose timer starts at a two-second base and backs off to a minute while nothing changes,
 - batten's Run-Shed wait,
 - batten's Land row land-lock wait in `internal/battenshed/land.go`, which polls from one second and doubles to thirty seconds,
+- the parent lock wait in `internal/parentlock/acquire.go`, which polls from one second and doubles to thirty seconds,
 - shuttle's `Wait`,
 - webster's long poll,
 - `lyx shed status --watch`,

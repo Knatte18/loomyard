@@ -51,7 +51,7 @@ Preflight → Loom-Preflight
   → Discussion-Write → [Discussion review]
   → Plan-Write       → [Plan review]
   → Batchifier → Webster → [Webster review]
-  → Describe → Publish → PR-Gate ⇄ PR-Rework
+  → Describe → Merge-In → [Merge review] → Publish → PR-Gate ⇄ PR-Rework
   → Finalize → Friction-Reflect
 ```
 
@@ -67,7 +67,7 @@ A smaller task can run the `darn` recipe instead ([`contracts/recipes/darn-recip
   The judge approves or sends the artifact back for another round, within a bounce budget;
   an exhausted budget halts the run for a human rather than looping.
   The judge and the reviewer are fresh agents, independent of the one that wrote the artifact, so no agent ever reviews its own work.
-- **Landing** — `Describe` writes the change description, `Publish` opens the pull request, and `PR-Gate` waits for the operator.
+- **Landing** — `Describe` writes the change description, `Merge-In` merges the parent in, `Publish` opens the pull request, and `PR-Gate` waits for the operator.
   `lyx loom approve` lands it;
   `lyx loom reject <review-file>` sends the operator's findings to `PR-Rework`, which archives the built plan as a generation, plans and implements a new one, and comes back to the gate.
 - **Friction-Reflect** — the agents' own notes on what was hard or broken in the tooling are reflected on and can be filed as issues against LoomYard itself (`selfreport`).

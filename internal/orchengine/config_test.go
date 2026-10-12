@@ -30,7 +30,7 @@ func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
 }
 
 func TestLoadConfig_TemplateResolvesWithNoFile(t *testing.T) {
-	cfg, err := orchengine.LoadConfig(t.TempDir(), "orch")
+	cfg, err := orchengine.LoadConfig(configengine.Dirs{Anchor: t.TempDir()}, "orch")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestLoadConfig_PresentFileOverrides(t *testing.T) {
 	seedLyxConfig(t, tmpDir, "orch", "model: opus\neffort: high\npermission_mode: bypass\ncycle_mode: clear\nsoft_threshold_tokens: 70000\nsoft_idle_s: 7\nthreshold_tokens: 90000\nidle_grace_s: 5\nhandoff_timeout_s: 60\npoll_interval_ms: 1500\n")
 
 	logs := logcapture.Capture(t)
-	cfg, err := orchengine.LoadConfig(tmpDir, "orch")
+	cfg, err := orchengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "orch")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestLoadConfig_PresentFileOverrides(t *testing.T) {
 	belowDir := t.TempDir()
 	seedLyxConfig(t, belowDir, "orch", "poll_interval_ms: 250\n")
 	logs.Reset()
-	below, err := orchengine.LoadConfig(belowDir, "orch")
+	below, err := orchengine.LoadConfig(configengine.Dirs{Anchor: belowDir}, "orch")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -116,13 +116,25 @@ func TestLoadConfig_PresentFileOverrides(t *testing.T) {
 	if got := strings.Count(logs.String(), "level=WARN"); got != 1 || !strings.Contains(logs.String(), "key=poll_interval_ms") || !strings.Contains(logs.String(), "floor_ms=1000") {
 		t.Errorf("below-floor load logged %q, want one warning naming poll_interval_ms and the floor", logs.String())
 	}
+
+	// A key set only in the repo default resolves beneath a worktree file lacking it.
+	board, anchor := t.TempDir(), t.TempDir()
+	seedLyxConfig(t, board, "orch", "model: opus\neffort: high\n")
+	seedLyxConfig(t, anchor, "orch", "effort: low\n")
+	stacked, err := orchengine.LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "orch")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stacked.Model != "opus" || stacked.Effort != "low" {
+		t.Errorf("Model/Effort = %q/%q, want opus (repo default) / low (worktree file)", stacked.Model, stacked.Effort)
+	}
 }
 
 func TestLoadConfig_InvalidFileErrors(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedLyxConfig(t, tmpDir, "orch", "model: [unterminated\n")
 
-	if _, err := orchengine.LoadConfig(tmpDir, "orch"); err == nil {
+	if _, err := orchengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "orch"); err == nil {
 		t.Fatal("LoadConfig on an invalid file = nil error, want error")
 	}
 }
@@ -142,7 +154,7 @@ func TestLoadConfig_CycleMode(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
 			seedLyxConfig(t, tmpDir, "orch", tc.content)
-			cfg, err := orchengine.LoadConfig(tmpDir, "orch")
+			cfg, err := orchengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "orch")
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -155,7 +167,7 @@ func TestLoadConfig_CycleMode(t *testing.T) {
 	t.Run("unknown value errors naming both", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		seedLyxConfig(t, tmpDir, "orch", "cycle_mode: restart\n")
-		_, err := orchengine.LoadConfig(tmpDir, "orch")
+		_, err := orchengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "orch")
 		if err == nil {
 			t.Fatal("LoadConfig with cycle_mode: restart = nil error, want error")
 		}
@@ -169,7 +181,7 @@ func TestLoadConfig_PermissionMode(t *testing.T) {
 	for _, content := range []string{"model: opus\n", "permission_mode: \"\"\n", "permission_mode: bypass\n"} {
 		tmpDir := t.TempDir()
 		seedLyxConfig(t, tmpDir, "orch", content)
-		cfg, err := orchengine.LoadConfig(tmpDir, "orch")
+		cfg, err := orchengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "orch")
 		if err != nil {
 			t.Fatalf("%q: unexpected error: %v", content, err)
 		}
@@ -181,7 +193,7 @@ func TestLoadConfig_PermissionMode(t *testing.T) {
 	for _, mode := range []string{"prompt", "plan"} {
 		tmpDir := t.TempDir()
 		seedLyxConfig(t, tmpDir, "orch", "permission_mode: "+mode+"\n")
-		_, err := orchengine.LoadConfig(tmpDir, "orch")
+		_, err := orchengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "orch")
 		if err == nil {
 			t.Fatalf("permission_mode: %s = nil error, want error", mode)
 		}

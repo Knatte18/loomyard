@@ -25,6 +25,10 @@ const (
 // It is not named Goto because the Goto function owns that name.
 const OutcomeGoto Outcome = "goto"
 
+// OutcomeReroute is a history-only Outcome, written by the reroute arm of a Stuck verdict whose OutputPointer.Reroute is set and never returned by a producer.
+// A reroute entry ends the bounce-budget episode of every row sharing its routed target's Segment, as a goto entry does.
+const OutcomeReroute Outcome = "reroute"
+
 // OutputPointer names a producer's artifact for a human to read.
 // Shed never introspects Path's contents, never validates it, and never stats it to make a
 // control-flow decision -- step 4 is an unconditional re-call.
@@ -46,6 +50,12 @@ type OutputPointer struct {
 	// BudgetExempt marks a Stuck verdict as not counted against its row's bounce budget, for a producer whose Stuck is a wait with its own bound.
 	// Shed reads it only on a Stuck verdict and ignores it on every other outcome.
 	BudgetExempt bool
+	// Reroute marks a Stuck verdict as taking the row's OnReroute edge instead of OnStuck.
+	// Shed reads it only on a Stuck verdict; a row with no OnReroute that returns it is a wiring fault.
+	Reroute bool
+	// Halt marks a Stuck verdict as blocking the run at its own row with Reason, whatever the row's OnStuck, and as not counted against the bounce budget.
+	// Shed reads it only on a Stuck verdict and it can only stop a run, never advance or route it.
+	Halt bool
 }
 
 // ShedProducer is the seam Shed drives once per iteration: Call runs one producer to a verdict
@@ -66,6 +76,8 @@ type ProducerDef struct {
 	// OnStuck is what makes a bounce-back a per-producer config value rather than a hardcoded
 	// branch in the loop: "" escalates to a human, else Stuck bounces back to the Name it names.
 	OnStuck string
+	// OnReroute names the one row a Stuck verdict carrying OutputPointer.Reroute goes to, forward or backward and across segments; "" means the row cannot reroute.
+	OnReroute string
 	// OnDone is the sole router for a Done verdict, forward or backward through the list. The
 	// empty value is load-bearing and silent, exactly as OnStuck: "" already is: an omitted
 	// OnDone ends the whole Shed run quietly rather than failing loud, while a non-empty OnDone

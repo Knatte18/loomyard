@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -47,6 +48,8 @@ type Env struct {
 	// AnchorPath is the told anchor path, read by Batchifier, Webster, Bouncer, SingleLLM's
 	// anchor_path token, and by the gate resolver's "plan" gate.
 	AnchorPath string
+	// ConfigDirs is the told geometry of a layered config load, read by Batchifier, LoomPreflight and Webster, which load batcher through it.
+	ConfigDirs configengine.Dirs
 	// WorktreeRoot is the told worktree root, read by SingleLLM's output_files and by the gate
 	// resolver's "plan" and "verify" gates.
 	WorktreeRoot string
@@ -202,6 +205,17 @@ type Env struct {
 	// SkipPlanReview is the injected closure answering whether the live plan generation skips its Plan-Review judge, read by the Bouncer entry's skip_seam key.
 	// An error makes the Bouncer review for real.
 	SkipPlanReview func() (bool, error)
+	// SkipMergeReview is the injected closure answering whether the merge-in needs no review, read by the Bouncer entry's skip_seam key.
+	// An error makes the Bouncer review for real.
+	SkipMergeReview func() (bool, error)
+	// ApproveMergeReview is the injected closure recording the merge review as finished, read by the Bouncer entry's approve_seam key.
+	// It runs on every approved settle of that Bouncer, a skip included.
+	ApproveMergeReview func() error
+	// MergeReview returns the merge record note the Merge-Review rubric renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
+	// Nil renders `none`.
+	MergeReview func() string
+	// MergeReviewOff is loom.yaml's skip_merge_review, which routes the recipe's Merge-In row straight to Publish.
+	MergeReviewOff bool
 	// CarryOver is the injected closure that writes and commits one review segment's carry-over entry into the decision record, read by the Bouncer entry's carry_over key.
 	// It is run-wide, and the entry the Bouncer passes names its own segment.
 	CarryOver func(discussionparser.CarryOver) error

@@ -8,10 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -153,8 +155,24 @@ func shuttleWaiting(readMarker func() (shuttleengine.WaitMarker, bool, error), n
 	}
 }
 
+// parentLockWaiting returns the Waiting hook that reports a live parent lock wait from the record at waitPath, and falls through to next otherwise.
+// The note reads `<producer>: waiting for the parent lock on <branch> held by <slug> <elapsed>`, elapsed measured from the record's start.
+// A record whose writer is dead under alive reads as absent, so a wait left by a dead step is ignored.
+func parentLockWaiting(waitPath string, alive func(pid int, startTime string) bool, now func() time.Time, next func(st shedengine.Status) (string, error)) func(st shedengine.Status) (string, error) {
+	return func(st shedengine.Status) (string, error) {
+		wait, found, err := parentlock.ReadWait(waitPath, alive)
+		if err != nil {
+			return "", err
+		}
+		if !found {
+			return next(st)
+		}
+		return fmt.Sprintf("%s: waiting for the parent lock on %s held by %s %s", st.CurrentProducer, wait.Branch, wait.Holder, formatElapsed(now().Sub(wait.Started))), nil
+	}
+}
+
 // reviewWaitingFor builds the Waiting hook for loc's worktree, or nil when no location is wired.
-// A gate wait is reported first, then a verify, then a shuttle wait, then the parent-review note.
+// A gate wait is reported first and never hides the rest; after it come a parent lock wait, a verify, a shuttle wait and the parent-review note, of which the first live one wins.
 func reviewWaitingFor(loc *lyxcwd.Location) func(st shedengine.Status) (string, error) {
 	if loc == nil {
 		return nil
@@ -162,7 +180,7 @@ func reviewWaitingFor(loc *lyxcwd.Location) func(st shedengine.Status) (string, 
 	reviewNote := reviewWaiting(loomengine.LoomParentReviewDir(loc), loomengine.LoomParentReviewLockDir(loc))
 	review := func(shedengine.Status) (string, error) { return reviewNote() }
 	readShuttleMarker := func() (shuttleengine.WaitMarker, bool, error) {
-		cfg, err := shuttleengine.LoadConfig(loc.AnchorPath(), "shuttle")
+		cfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(loc), "shuttle")
 		if err != nil {
 			return shuttleengine.WaitMarker{}, false, err
 		}
@@ -171,5 +189,6 @@ func reviewWaitingFor(loc *lyxcwd.Location) func(st shedengine.Status) (string, 
 	markerPath := verifytree.NewPaths(loc.WorktreePath(), verifytree.Dir(loc.AnchorPath())).Marker
 	holders := hubgeom.GateSlots(loc).Holders
 	verify := verifyWaiting(markerPath, holders, time.Now, shuttleWaiting(readShuttleMarker, time.Now, review))
-	return gateWaiting(gateslot.WaitDir(loc.AnchorPath()), holders, time.Now, verify)
+	parentLock := parentLockWaiting(parentlock.WaitRecordPath(loomengine.LoomScratchDir(loc)), parentlock.ProcessAlive, time.Now, verify)
+	return gateWaiting(gateslot.WaitDir(loc.AnchorPath()), holders, time.Now, parentLock)
 }

@@ -44,7 +44,7 @@ func validateFormat(plan *planparser.Plan, worktreeRoot string, loader typesLoad
 
 // ValidateFormatAfter is ValidateFormat for a plan some of whose cards webster already ran: done names the cards of the batches its run record holds done.
 // With no done card it is ValidateFormat.
-// Otherwise it is ValidateDispatch's check set with done as completed and nothing forthcoming, plus planGatePass over the cards not in done.
+// Otherwise it is ValidateDispatch's check set with done as completed and nothing forthcoming, less its scan-only delete-before-reference, plus planGatePass over the cards not in done, which reports that check typed.
 // A done card's work is in the tree, so resolving it again reports its own landed work as create-already-exists, glyph-not-found, path-missing or caller-uncovered, defects no fixer can repair:
 // a run moved back to the plan review after Webster executed batches wedged its plan gate on exactly those.
 // It has ValidateFormat's error contract.
@@ -57,7 +57,7 @@ func validateFormatAfter(plan *planparser.Plan, worktreeRoot string, done []plan
 	if len(done) == 0 {
 		return validateFormat(plan, worktreeRoot, loader)
 	}
-	findings, err := ValidateDispatch(plan, worktreeRoot, done, nil)
+	findings, err := dispatchFindings(plan, worktreeRoot, done, nil)
 	if err != nil {
 		return findings, err
 	}
@@ -121,6 +121,8 @@ func validate(plan *planparser.Plan, worktreeRoot string, loader typesLoader) ([
 // The pure pass runs over the WHOLE plan and has only its card-scoped findings dropped, because several pure checks are plan-level and would misreport against a filtered plan:
 // index-file-mismatch would see every completed card's file as orphaned, card-numbering would see gaps, and path-missing's satisfied-by-another-card union would lose the Create and Rename destinations completed cards contribute to still-pending ones.
 //
+// delete-before-reference runs here scan-only, over the pending cards, so a method call in a later card's Edit code is informational: dispatch runs no type load.
+//
 // Once completed is non-empty, a Delete target of a pending card that is already gone is reported as the informational delete-target-gone finding instead of the blocking path-missing or glyph-not-found one:
 // the wanted end state is already the tree's state.
 // The same target under the card's own Edit, Uses or Rename old side keeps its blocking finding.
@@ -128,6 +130,17 @@ func validate(plan *planparser.Plan, worktreeRoot string, loader typesLoader) ([
 // The plan gate and `lyx webster validate` saw every target exist before the run started,
 // so only a target the run removed or a mid-run edit added reaches it, and the advisory names the target and the card.
 func ValidateDispatch(plan *planparser.Plan, worktreeRoot string, completed, forthcoming []planparser.Card) ([]Finding, error) {
+	findings, err := dispatchFindings(plan, worktreeRoot, completed, forthcoming)
+	if err != nil {
+		return findings, err
+	}
+	pending := pendingCardsByID(plan, cardIDSet(completed)).Cards
+	deleteOrder, err := LaterDeleteReferences(plan, pending, pending, worktreeRoot)
+	return append(findings, deleteOrder...), err
+}
+
+// dispatchFindings is ValidateDispatch's check set less delete-before-reference, which ValidateDispatch adds scan-only and the plan-gate pass adds typed.
+func dispatchFindings(plan *planparser.Plan, worktreeRoot string, completed, forthcoming []planparser.Card) ([]Finding, error) {
 	done := cardIDSet(completed)
 
 	var findings []Finding
@@ -285,9 +298,10 @@ func convertAll(errs []planparser.ValidationError) []Finding {
 //
 // done is the set of already-built card IDs ValidateDispatch supplies, empty for the whole-plan
 // entry points. Every pass below sees only the pending cards, so a card whose work already landed is
-// never resolved against a tree it deliberately changed. planDir is still the whole plan's
-// directory: RewriteRefs re-parses it itself, so a handle bound in a pending card is still spelled
-// consistently across every card file, including the completed ones.
+// never resolved against a tree it deliberately changed.
+// The canonicalizing rewrite still covers the whole plan's directory:
+// it re-parses the plan through the plan's own source itself, so a handle bound in a pending card is still spelled consistently across every card file, including the completed ones.
+// A plan parsed through a planparser.Overlay is rewritten and re-read in memory, and no byte of the plan directory changes.
 //
 // forthcoming is the set of card IDs within done whose work may not have landed.
 // Those cards stay out of every pass,
@@ -314,7 +328,7 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 		return nil, err
 	}
 
-	handleFindings, rewrote, err := CanonicalizeHandles(pending, planDir, worktreeRoot, results)
+	handleFindings, rewrote, err := CanonicalizeHandles(pending, worktreeRoot, results)
 	if err != nil {
 		// NOT wrapped in ErrQuarryUnavailable: CanonicalizeHandles' error comes from
 		// planparser.RewriteRefs, which parses the plan and writes card files, so a read-only
@@ -338,7 +352,7 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 	current := pending
 	forthcomingSource := plan
 	if rewrote {
-		reloaded, rerr := planparser.ParsePlan(planDir)
+		reloaded, rerr := plan.Reparse()
 		if rerr != nil {
 			// Same reasoning as the RewriteRefs failure above: this is the PLAN that could not be
 			// read back, not quarry that could not answer.
@@ -390,10 +404,7 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 	findings = append(findings, statusFindings(current, worktreeRoot, nonCreateResults)...)
 	findings = append(findings, createFindings(current, worktreeRoot, createIndex)...)
 
-	deleteOrderFindings, err := LaterDeleteReferences(plan, current.Cards, current.Cards, worktreeRoot)
-	findings = append(findings, deleteOrderFindings...)
-
-	return findings, err
+	return findings, nil
 }
 
 // renameNewTargetSet returns the set of every Rename pair's New-side ref across plan, matching the

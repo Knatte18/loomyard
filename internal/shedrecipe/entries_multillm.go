@@ -195,6 +195,20 @@ func resolveSeatModel(entry string, i int, spec string, reg modelspec.Registry) 
 	return resolved.Model, resolved.Params["effort"], resolved.Params["version"], nil
 }
 
+// colorSegmentKey reads the optional color_segment key of cfg as the segment a Bouncer or Burler row's sessions are colored by.
+// An absent key returns the empty segment, which keeps the review color; an unknown value is refused naming the legal segments.
+func colorSegmentKey(entry string, cfg Config) (segmentcolor.Segment, error) {
+	raw, err := configString(cfg, "color_segment", false)
+	if err != nil || raw == "" {
+		return "", err
+	}
+	segment, err := parseSegment(entry, raw)
+	if err != nil {
+		return "", fmt.Errorf("%w; read from config key %q", err, "color_segment")
+	}
+	return segment, nil
+}
+
 // parseSegment returns raw as a loom segment, or an error naming entry and the legal segments.
 func parseSegment(entry, raw string) (segmentcolor.Segment, error) {
 	segment := segmentcolor.Segment(raw)

@@ -127,7 +127,7 @@ parent_review_wait_min: 60
 }
 
 // hubLocation returns a *lyxcwd.Location standing in for a real hub location, with its anchor path
-// seeded on disk with loom.yaml and a pair landing.yaml that blanks publish_verify, and its hub seeded with the hub-wide landing.yaml at the board dir and both loom stencils.
+// seeded on disk with loom.yaml and a pair landing.yaml that blanks publish_verify, and its hub seeded with loom's repo default and the hub-wide landing.yaml at the board dir and both loom stencils.
 func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location {
 	t.Helper()
 	hub := t.TempDir()
@@ -137,6 +137,7 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location 
 		t.Fatalf("MkdirAll(.git) = %v; want nil", err)
 	}
 	seedLoomConfig(t, loc.AnchorPath())
+	seedLoomConfig(t, fabricengine.BoardDir(hub))
 	seedLandingConfig(t, fabricengine.BoardDir(hub), hubPublishVerify)
 	seedLandingConfig(t, loc.AnchorPath(), "")
 	// stencilstore.Read hard-errors on a missing file, so the stencils the Spec closures read are seeded into the hub's stencils directory.
@@ -297,10 +298,10 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Error("c.runner = nil; want the constructed shuttle runner")
 		}
 
-		boardDir := fabricengine.BoardDir(loc.HubPath)
-		want, err := landingshed.LoadConfig(boardDir, "landing")
+		dirs := fabricengine.ConfigDirs(loc)
+		want, err := landingshed.LoadConfig(dirs, "landing")
 		if err != nil {
-			t.Fatalf("landingshed.LoadConfig(%q, \"landing\") = %v; want nil", boardDir, err)
+			t.Fatalf("landingshed.LoadConfig(%+v, \"landing\") = %v; want nil", dirs, err)
 		}
 		if !reflect.DeepEqual(c.landingCfg, want) {
 			t.Errorf("c.landingCfg = %+v; want %+v", c.landingCfg, want)
@@ -345,7 +346,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 	// same loaded config and registry -- resolved here rather than hardcoded against the template's
 	// literal spec, so a later template edit does not silently break this assertion's meaning.
 	t.Run("review models match the loaded config", func(t *testing.T) {
-		registry, err := modelspec.LoadRegistry(loc.AnchorPath())
+		registry, err := modelspec.LoadRegistry(fabricengine.ConfigDirs(loc))
 		if err != nil {
 			t.Fatalf("modelspec.LoadRegistry(%q) = %v; want nil", loc.AnchorPath(), err)
 		}
@@ -434,6 +435,16 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
+	// loom.yaml's skip_merge_review is off in the template, and the routing projection's flag follows the wired Env's.
+	t.Run("merge review stays on by default", func(t *testing.T) {
+		if c.env.MergeReviewOff {
+			t.Error("c.env.MergeReviewOff = true; want false under the template")
+		}
+		if _, _, off, err := c.reviewBudget(); err != nil || off {
+			t.Errorf("reviewBudget() skip flag = %v, %v; want false, nil", off, err)
+		}
+	})
+
 	// The wired Env carries the worktree's slug, and its SegmentBounces reads the status file on each call:
 	// a status fixture whose history holds Bouncer Stucks reports the count and budget loomrecipe.Routing computes over that history, and an absent status file reports not-in-segment.
 	t.Run("bouncer slug and segment bounces", func(t *testing.T) {
@@ -467,7 +478,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Fatalf("WriteJSON(status) = %v; want nil", err)
 		}
 
-		routing, err := loomrecipe.Routing(c.cfg.ReviewMaxBounces, c.env.RowMaxBounces)
+		routing, err := loomrecipe.Routing(c.cfg.ReviewMaxBounces, c.env.RowMaxBounces, false)
 		if err != nil {
 			t.Fatalf("loomrecipe.Routing(%d) = %v; want nil", c.cfg.ReviewMaxBounces, err)
 		}
@@ -899,7 +910,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	loc := hubLocation(t, "pair", ".")
 	seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{
 		"plan_review": "opus[effort=low]", "plan_judge": "opus[effort=high]", "seed": "haiku[effort=low]", "webster_seed": "opus[effort=low]",
-		"plan_max_bounces": "2", "webster_max_bounces": "1", "webster_auto_accept": "true",
+		"plan_max_bounces": "2", "webster_max_bounces": "1", "webster_auto_accept": "true", "skip_merge_review": "true",
 	})
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
@@ -907,11 +918,15 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
-	wantRowMaxBounces := map[string]int{loomshed.NameDiscussionBouncer: 0, loomshed.NamePlanBouncer: 2, loomshed.NameWebsterBouncer: 1}
+	// The Merge-Bouncer row keeps the template's merge_max_bounces and merge_auto_accept.
+	wantRowMaxBounces := map[string]int{loomshed.NameDiscussionBouncer: 0, loomshed.NamePlanBouncer: 2, loomshed.NameWebsterBouncer: 1, loomshed.NameMergeBouncer: 1}
 	if !reflect.DeepEqual(c.env.RowMaxBounces, wantRowMaxBounces) {
 		t.Errorf("RowMaxBounces = %v; want %v", c.env.RowMaxBounces, wantRowMaxBounces)
 	}
-	wantRowAutoAccept := map[string]bool{loomshed.NameDiscussionBouncer: false, loomshed.NamePlanBouncer: false, loomshed.NameWebsterBouncer: true}
+	if _, _, off, err := c.reviewBudget(); err != nil || !off || !c.env.MergeReviewOff {
+		t.Errorf("skip_merge_review reached reviewBudget() = %v, %v and Env.MergeReviewOff = %v; want true, nil and true", off, err, c.env.MergeReviewOff)
+	}
+	wantRowAutoAccept := map[string]bool{loomshed.NameDiscussionBouncer: false, loomshed.NamePlanBouncer: false, loomshed.NameWebsterBouncer: true, loomshed.NameMergeBouncer: true}
 	if !reflect.DeepEqual(c.env.RowAutoAccept, wantRowAutoAccept) {
 		t.Errorf("RowAutoAccept = %v; want %v", c.env.RowAutoAccept, wantRowAutoAccept)
 	}
@@ -930,7 +945,11 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			Seed:  burlerengine.ModelChoice{Model: "opus", Effort: "low"},
 			Judge: burlerengine.ModelChoice{Model: "sonnet", Effort: "medium"},
 		},
-		// The darn recipe's Darn-Review perch takes Webster-Review's pair.
+		// The merge review and the darn recipe's Darn-Review perch take Webster-Review's pair.
+		loomshed.NameMergeBouncer: {
+			Seed:  burlerengine.ModelChoice{Model: "opus", Effort: "low"},
+			Judge: burlerengine.ModelChoice{Model: "sonnet", Effort: "medium"},
+		},
 		loomshed.NameDarnBouncer: {
 			Seed:  burlerengine.ModelChoice{Model: "opus", Effort: "low"},
 			Judge: burlerengine.ModelChoice{Model: "sonnet", Effort: "medium"},
@@ -954,7 +973,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			t.Errorf("RowReviewModels[%q] = %+v; want the run-wide %+v", row, got, c.env.ReviewModels)
 		}
 	}
-	for _, row := range []string{loomshed.NameWebsterBurlerReview, loomshed.NameWebsterBurlerFix, loomshed.NameDarnBurlerReview, loomshed.NameDarnBurlerFix} {
+	for _, row := range []string{loomshed.NameWebsterBurlerReview, loomshed.NameWebsterBurlerFix, loomshed.NameMergeBurlerReview, loomshed.NameMergeBurlerFix, loomshed.NameDarnBurlerReview, loomshed.NameDarnBurlerFix} {
 		webster := c.env.RowReviewModels[row]
 		if len(webster.Review) != 1 || webster.Review[0].Model != "sonnet" || webster.Review[0].Effort != "high" {
 			t.Errorf("RowReviewModels[%q].Review = %+v; want one sonnet entry of effort high", row, webster.Review)
@@ -975,9 +994,9 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			t.Errorf("RowClusterFans[%q] = %q; want empty under the template's empty fans", row, fan)
 		}
 	}
-	for _, row := range []string{loomshed.NameWebsterBurlerReview, loomshed.NameWebsterBurlerFix, loomshed.NameWebsterBouncer} {
+	for _, row := range []string{loomshed.NameWebsterBurlerReview, loomshed.NameWebsterBurlerFix, loomshed.NameWebsterBouncer, loomshed.NameMergeBurlerReview, loomshed.NameMergeBurlerFix, loomshed.NameMergeBouncer} {
 		if _, present := c.env.RowClusterFans[row]; present {
-			t.Errorf("RowClusterFans has an entry for %q; want none, Webster-Review stays solo", row)
+			t.Errorf("RowClusterFans has an entry for %q; want none, Webster-Review and Merge-Review stay solo", row)
 		}
 	}
 
@@ -1002,5 +1021,45 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		if len(got) != 1 || got[0].Model != "opus" || got[0].Effort != "low" {
 			t.Errorf("RowReviewModels[%q].Review = %+v; want the fan_review entry, opus of effort low", row, got)
 		}
+	}
+}
+
+// TestWire_MergeReviewSeams verifies the merge review seams read the run's merge record.
+// The skip seam answers false with no record and the record's skip decision once one exists.
+// The approve seam records the merged tip as reviewed, the note renders the record, and skip_merge_review reaches the Env.
+func TestWire_MergeReviewSeams(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "pair", ".")
+	seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"skip_merge_review": "true"})
+	c := &loomCLI{runID: shedrun.SelfRunID}
+	if err := c.wire(loc, loc.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	if !c.env.MergeReviewOff {
+		t.Error("c.env.MergeReviewOff = false; want true from skip_merge_review")
+	}
+	if skip, err := c.env.SkipMergeReview(); err != nil || skip {
+		t.Errorf("SkipMergeReview() with no record = %v, %v; want false, nil", skip, err)
+	}
+
+	scratchDir := loomengine.LoomScratchDir(loc)
+	record := landingshed.MergeRecord{ParentBranch: "main", MergedTip: "m9", ReviewedTip: "r1", TaskBase: "b1", TaskHead: "h1", UpToDate: true}
+	if err := landingshed.WriteMergeRecord(landingshed.MergeRecordPath(scratchDir), record); err != nil {
+		t.Fatalf("WriteMergeRecord() = %v; want nil", err)
+	}
+	if skip, err := c.env.SkipMergeReview(); err != nil || !skip {
+		t.Errorf("SkipMergeReview() over an up-to-date record = %v, %v; want true, nil", skip, err)
+	}
+	if note := c.env.MergeReview(); !strings.Contains(note, "`r1..m9`") {
+		t.Errorf("MergeReview() = %q; want the parent range r1..m9", note)
+	}
+
+	if err := c.env.ApproveMergeReview(); err != nil {
+		t.Fatalf("ApproveMergeReview() = %v; want nil", err)
+	}
+	if tip, found, err := landingshed.ReadReviewedTip(landingshed.MergeReviewedPath(scratchDir)); err != nil || !found || tip != "m9" {
+		t.Errorf("reviewed tip = %q, %v, %v; want m9 recorded", tip, found, err)
 	}
 }

@@ -32,6 +32,8 @@ type FailedTest struct {
 type PublishFailure struct {
 	// Kind names the failing verify.
 	Kind FailureKind `yaml:"kind"`
+	// Row is the producer row whose verify failed, empty for a record written before the field existed.
+	Row string `yaml:"row,omitempty"`
 	// Tests are the failing tests the verify's log names.
 	Tests []FailedTest `yaml:"tests,omitempty"`
 	// LogPath is the failing run's own verify log, which pruning keeps while the record names it.

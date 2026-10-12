@@ -109,6 +109,7 @@ func TestCLI(t *testing.T) {
 		{"GetBodyRoundTrip", stepGetBodyRoundTrip},
 		{"LabelsMapShapedPrintsFileOrderWithDescriptions", stepLabelsMapShapedPrintsFileOrderWithDescriptions},
 		{"LabelsListShapedPrintsNamesWithEmptyDescriptions", stepLabelsListShapedPrintsNamesWithEmptyDescriptions},
+		{"RunSettings", stepRunSettings},
 	}
 	for _, step := range steps {
 		if !t.Run(step.name, func(t *testing.T) {

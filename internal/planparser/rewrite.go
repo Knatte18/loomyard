@@ -42,17 +42,26 @@ var singleRefLineRe = regexp.MustCompile("^`([^`]+)`$")
 // The one shape-changing case -- a Create declaration bullet collapsing to a plain ref when its
 // handle binds to a real glyph -- is documented on rewriteBulletLine.
 func RewriteRefs(planDir string, subs map[string]string) error {
+	return rewriteRefsIn(
+		planDir, subs,
+		func(name string) ([]byte, error) { return os.ReadFile(filepath.Join(planDir, name)) },
+		func(name string, data []byte) error { return os.WriteFile(filepath.Join(planDir, name), data, 0o644) },
+	)
+}
+
+// rewriteRefsIn is RewriteRefs over a plan source: it parses the plan through read and writes each changed card file through write, both taking a plan file name.
+func rewriteRefsIn(planDir string, subs map[string]string, read func(name string) ([]byte, error), write func(name string, data []byte) error) error {
 	if len(subs) == 0 {
 		return nil
 	}
 
-	plan, err := ParsePlan(planDir)
+	plan, err := ParsePlanFrom(planDir, read)
 	if err != nil {
 		return err
 	}
 
 	for _, c := range plan.Cards {
-		if err := rewriteCardFile(planDir, plan, c, subs); err != nil {
+		if err := rewriteCardFile(plan, c, subs, read, write); err != nil {
 			return err
 		}
 	}
@@ -64,11 +73,12 @@ func RewriteRefs(planDir string, subs map[string]string) error {
 // resolving every substitution's canonical key against c's own SurfaceRefs entry into the on-disk
 // lexeme actually being searched for, then applying that lexeme-keyed map line by line. The file is
 // written back only when at least one line actually changed.
-func rewriteCardFile(planDir string, plan *Plan, c Card, subs map[string]string) error {
+// The file is read and written through read and write, by its name under plan.Dir.
+func rewriteCardFile(plan *Plan, c Card, subs map[string]string, read func(name string) ([]byte, error), write func(name string, data []byte) error) error {
 	fileName := cardFileName(c.Number, c.Slug)
-	filePath := filepath.Join(planDir, fileName)
+	filePath := filepath.Join(plan.Dir, fileName)
 
-	data, err := os.ReadFile(filePath)
+	data, err := read(fileName)
 	if err != nil {
 		return fmt.Errorf("planparser: read card file %s: %w", filePath, err)
 	}
@@ -93,7 +103,7 @@ func rewriteCardFile(planDir string, plan *Plan, c Card, subs map[string]string)
 		return nil
 	}
 
-	if err := os.WriteFile(filePath, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+	if err := write(fileName, []byte(strings.Join(lines, "\n"))); err != nil {
 		return fmt.Errorf("planparser: write card file %s: %w", filePath, err)
 	}
 	return nil

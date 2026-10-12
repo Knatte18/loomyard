@@ -75,6 +75,7 @@ func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 	p.FixScope = FixScopeOverlay
 	p.FocusDirective = "focus.md"
 	p.PriorReviews = []string{"prior-review.md"}
+	p.Segment = segmentcolor.Merge
 	shuttle := &fakeShuttle{fix: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, writes: "nothing fixed"}}
 	e := newEngineForTest(t, root, shuttle)
 
@@ -101,8 +102,8 @@ func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 	if want := []string{filepath.Join(root, "fixer-report.md")}; !slices.Equal(spec.OutputFiles, want) {
 		t.Errorf("spec.OutputFiles = %v; want %v", spec.OutputFiles, want)
 	}
-	if spec.Segment != segmentcolor.Review || spec.Interactive || spec.ForkSubagents {
-		t.Errorf("spec segment %q interactive %v forks %v; want the review segment, neither interactive nor forking", spec.Segment, spec.Interactive, spec.ForkSubagents)
+	if spec.Segment != segmentcolor.Merge || spec.Interactive || spec.ForkSubagents {
+		t.Errorf("spec segment %q interactive %v forks %v; want the profile's merge segment, neither interactive nor forking", spec.Segment, spec.Interactive, spec.ForkSubagents)
 	}
 	if spec.Model != opts.Fix.Model || spec.Effort != opts.Fix.Effort || spec.Version != opts.Fix.Version {
 		t.Errorf("spec model = (%q, %q, %q); want %+v", spec.Model, spec.Effort, spec.Version, opts.Fix)

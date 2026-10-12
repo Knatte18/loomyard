@@ -23,11 +23,15 @@ func newTestEnvWithSeedChild(t *testing.T) Env {
 	t.Helper()
 	env := newTestEnv(t)
 	env.SeedChild = battenshed.SeedChildDeps{
-		ReadBoardType: func(context.Context) (string, error) { return "loom", nil },
-		ChildDriver:   func() (string, error) { return "claude", nil },
-		WriteSeed:     func(context.Context, string, string) error { return nil },
-		CommitSeed:    func(context.Context) error { return nil },
-		PushSeed:      func(context.Context) error { return nil },
+		ReadBoardType:        func(context.Context) (string, error) { return "loom", nil },
+		ChildDriver:          func() (string, error) { return "claude", nil },
+		ReadRunSettings:      func(context.Context) (map[string]any, error) { return nil, nil },
+		PrepareRunSettings:   func(map[string]any) (map[string][]byte, error) { return nil, nil },
+		WriteLocalOverride:   func(context.Context, string, []byte) error { return nil },
+		RemoveLocalOverrides: func(context.Context, []string) ([]string, error) { return nil, nil },
+		WriteSeed:            func(context.Context, string, string) error { return nil },
+		CommitSeed:           func(context.Context) error { return nil },
+		PushSeed:             func(context.Context) error { return nil },
 	}
 	return env
 }

@@ -48,6 +48,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
@@ -226,12 +227,12 @@ func (c *loomCLI) recipeRouting() (shedengine.Routing, error) {
 		return loomrecipe.DarnRouting(budget)
 	}
 
-	budget, rowBudgets, err := c.reviewBudget()
+	budget, rowBudgets, mergeReviewOff, err := c.reviewBudget()
 	if err != nil {
 		return shedengine.Routing{}, err
 	}
 
-	return loomrecipe.Routing(budget, rowBudgets)
+	return loomrecipe.Routing(budget, rowBudgets, mergeReviewOff)
 }
 
 // newShed builds the shed of the run's recipe over c.env and c.shedPaths.
@@ -252,26 +253,26 @@ func (c *loomCLI) verifySource() verifySource {
 	return planVerifySource(c.location)
 }
 
-// reviewBudget returns the run-wide review bounce budget and the per-perch budget map the routing projection reports.
+// reviewBudget returns the run-wide review bounce budget, the per-perch budget map the routing projection reports, and loom.yaml's skip_merge_review.
 // The full wiring has already loaded loom.yaml into c.cfg; the lightweight wiring loads no config, so it reads loom.yaml here once more.
 // An unreadable loom.yaml degrades to the template's defaults with a warning, because the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
-func (c *loomCLI) reviewBudget() (int, map[string]int, error) {
+func (c *loomCLI) reviewBudget() (int, map[string]int, bool, error) {
 	if c.cfg.ReviewMaxBounces > 0 {
-		return c.cfg.ReviewMaxBounces, perchMaxBounces(c.cfg), nil
+		return c.cfg.ReviewMaxBounces, perchMaxBounces(c.cfg), c.cfg.SkipMergeReview, nil
 	}
 
-	cfg, err := loomengine.LoadConfig(c.location.AnchorPath(), "loom")
+	cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(c.location), "loom")
 	if err == nil {
-		return cfg.ReviewMaxBounces, perchMaxBounces(cfg), nil
+		return cfg.ReviewMaxBounces, perchMaxBounces(cfg), cfg.SkipMergeReview, nil
 	}
 	logger.Warn("loom: could not read loom.yaml for the review bounce budget; reporting the template default", "error", err)
 
 	var template loomengine.Config
 	if err := yaml.Unmarshal([]byte(loomengine.ConfigTemplate()), &template); err != nil {
-		return 0, nil, err
+		return 0, nil, false, err
 	}
 
-	return template.ReviewMaxBounces, perchMaxBounces(template), nil
+	return template.ReviewMaxBounces, perchMaxBounces(template), template.SkipMergeReview, nil
 }
 
 // specFor fills a Spec from c's already-wired fields, performing no resolution, no wire call, and
@@ -319,6 +320,12 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		spec.StepsDir = shedrun.StepsDir(c.location, c.runID)
 		spec.RunID = shedrun.ResolveRunID(c.location, c.runID)
 		spec.Loop = loopSpecFor(c.location, c.runID, c.stepIdleTimeout, agentActivityFor(c.location, c.shuttleCfg))
+		locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(c.location.HubPath))}
+		self := selfLockOwner(c.location, c.runID)
+		spec.Loop.OnExit = loopLockExit(locks, self, battenWatcher(c.location, c.runID))
+		spec.Loop.OnWake = builtOnFirstCall(func() func() {
+			return loopIdleRelease(locks, self, readAgentStates(c.location, c.shuttleCfg), c.landingCfg.IdleRelease())
+		})
 		spec.Hooks.AfterInterrupt = c.loomAfterInterrupt
 		spec.Hooks.ConsumeAttempt = c.loomConsumeAttempt
 	}
@@ -429,6 +436,7 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 		driverWaitMark(c.reed.Status, c.reed.SetWaitMark),
 		conflictSessionStopper(c.reed.Status, c.runner.StopStrand),
 		c.verifySource(),
+		parentLockDeps(c.location, c.runID, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath),
 	)
 
 	// Ensure the friction directory before the run starts, and never clear it here: run requires

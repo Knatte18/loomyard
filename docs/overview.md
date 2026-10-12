@@ -136,7 +136,7 @@ This separation keeps code commits focused on project code and delegates lyx inf
 
 | Artifact | Location | Repo | Purpose |
 |----------|----------|------|---------|
-| `_lyx/config/` | Records worktree | Records | Live YAML configuration files for all modules (board, fabric); reconciled via `lyx config reconcile` |
+| `_lyx/config/` | Records worktree | Records | Live YAML configuration files for all modules (board, fabric); reconciled via `lyx config reconcile`; a module resolves key by key through a layer stack, see [internal/configengine](../internal/configengine/doc.go) |
 | `.env` | Records worktree | Records | Git-ignored per-machine environment variable overrides (KEY=value format) |
 | `_lyx/raddle/` | Records worktree | Records | Raddle documentation (the raddle nav-doc overlay), reached through the `_lyx` junction like every other `_lyx` subtree |
 | `_board/` | Hub | Board | A second records worktree, checked out on the code repo's own unsuffixed default branch (the records main branch in the common case) — never a separate clone, never a per-task records branch |
@@ -170,6 +170,7 @@ and it is not purely the repo-wide `pathspec` list either: it is `structuralComm
 The two structural sets — `_lyx` and `.lyx` — are injected in code, never read from `fabric.yaml`;
 only the third piece comes from the **repo-wide** `pathspec` list recorded once at `<BoardDir>/_lyx/config/fabric.yaml` (read from the records main branch, via `fabricengine.BoardDir`), filtered against `fabricengine.HubReservedNames()` (the hub-structural tokens — `_board`, `_portals`, `_launchers` — that can never be a per-worktree junction).
 `board.yaml` is hub-wide like it: read and written at `<BoardDir>/_lyx/config/board.yaml` and never in a worktree's `_lyx/config/`.
+A hub-wide module skips the worktree file in its layer stack, which [internal/configengine](../internal/configengine/doc.go) describes.
 Because the pathspec is repo-wide, `lyx fabric reconcile` declaratively converges **every** worktree to the same recorded set — adding a junction missing on disk, removing one absent from the wired set,
 and no-op'ing one already correct — rather than each worktree carrying its own drift-prone copy. `lyxcwd` itself stays config-blind;
 it only resolves the cwd coordinates that `fabricengine` builds the junction records onto.
@@ -282,6 +283,7 @@ github.com/Knatte18/loomyard/
 ├── internal/lock/                shared file locking
 ├── internal/lyxtemp/             lyx's per-user temp root in the system temp directory, one locked run directory per process and the sweep of dead owners' run directories, a leaf over the standard library and `internal/lock`
 ├── internal/gateslot/            the hub-wide pool of gate slots: file-lock slots, holder records, the inherited-slot environment and wait records
+├── internal/parentlock/          the per-branch parent lock: one record valid while its owner process lives, a ticket queue and compare-and-release
 ├── internal/output/              shared JSON output
 ├── internal/modelspec/           model-spec parser + models.yaml registry leaf
 ├── internal/pattern/             PATTERN directive leaf (root PATTERN.md inlined per role) + format checker
@@ -330,7 +332,10 @@ User-facing modules each get one `lyx <module>` namespace:
 - **config** — bare `lyx config` lists modules and verbs, `lyx config menu` picks a module to edit interactively, and `lyx config <module>` edits that module's config;
   `lyx config reconcile` reconciles all module config files against their live templates (dry-run by default, `--apply` writes atomically) except seed-only modules (today: `models`), which are materialized once when absent and never rewritten again since the file is operator-owned;
   `lyx config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path.
-  A key under a module's declared open map adds or rewrites one entry, e.g. `lyx config board --set labels.quarry="glyphs and the quarry index"`. ✅ Implemented.
+  A key under a module's declared open map adds or rewrites one entry, e.g. `lyx config board --set labels.quarry="glyphs and the quarry index"`.
+  A module resolves key by key through the embedded template, the repo default at `<BoardDir>/_lyx/config/<module>.yaml`, the worktree's sparse file and the untracked local override at `<anchor>/.lyx/config/<module>.local.yaml`; see [internal/configengine](../internal/configengine/doc.go).
+  `lyx config --layer default|worktree|local` picks the layer a verb addresses, and `lyx config <module> --resolved` prints the merged result with each unit annotated by its layer.
+  A board task's `run_settings` reach the pair's local layer at batten's Seed-Child, bounded by `configreg`'s `LocalKeys` and `LocalDenied`. ✅ Implemented.
 - **fabric** — the sole git-coordination module over the code and its records, unified over two `internal/gitrepo.Repo` instances: clone (the hub creator), dual-worktree add/remove, coordinated checkout (switches code and records together + re-points junctions), reconcile, status, prune, cleanup, records content-sync (commit/push/pull/sync/diff; in the prime, push, commit and sync push the records side only and `push` reports an unpushed code branch as `code_push_skipped`), and a merge/conflict lifecycle (`merge-in`/`merge`/`merge-stage`/`merge --continue`/`merge --abort`, mirroring git's own exit codes and surfacing conflicts as unified, worktree-relative paths; `merge-stage` marks resolved paths so `--continue`'s index gate can pass, and is the only route for a conflict under a wired junction name, which git refuses to stage through), all in one command tree (`internal/fabriccli` + `internal/fabricengine`);
   CLI surface is `lyx fabric clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|unwire|shortname|status|commit|push|pull|sync|diff|merge-in|merge|merge-stage`.
   `clone` takes the records URL first with the code URL optional, derived from the code binding recorded on the records main branch when omitted;
@@ -404,8 +409,8 @@ User-facing modules each get one `lyx <module>` namespace:
 - **loom** — phased orchestrator: drives its flat, ordered producer list (`contracts/recipes/loom-recipe.yaml`, assembled by `internal/loomrecipe`), each gated by a `Bouncer` review segment (`internal/loomcli` + `internal/loomengine` + `internal/loomshed` + `internal/loomrecipe` + `internal/shedverbs` + `internal/parentreview`; `lyx loom start|resume|run|step|status|pause|approve|reject|commit-records|validate-discussion|validate-plan|insert-card|remove-card|restore-renumber|validate-description|lint-comments|lint-pattern|review notify|delivered|approve|reject|circling accept|continue|decision add`, plus the `start` verb registered a second time as the bare root alias `lyx start`).
   `internal/shedverbs` owns the generic `run`/`step`/`status`/`pause` verb bodies loomcli arms; `internal/loomcli` hosts only `start` and the arming glue.
   `insert-card`, `remove-card` and `restore-renumber` are the plan-editing verbs: they add or drop one card and renumber the cards after it through `internal/planparser` under a journal that makes an interrupted call restorable, refuse a position at or before the last card webster has begun, and hold webster's state-mutation lease while they run.
-  A second embedded recipe, `contracts/recipes/darn-recipe.yaml`, drives a darn run: one gated `Darn-Write` writer that reads the board entry, edits, tests and commits, then the `Darn-Review` perch (`Darn-Bouncer`, `Darn-Burler-Review` and `Darn-Burler-Fix`) reviews the committed diff against the board entry, then `Describe` rewrites the change description from the final diff, then Publish, PR-Gate and Finalize, with no discussion, plan or webster rows.
-  The perch's bounce budget is `darn.yaml`'s `review_max_bounces`, default `1`, and `0` routes `Darn-Write` straight to Publish, so the writer's own description stands.
+  A second embedded recipe, `contracts/recipes/darn-recipe.yaml`, drives a darn run: one gated `Darn-Write` writer that reads the board entry, edits, tests and commits, then the `Darn-Review` perch (`Darn-Bouncer`, `Darn-Burler-Review` and `Darn-Burler-Fix`) reviews the committed diff against the board entry, then `Describe` rewrites the change description from the final diff, then Merge-In, Publish, PR-Gate and Finalize, with no discussion, plan, webster or merge-review rows.
+  The perch's bounce budget is `darn.yaml`'s `review_max_bounces`, default `1`, and `0` routes `Darn-Write` straight to Merge-In, so the writer's own description stands.
   A spent budget escalates to the parent through the `lyx loom circling` verbs as a loom review segment does; an accept passes on to `Describe`.
   `loomcli` reads the run's seed once at arming and builds, routes and wires the recipe it names, `loom` when the run has no seed; `lyx loom start` never rewrites a recorded recipe.
   A darn run takes its verify command and attempt budget from the hub-wide `darn.yaml` (`internal/darnengine`), for the writer's and `Darn-Burler-Fix`'s verify gates alike, and the writer's gate halts the run for the parent once the budget is spent;
@@ -438,6 +443,7 @@ User-facing modules each get one `lyx <module>` namespace:
   It is refused while Discussion-Write is running, refuses a named session other than the run's recorded parent (the operator's own unnamed shell always passes) and resumes nothing.
   `validate-plan` runs the same checks Plan-Write's and Plan-Burler-Fix's own gates run, standalone, with the same exit-code and findings-envelope contract, over the current worktree's plan instead of its discussion.
   `validate-plan --rework` runs the check `PR-Rework`'s own gate runs: the format-only checks over the whole new plan, plus a check that its `first_card` equals the card number the session was told.
+  `validate-plan --overlay` runs the flag-less checks over the plan with proposed contents of its existing plan files, read from stdin as one JSON object, laid over it in memory, so a fix is checked before any file is edited and no plan file is written.
   `validate-description` runs the same checks the `Describe` row's `description` gate runs over `_lyx/landing/summary.md`, standalone, with the same exit-code and findings-envelope contract.
   `lint-comments [--base <commit>]` runs `internal/commentlint` over the worktree: the fixed-column-wrapped breaks the working tree, or the range from `--base` to HEAD, creates in `//` comment blocks.
   Every card gate ends with the two lints, and both only read git and files.
@@ -465,12 +471,15 @@ User-facing modules each get one `lyx <module>` namespace:
   Friction notes live under `_lyx/loom/friction/` and drive reports under `_lyx/shed/<slug>/drive-reports/`, both committed with the run.
   Besides the agents' notes, the friction directory holds the Go-written halt notes, which name their anomaly kind, the crash-resume notes written at a `run` or `step` entry and `lyx webster` refusal notes, and the driver's repair records.
   `lyx loom start` writes a handoff voucher right before it spawns a driver, so a deliberate resume never reads as a crash.
-  The landing tail runs `Webster-Review`, then `Describe`, then `Publish`, then `PR-Gate`, then `Finalize`;
-  `Publish` returns Done once the PR is open, refreshing its title and body from the description.
+  The landing tail runs `Webster-Review`, then `Describe → Merge-In → Merge-Review → Publish → PR-Gate → Finalize`, where `Merge-Review` is the perch of `Merge-Bouncer`, `Merge-Burler-Review` and `Merge-Burler-Fix`;
+  a darn run's tail is `Describe → Merge-In → Publish → PR-Gate → Finalize`, with no merge review.
+  `Merge-In` merges the parent into the task, verifies the merged tree and writes the merge record, and the perch reviews how the task's code interacts with what the parent gained.
+  `Publish`, `PR-Gate` and `Finalize` reroute to `Merge-In` when the parent moved since.
+  `Publish` pushes the task branch after the repo's `publish_verify`, and returns Done once the PR is open, refreshing its title and body from the description.
   `Describe` writes the change description at `_lyx/landing/summary.md`, the single source for the PR title and body and for the landing commit, whose message carries exactly one `Co-Authored-By` trailer that Go appends from `landing.yaml`'s `co_authored_by`.
   `PR-Gate` returns Done on a valid approval (matching the branch's current HEAD), and `Finalize` closes the open PR with a comment naming the landing commit, tolerates an already-landed parent, and marks the board task `done` after the parent merge.
   Every run transition before that writes the board task's status as `<state> · <producer>` (for example `awaiting · PR-Gate`), so the board README shows where each run stands; a failed board write only warns.
-  `Publish` and `Finalize` each run the plan's verify command after a parent merge-in that changed the task tree, and halt Stuck on a failure, with the command's output in the loom verify-output log;
+  `Merge-In` and `Finalize` each run the plan's verify command after a parent merge-in that changed the task tree, and halt Stuck on a failure, with the command's output in the loom verify-output log;
   a pending-verify marker keeps the gate armed across a resume until a verify passes.
   `landing.yaml` gains `describe` (the row's model), `describe_timeout_min` and `co_authored_by`; an existing hub takes their template defaults until `lyx config reconcile --apply` writes them, and an in-flight run parked past `Webster-Bouncer` is restarted rather than migrated.
   `lyx loom status --watch` is this module's registered interactive-handoff exception ([PATTERN-cli-cobra](../pattern/PATTERN-cli-cobra.md)): it self-displays the polled status line then blocks forever as its own keepalive tail, with every fallible step running pre-flight, on the envelope, and only that tail exempt from emitting JSON.
@@ -518,7 +527,7 @@ User-facing modules each get one `lyx <module>` namespace:
   Behavior-based reviewer that *runs* a live-substrate module (needs a sandbox repo) to harden it before merge;
   on-demand, post-loom, **off the spine**, shares only the `burler` round discipline.
   See the board's `hardener` note.
-- **batten** — drives one task worktree's whole lifecycle — create, seed the child's own inner run from the Board task's own `recipe` (`loom`, or `darn` for a darn child, empty meaning `loom`), run it to a terminal state, land it into the prime, and tear down — as a single Shed run from the hub's prime worktree (`internal/battenshed` + `internal/battenrecipe` + `internal/battencli`; `lyx batten run|step|status|pause <run-id>`, and `lyx batten cleanup [--apply]`).
+- **batten** — drives one task worktree's whole lifecycle — create, seed the child's own inner run from the Board task's own `recipe` (`loom`, or `darn` for a darn child, empty meaning `loom`), run it to a terminal state, land it into the prime, and tear down — as a single Shed run from the hub's prime worktree (`internal/battenshed` + `internal/battenrecipe` + `internal/battencli`; `lyx batten run|step|status|pause <run-id>`, `lyx batten lock list|release` for the hub's parent locks, and `lyx batten cleanup [--apply]`).
   The hidden `lyx batten overview` is the pane process of the prime's `runs` strand, which `lyx orch start` ensures: it lists the runs in flight with their state, stage, time in stage, age and reed session, and reads files only.
   `lyx batten cleanup` is a dry run unless given `--apply`: it removes each done run's records run directory with a records commit and push, and empties that run's scratch beside its lock files and any orphan scratch older than a day.
   `lyx batten run <slug> --window` starts the same run in its own tmux window of the orch's reed session and returns at once; the window lives as long as the reed session.

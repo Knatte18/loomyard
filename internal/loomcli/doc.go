@@ -23,7 +23,7 @@
 // A live loom driver over a run halted at a hand-back (awaiting, blocked, paused or failed) that has not yet written its park marker is still writing its stop report, so start refuses with the kind `driver_not_parked`;
 // a live driver over a running run is left working.
 // Before spawning or resuming a driver, start refuses with the kind `merge_in_progress` over an unfinished merge, naming the conflicted paths and the remedy, the fabric verbs for a fabric merge and git for one fabric did not start.
-// The exception is a run whose current producer is Publish or Finalize, which goes through over a parked fabric merge-in of its own parent branch, since that row aborts and redoes it.
+// The exception is a run whose current producer is Merge-In or Finalize, which goes through over a parked fabric merge-in of its own parent branch, since that row aborts and redoes it.
 // A loom driver strand reed marked retiring is never adopted: start removes it and spawns a fresh driver.
 //
 // start returns once the driver's readiness signal confirms it is up, and for a parked loom driver once delivery of the resume line is verified.
@@ -78,6 +78,16 @@
 //
 // The three verbs read only the resolved anchor, so they join the lightweight wiring and are not held up by an unrelated module's config.
 // `renumberRefusal` words every refusal with its way forward; the rows are in `contracts/specs/refusal-spec.md`.
+//
+// # Validate plan overlay
+//
+// `lyx loom validate-plan --overlay` checks the plan with proposed plan file contents laid over it, in memory, so a fix can be checked before any file is edited.
+// Stdin is one JSON object whose keys are plan file names and whose values are their full proposed content;
+// the names are `00-overview.md` and the card files the Card Index on disk lists.
+// The verb builds a `planparser.Overlay` over the plan directory, parses it, and runs the flag-less check set (`loomshed.ValidatePlan`) over the overlaid plan, reporting through the same envelope.
+// Handle canonicalization and the done-card comparison read and rewrite through the overlay, and no byte under the plan directory is written.
+// The overlay cannot change the tree the glyphs resolve against, so it validates target-list, verify-command and card-text changes, never a proposed code change, and it adds, removes or renames no plan file.
+// It is exclusive with `--rework` and `--require-approved`, refused before stdin is read; a terminal or empty stdin, input that is not one object of distinct names and string values, an unusable name and a card file missing from disk are each refused with their way forward in `overlayRefusal`, and the rows are in `contracts/specs/refusal-spec.md`.
 //
 // # Arbiter
 //

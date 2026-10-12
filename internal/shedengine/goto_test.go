@@ -274,7 +274,7 @@ func TestStep_BudgetExhaustionNamesGotoAndGotoRestoresBudget(t *testing.T) {
 // tailProducers is shaped like the loom recipe's tail: a segment with an offshoot, then the approval rows.
 func tailProducers() []ProducerDef {
 	return []ProducerDef{
-		{Name: "Webster", Segment: "Webster-Review", OnDone: "Webster-Bouncer"},
+		{Name: "Webster", Segment: "Webster-Review", OnDone: "Webster-Bouncer", OnReroute: "Finalize"},
 		{Name: "Webster-Bouncer", Segment: "Webster-Review", OnDone: "Describe", OnStuck: "Webster-Burler"},
 		{Name: "Webster-Burler", Segment: "Webster-Review", OnDone: "Webster-Bouncer", OnStuck: "Webster-Bouncer"},
 		{Name: "Describe"},
@@ -381,6 +381,7 @@ func TestGoto_BlockedRunAdmitsOnlyEarlierRows(t *testing.T) {
 		{"blocked at a bouncer refuses forward rows", "Webster-Bouncer", nil, []string{"Describe", "Publish"}, []string{"Webster-Bouncer", "Webster"}},
 		{"blocked at an offshoot admits the partner, not the successor", "PR-Rework", nil, []string{"Finalize"}, []string{"PR-Gate"}},
 		{"removed current row uses the latest history entry", "Removed", []HistoryEntry{{Producer: "Webster", Outcome: Done}}, []string{"Describe"}, []string{"Webster-Bouncer"}},
+		{"removed current row uses the latest reroute entry's target", "Removed", []HistoryEntry{{Producer: "Webster", Outcome: OutcomeReroute, RoutedTo: "Finalize"}}, []string{"Describe"}, []string{"Finalize"}},
 		{"removed current row with an empty history admits only the first row", "Removed", nil, []string{"Webster-Bouncer"}, []string{"Webster"}},
 	}
 	for _, tt := range tests {
