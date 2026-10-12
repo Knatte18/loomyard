@@ -78,6 +78,20 @@ const inPlaceEditCommandPattern = commandPositionPattern + `(` +
 // inPlaceCommandWordsPattern matches the words of a command between its name and an in-place flag: optionally anything up to the next separator or JSON-escaped newline, ending on whitespace.
 const inPlaceCommandWordsPattern = `(([^;&|)\\` + "`" + `]|\\[^n])*[[:space:]])?`
 
+// steerComputedRmDeny refuses a Bash rm on a computed path; it must contain no single/double quote or backslash (checked at init).
+// It names the literal-path way forward and no scratch place.
+const steerComputedRmDeny = "rm on a computed path, one built from a variable or a command substitution, is refused here because it raises a permission prompt that stalls the run; remove a file by its literal path"
+
+// noticeComputedRmDeny announces the computed-path rm deny in the same wording as its steer.
+const noticeComputedRmDeny = steerComputedRmDeny + "."
+
+// rmCommandPattern is the grep -E pattern matching rm as a whole word in command position of the raw PreToolUse payload JSON.
+const rmCommandPattern = commandPositionPattern + `rm([^A-Za-z0-9_./-]|$)`
+
+// shellExpansionPattern is the grep -E pattern matching a command substitution, $( or a backtick, or a shell variable expansion, $ followed by a letter, a digit, _, {, @ or *.
+// The @ and * take in the positional parameters $@ and $*; the special parameters $$, $?, $# and $! are not matched.
+const shellExpansionPattern = "[$][A-Za-z0-9_{@*(]|`"
+
 // steerRawGoDeny refuses a Bash go run that bypasses the gate slots; it must contain no single/double quote or backslash (checked at init).
 // It is the gate rule every lyx-spawned session and its forks read, which stencils point at as "the gate rule in your system prompt".
 var steerRawGoDeny = "raw module-wide, tmux-tier and llm-tier go runs are refused here. Gate rule: run lyx gate test in the foreground with the Bash tool timeout set to " + bashMaxTimeoutMS + ", never in the background, for example lyx gate test ./internal/x, and use its --tags flag for a tag. Run every other check in the foreground too, and never cd into the directory you already work in. The slot, strand and prebuilt-binary environment variables belong to lyx, and a command naming any of them is refused"
@@ -276,6 +290,19 @@ var standingDenies = []standingDeny{
 		command:   "grep -Eq '" + inPlaceEditCommandPattern + "' && echo '" + denyJSON(steerInPlaceEditDeny) + "'; true",
 		steer:     steerInPlaceEditDeny,
 		notice:    noticeInPlaceEditDeny,
+		installed: func(denyInputs) bool { return true },
+	},
+	{
+		// Refuses before Claude Code raises its statically-unresolvable-target dialog, which shows even in bypass mode and stalls an unwatched run.
+		// Installed for every run, the orch included, with no config key.
+		// Requires rm in command position and an expansion anywhere in the payload.
+		// A guardrail, not a barrier: it falsely denies an rm of a literal path in a command that uses $ elsewhere, a grep alternation naming rm, and a matching spelling in another payload field such as the description.
+		// It lets through a removal behind find -delete, xargs rm with no $, bash -c or a script, and one through the special parameters it does not list ($$, $?, $#, $!).
+		// Ending with `; true` guarantees exit 0 so a non-match allows the call.
+		matcher:   "Bash",
+		command:   "in=$(cat); { printf '%s' \"$in\" | grep -Eq '" + rmCommandPattern + "'; } && { printf '%s' \"$in\" | grep -Eq '" + shellExpansionPattern + "'; } && echo '" + denyJSON(steerComputedRmDeny) + "'; true",
+		steer:     steerComputedRmDeny,
+		notice:    noticeComputedRmDeny,
 		installed: func(denyInputs) bool { return true },
 	},
 }

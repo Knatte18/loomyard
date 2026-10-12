@@ -288,11 +288,12 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 					t.Errorf("autonomous AskUserQuestion command = %q; want the deny JSON payload", command)
 				}
 			}
-			pythonInstalled, rawGoInstalled, inPlaceInstalled := false, false, false
+			pythonInstalled, rawGoInstalled, inPlaceInstalled, computedRmInstalled := false, false, false, false
 			for _, command := range matcherCommands(doc, "Bash") {
 				pythonInstalled = pythonInstalled || strings.Contains(command, steerPythonDeny)
 				rawGoInstalled = rawGoInstalled || strings.Contains(command, steerRawGoDeny)
 				inPlaceInstalled = inPlaceInstalled || strings.Contains(command, steerInPlaceEditDeny)
+				computedRmInstalled = computedRmInstalled || strings.Contains(command, steerComputedRmDeny)
 			}
 			if pythonInstalled != tt.pythonDeny {
 				t.Errorf("python Bash PreToolUse entry present = %v; want %v (preToolUse: %v)", pythonInstalled, tt.pythonDeny, preToolUse)
@@ -301,12 +302,15 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 			if !rawGoInstalled {
 				t.Errorf("raw go Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
 			}
-			// The in-place edit deny has no toggle either.
+			// The in-place edit and computed-rm denies have no toggle either.
 			if !inPlaceInstalled {
 				t.Errorf("in-place edit Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
 			}
-			if !tt.wantAgentEntry && !tt.wantAskUserEntry && !tt.pythonDeny && len(preToolUse) != 2 {
-				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the raw go and in-place edit denies", preToolUse)
+			if !computedRmInstalled {
+				t.Errorf("computed-rm Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
+			}
+			if !tt.wantAgentEntry && !tt.wantAskUserEntry && !tt.pythonDeny && len(preToolUse) != 3 {
+				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the raw go, in-place edit and computed-rm denies", preToolUse)
 			}
 		})
 	}
@@ -417,14 +421,16 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 				}
 			}
 
-			// The raw go and in-place edit denies are installed under every input; the rest of the Bash entries are the fork guard.
-			var bashCommands, rawGoCommands, inPlaceCommands []string
+			// The raw go, in-place edit and computed-rm denies are installed under every input; the rest of the Bash entries are the fork guard.
+			var bashCommands, rawGoCommands, inPlaceCommands, computedRmCommands []string
 			for _, command := range matcherCommands(doc, "Bash") {
 				switch {
 				case strings.Contains(command, steerRawGoDeny):
 					rawGoCommands = append(rawGoCommands, command)
 				case strings.Contains(command, steerInPlaceEditDeny):
 					inPlaceCommands = append(inPlaceCommands, command)
+				case strings.Contains(command, steerComputedRmDeny):
+					computedRmCommands = append(computedRmCommands, command)
 				default:
 					bashCommands = append(bashCommands, command)
 				}
@@ -434,6 +440,9 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 			}
 			if len(inPlaceCommands) != 1 {
 				t.Errorf("in-place edit Bash PreToolUse entries = %q; want exactly one (data: %s)", inPlaceCommands, data)
+			}
+			if len(computedRmCommands) != 1 {
+				t.Errorf("computed-rm Bash PreToolUse entries = %q; want exactly one (data: %s)", computedRmCommands, data)
 			}
 			if !tt.wantBashGuard {
 				if len(bashCommands) != 0 {
@@ -663,6 +672,9 @@ func TestBuildDenyNotice_SentenceContent(t *testing.T) {
 	for name, notice := range map[string]string{"autonomous": nonFork, "interactive": buildDenyNotice(true, cfg, false, false), "fork": forkNotice} {
 		if !strings.Contains(notice, noticeInPlaceEditDeny) {
 			t.Errorf("%s notice = %q; want it to contain the in-place edit sentence", name, notice)
+		}
+		if !strings.Contains(notice, noticeComputedRmDeny) {
+			t.Errorf("%s notice = %q; want it to contain the computed-rm sentence", name, notice)
 		}
 	}
 	if !strings.Contains(nonFork, "The Agent tool is unavailable") {

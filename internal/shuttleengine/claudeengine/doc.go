@@ -168,6 +168,12 @@
 // It is a guardrail, not a barrier: its hook sees static text only, so `sed` writing by redirection, a `w` command inside a script, `awk`, `find -exec sed -i`, anything behind `bash -c`, `eval` or a variable, and anything after a prefix the pattern does not list pass,
 // and a matching spelling inside a quoted argument, a `grep` alternation or another payload field, or a `perl` read whose cluster holds an `i`, is falsely denied.
 //
+// The computed-rm row denies a Bash `rm` in command position when the same payload also holds a command substitution (`$(` or a backtick) or a shell variable expansion (`$` followed by a letter, a digit, `_`, `{`, `@` or `*`), and every run installs it, the orch included.
+// It is a deny and not a prompt because Claude Code raises a statically-unresolvable-target dialog for an `rm` on a computed path, which shows even in bypass mode and stalls an unwatched run.
+// The steer names the literal path as the way forward.
+// It is a guardrail, not a barrier: its hook sees static text only, so a removal behind `find -delete`, `xargs rm` with no `$`, `bash -c` or a script passes, as does one through `$$`, `$?`, `$#` or `$!`,
+// and an `rm` of a literal path in a command that uses `$` elsewhere, a `grep` alternation naming `rm`, or a matching spelling in another payload field such as the description is falsely denied.
+//
 // A replay corpus of real turn ends lives under testdata/corpus, one directory per case:
 // transcript.jsonl holds the source transcript's lines the parsers read, trimmed to the fields they read;
 // events.jsonl is the run's events file, or one rebuilt from the transcript's turn ends when the run directory is gone;
