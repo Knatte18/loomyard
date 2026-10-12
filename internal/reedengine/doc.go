@@ -307,7 +307,7 @@
 // Own windows: an own-window strand gets a detached window named by its role, opened through the launch chokepoint (spawn.go's openOwnWindowLocked) by `new-window -d`, so it never takes focus.
 // The window carries @lyx_own, @strand_color and @lyx_unseen, each set by window id; the last is left unset on Windows.
 // Its pane runs the same launch tail as a window 0 strand.
-// Its dead pane stays until the strand is removed or, once a relaunch leaves it unbound, until its window holds no bound pane.
+// Its dead pane stays until the strand is removed or relaunched; a relaunch kills the old pane once the new one exists, so a shared window never keeps a dead pane beside the relaunched one.
 // Resume reopens the strand detached.
 // UpdateStrand refuses a move into or out of the anchor, since the pane would sit where the new display does not expect it.
 // A strand declaring a window group (Display.Window, sized by Display.WindowSize) shares one window with its group while the declared size is at most window_share_max; every other own-window strand gets a window to itself.

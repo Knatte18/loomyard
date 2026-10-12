@@ -103,6 +103,7 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	}
 
 	var paneID string
+	previousPaneID := s.PaneID
 	if isOwnWindow(s.Display) {
 		paneID, err = e.createOwnWindowPaneLocked(st, s)
 	} else {
@@ -113,6 +114,9 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	}
 
 	s.PaneID = paneID
+	if isOwnWindow(s.Display) {
+		e.killReplacedOwnWindowPaneLocked(previousPaneID, paneID)
+	}
 	// Both title commands are display mirrors: allow-set-title off stops the agent inside from overwriting the name,
 	// and no lookup or delivery ever resolves through a title, so a failure of either costs display only and never fails the launch.
 	if err := e.tmux.run("set-option", "-p", "-t", paneID, "allow-set-title", "off"); err != nil {
@@ -139,6 +143,29 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 		return fmt.Errorf("submit launch command: %w", err)
 	}
 	return nil
+}
+
+// killReplacedOwnWindowPaneLocked kills previousPaneID, the pane a relaunched own-window strand held before newPaneID replaced it, when the session still lists it in an own window.
+// It runs after the new pane exists, so a shared window that held only the old pane is never ended mid-launch.
+// A pane that is empty, unchanged or no longer listed is left alone; a failure is logged and never fails the launch.
+func (e *Engine) killReplacedOwnWindowPaneLocked(previousPaneID, newPaneID string) {
+	if previousPaneID == "" || previousPaneID == newPaneID {
+		return
+	}
+	windows, err := e.tmux.listWindowPanes(e.SessionName())
+	if err != nil {
+		logger.Warn("reed: could not list panes to find the replaced pane", "socket", e.Socket(), "session", e.SessionName(), "pane", previousPaneID, "err", err)
+		return
+	}
+	for _, w := range windows {
+		if w.PaneID != previousPaneID || !w.Own {
+			continue
+		}
+		if err := e.tmux.run("kill-pane", "-t", previousPaneID); err != nil {
+			logger.Warn("reed: could not kill the replaced own-window pane", "socket", e.Socket(), "session", e.SessionName(), "pane", previousPaneID, "err", err)
+		}
+		return
+	}
 }
 
 // splitWindowZeroPaneLocked splits a fresh pane for s into window 0 at the target planPaneTarget picks from live and returns its id.

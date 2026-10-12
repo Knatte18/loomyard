@@ -441,8 +441,8 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 			t.Errorf("relaunched member is in window %q, want the group window %q", got, window)
 		}
 		panes := windowPanes(window)
-		if !slices.Contains(panes, dead.PaneID) || !slices.Contains(panes, partner.PaneID) || len(panes) != 3 {
-			t.Errorf("group window panes = %v, want the old dead pane %s kept unbound beside %s and the relaunched pane", panes, dead.PaneID, partner.PaneID)
+		if slices.Contains(panes, dead.PaneID) || !slices.Contains(panes, partner.PaneID) || !slices.Contains(panes, status.PaneID) || len(panes) != 2 {
+			t.Errorf("group window panes = %v, want the old dead pane %s gone and only %s and the relaunched pane %s", panes, dead.PaneID, partner.PaneID, status.PaneID)
 		}
 	})
 
@@ -470,7 +470,7 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 			t.Fatalf("RemoveStrand(relaunched): %v", err)
 		}
 		if windowListed(window) {
-			t.Errorf("group window %s is still listed after its last strand was removed, want it ended with the unbound dead pane", window)
+			t.Errorf("group window %s is still listed after its last strand was removed, want it ended", window)
 		}
 	})
 
