@@ -76,6 +76,7 @@ func TestWire_Real_PublishRejectedPushNamesRemoteTip(t *testing.T) {
 		nil,
 		nil,
 		planVerifySource(location),
+		parentLockDeps(location, shedrun.SelfRunID, "", ""),
 	)
 	// The pair has no run status file to commit and no plan to read a verify command from.
 	deps.CommitStatus = nil

@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -125,6 +126,20 @@ func LandingDeps(dir string) landingshed.Deps {
 		ApprovalPath:      filepath.Join(dir, "approval.json"),
 		RejectionPath:     filepath.Join(dir, "rejection.json"),
 		TaskHead:          func() (string, error) { return "head", nil },
+		Lock: landingshed.ParentLockDeps{
+			Store:          &parentlock.Store{Dir: filepath.Join(dir, "parent-lock")},
+			Owner:          func() (parentlock.Owner, error) { return parentlock.Owner{Slug: "fixture", RunID: "fixture"}, nil },
+			WaitPath:       parentlock.WaitRecordPath(filepath.Join(dir, "landing-scratch")),
+			PauseRequested: func() (bool, error) { return false, nil },
+		},
+		ReadParentTips: func(bool) (fabricengine.ParentTips, error) {
+			return fabricengine.ParentTips{Local: "tip", Upstream: "tip", Relation: fabricengine.ParentEqual}, nil
+		},
+		HoldsWork:         func(string, string) (bool, error) { return false, nil },
+		ChangedPaths:      func(string, string) ([]string, error) { return nil, nil },
+		MergeBase:         func(string) (string, error) { return "base", nil },
+		MergeRecordPath:   landingshed.MergeRecordPath(filepath.Join(dir, "landing-scratch")),
+		MergeReviewedPath: landingshed.MergeReviewedPath(filepath.Join(dir, "landing-scratch")),
 	}
 }
 

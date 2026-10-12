@@ -25,10 +25,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -54,6 +59,7 @@ func landingDeps(
 	verifyWaitMark func(label string, start time.Time) error,
 	stopConflictSession func() (string, error),
 	verify verifySource,
+	lock landingshed.ParentLockDeps,
 ) landingshed.Deps {
 	return landingshed.Deps{
 		ParentName:      parentName,
@@ -150,6 +156,79 @@ func landingDeps(
 		Shuttle:                runner,
 		Registry:               registry,
 		Config:                 cfg,
+		Lock:                   lock,
+		// The parent reads run over the task pair, opened at call time like the other fabric seams.
+		ReadParentTips: func(fetch bool) (fabricengine.ParentTips, error) {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return fabricengine.ParentTips{}, err
+			}
+			return f.ReadParentTips(parentBranch, fetch)
+		},
+		HoldsWork: func(base, source string) (bool, error) {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return false, err
+			}
+			return f.HoldsWork(base, source)
+		},
+		ChangedPaths: func(from, to string) ([]string, error) {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return nil, err
+			}
+			return f.ChangedPaths(from, to)
+		},
+		MergeBase: func(ref string) (string, error) {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return "", err
+			}
+			return f.MergeBase(ref)
+		},
+		MergeRecordPath:   landingshed.MergeRecordPath(loomengine.LoomScratchDir(l)),
+		MergeReviewedPath: landingshed.MergeReviewedPath(loomengine.LoomScratchDir(l)),
+	}
+}
+
+// parentLockDeps builds the parent lock seams for the run runID of the worktree l.
+// The store sits in the hub-level ephemeral tree, reached by path and never junctioned into a pair;
+// the wait record lives in the run's scratch directory, and a pause is the run status file's pause_requested flag read under its status lock.
+func parentLockDeps(l *lyxcwd.Location, runID, statusPath, statusLockPath string) landingshed.ParentLockDeps {
+	return landingshed.ParentLockDeps{
+		Store:    &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(l.HubPath))},
+		Owner:    loopLockOwner(l, runID),
+		WaitPath: parentlock.WaitRecordPath(loomengine.LoomScratchDir(l)),
+		PauseRequested: func() (bool, error) {
+			status, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
+			if err != nil || !found {
+				return false, err
+			}
+			return status.PauseRequested, nil
+		},
+	}
+}
+
+// loopLockOwner returns the seam that names the parent lock's owner for the run runID of the worktree l.
+// The process is the run's detached loop when its pid record names a live loop, so the lock follows the loop across its step children;
+// otherwise it is the calling step process, so a step run outside a loop holds the lock only while it lives.
+// The teardown's mark in the pid file names no loop.
+func loopLockOwner(l *lyxcwd.Location, runID string) func() (parentlock.Owner, error) {
+	return func() (parentlock.Owner, error) {
+		process := proc.SelfRecord()
+		rec, found, err := shedverbs.ReadLoopPIDRecord(shedrun.LoopPIDFile(l, runID))
+		if err != nil {
+			logger.Warn("loomcli: loop pid record unreadable, taking the parent lock as the calling process", "cause", err)
+		} else if found && rec.LoopID != shedverbs.TeardownLoopID && parentlock.ProcessAlive(rec.Loop.PID, rec.Loop.StartTime) {
+			process = rec.Loop
+		}
+		return parentlock.Owner{
+			Slug:      seedSlug(l.WorktreeName),
+			Pair:      l.WorktreePath(),
+			RunID:     shedrun.ResolveRunID(l, runID),
+			PID:       process.PID,
+			StartTime: process.StartTime,
+		}, nil
 	}
 }
 

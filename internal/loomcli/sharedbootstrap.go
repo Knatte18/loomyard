@@ -340,6 +340,7 @@ func (c *loomCLI) buildLoomShed() (*shedengine.Shed, error) {
 		driverWaitMark(c.reed.Status, c.reed.SetWaitMark),
 		conflictSessionStopper(c.reed.Status, c.runner.StopStrand),
 		c.verifySource(),
+		parentLockDeps(c.location, c.runID, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath),
 	)
 
 	return c.newShed()
