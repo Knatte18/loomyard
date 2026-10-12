@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/statuspane"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
@@ -344,12 +345,12 @@ func TestDispositionForHandshake(t *testing.T) {
 // worktree saw the stale "loom-status" entry, reported "already there", and left the operator with
 // no status read-out at all.
 func TestResolveStatusStrandAction(t *testing.T) {
-	cur := buildIdentity{Path: "/bin/lyx", Size: 10, ModTime: 100}
-	matching := &statusSidecar{GUID: "g0", Build: cur}
+	cur := statuspane.BuildIdentity{Path: "/bin/lyx", Size: 10, ModTime: 100}
+	matching := &statuspane.Sidecar{GUID: "g0", Build: cur}
 	tests := []struct {
 		name     string
 		strands  []reedengine.StrandStatus
-		sidecar  *statusSidecar
+		sidecar  *statuspane.Sidecar
 		want     statusStrandAction
 		wantGUID string
 	}{
@@ -397,7 +398,7 @@ func TestResolveStatusStrandAction(t *testing.T) {
 		{
 			name:     "LiveStrandDifferentBuildReplaces",
 			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: true}},
-			sidecar:  &statusSidecar{GUID: "g0", Build: buildIdentity{Path: "/bin/lyx", Size: 11, ModTime: 100}},
+			sidecar:  &statuspane.Sidecar{GUID: "g0", Build: statuspane.BuildIdentity{Path: "/bin/lyx", Size: 11, ModTime: 100}},
 			want:     statusStrandReplace,
 			wantGUID: "g0",
 		},
@@ -410,7 +411,7 @@ func TestResolveStatusStrandAction(t *testing.T) {
 		{
 			name:     "LiveStrandSidecarNamesOtherGUIDReplaces",
 			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: true}},
-			sidecar:  &statusSidecar{GUID: "other", Build: cur},
+			sidecar:  &statuspane.Sidecar{GUID: "other", Build: cur},
 			want:     statusStrandReplace,
 			wantGUID: "g0",
 		},

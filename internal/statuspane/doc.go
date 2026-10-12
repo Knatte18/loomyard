@@ -12,5 +12,8 @@
 // StatusCache.Poll reads a shed run's status file without the run's status lock, which internal/state's atomic write makes safe, and decodes it only when its modification time changed.
 // A first failure to read keeps the last good status and a second reports it unreadable.
 //
+// BuildIdentity names a lyx build by its executable's symlink-resolved path, size and modification time, and a Sidecar records which strand a bootstrap launched from which build.
+// StrandCurrent is the one keep test: a live strand is current only when the sidecar names its guid and records the running build, so a bootstrap replaces a status strand launched by an older build.
+//
 // FormatMinutes is the one time format both panes use, whole minutes as 12m, 1h05m or 2d03h, so a pane's text changes at most once a minute and its poll backs off between changes.
 package statuspane

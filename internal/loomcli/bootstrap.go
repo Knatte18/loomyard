@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/statuspane"
 )
 
 // statusStrandDisplayName is the status strand's stable identity, an explicit role.
@@ -248,12 +249,12 @@ const (
 // A live strand is kept only when the recorded sidecar names its GUID and equals the current build
 // identity; a missing, unreadable or otherwise-mismatched sidecar means the strand may run a
 // different lyx build, so it is replaced.
-func resolveStatusStrandAction(strands []reedengine.StrandStatus, sidecar *statusSidecar, current buildIdentity) (statusStrandAction, string) {
+func resolveStatusStrandAction(strands []reedengine.StrandStatus, sidecar *statuspane.Sidecar, current statuspane.BuildIdentity) (statusStrandAction, string) {
 	strand, found := findStatusStrand(strands, statusStrandDisplayName)
 	switch {
 	case !found:
 		return statusStrandAdd, ""
-	case strand.Live && sidecar != nil && sidecar.GUID == strand.GUID && sidecar.Build == current:
+	case statuspane.StrandCurrent(strand.Live, strand.GUID, sidecar, current):
 		return statusStrandKeep, strand.GUID
 	default:
 		return statusStrandReplace, strand.GUID
