@@ -806,23 +806,29 @@ func TestStrandNameLocked_ForeignPrefixRefuses(t *testing.T) {
 	}
 }
 
-// TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand pins both up-front refusals, for add and replace alike:
-// the exact way-forward text, and no tmux command issued.
+// TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand pins every up-front refusal of add and replace:
+// the exact way-forward text or the named config key, and no tmux command issued.
 func TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand(t *testing.T) {
 	tests := []struct {
 		name      string
 		shortname string
 		slug      string
+		configure func(cfg *Config)
 		wantText  string
 	}{
-		{"MissingShortname", "", "tslug", "no strand name can be formed: this hub records no shortname; way forward: lyx fabric shortname <shortname> records it, then retry; a session lyx refuses the verb from reports status: FAILED and the orch runs it"},
-		{"BadSlug", "tc", "Bad_Slug", "way forward: lyx fabric add <slug> creates the task under a slug that fits; a session lyx refuses the verb from reports status: FAILED and the orch runs it"},
-		{"BadShortname", "T-C", "tslug", `"T-C"`},
+		{"MissingShortname", "", "tslug", nil, "no strand name can be formed: this hub records no shortname; way forward: lyx fabric shortname <shortname> records it, then retry; a session lyx refuses the verb from reports status: FAILED and the orch runs it"},
+		{"BadSlug", "tc", "Bad_Slug", nil, "way forward: lyx fabric add <slug> creates the task under a slug that fits; a session lyx refuses the verb from reports status: FAILED and the orch runs it"},
+		{"BadShortname", "T-C", "tslug", nil, `"T-C"`},
+		{"InvalidWindowSplit", "tc", "tslug", func(cfg *Config) { cfg.WindowSplit = "diagonal" }, "window_split"},
+		{"NegativeWindowShareMax", "tc", "tslug", func(cfg *Config) { cfg.WindowShareMax = -1 }, "window_share_max"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
 			e.geom.NameShortname, e.geom.NameSlug = tt.shortname, tt.slug
+			if tt.configure != nil {
+				tt.configure(&e.cfg)
+			}
 			fake := installFakeTmux(t, e)
 
 			spec := hiddenSpec("worker", "")

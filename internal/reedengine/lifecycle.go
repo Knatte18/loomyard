@@ -264,7 +264,7 @@ func (e *Engine) sessionSubstrateLocked() (up bool, usable bool, err error) {
 }
 
 // validateBootConfig refuses a boot-time config value that is wrong on its own, before any tmux round trip.
-// It validates debug_log, mouse, watchdog and the segment colors, and returns the tmux global flags debug_log selects and the mouse option value.
+// It validates debug_log, mouse, watchdog, the segment colors, window_share_max and window_split, and returns the tmux global flags debug_log selects and the mouse option value.
 // The boot path calls it, and so does an op that reads the strands' window's zoom before booting, so a pure config error surfaces ahead of that read.
 func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err error) {
 	// Validate debug_log before anything else touches tmux: a misconfigured
@@ -294,6 +294,9 @@ func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err err
 	// A segment color outside the palette is a pure config error too.
 	// This is the only refusal; every other reader goes through segmentColor and degrades to no color.
 	if err = validateSegmentColors(e.cfg.SegmentColors); err != nil {
+		return nil, "", err
+	}
+	if err = validateWindowConfig(e.cfg); err != nil {
 		return nil, "", err
 	}
 	return debugArgs, mouse, nil

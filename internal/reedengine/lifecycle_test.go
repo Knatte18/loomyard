@@ -31,11 +31,11 @@ func guids(strands []Strand) []string {
 	return out
 }
 
-// TestUp_BootValidation pins the eager boot validation of Up: an over-long socket path, an unresolvable shell, a segment color outside the palette or an invalid watchdog value
-// fails with an error naming it before any tmux round trip (validation ORDER, not just existence),
+// TestUp_BootValidation pins the eager boot validation of Up.
+// An over-long socket path, an unresolvable shell, a segment color outside the palette, an invalid watchdog value, an invalid window_split or a negative window_share_max each fail with an error naming it before any tmux round trip (validation ORDER, not just existence),
 // while "on" and "off" do not trip the watchdog check (the fixture's nonexistent tmux binary is expected to fail Up() past this point,
 // so the assertion is only that the error is NOT the watchdog validation error).
-// Each refusal is asserted at both boot entries: Up, whose op-lock bracket refuses before its zoom read, and ensureServerAndSessionLocked, which every other boot path reaches without that bracket.
+// Each refusal is asserted at three boot entries: Up and Resume, whose op-lock brackets refuse before their zoom read, and ensureServerAndSessionLocked, which every other boot path reaches without that bracket.
 func TestUp_BootValidation(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -98,6 +98,10 @@ func TestUp_BootValidation(t *testing.T) {
 		{name: "InvalidWatchdog_Yes", configure: func(cfg *Config) { cfg.Watchdog = "yes" }, wantErr: "invalid watchdog value"},
 		{name: "ValidWatchdog_On", configure: func(cfg *Config) { cfg.Watchdog = "on" }, notErr: "invalid watchdog value"},
 		{name: "ValidWatchdog_Off", configure: func(cfg *Config) { cfg.Watchdog = "off" }, notErr: "invalid watchdog value"},
+		{name: "WindowSplitInvalid", configure: func(cfg *Config) { cfg.WindowSplit = "diagonal" }, wantErr: "window_split"},
+		{name: "WindowShareMaxNegative", configure: func(cfg *Config) { cfg.WindowShareMax = -1 }, wantErr: "window_share_max"},
+		{name: "WindowSplitHeightPasses", configure: func(cfg *Config) { cfg.WindowSplit = "height" }, notErr: "window_split"},
+		{name: "WindowShareMaxZeroPasses", configure: func(cfg *Config) { cfg.WindowShareMax = 0 }, notErr: "window_share_max"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -117,10 +121,11 @@ func TestUp_BootValidation(t *testing.T) {
 
 			if tt.wantErr != "" {
 				_, _, ensureErr := e.ensureServerAndSessionLocked()
+				_, resumeErr := e.Resume()
 				for _, entry := range []struct {
 					name string
 					err  error
-				}{{"Up()", err}, {"ensureServerAndSessionLocked()", ensureErr}} {
+				}{{"Up()", err}, {"ensureServerAndSessionLocked()", ensureErr}, {"Resume()", resumeErr}} {
 					if entry.err == nil {
 						t.Fatalf("%s = nil error, want the eager validation error containing %q", entry.name, tt.wantErr)
 					}
@@ -129,7 +134,7 @@ func TestUp_BootValidation(t *testing.T) {
 					}
 				}
 				if calls := fake.Calls(); len(calls) != 0 {
-					t.Errorf("Up() and ensureServerAndSessionLocked() issued %d tmux calls before failing, want zero: %v", len(calls), calls)
+					t.Errorf("Up(), ensureServerAndSessionLocked() and Resume() issued %d tmux calls before failing, want zero: %v", len(calls), calls)
 				}
 				return
 			}

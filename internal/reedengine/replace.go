@@ -41,6 +41,9 @@ func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 		if _, err := e.validateNaming(spec); err != nil {
 			return err
 		}
+		if err := validateWindowConfig(e.cfg); err != nil {
+			return err
+		}
 		return e.keepZoomLocked(func() error {
 			if err := e.requireSessionLocked(); err != nil {
 				return err

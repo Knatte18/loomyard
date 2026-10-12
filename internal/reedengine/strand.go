@@ -484,6 +484,9 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 		if err != nil {
 			return err
 		}
+		if err := validateWindowConfig(e.cfg); err != nil {
+			return err
+		}
 		unlessFull := ""
 		if unlessName != "" {
 			if unlessFull, err = e.validateNaming(AddSpec{NameOverride: unlessName}); err != nil {
