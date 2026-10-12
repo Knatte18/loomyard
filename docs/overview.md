@@ -442,6 +442,7 @@ User-facing modules each get one `lyx <module>` namespace:
   It is refused while Discussion-Write is running, refuses a named session other than the run's recorded parent (the operator's own unnamed shell always passes) and resumes nothing.
   `validate-plan` runs the same checks Plan-Write's and Plan-Burler-Fix's own gates run, standalone, with the same exit-code and findings-envelope contract, over the current worktree's plan instead of its discussion.
   `validate-plan --rework` runs the check `PR-Rework`'s own gate runs: the format-only checks over the whole new plan, plus a check that its `first_card` equals the card number the session was told.
+  `validate-plan --overlay` runs the flag-less checks over the plan with proposed contents of its existing plan files, read from stdin as one JSON object, laid over it in memory, so a fix is checked before any file is edited and no plan file is written.
   `validate-description` runs the same checks the `Describe` row's `description` gate runs over `_lyx/landing/summary.md`, standalone, with the same exit-code and findings-envelope contract.
   `lint-comments [--base <commit>]` runs `internal/commentlint` over the worktree: the fixed-column-wrapped breaks the working tree, or the range from `--base` to HEAD, creates in `//` comment blocks.
   Every card gate ends with the two lints, and both only read git and files.

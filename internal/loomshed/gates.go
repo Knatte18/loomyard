@@ -178,7 +178,7 @@ func ValidatePlan(plan *planparser.Plan, anchorPath, worktreeRoot string, index 
 	if err != nil {
 		return nil, err
 	}
-	edited, err := websterengine.EditedDoneCards(plan, st, plan.Dir)
+	edited, err := websterengine.EditedDoneCards(plan, st)
 	if err != nil {
 		return nil, err
 	}
