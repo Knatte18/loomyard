@@ -9,7 +9,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-lyxdirs-single-declarer` — Naming `_lyx` or `.lyx` in a path: only `internal/lyxdirs` declares those literals, and no other production file spells them.
 - `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked content lives under `_lyx`, anything never tracked under `.lyx` at the mirrored subpath. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-hub-containment` — Linking hub-level containers: `_board`, `_portals` and `_launchers` are reachable from the hub only, never junctioned into a worktree. — [background](pattern/PATTERN-hub-containment.md)
-- `PATTERN-hub-wide-config` — Adding or reading a hub-level config module: mark it `HubWide` in `configreg`; read and write its file only at `<BoardDir>/_lyx/config/`, which also holds per-worktree modules' repo defaults, and read the reading worktree's local override of it restricted to its `LocalKeys`. — [background](pattern/PATTERN-hub-wide-config.md)
+- `PATTERN-hub-wide-config` — Adding or reading a hub-level config module: mark it `HubWide` in `configreg`; its file lives only at `<BoardDir>/_lyx/config/`, and the worktree's local override is read restricted to `LocalKeys`. — [background](pattern/PATTERN-hub-wide-config.md)
 - `PATTERN-hub-suffix` — Touching hub naming: `-LYXHUB` is the sole hub container suffix, and no code parses, trims or recognises the retired `-HUB`. (test) — [background](pattern/PATTERN-hub-suffix.md)
 
 ## CLI
