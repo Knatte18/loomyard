@@ -43,3 +43,6 @@ webster_max_bounces: 0  # bounce budget of the Webster-Review perch: N gives N j
 discussion_auto_accept: false  # true makes the Discussion-Review perch settle a spent budget as accepted instead of escalating to the parent
 plan_auto_accept: false  # true makes the Plan-Review perch settle a spent budget as accepted instead of escalating to the parent
 webster_auto_accept: false  # true makes the Webster-Review perch settle a spent budget as accepted instead of escalating to the parent
+merge_max_bounces: 1  # bounce budget of the Merge-Review perch: N gives N judged Burler rounds; 0 takes review_max_bounces
+merge_auto_accept: true  # true makes the Merge-Review perch settle a spent budget as accepted instead of escalating to the parent, unless the ledger holds an open BLOCKING finding
+skip_merge_review: false  # true skips only the Merge-Review of a merge-in; Merge-In, the parent lock and the reroute on a moved parent still run

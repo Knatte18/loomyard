@@ -6,7 +6,7 @@
 # without a matching constant rename breaks resume for any in-flight task, unless internal/loomrecipe
 # maps the retired name onto its successor, as it maps the writer row's former name, Darn.
 #
-# Preflight, Publish and Finalize carry no on_stuck: nothing in the list produces what each of them
+# Preflight, Merge-In, Publish and Finalize carry no on_stuck: nothing in the list produces what each of them
 # gates, so a human is the only thing that can fix them. Darn-Write and Describe carry none either:
 # an exhausted writer gate halts the run for the parent, which resumes it with a fresh budget.
 #
@@ -16,8 +16,13 @@
 # Burler row's on_done names the same row as its on_stuck, since neither ever returns Done. The
 # segment's rows declare no max_bounces: their budget is darn.yaml's review_max_bounces, applied by
 # internal/loomrecipe, and a budget of 0 turns the perch off by routing Darn-Write's Done straight
-# to Publish, past Describe, so the writer's own description stands. The perch's judge, reviewer
+# to Merge-In, past Describe, so the writer's own description stands. The perch's judge, reviewer
 # and fixer models are loom.yaml's Webster-Review keys, the other committed-diff review.
+#
+# Merge-In follows Describe and hands straight to Publish: darn has no Merge-Review perch.
+# Publish, PR-Gate and Finalize each declare on_reroute: Merge-In, the row a moved parent sends
+# them back to. An in-flight run parked on a row whose name or edges changed with Merge-In is
+# restarted, not migrated.
 #
 # An in-flight run parked on the retired Darn-Burler row is restarted, not migrated, as it is for
 # the other retired rows.
@@ -43,7 +48,7 @@ producers:
   - name: Darn-Write
     engine: DarnWrite
     segment: PR-Review
-    # internal/loomrecipe rewrites this edge to Publish when darn.yaml's review_max_bounces is 0.
+    # internal/loomrecipe rewrites this edge to Merge-In when darn.yaml's review_max_bounces is 0.
     on_done: Darn-Bouncer
     config:
       # gates holds this row's handoff until it is mechanically valid: each entry names a gate and
@@ -128,14 +133,21 @@ producers:
   # Describe writes the change description from the final diff, replacing the writer's own.
   - name: Describe
     engine: Describe
-    on_done: Publish
+    on_done: Merge-In
     config:
       gates:
         - name: description
           attempts: 3
 
+  # Merge-In takes the parent lock, merges the parent into the task worktree, verifies the merged
+  # tree and writes the merge record. It hands straight to Publish: darn has no Merge-Review perch.
+  - name: Merge-In
+    engine: MergeIn
+    on_done: Publish
+
   - name: Publish
     engine: Publish
+    on_reroute: Merge-In
     on_done: PR-Gate
 
   # PR-Gate owns every review decision on the pull request Publish opened: it returns Done on an
@@ -146,10 +158,12 @@ producers:
     segment: PR-Review
     max_bounces: 5
     on_stuck: Darn-Write
+    on_reroute: Merge-In
     on_done: Finalize
 
   - name: Finalize
     engine: Finalize
+    on_reroute: Merge-In
     # Hands off to the reflection row rather than ending the run.
     on_done: Friction-Reflect
 

@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -46,8 +48,8 @@ func loopSpecFor(loc *lyxcwd.Location, runID string, idle time.Duration, activit
 
 // agentActivityFor returns the reading of the run's agent activity: the newest LastActivity over every live agent run of loc's worktree.
 // The runs come from shuttle through a Claude engine, which lists every strand, so a MultiLLM row's chair and each of its advisors count.
-// A running verify, or a shuttle wait that is not a held turn end, reads as activity now.
-// Both are read from their marker files.
+// A running verify, a live parent lock wait, or a shuttle wait that is not a held turn end, reads as activity now.
+// All three are read from their marker or record files.
 // The boolean is false when nothing is live.
 func agentActivityFor(loc *lyxcwd.Location, cfg shuttleengine.Config) func() (time.Time, bool, error) {
 	return func() (time.Time, bool, error) {
@@ -57,6 +59,13 @@ func agentActivityFor(loc *lyxcwd.Location, cfg shuttleengine.Config) func() (ti
 			return time.Time{}, false, err
 		}
 		if verifyLive {
+			return time.Now(), true, nil
+		}
+		_, lockWaiting, err := parentlock.ReadWait(parentlock.WaitRecordPath(loomengine.LoomScratchDir(loc)), parentlock.ProcessAlive)
+		if err != nil {
+			return time.Time{}, false, err
+		}
+		if lockWaiting {
 			return time.Now(), true, nil
 		}
 		markers, err := shuttleengine.ReadWaitMarkers(cfg, anchor)

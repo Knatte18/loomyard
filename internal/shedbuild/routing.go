@@ -5,7 +5,7 @@ package shedbuild
 import "github.com/Knatte18/loomyard/internal/shedengine"
 
 // RoutingOf parses recipe and projects its graph into a shedengine.Routing: Entry, plus each row's
-// Name, OnDone, OnStuck, Segment and MaxBounces as a shedengine.ProducerDef with a nil Producer.
+// Name, OnDone, OnStuck, OnReroute, Segment and MaxBounces as a shedengine.ProducerDef with a nil Producer.
 //
 // RoutingOf parses through Parse, the sole recipe parser, and calls no registry entry, so it needs
 // no shedrecipe.Env and constructs no engine. That is what lets a status verb, which never builds
@@ -28,6 +28,7 @@ func RoutingOf(recipe []byte) (shedengine.Routing, error) {
 			Name:       row.Name,
 			OnDone:     row.OnDone,
 			OnStuck:    row.OnStuck,
+			OnReroute:  row.OnReroute,
 			Segment:    row.Segment,
 			MaxBounces: row.MaxBounces,
 		}

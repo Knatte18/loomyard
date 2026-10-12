@@ -862,3 +862,92 @@ func TestLoop_WatchdogKillsAnIdleChild(t *testing.T) {
 		})
 	}
 }
+
+func TestLoop_ExitHookRunsOnceAtEveryStop(t *testing.T) {
+	tests := []struct {
+		name      string
+		script    childScript
+		wantStop  LoopStop
+		wantState shedengine.State
+	}{
+		{name: "halted", script: halting(shedengine.StateBlocked, "stuck", 1), wantStop: LoopStopHalted, wantState: shedengine.StateBlocked},
+		{name: "error", script: failing(KindProducer, "", "boom"), wantStop: LoopStopError, wantState: shedengine.StateFailed},
+		{name: "interrupted", script: func(*loopFixture, string, ChildRequest) error { return errors.New("exit status 3") }, wantStop: LoopStopInterrupted, wantState: shedengine.StateFailed},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newLoopFixture(t, tt.script)
+			var stops []LoopStop
+			var statuses []shedengine.Status
+			fx.spec.Loop.OnExit = func(stop LoopStop, st shedengine.Status) {
+				stops = append(stops, stop)
+				statuses = append(statuses, st)
+			}
+
+			env, _ := fx.execute()
+
+			if !reflect.DeepEqual(stops, []LoopStop{tt.wantStop}) {
+				t.Fatalf("OnExit stops = %v; want exactly [%s]", stops, tt.wantStop)
+			}
+			if got := statuses[0]; got.State != tt.wantState || !reflect.DeepEqual(got, fx.readStatus()) {
+				t.Errorf("OnExit status = %+v; want the final status file %+v in state %s", got, fx.readStatus(), tt.wantState)
+			}
+			if loopOf(t, env)["stop"] != string(tt.wantStop) {
+				t.Errorf("envelope loop stop = %v; want %s, written after the hook", loopOf(t, env)["stop"], tt.wantStop)
+			}
+		})
+	}
+}
+
+func TestLoop_WakeHookRunsOnWatchWakes(t *testing.T) {
+	const wakesBeforeExit = 4
+	fx := newLoopFixture(t)
+	clock := newFakeClock()
+	child := newHangingChild(false)
+	var mu sync.Mutex
+	var delays []time.Duration
+	wakes := 0
+	fx.spec.Loop.Now = clock.Now
+	fx.spec.Loop.Sleep = func(ctx context.Context, delay time.Duration) error {
+		mu.Lock()
+		delays = append(delays, delay)
+		mu.Unlock()
+		return clock.Sleep(ctx, delay)
+	}
+	fx.spec.Loop.OnWake = func() {
+		mu.Lock()
+		defer mu.Unlock()
+		wakes++
+	}
+	fx.spec.Loop.Runner = func(_ context.Context, req ChildRequest) (Child, error) {
+		fx.mu.Lock()
+		fx.requests = append(fx.requests, req)
+		fx.mu.Unlock()
+		return child, nil
+	}
+	clock.onAdvance = func(time.Duration) {
+		mu.Lock()
+		reached := len(delays) == wakesBeforeExit
+		mu.Unlock()
+		if reached {
+			_ = halting(shedengine.StateDone, "", 1)(fx, traceIDOf(fx.requests[0]), fx.requests[0])
+			child.release()
+		}
+	}
+
+	env, _ := fx.execute()
+
+	if loopOf(t, env)["stop"] != string(LoopStopHalted) {
+		t.Fatalf("loop stop = %v; want halted (%v)", loopOf(t, env)["stop"], env)
+	}
+	if calls := child.recorded(); len(calls) != 0 {
+		t.Errorf("child calls = %v; want none, since a disarmed watchdog never kills", calls)
+	}
+	wantPrefix := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second}
+	if len(delays) < wakesBeforeExit || !reflect.DeepEqual(delays[:wakesBeforeExit], wantPrefix) {
+		t.Errorf("watch delays = %v; want them to start %v, doubling from a second", delays, wantPrefix)
+	}
+	if wakes != len(delays) {
+		t.Errorf("hook ran %d times for %d watch wakes; want one run per wake", wakes, len(delays))
+	}
+}

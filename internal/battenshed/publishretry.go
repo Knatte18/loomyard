@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -107,16 +108,20 @@ func (p *innerRunProducer) writePublishRetryMarker(state string, started time.Ti
 	return nil
 }
 
-// recordMatchesHalt reports whether record belongs to the Publish attempt that halted the child.
-// It needs a target and a write time, the child's HEAD as the record's head, and a halting entry that is the child's last, a Stuck of publishRow.
+// recordMatchesHalt reports whether record belongs to the verify attempt that halted the child.
+// It needs a target and a write time, the child's HEAD as the record's head, and a halting entry that is the child's last, a Stuck of the record's row, which is one of rows.
+// A record naming no row, or another row than the halting entry's, never matches.
 // The write time must be strictly later than the entry before the halting one, when there is one, and at or before the halting entry, all compared as whole-second UTC.
 // A record from an earlier halt at the same HEAD fails the lower bound.
-func recordMatchesHalt(record ChildPublishFailure, head string, status shedengine.Status, publishRow string) bool {
+func recordMatchesHalt(record ChildPublishFailure, head string, status shedengine.Status, rows []string) bool {
 	if record.Target == "" || record.WrittenAt == "" || record.Head != head {
 		return false
 	}
 	n := len(status.History)
-	if n == 0 || status.History[n-1].Producer != publishRow || status.History[n-1].Outcome != shedengine.Stuck {
+	if n == 0 || status.History[n-1].Outcome != shedengine.Stuck {
+		return false
+	}
+	if row := status.History[n-1].Producer; row != record.Row || !slices.Contains(rows, row) {
 		return false
 	}
 	wrote, ok := wholeSecondUTC(record.WrittenAt)
@@ -156,9 +161,9 @@ func (p *innerRunProducer) publishRetryDecision(ctx context.Context, status shed
 		logger.Warn("battenshed: publish-retry marker unreadable; leaving the halt to the operator", "producer", p.name, "slug", p.slug, "error", err)
 		return publishRetry{}
 	}
-	blockedAtPublish := status.State == shedengine.StateBlocked && status.CurrentProducer == p.deps.PublishRow
+	blockedAtVerifyRow := status.State == shedengine.StateBlocked && slices.Contains(p.deps.VerifyRows, status.CurrentProducer)
 	if !found {
-		if !blockedAtPublish {
+		if !blockedAtVerifyRow {
 			return publishRetry{}
 		}
 		record, recorded, err := p.deps.PublishFailure()
@@ -174,7 +179,7 @@ func (p *innerRunProducer) publishRetryDecision(ctx context.Context, status shed
 			logger.Warn("battenshed: child HEAD unreadable; leaving the halt to the operator", "producer", p.name, "slug", p.slug, "error", err)
 			return publishRetry{}
 		}
-		if !recordMatchesHalt(record, head, status, p.deps.PublishRow) {
+		if !recordMatchesHalt(record, head, status, p.deps.VerifyRows) {
 			return publishRetry{}
 		}
 		return publishRetry{action: publishRetryGoto, target: record.Target, fresh: true}
@@ -182,7 +187,7 @@ func (p *innerRunProducer) publishRetryDecision(ctx context.Context, status shed
 
 	pausedAtTarget := status.State == shedengine.StatePaused && status.CurrentProducer == marker.target
 	switch {
-	case marker.state == publishRetryStarted && blockedAtPublish:
+	case marker.state == publishRetryStarted && blockedAtVerifyRow:
 		return publishRetry{action: publishRetryGoto, target: marker.target, started: marker.started}
 	case (marker.state == publishRetryStarted || marker.state == publishRetryGotoDone) && pausedAtTarget:
 		return publishRetry{action: publishRetryResume, target: marker.target, started: marker.started}
@@ -288,7 +293,7 @@ func (p *innerRunProducer) publishRetryNoticeText(w *childWait) string {
 	if w.retry.refusal != "" {
 		return "automatic Publish verify retry gave up: " + w.retry.refusal
 	}
-	if w.retry.spent && w.status.State == shedengine.StateBlocked && w.status.CurrentProducer == p.deps.PublishRow {
+	if w.retry.spent && w.status.State == shedengine.StateBlocked && slices.Contains(p.deps.VerifyRows, w.status.CurrentProducer) {
 		return "automatic Publish verify retry already ran"
 	}
 	return ""

@@ -19,11 +19,12 @@ const (
 	Describe    Segment = "describe"
 	Landing     Segment = "landing"
 	Darn        Segment = "darn"
+	Merge       Segment = "merge"
 )
 
 // Segments returns every segment in declaration order.
 func Segments() []Segment {
-	return []Segment{Coordinator, Discussion, Plan, Webster, Review, Describe, Landing, Darn}
+	return []Segment{Coordinator, Discussion, Plan, Webster, Review, Describe, Landing, Darn, Merge}
 }
 
 // Color is one entry of lyx's palette.

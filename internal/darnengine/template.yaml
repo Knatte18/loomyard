@@ -1,5 +1,5 @@
 writer: opus[medium]  # model-spec for the darn writer's session, which reads the board entry, edits, tests and commits (see contracts/specs/llm-model-spec.md)
 writer_timeout_min: 180  # minutes the darn writer's shuttle run is allowed to run
-verify: ""  # shell command the darn verify gate, Publish and Finalize run in the task worktree; it runs any shell command, which is why this module is hub-wide; empty stops the run with a way forward instead of skipping the verify
+verify: ""  # shell command the darn verify gate, Merge-In and Finalize run in the task worktree; it runs any shell command, which is why this module is hub-wide; empty stops the run with a way forward instead of skipping the verify
 verify_attempts: 3  # how many times a verify gate, the writer's or a Darn-Review fix round's, re-prompts its session with the failing findings before it halts the run for the parent
-review_max_bounces: 1  # bounce budget of the Darn-Review perch, the Bouncer and Burler pair that reviews the writer's committed diff before Publish; a spent budget escalates to the parent; 0 runs neither the review nor Describe and goes from Darn-Write straight to Publish
+review_max_bounces: 1  # bounce budget of the Darn-Review perch, the Bouncer and Burler pair that reviews the writer's committed diff before Publish; a spent budget escalates to the parent; 0 runs neither the review nor Describe and goes from Darn-Write straight to Merge-In

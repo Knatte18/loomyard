@@ -330,12 +330,15 @@ func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
 		if loop.Executable == "" || loop.Activity == nil || loop.IdleTimeout != 7*time.Minute || spec.Hooks.AfterInterrupt == nil {
 			t.Errorf("loop executable %q, activity set %v, idle %s, interrupt hook set %v; want the binary, a reading, the receiver's window and the hook", loop.Executable, loop.Activity != nil, loop.IdleTimeout, spec.Hooks.AfterInterrupt != nil)
 		}
+		if loop.OnExit == nil || loop.OnWake == nil {
+			t.Errorf("loop exit hook set %v, wake hook set %v; want both for the parent lock", loop.OnExit != nil, loop.OnWake != nil)
+		}
 	})
 
 	t.Run("LoopLeftZeroForANilLocation", func(t *testing.T) {
 		spec := (&loomCLI{runID: "self"}).specFor("step")
-		if spec.Loop.EnvelopePath != "" || spec.Loop.Activity != nil || spec.Hooks.AfterInterrupt != nil {
-			t.Errorf("loop envelope %q, activity set %v, interrupt hook set %v; want all zero for a nil location", spec.Loop.EnvelopePath, spec.Loop.Activity != nil, spec.Hooks.AfterInterrupt != nil)
+		if spec.Loop.EnvelopePath != "" || spec.Loop.Activity != nil || spec.Loop.OnExit != nil || spec.Loop.OnWake != nil || spec.Hooks.AfterInterrupt != nil {
+			t.Errorf("loop envelope %q, activity set %v, lock hooks set %v, interrupt hook set %v; want all zero for a nil location", spec.Loop.EnvelopePath, spec.Loop.Activity != nil, spec.Loop.OnExit != nil || spec.Loop.OnWake != nil, spec.Hooks.AfterInterrupt != nil)
 		}
 	})
 

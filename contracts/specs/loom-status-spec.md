@@ -48,6 +48,7 @@ A fresh seed carries `current_producer: "Preflight"`, `state: "running"`, empty 
   "activity": {"now": "...", "last": "...", "wait": "..."}, // Shed-owned, mechanically composed
   "history": [                                 // Shed-owned: one entry per producer call
     {"producer": "Preflight", "outcome": "done", "output": "", "at": "2026-07-17T10:01:30Z"}
+    // a reroute entry also carries "routed_to": "<target row>"; the Stuck entry of a reroute-cap halt carries "reroute_capped": true
   ],
   "product": {                                 // loom-owned, opaque to Shed
     "slug": "loom-contracts",                  // board-task pointer (board owns title/description)
@@ -67,7 +68,7 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
   `pause_after` fires when the named producer returns a routed running outcome, pausing at the routed row, and stays recorded across a halting outcome or a producer error.
   A fired condition pauses the run with the reason `paused before <target>, as requested` or `paused after <target>, as requested` and clears both keys.
 - **`history[]` is budget-bearing, not only a log.**
-  Its one-entry-per-producer-call rule (see the schema block above) is no longer merely an audit trail: it is the sole storage of every producer's per-producer, episode-scoped bounce budget, derived by counting a producer's own `stuck` entries since its own most recent `done` entry, the most recent `done` by a producer of the same segment (a Burler review or fix row never returns `done`, so its review segment's Bouncer passing ends its episode), or the most recent `goto` entry into its segment (into the producer itself when it has no segment).
+  Its one-entry-per-producer-call rule (see the schema block above) is no longer merely an audit trail: it is the sole storage of every producer's per-producer, episode-scoped bounce budget, derived by counting a producer's own `stuck` entries since its own most recent `done` entry, the most recent `done` by a producer of the same segment (a Burler review or fix row never returns `done`, so its review segment's Bouncer passing ends its episode), or the most recent `goto` or `reroute` entry into its segment (into the producer itself when it has no segment); a `reroute` entry names its target in `routed_to`, spends no budget, and a row's reroutes since its last `done` or `reroute_capped` entry are capped at three.
   It must never be truncated or compacted — doing so would silently hand every producer a fresh budget with nothing here to warn a future retention task that it just did.
   The unconditional append this depends on is the same one the fresh-start check below already relies on;
   see that check for why a `stuck` entry is appended on every `stuck` route, including a budget-exhausted block.
@@ -78,13 +79,14 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
 
 ## The `waiting` key
 
-`lyx loom status` adds a `waiting` key to its envelope while the run's state is `running` and one of four waits is present.
+`lyx loom status` adds a `waiting` key to its envelope while the run's state is `running` and one of five waits is present.
 The waits are read in order:
 
 1. a gate wait, read from the worktree's live gate wait records, which `lyx gate test`, the card-verify rerun and the plan gate's type load each write while they wait for a gate slot;
-2. a verify, read from the verify marker, running or waiting for a gate slot;
-3. a shuttle wait, read from the run's wait marker (a gate entry or the background-shell wait);
-4. an open parent-review request with no verdict in the latest round, read from the round store.
+2. a parent lock wait, read from the run's parent lock wait record, which a landing row writes while it waits for the parent lock;
+3. a verify, read from the verify marker, running or waiting for a gate slot;
+4. a shuttle wait, read from the run's wait marker (a gate entry or the background-shell wait);
+5. an open parent-review request with no verdict in the latest round, read from the round store.
 
 A gate wait does not hide the rest: its note is followed by the first of the other waits that has a live pid, after `; `.
 Among the others, the first one with a live pid wins.
@@ -93,13 +95,15 @@ The value is one line.
 A gate wait renders `<producer>: <site> waiting for a gate slot <elapsed>`, one clause per live record, oldest first and joined with `; `, then `(holders: <worktree> <site>, ...)` once, for example `Plan-Write: lyx gate test ./internal/foo waiting for a gate slot 2m (holders: /hub/other lyx gate test ./internal/bar)`.
 A running verify or shuttle wait renders `<producer>: <what> running <elapsed> (<detail>)`, for example `Webster-Burler-Fix: verify running 6m (attempt 2; go test -tags integration ./...)`.
 A verify still waiting for a gate slot renders `<producer>: verify waiting for a gate slot <elapsed> (<site>; holders: <worktree> <site>, ...)`, elapsed measured from the wait start.
+A parent lock wait renders `<producer>: waiting for the parent lock on <branch> held by <slug> <elapsed>`, elapsed measured from the record's start.
+A lock wait record whose writer is dead is ignored.
 A holders clause is dropped when no slot is held or the holders cannot be read.
 The parent-review wait keeps its existing `parent review: ` form, naming the reviewer, when the request opened and whether the notice was delivered (or why it was not).
 `<producer>` is the run's current producer,
 `<elapsed>` is whole seconds under a minute, whole minutes under an hour and hours with minutes beyond (`45s`, `6m`, `1h12m`),
 and the attempt clause of a verify is dropped when no attempt counter applies.
 The key is absent when none of the waits applies, or when the run is in any state other than `running`.
-It is read from the markers, the wait records and the round store, never from the status file,
+It is read from the markers, the wait records, the parent lock wait record and the round store, never from the status file,
 so the file's schema above is unchanged.
 It is display only: no Go decision reads it.
 
@@ -119,7 +123,7 @@ Spec for check 4, loom's own precondition layered over `Shed`'s shell (`internal
 - `shed.state` must be one of `Shed`'s six legal values and must not be `"done"`, a finished run.
 - `shed.error` is tolerated at any value, including non-empty — it is the previous halt's reason a human resumes after reading.
 - `shed.activity` is never validated — `Shed` recomposes it mechanically on every persist.
-- Every `shed.history[].outcome` must be `"done"`, `"stuck"`, `"awaiting"` or `"goto"` (a history-only value written by `lyx shed goto` and returned by no producer), and every `shed.history[].at` must be RFC3339 UTC.
+- Every `shed.history[].outcome` must be `"done"`, `"stuck"`, `"awaiting"`, `"goto"` or `"reroute"` (the last two history-only: `goto` written by `lyx shed goto`, `reroute` by the engine on a rerouted Stuck verdict, neither returned by a producer), and every `shed.history[].at` must be RFC3339 UTC.
 - **Fresh-start check:** a `shed.history[]` entry naming any producer other than `"Preflight"` or `"Loom-Preflight"` is a half-finished failure; entries naming either of those two are tolerated, since `Shed.Run` appends a history entry before persisting `state: "blocked"` on every `Stuck` route including the `OnStuck: ""` escalation, so a `Stuck` at either row 1 or row 2 leaves one matching entry behind and a resumable blocked run must not fail this check forever.
 - A non-null `product.start_sha`, or `shed.pause_requested: true`, is also a half-finished failure — the task has already advanced past the point the two Preflight rows are meant to gate.
 - A `product` that fails to decode as loom's own shape is a `seed-incoherent` verdict, not an infra error.

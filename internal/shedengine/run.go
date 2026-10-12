@@ -280,7 +280,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			Output:       output.Path,
 			At:           nowRFC3339(),
 			GateAttempts: output.GateAttempts,
-			BudgetExempt: outcome == Stuck && output.BudgetExempt,
+			BudgetExempt: outcome == Stuck && (output.BudgetExempt || output.Halt),
 		})
 	}
 
@@ -324,10 +324,14 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		}
 		return StepResult{}, callErr
 
+	case outcome == Stuck && output.Reroute && !output.Halt:
+		return s.rerouteStuck(st, def, output)
+
 	case outcome == Stuck:
 		nextHistory := appendHistory()
 		switch {
-		case def.OnStuck == "":
+		// A Halt Stuck blocks at its own row whatever the row's OnStuck, and is budget-exempt through appendHistory.
+		case output.Halt || def.OnStuck == "":
 			reason := stuckReason(output.Reason)
 			if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false, ""); err != nil {
 				return StepResult{}, err
@@ -510,6 +514,7 @@ func nowRFC3339() string {
 // A Stuck entry whose BudgetExempt is true is skipped and never counted.
 // An OutcomeGoto entry also ends the episode when its target (the entry's Producer) shares def.Segment, or is def itself when def.Segment is empty,
 // so a goto into a segment gives every row of that segment a fresh budget.
+// An OutcomeReroute entry does the same with its RoutedTo target.
 // producers resolves a target's segment;
 // a target no longer in the list ends no episode.
 func episodeStuckCount(history []HistoryEntry, def ProducerDef, producers []ProducerDef) int {
@@ -520,6 +525,12 @@ func episodeStuckCount(history []HistoryEntry, def ProducerDef, producers []Prod
 		entry := history[i]
 		if entry.Outcome == OutcomeGoto {
 			if gotoEndsEpisode(entry.Producer, def, producers) {
+				return count
+			}
+			continue
+		}
+		if entry.Outcome == OutcomeReroute {
+			if gotoEndsEpisode(entry.RoutedTo, def, producers) {
 				return count
 			}
 			continue
@@ -580,9 +591,12 @@ func appendOrFold(history []HistoryEntry, entry HistoryEntry) []HistoryEntry {
 	return append(next, entry)
 }
 
-// foldsInto reports whether entry is identical to last for folding: both budget-exempt Stucks with equal Producer, Output, and GateAttempts value.
+// foldsInto reports whether entry is identical to last for folding: both budget-exempt Stucks with equal Producer, Output, and GateAttempts value, and neither a reroute-cap halt.
 func foldsInto(last, entry HistoryEntry) bool {
 	if entry.Outcome != Stuck || !entry.BudgetExempt || last.Outcome != Stuck || !last.BudgetExempt {
+		return false
+	}
+	if entry.RerouteCapped || last.RerouteCapped {
 		return false
 	}
 	if last.Producer != entry.Producer || last.Output != entry.Output {

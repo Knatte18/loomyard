@@ -36,16 +36,20 @@ func TestEngine_Review_TableShape(t *testing.T) {
 	tests := []struct {
 		name         string
 		clusterFan   string
+		segment      segmentcolor.Segment
+		wantSegment  segmentcolor.Segment
 		wantForkFlag bool
 	}{
-		{name: "solo reviewer"},
-		{name: "cluster reviewer", clusterFan: "standard", wantForkFlag: true},
+		{name: "solo reviewer", wantSegment: segmentcolor.Review},
+		{name: "cluster reviewer", clusterFan: "standard", wantSegment: segmentcolor.Review, wantForkFlag: true},
+		{name: "merge-segment reviewer", segment: segmentcolor.Merge, wantSegment: segmentcolor.Merge},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			root, p := newEngineTestProfile(t)
 			p.ClusterFan = tt.clusterFan
+			p.Segment = tt.segment
 			shuttle := doneReview(approvedReview)
 			e := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, clusterTestConfig, shuttle)
 
@@ -62,8 +66,8 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			if want := []string{filepath.Join(root, "review.md")}; !slices.Equal(spec.OutputFiles, want) {
 				t.Errorf("spec.OutputFiles = %v; want %v", spec.OutputFiles, want)
 			}
-			if spec.Segment != segmentcolor.Review {
-				t.Errorf("spec.Segment = %q; want %q", spec.Segment, segmentcolor.Review)
+			if spec.Segment != tt.wantSegment {
+				t.Errorf("spec.Segment = %q; want %q", spec.Segment, tt.wantSegment)
 			}
 			if want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}; !slices.Equal(spec.Skills, want) {
 				t.Errorf("spec.Skills = %v; want %v", spec.Skills, want)

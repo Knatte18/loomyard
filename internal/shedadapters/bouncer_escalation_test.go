@@ -269,10 +269,14 @@ func TestBouncer_Escalation_MalformedRecordHaltsStuckNamingTheWayForward(t *test
 func TestBouncer_AutoAccept(t *testing.T) {
 	gating := evidenceEntry{"alpha", "open", "design", "MEDIUM"}
 	tests := []struct {
-		name        string
-		verdict     string
-		harvest     bool
-		autoAccept  bool
+		name       string
+		verdict    string
+		harvest    bool
+		autoAccept bool
+		// blockingEscalates is BouncerConfig.BlockingEscalates.
+		blockingEscalates bool
+		// ledger is the judged round's ledger; nil holds the one open gating entry.
+		ledger      []evidenceEntry
 		bounces     func() (int, int, bool, error)
 		escalated   bool
 		decide      CirclingDecision
@@ -283,7 +287,15 @@ func TestBouncer_AutoAccept(t *testing.T) {
 		wantSettled        bool
 		wantAutomaticValue bool
 		wantExempt         bool
+		// wantCarried, when non-nil, is the keys of the findings the accept carries over, sorted.
+		wantCarried []string
 	}{
+		{name: "BlockingEscalates accepts a ledger with no open BLOCKING entry and carries its open findings", verdict: "CONTINUE", harvest: true, autoAccept: true, blockingEscalates: true, bounces: spentBounces,
+			ledger:      []evidenceEntry{{"alpha", "resolved", "design", "MEDIUM"}, {"beta", "open", "design", "MEDIUM"}, {"gone", "resolved", "design", "BLOCKING"}},
+			wantOutcome: shedengine.Done, wantSettled: true, wantAutomaticValue: true, wantCarried: []string{"beta"}},
+		{name: "BlockingEscalates escalates with cause budget on an open BLOCKING entry", verdict: "CONTINUE", harvest: true, autoAccept: true, blockingEscalates: true, bounces: spentBounces,
+			ledger:      []evidenceEntry{{"alpha", "resolved", "design", "MEDIUM"}, {"hard", "open", "scope", "BLOCKING"}},
+			wantOutcome: shedengine.Awaiting, wantCause: EscalationBudget},
 		{name: "a harvested CONTINUE at a spent budget settles automatically", verdict: "CONTINUE", harvest: true, autoAccept: true, bounces: spentBounces,
 			wantOutcome: shedengine.Done, wantSettled: true, wantAutomaticValue: true},
 		{name: "a harvested CIRCLING at a spent budget settles automatically", verdict: "CIRCLING", harvest: true, autoAccept: true, bounces: spentBounces,
@@ -308,11 +320,16 @@ func TestBouncer_AutoAccept(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			seams := &circlingSeams{}
 			carry := &carryOverRecorder{}
-			shuttle := judgeFakeShuttle(2, bouncerVerdictContent(tt.verdict), evidenceLedgerContent(t, 2, gating), true)
+			ledger := tt.ledger
+			if ledger == nil {
+				ledger = []evidenceEntry{gating}
+			}
+			shuttle := judgeFakeShuttle(2, bouncerVerdictContent(tt.verdict), evidenceLedgerContent(t, 2, ledger...), true)
 			cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle), withEscalationInputs()).Config
 			cfg.CirclingCheckpoint = 2
 			cfg.Bounces = tt.bounces
 			cfg.AutoAccept = tt.autoAccept
+			cfg.BlockingEscalates = tt.blockingEscalates
 			seams.install(&cfg)
 			carry.install(&cfg)
 			rounds := []bouncerJudgeFixture{
@@ -326,7 +343,7 @@ func TestBouncer_AutoAccept(t *testing.T) {
 			layoutBouncerRun(t, cfg, rounds)
 			writeEvidenceLedger(t, cfg.RunDir, 1, gating)
 			if !tt.harvest {
-				writeEvidenceLedger(t, cfg.RunDir, 2, gating)
+				writeEvidenceLedger(t, cfg.RunDir, 2, ledger...)
 			}
 			for n := 1; n <= 2; n++ {
 				if err := os.WriteFile(roundReviewPath(cfg.RunDir, n), []byte("review\n"), 0o644); err != nil {
@@ -382,6 +399,14 @@ func TestBouncer_AutoAccept(t *testing.T) {
 				}
 				if len(carry.entries) != 1 || carry.entries[0].Closing != discussionparser.CarryOverAccepted {
 					t.Errorf("carry-over entries = %+v; want one with closing %q", carry.entries, discussionparser.CarryOverAccepted)
+				} else if tt.wantCarried != nil {
+					var keys []string
+					for _, finding := range carry.entries[0].Findings {
+						keys = append(keys, finding.Key)
+					}
+					if got, want := strings.Join(keys, ","), strings.Join(tt.wantCarried, ","); got != want {
+						t.Errorf("carried finding keys = %q; want %q", got, want)
+					}
 				}
 			} else if tt.decide == "" && exists {
 				t.Errorf("decision file exists (%q); want none", decision)
