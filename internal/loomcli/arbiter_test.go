@@ -547,7 +547,18 @@ func TestArbiterVerb_VerdictOutcomes(t *testing.T) {
 		wantGoto     string
 		wantRelaunch string
 		wantRunStops int
+		// wantError is set for a run the verb refuses after the arbiter started.
+		wantError bool
 	}{
+		{
+			name: "a marker that cannot be written stops the started arbiter and refuses", producer: "Plan-Write", state: shedengine.StateBlocked,
+			setup: func(f *arbiterFixture) {
+				if err := os.WriteFile(filepath.Dir(f.markerPath()), []byte("not a directory"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantError: true, wantRunStops: 1,
+		},
 		{
 			name: "a valid resume carries its relaunch line", producer: "Plan-Write", state: shedengine.StateFailed,
 			verdict: arbiterResumeVerdict, setup: func(f *arbiterFixture) { f.stopEnvelope = `{"kind":"producer"}` },
@@ -623,6 +634,15 @@ func TestArbiterVerb_VerdictOutcomes(t *testing.T) {
 
 			code, fields := f.run()
 
+			if tt.wantError {
+				if code == 0 {
+					t.Fatalf("arbiterVerb() exit = 0, output %v; want an error", fields)
+				}
+				if f.fake.runStops != tt.wantRunStops {
+					t.Errorf("run stops = %d; want %d", f.fake.runStops, tt.wantRunStops)
+				}
+				return
+			}
 			if code != 0 {
 				t.Fatalf("arbiterVerb() exit = %d, output %v; want 0", code, fields)
 			}

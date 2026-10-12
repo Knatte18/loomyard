@@ -290,16 +290,25 @@ func (c *arbiterCall) settleFresh(attempts []loomengine.ArbiterAttempt) (loomeng
 		return loomengine.ArbiterEnvelope{}, fmt.Errorf("arbiter: start the arbiter agent: %w; %s", err, arbiterHandBackWayForward)
 	}
 	attempt.StrandGUID = run.StrandGUID()
-	if err := loomengine.WriteArbiterAttempt(dir, attempt); err != nil {
-		return loomengine.ArbiterEnvelope{}, err
-	}
-	marker := loomengine.ArbiterMarker{Attempt: number, StrandGUID: attempt.StrandGUID, Deadline: attempt.Deadline}
-	if err := loomengine.WriteArbiterMarker(c.deps.MarkerPath, marker); err != nil {
+	if err := c.recordStartedArbiter(dir, attempt); err != nil {
+		// The run must not proceed beside a live arbiter nothing tracks.
+		if stopErr := run.Stop(); stopErr != nil {
+			return loomengine.ArbiterEnvelope{}, fmt.Errorf("%w; stopping the arbiter strand %s also failed: %v", err, attempt.StrandGUID, stopErr)
+		}
 		return loomengine.ArbiterEnvelope{}, err
 	}
 
 	result, waitErr := run.Wait()
 	return c.concludeWait(attempt, result, waitErr, run.Stop, attempt.StrandGUID)
+}
+
+// recordStartedArbiter saves the started arbiter's strand in its attempt record and writes the in-flight marker.
+func (c *arbiterCall) recordStartedArbiter(dir string, attempt loomengine.ArbiterAttempt) error {
+	if err := loomengine.WriteArbiterAttempt(dir, attempt); err != nil {
+		return err
+	}
+	marker := loomengine.ArbiterMarker{Attempt: attempt.Number, StrandGUID: attempt.StrandGUID, Deadline: attempt.Deadline}
+	return loomengine.WriteArbiterMarker(c.deps.MarkerPath, marker)
 }
 
 // checkEligible refuses a stop the arbiter may not settle.
