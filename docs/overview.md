@@ -256,6 +256,7 @@ github.com/Knatte18/loomyard/
 ├── internal/shedverbs/           the generic run/step/status/pause/goto cobra verb bodies shared by every module that arms a `*shedengine.Shed` onto a CLI subtree
 ├── internal/shedcli/             the `lyx shed` subtree: a named-recipe arming table for the loom, darn and batten recipes plus the three CLI seams that register it under the lyx root
 ├── internal/statuscommit/        the shared per-transition status commit core (skip while mid-merge, commit hard-errors, push warns) that `loomcli` and `battencli` wrap
+├── internal/statuspane/          the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop, a lock-free status-file reader and the panes' minute-resolution time format
 ├── internal/landingshed/         landing's three general ShedProducers, Publish, PR-Gate and Finalize, shared by reference across producer lists
 ├── internal/darnengine/          the darn recipe's hub-wide `darn.yaml` config and the verify command every darn verify reads
 ├── internal/mergeresolve/        the merge-in + LLM conflict-resolution engine internal/landingshed's two producers each call

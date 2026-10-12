@@ -101,6 +101,7 @@ internal/standalonegeom: 7
 internal/standalonestate: 6
 internal/state: 8
 internal/statuscommit: 6
+internal/statuspane: 3
 internal/stencil: 4
 internal/stencilcli: 1
 internal/stencilstore: 18
