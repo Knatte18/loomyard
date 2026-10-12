@@ -45,6 +45,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/orchcli"
@@ -265,6 +266,7 @@ func TestBattenIntegration_Rows(t *testing.T) {
 	}{
 		{"SeedChild_WritesASeedTheChildBootstrapAgreesWith", stepSeedChild_WritesASeedTheChildBootstrapAgreesWith},
 		{"SeedChild_WriteSeedRewrapsARealDisagreeingChildSeed", stepSeedChild_WriteSeedRewrapsARealDisagreeingChildSeed},
+		{"SeedChild_WritesTheRunSettingsIntoThePairsLocalLayer", stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer},
 		{"RealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring", stepRealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring},
 		{"FourRowRun_SeedsChildCommitsAndTearsDown", stepFourRowRun_SeedsChildCommitsAndTearsDown},
 		{"Teardown_AlreadyGonePairFinishesItsBranchDeletion", stepTeardown_AlreadyGonePairFinishesItsBranchDeletion},
@@ -1428,4 +1430,112 @@ func stepStatusFlagsAHaltedBattenOverADoneChild(t *testing.T, h *hubforge.Hub) {
 	if _, present := statusEnvelope()[childDoneFlagKey]; present {
 		t.Errorf("status envelope carries %s with the child status file gone; want it omitted", childDoneFlagKey)
 	}
+}
+
+// stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer drives Worktree-Create and Seed-Child over a task carrying run settings:
+// the pair's local loom file holds the key, the loom loader resolves it, and the per-worktree config files show no change since the fork point.
+// A second task whose board entry carries a key the local layer closes, written past `lyx board upsert`, stands Seed-Child Stuck naming the module, the key and the way forward, with no child seed and no local file written.
+func stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer(t *testing.T, h *hubforge.Hub) {
+	runWorktreeCreateAndSeedChild := func(t *testing.T, slug string, settings map[string]any) shedengine.StepResult {
+		t.Helper()
+		seedBoardTask(t, h, slug, "loom")
+		cfg, err := boardengine.LoadConfig(configengine.Dirs{Board: h.BoardDir()}, "board")
+		if err != nil {
+			t.Fatalf("load board config: %v", err)
+		}
+		cfg.Path = h.BoardDir()
+		if _, err := boardengine.New(cfg).UpsertTask(map[string]any{"slug": slug, "run_settings": settings}); err != nil {
+			t.Fatalf("set run settings of %q: %v", slug, err)
+		}
+
+		c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+			return shedengine.Status{State: shedengine.StateDone}, true, nil
+		})
+		seedEntryStatus(t, c, battenrecipe.NameWorktreeCreate, shedengine.StateRunning, nil)
+		shed, err := battenrecipe.New(c.env, c.shedPaths)
+		if err != nil {
+			t.Fatalf("battenrecipe.New: %v", err)
+		}
+		ctx := context.Background()
+		if _, err := shed.Step(ctx); err != nil {
+			t.Fatalf("Step (Worktree-Create): %v", err)
+		}
+		result, err := shed.Step(ctx)
+		if err != nil {
+			t.Fatalf("Step (Seed-Child): %v", err)
+		}
+		return result
+	}
+
+	t.Run("a valid setting lands in the pair's local layer", func(t *testing.T) {
+		const slug = "batten-run-settings"
+		result := runWorktreeCreateAndSeedChild(t, slug, map[string]any{"loom": map[string]any{"review_max_bounces": 2}})
+		if result.Outcome != shedengine.Done {
+			t.Fatalf("Seed-Child outcome = %q (reason %q); want done", result.Outcome, result.Reason)
+		}
+		pair, err := taskWorktreeLocation(h.Location, slug)
+		if err != nil {
+			t.Fatalf("resolve child location: %v", err)
+		}
+		local, err := os.ReadFile(configengine.LocalFile(pair.AnchorPath(), "loom"))
+		if err != nil || !strings.Contains(string(local), "review_max_bounces: 2") {
+			t.Fatalf("pair loom.local.yaml = %q, %v; want review_max_bounces: 2", local, err)
+		}
+		cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(pair), "loom")
+		if err != nil {
+			t.Fatalf("load the pair's loom config: %v", err)
+		}
+		if cfg.ReviewMaxBounces != 2 {
+			t.Errorf("resolved review_max_bounces = %d; want 2", cfg.ReviewMaxBounces)
+		}
+
+		pairFabric, err := fabricengine.Open(pair)
+		if err != nil {
+			t.Fatalf("open the pair: %v", err)
+		}
+		taskBranch, err := pairFabric.CurrentBranch()
+		if err != nil {
+			t.Fatalf("task branch: %v", err)
+		}
+		origin, found, err := fabricengine.ReadOrigin(pair)
+		if err != nil || !found {
+			t.Fatalf("read origin: found %v, %v", found, err)
+		}
+		var rels []string
+		for _, module := range configreg.Modules() {
+			if !module.HubWide {
+				rels = append(rels, configengine.ConfigFileRel(module.Name))
+			}
+		}
+		changes, err := fabricengine.ReadConfigChanges(pair, taskBranch, origin.ParentBranch, rels)
+		if err != nil {
+			t.Fatalf("read config changes: %v", err)
+		}
+		if len(changes.Files) != 0 {
+			t.Errorf("per-worktree config changes = %v; want none, the local layer is untracked", changes.Files)
+		}
+	})
+
+	t.Run("a key the local layer closes stands Seed-Child Stuck", func(t *testing.T) {
+		const slug = "batten-run-settings-closed"
+		result := runWorktreeCreateAndSeedChild(t, slug, map[string]any{"darn": map[string]any{"verify": "x"}})
+		if result.Outcome != shedengine.Stuck {
+			t.Fatalf("Seed-Child outcome = %q; want stuck", result.Outcome)
+		}
+		for _, want := range []string{"darn", "verify", "lyx board upsert", "lyx batten run " + slug} {
+			if !strings.Contains(result.Reason, want) {
+				t.Errorf("stuck reason %q lacks %q", result.Reason, want)
+			}
+		}
+		pair, err := taskWorktreeLocation(h.Location, slug)
+		if err != nil {
+			t.Fatalf("resolve child location: %v", err)
+		}
+		if pathExists(configengine.LocalFile(pair.AnchorPath(), "darn")) {
+			t.Error("a darn local file was written despite the refusal")
+		}
+		if _, found, err := shedrun.ReadSeed(pair, shedrun.SelfRunID); err != nil || found {
+			t.Errorf("child seed found = %v, err %v; want none written", found, err)
+		}
+	})
 }

@@ -26,6 +26,17 @@ type seedChildCalls struct {
 	writeCalled  bool
 	commitCalled bool
 	pushCalled   bool
+	// events records the run-settings closures and WriteSeed in call order.
+	events []string
+}
+
+// withNoRunSettings fills the run-settings closures of deps with no-ops that report no settings.
+func withNoRunSettings(deps SeedChildDeps) SeedChildDeps {
+	deps.ReadRunSettings = func(context.Context) (map[string]any, error) { return nil, nil }
+	deps.PrepareRunSettings = func(map[string]any) (map[string][]byte, error) { return nil, nil }
+	deps.WriteLocalOverride = func(context.Context, string, []byte) error { return nil }
+	deps.RemoveLocalOverrides = func(context.Context, []string) ([]string, error) { return nil, nil }
+	return deps
 }
 
 func newSeedChildDeps(boardType string, boardErr error, driver string, driverErr error, writeErr error, commitErr error, pushErr error) (*seedChildCalls, SeedChildDeps) {
@@ -41,6 +52,7 @@ func newSeedChildDeps(boardType string, boardErr error, driver string, driverErr
 			calls.writeCalled = true
 			calls.writeRecipe = recipe
 			calls.writeDriver = drv
+			calls.events = append(calls.events, "seed")
 			return writeErr
 		},
 		CommitSeed: func(ctx context.Context) error {
@@ -52,7 +64,7 @@ func newSeedChildDeps(boardType string, boardErr error, driver string, driverErr
 			return pushErr
 		},
 	}
-	return calls, deps
+	return calls, withNoRunSettings(deps)
 }
 
 // TestSeedChild_RecipeFromTheBoardTypeAndDriverFromChildDriver asserts the two-source split the row depends on: the seed's recipe comes from the Board's own type, read at Call time rather than captured at wiring time, and defaults when the Board names none, while its driver comes from the injected ChildDriver, never from one collapsed source.
@@ -248,7 +260,7 @@ func TestSeedChild_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T)
 		{
 			name: "ChildDriver",
 			deps: func(cancel context.CancelFunc) SeedChildDeps {
-				return SeedChildDeps{
+				return withNoRunSettings(SeedChildDeps{
 					ReadBoardType: func(ctx context.Context) (string, error) { return "batten", nil },
 					ChildDriver: func() (string, error) {
 						cancel()
@@ -257,13 +269,13 @@ func TestSeedChild_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T)
 					WriteSeed:  func(ctx context.Context, recipe, driver string) error { return nil },
 					CommitSeed: func(ctx context.Context) error { return nil },
 					PushSeed:   func(ctx context.Context) error { return nil },
-				}
+				})
 			},
 		},
 		{
 			name: "WriteSeed",
 			deps: func(cancel context.CancelFunc) SeedChildDeps {
-				return SeedChildDeps{
+				return withNoRunSettings(SeedChildDeps{
 					ReadBoardType: func(ctx context.Context) (string, error) { return "batten", nil },
 					ChildDriver:   func() (string, error) { return "claude", nil },
 					WriteSeed: func(ctx context.Context, recipe, driver string) error {
@@ -272,7 +284,7 @@ func TestSeedChild_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T)
 					},
 					CommitSeed: func(ctx context.Context) error { return nil },
 					PushSeed:   func(ctx context.Context) error { return nil },
-				}
+				})
 			},
 		},
 	}
@@ -309,6 +321,167 @@ func TestSeedChild_CancelledContext(t *testing.T) {
 	if outcome == shedengine.Stuck {
 		t.Error("Call() outcome = Stuck; want a cancelled context to never surface as Stuck")
 	}
+}
+
+// TestSeedChild_RunSettings pins how Seed-Child settles the task worktree's local config layer from the board task's run settings:
+// the named modules are written and the others removed before the seed, an invalid key or an unreadable board is Stuck with no seed written, a write failure is a hard error, and a Call run again after an interruption leaves the layer equal to the board's current settings.
+func TestSeedChild_RunSettings(t *testing.T) {
+	t.Parallel()
+
+	invalid := fmt.Errorf("%w: run_settings for module %q: key %q is execute-closed", ErrInvalidRunSettings, "darn", "verify")
+	tests := []struct {
+		name         string
+		settings     map[string]any
+		readErr      error
+		prepareErr   error
+		writeErr     error
+		wantOutcome  shedengine.Outcome
+		wantHardErr  bool
+		wantEvents   []string
+		wantKeep     []string
+		wantReasonIn []string
+	}{
+		{
+			name:        "NamedModulesWrittenAndOthersRemovedBeforeTheSeed",
+			settings:    map[string]any{"loom": map[string]any{"a": 1}, "darn": map[string]any{"b": 2}},
+			wantOutcome: shedengine.Done,
+			wantEvents:  []string{"write darn", "write loom", "remove", "seed"},
+			wantKeep:    []string{"darn", "loom"},
+		},
+		{
+			name:        "AbsentSettingsRemoveEveryLocalFile",
+			wantOutcome: shedengine.Done,
+			wantEvents:  []string{"remove", "seed"},
+			wantKeep:    []string{},
+		},
+		{
+			name:         "AnInvalidKeyIsStuckNamingModuleKeyAndWayForward",
+			settings:     map[string]any{"darn": map[string]any{"verify": "x"}},
+			prepareErr:   invalid,
+			wantOutcome:  shedengine.Stuck,
+			wantReasonIn: []string{"darn", "verify", "lyx board upsert", "lyx batten run myslug"},
+		},
+		{
+			name:         "AnUnreadableBoardIsStuck",
+			readErr:      errors.New("board decode failed"),
+			wantOutcome:  shedengine.Stuck,
+			wantReasonIn: []string{"run settings", "board decode failed"},
+		},
+		{
+			name:        "AWriteFailureIsAHardError",
+			settings:    map[string]any{"loom": map[string]any{"a": 1}},
+			writeErr:    errors.New("disk full"),
+			wantHardErr: true,
+			wantEvents:  []string{"write loom"},
+		},
+		{
+			name:        "AnOtherPrepareFailureIsAHardError",
+			settings:    map[string]any{"loom": map[string]any{"a": 1}},
+			prepareErr:  errors.New("marshal failed"),
+			wantHardErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			scratchDir := t.TempDir()
+			calls, deps := newSeedChildDeps("loom", nil, "claude", nil, nil, nil, nil)
+			var keep []string
+			deps.ReadRunSettings = func(context.Context) (map[string]any, error) { return tt.settings, tt.readErr }
+			deps.PrepareRunSettings = func(settings map[string]any) (map[string][]byte, error) {
+				if tt.prepareErr != nil {
+					return nil, tt.prepareErr
+				}
+				documents := map[string][]byte{}
+				for module := range settings {
+					documents[module] = []byte(module + ": doc\n")
+				}
+				return documents, nil
+			}
+			deps.WriteLocalOverride = func(_ context.Context, module string, document []byte) error {
+				calls.events = append(calls.events, "write "+module)
+				return tt.writeErr
+			}
+			deps.RemoveLocalOverrides = func(_ context.Context, kept []string) ([]string, error) {
+				calls.events = append(calls.events, "remove")
+				keep = kept
+				return []string{"stale.local.yaml"}, nil
+			}
+
+			outcome, ptr, err := NewSeedChild("seedchild", "myslug", deps, scratchDir).Call(context.Background())
+			if tt.wantHardErr {
+				if err == nil {
+					t.Fatal("Call() error = nil; want a returned error")
+				}
+			} else if err != nil || outcome != tt.wantOutcome {
+				t.Fatalf("Call() = %v, %v; want outcome %v", outcome, err, tt.wantOutcome)
+			}
+			if !slices.Equal(calls.events, tt.wantEvents) {
+				t.Errorf("events = %v; want %v", calls.events, tt.wantEvents)
+			}
+			if tt.wantKeep != nil && !slices.Equal(keep, tt.wantKeep) {
+				t.Errorf("RemoveLocalOverrides keep = %v; want %v", keep, tt.wantKeep)
+			}
+			if tt.wantOutcome == shedengine.Stuck {
+				reason := readStuckFile(t, scratchDir, "seedchild", ptr)
+				for _, want := range tt.wantReasonIn {
+					if !strings.Contains(reason, want) {
+						t.Errorf("stuck-reason file = %q; want it to contain %q", reason, want)
+					}
+				}
+				if calls.writeCalled {
+					t.Error("WriteSeed was called; want no seed written")
+				}
+			}
+		})
+	}
+
+	t.Run("ACallRunAgainAfterAnInterruptionSettlesTheLayerToTheBoard", func(t *testing.T) {
+		t.Parallel()
+
+		layer := map[string][]byte{"stale": []byte("stale: x\n")}
+		current := map[string]any{"loom": map[string]any{"a": 1}}
+		failRemoval := true
+		_, deps := newSeedChildDeps("loom", nil, "claude", nil, nil, nil, nil)
+		deps.ReadRunSettings = func(context.Context) (map[string]any, error) { return current, nil }
+		deps.PrepareRunSettings = func(settings map[string]any) (map[string][]byte, error) {
+			documents := map[string][]byte{}
+			for module := range settings {
+				documents[module] = []byte(module + ": doc\n")
+			}
+			return documents, nil
+		}
+		deps.WriteLocalOverride = func(_ context.Context, module string, document []byte) error {
+			layer[module] = document
+			return nil
+		}
+		deps.RemoveLocalOverrides = func(_ context.Context, kept []string) ([]string, error) {
+			if failRemoval {
+				return nil, errors.New("interrupted")
+			}
+			var removed []string
+			for module := range layer {
+				if !slices.Contains(kept, module) {
+					delete(layer, module)
+					removed = append(removed, module)
+				}
+			}
+			return removed, nil
+		}
+		producer := NewSeedChild("seedchild", "myslug", deps, t.TempDir())
+
+		if _, _, err := producer.Call(context.Background()); err == nil {
+			t.Fatal("first Call() error = nil; want the interruption")
+		}
+		current = map[string]any{"darn": map[string]any{"b": 2}}
+		failRemoval = false
+		shedfake.RequireOutcome(t, producer, shedengine.Done)
+
+		if len(layer) != 1 || string(layer["darn"]) != "darn: doc\n" {
+			t.Errorf("local layer = %v; want exactly the board's current darn settings", layer)
+		}
+	})
 }
 
 // TestSeedChild_MarksWatchedOnceTheSeedIsCommitted asserts the batten-watched marker is asked for after the commit, that a failing marker never changes the verdict, and that a failed commit never reaches it.
