@@ -501,7 +501,7 @@ var askOperatorPhrases = []string{
 
 // editRulePhrases is the closed list of phrases distinctive to the no-script edit rule's statement, matched case-insensitively.
 var editRulePhrases = []string{
-	"`sed`",
+	"`sed -i`",
 	"heredoc",
 	"replace_all",
 	"edit or write",
