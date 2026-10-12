@@ -79,13 +79,14 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
 
 ## The `waiting` key
 
-`lyx loom status` adds a `waiting` key to its envelope while the run's state is `running` and one of four waits is present.
+`lyx loom status` adds a `waiting` key to its envelope while the run's state is `running` and one of five waits is present.
 The waits are read in order:
 
 1. a gate wait, read from the worktree's live gate wait records, which `lyx gate test`, the card-verify rerun and the plan gate's type load each write while they wait for a gate slot;
-2. a verify, read from the verify marker, running or waiting for a gate slot;
-3. a shuttle wait, read from the run's wait marker (a gate entry or the background-shell wait);
-4. an open parent-review request with no verdict in the latest round, read from the round store.
+2. a parent lock wait, read from the run's parent lock wait record, which a landing row writes while it waits for the parent lock;
+3. a verify, read from the verify marker, running or waiting for a gate slot;
+4. a shuttle wait, read from the run's wait marker (a gate entry or the background-shell wait);
+5. an open parent-review request with no verdict in the latest round, read from the round store.
 
 A gate wait does not hide the rest: its note is followed by the first of the other waits that has a live pid, after `; `.
 Among the others, the first one with a live pid wins.
@@ -94,13 +95,15 @@ The value is one line.
 A gate wait renders `<producer>: <site> waiting for a gate slot <elapsed>`, one clause per live record, oldest first and joined with `; `, then `(holders: <worktree> <site>, ...)` once, for example `Plan-Write: lyx gate test ./internal/foo waiting for a gate slot 2m (holders: /hub/other lyx gate test ./internal/bar)`.
 A running verify or shuttle wait renders `<producer>: <what> running <elapsed> (<detail>)`, for example `Webster-Burler-Fix: verify running 6m (attempt 2; go test -tags integration ./...)`.
 A verify still waiting for a gate slot renders `<producer>: verify waiting for a gate slot <elapsed> (<site>; holders: <worktree> <site>, ...)`, elapsed measured from the wait start.
+A parent lock wait renders `<producer>: waiting for the parent lock on <branch> held by <slug> <elapsed>`, elapsed measured from the record's start.
+A lock wait record whose writer is dead is ignored.
 A holders clause is dropped when no slot is held or the holders cannot be read.
 The parent-review wait keeps its existing `parent review: ` form, naming the reviewer, when the request opened and whether the notice was delivered (or why it was not).
 `<producer>` is the run's current producer,
 `<elapsed>` is whole seconds under a minute, whole minutes under an hour and hours with minutes beyond (`45s`, `6m`, `1h12m`),
 and the attempt clause of a verify is dropped when no attempt counter applies.
 The key is absent when none of the waits applies, or when the run is in any state other than `running`.
-It is read from the markers, the wait records and the round store, never from the status file,
+It is read from the markers, the wait records, the parent lock wait record and the round store, never from the status file,
 so the file's schema above is unchanged.
 It is display only: no Go decision reads it.
 
