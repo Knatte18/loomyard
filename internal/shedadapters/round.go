@@ -13,6 +13,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
 )
 
 // ResolveRound returns the highest round N for which reportName(N) names an existing file inside
@@ -99,4 +102,75 @@ func judgeOutputs(runDir string, round int) []string {
 // off-by-one reasoning.
 func focusPath(runDir string, round int) string {
 	return filepath.Join(runDir, fmt.Sprintf("round-%d-focus.md", round))
+}
+
+// The outcomes a review segment's last round can end in.
+const (
+	// RoundOutcomeAccepted is a last round with neither a circling decision nor an escalation file.
+	RoundOutcomeAccepted = "accepted"
+	// RoundOutcomeEscalated is a last round holding an escalation file and no circling decision.
+	RoundOutcomeEscalated = "escalated"
+	// RoundOutcomeCirclingDecided is a last round holding a circling decision, whether or not it also holds an escalation file.
+	RoundOutcomeCirclingDecided = "circling-decided"
+)
+
+// RoundSummary is what ReviewRounds reads from one review segment's file names.
+// Outcome is empty when Rounds is 0.
+type RoundSummary struct {
+	Rounds          int
+	Outcome         string
+	EscalatedRounds []int
+}
+
+// ReviewRounds summarizes one review segment's directory from the file names directly in it.
+// A round is a round number that has a `round-<N>-review.md`, so a numbered round holding only a focus file does not count.
+// Outcome is the last such round's, and EscalatedRounds lists, ascending, every round number holding an escalation file.
+// A name it does not recognise is ignored.
+func ReviewRounds(names []string) RoundSummary {
+	reviewed := map[int]bool{}
+	circled := map[int]bool{}
+	escalated := map[int]bool{}
+	for _, name := range names {
+		rest, ok := strings.CutPrefix(name, "round-")
+		if !ok {
+			continue
+		}
+		digits, kind, ok := strings.Cut(rest, "-")
+		if !ok {
+			continue
+		}
+		n, err := strconv.Atoi(digits)
+		if err != nil || n < 1 {
+			continue
+		}
+		switch kind {
+		case "review.md":
+			reviewed[n] = true
+		case "circling-decision.md":
+			circled[n] = true
+		case "escalation.md":
+			escalated[n] = true
+		}
+	}
+
+	var summary RoundSummary
+	last := 0
+	for n := range reviewed {
+		summary.Rounds++
+		last = max(last, n)
+	}
+	for n := range escalated {
+		summary.EscalatedRounds = append(summary.EscalatedRounds, n)
+	}
+	slices.Sort(summary.EscalatedRounds)
+	switch {
+	case summary.Rounds == 0:
+	case circled[last]:
+		summary.Outcome = RoundOutcomeCirclingDecided
+	case escalated[last]:
+		summary.Outcome = RoundOutcomeEscalated
+	default:
+		summary.Outcome = RoundOutcomeAccepted
+	}
+	return summary
 }

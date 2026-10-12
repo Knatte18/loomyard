@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/statuspane"
@@ -154,6 +155,49 @@ func TestRenderOverview(t *testing.T) {
 			},
 		},
 		{
+			name: "a running run a live pause covers shows paused with the minutes since the pause",
+			runs: []overviewRun{
+				{Slug: "a", StartedAt: minutesAgo(30), PairExists: true, Session: "s", PausedAt: minutesAgo(7), Batten: foundStatus(shedengine.StateRunning, "Plan")},
+			},
+			want: []string{"a  paused 7m  Plan  30m  30m  s"},
+		},
+		{
+			name: "a batten-paused run a live pause covers shows the minutes, and an uncovered one the bare state",
+			runs: []overviewRun{
+				{Slug: "covered", StartedAt: minutesAgo(30), PairExists: true, Session: "s", PausedAt: minutesAgo(12), Batten: foundStatus(shedengine.StatePaused, "Plan")},
+				{Slug: "bare", StartedAt: minutesAgo(20), PairExists: true, Session: "s", Batten: foundStatus(shedengine.StatePaused, "Plan")},
+			},
+			want: []string{
+				"covered  paused 12m  Plan  30m  30m  s",
+				"bare     paused      Plan  20m  20m  s",
+			},
+		},
+		{
+			name: "a starting run a live pause covers shows paused with the minutes and stage -",
+			runs: []overviewRun{{Slug: "fresh", StartedAt: minutesAgo(3), Session: "fresh-s", PausedAt: minutesAgo(2)}},
+			want: []string{"fresh  paused 2m  -  3m  3m  fresh-s"},
+		},
+		{
+			name: "a blocked, an awaiting and a failed run keep their own state when a pause covers them",
+			runs: []overviewRun{
+				{Slug: "b", StartedAt: minutesAgo(30), PairExists: true, Session: "s", PausedAt: minutesAgo(5), Batten: foundStatus(shedengine.StateBlocked, "Plan")},
+				{Slug: "w", StartedAt: minutesAgo(20), PairExists: true, Session: "s", PausedAt: minutesAgo(5), Batten: foundStatus(shedengine.StateAwaiting, "Plan")},
+				{Slug: "f", StartedAt: minutesAgo(10), PairExists: true, Session: "s", PausedAt: minutesAgo(5), Batten: foundStatus(shedengine.StateFailed, "Plan")},
+			},
+			want: []string{
+				"b  blocked   Plan  30m  30m  s",
+				"w  awaiting  Plan  20m  20m  s",
+				"f  failed    Plan  10m  10m  s",
+			},
+		},
+		{
+			name: "a pause that began after the poll's clock shows paused 0m",
+			runs: []overviewRun{
+				{Slug: "a", StartedAt: minutesAgo(30), PairExists: true, Session: "s", PausedAt: overviewNow.Add(5 * time.Minute), Batten: foundStatus(shedengine.StateRunning, "Plan")},
+			},
+			want: []string{"a  paused 0m  Plan  30m  30m  s"},
+		},
+		{
 			name: "no runs renders the one line",
 			want: []string{"no runs in flight"},
 		},
@@ -258,7 +302,8 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	source := newOverviewSource(prime, func() time.Time { return overviewNow })
+	pauseRecordPath := filepath.Join(t.TempDir(), "pause.json")
+	source := newOverviewSource(prime, pauseRecordPath, func() time.Time { return overviewNow })
 	source.childStatus = func(string) (string, error) { return childStatusPath, nil }
 
 	want := []string{
@@ -287,5 +332,37 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 	want[1] = "run-b       status unreadable"
 	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
 		t.Errorf("third frame mismatch (-want +got):\n%s", diff)
+	}
+
+	// run-b's status is decodable again, at a modification time other than the failed write's.
+	writeOverviewStatus(t, runBStatus, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan"}, minutesAgo(35))
+
+	// A slug entry for run-a and a hub entry: the older entry covers run-a, the hub entry covers the rest.
+	record, err := json.Marshal(pauserecord.Record{Live: []pauserecord.Entry{
+		{Scope: "run-a", PausedAt: minutesAgo(10)},
+		{Scope: pauserecord.ScopeHub, PausedAt: minutesAgo(4)},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeOverviewFile(t, pauseRecordPath, record, minutesAgo(1))
+	want = []string{
+		"run-a       paused 10m  Run-Shed  2h00m  2h00m  run-a",
+		"run-b       paused 4m   Plan      1h00m  1h00m  run-b",
+		"future-key  paused 4m   Plan      -      -      future-key",
+	}
+	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
+		t.Errorf("fourth frame mismatch (-want +got):\n%s", diff)
+	}
+
+	// A record that does not decode never blanks the pane.
+	writeOverviewFile(t, pauseRecordPath, []byte("{not json"), minutesAgo(1))
+	want = []string{
+		"run-a       running  Run-Shed  2h00m  2h00m  run-a",
+		"run-b       running  Plan      1h00m  1h00m  run-b",
+		"future-key  running  Plan      -      -      future-key",
+	}
+	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
+		t.Errorf("fifth frame mismatch (-want +got):\n%s", diff)
 	}
 }

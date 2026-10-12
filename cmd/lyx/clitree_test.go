@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/shortcutcli"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
@@ -140,6 +141,10 @@ func TestCLITree_EveryCommand(t *testing.T) {
 			t.Fatal("newRoot() mounts no modules")
 		}
 		for _, child := range children {
+			// A shortcut is not a module.
+			if child.GroupID == shortcutcli.GroupID {
+				continue
+			}
 			if !strings.Contains(root.Long, child.Name()) {
 				t.Errorf("root.Long does not name mounted module %q; add it to the Available modules list in newRoot()", child.Name())
 			}

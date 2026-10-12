@@ -1,7 +1,7 @@
 # Top-level test functions per package, in its _test.go files under every build tag.
 # TestTestBudget_PackagesStayWithinBudget fails when a package exceeds its row or has tests and no row.
 # Raise a row in the commit that adds the tests that need it.
-cmd/lyx: 79
+cmd/lyx: 80
 cmd/testtiming: 21
 contracts/specs: 3
 contracts/stencils: 16
@@ -10,7 +10,7 @@ internal/alignment: 7
 internal/batcher: 9
 internal/battencli: 77
 internal/battenrecipe: 9
-internal/battenshed: 109
+internal/battenshed: 110
 internal/boardcli: 13
 internal/boardengine: 78
 internal/boardengine/boardtest: 3
@@ -27,15 +27,16 @@ internal/configengine: 18
 internal/configreg: 10
 internal/configsync: 8
 internal/darnengine: 4
-internal/discussionparser: 17
+internal/discussionparser: 18
 internal/dotgit: 3
 internal/editdirective: 2
 internal/envsource: 3
 internal/fabriccli: 21
-internal/fabricengine: 644
+internal/fabricengine: 645
 internal/fabricvocab: 1
 internal/friction: 6
 internal/frictionengine: 15
+internal/haltnote: 4
 internal/fslink: 5
 internal/fswatch: 5
 internal/fsx: 4
@@ -44,7 +45,7 @@ internal/gateslot: 12
 internal/gitexec: 7
 internal/githubclient: 12
 internal/gitkit: 10
-internal/gitrepo: 44
+internal/gitrepo: 45
 internal/gitrepo/internal/gitoracle: 1
 internal/helpcli: 1
 internal/hubforge: 7
@@ -85,11 +86,13 @@ internal/quarrycli: 7
 internal/reedcli: 38
 internal/reedengine: 257
 internal/reedengine/render: 12
+internal/reportcli: 3
+internal/reportengine: 8
 internal/seatengine: 17
 internal/segmentcolor: 4
 internal/selfreportcli: 3
 internal/selfreportengine: 12
-internal/shedadapters: 154
+internal/shedadapters: 155
 internal/shedbuild: 13
 internal/shedcheck: 3
 internal/shedcli: 17
@@ -99,6 +102,7 @@ internal/shedrun: 23
 internal/shedtransient: 2
 internal/shedverbs: 83
 internal/shell: 12
+internal/shortcutcli: 2
 internal/shuttlecli: 25
 internal/shuttleengine: 168
 internal/shuttleengine/claudeengine: 108

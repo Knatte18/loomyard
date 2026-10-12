@@ -63,43 +63,28 @@ func TestPasteSubmitArgv(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		text   string
 		submit bool
 		want   []string
 	}{
 		{
-			name: "plain text with Enter", text: "hello world", submit: true,
+			name: "paste with Enter", submit: true,
 			want: []string{
-				"set-buffer", "-b", "buf", "--", "hello world",
+				"load-buffer", "-b", "buf", "-",
 				";", "paste-buffer", "-p", "-d", "-b", "buf", "-t", "%7",
 				";", "send-keys", "-t", "%7", "Enter",
 			},
 		},
 		{
-			name: "plain text without Enter", text: "hello world", submit: false,
+			name: "paste without Enter", submit: false,
 			want: []string{
-				"set-buffer", "-b", "buf", "--", "hello world",
-				";", "paste-buffer", "-p", "-d", "-b", "buf", "-t", "%7",
-			},
-		},
-		{
-			name: "dash-leading text follows the double dash", text: "-n flag", submit: false,
-			want: []string{
-				"set-buffer", "-b", "buf", "--", "-n flag",
-				";", "paste-buffer", "-p", "-d", "-b", "buf", "-t", "%7",
-			},
-		},
-		{
-			name: "text ending in a semicolon escapes the final one", text: "run a;", submit: false,
-			want: []string{
-				"set-buffer", "-b", "buf", "--", `run a\;`,
+				"load-buffer", "-b", "buf", "-",
 				";", "paste-buffer", "-p", "-d", "-b", "buf", "-t", "%7",
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := pasteSubmitArgv("%7", "buf", tt.text, tt.submit); !reflect.DeepEqual(got, tt.want) {
+			if got := pasteSubmitArgv("%7", "buf", tt.submit); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("pasteSubmitArgv = %q; want %q", got, tt.want)
 			}
 		})
@@ -136,11 +121,11 @@ func TestPasteSubmit(t *testing.T) {
 				t.Fatalf("SaveState: %v", err)
 			}
 			if tt.pasteErr != nil {
-				fake.answer("set-buffer", "", tt.pasteErr)
+				fake.answer("load-buffer", "", tt.pasteErr)
 			}
 
 			err := e.PasteSubmit(tt.guid, "hello", true)
-			pastes := fake.ArgvFor("set-buffer")
+			pastes := fake.ArgvFor("load-buffer")
 			deletes := fake.ArgvFor("delete-buffer")
 			if tt.pasteErr != nil {
 				if err == nil || err.Error() != tt.wantErr {
@@ -159,7 +144,7 @@ func TestPasteSubmit(t *testing.T) {
 					t.Fatalf("PasteSubmit error = %v; want it to contain %q", err, tt.wantErr)
 				}
 				if len(pastes) != 0 {
-					t.Errorf("set-buffer calls = %v; want none", pastes)
+					t.Errorf("load-buffer calls = %v; want none", pastes)
 				}
 				return
 			}
@@ -167,7 +152,10 @@ func TestPasteSubmit(t *testing.T) {
 				t.Fatalf("PasteSubmit: %v", err)
 			}
 			if len(pastes) != 1 {
-				t.Fatalf("set-buffer invocations = %d; want 1", len(pastes))
+				t.Fatalf("load-buffer invocations = %d; want 1", len(pastes))
+			}
+			if got := fake.StdinFor("load-buffer"); !reflect.DeepEqual(got, []string{"hello"}) {
+				t.Errorf("load-buffer stdin = %q; want the text alone", got)
 			}
 			if !strings.HasPrefix(pastes[0][2], "lyx-inject-") {
 				t.Errorf("buffer name = %q; want the lyx-inject- prefix", pastes[0][2])

@@ -22,6 +22,11 @@ It imports the standard library only.
 In production code, `internal/summaryparser` is the sole declarer of the final-summary artifact's filename and the sole parser of its format.
 It imports the standard library only.
 
+## Halt-note format (`internal/haltnote`)
+
+`internal/haltnote` is the sole renderer and parser of the Go-authored halt note `loomcli` writes into the loom friction directory.
+It imports the standard library only.
+
 ## Recipe format (`internal/shedbuild`)
 
 `internal/shedbuild` is the sole parser of the recipe file format, and declares no on-disk location for recipe files.

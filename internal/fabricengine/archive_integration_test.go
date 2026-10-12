@@ -73,6 +73,9 @@ func TestArchiveWeftTip(t *testing.T) {
 		if got := tagTargetAt(t, h.RecordsBare, tag); got != tip {
 			t.Errorf("origin tag %s points at %q; want the tip %s", tag, got, tip)
 		}
+		if gotSlug, ok := fabricengine.ArchiveTagSlug(tag); !ok || gotSlug != slug {
+			t.Errorf("ArchiveTagSlug(%q) = (%q, %v); want (%q, true)", tag, gotSlug, ok, slug)
+		}
 		if n := countKind(rec, fabricengine.KindTagPushed); n != 1 {
 			t.Errorf("first call recorded %d %s entries; want 1", n, fabricengine.KindTagPushed)
 		}
