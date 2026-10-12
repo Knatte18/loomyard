@@ -506,6 +506,15 @@ The rows below stay in one fixed order regardless of which entry point runs them
     One blocking finding per name, attributed to the card naming the member, naming `PATTERN-fabric-vocabulary` and the rule broken; its way forward is to rename the member.
     Runs under any `language:`, and the plan index appends it to its format, rework and dispatch validation, so both plan gates, `lyx loom validate-plan`'s default and `--rework` modes and webster dispatch report it; dispatch drops a finding against a completed card, and `--require-approved` and webster's own `validate` verb do not run it.
     It only refuses: it misses a name spelled only in prose, such as a test row or subtest name, or built at implementation time, which the verify gate still catches, and it may refuse a host-geometry helper declared in a `_test.go` file under `internal/`, which the scan admits.
+42. `verify-package-missing` — a relative package argument (`.`, `..`, `./…` or `../…`, a trailing `/...` removed, not a `.go` file) of a `go test`, `go build`, `go vet` or `lyx gate test` command in a card's `**Verify:**` value or the overview's `## verify:` section that names no directory.
+    A directory counts when it is on disk under the worktree root, or equals or is an ancestor of a directory a card creates: a card's value reads the targets of non-`Delete` groups of that card and the earlier ones, a `Rename` pair's `New` side included, and the overview's reads the whole plan's; an external `_test` unit counts as its package's directory.
+    It splits a chain as `verify-nested-module` does and follows a literal `cd <dir>` and a `go -C <dir>`, `lyx gate test -C <dir>` or `--dir <dir>` the same way; `--tags` skips its value for `lyx gate test`, and reading stops at `--`.
+    A card's value is skipped when that card or an earlier one holds a `Move` group, and the overview's when any card does, since a `Move`'s destination lives in `Intent` prose.
+    One finding per argument, with the argument as its ref.
+    When the argument ends in `_test` and its `_test`-less spelling is a directory, the detail names that spelling as the replacement.
+    Its way forward is to correct the Verify line.
+    It runs right after `verify-module-wide` in `Validate` and `ValidateFormat`, under any `language:`, and both plan gates, `lyx loom validate-plan` and dispatch report it; dispatch drops a finding against a completed card.
+    It only refuses: it misses an argument behind a variable or inside `bash -c`, an argument after an unplaceable `cd` or `-C` or after a `cd` in a pipeline stage or after `||`, an import path, a module-wide pattern whose stem exists and a `.go` file argument, and a directory an earlier card deletes is left to that card's own verify run.
 
 One further check, `rework-first-card`, is outside both entry points and has no row above.
 Only the rework gate runs it: `planglyph.ValidateRework` runs it after the format-only set, and it reports a `first_card:` that differs from the card number Go told the rework session to start at.

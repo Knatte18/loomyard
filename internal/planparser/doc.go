@@ -128,7 +128,7 @@
 //
 // # Verify chains
 //
-// verify-nested-module and verify-module-wide read a shell chain through one splitter.
+// verify-nested-module, verify-module-wide and verify-package-missing read a shell chain through one splitter.
 // It joins a backslash-newline continuation into one line, then splits at `&&`, `||`, `;`, `|` and a newline, reading `||` as one separator and a separator inside a single- or double-quoted span as text.
 // A segment carries the separator that preceded it, so verify-nested-module follows a `cd` only after a sequencing separator and ends its scan at a `cd` in a pipeline stage or after `||`.
 //
