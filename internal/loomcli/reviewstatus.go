@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -179,7 +180,7 @@ func reviewWaitingFor(loc *lyxcwd.Location) func(st shedengine.Status) (string, 
 	reviewNote := reviewWaiting(loomengine.LoomParentReviewDir(loc), loomengine.LoomParentReviewLockDir(loc))
 	review := func(shedengine.Status) (string, error) { return reviewNote() }
 	readShuttleMarker := func() (shuttleengine.WaitMarker, bool, error) {
-		cfg, err := shuttleengine.LoadConfig(loc.AnchorPath(), "shuttle")
+		cfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(loc), "shuttle")
 		if err != nil {
 			return shuttleengine.WaitMarker{}, false, err
 		}

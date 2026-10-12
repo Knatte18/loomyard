@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -178,6 +179,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 	return shedrecipe.Env{
 		Cwd:                mustMkdir(t, filepath.Join(dir, "cwd")),
 		AnchorPath:         mustMkdir(t, filepath.Join(dir, "anchor")),
+		ConfigDirs:         configengine.Dirs{Anchor: filepath.Join(dir, "anchor")},
 		WorktreeRoot:       mustMkdir(t, filepath.Join(dir, "worktree")),
 		VerifyDir:          mustMkdir(t, filepath.Join(dir, "verify")),
 		VerifyCommand:      func() (string, error) { return "go test ./...", nil },
@@ -209,6 +211,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		Landing:                LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
 		DiscussionSpec:         specOver("test discussion prompt", "discussion-output.md"),
 		PrepareDiscussionSpawn: func() error { return nil },
+		PreparePlanSpawn:       func() error { return nil },
 		DiscussionTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "discussion",
@@ -279,8 +282,11 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			DriverStrand: func(context.Context) (battenshed.ChildDriverStrand, error) {
 				return battenshed.ChildDriverNone, nil
 			},
-			ChildRunLockHeld:   func() (bool, error) { return false, nil },
-			ReviveStrands:      func(context.Context) error { return nil },
+			ChildRunLockHeld: func() (bool, error) { return false, nil },
+			ReviveStrands:    func(context.Context) error { return nil },
+			ArbiterInFlight: func(context.Context) (battenshed.ChildArbiter, bool, error) {
+				return battenshed.ChildArbiter{}, false, nil
+			},
 			PauseRequested:     func() (bool, error) { return false, nil },
 			MarkWatched:        func(context.Context) (bool, error) { return false, nil },
 			OrchStrandRecorded: func() (bool, error) { return true, nil },
@@ -334,12 +340,16 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			},
 		},
 		SeedChild: battenshed.SeedChildDeps{
-			ReadBoardType: func(context.Context) (string, error) { return "loom", nil },
-			ChildDriver:   func() (string, error) { return "claude", nil },
-			WriteSeed:     func(context.Context, string, string) error { return nil },
-			CommitSeed:    func(context.Context) error { return nil },
-			PushSeed:      func(context.Context) error { return nil },
-			MarkWatched:   func(context.Context) (bool, error) { return false, nil },
+			ReadBoardType:        func(context.Context) (string, error) { return "loom", nil },
+			ChildDriver:          func() (string, error) { return "claude", nil },
+			ReadRunSettings:      func(context.Context) (map[string]any, error) { return nil, nil },
+			PrepareRunSettings:   func(map[string]any) (map[string][]byte, error) { return nil, nil },
+			WriteLocalOverride:   func(context.Context, string, []byte) error { return nil },
+			RemoveLocalOverrides: func(context.Context, []string) ([]string, error) { return nil, nil },
+			WriteSeed:            func(context.Context, string, string) error { return nil },
+			CommitSeed:           func(context.Context) error { return nil },
+			PushSeed:             func(context.Context) error { return nil },
+			MarkWatched:          func(context.Context) (bool, error) { return false, nil },
 		},
 	}
 }

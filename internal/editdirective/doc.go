@@ -4,7 +4,8 @@
 //
 // # What it says
 //
-// The directive states one rule: change files only with Edit or Write, with one Edit per site or `replace_all` for a bulk change, and never with `sed`, `awk`, `perl` or an inline interpreter heredoc.
+// The directive states one rule: change files only with Edit or Write, with one Edit per site or `replace_all` for a bulk change, and never with `sed -i`, `perl -i`, `awk` or an inline interpreter heredoc.
+// Reading with `sed -n` is allowed, and scratch files go under `.scratch/`.
 // It constrains the tool a role edits with, never what the role may write.
 // It has no inactive case: the text renders in a repo without a `PATTERN.md` as in one with it.
 //

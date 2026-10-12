@@ -53,30 +53,24 @@ func TestParseKernelCounters(t *testing.T) {
 	})
 }
 
-func TestReferencesDir(t *testing.T) {
+func TestCarriesMarker(t *testing.T) {
 	t.Parallel()
 
-	const dir = "/tmp/testtiming-resources-abc"
+	const marker = leftoverMarkerEnv + "=internal/x:42"
 	rows := []struct {
-		name string
-		cwd  string
-		exe  string
-		argv []string
-		want bool
+		name    string
+		environ string
+		want    bool
 	}{
-		{"cwd inside", dir + "/work", "/usr/bin/tmux", nil, true},
-		{"exe inside", "/", dir + "/lyx", nil, true},
-		{"argv element inside", "/", "/usr/bin/tmux", []string{"tmux", "-S", dir + "/sock"}, true},
-		{"unrelated", "/", "/usr/bin/tmux", []string{"tmux", "-L", "other"}, false},
-		{"empty directory matches nothing", "/", "/usr/bin/tmux", []string{"tmux"}, false},
+		{"exact entry", "PATH=/bin\x00" + marker + "\x00HOME=/root\x00", true},
+		{"longer value sharing the prefix", marker + "7\x00", false},
+		{"marker key with another value", leftoverMarkerEnv + "=internal/y:42\x00", false},
+		{"empty environ", "", false},
+		{"marker in the last entry without a trailing NUL", "PATH=/bin\x00" + marker, true},
 	}
 	for _, row := range rows {
-		target := dir
-		if strings.HasPrefix(row.name, "empty") {
-			target = ""
-		}
-		if got := referencesDir(target, row.cwd, row.exe, row.argv); got != row.want {
-			t.Errorf("%s: referencesDir = %v; want %v", row.name, got, row.want)
+		if got := carriesMarker([]byte(row.environ), marker); got != row.want {
+			t.Errorf("%s: carriesMarker = %v; want %v", row.name, got, row.want)
 		}
 	}
 }

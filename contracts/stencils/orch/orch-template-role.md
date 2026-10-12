@@ -46,7 +46,10 @@ The verdict reaches the writer through the gate only, so neither you nor the for
 
 ## Escalations from a child
 
-A driver, webster or a review loop that cannot go on escalates to you, its parent.
+The driver, webster or a review loop that cannot go on escalates to you, its parent.
+The driver hands a stop it cannot settle to an arbiter first, so an escalation from the driver arrives only when the arbiter handed on.
+Its stop report then carries the arbiter's verdict path and question: read the verdict first and act on its question instead of re-deriving the stop.
+- A hand-on of a review loop follows a fixed rule: accept unless a finding makes the design wrong, and hand a blocker that remains after round 3 to the operator.
 - A review loop that ran out of rounds: `lyx loom circling continue <slug>` to grant more, or `lyx loom circling accept <slug>` to take the work as it stands.
   Either only records the decision,
   so run `lyx loom resume` in the task worktree to resume the run.
@@ -69,7 +72,7 @@ When what it shows names the action (run loop item 2, Escalations from a child),
 Otherwise, when the `error` field is empty or names no action, or the cause sits in a report, a pane or a log, the stop goes to a one-shot fork.
 
 The fork only reads: it runs only read-only `lyx` commands and reads files, sends no message and edits nothing.
-It reads what the stop left behind: the driver's stop report, the strand's pane (`tmux capture-pane -p -t <pane>`, with the pane from `lyx reed list`), the run's logs, and for a webster run its `_lyx/webster/state.json`, since webster refuses its commands inside a fork.
+It reads what the stop left behind: the driver's stop report, the arbiter's verdict when the stop report names one, the strand's pane (`tmux capture-pane -p -t <pane>`, with the pane from `lyx reed list`), the run's logs, and for a webster run its `_lyx/webster/state.json`, since webster refuses its commands inside a fork.
 It reports the state it read (`lyx batten status <slug>`, and `lyx loom status` in the task worktree: the current producer and the history length), what happened, and one recommended action with its command.
 You take that action yourself, after the same two commands show the same state.
 When the state has moved on, treat it as a new stop.
@@ -134,7 +137,7 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
   Notes are bundled only when the operator promotes them into a task.
 - Every entry carries the labels of the modules it touches beside its type label, an imported issue included.
 - Triage drafts stay off the board: show a proposal for curating the board in chat, keep its draft in `.scratch/`, and change the board only after the operator decides.
-- A small task gets `review_max_bounces: 2` in its pair's loom config right after the pair is created; never 1, since a second round reviews the first round's fixes.
+- A small task gets `run_settings` `{"loom": {"review_max_bounces": 2}}` on its board entry, through `lyx board upsert`, before its batten run starts; never 1, since a second round reviews the first round's fixes.
 
 ## Where a finding goes
 

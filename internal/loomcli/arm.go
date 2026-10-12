@@ -261,7 +261,7 @@ func (c *loomCLI) reviewBudget() (int, map[string]int, bool, error) {
 		return c.cfg.ReviewMaxBounces, perchMaxBounces(c.cfg), c.cfg.SkipMergeReview, nil
 	}
 
-	cfg, err := loomengine.LoadConfig(c.location.AnchorPath(), "loom")
+	cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(c.location), "loom")
 	if err == nil {
 		return cfg.ReviewMaxBounces, perchMaxBounces(cfg), cfg.SkipMergeReview, nil
 	}
@@ -327,6 +327,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 			return loopIdleRelease(locks, self, readAgentStates(c.location, c.shuttleCfg), c.landingCfg.IdleRelease())
 		})
 		spec.Hooks.AfterInterrupt = c.loomAfterInterrupt
+		spec.Hooks.ConsumeAttempt = c.loomConsumeAttempt
 	}
 	spec.Routing = c.routing
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -47,6 +48,8 @@ type Env struct {
 	// AnchorPath is the told anchor path, read by Batchifier, Webster, Bouncer, SingleLLM's
 	// anchor_path token, and by the gate resolver's "plan" gate.
 	AnchorPath string
+	// ConfigDirs is the told geometry of a layered config load, read by Batchifier, LoomPreflight and Webster, which load batcher through it.
+	ConfigDirs configengine.Dirs
 	// WorktreeRoot is the told worktree root, read by SingleLLM's output_files and by the gate
 	// resolver's "plan" and "verify" gates.
 	WorktreeRoot string
@@ -167,6 +170,9 @@ type Env struct {
 	// PrepareDiscussionSpawn is the injected closure every fresh Discussion-Write spawn runs after the attach probe and before the spawn, read by the DiscussionWrite entry.
 	// It arrives as a closure for the same reason DiscussionSpec does.
 	PrepareDiscussionSpawn func() error
+	// PreparePlanSpawn is the injected closure every fresh Plan-Write spawn runs after the attach probe and before the plan-directory rotation, read by the PlanWrite entry.
+	// It arrives as a closure for the same reason DiscussionSpec does.
+	PreparePlanSpawn func() error
 	// DiscussionTable is the injected shedadapters.TableSource the DiscussionSeats entry evaluates once per Call.
 	// It arrives as a closure for the same reason DiscussionSpec does: building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly.
 	DiscussionTable shedadapters.TableSource

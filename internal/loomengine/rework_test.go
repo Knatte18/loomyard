@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -37,7 +38,7 @@ func TestReworkSpec(t *testing.T) {
 			layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 			cfg := Config{Plan: "opus[effort=high]", Rework: tt.rework, PlanTimeoutMin: 90}
 
-			reg, err := modelspec.LoadRegistry(t.TempDir())
+			reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 			if err != nil {
 				t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 			}
@@ -110,7 +111,7 @@ func TestReworkSpec_MissingStencil(t *testing.T) {
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 	cfg := Config{Plan: "opus[effort=high]", PlanTimeoutMin: 90}
 
-	reg, err := modelspec.LoadRegistry(t.TempDir())
+	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 	if err != nil {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}

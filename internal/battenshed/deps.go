@@ -26,6 +26,10 @@ var ErrUnknownRecipe = errors.New("battenshed: unknown recipe name")
 // named rather than failing inside the child after a wrong seed has already been pushed.
 var ErrUnsupportedChildRecipe = errors.New("battenshed: recipe cannot be a task worktree's own run")
 
+// ErrInvalidRunSettings is the sentinel a SeedChildDeps.PrepareRunSettings closure wraps when a key of the board task's run settings does not validate.
+// SeedChild routes it to Stuck, naming the module and the key, before any seed is written.
+var ErrInvalidRunSettings = errors.New("battenshed: the board task's run settings do not validate")
+
 // ErrDisagreeingChildSeed is the sentinel a SeedChildDeps.WriteSeed closure wraps when the task
 // worktree's own seed already exists and disagrees with the one Seed-Child is about to write --
 // normally unreachable, since Seed-Child runs once and never revisits a Done row, but reachable
@@ -84,6 +88,14 @@ type ChildDecision struct {
 	At string
 	// HeadSHA is the head commit the operator decided on.
 	HeadSHA string
+}
+
+// ChildArbiter is the reading of the child's in-flight arbiter marker.
+type ChildArbiter struct {
+	// Deadline is the time the arbiter's wait for its verdict ends.
+	Deadline time.Time
+	// Alive reports whether the arbiter strand the marker names is live.
+	Alive bool
 }
 
 // InnerRunDeps carries every told value and injected closure NewInnerRun needs: spawning the
@@ -169,6 +181,11 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil StopReport resolves to reporting none in NewInnerRun.
 	StopReport func() (path string, at time.Time, found bool, err error)
+	// ArbiterInFlight reads the child's in-flight arbiter marker, reporting found == false when there is none.
+	// The state-changed notice is held while a live arbiter may still settle the child's stop.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil ArbiterInFlight resolves to reporting none in NewInnerRun.
+	ArbiterInFlight func(ctx context.Context) (arbiter ChildArbiter, found bool, err error)
 	// NoticeQuiet is how long a running child's agents may all stay idle, with its driver strand alive and no wait marker live, before the row sends a quiet notice.
 	// Zero disables the quiet notice.
 	NoticeQuiet time.Duration
@@ -293,6 +310,15 @@ type SeedChildDeps struct {
 	// ChildDriver returns the driver read from prime's own seed params: the child always
 	// inherits prime's driver, never the Board's.
 	ChildDriver func() (string, error)
+	// ReadRunSettings returns the Board task's run settings, module name to that module's keys, evaluated fresh on every Call.
+	ReadRunSettings func(ctx context.Context) (map[string]any, error)
+	// PrepareRunSettings returns each module the settings name as its migrated local-layer document.
+	// An error wrapping ErrInvalidRunSettings means a key does not validate and SeedChild routes it to Stuck; any other error is a hard error.
+	PrepareRunSettings func(settings map[string]any) (map[string][]byte, error)
+	// WriteLocalOverride writes one module's local-layer file in the task worktree atomically.
+	WriteLocalOverride func(ctx context.Context, module string, document []byte) error
+	// RemoveLocalOverrides removes the local-layer file of every registered module not in keep and returns the paths it removed.
+	RemoveLocalOverrides func(ctx context.Context, keep []string) (removed []string, err error)
 	// WriteSeed resolves the child's seed path and encodes recipe and driver into it. An error
 	// wrapping ErrUnknownRecipe means recipe names no recipe the encoder knows, one wrapping
 	// ErrUnsupportedChildRecipe means it names a recipe the task worktree cannot bootstrap, and one

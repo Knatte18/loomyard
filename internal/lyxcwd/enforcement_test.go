@@ -12,11 +12,11 @@ import (
 	"go/scanner"
 	"go/token"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricvocab"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
@@ -521,30 +521,6 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	})
 }
 
-// configsyncOwnerDir is fabricVocabularyOwners' one narrow row: internal/configsync may name
-// "warp"/"weft" in string literals and comments (the on-disk legacy config filenames the
-// migration must read by name), but not in identifiers.
-const configsyncOwnerDir = "internal/configsync"
-
-// fabricVocabularyOwners is the set of directories permitted to use the bare weft/warp tokens, in
-// the same idiom as TestEnforcement_GeometryLiterals's geometryTokenOwners. It governs the bare
-// weft/warp rule only -- host is retired and the fabric-sense host-phrase rule applies everywhere,
-// including inside these owner dirs, so this set never carves out a host-phrase hit.
-// configsyncOwnerDir's narrower literal-and-comment carve-out (weft/warp only) is applied
-// separately by failsBareVocabularyCheck.
-var fabricVocabularyOwners = map[string]bool{
-	"internal/fabricengine": true,
-	"internal/fabriccli":    true,
-	"internal/weftname":     true,
-	"internal/gitkit":       true,
-	"internal/boardengine":  true,
-	configsyncOwnerDir:      true,
-	// internal/hubforge is a directory of non-test .go files (the hub factory must be non-test
-	// to be importable across packages) that names fabric's own geometry, so it owns the bare
-	// weft/warp tokens the same way internal/fabricengine does.
-	"internal/hubforge": true,
-}
-
 // weftnameImportOwners is the set of directories permitted to import internal/weftname: the
 // narrower owner set fabric-vocabulary-rule's rule (3) grants, excluding boardengine and
 // configsync (owners for the bare-token rule but not for this import rule).
@@ -570,9 +546,6 @@ const weftnameImportPath = "github.com/Knatte18/loomyard/internal/weftname"
 // internal/weftname, to test weftname.SiblingPath.
 const weftnameTestImporter = "internal/lyxcwd/geometry_test.go"
 
-// weftnamePackagePattern matches the weftname package name as a whole word.
-var weftnamePackagePattern = regexp.MustCompile(`\bweftname\b`)
-
 // vocabScanAllowlistEntry is one path the extended scan skips; a path ending in "/" is a prefix.
 type vocabScanAllowlistEntry struct {
 	path   string
@@ -591,9 +564,6 @@ var vocabScanAllowlist = []vocabScanAllowlistEntry{
 // sandbox/ is the repo-root fixture tree; tools/sandbox/ is scanned.
 var vocabScanSkippedRoots = map[string]bool{"_lyx": true, ".lyx": true, "sandbox": true}
 
-// vocabScanDocRoots are the roots whose .md, .yaml and .go files the extended scan covers.
-var vocabScanDocRoots = map[string]bool{"contracts": true, "docs": true, "plugins": true, "crucible": true, "cmd": true}
-
 // vocabScanRootFiles are the repo-root files the extended scan covers.
 var vocabScanRootFiles = map[string]bool{"CLAUDE.md": true, "README.md": true}
 
@@ -611,7 +581,7 @@ func vocabScanAllowlisted(rel string) bool {
 //
 // Bare weft/warp rule, outside the owner set (configsync's literal-and-comment carve-out aside):
 // every *_test.go file anywhere; every non-test .go file under internal/ and the doc roots; every
-// .md and .yaml file under the doc roots; every .md under internal/; CLAUDE.md and README.md.
+// .md and .yaml file under the doc roots; every .md under internal/; CLAUDE.md and README.md, which may name the records repository loomyard-weft.
 // Host-phrase rule: non-test .go under internal/ and cmd/, and .md under internal/ and contracts/stencils/.
 // Weftname import rule: non-test .go under internal/ and cmd/, and every test file but weftnameTestImporter.
 func fabricVocabularyFailures(t *testing.T, base string) ([]string, int) {
@@ -629,7 +599,7 @@ func fabricVocabularyFailures(t *testing.T, base string) ([]string, int) {
 		}
 		dir := filepath.ToSlash(filepath.Dir(rel))
 		inInternal := first == "internal"
-		inDocRoot := vocabScanDocRoots[first]
+		inDocRoot := fabricvocab.IsDocRoot(first)
 
 		switch filepath.Ext(rel) {
 		case ".go":
@@ -641,7 +611,7 @@ func fabricVocabularyFailures(t *testing.T, base string) ([]string, int) {
 			}
 			f := file.AST(t, parser.ParseComments|parser.SkipObjectResolution)
 			bareIdent, bareLiteralOrComment, hostHit := fabricVocabularyHits(f)
-			if bareScope && !shouldSkipBareVocabularyCheck(dir) && failsBareVocabularyCheck(dir, bareIdent, bareLiteralOrComment) {
+			if bareScope && !fabricvocab.SkipsBareCheck(dir) && fabricvocab.FailsBareCheck(dir, bareIdent, bareLiteralOrComment) {
 				fail(rel, "bare weft/warp token outside the owner set")
 			}
 			if hostScope && hostHit {
@@ -656,7 +626,11 @@ func fabricVocabularyFailures(t *testing.T, base string) ([]string, int) {
 			ext := filepath.Ext(rel)
 			bareScope := (ext == ".md" && (inInternal || vocabScanRootFiles[rel])) || inDocRoot
 			hostScope := ext == ".md" && (inInternal || strings.HasPrefix(rel, "contracts/stencils/"))
-			if bareScope && !fabricVocabularyOwners[dir] && bareVocabularyToken(text) {
+			bareHit := fabricvocab.BareToken
+			if vocabScanRootFiles[rel] {
+				bareHit = fabricvocab.BareTokenInRootDoc
+			}
+			if bareScope && !fabricvocab.IsOwner(dir) && bareHit(text) {
 				fail(rel, "bare weft/warp token outside the owner set")
 			}
 			if hostScope && fabricSenseHostPhrase(text) {
@@ -667,48 +641,12 @@ func fabricVocabularyFailures(t *testing.T, base string) ([]string, int) {
 	return failures, scanned
 }
 
-// hostGeometryIdentifiers are the fabric-geometry identifiers fabric-vocabulary-rule names as the
-// identifier form of the host phrase predicate: host is never policed as a bare word, but these
-// identifiers compound it with a repo/geometry noun exactly as the phrase form does. Matched
-// case-insensitively against an *ast.Ident's Name.
-var hostGeometryIdentifiers = map[string]bool{
-	"hostbranch":    true,
-	"hostlayoutfor": true,
-	"hostreason":    true,
-	"hostjunction":  true,
-	"hostclean":     true,
-}
-
 // hostPhrases are the fabric-sense "host X" phrases fabric-vocabulary-rule polices, checked
 // case-insensitively in both spaced and hyphenated form. host itself is never policed as a bare
 // word -- see fabricSenseHostPhrase.
 var hostPhrases = []string{
 	"host repo", "host repository", "host worktree", "host working tree",
 	"host checkout", "host branch", "host junction", "host path", "host side", "host head",
-}
-
-// bareVocabularyToken reports whether s contains, case-insensitively, the bare token "weft" or
-// "warp" anywhere as a substring. Unlike host, weft/warp are banned wherever they occur -- fabric
-// has no other meaning for them in this repo -- so substring matching (not whole-word matching)
-// is deliberate: it is what catches the token inside a camelCase identifier such as
-// WeftWorktree, not just a standalone word.
-func bareVocabularyToken(s string) bool {
-	return bareVocabularyTokenIn(s, false)
-}
-
-// bareVocabularyTokenIn is bareVocabularyToken with the weftname package name additionally
-// stripped when weftnameOK, for a file whose weftname import the import rule already governs.
-// The weftname pattern only strips a spelling that itself contains weft,
-// so text lacking both tokens returns false before the regex runs.
-func bareVocabularyTokenIn(s string, weftnameOK bool) bool {
-	if lower := strings.ToLower(s); !strings.Contains(lower, "weft") && !strings.Contains(lower, "warp") {
-		return false
-	}
-	if weftnameOK {
-		s = weftnamePackagePattern.ReplaceAllString(s, "")
-	}
-	lower := strings.ToLower(s)
-	return strings.Contains(lower, "weft") || strings.Contains(lower, "warp")
 }
 
 // fabricSenseHostPhrase reports whether s contains a fabric-sense "host" phrase, case-
@@ -725,26 +663,6 @@ func fabricSenseHostPhrase(s string) bool {
 	return false
 }
 
-// shouldSkipBareVocabularyCheck reports whether dir is exempt from the bare weft/warp check
-// entirely: every fabricVocabularyOwners row except configsyncOwnerDir, whose narrower carve-out
-// is applied by failsBareVocabularyCheck instead of a blanket skip.
-func shouldSkipBareVocabularyCheck(dir string) bool {
-	return fabricVocabularyOwners[dir] && dir != configsyncOwnerDir
-}
-
-// failsBareVocabularyCheck applies fabric-vocabulary-rule's owner-set carve-outs to a file's bare
-// weft/warp hits. configsyncOwnerDir's row is narrower than a full skip: it passes on a
-// literal-or-comment-only hit (the on-disk legacy config filenames it must name verbatim) but
-// still fails on an identifier hit, since identifiers are never carved out there. Every other
-// directory reaching this function is already known non-owner (shouldSkipBareVocabularyCheck
-// exempts every other owner row before this is called), so it fails on either kind of hit.
-func failsBareVocabularyCheck(dir string, bareIdent, bareLiteralOrComment bool) bool {
-	if dir == configsyncOwnerDir {
-		return bareIdent
-	}
-	return bareIdent || bareLiteralOrComment
-}
-
 // fabricVocabularyHits inspects a parsed, comment-carrying Go AST file and reports three
 // independent hits: a bare weft/warp token inside an identifier, a bare weft/warp token inside a
 // string literal or a comment, and a fabric-sense host phrase anywhere (identifiers, literals, or
@@ -755,7 +673,7 @@ func fabricVocabularyHits(f *ast.File) (bareIdent, bareLiteralOrComment, hostHit
 	weftnameOK := importsWeftname(f)
 	for _, cg := range f.Comments {
 		text := cg.Text()
-		if bareVocabularyTokenIn(text, weftnameOK) {
+		if fabricvocab.BareTokenIn(text, weftnameOK) {
 			bareLiteralOrComment = true
 		}
 		if fabricSenseHostPhrase(text) {
@@ -766,15 +684,15 @@ func fabricVocabularyHits(f *ast.File) (bareIdent, bareLiteralOrComment, hostHit
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.Ident:
-			if bareVocabularyTokenIn(node.Name, weftnameOK) {
+			if fabricvocab.BareTokenIn(node.Name, weftnameOK) {
 				bareIdent = true
 			}
-			if hostGeometryIdentifiers[strings.ToLower(node.Name)] {
+			if fabricvocab.IsHostGeometryIdentifier(node.Name) {
 				hostHit = true
 			}
 		case *ast.BasicLit:
 			if node.Kind == token.STRING {
-				if bareVocabularyTokenIn(node.Value, weftnameOK) {
+				if fabricvocab.BareTokenIn(node.Value, weftnameOK) {
 					bareLiteralOrComment = true
 				}
 				if fabricSenseHostPhrase(node.Value) {
@@ -847,8 +765,21 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 		})
 
 		t.Run("embedded_md_style_body_with_weft_fails", func(t *testing.T) {
-			if !bareVocabularyToken("This template mentions the weft side directory.") {
+			if !fabricvocab.BareToken("This template mentions the weft side directory.") {
 				t.Error("expected weft in a markdown-style body to be detected")
+			}
+		})
+
+		t.Run("root_doc_admits_records_repo_name_only", func(t *testing.T) {
+			named := "Records live in [loomyard-weft](https://github.com/Knatte18/loomyard-weft)."
+			if fabricvocab.BareTokenInRootDoc(named) {
+				t.Error("expected the records repository's name and URL to pass in a repo-root doc")
+			}
+			if !fabricvocab.BareTokenInRootDoc(named + " Each task has a weft branch.") {
+				t.Error("expected a bare weft next to the records repository's name to still fail")
+			}
+			if !fabricvocab.BareToken(named) {
+				t.Error("expected the records repository's name to still fail outside the repo-root docs")
 			}
 		})
 
@@ -856,7 +787,7 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 			// An owner-set file skips only the bare weft/warp rule in the tree-scan; the
 			// host-phrase rule reaches it exactly as it reaches every other file, since host
 			// is retired everywhere rather than merely scoped away from the owner set.
-			if !shouldSkipBareVocabularyCheck("internal/fabricengine") {
+			if !fabricvocab.SkipsBareCheck("internal/fabricengine") {
 				t.Error("expected internal/fabricengine to skip the bare-token check entirely")
 			}
 			f := parseWithComments(t, "package fabricengine\n\nvar hostBranch string\n")
@@ -877,7 +808,7 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 			if !bareLiteralOrComment {
 				t.Fatal("expected the literal/comment hit to be detected")
 			}
-			if failsBareVocabularyCheck(configsyncOwnerDir, bareIdent, bareLiteralOrComment) {
+			if fabricvocab.FailsBareCheck(fabricvocab.ConfigsyncOwnerDir, bareIdent, bareLiteralOrComment) {
 				t.Error("configsync row must pass on a literal/comment-only hit")
 			}
 
@@ -886,7 +817,7 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 			if !identHit {
 				t.Fatal("expected the identifier hit to be detected")
 			}
-			if !failsBareVocabularyCheck(configsyncOwnerDir, identHit, true) {
+			if !fabricvocab.FailsBareCheck(fabricvocab.ConfigsyncOwnerDir, identHit, true) {
 				t.Error("configsync row must still fail on an identifier hit")
 			}
 		})
@@ -927,7 +858,7 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 			// Drive it the way the tree-scan does: get hostHit from fabricVocabularyHits on
 			// a fixture carrying a policed phrase, then apply the tree-scan's own (now
 			// unconditional) condition for "internal/fabricengine" -- an owner dir. Before
-			// this card the condition also gated on !fabricVocabularyOwners[dir], so this
+			// this card the condition also gated on !fabricvocab.IsOwner(dir), so this
 			// hit passed; now it fails, which is the whole point of the tightening.
 			f := parseWithComments(t, "package fabricengine\n\n// commit the card to the host repo\nvar _ = 1\n")
 			_, _, hostHit := fabricVocabularyHits(f)
@@ -935,7 +866,7 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 				t.Fatal("expected the fixture's host repo phrase to be detected")
 			}
 			const dir = "internal/fabricengine"
-			if !fabricVocabularyOwners[dir] {
+			if !fabricvocab.IsOwner(dir) {
 				t.Fatal("internal/fabricengine must still be an owner dir for the bare weft/warp rule")
 			}
 			if !hostHit {
@@ -944,7 +875,7 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 		})
 
 		t.Run("bare_owner_skip_unchanged", func(t *testing.T) {
-			if !shouldSkipBareVocabularyCheck("internal/fabricengine") {
+			if !fabricvocab.SkipsBareCheck("internal/fabricengine") {
 				t.Error("expected internal/fabricengine to still skip the bare weft/warp check")
 			}
 		})

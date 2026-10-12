@@ -20,11 +20,20 @@ func RunStatus(state, producer string) string {
 // IsRunStatus reports whether status has the RunStatus form: non-nil, and two non-empty halves around the separator.
 // Any other status, including nil, empty, `done` and a hand-set word, is not a run status.
 func IsRunStatus(status *string) bool {
+	_, ok := RunStatusProducer(status)
+	return ok
+}
+
+// RunStatusProducer returns the producer half of a status IsRunStatus accepts, and false for any other status.
+func RunStatusProducer(status *string) (string, bool) {
 	if status == nil {
-		return false
+		return "", false
 	}
 	state, producer, found := strings.Cut(*status, runStatusSeparator)
-	return found && state != "" && producer != ""
+	if !found || state == "" || producer == "" {
+		return "", false
+	}
+	return producer, true
 }
 
 // ErrRunLocked matches, through errors.Is, a write refused because it would change the scope of an entry a run holds.
@@ -61,13 +70,7 @@ func checkRunLocks(loaded, after []Task) error {
 	for _, task := range after {
 		afterBySlug[task.Slug] = task
 	}
-
-	removedDone := make(map[string]bool)
-	for _, task := range loaded {
-		if _, kept := afterBySlug[task.Slug]; !kept && isDone(task) {
-			removedDone[task.Slug] = true
-		}
-	}
+	removedDone := removedDoneSlugs(loaded, after)
 
 	for _, before := range loaded {
 		if !IsRunStatus(before.Status) {
@@ -81,9 +84,25 @@ func checkRunLocks(loaded, after []Task) error {
 	return nil
 }
 
-// scopeChanged reports whether any field but Status differs between before and now.
+// removedDoneSlugs is the set of done entries of loaded that after no longer holds.
+func removedDoneSlugs(loaded, after []Task) map[string]bool {
+	kept := make(map[string]bool, len(after))
+	for _, task := range after {
+		kept[task.Slug] = true
+	}
+	removedDone := make(map[string]bool)
+	for _, task := range loaded {
+		if !kept[task.Slug] && isDone(task) {
+			removedDone[task.Slug] = true
+		}
+	}
+	return removedDone
+}
+
+// scopeChanged reports whether any field but Status, Created and Revised differs between before and now.
 // Slices compare element-wise with nil equal to empty;
 // before's DependsOn is first stripped of the slugs in removedDone.
+// RunSettings is never compared: a run settings change is not a scope change, so a run-held entry takes it.
 func scopeChanged(before, now Task, removedDone map[string]bool) bool {
 	dependsOn := slices.DeleteFunc(slices.Clone(before.DependsOn), func(slug string) bool {
 		return removedDone[slug]
@@ -101,13 +120,42 @@ func scopeChanged(before, now Task, removedDone map[string]bool) bool {
 		!slices.Equal(dependsOn, now.DependsOn)
 }
 
-// cloneTasks copies tasks with their slice fields and status duplicated, so a later mutation of the store cannot alias the copy.
+// cloneSettings returns a deep copy of a run settings map, nil for nil.
+func cloneSettings(settings map[string]any) map[string]any {
+	if settings == nil {
+		return nil
+	}
+	cloned := make(map[string]any, len(settings))
+	for key, value := range settings {
+		cloned[key] = cloneSettingsValue(value)
+	}
+	return cloned
+}
+
+// cloneSettingsValue deep-copies the maps and lists a decoded JSON value holds.
+func cloneSettingsValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return cloneSettings(typed)
+	case []any:
+		cloned := make([]any, len(typed))
+		for i, element := range typed {
+			cloned[i] = cloneSettingsValue(element)
+		}
+		return cloned
+	default:
+		return value
+	}
+}
+
+// cloneTasks copies tasks with their slice, map and status fields duplicated, so a later mutation of the store cannot alias the copy.
 func cloneTasks(tasks []Task) []Task {
 	cloned := make([]Task, len(tasks))
 	for i, task := range tasks {
 		task.Labels = slices.Clone(task.Labels)
 		task.Issues = slices.Clone(task.Issues)
 		task.DependsOn = slices.Clone(task.DependsOn)
+		task.RunSettings = cloneSettings(task.RunSettings)
 		if task.Status != nil {
 			status := *task.Status
 			task.Status = &status

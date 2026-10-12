@@ -23,6 +23,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -77,7 +78,7 @@ func newClonedHubFixture(t *testing.T) clonedHubFixture {
 		t.Fatalf("lyxcwd.Resolve(%s): %v", res.PrimeCwd, err)
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(res.HubPath))
+	cfg, err := fabricengine.LoadConfig(configengine.Dirs{Board: fabricengine.BoardDir(res.HubPath)})
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}

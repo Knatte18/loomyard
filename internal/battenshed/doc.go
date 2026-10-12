@@ -33,13 +33,16 @@
 // A parked stop's notice waits for the driver's stop report, for the driver strand to end, or for three minutes after `since`, whichever comes first, and an older report never qualifies.
 // An awaiting child whose status carries a parent notice, while this batten holds the watched marker, is left to its driver's relay:
 // its notice goes when the driver strand has ended, or three minutes passed with no report, or ten minutes passed since the report with no decision record.
+// A live arbiter in flight holds the notice of a halted or awaiting child, so the orch is not told "report none yet" for a stop the arbiter may settle:
+// the hold ends when the arbiter's marker is gone, its strand is dead, or its deadline plus the report wait has passed, and the rules above decide again.
+// When a resume moves the child back to running the episode ends and no notice goes; after a hand-on the marker is gone and the driver's stop report qualifies.
 // A done child sends no notice: a landing that succeeds needs nothing from the orch.
 // A resume the child refuses because its parked driver's pane holds a draft, an active operator or another busy reading (a spawn error wrapping ErrChildDriverBusy) is retried like a not-parked one, without a deadline, until the resume lands, the child leaves awaiting or batten is paused or stopped.
 // Its wait reason names the draft and the remedy, and one notice per stall tells the orch to clear the draft in the driver's pane and quotes the box text the refusal found, as one line; a landed resume re-arms it.
 // Delivery: the Notify seam reports whether the line was queued; with no orch strand recorded it is not called, one Warn is logged per episode and the strand is asked about again once per notice_probe_s;
 // a Notify error or an unqueued line is retried at most once per notice_probe_s and at most three times, then dropped with a Warn.
 // Control flow is unchanged: a notice is informational, a delivery failure is only warned about, and the outcomes, halts and waits are the same with or without it.
-// Bound: the report wait delays a notice by at most three minutes, and the relay wait by at most ten minutes after the report; neither loses it, and there is one notice per episode.
+// Bound: the report wait delays a notice by at most three minutes, the relay wait by at most ten minutes after the report, and an arbiter hold by at most the arbiter's deadline plus the report wait; none loses it, and there is one notice per episode.
 // A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the quiet window, or by an API-error notice when the stall is one; an operator attaches to the child's session to tell the cases apart.
 //
 // A batten run starts with "lyx batten run <slug>" in a terminal, or with "--window" in its own tmux window of the orch's reed session, which returns at once.
@@ -58,6 +61,13 @@
 // anything costing a process or a multiplexer round trip (the driver, review and agent-activity reads, the forced decode, a not-parked resume retry, the watched-marker refresh, a notice's delivery) runs at most once per notice_probe_s.
 // Bound: a running child is waited on without a time limit, bounded by "lyx batten pause" (honoured within one check), cancellation and the notices;
 // a running child whose driver is dead and whose status file does not change returns nothing from the wait, the driver-dead notice being the only signal.
+//
+// Seed-Child writes the task worktree's local config layer from the board task's run settings, after reading the child driver and before the seed:
+// it reads the settings fresh on every Call, writes the local file of each module they name, then removes the local file of every other registered module with one Warn per removed file, so the layer is exactly the task's run settings.
+// A key that no longer validates (a key a later binary retired or closed to the local layer, or one written to `board.json` by hand) stands the row Stuck, naming the module, the key and the way forward, correcting the task's `run_settings` with `lyx board upsert` and then `lyx batten run <slug>`; an unreadable board is Stuck as for the type, and any other prepare, write or remove failure is a hard error.
+// A resume redoes the whole write from the current board entry, and no other row writes these files.
+// Bound: a local file written while the row stood Stuck is discarded by the resume, so a hand edit to the pair's local layer before the resume is lost.
+// Batten writes no seed field for run settings.
 //
 // Seed-Child and the InnerRun row also keep the batten-watched marker of the task worktree's run (MarkWatched), which holds this batten's pid while its notices have a destination that is also the child driver's parent.
 // Seed-Child asks once the seed is committed, so the child's first driver launch already renders the watched rule;

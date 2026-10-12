@@ -43,20 +43,31 @@ func (i index) Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, 
 	return validate(plan, worktreeRoot, i.loader)
 }
 
-// ValidateFormat is the package's ValidateFormatAfter plus the card-fabric-reference findings, which sit outside planparser's entry points.
+// ValidateFormat is the package's ValidateFormatAfter plus the card-fabric-reference and fabric-vocabulary-name findings, which sit outside planparser's entry points.
 func (i index) ValidateFormat(plan *planparser.Plan, worktreeRoot string, done []planparser.Card) ([]Finding, error) {
 	findings, err := validateFormatAfter(plan, worktreeRoot, done, i.loader)
-	return append(findings, convertAll(planparser.CheckCardFabricReference(plan, i.matcher))...), err
+	findings = append(findings, convertAll(planparser.CheckCardFabricReference(plan, i.matcher))...)
+	return append(findings, convertAll(planparser.CheckFabricVocabularyName(plan))...), err
 }
 
-// ValidateRework is the package's ValidateRework plus the card-fabric-reference findings.
+// ValidateRework is the package's ValidateRework plus the card-fabric-reference and fabric-vocabulary-name findings.
 func (i index) ValidateRework(plan *planparser.Plan, worktreeRoot string, told int) ([]Finding, error) {
 	findings, err := validateRework(plan, worktreeRoot, told, i.loader)
-	return append(findings, convertAll(planparser.CheckCardFabricReference(plan, i.matcher))...), err
+	findings = append(findings, convertAll(planparser.CheckCardFabricReference(plan, i.matcher))...)
+	return append(findings, convertAll(planparser.CheckFabricVocabularyName(plan))...), err
 }
 
+// ValidateDispatch is the package's ValidateDispatch plus the fabric-vocabulary-name findings of the forthcoming cards.
+// A completed card's declared name has already landed, so a finding against it is no defect the writer can fix.
 func (index) ValidateDispatch(plan *planparser.Plan, worktreeRoot string, completed, forthcoming []planparser.Card) ([]Finding, error) {
-	return ValidateDispatch(plan, worktreeRoot, completed, forthcoming)
+	findings, err := ValidateDispatch(plan, worktreeRoot, completed, forthcoming)
+	done := cardIDSet(completed)
+	for _, finding := range convertAll(planparser.CheckFabricVocabularyName(plan)) {
+		if !done[finding.Card] {
+			findings = append(findings, finding)
+		}
+	}
+	return findings, err
 }
 
 func (index) DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) ([]Finding, error) {

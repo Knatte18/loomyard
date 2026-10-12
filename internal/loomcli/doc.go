@@ -76,4 +76,30 @@
 //
 // The three verbs read only the resolved anchor, so they join the lightweight wiring and are not held up by an unrelated module's config.
 // `renumberRefusal` words every refusal with its way forward; the rows are in `contracts/specs/refusal-spec.md`.
+//
+// # Arbiter
+//
+// `lyx loom arbiter <run-id> --envelope <path> [--report <path>]` is run only by the run's driver, at a stop it cannot settle.
+// It spawns a cold arbiter agent on the `arbiter` model through shuttle, waits for its verdict file and prints the validated verdict.
+// It is a role verb, so the orch's command index leaves it out.
+//
+// A stop is eligible only if the verb's closed list admits it: an error stop of kind `producer` or `bootstrap`, an `interrupted` stop under the `reinvoke` policy or with a transient class, a halted `blocked` stop other than a Publish halt that names a target, and a halted `awaiting` stop whose Bouncer row has a pending escalation.
+// Every other stop, a missing status file, an unreadable envelope, `arbiter_max_spawns` of 0 and a spent budget are refused with the hand-back to the run's parent as the way forward.
+//
+// Each spawn is an attempt, numbered from 1 under the run's arbiter directory in `attempt-<N>`.
+// `attempt.json` is written before the spawn, so the attempt counts against `arbiter_max_spawns` whatever happens next, and the budget is counted from those records so a restart never resets it.
+// The directory also holds `prompt.md`, the agent's `verdict.yaml`, the verb's validated `envelope.json` and, once the re-launch consumed a `resume`, the `applied` mark.
+// While an arbiter may be live an ephemeral marker names the attempt, its strand and its deadline.
+// The status commit stages the arbiter directory with the run records.
+//
+// The stop key is the status file's current producer, history length and state.
+// A re-run for a stop key an attempt already arbitrated spawns nothing:
+// it returns that attempt's verdict, waits on its live arbiter for the time left to its deadline, or stops an arbiter past its deadline through shuttle's stop verb and reads `hand-on` with cause `timeout`.
+// An applied `resume` whose stop key is unchanged is refused, since the run stopped at the same place again.
+//
+// The printed envelope carries `verdict`, `reason`, `question`, `goto`, `verbs`, `cause`, `attempt`, `attempt_dir` and `verdict_path`, and for a `resume` the `relaunch` line.
+// A `resume` the verb finds unsound reads `hand-on` with cause `precondition`: no circling decision pending at an escalation, no goto target at a `blocked` stop, or a goto target the run's current row does not admit.
+// The verb moves no run itself;
+// `lyx shed step <run-id> --until-stop --arbiter-attempt <N>` performs the verdict's goto under the run and status locks, once per attempt.
+// A pair's session end ends a live arbiter strand with the pair's other strands.
 package loomcli

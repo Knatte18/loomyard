@@ -35,7 +35,7 @@ const (
 const driverNotifyMarker = "parent_notify"
 
 // driverPrompt composes the driver session's launch prompt: the shed driver stencil, read from stencilsDir through stencilstore.Read and filled with the run-id, the report path the session writes at every stop,
-// driverParkCommand(reportPath), driverTeardownCommand, parentdirective.Directive(stencilsDir, parentName, false) and editdirective.Directive(stencilsDir).
+// driverParkCommand(reportPath), driverArbiterCommand(runID), driverTeardownCommand, parentdirective.Directive(stencilsDir, parentName, false) and editdirective.Directive(stencilsDir).
 // The marker for the parent-notification rule is filled with the watched stencil when watched is true and with the plain one otherwise.
 // The guide marker is filled with the deployed path of the repair guide stencil, the copy the fork the driver spawns at a failure stop reads.
 // The prompt is the driver's whole procedure, so the session depends on no installed skill.
@@ -73,6 +73,7 @@ func driverPrompt(stencilsDir, parentName, runID, reportPath string, watched boo
 		"run_id":                   runID,
 		"report_path":              reportPath,
 		"park_command":             driverParkCommand(reportPath),
+		"arbiter_command":          driverArbiterCommand(runID),
 		"teardown_command":         driverTeardownCommand,
 		parentdirective.MarkerName: directive,
 		editdirective.MarkerName:   editDirective,
@@ -114,6 +115,12 @@ const driverRecordsCommand = "lyx loom commit-records"
 // The prompt names it so the driver stencil can stay recipe-blind.
 func driverParkCommand(reportPath string) string {
 	return fmt.Sprintf("%s --park %q", driverRecordsCommand, reportPath)
+}
+
+// driverArbiterCommand is the command a driver runs at a stop it cannot settle: it spawns the run's arbiter, or returns the verdict of one that already judged the stop.
+// The envelope and report paths are angle-bracket placeholders the driver fills from the stop in hand, as the stencil's `--before <producer>` is.
+func driverArbiterCommand(runID string) string {
+	return fmt.Sprintf("lyx loom arbiter %s --envelope <envelope_path> --report <report_path>", runID)
 }
 
 // driverTeardownCommand is the end-of-session command a loom-launched driver runs after its stop report.

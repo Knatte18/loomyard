@@ -123,6 +123,25 @@ func ExcludeAnchoredDir(worktreeDir, anchorRel, dirName string) (excludePath str
 	})
 }
 
+// scratchDirName is the directory name agents keep scratch files under, at a warp repo's root.
+// It is agent scratch, not lyx state, so it is declared here and not in `internal/lyxdirs`.
+const scratchDirName = ".scratch"
+
+// seedScratchExclude makes git ignore the root `.scratch/` of the warp repo checked out at worktreeDir, so an agent's scratch files never show as untracked dirt.
+// It records KindFileWritten at the exclude file on rec when it wrote, and records nothing for a nil rec or when the directory was already ignored.
+// Untracked files under the root `.scratch/` no longer show in `git status`, so a dirty-tree check no longer sees them.
+// A `.scratch/` below the root is not excluded and still shows as untracked, and the entry never hides tracked content, since git ignores no tracked path.
+func seedScratchExclude(rec *Mutations, worktreeDir string) error {
+	excludePath, changed, err := ExcludeAnchoredDir(worktreeDir, ".", scratchDirName)
+	if err != nil {
+		return err
+	}
+	if changed {
+		rec.Append(KindFileWritten, excludePath, "")
+	}
+	return nil
+}
+
 // writeFileAtomically replaces path with content via a same-directory temp file and a rename, so a
 // concurrent reader observes either the whole old file or the whole new one and never the empty
 // window os.WriteFile's truncate-then-write opens.

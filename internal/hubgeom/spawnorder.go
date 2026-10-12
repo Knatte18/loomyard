@@ -99,7 +99,7 @@ func spawnOrder(l *lyxcwd.Location) func() ([]reedengine.ReviveEntry, error) {
 
 // reviveWorktree builds the reed engine of l's worktree from its own reed.yaml and geometry and revives its recorded session.
 func reviveWorktree(l *lyxcwd.Location) (bool, error) {
-	cfg, err := reedengine.LoadConfig(l.AnchorPath(), "reed")
+	cfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(l), "reed")
 	if err != nil {
 		return false, err
 	}

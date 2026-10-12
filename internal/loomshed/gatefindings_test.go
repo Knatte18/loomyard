@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -137,7 +138,7 @@ func TestLoomPreflight_StuckSurfacesItsFailures(t *testing.T) {
 	}
 
 	buf := logcapture.Capture(t)
-	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, t.TempDir())
+	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()})
 
 	shedfake.RequireOutcome(t, p, shedengine.Stuck)
 
@@ -160,9 +161,11 @@ func TestBatcherRows_StuckSurfacesTheBatcherError(t *testing.T) {
 		name string
 		new  func(anchorPath string) shedengine.ShedProducer
 	}{
-		{"Batchifier", func(anchorPath string) shedengine.ShedProducer { return NewBatchifier("Batchifier", anchorPath) }},
+		{"Batchifier", func(anchorPath string) shedengine.ShedProducer {
+			return NewBatchifier("Batchifier", configengine.Dirs{Anchor: anchorPath})
+		}},
 		{"Webster", func(anchorPath string) shedengine.ShedProducer {
-			return NewWebsterProducer("Webster", anchorPath, nil, websterengine.RunDeps{}, func() error { return nil })
+			return NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, nil, websterengine.RunDeps{}, func() error { return nil })
 		}},
 	}
 	for _, tt := range tests {

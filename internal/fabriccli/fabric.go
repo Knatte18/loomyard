@@ -472,7 +472,7 @@ func runAdd(ctx context.Context, out io.Writer, args []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -509,7 +509,7 @@ func runList(ctx context.Context, out io.Writer, _ []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -560,7 +560,7 @@ func runCheckout(ctx context.Context, out io.Writer, args []string) int {
 		}
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -585,7 +585,7 @@ func runPairs(ctx context.Context, out io.Writer, _ []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -646,7 +646,7 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	healed, commitErr := hubConfigBolt.PullThenCommitWritten([]fabricengine.BoltWrite{{
 		Message: "fabric reconcile: hub-wide config",
 		Write: func() ([]string, error) {
-			results, err := configsync.ReconcileHubWideAt(boardDir, primeBaseDir, true)
+			results, err := configsync.ReconcileHubWideAt(boardDir, primeBaseDir, configsync.HubWideOptions{Apply: true})
 			if err != nil {
 				reconcileErr = err
 				return nil, err
@@ -692,7 +692,7 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	for _, result := range hubWideResults {
 		hubConfig = append(hubConfig, map[string]any{"module": result.Module, "seed": result.Seed, "applied": result.Applied})
 		module, _ := configreg.Lookup(result.Module)
-		if len(module.OpenMaps) > 0 && result.Seed == configsync.SeedTemplate {
+		if module.HubWide && len(module.OpenMaps) > 0 && result.Seed == configsync.SeedTemplate {
 			warnings = append(warnings, fmt.Sprintf(
 				"%s: the prime held no copy, so custom types and labels were not carried; add them by editing that file",
 				configengine.ConfigFile(boardDir, result.Module),
@@ -706,7 +706,7 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 		healFields = map[string]any{"hub_config_detail": hubConfigDetail}
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
 	if err != nil {
 		return errWithRecordFields(out, rec.Snapshot(), err, healFields)
 	}
@@ -853,7 +853,7 @@ func runPruneWithFlags(ctx context.Context, out io.Writer, apply, force bool) in
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -878,7 +878,7 @@ func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force, remot
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -1006,7 +1006,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}

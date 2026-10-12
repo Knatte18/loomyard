@@ -91,7 +91,7 @@ func landDeps(location *lyxcwd.Location, slug string, locateTask func() (*lyxcwd
 			return err
 		},
 		Landing: func() (battenshed.LandingSettings, error) {
-			cfg, err := landingshed.LoadConfig(fabricengine.BoardDir(location.HubPath), "landing")
+			cfg, err := landingshed.LoadConfig(fabricengine.ConfigDirs(location), "landing")
 			if err != nil {
 				return battenshed.LandingSettings{}, err
 			}

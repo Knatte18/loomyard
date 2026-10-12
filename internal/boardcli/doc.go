@@ -22,6 +22,9 @@
 // `list` and `find` take `--text` to print the compact one-line-per-entry listing instead;
 // errors stay JSON.
 // The listing carries a priority column after the kind, `high`, `low` or blank, only when some listed entry is not normal.
+// Two age columns follow, the entry's age and the time since its last revision, computed as of the listing from the stored dates and blank for an unknown one;
+// each is left out when no listed entry has that date.
+// `list` takes `--sort age` to list the oldest entries first and `--sort revised` the longest unrevised first, with an entry lacking the date last and ties in README order.
 //
 // `upsert` takes `--body-file <path>` to read `body` from a file, or from stdin when the path is `-`.
 // It is refused when the payload also carries `body`, and when the payload argument is itself `-`.
@@ -33,6 +36,14 @@
 // `set-status` and `prune` never refuse on it.
 //
 // `merge` carries the removed entries' issues onto the upserted entry, whether or not the payload names `issues`.
+//
+// A payload's `run_settings` is checked before the store write by `upsert`, each task of `upsert-batch` and `merge`'s upsert.
+// It must be an object of module name to keys, and `configreg.PrepareRunSettings` migrates and validates it; a refusal names the module and the key, and the board stores the migrated result.
+// A change to the stored value is refused from a session whose `LYX_STRAND_NAME` carries a task slug (`agentname.TaskSlug`), the same guard as a hub-wide config write, and names the operator or the hub orch as the way forward.
+// The guard reads outside the write lock and stops a mistaken write, not a determined one.
+// A change on an entry held by a run past `Worktree-Create` and `Seed-Child` still succeeds and adds a `notice` field to the envelope:
+// it applies to the next run's Seed-Child, and the running pair takes it through `lyx config <module> --layer local --set` in the pair.
+// Value semantics, such as a positive integer, stay with the module's load.
 //
 // `get` takes `--body` to write the entry's body alone, verbatim, with no envelope;
 // an empty body writes nothing,

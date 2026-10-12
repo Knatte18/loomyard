@@ -5,6 +5,10 @@
 - Degrading callers: `{shuttleengine, reedengine, websterengine, batcher, orchengine, loggerconfig}`.
 - Strict callers: `{fabricengine, boardengine, loomengine, landingshed, gateslot, configcli}`.
   `configcli` loads strictly only to validate a hub-wide module's file before committing it.
+- Strictness applies to the base layer: the repo default or hub file when a board dir is told, else the worktree file.
+  The layers above it are sparse, and an absent upper file adds nothing under either policy.
 - A template list is a default, not a minimum length.
-- A key missing from a present config file resolves to its template default and is logged.
-- `Load` and `LoadOrTemplate` differ only on an absent `_lyx/` or file.
+- A key the stacked layers lack resolves to its template default and is logged with the layer `template`; the fill runs down to the template.
+  A key a sparse upper layer inherits from a file layer below it is not logged.
+- A local file refuses keys the template lacks, besides the other rules of the local layer.
+- `Load` and `LoadOrTemplate` differ only on an absent base-layer `_lyx/` or file.

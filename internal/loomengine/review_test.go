@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -34,7 +35,7 @@ func TestResolveReview(t *testing.T) {
 		FanReview:     ModelSpecList{"sonnet[effort=medium]", "opus[effort=low]"},
 	}
 
-	reg, err := modelspec.LoadRegistry(t.TempDir())
+	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 	if err != nil {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
@@ -152,7 +153,7 @@ func TestResolveJudge(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			reg, err := modelspec.LoadRegistry(t.TempDir())
+			reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 			if err != nil {
 				t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 			}
@@ -175,7 +176,7 @@ func TestResolveJudge(t *testing.T) {
 
 	t.Run("effort of the judge key reaches the pair", func(t *testing.T) {
 		t.Parallel()
-		reg, err := modelspec.LoadRegistry(t.TempDir())
+		reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 		if err != nil {
 			t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 		}
@@ -313,7 +314,7 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			reg, err := modelspec.LoadRegistry(t.TempDir())
+			reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 			if err != nil {
 				t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 			}

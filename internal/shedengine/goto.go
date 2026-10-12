@@ -75,12 +75,8 @@ func Goto(req GotoRequest) (Status, error) {
 	if st.State == StateRunning {
 		return Status{}, fmt.Errorf("shedengine: goto moves only a halted run, and this run is running; way forward: %s then %s leaves the run paused at its next producer boundary, then re-run goto", runVerb("pause", req.RunID), runVerb("step", req.RunID))
 	}
-	reference, admitted := gotoAdmitted(req.Producers, st)
-	if !slices.Contains(admitted, req.Target) {
-		if st.State == StateAwaiting {
-			return Status{}, fmt.Errorf("shedengine: goto target %q is not before the row %q the run is awaiting at; goto only moves a run back, so it never skips a row's own work or a review or approval row; %s shows the hand-off the run waits on; way forward: re-run goto with --to naming one of: %s", req.Target, reference, runVerb("status", req.RunID), strings.Join(admitted, ", "))
-		}
-		return Status{}, fmt.Errorf("shedengine: goto target %q lies past the run's current row %q; goto only moves a run back, so it never skips a row's own work or a review or approval row; way forward: re-run goto with --to naming one of: %s", req.Target, reference, strings.Join(admitted, ", "))
+	if err := CheckGotoTarget(req.Producers, st, req.Target, req.RunID); err != nil {
+		return Status{}, err
 	}
 
 	var written Status
@@ -97,6 +93,108 @@ func Goto(req GotoRequest) (Status, error) {
 		cur.PauseAfter = ""
 		cur.History = append(cur.History, HistoryEntry{Producer: req.Target, Outcome: OutcomeGoto, At: nowRFC3339()})
 		cur.Activity = composeActivity(req.Target, cur.History, StatePaused, "", "")
+		written = cur
+		return cur, nil
+	})
+	if err != nil {
+		return Status{}, err
+	}
+	return written, nil
+}
+
+// CheckGotoTarget returns nil when target names a producer of producers and the status st admits it as a goto target, and otherwise the refusal Goto returns for that case:
+// the unknown-target refusal naming the producers, the awaiting refusal naming the admitted rows, or the past-the-current-row refusal.
+// It reads and writes no file; runID is the addressed run-id the refusal texts name.
+func CheckGotoTarget(producers []ProducerDef, st Status, target, runID string) error {
+	if _, ok := findProducer(producers, target); !ok {
+		names := make([]string, len(producers))
+		for i, def := range producers {
+			names[i] = def.Name
+		}
+		return fmt.Errorf("shedengine: goto target %q names no producer in the list; way forward: re-run goto with --to naming one of: %s", target, strings.Join(names, ", "))
+	}
+	reference, admitted := gotoAdmitted(producers, st)
+	if slices.Contains(admitted, target) {
+		return nil
+	}
+	if st.State == StateAwaiting {
+		return fmt.Errorf("shedengine: goto target %q is not before the row %q the run is awaiting at; goto only moves a run back, so it never skips a row's own work or a review or approval row; %s shows the hand-off the run waits on; way forward: re-run goto with --to naming one of: %s", target, reference, runVerb("status", runID), strings.Join(admitted, ", "))
+	}
+	return fmt.Errorf("shedengine: goto target %q lies past the run's current row %q; goto only moves a run back, so it never skips a row's own work or a review or approval row; way forward: re-run goto with --to naming one of: %s", target, reference, strings.Join(admitted, ", "))
+}
+
+// RelaunchRequest is everything Relaunch needs.
+// All three paths are told.
+// Producers needs only Name, Segment, OnDone and OnStuck, so a Routing.Producers projection works.
+type RelaunchRequest struct {
+	StatusPath     string
+	LockPath       string
+	StatusLockPath string
+	Producers      []ProducerDef
+	// RunID is the addressed run-id the refusal texts name; see Shed.RunID.
+	RunID string
+	// MissingStatusWayForward is the told clause for a missing status file; see Shed.MissingStatusWayForward.
+	MissingStatusWayForward string
+	// Target is the row to move the run onto; empty leaves the run where it is.
+	Target string
+	// Admit is called with the status the run holds once every check has passed, under the status lock, before anything is written.
+	// An error it returns is returned unchanged from Relaunch and nothing is written.
+	Admit func(cur Status) error
+}
+
+// Relaunch is the status-file mutation behind a driver's re-launch of a halted run.
+// Under the run lock and one hold of the status lock, it refuses a missing file, an invalid state, a done run and a running run, checks a non-empty Target with CheckGotoTarget, then calls Admit.
+// Only after Admit passes does it write: with a Target, it moves the run as Goto does, except that pause_requested, pause_before and pause_after stay as they stand; without one, the status is written unchanged.
+// The checks run before Admit so a refused target never lets Admit write its side effect.
+// A held run lock returns ErrShedBusy and Admit is never called.
+// It calls no CommitStatus, as Goto does not.
+func Relaunch(req RelaunchRequest) (Status, error) {
+	if err := os.MkdirAll(filepath.Dir(req.LockPath), 0o755); err != nil {
+		return Status{}, fmt.Errorf("shedengine: create run lock parent dir: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(req.StatusLockPath), 0o755); err != nil {
+		return Status{}, fmt.Errorf("shedengine: create status lock parent dir: %w", err)
+	}
+
+	runLock, locked, err := lock.TryAcquireWriteLock(req.LockPath)
+	if err != nil {
+		return Status{}, fmt.Errorf("shedengine: acquire run lock %q: %w", req.LockPath, err)
+	}
+	if !locked {
+		return Status{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, req.LockPath, busyWayForward(req.RunID))
+	}
+	defer runLock.Release()
+
+	var written Status
+	err = state.UpdateJSON(req.StatusPath, req.StatusLockPath, func(cur Status, found bool) (Status, error) {
+		if !found {
+			return Status{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one; %s", req.StatusPath, missingStatusClause(req.MissingStatusWayForward))
+		}
+		if !cur.State.valid() {
+			return Status{}, fmt.Errorf("shedengine: status file %q carries an invalid state %q", req.StatusPath, cur.State)
+		}
+		if cur.State == StateDone {
+			return Status{}, fmt.Errorf("shedengine: status file %q is done; relaunch never re-opens a finished run; way forward: seed a new run", req.StatusPath)
+		}
+		if cur.State == StateRunning {
+			return Status{}, fmt.Errorf("shedengine: status file %q is running; another loop owns this run; way forward: %s shows the stop that loop reaches, and the re-launch runs only from a halted stop", req.StatusPath, runVerb("status", req.RunID))
+		}
+		if req.Target != "" {
+			if err := CheckGotoTarget(req.Producers, cur, req.Target, req.RunID); err != nil {
+				return Status{}, err
+			}
+		}
+		if err := req.Admit(cur); err != nil {
+			return Status{}, err
+		}
+		if req.Target != "" {
+			cur.CurrentProducer = req.Target
+			cur.State = StatePaused
+			cur.Error = ""
+			cur.Transient = ""
+			cur.History = append(cur.History, HistoryEntry{Producer: req.Target, Outcome: OutcomeGoto, At: nowRFC3339()})
+			cur.Activity = composeActivity(req.Target, cur.History, StatePaused, "", "")
+		}
 		written = cur
 		return cur, nil
 	})

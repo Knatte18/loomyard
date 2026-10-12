@@ -61,7 +61,7 @@ func childParentLock(slug string, locateTask func() (*lyxcwd.Location, error), b
 // lockIdleBound returns landing's idle bound for the parent lock of the hub of prime.
 // A landing config that cannot be read logs a Warn and leaves the zero config, whose bound is the default.
 func lockIdleBound(prime *lyxcwd.Location) time.Duration {
-	cfg, err := landingshed.LoadConfig(fabricengine.BoardDir(prime.HubPath), "landing")
+	cfg, err := landingshed.LoadConfig(fabricengine.ConfigDirs(prime), "landing")
 	if err != nil {
 		logger.Warn("battencli: landing config unreadable; the parent lock's idle bound falls back to its default", "error", err)
 	}
@@ -86,7 +86,7 @@ func runLockRecord(store *parentlock.Store, slug, pairPath string) (parentlock.R
 // readAgentStates returns the agent states of the live runs of the task pair.
 func readAgentStates(taskLocation *lyxcwd.Location) ([]parentlock.AgentState, error) {
 	anchor := taskLocation.AnchorPath()
-	cfg, err := shuttleengine.LoadConfig(anchor, "shuttle")
+	cfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "shuttle")
 	if err != nil {
 		return nil, err
 	}

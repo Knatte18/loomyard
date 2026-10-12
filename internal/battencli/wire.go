@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +27,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -101,6 +104,43 @@ func driverStrandFrom(present bool, directory func() ([]reedengine.DirectoryRow,
 		}
 	}
 	return battenshed.ChildDriverNone, nil
+}
+
+// arbiterInFlightFrom reads the child's in-flight arbiter marker through readMarker and reports its deadline, with Alive true only when a live row of the pair's reed directory carries the marker's strand guid.
+// An absent task worktree and an absent marker are not found; a marker read error and a directory read error are returned unchanged.
+// A directory with no live row, as with no reed session, reads as not alive.
+func arbiterInFlightFrom(present bool, readMarker func() (loomengine.ArbiterMarker, bool, error), directory func() ([]reedengine.DirectoryRow, error)) (battenshed.ChildArbiter, bool, error) {
+	if !present {
+		return battenshed.ChildArbiter{}, false, nil
+	}
+	marker, found, err := readMarker()
+	if err != nil || !found {
+		return battenshed.ChildArbiter{}, false, err
+	}
+	rows, err := directory()
+	if err != nil {
+		return battenshed.ChildArbiter{}, false, err
+	}
+	for _, row := range rows {
+		if row.Live && row.GUID == marker.StrandGUID {
+			return battenshed.ChildArbiter{Deadline: marker.Deadline, Alive: true}, true, nil
+		}
+	}
+	return battenshed.ChildArbiter{Deadline: marker.Deadline}, true, nil
+}
+
+// stopDeadArbiterStrands calls stop with the guid of every arbiter row that is not live, and returns the first error.
+// A live arbiter row is left alone: it keeps working, and its verdict waits for the revived driver.
+func stopDeadArbiterStrands(rows []reedengine.DirectoryRow, stop func(guid string) error) error {
+	for _, row := range rows {
+		if !loomengine.IsArbiterStrand(row.Name) || row.Live {
+			continue
+		}
+		if err := stop(row.GUID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // runLockHeld reports whether the run lock at lockPath is held, probing it without keeping it.
@@ -502,7 +542,7 @@ func readStopReport(taskLocation *lyxcwd.Location) (path string, at time.Time, f
 // The waits are read from their marker and record files, never from the pane options that display them.
 func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentActivity, waitLive bool, err error) {
 	anchor := taskLocation.AnchorPath()
-	cfg, err := shuttleengine.LoadConfig(anchor, "shuttle")
+	cfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "shuttle")
 	if err != nil {
 		return nil, false, err
 	}
@@ -664,7 +704,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				logger.Warn("battencli: claim board entry failed", "slug", slug, "err", err)
 			}
 
-			cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(location.HubPath))
+			cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
 			if err != nil {
 				return err
 			}
@@ -830,7 +870,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					if err != nil {
 						return reedengine.StatusResult{}, err
 					}
-					reedCfg, err := reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")
+					reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
 					if err != nil {
 						return reedengine.StatusResult{}, err
 					}
@@ -851,7 +891,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					if err != nil {
 						return nil, err
 					}
-					reedCfg, err := reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")
+					reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
 					if err != nil {
 						return nil, err
 					}
@@ -862,13 +902,44 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return reedengine.New(reedCfg, reedGeom).Directory()
 				})
 			},
-			// ReviveStrands resumes the task worktree's reed session, which relaunches the dead driver strand and every other non-live strand of the pair.
+			// ArbiterInFlight reads the task worktree's in-flight arbiter marker against the pair's reed directory.
+			ArbiterInFlight: func(ctx context.Context) (battenshed.ChildArbiter, bool, error) {
+				present, err := taskWorktreePresent(location, slug)
+				if err != nil {
+					return battenshed.ChildArbiter{}, false, err
+				}
+				return arbiterInFlightFrom(present,
+					func() (loomengine.ArbiterMarker, bool, error) {
+						taskLocation, err := locateTask()
+						if err != nil {
+							return loomengine.ArbiterMarker{}, false, err
+						}
+						return loomengine.ReadArbiterMarker(shedrun.ArbiterMarker(taskLocation, shedrun.SelfRunID))
+					},
+					func() ([]reedengine.DirectoryRow, error) {
+						taskLocation, err := locateTask()
+						if err != nil {
+							return nil, err
+						}
+						reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
+						if err != nil {
+							return nil, err
+						}
+						reedGeom, err := hubgeom.ReedGeometry(taskLocation)
+						if err != nil {
+							return nil, err
+						}
+						return reedengine.New(reedCfg, reedGeom).Directory()
+					})
+			},
+			// ReviveStrands ends the pair's dead arbiter strands, then resumes the task worktree's reed session, which relaunches the dead driver strand and every other non-live strand of the pair.
+			// A dead arbiter is stopped rather than relaunched: its attempt reads as hand-on.
 			ReviveStrands: func(ctx context.Context) error {
 				taskLocation, err := locateTask()
 				if err != nil {
 					return err
 				}
-				reedCfg, err := reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")
+				reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
 				if err != nil {
 					return err
 				}
@@ -876,8 +947,22 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
+				shuttleCfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "shuttle")
+				if err != nil {
+					return err
+				}
+				reedEngine := reedengine.New(reedCfg, reedGeom)
+				rows, err := reedEngine.Directory()
+				if err != nil {
+					return err
+				}
+				runner := shuttleengine.NewRunner(reedEngine, claudeengine.NewFromConfig(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+				if err := stopDeadArbiterStrands(rows, runner.StopStrand); err != nil {
+					logger.Warn("battencli: stopping the task worktree's dead arbiter strands failed", "slug", slug, "error", err)
+					return err
+				}
 				logger.Info("battencli: reviving the task worktree's strands through reed resume", "slug", slug)
-				res, err := reedengine.New(reedCfg, reedGeom).Resume()
+				res, err := reedEngine.Resume()
 				if err != nil {
 					logger.Warn("battencli: reed resume of the task worktree failed", "slug", slug, "error", err)
 					return err
@@ -966,6 +1051,57 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return shedrun.DriverGo, nil
 				}
 				return childDriverOf(seed), nil
+			},
+			// ReadRunSettings opens the Board fresh on every Call, as ReadBoardType does, and returns the task's run_settings.
+			ReadRunSettings: func(ctx context.Context) (map[string]any, error) {
+				b := boardengine.New(boardengine.Config{Path: fabricengine.BoardDir(location.HubPath)})
+				task, found, err := b.GetTask(slug)
+				if err != nil {
+					return nil, err
+				}
+				if !found {
+					return nil, fmt.Errorf("battencli: board task %q not found", slug)
+				}
+				return task.RunSettings, nil
+			},
+			// PrepareRunSettings is configreg's one migrate-then-validate step; a refusal of the settings is wrapped in battenshed.ErrInvalidRunSettings so Seed-Child routes it to Stuck.
+			PrepareRunSettings: func(settings map[string]any) (map[string][]byte, error) {
+				documents, err := configreg.PrepareRunSettings(settings)
+				var refusal *configreg.RunSettingsError
+				if errors.As(err, &refusal) {
+					return nil, fmt.Errorf("%w: %s", battenshed.ErrInvalidRunSettings, err.Error())
+				}
+				return documents, err
+			},
+			// WriteLocalOverride writes one module's local file in the task worktree, creating its directory.
+			WriteLocalOverride: func(ctx context.Context, module string, document []byte) error {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return err
+				}
+				return fsx.AtomicWriteBytes(configengine.LocalFile(taskLocation.AnchorPath(), module), document)
+			},
+			// RemoveLocalOverrides removes the local file of every registered module outside keep and returns the paths that existed.
+			RemoveLocalOverrides: func(ctx context.Context, keep []string) ([]string, error) {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return nil, err
+				}
+				var removed []string
+				for _, module := range configreg.Names() {
+					if slices.Contains(keep, module) {
+						continue
+					}
+					path := configengine.LocalFile(taskLocation.AnchorPath(), module)
+					if err := os.Remove(path); err != nil {
+						if errors.Is(err, os.ErrNotExist) {
+							continue
+						}
+						return removed, err
+					}
+					removed = append(removed, path)
+				}
+				return removed, nil
 			},
 			// WriteSeed is the only place in the batten path that encodes a seed, per the
 			// seed-encoding-stays-behind-a-seam-in-battenshed Shared Decision. It validates recipe

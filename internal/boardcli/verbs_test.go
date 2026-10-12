@@ -1,18 +1,20 @@
 //go:build integration
 
-// verbs_test.go — tests for the board verbs beyond the store verbs: promote, prune, find, retire-legacy, and the --text listing on list and find.
+// verbs_test.go — tests for the board verbs beyond the store verbs: promote, prune, find, retire-legacy, the --text listing on list and find, and list's --sort.
 // The steps run from TestCLI in cli_test.go, which also defines cliFixture; runCLI is in cli_unit_test.go, same package.
 
 package boardcli_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
@@ -204,17 +206,29 @@ func stepListAndFindText(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"soon","title":"Soon thing","kind":"task","labels":["bug"]}`)
 	runJSON(t, 0, "set-status", `{"slug":"soon","status":"active"}`)
 
-	wantList := "task  soon   Soon thing   bug                    [active]\n" +
-		"note  later  Later thing  enhancement,undecided\n"
+	wantList := "task  0m  0m  soon   Soon thing   bug                    [active]\n" +
+		"note  0m  0m  later  Later thing  enhancement,undecided\n"
 	exitCode, stdout := runCLI(t, "list", "--text")
 	if exitCode != 0 || stdout != wantList {
 		t.Fatalf("list --text: exit %d, stdout %q, want %q", exitCode, stdout, wantList)
 	}
 
-	wantFind := "note  later  Later thing  enhancement,undecided\n"
+	wantFind := "note  0m  0m  later  Later thing  enhancement,undecided\n"
 	exitCode, stdout = runCLI(t, "find", "--text", "later")
 	if exitCode != 0 || stdout != wantFind {
 		t.Fatalf("find --text: exit %d, stdout %q, want %q", exitCode, stdout, wantFind)
+	}
+
+	// A backfilled creation date reorders --sort age, oldest first, and leaves --sort revised in README order.
+	mustUpsert(t, `{"slug":"later","created":"2026-01-02T03:04:05Z"}`)
+	if got := slugsOf(t, runJSON(t, 0, "list", "--sort", "age")); !slices.Equal(got, []string{"later", "soon"}) {
+		t.Fatalf("list --sort age: slugs = %v, want [later soon]", got)
+	}
+	if got := slugsOf(t, runJSON(t, 0, "list", "--sort", "revised")); !slices.Equal(got, []string{"soon", "later"}) {
+		t.Fatalf("list --sort revised: slugs = %v, want [soon later]", got)
+	}
+	if result := runJSON(t, 1, "list", "--sort", "newest"); !strings.Contains(fmt.Sprint(result["error"]), "newest") {
+		t.Fatalf("list --sort newest: result = %v, want a refusal naming the value", result)
 	}
 }
 
@@ -470,5 +484,74 @@ func stepLabelsListShapedPrintsNamesWithEmptyDescriptions(t *testing.T, f *cliFi
 	}
 	if got := labelPairs(t, result, "labels"); !slices.Equal(got, wantLabels) {
 		t.Fatalf("labels = %v, want %v", got, wantLabels)
+	}
+}
+
+// stepRunSettings pins run_settings on the upsert verbs: a valid setting is stored migrated, each refusal names the module or the key, a task session's change is refused while an identical re-write passes, and a change on an entry past Seed-Child returns the notice.
+func stepRunSettings(t *testing.T, f *cliFixture) {
+	const loomBounces = `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"run_settings":{"loom":{"review_max_bounces":2}}}`
+
+	t.Run("a valid setting is stored", func(t *testing.T) {
+		result := runJSON(t, 0, "upsert", loomBounces)
+		task, _ := result["task"].(map[string]any)
+		settings, _ := task["run_settings"].(map[string]any)
+		loom, _ := settings["loom"].(map[string]any)
+		if loom["review_max_bounces"] != float64(2) {
+			t.Errorf("stored run_settings = %v, want loom.review_max_bounces 2", task["run_settings"])
+		}
+	})
+
+	refusals := []struct {
+		name    string
+		payload string
+		wantErr []string
+	}{
+		{name: "a non-object value", payload: `{"slug":"bad","run_settings":3}`, wantErr: []string{"run_settings"}},
+		{name: "an unknown module", payload: `{"slug":"bad","run_settings":{"bogus":{"x":1}}}`, wantErr: []string{"bogus"}},
+		{name: "a key absent from the template", payload: `{"slug":"bad","run_settings":{"loom":{"no_such_key":1}}}`, wantErr: []string{"loom", "no_such_key"}},
+		{name: "a shape mismatch", payload: `{"slug":"bad","run_settings":{"loom":{"review_max_bounces":{"a":1}}}}`, wantErr: []string{"loom", "review_max_bounces"}},
+		{name: "a closed key", payload: `{"slug":"bad","run_settings":{"loom":{"discussion_producer":"single"}}}`, wantErr: []string{"loom", "discussion_producer"}},
+	}
+	for _, tt := range refusals {
+		t.Run("refuses "+tt.name, func(t *testing.T) {
+			result := runJSON(t, 1, "upsert", tt.payload)
+			message, _ := result["error"].(string)
+			for _, want := range tt.wantErr {
+				if !strings.Contains(message, want) {
+					t.Errorf("error %q lacks %q", message, want)
+				}
+			}
+		})
+	}
+
+	t.Run("a task session's change is refused and an identical re-write passes", func(t *testing.T) {
+		mustUpsert(t, loomBounces)
+		t.Setenv(agentname.StrandNameEnv, "ly:task-a:loom")
+		runJSON(t, 0, "upsert", loomBounces)
+		result := runJSON(t, 1, "upsert", strings.Replace(loomBounces, `"review_max_bounces":2`, `"review_max_bounces":3`, 1))
+		if message, _ := result["error"].(string); !strings.Contains(message, "ly:task-a:loom") {
+			t.Errorf("error %q does not name the session", message)
+		}
+	})
+
+	notices := []struct {
+		name       string
+		status     string
+		wantNotice bool
+	}{
+		{name: "past Seed-Child", status: "running · Discussion-Write", wantNotice: true},
+		{name: "at Seed-Child", status: "running · Seed-Child"},
+	}
+	for _, tt := range notices {
+		t.Run("a change "+tt.name+" returns the notice accordingly", func(t *testing.T) {
+			f.reset(t)
+			mustUpsert(t, loomBounces)
+			runJSON(t, 0, "set-status", `{"slug":"rs","status":"`+tt.status+`"}`)
+			result := runJSON(t, 0, "upsert", `{"slug":"rs","run_settings":{"loom":{"review_max_bounces":4}}}`)
+			notice, hasNotice := result["notice"].(string)
+			if hasNotice != tt.wantNotice || (tt.wantNotice && !strings.Contains(notice, "--layer local")) {
+				t.Errorf("notice = %q (present %v), want present %v naming --layer local", notice, hasNotice, tt.wantNotice)
+			}
+		})
 	}
 }

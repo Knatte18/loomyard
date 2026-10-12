@@ -3,10 +3,16 @@
 package configreg
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
 // TestNames pins the registry's ORDER and shape: every `lyx config` surface (help text, unknown-module error, --print sections, reconcile output, menu numbering) renders it in registry order,
@@ -50,6 +56,123 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 		if m.SeedsFromPrime != wantSeedsFromPrime {
 			t.Errorf("Modules(): module %q SeedsFromPrime = %v; want %v", m.Name, m.SeedsFromPrime, wantSeedsFromPrime)
 		}
+		spec := m.Spec()
+		if spec.Name != m.Name || string(spec.Template) != m.Template() || !slices.Equal(spec.OpenMaps, m.OpenMaps) || spec.HubWide != m.HubWide {
+			t.Errorf("Modules(): module %q Spec() = {Name: %q, OpenMaps: %v, HubWide: %v}; want it to carry the entry's own name, template text, open maps and hub-wide flag", m.Name, spec.Name, spec.OpenMaps, spec.HubWide)
+		}
+	}
+}
+
+// TestModules_EveryTemplateKeyClassified pins that each module's Categories classify every template unit and name only paths the template holds,
+// and that the derived LocalKeys and LocalDenied match the record.
+func TestModules_EveryTemplateKeyClassified(t *testing.T) {
+	t.Parallel()
+	wantLocalKeys := map[string][]string{
+		"darn":    {"verify_attempts", "writer", "writer_timeout_min"},
+		"landing": {"conflict", "conflict_timeout_min", "describe", "describe_timeout_min"},
+	}
+	wantLocalDenied := map[string][]string{
+		"reed":    {"debug_log", "mouse", "shell", "tmux", "tmux_conf"},
+		"shuttle": {"claude", "claude_deny_agent_tool", "claude_deny_ask_user_question", "claude_deny_python", "run_dir"},
+		"loom":    {"discussion_auto_accept", "discussion_fan", "discussion_producer", "merge_auto_accept", "parent_review_wait_min", "plan_auto_accept", "plan_fan", "plan_producer", "skip_merge_review", "webster_auto_accept"},
+		"burler":  {"fans", "lenses"},
+	}
+	for _, m := range Modules() {
+		t.Run(m.Name, func(t *testing.T) {
+			t.Parallel()
+			spec := m.Spec()
+			units, err := yamlengine.LeafPaths([]byte(m.Template()), spec.OpenMaps, spec.WholeEntries)
+			if err != nil {
+				t.Fatalf("LeafPaths(%s template) error: %v", m.Name, err)
+			}
+			for _, unit := range units {
+				if !coveredByEntry(spec, unit) {
+					t.Errorf("template unit %q of %s is not covered by a Categories entry; classify it", unit, m.Name)
+				}
+			}
+			for entry := range spec.Categories {
+				if !holdsPath(units, entry) {
+					t.Errorf("Categories entry %q of %s names no template path", entry, m.Name)
+				}
+			}
+			if want := wantLocalKeys[m.Name]; m.HubWide && !slices.Equal(m.LocalKeys, want) {
+				t.Errorf("%s LocalKeys = %v; want %v", m.Name, m.LocalKeys, want)
+			}
+			if want := wantLocalDenied[m.Name]; !m.HubWide && !slices.Equal(m.LocalDenied, want) {
+				t.Errorf("%s LocalDenied = %v; want %v", m.Name, m.LocalDenied, want)
+			}
+			if m.HubWide && len(m.LocalDenied) != 0 || !m.HubWide && len(m.LocalKeys) != 0 {
+				t.Errorf("%s LocalKeys = %v, LocalDenied = %v; want only the list of its own kind", m.Name, m.LocalKeys, m.LocalDenied)
+			}
+		})
+	}
+}
+
+// coveredByEntry reports whether a Categories entry equals path or is an ancestor of it.
+func coveredByEntry(spec configengine.Spec, path string) bool {
+	for entry := range spec.Categories {
+		if path == entry || strings.HasPrefix(path, entry+".") {
+			return true
+		}
+	}
+	return false
+}
+
+// holdsPath reports whether some unit equals entry or lies under it.
+func holdsPath(units []string, entry string) bool {
+	for _, unit := range units {
+		if unit == entry || strings.HasPrefix(unit, entry+".") {
+			return true
+		}
+	}
+	return false
+}
+
+// TestModules_LocalLayerRefusals pins the local-layer verdict of keys no loader card pins through its real load.
+func TestModules_LocalLayerRefusals(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		module  string
+		local   string
+		wantKey string
+		allowed bool
+	}{
+		{"darn", "review_max_bounces: 0\n", "review_max_bounces", false},
+		{"landing", "require_pr_to_base: false\n", "require_pr_to_base", false},
+		{"reed", "mouse: true\n", "mouse", false},
+		{"loom", "discussion_producer: single\n", "discussion_producer", false},
+		{"loom", "plan_fan: \"\"\n", "plan_fan", false},
+		{"shuttle", "claude_prompt_cache_ttl_roles:\n  worker: 1h\n", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.module+"/"+tt.wantKey, func(t *testing.T) {
+			t.Parallel()
+			m, ok := Lookup(tt.module)
+			if !ok {
+				t.Fatalf("Lookup(%q) found nothing", tt.module)
+			}
+			dirs := configengine.Dirs{Anchor: t.TempDir(), Board: t.TempDir()}
+			localFile := configengine.LocalFile(dirs.Anchor, tt.module)
+			if err := os.MkdirAll(filepath.Dir(localFile), 0o755); err != nil {
+				t.Fatalf("MkdirAll: %v", err)
+			}
+			if err := os.WriteFile(localFile, []byte(tt.local), 0o644); err != nil {
+				t.Fatalf("WriteFile: %v", err)
+			}
+			_, err := configengine.Layers(dirs, m.Spec())
+			if tt.allowed {
+				if err != nil {
+					t.Fatalf("Layers() error = %v; want the local override accepted", err)
+				}
+				return
+			}
+			if !errors.Is(err, configengine.ErrInvalid) {
+				t.Fatalf("Layers() error = %v; want ErrInvalid", err)
+			}
+			if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), tt.wantKey) {
+				t.Errorf("Layers() error = %q; want it to name %q and %q", err, localFile, tt.wantKey)
+			}
+		})
 	}
 }
 

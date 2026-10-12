@@ -5,13 +5,14 @@
 "repo" alone never substitutes for warp.
 **`host` is retired** in the fabric sense, everywhere.
 
-- Owner set (bare weft and warp carve-out): `fabricengine`, `fabriccli`, `weftname`, `gitkit`, `hubforge`, `boardengine`, `configsync`.
+- Owner set (bare weft and warp carve-out): `fabricengine`, `fabriccli`, `weftname`, `gitkit`, `hubforge`, `boardengine`, `configsync`, `fabricvocab`.
+- `internal/fabricvocab` is the home of the predicates the scan and the plan check share; neither declares its own.
 - Scope of the bare weft and warp rule outside the owner set:
   - every `*_test.go` file anywhere in the module;
   - every non-test `.go` file under `internal/` and the doc roots;
   - every `.md` and `.yaml` file under `contracts/`, `docs/`, `plugins/`, `crucible/` and `cmd/`;
   - every `.md` file under `internal/`;
-  - `CLAUDE.md` and `README.md`.
+  - `CLAUDE.md` and `README.md`, which may spell the public records repository's proper name `loomyard-weft` (`fabricvocab.BareTokenInRootDoc`) and no other side token.
 - Skipped: `_lyx`, `.lyx` and the repo-root `sandbox/` fixture tree, matched on the path's first segment, and the paths in `vocabScanAllowlist` in `internal/lyxcwd/enforcement_test.go`.
 - `internal/configsync` keeps a narrower carve-out in its test files too: string literals and comments may name the sides, identifiers may not.
 - A non-owner file carries no side-named spelling, owner-set exports included.

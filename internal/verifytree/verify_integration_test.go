@@ -464,7 +464,7 @@ func TestVerify_SlotGate(t *testing.T) {
 	unusable := &gateslot.Pool{
 		Dir: filepath.Join(t.TempDir(), "gate"),
 		Limits: func() (gateslot.Limits, error) {
-			cfg, err := gateslot.LoadConfig(unusableBoard)
+			cfg, err := gateslot.LoadConfig(configengine.Dirs{Board: unusableBoard})
 			return cfg.Limits(), err
 		},
 	}

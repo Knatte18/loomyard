@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planindex"
@@ -66,6 +67,7 @@ func newTestEnv(t *testing.T) Env {
 	return Env{
 		Cwd:            mustMkdir("cwd"),
 		AnchorPath:     mustMkdir("anchor"),
+		ConfigDirs:     configengine.Dirs{Anchor: filepath.Join(dir, "anchor")},
 		WorktreeRoot:   mustMkdir("worktree"),
 		VerifyDir:      mustMkdir("verify"),
 		VerifyCommand:  func() (string, error) { return "go test ./...", nil },
@@ -95,6 +97,7 @@ func newTestEnv(t *testing.T) Env {
 			}, nil
 		},
 		PrepareDiscussionSpawn: func() error { return nil },
+		PreparePlanSpawn:       func() error { return nil },
 		DiscussionTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "discussion",
