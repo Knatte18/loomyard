@@ -298,9 +298,10 @@ func convertAll(errs []planparser.ValidationError) []Finding {
 //
 // done is the set of already-built card IDs ValidateDispatch supplies, empty for the whole-plan
 // entry points. Every pass below sees only the pending cards, so a card whose work already landed is
-// never resolved against a tree it deliberately changed. planDir is still the whole plan's
-// directory: RewriteRefs re-parses it itself, so a handle bound in a pending card is still spelled
-// consistently across every card file, including the completed ones.
+// never resolved against a tree it deliberately changed.
+// The canonicalizing rewrite still covers the whole plan's directory:
+// it re-parses the plan through the plan's own source itself, so a handle bound in a pending card is still spelled consistently across every card file, including the completed ones.
+// A plan parsed through a planparser.Overlay is rewritten and re-read in memory, and no byte of the plan directory changes.
 //
 // forthcoming is the set of card IDs within done whose work may not have landed.
 // Those cards stay out of every pass,
@@ -327,7 +328,7 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 		return nil, err
 	}
 
-	handleFindings, rewrote, err := CanonicalizeHandles(pending, planDir, worktreeRoot, results)
+	handleFindings, rewrote, err := CanonicalizeHandles(pending, worktreeRoot, results)
 	if err != nil {
 		// NOT wrapped in ErrQuarryUnavailable: CanonicalizeHandles' error comes from
 		// planparser.RewriteRefs, which parses the plan and writes card files, so a read-only
@@ -351,7 +352,7 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 	current := pending
 	forthcomingSource := plan
 	if rewrote {
-		reloaded, rerr := planparser.ParsePlan(planDir)
+		reloaded, rerr := plan.Reparse()
 		if rerr != nil {
 			// Same reasoning as the RewriteRefs failure above: this is the PLAN that could not be
 			// read back, not quarry that could not answer.
