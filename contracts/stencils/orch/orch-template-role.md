@@ -23,7 +23,7 @@ This list holds every `lyx` command you may use, and `lyx <command> --help` give
    The batten run creates the task pair, drives the task's run inside it, loom or darn as the board entry's `recipe` says, and tears the pair down after the run ends.
    A darn run has no parent review: its Darn-Review perch reviews the writer's diff before Publish unless `darn.yaml`'s `review_max_bounces` is 0, and PR-Gate is the operator's review point, where a reject re-spawns the darn writer with the findings.
    Every task runs through loom, bug fixes included: never set `recipe: darn` on a board entry yourself; a task runs darn only when the operator names darn for that task.
-2. A halted child (blocked, paused or failed) is a wait batten does not resume on its own, with one exception: batten sends the first Publish verify failure of a run back to the failure record's target and resumes it itself.
+2. A halted child (blocked, paused or failed) is a wait batten does not resume on its own, with one exception: batten sends the first verify failure of a run, at Merge-In (the plan verify) or Publish (`publish_verify`), back to the failure record's target and resumes it itself.
    Every other halted child waits for you: once its cause is known (see Investigating a stop), resume it with `lyx loom resume` in the task worktree.
    When `lyx loom resume` refuses, its message names the way forward (`lyx batten run <slug>` to bring a dead driver back, or `lyx loom start`),
    and you take it.
@@ -53,9 +53,11 @@ A driver, webster or a review loop that cannot go on escalates to you, its paren
 - A run that needs a fresh budget at a producer: `lyx loom goto` or `lyx shed goto`, naming the producer.
   A goto leaves the run paused,
   so run `lyx loom resume` in the task worktree to resume it.
-- A Publish blocked on a verify that exited non-zero: batten retries the first such failure of a run itself, so a notice for one means the second failure.
+- A Merge-In or Publish blocked on a verify that exited non-zero: batten retries the first such failure of a run itself, so a notice for one means the second failure.
   Take `lyx loom goto --to Webster-Burler-Review`, then `lyx loom resume` in the task worktree.
   Never a goto to Plan-Bouncer, since the plan does not change.
+- A parent lock held too long: `lyx batten lock list` shows who holds each parent lock, and `lyx batten lock release <branch>` frees one whose owner is alive but wedged.
+  A release never stops a run: the released run takes the lock again at its next lock-taking row and reroutes if the parent moved meanwhile.
 - A design call the child cannot make: decide it and record it with `lyx loom decision add`.
 
 ## Investigating a stop
@@ -97,14 +99,17 @@ A brief for a non-fork agent that runs `lyx gate test` carries a copy of the gat
 ## PR-Gate
 
 At an awaiting Publish you approve or reject the PR yourself, never the operator.
-Start a one-shot reviewer fork for the diff, then judge the run against its own board goal and its tests.
+Start a one-shot reviewer fork that judges the run against its own board goal and the operator's recorded decisions.
+Code review is left to the Webster and Merge reviews, so the fork does not repeat it.
+The fork reads the carried-over `Merge-Review` open risks in the decision record as part of the run.
 Never widen the scope through rejects: a reject names a defect in the task's own goal.
 A small defect in that goal is fixed on the task branch; new hardening goes on the board as its own entry.
 Approve with `lyx loom approve`, or reject with `lyx loom reject <review-file>`, in the task worktree.
 Batten reads the decision and resumes the child itself, so you run no `lyx loom start` loop after either.
 After approving, amend the board entries the run superseded.
 In a darn run the same reject sends the findings to a fresh `Darn-Write` spawn.
-Finalize syncs the task branch with main, squashes it onto main, marks the board task done, pushes main and closes the PR with a comment naming the landing commit, so the PR ends closed, not merged.
+Finalize lands the task branch under the parent lock: a parent that moved since Merge-In sends the run back to Merge-In by itself.
+It syncs the task branch with main, squashes it onto main, marks the board task done, pushes main and closes the PR with a comment naming the landing commit, so the PR ends closed, not merged.
 
 ## After landing
 

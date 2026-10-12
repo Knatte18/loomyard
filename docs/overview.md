@@ -458,7 +458,8 @@ User-facing modules each get one `lyx <module>` namespace:
   Friction notes live under `_lyx/loom/friction/` and drive reports under `_lyx/shed/<slug>/drive-reports/`, both committed with the run.
   Besides the agents' notes, the friction directory holds the Go-written halt notes, which name their anomaly kind, the crash-resume notes written at a `run` or `step` entry and `lyx webster` refusal notes, and the driver's repair records.
   `lyx loom start` writes a handoff voucher right before it spawns a driver, so a deliberate resume never reads as a crash.
-  The landing tail runs `Webster-Review`, then `Describe`, then `Merge-In` and the Merge-Review perch (`Merge-Bouncer`, `Merge-Burler-Review` and `Merge-Burler-Fix`), then `Publish`, then `PR-Gate`, then `Finalize`;
+  The landing tail runs `Webster-Review`, then `Describe → Merge-In → Merge-Review → Publish → PR-Gate → Finalize`, where `Merge-Review` is the perch of `Merge-Bouncer`, `Merge-Burler-Review` and `Merge-Burler-Fix`;
+  a darn run's tail is `Describe → Merge-In → Publish → PR-Gate → Finalize`, with no merge review.
   `Merge-In` merges the parent into the task, verifies the merged tree and writes the merge record, and the perch reviews how the task's code interacts with what the parent gained.
   `Publish`, `PR-Gate` and `Finalize` reroute to `Merge-In` when the parent moved since.
   `Publish` pushes the task branch after the repo's `publish_verify`, and returns Done once the PR is open, refreshing its title and body from the description.
