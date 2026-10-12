@@ -767,6 +767,23 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		CarryOver: func(entry discussionparser.CarryOver) error { return writeCarryOver(location, entry) },
 		// SkipPlanReview lets Plan-Bouncer approve an exempt rework generation without a judge; it reads committed state on demand and opens nothing at wire time.
 		SkipPlanReview: func() (bool, error) { return loomshed.PlanReviewSkippable(reworkDeps) },
+		// SkipMergeReview answers from the merge record alone, so an absent or unreadable record reviews the whole merge-in diff.
+		SkipMergeReview: func() (bool, error) {
+			record, found, err := landingshed.ReadMergeRecord(landingshed.MergeRecordPath(loomengine.LoomScratchDir(location)))
+			if err != nil || !found {
+				return false, nil
+			}
+			return record.SkipsReview(), nil
+		},
+		// ApproveMergeReview records the merged tip as reviewed on every approved settle of the Merge-Bouncer, a skip included.
+		ApproveMergeReview: func() error {
+			scratchDir := loomengine.LoomScratchDir(location)
+			return landingshed.RecordMergeReviewed(landingshed.MergeRecordPath(scratchDir), landingshed.MergeReviewedPath(scratchDir))
+		},
+		MergeReview: func() string {
+			return landingshed.MergeReviewNote(landingshed.MergeRecordPath(loomengine.LoomScratchDir(location)))
+		},
+		MergeReviewOff: loomCfg.SkipMergeReview,
 		// ReworkSpec is evaluated per Call like PlanSpec above, so the stencil is read at call time.
 		// The values the session is told arrive from the PR-Rework producer, which decides them.
 		ReworkSpec: func(told loomshed.ReworkTold) (shuttleengine.Spec, error) {

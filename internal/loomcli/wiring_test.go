@@ -977,3 +977,43 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		}
 	}
 }
+
+// TestWire_MergeReviewSeams verifies the merge review seams read the run's merge record.
+// The skip seam answers false with no record and the record's skip decision once one exists.
+// The approve seam records the merged tip as reviewed, the note renders the record, and skip_merge_review reaches the Env.
+func TestWire_MergeReviewSeams(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "pair", ".")
+	seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"skip_merge_review": "true"})
+	c := &loomCLI{runID: shedrun.SelfRunID}
+	if err := c.wire(loc, loc.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	if !c.env.MergeReviewOff {
+		t.Error("c.env.MergeReviewOff = false; want true from skip_merge_review")
+	}
+	if skip, err := c.env.SkipMergeReview(); err != nil || skip {
+		t.Errorf("SkipMergeReview() with no record = %v, %v; want false, nil", skip, err)
+	}
+
+	scratchDir := loomengine.LoomScratchDir(loc)
+	record := landingshed.MergeRecord{ParentBranch: "main", MergedTip: "m9", ReviewedTip: "r1", TaskBase: "b1", TaskHead: "h1", UpToDate: true}
+	if err := landingshed.WriteMergeRecord(landingshed.MergeRecordPath(scratchDir), record); err != nil {
+		t.Fatalf("WriteMergeRecord() = %v; want nil", err)
+	}
+	if skip, err := c.env.SkipMergeReview(); err != nil || !skip {
+		t.Errorf("SkipMergeReview() over an up-to-date record = %v, %v; want true, nil", skip, err)
+	}
+	if note := c.env.MergeReview(); !strings.Contains(note, "`r1..m9`") {
+		t.Errorf("MergeReview() = %q; want the parent range r1..m9", note)
+	}
+
+	if err := c.env.ApproveMergeReview(); err != nil {
+		t.Fatalf("ApproveMergeReview() = %v; want nil", err)
+	}
+	if tip, found, err := landingshed.ReadReviewedTip(landingshed.MergeReviewedPath(scratchDir)); err != nil || !found || tip != "m9" {
+		t.Errorf("reviewed tip = %q, %v, %v; want m9 recorded", tip, found, err)
+	}
+}

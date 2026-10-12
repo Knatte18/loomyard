@@ -54,7 +54,7 @@ internal/landingshed: 84
 internal/lock: 4
 internal/logger: 34
 internal/loggerconfig: 3
-internal/loomcli: 202
+internal/loomcli: 203
 internal/loomengine: 43
 internal/loomrecipe: 52
 internal/loomshed: 76
@@ -87,7 +87,7 @@ internal/shedbuild: 13
 internal/shedcheck: 3
 internal/shedcli: 17
 internal/shedengine: 140
-internal/shedrecipe: 101
+internal/shedrecipe: 102
 internal/shedrun: 23
 internal/shedtransient: 2
 internal/shedverbs: 82
