@@ -33,6 +33,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -122,12 +123,15 @@ func renderArg(arg string) string {
 //
 // A remote subcommand runs under remoteDeadline, in its own process group, with lowSpeedEnv added to the environment;
 // a local one runs unbounded.
+// A remote subcommand first waits while a pause covers the process, through the installed network gate, if any.
 // Every child gets the process environment less GIT_DIR and GIT_WORK_TREE.
 func runCore(args []string, cwd, stdin string) (stdout, stderr string, exitCode int, err error) {
 	var cmd *exec.Cmd
 	var ctx context.Context
 	deadline := remoteDeadline
 	if remoteSubcommands[subcommand(args)] {
+		// The hold comes before the deadline's context, so a command held by a pause starts its bound only when it runs.
+		defer pauserecord.Network(subcommand(args))()
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(context.Background(), deadline)
 		defer cancel()
