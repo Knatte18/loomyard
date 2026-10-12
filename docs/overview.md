@@ -278,6 +278,7 @@ github.com/Knatte18/loomyard/
 ├── internal/gitrepo/             typed Repo over one local git checkout: go-git for local reads, gitexec for remote-auth/mutation
 ├── internal/githubclient/        GitHub token resolution, caching, and authenticated *github.Client construction — auth only, no per-operation wrappers
 ├── internal/lock/                shared file locking
+├── internal/lyxtemp/             lyx's per-user temp root in the system temp directory, one locked run directory per process and the sweep of dead owners' run directories, a leaf over the standard library and `internal/lock`
 ├── internal/gateslot/            the hub-wide pool of gate slots: file-lock slots, holder records, the inherited-slot environment and wait records
 ├── internal/output/              shared JSON output
 ├── internal/modelspec/           model-spec parser + models.yaml registry leaf

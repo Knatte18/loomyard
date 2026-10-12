@@ -59,6 +59,7 @@ internal/loomengine: 43
 internal/loomrecipe: 52
 internal/loomshed: 76
 internal/lyxcwd: 23
+internal/lyxtemp: 7
 internal/mergeresolve: 17
 internal/modelspec: 11
 internal/orchcli: 26

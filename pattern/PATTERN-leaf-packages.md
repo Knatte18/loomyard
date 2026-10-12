@@ -43,6 +43,11 @@ Imports only the standard library.
 It is the sole `.git` parser: git dir, common dir, the repository test and the walk-up to a worktree root, in-process and spawning nothing.
 It is its own package because `gitrepo`'s in-package test imports `gitkit`, which reaches `lyxcwd`, so `lyxcwd` importing `gitrepo` would close a cycle.
 
+## `internal/lyxtemp`
+
+Imports only the standard library and `internal/lock`, and `gofrs/flock` through it.
+It is importable from production code, not a kit.
+
 ## `internal/fswatch`
 
 Imports only the standard library, `github.com/fsnotify/fsnotify` and `internal/logger`.
