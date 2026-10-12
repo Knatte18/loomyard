@@ -205,6 +205,31 @@ func ReadVerdict(a Attempt) (Verdict, bool, error) {
 	return v, true, nil
 }
 
+// ParseAttemptDir parses an attempt directory's files, keyed by file name, as they sit in a git tree.
+// The verdict is the file the attempt's Token names, and is nil when that file is absent.
+// An unknown key reads, none of ReadVerdict's checks run, and the attempt's Dir stays empty.
+// It errors, naming the file, for an attempt.json that is absent or does not decode and for a verdict file that does not decode.
+func ParseAttemptDir(files map[string][]byte) (Attempt, *Verdict, error) {
+	attemptData, ok := files[attemptFileName]
+	if !ok {
+		return Attempt{}, nil, fmt.Errorf("alignment: attempt directory has no %s", attemptFileName)
+	}
+	var attempt Attempt
+	if err := json.Unmarshal(attemptData, &attempt); err != nil {
+		return Attempt{}, nil, fmt.Errorf("alignment: parse %s: %w", attemptFileName, err)
+	}
+	verdictName := filepath.Base(attempt.VerdictPath())
+	verdictData, ok := files[verdictName]
+	if !ok {
+		return attempt, nil, nil
+	}
+	var verdict Verdict
+	if err := yaml.NewDecoder(bytes.NewReader(verdictData)).Decode(&verdict); err != nil {
+		return Attempt{}, nil, fmt.Errorf("alignment: parse %s: %w", verdictName, err)
+	}
+	return attempt, &verdict, nil
+}
+
 // Snapshot returns the hex SHA-256 over the decision record's bytes and the notes' texts, in the order given.
 // Each part is length-prefixed, so a changed record or note changes it, and so does an added or removed note.
 func Snapshot(decisionRecord []byte, notes []string) string {
