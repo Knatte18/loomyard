@@ -10,8 +10,11 @@
 package fabricengine
 
 import (
+	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
@@ -111,6 +114,23 @@ const HubSuffix = "-LYXHUB"
 // BoardDir returns the absolute path to the board data directory inside hub.
 func BoardDir(hub string) string {
 	return filepath.Join(hub, BoardDirName)
+}
+
+// ConfigDirs returns the told geometry of a layered config load for the location:
+// its anchor, and the hub's board dir when that exists as a directory.
+// A git checkout that is not a hub has no board dir, so it gets Board empty and loads the standalone stack.
+// A stat failure other than absence is treated as absence and logged, since a loader then degrades or refuses on its own base-layer rule.
+func ConfigDirs(l *lyxcwd.Location) configengine.Dirs {
+	dirs := configengine.Dirs{Anchor: l.AnchorPath()}
+	board := BoardDir(l.HubPath)
+	info, err := os.Stat(board)
+	switch {
+	case err == nil && info.IsDir():
+		dirs.Board = board
+	case err != nil && !os.IsNotExist(err):
+		logger.Warn("fabricengine: board dir not statable, loading the standalone config stack", "path", board, "error", err)
+	}
+	return dirs
 }
 
 // stencilsDirName is the name of the stencils directory nested under BoardDir's `_lyx` component.

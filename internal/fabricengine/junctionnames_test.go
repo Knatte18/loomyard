@@ -10,8 +10,11 @@
 package fabricengine
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestJunctionNames_NoFallbackOnLoadFailure asserts the no-fallback rule: a config-load failure at
@@ -281,4 +284,56 @@ func TestIsReservedHubName(t *testing.T) {
 			t.Errorf("IsReservedHubName(%q, %v) = %v; want false", "_raddle", junctionNames, got)
 		}
 	})
+}
+
+// TestConfigDirs pins the geometry a location tells a layered load: the anchor always, and the board dir only when it exists as a directory.
+func TestConfigDirs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		makeBoard func(t *testing.T, board string)
+		wantBoard bool
+	}{
+		{
+			name: "hub holding a board dir",
+			makeBoard: func(t *testing.T, board string) {
+				if err := os.Mkdir(board, 0o755); err != nil {
+					t.Fatalf("mkdir board: %v", err)
+				}
+			},
+			wantBoard: true,
+		},
+		{
+			name:      "hub without a board dir",
+			makeBoard: func(*testing.T, string) {},
+		},
+		{
+			name: "board path that is a file",
+			makeBoard: func(t *testing.T, board string) {
+				if err := os.WriteFile(board, []byte("x"), 0o644); err != nil {
+					t.Fatalf("write board file: %v", err)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			hub := t.TempDir()
+			tt.makeBoard(t, BoardDir(hub))
+			loc := &lyxcwd.Location{RepoName: "repo", HubPath: hub, WorktreeName: "main", AnchorRel: "."}
+
+			got := ConfigDirs(loc)
+
+			wantBoard := ""
+			if tt.wantBoard {
+				wantBoard = BoardDir(hub)
+			}
+			if got.Anchor != loc.AnchorPath() || got.Board != wantBoard {
+				t.Errorf("ConfigDirs = %+v; want Anchor %q, Board %q", got, loc.AnchorPath(), wantBoard)
+			}
+		})
+	}
 }
