@@ -115,10 +115,10 @@ func TestWebsterGeometry(t *testing.T) {
 			if _, err := got.GateSlots.Limits(); err == nil || !strings.Contains(err.Error(), gateConfig) || !strings.Contains(err.Error(), `fix it with "lyx config gate" from the prime`) {
 				t.Errorf("GateSlots.Limits() over slots: 0 = %v; want an error naming %q and lyx config gate", err, gateConfig)
 			}
-			if err := os.WriteFile(gateConfig, []byte("slots: 3\ngo_parallel: 5\ncli_wait_sec: 7\n"), 0o644); err != nil {
+			if err := os.WriteFile(gateConfig, []byte("slots: 3\ngo_parallel: 5\ncli_wait_sec: 7\nbusy_quit_sec: 9\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			wantLimits := gateslot.Limits{Slots: 3, GoParallel: 5, CLIWait: 7 * time.Second}
+			wantLimits := gateslot.Limits{Slots: 3, GoParallel: 5, CLIWait: 7 * time.Second, BusyQuit: 9 * time.Second}
 			if limits, err := got.GateSlots.Limits(); err != nil || limits != wantLimits {
 				t.Errorf("GateSlots.Limits() = (%+v, %v); want the board dir's gate.yaml as %+v", limits, err, wantLimits)
 			}
