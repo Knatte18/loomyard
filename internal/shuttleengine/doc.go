@@ -103,6 +103,12 @@
 // AwaitAny is the shared wait: it stats the told paths once a second until one exists or the cap elapses, and watches no directory.
 // It is the poll every capped keep-cache-warm wait verb runs on, and DefaultAwaitCap is the cap those verbs default to.
 //
+// # Pending prompt
+//
+// A launch that defers its prompt to a typed line (Launch.PromptLine) records the line in run.json as `promptLine`.
+// Run.DeliverPendingPrompt reads that record and types the line through the guarded paste-submit when no turn start lies at or past RunState.PromptOffset, so a step that died between its skill-load turns and its prompt delivery does not leave an agent that never got its task.
+// It persists the events file's size as the prompt offset first when none was recorded, reports whether it sent, and changes nothing when it fails.
+//
 // # Pause
 //
 // Runner.SetPause tells the runner a pauserecord.Geometry; a runner never told one reads no record.

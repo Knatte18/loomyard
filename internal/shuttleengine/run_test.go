@@ -385,6 +385,73 @@ func TestRunner_Start_WaitsWhileAPauseCoversItsPair(t *testing.T) {
 	}
 }
 
+// TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted pins that a run reconstructed from its record types the deferred prompt line only when no turn started at or past the prompt offset.
+func TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted(t *testing.T) {
+	t.Parallel()
+
+	const promptLine = "Read the task prompt and carry it out."
+	const loadTurns = "START\nSTOP:loaded\n"
+	tests := []struct {
+		name         string
+		promptLine   string
+		events       string
+		promptOffset int64
+		wantSent     bool
+		// wantOffset is the prompt offset the record holds afterwards.
+		wantOffset int64
+	}{
+		{name: "a record with no prompt line sends nothing", events: loadTurns, promptOffset: int64(len(loadTurns)), wantOffset: int64(len(loadTurns))},
+		{
+			name: "a turn start past the prompt offset means the prompt was taken", promptLine: promptLine, events: loadTurns + "START\n",
+			promptOffset: int64(len(loadTurns)), wantOffset: int64(len(loadTurns)),
+		},
+		{
+			name: "only the load turns before the prompt offset sends the prompt once", promptLine: promptLine, events: loadTurns,
+			promptOffset: int64(len(loadTurns)), wantSent: true, wantOffset: int64(len(loadTurns)),
+		},
+		{
+			name: "a zero prompt offset is persisted as the events size before sending", promptLine: promptLine, events: "SESSIONSTART:startup\n",
+			wantSent: true, wantOffset: int64(len("SESSIONSTART:startup\n")),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			reed := &echoReed{fakeReed: &fakeReed{StatusQueue: liveStrandStatus(true)}, pane: "❯ "}
+			engine := &sessionFakeEngine{waitingEngine: waitingEngine{fakeEngine: fakeEngine{StartupScript: []StartupState{StartupReady}}}}
+			fx := newFixture(t, reed, engine, withConfig(gateConfig))
+			record := RunState{StrandGUID: "strand-1", PromptLine: tt.promptLine, PromptOffset: tt.promptOffset}
+			run := fx.newRun(Spec{}, withRunState(record), withRunEvents(tt.events))
+			record.EventsPath = run.state.EventsPath
+			if err := saveRunState(run.runDir, record); err != nil {
+				t.Fatalf("saveRunState: %v", err)
+			}
+
+			sent, err := run.DeliverPendingPrompt()
+			if err != nil {
+				t.Fatalf("DeliverPendingPrompt() error = %v", err)
+			}
+			if sent != tt.wantSent {
+				t.Errorf("DeliverPendingPrompt() = %v, want %v", sent, tt.wantSent)
+			}
+			wantTyped := []string(nil)
+			if tt.wantSent {
+				wantTyped = []string{promptLine}
+			}
+			if !reflect.DeepEqual(reed.typed, wantTyped) {
+				t.Errorf("typed = %q, want %q", reed.typed, wantTyped)
+			}
+			persisted, _, err := loadRunState(run.runDir)
+			if err != nil {
+				t.Fatalf("loadRunState: %v", err)
+			}
+			if persisted.PromptOffset != tt.wantOffset {
+				t.Errorf("persisted PromptOffset = %d, want %d", persisted.PromptOffset, tt.wantOffset)
+			}
+		})
+	}
+}
+
 // TestRunner_Start_TypesTheSegmentColorAfterStartup pins the color step.
 // A colored strand gets the engine's color inputs after startup and before the skill-load message.
 // No color, a caller that colors itself and an engine without a color command type nothing, and a failing color play still starts the run.

@@ -568,6 +568,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		PID:          os.Getpid(),
 
 		RecordsSessionStarts: launch.RecordsSessionStarts,
+		PromptLine:           launch.PromptLine,
 		Step:                 r.step,
 	}
 	if err := saveRunState(runDir, state); err != nil {
@@ -676,6 +677,39 @@ func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 		return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: deliver the prompt after loading skills: %w", err))
 	}
 	return Result{}, nil
+}
+
+// DeliverPendingPrompt types the run's deferred prompt line when the prompt's turn never started, and reports whether it did.
+// It reads the persisted record: a record with no prompt line, or whose events file holds a turn start at or past the prompt offset, reports false and sends nothing.
+// Otherwise it persists the events file's current size as the prompt offset when none was recorded, sends the line through the guarded paste-submit, and reports true.
+// A failure is returned and nothing else changes.
+func (run *Run) DeliverPendingPrompt() (bool, error) {
+	record, found, err := loadRunState(run.runDir)
+	if err != nil {
+		return false, fmt.Errorf("shuttle: read the run record in %s to deliver a pending prompt: %w", run.runDir, err)
+	}
+	if !found || record.PromptLine == "" || turnStartedSince(run.runner.engine, record.EventsPath, record.PromptOffset) {
+		return false, nil
+	}
+	if record.PromptOffset == 0 {
+		offset := eventsSize(record.EventsPath)
+		run.recordMu.Lock()
+		record.PromptOffset = offset
+		err := saveRunState(run.runDir, record)
+		if err == nil {
+			run.state.PromptOffset = offset
+		}
+		run.recordMu.Unlock()
+		if err != nil {
+			return false, fmt.Errorf("shuttle: persist the prompt offset in %s before delivering the pending prompt: %w", run.runDir, err)
+		}
+	}
+	run.sendMu.Lock()
+	defer run.sendMu.Unlock()
+	if err := sendVerified(run.newSendContext(), record.PromptLine); err != nil {
+		return false, fmt.Errorf("shuttle: deliver the pending prompt: %w", err)
+	}
+	return true, nil
 }
 
 // settleLoadTurn runs one load turn for skills and logs a skipped warning for every skill it leaves unloaded.

@@ -121,6 +121,9 @@ type RunState struct {
 	// so a crash between the write and the call loses that one notice and never repeats it.
 	// It is kept apart from NotifiedOffset so a held-turn-end notice and a dialog notice never suppress each other.
 	DialogNotifiedOffset int64 `json:"dialogNotifiedOffset,omitempty"`
+	// PromptLine is the launch's deferred prompt line, typed once the provider is ready and the skills are loaded; empty for a launch whose prompt is on its command line.
+	// It is kept so a later attach can deliver a prompt a dead step never sent.
+	PromptLine string `json:"promptLine,omitempty"`
 	// Step is the shed step that started the run, nil for a run whose runner was told none.
 	Step *StepTie `json:"step,omitempty"`
 	// APIContinued is true while the turn an automatic continue line resumed has not ended on a non-API-error turn end.
