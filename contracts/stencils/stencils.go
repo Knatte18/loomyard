@@ -85,6 +85,11 @@ var LoomRubricWebsterReview []byte
 //go:embed loom/loom-rubric-darn-review.md
 var LoomRubricDarnReview []byte
 
+// LoomRubricMergeReview is the Merge-Review rubric, read by both rows of the Merge-Review perch.
+//
+//go:embed loom/loom-rubric-merge-review.md
+var LoomRubricMergeReview []byte
+
 // LoomTemplatePriorPlan is the prior-plan block appended to the end of the Plan prompt on a respawn.
 //
 //go:embed loom/loom-template-prior-plan.md
@@ -405,6 +410,7 @@ var entries = []registryEntry{
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
 	{"loom-rubric-webster-review", &LoomRubricWebsterReview},
 	{"loom-rubric-darn-review", &LoomRubricDarnReview},
+	{"loom-rubric-merge-review", &LoomRubricMergeReview},
 	{"loom-template-prior-plan", &LoomTemplatePriorPlan},
 	{"loom-template-parent-review-delivery", &LoomTemplateParentReviewDelivery},
 	{"loom-template-parent-review-brief", &LoomTemplateParentReviewBrief},

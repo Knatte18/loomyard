@@ -52,6 +52,8 @@ var InterruptPolicies = map[string]string{
 	NameWebster:           InterruptPolicyHandback,
 	NameWebsterBouncer:    InterruptPolicyReinvoke,
 	NameDescribe:          InterruptPolicyReinvoke,
+	NameMergeIn:           InterruptPolicyReinvoke, // spawns only the conflict session the resolver reattaches
+	NameMergeBouncer:      InterruptPolicyReinvoke,
 	NamePublish:           InterruptPolicyReinvoke,
 	NamePRGate:            InterruptPolicyReinvoke, // spawns nothing
 	NamePRRework:          InterruptPolicyReinvoke, // the single-session adapter reattaches rather than double-spawns
@@ -67,6 +69,8 @@ var InterruptPolicies = map[string]string{
 	NamePlanBurlerFix:          InterruptPolicyReinvoke,
 	NameWebsterBurlerReview:    InterruptPolicyReinvoke,
 	NameWebsterBurlerFix:       InterruptPolicyReinvoke,
+	NameMergeBurlerReview:      InterruptPolicyReinvoke,
+	NameMergeBurlerFix:         InterruptPolicyReinvoke,
 	NameDarnBurlerReview:       InterruptPolicyReinvoke,
 	NameDarnBurlerFix:          InterruptPolicyReinvoke,
 }

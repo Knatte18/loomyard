@@ -43,15 +43,16 @@ type failureRecorder struct {
 	mergeCommit  string
 }
 
-// recordFailure writes the Publish failure record for a verify of the given kind that ended in result.
+// recordFailure writes the Publish failure record for a verify of the given kind, run by the producer row row, that ended in result.
 // A result that is not a failed run, a timeout and a shell that could not start write none, since none of them names a failing test.
 // It reports whether it wrote the record: a write failure is logged, reported as false and changes nothing else.
-func (g verifyGate) recordFailure(kind verifytree.FailureKind, result verifytree.Result) bool {
+func (g verifyGate) recordFailure(kind verifytree.FailureKind, row string, result verifytree.Result) bool {
 	if g.recorder == nil || result.Status != verifytree.StatusFailed || result.TimedOut || result.ExitCode < 0 {
 		return false
 	}
 	failure := verifytree.PublishFailure{
 		Kind:        kind,
+		Row:         row,
 		LogPath:     result.Log,
 		MergeCommit: g.recorder.mergeCommit,
 		Target:      g.failureTarget,
@@ -177,7 +178,7 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (s
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
 	}
-	recorded := g.recordFailure(verifytree.FailureKindPlanVerify, result)
+	recorded := g.recordFailure(verifytree.FailureKindPlanVerify, producer, result)
 	return g.verdict(result, "verify", producer, parentBranch, recorded)
 }
 
@@ -204,7 +205,7 @@ func (g verifyGate) checkPublishVerify(ctx context.Context, producer, parentBran
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
 	}
-	recorded := g.recordFailure(verifytree.FailureKindPublishVerify, result)
+	recorded := g.recordFailure(verifytree.FailureKindPublishVerify, producer, result)
 	return g.verdict(result, "publish_verify", producer, parentBranch, recorded)
 }
 

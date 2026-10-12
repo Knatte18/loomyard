@@ -46,7 +46,7 @@ func resetCurrentProducer(t *testing.T, statusPath, statusLockPath, currentProdu
 // OnStuck is empty, per the real Batchifier gate genuinely failing on a malformed config -- never a
 // substituted fake row), fixes the on-disk cause, and asserts that a freshly constructed Shed over
 // the same status file re-calls Batchifier directly rather than restarting the whole list at
-// Preflight. The fixed second run blocks again, at Publish (see sequence_test.go's
+// Preflight. The fixed second run blocks again, at Merge-In (see sequence_test.go's
 // wantSequenceOrder doc comment for why) -- resuming past Batchifier, not reaching Done, is this
 // test's own point.
 func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
@@ -85,8 +85,8 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 	if result2.Outcome != shedengine.RunBlocked {
 		t.Fatalf("second Run() outcome = %q; want %q (reason: %s)", result2.Outcome, shedengine.RunBlocked, result2.Reason)
 	}
-	if result2.HaltedProducer != loomshed.NamePublish {
-		t.Fatalf("second Run() HaltedProducer = %q; want %q", result2.HaltedProducer, loomshed.NamePublish)
+	if result2.HaltedProducer != loomshed.NameMergeIn {
+		t.Fatalf("second Run() HaltedProducer = %q; want %q", result2.HaltedProducer, loomshed.NameMergeIn)
 	}
 
 	// result2.History is the full persisted history, including the first run's own appended
@@ -108,9 +108,8 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 // output already exists from the first pass -- still makes a fresh Shed call it again, rather than
 // skip it.
 //
-// The two runs do not end at the same halted row: the first run ends shedengine.RunBlocked at
-// Publish (see sequence_test.go's wantSequenceOrder doc comment for why). After
-// resetCurrentProducer(..., loomshed.NamePreflight, false), the second run re-calls row 1, Shed
+// The two runs do not end at the same halted row: the first run ends shedengine.RunBlocked at Merge-In (see sequence_test.go's wantSequenceOrder doc comment for why).
+// After resetCurrentProducer(..., loomshed.NamePreflight, false), the second run re-calls row 1, Shed
 // advances to row 2, and row 2 finds a history carrying the first run's later producers -- exactly
 // the half-finished shape the fresh-start rule rejects -- so the second run blocks at
 // Loom-Preflight instead. This test's own point is the re-call count, not the terminal state.
@@ -211,13 +210,13 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 		t.Fatalf("second Run() error = %v; want nil", err)
 	}
 	// A subsequent run must resume rather than re-pause on the flag it is resuming from -- it
-	// blocks at Publish (see sequence_test.go's wantSequenceOrder doc comment for why), never
+	// blocks at Merge-In (see sequence_test.go's wantSequenceOrder doc comment for why), never
 	// shedengine.RunPaused again.
 	if result2.Outcome != shedengine.RunBlocked {
 		t.Fatalf("second Run() outcome = %q; want %q -- a subsequent run must resume rather than re-pause on the flag it is resuming from", result2.Outcome, shedengine.RunBlocked)
 	}
-	if result2.HaltedProducer != loomshed.NamePublish {
-		t.Errorf("second Run() HaltedProducer = %q; want %q", result2.HaltedProducer, loomshed.NamePublish)
+	if result2.HaltedProducer != loomshed.NameMergeIn {
+		t.Errorf("second Run() HaltedProducer = %q; want %q", result2.HaltedProducer, loomshed.NameMergeIn)
 	}
 }
 

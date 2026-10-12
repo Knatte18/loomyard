@@ -89,6 +89,9 @@ type BouncerConfig struct {
 	// WebsterRecord returns the note the rubric's webster_record marker is filled from, called each time the seed or judge reads the rubric.
 	// Nil renders `none`.
 	WebsterRecord func() string
+	// MergeReview returns the note the rubric's merge_review marker is filled from, called each time the seed or judge reads the rubric.
+	// Nil renders `none`.
+	MergeReview func() string
 	// RubricStencil is the stencilstore name of the rubric this Bouncer's judge applies.
 	RubricStencil string
 	// Models holds the already-resolved seed and judge pairs, threaded verbatim into the shuttleengine.Spec of each pass.
@@ -139,6 +142,9 @@ type BouncerConfig struct {
 	// It applies only to a CONTINUE or CIRCLING verdict this call's judge just wrote, over a round with no recorded decision and no escalation record;
 	// a replay, a circling-cause escalation and a round already escalated behave as when it is false, which is the default.
 	AutoAccept bool
+	// BlockingEscalates makes a spent budget escalate with cause budget, instead of auto-accepting, when the round's ledger holds an open BLOCKING entry or cannot be read.
+	// It only turns some auto-accepts into escalations: it never accepts what escalates without it, and it has no effect while AutoAccept is false.
+	BlockingEscalates bool
 	// CirclingCheckpoint is the first round a CIRCLING verdict is legal in.
 	// The judge prompt offers CIRCLING only from this round on, and settle reads an earlier CIRCLING as CONTINUE.
 	// It must be positive.
@@ -157,6 +163,9 @@ type BouncerConfig struct {
 	// The skip seam never calls it, since no round ran.
 	// Nil is the absent value and leaves every row behaving exactly as before.
 	CarryOver func(discussionparser.CarryOver) error
+	// ColorSegment is the segment the seed and judge sessions, and the probes that attach to them, are colored by.
+	// The zero value keeps segmentcolor.Review.
+	ColorSegment segmentcolor.Segment
 }
 
 // Bouncer is the shedadapters adapter implementing the generic review-gate producer: it composes
@@ -467,6 +476,14 @@ func (b *Bouncer) settledGeneration(round int) bool {
 	return err == nil && exists && settled && decision == CirclingAccept
 }
 
+// colorSegment returns the segment the Bouncer's sessions are colored by.
+func (b *Bouncer) colorSegment() segmentcolor.Segment {
+	if b.cfg.ColorSegment == "" {
+		return segmentcolor.Review
+	}
+	return b.cfg.ColorSegment
+}
+
 // awaitLiveJudge probes for a still-live judge run for round and, when it finds one, waits on it
 // before returning its result and true; a not-found probe returns false, and an attach error is returned to the
 // caller rather than swallowed, since a probe that could not determine liveness must never be read
@@ -484,7 +501,7 @@ func (b *Bouncer) awaitLiveJudge(round int) (shuttleengine.Result, bool, error) 
 	spec := shuttleengine.Spec{
 		OutputFiles: judgeOutputs(b.cfg.RunDir, round),
 		Role:        bouncerJudgeRole,
-		Segment:     segmentcolor.Review,
+		Segment:     b.colorSegment(),
 		Round:       strconv.Itoa(round),
 	}
 
@@ -511,7 +528,7 @@ func (b *Bouncer) awaitLiveSeed() (shuttleengine.Result, bool, error) {
 	spec := shuttleengine.Spec{
 		OutputFiles: []string{focusPath(b.cfg.RunDir, 1)},
 		Role:        bouncerSeedRole,
-		Segment:     segmentcolor.Review,
+		Segment:     b.colorSegment(),
 		Round:       "1",
 	}
 
@@ -832,12 +849,22 @@ func (b *Bouncer) acceptRound(round int, ptr shedengine.OutputPointer) (shedengi
 // A spent budget escalates with cause budget, also over a CIRCLING verdict;
 // with AutoAccept set it instead records an automatic accept and passes the round through acceptRound, writing no escalation record and no parent notice.
 // The automatic accept needs a harvest (spawned) over a round with no escalation record, so a replay and an already escalated round escalate as without AutoAccept.
+// With BlockingEscalates set, a round whose ledger holds an open BLOCKING entry, or whose ledger cannot be read, escalates with cause budget instead of auto-accepting.
 // Otherwise a CIRCLING verdict escalates with cause circling, and a CONTINUE calls ensureFocus(round + 1) and returns Stuck.
 func (b *Bouncer) settleUndecided(round int, verdict bouncerVerdict, spawned bool, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	switch {
 	case b.budgetReached(round):
 		if b.cfg.AutoAccept && spawned {
 			if _, _, escalated, err := readEscalation(b.cfg.RunDir, round); err == nil && !escalated {
+				if b.cfg.BlockingEscalates {
+					blocking, err := b.openBlocking(round)
+					if err != nil {
+						logger.Warn("shedadapters: bouncer could not read the ledger for the blocking check, escalating", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
+					}
+					if blocking || err != nil {
+						return b.escalate(round, EscalationBudget, ptr)
+					}
+				}
 				if err := recordAutoAccept(b.cfg.RunDir, round); err != nil {
 					return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): record automatic accept: %w", b.cfg.Name, bouncerEngineLabel, err)
 				}
@@ -854,6 +881,25 @@ func (b *Bouncer) settleUndecided(round int, verdict bouncerVerdict, spawned boo
 		logger.Warn("shedadapters: bouncer replayed a CONTINUE verdict with no new spawn", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round)
 	}
 	return shedengine.Stuck, ptr, nil
+}
+
+// openBlocking reports whether round's ledger holds an entry that is open at severity BLOCKING.
+// A ledger that cannot be read or parsed is an error.
+func (b *Bouncer) openBlocking(round int) (bool, error) {
+	raw, err := os.ReadFile(ledgerPath(b.cfg.RunDir, round))
+	if err != nil {
+		return false, fmt.Errorf("shedadapters: %s (%s): read ledger of round %d: %w", b.cfg.Name, bouncerEngineLabel, round, err)
+	}
+	ledger, err := parseLedger(raw)
+	if err != nil {
+		return false, fmt.Errorf("shedadapters: %s (%s): parse ledger of round %d: %w", b.cfg.Name, bouncerEngineLabel, round, err)
+	}
+	for _, entry := range ledger.Entries {
+		if entry.Status == "open" && entry.Severity == burlerengine.SeverityBlocking {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // budgetReached reports whether the segment's bounce budget is spent, by the same count >= budget comparison Shed applies to the history it read before appending.
@@ -976,20 +1022,19 @@ func (b *Bouncer) seedCall(ctx context.Context) (shedengine.Outcome, shedengine.
 	return shedengine.Stuck, shedengine.OutputPointer{}, nil
 }
 
-// publishFailureNote returns the note the rubric's publish_failure marker is filled from, blank when no function is configured.
-func (b *Bouncer) publishFailureNote() string {
-	if b.cfg.PublishFailure == nil {
-		return ""
+// rubricNotes gathers the notes the rubric's markers are filled from, each blank when no function is configured for it.
+func (b *Bouncer) rubricNotes() RubricNotes {
+	var notes RubricNotes
+	if b.cfg.PublishFailure != nil {
+		notes.PublishFailure = b.cfg.PublishFailure()
 	}
-	return b.cfg.PublishFailure()
-}
-
-// websterRecordNote returns the note the rubric's webster_record marker is filled from, blank when no function is configured.
-func (b *Bouncer) websterRecordNote() string {
-	if b.cfg.WebsterRecord == nil {
-		return ""
+	if b.cfg.WebsterRecord != nil {
+		notes.WebsterRecord = b.cfg.WebsterRecord()
 	}
-	return b.cfg.WebsterRecord()
+	if b.cfg.MergeReview != nil {
+		notes.MergeReview = b.cfg.MergeReview()
+	}
+	return notes
 }
 
 // runSeedSpawn attempts one seed pass writing focusPath: it probes for a still-live seed run and
@@ -1014,7 +1059,7 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 		return nil
 	}
 
-	rubric, err := ReadRubric(b.cfg.StencilsDir, b.cfg.RubricStencil, b.cfg.SpecsDir, b.publishFailureNote(), b.websterRecordNote())
+	rubric, err := ReadRubric(b.cfg.StencilsDir, b.cfg.RubricStencil, b.cfg.SpecsDir, b.rubricNotes())
 	if err != nil {
 		logger.Warn("shedadapters: bouncer rubric unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
 		return nil
@@ -1055,7 +1100,7 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 		Effort:      b.cfg.Models.Seed.Effort,
 		Version:     b.cfg.Models.Seed.Version,
 		Role:        bouncerSeedRole,
-		Segment:     segmentcolor.Review,
+		Segment:     b.colorSegment(),
 		Round:       "1",
 		Skills:      bouncerSeedSkills,
 	}
@@ -1126,7 +1171,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 	if err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer judge template unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}
-	rubric, err := ReadRubric(b.cfg.StencilsDir, b.cfg.RubricStencil, b.cfg.SpecsDir, b.publishFailureNote(), b.websterRecordNote())
+	rubric, err := ReadRubric(b.cfg.StencilsDir, b.cfg.RubricStencil, b.cfg.SpecsDir, b.rubricNotes())
 	if err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer rubric unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}
@@ -1187,7 +1232,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		Effort:      b.cfg.Models.Judge.Effort,
 		Version:     b.cfg.Models.Judge.Version,
 		Role:        bouncerJudgeRole,
-		Segment:     segmentcolor.Review,
+		Segment:     b.colorSegment(),
 		Round:       strconv.Itoa(n),
 		Skills:      bouncerJudgeSkills,
 	}

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
@@ -62,6 +63,29 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	}
 	if cfg.Deploy != "" {
 		t.Errorf("cfg.Deploy = %q; want empty", cfg.Deploy)
+	}
+	if cfg.ParentLockIdleReleaseMin != 10 {
+		t.Errorf("cfg.ParentLockIdleReleaseMin = %d; want 10", cfg.ParentLockIdleReleaseMin)
+	}
+}
+
+// TestConfig_IdleRelease verifies the idle bound is the configured minutes, and that a value below 1 reads as the default.
+func TestConfig_IdleRelease(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		minutes int
+		want    time.Duration
+	}{
+		{10, 10 * time.Minute},
+		{3, 3 * time.Minute},
+		{0, 10 * time.Minute},
+		{-1, 10 * time.Minute},
+	}
+	for _, tt := range tests {
+		if got := (Config{ParentLockIdleReleaseMin: tt.minutes}).IdleRelease(); got != tt.want {
+			t.Errorf("Config{ParentLockIdleReleaseMin: %d}.IdleRelease() = %v; want %v", tt.minutes, got, tt.want)
+		}
 	}
 }
 

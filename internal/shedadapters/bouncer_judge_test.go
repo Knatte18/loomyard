@@ -114,11 +114,14 @@ func TestBouncer_PromptComposition(t *testing.T) {
 		name       string
 		parentName string
 		withSpecs  bool
-		wantPrompt string
+		// colorSegment is the config's ColorSegment; empty keeps the review segment.
+		colorSegment segmentcolor.Segment
+		wantPrompt   string
 	}{
 		{name: "with a parent", parentName: "hub:parent", wantPrompt: "`hub:parent`"},
 		{name: "with no parent", wantPrompt: "No parent is recorded"},
 		{name: "with a told specs directory", withSpecs: true, wantPrompt: specsDir},
+		{name: "with the merge color segment", colorSegment: segmentcolor.Merge, wantPrompt: "No parent is recorded"},
 	}
 	for _, role := range []string{"seed", "judge"} {
 		for _, tt := range tests {
@@ -142,6 +145,7 @@ func TestBouncer_PromptComposition(t *testing.T) {
 				}
 				fx := newBouncerFixture(t, opts...)
 				fx.Config.ParentName = tt.parentName
+				fx.Config.ColorSegment = tt.colorSegment
 				b, cfg := fx.Build()
 				if role == "judge" {
 					layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
@@ -149,6 +153,10 @@ func TestBouncer_PromptComposition(t *testing.T) {
 
 				shedfake.CallOK(t, b)
 
+				wantSegment := segmentcolor.Review
+				if tt.colorSegment != "" {
+					wantSegment = tt.colorSegment
+				}
 				prompt := shuttle.GotSpec.Prompt
 				if !strings.Contains(prompt, tt.wantPrompt) {
 					t.Errorf("%s prompt does not contain %q", role, tt.wantPrompt)
@@ -159,8 +167,8 @@ func TestBouncer_PromptComposition(t *testing.T) {
 				if strings.Contains(prompt, "{{.specs_dir}}") {
 					t.Errorf("%s prompt contains a literal \"{{.specs_dir}}\" marker; want it rendered", role)
 				}
-				if shuttle.GotSpec.Segment != segmentcolor.Review {
-					t.Errorf("%s spec.Segment = %q; want %q", role, shuttle.GotSpec.Segment, segmentcolor.Review)
+				if shuttle.GotSpec.Segment != wantSegment {
+					t.Errorf("%s spec.Segment = %q; want %q", role, shuttle.GotSpec.Segment, wantSegment)
 				}
 				if got := shuttle.GotSpec.Skills; len(got) != 1 || got[0] != "scribe:prose" {
 					t.Errorf("%s spec.Skills = %v; want [scribe:prose]", role, got)

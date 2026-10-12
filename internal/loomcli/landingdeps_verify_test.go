@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/verifytree"
@@ -45,7 +46,7 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	deps := landingDeps(loc, websterengine.Geometry{StencilsDir: "/stencils"}, "task/foo",
 		"https://example.com/origin.git", "main", true, func() error { return nil },
-		modelspec.Registry{"claude/sonnet-5": {}}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, planVerifySource(loc))
+		modelspec.Registry{"claude/sonnet-5": {}}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, planVerifySource(loc), parentLockDeps(loc, shedrun.SelfRunID, "", ""))
 
 	if want := planVerifySource(loc).failedWayForward; deps.VerifyFailedWayForward != want || !strings.Contains(want, `"lyx loom goto --to Webster-Burler-Review"`) {
 		t.Errorf("VerifyFailedWayForward = %q, want the plan source's Webster-Burler-Review clause %q", deps.VerifyFailedWayForward, want)

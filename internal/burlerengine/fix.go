@@ -14,7 +14,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/seatengine"
-	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -57,7 +56,7 @@ func (p *Profile) fixTable(opts RunOpts, values map[string]string) seatengine.Ta
 	}
 	return seatengine.Table{
 		RolePrefix: fixRolePrefix,
-		Segment:    segmentcolor.Review,
+		Segment:    p.segment(),
 		Gate:       fixGate,
 		Round:      opts.Round,
 		Timeout:    opts.Timeout,

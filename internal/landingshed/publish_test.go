@@ -1,8 +1,6 @@
-// publish_test.go covers Publish against a faked resolver, a faked push closure recording its call order, and a faked GitHub client swapped in through the NewGitHubClient seam pointed at a local httptest server -- exactly the way internal/selfreportengine's own test does it.
+// publish_test.go covers Publish against a faked push closure recording its call order, and a faked GitHub client swapped in through the NewGitHubClient seam pointed at a local httptest server -- exactly the way internal/selfreportengine's own test does it.
 // No test contacts a real service or a real model.
 //
-// This tier lives in the package itself rather than an external test package, which is what lets it substitute the unexported resolver seam directly by constructing a Publish literal with a recordingResolver in its resolver field -- bypassing NewPublish's own resolver construction, which always builds a real *mergeresolve.Resolver.
-// On that path the told session-runner value (Shuttle) is never driven, since the resolver's own behaviour is covered by its own tier in batch 3.
 // None of its tests runs in parallel: each builds its Deps through newTestDeps, which swaps the package-level NewGitHubClient.
 
 package landingshed
@@ -28,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -53,12 +52,19 @@ func (r *recordingResolver) Resolve(ctx context.Context, source string) (mergere
 // newTestDeps is the package's one Deps builder, for Publish and Finalize tests alike: a base-branch list requiring a pull request, a well-formed final-summary artifact already written at DescriptionPath (Finalize's top-of-Call parse requires one; a Publish test rewrites it), and a scratch dir under t.TempDir().
 // NewGitHubClient is swapped for a failing factory so no test reaches the real GitHub API;
 // a test driving the client installs its own over it.
+// Its parent lock seams are a temporary store and tip reads that equal a written merge record, so the lock-taking rows find the parent unmoved.
 // A test needing a different variant mutates the returned value.
 func newTestDeps(t *testing.T) Deps {
 	t.Helper()
 	installFailingGitHubClientFactory(t, errors.New("no GitHub client in this test"))
 	summaryPath := summaryparser.Path(t.TempDir())
 	writeSummary(t, summaryPath, "A landing title", "A landing body.")
+	scratchDir := filepath.Join(t.TempDir(), "scratch")
+	recordPath := MergeRecordPath(scratchDir)
+	if err := WriteMergeRecord(recordPath, MergeRecord{ParentBranch: "main", MergedTip: testParentTip}); err != nil {
+		t.Fatalf("write merge record: %v", err)
+	}
+	owner := parentlock.Owner{Slug: "me", Pair: "/p/me", RunID: "r1", PID: 222, StartTime: "t2"}
 	return Deps{
 		WorktreeRoot:    t.TempDir(),
 		TaskBranch:      "task-branch",
@@ -68,7 +74,7 @@ func newTestDeps(t *testing.T) Deps {
 			return "", nil, errors.New("no remote read in this test")
 		},
 		StencilsDir: t.TempDir(),
-		ScratchDir:  filepath.Join(t.TempDir(), "scratch"),
+		ScratchDir:  scratchDir,
 		OriginURL:   "https://github.com/acme/proj.git",
 		Config: Config{
 			RequirePRToBase:    []string{"main"},
@@ -77,8 +83,22 @@ func newTestDeps(t *testing.T) Deps {
 			ConflictTimeoutMin: 30,
 			CoAuthoredBy:       "Test Author <test@example.com>",
 		},
+		Lock: ParentLockDeps{
+			Store:    &parentlock.Store{Dir: filepath.Join(t.TempDir(), "locks"), Alive: func(int, string) bool { return true }},
+			Owner:    func() (parentlock.Owner, error) { return owner, nil },
+			WaitPath: parentlock.WaitRecordPath(scratchDir),
+		},
+		ReadParentTips: func(bool) (fabricengine.ParentTips, error) {
+			return fabricengine.ParentTips{Local: testParentTip, Upstream: testParentTip, Relation: fabricengine.ParentEqual}, nil
+		},
+		HoldsWork:       func(string, string) (bool, error) { return false, nil },
+		TaskHead:        func() (string, error) { return "task-head", nil },
+		MergeRecordPath: recordPath,
 	}
 }
+
+// testParentTip is the parent tip newTestDeps's merge record names and its tip reads report.
+const testParentTip = "parent-tip"
 
 // writeSummary writes a well-formed summary artifact at path.
 func writeSummary(t *testing.T, path, title, body string) {
@@ -180,19 +200,18 @@ func requireReason(t *testing.T, ptr shedengine.OutputPointer) string {
 // --- NewPublish construction ---
 
 func TestNewPublish_Refusals(t *testing.T) {
-	nilFabric := func() (*fabricengine.Fabric, error) { return nil, nil }
 	noPush := func() error { return nil }
 	tests := []struct {
 		name     string
 		mutate   func(*Deps)
 		wantName string
 	}{
-		{"nil OpenFabric", func(d *Deps) { d.PushBranch = noPush }, "Deps.OpenFabric"},
-		{"nil PushBranch", func(d *Deps) { d.OpenFabric = nilFabric }, "Deps.PushBranch"},
-		{"nil RemoteOnlyCommits", func(d *Deps) { d.OpenFabric, d.PushBranch, d.RemoteOnlyCommits = nilFabric, noPush, nil }, "Deps.RemoteOnlyCommits"},
-		{"empty DescriptionPath", func(d *Deps) { d.OpenFabric, d.PushBranch, d.DescriptionPath = nilFabric, noPush, "" }, "Deps.DescriptionPath"},
-		// OpenFabric returns a typed-nil *fabricengine.Fabric: mergeresolve.New checks its Fabric field for a nil interface, which a typed-nil pointer does not satisfy, so this case reaches the Shuttle check without ever invoking a method on the fabric handle.
-		{"nil Shuttle", func(d *Deps) { d.OpenFabric, d.PushBranch, d.Shuttle = nilFabric, noPush, nil }, "Shuttle"},
+		{"nil PushBranch", func(d *Deps) {}, "Deps.PushBranch"},
+		{"nil RemoteOnlyCommits", func(d *Deps) { d.PushBranch, d.RemoteOnlyCommits = noPush, nil }, "Deps.RemoteOnlyCommits"},
+		{"empty DescriptionPath", func(d *Deps) { d.PushBranch, d.DescriptionPath = noPush, "" }, "Deps.DescriptionPath"},
+		{"nil Lock.Store", func(d *Deps) { d.PushBranch, d.Lock.Store = noPush, nil }, "Deps.Lock.Store"},
+		{"nil Lock.Owner", func(d *Deps) { d.PushBranch, d.Lock.Owner = noPush, nil }, "Deps.Lock.Owner"},
+		{"nil ReadParentTips", func(d *Deps) { d.PushBranch, d.ReadParentTips = noPush, nil }, "Deps.ReadParentTips"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -207,10 +226,8 @@ func TestNewPublish_Refusals(t *testing.T) {
 
 // --- Call behaviour ---
 
-// TestPublish_NoPullRequestRequired_DoneWithoutMergeIn pins that a parent branch outside the require-PR list ends Done with no merge-in, whether or not the push is skipped.
-//
-//testtiming:keep pins that the resolver is never called when no pull request is required, which its covering tests do not assert
-func TestPublish_NoPullRequestRequired_DoneWithoutMergeIn(t *testing.T) {
+// TestPublish_NoPullRequestRequired_DoneWithoutPush pins that a parent branch outside the require-PR list ends Done with no push, whether or not the push is skipped.
+func TestPublish_NoPullRequestRequired_DoneWithoutPush(t *testing.T) {
 	tests := []struct {
 		name        string
 		pushSkipped bool
@@ -223,59 +240,46 @@ func TestPublish_NoPullRequestRequired_DoneWithoutMergeIn(t *testing.T) {
 			deps := newTestDeps(t)
 			deps.Config.RequirePRToBase = []string{"other-base"}
 			deps.PushSkipped = tt.pushSkipped
-			res := &recordingResolver{}
-			p := &Publish{deps: deps, resolver: res}
+			pushed := false
+			deps.PushBranch = func() error { pushed = true; return nil }
+			p := &Publish{deps: deps}
 
 			shedfake.RequireOutcome(t, p, shedengine.Done)
-			if res.called {
-				t.Error("resolver.Resolve was called; want no merge-in when no pull request is required")
+			if pushed {
+				t.Error("PushBranch was called; want no push when no pull request is required")
 			}
 		})
 	}
 }
 
 // TestPublish_StuckBeforePullRequest pins each way Publish stops Stuck before it reaches a pull request:
-// the reason it surfaces, how far it got (merge-in, push), and that no stuck-reason file is written.
+// the reason it surfaces, whether it pushed, and that no stuck-reason file is written.
 func TestPublish_StuckBeforePullRequest(t *testing.T) {
-	resolved := mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}
 	tests := []struct {
 		name         string
 		mutate       func(*Deps)
 		pushErr      error
-		resolved     mergeresolve.Result
 		wantInReason string
 		// wantReason, when set, is the whole reason and replaces the substring check.
-		wantReason         string
-		wantResolverCalled bool
-		wantPushCalled     bool
+		wantReason     string
+		wantPushCalled bool
 	}{
 		{
-			name:         "push skipped while a pull request is required refuses before merge-in and push",
+			name:         "push skipped while a pull request is required refuses before the push",
 			mutate:       func(d *Deps) { d.PushSkipped = true },
-			resolved:     resolved,
 			wantInReason: "push skipped",
 		},
 		{
-			name:               "merge-in stuck surfaces the resolver's reason",
-			resolved:           mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: "merge-in could not be resolved"},
-			wantInReason:       "merge-in could not be resolved",
-			wantResolverCalled: true,
+			name:           "push failure",
+			pushErr:        errors.New("boom"),
+			wantReason:     "push failed: boom",
+			wantPushCalled: true,
 		},
 		{
-			name:               "push failure",
-			pushErr:            errors.New("boom"),
-			resolved:           resolved,
-			wantReason:         "push failed: boom",
-			wantResolverCalled: true,
-			wantPushCalled:     true,
-		},
-		{
-			name:               "exhausted push retries are a push failure, not a rejected push",
-			pushErr:            fmt.Errorf("gitrepo: git push: %w", gitrepo.ErrPushRetriesExhausted),
-			resolved:           resolved,
-			wantReason:         "push failed: gitrepo: git push: gitrepo: push retries exhausted",
-			wantResolverCalled: true,
-			wantPushCalled:     true,
+			name:           "exhausted push retries are a push failure, not a rejected push",
+			pushErr:        fmt.Errorf("gitrepo: git push: %w", gitrepo.ErrPushRetriesExhausted),
+			wantReason:     "push failed: gitrepo: git push: gitrepo: push retries exhausted",
+			wantPushCalled: true,
 		},
 		{
 			name:    "push rejected has its own reason naming the remote tip, the count and the resume",
@@ -283,10 +287,8 @@ func TestPublish_StuckBeforePullRequest(t *testing.T) {
 			mutate: func(d *Deps) {
 				d.RemoteOnlyCommits = func() (string, []string, error) { return "abc123", []string{"c2", "c1"}, nil }
 			},
-			resolved:           resolved,
-			wantReason:         "push rejected by the remote after the merge-in against parent branch \"main\"; the remote task branch is at abc123 and holds 2 commit(s) the local branch lacks; way forward: run `git merge origin/task-branch` in the task worktree, then resume the run with `lyx loom start`",
-			wantResolverCalled: true,
-			wantPushCalled:     true,
+			wantReason:     "push rejected by the remote after the merge-in against parent branch \"main\"; the remote task branch is at abc123 and holds 2 commit(s) the local branch lacks; way forward: run `git merge origin/task-branch` in the task worktree, then resume the run with `lyx loom start`",
+			wantPushCalled: true,
 		},
 		{
 			name:    "push rejected with no remote-only commit names a remote rule and no merge",
@@ -294,10 +296,8 @@ func TestPublish_StuckBeforePullRequest(t *testing.T) {
 			mutate: func(d *Deps) {
 				d.RemoteOnlyCommits = func() (string, []string, error) { return "abc123", nil, nil }
 			},
-			resolved:           resolved,
-			wantReason:         "push rejected by the remote after the merge-in against parent branch \"main\"; the remote task branch holds no commit the local branch lacks, so a merge adds nothing and the remote rejected the push for its own rule, such as a hook; way forward: clear what the remote's rule objects to, then resume the run with `lyx loom start`",
-			wantResolverCalled: true,
-			wantPushCalled:     true,
+			wantReason:     "push rejected by the remote after the merge-in against parent branch \"main\"; the remote task branch holds no commit the local branch lacks, so a merge adds nothing and the remote rejected the push for its own rule, such as a hook; way forward: clear what the remote's rule objects to, then resume the run with `lyx loom start`",
+			wantPushCalled: true,
 		},
 		{
 			name:    "push rejected with no remote task branch names a remote rule and no merge",
@@ -305,10 +305,8 @@ func TestPublish_StuckBeforePullRequest(t *testing.T) {
 			mutate: func(d *Deps) {
 				d.RemoteOnlyCommits = func() (string, []string, error) { return "", nil, nil }
 			},
-			resolved:           resolved,
-			wantReason:         "push rejected by the remote after the merge-in against parent branch \"main\"; the remote has no task branch, so a merge adds nothing and the remote rejected the push for its own rule, such as a hook; way forward: clear what the remote's rule objects to, then resume the run with `lyx loom start`",
-			wantResolverCalled: true,
-			wantPushCalled:     true,
+			wantReason:     "push rejected by the remote after the merge-in against parent branch \"main\"; the remote has no task branch, so a merge adds nothing and the remote rejected the push for its own rule, such as a hook; way forward: clear what the remote's rule objects to, then resume the run with `lyx loom start`",
+			wantPushCalled: true,
 		},
 		{
 			name:    "push rejected with a failed remote read keeps the rejection and the way forward",
@@ -316,34 +314,26 @@ func TestPublish_StuckBeforePullRequest(t *testing.T) {
 			mutate: func(d *Deps) {
 				d.RemoteOnlyCommits = func() (string, []string, error) { return "", nil, errors.New("fetch failed") }
 			},
-			resolved:           resolved,
-			wantReason:         "push rejected by the remote after the merge-in against parent branch \"main\"; the remote tip could not be read: fetch failed; way forward: run `git merge origin/task-branch` in the task worktree, then resume the run with `lyx loom start`",
-			wantResolverCalled: true,
-			wantPushCalled:     true,
+			wantReason:     "push rejected by the remote after the merge-in against parent branch \"main\"; the remote tip could not be read: fetch failed; way forward: run `git merge origin/task-branch` in the task worktree, then resume the run with `lyx loom start`",
+			wantPushCalled: true,
 		},
 		{
-			name:               "empty origin URL",
-			mutate:             func(d *Deps) { d.OriginURL = "" },
-			resolved:           resolved,
-			wantInReason:       "origin URL unusable",
-			wantResolverCalled: true,
-			wantPushCalled:     true,
+			name:           "empty origin URL",
+			mutate:         func(d *Deps) { d.OriginURL = "" },
+			wantInReason:   "origin URL unusable",
+			wantPushCalled: true,
 		},
 		{
-			name:               "origin URL that is not a URL",
-			mutate:             func(d *Deps) { d.OriginURL = "not-a-url" },
-			resolved:           resolved,
-			wantInReason:       "origin URL unusable",
-			wantResolverCalled: true,
-			wantPushCalled:     true,
+			name:           "origin URL that is not a URL",
+			mutate:         func(d *Deps) { d.OriginURL = "not-a-url" },
+			wantInReason:   "origin URL unusable",
+			wantPushCalled: true,
 		},
 		{
-			name:               "origin on a host that is not GitHub",
-			mutate:             func(d *Deps) { d.OriginURL = "https://gitlab.com/acme/proj.git" },
-			resolved:           resolved,
-			wantInReason:       "origin URL unusable",
-			wantResolverCalled: true,
-			wantPushCalled:     true,
+			name:           "origin on a host that is not GitHub",
+			mutate:         func(d *Deps) { d.OriginURL = "https://gitlab.com/acme/proj.git" },
+			wantInReason:   "origin URL unusable",
+			wantPushCalled: true,
 		},
 	}
 	for _, tt := range tests {
@@ -354,8 +344,7 @@ func TestPublish_StuckBeforePullRequest(t *testing.T) {
 			if tt.mutate != nil {
 				tt.mutate(&deps)
 			}
-			res := &recordingResolver{result: tt.resolved}
-			p := &Publish{deps: deps, resolver: res}
+			p := &Publish{deps: deps}
 
 			got := runAndGetReason(t, p)
 			if tt.wantReason != "" {
@@ -364,12 +353,6 @@ func TestPublish_StuckBeforePullRequest(t *testing.T) {
 				}
 			} else if !strings.Contains(got, tt.wantInReason) {
 				t.Errorf("reason = %q; want it to carry %q", got, tt.wantInReason)
-			}
-			if res.called != tt.wantResolverCalled {
-				t.Errorf("resolver called = %v; want %v", res.called, tt.wantResolverCalled)
-			}
-			if res.called && res.gotSource != deps.ParentBranch {
-				t.Errorf("resolver.Resolve source = %q; want %q", res.gotSource, deps.ParentBranch)
 			}
 			if pushed != tt.wantPushCalled {
 				t.Errorf("PushBranch called = %v; want %v", pushed, tt.wantPushCalled)
@@ -437,8 +420,7 @@ func TestPublish_GitHubFailures(t *testing.T) {
 			writeSummary(t, deps.DescriptionPath, "Title", "Body.")
 			var order []string
 			deps.PushBranch = func() error { order = append(order, "push"); return nil }
-			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-			p := &Publish{deps: deps, resolver: res}
+			p := &Publish{deps: deps}
 			if tt.clientFails {
 				installFailingGitHubClientFactory(t, errors.New("boom"))
 			} else {
@@ -480,8 +462,7 @@ func TestPublish_NoExistingPR_CreatesAndLogsOnce(t *testing.T) {
 	writeSummary(t, deps.DescriptionPath, "My PR Title", "My PR body.")
 	var order []string
 	deps.PushBranch = func() error { order = append(order, "push"); return nil }
-	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	p := &Publish{deps: deps, resolver: res}
+	p := &Publish{deps: deps}
 
 	srv := newPublishGitHubServer(t, &order)
 	srv.install(t)
@@ -542,8 +523,7 @@ func TestPublish_OpenPullRequest(t *testing.T) {
 			writeSummary(t, deps.DescriptionPath, "New Title", "New body.")
 			var order []string
 			deps.PushBranch = func() error { order = append(order, "push"); return nil }
-			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-			p := &Publish{deps: deps, resolver: res}
+			p := &Publish{deps: deps}
 			srv := newPublishGitHubServer(t, &order)
 			// No "merged"/"merged_at" key at all: the real List Pull Requests endpoint never sets "merged"
 			// on an open PR and reports "merged_at": null (crucible round 3, F-R3-1) -- an absent key decodes
@@ -605,8 +585,7 @@ func TestPublish_ExistingClosedPullRequest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			deps := newTestDeps(t)
 			deps.PushBranch = func() error { return nil }
-			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-			p := &Publish{deps: deps, resolver: res}
+			p := &Publish{deps: deps}
 
 			var order []string
 			srv := newPublishGitHubServer(t, &order)
@@ -628,8 +607,7 @@ func TestPublish_MissingSummary_FailsLoudlyNoCreate(t *testing.T) {
 	}
 	var order []string
 	deps.PushBranch = func() error { order = append(order, "push"); return nil }
-	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	p := &Publish{deps: deps, resolver: res}
+	p := &Publish{deps: deps}
 
 	srv := newPublishGitHubServer(t, &order)
 	srv.install(t)
@@ -648,8 +626,7 @@ func TestPublish_MissingSummary_FailsLoudlyNoCreate(t *testing.T) {
 
 func TestPublish_CancellationAtEntry_SurfacesAsError(t *testing.T) {
 	deps := newTestDeps(t)
-	res := &recordingResolver{}
-	p := &Publish{deps: deps, resolver: res}
+	p := &Publish{deps: deps}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -735,8 +712,7 @@ func TestPublish_TransportPushFailure(t *testing.T) {
 				}
 				return transportPushErr()
 			}
-			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-			p := &Publish{deps: deps, resolver: res}
+			p := &Publish{deps: deps}
 			srv := newPublishGitHubServer(t, &order)
 			srv.install(t)
 

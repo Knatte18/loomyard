@@ -17,6 +17,7 @@ import (
 
 const (
 	retryPublishRow = "Publish"
+	retryMergeInRow = "Merge-In"
 	retryTarget     = "Webster"
 	retryHead       = "abc123"
 	// retryEarlier, retryHalting are the times of the history entries before the halt and of the halting entry.
@@ -65,13 +66,13 @@ func newRetryHarness(t *testing.T) *retryHarness {
 		scratchDir: t.TempDir(),
 		clock:      &fakeClock{},
 		head:       retryHead,
-		record:     &ChildPublishFailure{Head: retryHead, Target: retryTarget, WrittenAt: retryWritten},
+		record:     &ChildPublishFailure{Row: retryPublishRow, Head: retryHead, Target: retryTarget, WrittenAt: retryWritten},
 	}
 	h.blockedAtPublish()
 	_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{{found: true}}, h.clock)
 	deps.NoticeProbe = 30 * time.Second
 	deps.ReadStatus = func(string, string) (shedengine.Status, bool, error) { return h.status, true, nil }
-	deps.PublishRow = retryPublishRow
+	deps.VerifyRows = []string{retryMergeInRow, retryPublishRow}
 	deps.PublishFailure = func() (ChildPublishFailure, bool, error) {
 		if h.record == nil {
 			return ChildPublishFailure{}, false, h.recordErr
@@ -97,13 +98,18 @@ func newRetryHarness(t *testing.T) *retryHarness {
 }
 
 func (h *retryHarness) blockedAtPublish() {
+	h.blockedAt(retryPublishRow)
+}
+
+// blockedAt halts the child at row, a verify row, with a Stuck entry at retryHalting.
+func (h *retryHarness) blockedAt(row string) {
 	h.status = shedengine.Status{
 		State:           shedengine.StateBlocked,
-		Error:           "publish verify failed",
-		CurrentProducer: retryPublishRow,
+		Error:           "verify failed",
+		CurrentProducer: row,
 		History: []shedengine.HistoryEntry{
 			{Producer: "Plan-Write", Outcome: shedengine.Done, At: retryEarlier},
-			{Producer: retryPublishRow, Outcome: shedengine.Stuck, At: retryHalting},
+			{Producer: row, Outcome: shedengine.Stuck, At: retryHalting},
 		},
 	}
 }
@@ -204,8 +210,8 @@ func TestInnerRun_PublishRetrySendsTheChildToItsTargetAndResumesItOnce(t *testin
 }
 
 // TestInnerRun_PublishRetryDeclinesRecordsThatDoNotMatchTheHalt asserts a halt gets no goto and the blocked notice when its record does not belong to it.
-// A record is declined when it is missing, at another HEAD, from an earlier halt, written in the same second as the entry before the halting attempt, lacking its target or write time, or unreadable.
-// It also asserts a record written in the same second as the halting entry is retried.
+// A record is declined when it is missing, at another HEAD, from an earlier halt, written in the same second as the entry before the halting attempt, lacking its target, write time or row, naming another row than the halt, or unreadable.
+// It also asserts a record written in the same second as the halting entry is retried, and so is a plan verify record at Merge-In.
 // It stays serial: logcapture.Capture replaces the process-global logger output.
 func TestInnerRun_PublishRetryDeclinesRecordsThatDoNotMatchTheHalt(t *testing.T) {
 	tests := []struct {
@@ -220,9 +226,15 @@ func TestInnerRun_PublishRetryDeclinesRecordsThatDoNotMatchTheHalt(t *testing.T)
 		{name: "SameSecondAsTheEntryBefore", configure: func(h *retryHarness) { h.record.WrittenAt = retryEarlier }},
 		{name: "NoTarget", configure: func(h *retryHarness) { h.record.Target = "" }},
 		{name: "NoWriteTime", configure: func(h *retryHarness) { h.record.WrittenAt = "" }},
+		{name: "NoRow", configure: func(h *retryHarness) { h.record.Row = "" }},
+		{name: "RowDiffersFromTheHalt", configure: func(h *retryHarness) { h.record.Row = retryMergeInRow }},
 		{name: "RecordReadError", configure: func(h *retryHarness) { h.recordErr = errors.New("record unreadable") }, wantWarned: "record unreadable"},
 		{name: "HeadReadError", configure: func(h *retryHarness) { h.headErr = errors.New("head unreadable") }, wantWarned: "head unreadable"},
 		{name: "SameSecondAsTheHaltingEntryIsRetried", configure: func(h *retryHarness) { h.record.WrittenAt = retryHalting }, wantGoto: true},
+		{name: "PlanVerifyRecordAtMergeInIsRetried", configure: func(h *retryHarness) {
+			h.record.Row = retryMergeInRow
+			h.blockedAt(retryMergeInRow)
+		}, wantGoto: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

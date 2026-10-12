@@ -1,7 +1,7 @@
 // config.go — configuration for the loom module.
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1, rejects a discussion_max_bounces, plan_max_bounces or webster_max_bounces below 0, validates every entry of fan_review, and resolves each non-empty discussion_fan and plan_fan through burlerengine.ResolveFan,
+// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1, rejects a discussion_max_bounces, plan_max_bounces, webster_max_bounces or merge_max_bounces below 0, validates every entry of fan_review, and resolves each non-empty discussion_fan and plan_fan through burlerengine.ResolveFan,
 // so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
 // step_idle_timeout_min is the minutes a --until-stop step may show no activity before the loop kills it; a value below 1 is raised to 1 with one Warn and never refused.
 // discussion_fan and plan_fan each name a fan from burler.yaml and turn the lens fan on for Discussion-Review and Plan-Review; empty, the default, runs that segment solo.
@@ -9,6 +9,8 @@
 // There is no webster_fan key: Webster-Review always runs solo.
 // discussion_max_bounces, plan_max_bounces and webster_max_bounces set one perch's bounce budget, and 0 takes review_max_bounces;
 // discussion_auto_accept, plan_auto_accept and webster_auto_accept make that perch settle a spent budget as accepted instead of escalating to the parent.
+// merge_max_bounces and merge_auto_accept do the same for the Merge-Review perch, which the Bouncer escalates instead of accepting while its ledger holds an open BLOCKING finding;
+// skip_merge_review skips only that review, and Merge-In, the parent lock and the reroute on a moved parent still run.
 // discussion_producer selects the Discussion-Write row's producer and must be single, seats or twill.
 // plan_producer selects the Plan-Write row's producer, single or twill, and an empty value reads as single.
 // discussion_advisors lists the seats producer's advisor model-specs; every entry is resolved through the model registry at load, whatever discussion_producer holds, and an unset list loads as no advisors.
@@ -418,6 +420,12 @@ type Config struct {
 	DiscussionAutoAccept bool `yaml:"discussion_auto_accept"`
 	PlanAutoAccept       bool `yaml:"plan_auto_accept"`
 	WebsterAutoAccept    bool `yaml:"webster_auto_accept"`
+
+	// The Merge-Review perch's budget and auto-accept flag, and the switch that skips only the review.
+	// A budget of 0 takes ReviewMaxBounces.
+	MergeMaxBounces int  `yaml:"merge_max_bounces"`
+	MergeAutoAccept bool `yaml:"merge_auto_accept"`
+	SkipMergeReview bool `yaml:"skip_merge_review"`
 }
 
 // ModelSpecList is a model-spec key's value: one model-spec for every round, or a list of model-specs, one per round, whose last entry serves every later round.
@@ -518,6 +526,9 @@ func ConfigSpec() configengine.Spec {
 			"discussion_auto_accept":     guard,
 			"plan_auto_accept":           guard,
 			"webster_auto_accept":        guard,
+			"merge_max_bounces":          none,
+			"merge_auto_accept":          guard,
+			"skip_merge_review":          guard,
 		},
 	}
 }
@@ -832,6 +843,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		{"discussion_max_bounces", cfg.DiscussionMaxBounces},
 		{"plan_max_bounces", cfg.PlanMaxBounces},
 		{"webster_max_bounces", cfg.WebsterMaxBounces},
+		{"merge_max_bounces", cfg.MergeMaxBounces},
 	} {
 		if knob.value < 0 {
 			return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; set it to 0 to take review_max_bounces, or to a positive integer, in loom.yaml", knob.key, knob.value)

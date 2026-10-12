@@ -1,7 +1,5 @@
-// commitstatus_test.go covers Deps.CommitStatus, the injected loop-owner seam both producers commit
-// the product's own orchestration status file through before they merge. The seam spans both
-// producers, so its cases live in one file rather than being duplicated into publish_test.go and
-// finalize_test.go; both reuse those files' own in-package fakes.
+// commitstatus_test.go covers Deps.CommitStatus, the injected loop-owner seam Finalize commits the product's own orchestration status file through before it merges.
+// Merge-In's cases live in mergein_test.go.
 //
 // The ordering assertion is the point of every case here. Committing after the merge would be
 // indistinguishable from not committing at all, because fabricengine's merge guard has already
@@ -90,72 +88,6 @@ func TestFinalize_CommitStatus(t *testing.T) {
 			}
 			if len(merger.calls) != tc.wantMerges {
 				t.Errorf("parent-side merge calls = %d; want %d", len(merger.calls), tc.wantMerges)
-			}
-		})
-	}
-}
-
-// TestPublish_CommitStatus pins the same seam in Publish: it runs before the merge-in, a failure is an error that never merges, and a run needing no pull request never calls it.
-// It stays serial because newTestDeps swaps the package-level NewGitHubClient.
-func TestPublish_CommitStatus(t *testing.T) {
-	sentinel := errors.New("git index locked")
-	cases := []struct {
-		name       string
-		commitErr  error
-		mutate     func(*Deps)
-		resolved   mergeresolve.Result
-		wantOut    shedengine.Outcome
-		wantEvents []string
-	}{
-		{
-			// A stuck merge-in returns before the push and before any GitHub call, so this case exercises the ordering without reaching the network.
-			name:       "runs before the merge-in",
-			resolved:   mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: "conflict"},
-			wantOut:    shedengine.Stuck,
-			wantEvents: []string{"commit", "merge"},
-		},
-		{
-			name:       "failure is an error and never merges",
-			commitErr:  sentinel,
-			resolved:   mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
-			wantEvents: []string{"commit"},
-		},
-		{
-			name:     "not called when no pull request is required",
-			mutate:   func(d *Deps) { d.Config.RequirePRToBase = []string{"some-other-branch"} },
-			resolved: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
-			wantOut:  shedengine.Done,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			var events []string
-			deps := newTestDeps(t)
-			deps.PushSkipped = false
-			deps.PushBranch = func() error { return nil }
-			deps.CommitStatus = commitStatusRecorder(&events, tc.commitErr)
-			if tc.mutate != nil {
-				tc.mutate(&deps)
-			}
-			res := &orderRecordingResolver{events: &events, result: tc.resolved}
-			p := &Publish{deps: deps, resolver: res}
-
-			outcome, ptr, err := p.Call(context.Background())
-			if tc.commitErr != nil {
-				if !errors.Is(err, tc.commitErr) {
-					t.Fatalf("Call() error = %v; want errors.Is(err, sentinel)", err)
-				}
-				if outcome != "" {
-					t.Errorf("Call() outcome = %q; want empty alongside a non-nil error", outcome)
-				}
-				if ptr != (shedengine.OutputPointer{}) {
-					t.Errorf("Call() pointer = %+v; want empty", ptr)
-				}
-			} else if err != nil || outcome != tc.wantOut {
-				t.Fatalf("Call() = %q, %v; want %q, nil", outcome, err, tc.wantOut)
-			}
-			if !slices.Equal(events, tc.wantEvents) {
-				t.Errorf("call order = %v; want %v", events, tc.wantEvents)
 			}
 		})
 	}

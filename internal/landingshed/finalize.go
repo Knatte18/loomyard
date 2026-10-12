@@ -70,13 +70,15 @@ type Finalize struct {
 	// premerge clears the merge-in a previous attempt left parked.
 	// A zero value runs no probe, so struct-literal tests run without it.
 	premerge preMerge
+	// guard holds the parent lock and tests whether the parent moved.
+	// A zero value takes no lock and reads no tips, so struct-literal tests run without it.
+	guard parentGuard
 }
 
 var _ shedengine.ShedProducer = (*Finalize)(nil)
 
-// NewFinalize constructs a Finalize from deps, rejecting a nil OpenFabric or OpenParentFabric
-// closure up front with a distinct error each -- rather than nil-panicking at call time. A nil
-// parent opener is a construction error rather than a silent no-op: this producer never creates a
+// NewFinalize constructs a Finalize from deps, rejecting a nil OpenFabric or OpenParentFabric closure, a nil Lock.Store, a nil Lock.Owner and a nil ReadParentTips up front with a distinct error each -- rather than nil-panicking at call time.
+// A nil parent opener is a construction error rather than a silent no-op: this producer never creates a
 // worktree to merge into, so without a working opener it could never reach the parent pair at all.
 //
 // It builds its resolver at construction time from the told values and stores it behind the
@@ -92,6 +94,15 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 	}
 	if deps.DescriptionPath == "" {
 		return nil, fmt.Errorf("landingshed: NewFinalize: Deps.DescriptionPath must not be empty")
+	}
+	if deps.Lock.Store == nil {
+		return nil, fmt.Errorf("landingshed: NewFinalize: Deps.Lock.Store must not be nil")
+	}
+	if deps.Lock.Owner == nil {
+		return nil, fmt.Errorf("landingshed: NewFinalize: Deps.Lock.Owner must not be nil")
+	}
+	if deps.ReadParentTips == nil {
+		return nil, fmt.Errorf("landingshed: NewFinalize: Deps.ReadParentTips must not be nil")
 	}
 
 	fabricHandle, err := deps.OpenFabric()
@@ -119,6 +130,7 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 		resolver: res,
 		gate:     newVerifyGate(deps),
 		premerge: newPreMerge(deps),
+		guard:    newParentGuard(deps),
 		parentOpener: func() (parentMerger, error) {
 			h, err := deps.OpenParentFabric()
 			if err != nil {
@@ -130,6 +142,9 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 }
 
 // Call runs one Finalize iteration.
+//
+// Before its catch-up merge-in, Finalize takes the parent lock and tests that the parent did not move since Merge-In merged it:
+// a moved parent is a reroute Stuck, a paused lock wait or an unreadable lock record is a halting Stuck, and a landing that reaches Done releases the lock.
 //
 // Finalize is idempotent over an already-landed parent: when the parent already contains the task's
 // changes -- an operator squash-merged the pull request on GitHub, or an earlier Finalize landed and
@@ -165,6 +180,14 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		}
 	}
 
+	// Step 1b2: take the parent lock and test that the parent did not move since Merge-In merged it.
+	// A parent that already holds the task's work, after a GitHub merge or an earlier landing, reads as not moved and lands through the already-landed path.
+	// The catch-up merge-in below stays: the local tip is checked equal to the merged tip under the lock,
+	// so it brings no parent code the merge review has not covered, and it still syncs the records side.
+	if outcome, out, err, stop := holdParent(ctx, fz.guard, finalizeName); stop {
+		return outcome, out, err
+	}
+
 	// Step 1c: read the task's per-worktree config changes before any parent-side mutation,
 	// so the diff is taken against the parent as the task forked from it;
 	// the notice it yields is queued only at Done.
@@ -198,12 +221,15 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return fz.pushParent(ctx, parentHandle, notice)
 	}
 
-	// Step 5: on the merge-in-required error, re-run the resolver in the task worktree and retry
-	// the parent-side merge exactly once -- no lock spans the window between this producer's own
-	// catch-up merge-in and this parent-side merge, so a competing task can genuinely land in the
-	// parent in between.
+	// Step 5: on the merge-in-required error, test the parent again with the same two-ref read, then re-run the resolver in the task worktree and retry
+	// the parent-side merge exactly once.
+	// The retry runs only when the parent has not moved, which covers a parent moved by run records alone;
+	// otherwise a code-side commit that arrived between the check and the parent-side merge, local or pushed, reroutes and never lands.
 	var mergeInRequired *fabricengine.ErrMergeInRequired
 	if errors.As(mergeErr, &mergeInRequired) {
+		if outcome, out, err, stop := rerouteIfMoved(ctx, fz.guard, finalizeName); stop {
+			return outcome, out, err
+		}
 		if outcome, out, err, done := fz.mergeInStep(ctx); done {
 			return outcome, out, err
 		}
@@ -271,8 +297,8 @@ func (fz *Finalize) markTaskDone() {
 // Any other failed push is Stuck: the merge has already landed locally, so a human pushes (or reconciles a diverged remote) by hand.
 // Deps.PushSkipped suppresses the push, exactly as it does for the task branch.
 //
-// On its Done return only, a non-empty notice is queued through Deps.Notify;
-// a failure there is a logged warning and never changes the verdict.
+// On its Done return only, a non-empty notice is queued through Deps.Notify, and a failure there is a logged warning that never changes the verdict.
+// The run's parent lock is released on that Done as well, before Friction-Reflect runs.
 //
 // After a successful push into a parent that requires a pull request, the task's pull request is
 // closed best-effort (closePullRequest): the landing has already happened and is irreversible.
@@ -292,6 +318,7 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 			logger.Warn("landingshed: queue config-change notice failed", "producer", finalizeName, "cause", err)
 		}
 	}
+	fz.guard.release(finalizeName)
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 

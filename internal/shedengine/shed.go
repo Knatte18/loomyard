@@ -52,6 +52,10 @@ type Shed struct {
 	// It is told;
 	// the empty string falls back to a generic clause.
 	MissingStatusWayForward string
+	// RerouteCapWayForward is the trailing "way forward:" clause of a reroute-cap halt.
+	// It is told;
+	// the empty string falls back to the run verb that resumes the row.
+	RerouteCapWayForward string
 }
 
 // RunOutcome is the whole run's terminal classification.

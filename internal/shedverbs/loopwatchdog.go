@@ -19,6 +19,8 @@ const (
 	idleWakeFloor = time.Second
 	// idleWakeCeiling is the longest wake the watchdog backs off to while the reading is unchanged.
 	idleWakeCeiling = time.Minute
+	// noKillWindow is the window of a watch that only wakes its hook: far longer than any child runs, so the watch never ends the child.
+	noKillWindow = 24 * 365 * 100 * time.Hour
 )
 
 // idleWatch is what watchIdle watches.
@@ -35,6 +37,8 @@ type idleWatch struct {
 	Now func() time.Time
 	// Sleep waits for a duration or until its context ends.
 	Sleep func(ctx context.Context, delay time.Duration) error
+	// Wake runs on each wake, before the idle time is judged; nil is skipped.
+	Wake func()
 }
 
 // watchIdle watches until the window passes with no activity, and returns the idle time and true.
@@ -45,6 +49,9 @@ func watchIdle(ctx context.Context, w idleWatch) (time.Duration, bool) {
 	newest := w.Started
 	var delay time.Duration
 	for {
+		if w.Wake != nil {
+			w.Wake()
+		}
 		var files []string
 		if w.TraceFiles != nil {
 			files = w.TraceFiles()
@@ -103,11 +110,14 @@ func idleWindowOf(loop LoopSpec) time.Duration {
 }
 
 // waitForChild waits for child's exit, which the goroutine behind waitDone reports, and kills the child when it shows no activity for window.
-// A window of zero waits for the exit alone.
+// A window of zero waits for the exit alone, or, when loop.OnWake is set, runs the same watch with a window no child reaches, so the hook wakes until the child exits and nothing is killed.
 // It returns the idle time of a child the watchdog killed, which is zero for one that exited on its own, and the error the child's Wait reported.
 func waitForChild(ctx context.Context, loop LoopSpec, child Child, started time.Time, traceID string, window time.Duration, waitDone <-chan error) (time.Duration, error) {
-	if window == 0 {
+	if window == 0 && loop.OnWake == nil {
 		return 0, <-waitDone
+	}
+	if window == 0 {
+		window = noKillWindow
 	}
 	now := loop.Now
 	if now == nil {
@@ -132,6 +142,7 @@ func waitForChild(ctx context.Context, loop LoopSpec, child Child, started time.
 			Activity:   loop.Activity,
 			Now:        now,
 			Sleep:      sleep,
+			Wake:       loop.OnWake,
 		})
 		outcome <- idleOutcome{idle, found}
 	}()

@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -222,4 +223,32 @@ type Deps struct {
 	Registry modelspec.Registry
 	// Config is the loaded landing.yaml configuration.
 	Config Config
+
+	// Lock is the parent lock's told seams, which the lock-taking rows share through one guard.
+	Lock ParentLockDeps
+	// ReadParentTips reads the parent branch's local and upstream tips over the task pair, fetching first when fetch is true.
+	ReadParentTips func(fetch bool) (fabricengine.ParentTips, error)
+	// HoldsWork reports whether merging source into base adds nothing, over the task pair.
+	HoldsWork func(base, source string) (bool, error)
+	// ChangedPaths returns the sorted paths that differ between from and to, over the task pair.
+	ChangedPaths func(from, to string) ([]string, error)
+	// MergeBase returns the best common ancestor of the task pair's HEAD and ref.
+	MergeBase func(ref string) (string, error)
+	// MergeRecordPath and MergeReviewedPath are the told merge record and reviewed-tip files, both in the run's scratch directory.
+	MergeRecordPath   string
+	MergeReviewedPath string
+}
+
+// ParentLockDeps carries the told seams the parent lock guard takes the lock through.
+type ParentLockDeps struct {
+	// Store is the parent lock store.
+	// Nil means no lock is wired, and the guard takes none.
+	Store *parentlock.Store
+	// Owner returns the identity the lock is taken in: the run, and the process that holds the lock while the run is away.
+	Owner func() (parentlock.Owner, error)
+	// WaitPath is the run's wait record file.
+	WaitPath string
+	// PauseRequested reports whether the operator asked the run to pause.
+	// Nil reads as never.
+	PauseRequested func() (bool, error)
 }

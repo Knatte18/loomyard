@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// TestReadChildPublishFailure_MapsTheRecord asserts readChildPublishFailure maps the record's head, target and write time, and reports found false for a task worktree with no record.
+// TestReadChildPublishFailure_MapsTheRecord asserts readChildPublishFailure maps the record's row, head, target and write time, and reports found false for a task worktree with no record.
 func TestReadChildPublishFailure_MapsTheRecord(t *testing.T) {
 	t.Parallel()
 
@@ -25,13 +25,13 @@ func TestReadChildPublishFailure_MapsTheRecord(t *testing.T) {
 	if err := os.MkdirAll(verifytree.Dir(taskLocation.AnchorPath()), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	written := verifytree.PublishFailure{Head: "abc123", Target: "Webster", WrittenAt: "2026-01-01T11:20:00Z", LogPath: "verify-1.log"}
+	written := verifytree.PublishFailure{Row: "Merge-In", Head: "abc123", Target: "Webster", WrittenAt: "2026-01-01T11:20:00Z", LogPath: "verify-1.log"}
 	if err := verifytree.WritePublishFailure(paths, written); err != nil {
 		t.Fatal(err)
 	}
 
 	got, found, err := readChildPublishFailure(taskLocation)
-	want := battenshed.ChildPublishFailure{Head: "abc123", Target: "Webster", WrittenAt: "2026-01-01T11:20:00Z"}
+	want := battenshed.ChildPublishFailure{Row: "Merge-In", Head: "abc123", Target: "Webster", WrittenAt: "2026-01-01T11:20:00Z"}
 	if err != nil || !found || got != want {
 		t.Errorf("readChildPublishFailure() = %+v, %v, %v; want %+v, true, nil", got, found, err, want)
 	}

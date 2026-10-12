@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
@@ -163,6 +164,17 @@ func TestBurlerReviewEntry_RubricStencil(t *testing.T) {
 		profile, _ := captureReview(t, "review-row", stencilCfg, env)
 		if profile.Rubric != "Record: A known note.\n" {
 			t.Errorf("profile.Rubric = %q; want the env's webster record note filled into the marker", profile.Rubric)
+		}
+	})
+
+	t.Run("FillsTheMergeReviewNote", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.MergeReview = func() string { return "A merge note." }
+		writeStencil(t, env.StencilsDir, "round-rubric", "Merge: {{.merge_review}}\n")
+
+		profile, _ := captureReview(t, "review-row", stencilCfg, env)
+		if profile.Rubric != "Merge: A merge note.\n" {
+			t.Errorf("profile.Rubric = %q; want the env's merge review note filled into the marker", profile.Rubric)
 		}
 	})
 
@@ -425,6 +437,8 @@ func TestBurlerHalfEntries_StrictUnknownKeys(t *testing.T) {
 			cfg["profile"].(map[string]any)["fasit"] = map[string]any{"paths": []string{"f.md"}, "unexpected": "value"}
 			return cfg
 		}, "unexpected"},
+		{"ReviewRowKeyColorSegmentTypo", "BurlerReview", func() Config { cfg := minimalReviewConfig(); cfg["colour_segment"] = "merge"; return cfg }, "colour_segment"},
+		{"FixRowKeyColorSegmentTypo", "BurlerFix", func() Config { cfg := minimalFixConfig(); cfg["colour_segment"] = "merge"; return cfg }, "colour_segment"},
 		{"FixRowKeyModel", "BurlerFix", func() Config { cfg := minimalFixConfig(); cfg["model"] = "value"; return cfg }, "model"},
 		{"FixTargetInnerKey", "BurlerFix", func() Config {
 			cfg := minimalFixConfig()
@@ -462,6 +476,44 @@ func TestBurlerHalfEntries_StrictUnknownKeys(t *testing.T) {
 			_, err := lookupEntry(t, tt.entry)("a-row", tt.cfg(), newTestEnv(t))
 			assertErrContains(t, err, "unrecognized config key")
 			assertErrContains(t, err, tt.want)
+		})
+	}
+}
+
+// TestBurlerHalfEntries_ColorSegment covers the optional color_segment key both entries take:
+// absent keeps the zero segment, which the engine reads as the review color, a legal segment reaches the profile, and an unknown one is refused naming the key and the legal segments.
+func TestBurlerHalfEntries_ColorSegment(t *testing.T) {
+	entries := []struct {
+		name    string
+		cfg     func() Config
+		capture func(*testing.T, string, Config, Env) (burlerengine.Profile, burlerengine.RunOpts)
+		entry   Constructor
+	}{
+		{"BurlerReview", minimalReviewConfig, captureReview, burlerReviewEntry},
+		{"BurlerFix", minimalFixConfig, captureFix, burlerFixEntry},
+	}
+	for _, e := range entries {
+		t.Run(e.name+"Absent", func(t *testing.T) {
+			profile, _ := e.capture(t, "a-row", e.cfg(), newTestEnv(t))
+			if profile.Segment != "" {
+				t.Errorf("profile.Segment = %q; want the zero segment", profile.Segment)
+			}
+		})
+		t.Run(e.name+"Merge", func(t *testing.T) {
+			cfg := e.cfg()
+			cfg["color_segment"] = "merge"
+			profile, _ := e.capture(t, "a-row", cfg, newTestEnv(t))
+			if profile.Segment != segmentcolor.Merge {
+				t.Errorf("profile.Segment = %q; want %q", profile.Segment, segmentcolor.Merge)
+			}
+		})
+		t.Run(e.name+"Unknown", func(t *testing.T) {
+			cfg := e.cfg()
+			cfg["color_segment"] = "teal"
+			_, err := e.entry("a-row", cfg, newTestEnv(t))
+			assertErrContains(t, err, "color_segment")
+			assertErrContains(t, err, "teal")
+			assertErrContains(t, err, "merge")
 		})
 	}
 }

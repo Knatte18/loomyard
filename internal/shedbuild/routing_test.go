@@ -21,6 +21,7 @@ producers:
     engine: Stub
     on_done: row2
     on_stuck: row2
+    on_reroute: row3
     segment: seg
     max_bounces: 4
   - name: row2
@@ -56,11 +57,11 @@ producers:
 		if got.Producer != nil {
 			t.Errorf("row %d (%s): Producer = %v; want nil", i, got.Name, got.Producer)
 		}
-		if got.Name != want.Name || got.OnDone != want.OnDone || got.OnStuck != want.OnStuck ||
+		if got.Name != want.Name || got.OnDone != want.OnDone || got.OnStuck != want.OnStuck || got.OnReroute != want.OnReroute ||
 			got.Segment != want.Segment || got.MaxBounces != want.MaxBounces {
-			t.Errorf("row %d: projected {%s %s %s %s %d}; NewShed built {%s %s %s %s %d}", i,
-				got.Name, got.OnDone, got.OnStuck, got.Segment, got.MaxBounces,
-				want.Name, want.OnDone, want.OnStuck, want.Segment, want.MaxBounces)
+			t.Errorf("row %d: projected {%s %s %s %s %s %d}; NewShed built {%s %s %s %s %s %d}", i,
+				got.Name, got.OnDone, got.OnStuck, got.OnReroute, got.Segment, got.MaxBounces,
+				want.Name, want.OnDone, want.OnStuck, want.OnReroute, want.Segment, want.MaxBounces)
 		}
 	}
 }

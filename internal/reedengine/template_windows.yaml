@@ -20,3 +20,4 @@ segment_colors:  # tmux color per loom segment; each value must be a palette col
   describe: yellow
   landing: pink
   darn: red
+  merge: red

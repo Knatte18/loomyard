@@ -185,8 +185,9 @@ var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 // A nil deps.OrchStrandRecorded resolves to reporting a strand recorded, and a nil deps.StopReport to reporting no stop report.
 // A nil deps.DriverStrand resolves to reporting no driver strand, a nil deps.ChildRunLockHeld to reporting no held lock and a nil deps.ReviveStrands to a revive that fails as not wired.
 // A nil deps.PauseRequested resolves to never paused.
-// An empty deps.PublishRow, or a nil deps.PublishFailure, deps.ChildHead or deps.Goto, switches the automatic Publish verify retry off.
+// An empty deps.VerifyRows, or a nil deps.PublishFailure, deps.ChildHead or deps.Goto, switches the automatic verify retry off.
 // A nil deps.MarkWatched resolves to reporting not held, a nil deps.Activity to reporting no live run and no live wait, and a nil deps.ArbiterInFlight to reporting no arbiter.
+// A nil deps.ParentLock switches the parent lock step and the stale-base resume off.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
 	if pollInterval < pollFloor {
 		logger.Warn("battenshed: poll_interval_s is below the floor and is raised to it", "key", "poll_interval_s", "value", pollInterval, "floor_s", int(pollFloor.Seconds()))
@@ -247,7 +248,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 		driverExitGrace: driverExitGrace,
 		notices:         notices,
 		noticeQuiet:     deps.NoticeQuiet,
-		retryOn:         deps.PublishRow != "" && deps.PublishFailure != nil && deps.ChildHead != nil && deps.Goto != nil,
+		retryOn:         len(deps.VerifyRows) > 0 && deps.PublishFailure != nil && deps.ChildHead != nil && deps.Goto != nil,
 	}
 }
 
@@ -278,7 +279,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // Once the child's state is settled, the wait runs the notice step (noticeStep) on entry and at every check: informational only, one notice per condition per episode, never changing the outcome below.
 // Then by state, each arm does its actions and enters the one wait loop (wait):
 //   - running reports its wait reason, naming the reviewer the child waits on when there is one;
-//   - awaiting first revives a dead driver strand once per episode; with no decision record it reports the hand-off;
+//   - awaiting first revives a dead driver strand once per episode and resumes the child when its parent moved under the gate row (staleBaseResume); with no decision record it reports the hand-off;
 //   - awaiting with a decision not yet acted on spawns the child's driver again (the child's own bootstrap resumes an approved or rejected run), records the decision in the decision-acted marker only once the spawn succeeded, and goes on waiting until the child leaves awaiting;
 //     a spawn refused with ErrChildNotParked records nothing and is retried at most once per noticeProbe until the driver parks or the state changes;
 //     one refused with ErrChildDriverBusy is retried the same way and queues one orch notice per stall;
@@ -522,6 +523,14 @@ type childWait struct {
 	publishRetryReason string
 	// publishRefusal is the last refusal the retry saw, cut to one line.
 	publishRefusal string
+
+	// lock is the parent lock step's state across the Call's checks.
+	lock lockWatch
+	// baseMoved is the newest reading of whether the parent moved under a child awaiting at the gate row, and baseStale is true on a probe check until it is read.
+	// staleResumed is true once the stale-base resume landed, which keeps the reading true and stops a second resume.
+	baseMoved    bool
+	baseStale    bool
+	staleResumed bool
 }
 
 // waitEnd is how a wait ended: the verdict, pointer and error Call returns.
@@ -567,6 +576,7 @@ func (p *innerRunProducer) wait(ctx context.Context, w *childWait, step armStep)
 	w.probeDue = true
 	w.aliveStale = true
 	w.activityStale = true
+	w.baseStale = true
 	p.noticeStep(ctx, w)
 	if end := step(ctx, w); end != nil {
 		return end.results()
@@ -582,6 +592,7 @@ func (p *innerRunProducer) wait(ctx context.Context, w *childWait, step armStep)
 			w.lastProbe = now
 			w.aliveStale = true
 			w.activityStale = true
+			w.baseStale = true
 		}
 		if end := p.check(ctx, w, step, now); end != nil {
 			return end.results()
@@ -589,7 +600,7 @@ func (p *innerRunProducer) wait(ctx context.Context, w *childWait, step armStep)
 	}
 }
 
-// check is one check of the wait: the child's status file, the watched-marker refresh and the notice step on the probe checks, the arm's step, and last batten's own pause flag.
+// check is one check of the wait: the child's status file, the watched-marker refresh and the parent lock step on the probe checks, the notice step, the arm's step, and last batten's own pause flag.
 // It returns nil to keep waiting.
 func (p *innerRunProducer) check(ctx context.Context, w *childWait, step armStep, now time.Time) *waitEnd {
 	if end := p.checkChild(ctx, w); end != nil {
@@ -597,6 +608,7 @@ func (p *innerRunProducer) check(ctx context.Context, w *childWait, step armStep
 	}
 	if w.probeDue {
 		p.refreshWatched(ctx)
+		p.lockStep(ctx, w)
 	}
 	p.noticeStep(ctx, w)
 	if end := step(ctx, w); end != nil {
@@ -786,6 +798,9 @@ func (p *innerRunProducer) awaitingStep(ctx context.Context, w *childWait) *wait
 	if w.probeDue {
 		p.reviveDeadDriver(ctx)
 	}
+	if end := p.staleBaseResume(ctx, w); end != nil {
+		return end
+	}
 	decision, found, err := p.deps.ReadDecision()
 	if err != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
@@ -816,52 +831,10 @@ func (p *innerRunProducer) awaitingStep(ctx context.Context, w *childWait) *wait
 		}
 	}
 
-	notParkedReason := fmt.Sprintf("the %s at %s is not acted on yet: the child's driver has not parked; retrying the resume", decision.Kind, decision.At)
-	if now := p.deps.Now(); now.Before(w.resumeRetryAt) {
-		if w.busyReason != "" {
-			p.report(w, w.busyReason)
-			return nil
-		}
-		p.report(w, notParkedReason)
-		return nil
+	resumed, end := p.resumeAwaitingChild(ctx, w, fmt.Sprintf("the %s at %s", decision.Kind, decision.At))
+	if end != nil || !resumed {
+		return end
 	}
-
-	logger.Info("battenshed: resuming decided inner shed run", "producer", p.name, "slug", p.slug, "kind", decision.Kind, "decided_at", decision.At)
-	spawnErr := p.deps.Spawn(ctx)
-	logger.Info("battenshed: inner shed run wait complete", "producer", p.name, "slug", p.slug)
-	if spawnErr != nil {
-		if cerr := cancelErr(ctx, p.name); cerr != nil {
-			return hardEnd(cerr)
-		}
-		if errors.Is(spawnErr, ErrChildNotParked) {
-			// The child's driver is between its stop and its park, so the decision stays unacted and the resume is retried at most once per noticeProbe.
-			w.resumeRetryAt = p.deps.Now().Add(p.noticeProbe)
-			w.busyReason = ""
-			if !w.notParkedLogged {
-				w.notParkedLogged = true
-				logger.Info("battenshed: child driver has not parked yet; retrying the resume until it does", "producer", p.name, "slug", p.slug, "error", spawnErr)
-			}
-			p.report(w, notParkedReason)
-			return nil
-		}
-		if errors.Is(spawnErr, ErrChildDriverBusy) {
-			// A draft or an active operator in the parked driver's pane only delays the resume: the decision stays unacted and the resume is retried at most once per noticeProbe.
-			w.resumeRetryAt = p.deps.Now().Add(p.noticeProbe)
-			w.busyReason = fmt.Sprintf("the %s at %s is not acted on yet: the child's driver pane holds a draft or the operator is typing in it; clear the draft in the driver's pane and batten resumes it (%s)", decision.Kind, decision.At, oneLine(spawnErr.Error(), noticeErrorMax))
-			if !w.busyLogged {
-				w.busyLogged = true
-				logger.Info("battenshed: child driver pane is busy; retrying the resume until it is clear", "producer", p.name, "slug", p.slug, "error", spawnErr)
-			}
-			p.noticeDriverBusy(ctx, w, spawnErr)
-			p.report(w, w.busyReason)
-			return nil
-		}
-		return hardEnd(fmt.Errorf("battenshed: %s: resume decided inner shed run (resuming this run retries the spawn): %w", p.name, spawnErr))
-	}
-	p.driverBusyNoticed = false
-	w.busyReason = ""
-	recordSpawnConfirmed(p.name, p.slug, p.scratchDir, SpawnConfirmedFile(p.scratchDir, p.name))
-	p.openTerminalOnce(ctx)
 	if err := os.MkdirAll(p.scratchDir, 0o755); err != nil {
 		return hardEnd(fmt.Errorf("battenshed: %s: create scratch directory for decision-acted marker: %w", p.name, err))
 	}
@@ -870,6 +843,60 @@ func (p *innerRunProducer) awaitingStep(ctx context.Context, w *childWait) *wait
 	}
 	p.report(w, fmt.Sprintf("the %s at %s was acted on: the child was resumed; watching it", decision.Kind, decision.At))
 	return nil
+}
+
+// resumeAwaitingChild resumes an awaiting child through deps.Spawn, and reports whether the resume landed.
+// subject names what the resume answers, for the wait reasons ("the approve at <time>").
+// A spawn refused with ErrChildNotParked or ErrChildDriverBusy leaves subject unacted and is retried at most once per noticeProbe, reporting the refusal as the wait reason; any other spawn error is a hard error.
+// A resume that landed has recorded the spawn and opened the terminal window once, and leaves the wait reason to the caller.
+func (p *innerRunProducer) resumeAwaitingChild(ctx context.Context, w *childWait, subject string) (resumed bool, end *waitEnd) {
+	notParkedReason := fmt.Sprintf("%s is not acted on yet: the child's driver has not parked; retrying the resume", subject)
+	if now := p.deps.Now(); now.Before(w.resumeRetryAt) {
+		if w.busyReason != "" {
+			p.report(w, w.busyReason)
+			return false, nil
+		}
+		p.report(w, notParkedReason)
+		return false, nil
+	}
+
+	logger.Info("battenshed: resuming awaiting inner shed run", "producer", p.name, "slug", p.slug, "subject", subject)
+	spawnErr := p.deps.Spawn(ctx)
+	logger.Info("battenshed: inner shed run wait complete", "producer", p.name, "slug", p.slug)
+	if spawnErr != nil {
+		if cerr := cancelErr(ctx, p.name); cerr != nil {
+			return false, hardEnd(cerr)
+		}
+		if errors.Is(spawnErr, ErrChildNotParked) {
+			// The child's driver is between its stop and its park, so the resume stays unacted and is retried at most once per noticeProbe.
+			w.resumeRetryAt = p.deps.Now().Add(p.noticeProbe)
+			w.busyReason = ""
+			if !w.notParkedLogged {
+				w.notParkedLogged = true
+				logger.Info("battenshed: child driver has not parked yet; retrying the resume until it does", "producer", p.name, "slug", p.slug, "error", spawnErr)
+			}
+			p.report(w, notParkedReason)
+			return false, nil
+		}
+		if errors.Is(spawnErr, ErrChildDriverBusy) {
+			// A draft or an active operator in the parked driver's pane only delays the resume: it stays unacted and is retried at most once per noticeProbe.
+			w.resumeRetryAt = p.deps.Now().Add(p.noticeProbe)
+			w.busyReason = fmt.Sprintf("%s is not acted on yet: the child's driver pane holds a draft or the operator is typing in it; clear the draft in the driver's pane and batten resumes it (%s)", subject, oneLine(spawnErr.Error(), noticeErrorMax))
+			if !w.busyLogged {
+				w.busyLogged = true
+				logger.Info("battenshed: child driver pane is busy; retrying the resume until it is clear", "producer", p.name, "slug", p.slug, "error", spawnErr)
+			}
+			p.noticeDriverBusy(ctx, w, spawnErr)
+			p.report(w, w.busyReason)
+			return false, nil
+		}
+		return false, hardEnd(fmt.Errorf("battenshed: %s: resume awaiting inner shed run (resuming this run retries the spawn): %w", p.name, spawnErr))
+	}
+	p.driverBusyNoticed = false
+	w.busyReason = ""
+	recordSpawnConfirmed(p.name, p.slug, p.scratchDir, SpawnConfirmedFile(p.scratchDir, p.name))
+	p.openTerminalOnce(ctx)
+	return true, nil
 }
 
 // doneStep is the done arm: it ends the wait with Done once the driver strand has ended or the grace window counted from first sight has elapsed, and otherwise reports the wait for the driver's stop report.

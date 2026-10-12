@@ -1,4 +1,4 @@
-// premerge_test.go covers the pre-merge step both producers run ahead of their merge-in, driven through each producer's Call with the package's fake resolver and recording seam closures.
+// premerge_test.go covers the pre-merge step Merge-In and Finalize run ahead of their merge-in, driven through each producer's Call with the package's fake resolver and recording seam closures.
 // It captures the process-global logger output, so its tests do not run in parallel.
 
 package landingshed
@@ -20,7 +20,7 @@ const (
 	resolverRanReason     = "the resolver ran"
 )
 
-// TestPreMerge_ClearsOwnParkedMergeIn pins, for both producers, what the step does before the merge-in for each merge state the pair can be in:
+// TestPreMerge_ClearsOwnParkedMergeIn pins, for Merge-In and Finalize, what the step does before the merge-in for each merge state the pair can be in:
 // the seam calls it makes, whether the merge-in follows, and the Stuck reason or error it ends the call with.
 // A last subtest pins that Finalize probes again before the merge-in it repeats after the parent moved.
 func TestPreMerge_ClearsOwnParkedMergeIn(t *testing.T) {
@@ -109,7 +109,7 @@ func TestPreMerge_ClearsOwnParkedMergeIn(t *testing.T) {
 		},
 	}
 
-	for _, producer := range []string{publishName, finalizeName} {
+	for _, producer := range []string{mergeInName, finalizeName} {
 		for _, tt := range tests {
 			t.Run(producer+"/"+tt.name, func(t *testing.T) {
 				logs := logcapture.CaptureVerbose(t)
@@ -186,8 +186,14 @@ func callProducer(t *testing.T, producer string, pm preMerge, res *recordingReso
 	t.Helper()
 	deps := newTestDeps(t)
 	switch producer {
-	case publishName:
-		return (&Publish{deps: deps, resolver: res, premerge: pm}).Call(context.Background())
+	case mergeInName:
+		deps.MergeRecordPath = MergeRecordPath(t.TempDir())
+		deps.TaskHead = func() (string, error) { return "head", nil }
+		deps.MergeBase = func(string) (string, error) { return "base", nil }
+		deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
+			return fabricengine.ParentTips{Local: "tip", Relation: fabricengine.ParentNoUpstream}, nil
+		}
+		return (&MergeIn{deps: deps, resolver: res, premerge: pm}).Call(context.Background())
 	case finalizeName:
 		return (&Finalize{deps: deps, resolver: res, premerge: pm}).Call(context.Background())
 	default:

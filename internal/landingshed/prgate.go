@@ -18,11 +18,14 @@ const prGateName = "PR-Gate"
 // PRGate is the ShedProducer that decides, from the pull request and the decision records, whether the run lands, waits or goes to rework.
 type PRGate struct {
 	deps Deps
+	// guard holds the parent lock and tests whether the parent moved.
+	// A zero value takes no lock and reads no tips, so struct-literal tests run without it.
+	guard parentGuard
 }
 
 var _ shedengine.ShedProducer = (*PRGate)(nil)
 
-// NewPRGate constructs a PRGate from deps, rejecting an empty ApprovalPath, an empty RejectionPath and a nil TaskHead with a distinct error each.
+// NewPRGate constructs a PRGate from deps, rejecting an empty ApprovalPath, an empty RejectionPath, a nil TaskHead, a nil Lock.Store, a nil Lock.Owner and a nil ReadParentTips with a distinct error each.
 func NewPRGate(deps Deps) (*PRGate, error) {
 	if deps.ApprovalPath == "" {
 		return nil, fmt.Errorf("landingshed: NewPRGate: Deps.ApprovalPath must not be empty")
@@ -33,19 +36,29 @@ func NewPRGate(deps Deps) (*PRGate, error) {
 	if deps.TaskHead == nil {
 		return nil, fmt.Errorf("landingshed: NewPRGate: Deps.TaskHead must not be nil")
 	}
-	return &PRGate{deps: deps}, nil
+	if deps.Lock.Store == nil {
+		return nil, fmt.Errorf("landingshed: NewPRGate: Deps.Lock.Store must not be nil")
+	}
+	if deps.Lock.Owner == nil {
+		return nil, fmt.Errorf("landingshed: NewPRGate: Deps.Lock.Owner must not be nil")
+	}
+	if deps.ReadParentTips == nil {
+		return nil, fmt.Errorf("landingshed: NewPRGate: Deps.ReadParentTips must not be nil")
+	}
+	return &PRGate{deps: deps, guard: newParentGuard(deps)}, nil
 }
 
 // Call runs one PR-Gate iteration, evaluating these rows top to bottom, first match wins:
 //
 //  1. the parent branch needs no pull request: Done, with no GitHub call;
-//  2. the pull request is merged: Done;
-//  3. there is no pull request, or it is closed unmerged: Awaiting;
-//  4. either decision record is unreadable or malformed: Awaiting;
-//  5. an approval matches the pull request number, its head and the local task head: Done;
-//  6. a rejection matches all three: Stuck, the only Stuck exit, which the recipe routes to rework;
-//  7. a record is present but stale: Awaiting;
-//  8. no record: Awaiting.
+//  2. the run cannot take the parent lock (a paused wait or an unreadable record: a halting Stuck), or the parent moved since Merge-In merged it (a reroute Stuck), both before any GitHub call;
+//  3. the pull request is merged: Done;
+//  4. there is no pull request, or it is closed unmerged: Awaiting;
+//  5. either decision record is unreadable or malformed: Awaiting;
+//  6. an approval matches the pull request number, its head and the local task head: Done;
+//  7. a rejection matches all three: Stuck after releasing the run's parent lock, the only Stuck exit that routes by on_stuck, which the recipe routes to rework;
+//  8. a record is present but stale: Awaiting;
+//  9. no record: Awaiting.
 //
 // A transient query failure is returned as an error, never marked on a verdict.
 func (g *PRGate) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -55,6 +68,11 @@ func (g *PRGate) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outpu
 
 	if !contains(g.deps.Config.RequirePRToBase, g.deps.ParentBranch) {
 		return g.done(ctx)
+	}
+
+	// A re-call after a resume takes back a record handed to batten, since an acquire by the same run is granted.
+	if outcome, out, err, stop := holdParent(ctx, g.guard, prGateName); stop {
+		return outcome, out, err
 	}
 
 	owner, repo, err := githubclient.ParseOwnerRepo(g.deps.OriginURL)
@@ -142,11 +160,13 @@ func (g *PRGate) awaiting(ctx context.Context, reason string) (shedengine.Outcom
 	return shedengine.Awaiting, shedengine.OutputPointer{Reason: reason}, nil
 }
 
-// stuck returns Stuck with reason after consulting cancelErr first.
+// stuck returns Stuck with reason after consulting cancelErr first, and after releasing the run's parent lock.
+// The only Stuck exit is a matching rejection, which leaves the window between Merge-In and Finalize for rework; the reworked run takes the lock again at Merge-In.
 func (g *PRGate) stuck(ctx context.Context, reason string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if cerr := cancelErr(ctx, prGateName); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
 	}
+	g.guard.release(prGateName)
 	reportStuck(prGateName, reason)
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 }

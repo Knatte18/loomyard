@@ -145,6 +145,14 @@ func TestCheckCoherence(t *testing.T) {
 			wantEmpty: true,
 		},
 		{
+			name: "RerouteHistoryOutcomeIsValid",
+			mutateShed: func(s shedengine.Status) shedengine.Status {
+				s.History = []shedengine.HistoryEntry{{Producer: "Loom-Preflight", Outcome: shedengine.OutcomeReroute, RoutedTo: "Loom-Preflight", At: "2026-07-17T10:01:30Z"}}
+				return s
+			},
+			wantEmpty: true,
+		},
+		{
 			name: "NonRFC3339Timestamp",
 			mutateShed: func(s shedengine.Status) shedengine.Status {
 				s.History = []shedengine.HistoryEntry{{Producer: "Loom-Preflight", Outcome: shedengine.Stuck, At: "not-a-timestamp"}}

@@ -54,6 +54,7 @@ producers:
 		RunID:          "some-slug",
 
 		MissingStatusWayForward: "way forward: told clause",
+		RerouteCapWayForward:    "way forward: reroute clause",
 	}
 
 	shed, err := NewShed([]byte(recipeYAML), env, paths)
@@ -76,8 +77,8 @@ producers:
 	if shed.MaxBounces != paths.MaxBounces {
 		t.Errorf("shed.MaxBounces = %d; want %d", shed.MaxBounces, paths.MaxBounces)
 	}
-	if shed.RunID != paths.RunID || shed.MissingStatusWayForward != paths.MissingStatusWayForward {
-		t.Errorf("shed.RunID, MissingStatusWayForward = %q, %q; want the told values", shed.RunID, shed.MissingStatusWayForward)
+	if shed.RunID != paths.RunID || shed.MissingStatusWayForward != paths.MissingStatusWayForward || shed.RerouteCapWayForward != paths.RerouteCapWayForward {
+		t.Errorf("shed.RunID, MissingStatusWayForward, RerouteCapWayForward = %q, %q, %q; want the told values", shed.RunID, shed.MissingStatusWayForward, shed.RerouteCapWayForward)
 	}
 
 	// The assembled Shed classifies a never-ready agent start as agent-start and a plain error as not transient.
@@ -117,7 +118,7 @@ producers:
 			t.Errorf("NewShedFrom() producer %d = %q -> %q; want %q -> %q, as NewShed", i, from.Producers[i].Name, from.Producers[i].OnDone, shed.Producers[i].Name, shed.Producers[i].OnDone)
 		}
 	}
-	if from.StatusPath != shed.StatusPath || from.LockPath != shed.LockPath || from.StatusLockPath != shed.StatusLockPath || from.MaxBounces != shed.MaxBounces || from.RunID != shed.RunID || from.MissingStatusWayForward != shed.MissingStatusWayForward {
+	if from.StatusPath != shed.StatusPath || from.LockPath != shed.LockPath || from.StatusLockPath != shed.StatusLockPath || from.MaxBounces != shed.MaxBounces || from.RunID != shed.RunID || from.MissingStatusWayForward != shed.MissingStatusWayForward || from.RerouteCapWayForward != shed.RerouteCapWayForward {
 		t.Errorf("NewShedFrom() paths fields differ from NewShed's for the same paths")
 	}
 }

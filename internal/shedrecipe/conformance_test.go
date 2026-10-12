@@ -24,6 +24,7 @@ func minimalEntries() map[string]minimalEntry {
 	}
 	return map[string]minimalEntry{
 		"Preflight": {newTestEnv, emptyConfig},
+		"MergeIn":   {withLanding, emptyConfig},
 		"Publish":   {withLanding, emptyConfig},
 		"PRGate": {
 			env: func(t *testing.T) Env {

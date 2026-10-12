@@ -13,7 +13,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/seatengine"
-	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -49,7 +48,7 @@ var ErrReviewChanged = errors.New("burler: the review file changed after it was 
 func (p *Profile) reviewTable(opts RunOpts, values map[string]string) seatengine.Table {
 	return seatengine.Table{
 		RolePrefix: reviewRolePrefix,
-		Segment:    segmentcolor.Review,
+		Segment:    p.segment(),
 		Gate:       shuttleengine.GateSpec{ReviewGateEntry(p.ReviewPath)},
 		Round:      opts.Round,
 		Timeout:    opts.Timeout,

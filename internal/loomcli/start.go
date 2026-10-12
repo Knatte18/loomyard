@@ -163,11 +163,11 @@ func driverNotParkedMessage(handBack shedengine.State, retry string) string {
 
 // isLandingProducer reports whether producer is one of the two rows that abort and redo their own parked merge-in.
 func isLandingProducer(producer string) bool {
-	return producer == loomshed.NamePublish || producer == loomshed.NameFinalize
+	return producer == loomshed.NameMergeIn || producer == loomshed.NameFinalize
 }
 
 // ownMergeInLeftover reports whether st is the parked merge-in of parentBranch that producer's row aborts and redoes itself:
-// a parked `merge-in` sourced from the parent branch, at Publish or Finalize.
+// a parked `merge-in` sourced from the parent branch, at Merge-In or Finalize.
 func ownMergeInLeftover(st fabricengine.MidMergeState, producer, parentBranch string) bool {
 	return st.Kind == fabricengine.MidMergeParked && st.Verb == fabricengine.MergeVerbMergeIn && st.Source == parentBranch && isLandingProducer(producer)
 }
@@ -196,14 +196,14 @@ func (c *loomCLI) currentProducer() (string, error) {
 	return st.CurrentProducer, nil
 }
 
-// parentBranchUnreadableMessage is the refusal for a parked merge-in at Publish or Finalize whose pair's recorded parent branch could not be read, so the merge cannot be told apart from the row's own leftover;
+// parentBranchUnreadableMessage is the refusal for a parked merge-in at Merge-In or Finalize whose pair's recorded parent branch could not be read, so the merge cannot be told apart from the row's own leftover;
 // retry is the verb the message names for the caller's retry.
 func parentBranchUnreadableMessage(err error, retry string) string {
 	return "loom: could not read the pair's recorded parent branch to tell this parked merge-in from the row's own leftover: " + err.Error() + `; with no fabric origin record, run "lyx loom start --parent <branch>" in the task worktree, which writes it, otherwise fix the file the message names and re-run "` + retry + `"`
 }
 
 // refuseOverUnfinishedMerge probes the pair's merge state and reports whether the verb named retry may proceed.
-// producer is the run's current producer: a parked merge-in of the recorded parent branch at Publish or Finalize is that row's own leftover, which the row aborts and redoes, so it proceeds.
+// producer is the run's current producer: a parked merge-in of the recorded parent branch at Merge-In or Finalize is that row's own leftover, which the row aborts and redoes, so it proceeds.
 // The parent branch is read only for a parked merge-in at one of those rows, and a read failure refuses like a probe error.
 // On a refusal or a probe error it releases bootstrapLock, records the envelope and returns false, leaving the park marker on disk.
 func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, bootstrapLock *lock.FileLock, retry, producer string) bool {

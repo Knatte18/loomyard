@@ -22,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// ownLeftoverState is a fabric merge-in of main the Publish and Finalize rows abort and redo themselves.
+// ownLeftoverState is a fabric merge-in of main the Merge-In and Finalize rows abort and redo themselves.
 var ownLeftoverState = fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: fabricengine.MergeVerbMergeIn, Source: "main", Conflicts: []string{"a.go"}}
 
 // parentBranchSeam answers the recorded parent branch main, or the failure err when it is non-nil.
@@ -145,9 +145,9 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 		{name: "foreign", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeForeign, Conflicts: []string{"x"}}, want: []string{"x"}, wantIn: []string{"git"}, wantNotIn: []string{"merge-stage"}},
 		{name: "stale marker kept", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Conflicts: []string{"a"}}, want: []string{"a"}, wantIn: fabricMsg, staleMark: true},
 		{name: "parked live driver refused", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg, parkedLive: true},
-		{name: "own leftover at a row other than Publish or Finalize", driver: shedrun.DriverLLM, state: ownLeftoverState, want: []string{"a.go"}, wantIn: fabricMsg, producer: loomshed.NamePlanBouncer, parentErr: errors.New("origin record unreadable")},
-		{name: "parked merge verb at Publish", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: "merge", Source: "main", Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg, producer: loomshed.NamePublish, parentErr: errors.New("origin record unreadable")},
-		{name: "merge-in of another source at Publish", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: fabricengine.MergeVerbMergeIn, Source: "other", Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg, producer: loomshed.NamePublish},
+		{name: "own leftover at a row other than Merge-In or Finalize", driver: shedrun.DriverLLM, state: ownLeftoverState, want: []string{"a.go"}, wantIn: fabricMsg, producer: loomshed.NamePlanBouncer, parentErr: errors.New("origin record unreadable")},
+		{name: "parked merge verb at Merge-In", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: "merge", Source: "main", Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg, producer: loomshed.NameMergeIn, parentErr: errors.New("origin record unreadable")},
+		{name: "merge-in of another source at Merge-In", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: fabricengine.MergeVerbMergeIn, Source: "other", Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg, producer: loomshed.NameMergeIn},
 		{name: "foreign state at Finalize", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeForeign, Conflicts: []string{"x"}}, want: []string{"x"}, wantIn: []string{"git"}, wantNotIn: []string{"merge-stage"}, producer: loomshed.NameFinalize, parentErr: errors.New("origin record unreadable")},
 		{name: "own leftover under an undecodable status file", driver: shedrun.DriverLLM, state: ownLeftoverState, want: []string{"a.go"}, wantIn: fabricMsg, statusBody: unknownFieldStatusBody, parentErr: errors.New("origin record unreadable")},
 	}
@@ -275,7 +275,7 @@ func TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses(t *testing.T) {
 	}{
 		{name: "probe error names the failure and the retry", probe: (&fakeMidMerge{err: errors.New("boom")}).probe, wantIn: []string{"boom", `re-run "lyx loom start"`}},
 		{name: "real probe on a non-pair", probe: fabricengine.MidMerge},
-		{name: "unreadable parent branch at Publish names the failure and the way forward", probe: (&fakeMidMerge{state: ownLeftoverState}).probe, producer: loomshed.NamePublish, parentErr: errors.New("origin boom"), wantIn: []string{"origin boom", `"lyx loom start --parent <branch>"`, `re-run "lyx loom start"`}},
+		{name: "unreadable parent branch at Merge-In names the failure and the way forward", probe: (&fakeMidMerge{state: ownLeftoverState}).probe, producer: loomshed.NameMergeIn, parentErr: errors.New("origin boom"), wantIn: []string{"origin boom", `"lyx loom start --parent <branch>"`, `re-run "lyx loom start"`}},
 		{name: "unreadable status file names the failure and the retry", probe: (&fakeMidMerge{state: ownLeftoverState}).probe, statusUnreadable: true, wantIn: []string{state.ErrRead.Error(), `re-run "lyx loom start"`}},
 	}
 	for _, tt := range tests {
@@ -331,7 +331,7 @@ func TestRunDriverSpawnAndWait_MidMerge_CleanPairProceeds(t *testing.T) {
 	}{
 		{name: "clean pair", state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}},
 		{name: "clean pair with a status file carrying an unknown field", state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}, statusBody: unknownFieldStatusBody},
-		{name: "own leftover at Publish on a halted run", state: ownLeftoverState, runState: shedengine.StateBlocked, producer: loomshed.NamePublish},
+		{name: "own leftover at Merge-In on a halted run", state: ownLeftoverState, runState: shedengine.StateBlocked, producer: loomshed.NameMergeIn},
 		{name: "own leftover at Finalize on a running run with a dead driver", state: ownLeftoverState, runState: shedengine.StateRunning, producer: loomshed.NameFinalize},
 	}
 	for _, tt := range tests {

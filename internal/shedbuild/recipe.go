@@ -26,6 +26,7 @@ type Row struct {
 	Config     map[string]any `yaml:"config"`
 	OnDone     string         `yaml:"on_done"`
 	OnStuck    string         `yaml:"on_stuck"`
+	OnReroute  string         `yaml:"on_reroute"`
 	Segment    string         `yaml:"segment"`
 	MaxBounces int            `yaml:"max_bounces"`
 }

@@ -31,6 +31,7 @@ producers:
       key: value
     on_done: row2
     on_stuck: row1
+    on_reroute: row3
     segment: seg
     max_bounces: 3
 `,
@@ -45,6 +46,7 @@ producers:
 						Config:     map[string]any{"key": "value"},
 						OnDone:     "row2",
 						OnStuck:    "row1",
+						OnReroute:  "row3",
 						Segment:    "seg",
 						MaxBounces: 3,
 					},

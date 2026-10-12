@@ -354,6 +354,10 @@ func (p *innerRunProducer) noticeCondition(ctx context.Context, w *childWait) (n
 		if w.retry.action != publishRetryNone {
 			return noticeFinding{}, activityStamp{}
 		}
+		// An awaiting child whose parent moved is resumed by this run, which is no event for the orch either.
+		if p.parentMovedUnderGate(w) {
+			return noticeFinding{}, activityStamp{}
+		}
 		return noticeFinding{condition: noticeStateChanged, stamp: p.episode.since.UnixNano(), text: p.publishRetryNoticeText(w)}, activityStamp{}
 	}
 	alive, known := p.driverAlive(ctx, w)

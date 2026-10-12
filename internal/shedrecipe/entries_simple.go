@@ -1,5 +1,5 @@
 // entries_simple.go implements the registry entries that take an empty Config and validate only the
-// Env fields they read: preflightEntry, publishEntry, finalizeEntry, frictionReflectEntry,
+// Env fields they read: preflightEntry, mergeInEntry, publishEntry, finalizeEntry, frictionReflectEntry,
 // loomPreflightEntry, batchifierEntry, stubEntry, and websterEntry.
 
 package shedrecipe
@@ -45,6 +45,23 @@ func publishEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, error
 		return nil, fmt.Errorf("shedrecipe: Publish: %w", err)
 	}
 	return p, nil
+}
+
+// mergeInEntry is the Constructor for the "MergeIn" registry row: publishEntry's twin over landingshed.NewMergeIn(env.Landing).
+//
+// name is deliberately discarded, for the same reason as publishEntry:
+// landingshed.Deps carries no name field, and Merge-In's own identity is a package constant.
+//
+// It validates no Env field of its own: landingshed.NewMergeIn already rejects the nil seams and the empty merge record path it requires.
+func mergeInEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+	if err := configRejectUnknown(cfg); err != nil {
+		return nil, err
+	}
+	m, err := landingshed.NewMergeIn(env.Landing)
+	if err != nil {
+		return nil, fmt.Errorf("shedrecipe: MergeIn: %w", err)
+	}
+	return m, nil
 }
 
 // prGateEntry is the Constructor for the "PRGate" registry row: publishEntry's twin over landingshed.NewPRGate(env.Landing).

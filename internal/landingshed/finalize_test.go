@@ -100,6 +100,9 @@ func TestNewFinalize_Refusals(t *testing.T) {
 		{"nil OpenFabric", func(d *Deps) { d.OpenParentFabric = nilFabric }, "Deps.OpenFabric"},
 		{"nil OpenParentFabric", func(d *Deps) { d.OpenFabric = nilFabric }, "Deps.OpenParentFabric"},
 		{"empty DescriptionPath", func(d *Deps) { d.OpenFabric, d.OpenParentFabric, d.DescriptionPath = nilFabric, nilFabric, "" }, "Deps.DescriptionPath"},
+		{"nil Lock.Store", func(d *Deps) { d.OpenFabric, d.OpenParentFabric, d.Lock.Store = nilFabric, nilFabric, nil }, "Deps.Lock.Store"},
+		{"nil Lock.Owner", func(d *Deps) { d.OpenFabric, d.OpenParentFabric, d.Lock.Owner = nilFabric, nilFabric, nil }, "Deps.Lock.Owner"},
+		{"nil ReadParentTips", func(d *Deps) { d.OpenFabric, d.OpenParentFabric, d.ReadParentTips = nilFabric, nilFabric, nil }, "Deps.ReadParentTips"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -266,20 +269,34 @@ func (r *orderedResolver) Resolve(ctx context.Context, source string) (mergereso
 
 // TestFinalize_MergeInRequiredRetry pins that an ErrMergeInRequired merge is retried exactly once with the same composed message, and that the board seam runs once, after the retry that lands, never after a failed attempt.
 // It also pins that the parent run records are committed after each merge-in and before the parent-side merge, on the first pass and on the retry alike.
+// The retry runs only when the parent has not moved: a parent that moved again, which the second tip read finds, reroutes with no retry.
 func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 	tests := []struct {
 		name        string
 		secondTry   mergeCallResult
 		wantOutcome shedengine.Outcome
 		wantOrder   string
+		// movedFromRead is the 1-based tip read from which the parent reads as moved; 0 means never.
+		movedFromRead int
+		wantCalls     int
+		wantReroute   bool
 	}{
-		{"retry lands", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,push"},
-		{"retry also required stays Stuck", mergeCallResult{err: &fabricengine.ErrMergeInRequired{}}, shedengine.Stuck, "merge-in,records,merge,merge-in,records,merge"},
+		{"retry lands", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,push", 0, 2, false},
+		{"retry also required stays Stuck", mergeCallResult{err: &fabricengine.ErrMergeInRequired{}}, shedengine.Stuck, "merge-in,records,merge,merge-in,records,merge", 0, 2, false},
+		{"a parent moved again reroutes with no retry", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Stuck, "merge-in,records,merge", 2, 1, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var order []string
 			deps := newTestDeps(t)
+			reads := 0
+			deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
+				reads++
+				if tt.movedFromRead != 0 && reads >= tt.movedFromRead {
+					return fabricengine.ParentTips{Local: "newer-tip", Upstream: "newer-tip", Relation: fabricengine.ParentEqual}, nil
+				}
+				return fabricengine.ParentTips{Local: testParentTip, Upstream: testParentTip, Relation: fabricengine.ParentEqual}, nil
+			}
 			deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
 			deps.CommitParentRecords = func() error { order = append(order, "records"); return nil }
 			summary, err := summaryparser.Parse(deps.DescriptionPath)
@@ -291,11 +308,14 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 				results: []mergeCallResult{{err: &fabricengine.ErrMergeInRequired{Source: deps.TaskBranch}}, tt.secondTry},
 				order:   &order,
 			}
-			fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+			fz := &Finalize{deps: deps, resolver: res, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 			ptr := shedfake.RequireOutcome(t, fz, tt.wantOutcome)
-			if len(merger.calls) != 2 {
-				t.Fatalf("parent-side merge calls = %d; want exactly 2 (one attempt, one retry)", len(merger.calls))
+			if len(merger.calls) != tt.wantCalls {
+				t.Fatalf("parent-side merge calls = %d; want %d", len(merger.calls), tt.wantCalls)
+			}
+			if ptr.Reroute != tt.wantReroute {
+				t.Errorf("OutputPointer.Reroute = %v; want %v", ptr.Reroute, tt.wantReroute)
 			}
 			want := summary.LandingMessage(deps.Config.CoAuthoredBy)
 			for i, call := range merger.calls {

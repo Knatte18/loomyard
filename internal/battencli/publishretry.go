@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// readChildPublishFailure reads the Publish failure record of the task worktree and maps the fields the retry reads.
+// readChildPublishFailure reads the verify failure record of the task worktree and maps the fields the retry reads.
 // found is false when the task worktree holds no record.
 func readChildPublishFailure(taskLocation *lyxcwd.Location) (battenshed.ChildPublishFailure, bool, error) {
 	paths := verifytree.NewPaths(taskLocation.WorktreePath(), verifytree.Dir(taskLocation.AnchorPath()))
@@ -23,7 +23,7 @@ func readChildPublishFailure(taskLocation *lyxcwd.Location) (battenshed.ChildPub
 	if err != nil || !found {
 		return battenshed.ChildPublishFailure{}, false, err
 	}
-	return battenshed.ChildPublishFailure{Head: record.Head, Target: record.Target, WrittenAt: record.WrittenAt}, true, nil
+	return battenshed.ChildPublishFailure{Row: record.Row, Head: record.Head, Target: record.Target, WrittenAt: record.WrittenAt}, true, nil
 }
 
 // childHead returns the HEAD commit of the task worktree.

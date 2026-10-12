@@ -76,6 +76,10 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NameWebsterBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NameWebsterBurlerFix, "BurlerFix", burlerFixType},
 	{loomshed.NameDescribe, "Describe", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
+	{loomshed.NameMergeIn, "MergeIn", reflect.TypeOf(&landingshed.MergeIn{})},
+	{loomshed.NameMergeBouncer, "Bouncer", bouncerType},
+	{loomshed.NameMergeBurlerReview, "BurlerReview", burlerReviewType},
+	{loomshed.NameMergeBurlerFix, "BurlerFix", burlerFixType},
 	{loomshed.NamePublish, "Publish", reflect.TypeOf(&landingshed.Publish{})},
 	{loomshed.NamePRGate, "PRGate", reflect.TypeOf(&landingshed.PRGate{})},
 	{loomshed.NamePRRework, "PRRework", reflect.TypeOf(loomshed.NewPRRework("", func(loomshed.ReworkTold) shedengine.ShedProducer { return nil }, loomshed.PRReworkDeps{}))},
@@ -175,7 +179,7 @@ func TestNew_PublishAndFinalizeAreRealProducers(t *testing.T) {
 // failure instead of discarding it.
 func TestNew_MissingLandingClosureReturnsError(t *testing.T) {
 	env, paths := testEnv(t)
-	env.Landing.OpenFabric = nil
+	env.Landing.PushBranch = nil
 
 	shed, err := New(env, paths)
 	if err == nil {

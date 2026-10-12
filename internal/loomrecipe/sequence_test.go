@@ -20,11 +20,11 @@ type wantSequenceEntry struct {
 	outcome shedengine.Outcome
 }
 
-// wantSequenceOrder is the row 1-through-Publish name/outcome sequence a clean Run over buildSequenceFixture must produce.
+// wantSequenceOrder is the row 1-through-Merge-In name/outcome sequence a clean Run over buildSequenceFixture must produce.
 // It follows wantProducerTable's row order, which TestNew_ShapeMatchesRecipe pins against New,
 // so a reordering in contracts/recipes/loom-recipe.yaml's row order is a test failure.
 //
-// Every entry but the three review segments and the trailing Publish carries a Done outcome by
+// Every entry but the three review segments and the trailing Merge-In carries a Done outcome by
 // rule; the segments themselves do not, so their entries are spelled out explicitly rather than
 // derived.
 // Each segment contributes exactly four entries in the same shape: NameXBouncer with Stuck (the seed call, which spawns a focus-setting pass and always reports Stuck, never judging anything on its first call), NameXBurlerReview with Stuck (one completed review -- the review row reports every successful review as Stuck by contract, never Done, since its Stuck is a routine hand-off to the fix row rather than a real stuck condition), NameXBurlerFix with Stuck (the fix row's hand-back to the Bouncer, a Stuck for the same reason), and NameXBouncer again with Done (the judge call, whose fixture-scripted CONVERGED verdict is what advances the run past the segment).
@@ -34,10 +34,9 @@ type wantSequenceEntry struct {
 // Stuck entries mid-run are therefore not a failure signal here; they are each segment doing its
 // job.
 //
-// The sequence stops at Publish deliberately: Publish's OnStuck is "" (escalate), so a Stuck verdict
-// blocks the run and Finalize is never invoked. Driving both producers' real merge logic through a
-// Shed run needs a genuine two-worktree pair and therefore git, which this batch's own decision keeps
-// out of this package's untagged tier.
+// The sequence stops at Merge-In deliberately: Merge-In's OnStuck is "" (escalate), so a Stuck verdict blocks the run.
+// The fixture's fake tips report the local parent ahead of its upstream, which makes Merge-In report one before any merge.
+// Driving the landing producers' real merge logic through a Shed run needs a genuine two-worktree pair and therefore git, which stays out of this package's untagged tier.
 //
 // The real row 2 (Loom-Preflight) passes against this fixture rather than needing a substituted
 // fake because buildSequenceFixture seeds through the production Seed, which writes a coherent
@@ -55,7 +54,7 @@ type wantSequenceEntry struct {
 // method, still finds a complete, zero-findings plan after the decorator's rotation archived the
 // seeded one away.
 //
-// It is derived from wantProducerTable's order and types: a Bouncer row expands to its four entries (its review and fix rows follow it in the table), a review or fix row contributes only through its Bouncer, Publish is Stuck and ends the sequence, and every other row is Done.
+// It is derived from wantProducerTable's order and types: a Bouncer row expands to its four entries (its review and fix rows follow it in the table), a review or fix row contributes only through its Bouncer, Merge-In is Stuck and ends the sequence, and every other row is Done.
 var wantSequenceOrder = deriveSequenceOrder()
 
 func deriveSequenceOrder() []wantSequenceEntry {
@@ -71,7 +70,7 @@ func deriveSequenceOrder() []wantSequenceEntry {
 				wantSequenceEntry{row.name, shedengine.Done},
 			)
 		case row.producerType == burlerReviewType, row.producerType == burlerFixType:
-		case row.name == loomshed.NamePublish:
+		case row.name == loomshed.NameMergeIn:
 			return append(order, wantSequenceEntry{row.name, shedengine.Stuck})
 		default:
 			order = append(order, wantSequenceEntry{row.name, shedengine.Done})
@@ -80,8 +79,8 @@ func deriveSequenceOrder() []wantSequenceEntry {
 	return order
 }
 
-// TestSequence_FullRunBlocksAtPublish is the task's own verify requirement: the built row list
-// runs Preflight through Publish and blocks on Publish's Stuck verdict, never reaching Finalize --
+// TestSequence_FullRunBlocksAtMergeIn is the task's own verify requirement: the built row list
+// runs Preflight through Describe and blocks on Merge-In's Stuck verdict, never reaching Publish --
 // see wantSequenceOrder's own doc comment for why, including for all three review segments' entry
 // shapes. It also asserts the plan is left approved after the run: under the pre-fix code the fake
 // writer self-approved the plan it wrote, which masked Plan-Bouncer's approve_seam ever firing at
@@ -90,7 +89,7 @@ func deriveSequenceOrder() []wantSequenceEntry {
 // deletion of the post-segment mechanical re-check that used to confirm the approval flag survived,
 // the trailing planparser.ParsePlan check below is the ONLY standing guard left anywhere that
 // Plan-Bouncer's approve seam genuinely ran.
-func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
+func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 
 	var commitDiscussionCalls, commitPlanCalls int
@@ -116,8 +115,8 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	if result.Outcome != shedengine.RunBlocked {
 		t.Fatalf("Run() outcome = %q; want %q (reason: %s)", result.Outcome, shedengine.RunBlocked, result.Reason)
 	}
-	if result.HaltedProducer != loomshed.NamePublish {
-		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NamePublish)
+	if result.HaltedProducer != loomshed.NameMergeIn {
+		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NameMergeIn)
 	}
 
 	if len(result.History) != len(wantSequenceOrder) {
@@ -143,8 +142,8 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	if got.State != shedengine.StateBlocked {
 		t.Errorf("persisted State = %q; want %q", got.State, shedengine.StateBlocked)
 	}
-	if got.CurrentProducer != loomshed.NamePublish {
-		t.Errorf("persisted CurrentProducer = %q; want %q -- current_producer must name the row the run blocked on", got.CurrentProducer, loomshed.NamePublish)
+	if got.CurrentProducer != loomshed.NameMergeIn {
+		t.Errorf("persisted CurrentProducer = %q; want %q -- current_producer must name the row the run blocked on", got.CurrentProducer, loomshed.NameMergeIn)
 	}
 
 	// This is the scenario proof that the Discussion-Bouncer commit_seam is genuinely reached through

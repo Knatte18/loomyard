@@ -7,3 +7,4 @@ describe_timeout_min: 30  # minutes the Describe session's shuttle run is allowe
 co_authored_by: Claude <noreply@anthropic.com>  # value of the landing commit's single Co-Authored-By trailer; a run involves several models, so the default names Claude generically
 publish_verify: ""  # shell command Publish runs in the task worktree after the plan's verify passes, such as a test tier the plan's verify leaves out; empty runs nothing; Finalize never runs it
 deploy: ""  # shell command batten's Land row runs in the prime after a landing into a branch listed in require_pr_to_base; empty runs nothing; the same trust class as publish_verify
+parent_lock_idle_release_min: 10  # minutes a waiting run, or an undecided PR-Gate hand-off, keeps its parent lock before the lock is released; a value below 1 reads as 10
