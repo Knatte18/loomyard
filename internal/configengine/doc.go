@@ -56,7 +56,9 @@
 // and the longest `Categories` entry covering it must be [CategoryNone], a hub-wide module also refusing a path no entry covers.
 // [LocalKeys] and [LocalDenied] list the classification's two sides.
 // A local file failing the rule is an [ErrInvalid] error naming the file and the key.
-// A local override file is never disposable: no cleanup deletes it.
+// No cleanup deletes a local override file.
+// The only removals are Seed-Child rewriting the pair's local layer to equal the task's run settings,
+// and reconcile deleting a local file whose retired keys it pruned to nothing.
 //
 // # Open maps
 //

@@ -21,5 +21,6 @@ A key meeting none of the four is `CategoryNone` and the local layer may hold it
 
 ## Local files
 
-- A local override file is never disposable for `lyx-cleanup` or any other cleanup.
+- No cleanup, `lyx-cleanup` included, deletes a local override file.
+  The only removals are Seed-Child rewriting the pair's local layer to equal the task's run settings, and reconcile deleting a local file whose retired keys it pruned to nothing.
 - The git-ignored per-worktree `.env` stays an untracked route for marker-carrying denied keys; the local layer must not widen it.
