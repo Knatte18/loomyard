@@ -199,6 +199,7 @@ var substitutionMarkers = []string{"$(", "`", "<(", ">("}
 
 // IsReadOnlyCommand reports whether cmd is built only from allow-listed read forms, each in command position, joined by `|`, `||`, `;`, `&&` or a newline.
 // The forms are the readers cat, head, tail, ls, wc, grep, jq and cut; `lyx` help (command words then `--help` or `-h`); the `lyx fabric` readers list, pairs, status, shortname, diff with one revision, prune and cleanup without flags; and a closed set of `git` reads, optionally behind `-C <dir>`.
+// A reader segment is not read-only when it holds an unquoted `(` or `)`, or a `$` its single-quote-blanked view keeps whose next raw character is anything but whitespace, a double quote or the segment's end, which rejects every parameter and arithmetic expansion and the ANSI-C quote `$'…'`, while a regex anchor such as `a$` stays read-only.
 // It is false for any output redirection (`>`, `>>`, `>|`, `&>`, a numbered descriptor redirection, `<>`), for command or process substitution, for backgrounding, and for any other command or form, `sort`, `tee`, `find`, `env`, `xargs`, an interpreter, `go` and every other `lyx` or `git` invocation included.
 // A `lyx`, `git` or `sed` segment is split into shell words, honouring single and double quotes, and judged on the dequoted text.
 // Such a word may hold neither `$` nor a backslash, quoted or not, nor an unquoted brace or parenthesis; a leading `~` is text.
@@ -290,13 +291,14 @@ func opensSegment(view []rune, at int) bool {
 }
 
 // readOnlySegment reports whether one separated segment, in its raw text, is a listed reader, a read-only lyx form, a read-only git form or a read-only sed print.
+// A listed reader is read-only only when readOnlyReaderSegment admits it.
 func readOnlySegment(segment string) bool {
 	fields := strings.Fields(segment)
 	if len(fields) == 0 {
 		return false
 	}
 	if readOnlyCommands[fields[0]] {
-		return true
+		return readOnlyReaderSegment(segment)
 	}
 	if fields[0] != "lyx" && fields[0] != "git" && fields[0] != "sed" {
 		return false
@@ -312,6 +314,26 @@ func readOnlySegment(segment string) bool {
 		return readOnlyGitSegment(words)
 	}
 	return readOnlySedSegment(words)
+}
+
+// readOnlyReaderSegment reports whether a segment whose command is a listed reader holds neither an unquoted parenthesis nor a dollar expansion.
+// A zsh glob qualifier runs code through a parenthesis and a parameter expansion through a `$`, and neither carries a substitution marker.
+// A `$` counts when the single-quote-blanked view keeps it and the next raw character is not whitespace or a double quote, so a regex anchor such as `a$` passes and the ANSI-C quote `$'…'` does not.
+// A `$` at the segment's end passes.
+func readOnlyReaderSegment(segment string) bool {
+	if strings.ContainsAny(blankQuoted(segment), "()") {
+		return false
+	}
+	view, raw := []rune(blankQuotedSpans(segment, true)), []rune(segment)
+	for i, r := range view {
+		if r != '$' || i+1 == len(raw) {
+			continue
+		}
+		if follower := raw[i+1]; !unicode.IsSpace(follower) && follower != '"' {
+			return false
+		}
+	}
+	return true
 }
 
 // shellWord is one word of a segment after the shell's quote removal.
