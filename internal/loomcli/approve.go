@@ -38,10 +38,8 @@ type approveDeps struct {
 	findPR func(ctx context.Context, owner, repo, head, base string) (*github.PullRequest, error)
 	// headSHA reads the local task HEAD.
 	headSHA func() (string, error)
-	// removeRejection deletes any pending rejection record; an absent record is success.
-	removeRejection func() error
-	// writeApproval records the approval, replacing any earlier one.
-	writeApproval func(landingshed.Approval) error
+	// recordApproval records the approval, removing any pending rejection and replacing any earlier approval.
+	recordApproval func(landingshed.Approval) error
 	// now supplies the approval time.
 	now func() time.Time
 }
@@ -94,10 +92,7 @@ func approveVerb(ctx context.Context, out io.Writer, d approveDeps) int {
 		HeadSHA:    remote,
 		ApprovedAt: d.now().UTC().Format(time.RFC3339),
 	}
-	if err := d.removeRejection(); err != nil {
-		return output.Err(out, "loom: approve: remove the pending rejection: "+err.Error())
-	}
-	if err := d.writeApproval(rec); err != nil {
+	if err := d.recordApproval(rec); err != nil {
 		return output.Err(out, "loom: approve: record the approval: "+err.Error())
 	}
 
@@ -180,11 +175,8 @@ Example:
 					}
 					return f.HeadSHA()
 				},
-				removeRejection: func() error {
-					return landingshed.RemoveRecord(loomengine.LoomRejectionPath(location))
-				},
-				writeApproval: func(a landingshed.Approval) error {
-					return landingshed.WriteApproval(loomengine.LoomApprovalPath(location), a)
+				recordApproval: func(a landingshed.Approval) error {
+					return landingshed.RecordApproval(loomengine.LoomApprovalPath(location), loomengine.LoomRejectionPath(location), a)
 				},
 				now: time.Now,
 			}

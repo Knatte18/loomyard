@@ -31,6 +31,15 @@ func WriteRejection(path string, r Rejection) error {
 	return writeRecordAtomic(path, "rejection", r)
 }
 
+// RecordRejection records r as the latest decision: it removes the approval record at approvalPath, then writes the rejection to rejectionPath.
+// A removal that fails writes no rejection and returns its error.
+func RecordRejection(approvalPath, rejectionPath string, r Rejection) error {
+	if err := RemoveRecord(approvalPath); err != nil {
+		return err
+	}
+	return WriteRejection(rejectionPath, r)
+}
+
 // ReadRejection reads the record at path.
 // An absent file returns found == false with a nil error;
 // unreadable or undecodable content, or a record missing any field, is an error.

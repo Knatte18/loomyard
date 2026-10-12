@@ -237,6 +237,11 @@ type Deps struct {
 	// MergeRecordPath and MergeReviewedPath are the told merge record and reviewed-tip files, both in the run's scratch directory.
 	MergeRecordPath   string
 	MergeReviewedPath string
+
+	// Alignment is the PR-Align producer's told seams: the alignment agent's session, its config and snapshot reads, its static prompt fields and the note record it leaves for PR-Gate.
+	// PR-Gate reads only Alignment.NotePath, and an empty one reads no note.
+	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	Alignment AlignmentDeps
 }
 
 // ParentLockDeps carries the told seams the parent lock guard takes the lock through.

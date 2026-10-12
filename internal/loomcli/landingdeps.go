@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
@@ -188,6 +189,49 @@ func landingDeps(
 		},
 		MergeRecordPath:   landingshed.MergeRecordPath(loomengine.LoomScratchDir(l)),
 		MergeReviewedPath: landingshed.MergeReviewedPath(loomengine.LoomScratchDir(l)),
+		Alignment:         landingAlignmentDeps(l, geom.StencilsDir, registry, runner),
+	}
+}
+
+// alignmentNoteFile is the alignment note's file name in the PR-Gate point's alignment directory; the attempt listing skips a file there.
+const alignmentNoteFile = "note.json"
+
+// landingAlignmentDeps builds PR-Align's seams for the worktree l.
+// Its Config loads loom's config on each call, so an edit to skip_alignment or alignment_pr_approve takes effect at the next step;
+// its session works under the run's PR-Gate alignment directory, which also holds the alignment note.
+func landingAlignmentDeps(l *lyxcwd.Location, stencilsDir string, registry modelspec.Registry, runner *shuttleengine.Runner) landingshed.AlignmentDeps {
+	root := shedrun.AlignmentDir(l, shedrun.SelfRunID, string(alignment.PointPRGate))
+	slug := seedSlug(l.WorktreeName)
+	return landingshed.AlignmentDeps{
+		Config: func() (landingshed.AlignmentConfig, error) {
+			cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(l), "loom")
+			if err != nil {
+				return landingshed.AlignmentConfig{}, err
+			}
+			if alignmentOff(l, cfg) {
+				return landingshed.AlignmentConfig{Off: true}, nil
+			}
+			settings, err := alignmentSettings(cfg, registry)
+			if err != nil {
+				return landingshed.AlignmentConfig{}, err
+			}
+			return landingshed.AlignmentConfig{PRApprove: cfg.AlignmentPRApprove, Settings: settings}, nil
+		},
+		Session: alignment.NewSession(alignment.SessionConfig{
+			Root:        root,
+			StencilsDir: stencilsDir,
+			Shuttle:     alignment.RunnerShuttle(runner),
+			Now:         time.Now,
+		}),
+		Snapshot: alignmentSnapshot(loomengine.DiscussionDecisionRecord(l), slug, hubBoardTasks(l)),
+		Prompt: alignment.PromptInput{
+			Slug:               slug,
+			Worktree:           l.WorktreePath(),
+			DecisionRecordPath: loomengine.DiscussionDecisionRecord(l),
+			SupportLogPath:     loomengine.DiscussionSupportLog(l),
+			PlanDir:            planparser.PlanDir(l.AnchorPath()),
+		},
+		NotePath: filepath.Join(root, alignmentNoteFile),
 	}
 }
 

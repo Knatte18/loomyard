@@ -131,6 +131,8 @@ func newPRFixture(t *testing.T) *prFixture {
 	env := c.env
 	// No orch session runs in the fixture hub, so the wired liveness seam would hold the prompt; the test plays the parent by hand.
 	env.ParentReview.ReviewerLive = nil
+	// The wired alignment agent would spawn a real session; alignment off sends every review to the parent, as the test expects.
+	env.ParentReview.Aligner = nil
 	env.Shuttle = f.shuttle
 	env.DiscussionSpec = func() (shuttleengine.Spec, error) {
 		return shuttleengine.Spec{Prompt: "write the discussion", OutputFiles: []string{decision, support}}, nil

@@ -55,6 +55,7 @@ var InterruptPolicies = map[string]string{
 	NameMergeIn:           InterruptPolicyReinvoke, // spawns only the conflict session the resolver reattaches
 	NameMergeBouncer:      InterruptPolicyReinvoke,
 	NamePublish:           InterruptPolicyReinvoke,
+	NamePRAlign:           InterruptPolicyReinvoke, // re-entry reuses the live spawn or its verdict
 	NamePRGate:            InterruptPolicyReinvoke, // spawns nothing
 	NamePRRework:          InterruptPolicyReinvoke, // the single-session adapter reattaches rather than double-spawns
 	NameDarnWrite:         InterruptPolicyReinvoke, // the single-session adapter reattaches rather than double-spawns

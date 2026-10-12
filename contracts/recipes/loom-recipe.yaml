@@ -45,8 +45,8 @@
 # generation that walks the whole main line again, Plan-Review included; Plan-Bouncer skips its
 # judge only for a generation whose live cards are all exempt.
 #
-# Friction-Reflect is outside the escalate-to-a-human set: it also carries no on_stuck, but it
-# always returns Done and never Stuck, so it stays outside that set.
+# Friction-Reflect and PR-Align are outside the escalate-to-a-human set: each also carries no
+# on_stuck, but each always returns Done and never Stuck, so they stay outside that set.
 #
 # An in-flight run parked on one of the three removed rows when this recipe lands is restarted, not
 # migrated: row names are durable on-disk resume identities, and a permanent migration table mapping
@@ -534,6 +534,16 @@ producers:
   - name: Publish
     engine: Publish
     on_reroute: Merge-In
+    on_done: PR-Align
+
+  # PR-Align spawns the alignment agent for the pull request Publish opened and applies its verdict
+  # through the records PR-Gate reads. It returns Done without spawning when PR-Gate would pass
+  # without a pull request or alignment is off, takes no parent lock, and is re-entered with the new
+  # head after every PR-Rework and moved-parent reroute. It never returns Stuck, so it carries no
+  # on_stuck, and it sits outside the PR-Review segment: a Done by a row of that segment ends the
+  # gate's bounce episode, which only PR-Rework's Done does.
+  - name: PR-Align
+    engine: PRAlign
     on_done: PR-Gate
 
   # PR-Gate owns every review decision on the pull request Publish opened: it returns Done on an

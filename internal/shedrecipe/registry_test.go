@@ -97,6 +97,7 @@ func TestNames(t *testing.T) {
 			"LoomPreflight",
 			"MergeIn",
 			"MultiLLM",
+			"PRAlign",
 			"PRGate",
 			"PRRework",
 			"PlanWrite",

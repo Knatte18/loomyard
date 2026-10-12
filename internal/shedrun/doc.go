@@ -27,6 +27,7 @@
 // ArbiterDir is the durable directory of a run's arbiter attempts, and ArbiterRel its anchor-relative form.
 // ArbiterAttemptDir is one attempt's directory (attempt-<N>, 1-based).
 // ArbiterMarker is the ephemeral in-flight marker under ScratchDir.
+// AlignmentDir is the durable directory of a run's alignment attempts at one point, and AlignmentRel the anchor-relative form of the directory holding every point's.
 //
 // RunsRootRel names the anchor-relative run-records root, because fabricengine's Add drops everything under it from a freshly forked pair.
 // RunsRoot and ScratchRoot are its absolute durable and ephemeral forms, the directories every run directory and scratch directory sit under.

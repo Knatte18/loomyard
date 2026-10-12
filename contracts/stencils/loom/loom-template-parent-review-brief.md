@@ -1,5 +1,5 @@
 <!-- This is the parent-review reviewer brief, handed to the one-shot fork the parent runs for a review notice, rendered by ParentReviewBrief (internal/loomengine/parentreview.go).
-     Every marker is a top-level {{.X}} substitution: {{.slug}}, {{.decision_record_path}}, {{.support_log_path}} and {{.review_format_path}}.
+     Every marker is a top-level {{.X}} substitution: {{.slug}}, {{.decision_record_path}}, {{.support_log_path}}, {{.review_format_path}}, {{.alignment_report}} and {{.alignment_reason}}.
      The review-output format is named by the path of the deployed burler-review-format stencil and never restated here. -->
 
 # Parent review — does the design for {{.slug}} fit the planned work?
@@ -12,6 +12,15 @@ The child has finished its design and is waiting on your verdict.
 1. The decision record: {{.decision_record_path}}
 2. The support log: {{.support_log_path}}
 3. The board: run `lyx board list`, then `lyx board get` every entry that touches this task.
+
+## The alignment agent
+
+An alignment agent may have looked at this task before you.
+Its report: {{.alignment_report}}
+Why it did not settle the review: {{.alignment_reason}}
+
+When the report is not `none`, read it first; it covers the board and the other runs in flight.
+Both read `none` when no agent ran.
 
 ## What to judge
 

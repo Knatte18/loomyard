@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -60,6 +61,34 @@ func armPRGate(deps *landingshed.Deps) {
 	deps.RejectionPath = filepath.Join(deps.ScratchDir, "rejection.json")
 	deps.TaskHead = func() (string, error) { return "head", nil }
 }
+
+// armPRAlign adds the Alignment seams landingshed.NewPRAlign requires on top of armPRGate's fields.
+func armPRAlign(deps *landingshed.Deps) {
+	armPRGate(deps)
+	deps.Alignment = landingshed.AlignmentDeps{
+		Config:   func() (landingshed.AlignmentConfig, error) { return landingshed.AlignmentConfig{Off: true}, nil },
+		Session:  noopAlignmentSession{},
+		Snapshot: func() (string, error) { return "", nil },
+		NotePath: filepath.Join(deps.ScratchDir, "note.json"),
+	}
+}
+
+// noopAlignmentSession is an alignment session that starts nothing and has no attempts.
+type noopAlignmentSession struct{}
+
+func (noopAlignmentSession) Begin(alignment.SpawnInput) (alignment.Attempt, error) {
+	return alignment.Attempt{}, nil
+}
+
+func (noopAlignmentSession) Poll(alignment.Attempt) (alignment.Outcome, error) {
+	return alignment.Outcome{}, nil
+}
+
+func (noopAlignmentSession) Close(alignment.Attempt, string) error { return nil }
+
+func (noopAlignmentSession) MarkApplied(alignment.Attempt, string, bool) error { return nil }
+
+func (noopAlignmentSession) Attempts() ([]alignment.Attempt, error) { return nil, nil }
 
 // zeroEnvField returns a copy of env with the named field set to its Go zero value.
 // field is either a top-level Env field name, or a dotted WebsterDeps.<Field> name for one of the
@@ -148,6 +177,18 @@ func simpleEntryCases() []simpleEntryCase {
 			buildEnv: func(t *testing.T) Env {
 				env := newTestEnv(t)
 				env.Landing = validLandingDeps(t)
+				return env
+			},
+			validatedFields: nil,
+			unreadField:     "Cwd",
+		},
+		{
+			registryKey: "PRAlign",
+			entry:       prAlignEntry,
+			buildEnv: func(t *testing.T) Env {
+				env := newTestEnv(t)
+				env.Landing = validLandingDeps(t)
+				armPRAlign(&env.Landing)
 				return env
 			},
 			validatedFields: nil,

@@ -6,6 +6,7 @@ package landingshed
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -77,12 +78,12 @@ func (g *PRGate) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outpu
 
 	owner, repo, err := githubclient.ParseOwnerRepo(g.deps.OriginURL)
 	if err != nil {
-		return g.awaiting(ctx, fmt.Sprintf("origin URL unusable: %v", err))
+		return g.awaiting(ctx, fmt.Sprintf("origin URL unusable: %v", err), "")
 	}
 	client, err := NewGitHubClient()
 	if err != nil {
 		logger.Warn("landingshed: github call failed", "producer", prGateName, "action", "new github client", "cause", err)
-		return g.awaiting(ctx, fmt.Sprintf("github client unavailable: %v", err))
+		return g.awaiting(ctx, fmt.Sprintf("github client unavailable: %v", err), "")
 	}
 	pr, err := FindPullRequest(ctx, client, owner, repo, g.deps.TaskBranch, g.deps.ParentBranch)
 	if err != nil {
@@ -90,28 +91,29 @@ func (g *PRGate) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outpu
 		if terr := transientFailure(ctx, prGateName, "query existing pull request", err); terr != nil {
 			return "", shedengine.OutputPointer{}, terr
 		}
-		return g.awaiting(ctx, publishGitHubErrorReason("query existing pull request", err))
+		return g.awaiting(ctx, publishGitHubErrorReason("query existing pull request", err), "")
 	}
 
 	switch {
 	case pr != nil && !pr.GetMergedAt().IsZero():
 		return g.done(ctx)
 	case pr == nil:
-		return g.awaiting(ctx, "no pull request exists for the task branch; reopen the pull request or abandon the task")
+		return g.awaiting(ctx, "no pull request exists for the task branch; reopen the pull request or abandon the task", "")
 	case pr.GetState() != "open":
-		return g.awaiting(ctx, withPRURL("the pull request was closed without being merged; reopen the pull request or abandon the task", pr.GetHTMLURL()))
+		return g.awaiting(ctx, withPRURL("the pull request was closed without being merged; reopen the pull request or abandon the task", pr.GetHTMLURL()), "")
 	}
 
 	approval, approved, err := ReadApproval(g.deps.ApprovalPath)
 	if err != nil {
-		return g.awaiting(ctx, fmt.Sprintf("the approval record %s is unreadable or malformed (%v); re-run `lyx loom approve` to overwrite it", g.deps.ApprovalPath, err))
+		return g.awaiting(ctx, fmt.Sprintf("the approval record %s is unreadable or malformed (%v); re-run `lyx loom approve` to overwrite it", g.deps.ApprovalPath, err), "")
 	}
 	rejection, rejected, err := ReadRejection(g.deps.RejectionPath)
 	if err != nil {
-		return g.awaiting(ctx, fmt.Sprintf("the rejection record %s is unreadable or malformed (%v); re-run `lyx loom reject` to overwrite it", g.deps.RejectionPath, err))
+		return g.awaiting(ctx, fmt.Sprintf("the rejection record %s is unreadable or malformed (%v); re-run `lyx loom reject` to overwrite it", g.deps.RejectionPath, err), "")
 	}
 	if !approved && !rejected {
-		return g.awaiting(ctx, withPRURL("the pull request awaits review; run `lyx loom approve` to land it or `lyx loom reject` to send findings to rework", pr.GetHTMLURL()))
+		clause := g.alignmentClause(pr.GetNumber(), pr.GetHead().GetSHA())
+		return g.awaiting(ctx, clause+withPRURL("the pull request awaits review; run `lyx loom approve` to land it or `lyx loom reject` to send findings to rework", pr.GetHTMLURL()), clause)
 	}
 
 	head := pr.GetHead().GetSHA()
@@ -140,7 +142,28 @@ func (g *PRGate) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outpu
 	default:
 		mismatch = fmt.Sprintf("the open pull request is now #%d", pr.GetNumber())
 	}
-	return g.awaiting(ctx, withPRURL(fmt.Sprintf("the %s of pull request #%d at %s no longer matches: %s; inspect the pull request and re-run `lyx loom approve` or `lyx loom reject` (the record was written by `lyx loom %s`)", kind, recNumber, recHead, mismatch, verb), pr.GetHTMLURL()))
+	clause := g.alignmentClause(pr.GetNumber(), head)
+	return g.awaiting(ctx, clause+withPRURL(fmt.Sprintf("the %s of pull request #%d at %s no longer matches: %s; inspect the pull request and re-run `lyx loom approve` or `lyx loom reject` (the record was written by `lyx loom %s`)", kind, recNumber, recHead, mismatch, verb), pr.GetHTMLURL()), clause)
+}
+
+// alignmentClause returns the clause that opens an awaiting reason when the alignment note matches the pull request number and head: the agent's report path first, then why it did not settle the review.
+// It is empty when no note path is told, no note exists or the note concerns another pull request or head; an unreadable note is logged and adds nothing.
+func (g *PRGate) alignmentClause(number int, head string) string {
+	if g.deps.Alignment.NotePath == "" {
+		return ""
+	}
+	note, found, err := ReadAlignmentNote(g.deps.Alignment.NotePath)
+	if err != nil {
+		logger.Warn("landingshed: alignment note unreadable; naming no alignment report", "producer", prGateName, "cause", err)
+		return ""
+	}
+	if !found || note.PRNumber != number || note.HeadSHA != head {
+		return ""
+	}
+	if note.Report == "" {
+		return fmt.Sprintf("alignment did not settle this pull request - %s; ", note.Reason)
+	}
+	return fmt.Sprintf("alignment report %s did not settle this pull request - %s; ", note.Report, note.Reason)
 }
 
 // done returns Done after consulting cancelErr first, so every exit of Call, Done included, reports an operator stop as the cancellation error.
@@ -152,12 +175,13 @@ func (g *PRGate) done(ctx context.Context) (shedengine.Outcome, shedengine.Outpu
 }
 
 // awaiting ends a call at a human hand-off: a cancelled context returns the cancellation error, and otherwise it logs reason and returns Awaiting with reason on the output pointer.
-func (g *PRGate) awaiting(ctx context.Context, reason string) (shedengine.Outcome, shedengine.OutputPointer, error) {
+// A non-empty notice, without its trailing separator, rides on the pointer as the one-line notice for the run's parent.
+func (g *PRGate) awaiting(ctx context.Context, reason, notice string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if cerr := cancelErr(ctx, prGateName); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
 	}
 	logger.Info("landingshed: producer awaiting", "producer", prGateName, "reason", reason)
-	return shedengine.Awaiting, shedengine.OutputPointer{Reason: reason}, nil
+	return shedengine.Awaiting, shedengine.OutputPointer{Reason: reason, ParentNotice: strings.TrimSuffix(notice, "; ")}, nil
 }
 
 // stuck returns Stuck with reason after consulting cancelErr first, and after releasing the run's parent lock.

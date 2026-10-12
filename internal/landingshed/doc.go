@@ -1,4 +1,4 @@
-// Package landingshed owns landing's general producers, Merge-In, Publish, PR-Gate and Finalize, which any producer list may name -- none is special-cased by the engine that drives them.
+// Package landingshed owns landing's general producers, Merge-In, Publish, PR-Align, PR-Gate and Finalize, which any producer list may name -- none is special-cased by the engine that drives them.
 //
 // Publish checks the configured require_pr_to_base list (see LoadConfig) against the task's own
 // parent branch.
@@ -7,6 +7,14 @@
 // The merge-in and the plan's verify are Merge-In's, which runs ahead of Publish in a recipe's order.
 // The PR-Gate producer in this package then owns approval, rejection and the wait for the reviewer;
 // PRGate.Call documents its decision table.
+//
+// PR-Align runs between Publish and PR-Gate in a recipe that lists it.
+// For a parent in require_pr_to_base it spawns the alignment agent for the open pull request, once per pull request head, and applies the agent's verdict through RecordApproval and RecordRejection, the same write path `lyx loom approve` and `lyx loom reject` run.
+// It ends Done on every path: alignment switched off, a pull request it cannot align, an escalation, a timeout, any failure and a verdict it must not apply each leave the review to the run's parent, with an AlignmentNote naming the agent's report and the reason.
+// PR-Gate reads that note when it holds the pull request awaiting and leads its reason, and its parent notice, with the report path.
+// An agent approve is applied only when alignment_pr_approve is set, the decision snapshot is unchanged and the pull request and task heads still match; an agent reject is applied once per run, and the second goes to the parent.
+// PR-Align takes no parent lock.
+// The producer reaches the agent through the AlignmentSession interface, which `*alignment.Session` satisfies, and all its seams are told through Deps.Alignment.
 //
 // Publish, PR-Gate and Finalize hold the parent lock too, and a moved parent sends them back to Merge-In.
 // Each takes the lock through the shared guard, which grants a run that already holds it, so a re-call after a resume takes back a record handed to batten.

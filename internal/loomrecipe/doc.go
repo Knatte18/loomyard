@@ -11,6 +11,9 @@
 // A negative per-perch entry is a wiring error naming its Bouncer row.
 // PR-Gate keeps the recipe's own max_bounces.
 //
+// The loom recipe's landing tail reads `Describe → Merge-In → Merge-Review → Publish → PR-Align → PR-Gate → Finalize`.
+// PR-Align always ends Done, so it carries no on_stuck and sits outside the PR-Review segment; the darn recipe has no PR-Align row.
+//
 // The second value New takes from the env is the Discussion-Write producer: when shedrecipe.Env.DiscussionSeats is true, New runs that row on the DiscussionSeats engine instead of the recipe's DiscussionWrite.
 // The row keeps its name, gates and routing, and Routing never reads the choice.
 //

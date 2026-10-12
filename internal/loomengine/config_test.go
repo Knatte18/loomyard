@@ -113,6 +113,10 @@ func templateConfig() Config {
 		Arbiter:                  "opus[high]",
 		ArbiterTimeoutMin:        30,
 		ArbiterMaxSpawns:         3,
+		Alignment:                "opus[high]",
+		AlignmentTimeoutMin:      20,
+		SkipAlignment:            false,
+		AlignmentPRApprove:       true,
 		ReviewCirclingCheckpoint: 3,
 		ReviewMaxBounces:         3,
 		DiscussionMaxBounces:     0,
@@ -295,8 +299,15 @@ review_timeout_min: 240
 		},
 		{
 			name:   "explicit parent_review_wait_min",
-			values: map[string]string{"parent_review_wait_min": "5"},
-			mutate: func(c *Config) { c.ParentReviewWaitMin = 5 },
+			values: map[string]string{"parent_review_wait_min": "5", "alignment_timeout_min": "4"},
+			mutate: func(c *Config) { c.ParentReviewWaitMin, c.AlignmentTimeoutMin = 5, 4 },
+		},
+		{
+			name:   "explicit alignment keys",
+			values: map[string]string{"alignment": "sonnet[low]", "alignment_timeout_min": "10", "skip_alignment": "true", "alignment_pr_approve": "false"},
+			mutate: func(c *Config) {
+				c.Alignment, c.AlignmentTimeoutMin, c.SkipAlignment, c.AlignmentPRApprove = "sonnet[low]", 10, true, false
+			},
 		},
 		{
 			name:   "explicit step_idle_timeout_min",
@@ -412,6 +423,12 @@ review_timeout_min: 240
 				board:    "review: [\"opus[medium]\"]\n",
 				worktree: "review: [\"sonnet[low]\", \"sonnet[high]\"]\n",
 				mutate:   func(c *Config) { c.Review = ModelSpecList{"sonnet[low]", "sonnet[high]"} },
+			},
+			{
+				name:   "a local alignment_timeout_min is open to the local layer",
+				board:  "alignment_timeout_min: 20\n",
+				local:  "alignment_timeout_min: 10\n",
+				mutate: func(c *Config) { c.AlignmentTimeoutMin = 10 },
 			},
 		}
 		for _, tt := range tests {
@@ -549,6 +566,9 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed friction spec", "friction", `"opus[effort"`, nil, ""},
 		{"malformed driver spec", "driver", `"opus[effort"`, nil, ""},
 		{"malformed arbiter spec", "arbiter", `"opus[effort"`, nil, ""},
+		{"malformed alignment spec", "alignment", `"opus[effort"`, nil, ""},
+		{"negative alignment_timeout_min", "alignment_timeout_min", "-1", []string{"must not be negative", "set it to 0 for the 20 minute default, or to a positive integer below parent_review_wait_min"}, ""},
+		{"alignment_timeout_min equal to parent_review_wait_min", "alignment_timeout_min", "60", []string{"parent_review_wait_min", "60", "set alignment_timeout_min below parent_review_wait_min"}, ""},
 		{"negative arbiter_timeout_min", "arbiter_timeout_min", "-1", []string{"must not be negative", "0 for the 30 minute default"}, ""},
 		{"negative arbiter_max_spawns", "arbiter_max_spawns", "-1", []string{"must not be negative", "0 to turn the arbiter off"}, ""},
 		{"zero parent_review_wait_min", "parent_review_wait_min", "0", []string{"attempts: 0"}, ""},
@@ -587,6 +607,56 @@ func TestLoadConfig_Refuses(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a zero alignment_timeout_min resolving to 20 is refused at a 20-minute wait", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeLoomConfigWithKeys(t, dir, map[string]string{"alignment_timeout_min": "0", "parent_review_wait_min": "20"})
+
+		_, err := LoadConfig(configengine.Dirs{Anchor: dir}, "loom")
+		if err == nil {
+			t.Fatal("LoadConfig() error = nil; want the coherence refusal for a resolved 20-minute timeout")
+		}
+		for _, want := range []string{"alignment_timeout_min", "parent_review_wait_min", "20"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+			}
+		}
+	})
+
+	t.Run("a local skip_alignment is refused naming the local file and the key", func(t *testing.T) {
+		t.Parallel()
+		board, anchor := t.TempDir(), t.TempDir()
+		seedLoomConfig(t, board, ConfigTemplate())
+		localPath := writeLocalLoomConfig(t, anchor, "skip_alignment: true\n")
+
+		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom")
+		if !errors.Is(err, configengine.ErrInvalid) {
+			t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
+		}
+		for _, want := range []string{localPath, "skip_alignment"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+			}
+		}
+	})
+
+	t.Run("a local alignment_timeout_min at the hub's wait is refused by the coherence check", func(t *testing.T) {
+		t.Parallel()
+		board, anchor := t.TempDir(), t.TempDir()
+		seedLoomConfig(t, board, ConfigTemplate())
+		writeLocalLoomConfig(t, anchor, "alignment_timeout_min: 60\n")
+
+		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom")
+		if err == nil {
+			t.Fatal("LoadConfig() error = nil; want the coherence refusal for a local timeout at the hub's 60-minute wait")
+		}
+		for _, want := range []string{"alignment_timeout_min", "parent_review_wait_min"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+			}
+		}
+	})
 
 	t.Run("a mapping discussion_advisors value names no entry index", func(t *testing.T) {
 		t.Parallel()

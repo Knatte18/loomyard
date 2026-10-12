@@ -257,11 +257,11 @@ func (c *loomCLI) reportArmFailure(out io.Writer, cmd *cobra.Command, args []str
 	}, err)
 }
 
-// inReviewGroup reports whether cmd is loom's review, circling or decision group, or a command under any of them.
-// Each resolves its own target worktree from an optional slug, which the loom pre-run must never arm as a run-id.
+// inReviewGroup reports whether cmd is loom's review, circling, decision or peers group, or a command under any of them.
+// Each resolves its own target worktree, from an optional slug or from the caller's cwd, which the loom pre-run must never arm as a run-id.
 func inReviewGroup(cmd *cobra.Command) bool {
 	for p := cmd; p.HasParent(); p = p.Parent() {
-		if (p.Name() == "review" || p.Name() == "circling" || p.Name() == decisionGroup) && p.Parent().Name() == "loom" {
+		if (p.Name() == "review" || p.Name() == "circling" || p.Name() == decisionGroup || p.Name() == peersGroup) && p.Parent().Name() == "loom" {
 			return true
 		}
 	}
@@ -467,7 +467,7 @@ Example:
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 	gotoVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.approveCmd(), c.rejectCmd(), c.commitRecordsCmd(), c.reviewCmd(), c.circlingCmd(), c.decisionCmd(), c.arbiterCmd(), c.checklistCmd())
+	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.approveCmd(), c.rejectCmd(), c.commitRecordsCmd(), c.reviewCmd(), c.circlingCmd(), c.decisionCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd())
 
 	return parent
 }

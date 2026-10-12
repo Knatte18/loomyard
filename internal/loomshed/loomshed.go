@@ -31,6 +31,7 @@ const (
 	NameMergeIn           = "Merge-In"
 	NameMergeBouncer      = "Merge-Bouncer"
 	NamePublish           = "Publish"
+	NamePRAlign           = "PR-Align"
 	NamePRGate            = "PR-Gate"
 	NamePRRework          = "PR-Rework"
 	NameDarnWrite         = "Darn-Write"
