@@ -36,6 +36,14 @@
 // a priority with no entry in the group gets no heading and no table, and Done stays one table.
 // Priority is part of an entry's scope, so the run lock refuses a change to it on a run-held entry.
 //
+// # Run settings
+//
+// An entry may carry run_settings: an object of module name to a mapping of that module's config keys, nested as in the module's YAML file.
+// Batten's Seed-Child writes it into the pair's local config layer.
+// A write of an empty object clears the field, which board.json then omits.
+// A run_settings change is never a scope change, so the run lock lets a run-held entry take it.
+// `lyx board intake` never sets the field.
+//
 // # Migration
 //
 // A board.json entry in the old shape, with a numeric tier and a type, converts in memory on load and persists in the new shape on the next write.

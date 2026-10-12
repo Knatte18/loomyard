@@ -349,6 +349,18 @@ func TestApplyPatch(t *testing.T) {
 		}
 	})
 
+	t.Run("run settings survive a patch without them and an empty object clears them", func(t *testing.T) {
+		existing := boardengine.Task{ID: 1, Slug: "test", Kind: boardengine.KindNote, RunSettings: map[string]any{"loom": map[string]any{"review_max_bounces": 2.0}}}
+		kept, err := boardengine.ApplyPatch(existing, map[string]any{"title": "Updated"})
+		if err != nil || kept.RunSettings["loom"] == nil {
+			t.Errorf("ApplyPatch(title) run settings = %v, err %v; want kept", kept.RunSettings, err)
+		}
+		cleared, err := boardengine.ApplyPatch(existing, map[string]any{"run_settings": map[string]any{}})
+		if err != nil || cleared.RunSettings != nil {
+			t.Errorf("ApplyPatch(run_settings {}) run settings = %v, err %v; want nil", cleared.RunSettings, err)
+		}
+	})
+
 	t.Run("patching slug beyond MaxSlugLength is rejected", func(t *testing.T) {
 		existing := boardengine.Task{ID: 1, Slug: "test"}
 		patch := map[string]any{

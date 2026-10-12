@@ -82,6 +82,7 @@ func TestRunLock(t *testing.T) {
 		}},
 		{name: "identical upsert", act: upsertLocked(map[string]any{"body": "body", "labels": []string{"bug"}, "issues": []int{}, "depends_on": []string{}})},
 		{name: "status-only upsert", act: upsertLocked(map[string]any{"status": "done"})},
+		{name: "run settings change", act: upsertLocked(map[string]any{"run_settings": map[string]any{"loom": map[string]any{"review_max_bounces": 2}}})},
 		{name: "normal priority on an entry without one", act: upsertLocked(map[string]any{"priority": "normal"})},
 		{name: "batch whose only item on it is status-only", extra: []map[string]any{other}, act: func(b *boardengine.Board) error {
 			return b.UpsertTasksBatch([]map[string]any{{"slug": "other", "body": "batched"}, {"slug": "locked", "status": "done"}})
@@ -173,6 +174,31 @@ func TestRunLock(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestRunStatusProducer pins that the producer half is returned for a run status and for nothing else.
+func TestRunStatusProducer(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name         string
+		status       *string
+		wantProducer string
+		wantOK       bool
+	}{
+		{name: "a run status", status: strPtr("running · Seed-Child"), wantProducer: "Seed-Child", wantOK: true},
+		{name: "done", status: strPtr("done")},
+		{name: "a hand-set word", status: strPtr("active")},
+		{name: "nil", status: nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			producer, ok := boardengine.RunStatusProducer(tc.status)
+			if producer != tc.wantProducer || ok != tc.wantOK {
+				t.Errorf("RunStatusProducer(%v) = %q, %v; want %q, %v", tc.status, producer, ok, tc.wantProducer, tc.wantOK)
+			}
+		})
+	}
 }
 
 // upsertLocked returns an action upserting patch onto the entry "locked".

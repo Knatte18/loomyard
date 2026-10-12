@@ -34,6 +34,14 @@
 //
 // `merge` carries the removed entries' issues onto the upserted entry, whether or not the payload names `issues`.
 //
+// A payload's `run_settings` is checked before the store write by `upsert`, each task of `upsert-batch` and `merge`'s upsert.
+// It must be an object of module name to keys, and `configreg.PrepareRunSettings` migrates and validates it; a refusal names the module and the key, and the board stores the migrated result.
+// A change to the stored value is refused from a session whose `LYX_STRAND_NAME` carries a task slug (`agentname.TaskSlug`), the same guard as a hub-wide config write, and names the operator or the hub orch as the way forward.
+// The guard reads outside the write lock and stops a mistaken write, not a determined one.
+// A change on an entry held by a run past `Worktree-Create` and `Seed-Child` still succeeds and adds a `notice` field to the envelope:
+// it applies to the next run's Seed-Child, and the running pair takes it through `lyx config <module> --layer local --set` in the pair.
+// Value semantics, such as a positive integer, stay with the module's load.
+//
 // `get` takes `--body` to write the entry's body alone, verbatim, with no envelope;
 // an empty body writes nothing,
 // and an absent target is an error.

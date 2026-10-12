@@ -26,6 +26,9 @@ type Task struct {
 	Body      string   `json:"body"`
 	Status    *string  `json:"status,omitempty"`     // pointer: nil → field omitted in JSON; non-nil → status value present
 	ShortName string   `json:"short_name,omitempty"` // optional short display label; falls back to Slug via ShortNameOrSlug
+
+	// RunSettings maps a module name to a mapping of that module's config keys, nested as in its YAML file; an empty value is stored as no field.
+	RunSettings map[string]any `json:"run_settings,omitempty"`
 }
 
 const (
@@ -54,13 +57,16 @@ func priorityRank(priority string) int {
 	}
 }
 
-// normalizeTask stores a normal priority as the empty value, then checks that the Kind is one of the two kinds and the Priority one of the accepted values.
+// normalizeTask stores a normal priority and an empty run settings object as the empty value, then checks that the Kind is one of the two kinds and the Priority one of the accepted values.
 func normalizeTask(t *Task) error {
 	if t.Kind != KindTask && t.Kind != KindNote {
 		return fmt.Errorf("kind %q is not one of %s, %s", t.Kind, KindTask, KindNote)
 	}
 	if t.Priority == PriorityNormal {
 		t.Priority = ""
+	}
+	if len(t.RunSettings) == 0 {
+		t.RunSettings = nil
 	}
 	if t.Priority != "" && t.Priority != PriorityHigh && t.Priority != PriorityLow {
 		return fmt.Errorf("entry %q has priority %q, and a priority is one of %s, %s, %s: correct it, or set %q to clear it",
