@@ -1,8 +1,4 @@
-// run_persist_test.go covers the boundary between Shed and disk: the read-modify-write merge
-// against a concurrent external writer, the opaque product passthrough, the deliberate
-// destruction of a stray external key, the two ways a persist can fail, the five read-gate and
-// lookup hard errors, and the locking rules (already-held run lock, lock-parent creation, and the
-// same-path validation error).
+// run_persist_test.go covers the boundary between Shed and disk: the read-modify-write merge against a concurrent external writer, the opaque product passthrough, the unknown keys a persist keeps, the two ways a persist can fail, the five read-gate and lookup hard errors, and the locking rules (already-held run lock, lock-parent creation, and the same-path validation error).
 
 package shedengine
 
@@ -50,6 +46,20 @@ func externalUpdate(t *testing.T, statusPath, statusLockPath string, mutate func
 	}
 }
 
+// readRawStatus returns the top-level members of the status file at statusPath as raw JSON, so a test sees a key the Status type does not declare with its exact digits.
+func readRawStatus(t *testing.T, statusPath string) map[string]json.RawMessage {
+	t.Helper()
+	data, err := os.ReadFile(statusPath)
+	if err != nil {
+		t.Fatalf("read status file: %v", err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("unmarshal status file: %v", err)
+	}
+	return raw
+}
+
 // TestRun_ExternalWriteSurvivesPersist is the regression test for the whole-file-clobber hazard,
 // and the reason the loop re-reads at the top of every iteration and merges rather than
 // rewriting from an in-memory copy: as originally specified, a pause requested during a long
@@ -66,6 +76,7 @@ func TestRun_ExternalWriteSurvivesPersist(t *testing.T) {
 		externalUpdate(t, statusPath, statusLockPath, func(cur map[string]any) {
 			cur["pause_requested"] = true
 			cur["product"] = replacedProduct
+			cur["external_key"] = "kept"
 		})
 		return Done, OutputPointer{}, nil
 	}
@@ -101,6 +112,10 @@ func TestRun_ExternalWriteSurvivesPersist(t *testing.T) {
 	}
 	if !reflect.DeepEqual(gotProduct, wantProduct) {
 		t.Errorf("persisted Product = %s; want semantically equal to %s", got.Product, replacedProduct)
+	}
+	raw := readRawStatus(t, statusPath)
+	if string(raw["external_key"]) != `"kept"` {
+		t.Errorf("persisted external_key = %s; want %q, a key the externally written file held and the persist's type does not declare", raw["external_key"], `"kept"`)
 	}
 }
 
@@ -148,50 +163,6 @@ func TestRun_ProductPassthrough(t *testing.T) {
 	if bytes.Equal(got.Product, product) {
 		t.Logf("persisted Product happened to be byte-identical to the seed; the semantic-equality assertion above is still the one that matters")
 	}
-}
-
-// TestRun_StrayExternalKeyDestroyed pins that an unrecognised top-level key written by an
-// external actor after the read gate has already passed is silently dropped by the full-struct
-// marshal, not caught by a later strict read -- because the merge strips it and the next read
-// then sees a clean file. This is a corrected misconception rather than an obvious fact: product
-// is the sanctioned channel for everything an external writer legitimately owns, so a top-level
-// key outside it is a mistake nothing in this design promises to preserve. A key present before
-// the read gate is a different case, covered by TestRun_UnknownTopLevelKeyBeforeRead below.
-func TestRun_StrayExternalKeyDestroyed(t *testing.T) {
-	shed, statusPath, _, statusLockPath := newTestShed(t)
-
-	p1 := &funcProducer{}
-	p1.fn = func(ctx context.Context) (Outcome, OutputPointer, error) {
-		externalUpdate(t, statusPath, statusLockPath, func(cur map[string]any) {
-			cur["a_stray_top_level_key"] = "an external writer's mistake"
-		})
-		return Done, OutputPointer{}, nil
-	}
-	shed.Producers = []ProducerDef{{Name: "A", Producer: p1}}
-	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
-
-	result, err := shed.Run(context.Background())
-	if err != nil {
-		t.Fatalf("Run(...) = _, %v; want nil error -- the run completes normally rather than erroring", err)
-	}
-	if result.Outcome != RunDone {
-		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunDone)
-	}
-
-	// readStatus uses the strict decoder; it would itself fail the test if the key
-	// survived, but a direct raw-map check states the property being pinned explicitly.
-	data, err := os.ReadFile(statusPath)
-	if err != nil {
-		t.Fatalf("read status file: %v", err)
-	}
-	var raw map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatalf("unmarshal status file: %v", err)
-	}
-	if _, present := raw["a_stray_top_level_key"]; present {
-		t.Errorf("stray key survived the persist; want it silently dropped by the full-struct marshal")
-	}
-	readStatus(t, statusPath, statusLockPath) // fails the test itself if the strict read now rejects the file.
 }
 
 // TestRun_StatusFileDeletedMidRun proves the persist's own missing-file guard holds the
@@ -346,12 +317,11 @@ func TestRun_MalformedStatusFile(t *testing.T) {
 	}
 }
 
-// TestRun_UnknownTopLevelKeyBeforeRead covers an unknown top-level key present before the read
-// gate runs -- the read gate accepts a key that was on disk when the gate ran, which is
-// deliberately a different case from TestRun_StrayExternalKeyDestroyed's key written after the
-// gate passed.
+// TestRun_UnknownTopLevelKeyBeforeRead covers unknown keys present before the read gate runs: the read gate accepts a key that was on disk when the gate ran, and the persist keeps it.
+// The seeded history holds one entry of another producer carrying an unknown key beside the top-level `unexpected_key`, so the run's own appended entry never folds into it.
+// After the run both keys survive with their exact values and the entry the persist appended carries none.
 func TestRun_UnknownTopLevelKeyBeforeRead(t *testing.T) {
-	shed, statusPath, _, _ := newTestShed(t)
+	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	raw := map[string]any{
 		"current_producer": "A",
@@ -359,8 +329,14 @@ func TestRun_UnknownTopLevelKeyBeforeRead(t *testing.T) {
 		"error":            "",
 		"pause_requested":  false,
 		"activity":         map[string]any{"now": "A", "last": "", "wait": ""},
-		"history":          []any{},
-		"unexpected_key":   true,
+		"history": []any{map[string]any{
+			"producer": "Earlier",
+			"outcome":  string(Done),
+			"output":   "",
+			"at":       "2026-01-01T00:00:00Z",
+			"zz_entry": json.Number("9007199254740993"),
+		}},
+		"unexpected_key": true,
 	}
 	data, err := json.Marshal(raw)
 	if err != nil {
@@ -382,6 +358,25 @@ func TestRun_UnknownTopLevelKeyBeforeRead(t *testing.T) {
 	}
 	if producer.calls != 1 {
 		t.Errorf("producer.calls = %d; want 1", producer.calls)
+	}
+
+	readStatus(t, statusPath, statusLockPath)
+	persisted := readRawStatus(t, statusPath)
+	if string(persisted["unexpected_key"]) != "true" {
+		t.Errorf("persisted unexpected_key = %s; want true", persisted["unexpected_key"])
+	}
+	var history []map[string]json.RawMessage
+	if err := json.Unmarshal(persisted["history"], &history); err != nil {
+		t.Fatalf("unmarshal persisted history: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("persisted history has %d entries; want the seeded one and the run's own", len(history))
+	}
+	if string(history[0]["zz_entry"]) != "9007199254740993" {
+		t.Errorf("seeded history entry zz_entry = %s; want 9007199254740993", history[0]["zz_entry"])
+	}
+	if _, present := history[1]["zz_entry"]; present {
+		t.Errorf("appended history entry carries zz_entry; want an entry with no unknown key")
 	}
 }
 

@@ -100,7 +100,7 @@ internal/shuttleengine: 164
 internal/shuttleengine/claudeengine: 108
 internal/standalonegeom: 7
 internal/standalonestate: 6
-internal/state: 8
+internal/state: 9
 internal/statuscommit: 6
 internal/statuspane: 6
 internal/stencil: 4

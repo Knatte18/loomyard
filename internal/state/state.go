@@ -7,11 +7,13 @@
 package state
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -23,7 +25,7 @@ var ErrRead = errors.New("state: read failed")
 // ErrDecode sentinels a decode failure (malformed JSON).
 var ErrDecode = errors.New("state: decode failed")
 
-// WriteJSON writes a value as indented JSON to path atomically.
+// WriteJSON writes a value as indented JSON to path atomically, keeping every key of the file it replaces that the value's type does not declare.
 func WriteJSON[T any](path, lockPath string, v T) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -41,15 +43,32 @@ func WriteJSON[T any](path, lockPath string, v T) error {
 
 // writeJSONUnlocked marshals v as indented JSON and writes it to path atomically, assuming the
 // caller already holds whatever lock guards path.
+// It keeps every key of the file it replaces that T does not declare.
 // It exists so WriteJSON and UpdateJSON can share this body without either composing on top of the
 // other's own internal lock acquisition.
 func writeJSONUnlocked[T any](path string, v T) error {
-	data, err := json.MarshalIndent(v, "", "  ")
+	data, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("marshal state: %w", err)
 	}
 
-	return fsx.AtomicWriteBytes(path, data)
+	replaced, err := os.ReadFile(path)
+	switch {
+	case err == nil:
+		// A file that does not parse adds nothing: v is written alone over it.
+		if json.Valid(replaced) {
+			data = keepUnknown(reflect.TypeFor[T](), replaced, data)
+		}
+	case !os.IsNotExist(err):
+		return fmt.Errorf("read state to keep its unknown keys: %w", err)
+	}
+
+	var indented bytes.Buffer
+	if err := json.Indent(&indented, data, "", "  "); err != nil {
+		return fmt.Errorf("indent state: %w", err)
+	}
+
+	return fsx.AtomicWriteBytes(path, indented.Bytes())
 }
 
 // ReadJSON reads a JSON value from the given path.

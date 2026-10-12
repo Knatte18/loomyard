@@ -643,13 +643,9 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // and writes whatever the mutate returns, so without the guard a status file deleted mid-run would
 // be silently re-created from a zero value, contradicting the rule that Shed never seeds one.
 //
-// The accepted leniency asymmetry: UpdateJSON re-reads through a plain unmarshal with no
-// unknown-field rejection, so strictness is the contract of the read gate only. Malformed JSON
-// still fails loud on this path, but an unknown top-level key written by an external actor after
-// the read gate passed is silently destroyed by the full-struct marshal -- not caught by a later
-// strict read, because the merge strips it and the next read sees a clean file. This is accepted
-// because product is the sanctioned channel for everything an external writer legitimately owns,
-// and a key outside it is a mistake nothing here promises to preserve.
+// The persist keeps every key its type does not know, through internal/state.
+// A key an external actor wrote, or a newer binary added, survives each write.
+// Malformed JSON still fails loud on this path.
 //
 // After the write, and only after UpdateJSON has returned and released StatusLockPath, persist
 // calls s.CommitStatus with the transition's own nextCurrentProducer and string(nextState),
