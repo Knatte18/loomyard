@@ -566,3 +566,37 @@ func getKeys(m map[string]string) []string {
 	}
 	return keys
 }
+
+// TestFormatAge pins the unit boundaries, the unknown-date blank and the clamp of a future date.
+func TestFormatAge(t *testing.T) {
+	t.Parallel()
+	const day = 24 * time.Hour
+	tests := []struct {
+		name  string
+		since time.Time
+		want  string
+	}{
+		{"zero age", renderTime, "0m"},
+		{"last minute unit", renderTime.Add(-45 * time.Minute), "45m"},
+		{"first hour unit", renderTime.Add(-time.Hour), "1h"},
+		{"hours", renderTime.Add(-5 * time.Hour), "5h"},
+		{"first day unit", renderTime.Add(-day), "1d"},
+		{"last day unit", renderTime.Add(-14*day + time.Second), "13d"},
+		{"first week unit", renderTime.Add(-14 * day), "2w"},
+		{"last week unit", renderTime.Add(-91*day + time.Second), "12w"},
+		{"first month unit", renderTime.Add(-91 * day), "3mo"},
+		{"last month unit", renderTime.Add(-365*day + time.Second), "12mo"},
+		{"first year unit", renderTime.Add(-365 * day), "1y"},
+		{"years", renderTime.Add(-2 * 365 * day), "2y"},
+		{"unknown date", time.Time{}, ""},
+		{"future date", renderTime.Add(time.Hour), "0m"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := boardengine.FormatAge(tt.since, renderTime); got != tt.want {
+				t.Errorf("FormatAge(%v) = %q, want %q", tt.since, got, tt.want)
+			}
+		})
+	}
+}
