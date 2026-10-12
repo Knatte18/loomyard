@@ -7,7 +7,6 @@
 package state
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,7 +20,7 @@ import (
 // ErrRead sentinels a read failure other than not-exist.
 var ErrRead = errors.New("state: read failed")
 
-// ErrDecode sentinels a decode failure (malformed or unknown field).
+// ErrDecode sentinels a decode failure (malformed JSON).
 var ErrDecode = errors.New("state: decode failed")
 
 // WriteJSON writes a value as indented JSON to path atomically.
@@ -92,7 +91,7 @@ func readJSONUnlocked[T any](path string) (T, bool, error) {
 	if err := json.Unmarshal(data, &v); err != nil {
 		// Wrapped in ErrDecode (alongside the underlying json error, both via %w) so a caller can
 		// tell a decode failure apart from a read or lock failure with errors.Is, exactly as
-		// ReadJSONStrict already does on its own strict path. loomshed.Seed relies on this to refuse
+		// ReadJSONStrict already does on its own path. loomshed.Seed relies on this to refuse
 		// — never overwrite — a present-but-undecodable status file rather than escalate it as
 		// bootstrap's own gate (crucible round fable5-high-r5, F3). The "unmarshal state" wording is
 		// kept for readers of the message.
@@ -138,9 +137,9 @@ func UpdateJSON[T any](path, lockPath string, mutate func(cur T, found bool) (T,
 	return writeJSONUnlocked(path, next)
 }
 
-// ReadJSONStrict reads a JSON value from path, rejecting unknown fields.
+// ReadJSONStrict reads a JSON value from path, accepting fields T does not declare.
 // Returns (zero, false, nil) if the file does not exist.
-// Unlike ReadJSON, does not create missing parent directories.
+// Does not create missing parent directories.
 func ReadJSONStrict[T any](path, lockPath string) (T, bool, error) {
 	var zero T
 
@@ -159,9 +158,7 @@ func ReadJSONStrict[T any](path, lockPath string) (T, bool, error) {
 	}
 
 	var v T
-	d := json.NewDecoder(bytes.NewReader(data))
-	d.DisallowUnknownFields()
-	if err := d.Decode(&v); err != nil {
+	if err := json.Unmarshal(data, &v); err != nil {
 		return zero, false, fmt.Errorf("%w: %v", ErrDecode, err)
 	}
 

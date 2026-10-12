@@ -347,7 +347,7 @@ func TestRun_MalformedStatusFile(t *testing.T) {
 }
 
 // TestRun_UnknownTopLevelKeyBeforeRead covers an unknown top-level key present before the read
-// gate runs -- the strict read gate rejecting a key that was on disk when the gate ran, which is
+// gate runs -- the read gate accepts a key that was on disk when the gate ran, which is
 // deliberately a different case from TestRun_StrayExternalKeyDestroyed's key written after the
 // gate passed.
 func TestRun_UnknownTopLevelKeyBeforeRead(t *testing.T) {
@@ -374,12 +374,14 @@ func TestRun_UnknownTopLevelKeyBeforeRead(t *testing.T) {
 	shed.Producers = []ProducerDef{{Name: "A", Producer: producer}}
 
 	result, err := shed.Run(context.Background())
-	if err == nil {
-		t.Fatalf("Run(...) = _, nil; want a non-nil error")
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error", err)
 	}
-	assertZeroResult(t, result)
-	if producer.calls != 0 {
-		t.Errorf("producer.calls = %d; want 0", producer.calls)
+	if result.Outcome != RunDone {
+		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunDone)
+	}
+	if producer.calls != 1 {
+		t.Errorf("producer.calls = %d; want 1", producer.calls)
 	}
 }
 

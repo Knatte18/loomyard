@@ -1,4 +1,4 @@
-// strict_test.go tests ReadJSONStrict's decode-strictness and no-MkdirAll contract using only temp
+// strict_test.go tests ReadJSONStrict's unknown-field tolerance and no-MkdirAll contract using only temp
 // files — no git, no spawning, untagged (Tier 1).
 
 package state
@@ -28,7 +28,7 @@ func TestReadJSONStrict(t *testing.T) {
 	}{
 		{name: "ValidDecode", content: []byte(`{"name":"widget"}`), wantOK: true, wantName: "widget"},
 		{name: "MissingFileExistingParent", content: nil},
-		{name: "UnknownField", content: []byte(`{"name":"widget","extra":true}`), wantErrDecode: true},
+		{name: "UnknownField", content: []byte(`{"name":"widget","extra":true}`), wantOK: true, wantName: "widget"},
 		{name: "MalformedJSON", content: []byte(`{"name":`), wantErrDecode: true},
 	}
 	for _, tt := range tests {
