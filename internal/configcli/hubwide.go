@@ -43,7 +43,7 @@ type configDirs struct {
 // the hub orch's slug-free name and an empty name pass.
 // The refusal guards a mistaken write, not a determined agent: it reads the strand name the caller passes and nothing else about the session.
 func hubWriteRefusal(l *lyxcwd.Location, strandName string) (string, error) {
-	if name, err := agentname.Parse(strandName); err == nil && name.Slug != "" {
+	if agentname.TaskSlug(strandName) != "" {
 		return fmt.Sprintf("a hub-wide config write is refused from the task session %s; way forward: the operator or the hub orch runs the write from the prime worktree", strandName), nil
 	}
 	isPrime, err := fabricengine.IsPrimeWorktree(l)
