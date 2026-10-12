@@ -645,7 +645,7 @@ func TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker(t *testing.T) {
 	}{
 		{name: "no status file"},
 		{name: "running run is a no-op", runState: shedengine.StateRunning},
-		{name: "undecodable status file is a no-op", statusBody: unknownFieldStatusBody},
+		{name: "undecodable status file is a no-op", statusBody: malformedStatusBody},
 		{name: "awaiting run refuses retryably", runState: shedengine.StateAwaiting, wantKind: shedrun.StartNotParkedKind, wantIn: notParked},
 		{name: "blocked run refuses retryably", runState: shedengine.StateBlocked, wantKind: shedrun.StartNotParkedKind, wantIn: notParked},
 		{name: "paused run refuses retryably", runState: shedengine.StatePaused, wantKind: shedrun.StartNotParkedKind, wantIn: notParked},
