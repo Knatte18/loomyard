@@ -49,6 +49,11 @@ type fakeSession struct {
 	sessionState    shuttleengine.SessionState // Answered by SessionState while stateErr is nil.
 	sessionStateErr error                      // Returned by every SessionState while set.
 	sessionStartAt  time.Time                  // Answered by SessionState as the newest session-start time.
+
+	// interruptErrs is consumed in order by Interrupt, which answers nil once it is drained.
+	interruptErrs []error
+	// settle is the InterruptSettle answer.
+	settle time.Duration
 }
 
 func (f *fakeSession) SessionState(string) (shuttleengine.RunSessionState, error) {
@@ -110,8 +115,15 @@ func (f *fakeSession) SessionIdle(string) (shuttleengine.IdleProbe, error) {
 
 func (f *fakeSession) Interrupt(string) error {
 	f.calls = append(f.calls, interruptCall)
-	return nil
+	if len(f.interruptErrs) == 0 {
+		return nil
+	}
+	err := f.interruptErrs[0]
+	f.interruptErrs = f.interruptErrs[1:]
+	return err
 }
+
+func (f *fakeSession) InterruptSettle() time.Duration { return f.settle }
 
 func (f *fakeSession) Send(_, text string) error {
 	f.calls = append(f.calls, "send:"+text)
