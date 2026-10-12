@@ -19,6 +19,9 @@ const creationGrace = 10 * time.Minute
 // removeAttempts is how many times a run directory's removal is tried before it is reported as a failure.
 const removeAttempts = 3
 
+// removeRetryDelay is the pause between failed removal attempts, long enough for a peer's lock probe to release a recreated lock file.
+const removeRetryDelay = 5 * time.Millisecond
+
 // SweepReport is the outcome of one sweep.
 type SweepReport struct {
 	// Candidates are the run directories a dead owner left: removed when the sweep applied, otherwise the ones it would remove.
@@ -80,6 +83,9 @@ func removeRunDirectory(path string) error {
 		}
 		if _, statErr := os.Lstat(path); errors.Is(statErr, fs.ErrNotExist) {
 			return nil
+		}
+		if attempt < removeAttempts-1 {
+			time.Sleep(removeRetryDelay)
 		}
 	}
 	return err
