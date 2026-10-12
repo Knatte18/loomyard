@@ -107,9 +107,9 @@ const (
 	// placeApart gives the strand a window to itself, named by its role.
 	placeApart ownWindowPlacement = iota
 	// placeNewShared opens the group's shared window with this strand.
-	placeNewShared ownWindowPlacement = 1
+	placeNewShared
 	// placeJoinShared splits this strand's pane into the group's existing shared window.
-	placeJoinShared ownWindowPlacement = 2
+	placeJoinShared
 )
 
 // planOwnWindowPlacement decides where a strand with display d goes, and returns the group record to store.
