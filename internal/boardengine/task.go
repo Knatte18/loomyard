@@ -8,6 +8,10 @@ package boardengine
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
+	"reflect"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -34,6 +38,101 @@ type Task struct {
 
 	// RunSettings maps a module name to a mapping of that module's config keys, nested as in its YAML file; an empty value is stored as no field.
 	RunSettings map[string]any `json:"run_settings,omitempty"`
+
+	// Unknown holds the decoded entry's keys this binary does not know, each with its raw JSON value, nil when there are none.
+	// Encoding writes them back after the known fields in key order, and no step decodes a value into a Go type.
+	Unknown map[string]json.RawMessage `json:"-"`
+}
+
+// taskKeys is the set of JSON keys Task declares, which splitUnknown subtracts from a decoded entry.
+var taskKeys = jsonKeys(reflect.TypeFor[Task]())
+
+// jsonKeys returns the JSON key names of the exported fields of struct type t: the tag name, else the field name, skipping fields tagged "-".
+func jsonKeys(t reflect.Type) []string {
+	var keys []string
+	for i := range t.NumField() {
+		field := t.Field(i)
+		if !field.IsExported() {
+			continue
+		}
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = field.Name
+		}
+		keys = append(keys, name)
+	}
+	return keys
+}
+
+// splitUnknown decodes the JSON object data and returns its members whose key matches none of known, nil when none is left.
+// A key matches a known name case-insensitively, as encoding/json matches a key to a field, so "Title" fills Title and is not also kept.
+func splitUnknown(data []byte, known []string) (map[string]json.RawMessage, error) {
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(data, &members); err != nil {
+		return nil, err
+	}
+	for key := range members {
+		if slices.ContainsFunc(known, func(name string) bool { return strings.EqualFold(key, name) }) {
+			delete(members, key)
+		}
+	}
+	if len(members) == 0 {
+		return nil, nil
+	}
+	return members, nil
+}
+
+// appendUnknown writes the unknown members into the encoded JSON object before its closing brace, in sorted key order.
+// An empty unknown returns object unchanged.
+func appendUnknown(object []byte, unknown map[string]json.RawMessage) ([]byte, error) {
+	if len(unknown) == 0 {
+		return object, nil
+	}
+	out := slices.Clone(object[:len(object)-1])
+	needComma := string(object) != "{}"
+	for _, key := range slices.Sorted(maps.Keys(unknown)) {
+		name, err := json.Marshal(key)
+		if err != nil {
+			return nil, err
+		}
+		if needComma {
+			out = append(out, ',')
+		}
+		needComma = true
+		out = append(out, name...)
+		out = append(out, ':')
+		out = append(out, unknown[key]...)
+	}
+	return append(out, '}'), nil
+}
+
+// UnmarshalJSON decodes the known fields over t's current values, so a caller's pre-set defaults survive, and keeps every other key in Unknown.
+func (t *Task) UnmarshalJSON(data []byte) error {
+	type plain Task
+	decoded := plain(*t)
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	unknown, err := splitUnknown(data, taskKeys)
+	if err != nil {
+		return err
+	}
+	*t = Task(decoded)
+	t.Unknown = unknown
+	return nil
+}
+
+// MarshalJSON encodes the known fields, then the Unknown members after them in key order.
+func (t Task) MarshalJSON() ([]byte, error) {
+	type plain Task
+	object, err := json.Marshal(plain(t))
+	if err != nil {
+		return nil, err
+	}
+	return appendUnknown(object, t.Unknown)
 }
 
 const (
@@ -158,7 +257,8 @@ func NewTask(fields map[string]any, nextID int) (Task, error) {
 }
 
 // ApplyPatch overlays fields onto existing and returns the updated Task.
-// Uses JSON round-trip: existing → map → overlay fields → Task, preserving fields not in the patch.
+// Uses JSON round-trip: existing → raw members → each patch field overlaid as its own encoding → Task, preserving fields not in the patch.
+// The members stay raw, so the existing entry's kept keys come back with their exact digits.
 // Unknown-field validation is the caller's responsibility (store.validateUpsertFields).
 func ApplyPatch(existing Task, fields map[string]any) (Task, error) {
 	existingJSON, err := json.Marshal(existing)
@@ -166,14 +266,18 @@ func ApplyPatch(existing Task, fields map[string]any) (Task, error) {
 		return Task{}, fmt.Errorf("marshal existing: %w", err)
 	}
 
-	var existingMap map[string]any
+	var existingMap map[string]json.RawMessage
 	err = json.Unmarshal(existingJSON, &existingMap)
 	if err != nil {
 		return Task{}, fmt.Errorf("unmarshal existing: %w", err)
 	}
 
 	for k, v := range fields {
-		existingMap[k] = v
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			return Task{}, fmt.Errorf("marshal field %q: %w", k, err)
+		}
+		existingMap[k] = encoded
 	}
 
 	mergedJSON, err := json.Marshal(existingMap)

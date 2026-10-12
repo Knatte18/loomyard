@@ -7,16 +7,42 @@
 package boardengine
 
 import (
+	"encoding/json"
+	"maps"
 	"slices"
 	"strings"
 	"unicode"
 )
 
 // storedEntry is the decode shape of one board.json entry: a Task plus the retired tier and type fields.
+// Decoding consumes the two retired keys, so they are never kept in Task.Unknown and the saved entry carries neither.
+// Only Load decodes a storedEntry, and nothing encodes one.
 type storedEntry struct {
 	Task
 	Tier *int    `json:"tier"`
 	Type *string `json:"type"`
+}
+
+// UnmarshalJSON decodes the entry through Task.UnmarshalJSON, which the embedding would otherwise promote alone, then reads tier and type and drops both from the kept keys.
+func (e *storedEntry) UnmarshalJSON(data []byte) error {
+	if err := e.Task.UnmarshalJSON(data); err != nil {
+		return err
+	}
+	var retired struct {
+		Tier *int    `json:"tier"`
+		Type *string `json:"type"`
+	}
+	if err := json.Unmarshal(data, &retired); err != nil {
+		return err
+	}
+	e.Tier, e.Type = retired.Tier, retired.Type
+	maps.DeleteFunc(e.Task.Unknown, func(key string, _ json.RawMessage) bool {
+		return strings.EqualFold(key, "tier") || strings.EqualFold(key, "type")
+	})
+	if len(e.Task.Unknown) == 0 {
+		e.Task.Unknown = nil
+	}
+	return nil
 }
 
 // legacyTypeNames are the type names the retired type field and bracketed brief prefixes used.

@@ -9,10 +9,12 @@
 package boardengine
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -53,24 +55,56 @@ const (
 
 // storeFile is the on-disk shape of board.json.
 // LegacyDone lists the slugs whose done mark came from a legacy file, so the fold never re-applies one.
+// Unknown holds the top-level keys this binary does not know, written back after the known ones in key order.
 type storeFile struct {
-	Version    int      `json:"version"`
-	Entries    []Task   `json:"entries"`
-	LegacyDone []string `json:"legacy_done,omitempty"`
+	Version    int                        `json:"version"`
+	Entries    []Task                     `json:"entries"`
+	LegacyDone []string                   `json:"legacy_done,omitempty"`
+	Unknown    map[string]json.RawMessage `json:"-"`
+}
+
+// MarshalJSON encodes the known fields, then the Unknown members after them in key order.
+func (f storeFile) MarshalJSON() ([]byte, error) {
+	type plain storeFile
+	object, err := json.Marshal(plain(f))
+	if err != nil {
+		return nil, err
+	}
+	return appendUnknown(object, f.Unknown)
 }
 
 // loadedStoreFile is the decode shape of board.json: its entries may still carry the retired tier and type.
+// Unknown holds the top-level keys this binary does not know, each with its raw JSON value.
 type loadedStoreFile struct {
-	Version    int           `json:"version"`
-	Entries    []storedEntry `json:"entries"`
-	LegacyDone []string      `json:"legacy_done,omitempty"`
+	Version    int                        `json:"version"`
+	Entries    []storedEntry              `json:"entries"`
+	LegacyDone []string                   `json:"legacy_done,omitempty"`
+	Unknown    map[string]json.RawMessage `json:"-"`
+}
+
+// UnmarshalJSON decodes the known fields and keeps every other top-level key in Unknown.
+func (f *loadedStoreFile) UnmarshalJSON(data []byte) error {
+	type plain loadedStoreFile
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	unknown, err := splitUnknown(data, jsonKeys(reflect.TypeFor[plain]()))
+	if err != nil {
+		return err
+	}
+	*f = loadedStoreFile(decoded)
+	f.Unknown = unknown
+	return nil
 }
 
 // Store holds the in-memory entry list for one board directory's board.json.
 type Store struct {
 	tasks      []Task
 	legacyDone []string
-	boardDir   string
+	// unknown is the top-level keys of board.json this binary does not know, kept raw and written back by Save.
+	unknown  map[string]json.RawMessage
+	boardDir string
 	// vocab is the label vocabulary validateWrite checks labels against.
 	// Board sets it on every store it builds; only a store built directly by NewStore, in store-level tests, has none, and nil skips the label check alone.
 	vocab *Vocabulary
@@ -93,6 +127,7 @@ func NewStore(boardDir string) *Store {
 func (s *Store) Load() error {
 	s.tasks = []Task{}
 	s.legacyDone = nil
+	s.unknown = nil
 	if s.boardDir == "" {
 		return nil
 	}
@@ -109,6 +144,7 @@ func (s *Store) Load() error {
 	path := filepath.Join(s.boardDir, boardFile)
 	var entries []Task
 	var legacyDone []string
+	var unknown map[string]json.RawMessage
 	if fileExists(path) {
 		file, found, err := state.ReadJSON[loadedStoreFile](path, path+swapLockSuffix)
 		if err != nil {
@@ -118,7 +154,7 @@ func (s *Store) Load() error {
 			if file.Version != storeVersion {
 				return fmt.Errorf("load store: %s has version %d; this binary reads only version %d", boardFile, file.Version, storeVersion)
 			}
-			entries, legacyDone = migrateEntries(file.Entries, s.vocab), file.LegacyDone
+			entries, legacyDone, unknown = migrateEntries(file.Entries, s.vocab), file.LegacyDone, file.Unknown
 		}
 	} else if haveTasks || haveNotes {
 		entries, legacyDone, err = migrateLegacy(tasksRecords, notesRecords, s.vocab)
@@ -147,6 +183,7 @@ func (s *Store) Load() error {
 	}
 	s.tasks = entries
 	s.legacyDone = legacyDone
+	s.unknown = unknown
 	return nil
 }
 
@@ -179,6 +216,7 @@ func (s *Store) Save() error {
 		Version:    storeVersion,
 		Entries:    s.tasks,
 		LegacyDone: s.legacyDone,
+		Unknown:    s.unknown,
 	})
 }
 
