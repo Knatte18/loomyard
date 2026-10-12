@@ -185,6 +185,13 @@ func TestCleanup(t *testing.T) {
 			wantCommits: []string{"alpha"},
 		},
 		{
+			name:        "done status with an unknown key is removed, committed and its scratch emptied",
+			fixtures:    []cleanupFixture{{slug: "alpha", rawStatus: `{"current_producer":"Worktree-Teardown","state":"done","history":[],"routed_to":"x"}`, scratchAge: time.Hour}},
+			wantRemoved: []string{"alpha"},
+			wantEmptied: []string{"alpha"},
+			wantCommits: []string{"alpha"},
+		},
+		{
 			name: "runs that are not done are skipped with their state",
 			fixtures: []cleanupFixture{
 				{slug: "r1", runState: "running", scratchAge: time.Hour},
