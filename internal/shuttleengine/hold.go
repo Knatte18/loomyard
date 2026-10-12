@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
 const (
@@ -71,6 +72,60 @@ func (run *Run) settleDeferredHold() {
 	}
 	run.pendingHold = nil
 	run.notifyHeld(held)
+}
+
+// apiErrorContinueLine is the one line an agent whose turn ended on an API error across a machine sleep is given to carry on.
+const apiErrorContinueLine = "[lyx] Your last turn ended on an API error while the machine slept; it is awake again. Carry on with your task where you stopped."
+
+// continueAPIErrorStall types apiErrorContinueLine into the run's pane when held is an API-error turn end that stalled across a detected sleep, and reports whether it did.
+// It sends only when no pause covers the run, the session state names the newest turn end an API error, a sleep of at least pauserecord.SleepTolerance lies after the latest turn start Wait read, no continue is recorded for this turn, and no turn start was read past held.
+// RunState.APIContinued is persisted before typing, and the line goes through the guarded paste-submit; a send that fails, ErrSessionBusy included, is logged at Info and the stall is held and notified as any other.
+// A held turn end that is not an API error clears RunState.APIContinued, so the flag spans exactly the turn the continue resumed.
+func (run *Run) continueAPIErrorStall(held *heldTurnEnd) bool {
+	reading := readRunSessionState(run.state, run.runner.engine, run.clock.Now())
+	if reading.State.Cause != SessionCauseAPIError {
+		run.setAPIContinued(false)
+		return false
+	}
+	if run.covered || run.turnStartRead || run.state.APIContinued || !run.sleptSince(run.turnSince) {
+		return false
+	}
+	if !run.setAPIContinued(true) {
+		return false
+	}
+	if err := run.Send(apiErrorContinueLine); err != nil {
+		logger.Info("shuttle: automatic continue after an API error not sent", "strandGUID", run.state.StrandGUID, "offset", held.offset, "error", err)
+		return false
+	}
+	logger.Info("shuttle: continued an API error stall after a machine sleep", "strandGUID", run.state.StrandGUID, "offset", held.offset)
+	return true
+}
+
+// sleptSince reports whether the sleep watch saw a sleep of at least pauserecord.SleepTolerance end after since.
+func (run *Run) sleptSince(since time.Time) bool {
+	for _, sleep := range run.sleeps.Sleeps() {
+		if sleep.End.After(since) && sleep.End.Sub(sleep.Start) >= pauserecord.SleepTolerance {
+			return true
+		}
+	}
+	return false
+}
+
+// setAPIContinued records value as RunState.APIContinued and reports whether the record holds it.
+// An unchanged value writes nothing, and a failed write leaves the previous value and is logged at Warn.
+func (run *Run) setAPIContinued(value bool) bool {
+	run.recordMu.Lock()
+	defer run.recordMu.Unlock()
+	if run.state.APIContinued == value {
+		return true
+	}
+	run.state.APIContinued = value
+	if err := run.saveState(); err != nil {
+		run.state.APIContinued = !value
+		logger.Warn("shuttle: persist the API-error continue flag failed", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "error", err)
+		return false
+	}
+	return true
 }
 
 // notifyHeld sends the parent one notice for a held turn end of an autonomous run on a runner with a notifier.

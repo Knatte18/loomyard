@@ -80,6 +80,10 @@
 // and ends with the start of the agent's last message.
 // Every agent-written part is delimited, has its control and delimiter characters replaced by spaces and is cut to 200 runes, so the line is bounded and has no newline.
 // There is one notice per held turn end.
+// A held turn end that is an API error across a detected sleep of at least pauserecord.SleepTolerance is first given one automatic continue line, typed through the guarded paste-submit, and sends no notice and defers none:
+// no pause covers the run, the session state names the newest turn end an API error, and the sleep lies after the latest turn start Wait read.
+// RunState.APIContinued is persisted before typing and cleared by the next held turn end that is not an API error, so a turn gets at most one continue.
+// A send that fails, the guard's ErrSessionBusy included, types nothing more and the stall is held and notified as any other.
 // RunState.NotifiedOffset, the events-file offset past the last notified one, is persisted before the notifier is called,
 // and a held turn end at or below it is never notified again, including when an Attach replays it.
 // A batch of several new events is classified by its last event, so only its last held turn end is notified.

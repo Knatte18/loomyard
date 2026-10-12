@@ -320,6 +320,8 @@ type Run struct {
 	sleeps pauserecord.SleepWatch
 	// covered reports that the latest Wait tick read a pause covering the run's pair.
 	covered bool
+	// turnSince is the run clock's time when Wait last read a turn start, or began.
+	turnSince time.Time
 	// pauseReadError is the text of the pause record error last warned about, so a persistent error warns once.
 	pauseReadError string
 	// clock is the time seam for tests.

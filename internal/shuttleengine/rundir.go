@@ -121,6 +121,10 @@ type RunState struct {
 	// so a crash between the write and the call loses that one notice and never repeats it.
 	// It is kept apart from NotifiedOffset so a held-turn-end notice and a dialog notice never suppress each other.
 	DialogNotifiedOffset int64 `json:"dialogNotifiedOffset,omitempty"`
+	// APIContinued is true while the turn an automatic continue line resumed has not ended on a non-API-error turn end.
+	// Wait persists it before typing the line and clears it at the next held turn end that is not an API error.
+	// One turn thus gets at most one continue, and a reattached Wait never sends twice.
+	APIContinued bool `json:"apiContinued,omitempty"`
 	// PromptOffset is the events-file size at the moment before Start sends the prompt, past the skill-load turns it ran and any line appended after them.
 	// It is zero when Start loaded no skills or for a record that predates the field.
 	// Every reader that replays the events file from its start begins here instead, so a load turn's end is never read as the run's own.

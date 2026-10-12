@@ -287,9 +287,13 @@ func (run *Run) Wait() (Result, error) {
 	// The dialog latch reads asks from the larger of the prompt offset and the last dialog-notified offset, so a reattach never re-notifies a dialog it already did.
 	run.dialog = dialogLatch{cursor: max(run.state.PromptOffset, run.state.DialogNotifiedOffset)}
 
+	run.turnSince = run.clock.Now()
 	for tick := 1; ; tick++ {
 		run.observePause()
 		outcome, held, err := run.pollEventsTick()
+		if err == nil && run.turnStartRead {
+			run.turnSince = run.clock.Now()
+		}
 		run.syncShellWait()
 		if err == nil && (run.eventsRead || run.turnStartRead) {
 			run.endHeldWait()
@@ -311,11 +315,13 @@ func (run *Run) Wait() (Result, error) {
 				// A turn end without every output file never ends the run.
 				// Log it so the durable trace records each one, and keep polling the same agent.
 				logger.Info("shuttle: turn end held, output files missing", "strandGUID", run.state.StrandGUID, "offset", held.offset, "lastAssistantMessage", held.message)
+				continued := run.continueAPIErrorStall(held)
 				// A turn start read past this turn end in the same batch means the next turn is already under way, so no hold shows.
 				if !run.turnStartRead {
 					run.beginHeldWait(held.offset)
 				}
 				switch {
+				case continued:
 				case run.spec.HoldDeferral == nil:
 					run.notifyHeld(held)
 				case !run.turnStartRead:
