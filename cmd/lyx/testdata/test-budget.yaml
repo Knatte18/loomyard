@@ -38,7 +38,7 @@ internal/frictionengine: 15
 internal/fslink: 5
 internal/fswatch: 5
 internal/fsx: 4
-internal/gatecli: 3
+internal/gatecli: 4
 internal/gateslot: 12
 internal/gitexec: 7
 internal/githubclient: 11
