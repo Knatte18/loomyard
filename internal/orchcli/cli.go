@@ -6,6 +6,7 @@ package orchcli
 import (
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -18,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/statuspane"
 	"github.com/spf13/cobra"
 )
 
@@ -25,17 +27,31 @@ import (
 type strandOps interface {
 	Strands() ([]reedengine.StrandStatus, error)
 	RemoveStrand(guid string) error
+	AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error)
+	ReplaceStrand(guid string, spec reedengine.AddSpec) (reedengine.Strand, error)
 }
 
 // reedStrandOps adapts *reedengine.Engine to strandOps.
 type reedStrandOps struct {
-	status func() (reedengine.StatusResult, error)
-	remove func(guid string, recursive bool) (reedengine.Removed, error)
+	status  func() (reedengine.StatusResult, error)
+	remove  func(guid string, recursive bool) (reedengine.Removed, error)
+	add     func(spec reedengine.AddSpec) (reedengine.Strand, error)
+	replace func(guid string, spec reedengine.AddSpec) (reedengine.Strand, error)
 }
 
-// newReedStrandOps wraps reed's own Status and RemoveStrand.
+// newReedStrandOps wraps reed's own Status, RemoveStrand, AddStrand and ReplaceStrand.
 func newReedStrandOps(reed *reedengine.Engine) reedStrandOps {
-	return reedStrandOps{status: reed.Status, remove: reed.RemoveStrand}
+	return reedStrandOps{status: reed.Status, remove: reed.RemoveStrand, add: reed.AddStrand, replace: reed.ReplaceStrand}
+}
+
+// AddStrand adds a strand to reed's session.
+func (o reedStrandOps) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
+	return o.add(spec)
+}
+
+// ReplaceStrand replaces the strand guid with one built from spec, keeping its slot.
+func (o reedStrandOps) ReplaceStrand(guid string, spec reedengine.AddSpec) (reedengine.Strand, error) {
+	return o.replace(guid, spec)
 }
 
 // Strands returns the strands reed tracks in this session.
@@ -69,6 +85,10 @@ type orchCLI struct {
 	sleep        func(time.Duration)
 	// indexRunner returns the output of `<bin> help index`.
 	indexRunner func(bin string) (string, error)
+	// executable returns the path of the running lyx binary, which the runs strand's command names.
+	executable func() (string, error)
+	// currentBuild identifies the running lyx build, which tells a runs strand of this build from an older one.
+	currentBuild func() (statuspane.BuildIdentity, error)
 }
 
 // Command returns the cobra command tree for the orch module.
@@ -154,6 +174,8 @@ Every verb runs from the hub's prime worktree only.`,
 			c.spawnWatcher = c.spawnWatcherProcess
 			c.sleep = time.Sleep
 			c.indexRunner = runHelpIndex
+			c.executable = os.Executable
+			c.currentBuild = statuspane.CurrentBuild
 			return nil
 		},
 	}
