@@ -354,20 +354,20 @@ func (s *Session) Close(a Attempt, reason string) error {
 	if err := s.stopStrand(current); err != nil {
 		return err
 	}
-	current.Closed = true
-	current.ClosedReason = reason
-	return WriteAttempt(current)
+	return updateAttempt(a.Dir, func(latest Attempt) Attempt {
+		latest.Closed = true
+		latest.ClosedReason = reason
+		return latest
+	})
 }
 
 // MarkApplied records the verdict Go applied for the attempt and whether the parent was notified of it.
 func (s *Session) MarkApplied(a Attempt, applied string, notified bool) error {
-	current, err := ReadAttempt(a.Dir)
-	if err != nil {
-		return err
-	}
-	current.Applied = applied
-	current.Notified = notified
-	return WriteAttempt(current)
+	return updateAttempt(a.Dir, func(latest Attempt) Attempt {
+		latest.Applied = applied
+		latest.Notified = notified
+		return latest
+	})
 }
 
 // Attempts lists every attempt under the session's root, sorted by number.
