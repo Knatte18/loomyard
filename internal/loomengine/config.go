@@ -10,6 +10,7 @@
 // discussion_max_bounces, plan_max_bounces and webster_max_bounces set one perch's bounce budget, and 0 takes review_max_bounces;
 // discussion_auto_accept, plan_auto_accept and webster_auto_accept make that perch settle a spent budget as accepted instead of escalating to the parent.
 // discussion_producer selects the Discussion-Write row's producer and must be single, seats or twill.
+// plan_producer selects the Plan-Write row's producer, single or twill, and an empty value reads as single.
 // discussion_advisors lists the seats producer's advisor model-specs; every entry is resolved through the model registry at load, whatever discussion_producer holds, and an unset list loads as no advisors.
 // Under seats, no advisors runs the chair alone, deciding each question itself.
 // seed, discussion_judge, plan_judge, webster_judge, discussion_seed, plan_seed, webster_seed and rework are role model-specs validated only when non-empty, an empty value meaning the fallback:
@@ -338,6 +339,13 @@ const (
 	DiscussionProducerTwill = "twill"
 )
 
+const (
+	// PlanProducerSingle selects the single-agent writer for the Plan-Write row.
+	PlanProducerSingle = "single"
+	// PlanProducerTwill selects the single-agent writer with lens forks for the Plan-Write row.
+	PlanProducerTwill = "twill"
+)
+
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.
 type Config struct {
 	Discussion            string        `yaml:"discussion"`
@@ -347,7 +355,8 @@ type Config struct {
 	DiscussionAdvisors    ModelSpecList `yaml:"discussion_advisors"`
 	Plan                  string        `yaml:"plan"`
 	PlanTimeoutMin        int           `yaml:"plan_timeout_min"`
-	Review                ModelSpecList `yaml:"review"`
+	PlanProducer          string        `yaml:"plan_producer"`
+	Review               ModelSpecList `yaml:"review"`
 	Fix                   ModelSpecList `yaml:"fix"`
 	DiscussionReview      ModelSpecList `yaml:"discussion_review"`
 	DiscussionFix         ModelSpecList `yaml:"discussion_fix"`
@@ -727,6 +736,15 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	case DiscussionProducerSingle, DiscussionProducerSeats, DiscussionProducerTwill:
 	default:
 		return Config{}, fmt.Errorf("loom config key %q: unknown value %q; set it to %q, %q or %q", "discussion_producer", cfg.DiscussionProducer, DiscussionProducerSingle, DiscussionProducerSeats, DiscussionProducerTwill)
+	}
+
+	if cfg.PlanProducer == "" {
+		cfg.PlanProducer = PlanProducerSingle
+	}
+	switch cfg.PlanProducer {
+	case PlanProducerSingle, PlanProducerTwill:
+	default:
+		return Config{}, fmt.Errorf("loom config key %q: unknown value %q; set it to %q or %q", "plan_producer", cfg.PlanProducer, PlanProducerSingle, PlanProducerTwill)
 	}
 
 	return cfg, nil

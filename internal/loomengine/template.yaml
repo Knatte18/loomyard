@@ -5,6 +5,7 @@ discussion_producer: single  # producer the Discussion-Write row runs: single, t
 discussion_advisors: ["sonnet[high]"]  # model-specs of the advisors a seats chair consults, one advisor per entry; read only when discussion_producer is seats, and an empty list runs the chair alone, deciding each question itself
 plan: opus[medium]  # model-spec for the plan-phase producer agent (see contracts/specs/llm-model-spec.md)
 plan_timeout_min: 120  # minutes the plan agent's shuttle run is allowed to run (a shorter ceiling than the discussion run)
+plan_producer: single  # producer the Plan-Write row runs: single, the default, runs the single-agent writer; twill runs the single writer, which forks itself once per lens of the twill-plan fan in burler.yaml to review its plan before it finishes; an empty value reads as single
 review: opus[medium]  # model-spec for the reviewer of every review segment round (see contracts/specs/llm-model-spec.md); a YAML list sets one model per round, with the last entry for every later round
 fix: opus[medium]  # model-spec for the fixer of every review segment round (see contracts/specs/llm-model-spec.md); a YAML list sets one model per round, with the last entry for every later round
 discussion_review: ""  # model-spec for the Discussion-Review reviewer; empty takes the run-wide review list, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment
