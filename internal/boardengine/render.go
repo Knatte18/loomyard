@@ -3,7 +3,8 @@
 // Render is a pure function: entries in, a map of filename → content out (a single README.md built by renderReadme, plus design-*.md for any entry with a body).
 // The README reads like a roadmap: Tasks split into Running, Ready, dependency layers and Independent, Notes with one subsection per type label, then Done.
 // Each open subsection holds one markdown table per priority present, high, normal, low, each under a `#### <Priority> priority` heading, numbered on from 1 across them, and Done one table numbered from 1;
-// the rows show the bold title with the brief as a bullet under it, the linked slug, and the labels that are not type labels;
+// the README opens with the time it was rendered,
+// and the rows show the bold title with the brief as a bullet under it, the linked slug, the entry's age and time since its last revision as of that time, and the labels that are not type labels;
 // every Tasks table adds the recipe after the slug, loom for an empty one;
 // Running adds where its run stands, and Ready and the layers add the open entries each waits on.
 // The section names, their meaning lines and the table columns are declared here alone;
@@ -24,6 +25,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/fsx"
 )
@@ -33,9 +35,9 @@ import (
 // adds commit churn, and it is never itself a member of the rendered file set.
 const renderManifestFile = ".board-rendered.json"
 
-// RenderToDisk renders the entries, persisting the board's output files.
-func RenderToDisk(boardPath string, tasks []Task, out Outputs) error {
-	files, err := Render(tasks, out)
+// RenderToDisk renders the entries with their ages as of now, persisting the board's output files.
+func RenderToDisk(boardPath string, tasks []Task, out Outputs, now time.Time) error {
+	files, err := Render(tasks, out, now)
 	if err != nil {
 		return err
 	}
@@ -85,15 +87,15 @@ func writeRenderManifest(boardPath string, files map[string]string) {
 	_ = fsx.AtomicWriteBytes(filepath.Join(boardPath, renderManifestFile), data)
 }
 
-// Render produces the board output files from the entry list.
-func Render(tasks []Task, out Outputs) (map[string]string, error) {
+// Render produces the board output files from the entry list, the README's ages as of now.
+func Render(tasks []Task, out Outputs, now time.Time) (map[string]string, error) {
 	ordered, err := RenderOrder(tasks)
 	if err != nil {
 		return nil, err
 	}
 
 	result := map[string]string{
-		out.Readme: renderReadme(ordered, out.DesignPrefix, out.Types),
+		out.Readme: renderReadme(ordered, out.DesignPrefix, out.Types, now),
 	}
 
 	for name, content := range renderDesigns(tasks, out.DesignPrefix) {
@@ -123,18 +125,23 @@ const otherNotesHeading = "Other"
 // emptySectionLine stands in for the table of a subsection that is always rendered and has no entry.
 const emptySectionLine = "_None._"
 
-// The README table columns: each table opens with the row number, the entry and the linked slug, and closes with its labels.
+// The README table columns: each table opens with the row number, the entry and the linked slug, and closes with the entry's age, the time since its last revision, and its labels.
 const (
-	columnNumber = "#"
-	columnSlug   = "Slug"
-	columnRecipe = "Recipe"
-	columnTask   = "Task"
-	columnNote   = "Note"
-	columnEntry  = "Entry"
-	columnAt     = "At"
-	columnAfter  = "After"
-	columnLabels = "Labels"
+	columnNumber  = "#"
+	columnSlug    = "Slug"
+	columnRecipe  = "Recipe"
+	columnTask    = "Task"
+	columnNote    = "Note"
+	columnEntry   = "Entry"
+	columnAt      = "At"
+	columnAfter   = "After"
+	columnAge     = "Age"
+	columnRevised = "Revised"
+	columnLabels  = "Labels"
 )
+
+// renderedTimeLayout is the UTC date and time the README states it was rendered at.
+const renderedTimeLayout = "2006-01-02 15:04 UTC"
 
 // defaultRecipe is the recipe the Recipe cell shows for a task with no recipe, since an empty recipe runs loom.
 const defaultRecipe = "loom"
@@ -189,10 +196,12 @@ type readmeTable struct {
 	cells   func(t Task) []string
 }
 
-// renderReadme builds the README: a title, an intro, Tasks split into Running, Ready, dependency layers and Independent, Notes split by type label, then Done when any entry is done.
-func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string) string {
+// renderReadme builds the README: a title, the render time, an intro, Tasks split into Running, Ready, dependency layers and Independent, Notes split by type label, then Done when any entry is done.
+func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string, now time.Time) string {
 	lines := []string{
 		"# Board",
+		"",
+		"Rendered " + now.UTC().Format(renderedTimeLayout) + "; every age below is as of then.",
 		"",
 		"Tasks are grouped by dependency layer and notes by type.",
 		"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.",
@@ -206,11 +215,12 @@ func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string) 
 	// writeTable writes one table whose rows are numbered from first.
 	writeTable := func(entries []TaskWithLayer, table readmeTable, first int) {
 		// The slug goes second among the middle columns, right after the entry.
-		header := append(append([]string{columnNumber}, slices.Insert(slices.Clone(table.columns), 1, columnSlug)...), columnLabels)
+		header := append(append([]string{columnNumber}, slices.Insert(slices.Clone(table.columns), 1, columnSlug)...), columnAge, columnRevised, columnLabels)
 		lines = append(lines, tableRow(header), tableRow(slices.Repeat([]string{"---"}, len(header))))
 		for i, twl := range entries {
 			row := append([]string{fmt.Sprint(first + i)}, slices.Insert(table.cells(twl.Task), 1, slugCell(twl.Task, designPrefix))...)
-			lines = append(lines, tableRow(append(row, labelsCell(twl.Task, types))))
+			row = append(row, FormatAge(twl.Created, now), FormatAge(twl.Revised, now), labelsCell(twl.Task, types))
+			lines = append(lines, tableRow(row))
 		}
 		lines = append(lines, "")
 	}

@@ -15,6 +15,7 @@
 // Under seats, no advisors runs the chair alone, deciding each question itself.
 // seed, discussion_judge, plan_judge, webster_judge, discussion_seed, plan_seed, webster_seed and rework are role model-specs validated only when non-empty, an empty value meaning the fallback:
 // a per-segment judge takes judge, a per-segment seed takes seed, seed takes that segment's resolved judge, and rework takes plan.
+// arbiter is a role model-spec validated only when non-empty, an empty value taking opus[high]; arbiter_timeout_min and arbiter_max_spawns are refused when negative, and a zero arbiter_max_spawns turns the arbiter off.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
 // value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
 // driver, and both must load cleanly, unlike the other role keys, which are always required.
@@ -400,6 +401,12 @@ type Config struct {
 	ParentReviewWaitMin   int           `yaml:"parent_review_wait_min"`
 	StepIdleTimeoutMin    int           `yaml:"step_idle_timeout_min"`
 
+	// The arbiter's model-spec, timeout and spawn budget.
+	// An empty Arbiter takes opus[high], a zero ArbiterTimeoutMin takes 30 minutes, and a zero ArbiterMaxSpawns turns the arbiter off.
+	Arbiter           string `yaml:"arbiter"`
+	ArbiterTimeoutMin int    `yaml:"arbiter_timeout_min"`
+	ArbiterMaxSpawns  int    `yaml:"arbiter_max_spawns"`
+
 	ReviewCirclingCheckpoint int `yaml:"review_circling_checkpoint"`
 	ReviewMaxBounces         int `yaml:"review_max_bounces"`
 
@@ -684,6 +691,27 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	if cfg.Driver != "" {
 		if _, err := modelspec.Parse(cfg.Driver); err != nil {
 			return Config{}, fmt.Errorf("loom config key %q: %w", "driver", err)
+		}
+	}
+
+	// arbiter is validated only when non-empty: an empty value takes ResolveArbiter's default.
+	if cfg.Arbiter != "" {
+		if _, err := modelspec.Parse(cfg.Arbiter); err != nil {
+			return Config{}, fmt.Errorf("loom config key %q: %w", "arbiter", err)
+		}
+	}
+
+	// Zero is a meaning on both arbiter knobs, so only a negative value is refused.
+	for _, knob := range []struct {
+		key   string
+		value int
+		zero  string
+	}{
+		{"arbiter_timeout_min", cfg.ArbiterTimeoutMin, "0 for the 30 minute default"},
+		{"arbiter_max_spawns", cfg.ArbiterMaxSpawns, "0 to turn the arbiter off"},
+	} {
+		if knob.value < 0 {
+			return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; set it to %s, or to a positive integer, in loom.yaml", knob.key, knob.value, knob.zero)
 		}
 	}
 
