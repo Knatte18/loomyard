@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -28,11 +29,32 @@ type RunRow struct {
 	Week      string          `json:"week"`
 	Sources   map[string]bool `json:"sources"`
 
+	// Wakes maps each wake source to its wakes, nil for a source the run lacks.
+	Wakes map[string]*WakeSource `json:"wakes"`
+
+	// Automatic counts batten's automatic steps by kind, and Paused its paused changes; both are nil without the batten source.
+	Automatic map[string]int `json:"automatic"`
+	Paused    *int           `json:"paused"`
+
+	// ParentReviewPings sums the keep-alives of every parent-review round, beside the wakes and never as one; nil without the parent-review source.
+	ParentReviewPings *int `json:"parent_review_pings"`
+
+	// Alignment counts the alignment attempts per point and verdict word; nil without the alignment source.
+	Alignment []AlignmentOutcome `json:"alignment"`
+
+	// Stops lists the run's halts and Failures counts their failure classes; both are nil without the halt-note source.
+	Stops    []Stop         `json:"stops"`
+	Failures map[string]int `json:"failures"`
+
 	// battenSnapshots are the batten status files in the run's span, oldest first, the last being the run's batten record.
 	battenSnapshots []shedengine.Status
 
 	// childHistory is the loom history at the run's archive tag.
 	childHistory []shedengine.HistoryEntry
+
+	// changes are the child state changes batten recorded, and accountedChild the indexes of childHistory entries an automatic step accounts for.
+	changes        []battenshed.StateChange
+	accountedChild []int
 }
 
 // PartialRun is a tag that names a run which did not finish as a full loom run, with the reason.
@@ -108,6 +130,16 @@ func selectRuns(src Sources, opts Options, report *Report) error {
 		report.Findings = append(report.Findings, battenFindings...)
 		row.battenSnapshots = snapshots
 		row.Sources[SourceBatten] = len(snapshots) > 0
+		wakeFindings, err := row.readWakes(src.Records, tag)
+		if err != nil {
+			return err
+		}
+		stopFindings, err := row.readStops(src.Records, tag)
+		if err != nil {
+			return err
+		}
+		report.Findings = append(report.Findings, wakeFindings...)
+		report.Findings = append(report.Findings, stopFindings...)
 		report.Runs = append(report.Runs, row)
 	}
 	return nil

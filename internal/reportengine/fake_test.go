@@ -6,14 +6,19 @@ package reportengine
 import (
 	"encoding/json"
 	"fmt"
+	"path"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/haltnote"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -208,11 +213,103 @@ func historyOf(producers ...string) []shedengine.HistoryEntry {
 func statusText(t *testing.T, producers ...string) string {
 	t.Helper()
 
-	data, err := json.Marshal(shedengine.Status{State: shedengine.StateDone, History: historyOf(producers...)})
+	return statusJSON(t, shedengine.Status{State: shedengine.StateDone, History: historyOf(producers...)})
+}
+
+// statusJSON encodes status.
+func statusJSON(t *testing.T, status shedengine.Status) string {
+	t.Helper()
+
+	data, err := json.Marshal(status)
 	if err != nil {
 		t.Fatalf("marshal status: %v", err)
 	}
 	return string(data)
+}
+
+// stateChange is the history entry batten records for a child state change at hour.
+func stateChange(from, to shedengine.State, producer string, hour int) shedengine.HistoryEntry {
+	return shedengine.HistoryEntry{
+		Producer:     "Run-Shed",
+		Outcome:      shedengine.Done,
+		Output:       fmt.Sprintf("child %s → %s at %s", from, to, producer),
+		At:           at(hour).Format(time.RFC3339),
+		BudgetExempt: true,
+	}
+}
+
+// battenStatusOf is a batten status that opens with the worktree-create row and then holds entries.
+func battenStatusOf(state shedengine.State, current string, entries ...shedengine.HistoryEntry) shedengine.Status {
+	history := append([]shedengine.HistoryEntry{{Producer: battenrecipe.NameWorktreeCreate, Outcome: shedengine.Done, At: at(0).Format(time.RFC3339)}}, entries...)
+	return shedengine.Status{State: state, CurrentProducer: current, History: history}
+}
+
+// mergeFiles returns the union of the file sets.
+func mergeFiles(sets ...map[string]string) map[string]string {
+	merged := map[string]string{}
+	for _, set := range sets {
+		for name, content := range set {
+			merged[name] = content
+		}
+	}
+	return merged
+}
+
+// reviewFiles returns empty review files named names in the review segment directory segment.
+func reviewFiles(segment string, names ...string) map[string]string {
+	files := map[string]string{}
+	for _, name := range names {
+		files[path.Join(filepath.ToSlash(loomengine.LoomReviewsDirRel()), segment, name)] = ""
+	}
+	return files
+}
+
+// parentRoundFiles returns the files of parent-review round number: a delivery stamped when delivered, with pings keep-alives, and an alignment record in state alignmentState unless that is empty.
+func parentRoundFiles(number int, delivered bool, pings int, alignmentState string) map[string]string {
+	dir := path.Join(filepath.ToSlash(loomengine.LoomParentReviewDirRel()), fmt.Sprintf("round-%d", number))
+	delivery := fmt.Sprintf(`{"pings":%d}`, pings)
+	if delivered {
+		delivery = fmt.Sprintf(`{"delivered_at":%q,"pings":%d}`, at(1).Format(time.RFC3339), pings)
+	}
+	files := map[string]string{
+		path.Join(dir, "request.json"):  fmt.Sprintf(`{"round":%d,"state":"open"}`, number),
+		path.Join(dir, "delivery.json"): delivery,
+	}
+	if alignmentState != "" {
+		files[path.Join(dir, "alignment.json")] = fmt.Sprintf(`{"state":%q}`, alignmentState)
+	}
+	return files
+}
+
+// alignmentAttemptFiles returns the files of attempt number of slug's alignment agent at point: attempt.json recording applied, and a verdict file unless verdict is empty.
+func alignmentAttemptFiles(t *testing.T, slug, point string, number int, applied, verdict string, superseded ...string) map[string]string {
+	t.Helper()
+
+	dir := path.Join(recordPaths(t, slug).Alignment, point, fmt.Sprintf("attempt-%d", number))
+	token := fmt.Sprintf("tok%d", number)
+	files := map[string]string{
+		path.Join(dir, "attempt.json"): fmt.Sprintf(`{"number":%d,"point":%q,"token":%q,"applied":%q}`, number, point, token, applied),
+	}
+	if verdict != "" {
+		text := fmt.Sprintf("verdict: %s\nreason: because\n", verdict)
+		if len(superseded) > 0 {
+			text += "superseded:\n"
+			for _, entry := range superseded {
+				text += "  - " + entry + "\n"
+			}
+		}
+		files[path.Join(dir, "verdict-"+token+".yaml")] = text
+	}
+	return files
+}
+
+// haltNoteFiles returns the halt note in the friction directory dir (the live one when dir is empty, else the archive sibling named dir) as file name.
+func haltNoteFiles(dir, name string, note haltnote.Note) map[string]string {
+	folder := filepath.ToSlash(loomengine.LoomFrictionDirRel())
+	if dir != "" {
+		folder = path.Join(filepath.ToSlash(loomengine.LoomDurableDirRel()), dir)
+	}
+	return map[string]string{path.Join(folder, name): string(haltnote.Render(note))}
 }
 
 // seedText is the text of a loom seed naming recipe.
@@ -250,6 +347,11 @@ func (w *world) battenStatus(sha string, hour int, slug string, producers ...str
 	w.repo.commitOnChain(sha, at(hour), map[string]string{recordPaths(w.t, slug).Status: statusText(w.t, producers...)})
 }
 
+// battenRecord commits slug's batten status, exactly status, to the main line at hour.
+func (w *world) battenRecord(sha string, hour int, slug string, status shedengine.Status) {
+	w.repo.commitOnChain(sha, at(hour), map[string]string{recordPaths(w.t, slug).Status: statusJSON(w.t, status)})
+}
+
 // battenDeleted commits the removal of slug's batten status to the main line at hour.
 func (w *world) battenDeleted(sha string, hour int, slug string) {
 	w.repo.commitOnChain(sha, at(hour), nil, recordPaths(w.t, slug).Status)
@@ -257,8 +359,16 @@ func (w *world) battenDeleted(sha string, hour int, slug string) {
 
 // tag adds the archive tag of slug naming a commit off the main line at when, holding the given seed and status text; an empty text leaves that file out.
 func (w *world) tag(slug, sha string, when time.Time, seed, status string) {
+	w.tagWith(slug, sha, when, seed, status, nil)
+}
+
+// tagWith is tag with extra files, keyed by tree-relative path, in the tagged commit's tree.
+func (w *world) tagWith(slug, sha string, when time.Time, seed, status string, extra map[string]string) {
 	rels := recordPaths(w.t, slug)
 	files := map[string]string{}
+	for name, content := range extra {
+		files[name] = content
+	}
 	if seed != "" {
 		files[rels.Seed] = seed
 	}

@@ -30,4 +30,22 @@
 // A run's own fresh seed is the newest one committed after the slug's previous tag and at or before this tag; its span runs to the slug's next fresh seed, or to the branch tip when none follows.
 // The run keeps every snapshot of its span, oldest first, the last being its batten record, so a run directory that batten cleaned up still reads from the last commit that held it.
 // No fresh seed in that interval leaves the batten source absent.
+//
+// # Wakes and automatic steps
+//
+// A run's wakes are counted per source in RunRow.Wakes, a source the run lacks being nil under its name.
+// The batten source classifies the batten snapshots and the loom history at the tag under the row names batten is told in production.
+// Each wake counts under its kind, each automatic step under RunRow.Automatic by kind, and each paused change under RunRow.Paused, none of them a wake.
+// A halt at a Bouncer row counts as a review escalation when the row's review segment, or an archived generation of it, holds an escalation file.
+// The parent-review source counts each round that reached the reviewer without an applied alignment verdict; keep-alive pings sum into RunRow.ParentReviewPings and are never wakes.
+// The alignment source counts an applied approve that superseded entries as a wake, and every attempt in RunRow.Alignment per point and verdict word.
+// The land-ready-tasks source is always absent, since its records are ephemeral.
+//
+// # Stops
+//
+// The halt-note source is present when the tag's tree holds the friction directory or an archived sibling of it.
+// Each batten change into blocked or failed is matched, in order, to the first unmatched halt note with the same producer and state, and the pair is one Stop classed by the note's anomaly.
+// A change with no note is a no-note stop, a note left unmatched is a stop of its own class without a change, and a change into awaiting is an awaiting stop and no failure.
+// A stop carrying a note has a failure class: its producer and the reason's leading clause with quoted strings, paths and digit runs normalised.
+// Without the source, Stops and Failures are absent whatever the batten changes.
 package reportengine
