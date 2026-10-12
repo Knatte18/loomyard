@@ -26,9 +26,11 @@ func TestCleanupHandoffs(t *testing.T) {
 		files         []string
 		noHandoffsDir bool
 		noOrchDir     bool
-		wantKept      string
-		wantRemoved   []string
-		wantReason    string
+		// noStateLock deletes the state lock file before the run; a dry run must leave it absent.
+		noStateLock bool
+		wantKept    string
+		wantRemoved []string
+		wantReason  string
 	}
 	tests := []handoffCase{
 		{
@@ -74,6 +76,14 @@ func TestCleanupHandoffs(t *testing.T) {
 			wantReason:    "does not exist",
 		},
 		{
+			name:        "an absent state lock file is not created by a dry run",
+			state:       &State{Phase: PhaseIdle, LastHandoff: "h2.md"},
+			files:       handoffs,
+			noStateLock: true,
+			wantKept:    "h2.md",
+			wantRemoved: []string{"h1.md", "h3.md", "partial.md"},
+		},
+		{
 			name:      "a missing orch directory removes nothing and creates nothing",
 			noOrchDir: true,
 		},
@@ -115,9 +125,20 @@ func TestCleanupHandoffs(t *testing.T) {
 					}
 				}
 
+				if tt.noStateLock {
+					if err := os.Remove(p.StateLockPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+						t.Fatalf("Remove state lock: %v", err)
+					}
+				}
+
 				result, err := CleanupHandoffs(p, apply)
 				if err != nil {
 					t.Fatalf("CleanupHandoffs: %v", err)
+				}
+				if tt.noStateLock && !apply {
+					if _, err := os.Stat(p.StateLockPath); !errors.Is(err, fs.ErrNotExist) {
+						t.Errorf("the dry run created the state lock file: %v", err)
+					}
 				}
 
 				if result.Kept != tt.wantKept {

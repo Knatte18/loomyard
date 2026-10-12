@@ -42,11 +42,14 @@ func cleanupHandoffs(p Paths, apply bool, beforeRemove func()) (HandoffCleanup, 
 		return result, fmt.Errorf("orch: stat %s: %w", p.Dir, err)
 	}
 
-	held, err := lock.AcquireWriteLock(p.StateLockPath)
-	if err != nil {
-		return result, fmt.Errorf("orch: lock the state for handoff cleanup: %w", err)
+	// A dry run with no lock file skips the lock: no cycle holds it, and acquiring would create the file.
+	if _, err := os.Stat(p.StateLockPath); apply || !errors.Is(err, fs.ErrNotExist) {
+		held, err := lock.AcquireWriteLock(p.StateLockPath)
+		if err != nil {
+			return result, fmt.Errorf("orch: lock the state for handoff cleanup: %w", err)
+		}
+		defer func() { _ = held.Release() }()
 	}
-	defer func() { _ = held.Release() }()
 
 	current := State{Phase: PhaseIdle}
 	data, err := os.ReadFile(p.StatePath)
