@@ -60,7 +60,7 @@ func ConfigOpenMaps() []string {
 // An absent <baseDir>/_lyx/ directory or an absent config file resolves the embedded template;
 // a config file that exists but is invalid still errors.
 func LoadConfig(baseDir, module string) (Config, error) {
-	resolved, err := configengine.LoadOrTemplate(baseDir, module, []byte(ConfigTemplate()), ConfigOpenMaps()...)
+	resolved, err := configengine.LoadOrTemplate(configengine.Dirs{Anchor: baseDir}, configengine.Spec{Name: module, Template: []byte(ConfigTemplate()), OpenMaps: ConfigOpenMaps()})
 	if err != nil {
 		return Config{}, err
 	}

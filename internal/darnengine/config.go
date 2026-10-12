@@ -50,7 +50,7 @@ type Config struct {
 // It is strict: an absent file is an error.
 // It validates the writer key's model-spec grammar at load time and leaves verify, verify_attempts and review_max_bounces to their readers.
 func LoadConfig(baseDir, module string) (Config, error) {
-	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
+	resolved, err := configengine.Load(configengine.Dirs{Board: baseDir}, configengine.Spec{Name: module, Template: []byte(ConfigTemplate()), HubWide: true})
 	if err != nil {
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")

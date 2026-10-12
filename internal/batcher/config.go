@@ -85,7 +85,7 @@ func Active(baseDir string) (Batcher, error) {
 
 // loadConfig loads and unmarshals batcher.yaml under baseDir, degrading to the embedded template on proven absence.
 func loadConfig(baseDir string) (config, error) {
-	resolved, err := configengine.LoadOrTemplate(baseDir, moduleName, []byte(ConfigTemplate()), ConfigOpenMaps()...)
+	resolved, err := configengine.LoadOrTemplate(configengine.Dirs{Anchor: baseDir}, configengine.Spec{Name: moduleName, Template: []byte(ConfigTemplate()), OpenMaps: ConfigOpenMaps()})
 	if err != nil {
 		return config{}, err
 	}

@@ -31,7 +31,7 @@ func (c Config) Dirs() []string {
 // LoadConfig loads and unmarshals fabric configuration from baseDir, returning an error if not
 // initialized (no _lyx/ directory).
 func LoadConfig(baseDir string) (Config, error) {
-	resolved, err := configengine.Load(baseDir, "fabric", []byte(ConfigTemplate()))
+	resolved, err := configengine.Load(configengine.Dirs{Board: baseDir}, configengine.Spec{Name: "fabric", Template: []byte(ConfigTemplate()), HubWide: true})
 	if err != nil {
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it")

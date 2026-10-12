@@ -45,7 +45,7 @@ type Config struct {
 // LoadConfig loads and unmarshals configuration for the landing module.
 // It validates the conflict key's model-spec grammar at load time.
 func LoadConfig(baseDir, module string) (Config, error) {
-	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
+	resolved, err := configengine.Load(configengine.Dirs{Board: baseDir}, configengine.Spec{Name: module, Template: []byte(ConfigTemplate()), HubWide: true})
 	if err != nil {
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it")

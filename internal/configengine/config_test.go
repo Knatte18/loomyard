@@ -69,6 +69,11 @@ func newBase(t *testing.T, state baseState, module, content string) (baseDir, pa
 	return baseDir, configengine.ConfigFile(baseDir, module)
 }
 
+// boardSpec returns the per-worktree spec of the module the loader tests call "board".
+func boardSpec(template string, openMaps []string) configengine.Spec {
+	return configengine.Spec{Name: "board", Template: []byte(template), OpenMaps: openMaps}
+}
+
 // assertFileUnchanged fails when the file at path no longer holds want.
 func assertFileUnchanged(t *testing.T, path, want string) {
 	t.Helper()
@@ -216,7 +221,7 @@ func TestLoad(t *testing.T) {
 			}
 			baseDir, path := newBase(t, baseWithFile, "board", tc.content)
 
-			resolved, err := configengine.Load(baseDir, "board", []byte(tc.template), tc.openMaps...)
+			resolved, err := configengine.Load(configengine.Dirs{Anchor: baseDir}, boardSpec(tc.template, tc.openMaps))
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -237,6 +242,8 @@ func TestLoad_Refusals(t *testing.T) {
 		openMaps   []string
 		wantErr    []string
 		wantNotErr []string
+		// boardDir tells the base dir as the board dir instead of the anchor, and hubWide marks the spec hub-wide.
+		boardDir, hubWide bool
 		// wantInvalid is whether the error is marked ErrInvalid, under Load and, for a present path, under LoadOrTemplate.
 		wantInvalid bool
 	}{
@@ -251,6 +258,21 @@ func TestLoad_Refusals(t *testing.T) {
 			state:    baseConfigDir,
 			template: "path: _board\n",
 			wantErr:  []string{"not found", "lyx config reconcile"},
+		},
+		{
+			name:     "absent hub-wide board-dir base",
+			state:    baseConfigDir,
+			template: "path: _board\n",
+			boardDir: true,
+			hubWide:  true,
+			wantErr:  []string{"not found", "lyx fabric reconcile", "a session lyx refuses the verb from reports status: FAILED and the orch runs it"},
+		},
+		{
+			name:     "absent per-worktree board-dir base",
+			state:    baseConfigDir,
+			template: "path: _board\n",
+			boardDir: true,
+			wantErr:  []string{"not found", "lyx loom resume", "hub reconcile seeds the default from the prime", "a session lyx refuses the verb from reports status: FAILED and the orch runs it"},
 		},
 		{
 			name:     "config file that cannot be read",
@@ -319,7 +341,14 @@ func TestLoad_Refusals(t *testing.T) {
 			t.Parallel()
 			baseDir, _ := newBase(t, tc.state, "board", tc.content)
 
-			_, err := configengine.Load(baseDir, "board", []byte(tc.template), tc.openMaps...)
+			dirs := configengine.Dirs{Anchor: baseDir}
+			if tc.boardDir {
+				dirs = configengine.Dirs{Board: baseDir}
+			}
+			spec := boardSpec(tc.template, tc.openMaps)
+			spec.HubWide = tc.hubWide
+
+			_, err := configengine.Load(dirs, spec)
 			if err == nil {
 				t.Fatalf("expected error, got nil")
 			}
@@ -341,7 +370,7 @@ func TestLoad_Refusals(t *testing.T) {
 			if tc.state != baseWithFile && tc.state != baseUnreadable {
 				return
 			}
-			_, err = configengine.LoadOrTemplate(baseDir, "board", []byte(tc.template), tc.openMaps...)
+			_, err = configengine.LoadOrTemplate(configengine.Dirs{Anchor: baseDir}, boardSpec(tc.template, tc.openMaps))
 			if err == nil {
 				t.Fatalf("LoadOrTemplate: expected error, got nil")
 			}
@@ -454,13 +483,13 @@ func TestLoadOrTemplate(t *testing.T) {
 			}
 			baseDir, path := newBase(t, tc.state, "board", tc.content)
 
-			resolved, err := configengine.LoadOrTemplate(baseDir, "board", []byte(tc.template), tc.openMaps...)
+			resolved, err := configengine.LoadOrTemplate(configengine.Dirs{Anchor: baseDir}, boardSpec(tc.template, tc.openMaps))
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if tc.state == baseWithFile {
 				checkLoaded(t, tc.loadCase, resolved, buf, path)
-				want, err := configengine.Load(baseDir, "board", []byte(tc.template), tc.openMaps...)
+				want, err := configengine.Load(configengine.Dirs{Anchor: baseDir}, boardSpec(tc.template, tc.openMaps))
 				if err != nil {
 					t.Fatalf("unexpected error from Load: %v", err)
 				}
@@ -483,7 +512,7 @@ func TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate(t *testing.T) {
 	t.Parallel()
 	baseDir := t.TempDir()
 
-	_, err := configengine.LoadOrTemplate(baseDir, "board", []byte("path: ${env:TEST_UNSET_REQUIRED_VAR}\n"))
+	_, err := configengine.LoadOrTemplate(configengine.Dirs{Anchor: baseDir}, boardSpec("path: ${env:TEST_UNSET_REQUIRED_VAR}\n", nil))
 	if err == nil {
 		t.Fatalf("expected error for unset required env var, got nil")
 	}
@@ -521,7 +550,7 @@ func TestLoadOrTemplate_LyxDirStatFailure_DoesNotFallback(t *testing.T) {
 		t.Fatalf("failed to chmod tmpDir: %v", err)
 	}
 
-	resolved, err := configengine.LoadOrTemplate(tmpDir, "board", []byte("path: _board\n"))
+	resolved, err := configengine.LoadOrTemplate(configengine.Dirs{Anchor: tmpDir}, boardSpec("path: _board\n", nil))
 	if err == nil {
 		t.Fatalf("expected error for unstattable _lyx/, got nil")
 	}

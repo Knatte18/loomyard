@@ -140,7 +140,7 @@ func rollBack(path string, snap fileSnapshot, cause error) error {
 
 // validateHubFile loads module's hub file strictly, so a malformed edit never reaches _board.
 func validateHubFile(boardDir string, module configreg.Module) error {
-	_, err := configengine.Load(boardDir, module.Name, []byte(module.Template()), module.OpenMaps...)
+	_, err := configengine.Load(configengine.Dirs{Board: boardDir}, configengine.Spec{Name: module.Name, Template: []byte(module.Template()), OpenMaps: module.OpenMaps, HubWide: module.HubWide})
 	return err
 }
 

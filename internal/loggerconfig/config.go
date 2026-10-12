@@ -46,7 +46,7 @@ func ConfigPath(anchorPath string) string {
 // a file that exists but is invalid, or carries a non-positive or non-integer value, errors naming the key.
 // A trace_retention_days value above maxRetentionDays also errors naming the key.
 func Load(anchorPath string) (logger.RetentionBounds, error) {
-	resolved, err := configengine.LoadOrTemplate(anchorPath, moduleName, []byte(ConfigTemplate()))
+	resolved, err := configengine.LoadOrTemplate(configengine.Dirs{Anchor: anchorPath}, configengine.Spec{Name: moduleName, Template: []byte(ConfigTemplate())})
 	if err != nil {
 		return logger.RetentionBounds{}, err
 	}

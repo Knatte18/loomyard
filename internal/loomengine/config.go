@@ -540,7 +540,7 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 // LoadConfig loads and unmarshals configuration for the loom module.
 // It validates model-spec grammar at load time.
 func LoadConfig(baseDir, module string) (Config, error) {
-	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()), ConfigOpenMaps()...)
+	resolved, err := configengine.Load(configengine.Dirs{Anchor: baseDir}, configengine.Spec{Name: module, Template: []byte(ConfigTemplate()), OpenMaps: ConfigOpenMaps()})
 	if err != nil {
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it")

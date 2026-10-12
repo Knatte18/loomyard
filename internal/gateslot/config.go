@@ -32,7 +32,7 @@ func LoadConfig(baseDir string) (Config, error) {
 	if _, err := os.Stat(configengine.ConfigFile(baseDir, "gate")); errors.Is(err, os.ErrNotExist) {
 		return Config{}, ErrConfigAbsent
 	}
-	resolved, err := configengine.Load(baseDir, "gate", []byte(ConfigTemplate()))
+	resolved, err := configengine.Load(configengine.Dirs{Board: baseDir}, configengine.Spec{Name: "gate", Template: []byte(ConfigTemplate()), HubWide: true})
 	if err != nil {
 		return Config{}, withConfigWayForward(err)
 	}

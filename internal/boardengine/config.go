@@ -109,7 +109,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	}
 
 	// Load and resolve the config file using the template.
-	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()), ConfigOpenMaps()...)
+	resolved, err := configengine.Load(configengine.Dirs{Board: baseDir}, configengine.Spec{Name: module, Template: []byte(ConfigTemplate()), OpenMaps: ConfigOpenMaps(), HubWide: true})
 	if err != nil {
 		if errors.Is(err, configengine.ErrNotInitialized) {
 			return Config{}, notInitialized
