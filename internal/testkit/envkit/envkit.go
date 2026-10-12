@@ -259,8 +259,11 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			DriverStrand: func(context.Context) (battenshed.ChildDriverStrand, error) {
 				return battenshed.ChildDriverNone, nil
 			},
-			ChildRunLockHeld:   func() (bool, error) { return false, nil },
-			ReviveStrands:      func(context.Context) error { return nil },
+			ChildRunLockHeld: func() (bool, error) { return false, nil },
+			ReviveStrands:    func(context.Context) error { return nil },
+			ArbiterInFlight: func(context.Context) (battenshed.ChildArbiter, bool, error) {
+				return battenshed.ChildArbiter{}, false, nil
+			},
 			PauseRequested:     func() (bool, error) { return false, nil },
 			MarkWatched:        func(context.Context) (bool, error) { return false, nil },
 			OrchStrandRecorded: func() (bool, error) { return true, nil },
