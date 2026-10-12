@@ -39,7 +39,7 @@ internal/fslink: 5
 internal/fswatch: 5
 internal/fsx: 4
 internal/gatecli: 3
-internal/gateslot: 11
+internal/gateslot: 12
 internal/gitexec: 7
 internal/githubclient: 11
 internal/gitkit: 10

@@ -25,6 +25,11 @@
 // LoadConfig reads it strictly and refuses any value below 1 naming its key, except `busy_quit_sec`, which accepts 0 and is refused below it; Config.Limits converts it to the Limits a Pool reads.
 // TemplateConfig decodes the template alone, for a run outside every hub.
 //
+// # Watchdog line
+//
+// The line the gate test's CPU watchdog prints after a quit is rendered by WatchdogLine and found by FindWatchdogQuit.
+// BusyQuitWayForward is the way forward after one.
+//
 // # Wait records
 //
 // A waiter that has no verifytree marker keeps a Wait record, one uniquely named YAML file in WaitDir under its worktree's anchor root.
