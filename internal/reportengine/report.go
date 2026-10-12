@@ -39,7 +39,11 @@ type Report struct {
 	Runs      []RunRow     `json:"runs"`
 	Partial   []PartialRun `json:"partial"`
 	Landings  []Landing    `json:"landings"`
-	Findings  []Finding    `json:"findings"`
+	Weeks     []Week       `json:"weeks"`
+
+	// Absent counts, per source, the selected runs lacking it.
+	Absent   map[string]int `json:"absent"`
+	Findings []Finding      `json:"findings"`
 
 	// inputs are what run selection hands the landing join.
 	inputs landingInputs
@@ -71,5 +75,7 @@ func Compute(src Sources, opts Options) (Report, error) {
 	if err := readLandings(src, opts, &report); err != nil {
 		return Report{}, err
 	}
+	report.Weeks = computeWeeks(report)
+	report.Absent = absentCounts(report.Runs)
 	return report, nil
 }

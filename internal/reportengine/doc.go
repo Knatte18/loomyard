@@ -84,4 +84,20 @@
 // A line is fresh when the landing that brought its blamed commit, the fast-forward landing for a task-branch commit, was committed within Options.FreshDays before it.
 // The landing is fresh when more than half its lines are, aged otherwise, and has no pre-image when no such line remains.
 // A feature or other landing is never blamed.
+//
+// # Weekly aggregates
+//
+// Report.Weeks holds one Week per ISO week that holds a run, a partial run or a landing, ascending.
+// A run buckets by its tag's week, a partial run counts in its week's Partial alone, and a landing buckets by its own commit's week.
+// A week sums a figure over the runs holding its source and states in Lacking how many of its runs do not; a figure no run holds, and a mean or share nothing carries, is nil and never 0.
+// The wake mean covers the runs holding every wake source but land-ready-tasks, which is absent for every run.
+// A class's Runs counts the week's runs it occurred in.
+// A share is fresh over fresh plus aged, separately for fix and unmapped landings.
+// Report.Absent counts, per source, the selected runs lacking it.
+//
+// # Outputs
+//
+// The JSON envelope is the Report itself: selection, runs, partial, landings, weeks, absent and findings.
+// RenderMarkdown renders the same fields as the selection and one table per board question: wakes per run, recurring stop and failure classes, the fresh-code fix share, and review rounds per segment.
+// A nil figure renders as no data.
 package reportengine
