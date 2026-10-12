@@ -98,9 +98,11 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
@@ -116,6 +118,20 @@ type realClock struct{}
 
 func (realClock) Now() time.Time        { return time.Now() }
 func (realClock) Sleep(d time.Duration) { time.Sleep(d) }
+
+// AwakeClock is a Clock that also reads a monotonic awake time, one that stops while the machine sleeps.
+// A run whose clock lacks it detects no sleep.
+type AwakeClock interface {
+	Clock
+	// Awake returns the time elapsed on a clock that does not run during a machine sleep.
+	Awake() time.Duration
+}
+
+// awakeReading returns the awake reading of realClock, whose origin is taken at first use.
+var awakeReading = sync.OnceValue(pauserecord.MonotonicAwake)
+
+// Awake returns the time since the process first read it on the monotonic clock, which stops during suspend where the platform stops it.
+func (realClock) Awake() time.Duration { return awakeReading()() }
 
 // pollFloor is the shortest poll interval; a configured value below it is floored to it.
 const pollFloor = time.Second
@@ -272,6 +288,7 @@ func (run *Run) Wait() (Result, error) {
 	run.dialog = dialogLatch{cursor: max(run.state.PromptOffset, run.state.DialogNotifiedOffset)}
 
 	for tick := 1; ; tick++ {
+		run.observePause()
 		outcome, held, err := run.pollEventsTick()
 		run.syncShellWait()
 		if err == nil && (run.eventsRead || run.turnStartRead) {
@@ -374,7 +391,7 @@ func (run *Run) Wait() (Result, error) {
 			}
 		}
 
-		if run.clock.Now().After(run.deadline) {
+		if !run.covered && run.clock.Now().After(run.deadline) {
 			// classifyDeadlineExpiry, not a bare OutcomeTimeout: the run deadline answers "has the
 			// clock run out", never "did this run finish", and a run whose every output file is on
 			// disk finished whatever the clock says — see that function.
@@ -383,6 +400,34 @@ func (run *Run) Wait() (Result, error) {
 
 		run.clock.Sleep(interval)
 	}
+}
+
+// observePause is Wait's per-tick reading of the pause and of machine sleep.
+// It feeds the run's sleep watch when the clock is an AwakeClock, reads the runner's coverage of its pair into run.covered, and moves run.deadline by the change in the time excluded since the run was created.
+// The excluded time is the union of the detected sleeps and the coverage's paused intervals, so the deadline counts awake, unpaused time only.
+// A runner told no pause geometry never covers the run.
+// An unreadable record reads uncovered, with one Warn per change of error.
+func (run *Run) observePause() {
+	now := run.clock.Now()
+	if awake, ok := run.clock.(AwakeClock); ok {
+		run.sleeps.Observe(now, awake.Awake())
+	}
+	var coverage pauserecord.Coverage
+	if geometry := run.runner.pause; geometry.RecordPath != "" {
+		var err error
+		coverage, err = pauserecord.ReadCoverage(geometry.RecordPath, geometry.Slug, now)
+		switch {
+		case err == nil:
+			run.pauseReadError = ""
+		case err.Error() != run.pauseReadError:
+			run.pauseReadError = err.Error()
+			logger.Warn("shuttle: pause record unreadable, reading the run as uncovered", "strandGUID", run.state.StrandGUID, "error", err)
+		}
+	}
+	run.covered = coverage.Covered
+	excluded := pauserecord.Excluded(append(run.sleeps.Sleeps(), coverage.Intervals...), run.createdAt, now)
+	run.deadline = run.deadline.Add(excluded - run.deadlineExcluded)
+	run.deadlineExcluded = excluded
 }
 
 // gateRecheckDue reports whether gateRecheckEvery has passed since the last gate evaluation, which is always so before the first.

@@ -21,6 +21,8 @@ type heldRun struct {
 	// noticeElapsed is the run clock's time since Wait began at each notifier call.
 	noticeElapsed []time.Duration
 	result        Result
+	// notifiedOffset is the run's NotifiedOffset when Wait returned.
+	notifiedOffset int64
 }
 
 func TestWait_HeldTurnEndNotice(t *testing.T) {
@@ -44,6 +46,8 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 		// sleepJump is the clock jump per Sleep, nonzero to reach a wait bound in a few ticks, and timeout is the run's deadline, heldTestTimeout when zero.
 		sleepJump time.Duration
 		timeout   time.Duration
+		// coveredSleeps, when positive, tells the runner a pause record whose live hub entry covers the run until that many Sleeps have passed.
+		coveredSleeps int
 		// deferral builds the run's Spec.HoldDeferral from the time elapsed since Wait began, nil for a run that notifies at once.
 		deferral func(t *testing.T, elapsed func() time.Duration) func() bool
 		check    func(t *testing.T, got heldRun)
@@ -87,6 +91,15 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 			check: func(t *testing.T, got heldRun) {
 				if len(got.notices) != 1 || !strings.HasSuffix(got.notices[0], "«second»") {
 					t.Errorf("notices = %q, want one for the last turn end", got.notices)
+				}
+			},
+		},
+		{
+			name: "a held stop read while a pause covers the run sends no notice and leaves the offset, and is not re-notified after the resume", events: "STOP:hello\n", strand: strandName,
+			coveredSleeps: 3,
+			check: func(t *testing.T, got heldRun) {
+				if len(got.notices) != 0 || got.notifiedOffset != 0 || got.result.Outcome != OutcomeTimeout {
+					t.Errorf("notices = %q, NotifiedOffset = %d, outcome = %q; want none, 0 and a hold to the deadline", got.notices, got.notifiedOffset, got.result.Outcome)
 				}
 			},
 		},
@@ -257,6 +270,11 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 				plainSteps := &multiStepClock{fakeClock: fc}
 				clk, setSteps = plainSteps, func(steps []func()) { plainSteps.steps = steps }
 			}
+			if tt.coveredSleeps > 0 {
+				geometry, resume := coverHub(t, fc.Now())
+				fx.Runner.SetPause(geometry)
+				clk = &liftClock{Clock: clk, liftAfter: tt.coveredSleeps, lift: func() { resume(fc.Now()) }}
+			}
 			var holdDeferral func() bool
 			if tt.deferral != nil {
 				holdDeferral = tt.deferral(t, elapsed)
@@ -288,6 +306,7 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 				t.Fatalf("Wait() error: %v", err)
 			}
 			got.result = result
+			got.notifiedOffset = run.state.NotifiedOffset
 			tt.check(t, got)
 		})
 	}

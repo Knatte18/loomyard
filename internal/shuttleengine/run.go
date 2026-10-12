@@ -7,6 +7,7 @@
 package shuttleengine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
@@ -52,6 +54,8 @@ type Runner struct {
 	clock Clock
 	// notifier receives the notice line of each held turn end of an autonomous run; nil, the default, holds silently.
 	notifier func(line string) error
+	// pause is the pause geometry the runner was told, the zero value when it was told none and reads no record.
+	pause pauserecord.Geometry
 	// holdsMu guards holds.
 	holdsMu sync.Mutex
 	// holds keeps one turn-start hold per strand guid, so a caller probing the same strand tick after tick keeps one hold across them.
@@ -78,6 +82,35 @@ func (r *Runner) holdFor(guid string) *turnStartHold {
 // A notify error is logged and never ends the run.
 func (r *Runner) SetNotifier(notify func(line string) error) {
 	r.notifier = notify
+}
+
+// SetPause tells the runner the pause geometry it reads, so a run start waits while a pause covers the geometry's slug and a run's Wait skips its deadline and notices while covered.
+// A runner never told one reads no record.
+func (r *Runner) SetPause(geom pauserecord.Geometry) {
+	r.pause = geom
+}
+
+// PauseGeometry returns the pause geometry the runner was told, the zero value when none.
+func (r *Runner) PauseGeometry() pauserecord.Geometry {
+	return r.pause
+}
+
+// waitWhileCovered returns once no pause covers the runner's slug, at once for a runner told no pause geometry.
+// It writes its one line to stderr and to the trace, and sleeps on the runner's clock.
+func (r *Runner) waitWhileCovered() error {
+	if r.pause.RecordPath == "" {
+		return nil
+	}
+	return pauserecord.WaitUncovered(context.Background(), r.pause.RecordPath, r.pause.Slug, pauserecord.Waiter{
+		Notify: func(line string) {
+			fmt.Fprintln(os.Stderr, line)
+			logger.Info("shuttle: run start held by a pause", "line", line)
+		},
+		Sleep: func(ctx context.Context, d time.Duration) error {
+			r.clock.Sleep(d)
+			return ctx.Err()
+		},
+	})
 }
 
 // SetClock sets the time source of the runs this Runner starts or attaches, the time seam for a caller that replays a run.
@@ -277,7 +310,18 @@ type Run struct {
 	// offset is the byte offset already consumed from state.EventsPath.
 	offset int64
 	// deadline is the wall-clock time after which a run is classified OutcomeTimeout.
+	// Wait moves it later by the sleeps and pauses seen since createdAt.
 	deadline time.Time
+	// createdAt is the run clock's time when the run was built, the start of the span whose sleeps and pauses move deadline.
+	createdAt time.Time
+	// deadlineExcluded is the excluded time deadline already includes.
+	deadlineExcluded time.Duration
+	// sleeps is the machine sleeps Wait has seen, fed from an AwakeClock.
+	sleeps pauserecord.SleepWatch
+	// covered reports that the latest Wait tick read a pause covering the run's pair.
+	covered bool
+	// pauseReadError is the text of the pause record error last warned about, so a persistent error warns once.
+	pauseReadError string
 	// clock is the time seam for tests.
 	clock Clock
 	// lastStartupCapture is the last successful pane capture the startup step (checkLivenessTick,
@@ -435,6 +479,10 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		return nil, Result{}, err
 	}
 
+	if err := r.waitWhileCovered(); err != nil {
+		return nil, Result{}, fmt.Errorf("shuttle: wait for the pause to lift: %w", err)
+	}
+
 	r.sweepOrphansOpportunistic()
 
 	root := runDirRoot(r.cfg, r.anchorPath)
@@ -536,15 +584,17 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	logger.Info("shuttle: run started", "runDir", runDir, "strandGUID", strand.GUID, "sessionID", launch.SessionID, "role", spec.Role, "round", spec.Round, "forkSubagents", spec.ForkSubagents)
 
 	clk := r.clock
+	createdAt := clk.Now()
 	run := &Run{
 		runner:   r,
 		spec:     spec,
 		runDir:   runDir,
 		state:    state,
 		clock:    clk,
-		deadline: clk.Now().Add(spec.Timeout),
+		deadline: createdAt.Add(spec.Timeout),
 		gate:     gate,
 
+		createdAt:     createdAt,
 		resumeWarning: resumeWarning,
 	}
 

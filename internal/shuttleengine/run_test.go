@@ -319,6 +319,43 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 	})
 }
 
+// TestRunner_Start_WaitsWhileAPauseCoversItsPair pins that a start registers no strand while a pause covers the runner's pair,
+// and that the run it then returns counts its deadline from the resume, not from the call.
+func TestRunner_Start_WaitsWhileAPauseCoversItsPair(t *testing.T) {
+	t.Parallel()
+
+	const timeout = 20 * time.Minute
+	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
+	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", SessionID: "session-1"}}
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
+	readyStart(reed, engine)
+	fc := newFakeClock(time.Now())
+	geometry, resume := coverHub(t, fc.Now())
+	fx.Runner.SetPause(geometry)
+
+	var addedWhileHeld int
+	var resumedAt time.Time
+	fx.Runner.SetClock(&liftClock{Clock: fc, liftAfter: 3, lift: func() {
+		addedWhileHeld = len(reed.AddStrandCalls)
+		resumedAt = fc.Now()
+		resume(resumedAt)
+	}})
+
+	run, err := fx.Runner.Start(Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Role: "reviewer", Timeout: timeout})
+	if err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+	if addedWhileHeld != 0 {
+		t.Errorf("AddStrand calls before the resume = %d, want none", addedWhileHeld)
+	}
+	if len(reed.AddStrandCalls) != 1 {
+		t.Errorf("AddStrand calls after the resume = %d, want 1", len(reed.AddStrandCalls))
+	}
+	if want := resumedAt.Add(timeout); !run.deadline.Equal(want) {
+		t.Errorf("run deadline = %v, want %v, the timeout past the resume", run.deadline, want)
+	}
+}
+
 // TestRunner_Start_TypesTheSegmentColorAfterStartup pins the color step.
 // A colored strand gets the engine's color inputs after startup and before the skill-load message.
 // No color, a caller that colors itself and an engine without a color command type nothing, and a failing color play still starts the run.

@@ -99,6 +99,22 @@
 // AwaitAny is the shared wait: it stats the told paths once a second until one exists or the cap elapses, and watches no directory.
 // It is the poll every capped keep-cache-warm wait verb runs on, and DefaultAwaitCap is the cap those verbs default to.
 //
+// # Pause
+//
+// Runner.SetPause tells the runner a pauserecord.Geometry; a runner never told one reads no record.
+// Every agent spawn starts through the runner, so it is the hold point: a start waits at entry while a pause covers the geometry's slug, starts nothing and registers no strand while held, and has no deadline of its own.
+// The run's deadline is taken after that wait, so a started run's deadline counts from its start.
+// Each Wait tick reads the runner's coverage first.
+// While a pause covers the run the deadline check is skipped, a held turn end sends no notice and leaves RunState.NotifiedOffset alone, and a latched dialog sends no notice.
+// A held turn end read while covered is not re-notified after the resume, since the resume line starts the next turn.
+// An unreadable record reads uncovered, with one Warn per change of error.
+//
+// # Awake deadline
+//
+// The run deadline counts awake, unpaused time.
+// A Clock that is also an AwakeClock feeds the run's sleep watch each tick, and the deadline moves later by the union of the detected sleeps and the coverage's paused intervals since the run was created.
+// A clock without Awake detects no sleep.
+//
 // # Stop verb
 //
 // Run.Stop and Runner.StopStrand (the guid form, for a caller holding no handle) end a run's strand after recording the stop in run.json.
