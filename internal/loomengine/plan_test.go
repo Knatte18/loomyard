@@ -11,11 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // TestPlanSpec verifies PlanSpec's field mapping and its composed prompt, at an unanchored location and at a subpath-anchored one.
@@ -58,6 +60,31 @@ func TestPlanSpec(t *testing.T) {
 			}
 			if spec.Interactive {
 				t.Error("PlanSpec(...).Interactive = true; want false")
+			}
+			if spec.ForkSubagents {
+				t.Error("PlanSpec(...).ForkSubagents = true; want false under the default single producer")
+			}
+
+			// Single keeps today's bytes: the template with its twill_directive line turned back into a blank line renders the same prompt.
+			blankStencilsDir := newTestStencilsDir(t)
+			blankTemplatePath := filepath.Join(blankStencilsDir, "loom", "loom-template-plan.md")
+			template, err := os.ReadFile(blankTemplatePath)
+			if err != nil {
+				t.Fatalf("ReadFile(%q) = _, %v; want nil error", blankTemplatePath, err)
+			}
+			blanked := strings.Replace(string(template), "{{.twill_directive}}\n## Step 3", "\n## Step 3", 1)
+			if blanked == string(template) {
+				t.Fatalf("plan template carries no {{.twill_directive}} line directly above Step 3")
+			}
+			if err := os.WriteFile(blankTemplatePath, []byte(blanked), 0o644); err != nil {
+				t.Fatalf("WriteFile(%q) = %v; want nil", blankTemplatePath, err)
+			}
+			blankSpec, err := PlanSpec(layout, blankStencilsDir, specsDir, "", cfg, reg)
+			if err != nil {
+				t.Fatalf("PlanSpec(blanked template) = _, %v; want nil error", err)
+			}
+			if blankSpec.Prompt != spec.Prompt {
+				t.Error("PlanSpec(...).Prompt under single differs from the prompt of the template with a blank line in place of the twill_directive marker; want byte-identical prompts")
 			}
 			if spec.Role != "plan" {
 				t.Errorf("PlanSpec(...).Role = %q; want %q", spec.Role, "plan")
@@ -189,15 +216,26 @@ func TestPlanSpec_Refuses(t *testing.T) {
 		name      string
 		plan      string
 		blankSpec bool
+		// burlerYAML, when non-empty, runs the twill producer against a temp-dir location whose anchor holds this burler.yaml.
+		burlerYAML   string
+		wantErrNames []string
 	}{
-		{"malformed model-spec", "opus[effort", false},
-		{"empty specs directory", "opus[effort=high]", true},
+		{name: "malformed model-spec", plan: "opus[effort"},
+		{name: "empty specs directory", plan: "opus[effort=high]", blankSpec: true},
+		{name: "twill burler.yaml does not parse", plan: "opus[effort=high]", burlerYAML: "fans: [unterminated\n", wantErrNames: []string{"twill-plan", "burler.yaml"}},
+		{name: "twill fan names an undefined lens", plan: "opus[effort=high]", burlerYAML: "fans:\n  twill-plan:\n    - no-such-lens\n", wantErrNames: []string{"twill-plan", "burler.yaml"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			worktreeRoot := filepath.Join("home", "user", "repo")
 			layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
+			cfg := Config{Plan: tt.plan, PlanTimeoutMin: 120}
+			if tt.burlerYAML != "" {
+				layout = &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "repo"}
+				writeBurlerYAML(t, layout, tt.burlerYAML)
+				cfg.PlanProducer = PlanProducerTwill
+			}
 			reg, err := modelspec.LoadRegistry(t.TempDir())
 			if err != nil {
 				t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
@@ -207,8 +245,102 @@ func TestPlanSpec_Refuses(t *testing.T) {
 				specsDir = ""
 			}
 
-			if _, err := PlanSpec(layout, newTestStencilsDir(t), specsDir, "", Config{Plan: tt.plan, PlanTimeoutMin: 120}, reg); err == nil {
-				t.Errorf("PlanSpec(Plan=%q, specsDir=%q) = _, nil; want an error", tt.plan, specsDir)
+			_, err = PlanSpec(layout, newTestStencilsDir(t), specsDir, "", cfg, reg)
+			if err == nil {
+				t.Fatalf("PlanSpec(Plan=%q, specsDir=%q) = _, nil; want an error", tt.plan, specsDir)
+			}
+			for _, want := range tt.wantErrNames {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("PlanSpec(Plan=%q) error = %q; want it to name %q", tt.plan, err.Error(), want)
+				}
+			}
+		})
+	}
+}
+
+// TestPlanSpec_Twill verifies plan_producer twill renders the twill directive between Step 2 and Step 3 with the plan host's values and the lenses of the twill-plan fan, authorizes fork subagents, and renders no write-scope paragraph.
+// The lenses are the template's fan without a burler.yaml, and the burler.yaml fan with one.
+func TestPlanSpec_Twill(t *testing.T) {
+	t.Parallel()
+	reg, err := modelspec.LoadRegistry(t.TempDir())
+	if err != nil {
+		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+	}
+	cfg := Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120, PlanProducer: PlanProducerTwill}
+
+	templateFan, err := burlerengine.ResolveFan(burlerengine.Config{}, twillPlanFan)
+	if err != nil {
+		t.Fatalf("ResolveFan(zero Config, %q) = _, %v; want nil error", twillPlanFan, err)
+	}
+
+	tests := []struct {
+		name       string
+		burlerYAML string
+		wantLenses []string
+	}{
+		{name: "template fan without burler.yaml", wantLenses: lensNames(templateFan)},
+		{name: "burler.yaml redefines the fan", burlerYAML: "fans:\n  twill-plan: [test-economy]\n", wantLenses: []string{"test-economy"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			layout := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "repo"}
+			if tt.burlerYAML != "" {
+				writeBurlerYAML(t, layout, tt.burlerYAML)
+			}
+			stencilsDir := newTestStencilsDir(t)
+
+			spec, err := PlanSpec(layout, stencilsDir, newTestSpecsDir(t), "", cfg, reg)
+			if err != nil {
+				t.Fatalf("PlanSpec(twill) = _, %v; want nil error", err)
+			}
+			prompt := spec.Prompt
+			if !spec.ForkSubagents {
+				t.Error("PlanSpec(twill).ForkSubagents = false; want true")
+			}
+
+			at := 0
+			for _, lens := range tt.wantLenses {
+				next := strings.Index(prompt[at:], "- "+lens+": ")
+				if next < 0 {
+					t.Fatalf("PlanSpec(twill).Prompt lacks lens %q after offset %d; want the lenses %v in order", lens, at, tt.wantLenses)
+				}
+				at += next
+			}
+			if tt.burlerYAML != "" {
+				for _, dropped := range templateFan {
+					if dropped.Name != "test-economy" && strings.Contains(prompt, "- "+dropped.Name+": ") {
+						t.Errorf("PlanSpec(twill).Prompt carries lens %q; want only the burler.yaml fan %v", dropped.Name, tt.wantLenses)
+					}
+				}
+			}
+
+			for _, want := range []string{
+				PlanReadyMarker(layout),
+				stencilstore.Path(stencilsDir, "loom-rubric-plan-review"),
+				filepath.Join(planparser.PlanDir(layout.AnchorPath()), planparser.LensReviewFileName),
+				"lyx shuttle await",
+				`subagent_type: "fork"`,
+				"lyx loom validate-plan",
+				"Step 3 and Step 4",
+				strings.SplitN(planTwillSpawnPoint, "\n", 2)[0],
+				"Report defects only, never a passed check. Give each finding's evidence as the `path:line` or glyph read.",
+				planTwillRejectionRule,
+				"Return your findings only as your final message, each with " + planTwillSeverityRule + ", the section or decision it concerns, a one-line summary and the evidence.",
+			} {
+				if !strings.Contains(prompt, want) {
+					t.Errorf("PlanSpec(twill).Prompt lacks %q", want)
+				}
+			}
+			if strings.Contains(prompt, "and you create its parent directory too") {
+				t.Error("PlanSpec(twill).Prompt carries the write-scope paragraph; want none, since Plan-Write fences no write scope")
+			}
+
+			stepTwoAt := strings.Index(prompt, "## Step 2")
+			headingAt := strings.Index(prompt, "## Lens review by forks")
+			stepThreeAt := strings.Index(prompt, "## Step 3")
+			if stepTwoAt < 0 || headingAt < stepTwoAt || stepThreeAt < headingAt {
+				t.Errorf("Step 2 at %d, lens review at %d, Step 3 at %d; want the lens review between Step 2 and Step 3", stepTwoAt, headingAt, stepThreeAt)
 			}
 		})
 	}

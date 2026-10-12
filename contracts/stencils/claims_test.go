@@ -209,6 +209,7 @@ var wordingClaims = []stencilClaims{
 		wantAll("a carry-over entry in the record's Open risks is checked against the code and never planned as scope", "never plan an entry as scope"),
 		[]claim{
 			{must: "ends with a `Prior plan` section", why: "the template tells the agent to act on a trailing Prior plan section before writing"},
+			{must: "{{.twill_directive}}", section: "## Step 2 — Explore the codebase", why: "the lens review spawns once Step 2's reading is done and before Step 3 writes a plan file"},
 			{must: "must cover every package any card targets", why: "the verify section covers every targeted package"},
 			{must: "hermetic build-tagged tests", why: "the verify section includes hermetic build-tagged tests"},
 			{must: "compiled rather than run", why: "live-substrate tags are compiled rather than run"},
