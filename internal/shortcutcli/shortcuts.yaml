@@ -1,0 +1,7 @@
+# The top-level operator shortcuts of lyx, embedded in the binary.
+# Each key is a shortcut name, mounted as `lyx <name>`.
+# Each value is one argv, a list of words, or a list of argvs run in order.
+# An argv names lyx words only, never a shell string: a command path, then any args and flags of that command.
+# A shortcut is added only by a commit to this file.
+attach: [reed, attach]
+prime: [[orch, start], [reed, attach]]
