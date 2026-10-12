@@ -7,7 +7,6 @@
 package shedrun
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,13 +37,6 @@ type Seed struct {
 	// StartedAt is the time the run was seeded, RFC 3339 in UTC.
 	// WriteSeed stamps it when empty; a seed file written before the field existed has none.
 	StartedAt string `json:"started_at,omitempty"`
-}
-
-// seedWire is the decode-only shape of seed.json.
-// It carries the retired top-level parent key so a seed written before the field was dropped still decodes under DisallowUnknownFields; the value is discarded and nothing encodes it.
-type seedWire struct {
-	Seed
-	LegacyParent string `json:"parent,omitempty"`
 }
 
 // The closed driver vocabulary a Seed's Driver field may hold.
@@ -100,11 +92,10 @@ func ValidateRecipe(name string) error {
 	return fmt.Errorf("shedrun: unknown recipe %q; available recipes: %v", name, RecipeNames())
 }
 
-// ReadSeed reads the seed for runID under l, returning (Seed{}, false, nil) when no seed has been
-// written yet.
-// It validates runID first, reads SeedFile(l, runID) with no lock -- the seed is write-once and never
-// mutated mid-run -- decodes strictly so an unknown key is an error, defaults an absent or empty
-// Driver to DriverGo, and validates the decoded Driver and every Params key being non-empty.
+// ReadSeed reads the seed for runID under l, returning (Seed{}, false, nil) when no seed has been written yet.
+// It validates runID first, reads SeedFile(l, runID) with no lock -- the seed is write-once and never mutated mid-run.
+// It accepts an unknown key, which WriteSeed never rewrites away.
+// It defaults an absent or empty Driver to DriverGo, and validates the decoded Driver and every Params key being non-empty.
 func ReadSeed(l *lyxcwd.Location, runID string) (Seed, bool, error) {
 	if err := ValidateRunID(ResolveRunID(l, runID)); err != nil {
 		return Seed{}, false, err
@@ -126,7 +117,7 @@ func ReadSeed(l *lyxcwd.Location, runID string) (Seed, bool, error) {
 }
 
 // ParseSeed decodes data, the bytes of a seed.json a caller read elsewhere, such as from a git tree.
-// It decodes strictly so an unknown key is an error.
+// It accepts an unknown key, which WriteSeed never rewrites away.
 // It defaults an absent or empty Driver to DriverGo, and validates the decoded Driver and every Params key being non-empty.
 func ParseSeed(data []byte) (Seed, error) {
 	seed, err := decodeSeed(data)
@@ -149,16 +140,13 @@ func ParseSeed(data []byte) (Seed, error) {
 	return seed, nil
 }
 
-// decodeSeed strictly decodes data as a Seed, rejecting an unknown JSON key.
-// The retired top-level parent key is accepted and discarded.
+// decodeSeed decodes data as a Seed, accepting a JSON key Seed does not declare.
 func decodeSeed(data []byte) (Seed, error) {
-	var wire seedWire
-	d := json.NewDecoder(bytes.NewReader(data))
-	d.DisallowUnknownFields()
-	if err := d.Decode(&wire); err != nil {
+	var seed Seed
+	if err := json.Unmarshal(data, &seed); err != nil {
 		return Seed{}, err
 	}
-	return wire.Seed, nil
+	return seed, nil
 }
 
 // WriteSeed writes seed for runID under l.
@@ -167,6 +155,7 @@ func decodeSeed(data []byte) (Seed, error) {
 // second time -- while refusing a disagreeing existing seed with an ErrDisagreeingSeed-wrapped
 // message naming both the existing and the incoming values.
 // Agreement means recipe, driver and params only, so a re-written agreeing seed keeps its original StartedAt.
+// An agreeing seed is left byte for byte, unknown keys included.
 // A seed with no StartedAt is stamped with the current time before it is encoded; a given one is kept.
 func WriteSeed(l *lyxcwd.Location, runID string, seed Seed) error {
 	if err := ValidateRunID(ResolveRunID(l, runID)); err != nil {
