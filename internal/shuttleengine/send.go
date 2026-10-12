@@ -108,12 +108,18 @@ func awaitIdleSession(sc sendContext) error {
 		if err := requireReadyAgentPane(sc.reed, sc.engine, sc.guid); err != nil {
 			return err
 		}
+		if err := closePickerBeforeSend(sc, true); err != nil {
+			return err
+		}
 		if hold := operatorActivityHold(sc.reed, sc.guid); hold != "" {
 			return fmt.Errorf("%w: strand %q: %s; retry once the operator is idle", ErrSessionBusy, sc.guid, hold)
 		}
 		return nil
 	}
 	if err := requireLiveStrand(sc.reed, sc.guid); err != nil {
+		return err
+	}
+	if err := closePickerBeforeSend(sc, false); err != nil {
 		return err
 	}
 

@@ -1,0 +1,92 @@
+// interruptguard.go holds the guarded interrupt and the guarded rewind-picker close: every interrupt key shuttle sends into a pane passes the pane guard here.
+package shuttleengine
+
+import (
+	"errors"
+	"fmt"
+)
+
+// ErrNoRunningTurn marks an interrupt refused because the pane shows no running turn: there is nothing to stop.
+// A caller that only needs the turn stopped treats it as success.
+var ErrNoRunningTurn = errors.New("shuttle: the pane shows no running turn, so there is nothing to interrupt; way forward: \"lyx shuttle send <guid> <text>\" gives the agent a turn")
+
+// ErrRewindPickerOpen marks an operation that found the provider's rewind picker open in the pane.
+// It never wraps ErrSessionBusy, so no caller retries a picker as a busy session.
+var ErrRewindPickerOpen = errors.New("shuttle: the rewind picker was open in the pane")
+
+// guardedInterrupt plays the engine's interrupt sequence into guid's pane only when the pane shows a running turn.
+// The pane must classify as a ready agent pane first, and one fresh capture decides.
+// An open rewind picker is closed with one key and fails with ErrRewindPickerOpen.
+// A pane with no running turn gets nothing and fails with ErrNoRunningTurn, and a capture that fails sends nothing.
+// Bound: the guard only withholds a key, so a turn that ends between the capture and the key, or a capture quoting the running-turn hint, costs one key on an idle prompt, which opens nothing.
+func guardedInterrupt(reed ReedOps, engine Engine, clock Clock, guid string) error {
+	if err := requireReadyAgentPane(reed, engine, guid); err != nil {
+		return err
+	}
+	guard, ok := engine.(InterruptGuard)
+	if !ok {
+		return fmt.Errorf("shuttle: the engine has no running-turn reading, so no interrupt key is sent to strand %q", guid)
+	}
+	capture, err := reed.CapturePane(guid)
+	if err != nil {
+		return fmt.Errorf("shuttle: capture strand %q's pane before the interrupt: %w", guid, err)
+	}
+	if err := closeRewindPicker(reed, engine, clock, guid, capture); err != nil {
+		return err
+	}
+	if !guard.RunningTurn(capture) {
+		return fmt.Errorf("%w (strand %q)", ErrNoRunningTurn, guid)
+	}
+	return playInputs(reed, guid, engine.InterruptSequence())
+}
+
+// closePickerBeforeSend gives a verified send's pane one capture and closes an open rewind picker in it, so nothing is typed into the picker.
+// An engine that cannot read the picker pays no capture.
+// A failed capture fails the send when failClosed is set, since nothing after it reads the pane again;
+// otherwise the close is skipped and the idle wait's polls read the pane.
+func closePickerBeforeSend(sc sendContext, failClosed bool) error {
+	if _, ok := sc.engine.(RewindPickerReader); !ok {
+		return nil
+	}
+	capture, err := sc.reed.CapturePane(sc.guid)
+	if err != nil {
+		if failClosed {
+			return fmt.Errorf("shuttle: capture strand %q's pane before the send: %w", sc.guid, err)
+		}
+		return nil
+	}
+	return closeRewindPicker(sc.reed, sc.engine, sc.clock, sc.guid, capture)
+}
+
+// closeRewindPicker closes the provider's rewind picker when capture shows it, and otherwise does nothing.
+// It sends exactly one key, the first key of the engine's interrupt sequence, waits the engine's interrupt settle and captures the pane once more.
+// It never selects an entry and never sends a second key, and it fails with ErrRewindPickerOpen either way:
+// the key closed the picker and nothing was typed or interrupted, or the picker or another dialog is still on screen.
+func closeRewindPicker(reed ReedOps, engine Engine, clock Clock, guid, capture string) error {
+	reader, ok := engine.(RewindPickerReader)
+	if !ok || !reader.RewindPicker(capture) {
+		return nil
+	}
+	var closeKey []PaneInput
+	for _, input := range engine.InterruptSequence() {
+		if input.Key != "" {
+			closeKey = []PaneInput{input}
+			break
+		}
+	}
+	if err := playInputs(reed, guid, closeKey); err != nil {
+		return fmt.Errorf("shuttle: close the rewind picker in strand %q: %w", guid, err)
+	}
+	if guard, ok := engine.(InterruptGuard); ok {
+		clock.Sleep(guard.InterruptSettle())
+	}
+	after, err := reed.CapturePane(guid)
+	var box boxReading
+	if err == nil {
+		box = readBox(engine, after)
+	}
+	if err != nil || (box.reader && !box.read) {
+		return fmt.Errorf("%w: strand %q: one interrupt key was sent, but the picker or another dialog is still on screen; nothing more was sent, so close it in the pane, then retry", ErrRewindPickerOpen, guid)
+	}
+	return fmt.Errorf("%w: strand %q: one interrupt key closed it; nothing was typed or interrupted, so read the pane before giving the session a turn", ErrRewindPickerOpen, guid)
+}

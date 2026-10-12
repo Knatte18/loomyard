@@ -238,6 +238,15 @@
 // An unmatched turn start releases after the pane has read idle on every poll for turnStartIdleOverride, or at once when the engine reports that turn interrupted.
 // When the session state is unknown, the reading falls back to the pane, which must classify ready and idle, and for an engine that parses session signals no turn start may be left unmatched by a later turn end; the cause is logged at Debug.
 // A fallback hold whose box reads non-empty quotes the box.
+//
+// Every interrupt key shuttle sends goes through a pane guard.
+// Run.Interrupt and Runner.Interrupt send the engine's interrupt sequence only after the ready-agent-pane check and one fresh capture the engine's InterruptGuard reads as a running turn.
+// A capture that fails sends nothing and fails the call, so the guard fails closed, and a pane with no running turn gets no key and ErrNoRunningTurn, which means "nothing to stop".
+// Before every interrupt and every verified send, a capture an engine with RewindPickerReader reads as the provider's rewind picker is closed with exactly one key of the interrupt sequence.
+// The close waits the engine's interrupt settle, captures the pane once more and sends nothing further, so it never selects an entry.
+// It always fails the operation with ErrRewindPickerOpen, which never wraps ErrSessionBusy, so nothing is typed or interrupted after it.
+// A verified send whose picker capture fails skips the close when the idle wait's polls follow, and fails closed when no polls do.
+// Runner.InterruptSettle is the settle a caller that retries an interrupt waits after its first key, and Runner.PaneRunningTurn reads whether a strand's pane shows a running turn.
 // Stray character: for an engine with StrayInputReader, InputBoxClearer and InputBoxReader, a box holding exactly one stray-character candidate is cleared once per send attempt.
 // It counts on the hook reading held only for that draft, and on the pane reading that is ready but not idle.
 // An active operator holds the send instead, quoting the box; otherwise the clear plays right after that reading, the box settles for `SubmitSettle`, and a second full reading is the write's guard reading.
