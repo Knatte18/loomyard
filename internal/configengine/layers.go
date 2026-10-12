@@ -257,6 +257,40 @@ func Layers(dirs Dirs, spec Spec) ([]LayerDoc, error) {
 	return docs, nil
 }
 
+// BelowLayer returns the unexpanded merge of the spec's template and every present file layer below layer, read through [Layers].
+// It is what a layer's keys are compared against to tell which of them add nothing, so it merges the layers the way the loaders do and no other package reads a layer file itself.
+func BelowLayer(dirs Dirs, spec Spec, layer Layer) ([]byte, error) {
+	layers, err := Layers(dirs, spec)
+	if err != nil {
+		return nil, err
+	}
+	merged := spec.Template
+	for _, doc := range layers {
+		if layerRank(doc.Layer) >= layerRank(layer) {
+			break
+		}
+		merged, err = yamlengine.Merge(merged, doc.Bytes, spec.OpenMaps, spec.WholeEntries)
+		if err != nil {
+			return nil, MarkInvalid(fmt.Errorf("config file %s: %w", doc.Path, err))
+		}
+	}
+	return merged, nil
+}
+
+// layerRank orders the layers from the template up.
+func layerRank(layer Layer) int {
+	switch layer {
+	case LayerTemplate:
+		return 0
+	case LayerDefault:
+		return 1
+	case LayerWorktree:
+		return 2
+	default:
+		return 3
+	}
+}
+
 // Stack is one module's stacked layers.
 // Doc is the present file layers merged unexpanded in stack order, with no template key filled.
 // Layers are the layers Doc was merged from.

@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/loggerconfig"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 )
@@ -844,6 +845,186 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestReconcileAll_MigratesToSparse pins the one-time strip of a worktree's full files to sparse overrides:
+// the keys equal to what the layers below resolve to are stripped and reported, an emptied file is deleted, and every key the file held resolves unchanged.
+// The keys the repo default adds are reported as inherited.
+// A marked worktree, a dry run, a run without Migrate and a hub missing a repo default strip nothing.
+func TestReconcileAll_MigratesToSparse(t *testing.T) {
+	t.Parallel()
+	const (
+		stripFile    = "discussion_timeout_min: 480\nreview_max_bounces: 99\n"
+		markerPlan   = "plan: \"${env:LYXMIG_PLAN:-sonnet}\"\n"
+		literalPlan  = "plan: sonnet\n"
+		defaultAlias = "zephyr:\n  engine: claude\n  model: claude-zephyr-1\n"
+	)
+	batcherTemplate := batcher.ConfigTemplate()
+	batcherDiffering := strings.Replace(batcherTemplate, "orientation: 31400", "orientation: 31401", 1)
+	modelsTemplate := modelspec.ConfigTemplate()
+	migrate := Options{Apply: true, Migrate: true}
+
+	tests := []struct {
+		name         string
+		module       string
+		opts         Options
+		defaultFile  string
+		worktreeFile string
+		marked       bool
+		noDefault    bool
+		// wantFile is the worktree file's exact content afterwards; nil leaves it to wantDeleted and the substring lists.
+		wantFile        *string
+		wantDeleted     bool
+		wantContains    []string
+		wantNotContains []string
+		wantStripped    []string
+		wantInherited   []string
+		wantMarker      bool
+	}{
+		{
+			name: "keys equal to the default are stripped and reported", module: "loom", opts: migrate,
+			worktreeFile: stripFile, wantContains: []string{"review_max_bounces: 99"}, wantNotContains: []string{"discussion_timeout_min"},
+			wantStripped: []string{"discussion_timeout_min"}, wantMarker: true,
+		},
+		{
+			name: "an emptied file is deleted", module: "loom", opts: migrate,
+			worktreeFile: "discussion_timeout_min: 480\n", wantStripped: []string{"discussion_timeout_min"}, wantDeleted: true, wantMarker: true,
+		},
+		{
+			name: "an open map differing in one entry is kept whole", module: "batcher", opts: migrate,
+			worktreeFile: batcherDiffering, wantContains: []string{"orientation: 31401"}, wantMarker: true,
+			wantStripped: []string{"active"},
+		},
+		{
+			name: "a literal equal to the expansion of a marker below is kept", module: "loom", opts: migrate,
+			defaultFile: loomTemplateWith(loomTemplate(), "plan", markerPlan), worktreeFile: literalPlan,
+			wantFile: ptr(literalPlan), wantMarker: true,
+		},
+		{
+			name: "a marker over a literal equal to its expansion is kept", module: "loom", opts: migrate,
+			defaultFile: loomTemplateWith(loomTemplate(), "plan", literalPlan), worktreeFile: markerPlan,
+			wantFile: ptr(markerPlan), wantMarker: true,
+		},
+		{
+			name: "a seed-only key the default holds and the file lacks is reported inherited", module: "models", opts: migrate,
+			defaultFile: modelsTemplate + defaultAlias, worktreeFile: modelsTemplate,
+			wantStripped: []string{"fable", "haiku", "opus", "sonnet"}, wantInherited: []string{"zephyr"}, wantDeleted: true, wantMarker: true,
+		},
+		{
+			name: "a marked worktree is left alone", module: "loom", opts: migrate, marked: true,
+			worktreeFile: stripFile, wantFile: ptr(stripFile),
+		},
+		{
+			name: "a dry run strips nothing", module: "loom", opts: Options{Migrate: true},
+			worktreeFile: stripFile, wantFile: ptr(stripFile), wantStripped: []string{"discussion_timeout_min"},
+		},
+		{
+			name: "an apply without Migrate strips nothing", module: "loom", opts: Options{Apply: true},
+			worktreeFile: stripFile, wantFile: ptr(stripFile), wantStripped: []string{"discussion_timeout_min"},
+		},
+		{
+			name: "a hub missing a repo default strips nothing", module: "loom", opts: migrate, noDefault: true,
+			worktreeFile: stripFile, wantFile: ptr(stripFile),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			anchor, boardDir := t.TempDir(), t.TempDir()
+			for _, m := range configreg.Modules() {
+				if !m.HubWide {
+					writeModuleFile(t, boardDir, m.Name, m.Template())
+				}
+			}
+			writeModuleFile(t, boardDir, tt.module, tt.defaultFile)
+			if tt.noDefault {
+				if err := os.Remove(configengine.ConfigFile(boardDir, "batcher")); err != nil {
+					t.Fatalf("remove batcher default: %v", err)
+				}
+			}
+			writeModuleFile(t, anchor, tt.module, tt.worktreeFile)
+			if tt.marked {
+				if err := os.WriteFile(configengine.SparseMarker(anchor), []byte("marked\n"), 0o644); err != nil {
+					t.Fatalf("write marker: %v", err)
+				}
+			}
+			module, _ := configreg.Lookup(tt.module)
+			dirs := configengine.Dirs{Anchor: anchor, Board: boardDir}
+			before, err := configengine.Load(dirs, module.Spec())
+			if err != nil {
+				t.Fatalf("Load before: %v", err)
+			}
+
+			results, err := ReconcileAll(anchor, boardDir, tt.opts)
+			if err != nil {
+				t.Fatalf("ReconcileAll: %v", err)
+			}
+
+			result := findLayerResult(results, tt.module, configengine.LayerWorktree)
+			if result == nil {
+				t.Fatalf("no worktree-layer result for %s", tt.module)
+			}
+			if !slices.Equal(result.Stripped, tt.wantStripped) && !(len(result.Stripped) == 0 && len(tt.wantStripped) == 0) {
+				t.Errorf("Stripped = %v; want %v", result.Stripped, tt.wantStripped)
+			}
+			if !slices.Equal(result.Inherited, tt.wantInherited) && !(len(result.Inherited) == 0 && len(tt.wantInherited) == 0) {
+				t.Errorf("Inherited = %v; want %v", result.Inherited, tt.wantInherited)
+			}
+
+			got, readErr := os.ReadFile(configengine.ConfigFile(anchor, tt.module))
+			switch {
+			case tt.wantDeleted:
+				if !os.IsNotExist(readErr) {
+					t.Errorf("worktree file = %q (err %v); want it deleted", got, readErr)
+				}
+			case tt.wantFile != nil:
+				if string(got) != *tt.wantFile {
+					t.Errorf("worktree file = %q; want %q", got, *tt.wantFile)
+				}
+			default:
+				for _, sub := range tt.wantContains {
+					if !strings.Contains(string(got), sub) {
+						t.Errorf("worktree file = %q; want it to contain %q", got, sub)
+					}
+				}
+				for _, sub := range tt.wantNotContains {
+					if strings.Contains(string(got), sub) {
+						t.Errorf("worktree file = %q; want it not to contain %q", got, sub)
+					}
+				}
+			}
+
+			_, markerErr := os.Stat(configengine.SparseMarker(anchor))
+			if markerPresent := markerErr == nil; markerPresent != (tt.wantMarker || tt.marked) {
+				t.Errorf("marker present = %v; want %v", markerPresent, tt.wantMarker || tt.marked)
+			}
+
+			after, err := configengine.Load(dirs, module.Spec())
+			if err != nil {
+				t.Fatalf("Load after: %v", err)
+			}
+			if string(after) != string(before) {
+				t.Errorf("resolution changed by the migration:\nbefore:\n%s\nafter:\n%s", before, after)
+			}
+		})
+	}
+}
+
+// loomTemplate returns loom's registered template.
+func loomTemplate() string {
+	template, _ := configreg.Template("loom")
+	return template()
+}
+
+// loomTemplateWith returns template with the line of the named top-level key replaced by replacement, a whole "key: value" line.
+func loomTemplateWith(template, key, replacement string) string {
+	lines := strings.Split(template, "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(line, key+":") {
+			lines[i] = strings.TrimSuffix(replacement, "\n")
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // findLayerResult returns the Result for the named module and layer, or nil if absent.

@@ -101,6 +101,19 @@ func ConfigFileRel(module string) string {
 	return filepath.Join(lyxdirs.LyxDirName, configDirName, module+".yaml")
 }
 
+// sparseMarkerName is the marker file's name; it has no .yaml suffix, so no module reader takes it for a module file.
+const sparseMarkerName = "sparse"
+
+// SparseMarker returns the tracked marker file under baseDir that records a worktree's config files were migrated to sparse layers.
+func SparseMarker(baseDir string) string {
+	return filepath.Join(ConfigDir(baseDir), sparseMarkerName)
+}
+
+// SparseMarkerRel returns the sparse marker's path relative to a worktree's anchor, the shape ConfigFileRel returns.
+func SparseMarkerRel() string {
+	return filepath.Join(lyxdirs.LyxDirName, configDirName, sparseMarkerName)
+}
+
 // Load loads and resolves a module's configuration from its layer stack under dirs.
 // The base layer is required: a template key the stack lacks resolves to its template default and is logged,
 // and no file is ever written.

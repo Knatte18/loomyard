@@ -7,6 +7,7 @@ package hubreconcile_test
 import (
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -74,16 +75,78 @@ func writeCurrentStamp(t *testing.T, geom hubreconcile.Geometry) {
 	}
 }
 
-// seedRetiredKey commits a batcher.yaml carrying a retired key in the records worktree at recordsRoot.
+// differingBatcherBudget is a batcher budget that differs from the repo default's, so a batcher.yaml holding it survives the strip.
+const differingBatcherBudget = "budget: 450001"
+
+// seedRetiredKey commits a batcher.yaml in the records worktree at recordsRoot: the template with the retired key in place of orientation, plus one key whose value differs from the repo default.
+// It survives the sparse strip non-empty, which keeps retiredKeyPresent's read working after the walk.
 func seedRetiredKey(t *testing.T, recordsRoot string) {
 	t.Helper()
 
 	module, _ := configreg.Lookup("batcher")
 	content := strings.Replace(module.Template(), "orientation: 31400", retiredKey+": 52000", 1)
-	if !strings.Contains(content, retiredKey) {
-		t.Fatalf("batcher template no longer carries the orientation line the fixture rewrites")
+	content = strings.Replace(content, "budget: 450000", differingBatcherBudget, 1)
+	if !strings.Contains(content, retiredKey) || !strings.Contains(content, differingBatcherBudget) {
+		t.Fatalf("batcher template no longer carries the orientation and budget lines the fixture rewrites")
 	}
 	gitkit.CommitFile(t, recordsRoot, configengine.ConfigFileRel("batcher"), content, "fixture: retired key")
+}
+
+// differingLoomBounces is a loom review budget that differs from the repo default's, so a loom.yaml holding it survives the strip.
+const differingLoomBounces = "review_max_bounces: 99"
+
+// commitPreMigrationFiles commits, in the records worktree at recordsRoot, a full pre-migration per-worktree file set -- each per-worktree module's template, loom's with one key differing from the repo default -- and deletes the sparse marker, so the walk finds an unmigrated worktree with something to strip.
+func commitPreMigrationFiles(t *testing.T, recordsRoot string) {
+	t.Helper()
+
+	for _, module := range configreg.Modules() {
+		if module.HubWide {
+			continue
+		}
+		content := module.Template()
+		if module.Name == "loom" {
+			content = strings.Replace(content, "review_max_bounces: 3", differingLoomBounces, 1)
+			if !strings.Contains(content, differingLoomBounces) {
+				t.Fatalf("loom template no longer carries the review_max_bounces line the fixture rewrites")
+			}
+		}
+		path := filepath.Join(recordsRoot, configengine.ConfigFileRel(module.Name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+	gitkit.Git(t, recordsRoot, "rm", "-q", filepath.ToSlash(configengine.SparseMarkerRel()))
+	gitkit.Git(t, recordsRoot, "add", "-A")
+	gitkit.Git(t, recordsRoot, "commit", "-q", "-m", "fixture: pre-migration per-worktree files")
+}
+
+// markerTracked reports whether the records worktree at recordsRoot tracks the sparse marker.
+func markerTracked(t *testing.T, recordsRoot string) bool {
+	t.Helper()
+	return slices.Contains(gitkit.LsFiles(t, recordsRoot), filepath.ToSlash(configengine.SparseMarkerRel()))
+}
+
+// configFilesOf returns every file under codeRoot's config dir, relative path to bytes.
+func configFilesOf(t *testing.T, codeRoot string) map[string]string {
+	t.Helper()
+
+	dir := configengine.ConfigDir(codeRoot)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read %s: %v", dir, err)
+	}
+	files := map[string]string{}
+	for _, entry := range entries {
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			t.Fatalf("read %s: %v", entry.Name(), err)
+		}
+		files[entry.Name()] = string(data)
+	}
+	return files
 }
 
 // retiredKeyPresent reports whether the batcher.yaml at codeRoot still carries the retired key.
@@ -143,12 +206,14 @@ func markForeignMerge(t *testing.T, codeDir string) (clear func()) {
 	}
 }
 
-// newStaleHub builds a hub with a pair, both carrying the retired key committed on their records side, and no stamp.
+// newStaleHub builds a hub with a pair, both unmarked and carrying a full pre-migration file set with the retired key committed on their records side, and no stamp.
 func newStaleHub(t *testing.T, slug string) *hubforge.Hub {
 	t.Helper()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPair(t, h, slug)
+	commitPreMigrationFiles(t, h.PrimeRecords())
+	commitPreMigrationFiles(t, h.PairRecordsSibling(slug))
 	seedRetiredKey(t, h.PrimeRecords())
 	seedRetiredKey(t, h.PairRecordsSibling(slug))
 	return h
@@ -248,11 +313,46 @@ func runStaleBuildReconcile(t *testing.T, boardBehind, loomDefaultGone bool) {
 		t.Errorf("stamp = (%q, %v); want the running key", key, found)
 	}
 
+	// Each worktree is stripped and committed with its marker: loom.yaml keeps only its differing key, or is deleted when the reseeded default equals it.
+	for name, records := range map[string]string{"prime": h.PrimeRecords(), "pair": h.PairRecordsSibling("pair-a")} {
+		if !markerTracked(t, records) {
+			t.Errorf("%s does not track the sparse marker after the walk", name)
+		}
+		loomFile := configengine.ConfigFile(records, "loom")
+		data, err := os.ReadFile(loomFile)
+		switch {
+		case loomDefaultGone:
+			if !os.IsNotExist(err) {
+				t.Errorf("%s loom.yaml = %q (err %v); want it deleted, since the reseeded default equals it", name, data, err)
+			}
+		case err != nil || !strings.HasPrefix(string(data), differingLoomBounces) || strings.Count(string(data), "\n") != 1:
+			t.Errorf("%s loom.yaml = %q (err %v); want only the %q line", name, data, err, differingLoomBounces)
+		}
+	}
+
+	// A second walk strips nothing: it lands no new commit and leaves every per-worktree file and marker byte-identical.
+	boardAfter := commitCount(t, h.BoardDir())
+	filesBefore := map[string]map[string]string{"prime": configFilesOf(t, h.PrimeWorktree()), "pair": configFilesOf(t, pair)}
+	if err := os.Remove(geom.StampPath()); err != nil {
+		t.Fatalf("remove the stamp: %v", err)
+	}
 	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
 		t.Fatalf("second Ensure: %v", err)
 	}
 	if got := commitCount(t, h.PrimeRecords()); got != primeAfter {
-		t.Errorf("second Ensure landed a prime commit: %d -> %d", primeAfter, got)
+		t.Errorf("second walk landed a prime commit: %d -> %d", primeAfter, got)
+	}
+	if got := commitCount(t, h.PairRecordsSibling("pair-a")); got != pairAfter {
+		t.Errorf("second walk landed a pair commit: %d -> %d", pairAfter, got)
+	}
+	if got := commitCount(t, h.BoardDir()); got != boardAfter {
+		t.Errorf("second walk landed a board commit: %d -> %d", boardAfter, got)
+	}
+	filesAfter := map[string]map[string]string{"prime": configFilesOf(t, h.PrimeWorktree()), "pair": configFilesOf(t, pair)}
+	for name, before := range filesBefore {
+		if !maps.Equal(before, filesAfter[name]) {
+			t.Errorf("second walk changed the %s config files:\nbefore: %v\nafter: %v", name, before, filesAfter[name])
+		}
 	}
 }
 
@@ -315,12 +415,19 @@ func TestEnsure_MidMergePairIsLeftAloneAndRetried(t *testing.T) {
 				t.Errorf("stamp written while a worktree was skipped")
 			}
 
+			if markerTracked(t, h.PairRecordsSibling("pair-a")) {
+				t.Errorf("the skipped pair was marked sparse while mid-merge")
+			}
+
 			clear()
 			if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
 				t.Fatalf("Ensure after the merge state cleared: %v", err)
 			}
 			if retiredKeyPresent(t, pair) {
 				t.Errorf("the pair was not reconciled once its merge state cleared")
+			}
+			if !markerTracked(t, h.PairRecordsSibling("pair-a")) {
+				t.Errorf("the retry did not strip and mark the skipped pair")
 			}
 			if _, found := stampKey(t, geom); !found {
 				t.Errorf("stamp absent after the retry")
@@ -340,9 +447,10 @@ func TestEnsure_MergeBeginningBeforeCommitRestoresTheFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read pair batcher.yaml: %v", err)
 	}
+	var clear func()
 	hook := func(worktreePath string) {
 		if worktreePath == pair {
-			markMergeRecord(t, h.PairRecordsSibling("pair-a"))
+			clear = markMergeRecord(t, h.PairRecordsSibling("pair-a"))
 		}
 	}
 
@@ -360,6 +468,18 @@ func TestEnsure_MergeBeginningBeforeCommitRestoresTheFiles(t *testing.T) {
 	if _, found := stampKey(t, geom); found {
 		t.Errorf("stamp written although a worktree was skipped")
 	}
+	if _, err := os.Stat(configengine.SparseMarker(pair)); !os.IsNotExist(err) {
+		t.Errorf("the hooked pair keeps a sparse marker after the restore (stat err = %v)", err)
+	}
+
+	clear()
+	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
+		t.Fatalf("Ensure after the merge state cleared: %v", err)
+	}
+	if !markerTracked(t, h.PairRecordsSibling("pair-a")) {
+		t.Errorf("the next walk did not strip and mark the pair")
+	}
+	assertClean(t, h.PairRecordsSibling("pair-a"))
 }
 
 // commitTemplate commits module's template as its config file in the records worktree at recordsRoot.

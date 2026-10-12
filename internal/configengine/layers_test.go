@@ -414,6 +414,29 @@ func TestLayers(t *testing.T) {
 		}
 	})
 
+	t.Run("BelowLayer merges the template under the layers below, unexpanded, and ignores the layer and those above", func(t *testing.T) {
+		t.Parallel()
+		fx := newLayerFixture(t, geometryHub, all)
+		const templateRest = "map[deep:1]"
+		tests := []struct {
+			layer configengine.Layer
+			want  map[string]string
+		}{
+			{configengine.LayerDefault, map[string]string{"name": "tpl", "port": "80", "nested": templateRest, "list": "[a b]", "labels": "map[bug:a bug]", "run": "echo"}},
+			{configengine.LayerWorktree, map[string]string{"name": "d", "port": "1", "nested": templateRest, "list": "[a b]", "labels": "map[bug:a bug]", "run": "echo"}},
+			{configengine.LayerLocal, map[string]string{"name": "w", "port": "1", "nested": templateRest, "list": "[a b]", "labels": "map[bug:a bug]", "run": "echo"}},
+		}
+		for _, tt := range tests {
+			below, err := configengine.BelowLayer(fx.dirs, layerSpec(), tt.layer)
+			if err != nil {
+				t.Fatalf("BelowLayer(%s): %v", tt.layer, err)
+			}
+			if got := decodeTopLevel(t, below); !mapsEqual(got, tt.want) {
+				t.Errorf("BelowLayer(%s) = %v; want %v", tt.layer, got, tt.want)
+			}
+		}
+	})
+
 	stackTests := []struct {
 		name      string
 		spec      func() configengine.Spec

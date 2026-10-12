@@ -351,6 +351,13 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
 		if len(result.Divergent) > 0 {
 			m["divergent"] = result.Divergent
 		}
+		// stripped and inherited are exceptional too: only a worktree without the sparse marker has them, and reconcile reports them as pending without stripping.
+		if len(result.Stripped) > 0 {
+			m["stripped"] = result.Stripped
+		}
+		if len(result.Inherited) > 0 {
+			m["inherited"] = result.Inherited
+		}
 		modules[i] = m
 	}
 

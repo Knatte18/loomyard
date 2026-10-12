@@ -124,7 +124,9 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 
 	// A new hub has no build stamp, so the walk seeds every absent per-worktree repo default from the prime or the template, commits them on the board and pushes it.
 	// A walk failure leaves the clone intact, and the next start verb's walk seeds the defaults.
+	// The same walk migrates the prime, so it arrives with the sparse marker committed.
 	absentDefaults := absentRepoDefaults(res.BoardDir)
+	markerBefore := fileExists(configengine.SparseMarker(res.WeftBase))
 	if err := hubreconcile.Ensure(hubreconcile.Geometry{BoardDir: res.BoardDir, WorktreePath: l.WorktreePath()}, hubreconcile.Options{}); err != nil {
 		return fabricengine.CloneResult{}, err
 	}
@@ -133,8 +135,17 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 			rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(res.BoardDir, module), "")
 		}
 	}
+	if marker := configengine.SparseMarker(res.WeftBase); !markerBefore && fileExists(marker) {
+		rec.Append(fabricengine.KindFileWritten, marker, "")
+	}
 
 	return res, nil
+}
+
+// fileExists reports whether path names an existing file.
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // absentRepoDefaults returns the per-worktree modules whose repo default is absent under boardDir.

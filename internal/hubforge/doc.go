@@ -38,6 +38,7 @@
 // through fabricengine.NewBolt, matching what CloneAndWire itself does after ReconcileHubWideAt.
 // Most former seeding sites need neither: fabriccli.CloneAndWire already ends in the hub walk.
 // A real hub therefore arrives with each per-worktree module's repo default committed on the board, and its prime carries only the per-worktree config files the records repository already held.
+// The clone's walk also migrates the prime, so its prime arrives with the sparse marker committed.
 // SeedConfig writes a sparse worktree layer over those defaults.
 // SeedConfig commits with an empty stage allowed: a seed byte-identical to a file already committed stages nothing, and a bare commit over nothing would otherwise fail.
 // cloneHub removes the build stamp the clone's walk wrote, so a start verb driven in a test walks the hub as on a binary change while the seeded defaults stay committed.

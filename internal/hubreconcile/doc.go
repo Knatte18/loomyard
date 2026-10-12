@@ -17,7 +17,19 @@
 // Under the lock the stamp is read again, and a fresh one returns nil.
 // The walk pulls the board first, reconciles the board's config and commits it on the board under a subject carrying the binary label, seeding every absent per-worktree repo default from the prime or the template, then reconciles the prime's sparse layers, then lists the hub's code worktrees again and reconciles each pair not yet walked.
 // It repeats until a listing finds no new pair, so a pair registered while the walk ran is walked before the stamp is written.
-// Each worktree's applied files are committed in that worktree, and the board is pushed, carrying the hub-wide commit and any an earlier run left unpushed.
+// The board commit carries the per-worktree repo defaults beside the hub-wide files.
+// Each worktree's applied files are committed in that worktree, and the board is pushed, carrying the board commit and any an earlier run left unpushed.
+//
+// # The sparse migration
+//
+// A worktree without the sparse marker `_lyx/config/sparse` still holds today's full config files.
+// Once every per-worktree module's repo default exists, the walk strips each such file of the keys that equal what the layers below it resolve to, so every key the file held resolves unchanged.
+// A file left empty is deleted, and the marker is written after the files; the files, deletions and marker go into the worktree's one reconcile commit.
+// The log line of a changed module lists the keys it stripped and the keys it inherited, the repo default's keys the file lacked and whose value differs from the template's, which the operator can pin with `lyx config <module> --set`.
+// A worktree carrying the marker is never stripped, and a pair forked from a migrated worktree inherits the marker.
+// A pair forked before the migration, or skipped as being created or mid-merge, or left by a walk that died partway, is stripped by the next walk, since a failed or merge-interrupted walk restores the marker with the files.
+// A migrated pair may meet the landing warning for a changed tracked config file once, in the commit that strips it.
+// `lyx config reconcile` reports the strip as pending and never performs it.
 // Worktrees that committed before a failure keep their commits.
 // The failing worktree's, or the board's, config files are restored to their prior bytes, so a retry rewrites and commits them instead of finding them already current.
 // A worktree commit that landed before a later step of it failed, such as recording the commit's correspondence, keeps the written files, since they are already committed.

@@ -119,6 +119,11 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 					t.Errorf("git ls-files in the board does not contain %q; got %v", want, tracked)
 				}
 			}
+
+			// The clone's walk migrated the prime, so it tracks the sparse marker.
+			if primeTracked := gitkit.LsFiles(t, h.PrimeRecords()); !slices.Contains(primeTracked, filepath.ToSlash(configengine.SparseMarkerRel())) {
+				t.Errorf("git ls-files in the weft prime does not contain the sparse marker; got %v", primeTracked)
+			}
 		}},
 		{"CloneConfigCommit_OneCommitNotOnePerModule", func(t *testing.T) {
 			// A fresh clone's weft prime carries no per-module config commit, and a second ReconcileAll over the same weft base reports Applied false for every module.
@@ -158,6 +163,15 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 				if written != 1 {
 					t.Errorf("mutation record holds %d KindFileWritten entries targeting %q; want exactly 1\nentries: %+v", written, wantTarget, entries)
 				}
+			}
+			markerWritten := 0
+			for _, e := range entries {
+				if e.Kind == fabricengine.KindFileWritten && strings.HasSuffix(e.Target, "/"+filepath.ToSlash(configengine.SparseMarkerRel())) {
+					markerWritten++
+				}
+			}
+			if markerWritten != 1 {
+				t.Errorf("mutation record holds %d KindFileWritten entries for the sparse marker; want exactly 1\nentries: %+v", markerWritten, entries)
 			}
 			weftTarget := hubRelativeWeftTarget(t, h)
 			for _, e := range entries {
@@ -366,6 +380,9 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			loomConfigPath := configengine.ConfigFile(pairLocation.AnchorPath(), "loom")
 			if _, err := os.Stat(loomConfigPath); !os.IsNotExist(err) {
 				t.Errorf("pair worktree loom config %s: stat err = %v; want it absent", loomConfigPath, err)
+			}
+			if _, err := os.Stat(configengine.SparseMarker(pairLocation.AnchorPath())); err != nil {
+				t.Errorf("pair worktree sparse marker: %v; want it inherited from the migrated prime", err)
 			}
 			if _, err := loomengine.LoadConfig(fabricengine.ConfigDirs(pairLocation), "loom"); err != nil {
 				t.Errorf("loomengine.LoadConfig over the pair: %v; want the board's repo default to load", err)

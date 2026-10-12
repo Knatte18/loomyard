@@ -10,9 +10,11 @@
 package configsync
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -76,12 +78,22 @@ type Result struct {
 	Divergent []string
 	// Layer names the layer the result reports: the repo default or hub file, the worktree file, or the local override.
 	Layer configengine.Layer
+	// Stripped lists, sorted, the dotted keys of a worktree file that equal what the layers below resolve to, and are therefore redundant in a sparse layer.
+	// Reported as pending unless the run migrates.
+	// Set only by ReconcileAll, on a worktree that carries no sparse marker.
+	Stripped []string
+	// Inherited lists, sorted, the dotted keys the repo default holds that the worktree file lacked and whose value differs from the template's or that the template lacks.
+	// After the strip the worktree resolves each of them to the default's value, so the operator can pin the old value with lyx config.
+	// Set only by ReconcileAll, together with Stripped.
+	Inherited []string
 }
 
 // Options configures ReconcileAll.
 type Options struct {
 	// Apply writes and removes files; false reports what would change.
 	Apply bool
+	// Migrate lets an Apply run strip a worktree's full files to sparse overrides and write the sparse marker; without it Stripped and Inherited are only reported as pending.
+	Migrate bool
 }
 
 // HubWideOptions configures ReconcileHubWideAt.
@@ -233,11 +245,18 @@ func retireHubWideCopy(module, baseDir, boardDir string, apply bool) (Result, er
 // A hub-wide module is never reconciled or written as a worktree file.
 // Its result reports whether a leftover per-worktree copy is Retired (the hub file at boardDir holds everything the copy holds, and apply deletes it)
 // or Divergent (the copy holds something the hub file lacks, and it stays).
-// A file emptied by a prune is deleted.
+// A file emptied by a prune or a strip is deleted.
+// In a hub, a worktree without the sparse marker has each per-worktree module's worktree file compared with the layers below it, and the keys that add nothing are reported as Stripped, with the keys the repo default adds as Inherited;
+// the comparison runs only when every per-worktree module's repo default exists.
+// Only with opts.Migrate and opts.Apply are the files stripped and the marker written, after them.
 // When opts.Apply is false, files are never written or removed.
 func ReconcileAll(baseDir, boardDir string, opts Options) ([]Result, error) {
 	var results []Result
 
+	pending := pendingMigration(baseDir, boardDir)
+	if pending != nil {
+		pending.write = opts.Migrate && opts.Apply
+	}
 	for _, m := range configreg.Modules() {
 		var result Result
 		var err error
@@ -247,14 +266,14 @@ func ReconcileAll(baseDir, boardDir string, opts Options) ([]Result, error) {
 		case boardDir == "":
 			result, err = reconcileBaseWorktreeFile(m, baseDir, opts.Apply)
 		default:
-			result, _, err = reconcileSparseFile(m, configengine.ConfigFile(baseDir, m.Name), configengine.LayerWorktree, opts.Apply)
+			result, _, err = reconcileSparseFile(m, configengine.ConfigFile(baseDir, m.Name), configengine.LayerWorktree, opts.Apply, pending)
 		}
 		if err != nil {
 			return nil, err
 		}
 		results = append(results, result)
 
-		localResult, present, err := reconcileSparseFile(m, configengine.LocalFile(baseDir, m.Name), configengine.LayerLocal, opts.Apply)
+		localResult, present, err := reconcileSparseFile(m, configengine.LocalFile(baseDir, m.Name), configengine.LayerLocal, opts.Apply, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -263,7 +282,44 @@ func ReconcileAll(baseDir, boardDir string, opts Options) ([]Result, error) {
 		}
 	}
 
+	if pending != nil && pending.write {
+		if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0o755); err != nil {
+			return nil, fmt.Errorf("mkdir config dir for the sparse marker: %w", err)
+		}
+		marker := configengine.SparseMarker(baseDir)
+		if err := fsx.AtomicWriteBytes(marker, []byte("# This worktree's config files are sparse layers over the repo defaults.\n")); err != nil {
+			return nil, &FileError{Module: "sparse", Path: marker, Err: fmt.Errorf("write the sparse marker: %w", err)}
+		}
+	}
+
 	return results, nil
+}
+
+// migration describes the strip of a worktree's full files to sparse overrides.
+type migration struct {
+	dirs configengine.Dirs
+	// write makes the strip rewrite the files; false reports it as pending.
+	write bool
+}
+
+// pendingMigration returns the strip a worktree still owes, or nil when none is due:
+// standalone, with the sparse marker present, or while any per-worktree module's repo default is absent under boardDir.
+func pendingMigration(baseDir, boardDir string) *migration {
+	if boardDir == "" {
+		return nil
+	}
+	if _, err := os.Stat(configengine.SparseMarker(baseDir)); err == nil {
+		return nil
+	}
+	for _, m := range configreg.Modules() {
+		if m.HubWide {
+			continue
+		}
+		if _, err := os.Stat(configengine.ConfigFile(boardDir, m.Name)); err != nil {
+			return nil
+		}
+	}
+	return &migration{dirs: configengine.Dirs{Anchor: baseDir, Board: boardDir}}
 }
 
 // reconcileBaseWorktreeFile fully reconciles a per-worktree module's worktree file, the base layer of a standalone stack.
@@ -330,45 +386,105 @@ func reconcileBaseWorktreeFile(m configreg.Module, baseDir string, apply bool) (
 
 // reconcileSparseFile reconciles one sparse layer file of a module: its Migrate hook runs over it and its retired keys are pruned, and nothing is ever added.
 // An absent file stays absent and reports present false;
-// a seed-only module's present file is reported untouched.
-// A file emptied by a prune is deleted and reported applied.
-func reconcileSparseFile(m configreg.Module, path string, layer configengine.Layer, apply bool) (result Result, present bool, err error) {
+// a seed-only module's present file is otherwise untouched.
+// With a non-nil strip, the file's keys that equal what the layers below it resolve to are reported as Stripped, and removed when strip.write is set;
+// a seed-only module takes the strip as well.
+// A file emptied by a prune or a strip is deleted and reported applied.
+func reconcileSparseFile(m configreg.Module, path string, layer configengine.Layer, apply bool, strip *migration) (result Result, present bool, err error) {
 	result = Result{Module: m.Name, Layer: layer}
-	existing, err := os.ReadFile(path)
+	original, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return result, false, nil
 	}
 	if err != nil {
 		return Result{}, false, &FileError{Module: m.Name, Path: path, Err: fmt.Errorf("read config for %s: %w", m.Name, err)}
 	}
-	if m.SeedOnly {
-		return result, true, nil
+	fail := func(verb string, cause error) (Result, bool, error) {
+		return Result{}, true, &FileError{Module: m.Name, Path: path, Err: fmt.Errorf("%s %s: %w", verb, m.Name, cause)}
 	}
 
-	if m.Migrate != nil {
-		existing, result.Migrated, err = m.Migrate(existing)
+	current := original
+	if !m.SeedOnly {
+		if m.Migrate != nil {
+			current, result.Migrated, err = m.Migrate(current)
+			if err != nil {
+				return fail("migrate", err)
+			}
+		}
+		current, result.Removed, err = yamlengine.Prune([]byte(m.Template()), current, m.OpenMaps...)
 		if err != nil {
-			return Result{}, true, &FileError{Module: m.Name, Path: path, Err: fmt.Errorf("migrate %s: %w", m.Name, err)}
+			return fail("reconcile", err)
 		}
 	}
-	pruned, removed, err := yamlengine.Prune([]byte(m.Template()), existing, m.OpenMaps...)
-	if err != nil {
-		return Result{}, true, &FileError{Module: m.Name, Path: path, Err: fmt.Errorf("reconcile %s: %w", m.Name, err)}
-	}
-	result.Removed = removed
+	changed := len(result.Removed)+len(result.Migrated) > 0
 
-	if !apply || len(removed)+len(result.Migrated) == 0 {
+	if strip != nil {
+		stripped, strippedKeys, inherited, err := stripToSparse(m, strip.dirs, original, current)
+		if err != nil {
+			return fail("strip", err)
+		}
+		result.Stripped, result.Inherited = strippedKeys, inherited
+		if strip.write && len(strippedKeys) > 0 {
+			current = stripped
+			changed = true
+		}
+	}
+
+	if !apply || !changed {
 		return result, true, nil
 	}
-	if len(removed) > 0 && len(pruned) == 0 {
+	if len(bytes.TrimSpace(current)) == 0 {
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return Result{}, true, &FileError{Module: m.Name, Path: path, Err: fmt.Errorf("remove emptied config for %s: %w", m.Name, err)}
 		}
-	} else if err := fsx.AtomicWriteBytes(path, pruned); err != nil {
+	} else if err := fsx.AtomicWriteBytes(path, current); err != nil {
 		return Result{}, true, &FileError{Module: m.Name, Path: path, Err: fmt.Errorf("write config for %s: %w", m.Name, err)}
 	}
 	result.Applied = true
 	return result, true, nil
+}
+
+// stripToSparse strips current, a worktree file of m, of every key that equals what the layers below the worktree layer resolve to, and returns the stripped bytes with the removed keys.
+// inherited lists the keys the repo default holds that original, the file as read, lacked and whose value differs from the template's or that the template lacks.
+func stripToSparse(m configreg.Module, dirs configengine.Dirs, original, current []byte) (stripped []byte, strippedKeys, inherited []string, err error) {
+	spec := m.Spec()
+	below, err := configengine.BelowLayer(dirs, spec, configengine.LayerWorktree)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	stripped, strippedKeys, err = yamlengine.Strip(below, current, spec.OpenMaps, spec.WholeEntries)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	layers, err := configengine.Layers(dirs, spec)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var repoDefault []byte
+	for _, layer := range layers {
+		if layer.Layer == configengine.LayerDefault {
+			repoDefault = layer.Bytes
+		}
+	}
+	differing, _, err := yamlengine.Strip(spec.Template, repoDefault, spec.OpenMaps, spec.WholeEntries)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	differingKeys, err := yamlengine.LeafPaths(differing, spec.OpenMaps, spec.WholeEntries)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	held, err := yamlengine.LeafPaths(original, spec.OpenMaps, spec.WholeEntries)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	for _, key := range differingKeys {
+		if !slices.Contains(held, key) {
+			inherited = append(inherited, key)
+		}
+	}
+	return stripped, strippedKeys, inherited, nil
 }
 
 // primeConfig reads the prime worktree's copy of a module's config under primeBaseDir.
