@@ -20,6 +20,14 @@ const (
 	reviewFormatStencil          = "burler-review-format"
 )
 
+// noneIfEmpty fills a brief marker whose input is absent with the literal "none".
+func noneIfEmpty(value string) string {
+	if value == "" {
+		return "none"
+	}
+	return value
+}
+
 // ParentReviewKeepAlivePrompt renders the keep-alive prompt for keep-alive number ping, which keeps each ping's text distinct.
 // It errors when the render contains a newline, since shuttle's Send refuses multi-line text.
 func ParentReviewKeepAlivePrompt(stencilsDir string, ping int) (string, error) {
@@ -61,7 +69,8 @@ func ParentReviewDeliveryPrompt(stencilsDir, slug, briefPath, reviewer string) (
 }
 
 // ParentReviewBrief renders the reviewer brief for the run slug, pointing at the two discussion files and at the deployed review-format stencil.
-func ParentReviewBrief(stencilsDir, slug, decisionRecordPath, supportLogPath string) (string, error) {
+// alignmentReport and alignmentReason name the alignment agent's report and why it did not settle the review; an empty value reads as "none".
+func ParentReviewBrief(stencilsDir, slug, decisionRecordPath, supportLogPath, alignmentReport, alignmentReason string) (string, error) {
 	template, err := stencilstore.Read(stencilsDir, parentReviewBriefStencil)
 	if err != nil {
 		return "", fmt.Errorf("loom: read %s: %w", parentReviewBriefStencil, err)
@@ -71,6 +80,8 @@ func ParentReviewBrief(stencilsDir, slug, decisionRecordPath, supportLogPath str
 		"decision_record_path": decisionRecordPath,
 		"support_log_path":     supportLogPath,
 		"review_format_path":   stencilstore.Path(stencilsDir, reviewFormatStencil),
+		"alignment_report":     noneIfEmpty(alignmentReport),
+		"alignment_reason":     noneIfEmpty(alignmentReason),
 	})
 	if err != nil {
 		return "", fmt.Errorf("loom: fill %s: %w", parentReviewBriefStencil, err)

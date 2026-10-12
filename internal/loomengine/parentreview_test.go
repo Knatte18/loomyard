@@ -75,7 +75,7 @@ func TestParentReviewKeepAlivePrompt_OneLineNamingPing(t *testing.T) {
 
 func TestParentReviewBrief_NamesPathsAndSubmitLines(t *testing.T) {
 	dir := newParentReviewStencilsDir(t)
-	got, err := ParentReviewBrief(dir, "add-json-flag", "/w/decision.md", "/w/support.md")
+	got, err := ParentReviewBrief(dir, "add-json-flag", "/w/decision.md", "/w/support.md", "", "")
 	if err != nil {
 		t.Fatalf("ParentReviewBrief(...) = _, %v; want nil error", err)
 	}
@@ -95,6 +95,22 @@ func TestParentReviewBrief_NamesPathsAndSubmitLines(t *testing.T) {
 	if strings.Contains(got, "{{") {
 		t.Errorf("ParentReviewBrief(...) contains an unrendered marker:\n%s", got)
 	}
+	if !strings.Contains(got, "Its report: none") || !strings.Contains(got, "Why it did not settle the review: none") {
+		t.Errorf("ParentReviewBrief(...) with no agent does not read none for the report and the reason:\n%s", got)
+	}
+
+	aligned, err := ParentReviewBrief(dir, "add-json-flag", "/w/decision.md", "/w/support.md", "/w/report.md", "the agent escalated")
+	if err != nil {
+		t.Fatalf("ParentReviewBrief(...) with an alignment report = _, %v; want nil error", err)
+	}
+	for _, want := range []string{"Its report: /w/report.md", "Why it did not settle the review: the agent escalated"} {
+		if !strings.Contains(aligned, want) {
+			t.Errorf("ParentReviewBrief(...) with an alignment report does not contain %q:\n%s", want, aligned)
+		}
+	}
+	if strings.Contains(aligned, "{{") {
+		t.Errorf("ParentReviewBrief(...) with an alignment report contains an unrendered marker:\n%s", aligned)
+	}
 
 	// An advisor's notes file beside the two discussion files is never part of the brief: the parent review reads the two files only.
 	discussionDir := t.TempDir()
@@ -103,7 +119,7 @@ func TestParentReviewBrief_NamesPathsAndSubmitLines(t *testing.T) {
 			t.Fatalf("WriteFile(%q) = %v; want nil", name, err)
 		}
 	}
-	withNotes, err := ParentReviewBrief(dir, "add-json-flag", filepath.Join(discussionDir, "decision-record.md"), filepath.Join(discussionDir, "support-log.md"))
+	withNotes, err := ParentReviewBrief(dir, "add-json-flag", filepath.Join(discussionDir, "decision-record.md"), filepath.Join(discussionDir, "support-log.md"), "", "")
 	if err != nil {
 		t.Fatalf("ParentReviewBrief(...) beside an advisor notes file = _, %v; want nil error", err)
 	}

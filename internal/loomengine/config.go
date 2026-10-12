@@ -18,6 +18,9 @@
 // seed, discussion_judge, plan_judge, webster_judge, discussion_seed, plan_seed, webster_seed and rework are role model-specs validated only when non-empty, an empty value meaning the fallback:
 // a per-segment judge takes judge, a per-segment seed takes seed, seed takes that segment's resolved judge, and rework takes plan.
 // arbiter is a role model-spec validated only when non-empty, an empty value taking opus[high]; arbiter_timeout_min and arbiter_max_spawns are refused when negative, and a zero arbiter_max_spawns turns the arbiter off.
+// alignment, alignment_timeout_min, skip_alignment and alignment_pr_approve configure the alignment agent at parent review and PR-Gate:
+// alignment is a role model-spec validated only when non-empty, an empty value taking opus[high];
+// alignment_timeout_min is refused when negative, a zero taking 20, and a resolved value at or above parent_review_wait_min is refused too.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
 // value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
 // driver, and both must load cleanly, unlike the other role keys, which are always required.
@@ -409,6 +412,15 @@ type Config struct {
 	ArbiterTimeoutMin int    `yaml:"arbiter_timeout_min"`
 	ArbiterMaxSpawns  int    `yaml:"arbiter_max_spawns"`
 
+	// The alignment agent's model-spec, timeout and switches.
+	// An empty Alignment takes opus[high] and a zero AlignmentTimeoutMin takes 20 minutes, kept below ParentReviewWaitMin.
+	// SkipAlignment true sends parent review and PR-Gate to the run's parent without the agent.
+	// AlignmentPRApprove false makes an agent approve at PR-Gate an escalation, so the parent gives the yes.
+	Alignment           string `yaml:"alignment"`
+	AlignmentTimeoutMin int    `yaml:"alignment_timeout_min"`
+	SkipAlignment       bool   `yaml:"skip_alignment"`
+	AlignmentPRApprove  bool   `yaml:"alignment_pr_approve"`
+
 	ReviewCirclingCheckpoint int `yaml:"review_circling_checkpoint"`
 	ReviewMaxBounces         int `yaml:"review_max_bounces"`
 
@@ -473,6 +485,8 @@ func ConfigOpenMaps() []string {
 
 // ConfigSpec returns loom's layered-load spec.
 // Only the keys that can switch off or hollow a review or approval gate are barred from the local layer.
+// The agent's approve at PR-Gate lands on the parent with no later gate, so a weaker alignment model, a re-opened auto-landing (alignment_pr_approve) or a local skip_alignment: false under a hub true hollows the approval gate;
+// a shorter alignment_timeout_min only routes a review to the parent.
 func ConfigSpec() configengine.Spec {
 	none := configengine.CategoryNone
 	guard := configengine.CategoryGuard
@@ -516,6 +530,10 @@ func ConfigSpec() configengine.Spec {
 			"arbiter":                    none,
 			"arbiter_timeout_min":        none,
 			"arbiter_max_spawns":         none,
+			"alignment":                  guard,
+			"alignment_timeout_min":      none,
+			"skip_alignment":             guard,
+			"alignment_pr_approve":       guard,
 			"parent_review_wait_min":     guard,
 			"step_idle_timeout_min":      none,
 			"review_circling_checkpoint": none,
@@ -773,6 +791,17 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 	}
 
+	// alignment is validated only when non-empty: an empty value takes ResolveAlignment's default.
+	if cfg.Alignment != "" {
+		if _, err := modelspec.Parse(cfg.Alignment); err != nil {
+			return Config{}, fmt.Errorf("loom config key %q: %w", "alignment", err)
+		}
+	}
+
+	if cfg.AlignmentTimeoutMin < 0 {
+		return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; set it to 0 for the %d minute default, or to a positive integer below parent_review_wait_min", "alignment_timeout_min", cfg.AlignmentTimeoutMin, alignmentDefaultTimeoutMin)
+	}
+
 	// Zero is a meaning on both arbiter knobs, so only a negative value is refused.
 	for _, knob := range []struct {
 		key   string
@@ -814,6 +843,16 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	// so the one off switch is the gate entry's own attempts, not this key.
 	if cfg.ParentReviewWaitMin < 1 {
 		return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set attempts: 0 on Discussion-Write's parent-review gate entry to turn the review off", "parent_review_wait_min", cfg.ParentReviewWaitMin)
+	}
+
+	// The agent must give up before the parent-review wait does, or the wait would pass with no verdict while the agent still runs.
+	// The check runs on the merged layers, so a local layer, run_settings included, is checked like the hub file.
+	alignmentTimeoutMin := cfg.AlignmentTimeoutMin
+	if alignmentTimeoutMin == 0 {
+		alignmentTimeoutMin = alignmentDefaultTimeoutMin
+	}
+	if alignmentTimeoutMin >= cfg.ParentReviewWaitMin {
+		return Config{}, fmt.Errorf("loom config key %q: resolved timeout %d minutes (set %d) is not below parent_review_wait_min %d; set alignment_timeout_min below parent_review_wait_min, or raise parent_review_wait_min in the hub's loom.yaml", "alignment_timeout_min", alignmentTimeoutMin, cfg.AlignmentTimeoutMin, cfg.ParentReviewWaitMin)
 	}
 
 	// step_idle_timeout_min is a wake interval's cousin: a value below the floor is raised to it with one Warn and never refused.

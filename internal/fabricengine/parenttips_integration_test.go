@@ -167,6 +167,36 @@ func TestChangedPaths_NamesExactlyTheCommittedFiles(t *testing.T) {
 	}
 }
 
+// TestCommitLog_ListsTheRangeNewestFirst asserts the range's commits as a seven-character SHA prefix and subject, newest first, an empty result for an empty range and an error naming an unknown ref.
+func TestCommitLog_ListsTheRangeNewestFirst(t *testing.T) {
+	t.Parallel()
+
+	f, warpPath, _, _, _, _, _ := buildReconcileFixture(t, t.TempDir(), 1)
+	base := fabricengine.CurrentSHAForTest(t, warpPath)
+	first := gitkit.CommitFile(t, warpPath, "a.txt", "a", "first change")
+	second := gitkit.CommitFile(t, warpPath, "b.txt", "b", "second change")
+
+	got, err := f.CommitLog(base, second)
+	if err != nil {
+		t.Fatalf("CommitLog() error = %v", err)
+	}
+	if want := []string{second[:7] + " second change", first[:7] + " first change"}; !slices.Equal(got, want) {
+		t.Errorf("CommitLog() = %v; want %v", got, want)
+	}
+
+	none, err := f.CommitLog(second, second)
+	if err != nil {
+		t.Fatalf("CommitLog(same) error = %v", err)
+	}
+	if len(none) != 0 {
+		t.Errorf("CommitLog(same) = %v; want none", none)
+	}
+
+	if _, err := f.CommitLog(base, "no-such-ref"); err == nil || !strings.Contains(err.Error(), "no-such-ref") {
+		t.Errorf("CommitLog(unknown ref) error = %v; want it to name the ref", err)
+	}
+}
+
 // TestHoldsWork covers a source the base lacks, one the base holds after a squash, and a conflicting one.
 func TestHoldsWork(t *testing.T) {
 	t.Parallel()

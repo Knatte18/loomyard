@@ -73,6 +73,15 @@ func writeRejectionAt(t *testing.T, path string, number int, head string) {
 	}
 }
 
+// writeAlignmentNoteAt points the fixture's note path under its record directory and writes n there.
+func writeAlignmentNoteAt(t *testing.T, f *prGateFixture, n AlignmentNote) {
+	t.Helper()
+	f.deps.Alignment.NotePath = filepath.Join(filepath.Dir(f.deps.ApprovalPath), "alignment", "note.json")
+	if err := WriteAlignmentNote(f.deps.Alignment.NotePath, n); err != nil {
+		t.Fatalf("WriteAlignmentNote: %v", err)
+	}
+}
+
 func TestNewPRGate_Refusals(t *testing.T) {
 	ok := func() Deps {
 		d := newTestDeps(t)
@@ -115,6 +124,10 @@ func TestPRGate_Verdicts(t *testing.T) {
 		reasonHas []string
 		// reasonSuffix is what the reason ends with, when it must end with something.
 		reasonSuffix string
+		// reasonPrefix is what the reason starts with, when it must start with something.
+		reasonPrefix string
+		// noticeHas lists substrings the parent notice carries; a row that lists none must carry no notice and no alignment clause.
+		noticeHas    []string
 		wantNoGitHub bool
 	}{
 		{
@@ -207,6 +220,42 @@ func TestPRGate_Verdicts(t *testing.T) {
 			reasonSuffix: "https://github.com/acme/proj/pull/3",
 		},
 		{
+			name: "an alignment note for this pull request leads the reason and rides as the parent notice", listBody: openPR(3, prGateHead),
+			setup: func(t *testing.T, f *prGateFixture) {
+				writeAlignmentNoteAt(t, f, AlignmentNote{PRNumber: 3, HeadSHA: prGateHead, Report: "/r/report.md", Reason: "overlaps peer y"})
+			},
+			want:         shedengine.Awaiting,
+			reasonPrefix: "alignment report /r/report.md did not settle this pull request - overlaps peer y; ",
+			reasonHas:    []string{"lyx loom approve"},
+			noticeHas:    []string{"alignment report /r/report.md did not settle this pull request - overlaps peer y"},
+		},
+		{
+			name: "an alignment note ahead of a stale record leads the reason", listBody: openPR(3, "bbb"),
+			setup: func(t *testing.T, f *prGateFixture) {
+				writeApprovalAt(t, f.deps.ApprovalPath, 3, prGateHead)
+				writeAlignmentNoteAt(t, f, AlignmentNote{PRNumber: 3, HeadSHA: "bbb", Report: "/r/report.md", Reason: "moved"})
+			},
+			want:         shedengine.Awaiting,
+			reasonPrefix: "alignment report /r/report.md did not settle this pull request - moved; ",
+			reasonHas:    []string{"pull request head is now bbb"},
+			noticeHas:    []string{"alignment report /r/report.md"},
+		},
+		{
+			name: "an alignment note for another head adds nothing", listBody: openPR(3, prGateHead),
+			setup: func(t *testing.T, f *prGateFixture) {
+				writeAlignmentNoteAt(t, f, AlignmentNote{PRNumber: 3, HeadSHA: "old", Report: "/r/report.md", Reason: "moved"})
+			},
+			want: shedengine.Awaiting, reasonHas: []string{"lyx loom approve"},
+		},
+		{
+			name: "an empty note path adds nothing", listBody: openPR(3, prGateHead),
+			setup: func(t *testing.T, f *prGateFixture) {
+				writeAlignmentNoteAt(t, f, AlignmentNote{PRNumber: 3, HeadSHA: prGateHead, Report: "/r/report.md", Reason: "moved"})
+				f.deps.Alignment.NotePath = ""
+			},
+			want: shedengine.Awaiting, reasonHas: []string{"lyx loom approve"},
+		},
+		{
 			name: "non-transient query failure awaits", listBody: "[]",
 			setup:     func(t *testing.T, f *prGateFixture) { f.srv.listStatus = http.StatusNotFound },
 			want:      shedengine.Awaiting,
@@ -247,6 +296,17 @@ func TestPRGate_Verdicts(t *testing.T) {
 			}
 			if tt.reasonSuffix != "" && !strings.HasSuffix(ptr.Reason, tt.reasonSuffix) {
 				t.Errorf("reason %q does not end with %q", ptr.Reason, tt.reasonSuffix)
+			}
+			if tt.reasonPrefix != "" && !strings.HasPrefix(ptr.Reason, tt.reasonPrefix) {
+				t.Errorf("reason %q does not start with %q", ptr.Reason, tt.reasonPrefix)
+			}
+			for _, s := range tt.noticeHas {
+				if !strings.Contains(ptr.ParentNotice, s) {
+					t.Errorf("parent notice %q does not contain %q", ptr.ParentNotice, s)
+				}
+			}
+			if len(tt.noticeHas) == 0 && (ptr.ParentNotice != "" || strings.Contains(ptr.Reason, "alignment report")) {
+				t.Errorf("parent notice %q and reason %q; want no alignment clause", ptr.ParentNotice, ptr.Reason)
 			}
 			if tt.wantNoGitHub && len(f.order) != 0 {
 				t.Errorf("GitHub calls = %v; want none", f.order)

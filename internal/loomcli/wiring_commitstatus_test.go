@@ -137,7 +137,15 @@ func TestStatusCommitPathspec(t *testing.T) {
 		wantLoom    bool
 		wantDrive   bool
 		wantArbiter bool
+		wantAligned bool
 	}{
+		{
+			name: "alignment attempt file",
+			setup: func(t *testing.T, loc *lyxcwd.Location) {
+				writeFile(t, filepath.Join(shedrun.AlignmentDir(loc, shedrun.SelfRunID, "parent-review"), "attempt-1", "attempt.json"), "{}\n")
+			},
+			wantAligned: true,
+		},
 		{
 			name: "arbiter directory holding only an empty attempt directory",
 			setup: func(t *testing.T, loc *lyxcwd.Location) {
@@ -261,6 +269,9 @@ func TestStatusCommitPathspec(t *testing.T) {
 			}
 			if tt.wantArbiter {
 				want = append(want, shedrun.ArbiterRel(location, shedrun.SelfRunID))
+			}
+			if tt.wantAligned {
+				want = append(want, shedrun.AlignmentRel(location, shedrun.SelfRunID))
 			}
 			got := statusCommitPathspec(location, shedrun.SelfRunID)
 			if !reflect.DeepEqual(got, want) {

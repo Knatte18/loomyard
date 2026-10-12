@@ -27,9 +27,8 @@ func rejectRouting() shedengine.Routing {
 	}
 }
 
-// rejectCalls records the order of the record-mutating seams and the rejections written.
+// rejectCalls records the rejections written.
 type rejectCalls struct {
-	order   []string
 	written []landingshed.Rejection
 }
 
@@ -54,12 +53,7 @@ func rejectFixture() (rejectDeps, *rejectCalls) {
 		},
 		headSHA:        func() (string, error) { return "abc123", nil },
 		readReviewFile: func(string) (string, error) { return "fix the thing\n", nil },
-		removeApproval: func() error {
-			calls.order = append(calls.order, "remove")
-			return nil
-		},
-		writeRejection: func(r landingshed.Rejection) error {
-			calls.order = append(calls.order, "write")
+		recordRejection: func(r landingshed.Rejection) error {
 			calls.written = append(calls.written, r)
 			return nil
 		},
@@ -238,14 +232,14 @@ func TestRejectVerb_Refusals(t *testing.T) {
 			if !strings.Contains(out.String(), tt.wantMsg) {
 				t.Errorf("output %q does not contain %q", out.String(), tt.wantMsg)
 			}
-			if len(calls.order) != 0 {
-				t.Errorf("mutated records %v on a refusal; want none", calls.order)
+			if len(calls.written) != 0 {
+				t.Errorf("recorded %v on a refusal; want none", calls.written)
 			}
 		})
 	}
 }
 
-// TestRejectVerb_Success asserts a rejection at the awaiting gate, and a replacement rejection at the blocked rework row past the gate's budget, removes the approval, writes the rejection and prints the resume envelope.
+// TestRejectVerb_Success asserts a rejection at the awaiting gate, and a replacement rejection at the blocked rework row past the gate's budget, is recorded through the shared path and prints the resume envelope.
 func TestRejectVerb_Success(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -269,9 +263,6 @@ func TestRejectVerb_Success(t *testing.T) {
 			var out bytes.Buffer
 			if code := rejectVerb(context.Background(), &out, d, "review.md"); code != 0 {
 				t.Fatalf("exit = %d; want 0; out = %s", code, out.String())
-			}
-			if got := strings.Join(calls.order, ","); got != "remove,write" {
-				t.Errorf("call order = %q; want approval removed before the rejection is written", got)
 			}
 			want := landingshed.Rejection{PRNumber: 7, HeadSHA: "abc123", RejectedAt: "2026-09-30T12:00:00Z", Findings: "fix the thing\n"}
 			if len(calls.written) != 1 || calls.written[0] != want {

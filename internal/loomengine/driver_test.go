@@ -112,6 +112,65 @@ func TestResolveArbiter(t *testing.T) {
 	}
 }
 
+// TestResolveAlignment verifies ResolveAlignment resolves the spec through the registry, takes opus[high] for an empty spec and 20 minutes for a zero timeout, passes a set timeout through, and names the alignment key when the spec does not resolve.
+func TestResolveAlignment(t *testing.T) {
+	t.Parallel()
+	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
+	if err != nil {
+		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+	}
+	resolve := func(text string) AlignmentSettings {
+		t.Helper()
+		spec, err := modelspec.Parse(text)
+		if err != nil {
+			t.Fatalf("modelspec.Parse(%q) = _, %v; want nil error", text, err)
+		}
+		resolved, err := reg.Resolve(spec)
+		if err != nil {
+			t.Fatalf("reg.Resolve(%q) = _, %v; want nil error", text, err)
+		}
+		return AlignmentSettings{Model: resolved.Model, Effort: resolved.Params["effort"], Version: resolved.Params["version"]}
+	}
+
+	tests := []struct {
+		name        string
+		cfg         Config
+		wantSpec    string
+		wantTimeout time.Duration
+		wantErrIn   []string
+	}{
+		{name: "empty spec and zero timeout take the defaults", cfg: Config{}, wantSpec: "opus[high]", wantTimeout: 20 * time.Minute},
+		{name: "set spec resolves to itself", cfg: Config{Alignment: "sonnet[low]"}, wantSpec: "sonnet[low]", wantTimeout: 20 * time.Minute},
+		{name: "set timeout passes through", cfg: Config{AlignmentTimeoutMin: 7}, wantSpec: "opus[high]", wantTimeout: 7 * time.Minute},
+		{name: "alias the registry lacks", cfg: Config{Alignment: "not-a-real-alias"}, wantErrIn: []string{"alignment", "not-a-real-alias"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ResolveAlignment(tt.cfg, reg)
+			if tt.wantErrIn != nil {
+				if err == nil {
+					t.Fatalf("ResolveAlignment(%+v) = _, nil; want an error", tt.cfg)
+				}
+				for _, want := range tt.wantErrIn {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("ResolveAlignment(%+v) error = %q; want it to contain %q", tt.cfg, err.Error(), want)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ResolveAlignment(%+v) = _, %v; want nil error", tt.cfg, err)
+			}
+			want := resolve(tt.wantSpec)
+			want.Timeout = tt.wantTimeout
+			if got != want {
+				t.Errorf("ResolveAlignment(%+v) = %+v; want %+v", tt.cfg, got, want)
+			}
+		})
+	}
+}
+
 // TestResolveDriver_Refuses verifies an alias absent from the registry and an ungrammatical driver model-spec each return an error naming the driver role, rather than being silently carried into the driver session's spawn site.
 func TestResolveDriver_Refuses(t *testing.T) {
 	t.Parallel()

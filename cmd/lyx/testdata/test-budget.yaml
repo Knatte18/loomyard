@@ -6,6 +6,7 @@ cmd/testtiming: 21
 contracts/specs: 3
 contracts/stencils: 16
 internal/agentname: 8
+internal/alignment: 7
 internal/batcher: 9
 internal/battencli: 74
 internal/battenrecipe: 9
@@ -31,7 +32,7 @@ internal/dotgit: 3
 internal/editdirective: 2
 internal/envsource: 3
 internal/fabriccli: 21
-internal/fabricengine: 643
+internal/fabricengine: 644
 internal/fabricvocab: 1
 internal/friction: 6
 internal/frictionengine: 15
@@ -52,12 +53,12 @@ internal/hubreconcile: 18
 internal/idecli: 2
 internal/ideengine: 4
 internal/impactset: 5
-internal/landingshed: 84
+internal/landingshed: 85
 internal/lock: 4
 internal/logger: 35
 internal/loggerconfig: 3
-internal/loomcli: 214
-internal/loomengine: 52
+internal/loomcli: 217
+internal/loomengine: 53
 internal/loomrecipe: 54
 internal/loomshed: 76
 internal/lyxcwd: 23
