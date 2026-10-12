@@ -33,11 +33,13 @@ A test package never reaches the operator's global gitconfig or default tmux soc
 
 ## Private temp directory and leftovers
 
-- `tmuxkit.Main` points `TMPDIR` (and `TMP` and `TEMP` on Windows) at the directory it owns, as it does `TMUX_TMPDIR`, so every `t.TempDir`, `os.MkdirTemp("")`, `lyxbin` build and child temp file of a tagged package lands there.
-  A test binary re-executed as a helper inherits that directory, and its own `Main` creates its directory beside it rather than inside it, so nesting never pushes a socket path past the `sun_path` limit.
+- `tmuxkit.Main` runs in the process run directory of `internal/lyxtemp` and points `TMPDIR` (and `TMP` and `TEMP` on Windows) at it, as it does `TMUX_TMPDIR`, so every `t.TempDir`, `os.MkdirTemp("")`, `lyxbin` build and child temp file of a tagged package lands there.
+  A test binary re-executed as a helper inherits that directory, and its own run directory is made beside it by the temp package's beside-the-parent rule rather than inside it, so nesting never pushes a socket path past the `sun_path` limit.
+- After the run `Main` removes the run directory on every platform, Windows included.
+  A removal that fails, such as one a lingering child's cwd blocks on Windows, is reported on stderr and leaves the exit code unchanged.
+  A binary killed by a panic or timeout skips the removal, and the next start's sweep of `internal/lyxtemp` removes its directory once the OS has released its lock.
 - After the run `Main` sweeps the servers and, on Linux, scans `/proc` for any process whose cwd, executable or an argv element references that directory, waiting up to two seconds for it to exit on its own.
   A leftover is killed and fails the package with exit 1, naming its pid, cwd and argv on stderr; a `lyx reed watchdog` daemon is killed without failing the package, because it idles out on its own schedule.
-  The directory is then removed.
   Off Linux the scan is skipped.
 - The probes behind the scan are kit exports, `Pids`, `ProcArgv`, `ProcCwd`, `ProcExe` and `IsWatchdog`; they read files only and start nothing.
 - Before the sweep, `Main` checks the sockets under its directory's per-user directory: in a test binary built without the `tmux` and `llm` tags every socket is a finding, and in one built with either only a socket whose key no test registered through `Socket`, `KillOnCleanup` or `PackageServer` is.

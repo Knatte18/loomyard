@@ -10,15 +10,17 @@
 // Main also unsets `LYX_REED_TMUX_CONF`, so every reed.yaml a tagged test renders from the template resolves `tmux_conf` to empty and no operator tmux config reaches a server a test starts.
 // Reed starts a server itself only after a test's own `down` or `kill-server` on its key, or when a test registers its key after reed's boot.
 //
-// Main also points `TMPDIR` at that directory, so every temp file a test creates lands there, and after the run it sweeps the servers, killing every process their panes' sessions still hold, scans `/proc` on Linux for any process whose cwd, executable or argv references the directory, kills it and fails the package, then removes the directory.
-// A test binary re-executed as a helper inherits that environment, and its own Main creates its directory beside the inherited one, never inside it, so its socket paths do not grow past the limit.
+// Main runs in the process run directory of `internal/lyxtemp` and points `TMPDIR` at it, so every temp file a test creates lands there.
+// After the run it sweeps the servers, killing every process their panes' sessions still hold, scans `/proc` on Linux for any process whose cwd, executable or argv references the directory, kills it and fails the package, then removes the directory on every platform, Windows included.
+// A removal that fails is reported without changing the exit code, and a binary killed before it removes its directory leaves it for the next start's sweep.
+// A test binary re-executed as a helper inherits that environment, and its own run directory is made beside the inherited one, never inside it, so its socket paths do not grow past the limit.
 // A reed watchdog daemon is killed without failing the package, because it idles out on its own schedule after the test that spawned it.
 // Before the sweep it also fails the package for a socket it finds: any socket in a test binary built without the `tmux` and `llm` tags, and in one built with either only a socket whose key no test registered.
 // Pids, ProcArgv, ProcCwd, ProcExe, ProcPPID, ProcState, ProcComm and IsWatchdog are the read-only `/proc` probes behind that scan, exported for tests that look for processes themselves.
 //
 // It is the second kit exempt from the Testkit Invariant's `os/exec` ban, after lyxbin.
 // The exemption is bounded to running the `tmux` binary against sockets under the kit's own directory or its own fixture keys, to starting servers under the kit's own config, and to the `/proc` scan and the kill of a leftover it finds.
-// A test binary killed by a panic or timeout skips Main's sweep and leaves one `lyx`-prefixed temp directory with its servers;
+// A test binary killed by a panic or timeout skips Main's sweep and leaves its servers;
 // Socket's cleanup still covers ordinary test failures.
 package tmuxkit
 
@@ -40,6 +42,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -63,37 +66,40 @@ const (
 	leftoverPoll = 50 * time.Millisecond
 )
 
-// Main runs m inside an isolated tmux socket directory and returns the run's exit code.
+// Main runs m inside the process run directory and returns the run's exit code.
+// Off Windows the run directory is also the isolated tmux socket directory.
 // A package calls it as `os.Exit(tmuxkit.Main(m))` after its own setup.
-// On Windows (psmux) the tests run unchanged.
+// On Windows (psmux) the tests run unchanged, apart from the temp variables pointing at the run directory.
 func Main(m *testing.M) int {
-	if runtime.GOOS == "windows" {
-		return m.Run()
-	}
-
-	dir, err := os.MkdirTemp(kitBase(), dirPrefix)
+	dir, err := lyxtemp.Dir()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "tmuxkit: create socket directory: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tmuxkit: %v\n", err)
 		return 1
 	}
-	defer os.RemoveAll(dir)
+
+	if runtime.GOOS == "windows" {
+		setTempEnv(dir)
+		return afterRun(os.Stderr, dir, m.Run(), leftoverGrace, func() {}, lyxtemp.Remove)
+	}
 
 	if err := checkSocketPath(dir, os.Getuid()); err != nil {
 		fmt.Fprintf(os.Stderr, "tmuxkit: %v\n", err)
+		_ = lyxtemp.Remove()
 		return 1
 	}
 	setEnv(dir)
 
 	code := m.Run()
 
-	return afterRun(os.Stderr, dir, code, leftoverGrace, func() { sweep(dir, os.Getuid()) })
+	return afterRun(os.Stderr, dir, code, leftoverGrace, func() { sweep(dir, os.Getuid()) }, lyxtemp.Remove)
 }
 
-// afterRun finishes a package's run: it checks the sockets under dir, sweeps the servers, then, on Linux, kills every process still referencing dir and fails the run for each that is not a reed watchdog daemon, and finally removes dir.
+// afterRun finishes a package's run: it checks the sockets under dir, sweeps the servers, then, on Linux, kills every process still referencing dir and fails the run for each that is not a reed watchdog daemon, and finally calls remove to delete dir.
 // The socket check runs before the sweep, because the sweep removes the socket files the check reads.
 // A process that outlives its sweep gets up to grace to exit on its own first.
 // It returns code unless a socket finding or a leftover forces 1, and names each on w.
-func afterRun(w io.Writer, dir string, code int, grace time.Duration, sweep func()) int {
+// A failed remove is named on w and leaves the code unchanged, since the next start's sweep removes the directory.
+func afterRun(w io.Writer, dir string, code int, grace time.Duration, sweep func(), remove func() error) int {
 	if findings := checkSockets(dir, tmuxAllowed); len(findings) > 0 {
 		for _, finding := range findings {
 			fmt.Fprintln(w, finding)
@@ -118,7 +124,9 @@ func afterRun(w io.Writer, dir string, code int, grace time.Duration, sweep func
 			code = 1
 		}
 	}
-	_ = os.RemoveAll(dir)
+	if err := remove(); err != nil {
+		fmt.Fprintf(w, "tmuxkit: remove run directory %s: %v; the next start's sweep removes it\n", dir, err)
+	}
 	return code
 }
 
@@ -431,25 +439,19 @@ func checkSocketPath(dir string, uid int) error {
 	return nil
 }
 
-// kitBase returns the directory Main creates its own under, "" meaning the system temp directory.
-// A process that inherited another Main's directory as both TMPDIR and TMUX_TMPDIR, such as a test binary re-executed as a helper, gets that directory's parent instead,
-// so its directory sits beside the inherited one at the same depth and its socket paths stay as short as the ones checkSocketPath already admitted.
-func kitBase() string {
-	inherited := os.Getenv("TMPDIR")
-	if inherited != "" && os.Getenv("TMUX_TMPDIR") == inherited && strings.HasPrefix(filepath.Base(inherited), dirPrefix) {
-		return filepath.Dir(inherited)
-	}
-	return ""
-}
-
-// setEnv points tmux and every temporary file at dir, detaches the process from any enclosing tmux session, and clears the variable that names an operator tmux config for reed.
-func setEnv(dir string) {
-	os.Setenv("TMUX_TMPDIR", dir)
+// setTempEnv points every temporary file at dir: `TMPDIR`, and on Windows `TMP` and `TEMP`.
+func setTempEnv(dir string) {
 	os.Setenv("TMPDIR", dir)
 	if runtime.GOOS == "windows" {
 		os.Setenv("TMP", dir)
 		os.Setenv("TEMP", dir)
 	}
+}
+
+// setEnv points tmux and every temporary file at dir, detaches the process from any enclosing tmux session, and clears the variable that names an operator tmux config for reed.
+func setEnv(dir string) {
+	os.Setenv("TMUX_TMPDIR", dir)
+	setTempEnv(dir)
 	os.Unsetenv("TMUX")
 	os.Unsetenv("TMUX_PANE")
 	os.Unsetenv("LYX_REED_TMUX_CONF")
