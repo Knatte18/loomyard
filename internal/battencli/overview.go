@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -33,6 +34,8 @@ const (
 	overviewUnknown        = "-"
 	overviewColumnGap      = "  "
 	overviewMoreRunsFormat = "… %d more runs not shown"
+	// overviewPausedFormat is the state cell of a run a live pause covers, filled with the minutes since the pause began.
+	overviewPausedFormat = "paused %s"
 	// overviewCellCount is the cells after the slug: state, stage, time in stage, age and session.
 	overviewCellCount = 5
 )
@@ -51,6 +54,8 @@ type overviewRun struct {
 	PairExists bool
 	// Session is the name of the pair's reed session.
 	Session string
+	// PausedAt is when the live pause covering the run began; zero when none covers it.
+	PausedAt time.Time
 }
 
 // overviewLine is one run's cells before they are padded into columns.
@@ -155,6 +160,10 @@ func overviewLineOf(run overviewRun, now time.Time) overviewLine {
 		stageStarted = run.StartedAt
 	}
 
+	if !run.PausedAt.IsZero() && (state == string(shedengine.StateRunning) || state == string(shedengine.StatePaused) || state == overviewStarting) {
+		state = fmt.Sprintf(overviewPausedFormat, overviewSince(run.PausedAt, now))
+	}
+
 	line.cells = [overviewCellCount]string{
 		state,
 		stage,
@@ -212,7 +221,9 @@ func fitOverview(lines []string, rows int) []string {
 // It is not safe for concurrent use.
 type overviewSource struct {
 	prime *lyxcwd.Location
-	now   func() time.Time
+	// pauseRecord is the path of the hub's pause record.
+	pauseRecord string
+	now         func() time.Time
 	// childStatus returns the path of the status file of the task worktree slug names; a test replaces it.
 	childStatus func(slug string) (string, error)
 
@@ -224,10 +235,11 @@ type overviewSource struct {
 	pairs map[string]*lyxcwd.Location
 }
 
-// newOverviewSource returns a source over the prime's runs that reads the time from now.
-func newOverviewSource(prime *lyxcwd.Location, now func() time.Time) *overviewSource {
+// newOverviewSource returns a source over the prime's runs and the pause record at pauseRecord that reads the time from now.
+func newOverviewSource(prime *lyxcwd.Location, pauseRecord string, now func() time.Time) *overviewSource {
 	s := &overviewSource{
 		prime:        prime,
+		pauseRecord:  pauseRecord,
 		now:          now,
 		battenCaches: map[string]*statuspane.StatusCache{},
 		childCaches:  map[string]*statuspane.StatusCache{},
@@ -261,9 +273,18 @@ func (s *overviewSource) frame() statuspane.Frame {
 		return statuspane.Frame{Lines: []string{overviewRunsBroken}}
 	}
 
+	record, err := pauserecord.Read(s.pauseRecord)
+	if err != nil {
+		logger.Debug("batten: reading the pause record for the overview failed", "err", err)
+		record = pauserecord.Record{}
+	}
+
 	var runs []overviewRun
 	for _, slug := range slugs {
 		if run, ok := s.poll(slug); ok {
+			if entry, covered := record.Covering(slug); covered {
+				run.PausedAt = entry.PausedAt
+			}
 			runs = append(runs, run)
 		}
 	}
@@ -375,9 +396,14 @@ strand is sized to it. It reads files only, and runs from the prime only.`,
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
+			pauseGeom, err := hubgeom.PauseGeometry(location)
+			if err != nil {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
 			engine := reedengine.New(reedCfg, reedGeom)
 
-			source := newOverviewSource(location, time.Now)
+			source := newOverviewSource(location, pauseGeom.RecordPath, time.Now)
 			pane := statuspane.Pane{
 				Out:    out,
 				Size:   statuspane.TerminalSize(os.Stdout),

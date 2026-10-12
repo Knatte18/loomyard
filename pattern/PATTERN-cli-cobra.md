@@ -7,6 +7,8 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 - An alias command may delegate into another module's subtree with no seam function of its own.
 - Every command has a non-empty `Short`.
 - Every invocable command carries an `audience` annotation from the closed set in `internal/clihelp`, a hidden one is `internal`, and a non-invocable group carries none.
+  `clihelp.Invocable` decides: a command with subcommands is invocable only when it is runnable and its `Use` carries a token after its name, or it has a visible local flag.
+  Any other group carries no audience, prints help on a bare call and refuses a mistyped subcommand, so behavior meant for the group name belongs on a leaf such as `show`.
 - `Use` is the command name, then `<arg>`, `[<arg>]`, `<arg>...`, `[<arg>...]`, `--flag <value>` for a flag cobra marks required, or a brace-balanced `{...}` payload span.
   `Short` is one lower-case line with no final period, and `Long` stays under the byte cap in `cmd/lyx/clitree_test.go`.
 - One walk of `newRoot()` in `cmd/lyx/clitree_test.go` enforces the audience, `Use`, `Short` and `Long` form, bare-group listing and unknown-subcommand refusal for every command.
@@ -29,4 +31,5 @@ Deviations:
 - `battencli` uses `internal/battenshed` and `internal/battenrecipe`, with no engine package of its own.
 - `shedcli` uses `internal/shedverbs`, `internal/loomcli` and `internal/battencli`, with no engine package of its own.
 - `pausecli` uses `pauseengine`, and mounts a second root command, `resume`, beside `pause`.
+- `shortcutcli` mounts one root command per shortcut from its embedded file, with no `Command()` or `RunCLI`; a shortcut is an alias stretched to a sequence of argvs, so the module guards skip its group.
 - `cleanupcli` calls the cleanup functions of `battencli`, `boardengine`, `orchengine`, `logger` and `lyxtemp`, with no engine package of its own.

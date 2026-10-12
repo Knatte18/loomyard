@@ -93,6 +93,11 @@ func TestPeakContext(t *testing.T) {
 			want:  startup + (2*3 + 2*4) + 50 + 25 + 7 + 7,
 		},
 		{
+			name:  "a package and its external test package count one directory",
+			cards: []planparser.Card{editCard(1, []string{"internal/a#Run", "internal/a_test#TestRun"})},
+			want:  startup + (2*3 + 2*4) + 7 + 7,
+		},
+		{
 			name:  "a nonexistent target weighs nothing but counts its messages",
 			cards: []planparser.Card{editCard(1, []string{"internal/new/n.go"})},
 			want:  startup + 3 + 7 + 7,

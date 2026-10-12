@@ -50,6 +50,7 @@
 // The chair's spec carries a HoldDeferral predicate, backed by the advisors started so far and the notice sender:
 // it holds while an advisor whose run has not ended either has an up line the sender has not landed or reads mid-turn through Handle.SessionState (busy, cause turn).
 // An advisor whose run ended never counts, a timed-out one included, and a reading that errors counts as not mid-turn; no advisor's spec carries a predicate.
+// An advisor whose session reads asking, idle-stalled, idle-done or dead never counts, whether or not its up line has landed.
 // The settle interval and the maximum deferral are shuttle's, so a chair held while every counted advisor is idle notifies once after the settle interval, and never later than the maximum deferral whatever its advisors do.
 // A started seat whose strand took a different name than expected, which is reed numbering a name an earlier strand still holds, is stopped and reported as a start error naming the holder and the way forward.
 // A chair that fails to start starts no advisor and returns the error, which wraps shuttleengine.ErrNotStarted when the provider never came up.

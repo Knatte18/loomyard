@@ -10,7 +10,7 @@
 // It resolves the recorded parent branch, seeds the status file when absent and commits the seed into the fabric before anything else touches it.
 // It brings up the worktree's tmux session;
 // it ensures the status strand on either driver, and the per-hub watchdog daemon is spawned best-effort.
-// The status strand runs the hidden `lyx loom checklist` verb: a top content strand at a quarter share that shows the run's state line, with the note of what a running run waits on (the same note `lyx loom status` reports), over one line per recipe row, with its box, the time spent in it and its visit count.
+// The status strand runs the hidden `lyx loom checklist` verb: a top content strand at an eighth share that shows the run's state line, with the note of what a running run waits on (the same note `lyx loom status` reports), over one line per recipe row, with its box, the time spent in it and its visit count.
 // The verb reads the status file and the seed without arming a run, and reports its line count to reed so the strand is sized to it.
 // Unless a driver is already alive, it spawns the driver the seed records, which is never chosen by a flag;
 // a second invocation while a driver runs ensures the substrate instead.

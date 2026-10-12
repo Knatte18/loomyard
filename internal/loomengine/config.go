@@ -336,6 +336,36 @@ func LoomFrictionArchivePrefix(l *lyxcwd.Location) string {
 	return LoomFrictionDir(l) + "-"
 }
 
+// LoomFrictionDirRel returns the worktree-anchor-relative form of LoomFrictionDir's path: the join of LoomDurableDirRel and the friction segment.
+// A reader of a git tree applies filepath.ToSlash to it.
+func LoomFrictionDirRel() string {
+	return filepath.Join(LoomDurableDirRel(), frictionDirName)
+}
+
+// IsLoomFrictionArchive reports whether name, a directory name under LoomDurableDirRel, is a timestamped reflection-archive sibling of the friction directory.
+// That is the friction segment followed by "-" and at least one more character; the friction directory itself is not an archive.
+func IsLoomFrictionArchive(name string) bool {
+	rest, ok := strings.CutPrefix(name, frictionDirName+"-")
+	return ok && rest != ""
+}
+
+// landingCheckpointSubjectPrefix is the commit subject prefix of the parent pair's run-records checkpoint for a landing.
+const landingCheckpointSubjectPrefix = "loom: run records checkpoint for landing "
+
+// LandingCheckpointSubject returns the commit subject of the parent pair's run-records checkpoint for the landing run slug.
+func LandingCheckpointSubject(slug string) string {
+	return landingCheckpointSubjectPrefix + slug
+}
+
+// LandingCheckpointSlug is the inverse of LandingCheckpointSubject: the landing run slug when subject has the checkpoint prefix and a non-empty rest, else false.
+func LandingCheckpointSlug(subject string) (string, bool) {
+	slug, ok := strings.CutPrefix(subject, landingCheckpointSubjectPrefix)
+	if !ok || slug == "" {
+		return "", false
+	}
+	return slug, true
+}
+
 // LoomFrictionLock returns the path to the advisory lock guarding the Tier 2 reflection step against
 // a second concurrent reflection over the same friction directory.
 //

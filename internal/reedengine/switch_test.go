@@ -131,7 +131,7 @@ func TestSwitchClientVia_IssuesOnlyTheThreeCommands(t *testing.T) {
 			t.Parallel()
 			var argv [][]string
 			cmd := newTmuxCmdForSocketPath("tmux", "/tmp/sock")
-			cmd.execHook = func(capture bool, args ...string) (string, error) {
+			cmd.execHook = func(capture bool, stdin []byte, args ...string) (string, error) {
 				argv = append(argv, slices.Clone(args))
 				switch args[0] {
 				case "list-sessions":

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/shortcutcli"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
@@ -61,6 +62,10 @@ func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
 	for _, child := range root.Commands() {
 		name := child.Name()
 		if name == "completion" {
+			continue
+		}
+		// A shortcut runs other modules' commands and has nothing of its own for a sandbox scenario to exercise.
+		if child.GroupID == shortcutcli.GroupID {
 			continue
 		}
 		registered[name] = true

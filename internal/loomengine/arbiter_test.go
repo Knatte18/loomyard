@@ -122,6 +122,72 @@ func TestArbiterAttempts(t *testing.T) {
 			t.Errorf("ListArbiterAttempts = _, %v; want an error naming attempt-1", err)
 		}
 	})
+
+	t.Run("ParseArbiterAttemptDir reads tolerantly and names the failing file", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name         string
+			files        map[string][]byte
+			wantNumber   int
+			wantVerdict  string
+			wantNoVerdct bool
+			wantApplied  bool
+			wantErr      string
+		}{
+			{
+				name: "resume verdict with an unknown key and the applied mark",
+				files: map[string][]byte{
+					"attempt.json": []byte(`{"number":2}`),
+					"verdict.yaml": []byte("verdict: resume\nreason: r\nbogus: x\n"),
+					"applied":      nil,
+					"prompt.md":    []byte("ignored"),
+				},
+				wantNumber:  2,
+				wantVerdict: ArbiterVerdictResume,
+				wantApplied: true,
+			},
+			{
+				name:         "no verdict",
+				files:        map[string][]byte{"attempt.json": []byte(`{"number":3}`)},
+				wantNumber:   3,
+				wantNoVerdct: true,
+			},
+			{
+				name:         "attempt.json with an unknown key",
+				files:        map[string][]byte{"attempt.json": []byte(`{"number":4,"bogus":true}`)},
+				wantNumber:   4,
+				wantNoVerdct: true,
+			},
+			{name: "missing attempt.json", files: map[string][]byte{}, wantErr: "attempt.json"},
+			{name: "undecodable attempt.json", files: map[string][]byte{"attempt.json": []byte("{")}, wantErr: "attempt.json"},
+			{
+				name:    "undecodable verdict.yaml",
+				files:   map[string][]byte{"attempt.json": []byte(`{"number":1}`), "verdict.yaml": []byte("verdict: [")},
+				wantErr: "verdict.yaml",
+			},
+		}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				got, err := ParseArbiterAttemptDir(tc.files)
+				if tc.wantErr != "" {
+					if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+						t.Fatalf("ParseArbiterAttemptDir = _, %v; want an error naming %s", err, tc.wantErr)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("ParseArbiterAttemptDir = _, %v; want nil", err)
+				}
+				if got.Attempt.Number != tc.wantNumber || got.Applied != tc.wantApplied {
+					t.Errorf("ParseArbiterAttemptDir = %+v; want number %d, applied %v", got, tc.wantNumber, tc.wantApplied)
+				}
+				if tc.wantNoVerdct != (got.Verdict == nil) || (got.Verdict != nil && got.Verdict.Verdict != tc.wantVerdict) {
+					t.Errorf("ParseArbiterAttemptDir verdict = %+v; want %q (nil %v)", got.Verdict, tc.wantVerdict, tc.wantNoVerdct)
+				}
+			})
+		}
+	})
 }
 
 // TestReadArbiterVerdict pins both valid shapes, an absent file, and each refusal.

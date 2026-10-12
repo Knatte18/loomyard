@@ -58,6 +58,16 @@ func TestCardTargetDirs(t *testing.T) {
 			want:   []planparser.TargetDir{{Dir: "internal/a", NamesGo: true}},
 		},
 		{
+			name:   "external test package glyph maps to its package directory",
+			groups: []planparser.TargetGroup{{Type: planparser.CardTypeEdit, Refs: []string{"internal/a_test#TestRun"}}},
+			want:   []planparser.TargetDir{{Dir: "internal/a", NamesGo: true}},
+		},
+		{
+			name:   "package and its external test package merge into one directory",
+			groups: []planparser.TargetGroup{{Type: planparser.CardTypeEdit, Refs: []string{"internal/a#Run", "internal/a_test#TestRun"}}},
+			want:   []planparser.TargetDir{{Dir: "internal/a", NamesGo: true}},
+		},
+		{
 			name: "Rename contributes the New side alone",
 			groups: []planparser.TargetGroup{{
 				Type:  planparser.CardTypeRename,
