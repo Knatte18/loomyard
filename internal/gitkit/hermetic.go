@@ -7,6 +7,8 @@ package gitkit
 import (
 	"os"
 	"sync"
+
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 )
 
 // hermeticGitEnvOnce guards HermeticGitEnv so repeated calls are no-ops; the
@@ -18,6 +20,7 @@ var hermeticGitEnvOnce sync.Once
 // and system git config, replacing it with a neutral config.
 // Call it as the first line of TestMain, before m.Run().
 // It also runs the CLI-reexec refusal guard before anything else.
+// The neutral config file lives in the process run directory of internal/lyxtemp, which tmuxkit.Main removes after the run.
 //
 // The bare function name HermeticGitEnv is the presence token that cmd/lyx's hermetic guard scans
 // test files for;
@@ -46,7 +49,7 @@ func HermeticGitEnv() {
 		// Fixture-construction precedent (mustGit): errors here are unrecoverable
 		// setup failures, so panic immediately rather than threading an error
 		// return through every TestMain in the repo.
-		f, err := os.CreateTemp("", "gitkit-gitconfig-*")
+		f, err := lyxtemp.CreateTemp("gitkit-gitconfig-*")
 		if err != nil {
 			panic(err)
 		}

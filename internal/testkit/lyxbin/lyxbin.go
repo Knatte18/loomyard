@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -94,7 +95,7 @@ func BuildInto(dir, ldflags string) (string, error) {
 }
 
 // buildOnce returns the binary for ldflags, building it at most once per test binary and per pair of prebuilt-variable value and ldflags.
-// An empty ldflags returns the prebuilt binary when one is set; every other build goes into a fresh `os.MkdirTemp("", "lyxbin-")`, which `tmuxkit.Main` has pointed at the package's private directory.
+// An empty ldflags returns the prebuilt binary when one is set; every other build goes into a fresh `lyxtemp.MkdirTemp("lyxbin-")` in the process run directory.
 // A non-empty ldflags always builds, since a stamped build can never be the prebuilt one.
 func buildOnce(ldflags string) (string, error) {
 	key := os.Getenv(gateslot.PrebuiltLyxEnv) + "\x00" + ldflags
@@ -113,7 +114,7 @@ func buildOnce(ldflags string) (string, error) {
 				return
 			}
 		}
-		dir, err := os.MkdirTemp("", "lyxbin-")
+		dir, err := lyxtemp.MkdirTemp("lyxbin-")
 		if err != nil {
 			result.err = err
 			return

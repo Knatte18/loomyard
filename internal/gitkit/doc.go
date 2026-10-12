@@ -15,7 +15,7 @@
 // Every new spawn stays in gitkit.go, the file the spawn-observability guard allowlists, because this package cannot import internal/logger.
 //
 // Leaf Invariant: internal/gitkit production code imports only stdlib, internal/lyxcwd,
-// internal/weftname, internal/configengine, and internal/lyxdirs, with internal/configreg and every
+// internal/weftname, internal/configengine, internal/lyxdirs, and internal/lyxtemp, with internal/configreg and every
 // feature package
 // (boardengine/boardcli, fabricengine/fabriccli, ideengine/idecli, selfreportengine/selfreportcli)
 // excluded by construction —
@@ -41,6 +41,7 @@
 // which also covers git spawned by raw `git init`/`git clone` inside tests and by any child process
 // the test binary launches.
 // The neutral config also sets gc.autoDetach=false, so any gc that still runs is foreground and waited for.
+// The neutral config file lives in the process run directory of internal/lyxtemp, so it goes with that directory when tmuxkit.Main removes it after the run.
 // The variables reach every `lyx` child a test runs through lyxbin.Run, which inherits the process environment, and reed's clean environment already passes them through.
 // See PATTERN-test-isolation for the machine-enforced half of this contract.
 package gitkit

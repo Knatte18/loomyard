@@ -31,7 +31,12 @@ const sinkMaxBytes = 8 * 1024 * 1024
 // longer uses.
 // It lives under the ephemeral .lyx directory, never the durable, fabric-synced _lyx.
 func LogsDir(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "logs")
+	return LogsDirAt(l.AnchorPath())
+}
+
+// LogsDirAt returns the trace-file directory under anchorPath, for a caller that holds an anchor and no Location.
+func LogsDirAt(anchorPath string) string {
+	return filepath.Join(anchorPath, lyxdirs.DotLyxDirName, "logs")
 }
 
 type sinkHeader struct {

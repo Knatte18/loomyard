@@ -71,6 +71,18 @@ func Load(anchorPath string) (logger.RetentionBounds, error) {
 	return logger.RetentionBounds{Count: count, MaxAge: time.Duration(days) * day}, nil
 }
 
+// LoadOrDefault returns the trace-retention bounds logger.yaml under anchorPath resolves to.
+// An unusable config logs one Warn naming the file and the error, and yields the compiled-in default bounds.
+func LoadOrDefault(anchorPath string) logger.RetentionBounds {
+	bounds, err := Load(anchorPath)
+	if err != nil {
+		logger.Warn("logger config unusable; sweeping with default retention bounds",
+			"path", ConfigPath(anchorPath), "error", err)
+		return logger.DefaultRetentionBounds()
+	}
+	return bounds
+}
+
 // positiveInt decodes node as a positive integer.
 // The tag check rejects a float: yaml.v3 decodes a !!float such as 1.5 or 14.0 into an int by truncation without an error.
 func positiveInt(key string, node *yaml.Node) (int, error) {

@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/preflight"
 )
 
@@ -38,7 +39,7 @@ type resourceRow struct {
 	// procs is the system-wide process count started across the child; procsKnown is false when /proc/stat was unreadable.
 	procs      int64
 	procsKnown bool
-	// leftovers lists every process still referencing the package's temp directory after the child exited, as "pid argv".
+	// leftovers lists every process still carrying the package's marker after the child exited, as "pid argv".
 	leftovers []string
 	// census counts the git processes the package ran, split on the fixture marker.
 	census  gitCensus
@@ -51,6 +52,9 @@ const cgroupPollInterval = 50 * time.Millisecond
 
 // cgroupDiscoveryWait bounds how long a started child may take to move into its scope.
 const cgroupDiscoveryWait = 2 * time.Second
+
+// leftoverMarkerEnv names the environment variable measurePackageResources sets to a value unique to one package's run, so every descendant of the child carries it.
+const leftoverMarkerEnv = "LYX_TESTTIMING_PACKAGE"
 
 // cgroupRoot is where the unified cgroup hierarchy is mounted.
 const cgroupRoot = "/sys/fs/cgroup"
@@ -87,13 +91,7 @@ func runResources(tags, pkgFlag string) error {
 	loadBefore := readLoadAverage()
 	rows := make([]resourceRow, 0, len(packages))
 	for _, importPath := range packages {
-		// The prefix stays short because a tmux socket path under the child's TMPDIR must fit sun_path.
-		tmpDir, err := os.MkdirTemp("", "ttr-*")
-		if err != nil {
-			return fmt.Errorf("create a temp directory for %s: %w", importPath, err)
-		}
-		row, err := measurePackageResources(tags, importPath, tmpDir, env, parallel)
-		os.RemoveAll(tmpDir)
+		row, err := measurePackageResources(tags, importPath, env, parallel)
 		if err != nil {
 			return err
 		}
@@ -150,9 +148,9 @@ func takeGateSlot(ctx context.Context, cwd string, baseEnv []string) (env []stri
 	return lease.Env(baseEnv), limits.GoParallel, release, nil
 }
 
-// measurePackageResources runs `go test` over importPath with its temp directory pointed at tmpDir and returns what the run cost.
+// measurePackageResources runs `go test` over importPath with leftoverMarkerEnv set in the child's environment and returns what the run cost.
 // CPU and peak memory come from the child's systemd scope cgroup when systemd-run is on PATH and the scope is readable, and from the child's rusage otherwise.
-func measurePackageResources(tags, importPath, tmpDir string, env []string, parallel int) (resourceRow, error) {
+func measurePackageResources(tags, importPath string, env []string, parallel int) (resourceRow, error) {
 	goArgs := []string{"test", "-json", "-count=1", "-p", strconv.Itoa(parallel)}
 	if tags != "" {
 		goArgs = append(goArgs, "-tags", tags)
@@ -165,13 +163,14 @@ func measurePackageResources(tags, importPath, tmpDir string, env []string, para
 		name, args = "systemd-run", append([]string{"--user", "--scope", "--quiet", "--", "go"}, goArgs...)
 	}
 	cmd := exec.Command(name, args...)
-	traceDir, err := os.MkdirTemp("", "ttt-*")
+	traceDir, err := lyxtemp.MkdirTemp("ttt-*")
 	if err != nil {
 		return resourceRow{}, fmt.Errorf("create a trace directory for %s: %w", importPath, err)
 	}
 	defer os.RemoveAll(traceDir)
 
-	cmd.Env = append(append([]string(nil), env...), "TMPDIR="+tmpDir, "TMP="+tmpDir, "TEMP="+tmpDir)
+	marker := leftoverMarkerEnv + "=" + importPath + ":" + strconv.Itoa(os.Getpid())
+	cmd.Env = append(append([]string(nil), env...), marker)
 	cmd.Env = append(cmd.Env, traceEnv(traceDir)...)
 	cmd.Stderr = os.Stderr
 	stdout, err := cmd.StdoutPipe()
@@ -228,7 +227,7 @@ func measurePackageResources(tags, importPath, tmpDir string, env []string, para
 	if forksAfter, known := readForkCount(); known && forksKnownBefore {
 		row.procs, row.procsKnown = forksAfter-forksBefore, true
 	}
-	row.leftovers = leftoverProcesses(tmpDir)
+	row.leftovers = leftoverProcesses(marker)
 	if row.census, err = readCensus(traceDir); err != nil {
 		return resourceRow{}, fmt.Errorf("census of %s: %w", importPath, err)
 	}
@@ -400,9 +399,9 @@ func readLoadAverage() string {
 	return fields[0]
 }
 
-// leftoverProcesses lists every process whose cwd, executable or an argv element references dir, as "pid argv".
+// leftoverProcesses lists every process whose environment carries the marker entry `KEY=value`, as "pid argv".
 // The current process is never listed.
-func leftoverProcesses(dir string) []string {
+func leftoverProcesses(marker string) []string {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return nil
@@ -414,29 +413,26 @@ func leftoverProcesses(dir string) []string {
 			continue
 		}
 		base := filepath.Join("/proc", entry.Name())
-		cwd, _ := os.Readlink(filepath.Join(base, "cwd"))
-		exe, _ := os.Readlink(filepath.Join(base, "exe"))
+		environ, err := os.ReadFile(filepath.Join(base, "environ"))
+		if err != nil || !carriesMarker(environ, marker) {
+			continue
+		}
 		var argv []string
 		if cmdline, err := os.ReadFile(filepath.Join(base, "cmdline")); err == nil {
 			argv = strings.Split(strings.TrimRight(string(cmdline), "\x00"), "\x00")
 		}
-		if referencesDir(dir, cwd, exe, argv) {
-			leftovers = append(leftovers, fmt.Sprintf("%d %s", pid, strings.Join(argv, " ")))
-		}
+		leftovers = append(leftovers, fmt.Sprintf("%d %s", pid, strings.Join(argv, " ")))
 	}
 	return leftovers
 }
 
-// referencesDir reports whether a process with this cwd, executable and argv references dir.
-func referencesDir(dir, cwd, exe string, argv []string) bool {
-	if dir == "" {
+// carriesMarker reports whether the NUL-separated environ holds an entry equal to marker, never a substring of another entry.
+func carriesMarker(environ []byte, marker string) bool {
+	if marker == "" {
 		return false
 	}
-	if strings.Contains(cwd, dir) || strings.Contains(exe, dir) {
-		return true
-	}
-	for _, arg := range argv {
-		if strings.Contains(arg, dir) {
+	for _, entry := range strings.Split(string(environ), "\x00") {
+		if entry == marker {
 			return true
 		}
 	}

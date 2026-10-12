@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
@@ -77,7 +78,10 @@ func runGateHelper() int {
 	if standIn := os.Getenv(helperGoEnv); standIn != "" {
 		goBinary = standIn
 	}
-	return clihelp.ExecuteIn(newCommand(goBinary), os.Getenv(helperCwdEnv), os.Stdout, os.Args[1:])
+	code := clihelp.ExecuteIn(newCommand(goBinary), os.Getenv(helperCwdEnv), os.Stdout, os.Args[1:])
+	// The helper stands for `lyx`'s main, which removes the process run directory on exit.
+	_ = lyxtemp.Remove()
+	return code
 }
 
 func runStandIn() int {
@@ -455,6 +459,18 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 		if _, err := os.Stat(filepath.Dir(bin)); !os.IsNotExist(err) {
 			t.Errorf("the build directory %s survived the gate (stat err=%v); want it removed", filepath.Dir(bin), err)
+		}
+		// The gate runs in a helper process of its own, so its run directory is a sibling of this process's, made by the temp package's beside-the-parent rule.
+		parentRun, err := lyxtemp.Dir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		gateRunDir := filepath.Dir(filepath.Dir(bin))
+		if filepath.Dir(gateRunDir) != filepath.Dir(parentRun) || gateRunDir == parentRun {
+			t.Errorf("the prebuilt binary %s is not in a run directory beside %s", bin, parentRun)
+		}
+		if _, err := os.Stat(gateRunDir); !os.IsNotExist(err) {
+			t.Errorf("the gate's run directory %s survived its exit (stat err=%v); want it removed", gateRunDir, err)
 		}
 	})
 

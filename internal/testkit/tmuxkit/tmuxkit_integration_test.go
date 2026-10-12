@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -103,7 +104,7 @@ func TestSweep_KillsServersAndPaneTreesUnderItsDirectoryOnly(t *testing.T) {
 		t.Skip("the pane child is found through /proc")
 	}
 
-	dir, err := os.MkdirTemp("", dirPrefix)
+	dir, err := lyxtemp.MkdirTemp(dirPrefix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +249,7 @@ func TestAfterRun_LeftoverProcesses(t *testing.T) {
 		t.Skip("the leftover scan reads /proc")
 	}
 
-	dir, err := os.MkdirTemp("", dirPrefix)
+	dir, err := lyxtemp.MkdirTemp(dirPrefix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +268,7 @@ func TestAfterRun_LeftoverProcesses(t *testing.T) {
 	watchdog := start("-c", "sleep 60", "x", "reed", "watchdog")
 
 	var out strings.Builder
-	code := afterRun(&out, dir, 0, 100*time.Millisecond, func() {})
+	code := afterRun(&out, dir, 0, 100*time.Millisecond, func() {}, func() error { return os.RemoveAll(dir) })
 
 	if code != 1 {
 		t.Errorf("afterRun code = %d; want 1 for a stray process", code)

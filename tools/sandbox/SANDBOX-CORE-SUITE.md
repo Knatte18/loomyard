@@ -303,6 +303,21 @@ Does `lyx gate test <that package> -- -run NoSuchTest` pass the flag after `--` 
 
 ---
 
+### S11 -- Routine cleanup as a dry run
+
+**Goal:** "Ask lyx what its routine cleanup would remove from the hub's prime, and confirm that asking removes nothing."
+
+**Covers:** cleanup
+
+**Watch:** Does `lyx cleanup` from the sandbox's prime print one `{"ok":true}` envelope with `"applied": false`?
+Does its `segments` list name every segment in order, each with what `--apply` would remove?
+Is anything on disk or on the board different afterwards, such as a run directory, a board entry or a handoff file?
+Does `lyx cleanup` run from a task worktree instead refuse, name the prime worktree and say to re-run it there?
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 reed has its own dedicated suite, `SANDBOX-REED-SUITE.md` in this same directory, launched via `sandbox/reed-suite.cmd` -- reed needs a live tmux server and visual verification, a different test mode from this suite.
 
 ## Session log format
@@ -324,6 +339,7 @@ S7: <OK|WARN|FAIL> -- <one-line note if not OK>
 S8: <OK|WARN|FAIL> -- <one-line note if not OK>
 S9: <OK|WARN|FAIL> -- <one-line note if not OK>
 S10: <OK|WARN|FAIL> -- <one-line note if not OK>
+S11: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

@@ -1,13 +1,13 @@
 # Top-level test functions per package, in its _test.go files under every build tag.
 # TestTestBudget_PackagesStayWithinBudget fails when a package exceeds its row or has tests and no row.
 # Raise a row in the commit that adds the tests that need it.
-cmd/lyx: 76
+cmd/lyx: 78
 cmd/testtiming: 21
 contracts/specs: 3
 contracts/stencils: 16
 internal/agentname: 7
 internal/batcher: 9
-internal/battencli: 64
+internal/battencli: 68
 internal/battenrecipe: 9
 internal/battenshed: 104
 internal/boardcli: 13
@@ -17,6 +17,7 @@ internal/buildinfo: 2
 internal/buildvcs: 2
 internal/burlercli: 19
 internal/burlerengine: 32
+internal/cleanupcli: 4
 internal/clihelp: 13
 internal/cliwire: 12
 internal/commentlint: 3
@@ -36,12 +37,12 @@ internal/friction: 6
 internal/frictionengine: 15
 internal/fslink: 5
 internal/fswatch: 5
-internal/fsx: 3
+internal/fsx: 4
 internal/gatecli: 3
 internal/gateslot: 11
 internal/gitexec: 7
 internal/githubclient: 11
-internal/gitkit: 9
+internal/gitkit: 10
 internal/gitrepo: 44
 internal/gitrepo/internal/gitoracle: 1
 internal/helpcli: 1
@@ -53,17 +54,18 @@ internal/ideengine: 4
 internal/impactset: 5
 internal/landingshed: 68
 internal/lock: 4
-internal/logger: 34
+internal/logger: 35
 internal/loggerconfig: 3
 internal/loomcli: 207
 internal/loomengine: 52
 internal/loomrecipe: 52
 internal/loomshed: 76
 internal/lyxcwd: 23
+internal/lyxtemp: 7
 internal/mergeresolve: 17
 internal/modelspec: 11
-internal/orchcli: 26
-internal/orchengine: 136
+internal/orchcli: 27
+internal/orchengine: 138
 internal/output: 4
 internal/pairteardown: 6
 internal/parentdirective: 4
@@ -116,7 +118,7 @@ internal/testkit/scankit: 10
 internal/testkit/shedfake: 9
 internal/testkit/shuttlefake: 8
 internal/testkit/stencilkit: 3
-internal/testkit/tmuxkit: 15
+internal/testkit/tmuxkit: 16
 internal/treadleengine: 34
 internal/twilldirective: 4
 internal/verifyrun: 4

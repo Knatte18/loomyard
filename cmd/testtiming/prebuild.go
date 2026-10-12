@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 )
 
 // prebuildLyx returns the environment every `go test` child of a run takes, base less an inherited gateslot.PrebuiltLyxEnv, and the cleanup that removes what the build left.
@@ -33,7 +34,7 @@ func prebuildLyx(goBinary, tags, root string, base []string) (env []string, clea
 	}
 	defer release()
 
-	dir, err := os.MkdirTemp("", "lyx-prebuilt-")
+	dir, err := lyxtemp.MkdirTemp("lyx-prebuilt-")
 	if err != nil {
 		return nil, nil, fmt.Errorf("create the prebuilt lyx directory: %w", err)
 	}

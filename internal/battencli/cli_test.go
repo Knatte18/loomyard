@@ -245,7 +245,7 @@ func TestRunInWindow(t *testing.T) {
 			name:       "DoneSlugIsRefusedBeforeAnyWindowOpens",
 			status:     shedengine.StateDone,
 			wantNoOpen: true,
-			wantErr:    []string{"has already completed", "delete its run directory", "different slug"},
+			wantErr:    []string{"has already completed", "lyx batten cleanup --apply", "different slug"},
 		},
 		{
 			name:         "BlockedStatusOpensTheWindowAsBefore",

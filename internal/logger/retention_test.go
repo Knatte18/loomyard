@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"testing"
 	"time"
 )
@@ -83,6 +85,43 @@ func TestSweep_AgeBound(t *testing.T) {
 
 	assertAbsent(t, oldFile)
 	assertExists(t, recentFile)
+}
+
+// TestSweepDir_DryRunListsWhatApplyRemoves verifies a dry run lists the aged group's files and removes nothing, and an apply lists the same paths and removes exactly them.
+func TestSweepDir_DryRunListsWhatApplyRemoves(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	now := time.Now()
+
+	agedFiles := []string{
+		writeTraceTestFile(t, dir, now.Add(-15*24*time.Hour), hexID(1), deadTestPID),
+		writeTraceTestFile(t, dir, now.Add(-16*24*time.Hour), hexID(1), deadTestPID),
+	}
+	sort.Strings(agedFiles)
+	freshFile := writeTraceTestFile(t, dir, now.Add(-time.Hour), hexID(2), deadTestPID)
+
+	dryRun, err := SweepDir(dir, testBounds, false)
+	if err != nil {
+		t.Fatalf("SweepDir dry run = %v; want nil", err)
+	}
+	if !slices.Equal(dryRun, agedFiles) {
+		t.Errorf("dry run listed %v; want %v", dryRun, agedFiles)
+	}
+	for _, path := range append(slices.Clone(agedFiles), freshFile) {
+		assertExists(t, path)
+	}
+
+	applied, err := SweepDir(dir, testBounds, true)
+	if err != nil {
+		t.Fatalf("SweepDir apply = %v; want nil", err)
+	}
+	if !slices.Equal(applied, dryRun) {
+		t.Errorf("apply listed %v; want the dry run's %v", applied, dryRun)
+	}
+	for _, path := range agedFiles {
+		assertAbsent(t, path)
+	}
+	assertExists(t, freshFile)
 }
 
 // TestSweep_CountBoundKeepsNewestGroupsWhole verifies the newest Count groups by activity survive with every file,

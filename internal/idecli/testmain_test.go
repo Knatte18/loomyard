@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/ideengine"
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -21,7 +22,7 @@ import (
 // KeybindingsPath is process-global state, so no test writes the operator's real keybindings.json.
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
-	dir, err := os.MkdirTemp("", "keybindings-")
+	dir, err := lyxtemp.MkdirTemp("keybindings-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "create keybindings dir:", err)
 		os.Exit(1)

@@ -2,6 +2,7 @@ package tmuxkit
 
 import (
 	"bytes"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -76,9 +78,6 @@ func TestSetEnv(t *testing.T) {
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if got := kitBase(); got != "" {
-		t.Errorf("kitBase() before setEnv = %q, want \"\", the system temp directory", got)
-	}
 
 	setEnv(dir)
 
@@ -86,10 +85,6 @@ func TestSetEnv(t *testing.T) {
 		if got := os.Getenv(name); got != dir {
 			t.Errorf("%s = %q, want %q", name, got, dir)
 		}
-	}
-	// A helper re-executed under this environment creates its directory beside dir, never inside it.
-	if got := kitBase(); got != filepath.Dir(dir) {
-		t.Errorf("kitBase() after setEnv = %q, want %q", got, filepath.Dir(dir))
 	}
 	// A subtest's TempDir resolves its base afresh, so it sees the TMPDIR setEnv just set.
 	t.Run("temp directory lands under TMPDIR", func(t *testing.T) {
@@ -108,7 +103,7 @@ func TestListSockets_OwnDirectoryOnly(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("unix sockets under TMUX_TMPDIR are not used on Windows")
 	}
-	dir, err := os.MkdirTemp("", dirPrefix)
+	dir, err := lyxtemp.MkdirTemp(dirPrefix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +153,7 @@ func TestRemoveDeadSocket(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("unix sockets are not used on Windows")
 	}
-	dir, err := os.MkdirTemp("", dirPrefix)
+	dir, err := lyxtemp.MkdirTemp(dirPrefix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +211,7 @@ func TestCheckSockets(t *testing.T) {
 
 	newDir := func(t *testing.T) string {
 		t.Helper()
-		dir, err := os.MkdirTemp("", dirPrefix)
+		dir, err := lyxtemp.MkdirTemp(dirPrefix)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -291,7 +286,7 @@ func TestCheckSockets(t *testing.T) {
 		}
 
 		var out bytes.Buffer
-		code := afterRun(&out, dir, 0, 100*time.Millisecond, removeAll)
+		code := afterRun(&out, dir, 0, 100*time.Millisecond, removeAll, func() error { return os.RemoveAll(dir) })
 
 		if code != 1 {
 			t.Errorf("afterRun code = %d; want 1 for an unregistered socket the sweep removed", code)
@@ -300,4 +295,22 @@ func TestCheckSockets(t *testing.T) {
 			t.Errorf("afterRun output = %q; want it to name the key", out.String())
 		}
 	})
+}
+
+func TestAfterRun_ReportsFailedRemovalKeepingTheCode(t *testing.T) {
+	t.Parallel()
+	for _, code := range []int{0, 1} {
+		dir := t.TempDir()
+		removeErr := errors.New("directory in use")
+
+		var out bytes.Buffer
+		got := afterRun(&out, dir, code, 100*time.Millisecond, func() {}, func() error { return removeErr })
+
+		if got != code {
+			t.Errorf("afterRun code = %d, want the input code %d unchanged", got, code)
+		}
+		if want := "tmuxkit: remove run directory " + dir + ": directory in use; the next start's sweep removes it\n"; out.String() != want {
+			t.Errorf("afterRun output = %q, want %q", out.String(), want)
+		}
+	}
 }
