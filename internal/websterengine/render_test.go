@@ -14,7 +14,7 @@ import (
 // spelling, standalone geometry gets the absolute plan directory no relative spelling reaches from
 // the pane's cwd, and the card pointers re-root onto whichever display applies.
 //
-//testtiming:keep pins both geometries' plan-directory display and the card pointers re-rooted onto it byte for byte; the covering begin-batch and render tests run hub geometry only
+//testtiming:keep pins both geometries' plan-directory display and the card pointers re-rooted onto it byte for byte; the covering begin-batch and render tests each reach one geometry
 func TestPlanDirDisplay(t *testing.T) {
 	t.Parallel()
 

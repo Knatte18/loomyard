@@ -991,6 +991,8 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 
 	const quarryLocate = "Locate them with one `lyx quarry resolve <glyph>...` call"
 	const packHeading = "## Kick-start pack"
+	const packStepOne = "in parallel, in one turn, before doing anything else"
+	const plainStepOne = "1. Read the card file."
 	resolvedBaz := []string{
 		packHeading,
 		"- `internal/foo#Baz`",
@@ -1002,8 +1004,12 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 		language string
 		// withHandle adds a Create group declaring the draft handle plan:internal/foo#Barr beside card 1's Edit group.
 		withHandle bool
-		off        bool
-		prepare    func(index *fakeIndex)
+		// oneBatch gives card 2 an Edit group on internal/foo#Baz and puts both cards in batch 1.
+		oneBatch bool
+		off      bool
+		prepare  func(index *fakeIndex)
+		// cardHeadings are card file base names whose pointer bullet and pack subsection heading the prompt must hold.
+		cardHeadings []string
 		// wantPrompt and wantNotPrompt are needles the prompt file has and lacks.
 		wantPrompt    []string
 		wantNotPrompt []string
@@ -1012,31 +1018,56 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 	}{
 		{
 			name:          "switch on lists the resolved member glyph",
-			wantPrompt:    resolvedBaz,
-			wantNotPrompt: []string{quarryLocate},
+			cardHeadings:  []string{"01-json-flag.md"},
+			wantPrompt:    append([]string{packStepOne}, resolvedBaz...),
+			wantNotPrompt: []string{quarryLocate, plainStepOne},
 			wantLog:       []string{"batch=1 kickstart_pack=on resolved=1 unresolved=0"},
+		},
+		{
+			name:         "a glyph two cards of the batch name is counted once",
+			oneBatch:     true,
+			cardHeadings: []string{"01-json-flag.md", "02-list-tests.md"},
+			wantPrompt:   resolvedBaz,
+			wantLog:      []string{"batch=1 kickstart_pack=on resolved=1 unresolved=0"},
+		},
+		{
+			name:     "an unresolved ref two cards list is counted once",
+			oneBatch: true,
+			prepare: func(index *fakeIndex) {
+				index.pack = func(cards []planparser.Card) []planindex.CardPack {
+					packs := make([]planindex.CardPack, len(cards))
+					for i, c := range cards {
+						packs[i] = planindex.CardPack{Card: c, Pack: planindex.Pack{Unresolved: []planindex.PackUnresolved{{Ref: "internal/foo#Baz", Reason: "quarry could not answer"}}}}
+					}
+					return packs
+				}
+				index.packErr = fmt.Errorf("%w: pack boom", planglyph.ErrQuarryUnavailable)
+			},
+			wantLog: []string{"batch=1 kickstart_pack=on resolved=0 unresolved=1"},
 		},
 		{
 			name:          "switch off renders the quarry locate step",
 			off:           true,
-			wantPrompt:    []string{quarryLocate},
-			wantNotPrompt: []string{packHeading},
+			wantPrompt:    []string{quarryLocate, plainStepOne},
+			wantNotPrompt: []string{packHeading, packStepOne},
 			wantLog:       []string{"batch=1 kickstart_pack=off resolved=0 unresolved=0"},
 		},
 		{
 			name:          "a plan without a glyph language renders as switch off",
 			language:      "none",
-			wantPrompt:    []string{quarryLocate},
-			wantNotPrompt: []string{packHeading},
+			wantPrompt:    []string{quarryLocate, plainStepOne},
+			wantNotPrompt: []string{packHeading, packStepOne},
 			wantLog:       []string{"batch=1 kickstart_pack=language-none resolved=0 unresolved=0"},
 		},
 		{
 			name: "an unavailable index degrades every entry to unresolved",
 			prepare: func(index *fakeIndex) {
-				index.pack = &planindex.Pack{Unresolved: []planindex.PackUnresolved{{Ref: "internal/foo#Baz", Reason: "quarry could not answer"}}}
+				index.pack = func(cards []planparser.Card) []planindex.CardPack {
+					return []planindex.CardPack{{Card: cards[0], Pack: planindex.Pack{Unresolved: []planindex.PackUnresolved{{Ref: "internal/foo#Baz", Reason: "quarry could not answer"}}}}}
+				}
 				index.packErr = fmt.Errorf("%w: pack boom", planglyph.ErrQuarryUnavailable)
 			},
-			wantPrompt: []string{packHeading, "### Unresolved", "- `internal/foo#Baz` — quarry could not answer"},
+			wantPrompt: []string{packHeading, "#### Unresolved", "- `internal/foo#Baz` — quarry could not answer"},
 			wantLog: []string{
 				"level=WARN",
 				"pack boom",
@@ -1080,11 +1111,13 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			if tt.withHandle {
 				cardOne.Groups = append([]plankit.Group{{Label: "Create", Targets: []string{"plan:internal/foo#Barr` -> `func Bar()"}}}, cardOne.Groups...)
 			}
+			cardTwo := plankit.Card{Number: 2, Slug: "list-tests", Summary: "list the tests", Intent: "placeholder card.", Groups: []plankit.Group{{Label: "Prosa", Targets: []string{"base.txt"}}}}
+			if tt.oneBatch {
+				cardTwo = plankit.Card{Number: 2, Slug: "list-tests", Summary: "list the tests", Intent: "edit the same member.", ImpactSummary: "None.",
+					Groups: []plankit.Group{{Label: "Edit", Targets: []string{"internal/foo#Baz"}}}}
+			}
 			planDir := t.TempDir()
-			plankit.Write(t, planDir, plankit.Plan{Approved: true, Language: language, Cards: []plankit.Card{
-				cardOne,
-				{Number: 2, Slug: "list-tests", Summary: "list the tests", Intent: "placeholder card.", Groups: []plankit.Group{{Label: "Prosa", Targets: []string{"base.txt"}}}},
-			}})
+			plankit.Write(t, planDir, plankit.Plan{Approved: true, Language: language, Cards: []plankit.Card{cardOne, cardTwo}})
 			plan, err := planparser.ParsePlan(planDir)
 			if err != nil {
 				t.Fatalf("ParsePlan(%q) error = %v", planDir, err)
@@ -1093,6 +1126,9 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			fx.Deps.Geom.PlanDir = planDir
 			fx.Deps.State.PlanFingerprint = mustFingerprint(t, planDir)
 			fx.Deps.Batches = []batcher.Batch{{Cards: plan.Cards[:1]}, {Cards: plan.Cards[1:]}}
+			if tt.oneBatch {
+				fx.Deps.Batches = []batcher.Batch{{Cards: plan.Cards}}
+			}
 			fx.Deps.Config.KickstartPack = !tt.off
 			if tt.prepare != nil {
 				tt.prepare(fx.Deps.Geom.Index.(*fakeIndex))
@@ -1112,6 +1148,12 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			}
 			for _, needle := range tt.wantNotPrompt {
 				requireNotContains(t, string(prompt), needle)
+			}
+			// The plan directory sits outside the worktree, so the display is the absolute plan directory.
+			for _, base := range tt.cardHeadings {
+				path := planDir + "/" + base
+				requireContains(t, string(prompt), fmt.Sprintf("- `%s`", path))
+				requireContains(t, string(prompt), fmt.Sprintf("### `%s`", path))
 			}
 			// The pack reaches the prompt file alone.
 			envelope := fmt.Sprintf("%+v", *result)

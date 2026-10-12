@@ -287,6 +287,8 @@ func forkTemplateMarkerValues() map[string]string {
 		"outcome_path":       testOutcomePath,
 		"summary_path":       testSummaryPath,
 		"locate":             "   Locate them with one `lyx quarry resolve <glyph>...` call.",
+		"card_read":          "Read the card file.",
+		"fresh_read":         "Inherited context can be stale.",
 		"kickstart_pack":     "\n\n## Kick-start pack\n\nthe pack.",
 		"friction_directive": "## Friction note — optional, only if something went wrong\n\nWrite it to /webster/friction/02-list-tests.md.",
 	}
@@ -338,7 +340,7 @@ func assertCardPointerIsRelative(t *testing.T, got, sourcePath string) {
 
 // renderFork renders the fork prompt for batch with the shared placeholder paths; root is both the
 // anchor root and the prompt worktree root, and the plan directory is derived under it.
-func renderFork(batch batcher.Batch, root, stencilsDir, specsDir, prevDigest string, selfFixCap int, notePath string, pack *planindex.Pack) (string, error) {
+func renderFork(batch batcher.Batch, root, stencilsDir, specsDir, prevDigest string, selfFixCap int, notePath string, pack []planindex.CardPack) (string, error) {
 	got, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, prevDigest, "/reports/01-alpha.yaml", filepath.Join(root, "_lyx", "plan"), root, stencilsDir, specsDir, testOutcomePath, testSummaryPath, selfFixCap, notePath, pack)
 	return string(got), err
 }
@@ -469,14 +471,14 @@ func TestTemplates_FillRequiresEveryRequiredMarker(t *testing.T) {
 			template: mustForkTemplate,
 			values:   forkTemplateMarkerValues,
 			optional: []string{"kickstart_pack", "friction_directive"},
-			required: []string{"card_pointers", "card_gates", "batch_gate", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "outcome_path", "summary_path", "locate"},
+			required: []string{"card_pointers", "card_gates", "batch_gate", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "outcome_path", "summary_path", "locate", "card_read", "fresh_read"},
 		},
 		{
 			name:     "recovery",
 			template: mustRecoveryTemplate,
 			values:   recoveryTemplateMarkerValues,
 			optional: []string{"pattern_directive", "failure_digest", "uncommitted_paths", "kickstart_pack", "friction_directive", "parent_directive"},
-			required: []string{"card_pointers", "card_gates", "batch_gate", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "edit_directive", "locate"},
+			required: []string{"card_pointers", "card_gates", "batch_gate", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "edit_directive", "locate", "card_read", "fresh_read"},
 		},
 	}
 	for _, tc := range cases {
@@ -580,6 +582,48 @@ func TestTemplates_Composition(t *testing.T) {
 		}
 		requireContains(t, err.Error(), "webster-template-master")
 	})
+}
+
+// prePackStepOne and prePackFreshRead are the implementer body's step 1 and FRESH-READ rule as they read before the pack-on texts existed, copied here so a pack-off prompt is pinned to those bytes rather than to the fragments that now carry them.
+const (
+	prePackStepOne = "1. Read the card file.\n" +
+		"   It is your whole instruction for that card.\n" +
+		"   If its `**Intent:**` field is empty, fall back to that card's one-line intent from the Card Index in `_lyx/plan/00-overview.md`, matched by the same NN/slug.\n" +
+		"2. A card names"
+	prePackFreshRead = "## The FRESH-READ rule\n\n" +
+		"Inherited context can be stale.\n" +
+		"A file you looked at during orientation — your own, or one Master read before forking you — is not necessarily the version on disk right now: a prior batch's own card commits may have changed it since.\n" +
+		"Before you edit anything, re-read — in THIS turn — every card file this section points you at, plus every file that card's own target list and `Uses:` list name.\n" +
+		"Only your own reads, taken now, are current;\n" +
+		"content you merely inherited is not.\n\n" +
+		"## Prior-batch context"
+)
+
+// writePrePackBody rewrites the implementer body in stencilsDir into the body as it stood before the pack:
+// the quarry text where the locate marker is, the pack-off texts where the card_read and fresh_read markers are, and no pack marker.
+func writePrePackBody(t *testing.T, stencilsDir string) {
+	t.Helper()
+
+	trimmed := func(fragment []byte) string {
+		return strings.TrimRight(stencil.StripLeadingComment(string(fragment)), "\r\n")
+	}
+	bodyPath := stencilstore.Path(stencilsDir, "webster-body-implementer")
+	body, err := os.ReadFile(bodyPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) = %v; want nil", bodyPath, err)
+	}
+	prePackBody := strings.NewReplacer(
+		"{{.kickstart_pack}}", "",
+		"{{.locate}}", trimmed(stencils.WebsterFragmentLocateQuarry),
+		"{{.card_read}}", trimmed(stencils.WebsterFragmentCardReadPlain),
+		"{{.fresh_read}}", trimmed(stencils.WebsterFragmentFreshReadPlain),
+	).Replace(string(body))
+	if prePackBody == string(body) {
+		t.Fatalf("the body has none of the locate, card_read, fresh_read or kickstart_pack markers")
+	}
+	if err := os.WriteFile(bodyPath, []byte(prePackBody), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", bodyPath, err)
+	}
 }
 
 // TestRenderPrompts asserts the rendered fork, recovery, master and fixer prompts: every required
@@ -756,35 +800,23 @@ func TestRenderPrompts(t *testing.T) {
 			return promptCheck{text: text, err: err, contains: []string{"What the worktree holds\n\nnone\n"}}
 		}},
 		{"fork with a nil pack locates by quarry and renders the pre-pack bytes", func(t *testing.T) promptCheck {
-			quarry := strings.TrimRight(stencil.StripLeadingComment(string(stencils.WebsterFragmentLocateQuarry)), "\r\n")
 			root, stencilsDir := testLayout(t)
 			specsDir := newTestSpecsDir(t)
 			text, err := renderFork(alpha, root, stencilsDir, specsDir, "", 2, "", nil)
 
-			// The pre-pack prompt is the body with the quarry text where the locate marker is and no pack marker.
 			_, prePackDir := testLayout(t)
-			bodyPath := stencilstore.Path(prePackDir, "webster-body-implementer")
-			body, readErr := os.ReadFile(bodyPath)
-			if readErr != nil {
-				t.Fatalf("ReadFile(%q) = %v; want nil", bodyPath, readErr)
-			}
-			prePackBody := strings.ReplaceAll(strings.ReplaceAll(string(body), "{{.kickstart_pack}}", ""), "{{.locate}}", quarry)
-			if prePackBody == string(body) {
-				t.Fatalf("the body has neither the locate nor the kickstart_pack marker")
-			}
-			if writeErr := os.WriteFile(bodyPath, []byte(prePackBody), 0o644); writeErr != nil {
-				t.Fatalf("WriteFile(%q) = %v; want nil", bodyPath, writeErr)
-			}
+			writePrePackBody(t, prePackDir)
 			prePack, prePackErr := renderFork(alpha, root, prePackDir, specsDir, "", 2, "", nil)
 			if err == nil && prePackErr == nil && text != prePack {
-				t.Errorf("nil-pack fork prompt differs from the prompt of a body with the quarry text in place of the markers")
+				t.Errorf("nil-pack fork prompt differs from the prompt of a body with the pack-off texts in place of the markers")
 			}
 			return promptCheck{text: text, err: err,
-				contains:    []string{"Locate them with one `lyx quarry resolve <glyph>...` call", "A `plan:` handle names a member the card creates and does not resolve yet."},
-				notContains: []string{"## Kick-start pack", "The pack below lists"}}
+				contains:    []string{"Locate them with one `lyx quarry resolve <glyph>...` call", "A `plan:` handle names a member the card creates and does not resolve yet.", prePackStepOne, prePackFreshRead},
+				notContains: []string{"## Kick-start pack", "The kick-start pack below lists"}}
 		}},
 		{"fork with a resolved multipart pack lists each declaration and locates by the pack", func(t *testing.T) promptCheck {
-			pack := &planindex.Pack{Resolved: []planindex.PackEntry{
+			beta := cardWithSourcePath(2, "beta", "add the second flag")
+			barBaz := planindex.Pack{Resolved: []planindex.PackEntry{
 				{Glyph: "internal/foo#Bar", Declarations: []planindex.PackDeclaration{
 					{File: "internal/foo/a.go", Start: 3, End: 5, Signature: "func Bar()"},
 					{File: "internal/foo/b.go", Start: 7, End: 9, Signature: "func (x X) Bar()"},
@@ -793,63 +825,100 @@ func TestRenderPrompts(t *testing.T) {
 					{File: "internal/foo/a.go", Start: 11, End: 12, Signature: "func Baz()"},
 				}},
 			}}
+			baz := planindex.Pack{Resolved: []planindex.PackEntry{
+				{Glyph: "internal/foo#Baz", Declarations: []planindex.PackDeclaration{{File: "internal/foo/c.go", Start: 1, End: 2, Signature: "func Baz()"}}},
+			}}
+			pack := []planindex.CardPack{{Card: alpha.Cards[0], Pack: barBaz}, {Card: beta, Pack: baz}}
 			root, stencilsDir := testLayout(t)
 			specsDir := newTestSpecsDir(t)
-			text, err := renderFork(alpha, root, stencilsDir, specsDir, "", 2, "", pack)
+			text, err := renderFork(batcher.Batch{Cards: []planparser.Card{alpha.Cards[0], beta}}, root, stencilsDir, specsDir, "", 2, "", pack)
 			return promptCheck{text: text, err: err,
 				contains: []string{
-					"The pack below lists where each member glyph on the cards is.",
+					"The kick-start pack below lists, under each card's path, where each member glyph on that card is",
 					"`" + specsDir + "/loom/loom-plan-spec.md`",
 					"## Kick-start pack",
+					"in parallel, in one turn, before doing anything else",
+					"not the whole files that hold them",
+					"that no listed span covers",
+					"find the member by its glyph's member name",
+					"read further code, callers or whole files whenever the card needs it",
 				},
-				notContains: []string{"Locate them with one", "{{", "no member glyphs on this batch's cards"},
+				notContains: []string{"Locate them with one", "{{", "no member glyphs on this card", "#### Unresolved", "Before you edit anything, re-read"},
 				inOrder: []string{
+					"- `_lyx/plan/01-alpha.md`",
+					"- `_lyx/plan/02-beta.md`",
+					"### `_lyx/plan/01-alpha.md`",
 					"- `internal/foo#Bar`",
 					"  - `internal/foo/a.go:3-5` — func Bar()",
 					"  - `internal/foo/b.go:7-9` — func (x X) Bar()",
 					"- `internal/foo#Baz`",
 					"  - `internal/foo/a.go:11-12` — func Baz()",
-					"### Unresolved",
-					"\nnone\n",
+					"### `_lyx/plan/02-beta.md`",
+					"  - `internal/foo/c.go:1-2` — func Baz()",
 				}}
 		}},
 		{"fork with unresolved refs lists each with its reason", func(t *testing.T) promptCheck {
-			pack := &planindex.Pack{
+			pack := []planindex.CardPack{{Card: alpha.Cards[0], Pack: planindex.Pack{
 				Resolved: []planindex.PackEntry{{Glyph: "internal/foo#Bar", Declarations: []planindex.PackDeclaration{{File: "internal/foo/a.go", Start: 3, End: 5, Signature: "func Bar()"}}}},
 				Unresolved: []planindex.PackUnresolved{
 					{Ref: "internal/foo#Gone", Reason: "no such member"},
 					{Ref: "plan:internal/foo#New", Reason: "a member this batch creates"},
 				},
-			}
+			}}}
 			root, stencilsDir := testLayout(t)
 			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", pack)
 			return promptCheck{text: text, err: err,
 				notContains: []string{"\nnone\n"},
 				inOrder: []string{
-					"### Unresolved",
+					"### `_lyx/plan/01-alpha.md`",
+					"  - `internal/foo/a.go:3-5` — func Bar()",
+					"#### Unresolved",
 					"- `internal/foo#Gone` — no such member",
 					"- `plan:internal/foo#New` — a member this batch creates",
 				}}
 		}},
-		{"fork with a pack naming no member glyph renders the empty line", func(t *testing.T) promptCheck {
-			root, stencilsDir := testLayout(t)
-			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", &planindex.Pack{})
-			return promptCheck{text: text, err: err,
-				contains: []string{"The pack below lists where each member glyph on the cards is.", "## Kick-start pack", "no member glyphs on this batch's cards"}}
-		}},
-		{"fork with a pack of only plan: handles renders the empty line and lists the handle", func(t *testing.T) promptCheck {
-			pack := &planindex.Pack{Unresolved: []planindex.PackUnresolved{{Ref: "plan:internal/foo#New", Reason: "a member this batch creates"}}}
+		{"fork with a card whose member glyphs none resolved renders none then its unresolved list", func(t *testing.T) promptCheck {
+			pack := []planindex.CardPack{{Card: alpha.Cards[0], Pack: planindex.Pack{
+				Unresolved: []planindex.PackUnresolved{{Ref: "internal/foo#Gone", Reason: "no such member"}},
+			}}}
 			root, stencilsDir := testLayout(t)
 			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", pack)
 			return promptCheck{text: text, err: err,
-				inOrder: []string{"no member glyphs on this batch's cards", "- `plan:internal/foo#New` — a member this batch creates"}}
+				inOrder: []string{
+					"### `_lyx/plan/01-alpha.md`",
+					"\nnone\n",
+					"#### Unresolved",
+					"- `internal/foo#Gone` — no such member",
+				}}
+		}},
+		{"fork with a card naming no member glyph renders the empty line", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", []planindex.CardPack{{Card: alpha.Cards[0]}})
+			return promptCheck{text: text, err: err,
+				contains:    []string{"The kick-start pack below lists, under each card's path, where each member glyph on that card is", "## Kick-start pack", "no member glyphs on this card"},
+				notContains: []string{"#### Unresolved"}}
+		}},
+		{"fork with a card of only plan: handles renders the empty line and lists the handle", func(t *testing.T) promptCheck {
+			pack := []planindex.CardPack{{Card: alpha.Cards[0], Pack: planindex.Pack{Unresolved: []planindex.PackUnresolved{{Ref: "plan:internal/foo#New", Reason: "a member this batch creates"}}}}}
+			root, stencilsDir := testLayout(t)
+			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", pack)
+			return promptCheck{text: text, err: err,
+				inOrder: []string{"no member glyphs on this card", "#### Unresolved", "- `plan:internal/foo#New` — a member this batch creates"}}
 		}},
 		{"recovery locates by quarry and carries no pack section", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
-			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
+			specsDir := newTestSpecsDir(t)
+			text, err := renderRecovery(alpha, root, root, stencilsDir, specsDir, "", "", "")
+
+			_, prePackDir := testLayout(t)
+			writePrePackBody(t, prePackDir)
+			prePack, prePackErr := renderRecovery(alpha, root, root, prePackDir, specsDir, "", "", "")
+			if err == nil && prePackErr == nil && text != prePack {
+				t.Errorf("recovery prompt differs from the prompt of a body with the pack-off texts in place of the markers")
+			}
 			return promptCheck{text: text, err: err,
-				contains:    []string{"Locate them with one `lyx quarry resolve <glyph>...` call"},
-				notContains: []string{"## Kick-start pack", "The pack below lists"}}
+				contains:    []string{"Locate them with one `lyx quarry resolve <glyph>...` call", prePackStepOne, prePackFreshRead},
+				notContains: []string{"## Kick-start pack", "The kick-start pack below lists"}}
 		}},
 		{"master never fills worktree_root", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)

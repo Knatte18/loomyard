@@ -4,6 +4,7 @@ package planglyph
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -20,57 +21,77 @@ type packRef struct {
 	isHandle bool
 }
 
-// KickstartPack selects the refs cards name, resolves their member glyphs against the tree at worktreeRoot in one call, and returns the pack.
+// KickstartPack selects the refs each card names, resolves the batch's distinct member glyphs against the tree at worktreeRoot in one call, and returns one pack per card, in the order of cards.
 // A ref is selected from an Edit, Delete or Move group, from the old side of a Rename pair and from Uses; a plan: handle under any label is listed unresolved.
 // A plain path and a self glyph are left out, and so are Create targets and the new side of a rename.
-// Under a plan whose language opts out of glyphs the pack is empty.
-// When quarry cannot answer, the pack lists every selected ref as unresolved and the error wraps ErrQuarryUnavailable.
-func KickstartPack(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) (planindex.Pack, error) {
-	lang, ok := plan.GlyphLanguage()
-	if !ok {
-		return planindex.Pack{}, nil
-	}
-
-	var selected []packRef
-	var members []string
-	for _, ref := range selectPackRefs(cards) {
-		if ref.isHandle {
-			selected = append(selected, ref)
-			continue
-		}
-		g, err := glyph.Parse(lang, ref.ref)
-		if err != nil || g.IsSelf() {
-			continue
-		}
-		selected = append(selected, ref)
-		members = append(members, ref.ref)
-	}
-
-	var results []quarry.ResolveResult
-	var resolveErr error
-	if len(members) > 0 {
-		results, resolveErr = Resolve(worktreeRoot, members)
-	}
-
-	var pack planindex.Pack
-	next := 0
-	for _, ref := range selected {
-		switch {
-		case ref.isHandle:
-			pack.Unresolved = append(pack.Unresolved, planindex.PackUnresolved{Ref: ref.ref, Reason: packHandleReason})
-		case resolveErr != nil:
-			pack.Unresolved = append(pack.Unresolved, planindex.PackUnresolved{Ref: ref.ref, Reason: resolveErr.Error()})
-		default:
-			result := results[next]
-			next++
-			appendPackAnswer(&pack, ref.ref, result)
-		}
-	}
-	return pack, resolveErr
+// A ref two cards name appears under both.
+// Under a plan whose language opts out of glyphs the result is nil.
+// When quarry cannot answer, every card lists its selected refs as unresolved and the error wraps ErrQuarryUnavailable.
+func KickstartPack(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) ([]planindex.CardPack, error) {
+	return kickstartPack(plan, cards, func(targets []string) ([]quarry.ResolveResult, error) {
+		return Resolve(worktreeRoot, targets)
+	})
 }
 
-// selectPackRefs lists the refs of cards in selection order, each spelling once: per card the refs of its groups in body order, then its Uses.
-func selectPackRefs(cards []planparser.Card) []packRef {
+// kickstartPack is KickstartPack over resolve, the quarry boundary: it is called once with the batch's distinct member refs in first-seen order, and never when there are none.
+func kickstartPack(plan *planparser.Plan, cards []planparser.Card, resolve func(targets []string) ([]quarry.ResolveResult, error)) ([]planindex.CardPack, error) {
+	lang, ok := plan.GlyphLanguage()
+	if !ok {
+		return nil, nil
+	}
+
+	selected := make([][]packRef, len(cards))
+	var members []string
+	seenMember := make(map[string]bool)
+	for i, c := range cards {
+		for _, ref := range selectPackRefs(c) {
+			if ref.isHandle {
+				selected[i] = append(selected[i], ref)
+				continue
+			}
+			g, err := glyph.Parse(lang, ref.ref)
+			if err != nil || g.IsSelf() {
+				continue
+			}
+			selected[i] = append(selected[i], ref)
+			if !seenMember[ref.ref] {
+				seenMember[ref.ref] = true
+				members = append(members, ref.ref)
+			}
+		}
+	}
+
+	var resolveErr error
+	answers := make(map[string]quarry.ResolveResult, len(members))
+	if len(members) > 0 {
+		var results []quarry.ResolveResult
+		results, resolveErr = resolve(members)
+		if resolveErr == nil {
+			for i, member := range members {
+				answers[member] = results[i]
+			}
+		}
+	}
+
+	packs := make([]planindex.CardPack, len(cards))
+	for i, c := range cards {
+		packs[i].Card = c
+		for _, ref := range selected[i] {
+			switch {
+			case ref.isHandle:
+				packs[i].Pack.Unresolved = append(packs[i].Pack.Unresolved, planindex.PackUnresolved{Ref: ref.ref, Reason: packHandleReason})
+			case resolveErr != nil:
+				packs[i].Pack.Unresolved = append(packs[i].Pack.Unresolved, planindex.PackUnresolved{Ref: ref.ref, Reason: resolveErr.Error()})
+			default:
+				appendPackAnswer(&packs[i].Pack, ref.ref, answers[ref.ref])
+			}
+		}
+	}
+	return packs, resolveErr
+}
+
+// selectPackRefs lists the refs of card in selection order, each spelling once: the refs of its groups in body order, then its Uses.
+func selectPackRefs(card planparser.Card) []packRef {
 	var refs []packRef
 	seen := make(map[string]bool)
 	add := func(ref string) {
@@ -80,46 +101,49 @@ func selectPackRefs(cards []planparser.Card) []packRef {
 		seen[ref] = true
 		refs = append(refs, packRef{ref: ref, isHandle: planparser.IsHandleRef(ref)})
 	}
-	for _, c := range cards {
-		for _, group := range c.TargetGroups {
-			switch group.Type {
-			case planparser.CardTypeRename:
-				for _, pair := range group.Pairs {
-					add(pair.Old)
-					if planparser.IsHandleRef(pair.New) {
-						add(pair.New)
-					}
+	for _, group := range card.TargetGroups {
+		switch group.Type {
+		case planparser.CardTypeRename:
+			for _, pair := range group.Pairs {
+				add(pair.Old)
+				if planparser.IsHandleRef(pair.New) {
+					add(pair.New)
 				}
-			case planparser.CardTypeCreate:
-				for _, ref := range group.Refs {
-					if planparser.IsHandleRef(ref) {
-						add(ref)
-					}
-				}
-			default:
-				for _, ref := range group.Refs {
+			}
+		case planparser.CardTypeCreate:
+			for _, ref := range group.Refs {
+				if planparser.IsHandleRef(ref) {
 					add(ref)
 				}
 			}
+		default:
+			for _, ref := range group.Refs {
+				add(ref)
+			}
 		}
-		for _, ref := range c.Uses {
-			add(ref)
-		}
+	}
+	for _, ref := range card.Uses {
+		add(ref)
 	}
 	return refs
 }
 
-// appendPackAnswer files one member's resolve answer into pack: found and multipart as an entry with a declaration per quarry symbol, anything else as unresolved with quarry's status, or with the grammar rejection's error and reason.
+// appendPackAnswer files one member's resolve answer into pack: found and multipart as an entry with a declaration per quarry symbol (a var or const keeping the first line of its signature only), anything else as unresolved with quarry's status, or with the grammar rejection's error and reason.
 func appendPackAnswer(pack *planindex.Pack, ref string, result quarry.ResolveResult) {
 	switch result.Status {
 	case quarry.StatusFound, quarry.StatusMultipart:
 		entry := planindex.PackEntry{Glyph: ref}
 		for _, symbol := range result.Symbols {
+			signature := symbol.Signature
+			if symbol.Kind == quarry.KindVar || symbol.Kind == quarry.KindConst {
+				firstLine, _, _ := strings.Cut(signature, "\n")
+				signature = strings.TrimRight(firstLine, " \t\r")
+			}
 			entry.Declarations = append(entry.Declarations, planindex.PackDeclaration{
 				File:      symbol.File,
 				Start:     symbol.Start,
 				End:       symbol.End,
-				Signature: symbol.Signature,
+				Signature: signature,
 			})
 		}
 		pack.Resolved = append(pack.Resolved, entry)
