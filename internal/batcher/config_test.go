@@ -173,7 +173,7 @@ func TestActive(t *testing.T) {
 				tt.seed(t, baseDir)
 			}
 
-			got, err := batcher.Active(baseDir)
+			got, err := batcher.Active(configengine.Dirs{Anchor: baseDir})
 			if len(tt.wantErrWith) > 0 {
 				if err == nil {
 					t.Fatal("Active = nil error; want a load error")
@@ -187,6 +187,72 @@ func TestActive(t *testing.T) {
 					t.Errorf("Active error = %q; want it marked configengine.ErrInvalid", err.Error())
 				}
 				assertRetiredKey(t, err, tt.wantRetired)
+				return
+			}
+			if err != nil {
+				t.Fatalf("Active = _, %v; want nil error", err)
+			}
+			if got.Name() != tt.wantName {
+				t.Errorf("Active().Name() = %q; want %q", got.Name(), tt.wantName)
+			}
+		})
+	}
+
+	hubTests := []struct {
+		name         string
+		repoDefault  string
+		worktreeFile string
+		wantName     string
+		wantErrWith  []string
+		// wantDefaultFileInError asserts the error names the repo default's file and the hub-wide reconcile way forward.
+		wantDefaultFileInError bool
+	}{
+		{
+			name:         "activeSetOnlyInRepoDefaultSelectsItsProfile",
+			repoDefault:  `active: "identity"` + "\n",
+			worktreeFile: "profiles:\n  mine:\n    batchifier: identity\n",
+			wantName:     "identity",
+		},
+		{
+			name:         "worktreeProfilesReplaceTheDefaultsWhole",
+			repoDefault:  template,
+			worktreeFile: "profiles:\n  mine:\n    batchifier: identity\n",
+			wantErrWith:  []string{"batcher.yaml", "cautious"},
+		},
+		{
+			name:                   "retiredKeyInRepoDefaultNamesDefaultFileAndFabricReconcile",
+			repoDefault:            strings.Replace(template, "    budget: ", "    alone_above: 1200000\n    budget: ", 1),
+			wantErrWith:            []string{"alone_above", `way forward: run "lyx fabric reconcile"`, "the orch runs it"},
+			wantDefaultFileInError: true,
+		},
+	}
+	for _, tt := range hubTests {
+		t.Run("hubStack/"+tt.name, func(t *testing.T) {
+			t.Parallel()
+			boardDir, anchor := t.TempDir(), t.TempDir()
+			seedConfig(t, boardDir, "batcher", tt.repoDefault)
+			if tt.worktreeFile != "" {
+				seedConfig(t, anchor, "batcher", tt.worktreeFile)
+			}
+
+			got, err := batcher.Active(configengine.Dirs{Anchor: anchor, Board: boardDir})
+			if len(tt.wantErrWith) > 0 {
+				if err == nil {
+					t.Fatal("Active = nil error; want a load error")
+				}
+				for _, want := range tt.wantErrWith {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("Active error = %q; want it to contain %q", err.Error(), want)
+					}
+				}
+				if tt.wantDefaultFileInError {
+					if wantFile := configengine.ConfigFile(boardDir, "batcher"); !strings.Contains(err.Error(), wantFile) {
+						t.Errorf("Active error = %q; want it to name the repo default %q", err.Error(), wantFile)
+					}
+					if !errors.Is(err, batcher.ErrRetiredKey) || !errors.Is(err, configengine.ErrInvalid) {
+						t.Errorf("Active error = %q; want it to wrap ErrRetiredKey and be marked configengine.ErrInvalid", err.Error())
+					}
+				}
 				return
 			}
 			if err != nil {
@@ -290,7 +356,7 @@ func TestProfileWeights(t *testing.T) {
 			baseDir := t.TempDir()
 			seedConfig(t, baseDir, "batcher", tt.config)
 
-			got, err := batcher.ProfileWeights(baseDir, tt.profile)
+			got, err := batcher.ProfileWeights(configengine.Dirs{Anchor: baseDir}, tt.profile)
 			if len(tt.wantErrWith) > 0 {
 				if err == nil {
 					t.Fatal("ProfileWeights = nil error; want an error")
@@ -313,7 +379,7 @@ func TestProfileWeights(t *testing.T) {
 	}
 	t.Run("templateCautiousCarriesTheMeasuredStart", func(t *testing.T) {
 		t.Parallel()
-		got, err := batcher.ProfileWeights(t.TempDir(), "cautious")
+		got, err := batcher.ProfileWeights(configengine.Dirs{Anchor: t.TempDir()}, "cautious")
 		if err != nil {
 			t.Fatalf("ProfileWeights = _, %v; want nil error", err)
 		}
@@ -412,7 +478,7 @@ func TestMigrateConfig(t *testing.T) {
 			if tt.wantLoads {
 				baseDir := t.TempDir()
 				seedConfig(t, baseDir, "batcher", string(got))
-				if _, err := batcher.Active(baseDir); err != nil {
+				if _, err := batcher.Active(configengine.Dirs{Anchor: baseDir}); err != nil {
 					t.Errorf("Active on the migrated document = %v; want nil error", err)
 				}
 			}

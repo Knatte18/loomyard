@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -164,7 +165,7 @@ func TestSmokeBurlerReview_AttachesToALiveReviewerInsteadOfRespawning(t *testing
 
 	// The stand-in run's quiet period is load-bearing:
 	// a review already on disk would be a finished review, and the producer would hand it on without probing anything.
-	shuttleCfg, err := shuttleengine.LoadConfig(loc.AnchorPath(), "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: loc.AnchorPath()}, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}
@@ -268,7 +269,7 @@ func TestSmokeSingleLLM_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
 	}
 	outputFile := filepath.Join(outputDir, "finished.md")
 
-	shuttleCfg, err := shuttleengine.LoadConfig(loc.AnchorPath(), "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: loc.AnchorPath()}, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}
@@ -368,7 +369,7 @@ func TestSmokeSingleLLM_RerunRemovesTheSupersededStrand(t *testing.T) {
 	outputFile := filepath.Join(outputDir, "rerun.md")
 	otherOutputFile := filepath.Join(outputDir, "other.md")
 
-	shuttleCfg, err := shuttleengine.LoadConfig(loc.AnchorPath(), "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: loc.AnchorPath()}, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}

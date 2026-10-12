@@ -78,7 +78,7 @@ func TestRerunCardVerifies_Slotted(t *testing.T) {
 		{
 			name: "an unusable gate.yaml is a failing card line naming its way forward",
 			limits: func() (gateslot.Limits, error) {
-				cfg, err := gateslot.LoadConfig(unusableBoard)
+				cfg, err := gateslot.LoadConfig(configengine.Dirs{Board: unusableBoard})
 				return cfg.Limits(), err
 			},
 			wantFailure: "card 07-slotted verify " + requireCap + ` could not acquire a gate slot: read gate limits: gate config key "slots": 0; want at least 1; fix it with "lyx config gate" from the prime`,

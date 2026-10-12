@@ -132,7 +132,7 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
   Notes are bundled only when the operator promotes them into a task.
 - Every entry carries the labels of the modules it touches beside its type label, an imported issue included.
 - Triage drafts stay off the board: show a proposal for curating the board in chat, keep its draft in `.scratch/`, and change the board only after the operator decides.
-- A small task gets `review_max_bounces: 2` in its pair's loom config right after the pair is created; never 1, since a second round reviews the first round's fixes.
+- A small task gets `run_settings` `{"loom": {"review_max_bounces": 2}}` on its board entry, through `lyx board upsert`, before its batten run starts; never 1, since a second round reviews the first round's fixes.
 
 ## Where a finding goes
 

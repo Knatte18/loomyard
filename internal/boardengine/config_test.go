@@ -5,6 +5,7 @@
 package boardengine_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -35,7 +36,7 @@ func TestLoadConfig_ScalarKeysAndTemplateDefaults(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := writeBoardConfig(t, tt.pathKey+"readme: Home.md\ndesign_prefix: proposal-\n")
 
-			cfg, err := boardengine.LoadConfig(dir, "board")
+			cfg, err := boardengine.LoadConfig(configengine.Dirs{Board: dir}, "board")
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -82,7 +83,7 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 				}
 			}
 
-			cfg, err := boardengine.LoadConfig(tmpDir, "board")
+			cfg, err := boardengine.LoadConfig(configengine.Dirs{Board: tmpDir}, "board")
 			if err == nil {
 				t.Fatalf("expected error for not initialized, got nil; config: %+v", cfg)
 			}
@@ -129,7 +130,7 @@ labels:
   later:
 `)
 
-	cfg, err := boardengine.LoadConfig(dir, "board")
+	cfg, err := boardengine.LoadConfig(configengine.Dirs{Board: dir}, "board")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -151,7 +152,7 @@ types: [bug, idea]
 labels: [urgent, later]
 `)
 
-	cfg, err := boardengine.LoadConfig(dir, "board")
+	cfg, err := boardengine.LoadConfig(configengine.Dirs{Board: dir}, "board")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -177,7 +178,7 @@ func TestLoadConfig_LabelsRefused(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := writeBoardConfig(t, "readme: Home.md\ndesign_prefix: proposal-\n"+tt.content)
-			_, err := boardengine.LoadConfig(dir, "board")
+			_, err := boardengine.LoadConfig(configengine.Dirs{Board: dir}, "board")
 			if err == nil {
 				t.Fatal("expected an error")
 			}
@@ -186,6 +187,27 @@ func TestLoadConfig_LabelsRefused(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a local labels entry", func(t *testing.T) {
+		board, anchor := writeBoardConfig(t, "readme: Home.md\ndesign_prefix: proposal-\n"), writeBoardConfig(t, "")
+		if err := os.MkdirAll(configengine.ScratchDir(anchor), 0755); err != nil {
+			t.Fatalf("failed to create .lyx/config: %v", err)
+		}
+		localPath := configengine.LocalFile(anchor, "board")
+		if err := os.WriteFile(localPath, []byte("labels:\n  urgent: Do first\n"), 0644); err != nil {
+			t.Fatalf("failed to write local config: %v", err)
+		}
+
+		_, err := boardengine.LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "board")
+		if !errors.Is(err, configengine.ErrInvalid) {
+			t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
+		}
+		for _, want := range []string{localPath, "labels"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q must contain %q", err, want)
+			}
+		}
+	})
 }
 
 // TestVocabulary asserts IsType and Known for a type, a plain label, an unknown label and the empty vocabulary of a path-only Config.

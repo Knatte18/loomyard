@@ -44,6 +44,8 @@ var shedrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/preflightshed",
 	"github.com/Knatte18/loomyard/internal/websterengine",
 	"github.com/Knatte18/loomyard/internal/burlerengine",
+	// internal/configengine is imported for the told Dirs type the batcher-backed rows load through; it resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/configengine",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
 	"github.com/Knatte18/loomyard/internal/stencilstore",
 	"github.com/Knatte18/loomyard/internal/stencil",

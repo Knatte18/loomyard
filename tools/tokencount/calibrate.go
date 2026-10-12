@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -218,7 +219,7 @@ func percentile(sorted []float64, p float64) float64 {
 // A run or fork that cannot be reconstructed is a skip, never an error;
 // an error is a failed read of the history or the base tree, or an unusable profile.
 func Calibrate(runs []RunTally, profile, configDir string, history PlanHistory, base BaseTrees) (Calibration, error) {
-	weights, err := batcher.ProfileWeights(configDir, profile)
+	weights, err := batcher.ProfileWeights(configengine.Dirs{Anchor: configDir}, profile)
 	if err != nil {
 		return Calibration{}, err
 	}

@@ -5,10 +5,13 @@
 package darnengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
 // seedDarnConfig creates <baseDir>/_lyx/config/darn.yaml with the given contents.
@@ -58,7 +61,7 @@ func TestLoadConfig(t *testing.T) {
 			if tt.seed {
 				seedDarnConfig(t, baseDir, tt.contents)
 			}
-			got, err := LoadConfig(baseDir, "darn")
+			got, err := LoadConfig(configengine.Dirs{Board: baseDir}, "darn")
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("LoadConfig() = _, %v; want an error containing %q", err, tt.wantErr)
@@ -73,6 +76,54 @@ func TestLoadConfig(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a local writer wins over the hub file's", func(t *testing.T) {
+		t.Parallel()
+		board, anchor := t.TempDir(), t.TempDir()
+		seedDarnConfig(t, board, ConfigTemplate())
+		writeLocalDarnConfig(t, anchor, "writer: sonnet[high]\n")
+
+		got, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "darn")
+		if err != nil {
+			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
+		}
+		if got.Writer != "sonnet[high]" {
+			t.Errorf("LoadConfig().Writer = %q; want %q", got.Writer, "sonnet[high]")
+		}
+	})
+
+	t.Run("a local verify is refused naming the local file and the key", func(t *testing.T) {
+		t.Parallel()
+		board, anchor := t.TempDir(), t.TempDir()
+		seedDarnConfig(t, board, ConfigTemplate())
+		localPath := writeLocalDarnConfig(t, anchor, "verify: rm -rf .\n")
+
+		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "darn")
+		if !errors.Is(err, configengine.ErrInvalid) {
+			t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
+		}
+		for _, want := range []string{localPath, "verify"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+			}
+		}
+	})
+}
+
+// writeLocalDarnConfig writes contents as anchor's local darn override and returns its path.
+// anchor gets an empty _lyx/config/ so the layered load sees an initialised worktree.
+func writeLocalDarnConfig(t *testing.T, anchor, contents string) string {
+	t.Helper()
+	for _, dir := range []string{configengine.ConfigDir(anchor), configengine.ScratchDir(anchor)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", dir, err)
+		}
+	}
+	localPath := configengine.LocalFile(anchor, "darn")
+	if err := os.WriteFile(localPath, []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", localPath, err)
+	}
+	return localPath
 }
 
 // TestVerifyCommand covers the verify value as written, and the missing-file and empty-value answers, each an error that names the way forward.
@@ -98,7 +149,7 @@ func TestVerifyCommand(t *testing.T) {
 			if tt.seed {
 				seedDarnConfig(t, baseDir, tt.contents)
 			}
-			got, err := VerifyCommand(baseDir)
+			got, err := VerifyCommand(configengine.Dirs{Board: baseDir})
 			if tt.wantErr {
 				if err == nil || !strings.Contains(err.Error(), verifyWayForward) {
 					t.Fatalf("VerifyCommand() = %q, %v; want an error naming %q", got, err, verifyWayForward)

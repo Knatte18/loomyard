@@ -295,6 +295,25 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 		}
 	})
 
+	t.Run("upsert_run_settings_field_allowed_and_persisted", func(t *testing.T) {
+		s := boardengine.NewStore("")
+		task, err := s.UpsertTask(map[string]any{
+			"slug":         "task1",
+			"run_settings": map[string]any{"loom": map[string]any{"review_max_bounces": 2}},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		retrieved, found := s.GetTask("task1")
+		if !found {
+			t.Fatalf("task not found after upsert")
+		}
+		loom, _ := retrieved.RunSettings["loom"].(map[string]any)
+		if loom["review_max_bounces"] != float64(2) || task.RunSettings["loom"] == nil {
+			t.Errorf("expected stored run_settings loom.review_max_bounces=2, got %v", retrieved.RunSettings)
+		}
+	})
+
 	t.Run("upsert_recipe_field_allowed_and_persisted", func(t *testing.T) {
 		s := boardengine.NewStore("")
 		task, err := s.UpsertTask(map[string]any{

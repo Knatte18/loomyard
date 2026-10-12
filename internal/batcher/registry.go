@@ -23,7 +23,7 @@ var constructors = map[string]func(name string, p profile) (Batcher, error){
 // newCostFromProfile builds the cost batchifier a `batchifier: cost` profile describes, erroring naming batcher.yaml and the profile when a parameter is missing or out of range, or when it still carries the retired alone_above.
 func newCostFromProfile(name string, p profile) (Batcher, error) {
 	if p.AloneAbove != nil {
-		return nil, retiredKeyError(name, "alone_above")
+		return nil, retiredKeyError(p.file, p.layer, name, "alone_above")
 	}
 	if p.Budget == nil {
 		return nil, configengine.MarkInvalid(fmt.Errorf("batcher.yaml profile %q is missing budget", name))

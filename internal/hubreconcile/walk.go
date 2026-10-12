@@ -32,7 +32,7 @@ func ensure(geom Geometry, opts Options, hooks walkHooks) error {
 	pairCall := opts.Pair != ""
 
 	if !pairCall {
-		if _, current := readCurrentStamp(geom.StampPath(), running.BuildKey); current {
+		if _, current := readCurrentStamp(geom.StampPath(), running.BuildKey); current && !repoDefaultAbsent(geom.BoardDir) {
 			return nil
 		}
 	}
@@ -60,7 +60,7 @@ func ensure(geom Geometry, opts Options, hooks walkHooks) error {
 	}
 
 	previous, current := readCurrentStamp(geom.StampPath(), running.BuildKey)
-	if current {
+	if current && !repoDefaultAbsent(geom.BoardDir) {
 		return nil
 	}
 	logger.Info("hubreconcile: reconciling hub config for a new build", "previous_revision", previous.Revision, "running_revision", running.Revision)
@@ -74,6 +74,20 @@ func ensure(geom Geometry, opts Options, hooks walkHooks) error {
 		return nil
 	}
 	return writeStamp(geom.StampPath(), running)
+}
+
+// repoDefaultAbsent reports whether any per-worktree module's repo default is absent under boardDir.
+// It makes a stamp naming the running build stale, so a default deleted after a walk is reseeded by the next start verb.
+func repoDefaultAbsent(boardDir string) bool {
+	for _, module := range configreg.Modules() {
+		if module.HubWide {
+			continue
+		}
+		if _, err := os.Stat(configengine.ConfigFile(boardDir, module.Name)); errors.Is(err, fs.ErrNotExist) {
+			return true
+		}
+	}
+	return false
 }
 
 // readCurrentStamp returns the stamp at path and whether it names key.
@@ -182,7 +196,7 @@ func reconcileHubWide(boardDir, primeAnchor, label string) (skipped bool, err er
 			if err != nil {
 				return nil, err
 			}
-			results, err := configsync.ReconcileHubWideAt(boardDir, primeAnchor, true)
+			results, err := configsync.ReconcileHubWideAt(boardDir, primeAnchor, configsync.HubWideOptions{Apply: true, SeedDefaults: true})
 			if err != nil {
 				return nil, err
 			}
@@ -257,7 +271,8 @@ func reconcileWorktree(boardDir string, w fabricengine.CodeWorktree, revision st
 	if err != nil {
 		return false, &WorktreeError{Worktree: w.Path, Err: err}
 	}
-	results, err := configsync.ReconcileAll(w.Anchor, boardDir, true)
+	markedBefore := fileExists(configengine.SparseMarker(w.Anchor))
+	results, err := configsync.ReconcileAll(w.Anchor, boardDir, configsync.Options{Apply: true, Migrate: true})
 	if err != nil {
 		if _, statErr := os.Stat(w.Path); errors.Is(statErr, fs.ErrNotExist) {
 			logger.Info("hubreconcile: skipping a worktree removed during the walk", "worktree", w.Path)
@@ -276,10 +291,16 @@ func reconcileWorktree(boardDir string, w fabricengine.CodeWorktree, revision st
 			continue
 		}
 		logResult(w.Path, result)
+		if result.Layer != configengine.LayerWorktree {
+			continue
+		}
 		files = append(files, filepath.Join(anchorRel, configengine.ConfigFileRel(result.Module)))
 		for _, legacy := range result.MigratedFrom {
 			files = append(files, filepath.Join(anchorRel, configengine.ConfigFileRel(legacy)))
 		}
+	}
+	if !markedBefore && fileExists(configengine.SparseMarker(w.Anchor)) {
+		files = append(files, filepath.Join(anchorRel, configengine.SparseMarkerRel()))
 	}
 
 	if hooks.beforeCommit != nil {
@@ -340,10 +361,17 @@ func worktreeErrorFor(worktree string, err error) *WorktreeError {
 // logResult logs one changed module.
 func logResult(worktree string, result configsync.Result) {
 	logger.Info("hubreconcile: config changed", "worktree", worktree, "module", result.Module,
-		"added", result.Added, "removed", result.Removed, "migrated", result.Migrated)
+		"added", result.Added, "removed", result.Removed, "migrated", result.Migrated,
+		"stripped", result.Stripped, "inherited", result.Inherited)
 }
 
-// snapshotConfig reads every file in anchor's config dir and every registry module's config file under anchor; an absent module file maps to nil.
+// fileExists reports whether path names an existing file.
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// snapshotConfig reads every file in anchor's config dir and every registry module's config file and local override file and the sparse marker under anchor; an absent one maps to nil.
 // The dir's own files cover a legacy file a migration removes.
 // Any read or list failure other than absence is returned naming the path, since a snapshot missing a file could not restore it.
 func snapshotConfig(anchor string) (map[string][]byte, error) {
@@ -364,8 +392,12 @@ func snapshotConfig(anchor string) (map[string][]byte, error) {
 		}
 		prior[path] = data
 	}
+	// The sparse marker is snapshotted too, so a restore removes one a failed walk wrote and the worktree stays unmarked for the next walk.
+	paths := []string{configengine.SparseMarker(anchor)}
 	for _, module := range configreg.Modules() {
-		path := configengine.ConfigFile(anchor, module.Name)
+		paths = append(paths, configengine.ConfigFile(anchor, module.Name), configengine.LocalFile(anchor, module.Name))
+	}
+	for _, path := range paths {
 		data, err := os.ReadFile(path)
 		if errors.Is(err, fs.ErrNotExist) {
 			prior[path] = nil

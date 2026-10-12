@@ -101,18 +101,48 @@ func scaffoldIfMissing(path, configDir, template string) (scaffolded bool, err e
 	return true, nil
 }
 
-// Edit opens a config file in an editor, validates the YAML syntax, and loops on validation
+// Edit opens the layer's file of spec under dirs in an editor, validates the YAML syntax, and loops on validation
 // failure.
+// The base layer is scaffolded from the template when absent; a layer above it is sparse, so an absent file is scaffolded empty.
 // On abort, removes any scaffolded file and returns ErrAborted.
 // Validation is syntactic only;
-// known keys are not enforced.
-func Edit(baseDir, module, template string, edit EditorFunc) error {
-	_, err := FindBaseDir(baseDir)
+// known keys are not enforced, except that a saved local override must pass [ValidateLocal], and a refused one is put back to its previous bytes, or removed when the call created it.
+func Edit(dirs Dirs, spec Spec, layer Layer, edit EditorFunc) error {
+	path, owner, err := layerPath(dirs, spec, layer)
 	if err != nil {
 		return err
 	}
+	if _, err := FindBaseDir(owner); err != nil {
+		return err
+	}
 
-	return EditPath(ConfigFile(baseDir, module), template, edit)
+	if layer == BaseLayer(dirs, spec) {
+		return EditPath(path, string(spec.Template), edit)
+	}
+	if layer != LayerLocal {
+		return EditPath(path, "", edit)
+	}
+
+	previous, readErr := os.ReadFile(path)
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return fmt.Errorf("read config file: %w", readErr)
+	}
+	if err := EditPath(path, "", edit); err != nil {
+		return err
+	}
+	saved, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read config file after edit: %w", err)
+	}
+	if err := ValidateLocal(spec, saved); err != nil {
+		if readErr != nil {
+			_ = os.Remove(path)
+		} else {
+			_ = os.WriteFile(path, previous, 0o644)
+		}
+		return err
+	}
+	return nil
 }
 
 // EditPath is Edit's body for a file at a told path, with no _lyx/ check:

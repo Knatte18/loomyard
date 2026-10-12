@@ -10,6 +10,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -24,7 +25,7 @@ func TestEnterSession_DrivesTheToldTmux(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveWorktree: %v", err)
 	}
-	cfg, err := reedengine.LoadConfig(location.AnchorPath(), "reed")
+	cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: location.AnchorPath()}, "reed")
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}

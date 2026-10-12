@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -31,7 +32,7 @@ func newSpecInputs(t *testing.T) DarnInputs {
 // newTestRegistry loads an empty-directory model registry, which still resolves the built-in aliases.
 func newTestRegistry(t *testing.T) modelspec.Registry {
 	t.Helper()
-	reg, err := modelspec.LoadRegistry(t.TempDir())
+	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 	if err != nil {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}

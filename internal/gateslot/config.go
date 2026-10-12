@@ -26,13 +26,30 @@ type Config struct {
 // ErrConfigAbsent is LoadConfig's error for a baseDir with no gate.yaml; its way forward is `lyx fabric reconcile`, which writes the file from the template.
 var ErrConfigAbsent = errors.New("gate config absent; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it")
 
-// LoadConfig loads gate.yaml from baseDir strictly: an absent file is ErrConfigAbsent, and a value below 1 fails naming its key.
+// ConfigSpec returns gate's layered-load spec.
+// Every key is one hub-wide budget all pairs share, so none may be set in the local layer.
+func ConfigSpec() configengine.Spec {
+	return configengine.Spec{
+		Name:     "gate",
+		Template: []byte(ConfigTemplate()),
+		HubWide:  true,
+		Categories: map[string]configengine.Category{
+			"slots":        configengine.CategoryCrossPair,
+			"go_parallel":  configengine.CategoryCrossPair,
+			"cli_wait_sec": configengine.CategoryCrossPair,
+		},
+	}
+}
+
+// LoadConfig loads gate.yaml strictly through the hub-wide layer stack under dirs: an absent hub file is ErrConfigAbsent, and a value below 1 fails naming its key.
 // Every other failure names its way forward, fixing the file with `lyx config gate` from the prime, so each gate site that wraps it carries the clause.
-func LoadConfig(baseDir string) (Config, error) {
-	if _, err := os.Stat(configengine.ConfigFile(baseDir, "gate")); errors.Is(err, os.ErrNotExist) {
+func LoadConfig(dirs configengine.Dirs) (Config, error) {
+	spec := ConfigSpec()
+	baseFile, _ := configengine.LayerFile(dirs, spec, configengine.BaseLayer(dirs, spec))
+	if _, err := os.Stat(baseFile); errors.Is(err, os.ErrNotExist) {
 		return Config{}, ErrConfigAbsent
 	}
-	resolved, err := configengine.Load(baseDir, "gate", []byte(ConfigTemplate()))
+	resolved, err := configengine.Load(dirs, spec)
 	if err != nil {
 		return Config{}, withConfigWayForward(err)
 	}

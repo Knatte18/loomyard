@@ -151,10 +151,10 @@ var coefficients = []struct {
 	{"write_per_card_line", func(w *Weights) *float64 { return &w.WritePerCardLine }},
 }
 
-// ProfileWeights loads batcher.yaml under baseDir and returns the named profile's weights.
+// ProfileWeights loads batcher.yaml through the layer stack under dirs and returns the named profile's weights.
 // It errors naming batcher.yaml when the profile is absent, a coefficient is missing or negative, or a weights: key is not a coefficient.
-func ProfileWeights(baseDir, profileName string) (Weights, error) {
-	cfg, err := loadConfig(baseDir)
+func ProfileWeights(dirs configengine.Dirs, profileName string) (Weights, error) {
+	cfg, err := loadConfig(dirs)
 	if err != nil {
 		return Weights{}, err
 	}
@@ -170,7 +170,7 @@ func ProfileWeights(baseDir, profileName string) (Weights, error) {
 func profileWeights(profileName string, prof profile) (Weights, error) {
 	for _, retired := range []string{"master_base", "startup_context"} {
 		if _, ok := prof.Weights[retired]; ok {
-			return Weights{}, retiredKeyError(profileName, "weights key "+retired)
+			return Weights{}, retiredKeyError(prof.file, prof.layer, profileName, "weights key "+retired)
 		}
 	}
 	known := make(map[string]bool, len(coefficients))

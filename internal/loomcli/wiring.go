@@ -445,35 +445,34 @@ func strandLive(name string, status func() (reedengine.StatusResult, error)) (bo
 func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	anchorPath := location.AnchorPath()
 
-	loomCfg, err := loomengine.LoadConfig(anchorPath, "loom")
+	loomCfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(location), "loom")
 	if err != nil {
 		return err
 	}
-	reedCfg, err := reedengine.LoadConfig(anchorPath, "reed")
+	reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
 	if err != nil {
 		return err
 	}
-	shuttleCfg, err := shuttleengine.LoadConfig(anchorPath, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(location), "shuttle")
 	if err != nil {
 		return err
 	}
-	websterCfg, err := websterengine.LoadConfig(anchorPath, "webster")
+	websterCfg, err := websterengine.LoadConfig(fabricengine.ConfigDirs(location), "webster")
 	if err != nil {
 		return err
 	}
-	// landing is hub-wide: Publish and Finalize read the hub's file, never a pair's copy.
-	landingCfg, err := landingshed.LoadConfig(fabricengine.BoardDir(location.HubPath), "landing")
+	// landing is hub-wide: Publish and Finalize read the hub's file, never a pair's copy, and the pair's local override only for the keys that meet no category.
+	landingCfg, err := landingshed.LoadConfig(fabricengine.ConfigDirs(location), "landing")
 	if err != nil {
 		return fmt.Errorf("%w; %s", err, hubConfigWayForward)
 	}
-	// burlerengine.LoadConfig takes one argument, not the (baseDir, module) shape every other
-	// loader above takes: it is an optional-file loader, so an absent burler.yaml yields a zero
+	// burlerengine.LoadConfig is an optional-file loader: an absent burler.yaml yields a zero
 	// Config and a nil error rather than a load failure.
-	burlerCfg, err := burlerengine.LoadConfig(anchorPath)
+	burlerCfg, err := burlerengine.LoadConfig(fabricengine.ConfigDirs(location))
 	if err != nil {
 		return err
 	}
-	registry, err := modelspec.LoadRegistry(anchorPath)
+	registry, err := modelspec.LoadRegistry(fabricengine.ConfigDirs(location))
 	if err != nil {
 		return err
 	}
@@ -481,7 +480,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	activeBatcher, err := batcher.Active(anchorPath)
+	activeBatcher, err := batcher.Active(fabricengine.ConfigDirs(location))
 	if err != nil {
 		return err
 	}
@@ -600,6 +599,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ParentReview: parentReviewCfg,
 		Cwd:          cwd,
 		AnchorPath:   anchorPath,
+		ConfigDirs:   fabricengine.ConfigDirs(location),
 		WorktreeRoot: location.WorktreePath(),
 		// RunScratchDir is the directory the step envelope reports as scratch_dir.
 		RunScratchDir: shedrun.ScratchDir(location, c.runID),
@@ -658,7 +658,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// live-agent evidence, so flipping the key between a crash and a resume is permitted and
 		// benign -- it means only that the next spawn is interviewed differently.
 		DiscussionSpec: func() (shuttleengine.Spec, error) {
-			return loomengine.DiscussionSpec(location, websterGeom.StencilsDir, c.parentName, loomCfg, registry, seedSlug(location.WorktreeName), !loomCfg.DiscussionInteractive)
+			return loomengine.DiscussionSpec(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, c.parentName, loomCfg, registry, seedSlug(location.WorktreeName), !loomCfg.DiscussionInteractive)
 		},
 		// PrepareDiscussionSpawn removes a ready marker an earlier writer spawn left, whichever producer is configured, since removing an absent marker is a no-op.
 		PrepareDiscussionSpawn: func() error {
@@ -738,7 +738,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// takes no autonomous argument: the Plan producer is autonomous by design and hard-codes
 		// Interactive: false internally.
 		PlanSpec: func() (shuttleengine.Spec, error) {
-			return loomengine.PlanSpec(location, websterGeom.StencilsDir, websterGeom.SpecsDir, c.parentName, loomCfg, registry)
+			return loomengine.PlanSpec(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, c.parentName, loomCfg, registry)
 		},
 		// CommitPlan mirrors CommitDiscussion above: it keeps the working tree clean for the rows
 		// that follow, makes the artifact durable across a crash or a resume, and sweeps the

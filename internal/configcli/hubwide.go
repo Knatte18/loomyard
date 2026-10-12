@@ -1,6 +1,6 @@
-// hubwide.go — the hub-wide branch of the config verbs.
+// hubwide.go — the board-dir branch of the config verbs.
 //
-// A hub-wide module (configreg.Module.HubWide) is read and written at the board dir and its edits are committed in _board through a commit seam, where a per-worktree module syncs fabric.
+// A hub-wide module's file, and any module's repo default (--layer default), is read and written at the board dir and its edits are committed in _board through a commit seam, where a worktree-layer write syncs fabric.
 
 package configcli
 
@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -22,11 +23,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// configDirs holds the two base dirs a config verb addresses:
-// the worktree's, for per-worktree modules, and the hub's board dir, for hub-wide ones.
+// configDirs holds what a config verb addresses:
+// the worktree's base dir, the hub's board dir, and the layer --layer selected.
 type configDirs struct {
 	worktree string
 	board    string
+
+	// layer is the --layer value: empty, or one of the three layer names.
+	// Empty selects the module's own default, the worktree file of a per-worktree module and the hub file of a hub-wide one.
+	layer string
 
 	// hubWriteGuard, when set, is called before a hub-wide write and returns a refusal message, or "" to allow it.
 	// A print or a per-worktree write never calls it, so those spawn no git.
@@ -38,7 +43,7 @@ type configDirs struct {
 // the hub orch's slug-free name and an empty name pass.
 // The refusal guards a mistaken write, not a determined agent: it reads the strand name the caller passes and nothing else about the session.
 func hubWriteRefusal(l *lyxcwd.Location, strandName string) (string, error) {
-	if name, err := agentname.Parse(strandName); err == nil && name.Slug != "" {
+	if agentname.TaskSlug(strandName) != "" {
 		return fmt.Sprintf("a hub-wide config write is refused from the task session %s; way forward: the operator or the hub orch runs the write from the prime worktree", strandName), nil
 	}
 	isPrime, err := fabricengine.IsPrimeWorktree(l)
@@ -72,12 +77,44 @@ func dirsOf(l *lyxcwd.Location) configDirs {
 	return configDirs{worktree: baseDirOf(l), board: fabricengine.BoardDir(l.HubPath)}
 }
 
-// baseFor returns the base dir holding module's config file.
-func (d configDirs) baseFor(module configreg.Module) string {
-	if module.HubWide {
-		return d.board
+// layerNames are the values --layer takes.
+var layerNames = []configengine.Layer{configengine.LayerDefault, configengine.LayerWorktree, configengine.LayerLocal}
+
+// validLayer reports whether layer is empty or one of the three layer names.
+func validLayer(layer string) bool {
+	return layer == "" || slices.Contains(layerNames, configengine.Layer(layer))
+}
+
+// engineDirs returns the told geometry configengine addresses a layer file by.
+func (d configDirs) engineDirs() configengine.Dirs {
+	return configengine.Dirs{Anchor: d.worktree, Board: d.board}
+}
+
+// selectedLayer returns the layer a verb addresses for module.
+// An empty --layer selects the module's own default, and --layer worktree on a hub-wide module is refused with the ways forward.
+func (d configDirs) selectedLayer(module configreg.Module) (configengine.Layer, error) {
+	switch {
+	case d.layer == "" && module.HubWide:
+		return configengine.LayerDefault, nil
+	case d.layer == "":
+		return configengine.LayerWorktree, nil
+	case d.layer == string(configengine.LayerWorktree) && module.HubWide:
+		return "", fmt.Errorf("%s is a hub-wide module and has no worktree file; way forward: --layer default from the hub's prime worktree, or --layer local", module.Name)
 	}
-	return d.worktree
+	return configengine.Layer(d.layer), nil
+}
+
+// layerFile returns the selected layer's file of module and the layer.
+func (d configDirs) layerFile(module configreg.Module) (string, configengine.Layer, error) {
+	layer, err := d.selectedLayer(module)
+	if err != nil {
+		return "", "", err
+	}
+	path, applies := configengine.LayerFile(d.engineDirs(), module.Spec(), layer)
+	if !applies {
+		return "", "", fmt.Errorf("the %s layer of %s does not apply here", layer, module.Name)
+	}
+	return path, layer, nil
 }
 
 // hubCommitFunc runs write under the board write lock and commits the one module file it wrote in _board.
@@ -138,9 +175,9 @@ func rollBack(path string, snap fileSnapshot, cause error) error {
 	return cause
 }
 
-// validateHubFile loads module's hub file strictly, so a malformed edit never reaches _board.
+// validateHubFile loads module's board file strictly, alone, so a malformed edit never reaches _board.
 func validateHubFile(boardDir string, module configreg.Module) error {
-	_, err := configengine.Load(boardDir, module.Name, []byte(module.Template()), module.OpenMaps...)
+	_, err := configengine.Load(configengine.Dirs{Board: boardDir}, module.Spec())
 	return err
 }
 
@@ -172,7 +209,7 @@ func setHubWide(dirs configDirs, out io.Writer, module configreg.Module, pairs [
 	commitErr := commit(module.Name, func() error {
 		snap, err := snapshotFile(path)
 		if err == nil {
-			preserved, err = configengine.Set(dirs.board, module.Name, module.Template(), pairs, module.OpenMaps...)
+			preserved, err = configengine.Set(configengine.Dirs{Board: dirs.board}, module.Spec(), configengine.LayerDefault, pairs)
 			if err == nil {
 				err = validateHubFile(dirs.board, module)
 			}

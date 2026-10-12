@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -35,14 +36,14 @@ type loomPreflightProducer struct {
 	name           string
 	statusPath     string
 	statusLockPath string
-	configBaseDir  string
+	dirs           configengine.Dirs
 }
 
 var _ shedengine.ShedProducer = (*loomPreflightProducer)(nil)
 
 // NewLoomPreflight returns a *loomPreflightProducer named name, checking the status file at
 // statusPath (guarded by the lock at statusLockPath) via loomengine.CheckSeed.
-// A passing seed check is followed by a check that batcher.yaml under configBaseDir loads.
+// A passing seed check is followed by a check that batcher.yaml loads through the layer stack under dirs.
 // The return type is shedengine.ShedProducer, the seam interface, so the internal/shedrecipe registry can call this
 // constructor from outside this package while loomPreflightProducer itself stays unexported.
 //
@@ -55,8 +56,8 @@ var _ shedengine.ShedProducer = (*loomPreflightProducer)(nil)
 // seam_enforcement_test.go already allowlists -- that import does not compromise this package's
 // Told-Geometry position, since the invariant's membership predicate is about a direct production
 // import of internal/lyxcwd and transitive is explicitly fine.
-func NewLoomPreflight(name, statusPath, statusLockPath, configBaseDir string) shedengine.ShedProducer {
-	return &loomPreflightProducer{name: name, statusPath: statusPath, statusLockPath: statusLockPath, configBaseDir: configBaseDir}
+func NewLoomPreflight(name, statusPath, statusLockPath string, dirs configengine.Dirs) shedengine.ShedProducer {
+	return &loomPreflightProducer{name: name, statusPath: statusPath, statusLockPath: statusLockPath, dirs: dirs}
 }
 
 // Call implements shedengine.ShedProducer: it invokes loomengine.CheckSeed(p.statusPath,
@@ -72,7 +73,7 @@ func NewLoomPreflight(name, statusPath, statusLockPath, configBaseDir string) sh
 // Decision: the two told names are the row's own durable on-disk identity and the set of history
 // producers a resumable blocked run may legitimately have left behind.
 //
-// A passing seed check, or a waived half-finished one, is followed by batcher.Active on the told config base directory.
+// A passing seed check, or a waived half-finished one, is followed by batcher.Active on the told dirs.
 // That is the load the Batchifier row makes, so a stale batcher.yaml stops the run here instead of rows later.
 // A seed failure is reported first and unchanged.
 func (p *loomPreflightProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -113,19 +114,19 @@ func (p *loomPreflightProducer) Call(ctx context.Context) (shedengine.Outcome, s
 	return p.checkBatcher(ctx)
 }
 
-// retiredKeyWayForward completes the way forward a retired-key error already ends with, running lyx config reconcile --apply, which migrates the file.
+// retiredKeyWayForward completes the way forward a retired-key error already ends with, running either lyx config reconcile --apply, which migrates a worktree or local file, or lyx fabric reconcile for the repo default.
 const retiredKeyWayForward = ", then re-step"
 
-// checkBatcher loads batcher.yaml under p.configBaseDir through batcher.Active, as the Batchifier row does.
+// checkBatcher loads batcher.yaml through the layer stack under p.dirs with batcher.Active, as the Batchifier row does.
 // A load error maps to Stuck with batchifierReasonPrefix leading the reason.
 // A retired-key error closes with the reconcile way forward, any other with the Batchifier row's own.
 // It reads and never writes, and validates no other module's config.
 func (p *loomPreflightProducer) checkBatcher(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	if _, err := batcher.Active(p.configBaseDir); err != nil {
+	if _, err := batcher.Active(p.dirs); err != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
-		logger.Warn("loomshed: batcher.yaml did not load", "producer", p.name, "configBaseDir", p.configBaseDir, "cause", err)
+		logger.Warn("loomshed: batcher.yaml did not load", "producer", p.name, "anchorPath", p.dirs.Anchor, "cause", err)
 		wayForward := batchifierWayForward
 		if errors.Is(err, batcher.ErrRetiredKey) {
 			wayForward = retiredKeyWayForward

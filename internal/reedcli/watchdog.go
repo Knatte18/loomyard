@@ -328,7 +328,7 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 	if err != nil {
 		return watchedSession{}, err
 	}
-	cfg, err := reedengine.LoadConfig(location.AnchorPath(), "reed")
+	cfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
 	if err != nil {
 		return watchedSession{}, err
 	}

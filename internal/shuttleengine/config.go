@@ -55,12 +55,43 @@ func ConfigOpenMaps() []string {
 	return []string{"claude_prompt_cache_ttl_roles"}
 }
 
-// LoadConfig loads and unmarshals shuttle module configuration.
+// ConfigSpec returns shuttle's layered-load spec.
+// It carries the template, the open maps and the per-key classification that decides which keys a local override may hold.
+func ConfigSpec() configengine.Spec {
+	return configengine.Spec{
+		Name:     "shuttle",
+		Template: []byte(ConfigTemplate()),
+		OpenMaps: ConfigOpenMaps(),
+		Categories: map[string]configengine.Category{
+			"run_dir":                       configengine.CategoryCrossPair,
+			"poll_interval_ms":              configengine.CategoryNone,
+			"liveness_every_n_polls":        configengine.CategoryNone,
+			"run_timeout_min":               configengine.CategoryNone,
+			"startup_timeout_s":             configengine.CategoryNone,
+			"background_shell_wait_min":     configengine.CategoryNone,
+			"send_ready_timeout_s":          configengine.CategoryNone,
+			"submit_confirm_timeout_s":      configengine.CategoryNone,
+			"submit_settle_ms":              configengine.CategoryNone,
+			"submit_redraw_settle_ms":       configengine.CategoryNone,
+			"claude":                        configengine.CategoryExecutable,
+			"claude_deny_agent_tool":        configengine.CategoryGuard,
+			"claude_deny_ask_user_question": configengine.CategoryGuard,
+			"claude_deny_python":            configengine.CategoryGuard,
+			"claude_prompt_cache_ttl":       configengine.CategoryNone,
+			"claude_prompt_cache_ttl_roles": configengine.CategoryNone,
+		},
+	}
+}
+
+// LoadConfig loads and unmarshals shuttle module configuration through the layer stack under dirs.
 // It validates against the template, resolves environment variables, and unmarshals into Config.
-// An absent <baseDir>/_lyx/ directory or an absent config file resolves the embedded template;
-// a config file that exists but is invalid still errors.
-func LoadConfig(baseDir, module string) (Config, error) {
-	resolved, err := configengine.LoadOrTemplate(baseDir, module, []byte(ConfigTemplate()), ConfigOpenMaps()...)
+// An absent config file in every layer resolves the embedded template;
+// a layer file that exists but is invalid still errors.
+// module names the config file to read, so a caller may load a sibling file with shuttle's shape.
+func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
+	spec := ConfigSpec()
+	spec.Name = module
+	resolved, err := configengine.LoadOrTemplate(dirs, spec)
 	if err != nil {
 		return Config{}, err
 	}

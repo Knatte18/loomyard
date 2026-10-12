@@ -12,8 +12,11 @@
 package main
 
 import (
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loggerconfig"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // notifyExitAndSweep force-arms the sink on a non-zero code, then sweeps the sink directory when the sink armed.
@@ -30,11 +33,17 @@ func notifyExitAndSweep(code int) {
 
 // exitSweepBounds picks the bounds the exit sweep runs with.
 // A redirected sink gets the defaults without a config load;
-// otherwise logger.yaml under the anchor decides,
+// otherwise logger.yaml's layer stack under the anchor decides,
 // and an unusable one logs one Warn naming the file and falls back to the defaults.
+// The sink holds only its anchor, so the hub geometry comes from resolving that anchor's location;
+// when resolution fails the load stacks the anchor's own layers alone.
 func exitSweepBounds(state logger.SinkArmState) logger.RetentionBounds {
 	if state.Redirected {
 		return logger.DefaultRetentionBounds()
 	}
-	return loggerconfig.LoadOrDefault(state.AnchorPath)
+	dirs := configengine.Dirs{Anchor: state.AnchorPath}
+	if location, err := lyxcwd.ResolveWorktree(state.AnchorPath); err == nil {
+		dirs = fabricengine.ConfigDirs(location)
+	}
+	return loggerconfig.LoadOrDefault(dirs)
 }

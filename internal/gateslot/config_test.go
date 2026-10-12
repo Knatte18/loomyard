@@ -3,10 +3,14 @@
 package gateslot
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
 var templateDefaults = Config{Slots: 2, GoParallel: 4, CLIWaitSec: 300}
@@ -44,7 +48,7 @@ func TestLoadConfig(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := LoadConfig(seedGateConfig(t, tc.contents))
+			got, err := LoadConfig(configengine.Dirs{Board: seedGateConfig(t, tc.contents)})
 			if tc.wantErr != "" {
 				if err == nil || err.Error() != tc.wantErr {
 					t.Fatalf("LoadConfig() error = %v; want %q", err, tc.wantErr)
@@ -56,6 +60,28 @@ func TestLoadConfig(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a local slots is refused naming the local file and the key", func(t *testing.T) {
+		t.Parallel()
+		board, anchor := seedGateConfig(t, ConfigTemplate()), seedGateConfig(t, "")
+		if err := os.MkdirAll(configengine.ScratchDir(anchor), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		localPath := configengine.LocalFile(anchor, "gate")
+		if err := os.WriteFile(localPath, []byte("slots: 9\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board})
+		if !errors.Is(err, configengine.ErrInvalid) {
+			t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
+		}
+		for _, want := range []string{localPath, "slots"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+			}
+		}
+	})
 }
 
 func TestTemplateConfigAndLimits(t *testing.T) {

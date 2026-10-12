@@ -6,6 +6,7 @@ package modelspec
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -42,7 +43,7 @@ func TestLoadRegistry_YieldsBuiltins(t *testing.T) {
 				writeModelsYAML(t, baseDir, tt.contents)
 			}
 
-			got, err := LoadRegistry(baseDir)
+			got, err := LoadRegistry(configengine.Dirs{Anchor: baseDir})
 			if err != nil {
 				t.Fatalf("LoadRegistry(%s) returned unexpected error: %v", tt.name, err)
 			}
@@ -76,7 +77,7 @@ zephyr:
     effort: high
 `)
 
-	got, err := LoadRegistry(baseDir)
+	got, err := LoadRegistry(configengine.Dirs{Anchor: baseDir})
 	if err != nil {
 		t.Fatalf("LoadRegistry(extends) returned unexpected error: %v", err)
 	}
@@ -105,7 +106,7 @@ sonnet:
   model: claude-sonnet-5
 `)
 
-	got, err := LoadRegistry(baseDir)
+	got, err := LoadRegistry(configengine.Dirs{Anchor: baseDir})
 	if err != nil {
 		t.Fatalf("LoadRegistry(override) returned unexpected error: %v", err)
 	}
@@ -118,6 +119,74 @@ sonnet:
 	// there is none present here, and none must leak in.
 	if len(sonnet.Defaults) != 0 {
 		t.Errorf("LoadRegistry(override)[\"sonnet\"].Defaults = %v; want none (whole-entry replacement, no leaked defaults)", sonnet.Defaults)
+	}
+
+	// The layered rows: an upper layer's alias replaces the lower layer's outright.
+	const repoDefault = `
+opus:
+  engine: claude
+  model: opus
+  defaults:
+    effort: high
+`
+	tests := []struct {
+		name  string
+		local string
+		check func(t *testing.T, got Registry)
+	}{
+		{
+			name:  "a local alias without a defaults block inherits no defaults from the layers below",
+			local: "opus:\n  engine: claude\n  model: claude-opus-local\n",
+			check: func(t *testing.T, got Registry) {
+				if opus := got["opus"]; opus.Model != "claude-opus-local" || len(opus.Defaults) != 0 {
+					t.Errorf("opus = %+v; want the local entry with no defaults", opus)
+				}
+			},
+		},
+		{
+			name:  "a local alias the template lacks loads",
+			local: "zephyr:\n  engine: claude\n  model: claude-zephyr-1\n",
+			check: func(t *testing.T, got Registry) {
+				if zephyr, ok := got["zephyr"]; !ok || zephyr.Model != "claude-zephyr-1" {
+					t.Errorf("zephyr = %+v, %v; want the local entry", zephyr, ok)
+				}
+			},
+		},
+		{
+			name:  "a local opus defaults version entry loads",
+			local: "opus:\n  engine: claude\n  model: opus\n  defaults:\n    version: \"4.7\"\n",
+			check: func(t *testing.T, got Registry) {
+				if opus := got["opus"]; opus.Defaults["version"] != "4.7" || len(opus.Defaults) != 1 {
+					t.Errorf("opus.Defaults = %v; want only the local version", opus.Defaults)
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			boardDir, anchor := t.TempDir(), t.TempDir()
+			writeModelsYAML(t, boardDir, repoDefault)
+			writeLocalModelsYAML(t, anchor, tt.local)
+
+			got, err := LoadRegistry(configengine.Dirs{Anchor: anchor, Board: boardDir})
+			if err != nil {
+				t.Fatalf("LoadRegistry(layered) returned unexpected error: %v", err)
+			}
+			tt.check(t, got)
+		})
+	}
+}
+
+// writeLocalModelsYAML writes contents to the local models override file under anchor.
+func writeLocalModelsYAML(t *testing.T, anchor, contents string) {
+	t.Helper()
+	path := configengine.LocalFile(anchor, "models")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s): %v", path, err)
 	}
 }
 
@@ -186,7 +255,7 @@ sonnet:
 			baseDir := t.TempDir()
 			writeModelsYAML(t, baseDir, tt.contents)
 
-			_, err := LoadRegistry(baseDir)
+			_, err := LoadRegistry(configengine.Dirs{Anchor: baseDir})
 			if err == nil {
 				t.Fatalf("LoadRegistry(%s) returned nil error; want error containing %q", tt.name, tt.wantSubstr)
 			}
@@ -198,4 +267,17 @@ sonnet:
 			}
 		})
 	}
+
+	t.Run("an invalid local entry is refused naming the local file", func(t *testing.T) {
+		t.Parallel()
+		boardDir, anchor := t.TempDir(), t.TempDir()
+		writeModelsYAML(t, boardDir, "sonnet:\n  engine: claude\n  model: sonnet\n")
+		writeLocalModelsYAML(t, anchor, "sonnet:\n  engine: gemini\n  model: sonnet\n")
+
+		_, err := LoadRegistry(configengine.Dirs{Anchor: anchor, Board: boardDir})
+		localFile := configengine.LocalFile(anchor, "models")
+		if err == nil || !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), "unknown engine") {
+			t.Errorf("LoadRegistry(local) error = %v; want an unknown-engine refusal naming %s", err, localFile)
+		}
+	})
 }

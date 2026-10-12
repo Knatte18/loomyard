@@ -27,12 +27,9 @@
 // alias lookup (alias form) or passes the escape-form pair through unchanged, and
 // applies bracket-over-default precedence, yielding a Resolved.
 //
-// LoadRegistry fallback semantics: LoadRegistry(baseDir) reads
-// configengine.ConfigFile(baseDir, "models"). An absent file is NOT an error — it
-// returns the built-in fallback registry unchanged, so every consumer works with
-// zero config present. A present file's entries are validated and merged onto the
-// built-ins by whole-entry replacement per alias (a file entry for "sonnet"
-// replaces the built-in "sonnet" entirely; it does not merge field-by-field).
+// LoadRegistry fallback semantics: LoadRegistry(dirs) reads the models.yaml layers through configengine.StackLayers.
+// No layer file is NOT an error — it returns the built-in fallback registry unchanged, so every consumer works with zero config present.
+// A present layer's entries are validated, and the stack's merged entries are laid over the built-ins by whole-entry replacement per alias (a file entry for "sonnet" replaces the built-in "sonnet" entirely; it does not merge field-by-field).
 //
 // Leaf import discipline: this package's production code imports ONLY the
 // standard library (including embed), internal/configengine, and gopkg.in/yaml.v3

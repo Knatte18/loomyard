@@ -9,6 +9,20 @@
 // [SetValues] applies dotted key=value pairs to the template-shaped tree and refuses a key the template does not know.
 // [RaiseIntFloor] raises one top-level integer key to a floor, carrying every other key and comment through unchanged, for a module's migration hook.
 //
+// # Layer operations
+//
+// Six operations work on raw unexpanded YAML bytes for the layer stack, each taking openMaps and, where it reads units, a wholeEntries flag:
+//
+//   - [Merge] lays an upper layer over a lower one key by key; no layer deletes a key from the one below.
+//   - [Strip] removes from an upper layer every unit equal to the lower layer's, and reports the removed paths.
+//   - [SetSparse] writes only the set keys into a sparse layer, never scaffolding from the template.
+//   - [Prune] removes from a sparse layer every unit the template does not know, and adds nothing.
+//   - [LeafPaths] lists the sorted dotted paths of every unit of a document.
+//   - [AnnotateLeaves] writes a note as the line comment of the unit at a path.
+//
+// A unit is a mapping key that is descended into, except a key at a declared open-map path and, when wholeEntries is true, every top-level key, each carried or compared whole.
+// A scalar or a sequence is always one unit.
+//
 // # Open maps
 //
 // Reconcile, MissingKeys, FillMissing and SetValues each take a trailing variadic openMaps: dotted key paths whose value is an open map, a mapping whose keys the user owns.

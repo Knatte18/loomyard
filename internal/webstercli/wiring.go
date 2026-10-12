@@ -114,8 +114,6 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 		return err
 	}
 
-	anchorPath := loc.AnchorPath()
-
 	// The friction directory is resolved tolerantly, here rather than deferred to loomcli: this is
 	// what makes the per-batch implementer fork and the cold recovery strand actually receive the
 	// directive under `lyx loom start`, since Master drives the batch loop by running
@@ -125,29 +123,29 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	// empty Friction key, both leave it "": a `lyx webster` verb must never fail because an unrelated
 	// module's config could not be read, and the whole value is optional bookkeeping.
 	c.frictionDir = ""
-	if loomCfg, err := loomengine.LoadConfig(anchorPath, "loom"); err != nil {
+	if loomCfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(loc), "loom"); err != nil {
 		logger.Warn("webstercli: could not load loom config; Tier 2 friction notes are disabled for this invocation", "error", err)
 	} else if loomCfg.Friction != "" {
 		c.frictionDir = loomengine.LoomFrictionDir(loc)
 	}
 
-	shuttleCfg, err := shuttleengine.LoadConfig(anchorPath, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(loc), "shuttle")
 	if err != nil {
 		return err
 	}
-	reedCfg, err := reedengine.LoadConfig(anchorPath, "reed")
+	reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(loc), "reed")
 	if err != nil {
 		return err
 	}
-	websterCfg, err := websterengine.LoadConfig(anchorPath, "webster")
+	websterCfg, err := websterengine.LoadConfig(fabricengine.ConfigDirs(loc), "webster")
 	if err != nil {
 		return configLoadError("webster.yaml", err)
 	}
-	activeBatcher, err := batcher.Active(anchorPath)
+	activeBatcher, err := batcher.Active(fabricengine.ConfigDirs(loc))
 	if err != nil {
 		return configLoadError("batcher.yaml", err)
 	}
-	registry, err := modelspec.LoadRegistry(anchorPath)
+	registry, err := modelspec.LoadRegistry(fabricengine.ConfigDirs(loc))
 	if err != nil {
 		return err
 	}
@@ -257,23 +255,23 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 		c.planDirDefault = res.DefaultPlanDir
 	}
 
-	shuttleCfg, err := shuttleengine.LoadConfig(res.StateDir, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: res.StateDir}, "shuttle")
 	if err != nil {
 		return err
 	}
-	reedCfg, err := reedengine.LoadConfig(res.StateDir, "reed")
+	reedCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: res.StateDir}, "reed")
 	if err != nil {
 		return err
 	}
-	websterCfg, err := websterengine.LoadConfig(res.StateDir, "webster")
+	websterCfg, err := websterengine.LoadConfig(configengine.Dirs{Anchor: res.StateDir}, "webster")
 	if err != nil {
 		return configLoadError("webster.yaml", err)
 	}
-	activeBatcher, err := batcher.Active(res.StateDir)
+	activeBatcher, err := batcher.Active(configengine.Dirs{Anchor: res.StateDir})
 	if err != nil {
 		return configLoadError("batcher.yaml", err)
 	}
-	registry, err := modelspec.LoadRegistry(res.StateDir)
+	registry, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: res.StateDir})
 	if err != nil {
 		return err
 	}

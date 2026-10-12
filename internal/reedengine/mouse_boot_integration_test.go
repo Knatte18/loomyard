@@ -17,6 +17,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -36,7 +37,7 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 	}
 	seedReedConfig(t, worktreeDir)
 
-	cfg, err := LoadConfig(worktreeDir, "reed")
+	cfg, err := LoadConfig(configengine.Dirs{Anchor: worktreeDir}, "reed")
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}

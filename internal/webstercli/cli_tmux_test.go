@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
@@ -71,7 +72,7 @@ func tearDownStandaloneReed(t *testing.T, target, stateDir, hash8 string) {
 	t.Cleanup(func() {
 		// The config is whatever wiring seeded under the state dir;
 		// a load failure means wiring never got that far, and the zero Config still addresses the right socket and session, which is all Down needs.
-		cfg, err := reedengine.LoadConfig(stateDir, "reed")
+		cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: stateDir}, "reed")
 		if err != nil {
 			cfg = reedengine.Config{}
 		}

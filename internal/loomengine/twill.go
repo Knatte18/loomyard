@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -34,10 +35,10 @@ const (
 	planTwillSeverityRule = "a severity (`BLOCKING` when the plan as written fails its verify or ships a wrong behavior, `MEDIUM` when a decision, criterion or branch goes unreached or untested, `LOW` otherwise)"
 )
 
-// twillLenses returns the lenses of the named fan, resolved against the worktree's burler.yaml and the embedded template.
+// twillLenses returns the lenses of the named fan, resolved against burler.yaml's layer stack under dirs and the embedded template.
 // row names the spawning row in the errors: an unreadable burler.yaml, or a fan that does not resolve, fails with an error naming the fan and burler.yaml and the way forward.
-func twillLenses(layout *lyxcwd.Location, fan, row string) ([]twilldirective.Lens, error) {
-	burlerConfig, err := burlerengine.LoadConfig(layout.AnchorPath())
+func twillLenses(dirs configengine.Dirs, fan, row string) ([]twilldirective.Lens, error) {
+	burlerConfig, err := burlerengine.LoadConfig(dirs)
 	if err != nil {
 		return nil, fmt.Errorf("%s: burler.yaml unreadable for twill, which needs the %s fan; fix burler.yaml: %w", row, fan, err)
 	}
@@ -52,10 +53,10 @@ func twillLenses(layout *lyxcwd.Location, fan, row string) ([]twilldirective.Len
 	return lenses, nil
 }
 
-// planTwillDirective returns the twill directive for the Plan-Write prompt, filled with the plan host's values and the lenses of the twillPlanFan fan.
+// planTwillDirective returns the twill directive for the Plan-Write prompt, filled with the plan host's values and the lenses of the twillPlanFan fan, resolved through burler.yaml's layer stack under dirs.
 // The forks review the overview and every card file its Card Index names, and the writer records the lens review in the plan directory's lens review file.
-func planTwillDirective(layout *lyxcwd.Location, stencilsDir string) (string, error) {
-	lenses, err := twillLenses(layout, twillPlanFan, "Plan-Write")
+func planTwillDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir string) (string, error) {
+	lenses, err := twillLenses(dirs, twillPlanFan, "Plan-Write")
 	if err != nil {
 		return "", err
 	}
@@ -76,10 +77,10 @@ func planTwillDirective(layout *lyxcwd.Location, stencilsDir string) (string, er
 }
 
 // twillBlocks returns the twill directive and the twill write-scope paragraph for the Discussion-Write prompt.
-// The lenses come from the twillFan fan, resolved against the worktree's burler.yaml and the embedded template.
+// The lenses come from the twillFan fan, resolved against burler.yaml's layer stack under dirs and the embedded template.
 // An unreadable burler.yaml, or a fan that does not resolve, fails with an error naming the fan and burler.yaml and the way forward.
-func twillBlocks(layout *lyxcwd.Location, stencilsDir string) (string, string, error) {
-	lenses, err := twillLenses(layout, twillFan, "Discussion-Write")
+func twillBlocks(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir string) (string, string, error) {
+	lenses, err := twillLenses(dirs, twillFan, "Discussion-Write")
 	if err != nil {
 		return "", "", err
 	}

@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
-// SeedConfig writes an override for one or more modules' config into h's weft side and commits it.
+// SeedConfig writes a sparse worktree layer over the board's repo defaults for one or more modules into h's weft side and commits it.
 // It writes to h.WeftBase — the anchor-joined weft directory, never h.PrimeRecords() — because at a
 // non-"." anchor h.WeftBase is a subdirectory of the weft worktree root, and every module loader
 // reads from the anchored path.
@@ -27,9 +27,8 @@ import (
 // junction excluded from the warp's index via .git/info/exclude, so `git add .` there stages nothing
 // and the commit errors.
 //
-// The commit is run with --allow-empty because, once fabriccli.CloneAndWire commits the module
-// configs it materialises, the base clone leaves the weft prime clean, so a seeded override that is
-// byte-identical to the just-committed reconciled file stages nothing and a bare `git commit` exits
+// The commit is run with --allow-empty because the base clone leaves the weft prime clean, so a seeded layer that is
+// byte-identical to a file the prime already holds stages nothing and a bare `git commit` exits
 // 1 — which gitkit.MustRun turns into a tb.Fatalf in a test that did nothing wrong. The cost is an
 // occasional empty fixture commit that nothing observes.
 func SeedConfig(tb testing.TB, h *Hub, configByModule map[string]string) {

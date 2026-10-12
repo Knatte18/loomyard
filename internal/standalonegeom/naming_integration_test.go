@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
@@ -35,7 +36,7 @@ func TestNaming_StandaloneStrandIsShortnameAndRoleWithNoParent(t *testing.T) {
 		t.Fatalf("MkdirAll stateDir: %v", err)
 	}
 
-	cfg, err := reedengine.LoadConfig(stateDir, "reed")
+	cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: stateDir}, "reed")
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}

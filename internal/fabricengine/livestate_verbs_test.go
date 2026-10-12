@@ -87,6 +87,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
@@ -301,7 +302,7 @@ func hubRelative(tb testing.TB, h *hubforge.Hub, abs string) string {
 func firstWiredJunctionLink(tb testing.TB, h *hubforge.Hub, slug string) string {
 	tb.Helper()
 
-	names, err := fabricengine.WiredNames(h.BoardDir())
+	names, err := fabricengine.WiredNames(configengine.Dirs{Board: h.BoardDir()})
 	if err != nil {
 		tb.Fatalf("fabricengine.WiredNames(%s): %v", h.BoardDir(), err)
 	}
@@ -893,7 +894,7 @@ func unwireJunctionsCase() VerbCase {
 		},
 		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			names, err := fabricengine.WiredNames(h.BoardDir())
+			names, err := fabricengine.WiredNames(configengine.Dirs{Board: h.BoardDir()})
 			if err != nil {
 				tb.Fatalf("fabricengine.WiredNames(%s): %v", h.BoardDir(), err)
 			}
@@ -936,7 +937,7 @@ func unwireJunctionsCase() VerbCase {
 					PermittedRoots: permitted,
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
-						names, err := fabricengine.WiredNames(h.BoardDir())
+						names, err := fabricengine.WiredNames(configengine.Dirs{Board: h.BoardDir()})
 						if err != nil {
 							tb.Fatalf("fabricengine.WiredNames(%s): %v", h.BoardDir(), err)
 						}

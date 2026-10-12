@@ -1,6 +1,6 @@
-// load.go implements LoadRegistry, the models.yaml loader.
-// It reads the optional per-hub registry file via configengine.ConfigFile, validates every entry
-// against the same closed vocabularies Parse and Resolve use, and merges the file onto the built-in
+// load.go implements ConfigSpec and LoadRegistry, the models.yaml loader.
+// It reads the optional registry layers via configengine.StackLayers, validates every entry
+// against the same closed vocabularies Parse and Resolve use, and merges the stack onto the built-in
 // fallback set by whole-entry replacement.
 
 package modelspec
@@ -10,54 +10,76 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"gopkg.in/yaml.v3"
 )
 
-// LoadRegistry loads the models.yaml registry rooted at baseDir.
-// An absent file returns builtins() unchanged;
-// a present file is decoded with strict validation and merged onto builtins() by whole-entry
-// replacement (no field-level merge).
-func LoadRegistry(baseDir string) (Registry, error) {
-	path := configengine.ConfigFile(baseDir, "models")
+// ConfigSpec returns models's layered-load spec.
+// Each top-level key is one alias, carried whole through the stack, and the four template aliases are classified as meeting no category, so the local layer may hold them and any alias of its own.
+func ConfigSpec() configengine.Spec {
+	return configengine.Spec{
+		Name:         "models",
+		Template:     []byte(ConfigTemplate()),
+		WholeEntries: true,
+		Categories: map[string]configengine.Category{
+			"sonnet": configengine.CategoryNone,
+			"opus":   configengine.CategoryNone,
+			"haiku":  configengine.CategoryNone,
+			"fable":  configengine.CategoryNone,
+		},
+	}
+}
 
-	data, err := os.ReadFile(path)
+// LoadRegistry loads the models.yaml registry through the layer stack under dirs.
+// No layer file returns builtins() unchanged;
+// each present layer is decoded with strict validation, naming that layer's file in an error,
+// and the stack's merged entries are laid over builtins() by whole-entry replacement (no field-level merge).
+func LoadRegistry(dirs configengine.Dirs) (Registry, error) {
+	stack, err := configengine.StackLayers(dirs, ConfigSpec())
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			// models.yaml is optional — no file means "use the built-ins",
-			// not a failure.
-			return builtins(), nil
-		}
-		return nil, fmt.Errorf("modelspec: read %s: %w", path, err)
+		return nil, fmt.Errorf("modelspec: %w", err)
 	}
-
-	var fileEntries map[string]Entry
-	decoder := yaml.NewDecoder(bytes.NewReader(data))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(&fileEntries); err != nil {
-		// An empty or comments-only file yields io.EOF from Decode with no
-		// fileEntries set — that is a valid "no entries" file, not malformed
-		// YAML.
-		if errors.Is(err, io.EOF) {
-			return builtins(), nil
-		}
-		return nil, fmt.Errorf("modelspec: parse %s: %w", path, err)
-	}
-
-	registry := builtins()
-	for alias, entry := range fileEntries {
-		if err := validateAlias(alias, entry, path); err != nil {
+	for _, layer := range stack.Layers {
+		entries, err := decodeEntries(layer.Bytes, layer.Path)
+		if err != nil {
 			return nil, err
 		}
-		// Whole-entry replacement: the file's entry for this alias replaces
+		for alias, entry := range entries {
+			if err := validateAlias(alias, entry, layer.Path); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	entries, err := decodeEntries(stack.Doc, "the merged layers")
+	if err != nil {
+		return nil, err
+	}
+	registry := builtins()
+	for alias, entry := range entries {
+		// Whole-entry replacement: the stack's entry for this alias replaces
 		// the built-in (or absent) entry outright — no field-level merge,
 		// so an override can never leak a stale built-in default.
 		registry[alias] = entry
 	}
 
 	return registry, nil
+}
+
+// decodeEntries strictly decodes models.yaml content into its alias entries, with an empty or comments-only document yielding none.
+// source names the content in a parse error.
+func decodeEntries(data []byte, source string) (map[string]Entry, error) {
+	var entries map[string]Entry
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&entries); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("modelspec: parse %s: %w", source, err)
+	}
+	return entries, nil
 }
 
 // validateAlias checks one models.yaml entry against closed vocabularies and charset.

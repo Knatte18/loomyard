@@ -18,7 +18,7 @@ func GateSlots(l *lyxcwd.Location) *gateslot.Pool {
 	return &gateslot.Pool{
 		Dir: gateslot.Dir(boardDir),
 		Limits: func() (gateslot.Limits, error) {
-			cfg, err := gateslot.LoadConfig(boardDir)
+			cfg, err := gateslot.LoadConfig(fabricengine.ConfigDirs(l))
 			if err != nil {
 				return gateslot.Limits{}, fmt.Errorf("load %s: %w", configengine.ConfigFile(boardDir, "gate"), err)
 			}

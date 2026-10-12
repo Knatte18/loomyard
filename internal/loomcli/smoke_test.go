@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -99,7 +100,7 @@ func registerBootstrapTeardown(t *testing.T, loc *lyxcwd.Location, worktree stri
 // receiver, so a test can query reed's own Status()/Down() without going through the loom CLI seam.
 func probeReedEngine(t *testing.T, loc *lyxcwd.Location) *reedengine.Engine {
 	t.Helper()
-	reedCfg, err := reedengine.LoadConfig(loc.AnchorPath(), "reed")
+	reedCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: loc.AnchorPath()}, "reed")
 	if err != nil {
 		t.Fatalf("load reed config: %v", err)
 	}

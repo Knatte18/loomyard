@@ -110,6 +110,16 @@ func Parse(name string) (Name, error) {
 	return n, nil
 }
 
+// TaskSlug returns the slug of a strand name that parses and carries one.
+// It returns the empty string for an empty name, a slug-free name such as the hub orch's, and a name that does not parse.
+func TaskSlug(strandName string) string {
+	name, err := Parse(strandName)
+	if err != nil {
+		return ""
+	}
+	return name.Slug
+}
+
 // NumberRole returns role when held does not contain it, else role-N for the lowest N >= 2 not held.
 // held is the role segments of every strand in the worktree's state, live or dormant.
 func NumberRole(role string, held []string) string {

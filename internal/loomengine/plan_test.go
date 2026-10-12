@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -40,7 +41,7 @@ func TestPlanSpec(t *testing.T) {
 			t.Parallel()
 			layout := &lyxcwd.Location{HubPath: filepath.Join("home", "user"), WorktreeName: "repo", AnchorRel: tt.anchorRel}
 			cfg := Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120}
-			reg, err := modelspec.LoadRegistry(t.TempDir())
+			reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 			if err != nil {
 				t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 			}
@@ -49,7 +50,7 @@ func TestPlanSpec(t *testing.T) {
 				t.Fatalf("newTestSpecsDir(t) = %q; want an absolute path -- a deployed spec sits outside the agent's own worktree, so only an absolute spelling is reachable", specsDir)
 			}
 
-			spec, err := PlanSpec(layout, newTestStencilsDir(t), specsDir, "", cfg, reg)
+			spec, err := PlanSpec(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, newTestStencilsDir(t), specsDir, "", cfg, reg)
 			if err != nil {
 				t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 			}
@@ -79,7 +80,7 @@ func TestPlanSpec(t *testing.T) {
 			if err := os.WriteFile(blankTemplatePath, []byte(blanked), 0o644); err != nil {
 				t.Fatalf("WriteFile(%q) = %v; want nil", blankTemplatePath, err)
 			}
-			blankSpec, err := PlanSpec(layout, blankStencilsDir, specsDir, "", cfg, reg)
+			blankSpec, err := PlanSpec(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, blankStencilsDir, specsDir, "", cfg, reg)
 			if err != nil {
 				t.Fatalf("PlanSpec(blanked template) = _, %v; want nil error", err)
 			}
@@ -161,12 +162,12 @@ func TestPlanSpec_PatternDirective(t *testing.T) {
 			case "anchor":
 				writeTestPattern(t, layout.AnchorPath())
 			}
-			reg, err := modelspec.LoadRegistry(t.TempDir())
+			reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 			if err != nil {
 				t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 			}
 
-			spec, err := PlanSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), "", Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120}, reg)
+			spec, err := PlanSpec(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, newTestStencilsDir(t), newTestSpecsDir(t), "", Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120}, reg)
 			if err != nil {
 				t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 			}
@@ -236,7 +237,7 @@ func TestPlanSpec_Refuses(t *testing.T) {
 				writeBurlerYAML(t, layout, tt.burlerYAML)
 				cfg.PlanProducer = PlanProducerTwill
 			}
-			reg, err := modelspec.LoadRegistry(t.TempDir())
+			reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 			if err != nil {
 				t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 			}
@@ -245,7 +246,7 @@ func TestPlanSpec_Refuses(t *testing.T) {
 				specsDir = ""
 			}
 
-			_, err = PlanSpec(layout, newTestStencilsDir(t), specsDir, "", cfg, reg)
+			_, err = PlanSpec(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, newTestStencilsDir(t), specsDir, "", cfg, reg)
 			if err == nil {
 				t.Fatalf("PlanSpec(Plan=%q, specsDir=%q) = _, nil; want an error", tt.plan, specsDir)
 			}
@@ -262,7 +263,7 @@ func TestPlanSpec_Refuses(t *testing.T) {
 // The lenses are the template's fan without a burler.yaml, and the burler.yaml fan with one.
 func TestPlanSpec_Twill(t *testing.T) {
 	t.Parallel()
-	reg, err := modelspec.LoadRegistry(t.TempDir())
+	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 	if err != nil {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
@@ -290,7 +291,7 @@ func TestPlanSpec_Twill(t *testing.T) {
 			}
 			stencilsDir := newTestStencilsDir(t)
 
-			spec, err := PlanSpec(layout, stencilsDir, newTestSpecsDir(t), "", cfg, reg)
+			spec, err := PlanSpec(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), "", cfg, reg)
 			if err != nil {
 				t.Fatalf("PlanSpec(twill) = _, %v; want nil error", err)
 			}

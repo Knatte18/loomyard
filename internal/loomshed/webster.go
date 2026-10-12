@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -30,26 +31,26 @@ import (
 // go stale -- the gate's guarantee is precisely "the config was resolvable at the Batchifier row",
 // never "the config Webster will use is the one the Batchifier row saw".
 type websterProducer struct {
-	name       string
-	anchorPath string
-	run        shedadapters.WebsterRunner
-	deps       websterengine.RunDeps
-	commit     func() error
+	name   string
+	dirs   configengine.Dirs
+	run    shedadapters.WebsterRunner
+	deps   websterengine.RunDeps
+	commit func() error
 }
 
 var _ shedengine.ShedProducer = (*websterProducer)(nil)
 
 // NewWebsterProducer returns a websterProducer identified as name, resolving the active batchifier
-// from anchorPath on every Call and driving run with a copy of deps carrying the resolved value.
+// from the told dirs on every Call and driving run with a copy of deps carrying the resolved value.
 // deps.Batcher is left nil by the caller; it is overwritten on every Call regardless. commit
 // commits webster's durable run directory and is invoked once the run reports Done. The return
 // type is shedengine.ShedProducer, the seam interface, so the internal/shedrecipe registry can
 // call this constructor from outside this package while websterProducer itself stays unexported.
-func NewWebsterProducer(name, anchorPath string, run shedadapters.WebsterRunner, deps websterengine.RunDeps, commit func() error) shedengine.ShedProducer {
-	return &websterProducer{name: name, anchorPath: anchorPath, run: run, deps: deps, commit: commit}
+func NewWebsterProducer(name string, dirs configengine.Dirs, run shedadapters.WebsterRunner, deps websterengine.RunDeps, commit func() error) shedengine.ShedProducer {
+	return &websterProducer{name: name, dirs: dirs, run: run, deps: deps, commit: commit}
 }
 
-// Call implements shedengine.ShedProducer: it resolves batcher.Active(w.anchorPath) itself, fills
+// Call implements shedengine.ShedProducer: it resolves batcher.Active(w.dirs) itself, fills
 // the resolved value into a copy of w.deps, constructs a shedadapters.WebsterProducer over the
 // result, and delegates to that producer's own Call.
 //
@@ -63,7 +64,7 @@ func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		return "", shedengine.OutputPointer{}, err
 	}
 
-	active, err := batcher.Active(w.anchorPath)
+	active, err := batcher.Active(w.dirs)
 	if err != nil {
 		if cerr := cancelErr(ctx, w.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
@@ -74,7 +75,7 @@ func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		// changed after the gate already passed -- which is precisely the case an operator will not
 		// guess without being told. The cause is returned as the row's reason, which reaches the
 		// persisted error and activity.wait, and also logged.
-		logger.Warn("loomshed: active batchifier did not resolve", "producer", w.name, "anchorPath", w.anchorPath, "cause", err)
+		logger.Warn("loomshed: active batchifier did not resolve", "producer", w.name, "anchorPath", w.dirs.Anchor, "cause", err)
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: batchifierReasonPrefix + err.Error() + batchifierWayForward}, nil
 	}
 

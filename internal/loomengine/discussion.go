@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -47,8 +48,9 @@ var discussionSkills = []string{"scribe:prose", "scribe:conversation"}
 
 // DiscussionSpec builds the shuttleengine.Spec for one discussion producer run.
 // parentName is told, never derived; an empty one renders the no-parent directive.
+// dirs is the told config geometry the twill fan's burler.yaml is read through.
 // Segment is the discussion segment, because the run is the Discussion-Write phase.
-func DiscussionSpec(layout *lyxcwd.Location, stencilsDir, parentName string, cfg Config, reg modelspec.Registry, slug string, autonomous bool) (shuttleengine.Spec, error) {
+func DiscussionSpec(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, parentName string, cfg Config, reg modelspec.Registry, slug string, autonomous bool) (shuttleengine.Spec, error) {
 	if slug == "" {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: slug must not be empty")
 	}
@@ -92,7 +94,7 @@ func DiscussionSpec(layout *lyxcwd.Location, stencilsDir, parentName string, cfg
 	var twillDirective, twillWriteScope string
 	twill := cfg.DiscussionProducer == DiscussionProducerTwill
 	if twill {
-		twillDirective, twillWriteScope, err = twillBlocks(layout, stencilsDir)
+		twillDirective, twillWriteScope, err = twillBlocks(layout, dirs, stencilsDir)
 		if err != nil {
 			return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: %w", err)
 		}

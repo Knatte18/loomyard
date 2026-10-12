@@ -70,7 +70,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 
 		var out bytes.Buffer
-		code := dispatch(codeLayout, &out, []string{"loom"}, fakeEdit, injectedSync, nil, false, nil, nil)
+		code := dispatch(codeLayout, &out, []string{"loom"}, fakeEdit, injectedSync, nil, false, nil, "", nil)
 		if code != 0 {
 			t.Errorf("dispatch() = %d; want 0; output: %s", code, out.String())
 		}

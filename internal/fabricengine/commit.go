@@ -140,7 +140,7 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	if err != nil {
 		return CommitResult{}, fmt.Errorf("fabricengine: resolve layout for %s: %w", f.warpPath, err)
 	}
-	cfg, err := LoadConfig(repoWideFabricBase(l))
+	cfg, err := LoadConfig(ConfigDirs(l))
 	if err != nil {
 		return CommitResult{}, err
 	}

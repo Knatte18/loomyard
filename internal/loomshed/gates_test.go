@@ -25,6 +25,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/planglyph"
@@ -54,7 +55,7 @@ func TestGateRows_StopsNameAWayForward(t *testing.T) {
 			fake := &fakeWebsterRun{}
 			anchorPath := t.TempDir()
 			writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
-			return NewWebsterProducer("Webster", anchorPath, fake.run, websterengine.RunDeps{}, c)
+			return NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, websterengine.RunDeps{}, c)
 		}},
 	} {
 		t.Run("CommitSeam"+tt.name, func(t *testing.T) {
@@ -81,9 +82,11 @@ func TestGateRows_StopsNameAWayForward(t *testing.T) {
 		name string
 		make func(anchorPath string) shedengine.ShedProducer
 	}{
-		{"Batchifier", func(a string) shedengine.ShedProducer { return NewBatchifier("Batchifier", a) }},
+		{"Batchifier", func(a string) shedengine.ShedProducer {
+			return NewBatchifier("Batchifier", configengine.Dirs{Anchor: a})
+		}},
 		{"Webster", func(a string) shedengine.ShedProducer {
-			return NewWebsterProducer("Webster", a, (&fakeWebsterRun{}).run, websterengine.RunDeps{}, func() error { return nil })
+			return NewWebsterProducer("Webster", configengine.Dirs{Anchor: a}, (&fakeWebsterRun{}).run, websterengine.RunDeps{}, func() error { return nil })
 		}},
 	} {
 		t.Run("BrokenBatcherConfig"+tt.name, func(t *testing.T) {

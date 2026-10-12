@@ -22,7 +22,7 @@ func TestConfigTemplate_LoadsWithLiveEntries(t *testing.T) {
 		t.Fatalf("WriteFile(%s): %v", path, err)
 	}
 
-	got, err := LoadRegistry(baseDir)
+	got, err := LoadRegistry(configengine.Dirs{Anchor: baseDir})
 	if err != nil {
 		t.Fatalf("LoadRegistry(seeded template) returned unexpected error: %v", err)
 	}

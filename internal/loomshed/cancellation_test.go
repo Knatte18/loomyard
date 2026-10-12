@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -71,9 +72,9 @@ func TestCancellation_RealProducersReturnErrorNotStuck(t *testing.T) {
 			Call(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error)
 		}
 	}{
-		{NameBatchifier, NewBatchifier(NameBatchifier, fx.AnchorPath)},
-		{NameWebster, NewWebsterProducer(NameWebster, fx.AnchorPath, (&fakeWebsterRun{}).run, websterengine.RunDeps{}, func() error { return nil })},
-		{NameLoomPreflight, NewLoomPreflight(NameLoomPreflight, fx.StatusPath, fx.StatusLockPath, fx.AnchorPath)},
+		{NameBatchifier, NewBatchifier(NameBatchifier, configengine.Dirs{Anchor: fx.AnchorPath})},
+		{NameWebster, NewWebsterProducer(NameWebster, configengine.Dirs{Anchor: fx.AnchorPath}, (&fakeWebsterRun{}).run, websterengine.RunDeps{}, func() error { return nil })},
+		{NameLoomPreflight, NewLoomPreflight(NameLoomPreflight, fx.StatusPath, fx.StatusLockPath, configengine.Dirs{Anchor: fx.AnchorPath})},
 	}
 
 	for _, tt := range producers {

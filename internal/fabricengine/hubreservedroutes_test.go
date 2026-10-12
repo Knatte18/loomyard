@@ -35,7 +35,7 @@ func TestHubReserved_BoardExcludedFromPathspecRoutes(t *testing.T) {
 		t.Fatalf("seed fabric config: %v", err)
 	}
 
-	names, err := fabricengine.WiredNames(boardDir)
+	names, err := fabricengine.WiredNames(configengine.Dirs{Board: boardDir})
 	if err != nil {
 		t.Fatalf("WiredNames: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestHubReserved_BoardExcludedFromPathspecRoutes(t *testing.T) {
 		t.Errorf("WiredNames() = %v; want it to never include %q", names, fabricengine.BoardDirName)
 	}
 
-	cfg, err := fabricengine.LoadConfig(boardDir)
+	cfg, err := fabricengine.LoadConfig(configengine.Dirs{Board: boardDir})
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}

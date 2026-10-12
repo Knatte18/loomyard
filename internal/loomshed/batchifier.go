@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
@@ -15,8 +16,8 @@ import (
 // OutputPointer, error), so there is no channel for a handover to the Webster row in the first
 // place.
 type batchifier struct {
-	name       string
-	anchorPath string
+	name string
+	dirs configengine.Dirs
 }
 
 var _ shedengine.ShedProducer = (*batchifier)(nil)
@@ -29,14 +30,14 @@ const batchifierReasonPrefix = "active batchifier did not resolve: "
 // the fault sits in batcher.yaml, so the operator fixes it there.
 const batchifierWayForward = "; way forward: fix batcher.yaml (its active: key or the profile it names), then re-step"
 
-// NewBatchifier returns a batchifier identified as name, gating batcher.Active(anchorPath). The
+// NewBatchifier returns a batchifier identified as name, gating batcher.Active over the told dirs. The
 // return type is shedengine.ShedProducer, the seam interface, so the internal/shedrecipe registry
 // can call this constructor from outside this package while batchifier itself stays unexported.
-func NewBatchifier(name, anchorPath string) shedengine.ShedProducer {
-	return &batchifier{name: name, anchorPath: anchorPath}
+func NewBatchifier(name string, dirs configengine.Dirs) shedengine.ShedProducer {
+	return &batchifier{name: name, dirs: dirs}
 }
 
-// Call implements shedengine.ShedProducer: it calls batcher.Active(b.anchorPath) and maps every
+// Call implements shedengine.ShedProducer: it calls batcher.Active(b.dirs) and maps every
 // error to shedengine.Stuck, success to shedengine.Done, in both cases reporting an empty
 // shedengine.OutputPointer.
 //
@@ -50,7 +51,7 @@ func (b *batchifier) Call(ctx context.Context) (shedengine.Outcome, shedengine.O
 		return "", shedengine.OutputPointer{}, err
 	}
 
-	if _, err := batcher.Active(b.anchorPath); err != nil {
+	if _, err := batcher.Active(b.dirs); err != nil {
 		if cerr := cancelErr(ctx, b.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
@@ -59,7 +60,7 @@ func (b *batchifier) Call(ctx context.Context) (shedengine.Outcome, shedengine.O
 		// cause is returned as the row's reason, which reaches the persisted error and activity.wait,
 		// and also logged. The conflation of unknown-name, malformed-YAML, and I/O failure into one
 		// bare error is exactly why the error text itself is the only thing that can tell them apart.
-		logger.Warn("loomshed: active batchifier did not resolve", "producer", b.name, "anchorPath", b.anchorPath, "cause", err)
+		logger.Warn("loomshed: active batchifier did not resolve", "producer", b.name, "anchorPath", b.dirs.Anchor, "cause", err)
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: batchifierReasonPrefix + err.Error() + batchifierWayForward}, nil
 	}
 

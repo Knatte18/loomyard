@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/orchengine"
@@ -177,7 +178,7 @@ func TestSmokeOrch_OneFullCycle(t *testing.T) {
 	prime := h.Location.AnchorPath()
 	paths := orchPaths(h.Location)
 
-	reedCfg, err := reedengine.LoadConfig(prime, "reed")
+	reedCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: prime}, "reed")
 	if err != nil {
 		t.Fatalf("load reed config: %v", err)
 	}
@@ -187,7 +188,7 @@ func TestSmokeOrch_OneFullCycle(t *testing.T) {
 	}
 	reed := reedengine.New(reedCfg, reedGeom)
 	tmuxkit.KillOnCleanup(t, tmuxPath, reedGeom.SocketKey)
-	shuttleCfg, err := shuttleengine.LoadConfig(prime, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: prime}, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}

@@ -31,6 +31,9 @@ type Task struct {
 	// zero, stored as no key, means unknown.
 	Created time.Time `json:"created,omitzero"`
 	Revised time.Time `json:"revised,omitzero"`
+
+	// RunSettings maps a module name to a mapping of that module's config keys, nested as in its YAML file; an empty value is stored as no field.
+	RunSettings map[string]any `json:"run_settings,omitempty"`
 }
 
 const (
@@ -59,13 +62,16 @@ func priorityRank(priority string) int {
 	}
 }
 
-// normalizeTask stores a normal priority as the empty value and the dates in whole UTC seconds, then checks that the Kind is one of the two kinds and the Priority one of the accepted values.
+// normalizeTask stores a normal priority and an empty run settings object as the empty value and the dates in whole UTC seconds, then checks that the Kind is one of the two kinds and the Priority one of the accepted values.
 func normalizeTask(t *Task) error {
 	if t.Kind != KindTask && t.Kind != KindNote {
 		return fmt.Errorf("kind %q is not one of %s, %s", t.Kind, KindTask, KindNote)
 	}
 	if t.Priority == PriorityNormal {
 		t.Priority = ""
+	}
+	if len(t.RunSettings) == 0 {
+		t.RunSettings = nil
 	}
 	t.Created = entryTime(t.Created)
 	t.Revised = entryTime(t.Revised)
