@@ -234,6 +234,13 @@ func TestSeed_LegacyParentKey(t *testing.T) {
 		if _, _, err := ReadSeed(l, "self"); err == nil {
 			t.Error("ReadSeed() with an unknown key error = nil; want a decode error")
 		}
+		tolerant, err := ParseSeedTolerant([]byte(`{"recipe":"loom","driver":"go","parent":"ab:hub","bogus":"x"}`))
+		if err != nil || tolerant.Recipe != RecipeLoom || tolerant.Driver != DriverGo {
+			t.Errorf("ParseSeedTolerant() = %+v, %v; want recipe loom, driver go, nil", tolerant, err)
+		}
+		if _, err := ParseSeedTolerant([]byte("[1]")); err == nil {
+			t.Error("ParseSeedTolerant([1]) error = nil; want a decode error")
+		}
 	})
 }
 

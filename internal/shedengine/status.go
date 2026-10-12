@@ -106,3 +106,13 @@ type Status struct {
 	// validates, or interprets. It carries no compatibility claim for loom's own schema.
 	Product json.RawMessage `json:"product,omitempty"`
 }
+
+// ParseStatusTolerant decodes data, the bytes of a status.json a caller read elsewhere, such as from a git tree.
+// An unknown key reads, and no State value is checked, so a finished or older record the live read gate refuses still decodes.
+func ParseStatusTolerant(data []byte) (Status, error) {
+	var st Status
+	if err := json.Unmarshal(data, &st); err != nil {
+		return Status{}, err
+	}
+	return st, nil
+}

@@ -149,6 +149,20 @@ func ParseSeed(data []byte) (Seed, error) {
 	return seed, nil
 }
 
+// ParseSeedTolerant decodes data, the bytes of a seed.json a caller read elsewhere, such as from a git tree.
+// An unknown key reads; an empty Driver defaults to DriverGo and nothing else is validated.
+// It errors only for bytes that are not a JSON object.
+func ParseSeedTolerant(data []byte) (Seed, error) {
+	var seed Seed
+	if err := json.Unmarshal(data, &seed); err != nil {
+		return Seed{}, fmt.Errorf("decode: %w", err)
+	}
+	if seed.Driver == "" {
+		seed.Driver = DriverGo
+	}
+	return seed, nil
+}
+
 // decodeSeed strictly decodes data as a Seed, rejecting an unknown JSON key.
 // The retired top-level parent key is accepted and discarded.
 func decodeSeed(data []byte) (Seed, error) {
