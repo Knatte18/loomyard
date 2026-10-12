@@ -14,7 +14,7 @@ import (
 // discussionWriteEntry is the Constructor for the "DiscussionWrite" registry row: it validates Env.DiscussionSpec, Env.PrepareDiscussionSpawn, Env.CommitDiscussion, and Env.Shuttle, resolves the row's "gates" Config key through resolveGateSpec, then returns loomshed.NewDiscussionWrite(name, shedadapters.NewSingleLLMProducerGated(name, env.DiscussionSpec, env.Shuttle, env.Now, prepare, gate), env.CommitDiscussion) -- a gated SingleLLMProducer behind a commit decorator.
 //
 // The producer's fresh-spawn preparation runs Env.PrepareDiscussionSpawn first and then, when the resolved gate list holds an enabled "parent-review" entry, calls Env.ParentReview.Store.PrepareRound; it returns an empty amendment and the first error.
-// A start therefore opens the next round unless the latest one holds a reject or a superseding approve, which the gate must read, and an attach runs neither step and continues the latest round.
+// A start therefore opens the next round unless the latest one holds no request, a reject or a superseding approve, which the gate must read, and an attach runs neither step and continues the latest round.
 // A disabled or absent parent-review entry leaves only the first step.
 //
 // The Spec arrives as an injected shedadapters.SpecSource closure rather than as recipe Config

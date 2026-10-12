@@ -54,12 +54,15 @@ func assertReviewRefusal(t *testing.T, code int, out *bytes.Buffer, wantMsg stri
 	}
 }
 
+// testStatusWay is the status way the verb calls pass when a test does not assert it.
+var testStatusWay = reviewStatusWay("task", false)
+
 func TestReviewVerbs_Success(t *testing.T) {
 	t.Run("notify", func(t *testing.T) {
 		s := newReviewStore(t)
 		openReviewRequest(t, s)
 		var out bytes.Buffer
-		if code := reviewNotifyVerb(&out, s, "task"); code != 0 {
+		if code := reviewNotifyVerb(&out, s, "task", testStatusWay); code != 0 {
 			t.Fatalf("notify exit = %d, output %q", code, out.String())
 		}
 		r, _, _ := s.Latest()
@@ -71,7 +74,7 @@ func TestReviewVerbs_Success(t *testing.T) {
 		s := newReviewStore(t)
 		openReviewRequest(t, s)
 		var out bytes.Buffer
-		if code := reviewDeliveredVerb(&out, s, "task", ""); code != 0 {
+		if code := reviewDeliveredVerb(&out, s, "task", testStatusWay, ""); code != 0 {
 			t.Fatalf("delivered exit = %d, output %q", code, out.String())
 		}
 		r, _, _ := s.Latest()
@@ -83,7 +86,7 @@ func TestReviewVerbs_Success(t *testing.T) {
 		s := newReviewStore(t)
 		openReviewRequest(t, s)
 		var out bytes.Buffer
-		if code := reviewDeliveredVerb(&out, s, "task", "no such agent"); code != 0 {
+		if code := reviewDeliveredVerb(&out, s, "task", testStatusWay, "no such agent"); code != 0 {
 			t.Fatalf("delivered --failed exit = %d, output %q", code, out.String())
 		}
 		r, _, _ := s.Latest()
@@ -91,11 +94,31 @@ func TestReviewVerbs_Success(t *testing.T) {
 			t.Errorf("Delivery = %+v; want the reason recorded and no delivery stamp", r.Delivery)
 		}
 	})
+	for name, failed := range map[string]string{"delivered after a verdict": "", "delivered failed after a verdict": "no such agent"} {
+		t.Run(name, func(t *testing.T) {
+			s := newReviewStore(t)
+			openReviewRequest(t, s)
+			if err := s.RecordVerdict(parentreview.VerdictApprove, ""); err != nil {
+				t.Fatal(err)
+			}
+			var out bytes.Buffer
+			if code := reviewDeliveredVerb(&out, s, "task", testStatusWay, failed); code != 0 {
+				t.Fatalf("delivered exit = %d, output %q", code, out.String())
+			}
+			if env := envelope.Decode(t, out.String()); env.Raw["settled"] != true {
+				t.Errorf("envelope = %v; want settled true", env)
+			}
+			r, _, _ := s.Latest()
+			if _, err := os.Stat(filepath.Join(r.Dir, "delivery.json")); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("delivery.json after a verdict: %v; want it absent", err)
+			}
+		})
+	}
 	t.Run("approve", func(t *testing.T) {
 		s := newReviewStore(t)
 		openReviewRequest(t, s)
 		var out bytes.Buffer
-		if code := reviewApproveVerb(&out, s, "task", "", fakeRunStatus(shedengine.StateRunning)); code != 0 {
+		if code := reviewApproveVerb(&out, s, "task", testStatusWay, "", fakeRunStatus(shedengine.StateRunning)); code != 0 {
 			t.Fatalf("approve exit = %d, output %q", code, out.String())
 		}
 		// An ordinary approve ignores the run status: it reports no supersede and records a plain verdict.
@@ -111,7 +134,7 @@ func TestReviewVerbs_Success(t *testing.T) {
 		s := newReviewStore(t)
 		openReviewRequest(t, s)
 		var out bytes.Buffer
-		if code := reviewApproveVerb(&out, s, "task", writeReviewFile(t, "looks good"), fakeRunStatus(shedengine.StateRunning)); code != 0 {
+		if code := reviewApproveVerb(&out, s, "task", testStatusWay, writeReviewFile(t, "looks good"), fakeRunStatus(shedengine.StateRunning)); code != 0 {
 			t.Fatalf("approve --review exit = %d, output %q", code, out.String())
 		}
 		r, _, _ := s.Latest()
@@ -123,7 +146,7 @@ func TestReviewVerbs_Success(t *testing.T) {
 		s := newReviewStore(t)
 		openReviewRequest(t, s)
 		var out bytes.Buffer
-		if code := reviewRejectVerb(&out, s, "task", writeReviewFile(t, "fix the intro")); code != 0 {
+		if code := reviewRejectVerb(&out, s, "task", testStatusWay, writeReviewFile(t, "fix the intro")); code != 0 {
 			t.Fatalf("reject exit = %d, output %q", code, out.String())
 		}
 		r, _, _ := s.Latest()
@@ -136,30 +159,43 @@ func TestReviewVerbs_Success(t *testing.T) {
 	})
 }
 
-// reviewVerbCalls runs each of the four verbs against s, keyed by verb name.
-func reviewVerbCalls(t *testing.T, s parentreview.Store) map[string]func(out *bytes.Buffer) int {
+// reviewVerbCalls runs each of the four verbs against s with statusWay, keyed by verb name.
+func reviewVerbCalls(t *testing.T, s parentreview.Store, statusWay string) map[string]func(out *bytes.Buffer) int {
 	t.Helper()
 	review := writeReviewFile(t, "findings")
 	return map[string]func(out *bytes.Buffer) int{
-		"notify":    func(out *bytes.Buffer) int { return reviewNotifyVerb(out, s, "task") },
-		"delivered": func(out *bytes.Buffer) int { return reviewDeliveredVerb(out, s, "task", "") },
+		"notify":    func(out *bytes.Buffer) int { return reviewNotifyVerb(out, s, "task", statusWay) },
+		"delivered": func(out *bytes.Buffer) int { return reviewDeliveredVerb(out, s, "task", statusWay, "") },
 		"approve": func(out *bytes.Buffer) int {
-			return reviewApproveVerb(out, s, "task", "", fakeRunStatus(shedengine.StateRunning))
+			return reviewApproveVerb(out, s, "task", statusWay, "", fakeRunStatus(shedengine.StateRunning))
 		},
-		"reject": func(out *bytes.Buffer) int { return reviewRejectVerb(out, s, "task", review) },
+		"reject": func(out *bytes.Buffer) int { return reviewRejectVerb(out, s, "task", statusWay, review) },
 	}
 }
 
 func TestReviewVerbs_NoOpenRequest(t *testing.T) {
 	for _, verb := range []string{"notify", "delivered", "approve", "reject"} {
 		t.Run(verb, func(t *testing.T) {
-			s := newReviewStore(t)
-			var out bytes.Buffer
-			code := reviewVerbCalls(t, s)[verb](&out)
-			assertReviewRefusal(t, code, &out, "no open review request")
-			if msg := reviewErrMsg(t, &out); !strings.Contains(msg, "lyx loom status <run>") {
-				t.Errorf("error %q: way forward must point at lyx loom status", msg)
-			}
+			t.Run("by slug", func(t *testing.T) {
+				s := newReviewStore(t)
+				var out bytes.Buffer
+				code := reviewVerbCalls(t, s, reviewStatusWay("task", true))[verb](&out)
+				assertReviewRefusal(t, code, &out, "no open review request")
+				msg := reviewErrMsg(t, &out)
+				if !strings.Contains(msg, "lyx batten status task") || !strings.Contains(msg, "from the prime") {
+					t.Errorf("error %q: way forward must name lyx batten status task run from the prime", msg)
+				}
+			})
+			t.Run("in the task worktree", func(t *testing.T) {
+				s := newReviewStore(t)
+				var out bytes.Buffer
+				code := reviewVerbCalls(t, s, reviewStatusWay("task", false))[verb](&out)
+				assertReviewRefusal(t, code, &out, "no open review request")
+				msg := reviewErrMsg(t, &out)
+				if !strings.Contains(msg, "lyx loom status") || strings.Contains(msg, "<run>") || strings.Contains(msg, "lyx batten status") {
+					t.Errorf("error %q: way forward must name lyx loom status alone", msg)
+				}
+			})
 		})
 	}
 }
@@ -173,7 +209,7 @@ func TestReviewVerbs_VerdictAlreadyRecorded(t *testing.T) {
 				t.Fatal(err)
 			}
 			var out bytes.Buffer
-			code := reviewVerbCalls(t, s)[verb](&out)
+			code := reviewVerbCalls(t, s, testStatusWay)[verb](&out)
 			assertReviewRefusal(t, code, &out, "verdict is already recorded")
 			if !strings.Contains(out.String(), "proceeds on its own") {
 				t.Errorf("output %q: way forward must say the run proceeds on its own", out.String())
@@ -191,7 +227,7 @@ func TestReviewVerbs_Expired(t *testing.T) {
 				t.Fatal(err)
 			}
 			var out bytes.Buffer
-			code := reviewVerbCalls(t, s)[verb](&out)
+			code := reviewVerbCalls(t, s, testStatusWay)[verb](&out)
 			assertReviewRefusal(t, code, &out, "expired")
 			if !strings.Contains(out.String(), "Discussion-Review still reviews") {
 				t.Errorf("output %q: way forward must say Discussion-Review still reviews", out.String())
@@ -207,11 +243,20 @@ func TestReviewVerbs_ReviewFileMissingOrEmpty(t *testing.T) {
 		name string
 		call func(s parentreview.Store, out *bytes.Buffer) int
 	}{
-		{"reject empty", func(s parentreview.Store, out *bytes.Buffer) int { return reviewRejectVerb(out, s, "task", empty) }},
-		{"reject missing", func(s parentreview.Store, out *bytes.Buffer) int { return reviewRejectVerb(out, s, "task", missing) }},
-		{"reject none", func(s parentreview.Store, out *bytes.Buffer) int { return reviewRejectVerb(out, s, "task", "") }},
+		{"reject empty", func(s parentreview.Store, out *bytes.Buffer) int {
+			return reviewRejectVerb(out, s, "task", testStatusWay, empty)
+		}},
+		{"reject missing", func(s parentreview.Store, out *bytes.Buffer) int {
+			return reviewRejectVerb(out, s, "task", testStatusWay, missing)
+		}},
+		{"reject none", func(s parentreview.Store, out *bytes.Buffer) int {
+			return reviewRejectVerb(out, s, "task", testStatusWay, "")
+		}},
+		{"approve empty", func(s parentreview.Store, out *bytes.Buffer) int {
+			return reviewApproveVerb(out, s, "task", testStatusWay, empty, fakeRunStatus(shedengine.StateRunning))
+		}},
 		{"approve missing", func(s parentreview.Store, out *bytes.Buffer) int {
-			return reviewApproveVerb(out, s, "task", missing, fakeRunStatus(shedengine.StateRunning))
+			return reviewApproveVerb(out, s, "task", testStatusWay, missing, fakeRunStatus(shedengine.StateRunning))
 		}},
 	}
 	for _, tc := range tests {
@@ -338,7 +383,7 @@ func TestReviewApprove_SupersedesCapRejectOnBlockedRun(t *testing.T) {
 	rejectCappedRound(t, s, 2)
 	rejectCappedRound(t, s, 2)
 	var out bytes.Buffer
-	if code := reviewApproveVerb(&out, s, "task", "", fakeRunStatus(shedengine.StateBlocked)); code != 0 {
+	if code := reviewApproveVerb(&out, s, "task", testStatusWay, "", fakeRunStatus(shedengine.StateBlocked)); code != 0 {
 		t.Fatalf("exit = %d, output %q", code, out.String())
 	}
 	env := envelope.Decode(t, out.String())
@@ -362,24 +407,27 @@ func TestReviewApprove_SupersedeRefusals(t *testing.T) {
 		s := newReviewStore(t)
 		rejectCappedRound(t, s, 1)
 		var out bytes.Buffer
-		code := reviewApproveVerb(&out, s, "task", "", fakeRunStatus(shedengine.StateRunning))
+		code := reviewApproveVerb(&out, s, "task", reviewStatusWay("task", true), "", fakeRunStatus(shedengine.StateRunning))
 		assertReviewRefusal(t, code, &out, "only on a run halted at the reject cap")
-		if msg := reviewErrMsg(t, &out); !strings.Contains(msg, "lyx loom status <slug>") {
-			t.Errorf("error %q: way forward must point at lyx loom status", msg)
+		if msg := reviewErrMsg(t, &out); !strings.Contains(msg, "lyx batten status task") || !strings.Contains(msg, "from the prime") {
+			t.Errorf("error %q: way forward must name lyx batten status task run from the prime", msg)
 		}
 	})
 	t.Run("below the cap", func(t *testing.T) {
 		s := newReviewStore(t)
 		rejectCappedRound(t, s, 3)
 		var out bytes.Buffer
-		code := reviewApproveVerb(&out, s, "task", "", fakeRunStatus(shedengine.StateBlocked))
+		code := reviewApproveVerb(&out, s, "task", reviewStatusWay("task", false), "", fakeRunStatus(shedengine.StateBlocked))
 		assertReviewRefusal(t, code, &out, "not the cap's")
+		if msg := reviewErrMsg(t, &out); !strings.Contains(msg, "lyx loom status") || strings.Contains(msg, "<slug>") || strings.Contains(msg, "lyx batten status") {
+			t.Errorf("error %q: way forward must name lyx loom status alone", msg)
+		}
 	})
 	t.Run("review file given", func(t *testing.T) {
 		s := newReviewStore(t)
 		rejectCappedRound(t, s, 1)
 		var out bytes.Buffer
-		code := reviewApproveVerb(&out, s, "task", writeReviewFile(t, "other"), fakeRunStatus(shedengine.StateBlocked))
+		code := reviewApproveVerb(&out, s, "task", testStatusWay, writeReviewFile(t, "other"), fakeRunStatus(shedengine.StateBlocked))
 		assertReviewRefusal(t, code, &out, "--review")
 		if msg := reviewErrMsg(t, &out); !strings.Contains(msg, "without --review") {
 			t.Errorf("error %q: way forward must say to re-run without --review", msg)

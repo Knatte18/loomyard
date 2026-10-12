@@ -369,6 +369,11 @@ func (e *fakeEngine) ColorSequence(color segmentcolor.Color) []PaneInput {
 	return []PaneInput{{Text: "COLOR:" + string(color), Submit: true}}
 }
 
+// PromptCacheLifetime answers zero and no error, so no test-built gate keeps a session warm.
+func (e *fakeEngine) PromptCacheLifetime(spec Spec, cfg Config) (time.Duration, error) {
+	return 0, nil
+}
+
 // AuditForks records the (sessionID, workdir) it was called with and returns
 // AuditForksResult/AuditForksErr — a test scripts the canned audit a fork-mode done classification
 // should attach to Result.ForkAudit.

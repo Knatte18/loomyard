@@ -100,6 +100,11 @@ var LoomTemplateParentReviewDelivery []byte
 //go:embed loom/loom-template-parent-review-brief.md
 var LoomTemplateParentReviewBrief []byte
 
+// LoomTemplateParentReviewKeepalive is the one-line prompt that keeps the live Discussion-Write session's prompt cache warm while the parent's review is pending.
+//
+//go:embed loom/loom-template-parent-review-keepalive.md
+var LoomTemplateParentReviewKeepalive []byte
+
 // BurlerStep1Explore is burler's shipped-default step-1 (explore) instruction prompt.
 //
 //go:embed burler/burler-step-1-explore.md
@@ -403,6 +408,7 @@ var entries = []registryEntry{
 	{"loom-template-prior-plan", &LoomTemplatePriorPlan},
 	{"loom-template-parent-review-delivery", &LoomTemplateParentReviewDelivery},
 	{"loom-template-parent-review-brief", &LoomTemplateParentReviewBrief},
+	{"loom-template-parent-review-keepalive", &LoomTemplateParentReviewKeepalive},
 	{"burler-step-1-explore", &BurlerStep1Explore},
 	{"burler-template-reviewer", &BurlerTemplateReviewer},
 	{"burler-template-fixer", &BurlerTemplateFixer},

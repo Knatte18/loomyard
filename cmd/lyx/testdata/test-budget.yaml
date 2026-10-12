@@ -55,7 +55,7 @@ internal/lock: 4
 internal/logger: 34
 internal/loggerconfig: 3
 internal/loomcli: 207
-internal/loomengine: 50
+internal/loomengine: 51
 internal/loomrecipe: 52
 internal/loomshed: 76
 internal/lyxcwd: 23
@@ -66,7 +66,7 @@ internal/orchengine: 136
 internal/output: 4
 internal/pairteardown: 6
 internal/parentdirective: 4
-internal/parentreview: 53
+internal/parentreview: 54
 internal/pattern: 8
 internal/planglyph: 85
 internal/planparser: 90
@@ -92,8 +92,8 @@ internal/shedtransient: 2
 internal/shedverbs: 81
 internal/shell: 12
 internal/shuttlecli: 24
-internal/shuttleengine: 161
-internal/shuttleengine/claudeengine: 105
+internal/shuttleengine: 162
+internal/shuttleengine/claudeengine: 106
 internal/standalonegeom: 7
 internal/standalonestate: 6
 internal/state: 8
