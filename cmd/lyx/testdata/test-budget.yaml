@@ -103,7 +103,7 @@ internal/shedtransient: 2
 internal/shedverbs: 83
 internal/shell: 12
 internal/shortcutcli: 2
-internal/shuttlecli: 25
+internal/shuttlecli: 26
 internal/shuttleengine: 170
 internal/shuttleengine/claudeengine: 109
 internal/standalonegeom: 7
