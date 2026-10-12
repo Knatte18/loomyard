@@ -72,7 +72,7 @@ type fakeIndex struct {
 	// bindErr, when set, is what the returned delta's BindHandles returns.
 	bindErr error
 	// pack and packErr, when pack is set, are what KickstartPack returns instead of the real index's answer.
-	pack    *planindex.Pack
+	pack    func(cards []planparser.Card) []planindex.CardPack
 	packErr error
 	// breakPlanAfterValidate makes ValidateDispatch add a Card Index line for a card with no card file once the real index has answered, so a later plan parse fails.
 	breakPlanAfterValidate bool
@@ -97,9 +97,9 @@ func (i *fakeIndex) Delta(_, fromSHA, toSHA string) (planindex.Delta, error) {
 	return fakeDelta{answer: i.delta, bindErr: i.bindErr}, i.deltaErr
 }
 
-func (i *fakeIndex) KickstartPack(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) (planindex.Pack, error) {
+func (i *fakeIndex) KickstartPack(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) ([]planindex.CardPack, error) {
 	if i.pack != nil {
-		return *i.pack, i.packErr
+		return i.pack(cards), i.packErr
 	}
 	return i.Index.KickstartPack(plan, cards, worktreeRoot)
 }

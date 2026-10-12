@@ -2,11 +2,7 @@
 
 ## The FRESH-READ rule
 
-Inherited context can be stale.
-A file you looked at during orientation — your own, or one Master read before forking you — is not necessarily the version on disk right now: a prior batch's own card commits may have changed it since.
-Before you edit anything, re-read — in THIS turn — every card file this section points you at, plus every file that card's own target list and `Uses:` list name.
-Only your own reads, taken now, are current;
-content you merely inherited is not.
+{{.fresh_read}}
 
 ## Prior-batch context
 
@@ -27,9 +23,7 @@ You never run a Bash call in the background: every card gate step, every card `v
 
 For EACH card file listed above, in the order listed:
 
-1. Read the card file.
-   It is your whole instruction for that card.
-   If its `**Intent:**` field is empty, fall back to that card's one-line intent from the Card Index in `_lyx/plan/00-overview.md`, matched by the same NN/slug.
+1. {{.card_read}}
 2. A card names its targets under its own type label(s) and what it reads under `**Uses:**`; see `{{.specs_dir}}/loom/loom-plan-spec.md` for the full grammar. Make exactly the changes the card describes, in exactly the targets its type labels name.
 {{.locate}}
 3. Run each step of the card's gate from the list below, in order, each as its own foreground Bash call under the gate rule in your system prompt.
