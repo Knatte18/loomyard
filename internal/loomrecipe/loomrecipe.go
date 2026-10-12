@@ -85,6 +85,7 @@ func New(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error
 	if err := applyReviewBudget(shed.Producers, segments, env.ReviewMaxBounces, env.RowMaxBounces); err != nil {
 		return nil, err
 	}
+	applyMergeReviewOff(shed.Producers, env.MergeReviewOff)
 
 	return shed, nil
 }
@@ -121,7 +122,8 @@ func applyDiscussionProducer(recipe *shedbuild.Recipe, seats bool) {
 // Every row of a review segment carries its Bouncer's rowMaxBounces entry, or reviewMaxBounces where the entry is absent or 0, as its MaxBounces, the same value New
 // applies, so the projection never reports the engine default for a review row.
 // A reviewMaxBounces below 1 is refused, naming ReviewMaxBounces, and a negative rowMaxBounces entry for a Bouncer row is refused, naming the row.
-func Routing(reviewMaxBounces int, rowMaxBounces map[string]int) (shedengine.Routing, error) {
+// mergeReviewOff routes Merge-In's Done straight to Publish exactly as New does for env.MergeReviewOff, so the projection shows the graph the engine runs.
+func Routing(reviewMaxBounces int, rowMaxBounces map[string]int, mergeReviewOff bool) (shedengine.Routing, error) {
 	if err := checkReviewBudget("ReviewMaxBounces", reviewMaxBounces); err != nil {
 		return shedengine.Routing{}, err
 	}
@@ -138,8 +140,22 @@ func Routing(reviewMaxBounces int, rowMaxBounces map[string]int) (shedengine.Rou
 	if err := applyReviewBudget(routing.Producers, segments, reviewMaxBounces, rowMaxBounces); err != nil {
 		return shedengine.Routing{}, err
 	}
+	applyMergeReviewOff(routing.Producers, mergeReviewOff)
 
 	return routing, nil
+}
+
+// applyMergeReviewOff routes Merge-In's Done straight to Publish when off is true, leaving the Merge-Review rows in the list unreached.
+// It skips only the review: Merge-In, the parent lock and the reroute still run.
+func applyMergeReviewOff(producers []shedengine.ProducerDef, off bool) {
+	if !off {
+		return
+	}
+	for i := range producers {
+		if producers[i].Name == loomshed.NameMergeIn {
+			producers[i].OnDone = loomshed.NamePublish
+		}
+	}
 }
 
 // checkReviewBudget refuses a review bounce budget below 1; name is the caller's own name for the value.

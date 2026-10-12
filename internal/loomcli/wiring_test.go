@@ -407,6 +407,16 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
+	// loom.yaml's skip_merge_review is off in the template, and the routing projection's flag follows the wired Env's.
+	t.Run("merge review stays on by default", func(t *testing.T) {
+		if c.env.MergeReviewOff {
+			t.Error("c.env.MergeReviewOff = true; want false under the template")
+		}
+		if _, _, off, err := c.reviewBudget(); err != nil || off {
+			t.Errorf("reviewBudget() skip flag = %v, %v; want false, nil", off, err)
+		}
+	})
+
 	// The wired Env carries the worktree's slug, and its SegmentBounces reads the status file on each call:
 	// a status fixture whose history holds Bouncer Stucks reports the count and budget loomrecipe.Routing computes over that history, and an absent status file reports not-in-segment.
 	t.Run("bouncer slug and segment bounces", func(t *testing.T) {
@@ -440,7 +450,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Fatalf("WriteJSON(status) = %v; want nil", err)
 		}
 
-		routing, err := loomrecipe.Routing(c.cfg.ReviewMaxBounces, c.env.RowMaxBounces)
+		routing, err := loomrecipe.Routing(c.cfg.ReviewMaxBounces, c.env.RowMaxBounces, false)
 		if err != nil {
 			t.Fatalf("loomrecipe.Routing(%d) = %v; want nil", c.cfg.ReviewMaxBounces, err)
 		}
@@ -872,7 +882,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	loc := hubLocation(t, "pair", ".")
 	seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{
 		"plan_review": "opus[effort=low]", "plan_judge": "opus[effort=high]", "seed": "haiku[effort=low]", "webster_seed": "opus[effort=low]",
-		"plan_max_bounces": "2", "webster_max_bounces": "1", "webster_auto_accept": "true",
+		"plan_max_bounces": "2", "webster_max_bounces": "1", "webster_auto_accept": "true", "skip_merge_review": "true",
 	})
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
@@ -884,6 +894,9 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	wantRowMaxBounces := map[string]int{loomshed.NameDiscussionBouncer: 0, loomshed.NamePlanBouncer: 2, loomshed.NameWebsterBouncer: 1, loomshed.NameMergeBouncer: 1}
 	if !reflect.DeepEqual(c.env.RowMaxBounces, wantRowMaxBounces) {
 		t.Errorf("RowMaxBounces = %v; want %v", c.env.RowMaxBounces, wantRowMaxBounces)
+	}
+	if _, _, off, err := c.reviewBudget(); err != nil || !off || !c.env.MergeReviewOff {
+		t.Errorf("skip_merge_review reached reviewBudget() = %v, %v and Env.MergeReviewOff = %v; want true, nil and true", off, err, c.env.MergeReviewOff)
 	}
 	wantRowAutoAccept := map[string]bool{loomshed.NameDiscussionBouncer: false, loomshed.NamePlanBouncer: false, loomshed.NameWebsterBouncer: true, loomshed.NameMergeBouncer: true}
 	if !reflect.DeepEqual(c.env.RowAutoAccept, wantRowAutoAccept) {
