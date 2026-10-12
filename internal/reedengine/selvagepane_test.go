@@ -11,15 +11,23 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
+
+// topContentDisplay is a valid top-anchored content display.
+var topContentDisplay = render.Display{Anchor: render.AnchorTop, Size: render.Size{Kind: render.SizeContent, ShareNum: 1, ShareDen: 3, MinRows: 2}}
 
 func TestPlanPaneTarget(t *testing.T) {
 	tests := []struct {
 		name            string
 		live            []LivePane
 		selvagePaneID   string
+		display         render.Display
+		strands         []Strand
 		wantSplitTarget string
 		wantInsertAbove bool
+		wantFull        bool
 		wantErr         bool
 	}{
 		{
@@ -119,12 +127,40 @@ func TestPlanPaneTarget(t *testing.T) {
 			wantSplitTarget: "%selvage",
 			wantInsertAbove: true,
 		},
+		{
+			// A full-width split above the physically top-most pane takes its rows from the whole window, so a one-row top pane cannot make it fail.
+			name:            "TopStrandWithNoTopStrandBoundSplitsTheTopMostPaneAboveAndFull",
+			live:            []LivePane{{ID: "%1", Top: 0, Height: 10}, {ID: "%2", Top: 11, Height: 10}, {ID: "%selvage", Top: 22, Height: 2}},
+			selvagePaneID:   "%selvage",
+			display:         topContentDisplay,
+			wantSplitTarget: "%1",
+			wantInsertAbove: true,
+			wantFull:        true,
+		},
+		{
+			name:            "TopStrandWithALiveTopStrandBoundSplitsBelowIt",
+			live:            []LivePane{{ID: "%1", Top: 0, Height: 3}, {ID: "%2", Top: 4, Height: 10}, {ID: "%selvage", Top: 15, Height: 2}},
+			selvagePaneID:   "%selvage",
+			display:         topContentDisplay,
+			strands:         []Strand{{GUID: "top", PaneID: "%1", Display: topContentDisplay}},
+			wantSplitTarget: "%1",
+		},
+		{
+			name:            "TopStrandWithOnlySelvagePresentSplitsSelvageAboveAndFull",
+			live:            []LivePane{{ID: "%selvage", Top: 0, Height: 21}},
+			selvagePaneID:   "%selvage",
+			display:         topContentDisplay,
+			wantSplitTarget: "%selvage",
+			wantInsertAbove: true,
+			wantFull:        true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			st := &ReedState{SelvagePaneID: tt.selvagePaneID}
-			splitTarget, insertAbove, err := planPaneTarget(st, tt.live)
+			st := &ReedState{SelvagePaneID: tt.selvagePaneID, Strands: tt.strands}
+			split, err := planPaneTarget(st, tt.live, tt.display)
+			splitTarget, insertAbove := split.target, split.above
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("planPaneTarget(%+v, %q): expected error, got nil", tt.live, tt.selvagePaneID)
@@ -141,6 +177,9 @@ func TestPlanPaneTarget(t *testing.T) {
 			if insertAbove != tt.wantInsertAbove {
 				t.Errorf("planPaneTarget(%+v, %q) insertAbove = %v, want %v",
 					tt.live, tt.selvagePaneID, insertAbove, tt.wantInsertAbove)
+			}
+			if split.full != tt.wantFull {
+				t.Errorf("planPaneTarget(%+v, %q) full = %v, want %v", tt.live, tt.selvagePaneID, split.full, tt.wantFull)
 			}
 		})
 	}

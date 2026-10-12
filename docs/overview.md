@@ -617,8 +617,8 @@ See [PATTERN-told-geometry](../pattern/PATTERN-told-geometry.md) for the rule.
 
 - **reed is three things, and it is built** — an **overlay** over tmux, **strand bookkeeping** (a strand = one tracked process: a metadata record with a `guid`, `name`, worktree slug, parent, and a *generic* display spec),
   and a **render** sub-package (`internal/reedengine/render`, `layout = Rules(strands, box)`).
-  Callers hand reed `{cmd, name, display}` where `display` is generic (anchor / focus;
-  height is derived by one rule, not caller-set: every stack strand but the bottom-most gets `collapsed_rows` rows, default 3, in insertion order, and the bottom-most gets the rest) — never a domain `type`, so reed never learns what a "phase" or "cluster" is.
+  Callers hand reed `{cmd, name, display}` where `display` is generic (anchor / size / focus;
+  height is derived by rule, not caller-set: a strand that declares no size is positional, and every positional stack strand but the bottom-most gets `collapsed_rows` rows, default 3, in insertion order, and the bottom-most gets the rest; a caller may declare a content size or a sharing size beside the anchor) — never a domain `type`, so reed never learns what a "phase" or "cluster" is.
   Earlier drafts split the model and view into separate `shed`/`glance` modules;
   with one terminal per worktree they fold cleanly into `internal/reedengine` + `internal/reedengine/render`.
   `lyx reed remove --name <name> --detach` removes a strand by name from inside itself through a detached remover, and reed replaces a strand atomically in its slot.

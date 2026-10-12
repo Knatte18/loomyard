@@ -178,12 +178,13 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 		// the wrong answer. The focus target is deliberately discarded: the chain carries select-layout
 		// only, never select-pane.
 		box := render.Box{X: 0, Y: 0, W: cols, H: rows - reserved}
-		layout, _, err := e.planLayout(st, live, box)
+		titleRow := e.readBorderTitleRowLocked(windowTarget)
+		layout, _, err := e.planLayout(st, live, box, titleRow)
 		if err != nil {
 			return err
 		}
 
-		pins := e.contentPinsLocked(windowTarget, st, live, box)
+		pins := e.contentPinsLocked(st, live, box, titleRow)
 		e.installResizePinsLocked(windowTarget, pins)
 
 		chained = chainedAttachArgv(e.Socket(), e.SessionName(), windowTarget, layout, pins)

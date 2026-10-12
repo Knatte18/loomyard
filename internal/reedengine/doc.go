@@ -149,16 +149,18 @@
 // selvagepane_enforcement_test.go is the mechanical check keeping them
 // there.
 //
-// The layout rule: the below-parent stack is ordered by insertion, the persisted strand-table
-// order, and its height is decided by position alone.
-// Every strand except the bottom-most gets exactly collapsed_rows rows, and the bottom-most gets
-// every remaining row, so a new strand is the bottom-most, nothing above it moves except the previous
-// bottom-most (which collapses), and removing the bottom-most makes the one above it bottom-most, which
-// expands.
-// No per-strand setting sizes a strand, and the parent chain plays no part in the order.
-// A window too short for the natural split reclaims rows from the collapsed placements first, then
-// from the bottom-most, and every pane keeps a positive height.
+// The layout rule: the placed strands are ordered by insertion, the persisted strand-table order, with the top-anchored strands above the below-parent ones, and the parent chain plays no part in the order.
+// A strand's Display.Size picks its height rule.
+// A positional strand, the default, is decided by position alone: it takes exactly collapsed_rows rows unless it is the bottom-most positional strand, which expands.
+// A content strand takes its reported line count (Strand.ContentRows, its minimum while unreported), at least its minimum rows and at most its share of the free height, and a content strand in the first row of a window drawing a pane-border title row adds one row for it.
+// A sharing strand expands: while any is live, every sharing strand splits the rows the fixed cells leave evenly, the bottom-most taking the remainder, and every positional strand collapses.
+// The free height is the stack region, the window's box less the Selvage band and its divider.
+// With no positional and no sharing strand, the bottom-most cell expands whatever its kind.
+// A window whose strands declare nothing lays out as before: a new strand is the bottom-most, nothing above it moves except the previous bottom-most (which collapses), and removing the bottom-most makes the one above it bottom-most, which expands.
+// A window too short for the natural split reclaims rows from the collapsed cells first, then the content cells down to one row each, then the expanding cells from the bottom up, and every pane keeps a positive height.
+// The fixed-height panes the hook pins are the Selvage band, every collapsed positional cell and every content cell.
 // The Selvage band sits outside the stack with its own selvage.height_rows.
+// A top-anchored strand's pane is split above every other pane (split-window -f -b), or below the lowest top strand's pane, because the layout string places cells by physical pane order.
 //
 // The live-geometry rule: the render box a layout is computed against is no
 // longer the config-pinned Width/Height. planLayout (apply.go) is always
@@ -581,7 +583,7 @@
 //     a further 90-to-120 one.
 //     The answer is a window-resized window hook holding one
 //     "resize-pane -y" array entry per fixed-height pane — the Selvage band,
-//     every collapsed placement — installed by reed
+//     every collapsed positional placement and every content placement — installed by reed
 //     and executed by the tmux server itself, refreshed on every successful apply
 //     (applyLayoutLocked) and again in AttachArgv's pre-flight, with the
 //     pinned heights coming from render.FixedHeightPins: the heights render

@@ -89,6 +89,9 @@ func TestAddStrandLocked(t *testing.T) {
 		{"OwnWindowAnchor", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.AnchorOwnWindow}}},
 		{"MistypedAnchor", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.Anchor("sideways")}}},
 		{"EmptyAnchor", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.Anchor("")}}},
+		{"TopPositionalDisplay", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.AnchorTop}}},
+		{"TopSharingDisplay", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.AnchorTop, Size: render.Size{Kind: render.SizeSharing}}}},
+		{"ContentDisplayWithZeroShareDenominator", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.AnchorBelowParent, Size: render.Size{Kind: render.SizeContent, ShareNum: 1, MinRows: 3}}}},
 	}
 	for _, tt := range rejected {
 		t.Run(tt.name, func(t *testing.T) {
@@ -190,6 +193,7 @@ func TestUpdateStrandLocked(t *testing.T) {
 		{"VisibleToHiddenRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", hidden, true},
 		{"OwnWindowAnchorRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", render.Display{Anchor: render.AnchorOwnWindow}, true},
 		{"MistypedAnchorRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", render.Display{Anchor: render.Anchor("sideways")}, true},
+		{"TopPositionalDisplayRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", render.Display{Anchor: render.AnchorTop}, true},
 		{"UnknownGuidRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "does-not-exist", render.Display{}, true},
 		{"HiddenToHiddenIsANoOpWithNoLaunch", Strand{GUID: "g1", Display: hidden, Cmd: "claude"}, "g1", render.Display{Anchor: render.AnchorHidden, Focus: true}, false},
 	}

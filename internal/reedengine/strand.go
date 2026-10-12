@@ -54,16 +54,17 @@ type Removed struct {
 	Strands []struct{ GUID, Name string }
 }
 
-// validateAnchor rejects an invalid Display anchor at the op boundary,
+// validateDisplay rejects an invalid Display at the op boundary,
 // before any pane is launched or state persisted.
-func validateAnchor(anchor render.Anchor) error {
-	switch anchor {
-	case render.AnchorBelowParent, render.AnchorHidden:
-		return nil
+// The anchor must be below-parent, hidden or top, and render must accept the whole display.
+func validateDisplay(display render.Display) error {
+	switch display.Anchor {
+	case render.AnchorBelowParent, render.AnchorHidden, render.AnchorTop:
+		return render.ValidateDisplay(display)
 	case render.AnchorOwnWindow:
 		return fmt.Errorf("anchor %q is deferred, not supported in v1", render.AnchorOwnWindow)
 	default:
-		return fmt.Errorf("invalid anchor %q; want below-parent|hidden", anchor)
+		return fmt.Errorf("invalid anchor %q; want below-parent|hidden|top", display.Anchor)
 	}
 }
 
@@ -309,7 +310,7 @@ func needsLaunchOnSurface(wasHidden bool, display render.Display) bool {
 // addStrandLocked builds and registers a new Strand from spec, validating
 // the parent chain and realizing non-hidden strands into a live pane.
 func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
-	if err := validateAnchor(spec.Display.Anchor); err != nil {
+	if err := validateDisplay(spec.Display); err != nil {
 		return Strand{}, err
 	}
 
@@ -360,7 +361,7 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 // updateStrandLocked mutates guid's Display, rejecting visible->hidden
 // transitions and realizing hidden->visible ones into a pane.
 func (e *Engine) updateStrandLocked(st *ReedState, guid string, display render.Display) (Strand, error) {
-	if err := validateAnchor(display.Anchor); err != nil {
+	if err := validateDisplay(display); err != nil {
 		return Strand{}, err
 	}
 
