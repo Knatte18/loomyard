@@ -1,5 +1,5 @@
 // leaf_enforcement_test.go enforces the pauserecord Leaf Invariant.
-// Production code in internal/pauserecord imports only the standard library, internal/lock and internal/state.
+// Production code in internal/pauserecord imports only the standard library, internal/state.
 
 package pauserecord
 
@@ -10,5 +10,5 @@ import (
 )
 
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/pauserecord", "github.com/Knatte18/loomyard/internal/lock", "github.com/Knatte18/loomyard/internal/state")
+	scankit.AssertImportAllowlistNoStale(t, "internal/pauserecord", "github.com/Knatte18/loomyard/internal/state")
 }
