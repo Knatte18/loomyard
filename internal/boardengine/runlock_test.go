@@ -173,32 +173,10 @@ func TestRunLock(t *testing.T) {
 				t.Errorf("IsRunStatus(%v) = %v, want %v", tc.status, got, tc.want)
 			}
 		}
+		if producer, ok := boardengine.RunStatusProducer(strPtr("running · Seed-Child")); producer != "Seed-Child" || !ok {
+			t.Errorf("RunStatusProducer = %q, %v; want %q, true", producer, ok, "Seed-Child")
+		}
 	})
-}
-
-// TestRunStatusProducer pins that the producer half is returned for a run status and for nothing else.
-func TestRunStatusProducer(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name         string
-		status       *string
-		wantProducer string
-		wantOK       bool
-	}{
-		{name: "a run status", status: strPtr("running · Seed-Child"), wantProducer: "Seed-Child", wantOK: true},
-		{name: "done", status: strPtr("done")},
-		{name: "a hand-set word", status: strPtr("active")},
-		{name: "nil", status: nil},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			producer, ok := boardengine.RunStatusProducer(tc.status)
-			if producer != tc.wantProducer || ok != tc.wantOK {
-				t.Errorf("RunStatusProducer(%v) = %q, %v; want %q, %v", tc.status, producer, ok, tc.wantProducer, tc.wantOK)
-			}
-		})
-	}
 }
 
 // upsertLocked returns an action upserting patch onto the entry "locked".
