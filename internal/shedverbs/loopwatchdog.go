@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
 const (
@@ -39,15 +40,23 @@ type idleWatch struct {
 	Sleep func(ctx context.Context, delay time.Duration) error
 	// Wake runs on each wake, before the idle time is judged; nil is skipped.
 	Wake func()
+	// Awake is the awake-clock reading the watch sets against Now to see a sleep.
+	Awake func() time.Duration
+	// Pause reports what the pause record says about the run; nil never covers.
+	Pause func(now time.Time) (pauserecord.Coverage, error)
 }
 
 // watchIdle watches until the window passes with no activity, and returns the idle time and true.
+// The idle time is awake, unpaused time: the sleeps the watch sees between its own wakes and the intervals a pause covered the run do not count.
+// While a pause covers the run it judges nothing, so the child is never killed, and it keeps waking on its backoff.
 // It returns false when ctx ends first, which is how a child that exited stops its watch.
 // It wakes at most once a second, doubling from one second to a one-minute ceiling while the reading is unchanged and returning to one second on a change.
-// It never sleeps past the end of the window.
+// It never sleeps past the end of the window's remaining awake time.
 func watchIdle(ctx context.Context, w idleWatch) (time.Duration, bool) {
 	newest := w.Started
 	var delay time.Duration
+	var sleeps pauserecord.SleepWatch
+	pauseReadFailed := false
 	for {
 		if w.Wake != nil {
 			w.Wake()
@@ -60,14 +69,33 @@ func watchIdle(ctx context.Context, w idleWatch) (time.Duration, bool) {
 		if seen, found := newestActivity(files, w.Activity); found && seen.After(newest) {
 			newest, changed = seen, true
 		}
-		idle := w.Now().Sub(newest)
-		if idle >= w.Window {
-			return idle, true
+		now := w.Now()
+		sleeps.Observe(now, w.Awake())
+		var coverage pauserecord.Coverage
+		if w.Pause != nil {
+			var err error
+			if coverage, err = w.Pause(now); err != nil {
+				coverage = pauserecord.Coverage{}
+				if !pauseReadFailed {
+					logger.Warn("shed: the watchdog could not read the pause record and reads the run uncovered", "error", err.Error())
+				}
+				pauseReadFailed = true
+			}
 		}
 		if changed || delay == 0 {
 			delay = idleWakeFloor
 		} else {
 			delay = min(delay*2, idleWakeCeiling)
+		}
+		if coverage.Covered {
+			if err := w.Sleep(ctx, delay); err != nil {
+				return 0, false
+			}
+			continue
+		}
+		idle := pauserecord.AwakeSince(newest, now, sleeps.Sleeps(), coverage.Intervals)
+		if idle >= w.Window {
+			return idle, true
 		}
 		if err := w.Sleep(ctx, max(min(delay, w.Window-idle), idleWakeFloor)); err != nil {
 			return 0, false
@@ -127,6 +155,10 @@ func waitForChild(ctx context.Context, loop LoopSpec, child Child, started time.
 	if sleep == nil {
 		sleep = sleepFor
 	}
+	awake := loop.Awake
+	if awake == nil {
+		awake = pauserecord.MonotonicAwake()
+	}
 	watchCtx, stopWatching := context.WithCancel(ctx)
 	defer stopWatching()
 	type idleOutcome struct {
@@ -143,6 +175,8 @@ func waitForChild(ctx context.Context, loop LoopSpec, child Child, started time.
 			Now:        now,
 			Sleep:      sleep,
 			Wake:       loop.OnWake,
+			Awake:      awake,
+			Pause:      loop.Pause,
 		})
 		outcome <- idleOutcome{idle, found}
 	}()

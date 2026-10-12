@@ -7,10 +7,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -24,6 +26,7 @@ import (
 // The loop's files and job name come from shedrun over the resolved run-id.
 // The step children run the same binary from the same cwd as the loop, so they share its trace directory and the loop lists a child's trace files there.
 // idle is the watchdog window, zero disarming it, and activity is the reading of the run's agent activity.
+// The watchdog reads the pause record of loc's hub for loc's slug, and reads the run uncovered when the geometry or the record cannot be read.
 func loopSpecFor(loc *lyxcwd.Location, runID string, idle time.Duration, activity func() (time.Time, bool, error)) shedverbs.LoopSpec {
 	executable, err := os.Executable()
 	if err != nil {
@@ -43,6 +46,13 @@ func loopSpecFor(loc *lyxcwd.Location, runID string, idle time.Duration, activit
 		Executable:  executable,
 		IdleTimeout: idle,
 		Activity:    activity,
+		Pause: func(now time.Time) (pauserecord.Coverage, error) {
+			geometry, err := hubgeom.PauseGeometry(loc)
+			if err != nil {
+				return pauserecord.Coverage{}, err
+			}
+			return pauserecord.ReadCoverage(geometry.RecordPath, geometry.Slug, now)
+		},
 	}
 }
 

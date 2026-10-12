@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -60,6 +61,11 @@ type LoopSpec struct {
 	IdleTimeout time.Duration
 	// Activity reports the newest agent activity of the run, and false when it knows of none.
 	Activity func() (time.Time, bool, error)
+	// Awake reports the time the machine has been awake since an origin of its own, which the watchdog reads against Now to see a sleep; nil selects pauserecord.MonotonicAwake().
+	Awake func() time.Duration
+	// Pause reports what the pause record says about the run at now; nil never covers.
+	// While it reports the run covered the watchdog never kills the child, and its covered intervals do not count as idle time.
+	Pause func(now time.Time) (pauserecord.Coverage, error)
 	// OnExit runs once in runLoop after the stop is final, with the stop and the status file as it then reads, and before the envelope is written; nil is skipped.
 	// A loop that refuses before its first step never runs it.
 	OnExit func(stop LoopStop, st shedengine.Status)
