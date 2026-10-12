@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
@@ -87,6 +88,26 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 			WriteSeed:            func(ctx context.Context, recipe, driver string) error { return nil },
 			CommitSeed:           func(ctx context.Context) error { return nil },
 			PushSeed:             func(ctx context.Context) error { return nil },
+		},
+		// Land is filled with trivial fakes: a parent that is not the prime's branch skips the pull and deploy, so the row lands over the fakes with nothing to read.
+		Land: battenshed.LandDeps{
+			ParentBranch: func() (string, error) { return "feature", nil },
+			PrimeBranch:  func() (string, error) { return "main", nil },
+			PrimeDirty:   func() ([]string, error) { return nil, nil },
+			Pull:         func(ctx context.Context) error { return nil },
+			Landing:      func() (battenshed.LandingSettings, error) { return battenshed.LandingSettings{}, nil },
+			RunDeploy: func(context.Context, string, string, time.Duration) (battenshed.DeployResult, error) {
+				return battenshed.DeployResult{}, nil
+			},
+			ReadyTasks:     func() ([]string, error) { return nil, nil },
+			PruneBoard:     func() error { return nil },
+			PauseRequested: func() (bool, error) { return false, nil },
+			LandLock: battenshed.PrimeLock{
+				Path: filepath.Join(dir, "land.lock"),
+				Acquire: func() (func() error, bool, error) {
+					return func() error { return nil }, true, nil
+				},
+			},
 		},
 	}
 	return c
@@ -481,7 +502,7 @@ func TestHaltedOverDoneChild(t *testing.T) {
 			if !tt.wantFlag {
 				return
 			}
-			for _, want := range []string{"batten is " + string(tt.batten), `"lyx batten run some-slug"`} {
+			for _, want := range []string{"batten is " + string(tt.batten), `"lyx batten run some-slug"`, "lands the run through Land"} {
 				if !strings.Contains(got, want) {
 					t.Errorf("flag %q lacks %q", got, want)
 				}

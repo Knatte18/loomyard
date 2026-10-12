@@ -34,11 +34,16 @@
 // An empty or absent value runs nothing and logs nothing, and Finalize never runs it.
 // The key is the same trust class as the plan's `## verify:`: it runs any shell command in the task worktree.
 // It runs only where Publish does, so a landing into a parent outside require_pr_to_base runs no such tier and only Finalize's plan verify gates it.
+//
+// Landing.yaml's `deploy` is read only by batten's Land row, from the board dir like the rest of landing config and never from a pair.
+// It runs in the prime only for a parent branch in `require_pr_to_base` when the row runs, so it executes code PR-Gate reviewed.
+// The one exception is an edit to that list between PR-Gate and Land, which only the orch's own hub config edit can make: it deploys a tip PR-Gate passed unreviewed.
+// An empty value runs nothing, and `lyx config` refuses a write to it from a pair, as for every hub-wide key, as a guard against a mistaken write rather than a determined agent.
 // Landing config is hub-wide: Publish and Finalize read it from the board dir, never from a task worktree's `_lyx/config/`, and `lyx config` refuses a write to it from a pair, so a task cannot weaken the key, or set `require_pr_to_base` or `squash`, through its own tree.
 // A landing change is an operator or hub-orch `lyx config landing` run from the prime, committed in `_board` and effective for every pair at once.
 //
 // Publish alone persists its failure.
-// When its plan verify or `publish_verify` fails with a non-zero exit, it writes the verifytree Publish failure record with the failing kind, the failing tests the told Deps.FailingTests parses from the log, HEAD, and the merge-in commit, which is HEAD after a merge-in that was not already up to date and empty otherwise.
+// When its plan verify or `publish_verify` fails with a non-zero exit, it writes the verifytree Publish failure record with the failing kind, the failing tests the told Deps.FailingTests parses from the log, HEAD, the told Deps.VerifyFailureTarget row, the write time in whole-second UTC, and the merge-in commit, which is HEAD after a merge-in that was not already up to date and empty otherwise.
 // A dirty tree, a timeout and a shell that could not start write no record, and a write failure is logged and never changes the Stuck verdict.
 // The Stuck reason of a failed verify ends with the way-forward clause the recipe tells in Deps.VerifyFailedWayForward only when the record was written; otherwise, and when none is told, it asks to fix forward on the task branch.
 // A Publish that passes both verifies removes the record before its push, and Finalize neither writes nor removes it.

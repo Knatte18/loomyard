@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -98,6 +99,42 @@ func TestPrepare_RejectedBeforeArtifacts(t *testing.T) {
 				if _, statErr := os.Stat(filepath.Join(runDir, name)); !os.IsNotExist(statErr) {
 					t.Errorf("%s exists after a rejected Prepare (stat err=%v); want no artifacts written", name, statErr)
 				}
+			}
+		})
+	}
+}
+
+// TestPromptCacheLifetime proves PromptCacheLifetime parses the role's resolved TTL to a duration and passes a resolution error through with its shuttle.yaml advice.
+func TestPromptCacheLifetime(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		spec            shuttleengine.Spec
+		cfg             shuttleengine.Config
+		want            time.Duration
+		wantErrContains string
+	}{
+		{name: "default_is_five_minutes", cfg: templateConfig(t), want: 5 * time.Minute},
+		{name: "role_mapped_to_one_hour", spec: shuttleengine.Spec{Role: "orch"}, cfg: ttlConfig(t, "", map[string]string{"orch": "1h"}), want: time.Hour},
+		{name: "invalid_default_is_an_error", cfg: ttlConfig(t, "1H", nil), wantErrContains: "claude_prompt_cache_ttl"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := New().PromptCacheLifetime(tt.spec, tt.cfg)
+			if tt.wantErrContains != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Fatalf("PromptCacheLifetime() error = %v; want it to contain %q", err, tt.wantErrContains)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("PromptCacheLifetime() error = %v; want nil", err)
+			}
+			if got != tt.want {
+				t.Errorf("PromptCacheLifetime() = %v; want %v", got, tt.want)
 			}
 		})
 	}

@@ -12,9 +12,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
@@ -25,7 +27,7 @@ const budgetEscalationBudget = 2
 // newEscalationShed builds a Shed over the sequence fixture with a small review budget, a judge that rules CONTINUE every round,
 // and the SegmentBounces seam wired over the fixture's status file through Routing, as loomcli wires it.
 // It returns the Shed, the fixture env and the Discussion-Review run directory.
-func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.BurlerRunner, func() shedengine.Status) {
+func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.BurlerHalfRunner, func() shedengine.Status) {
 	t.Helper()
 
 	_, env, paths := buildSequenceFixture(t)
@@ -36,7 +38,7 @@ func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.Burler
 		if err != nil || !found {
 			return 0, 0, false, err
 		}
-		routing, err := Routing(budgetEscalationBudget)
+		routing, err := Routing(budgetEscalationBudget, nil)
 		if err != nil {
 			return 0, 0, false, err
 		}
@@ -57,7 +59,7 @@ func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.Burler
 		}
 		return st
 	}
-	return shed, filepath.Join(env.RunRoot, "discussion"), env.Burler.(*shedfake.BurlerRunner), readStatus
+	return shed, filepath.Join(env.RunRoot, "discussion"), env.Burler.(*shedfake.BurlerHalfRunner), readStatus
 }
 
 // haltingProducer is a fake row that counts its calls and returns Stuck with no on_stuck to bounce to, so a run halts on reaching it.
@@ -177,7 +179,7 @@ func TestEscalation_BudgetContinueGrantsOneRoundThenAccept(t *testing.T) {
 	if st.ParentNotice == "" {
 		t.Error("status ParentNotice is empty; want the Bouncer's one-line notice")
 	}
-	roundsBefore := burler.Calls
+	roundsBefore := burler.ReviewCalls
 
 	round, cause, err := shedadapters.RecordCirclingDecision(runDir, shedadapters.CirclingContinue)
 	if err != nil {
@@ -197,11 +199,16 @@ func TestEscalation_BudgetContinueGrantsOneRoundThenAccept(t *testing.T) {
 	if result.Outcome != shedengine.RunAwaiting {
 		t.Fatalf("Run() after continue outcome = %q (reason %q); want %q -- one more round, then the next judge escalates again", result.Outcome, result.Reason, shedengine.RunAwaiting)
 	}
-	if got := burler.Calls - roundsBefore; got != 1 {
+	if got := burler.ReviewCalls - roundsBefore; got != 1 {
 		t.Errorf("rounds run after the budget continue = %d; want exactly 1", got)
 	}
-	if total, exempt := countStuck(result.History, loomshed.NameDiscussionBurler); total != burler.Calls || exempt != total {
-		t.Errorf("Discussion-Burler Stuck entries = %d, budget-exempt = %d; want both %d (every round's hand-back for judgment is exempt)", total, exempt, burler.Calls)
+	if burler.FixCalls != burler.ReviewCalls {
+		t.Errorf("fix calls = %d, review calls = %d; want one fix per review", burler.FixCalls, burler.ReviewCalls)
+	}
+	for _, row := range []string{loomshed.NameDiscussionBurlerReview, loomshed.NameDiscussionBurlerFix} {
+		if total, exempt := countStuck(result.History, row); total != burler.ReviewCalls || exempt != total {
+			t.Errorf("%s Stuck entries = %d, budget-exempt = %d; want both %d (every round's hand-back is exempt)", row, total, exempt, burler.ReviewCalls)
+		}
 	}
 	if _, exempt := countStuck(result.History, loomshed.NameDiscussionBouncer); exempt != 1 {
 		t.Errorf("Discussion-Bouncer budget-exempt Stuck entries = %d; want 1 (the continue)", exempt)
@@ -222,5 +229,112 @@ func TestEscalation_BudgetContinueGrantsOneRoundThenAccept(t *testing.T) {
 	}
 	if !settled {
 		t.Errorf("History has no %s Done entry after the accept: %+v", loomshed.NameDiscussionBouncer, result.History)
+	}
+}
+
+// TestEscalation_PerchBudgetOneWithAutoAccept drives the sequence fixture with Webster-Bouncer's own budget at 1 and its auto-accept flag set, and a Webster judge that rules CONTINUE.
+// With the fix half passing, the Webster-Review segment runs one review and one fix and Webster-Bouncer settles Done with an automatic accept on disk, and the run reaches Describe.
+// With the fix half's gate failing in round 1 no round is left to judge, so the run halts blocked, with no circling decision and no Webster-Bouncer Done.
+func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
+	tests := []struct {
+		name         string
+		fixResults   []burlerengine.FixResult
+		wantOutcome  shedengine.RunOutcome
+		wantAccepted bool
+	}{
+		{
+			name:         "the fix half passes",
+			fixResults:   []burlerengine.FixResult{{Outcome: shuttleengine.OutcomeDone}},
+			wantOutcome:  shedengine.RunBlocked,
+			wantAccepted: true,
+		},
+		{
+			name: "the fix half's gate fails in round 1",
+			fixResults: []burlerengine.FixResult{
+				{Outcome: shuttleengine.OutcomeDone},
+				{Outcome: shuttleengine.OutcomeDone},
+				{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: false, Attempts: 1}},
+			},
+			wantOutcome: shedengine.RunBlocked,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, env, paths := buildSequenceFixture(t)
+			rowBudgets := map[string]int{loomshed.NameWebsterBouncer: 1}
+			env.RowMaxBounces = rowBudgets
+			env.RowAutoAccept = map[string]bool{loomshed.NameWebsterBouncer: true}
+			env.Burler.(*shedfake.BurlerHalfRunner).FixResults = tt.fixResults
+
+			shuttle := env.Shuttle.(*shedfake.Shuttle)
+			dispatch := shuttle.RunFn
+			websterRunDir := string(filepath.Separator) + "webster" + string(filepath.Separator)
+			shuttle.RunFn = func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
+				if spec.Role == "bouncer-judge" && len(spec.OutputFiles) > 0 && strings.Contains(spec.OutputFiles[0], websterRunDir) {
+					return writeBouncerJudge(spec, "CONTINUE")
+				}
+				return dispatch(spec)
+			}
+			env.SegmentBounces = func(row string) (int, int, bool, error) {
+				st, found, err := state.ReadJSONStrict[shedengine.Status](env.StatusPath, env.StatusLockPath)
+				if err != nil || !found {
+					return 0, 0, false, err
+				}
+				routing, err := Routing(env.ReviewMaxBounces, rowBudgets)
+				if err != nil {
+					return 0, 0, false, err
+				}
+				count, budget, inSegment := routing.Bounces(row, st.History)
+				return count, budget, inSegment, nil
+			}
+
+			shed, err := New(env, paths)
+			if err != nil {
+				t.Fatalf("New() error = %v; want nil", err)
+			}
+			shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
+
+			result, err := shed.Run(context.Background())
+			if err != nil {
+				t.Fatalf("Run() error = %v; want nil", err)
+			}
+			if result.Outcome != tt.wantOutcome {
+				t.Fatalf("Run() outcome = %q at %q (reason %q); want %q", result.Outcome, result.HaltedProducer, result.Reason, tt.wantOutcome)
+			}
+
+			bouncerDone, reviews, fixes, describeDone := 0, 0, 0, 0
+			for _, e := range result.History {
+				switch {
+				case e.Producer == loomshed.NameWebsterBouncer && e.Outcome == shedengine.Done:
+					bouncerDone++
+				case e.Producer == loomshed.NameWebsterBurlerReview:
+					reviews++
+				case e.Producer == loomshed.NameWebsterBurlerFix:
+					fixes++
+				case e.Producer == loomshed.NameDescribe && e.Outcome == shedengine.Done:
+					describeDone++
+				}
+			}
+			decision, err := os.ReadFile(filepath.Join(env.RunRoot, "webster", "round-1-circling-decision.md"))
+
+			if tt.wantAccepted {
+				if reviews != 1 || fixes != 1 {
+					t.Errorf("Webster-Review review/fix calls = %d/%d; want exactly 1/1", reviews, fixes)
+				}
+				if bouncerDone != 1 || describeDone != 1 {
+					t.Errorf("Webster-Bouncer Done = %d, Describe Done = %d; want 1 and 1, the accept reaching Describe", bouncerDone, describeDone)
+				}
+				if err != nil || !strings.Contains(string(decision), "automatic: true") || !strings.Contains(string(decision), "settled: true") {
+					t.Errorf("round-1 decision = %q, %v; want a settled automatic accept", decision, err)
+				}
+				return
+			}
+			if bouncerDone != 0 || describeDone != 0 {
+				t.Errorf("Webster-Bouncer Done = %d, Describe Done = %d; want neither", bouncerDone, describeDone)
+			}
+			if !errors.Is(err, fs.ErrNotExist) {
+				t.Errorf("round-1 decision = %q, %v; want none recorded", decision, err)
+			}
+		})
 	}
 }

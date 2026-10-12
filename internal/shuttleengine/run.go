@@ -285,6 +285,10 @@ type Run struct {
 	// not-ready teardown (abandonStartup) it is saved to startupCaptureFileName inside the run
 	// directory as the diagnosis artifact a later operator or attach reads.
 	lastStartupCapture string
+	// sessionLiveness is the per-wait state of sessionGone, reset at the entry of Wait and awaitStartup.
+	sessionLiveness sessionLivenessState
+	// startupHookReason is why the latest startup probe held a ready pane back for want of a session-start line, empty when it held nothing back.
+	startupHookReason string
 	// dismissed reports that this run played a startup-gate dismissal that sent a key, and dismissedAt is when, on the run's clock.
 	dismissed   bool
 	dismissedAt time.Time
@@ -316,6 +320,8 @@ type Run struct {
 	promptTurnStarted bool
 	// shadow is the session-state logging Wait keeps beside its classification, display only.
 	shadow sessionShadow
+	// dialog is the pending-dialog latch of one Wait, in memory.
+	dialog dialogLatch
 
 	// gate is the GateSpec this run was told, empty for an ungated run — the same zero value Run/Attach's own RunGated(spec, GateSpec{})/AttachGated(spec, GateSpec{}) delegation passes, so an ungated run behaves byte-for-byte as it did before the gate existed.
 	gate GateSpec
@@ -353,6 +359,8 @@ type Run struct {
 	// unsentReprompt marks that a re-prompt send at this boundary failed busy or unlanded; while it is set the loop re-sends the re-prompt on a later tick with no new writer event.
 	// It is cleared by a successful re-prompt, a new arrival and a writer turn that starts meanwhile.
 	unsentReprompt bool
+	// lastGateEvalAt is the run clock's time of the last gate evaluation at a boundary, zero before the first; the loop re-reads a pending entry no sooner than gateRecheckEvery after it.
+	lastGateEvalAt time.Time
 
 	// resumeWarning is the non-empty warning SessionResumer.CheckResume returned when it could not confirm the session was resumable, empty otherwise.
 	resumeWarning string
@@ -506,6 +514,8 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		CreatedAt:    time.Now().UTC().Format(time.RFC3339),
 		Outcome:      runOutcomeRunning,
 		PID:          os.Getpid(),
+
+		RecordsSessionStarts: launch.RecordsSessionStarts,
 	}
 	if err := saveRunState(runDir, state); err != nil {
 		// The strand registered and its pane is already launching, but
@@ -744,8 +754,7 @@ func (r *Runner) Run(spec Spec) (Result, error) {
 // A not-ready start is deliberately NOT surfaced as an error here: errors.Is(err, ErrNotStarted)
 // reports (result, nil), where result carries the died/timeout Outcome abandonStartup's teardown
 // already classified, its identity fields, and a zero Gate — preserving RunGated's own OutcomeDied
-// contract that the burler round producer's one-retry ladder depends on
-// (TestBurlerProducer_Call_DiedThenDoneSucceedsWithRetry), so a caller that already branches on
+// contract that the Burler row producers' one-retry ladder depends on, so a caller that already branches on
 // Result.Outcome sees the same shape whether the run died at startup or later in Wait's own loop.
 // The folded result carries the start error's text in StartError, so the cause is not lost with the error.
 // Any other non-nil err (a pre-strand failure from start itself) is

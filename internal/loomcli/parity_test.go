@@ -289,7 +289,7 @@ type planParityCase struct {
 
 // TestGateParity_PlanGate drives NewPlanGate and the validate-plan verb, flag-absent mode only, over
 // the same fixture set and asserts the two mapped verdicts agree. The mode cross-product this test
-// used to drive is gone: both plan gate sites (Plan-Write's own gate and Plan-Burler's own gate) run
+// used to drive is gone: both plan gate sites (Plan-Write's own gate and Plan-Burler-Fix's own gate) run
 // planglyph.ValidateFormat and neither has a --require-approved counterpart -- that flag's own
 // guarantee now rests entirely on the approve seam failing loudly if it is ever wired nil (see
 // approveseam_test.go), not on any row re-checking the flag. validate_test.go covers

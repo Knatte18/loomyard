@@ -59,6 +59,7 @@ var nilLegal = map[string]bool{
 	"ParentReview.ReviewerLive":                        true,
 	"ParentReview.RenderDelivery":                      true,
 	"ParentReview.RenderBrief":                         true,
+	"ParentReview.RenderKeepAlive":                     true,
 	"WebsterDeps.Batcher":                              true,
 	"WebsterDeps.Roles":                                true,
 	"WebsterDeps.ParentBranch":                         true,
@@ -72,11 +73,20 @@ var nilLegal = map[string]bool{
 	"InnerRun.OpenTerminal":                            true,
 	"InnerRun.Notify":                                  true,
 	"InnerRun.PairDir":                                 true,
+	"Land.Sleep":                                       true,
+	"Land.Now":                                         true,
+	"Land.LandLock.Sleep":                              true,
+	"Land.Notices.Notify":                              true,
+	"Land.Notices.Sleep":                               true,
+	"Teardown.Notices.Notify":                          true,
+	"Teardown.Notices.Sleep":                           true,
 	"PrimeLock.Sleep":                                  true,
 	"SegmentBounces":                                   true,
 	"RowReviewModels":                                  true,
 	"RowClusterFans":                                   true,
 	"RowBouncerModels":                                 true,
+	"RowMaxBounces":                                    true,
+	"RowAutoAccept":                                    true,
 }
 
 // noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.
@@ -168,7 +178,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		SupportLogPath:     filepath.Join(dir, "support-log.md"),
 		DescriptionPath:    filepath.Join(dir, "description.md"),
 		Shuttle:            &shedfake.Shuttle{},
-		Burler:             &shedfake.BurlerRunner{},
+		Burler:             &shedfake.BurlerHalfRunner{},
 		Seats:              &shedfake.SeatRunner{},
 		Models:             modelspec.Registry{"opus": {Engine: "claude", Model: "claude-opus-test"}},
 		RowBouncerModels: map[string]shedadapters.BouncerModels{
@@ -185,6 +195,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		Landing:                LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
 		DiscussionSpec:         specOver("test discussion prompt", "discussion-output.md"),
 		PrepareDiscussionSpawn: func() error { return nil },
+		PreparePlanSpawn:       func() error { return nil },
 		DiscussionTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "discussion",
@@ -252,12 +263,21 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			DriverStrand: func(context.Context) (battenshed.ChildDriverStrand, error) {
 				return battenshed.ChildDriverNone, nil
 			},
-			ChildRunLockHeld:   func() (bool, error) { return false, nil },
-			ReviveStrands:      func(context.Context) error { return nil },
+			ChildRunLockHeld: func() (bool, error) { return false, nil },
+			ReviveStrands:    func(context.Context) error { return nil },
+			ArbiterInFlight: func(context.Context) (battenshed.ChildArbiter, bool, error) {
+				return battenshed.ChildArbiter{}, false, nil
+			},
 			PauseRequested:     func() (bool, error) { return false, nil },
 			MarkWatched:        func(context.Context) (bool, error) { return false, nil },
 			OrchStrandRecorded: func() (bool, error) { return true, nil },
-			StopReport:         func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
+			PublishRow:         "Publish",
+			PublishFailure: func() (battenshed.ChildPublishFailure, bool, error) {
+				return battenshed.ChildPublishFailure{}, false, nil
+			},
+			ChildHead:  func() (string, error) { return "0000000000000000000000000000000000000000", nil },
+			Goto:       func(context.Context, string) error { return nil },
+			StopReport: func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
 			Activity: func(context.Context) ([]battenshed.AgentActivity, bool, error) {
 				return nil, false, nil
 			},
@@ -265,6 +285,33 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(context.Context) (string, error) { return "", nil },
 			Remove:   func(context.Context) error { return nil },
+			Notices: battenshed.RowNoticeDeps{
+				OrchStrandRecorded: func() (bool, error) { return true, nil },
+				BattenHistoryLen:   func() (int, error) { return 0, nil },
+			},
+		},
+		Land: battenshed.LandDeps{
+			ParentBranch: func() (string, error) { return "main", nil },
+			PrimeBranch:  func() (string, error) { return "main", nil },
+			PrimeDirty:   func() ([]string, error) { return nil, nil },
+			Pull:         func(context.Context) error { return nil },
+			Landing:      func() (battenshed.LandingSettings, error) { return battenshed.LandingSettings{}, nil },
+			RunDeploy: func(context.Context, string, string, time.Duration) (battenshed.DeployResult, error) {
+				return battenshed.DeployResult{}, nil
+			},
+			ReadyTasks:     func() ([]string, error) { return nil, nil },
+			PruneBoard:     func() error { return nil },
+			PauseRequested: func() (bool, error) { return false, nil },
+			LandLock: battenshed.PrimeLock{
+				Path: filepath.Join(dir, "land.lock"),
+				Acquire: func() (func() error, bool, error) {
+					return func() error { return nil }, true, nil
+				},
+			},
+			Notices: battenshed.RowNoticeDeps{
+				OrchStrandRecorded: func() (bool, error) { return true, nil },
+				BattenHistoryLen:   func() (int, error) { return 0, nil },
+			},
 		},
 		PrimeLock: battenshed.PrimeLock{
 			Path: filepath.Join(dir, "prime.lock"),

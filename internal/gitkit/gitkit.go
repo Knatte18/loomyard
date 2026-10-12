@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 )
 
 // FixtureGitEnv is the name of the environment variable that marks a git process as fixture setup rather than code under test.
@@ -182,7 +183,7 @@ var (
 // populated with a README and initial commit (called once per test binary; panics on failure).
 func buildRepoTemplate() (hub, bare string) {
 	repoTemplateOnce.Do(func() {
-		tmpDir, err := os.MkdirTemp("", "gitkit-repo-*")
+		tmpDir, err := lyxtemp.MkdirTemp("gitkit-repo-*")
 		if err != nil {
 			panic(err)
 		}

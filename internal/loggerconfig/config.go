@@ -84,6 +84,18 @@ func Load(dirs configengine.Dirs) (logger.RetentionBounds, error) {
 	return logger.RetentionBounds{Count: count, MaxAge: time.Duration(days) * day}, nil
 }
 
+// LoadOrDefault returns the trace-retention bounds logger.yaml resolves to through the layer stack under dirs.
+// An unusable config logs one Warn naming the anchor's file and the error, and yields the compiled-in default bounds.
+func LoadOrDefault(dirs configengine.Dirs) logger.RetentionBounds {
+	bounds, err := Load(dirs)
+	if err != nil {
+		logger.Warn("logger config unusable; sweeping with default retention bounds",
+			"path", ConfigPath(dirs.Anchor), "error", err)
+		return logger.DefaultRetentionBounds()
+	}
+	return bounds
+}
+
 // positiveInt decodes node as a positive integer.
 // The tag check rejects a float: yaml.v3 decodes a !!float such as 1.5 or 14.0 into an int by truncation without an error.
 func positiveInt(key string, node *yaml.Node) (int, error) {

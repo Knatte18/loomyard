@@ -45,11 +45,5 @@ func exitSweepBounds(state logger.SinkArmState) logger.RetentionBounds {
 	if location, err := lyxcwd.ResolveWorktree(state.AnchorPath); err == nil {
 		dirs = fabricengine.ConfigDirs(location)
 	}
-	bounds, err := loggerconfig.Load(dirs)
-	if err != nil {
-		logger.Warn("logger config unusable; sweeping with default retention bounds",
-			"path", loggerconfig.ConfigPath(state.AnchorPath), "error", err)
-		return logger.DefaultRetentionBounds()
-	}
-	return bounds
+	return loggerconfig.LoadOrDefault(dirs)
 }

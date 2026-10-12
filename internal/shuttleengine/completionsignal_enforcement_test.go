@@ -88,7 +88,7 @@ var negativeVerdictMarkers = map[string]bool{
 //     reached a positive OutcomeDone already, and the gate runs strictly after it, at a turn
 //     boundary with no in-progress turn to interrupt.
 //   - Wait [OutcomeTimeout] x1 — the run deadline, routed through classifyDeadlineExpiry.
-//   - checkLivenessTick [OutcomeDied] x1 — the dead-pane branch, guarded by the allOutputFilesExist
+//   - checkLivenessTick [OutcomeDied] x2 — the dead-pane branch and the gone-session branch, each guarded by the allOutputFilesExist
 //     directly above it.
 //   - checkLivenessTick [errStrandNotTracked] / [errStrandPaneBindingCleared] x1 each — the two
 //     mechanism-failure sentinels, each guarded by the allOutputFilesExist directly above it.
@@ -154,7 +154,7 @@ var auditedNegativeVerdictReturns = map[string]int{
 	"handleGatedBoundary [Errorf]":                    1,
 	"Wait [OutcomeTimeout]":                           1,
 	"checkLivenessTick [Errorf]":                      1,
-	"checkLivenessTick [OutcomeDied]":                 1,
+	"checkLivenessTick [OutcomeDied]":                 2,
 	"checkLivenessTick [errStrandNotTracked]":         1,
 	"checkLivenessTick [errStrandPaneBindingCleared]": 1,
 	"classifyStartupWindow [OutcomeDied]":             1,
@@ -185,9 +185,10 @@ var auditedNegativeVerdictReturns = map[string]int{
 // plus expiredTurnEnd, whose waiting turn end counts as a Done only after consulting the files, and otherwise keeps waiting.
 // pollEventsTick's second site counts an ungated waiting turn end with nothing outstanding as a Done only after consulting the files.
 // The last site is stopOutcome, whose stopped answer consults the files first.
+// checkLivenessTick holds a third site, its gone-session branch, which consults the files before answering died.
 var auditedFileContractCallSites = map[string]int{
 	"awaitStartup":                    2,
-	"checkLivenessTick":               2,
+	"checkLivenessTick":               3,
 	"classifyDeadlineExpiry":          1,
 	"dispositionCandidate":            1,
 	"expiredTurnEnd":                  1,

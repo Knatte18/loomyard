@@ -144,6 +144,13 @@ func TestFingerprint(t *testing.T) {
 				})
 			},
 		},
+		{
+			// The twill writer records its lens review beside the plan, a record about the plan rather than plan content.
+			name: "ignores the lens review",
+			mutate: func(t *testing.T, dir string) {
+				fingerprintWriteFiles(t, dir, map[string]string{planparser.LensReviewFileName: "# Lens review\n"})
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

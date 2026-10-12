@@ -50,6 +50,7 @@ var intentionallyNil = map[string]string{
 	"Landing.Shuttle":           "loom-only seam, batten lands no branch",
 	"DiscussionSpec":            "loom-only seam, batten has no discussion segment",
 	"PrepareDiscussionSpawn":    "loom-only seam, batten has no discussion segment",
+	"PreparePlanSpawn":          "loom-only seam, batten has no plan segment",
 	"DiscussionTable":           "loom-only seam, batten has no discussion segment",
 	"CommitDiscussion":          "loom-only seam, batten has no discussion segment",
 	"DescribeSpec":              "loom-only seam, batten has no describe segment",
@@ -170,18 +171,21 @@ func TestWire_PairDirRefusesAnAbsentTaskWorktreeByName(t *testing.T) {
 	}
 }
 
-// TestWire_PauseRequestedReadsBattensOwnStatus asserts the pause seam reports the pause_requested flag of batten's own status file, and false while that file is absent.
-func TestWire_PauseRequestedReadsBattensOwnStatus(t *testing.T) {
+// TestWire_BattenStatusSeamsReadBattensOwnStatus asserts the wired seams that read batten's own status file agree on one fixture:
+// the pause seams of Run-Shed and Land report the pause_requested flag and false while the file is absent, and the row notices' history seam reports the history length and 0 while the file is absent.
+func TestWire_BattenStatusSeamsReadBattensOwnStatus(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		status *shedengine.Status
-		want   bool
+		name        string
+		status      *shedengine.Status
+		want        bool
+		wantHistory int
 	}{
 		{name: "AbsentStatusIsNotPaused"},
 		{name: "FlagClear", status: &shedengine.Status{State: shedengine.StateRunning}},
 		{name: "FlagSet", status: &shedengine.Status{State: shedengine.StateRunning, PauseRequested: true}, want: true},
+		{name: "HistoryLength", status: &shedengine.Status{State: shedengine.StateRunning, History: []shedengine.HistoryEntry{{Producer: "Worktree-Create"}, {Producer: "Seed-Child"}}}, wantHistory: 2},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -204,6 +208,14 @@ func TestWire_PauseRequestedReadsBattensOwnStatus(t *testing.T) {
 			got, err := c.env.InnerRun.PauseRequested()
 			if err != nil || got != tt.want {
 				t.Errorf("PauseRequested() = %v, %v; want %v, nil", got, err, tt.want)
+			}
+			landPaused, err := c.env.Land.PauseRequested()
+			if err != nil || landPaused != tt.want {
+				t.Errorf("Land.PauseRequested() = %v, %v; want %v, nil", landPaused, err, tt.want)
+			}
+			history, err := c.env.Teardown.Notices.BattenHistoryLen()
+			if err != nil || history != tt.wantHistory {
+				t.Errorf("BattenHistoryLen() = %d, %v; want %d, nil", history, err, tt.wantHistory)
 			}
 		})
 	}

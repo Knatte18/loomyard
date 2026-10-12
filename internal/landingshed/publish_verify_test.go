@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-github/v75/github"
 
@@ -363,7 +364,7 @@ func TestPublishVerify_FailureRecord(t *testing.T) {
 		wantMerge       string
 		// blockRecord pre-creates the record path as a directory, so the write fails.
 		blockRecord bool
-		// wantGoto expects the Stuck reason to name the Webster-Burler goto as the way forward.
+		// wantGoto expects the Stuck reason to name the goto to Webster-Burler-Review as the way forward.
 		wantGoto bool
 	}{
 		{"plan verify fails", false, map[string]verifytree.Result{planCommand: failed}, verifytree.FailureKindPlanVerify, "merged-head", false, true},
@@ -379,6 +380,7 @@ func TestPublishVerify_FailureRecord(t *testing.T) {
 			fx.p.deps.Config.PublishVerify = publishCommand
 			fx.p.deps.TaskHead = func() (string, error) { return "merged-head", nil }
 			fx.p.gate.failedWayForward = toldWayForward
+			fx.p.gate.failureTarget = "Told-Row"
 			fx.p.gate.recorder = &failureRecorder{
 				failingTests: func(log string) []verifytree.FailedTest {
 					if log != "verify output" {
@@ -432,6 +434,7 @@ func TestPublishVerify_FailureRecord(t *testing.T) {
 			failingLog := filepath.Join(fx.gate.paths.Dir, fmt.Sprintf("verify-%d.log", fx.gate.fake.verifyCalls))
 			want := verifytree.PublishFailure{
 				Kind: tt.wantKind, Tests: wantTests, LogPath: failingLog, Head: "merged-head", MergeCommit: tt.wantMerge,
+				Target: "Told-Row", WrittenAt: gateMarkStart.UTC().Format(time.RFC3339),
 			}
 			if !ok || !reflect.DeepEqual(got, want) {
 				t.Fatalf("record = %+v, %v; want %+v", got, ok, want)

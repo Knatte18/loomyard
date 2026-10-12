@@ -152,7 +152,7 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 // generic forks) against a REAL claude handler and REAL fork subagents,
 // and asserts the round completes cleanly: it reaches shuttleengine.OutcomeDone, Result.ForkAudit
 // carries exactly 2 forks with zero AgentCalls/WriteCalls (the enforcement layers had nothing to
-// catch), and the consolidated review file parses successfully (Engine.Run itself enforces this —
+// catch), and the consolidated review file parses successfully (Engine.Review itself enforces this —
 // ParseReview's strict frontmatter contract — so a nil error here already proves a well-formed
 // consolidated structure).
 func TestSmokeBurlerClusterCleanFan(t *testing.T) {
@@ -160,7 +160,6 @@ func TestSmokeBurlerClusterCleanFan(t *testing.T) {
 	targetPath := writeClusterSmokeFixture(t, h.PrimeWorktree())
 
 	reviewPath := filepath.Join(h.PrimeWorktree(), "burler-cluster-smoke-clean-review.md")
-	fixerReportPath := filepath.Join(h.PrimeWorktree(), "burler-cluster-smoke-clean-fixer-report.md")
 
 	profile := burlerengine.Profile{
 		Target: burlerengine.FileSet{Paths: []string{targetPath}},
@@ -174,17 +173,16 @@ func TestSmokeBurlerClusterCleanFan(t *testing.T) {
 		ToolUse:         false,
 		ClusterFan:      "clean",
 		ReviewPath:      reviewPath,
-		FixerReportPath: fixerReportPath,
-		ReadyMarkerPath: readyMarkerPath(t, h.Location.AnchorPath(), reviewPath),
+		FixerReportPath: filepath.Join(h.PrimeWorktree(), "burler-cluster-smoke-clean-fixer-report.md"),
 	}
 
-	result, err := engine.Run(profile, burlerengine.RunOpts{Timeout: clusterSmokeTimeout})
+	result, err := engine.Review(profile, burlerengine.RunOpts{Timeout: clusterSmokeTimeout})
 	if err != nil {
-		t.Fatalf("cluster round: %v", err)
+		t.Fatalf("cluster review: %v", err)
 	}
 
 	if result.Outcome != shuttleengine.OutcomeDone {
-		t.Fatalf("round outcome = %q; want %q; reviewer message: %q; fixer message: %q", result.Outcome, shuttleengine.OutcomeDone, result.Review.LastAssistantMessage, result.Fix.LastAssistantMessage)
+		t.Fatalf("review outcome = %q; want %q; reviewer message: %q", result.Outcome, shuttleengine.OutcomeDone, result.Review.LastAssistantMessage)
 	}
 
 	if result.ForkAudit == nil {
@@ -202,13 +200,9 @@ func TestSmokeBurlerClusterCleanFan(t *testing.T) {
 		}
 	}
 
-	// Engine.Run already read and strictly parsed the review file via
-	// ParseReview before returning a nil error here (engine.go's Run), so
-	// reaching this point already proves the consolidated review is a
-	// well-formed structure. We additionally check, best-effort, that at
-	// least one finding carries the cluster round's optional origin: key —
-	// but per the consolidated-review-format decision this is never
-	// required, so its absence is logged, not failed.
+	// Engine.Review already read and strictly parsed the review file via ParseCurrentReview before returning a nil error here (review.go's Review), so reaching this point already proves the consolidated review is a well-formed structure.
+	// We additionally check, best-effort, that at least one finding carries the cluster round's optional origin: key.
+	// Per the consolidated-review-format decision this is never required, so its absence is logged, not failed.
 	if len(result.Findings) == 0 {
 		t.Fatalf("round reached done but Findings is empty; want at least one consolidated finding")
 	}
@@ -229,7 +223,7 @@ func TestSmokeBurlerClusterCleanFan(t *testing.T) {
 // rogue-agent fork) against a REAL claude handler and REAL fork subagents,
 // and asserts BOTH enforcement layers actually fired:
 //
-//  1. Engine.Run returns the fork-violation hard error (auditClusterRound's
+//  1. Engine.Review returns the fork-violation hard error (auditClusterRound's
 //     Agent-call-in-fork check, cluster.go) — the rogue fork's attempted
 //     Agent call was recorded as an AgentCalls attempt regardless of
 //     whether the session hook allowed it through, and burlerengine treats
@@ -250,7 +244,6 @@ func TestSmokeBurlerClusterRogueFork(t *testing.T) {
 	targetPath := writeClusterSmokeFixture(t, h.PrimeWorktree())
 
 	reviewPath := filepath.Join(h.PrimeWorktree(), "burler-cluster-smoke-rogue-review.md")
-	fixerReportPath := filepath.Join(h.PrimeWorktree(), "burler-cluster-smoke-rogue-fixer-report.md")
 
 	profile := burlerengine.Profile{
 		Target: burlerengine.FileSet{Paths: []string{targetPath}},
@@ -264,11 +257,10 @@ func TestSmokeBurlerClusterRogueFork(t *testing.T) {
 		ToolUse:         false,
 		ClusterFan:      "rogue",
 		ReviewPath:      reviewPath,
-		FixerReportPath: fixerReportPath,
-		ReadyMarkerPath: readyMarkerPath(t, h.Location.AnchorPath(), reviewPath),
+		FixerReportPath: filepath.Join(h.PrimeWorktree(), "burler-cluster-smoke-rogue-fixer-report.md"),
 	}
 
-	result, err := engine.Run(profile, burlerengine.RunOpts{Timeout: clusterSmokeTimeout})
+	result, err := engine.Review(profile, burlerengine.RunOpts{Timeout: clusterSmokeTimeout})
 
 	// A non-done outcome (died/timeout) means the round never even
 	// reached the audit — most likely a slow/serialized host tripping the
@@ -289,7 +281,7 @@ func TestSmokeBurlerClusterRogueFork(t *testing.T) {
 	}
 
 	if result.ForkAudit == nil {
-		t.Fatalf("result.ForkAudit is nil; want a populated audit even on a hard-error return (engine.go copies it onto Result before checking policy)")
+		t.Fatalf("result.ForkAudit is nil; want a populated audit even on a hard-error return (review.go copies it onto the result before checking policy)")
 	}
 	if got := len(result.ForkAudit.Forks); got != 2 {
 		t.Fatalf("len(result.ForkAudit.Forks) = %d; want exactly 2 (the rogue fan's length) — a shortfall would have failed on ErrClusterForksMissing above instead", got)

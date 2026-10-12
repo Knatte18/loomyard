@@ -1,4 +1,4 @@
-// verify.go implements the `verify` webster verb: the self-check of the webster verify gate and of Webster-Burler's verify gate.
+// verify.go implements the `verify` webster verb: the self-check of the webster verify gate and of Webster-Burler-Fix's verify gate.
 // It parses the plan, then calls verifytree.Verify over the worktree with the plan's `## verify:` command, the same call both gates make.
 // A pass or skip is ok.
 // A dirty tree or a failing command is an error envelope carrying a `findings` key, the shape the gate-parity test maps onto a stuck verdict.
@@ -28,7 +28,7 @@ func (c *websterCLI) verifyCmd() *cobra.Command {
 		Short:       "run the plan's verify command over the worktree, the way the webster verify gate does",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `verify parses the plan at _lyx/plan and runs its "## verify:" command over
-the worktree through the same function the webster verify gate, Webster-Burler's
+the worktree through the same function the webster verify gate, Webster-Burler-Fix's
 verify gate and Publish and Finalize call. It is the self-check of those gates.
 
 A passing run records the verified tree. A second call on a tree whose record

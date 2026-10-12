@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 )
 
 // TemplatePairSlug is the slug of the one pair a pair-carrying Shape's template is built with.
@@ -86,7 +87,7 @@ func templateFor(tb testing.TB, shape Shape) *hubTemplate {
 
 	defer markFixtureBuild()()
 
-	root, err := os.MkdirTemp("", templatePrefix+"*")
+	root, err := lyxtemp.MkdirTemp(templatePrefix + "*")
 	if err != nil {
 		tb.Fatalf("hubforge: template %q: mkdir: %v", name, err)
 	}

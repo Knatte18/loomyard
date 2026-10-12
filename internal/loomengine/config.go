@@ -1,17 +1,21 @@
 // config.go — configuration for the loom module.
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1, validates every entry of fan_review, and resolves each non-empty discussion_fan and plan_fan through burlerengine.ResolveFan,
+// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1, rejects a discussion_max_bounces, plan_max_bounces or webster_max_bounces below 0, validates every entry of fan_review, and resolves each non-empty discussion_fan and plan_fan through burlerengine.ResolveFan,
 // so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
 // step_idle_timeout_min is the minutes a --until-stop step may show no activity before the loop kills it; a value below 1 is raised to 1 with one Warn and never refused.
 // discussion_fan and plan_fan each name a fan from burler.yaml and turn the lens fan on for Discussion-Review and Plan-Review; empty, the default, runs that segment solo.
 // fan_review is the reviewer model-spec list of a fanned segment, and the forks' model too, since forks run on the reviewer session's model.
 // There is no webster_fan key: Webster-Review always runs solo.
+// discussion_max_bounces, plan_max_bounces and webster_max_bounces set one perch's bounce budget, and 0 takes review_max_bounces;
+// discussion_auto_accept, plan_auto_accept and webster_auto_accept make that perch settle a spent budget as accepted instead of escalating to the parent.
 // discussion_producer selects the Discussion-Write row's producer and must be single, seats or twill.
+// plan_producer selects the Plan-Write row's producer, single or twill, and an empty value reads as single.
 // discussion_advisors lists the seats producer's advisor model-specs; every entry is resolved through the model registry at load, whatever discussion_producer holds, and an unset list loads as no advisors.
 // Under seats, no advisors runs the chair alone, deciding each question itself.
 // seed, discussion_judge, plan_judge, webster_judge, discussion_seed, plan_seed, webster_seed and rework are role model-specs validated only when non-empty, an empty value meaning the fallback:
 // a per-segment judge takes judge, a per-segment seed takes seed, seed takes that segment's resolved judge, and rework takes plan.
+// arbiter is a role model-spec validated only when non-empty, an empty value taking opus[high]; arbiter_timeout_min and arbiter_max_spawns are refused when negative, and a zero arbiter_max_spawns turns the arbiter off.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
 // value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
 // driver, and both must load cleanly, unlike the other role keys, which are always required.
@@ -31,6 +35,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
@@ -150,6 +155,22 @@ func DiscussionReadyMarker(l *lyxcwd.Location) string {
 func RemoveDiscussionReadyMarker(l *lyxcwd.Location) error {
 	if err := os.Remove(DiscussionReadyMarker(l)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("loom: remove discussion ready marker: %w", err)
+	}
+	return nil
+}
+
+// PlanReadyMarker returns the path to the twill plan writer's ready marker.
+// It is untracked state the writer creates once its plan passes the self-check, and the condition its lens forks wait on.
+// It sits under the anchor's lyxdirs.DotLyxDirName at the subpath mirroring the plan directory.
+func PlanReadyMarker(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, planparser.PlanDirName, filepath.Base(planparser.PlanOverview(l.AnchorPath()))+".ready")
+}
+
+// RemovePlanReadyMarker removes the plan ready marker and treats a missing one as success.
+// It runs before every fresh Plan-Write spawn, so a marker left by an earlier spawn never wakes a later spawn's forks.
+func RemovePlanReadyMarker(l *lyxcwd.Location) error {
+	if err := os.Remove(PlanReadyMarker(l)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("loom: remove plan ready marker: %w", err)
 	}
 	return nil
 }
@@ -336,6 +357,13 @@ const (
 	DiscussionProducerTwill = "twill"
 )
 
+const (
+	// PlanProducerSingle selects the single-agent writer for the Plan-Write row.
+	PlanProducerSingle = "single"
+	// PlanProducerTwill selects the single-agent writer with lens forks for the Plan-Write row.
+	PlanProducerTwill = "twill"
+)
+
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.
 type Config struct {
 	Discussion            string        `yaml:"discussion"`
@@ -345,6 +373,7 @@ type Config struct {
 	DiscussionAdvisors    ModelSpecList `yaml:"discussion_advisors"`
 	Plan                  string        `yaml:"plan"`
 	PlanTimeoutMin        int           `yaml:"plan_timeout_min"`
+	PlanProducer          string        `yaml:"plan_producer"`
 	Review                ModelSpecList `yaml:"review"`
 	Fix                   ModelSpecList `yaml:"fix"`
 	DiscussionReview      ModelSpecList `yaml:"discussion_review"`
@@ -372,8 +401,23 @@ type Config struct {
 	ParentReviewWaitMin   int           `yaml:"parent_review_wait_min"`
 	StepIdleTimeoutMin    int           `yaml:"step_idle_timeout_min"`
 
+	// The arbiter's model-spec, timeout and spawn budget.
+	// An empty Arbiter takes opus[high], a zero ArbiterTimeoutMin takes 30 minutes, and a zero ArbiterMaxSpawns turns the arbiter off.
+	Arbiter           string `yaml:"arbiter"`
+	ArbiterTimeoutMin int    `yaml:"arbiter_timeout_min"`
+	ArbiterMaxSpawns  int    `yaml:"arbiter_max_spawns"`
+
 	ReviewCirclingCheckpoint int `yaml:"review_circling_checkpoint"`
 	ReviewMaxBounces         int `yaml:"review_max_bounces"`
+
+	// Each perch's bounce budget and auto-accept flag.
+	// A budget of 0 takes ReviewMaxBounces; a flag true makes the perch's spent budget settle the round as accepted instead of escalating to the parent.
+	DiscussionMaxBounces int  `yaml:"discussion_max_bounces"`
+	PlanMaxBounces       int  `yaml:"plan_max_bounces"`
+	WebsterMaxBounces    int  `yaml:"webster_max_bounces"`
+	DiscussionAutoAccept bool `yaml:"discussion_auto_accept"`
+	PlanAutoAccept       bool `yaml:"plan_auto_accept"`
+	WebsterAutoAccept    bool `yaml:"webster_auto_accept"`
 }
 
 // ModelSpecList is a model-spec key's value: one model-spec for every round, or a list of model-specs, one per round, whose last entry serves every later round.
@@ -436,6 +480,7 @@ func ConfigSpec() configengine.Spec {
 			"discussion_advisors":        none,
 			"plan":                       none,
 			"plan_timeout_min":           none,
+			"plan_producer":              guard,
 			"review":                     none,
 			"fix":                        none,
 			"discussion_review":          none,
@@ -460,10 +505,19 @@ func ConfigSpec() configengine.Spec {
 			"friction":                   none,
 			"friction_timeout_min":       none,
 			"driver":                     none,
+			"arbiter":                    none,
+			"arbiter_timeout_min":        none,
+			"arbiter_max_spawns":         none,
 			"parent_review_wait_min":     guard,
 			"step_idle_timeout_min":      none,
 			"review_circling_checkpoint": none,
 			"review_max_bounces":         none,
+			"discussion_max_bounces":     none,
+			"plan_max_bounces":           none,
+			"webster_max_bounces":        none,
+			"discussion_auto_accept":     guard,
+			"plan_auto_accept":           guard,
+			"webster_auto_accept":        guard,
 		},
 	}
 }
@@ -701,6 +755,27 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 	}
 
+	// arbiter is validated only when non-empty: an empty value takes ResolveArbiter's default.
+	if cfg.Arbiter != "" {
+		if _, err := modelspec.Parse(cfg.Arbiter); err != nil {
+			return Config{}, fmt.Errorf("loom config key %q: %w", "arbiter", err)
+		}
+	}
+
+	// Zero is a meaning on both arbiter knobs, so only a negative value is refused.
+	for _, knob := range []struct {
+		key   string
+		value int
+		zero  string
+	}{
+		{"arbiter_timeout_min", cfg.ArbiterTimeoutMin, "0 for the 30 minute default"},
+		{"arbiter_max_spawns", cfg.ArbiterMaxSpawns, "0 to turn the arbiter off"},
+	} {
+		if knob.value < 0 {
+			return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; set it to %s, or to a positive integer, in loom.yaml", knob.key, knob.value, knob.zero)
+		}
+	}
+
 	// The four timeouts are checked here for the same reason the four model-specs above are: a
 	// value that can only be a mistake should fail at load time rather than hours into a run when
 	// the producer it governs first spawns. A negative minute count flows into
@@ -749,10 +824,33 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 	}
 
+	// A per-perch budget of 0 takes review_max_bounces, validated above, so only a negative value is refused here.
+	for _, knob := range []struct {
+		key   string
+		value int
+	}{
+		{"discussion_max_bounces", cfg.DiscussionMaxBounces},
+		{"plan_max_bounces", cfg.PlanMaxBounces},
+		{"webster_max_bounces", cfg.WebsterMaxBounces},
+	} {
+		if knob.value < 0 {
+			return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; set it to 0 to take review_max_bounces, or to a positive integer, in loom.yaml", knob.key, knob.value)
+		}
+	}
+
 	switch cfg.DiscussionProducer {
 	case DiscussionProducerSingle, DiscussionProducerSeats, DiscussionProducerTwill:
 	default:
 		return Config{}, fmt.Errorf("loom config key %q: unknown value %q; set it to %q, %q or %q", "discussion_producer", cfg.DiscussionProducer, DiscussionProducerSingle, DiscussionProducerSeats, DiscussionProducerTwill)
+	}
+
+	if cfg.PlanProducer == "" {
+		cfg.PlanProducer = PlanProducerSingle
+	}
+	switch cfg.PlanProducer {
+	case PlanProducerSingle, PlanProducerTwill:
+	default:
+		return Config{}, fmt.Errorf("loom config key %q: unknown value %q; set it to %q or %q", "plan_producer", cfg.PlanProducer, PlanProducerSingle, PlanProducerTwill)
 	}
 
 	return cfg, nil

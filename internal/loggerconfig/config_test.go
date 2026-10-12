@@ -87,6 +87,9 @@ func TestLoad_ResolvesBounds(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("Load = %+v, want %+v", got, tt.want)
 			}
+			if orDefault := loggerconfig.LoadOrDefault(configengine.Dirs{Anchor: anchor}); orDefault != got {
+				t.Errorf("LoadOrDefault = %+v, want Load's %+v", orDefault, got)
+			}
 		})
 	}
 
@@ -141,6 +144,9 @@ func TestLoad_InvalidValueErrorsNamingKey(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.key) {
 				t.Errorf("error %q does not name key %q", err, tt.key)
+			}
+			if orDefault := loggerconfig.LoadOrDefault(configengine.Dirs{Anchor: anchor}); orDefault != logger.DefaultRetentionBounds() {
+				t.Errorf("LoadOrDefault = %+v, want the defaults %+v", orDefault, logger.DefaultRetentionBounds())
 			}
 		})
 	}

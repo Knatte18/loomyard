@@ -86,30 +86,69 @@ func forkActivity(transcriptPath string, now time.Time) time.Time {
 	return newest
 }
 
-// holdsPendingToolCall reports whether the transcript at path holds a tool_use block whose id no tool_result block names, wherever the call sits.
-// A read error reports false.
+// holdsPendingToolCall reports whether the newest assistant message of the transcript at path that holds tool_use blocks has a tool_use no later tool_result names.
+// It reads the transcript backward from its end, so its cost is bounded by the tail.
+// A transcript with no tool use, and a read error, report false.
 func holdsPendingToolCall(path string) bool {
-	called := map[string]bool{}
-	answered := map[string]bool{}
-	err := forEachTranscriptLine(path, func(line transcriptLine) {
-		for _, block := range line.Message.Content {
-			switch block.Type {
-			case "tool_use":
-				called[block.ID] = true
-			case "tool_result":
-				answered[block.ToolUseID] = true
-			}
-		}
-	})
+	f, err := os.Open(path)
 	if err != nil {
 		return false
 	}
-	for id := range called {
-		if !answered[id] {
-			return true
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	var pending bool
+	readBackward(f, info.Size(), initialReadChunk, func(data []byte) bool {
+		var settled bool
+		pending, settled = newestToolCallingMessagePending(data)
+		return settled
+	})
+	return pending
+}
+
+// newestToolCallingMessagePending scans the complete lines of data from the last to the first and reports whether the newest assistant message holding tool_use blocks has one that no tool_result in data names.
+// A message is every assistant entry sharing one message id, since Claude writes each parallel call as its own entry.
+// settled is true once the scan has passed every entry of that message, which is when an older assistant entry of another message turns up; false when data ends inside the message or holds no tool use, so a wider window may change the answer.
+func newestToolCallingMessagePending(data []byte) (pending, settled bool) {
+	called := map[string]bool{}
+	answered := map[string]bool{}
+	messageID := ""
+	inMessage := false
+	for end := len(data); end > 0 && !settled; {
+		start := bytes.LastIndexByte(data[:end], '\n') + 1
+		raw := bytes.TrimSpace(data[start:end])
+		end = start - 1
+		if len(raw) == 0 {
+			continue
+		}
+		var line transcriptLine
+		if err := json.Unmarshal(raw, &line); err != nil {
+			continue
+		}
+		if inMessage && line.Type == "assistant" && line.Message.ID != messageID {
+			settled = true
+			break
+		}
+		for _, block := range line.Message.Content {
+			switch {
+			case block.Type == "tool_result":
+				answered[block.ToolUseID] = true
+			case block.Type == "tool_use" && line.Type == "assistant":
+				if !inMessage {
+					inMessage, messageID = true, line.Message.ID
+				}
+				called[block.ID] = true
+			}
 		}
 	}
-	return false
+	for id := range called {
+		if !answered[id] {
+			return true, settled
+		}
+	}
+	return false, settled
 }
 
 // newestTurnEndError scans the complete lines of data from the last to the first and reports whether the first main-chain assistant entry that ends a turn or carries the API-error marker is an API error, with its final text.

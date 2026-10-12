@@ -45,6 +45,10 @@ var ErrChildNotParked = errors.New("battenshed: the task worktree's driver has n
 // InnerRun treats it as ErrChildNotParked is treated: a retryable wait on the approval-resume path that records nothing and spawns again, at most once per notice probe, and it queues one orch notice per stall.
 var ErrChildDriverBusy = errors.New("battenshed: the task worktree's driver pane is busy")
 
+// ErrChildRunBusy is the sentinel an InnerRunDeps.Goto closure wraps when the child's goto verb refused because its run lock is held.
+// InnerRun treats it as a retryable wait on the automatic Publish retry path: it tries the goto again, at most once per notice probe, until it lands or the retry cap is reached.
+var ErrChildRunBusy = errors.New("battenshed: the child's run lock is held")
+
 // PrimeLock carries the told absolute path to a hub-scoped advisory lock plus the injected
 // acquire closure both WorktreeCreate and WorktreeTeardown hold it behind, so the two producers
 // that mutate the hub's worktree registry concurrently with each other never race.
@@ -83,6 +87,14 @@ type ChildDecision struct {
 	At string
 	// HeadSHA is the head commit the operator decided on.
 	HeadSHA string
+}
+
+// ChildArbiter is the reading of the child's in-flight arbiter marker.
+type ChildArbiter struct {
+	// Deadline is the time the arbiter's wait for its verdict ends.
+	Deadline time.Time
+	// Alive reports whether the arbiter strand the marker names is live.
+	Alive bool
 }
 
 // InnerRunDeps carries every told value and injected closure NewInnerRun needs: spawning the
@@ -168,6 +180,11 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil StopReport resolves to reporting none in NewInnerRun.
 	StopReport func() (path string, at time.Time, found bool, err error)
+	// ArbiterInFlight reads the child's in-flight arbiter marker, reporting found == false when there is none.
+	// The state-changed notice is held while a live arbiter may still settle the child's stop.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil ArbiterInFlight resolves to reporting none in NewInnerRun.
+	ArbiterInFlight func(ctx context.Context) (arbiter ChildArbiter, found bool, err error)
 	// NoticeQuiet is how long a running child's agents may all stay idle, with its driver strand alive and no wait marker live, before the row sends a quiet notice.
 	// Zero disables the quiet notice.
 	NoticeQuiet time.Duration
@@ -201,6 +218,27 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil MarkWatched resolves to a function reporting not held in NewInnerRun.
 	MarkWatched func(ctx context.Context) (held bool, err error)
+	// PublishRow is the child recipe's Publish row name; empty, like a nil PublishFailure, ChildHead or Goto, switches the automatic Publish verify retry off.
+	PublishRow string
+	// PublishFailure reads the task worktree's Publish failure record and reports found == false when there is none.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	PublishFailure func() (record ChildPublishFailure, found bool, err error)
+	// ChildHead returns the task worktree's HEAD commit.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	ChildHead func() (string, error)
+	// Goto runs the child's goto verb onto target.
+	// A goto refused because the child's run lock is held returns an error wrapping ErrChildRunBusy.
+	Goto func(ctx context.Context, target string) error
+}
+
+// ChildPublishFailure is the part of the child's Publish failure record the automatic retry reads.
+type ChildPublishFailure struct {
+	// Head is the commit the failing verify ran at.
+	Head string
+	// Target is the producer row a fix is routed back to; empty when the writer told none.
+	Target string
+	// WrittenAt is the record's write time, RFC 3339 whole-second UTC; empty for a record written before the field existed.
+	WrittenAt string
 }
 
 // AgentActivity is the reading of one live agent run of the child's task worktree.
@@ -288,4 +326,6 @@ type TeardownDeps struct {
 	Shutdown func(ctx context.Context) (abandonedSession string, err error)
 	// Remove deletes the task worktree pair. Called only after Shutdown has succeeded.
 	Remove func(ctx context.Context) error
+	// Notices carries the seams the row's failure notice goes through; its zero value switches the notice off.
+	Notices RowNoticeDeps
 }

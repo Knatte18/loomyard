@@ -25,6 +25,9 @@
 //
 // The finding types and ErrQuarryUnavailable are declared in internal/planindex, which links no tree-sitter;
 // this package aliases them, so errors.Is matches under either name.
+// The index's format, rework and dispatch validation append fabric-vocabulary-name (planparser.CheckFabricVocabularyName), a declared name the fabric-vocabulary scan would refuse.
+// Dispatch drops its findings against completed cards.
+// The index's format and rework validation also append card-fabric-reference, which dispatch does not run.
 // The index also serves KickstartPack (pack.go), which resolves the member glyphs a batch's cards name in one call and returns them with the refs that did not resolve, so a caller that never links quarry gets a batch's pack through planindex.Index.
 // NewIndex returns the real planindex.Index, which a package that calls the code index receives from the CLI layer instead of importing planglyph (index.go).
 //

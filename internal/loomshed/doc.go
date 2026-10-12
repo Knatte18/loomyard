@@ -24,7 +24,7 @@
 // The blocking path is unchanged: the findings go to the writer and the log line in full.
 //
 // The verify gate (NewVerifyGate) is told its verify command by the recipe's wiring and reads it at each arrival; it never parses the plan itself.
-// Told the whole-diff flag, it takes the whole-diff form; otherwise it takes the round form the Webster-Burler row runs, which runs less than the full command.
+// Told the whole-diff flag, it takes the whole-diff form; otherwise it takes the round form the Webster-Burler-Fix row runs, which runs less than the full command.
 // Told a merge base, the round form first runs the headroom lint from it to HEAD, before the comment lint and any test; told none, it skips that lint.
 // The form is a told flag, never inferred from the reader's presence.
 // It lints the comments added since the told command's last recorded pass, then runs the command impactset derives from that diff through verifytree.Verify, falling back to the told command wherever impactset cannot narrow.
@@ -32,7 +32,7 @@
 // The round compiles the `tmux` and `llm` tiers and never runs `llm`.
 // It runs the `tmux` tier only while a checked Publish failure record is present, as the failing top-level tests the record names, one step per package and test with the subtests collapsed into it, and, for a `publish_verify` failure, the impacted-set pass, to confirm the fix.
 // Publish reruns both verifies in full regardless, and stays the guard.
-// Told the whole-diff flag, it takes the whole-diff form the `Darn-Write` and `Darn-Burler` rows run, and requires the merge base reader:
+// Told the whole-diff flag, it takes the whole-diff form the `Darn-Write` and `Darn-Burler-Fix` rows run, and requires the merge base reader:
 // the headroom lint and then the comment lint run from the task branch's merge base with the parent to HEAD, and the told command runs in full as the site's base command, so Publish skips on the same tree and command.
 // That form has no skip path: an empty told command, a command read error and a merge base read error are each the gate's returned error.
 // With a checked Publish failure record present it appends the failing tests and, for a `publish_verify` failure, `./...` under `tmux`.

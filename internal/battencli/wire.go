@@ -37,6 +37,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
@@ -102,6 +103,43 @@ func driverStrandFrom(present bool, directory func() ([]reedengine.DirectoryRow,
 		}
 	}
 	return battenshed.ChildDriverNone, nil
+}
+
+// arbiterInFlightFrom reads the child's in-flight arbiter marker through readMarker and reports its deadline, with Alive true only when a live row of the pair's reed directory carries the marker's strand guid.
+// An absent task worktree and an absent marker are not found; a marker read error and a directory read error are returned unchanged.
+// A directory with no live row, as with no reed session, reads as not alive.
+func arbiterInFlightFrom(present bool, readMarker func() (loomengine.ArbiterMarker, bool, error), directory func() ([]reedengine.DirectoryRow, error)) (battenshed.ChildArbiter, bool, error) {
+	if !present {
+		return battenshed.ChildArbiter{}, false, nil
+	}
+	marker, found, err := readMarker()
+	if err != nil || !found {
+		return battenshed.ChildArbiter{}, false, err
+	}
+	rows, err := directory()
+	if err != nil {
+		return battenshed.ChildArbiter{}, false, err
+	}
+	for _, row := range rows {
+		if row.Live && row.GUID == marker.StrandGUID {
+			return battenshed.ChildArbiter{Deadline: marker.Deadline, Alive: true}, true, nil
+		}
+	}
+	return battenshed.ChildArbiter{Deadline: marker.Deadline}, true, nil
+}
+
+// stopDeadArbiterStrands calls stop with the guid of every arbiter row that is not live, and returns the first error.
+// A live arbiter row is left alone: it keeps working, and its verdict waits for the revived driver.
+func stopDeadArbiterStrands(rows []reedengine.DirectoryRow, stop func(guid string) error) error {
+	for _, row := range rows {
+		if !loomengine.IsArbiterStrand(row.Name) || row.Live {
+			continue
+		}
+		if err := stop(row.GUID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // runLockHeld reports whether the run lock at lockPath is held, probing it without keeping it.
@@ -351,6 +389,7 @@ const maxChildOutputInError = 2000
 // It returns nil for a nil runErr, runErr unchanged when the child said nothing, and truncates
 // output past maxChildOutputInError with an explicit marker.
 // An output carrying the not-parked refusal (kind shedrun.StartNotParkedKind) also wraps battenshed.ErrChildNotParked, and one carrying the busy-pane refusal (kind shedrun.StartDriverBusyKind) also wraps battenshed.ErrChildDriverBusy, so InnerRun retries rather than failing.
+// One carrying a held-run-lock refusal (kind shedengine.ShedBusyKind) also wraps battenshed.ErrChildRunBusy.
 //
 // The byte slice lands on a rune boundary only by chance, so strings.ToValidUTF8 drops any partial
 // rune it leaves dangling at the cut point rather than embedding invalid UTF-8 into the error text.
@@ -371,6 +410,8 @@ func childSpawnError(runErr error, childOutput string) error {
 		return fmt.Errorf("%w: %w: %s", battenshed.ErrChildNotParked, runErr, trimmed)
 	case shedrun.StartDriverBusyKind:
 		return fmt.Errorf("%w: %w: %s", battenshed.ErrChildDriverBusy, runErr, trimmed)
+	case shedengine.ShedBusyKind:
+		return fmt.Errorf("%w: %w: %s", battenshed.ErrChildRunBusy, runErr, trimmed)
 	}
 	return fmt.Errorf("%w: %s", runErr, trimmed)
 }
@@ -453,6 +494,26 @@ func orchStrandRecorded(prime *lyxcwd.Location) (bool, error) {
 		return false, err
 	}
 	return orch.Strand != "", nil
+}
+
+// battenHistoryLen returns the length of batten's own status history for slug, 0 when the status file is absent.
+func battenHistoryLen(location *lyxcwd.Location, slug string) (int, error) {
+	status, found, err := state.ReadJSONStrict[shedengine.Status](StatusFile(location, slug), StatusLock(location, slug))
+	if err != nil || !found {
+		return 0, err
+	}
+	return len(status.History), nil
+}
+
+// rowNotices returns the notice seams of the rows after Run-Shed: notices go to the prime's orch, as Run-Shed's do, and an episode is told apart by batten's own history length.
+func rowNotices(location *lyxcwd.Location, slug string) battenshed.RowNoticeDeps {
+	return battenshed.RowNoticeDeps{
+		Notify: func(ctx context.Context, line string) (bool, error) {
+			return orchengine.QueueNotice(orchcli.PrimePaths(location), line, time.Now())
+		},
+		OrchStrandRecorded: func() (bool, error) { return orchStrandRecorded(location) },
+		BattenHistoryLen:   func() (int, error) { return battenHistoryLen(location, slug) },
+	}
 }
 
 // readStopReport reads the driver park marker of the task worktree's run, whose content is the path of the stop report the driver parked on, and the time the marker was written.
@@ -698,7 +759,9 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				res, err := td.RemovePair(teardownRequest(slug))
 				return finishRemoval(res, err, slug)
 			},
+			Notices: rowNotices(location, slug),
 		},
+		Land: landDeps(location, slug, locateTask),
 		InnerRun: battenshed.InnerRunDeps{
 			// Notify queues the notice on the prime's orch, the parent of a batten run started from the prime, and reports QueueNotice's own answer: whether the notice was queued.
 			Notify: func(ctx context.Context, line string) (bool, error) {
@@ -715,14 +778,30 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				return readStopReport(taskLocation)
 			},
 			MarkWatched: markWatched,
-			// PauseRequested reads batten's own status file, the one `lyx batten pause` writes, so the in-call wait notices a pause within one check.
-			PauseRequested: func() (bool, error) {
-				status, found, err := state.ReadJSONStrict[shedengine.Status](StatusFile(location, slug), StatusLock(location, slug))
-				if err != nil || !found {
-					return false, err
+			PublishRow:  loomshed.NamePublish,
+			PublishFailure: func() (battenshed.ChildPublishFailure, bool, error) {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return battenshed.ChildPublishFailure{}, false, err
 				}
-				return status.PauseRequested, nil
+				return readChildPublishFailure(taskLocation)
 			},
+			ChildHead: func() (string, error) {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return "", err
+				}
+				return childHead(taskLocation)
+			},
+			Goto: func(ctx context.Context, target string) error {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return err
+				}
+				return childGoto(ctx, taskLocation, slug, target)
+			},
+			// PauseRequested reads batten's own status file, the one `lyx batten pause` writes, so the in-call wait notices a pause within one check.
+			PauseRequested: pauseRequested(location, slug),
 			// Activity resolves the task worktree on Call like every seam here.
 			Activity: func(context.Context) ([]battenshed.AgentActivity, bool, error) {
 				taskLocation, err := locateTask()
@@ -813,7 +892,38 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return reedengine.New(reedCfg, reedGeom).Directory()
 				})
 			},
-			// ReviveStrands resumes the task worktree's reed session, which relaunches the dead driver strand and every other non-live strand of the pair.
+			// ArbiterInFlight reads the task worktree's in-flight arbiter marker against the pair's reed directory.
+			ArbiterInFlight: func(ctx context.Context) (battenshed.ChildArbiter, bool, error) {
+				present, err := taskWorktreePresent(location, slug)
+				if err != nil {
+					return battenshed.ChildArbiter{}, false, err
+				}
+				return arbiterInFlightFrom(present,
+					func() (loomengine.ArbiterMarker, bool, error) {
+						taskLocation, err := locateTask()
+						if err != nil {
+							return loomengine.ArbiterMarker{}, false, err
+						}
+						return loomengine.ReadArbiterMarker(shedrun.ArbiterMarker(taskLocation, shedrun.SelfRunID))
+					},
+					func() ([]reedengine.DirectoryRow, error) {
+						taskLocation, err := locateTask()
+						if err != nil {
+							return nil, err
+						}
+						reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
+						if err != nil {
+							return nil, err
+						}
+						reedGeom, err := hubgeom.ReedGeometry(taskLocation)
+						if err != nil {
+							return nil, err
+						}
+						return reedengine.New(reedCfg, reedGeom).Directory()
+					})
+			},
+			// ReviveStrands ends the pair's dead arbiter strands, then resumes the task worktree's reed session, which relaunches the dead driver strand and every other non-live strand of the pair.
+			// A dead arbiter is stopped rather than relaunched: its attempt reads as hand-on.
 			ReviveStrands: func(ctx context.Context) error {
 				taskLocation, err := locateTask()
 				if err != nil {
@@ -827,8 +937,22 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
+				shuttleCfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "shuttle")
+				if err != nil {
+					return err
+				}
+				reedEngine := reedengine.New(reedCfg, reedGeom)
+				rows, err := reedEngine.Directory()
+				if err != nil {
+					return err
+				}
+				runner := shuttleengine.NewRunner(reedEngine, claudeengine.NewFromConfig(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+				if err := stopDeadArbiterStrands(rows, runner.StopStrand); err != nil {
+					logger.Warn("battencli: stopping the task worktree's dead arbiter strands failed", "slug", slug, "error", err)
+					return err
+				}
 				logger.Info("battencli: reviving the task worktree's strands through reed resume", "slug", slug)
-				res, err := reedengine.New(reedCfg, reedGeom).Resume()
+				res, err := reedEngine.Resume()
 				if err != nil {
 					logger.Warn("battencli: reed resume of the task worktree failed", "slug", slug, "error", err)
 					return err

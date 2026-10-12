@@ -47,8 +47,12 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 		"https://example.com/origin.git", "main", true, func() error { return nil },
 		modelspec.Registry{"claude/sonnet-5": {}}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, planVerifySource(loc))
 
-	if want := planVerifySource(loc).failedWayForward; deps.VerifyFailedWayForward != want || !strings.Contains(want, `"lyx loom goto --to Webster-Burler"`) {
-		t.Errorf("VerifyFailedWayForward = %q, want the plan source's Webster-Burler clause %q", deps.VerifyFailedWayForward, want)
+	if want := planVerifySource(loc).failedWayForward; deps.VerifyFailedWayForward != want || !strings.Contains(want, `"lyx loom goto --to Webster-Burler-Review"`) {
+		t.Errorf("VerifyFailedWayForward = %q, want the plan source's Webster-Burler-Review clause %q", deps.VerifyFailedWayForward, want)
+	}
+
+	if deps.VerifyFailureTarget != "Webster-Burler-Review" {
+		t.Errorf("VerifyFailureTarget = %q, want Webster-Burler-Review", deps.VerifyFailureTarget)
 	}
 
 	if _, err := deps.VerifyCommand(); err == nil {

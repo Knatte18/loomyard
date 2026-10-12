@@ -1,4 +1,4 @@
-// notice_test.go covers the notice step: the rendered line, each condition's one notice per episode, when a parked stop's notice may go, the awaiting relay rule, the quiet condition's guards, delivery and its retries, and a restart over the same scratch directory.
+// notice_test.go covers the notice step: the rendered line, each condition's one notice per episode, when a parked stop's notice may go, the awaiting relay rule, the arbiter hold, the quiet condition's guards, delivery and its retries, and a restart over the same scratch directory.
 // The tests that capture log output replace the process-global logger output, so they do not run in parallel.
 
 package battenshed
@@ -42,6 +42,11 @@ type noticeHarness struct {
 	reportFound bool
 	decided     bool
 	watched     bool
+
+	// arbiter, arbiterFound and arbiterErr are what the fake ArbiterInFlight seam reports.
+	arbiter      ChildArbiter
+	arbiterFound bool
+	arbiterErr   error
 
 	// runs, waitLive and activityErr are what the fake Activity seam reports; activityReads counts its calls.
 	runs          []AgentActivity
@@ -145,6 +150,9 @@ func (h *noticeHarness) producer() shedengine.ShedProducer {
 			return h.reportPath, h.reportAt, h.reportFound, nil
 		},
 		MarkWatched: func(context.Context) (bool, error) { return h.watched, nil },
+		ArbiterInFlight: func(context.Context) (ChildArbiter, bool, error) {
+			return h.arbiter, h.arbiterFound, h.arbiterErr
+		},
 		NoticeQuiet: h.quiet,
 		Activity: func(context.Context) ([]AgentActivity, bool, error) {
 			h.activityReads++
@@ -738,56 +746,46 @@ func TestNotice_SameStateRewriteMovesNeitherSinceNorTheKey(t *testing.T) {
 	}
 }
 
-// TestNotice_DoneChildNotifiesOnFirstSightAndTheDoneReturnAttemptsAPendingOne asserts a done child's notice goes at once with no report, and that the Done return makes one last attempt of a notice that could not be sent before.
-func TestNotice_DoneChildNotifiesOnFirstSightAndTheDoneReturnAttemptsAPendingOne(t *testing.T) {
-	t.Run("OnFirstSightWithNoReport", func(t *testing.T) {
-		h := newNoticeHarness(t)
-		h.status = shedengine.Status{State: shedengine.StateDone, History: make([]shedengine.HistoryEntry, 5)}
-		h.alive = false
-		h.writeReport(h.clock.Now())
-		outcome, _, err := h.producer().Call(context.Background())
-		if err != nil || outcome != shedengine.Done {
-			t.Fatalf("Call() = %v, %v; want Done", outcome, err)
-		}
-		if len(h.notified) != 1 || strings.Contains(h.notified[0], "report") || !strings.Contains(h.notified[0], "task: done;") || !strings.Contains(h.notified[0], "history 5") {
-			t.Errorf("notified = %v; want one done notice with no report", h.notified)
-		}
-	})
-
+// TestNotice_DoneChildSendsNoNotice asserts a done child's checks and its Done return call Notify zero times and write no episode key, also when an earlier blocked notice of the same run was sent.
+func TestNotice_DoneChildSendsNoNotice(t *testing.T) {
 	for _, tt := range []struct {
 		name         string
-		strandAtDone bool
-		wantNotified int
-		wantWarn     string
+		priorBlocked bool
 	}{
-		{name: "ALastAttemptReachesAnOrchThatRecordedAStrand", strandAtDone: true, wantNotified: 1},
-		{name: "ALastAttemptWithNoStrandIsLogged", strandAtDone: false, wantNotified: 0, wantWarn: "notice lost"},
+		{name: "OnFirstSight"},
+		{name: "AfterAnEarlierBlockedNotice", priorBlocked: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			var buf bytes.Buffer
-			logger.SetOutput(&buf)
-			t.Cleanup(func() { logger.SetOutput(os.Stderr) })
-
 			h := newNoticeHarness(t)
-			h.status = shedengine.Status{State: shedengine.StateDone}
-			h.strand = false
+			wantNotified, wantKeys := 0, 0
+			if tt.priorBlocked {
+				h.setStatus(parked(shedengine.StateBlocked))
+				h.writeReport(h.touched)
+				h.call(h.producer())
+				wantNotified = len(h.notified)
+				wantKeys = len(readNoticeKeys(noticeEpisodeFile(h.scratch, "Run-Shed")))
+				if wantNotified != 1 || wantKeys != 1 {
+					t.Fatalf("blocked notices = %d with %d keys; want one of each", wantNotified, wantKeys)
+				}
+			}
+
+			h.setStatus(shedengine.Status{State: shedengine.StateDone, History: make([]shedengine.HistoryEntry, 5)})
 			h.probe = 2 * time.Second
 			h.clock.pauseAtSleep = 0
 			h.clock.onSleep = func(call int) {
 				if call == 2 {
 					h.alive = false
-					h.strand = tt.strandAtDone
 				}
 			}
 			outcome, _, err := h.producer().Call(context.Background())
 			if err != nil || outcome != shedengine.Done {
 				t.Fatalf("Call() = %v, %v; want Done once the driver ended", outcome, err)
 			}
-			if len(h.notified) != tt.wantNotified {
-				t.Errorf("notified = %v; want %d notices", h.notified, tt.wantNotified)
+			if len(h.notified) != wantNotified || len(h.notifyTimes) != wantNotified {
+				t.Errorf("notified = %v after %d Notify calls; want only the %d earlier notices", h.notified, len(h.notifyTimes), wantNotified)
 			}
-			if tt.wantWarn != "" && !strings.Contains(buf.String(), tt.wantWarn) {
-				t.Errorf("log = %q; want %q", buf.String(), tt.wantWarn)
+			if keys := readNoticeKeys(noticeEpisodeFile(h.scratch, "Run-Shed")); len(keys) > wantKeys {
+				t.Errorf("episode keys = %v; want no key for the done child", keys)
 			}
 		})
 	}
@@ -844,6 +842,74 @@ func TestNotice_AwaitingLeavesTheRelayToTheDriver(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestNotice_LiveArbiterHoldsTheStateChange asserts the notice of a halted or awaiting child, which an ended driver would release at once, is held while a live arbiter marker is within its deadline plus the report wait.
+// It goes once that bound passes, and as today for a dead strand, a missing marker or an unreadable one.
+// It is never sent when the arbiter's resume moves the child back to running.
+func TestNotice_LiveArbiterHoldsTheStateChange(t *testing.T) {
+	liveFor := func(h *noticeHarness, d time.Duration) {
+		h.arbiter = ChildArbiter{Deadline: h.clock.Now().Add(d), Alive: true}
+		h.arbiterFound = true
+	}
+	tests := []struct {
+		name string
+		// at runs at the second check of the Call the test makes, with the driver strand already ended.
+		at         func(h *noticeHarness)
+		wantNotice bool
+	}{
+		{name: "ALiveMarkerWithinItsDeadlineHolds", at: func(h *noticeHarness) { liveFor(h, 30*time.Minute) }},
+		{name: "ALiveMarkerPastItsDeadlineWithinTheReportWaitHolds", at: func(h *noticeHarness) {
+			liveFor(h, 0)
+			h.clock.advance(noticeReportWait - 10*time.Second)
+		}},
+		{name: "ALiveMarkerPastItsDeadlinePlusTheReportWaitSendsTheNotice", at: func(h *noticeHarness) {
+			liveFor(h, 0)
+			h.clock.advance(noticeReportWait)
+		}, wantNotice: true},
+		{name: "ADeadStrandHoldsNothing", at: func(h *noticeHarness) {
+			liveFor(h, 30*time.Minute)
+			h.arbiter.Alive = false
+		}, wantNotice: true},
+		{name: "AMissingMarkerHoldsNothing", at: func(h *noticeHarness) {}, wantNotice: true},
+		{name: "AnUnreadableMarkerHoldsNothing", at: func(h *noticeHarness) {
+			liveFor(h, 30*time.Minute)
+			h.arbiterErr = errors.New("marker boom")
+		}, wantNotice: true},
+		{name: "AResumeToRunningSendsNothing", at: func(h *noticeHarness) {
+			liveFor(h, 30*time.Minute)
+			h.arbiterFound = false
+			h.setStatus(shedengine.Status{State: shedengine.StateRunning})
+		}},
+	}
+	for _, state := range []shedengine.State{shedengine.StateBlocked, shedengine.StateAwaiting} {
+		for _, tt := range tests {
+			t.Run(string(state)+"/"+tt.name, func(t *testing.T) {
+				h := newNoticeHarness(t)
+				p := h.producer()
+				h.leaveRunning(p, parked(state))
+
+				h.secondCheck(func() {
+					h.alive = false
+					tt.at(h)
+				})
+				if _, _, err := p.Call(context.Background()); err != nil {
+					t.Fatalf("Call() error = %v", err)
+				}
+				if got := len(h.notified); got != btoi(tt.wantNotice) {
+					t.Errorf("notified = %v; want %d notice", h.notified, btoi(tt.wantNotice))
+				}
+			})
+		}
+	}
+}
+
+// btoi is 1 for true and 0 for false.
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // TestNotice_DeliveryIsRecordedOnlyWhenQueuedAndRetriedWithinItsCaps covers the delivery seams:

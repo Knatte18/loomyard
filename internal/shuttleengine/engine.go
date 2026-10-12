@@ -21,14 +21,13 @@ const (
 	OutcomeDone Outcome = "done"
 	// OutcomeDied: a strand reed STILL TRACKS has a pane that is not alive (or the provider never
 	// became ready inside the startup window) before output files were written.
-	// Pane death is the only observable process failure;
-	// a provider crash mid-run behind a live pane shell classifies OutcomeTimeout instead.
+	// A provider process proven gone behind a live pane shell is this outcome too, by the registry or a process-ending session end;
+	// it needs an engine that parses session signals and probes liveness.
 	// A strand reed no longer tracks AT ALL is deliberately NOT this outcome — reed's bookkeeping
 	// going away says nothing about the agent, so Wait reports that as a mechanism failure.
 	OutcomeDied Outcome = "died"
 	// OutcomeTimeout: wall-clock Timeout elapsed before output files written.
-	// This also covers provider crashes mid-run behind a still-live pane shell (pane tells the
-	// operator which happened).
+	// A provider crash behind a still-live pane shell that nothing proves, such as an engine without liveness probing, also ends here.
 	OutcomeTimeout Outcome = "timeout"
 )
 
@@ -44,6 +43,8 @@ type Launch struct {
 	// PromptLine, when set, means the engine left the prompt pointer off Cmd:
 	// shuttle delivers this text as a turn once the spec's skills are loaded.
 	PromptLine string
+	// RecordsSessionStarts declares that the launch writes a session-start line into the run's events file when the provider's session begins, so startup waits for that line beside the ready pane.
+	RecordsSessionStarts bool
 }
 
 // PaneInput is one step of provider-specific key choreography sent to a pane via reed's send-keys.
@@ -138,6 +139,10 @@ const (
 type Engine interface {
 	// Prepare writes provider-specific artifacts (prompt file, settings/hooks) and returns opaque Launch command strings.
 	Prepare(runDir string, spec Spec, cfg Config) (Launch, error)
+	// PromptCacheLifetime returns how long the provider keeps a session's prompt cache warm while the session sits idle, for a session started from spec under cfg.
+	// Zero means the provider knows no warm lifetime, so a caller keeps nothing warm.
+	// An error means cfg cannot be resolved for spec.
+	PromptCacheLifetime(spec Spec, cfg Config) (time.Duration, error)
 	// ParseEvents parses events.jsonl into Events (turn-end signal and live ask).
 	// It is lenient: malformed or unrecognized lines are skipped.
 	ParseEvents(data []byte) ([]Event, error)
@@ -225,11 +230,18 @@ type InputBoxReader interface {
 }
 
 // InputBoxClearer is an optional capability beside Engine: the provider's way of emptying its input box.
-// The caller sends the clear only into a box it has just read as holding exactly its own text,
+// The caller sends the clear only into a box it has just read as holding exactly its own text, or exactly one stray-character candidate its guard reading found,
 // and the choreography never uses a key that interrupts a running turn.
 type InputBoxClearer interface {
 	// ClearInputSequence returns the key choreography that empties the input box without interrupting a running turn.
 	ClearInputSequence() []PaneInput
+}
+
+// StrayInputReader is an optional capability beside Engine: the provider's judgment of whether its input box holds a lone stray character.
+// The judgment is the provider's, since what a stray character looks like on screen is provider knowledge.
+type StrayInputReader interface {
+	// StrayInput reports whether capture shows the provider idle but for an input box holding exactly one stray-character candidate, and returns that character.
+	StrayInput(capture string) (text string, ok bool)
 }
 
 // TextPaster is an optional capability beside Engine: a provider that takes text as one bracketed paste.

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"path"
 	"path/filepath"
+	"strconv"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -20,6 +21,12 @@ const shedDirName = "shed"
 
 // driveReportsDirName is the segment under a run's directory that holds its drive reports.
 const driveReportsDirName = "drive-reports"
+
+// arbiterDirName is the segment under a run's directory that holds its arbiter attempts.
+const arbiterDirName = "arbiter"
+
+// arbiterMarkerFileName is the filename of the arbiter in-flight marker, whose path ArbiterMarker returns.
+const arbiterMarkerFileName = "arbiter-inflight.json"
 
 // ParkMarkerFileName is the filename of the driver park marker, whose path ParkMarker returns.
 // It is exported because the driver stencil names the same filename, and a loomcli test pins the two together.
@@ -152,12 +159,51 @@ func DriveReportsRel(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(lyxdirs.LyxDirName, shedDirName, runSegment(l, runID), driveReportsDirName)
 }
 
+// ArbiterDir returns the path to the durable directory holding every arbiter attempt of a run:
+// RunDir(l, runID) joined with arbiterDirName.
+func ArbiterDir(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(RunDir(l, runID), arbiterDirName)
+}
+
+// ArbiterRel returns the worktree-anchor-relative form of ArbiterDir's path: the join of lyxdirs.LyxDirName, shedDirName, the run's directory segment under l, and arbiterDirName.
+// It exists so a caller building a fabric commit pathspec never has to name a segment shedrun owns.
+func ArbiterRel(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(lyxdirs.LyxDirName, shedDirName, runSegment(l, runID), arbiterDirName)
+}
+
+// ArbiterAttemptDir returns the path to one arbiter attempt's durable directory, attempt-<N> under ArbiterDir(l, runID), where attempt is the attempt's 1-based number.
+func ArbiterAttemptDir(l *lyxcwd.Location, runID string, attempt int) string {
+	return filepath.Join(ArbiterDir(l, runID), "attempt-"+strconv.Itoa(attempt))
+}
+
+// ArbiterMarker returns the path to the ephemeral arbiter in-flight marker, arbiterMarkerFileName under ScratchDir(l, runID).
+func ArbiterMarker(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), arbiterMarkerFileName)
+}
+
 // RunsRootRel returns the worktree-anchor-relative path of the run-records root: the join of lyxdirs.LyxDirName and shedDirName, the directory every run's RunDir sits under.
 // It takes no *lyxcwd.Location, because the root carries no run-id and so needs none of runSegment's alias resolution.
 // It exists so fabricengine's Add can drop the whole run-records tree from a freshly forked pair without naming the shed segment itself.
 // The path is anchor-relative, the same shape SeedRel and StatusRel return, suitable as a fabricengine commit's relPaths.
 func RunsRootRel() string {
 	return filepath.Join(lyxdirs.LyxDirName, shedDirName)
+}
+
+// RunsRoot returns the absolute durable directory every run directory sits under: the given *lyxcwd.Location's AnchorPath() joined with RunsRootRel().
+func RunsRoot(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), RunsRootRel())
+}
+
+// ScratchRoot returns the absolute ephemeral directory every run's scratch directory sits under, the mirror of RunsRoot at the .lyx subpath.
+// The hub-scoped prime run lock and landing lock live in it too.
+func ScratchRoot(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, shedDirName)
+}
+
+// RunDirRel returns the anchor-relative form of the run's durable directory, with the same directory-segment alias resolution the run's status path applies.
+// It is the pathspec a records commit takes to delete a whole run directory.
+func RunDirRel(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(lyxdirs.LyxDirName, shedDirName, runSegment(l, runID))
 }
 
 // TreeRunFileRels returns the slash-separated, tree-relative paths of a run's seed.json and status.json, as a git tree read takes them.
@@ -179,6 +225,12 @@ func TreeRunFileRels(runID string) (seedRel, statusRel string, err error) {
 // hub addresses, not scoped to one.
 func PrimeRunLock(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, shedDirName, "run.lock")
+}
+
+// LandLock returns the path to the hub-scoped ephemeral advisory lock one landing holds for its whole body, beside PrimeRunLock and built the same way:
+// the given *lyxcwd.Location's AnchorPath() joined with lyxdirs.DotLyxDirName, shedDirName, and "land.lock".
+func LandLock(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, shedDirName, "land.lock")
 }
 
 // LoopLock returns the path to the loop's liveness lock, loop.lock under StepsDir(l, runID), which the detached loop holds for its whole life.

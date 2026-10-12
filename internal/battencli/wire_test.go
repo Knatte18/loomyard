@@ -13,8 +13,10 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
@@ -23,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -56,6 +59,7 @@ func TestWire_BuildsLazilyForANonexistentTaskWorktree(t *testing.T) {
 		{"DriverStrand", c.env.InnerRun.DriverStrand != nil},
 		{"ChildRunLockHeld", c.env.InnerRun.ChildRunLockHeld != nil},
 		{"ReviveStrands", c.env.InnerRun.ReviveStrands != nil},
+		{"ArbiterInFlight", c.env.InnerRun.ArbiterInFlight != nil},
 		{"RunShedMarkWatched", c.env.InnerRun.MarkWatched != nil},
 		{"SeedChildMarkWatched", c.env.SeedChild.MarkWatched != nil},
 		{"CommitStatus", c.shedPaths.CommitStatus != nil},
@@ -152,6 +156,106 @@ func TestDriverStrandFrom(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("driverStrandFrom() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestArbiterInFlightFrom covers arbiterInFlightFrom's answers without tmux.
+// An absent task worktree and an absent marker are not found without reading further.
+// A marker whose strand row is live reports alive with its deadline, and one whose row is dead or missing reports not alive.
+// A marker or directory read error is returned.
+func TestArbiterInFlightFrom(t *testing.T) {
+	t.Parallel()
+
+	boom := errors.New("boom")
+	deadline := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	marker := func(m loomengine.ArbiterMarker, found bool, err error) func() (loomengine.ArbiterMarker, bool, error) {
+		return func() (loomengine.ArbiterMarker, bool, error) { return m, found, err }
+	}
+	held := loomengine.ArbiterMarker{Attempt: 1, StrandGUID: "guid-1", Deadline: deadline}
+	rows := func(rs ...reedengine.DirectoryRow) func() ([]reedengine.DirectoryRow, error) {
+		return func() ([]reedengine.DirectoryRow, error) { return rs, nil }
+	}
+	noDirectory := func() ([]reedengine.DirectoryRow, error) {
+		t.Error("directory read although there is no marker to check")
+		return nil, nil
+	}
+	tests := []struct {
+		name      string
+		present   bool
+		readMark  func() (loomengine.ArbiterMarker, bool, error)
+		directory func() ([]reedengine.DirectoryRow, error)
+		want      battenshed.ChildArbiter
+		wantFound bool
+		wantErr   error
+	}{
+		{"WorktreeAbsentReadsNothing", false, func() (loomengine.ArbiterMarker, bool, error) {
+			t.Error("marker read although the task worktree is absent")
+			return loomengine.ArbiterMarker{}, false, nil
+		}, noDirectory, battenshed.ChildArbiter{}, false, nil},
+		{"MarkerAbsent", true, marker(loomengine.ArbiterMarker{}, false, nil), noDirectory, battenshed.ChildArbiter{}, false, nil},
+		{"MarkerErrorReturned", true, marker(loomengine.ArbiterMarker{}, false, boom), noDirectory, battenshed.ChildArbiter{}, false, boom},
+		{"DirectoryErrorReturned", true, marker(held, true, nil), func() ([]reedengine.DirectoryRow, error) { return nil, boom }, battenshed.ChildArbiter{}, false, boom},
+		{"LiveStrandRow", true, marker(held, true, nil), rows(reedengine.DirectoryRow{Name: "ly:task:arbiter", GUID: "guid-1", Live: true}), battenshed.ChildArbiter{Deadline: deadline, Alive: true}, true, nil},
+		{"DeadStrandRow", true, marker(held, true, nil), rows(reedengine.DirectoryRow{Name: "ly:task:arbiter", GUID: "guid-1"}), battenshed.ChildArbiter{Deadline: deadline}, true, nil},
+		{"StrandRowMissing", true, marker(held, true, nil), rows(reedengine.DirectoryRow{Name: "ly:task:arbiter", GUID: "guid-2", Live: true}), battenshed.ChildArbiter{Deadline: deadline}, true, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, found, err := arbiterInFlightFrom(tt.present, tt.readMark, tt.directory)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("arbiterInFlightFrom() error = %v; want %v", err, tt.wantErr)
+			}
+			if got != tt.want || found != tt.wantFound {
+				t.Errorf("arbiterInFlightFrom() = %+v, %v; want %+v, %v", got, found, tt.want, tt.wantFound)
+			}
+		})
+	}
+}
+
+// TestStopDeadArbiterStrands covers stopDeadArbiterStrands over a fake stop.
+// Every dead arbiter row, plain or numbered, is stopped by its guid.
+// Live arbiter rows and driver rows are left alone, and the first stop error is returned.
+func TestStopDeadArbiterStrands(t *testing.T) {
+	t.Parallel()
+
+	boom := errors.New("boom")
+	tests := []struct {
+		name     string
+		rows     []reedengine.DirectoryRow
+		stopErr  error
+		wantStop []string
+		wantErr  error
+	}{
+		{"DeadArbiterStopped", []reedengine.DirectoryRow{{Name: "ly:task:arbiter", GUID: "g1"}}, nil, []string{"g1"}, nil},
+		{"NumberedArbiterStopped", []reedengine.DirectoryRow{{Name: "ly:task:arbiter-2", GUID: "g2"}}, nil, []string{"g2"}, nil},
+		{"LiveArbiterAndDriverUntouched", []reedengine.DirectoryRow{
+			{Name: "ly:task:arbiter", GUID: "g1", Live: true},
+			{Name: "ly:task:driver", GUID: "g3"},
+			{Name: "ly:task:driver", GUID: "g4", Live: true},
+		}, nil, nil, nil},
+		{"EveryDeadArbiterStopped", []reedengine.DirectoryRow{
+			{Name: "ly:task:arbiter", GUID: "g1"},
+			{Name: "ly:task:arbiter-2", GUID: "g2"},
+		}, nil, []string{"g1", "g2"}, nil},
+		{"StopErrorReturnedAtOnce", []reedengine.DirectoryRow{
+			{Name: "ly:task:arbiter", GUID: "g1"},
+			{Name: "ly:task:arbiter-2", GUID: "g2"},
+		}, boom, []string{"g1"}, boom},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stopped []string
+			err := stopDeadArbiterStrands(tt.rows, func(guid string) error {
+				stopped = append(stopped, guid)
+				return tt.stopErr
+			})
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("stopDeadArbiterStrands() error = %v; want %v", err, tt.wantErr)
+			}
+			if !slices.Equal(stopped, tt.wantStop) {
+				t.Errorf("stopped = %v; want %v", stopped, tt.wantStop)
 			}
 		})
 	}
@@ -296,6 +400,7 @@ func TestChildSpawnError(t *testing.T) {
 	longOutput := strings.Repeat("x", maxChildOutputInError+50)
 	notParkedLine := `{"error":"loom: the driver has not parked yet","kind":"` + shedrun.StartNotParkedKind + `","ok":false}`
 	driverBusyLine := `{"error":"loom: the input box holds a draft","kind":"` + shedrun.StartDriverBusyKind + `","ok":false}`
+	shedBusyLine := `{"error":"shedengine: another run holds the run lock","kind":"` + shedengine.ShedBusyKind + `","ok":false}`
 
 	tests := []struct {
 		name          string
@@ -304,6 +409,7 @@ func TestChildSpawnError(t *testing.T) {
 		wantNil       bool
 		wantNotParked bool
 		wantBusy      bool
+		wantRunBusy   bool
 		wantSubstr    []string
 	}{
 		{
@@ -312,6 +418,13 @@ func TestChildSpawnError(t *testing.T) {
 			childOutput: driverBusyLine,
 			wantBusy:    true,
 			wantSubstr:  []string{"exit status 1", "holds a draft"},
+		},
+		{
+			name:        "shed_busy_refusal_wraps_the_run_busy_sentinel",
+			runErr:      runErr,
+			childOutput: shedBusyLine,
+			wantRunBusy: true,
+			wantSubstr:  []string{"exit status 1", "run lock"},
 		},
 		{
 			name:        "a_busy_kind_on_a_success_envelope_wraps_neither",
@@ -405,6 +518,9 @@ func TestChildSpawnError(t *testing.T) {
 			}
 			if errors.Is(got, battenshed.ErrChildDriverBusy) != tt.wantBusy {
 				t.Errorf("childSpawnError(...) = %v; errors.Is(ErrChildDriverBusy) = %v, want %v", got, !tt.wantBusy, tt.wantBusy)
+			}
+			if errors.Is(got, battenshed.ErrChildRunBusy) != tt.wantRunBusy {
+				t.Errorf("childSpawnError(...) = %v; errors.Is(ErrChildRunBusy) = %v, want %v", got, !tt.wantRunBusy, tt.wantRunBusy)
 			}
 			for _, want := range tt.wantSubstr {
 				if !strings.Contains(got.Error(), want) {

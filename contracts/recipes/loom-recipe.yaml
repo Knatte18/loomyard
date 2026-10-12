@@ -47,15 +47,28 @@
 # three retired names onto their successors is carrying cost a pre-release, single-operator system
 # does not need when the operator can simply re-run.
 #
-# All three review segments follow the same shared-segment mutual-on_stuck shape: Discussion-Bouncer
-# and Discussion-Burler carry segment: Discussion-Review, Plan-Bouncer and Plan-Burler carry
-# segment: Plan-Review, and Webster-Bouncer and Webster-Burler carry segment: Webster-Review, each
-# pair routing to its partner via a mutual on_stuck -- internal/shedengine's validator rejects an
-# OnStuck naming a producer in a different Segment, so each pair needs its own non-empty, shared
-# label for that pair of edges to build at all.
+# All three review segments follow the same shared-segment on_stuck ring: Discussion-Bouncer,
+# Discussion-Burler-Review and Discussion-Burler-Fix carry segment: Discussion-Review, the three
+# Plan rows carry segment: Plan-Review, and the three Webster rows carry segment: Webster-Review.
+# In each ring the Bouncer's on_stuck names the review row, the review row's on_stuck names the fix
+# row, and the fix row's on_stuck names the Bouncer, and each Burler row's on_done names the same
+# row as its on_stuck -- neither Burler row ever returns Done, and an empty on_done would end the
+# run silently. A Done by any row of a segment ends its bounce episode, so the hand-offs between
+# the two halves are Stucks. internal/shedengine's validator rejects an OnStuck naming a producer
+# in a different Segment, so each ring needs its own non-empty, shared label for its edges to build
+# at all.
 #
-# The rows of those three segments declare no max_bounces: their budget comes from loom.yaml's
-# review_max_bounces, applied by internal/loomrecipe. PR-Gate keeps its literal max_bounces.
+# A review segment's round is two Shed rows, each one fresh session: the review row reviews, and
+# the fix row fixes only a review with findings, or a clean review whose row gates fail. The
+# reviewer's findings carry their own fix, so the fixer orients on the review and its targets alone.
+#
+# An in-flight run parked on one of the retired Discussion-Burler, Plan-Burler or Webster-Burler
+# rows is restarted, not migrated, as it is for the earlier retired rows above.
+#
+# The Bouncer, review and fix rows of those three segments declare no max_bounces: their budget
+# is the perch's own loom.yaml key (discussion_max_bounces, plan_max_bounces or webster_max_bounces),
+# falling back to review_max_bounces where that is 0, applied by internal/loomrecipe. PR-Gate keeps
+# its literal max_bounces.
 
 version: 1
 entry: Preflight
@@ -83,17 +96,16 @@ producers:
           attempts: 3
         # parent-review hands the finished discussion to the run's parent once the mechanical gate
         # passes, as one scope check against the board entry; the perch below reviews the detail.
-        # attempts is the number of parent reviews and 0 turns it off. With pass_on_cap the writer
-        # addresses the last reject's findings and the rewrite goes on to the perch unreviewed;
-        # without it the last reject halts the run blocked until `lyx loom review approve`.
+        # every rewrite after a reject is reviewed as the next round. attempts is the reject cap and
+        # 0 turns the review off; the cap's reject halts the run blocked until
+        # `lyx loom review approve`.
         - name: parent-review
-          attempts: 1
-          pass_on_cap: true
+          attempts: 2
 
   - name: Discussion-Bouncer
     engine: Bouncer
     segment: Discussion-Review
-    on_stuck: Discussion-Burler
+    on_stuck: Discussion-Burler-Review
     on_done: Plan-Write
     config:
       run_subdir: discussion
@@ -101,7 +113,7 @@ producers:
         - _lyx/discussion/decision-record.md
         - _lyx/discussion/support-log.md
       rubric_stencil: loom-rubric-discussion-review
-      # commit_seam is required rather than optional here: Discussion-Burler runs fix-scope: overlay
+      # commit_seam is required rather than optional here: Discussion-Burler-Fix runs fix-scope: overlay
       # and an overlay round runs no git at all, and nothing else in this segment commits, so without
       # the seam every approved fix would stay uncommitted in fabric's records working tree.
       commit_seam: discussion
@@ -111,24 +123,18 @@ producers:
       # No model/effort/version key: the row refuses them as unknown keys, and loom.yaml's judge,
       # seed and per-segment judge and seed keys are the only source of this row's passes' models.
 
-  - name: Discussion-Burler
-    engine: BurlerRound
+  - name: Discussion-Burler-Review
+    engine: BurlerReview
     segment: Discussion-Review
-    on_stuck: Discussion-Bouncer
-    # BurlerProducer never returns Done, so this edge is unreachable -- but an empty on_done is
-    # load-bearing and ends the whole run silently, which is a worse failure than a redundant edge,
-    # so it is set explicitly to the row it can never actually reach.
-    on_done: Discussion-Bouncer
+    on_stuck: Discussion-Burler-Fix
+    # BurlerReviewProducer never returns Done, so this edge is unreachable -- but an empty on_done
+    # is load-bearing and ends the whole run silently, which is a worse failure than a redundant
+    # edge, so it is set explicitly to the row it can never actually reach.
+    on_done: Discussion-Burler-Fix
     config:
-      # The same run_subdir value as Discussion-Bouncer is what makes both rows write into one
+      # The same run_subdir value as Discussion-Bouncer is what makes the three rows write into one
       # shared run directory.
       run_subdir: discussion
-      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
-      # validator and re-prompts the live session up to its attempts times, so a failure never
-      # reaches the row below.
-      gates:
-        - name: discussion
-          attempts: 3
       profile:
         target:
           paths:
@@ -149,6 +155,33 @@ producers:
       # No model/effort key: model choice lives in loom.yaml's review and fix keys only.
       # No timeout_s key, for the same Env fallback reason as Discussion-Bouncer.
 
+  - name: Discussion-Burler-Fix
+    engine: BurlerFix
+    segment: Discussion-Review
+    on_stuck: Discussion-Bouncer
+    # BurlerFixProducer never returns Done, so this edge is unreachable -- but an empty on_done is
+    # load-bearing and ends the whole run silently, which is a worse failure than a redundant edge,
+    # so it is set explicitly to the row it can never actually reach.
+    on_done: Discussion-Bouncer
+    config:
+      run_subdir: discussion
+      # review_row names this segment's review row, which a refusal's way forward sends the
+      # operator back to.
+      review_row: Discussion-Burler-Review
+      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
+      # validator and re-prompts the live session up to its attempts times, so a failure never
+      # reaches the row below.
+      gates:
+        - name: discussion
+          attempts: 3
+      profile:
+        target:
+          paths:
+            - _lyx/discussion/decision-record.md
+            - _lyx/discussion/support-log.md
+        # fix-scope: overlay, for the reason the review row gives.
+        fix-scope: overlay
+
   - name: Plan-Write
     engine: PlanWrite
     on_done: Plan-Bouncer
@@ -163,7 +196,7 @@ producers:
   - name: Plan-Bouncer
     engine: Bouncer
     segment: Plan-Review
-    on_stuck: Plan-Burler
+    on_stuck: Plan-Burler-Review
     on_done: Batchifier
     config:
       run_subdir: plan
@@ -174,7 +207,7 @@ producers:
       artifact_paths:
         - _lyx/plan
       rubric_stencil: loom-rubric-plan-review
-      # commit_seam is required rather than optional here: Plan-Burler runs fix-scope: overlay and
+      # commit_seam is required rather than optional here: Plan-Burler-Fix runs fix-scope: overlay and
       # an overlay round runs no git at all, and nothing else in this segment commits, so without
       # the seam every approved fix would stay uncommitted in fabric's records working tree.
       commit_seam: plan
@@ -189,7 +222,7 @@ producers:
       # judge. Its inputs are agent-written -- the overview's first_card and a swept record.json --
       # so the seam re-classifies the live committed cards: a stale or forged record can at most
       # skip a generation whose live cards are themselves exempt. It also re-classifies the
-      # working-tree cards, since a Plan-Burler fix lands only through the commit a skip runs.
+      # working-tree cards, since a Plan-Burler-Fix fix lands only through the commit a skip runs.
       # Generation 0 never skips, and a seam error falls back to a real review.
       skip_seam: rework-exempt
       # carry_over names this row's own segment: the Bouncer files the round's still-open findings
@@ -198,24 +231,18 @@ producers:
       # No model/effort/version key: the row refuses them as unknown keys, and loom.yaml's judge,
       # seed and per-segment judge and seed keys are the only source of this row's passes' models.
 
-  - name: Plan-Burler
-    engine: BurlerRound
+  - name: Plan-Burler-Review
+    engine: BurlerReview
     segment: Plan-Review
-    on_stuck: Plan-Bouncer
-    # BurlerProducer never returns Done, so this edge is unreachable -- but an empty on_done is
-    # load-bearing and ends the whole run silently, which is a worse failure than a redundant edge,
-    # so it is set explicitly to the row it can never actually reach.
-    on_done: Plan-Bouncer
+    on_stuck: Plan-Burler-Fix
+    # BurlerReviewProducer never returns Done, so this edge is unreachable -- but an empty on_done
+    # is load-bearing and ends the whole run silently, which is a worse failure than a redundant
+    # edge, so it is set explicitly to the row it can never actually reach.
+    on_done: Plan-Burler-Fix
     config:
-      # The same run_subdir value as Plan-Bouncer is what makes both rows write into one shared
-      # run directory.
+      # The same run_subdir value as Plan-Bouncer is what makes the three rows write into one
+      # shared run directory.
       run_subdir: plan
-      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
-      # validator and re-prompts the live session up to its attempts times, so a failure never
-      # reaches the row below.
-      gates:
-        - name: plan
-          attempts: 3
       profile:
         target:
           paths:
@@ -241,7 +268,7 @@ producers:
             the review round is judging, and this row already has write access to the overview
             because it runs fix-scope: overlay with the plan directory in its target paths.
         rubric_stencil: loom-rubric-plan-review
-        # fix-scope: overlay, matching the Discussion-Burler row above. The plan directory is fabric
+        # fix-scope: overlay, matching the Discussion-Burler-Review row above. The plan directory is fabric
         # records content reached through the junction, and the Fabric Git Invariant reserves committing that
         # class of file to the loop owner, never an agent.
         fix-scope: overlay
@@ -251,6 +278,30 @@ producers:
         tool-use: true
       # No model/effort key: model choice lives in loom.yaml's review and fix keys only.
       # No timeout_s key, for the same Env fallback reason as Plan-Bouncer.
+
+  - name: Plan-Burler-Fix
+    engine: BurlerFix
+    segment: Plan-Review
+    on_stuck: Plan-Bouncer
+    # BurlerFixProducer never returns Done, so this edge is unreachable -- but an empty on_done is
+    # load-bearing and ends the whole run silently, which is a worse failure than a redundant edge,
+    # so it is set explicitly to the row it can never actually reach.
+    on_done: Plan-Bouncer
+    config:
+      run_subdir: plan
+      review_row: Plan-Burler-Review
+      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
+      # validator and re-prompts the live session up to its attempts times, so a failure never
+      # reaches the row below.
+      gates:
+        - name: plan
+          attempts: 3
+      profile:
+        target:
+          paths:
+            - _lyx/plan
+        # fix-scope: overlay, for the reason the review row gives.
+        fix-scope: overlay
 
   - name: Batchifier
     engine: Batchifier
@@ -263,7 +314,7 @@ producers:
   - name: Webster-Bouncer
     engine: Bouncer
     segment: Webster-Review
-    on_stuck: Webster-Burler
+    on_stuck: Webster-Burler-Review
     on_done: Describe
     config:
       run_subdir: webster
@@ -280,7 +331,7 @@ producers:
         - _lyx/plan
       rubric_stencil: loom-rubric-webster-review
       # No commit_seam key, deliberately unlike both Discussion-Bouncer and Plan-Bouncer:
-      # Webster-Burler runs fix-scope: source and commits each fix itself, so there is no artifact
+      # Webster-Burler-Fix runs fix-scope: source and commits each fix itself, so there is no artifact
       # left for a loop-owner seam to commit. bouncerEntry documents the resulting nil Commit as a
       # legitimate configuration and never an error. The segment's own round artifacts are
       # uncommitted by construction -- Env.RunRoot lands under the ephemeral .lyx tree, not the
@@ -291,27 +342,18 @@ producers:
       # No model/effort/version key: the row refuses them as unknown keys, and loom.yaml's judge,
       # seed and per-segment judge and seed keys are the only source of this row's passes' models.
 
-  - name: Webster-Burler
-    engine: BurlerRound
+  - name: Webster-Burler-Review
+    engine: BurlerReview
     segment: Webster-Review
-    on_stuck: Webster-Bouncer
-    # BurlerProducer never returns Done, so this edge is unreachable -- but an empty on_done is
-    # load-bearing and ends the whole run silently, which is a worse failure than a redundant edge,
-    # so it is set explicitly to the row it can never actually reach.
-    on_done: Webster-Bouncer
+    on_stuck: Webster-Burler-Fix
+    # BurlerReviewProducer never returns Done, so this edge is unreachable -- but an empty on_done
+    # is load-bearing and ends the whole run silently, which is a worse failure than a redundant
+    # edge, so it is set explicitly to the row it can never actually reach.
+    on_done: Webster-Burler-Fix
     config:
-      # The same run_subdir value as Webster-Bouncer is what makes both rows write into one shared
-      # run directory.
+      # The same run_subdir value as Webster-Bouncer is what makes the three rows write into one
+      # shared run directory.
       run_subdir: webster
-      # The verify gate runs on the committed tree after each round and re-prompts the round
-      # session with the findings until it passes. It first runs the headroom lint from the merge
-      # base with the parent branch, then lints the comments the round added, then runs the impacted-set command derived from the diff since the plan verify's last
-      # pass, or the plan's verify command wherever that diff cannot be narrowed. A tree the
-      # record already names passes without running, so a round that changed no code costs
-      # nothing.
-      gates:
-        - name: verify
-          attempts: 3
       profile:
         target:
           # No paths key, deliberately: burlerengine's own Profile.validate resolves and stats
@@ -330,11 +372,11 @@ producers:
             The plan directory named above is the answer key: the diff's job is to implement the
             cards it carries, and the Card model those cards implement is described in
             contracts/specs/loom-plan-spec.md. The mechanical checks over the plan's own format
-            are already enforced by Plan-Write's and Plan-Burler's own gates over each round's own
+            are already enforced by Plan-Write's and Plan-Burler-Fix's own gates over each round's own
             output, so re-deriving them in this round is duplicated work.
         rubric_stencil: loom-rubric-webster-review
         # fix-scope: source, the only row in the recipe still carrying this value now that
-        # Discussion-Burler and Plan-Burler both run overlay. The target is the repo's own source
+        # Discussion-Burler-Fix and Plan-Burler-Fix both run overlay. The target is the repo's own source
         # files, which the Fabric Git Invariant names as the one explicitly permitted agent commit
         # (commit-per-fix, never a push) -- the one legitimate reason a Burler row still runs source
         # here. An overlay round runs no git at all and restricts writes to Target.Paths, which this
@@ -349,6 +391,32 @@ producers:
         # only through git. Discussion-Review and Plan-Review take their fan from loom.yaml.
       # No model/effort key: model choice lives in loom.yaml's review and fix keys only.
       # No timeout_s key, for the same Env fallback reason as Webster-Bouncer.
+
+  - name: Webster-Burler-Fix
+    engine: BurlerFix
+    segment: Webster-Review
+    on_stuck: Webster-Bouncer
+    # BurlerFixProducer never returns Done, so this edge is unreachable -- but an empty on_done is
+    # load-bearing and ends the whole run silently, which is a worse failure than a redundant edge,
+    # so it is set explicitly to the row it can never actually reach.
+    on_done: Webster-Bouncer
+    config:
+      run_subdir: webster
+      review_row: Webster-Burler-Review
+      # The verify gate runs on the committed tree after each round and re-prompts the round
+      # session with the findings until it passes. It first runs the headroom lint from the merge
+      # base with the parent branch, then lints the comments the round added, then runs the impacted-set command derived from the diff since the plan verify's last
+      # pass, or the plan's verify command wherever that diff cannot be narrowed. A tree the
+      # record already names passes without running, so a round that changed no code costs
+      # nothing.
+      gates:
+        - name: verify
+          attempts: 3
+      profile:
+        # No target key, deliberately: the subject is the committed diff, which names no file, so
+        # the fixer finds its files from the review's findings and the gate's findings alone.
+        # fix-scope: source, for the reason the review row gives.
+        fix-scope: source
 
   - name: Describe
     engine: Describe

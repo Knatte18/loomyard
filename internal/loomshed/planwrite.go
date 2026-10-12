@@ -112,6 +112,8 @@ func (p *planWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 //
 // The closure's string result is the prompt amendment SingleLLMProducer appends to the respawned session's prompt: empty when nothing moved, otherwise a blank line followed by loomengine.PriorPlanBlock naming the archive directory and the moved files,
 // so the new session knows where the prior plan went.
+// The lens review file, planparser.LensReviewFileName, moves with the other files but is never named in the block;
+// when it is the only stale file, the rotation still moves it and returns an empty amendment, since there is no plan to carry forward.
 // stencilsDir is told by the caller and holds the loom-template-prior-plan stencil.
 // The block is rendered before any file moves,
 // and a render failure is returned as the closure's error,
@@ -134,15 +136,27 @@ func NewPlanDirRotator(anchorPath, stencilsDir string, archiveWebster func(dest 
 		if len(staleFiles) == 0 {
 			return "", nil
 		}
-		block, err := loomengine.PriorPlanBlock(stencilsDir, archiveDir, staleFiles)
-		if err != nil {
-			return "", fmt.Errorf("loomshed: announce prior plan: %w", err)
+		var announcedFiles []string
+		for _, name := range staleFiles {
+			if name != planparser.LensReviewFileName {
+				announcedFiles = append(announcedFiles, name)
+			}
+		}
+		var block string
+		if len(announcedFiles) > 0 {
+			block, err = loomengine.PriorPlanBlock(stencilsDir, archiveDir, announcedFiles)
+			if err != nil {
+				return "", fmt.Errorf("loomshed: announce prior plan: %w", err)
+			}
 		}
 		if err := archiveWebster(filepath.Join(archiveDir, reworkPriorWebster)); err != nil {
 			return "", fmt.Errorf("loomshed: archive webster run record: %w", err)
 		}
 		if err := rotateStalePlanDir(planDir, archiveDir, staleFiles); err != nil {
 			return "", fmt.Errorf("loomshed: rotate stale plan directory: %w", err)
+		}
+		if block == "" {
+			return "", nil
 		}
 		return "\n" + block, nil
 	}

@@ -59,9 +59,13 @@ func minimalEntries() map[string]minimalEntry {
 			env: newTestEnv,
 			cfg: minimalBouncerConfig,
 		},
-		"BurlerRound": {
+		"BurlerReview": {
 			env: newTestEnv,
-			cfg: func(*testing.T, Env) Config { return minimalBurlerConfig() },
+			cfg: func(*testing.T, Env) Config { return minimalReviewConfig() },
+		},
+		"BurlerFix": {
+			env: newTestEnv,
+			cfg: func(*testing.T, Env) Config { return minimalFixConfig() },
 		},
 		"MultiLLM": {
 			env: func(t *testing.T) Env {
@@ -73,6 +77,7 @@ func minimalEntries() map[string]minimalEntry {
 		},
 		"WorktreeCreate":   {newTestEnv, emptyConfig},
 		"InnerRun":         {newTestEnv, emptyConfig},
+		"Land":             {newTestEnv, emptyConfig},
 		"SeedChild":        {newTestEnvWithSeedChild, emptyConfig},
 		"WorktreeTeardown": {newTestEnv, emptyConfig},
 	}

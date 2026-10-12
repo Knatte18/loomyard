@@ -182,5 +182,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		ResumeCmd:  buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, notice, envFilePath, promptCacheTTL, skipPermissions, spec.ForkSubagents),
 		SessionID:  sessionID,
 		PromptLine: promptLine,
+
+		RecordsSessionStarts: true,
 	}, nil
 }

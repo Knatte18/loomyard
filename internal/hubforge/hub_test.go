@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"gopkg.in/yaml.v3"
 )
@@ -376,7 +377,7 @@ func TestNewHub_Concurrent(t *testing.T) {
 func TestNewHub_TeardownRemovesJunctionsKeepsTargets(t *testing.T) {
 	t.Parallel()
 
-	container, err := os.MkdirTemp("", "hubforge-teardown-keeps-targets-*")
+	container, err := lyxtemp.MkdirTemp("hubforge-teardown-keeps-targets-*")
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}

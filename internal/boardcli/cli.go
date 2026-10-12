@@ -18,7 +18,9 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -180,7 +182,7 @@ Example:
 		Long: `Find tasks whose slug, title, brief or body contains the text, done tasks included.
 The arguments are joined with single spaces into one search text. At least one argument is required.
 Prints the same JSON as "lyx board list"; with --text it prints the compact one-line-per-task
-listing instead (errors stay JSON); its columns are kind, slug, title, labels and, when set, [status].
+listing instead (errors stay JSON); its columns are kind, priority, age, time since last revision, slug, title, labels and, when set, [status].
 --label <name> keeps only entries carrying that label; repeat it to require several (AND).
 A label that is in neither the types nor the labels list of board.yaml and that no entry carries is refused.
 
@@ -330,7 +332,7 @@ func storeVerbs(board func() *boardengine.Board) []*cobra.Command {
 	// upsert subcommand: create or update a single task.
 	var bodyFile string
 	upsertCmd := &cobra.Command{
-		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, run_settings?}",
+		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?}",
 		Short:       "create or update a single task",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Create or update a task identified by its slug.
@@ -351,9 +353,9 @@ Optional fields:
   "priority"   string — "high", "normal" or "low"; absent means normal, and "normal" clears it
   "short_name" string — short display label; falls back to the slug
   "issues"     array  — inbox issue numbers the entry records
-  "run_settings" object — module name to that module's config keys, written into the pair's local config at Seed-Child;
-                      validated before the write, and {} clears it. A change is refused from a task session,
-                      and one on an entry whose run is past Seed-Child succeeds with a "notice" field.
+  "created"    string — RFC 3339 time the entry was added; a new entry without it gets the time of the write
+  "revised"    string — RFC 3339 time its scope last changed; a write that changes the scope without it gets the time of the write
+  "run_settings" object — module name to config keys, written into the pair's local config at Seed-Child; {} clears it
 
 Flag:
   --body-file <path>  read "body" from the file, or from stdin when the path is "-"; every other field still comes from the payload.
@@ -589,29 +591,37 @@ Examples:
 	// list subcommand: list all tasks with computed fields (layer, has_proposal).
 	var listText bool
 	var listLabels []string
+	var listSort string
 	listCmd := &cobra.Command{
 		Use:         "list",
 		Short:       "list all tasks with computed fields",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `List all tasks in README order with their computed fields (layer, has_proposal).
-With --text, print the compact one-line-per-task listing (kind, slug, title, labels, [status])
+With --text, print the compact one-line-per-task listing (kind, priority, age, time since last revision, slug, title, labels, [status])
 instead of JSON; errors stay JSON.
 --label <name> keeps only entries carrying that label; repeat it to require several (AND).
 A label that is in neither the types nor the labels list of board.yaml and that no entry carries is refused.
+--sort age lists the oldest entries first, --sort revised the longest unrevised first;
+an entry without the date goes last, and entries that tie keep README order.
 
 Examples:
   lyx board list
   lyx board list --text
+  lyx board list --text --sort age
   lyx board list --label bug --label enhancement`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			tasks, err := board().ListTasksBrief(listLabels)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
+			if err := sortByDate(tasks, listSort); err != nil {
+				return outputError(out, err.Error())
+			}
 			return writeListing(out, tasks, listText)
 		}),
 	}
 	listCmd.Flags().BoolVar(&listText, "text", false, "print the compact one-line-per-task listing instead of JSON")
+	listCmd.Flags().StringVar(&listSort, "sort", "", "order by date instead of README order: age (oldest first) or revised (longest unrevised first)")
 	listCmd.Flags().StringArrayVar(&listLabels, "label", nil, "keep only entries carrying this label; repeatable, all must match")
 
 	// list-full subcommand: list all tasks as stored in board.json.
@@ -813,12 +823,45 @@ Example:
 	}
 }
 
+// The orders `list --sort` accepts: oldest creation first, or longest since the last revision first.
+const (
+	sortByAge     = "age"
+	sortByRevised = "revised"
+)
+
+// sortByDate reorders tasks stably by the date order names, oldest first, with an unknown date last;
+// an empty order leaves tasks as they are, and any other is refused.
+func sortByDate(tasks []boardengine.BriefTask, order string) error {
+	var date func(boardengine.BriefTask) time.Time
+	switch order {
+	case "":
+		return nil
+	case sortByAge:
+		date = func(t boardengine.BriefTask) time.Time { return t.Created }
+	case sortByRevised:
+		date = func(t boardengine.BriefTask) time.Time { return t.Revised }
+	default:
+		return fmt.Errorf("sort %q is not one of %s, %s: pass one of them, or drop --sort for README order", order, sortByAge, sortByRevised)
+	}
+	slices.SortStableFunc(tasks, func(a, b boardengine.BriefTask) int {
+		da, db := date(a), date(b)
+		if da.IsZero() != db.IsZero() {
+			if da.IsZero() {
+				return 1
+			}
+			return -1
+		}
+		return da.Compare(db)
+	})
+	return nil
+}
+
 // writeListing prints tasks as the compact listing when text is set and as the JSON list envelope otherwise.
 func writeListing(out io.Writer, tasks []boardengine.BriefTask, text bool) int {
 	if !text {
 		return outputListBrief(out, tasks)
 	}
-	if _, err := io.WriteString(out, RenderCompact(tasks)); err != nil {
+	if _, err := io.WriteString(out, RenderCompact(tasks, time.Now())); err != nil {
 		return outputError(out, err.Error())
 	}
 	return 0

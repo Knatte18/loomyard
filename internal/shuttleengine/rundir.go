@@ -116,6 +116,11 @@ type RunState struct {
 	// Wait persists it before calling the notifier and never notifies a held turn end at or below it,
 	// so a crash between the write and the call loses that one notice and never repeats it.
 	NotifiedOffset int64 `json:"notifiedOffset,omitempty"`
+	// DialogNotifiedOffset is the events-file byte offset just past the last ask folded into a dialog episode whose notice Wait sent, zero for none.
+	// Wait persists it before calling the notifier and never rebuilds a dialog latch from an ask at or below it,
+	// so a crash between the write and the call loses that one notice and never repeats it.
+	// It is kept apart from NotifiedOffset so a held-turn-end notice and a dialog notice never suppress each other.
+	DialogNotifiedOffset int64 `json:"dialogNotifiedOffset,omitempty"`
 	// PromptOffset is the events-file size at the moment before Start sends the prompt, past the skill-load turns it ran and any line appended after them.
 	// It is zero when Start loaded no skills or for a record that predates the field.
 	// Every reader that replays the events file from its start begins here instead, so a load turn's end is never read as the run's own.
@@ -123,6 +128,9 @@ type RunState struct {
 	// PID is the pid of the process that waits on the run: Start records the starting process, and an attach rewrites it to the attaching process.
 	// Zero for a record an older binary wrote, which therefore never counts as live.
 	PID int `json:"pid,omitempty"`
+	// RecordsSessionStarts is the launch's declaration that it writes a session-start line, copied from the launch.
+	// Startup then needs that line beside the ready pane; a record an older binary wrote decodes false and keeps pane-only startup.
+	RecordsSessionStarts bool `json:"recordsSessionStarts,omitempty"`
 }
 
 // createRunDir mints a fresh run id, creates <root>/<runID>, and returns

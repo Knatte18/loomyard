@@ -1,6 +1,7 @@
 // settings.go composes the Claude Code settings.json document Prepare writes for each run:
 // a Stop hook that appends every turn-end event to the run's events.jsonl (the only channel ParseEvents reads).
-// The UserPromptSubmit, StopFailure, Notification and SessionEnd hooks append their payloads to the same file for ParseSessionSignals, and so does the SessionStart hook of a run whose spec sets a context-after-compaction command, which then runs that command so its output joins the session's context.
+// The UserPromptSubmit, StopFailure, Notification, SessionEnd, SessionStart and PermissionRequest hooks append their payloads to the same file for ParseSessionSignals;
+// the SessionStart hook of a run whose spec sets a context-after-compaction command runs that command on the compaction source, so its output joins the session's context.
 // Every recording hook writes a stamp line with the hook-side time before its payload, which ParseEvents skips.
 // The document also carries the PreToolUse guardrails that keep a run's work visible in its own pane —
 // denying the in-process Agent tool (or, in a fork-mode run, letting fork subagents through it while still denying every other subagent type; a run with Spec.AllowAgentTool set installs no Agent deny at all),
@@ -38,7 +39,7 @@ const steerAskUserQuestionDeny = "you cannot open an interactive dialog here. If
 const steerWebsterForkDeny = "lyx webster verbs belong to the Master session, never a fork. You are an implementer fork: do your batch work and write your report, and do NOT run any lyx webster command (not await-batch, not anything) — polling for the report you must write only deadlocks the run. This call is refused."
 
 // steerPythonDeny refuses a Bash python invocation; it must contain no single/double quote or backslash (checked at init).
-const steerPythonDeny = "lyx agents never run Python; edit files with Edit or Write, search and read with grep, awk or cat"
+const steerPythonDeny = "lyx agents never run Python; edit files with Edit or Write, search and read with grep, awk, cat or sed -n"
 
 // noticePythonDeny announces the python deny in the same wording as its steer.
 const noticePythonDeny = steerPythonDeny + "."
@@ -52,6 +53,44 @@ const commandPositionPattern = `("command"[[:space:]]*:[[:space:]]*"|\\n|[;&|(` 
 // pythonCommandPattern is the grep -E pattern the python deny matches against the raw PreToolUse payload JSON.
 // It matches python, python3 or python3.<minor>, optionally path-prefixed, as a whole word in command position.
 const pythonCommandPattern = commandPositionPattern + `python(3(\.[0-9]+)?)?([^A-Za-z0-9_./-]|$)`
+
+// steerInPlaceEditDeny refuses a Bash sed or perl in-place edit; it must contain no single/double quote or backslash (checked at init).
+// It points at the edit directive's rule and does not restate it.
+const steerInPlaceEditDeny = "scripted in-place edits are refused here under the edit directive in your prompt; reading with sed -n is fine"
+
+// noticeInPlaceEditDeny announces the in-place edit deny in the same wording as its steer.
+const noticeInPlaceEditDeny = steerInPlaceEditDeny + "."
+
+// inPlaceEditCommandPattern is the grep -E pattern the in-place edit deny matches against the raw PreToolUse payload JSON.
+// It matches sed or perl in command position, optionally path-prefixed, followed by that command's words up to the next ; & | ) backtick or JSON-escaped newline, then an in-place flag word:
+// for sed, -i or -i<suffix>, a short-flag cluster holding i such as -ni or -Ei, or a -- word that is a prefix of --in-place at least as long as --i, optionally followed by =<suffix>;
+// for perl, a short-flag cluster holding i such as -i, -i.bak or -pi.
+// A short-flag word opens after whitespace with a single dash and letters, so --quiet and --expression= never match as a cluster.
+// GNU sed accepts any unambiguous abbreviation of a long option and no other sed long option starts with --i.
+// It sees static text only, so it is a guardrail and not a barrier:
+// it lets through sed writing by redirection, a w command inside a script, awk, find -exec sed -i, anything behind bash -c, eval or a variable, and anything after a prefix commandPositionPattern does not list.
+// It falsely denies a matching spelling inside a quoted argument, a grep alternation or another payload field, and a perl read whose cluster holds an i, such as perl -Mstrict -ne.
+const inPlaceEditCommandPattern = commandPositionPattern + `(` +
+	`sed[[:space:]]` + inPlaceCommandWordsPattern + `(-[A-Za-z]*i|--i(n(-(p(l(a(c(e)?)?)?)?)?)?)?(=[^[:space:]"\\;&|)` + "`" + `]*)?([[:space:]"\\;&|)` + "`" + `]|$))` +
+	`|perl[[:space:]]` + inPlaceCommandWordsPattern + `-[A-Za-z]*i` +
+	`)`
+
+// inPlaceCommandWordsPattern matches the words of a command between its name and an in-place flag: optionally anything up to the next separator or JSON-escaped newline, ending on whitespace.
+const inPlaceCommandWordsPattern = `(([^;&|)\\` + "`" + `]|\\[^n])*[[:space:]])?`
+
+// steerComputedRmDeny refuses a Bash rm on a computed path; it must contain no single/double quote or backslash (checked at init).
+// It names the literal-path way forward and no scratch place.
+const steerComputedRmDeny = "rm on a computed path, one built from a variable or a command substitution, is refused here because it raises a permission prompt that stalls the run; remove a file by its literal path"
+
+// noticeComputedRmDeny announces the computed-path rm deny in the same wording as its steer.
+const noticeComputedRmDeny = steerComputedRmDeny + "."
+
+// rmCommandPattern is the grep -E pattern matching rm as a whole word in command position of the raw PreToolUse payload JSON.
+const rmCommandPattern = commandPositionPattern + `rm([^A-Za-z0-9_./-]|$)`
+
+// shellExpansionPattern is the grep -E pattern matching a command substitution, $( or a backtick, or a shell variable expansion, $ followed by a letter, a digit, _, {, @ or *.
+// The @ and * take in the positional parameters $@ and $*; the special parameters $$, $?, $# and $! are not matched.
+const shellExpansionPattern = "[$][A-Za-z0-9_{@*(]|`"
 
 // steerRawGoDeny refuses a Bash go run that bypasses the gate slots; it must contain no single/double quote or backslash (checked at init).
 // It is the gate rule every lyx-spawned session and its forks read, which stencils point at as "the gate rule in your system prompt".
@@ -108,17 +147,21 @@ type hookEntry struct {
 // Every event but PreToolUse is a recording hook installed for every session.
 // PreToolUse is omitted when an autonomous run has every deny off; interactive runs always carry at least the AskUserQuestion marker.
 type settingsHooks struct {
-	Stop             []hookEntry `json:"Stop"`
-	PreToolUse       []hookEntry `json:"PreToolUse,omitempty"`
-	UserPromptSubmit []hookEntry `json:"UserPromptSubmit"`
-	StopFailure      []hookEntry `json:"StopFailure"`
-	Notification     []hookEntry `json:"Notification"`
-	SessionEnd       []hookEntry `json:"SessionEnd"`
-	SessionStart     []hookEntry `json:"SessionStart,omitempty"`
+	Stop              []hookEntry `json:"Stop"`
+	PreToolUse        []hookEntry `json:"PreToolUse,omitempty"`
+	UserPromptSubmit  []hookEntry `json:"UserPromptSubmit"`
+	StopFailure       []hookEntry `json:"StopFailure"`
+	Notification      []hookEntry `json:"Notification"`
+	SessionEnd        []hookEntry `json:"SessionEnd"`
+	SessionStart      []hookEntry `json:"SessionStart"`
+	PermissionRequest []hookEntry `json:"PermissionRequest"`
 }
 
 // compactionMatcher is the SessionStart matcher for a session restarting after a compaction.
 const compactionMatcher = "compact"
+
+// nonCompactionMatcher is the SessionStart matcher for every source but compaction.
+const nonCompactionMatcher = "startup|resume|clear"
 
 // SessionStartContext renders the additional-context JSON a SessionStart hook prints to add text to the session's context.
 func SessionStartContext(text string) ([]byte, error) {
@@ -239,6 +282,29 @@ var standingDenies = []standingDeny{
 		notice:    noticeRawGoDeny,
 		installed: func(denyInputs) bool { return true },
 	},
+	{
+		// Installed for every run, the orch included, with no config key.
+		// A guardrail, not a barrier: inPlaceEditCommandPattern states what it lets through and what it falsely denies.
+		// Ending with `; true` guarantees exit 0 so a non-match allows the call.
+		matcher:   "Bash",
+		command:   "grep -Eq '" + inPlaceEditCommandPattern + "' && echo '" + denyJSON(steerInPlaceEditDeny) + "'; true",
+		steer:     steerInPlaceEditDeny,
+		notice:    noticeInPlaceEditDeny,
+		installed: func(denyInputs) bool { return true },
+	},
+	{
+		// Refuses before Claude Code raises its statically-unresolvable-target dialog, which shows even in bypass mode and stalls an unwatched run.
+		// Installed for every run, the orch included, with no config key.
+		// Requires rm in command position and an expansion anywhere in the payload.
+		// A guardrail, not a barrier: it falsely denies an rm of a literal path in a command that uses $ elsewhere, a grep alternation naming rm, and a matching spelling in another payload field such as the description.
+		// It lets through a removal behind find -delete, xargs rm with no $, bash -c or a script, and one through the special parameters it does not list ($$, $?, $#, $!).
+		// Ending with `; true` guarantees exit 0 so a non-match allows the call.
+		matcher:   "Bash",
+		command:   "in=$(cat); { printf '%s' \"$in\" | grep -Eq '" + rmCommandPattern + "'; } && { printf '%s' \"$in\" | grep -Eq '" + shellExpansionPattern + "'; } && echo '" + denyJSON(steerComputedRmDeny) + "'; true",
+		steer:     steerComputedRmDeny,
+		notice:    noticeComputedRmDeny,
+		installed: func(denyInputs) bool { return true },
+	},
 }
 
 // buildDenyNotice returns the one-line system-prompt notice announcing each deny buildSettings installs under the same inputs, or "" when it installs none.
@@ -267,7 +333,10 @@ func recordingCommand(hookEventName, quotedEventsPath string) string {
 // eventsPathPosix must be a git-bash POSIX path (from shuttleengine.PosixPath); it's embedded via shQuote to escape any apostrophes.
 // Agent-tool and AskUserQuestion denies are controlled by cfg; forkSubagents narrows the Agent deny to non-fork subagent types and adds a webster-verb guard,
 // and allowAgentTool drops the Agent deny entirely while leaving the webster-verb guard keyed on forkSubagents alone.
-// A non-empty contextAfterCompaction adds a SessionStart hook for the compaction matcher that records the event and then runs that command verbatim, so its standard output reaches the session's context; empty adds none.
+// Every SessionStart source is recorded exactly once.
+// A non-empty contextAfterCompaction splits the SessionStart hook in two: one entry records every source but compaction, and the compaction entry records the event and then runs that command verbatim, so its standard output reaches the session's context.
+// Empty gives a single recording entry with no matcher.
+// The recordings print nothing and exit 0, so the PermissionRequest recording answers no request and the SessionStart recording adds nothing to the session's context.
 func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, forkSubagents, allowAgentTool bool, contextAfterCompaction string) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	recordingHook := func(hookEventName string, alwaysSucceeds bool) []hookEntry {
@@ -280,20 +349,23 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 
 	doc := settingsDoc{
 		Hooks: settingsHooks{
-			Stop:             recordingHook(hookEventStop, false),
-			UserPromptSubmit: recordingHook(hookEventUserPromptSubmit, true),
-			StopFailure:      recordingHook(hookEventStopFailure, true),
-			Notification:     recordingHook(hookEventNotification, true),
-			SessionEnd:       recordingHook(hookEventSessionEnd, true),
+			Stop:              recordingHook(hookEventStop, false),
+			UserPromptSubmit:  recordingHook(hookEventUserPromptSubmit, true),
+			StopFailure:       recordingHook(hookEventStopFailure, true),
+			Notification:      recordingHook(hookEventNotification, true),
+			SessionEnd:        recordingHook(hookEventSessionEnd, true),
+			PermissionRequest: recordingHook(hookEventPermissionRequest, true),
 		},
 	}
 
-	if contextAfterCompaction != "" {
+	if contextAfterCompaction == "" {
+		doc.Hooks.SessionStart = recordingHook(hookEventSessionStart, true)
+	} else {
 		recording := recordingHook(hookEventSessionStart, true)[0].Hooks[0]
-		doc.Hooks.SessionStart = []hookEntry{{
-			Matcher: compactionMatcher,
-			Hooks:   []hookCommand{recording, {Type: "command", Command: contextAfterCompaction}},
-		}}
+		doc.Hooks.SessionStart = []hookEntry{
+			{Matcher: nonCompactionMatcher, Hooks: []hookCommand{recording}},
+			{Matcher: compactionMatcher, Hooks: []hookCommand{recording, {Type: "command", Command: contextAfterCompaction}}},
+		}
 	}
 
 	in := denyInputs{interactive: interactive, cfg: cfg, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool}

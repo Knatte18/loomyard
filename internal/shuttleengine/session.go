@@ -177,7 +177,8 @@ func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 }
 
 // sendSessionSequence sends the sequence that sequenceFor returns for the cycler into the live pane of the run identified by guid, through the guarded send path.
-func (r *Runner) sendSessionSequence(guid string, sequenceFor func(SessionCycler) []PaneInput) error {
+// A non-empty landing makes a session-start line of that source the send's confirmation.
+func (r *Runner) sendSessionSequence(guid string, landing SessionStartSource, sequenceFor func(SessionCycler) []PaneInput) error {
 	cycler, err := r.sessionCycler()
 	if err != nil {
 		return err
@@ -188,6 +189,7 @@ func (r *Runner) sendSessionSequence(guid string, sequenceFor func(SessionCycler
 	}
 	sc := r.newSendContext(state, runDir)
 	sc.hold = r.holdFor(guid)
+	sc.landingStart = landing
 	return sendSequence(sc, sequenceFor(cycler))
 }
 
@@ -197,7 +199,7 @@ func (r *Runner) ClearSession(guid string) error {
 	if r.toldErr != nil {
 		return r.toldErr
 	}
-	return r.sendSessionSequence(guid, SessionCycler.ClearSessionSequence)
+	return r.sendSessionSequence(guid, SessionStartClear, SessionCycler.ClearSessionSequence)
 }
 
 // ReloadPlugins sends the provider's reload-plugins command into the live pane of the run identified by guid.
@@ -206,7 +208,7 @@ func (r *Runner) ReloadPlugins(guid string) error {
 	if r.toldErr != nil {
 		return r.toldErr
 	}
-	return r.sendSessionSequence(guid, SessionCycler.ReloadPluginsSequence)
+	return r.sendSessionSequence(guid, "", SessionCycler.ReloadPluginsSequence)
 }
 
 // TypeColor sends the provider's color command for color into the live pane of the run identified by guid, for a caller that colors the session itself.
@@ -235,5 +237,5 @@ func (r *Runner) CompactSession(guid, focus string) error {
 	if strings.ContainsAny(focus, "\r\n") {
 		return fmt.Errorf("shuttle: compact focus for strand %q spans several lines; it is typed as one line, so join it into one", guid)
 	}
-	return r.sendSessionSequence(guid, func(cycler SessionCycler) []PaneInput { return cycler.CompactSessionSequence(focus) })
+	return r.sendSessionSequence(guid, SessionStartCompact, func(cycler SessionCycler) []PaneInput { return cycler.CompactSessionSequence(focus) })
 }

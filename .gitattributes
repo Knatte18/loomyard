@@ -6,11 +6,7 @@
 # against literal \n-embedded expectations in Go source (planparser below).
 contracts/stencils/loom/loom-template-discussion.md text eol=lf
 contracts/stencils/loom/loom-template-plan.md text eol=lf
-contracts/stencils/burler/burler-template-review-orchestrator.md text eol=lf
-contracts/stencils/burler/burler-template-fix-orchestrator.md text eol=lf
 contracts/stencils/burler/burler-step-1-explore.md text eol=lf
-contracts/stencils/burler/burler-step-2-review.md text eol=lf
-contracts/stencils/burler/burler-step-3-fix.md text eol=lf
 contracts/stencils/treadle/treadle-template-judge-circling.md text eol=lf
 contracts/stencils/treadle/treadle-template-judge-milestone.md text eol=lf
 contracts/stencils/treadle/treadle-template-targeting.md text eol=lf

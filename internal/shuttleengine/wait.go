@@ -19,6 +19,7 @@
 // (.lyx/logs/trace-<stamp>-<trace>-<pid>.log, unconditionally enabled at Info) and not the detached
 // driver's own log, which captures stderr and therefore only Warn and above. An operator asking "is
 // this interview waiting for me, or is it wedged?" reads the trace sink.
+// An autonomous run's pane that shows a permission or input dialog past a bound is also reported to the parent, once per dialog, through the same notifier; see dialog.go.
 // A hold never extends run.deadline: a held run is bounded by its caller's own Spec.Timeout (run_timeout_min only where that is zero),
 // and by the liveness check, which still classifies a dead pane.
 // A turn end that leaves background work outstanding while an output file is missing is a wait, never a held stop: a shell of either signal and a fork are live work, so none expires into a hold or a notice.
@@ -31,14 +32,17 @@
 // an ungated run's Done finalizes exactly as before the gate existed, unaware the gate exists at all.
 // A gated Done instead evaluates the gate's entries through run.evaluateGate() and, when an entry failed with its own budget remaining, sends a one-line re-prompt naming the findings file and keeps polling rather than finalizing -- the bounded re-prompt loop the "one GateSpec at every hop" and "attempts counts re-prompts actually sent" plan decisions describe.
 // A gated Done is also the writer's turn boundary, and a PassOnCap entry may answer pending there:
-// the loop sends the entry's carried text (only at a boundary), keeps polling, and re-evaluates on every poll tick with no new arrival while the writer is idle, so a verdict recorded meanwhile is read without a new arrival.
+// the loop sends the entry's carried text (only at a boundary), keeps polling, and re-evaluates with no new arrival while the writer is idle at most once per gateRecheckEvery, so a verdict recorded meanwhile is read without a new arrival.
 // Both paths run through handleGatedBoundary, and the run deadline and liveness checks keep running throughout, never extended by the wait.
 // For an engine with the idle reading and session signals, a boundary is confirmed idle in fact before the gate sends:
 // a turn start left unmatched by a later turn end clears the boundary, the loop keeps polling and reads the pane every tick,
 // and the boundary is restored when the engine reports that turn interrupted or the pane has read idle for turnStartIdleOverride.
 // Every gate send goes through sendWithin, so its idle wait and submit window end by the run deadline.
 // A re-prompt that fails busy or unlanded spends no attempt and is re-sent on a later tick, bounded by the run deadline.
-// The other three finalize call sites in this file (the events-unreadable/status-retry mechanism-failure exits via finishedDespiteMechanismFailure, the liveness-tick exit, and the deadline exit) are left untouched:
+// A gated run off the boundary, mid-turn or attached with no boundary seen, also asks each entry's read-only Expired probe once per gateRecheckEvery;
+// the first entry whose wait bound has run out finalizes the run done, so the bound ends the wait even when the writer never ends its turn.
+// That finalize call is a positive outcome, so it needs no allOutputFilesExist check.
+// The other finalize call sites in this file (the events-unreadable/status-retry mechanism-failure exits via finishedDespiteMechanismFailure, the liveness-tick exit, and the deadline exit) are left untouched:
 // each is reached precisely because the session is gone, the clock ran out, or the bookkeeping broke, so no Send is attempted there and finalize's own evaluation reports Attempts as it stands.
 //
 // # Completion Signal Invariant
@@ -115,6 +119,10 @@ func (realClock) Sleep(d time.Duration) { time.Sleep(d) }
 
 // pollFloor is the shortest poll interval; a configured value below it is floored to it.
 const pollFloor = time.Second
+
+// gateRecheckEvery is the shortest spacing between two gate evaluations the wait loop starts with no new arrival.
+// A verdict read this much later costs nothing, and each evaluation re-reads the entries' files.
+const gateRecheckEvery = 5 * time.Second
 
 // pollInterval returns Wait's tick interval, flooring a value below pollFloor (non-positive included) to pollFloor to prevent busy-spinning.
 // It floors silently; LoadConfig logs the one warning.
@@ -246,6 +254,7 @@ func (run *Run) Wait() (Result, error) {
 	// run keeps full liveness coverage regardless of Started — only the startup probe itself is
 	// conditional on it.
 	started := run.state.Started
+	run.sessionLiveness = sessionLivenessState{}
 	eventsFailures := 0
 	statusFailures := 0
 
@@ -258,6 +267,9 @@ func (run *Run) Wait() (Result, error) {
 	// The signal cursor starts at the prompt offset on every path, never at run.offset, which an attach may start later.
 	run.shadow = sessionShadow{active: true, cursor: run.state.PromptOffset}
 	defer func() { run.shadow.active = false }()
+
+	// The dialog latch reads asks from the larger of the prompt offset and the last dialog-notified offset, so a reattach never re-notifies a dialog it already did.
+	run.dialog = dialogLatch{cursor: max(run.state.PromptOffset, run.state.DialogNotifiedOffset)}
 
 	for tick := 1; ; tick++ {
 		outcome, held, err := run.pollEventsTick()
@@ -307,7 +319,8 @@ func (run *Run) Wait() (Result, error) {
 				}
 			} else if (run.gatePending || run.unsentReprompt) && run.gateAtBoundary {
 				// No new arrival, an entry is pending or a re-prompt is unsent, and the writer is idle: re-evaluate, so a verdict recorded since is read without waiting for the writer to speak.
-				if run.boundaryIdle() {
+				// A pending entry is re-read at most once per gateRecheckEvery; an unsent re-prompt is retried every tick, since that re-sends a re-prompt and reads no verdict.
+				if (run.unsentReprompt || run.gateRecheckDue()) && run.boundaryIdle() {
 					if result, finished, ferr := run.handleGatedBoundary(); finished {
 						return result, ferr
 					}
@@ -317,10 +330,20 @@ func (run *Run) Wait() (Result, error) {
 				if result, finished, ferr := run.handleGatedBoundary(); finished {
 					return result, ferr
 				}
+			} else if len(run.gate) != 0 && !run.gateAtBoundary && run.gateRecheckDue() {
+				// Nothing arrived and the writer is off the boundary, mid-turn or with no boundary seen since an attach:
+				// ask the entries' read-only probes whether a wait bound has run out, which the writer's own turn end would otherwise never show.
+				run.lastGateEvalAt = run.clock.Now()
+				if name, expired := run.probeExpiry(); expired {
+					logger.Info("shuttle: gate: entry wait expired off the boundary, finalizing", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", name)
+					run.gateVerdict = nil
+					return run.finalize(OutcomeDone)
+				}
 			}
 		}
 
 		run.settleDeferredHold()
+		run.watchDialog()
 		run.logSessionState("", tick%livenessEvery == 0)
 
 		if tick%livenessEvery == 0 {
@@ -362,6 +385,30 @@ func (run *Run) Wait() (Result, error) {
 	}
 }
 
+// gateRecheckDue reports whether gateRecheckEvery has passed since the last gate evaluation, which is always so before the first.
+func (run *Run) gateRecheckDue() bool {
+	return run.lastGateEvalAt.IsZero() || run.clock.Now().Sub(run.lastGateEvalAt) >= gateRecheckEvery
+}
+
+// probeExpiry calls the Expired probe of every entry that has one and is not off, in list order, and returns the name of the first entry whose probe reports expired.
+// A probe error logs a Warn naming the entry and counts as not expired, so the loop keeps polling under its deadline and liveness checks.
+func (run *Run) probeExpiry() (string, bool) {
+	for _, entry := range run.gate {
+		if entry.Attempts <= 0 || entry.Expired == nil {
+			continue
+		}
+		expired, err := entry.Expired()
+		if err != nil {
+			logger.Warn("shuttle: gate: expiry probe failed, treating the entry as not expired", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", entry.Name, "error", err)
+			continue
+		}
+		if expired {
+			return entry.Name, true
+		}
+	}
+	return "", false
+}
+
 // gateEntryError builds a gate-contract violation error for the named entry.
 // It is not an Errorf call on purpose: evaluateGate's returns are infrastructure faults wrapped by their callers with "shuttle: gate: %w", not negative verdicts on whether the run finished.
 func gateEntryError(name, problem string) error {
@@ -369,7 +416,7 @@ func gateEntryError(name, problem string) error {
 }
 
 // handleGatedBoundary evaluates the gate list from its first entry at a turn boundary and reports whether Wait finishes with the returned Result and error.
-// It is reached from a gated Done arrival and from a poll tick with no new arrival while an entry is pending and the writer is idle.
+// It is reached from a gated Done arrival and from a poll tick with no new arrival while an entry is pending, the writer is idle and gateRecheckEvery has passed since the last evaluation.
 // Run.Interrupt is never used here: the gate fires at a turn boundary, when there is no in-progress turn to interrupt.
 // No new deadline is introduced and run.deadline is never extended: the loop runs under the deadline Start already set from spec.Timeout,
 // so a timeout mid-wait still reaches classifyDeadlineExpiry, which classifies OutcomeDone when the files are present and therefore still runs the gate one final time through finalize.
@@ -382,6 +429,7 @@ func gateEntryError(name, problem string) error {
 // a failed pending send logs one Warn naming the entry, the error and the closure's way-forward, leaves the entry pending and the writer at the boundary, and never ends the loop.
 // The memo is cleared after a pending result, so the next evaluation, and a finalize after it, read the closures afresh.
 func (run *Run) handleGatedBoundary() (Result, bool, error) {
+	run.lastGateEvalAt = run.clock.Now()
 	verdict, gerr := run.evaluateGate(false)
 	if gerr != nil {
 		return run.identity(), true, fmt.Errorf("shuttle: gate: %w", gerr)
@@ -526,6 +574,7 @@ func (run *Run) awaitStartup() (Result, error) {
 	sleep := base
 	previousCapture := ""
 	started := false
+	run.sessionLiveness = sessionLivenessState{}
 	statusFailures := 0
 	for tick := 0; tick < maxTicks; tick++ {
 		outcome, err := run.checkLivenessTick(&started, startupDeadline)
@@ -598,6 +647,7 @@ func (run *Run) awaitStartup() (Result, error) {
 // text and an operator remedy when it did not, since a strand abandonStartup could not remove is the
 // one residual an operator must clear by hand.
 //
+// When cause is nil and the run never started, the error also carries the reason the last startup probe held a ready pane back for want of a session-start line, if it recorded one.
 // The error ends with ". The pane's last lines:" and the last startup capture's tail when all three hold:
 // cause is nil, the provider never reached StartupReady (run.state.Started is false), and a startup capture was recorded.
 // Every other teardown reports a cause that already carries its own screen or a mechanism failure with none,
@@ -629,6 +679,10 @@ func (run *Run) abandonStartup(outcome Outcome, cause error) (Result, error) {
 		logger.Warn("shuttle: start failed before the provider took its first input; strand torn down", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", string(outcome), "cause", cause)
 		format += ": %w"
 		args = append(args, cause)
+	}
+	if cause == nil && !run.state.Started && run.startupHookReason != "" {
+		format += "; %s"
+		args = append(args, run.startupHookReason)
 	}
 	if cause == nil && !run.state.Started && run.lastStartupCapture != "" {
 		format += ". The pane's last lines:\n%s"
@@ -992,7 +1046,14 @@ func allOutputFilesExist(files []string) bool {
 // A startup gate is dismissed at most once per dismissalGap on the run's clock: a probe inside the gap that still sees a gate plays nothing and does not ask for the dismissal keys.
 // Any play that sent at least one input starts the gap, failed partway or not; an empty sequence or a first input that failed does not.
 // Bound: the throttle only removes key presses and never adds one, and the startup deadline and the tick cap still end a gate that never clears.
+//
+// Once the strand reads live, every tick asks sessionGone, before the started short-circuit so startup is covered too;
+// a gone session returns OutcomeDone when every output file exists and OutcomeDied otherwise, the way a dead pane does.
 // Run.Wait's own startup probe already runs at least one gap apart, so the throttle never holds a dismissal there.
+//
+// For a record with RecordsSessionStarts, a ready pane marks the run started only once the events file also holds a session-start line.
+// Until then the tick stays not started, records the reason on the run for abandonStartup and answers as a still-booting pane does; gate detection and dismissal run as for any run.
+// Bound: a session-start line an earlier launch of the same run left satisfies the line half, and the pane half still gates it.
 func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Outcome, error) {
 	status, err := run.runner.reed.Status()
 	if err != nil {
@@ -1021,6 +1082,13 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 		return OutcomeDied, nil
 	}
 
+	if run.sessionGone() {
+		if allOutputFilesExist(run.spec.OutputFiles) {
+			return OutcomeDone, nil
+		}
+		return OutcomeDied, nil
+	}
+
 	if *started {
 		return "", nil
 	}
@@ -1039,6 +1107,20 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 
 	switch run.runner.engine.Startup(capture) {
 	case StartupReady:
+		if run.state.RecordsSessionStarts {
+			recorded, readErr := sessionStartRecorded(run.runner.engine, run.state.EventsPath)
+			switch {
+			case readErr != nil:
+				run.startupHookReason = fmt.Sprintf("the events file %s could not be read for a session-start line: %v", run.state.EventsPath, readErr)
+			case !recorded:
+				run.startupHookReason = fmt.Sprintf("no session-start line in the events file %s", run.state.EventsPath)
+			default:
+				run.startupHookReason = ""
+			}
+			if run.startupHookReason != "" {
+				break
+			}
+		}
 		*started = true
 		// Persisted immediately, not left for finalize: this is the one fact a killed driver must
 		// not lose, since it is what tells a LATER Attach apart a genuinely booted, mid-turn pane
@@ -1076,6 +1158,92 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 	// StartupPending and a trust prompt that has not yet cleared are both "still not ready", and
 	// share the one deadline that governs the whole startup window.
 	return run.classifyStartupWindow(startupDeadline), nil
+}
+
+// sessionLivenessState is what sessionGone keeps across the liveness ticks of one wait.
+type sessionLivenessState struct {
+	// sizeTaken reports that firstTickSize holds the events file's size at the wait's first liveness tick.
+	sizeTaken     bool
+	firstTickSize int64
+	// readAlive holds the session ids a liveness tick of this wait read alive.
+	readAlive map[string]bool
+}
+
+// sessionGone reports whether this tick proves the provider's process gone behind a live pane.
+// It answers false for an engine without both SessionSignalParser and SessionProber.
+// Otherwise it reads the registry once for the newest session id the events file names, the record's SessionID when none, and answers true when either holds:
+// the signals past the events-file size taken at the wait's first call end in a process-ending session end and the reading is not alive,
+// or the reading is dead for an id this wait read alive at an earlier tick.
+// An alive reading records the id and answers false, as does an unproven reading, a dead one for an id this wait never read alive and a session end at or before the first-call size.
+// An unreadable events file counts no session end.
+func (run *Run) sessionGone() bool {
+	parser, parses := run.runner.engine.(SessionSignalParser)
+	prober, probes := run.runner.engine.(SessionProber)
+	if !parses || !probes {
+		return false
+	}
+	state := &run.sessionLiveness
+	if !state.sizeTaken {
+		state.firstTickSize, state.sizeTaken = eventsSize(run.state.EventsPath), true
+	}
+
+	var pastFirstTick []SessionSignal
+	sessionID := run.state.SessionID
+	if data, err := os.ReadFile(run.state.EventsPath); err == nil {
+		signals, _ := parser.ParseSessionSignals(data)
+		for i := len(signals) - 1; i >= 0; i-- {
+			if signals[i].SessionID != "" {
+				sessionID = signals[i].SessionID
+				break
+			}
+		}
+		if state.firstTickSize <= int64(len(data)) {
+			pastFirstTick, _ = parser.ParseSessionSignals(data[state.firstTickSize:])
+		}
+	}
+
+	liveness := prober.ProcessLiveness(sessionID)
+	if liveness == LivenessAlive {
+		if state.readAlive == nil {
+			state.readAlive = map[string]bool{}
+		}
+		state.readAlive[sessionID] = true
+		return false
+	}
+	proof := ""
+	switch {
+	case len(pastFirstTick) > 0 && pastFirstTick[len(pastFirstTick)-1].Kind == SessionSignalSessionEnd && pastFirstTick[len(pastFirstTick)-1].EndsProcess:
+		proof = "a process-ending session end past the wait's first tick, and the process not alive"
+	case liveness == LivenessDead && state.readAlive[sessionID]:
+		proof = "the process read alive earlier in this wait is now dead"
+	default:
+		return false
+	}
+	logger.Info("shuttle: the provider's process is gone behind a live pane", "strandGUID", run.state.StrandGUID, "sessionID", sessionID, "proof", proof)
+	return true
+}
+
+// sessionStartRecorded reports whether the events file holds a session-start signal of any source, read from the file's start.
+// An absent file reads false with no error and an unreadable one returns the read error; an engine without SessionSignalParser reads false.
+func sessionStartRecorded(engine Engine, eventsPath string) (bool, error) {
+	parser, ok := engine.(SessionSignalParser)
+	if !ok {
+		return false, nil
+	}
+	data, err := os.ReadFile(eventsPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	signals, _ := parser.ParseSessionSignals(data)
+	for _, signal := range signals {
+		if signal.Kind == SessionSignalSessionStart {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // classifyStartupWindow reports the run's outcome once startupDeadline has passed on a run whose

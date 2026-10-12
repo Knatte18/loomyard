@@ -111,7 +111,9 @@
 //
 // # Checks outside both entry points
 //
-// CheckFirstCard and CheckCardFabricReference sit outside ValidateFormat and Validate, since only a caller holding the rework round's first card number, or a matcher for the fabric-reference rule, can run them.
+// CheckFirstCard, CheckCardFabricReference and CheckFabricVocabularyName sit outside ValidateFormat and Validate.
+// Only a caller holding the rework round's first card number, or a matcher for the fabric-reference rule, can run the first two.
+// CheckFabricVocabularyName needs no told input, but the plan index appends it beside CheckCardFabricReference.
 // CheckCardFabricReference scans the raw text the parse step records in Plan.OverviewText and Card.Text, so it reads no file and planparser stays the sole parser.
 //
 // # Entry-line cap

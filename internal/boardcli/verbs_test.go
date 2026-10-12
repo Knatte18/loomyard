@@ -1,12 +1,13 @@
 //go:build integration
 
-// verbs_test.go — tests for the board verbs beyond the store verbs: promote, prune, find, retire-legacy, and the --text listing on list and find.
+// verbs_test.go — tests for the board verbs beyond the store verbs: promote, prune, find, retire-legacy, the --text listing on list and find, and list's --sort.
 // The steps run from TestCLI in cli_test.go, which also defines cliFixture; runCLI is in cli_unit_test.go, same package.
 
 package boardcli_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -205,17 +206,29 @@ func stepListAndFindText(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"soon","title":"Soon thing","kind":"task","labels":["bug"]}`)
 	runJSON(t, 0, "set-status", `{"slug":"soon","status":"active"}`)
 
-	wantList := "task  soon   Soon thing   bug                    [active]\n" +
-		"note  later  Later thing  enhancement,undecided\n"
+	wantList := "task  0m  0m  soon   Soon thing   bug                    [active]\n" +
+		"note  0m  0m  later  Later thing  enhancement,undecided\n"
 	exitCode, stdout := runCLI(t, "list", "--text")
 	if exitCode != 0 || stdout != wantList {
 		t.Fatalf("list --text: exit %d, stdout %q, want %q", exitCode, stdout, wantList)
 	}
 
-	wantFind := "note  later  Later thing  enhancement,undecided\n"
+	wantFind := "note  0m  0m  later  Later thing  enhancement,undecided\n"
 	exitCode, stdout = runCLI(t, "find", "--text", "later")
 	if exitCode != 0 || stdout != wantFind {
 		t.Fatalf("find --text: exit %d, stdout %q, want %q", exitCode, stdout, wantFind)
+	}
+
+	// A backfilled creation date reorders --sort age, oldest first, and leaves --sort revised in README order.
+	mustUpsert(t, `{"slug":"later","created":"2026-01-02T03:04:05Z"}`)
+	if got := slugsOf(t, runJSON(t, 0, "list", "--sort", "age")); !slices.Equal(got, []string{"later", "soon"}) {
+		t.Fatalf("list --sort age: slugs = %v, want [later soon]", got)
+	}
+	if got := slugsOf(t, runJSON(t, 0, "list", "--sort", "revised")); !slices.Equal(got, []string{"soon", "later"}) {
+		t.Fatalf("list --sort revised: slugs = %v, want [soon later]", got)
+	}
+	if result := runJSON(t, 1, "list", "--sort", "newest"); !strings.Contains(fmt.Sprint(result["error"]), "newest") {
+		t.Fatalf("list --sort newest: result = %v, want a refusal naming the value", result)
 	}
 }
 

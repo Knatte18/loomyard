@@ -74,7 +74,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	wantLocalDenied := map[string][]string{
 		"reed":    {"debug_log", "mouse", "shell", "tmux", "tmux_conf"},
 		"shuttle": {"claude", "claude_deny_agent_tool", "claude_deny_ask_user_question", "claude_deny_python", "run_dir"},
-		"loom":    {"discussion_fan", "discussion_producer", "parent_review_wait_min", "plan_fan"},
+		"loom":    {"discussion_auto_accept", "discussion_fan", "discussion_producer", "parent_review_wait_min", "plan_auto_accept", "plan_fan", "plan_producer", "webster_auto_accept"},
 		"burler":  {"fans", "lenses"},
 	}
 	for _, m := range Modules() {

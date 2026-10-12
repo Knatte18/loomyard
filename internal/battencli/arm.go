@@ -481,6 +481,9 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 	if err := battenshed.ClearTerminalOpened(c.env.ScratchDir, battenrecipe.NameRunShed); err != nil {
 		return err
 	}
+	if err := battenshed.ClearRunMarkers(c.env.ScratchDir); err != nil {
+		return err
+	}
 	return state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
 		if found {
 			return cur, nil
@@ -500,7 +503,7 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 // It also names the other way forward: giving the new task a different slug.
 func (c *battenCLI) doneSlugRefusal() error {
 	return fmt.Errorf(
-		"battencli: %q has already completed; to run it again, delete its run directory %s (a change on the pair's fabric sibling) and the task branch its torn-down pair left behind, locally and on the remote (\"lyx fabric cleanup --apply --remote\" removes any orphaned sibling branch), or give the new task a different slug",
+		"battencli: %q has already completed; to run it again, run \"lyx batten cleanup --apply\" from the prime, which removes its run directory %s, and delete the task branch its torn-down pair left behind, locally and on the remote (\"lyx fabric cleanup --apply --remote\" removes any orphaned sibling branch), or give the new task a different slug",
 		c.slug, shedrun.RunDir(c.location, c.slug),
 	)
 }
@@ -559,6 +562,9 @@ func (c *battenCLI) battenPreStepUnmarked(ctx context.Context) (string, error) {
 	}
 
 	if err := battenshed.ClearTerminalOpened(c.env.ScratchDir, battenrecipe.NameRunShed); err != nil {
+		return shedverbs.KindUnseeded, err
+	}
+	if err := battenshed.ClearRunMarkers(c.env.ScratchDir); err != nil {
 		return shedverbs.KindUnseeded, err
 	}
 	if err := state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
@@ -640,7 +646,7 @@ func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, er
 const childDoneFlagKey = "child_done_batten_halted"
 
 // haltedOverDoneChild returns the flag text and true when batten's own state st is failed, blocked or paused while the child loom run's status child, read when childFound, is done.
-// The flag names the batten run that closes the pair, which runs Worktree-Teardown.
+// The flag names the batten run that closes the pair: it resumes batten at the row it halted at, which lands the run through Land before Worktree-Teardown tears the pair down.
 func haltedOverDoneChild(slug string, st, child shedengine.Status, childFound bool) (string, bool) {
 	switch st.State {
 	case shedengine.StateFailed, shedengine.StateBlocked, shedengine.StatePaused:
@@ -650,7 +656,7 @@ func haltedOverDoneChild(slug string, st, child shedengine.Status, childFound bo
 	if !childFound || child.State != shedengine.StateDone {
 		return "", false
 	}
-	return fmt.Sprintf("batten is %s while its child loom run is done; run \"lyx batten run %s\" from the prime, which runs Worktree-Teardown", st.State, slug), true
+	return fmt.Sprintf("batten is %s while its child loom run is done; run \"lyx batten run %s\" from the prime, which resumes batten at the row it halted at and lands the run through Land before Worktree-Teardown tears the pair down", st.State, slug), true
 }
 
 // readChildStatus reads the task worktree's own loom run status.

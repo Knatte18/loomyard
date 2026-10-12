@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -37,6 +38,10 @@ func TestBattenPreStep_SeedsAbsentStatus(t *testing.T) {
 	if err := os.WriteFile(markerPath, []byte("opened\n"), 0o644); err != nil {
 		t.Fatalf("plant terminal-opened marker: %v", err)
 	}
+	rowNoticePath := filepath.Join(c.env.ScratchDir, battenrecipe.NameWorktreeTeardown+"-row-notice")
+	if err := os.WriteFile(rowNoticePath, []byte("failure 3\n"), 0o644); err != nil {
+		t.Fatalf("plant row-notice marker: %v", err)
+	}
 
 	kind, err := c.battenPreStep(context.Background())
 	if err != nil {
@@ -47,6 +52,9 @@ func TestBattenPreStep_SeedsAbsentStatus(t *testing.T) {
 	}
 	if _, err := os.Stat(markerPath); !os.IsNotExist(err) {
 		t.Errorf("terminal-opened marker stat error = %v; want it cleared by the fresh seed", err)
+	}
+	if _, err := os.Stat(rowNoticePath); !os.IsNotExist(err) {
+		t.Errorf("row-notice marker stat error = %v; want it cleared by the fresh seed", err)
 	}
 
 	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
@@ -101,7 +109,7 @@ func TestBattenPreStep_RefusalKinds(t *testing.T) {
 				})
 			},
 			wantKind:   shedverbs.KindBootstrap,
-			wantSubstr: []string{"delete its run directory", "task branch", "locally and on the remote", "to run it again", "different slug"},
+			wantSubstr: []string{"lyx batten cleanup --apply", "task branch", "locally and on the remote", "to run it again", "different slug"},
 		},
 	}
 	for _, tt := range tests {

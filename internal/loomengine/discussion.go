@@ -26,12 +26,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // discussionRole is the agent-name role this module's Discussion-Write spawn carries.
 const discussionRole = "discussion"
+
+// DiscussionWriterRole returns the role of the session the parent-review gate prompts: the seats chair when discussion_producer is seats, and the single writer otherwise.
+// Advisors are out, since they take no turn after the chair's record exists.
+func DiscussionWriterRole(cfg Config) string {
+	if cfg.DiscussionProducer == DiscussionProducerSeats {
+		return seatengine.SeatRole(discussionRole, seatengine.RoleChair)
+	}
+	return discussionRole
+}
 
 // discussionSkills are the skills the Discussion-Write spawn loads, in order.
 var discussionSkills = []string{"scribe:prose", "scribe:conversation"}

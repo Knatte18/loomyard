@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -74,6 +75,10 @@ type Finding struct {
 	// and without it, so every existing (pre-cluster) review file keeps
 	// parsing identically.
 	Origin string `yaml:"origin"`
+	// Fix is the exact change to make and where, so a fixer without the reviewer's orientation can act on the review alone.
+	// ParseReview does not require it, so a review written before the key existed still parses;
+	// ParseCurrentReview does.
+	Fix string `yaml:"fix"`
 }
 
 // reviewHeader mirrors the review file's YAML frontmatter shape. Unknown
@@ -99,7 +104,7 @@ type reviewHeader struct {
 //   - a BLOCKING verdict must carry at least one BLOCKING-severity finding;
 //   - an APPROVED verdict must carry zero BLOCKING-severity findings.
 func ParseReview(content []byte) (Verdict, []Finding, error) {
-	header, err := splitFrontmatter(content)
+	header, _, err := splitFrontmatter(content)
 	if err != nil {
 		return "", nil, err
 	}
@@ -139,18 +144,91 @@ func ParseReview(content []byte) (Verdict, []Finding, error) {
 	return verdict, parsed.Findings, nil
 }
 
+// proseFindingHeading matches the heading line of a finding's prose block, `### [SEVERITY] <title>`, for one of the four legal severities.
+var proseFindingHeading = regexp.MustCompile(`(?m)^### \[(BLOCKING|MEDIUM|LOW|NIT)\]`)
+
+// ParseCurrentReview is the strict parse of the current round's review file.
+// It runs ParseReview, then refuses:
+//   - a finding whose fix is empty or whitespace;
+//   - a top-level frontmatter key other than verdict and findings;
+//   - prose finding blocks whose count per severity differs from the frontmatter's.
+//
+// Each refusal is a burler-prefixed error that ends with what to rewrite.
+// A zero-findings result therefore means the reviewer wrote no finding.
+func ParseCurrentReview(content []byte) (Verdict, []Finding, error) {
+	verdict, findings, err := ParseReview(content)
+	if err != nil {
+		return "", nil, err
+	}
+	for _, f := range findings {
+		if strings.TrimSpace(f.Fix) == "" {
+			return "", nil, fmt.Errorf("burler: review file finding %q is missing a non-empty fix; rewrite it with a `fix` key holding the exact change to make and where", f.ID)
+		}
+	}
+	header, body, err := splitFrontmatter(content)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := checkReviewKeys(header); err != nil {
+		return "", nil, err
+	}
+	if err := checkProseBlocks(body, findings); err != nil {
+		return "", nil, err
+	}
+	return verdict, findings, nil
+}
+
+// checkReviewKeys refuses a frontmatter header holding a top-level key other than verdict and findings.
+// Findings under a misspelled key would otherwise decode as no findings at all.
+func checkReviewKeys(header string) error {
+	var keys map[string]yaml.Node
+	if err := yaml.Unmarshal([]byte(header), &keys); err != nil {
+		return fmt.Errorf("burler: review file frontmatter is not valid YAML: %w", err)
+	}
+	var stray []string
+	for key := range keys {
+		if key != "verdict" && key != "findings" {
+			stray = append(stray, key)
+		}
+	}
+	if len(stray) == 0 {
+		return nil
+	}
+	sort.Strings(stray)
+	return fmt.Errorf("burler: review file frontmatter has the top-level key %q; its only keys are `verdict` and `findings`, so rewrite the frontmatter with those two", stray[0])
+}
+
+// checkProseBlocks refuses a review body whose `### [SEVERITY]` blocks do not match the frontmatter findings in count per severity.
+func checkProseBlocks(body string, findings []Finding) error {
+	severities := []Severity{SeverityBlocking, SeverityMedium, SeverityLow, SeverityNit}
+	prose := make(map[Severity]int, len(severities))
+	for _, match := range proseFindingHeading.FindAllStringSubmatch(body, -1) {
+		prose[Severity(match[1])]++
+	}
+	listed := make(map[Severity]int, len(severities))
+	for _, f := range findings {
+		listed[f.Severity]++
+	}
+	for _, severity := range severities {
+		if prose[severity] != listed[severity] {
+			return fmt.Errorf("burler: review file has %d `### [%s]` prose block(s) but %d %s finding(s) in its frontmatter; rewrite it with exactly one prose block per finding", prose[severity], severity, listed[severity], severity)
+		}
+	}
+	return nil
+}
+
 // reviewGateAttempts is the re-prompt budget of the review-parse gate entry,
 // the same budget the recipe's artifact gates use.
 const reviewGateAttempts = 3
 
-// CheckReviewFile reads the review file at path and returns the error ParseReview raises for it, or nil when it parses.
+// CheckReviewFile reads the review file at path and returns the error ParseCurrentReview raises for it, or nil when it parses.
 // A read failure is returned wrapped with the path.
 func CheckReviewFile(path string) error {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("burler: read review file %q: %w", path, err)
 	}
-	_, _, err = ParseReview(content)
+	_, _, err = ParseCurrentReview(content)
 	return err
 }
 
@@ -194,12 +272,12 @@ func quotedSummaryHint(header string) string {
 }
 
 // splitFrontmatter extracts the YAML header text between the file's
-// opening and closing "---" delimiter lines. Each line is compared with its
-// trailing "\r" trimmed so CRLF content parses identically to LF content.
-func splitFrontmatter(content []byte) (string, error) {
+// opening and closing "---" delimiter lines, and the body below the closing one.
+// Each line is compared with its trailing "\r" trimmed so CRLF content parses identically to LF content.
+func splitFrontmatter(content []byte) (header, body string, err error) {
 	lines := strings.Split(string(content), "\n")
 	if len(lines) == 0 || strings.TrimRight(lines[0], "\r") != "---" {
-		return "", fmt.Errorf("burler: review file must open with a \"---\" frontmatter delimiter line")
+		return "", "", fmt.Errorf("burler: review file must open with a \"---\" frontmatter delimiter line")
 	}
 
 	closingIdx := -1
@@ -210,14 +288,14 @@ func splitFrontmatter(content []byte) (string, error) {
 		}
 	}
 	if closingIdx == -1 {
-		return "", fmt.Errorf("burler: review file frontmatter is missing its closing \"---\" delimiter line")
+		return "", "", fmt.Errorf("burler: review file frontmatter is missing its closing \"---\" delimiter line")
 	}
 
-	header := strings.Join(lines[1:closingIdx], "\n")
+	header = strings.Join(lines[1:closingIdx], "\n")
 	if strings.TrimSpace(header) == "" {
-		return "", fmt.Errorf("burler: review file frontmatter is empty")
+		return "", "", fmt.Errorf("burler: review file frontmatter is empty")
 	}
-	return header, nil
+	return header, strings.Join(lines[closingIdx+1:], "\n"), nil
 }
 
 // parseVerdict validates raw against the two legal Verdict spellings,

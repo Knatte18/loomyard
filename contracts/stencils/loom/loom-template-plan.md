@@ -5,6 +5,8 @@
      Every marker below is a top-level {{.X}} substitution;
      stencil.FillOptional requires the three original ones non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). pattern_directive and friction_directive are the two optional markers: each is filled via stencil.FillOptional and renders as nothing when its own tier is inactive (PATTERN for pattern_directive, Tier 2 for friction_directive).
      parent_directive is a third optional marker, rendered by internal/parentdirective.
+     twill_directive is a fourth optional marker, rendered by internal/twilldirective through internal/loomengine;
+     it sits on the line that would otherwise be blank, so an empty value leaves the blank line and the prompt's bytes unchanged.
      edit_directive is a required marker, rendered unconditionally by internal/editdirective. -->
 
 # Plan — read the decision record, write a plan-format flat-card plan
@@ -51,7 +53,7 @@ and it answers against the current worktree only — it takes no repository-path
 **You never spell a glyph — you copy a line verbatim out of a quarry answer.**
 This is the hard rule behind the glyph spelling rules Step 3 spells out below: a bare package-qualified symbol (`pkg.Symbol`) is a hard finding precisely because it is the one spelling that cannot have come verbatim from a quarry answer.
 The verbs above are the whole of what `lyx quarry` offers you — there is no further verb to ask for.
-
+{{.twill_directive}}
 ## Step 3 — Write the plan into `{{.plan_dir}}`
 
 When this prompt ends with a `Prior plan` section, read that section and act on it before writing anything in this step.

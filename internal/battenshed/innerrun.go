@@ -168,6 +168,8 @@ type innerRunProducer struct {
 	notices bool
 	// noticeQuiet is deps.NoticeQuiet, read once at construction.
 	noticeQuiet time.Duration
+	// retryOn is true when the automatic Publish verify retry is wired: a Publish row name and all three of its seams.
+	retryOn bool
 }
 
 var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
@@ -183,7 +185,8 @@ var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 // A nil deps.OrchStrandRecorded resolves to reporting a strand recorded, and a nil deps.StopReport to reporting no stop report.
 // A nil deps.DriverStrand resolves to reporting no driver strand, a nil deps.ChildRunLockHeld to reporting no held lock and a nil deps.ReviveStrands to a revive that fails as not wired.
 // A nil deps.PauseRequested resolves to never paused.
-// A nil deps.MarkWatched resolves to reporting not held, and a nil deps.Activity to reporting no live run and no live wait.
+// An empty deps.PublishRow, or a nil deps.PublishFailure, deps.ChildHead or deps.Goto, switches the automatic Publish verify retry off.
+// A nil deps.MarkWatched resolves to reporting not held, a nil deps.Activity to reporting no live run and no live wait, and a nil deps.ArbiterInFlight to reporting no arbiter.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
 	if pollInterval < pollFloor {
 		logger.Warn("battenshed: poll_interval_s is below the floor and is raised to it", "key", "poll_interval_s", "value", pollInterval, "floor_s", int(pollFloor.Seconds()))
@@ -194,6 +197,9 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	}
 	if deps.MarkWatched == nil {
 		deps.MarkWatched = func(context.Context) (bool, error) { return false, nil }
+	}
+	if deps.ArbiterInFlight == nil {
+		deps.ArbiterInFlight = func(context.Context) (ChildArbiter, bool, error) { return ChildArbiter{}, false, nil }
 	}
 	if deps.Activity == nil {
 		deps.Activity = func(context.Context) ([]AgentActivity, bool, error) { return nil, false, nil }
@@ -241,6 +247,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 		driverExitGrace: driverExitGrace,
 		notices:         notices,
 		noticeQuiet:     deps.NoticeQuiet,
+		retryOn:         deps.PublishRow != "" && deps.PublishFailure != nil && deps.ChildHead != nil && deps.Goto != nil,
 	}
 }
 
@@ -278,7 +285,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 //   - awaiting with a decision already acted on and the child's history length unchanged since that resume does not spawn, and reports that the resume was delivered and the child's driver has not re-stepped yet;
 //   - awaiting with a decision already acted on and the child's history longer (or an old-layout marker) does not spawn, and reports the recovery of deciding again;
 //   - done records the first-sight time in the done-seen marker and returns Done once the driver strand is gone or driverExitGrace has elapsed since first sight, and otherwise reports the wait for the driver to finish its stop report;
-//   - blocked, paused or failed never spawns or resumes the child, Warns once per halt episode, revives a dead driver strand once per episode (reviveDeadDriver), and reports the child's State, Error and CurrentProducer and the resume command;
+//   - blocked, paused or failed never spawns or resumes the child, except for the one automatic Publish verify retry (publishretry.go), Warns once per halt episode, revives a dead driver strand once per episode (reviveDeadDriver), and reports the child's State, Error and CurrentProducer and the resume command;
 //     a resumed child is then read as running again;
 //   - any other value is a hard error naming the unrecognised state.
 //
@@ -410,6 +417,7 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 	case shedengine.StateAwaiting:
 		return p.wait(ctx, w, p.awaitingStep)
 	case shedengine.StateBlocked, shedengine.StatePaused, shedengine.StateFailed:
+		w.retry = p.publishRetryDecision(ctx, status)
 		return p.wait(ctx, w, p.haltedStep)
 	default:
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: unrecognized status state %q", p.name, status.State)
@@ -506,6 +514,14 @@ type childWait struct {
 	// busyLogged is whether a refusal for a busy driver pane was logged already, and busyReason the report of the last such refusal, empty while the last refusal was not a busy one.
 	busyLogged bool
 	busyReason string
+
+	// retry is the halted arm's decision about the automatic Publish verify retry, made once per Call.
+	retry publishRetry
+	// publishRetryAt is when the retry may try its goto or resume again after a refusal, and publishRetryReason the report of that refusal.
+	publishRetryAt     time.Time
+	publishRetryReason string
+	// publishRefusal is the last refusal the retry saw, cut to one line.
+	publishRefusal string
 }
 
 // waitEnd is how a wait ended: the verdict, pointer and error Call returns.
@@ -551,7 +567,7 @@ func (p *innerRunProducer) wait(ctx context.Context, w *childWait, step armStep)
 	w.probeDue = true
 	w.aliveStale = true
 	w.activityStale = true
-	p.noticeStep(ctx, w, false)
+	p.noticeStep(ctx, w)
 	if end := step(ctx, w); end != nil {
 		return end.results()
 	}
@@ -582,7 +598,7 @@ func (p *innerRunProducer) check(ctx context.Context, w *childWait, step armStep
 	if w.probeDue {
 		p.refreshWatched(ctx)
 	}
-	p.noticeStep(ctx, w, false)
+	p.noticeStep(ctx, w)
 	if end := step(ctx, w); end != nil {
 		return end
 	}
@@ -658,11 +674,15 @@ func (p *innerRunProducer) runningStep(ctx context.Context, w *childWait) *waitE
 	return nil
 }
 
-// haltedStep is the halted arm for a blocked, paused or failed child: it never spawns or resumes the child, Warns once per halt episode, revives a dead driver strand once per episode, and reports the resume command the operator runs.
+// haltedStep is the halted arm for a blocked, paused or failed child: it Warns once per halt episode, revives a dead driver strand once per episode, and reports the resume command the operator runs.
+// It never spawns or resumes the child, except for the one automatic retry of a first Publish verify failure (publishRetryStep).
 // The child is waited on until its state changes.
 func (p *innerRunProducer) haltedStep(ctx context.Context, w *childWait) *waitEnd {
 	if err := p.warnHaltEpisode(w.status); err != nil {
 		return hardEnd(err)
+	}
+	if end := p.publishRetryStep(ctx, w); end != nil {
+		return end
 	}
 	if w.probeDue {
 		w.revival = p.reviveDeadDriver(ctx)
@@ -832,7 +852,7 @@ func (p *innerRunProducer) awaitingStep(ctx context.Context, w *childWait) *wait
 				w.busyLogged = true
 				logger.Info("battenshed: child driver pane is busy; retrying the resume until it is clear", "producer", p.name, "slug", p.slug, "error", spawnErr)
 			}
-			p.noticeDriverBusy(ctx, w)
+			p.noticeDriverBusy(ctx, w, spawnErr)
 			p.report(w, w.busyReason)
 			return nil
 		}
@@ -884,7 +904,6 @@ func (p *innerRunProducer) doneStep(ctx context.Context, w *childWait) *waitEnd 
 	}
 
 	finish := func() *waitEnd {
-		p.noticeStep(ctx, w, true)
 		if err := os.Remove(markerPath); err != nil && !os.IsNotExist(err) {
 			return hardEnd(fmt.Errorf("battenshed: %s: remove done-seen marker: %w", p.name, err))
 		}

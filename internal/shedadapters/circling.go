@@ -33,11 +33,13 @@ var (
 
 // circlingDecisionHeader mirrors a circling decision file's YAML frontmatter.
 // A file an older binary wrote carries no cause and reads as EscalationCircling.
+// Automatic is true only for an accept the Bouncer recorded itself on a spent budget; a parent's decision never sets it.
 type circlingDecisionHeader struct {
-	Round    int    `yaml:"round"`
-	Decision string `yaml:"decision"`
-	Cause    string `yaml:"cause"`
-	Settled  bool   `yaml:"settled"`
+	Round     int    `yaml:"round"`
+	Decision  string `yaml:"decision"`
+	Cause     string `yaml:"cause"`
+	Settled   bool   `yaml:"settled"`
+	Automatic bool   `yaml:"automatic"`
 }
 
 // RecordCirclingDecision records d as pending for the run directory's latest round and returns that round and its escalation cause.
@@ -68,15 +70,29 @@ func RecordCirclingDecision(runDir string, d CirclingDecision) (int, EscalationC
 		cause = EscalationCircling
 	}
 
+	if err := createCirclingDecision(runDir, round, d, cause, false); err != nil {
+		return 0, "", err
+	}
+	return round, cause, nil
+}
+
+// recordAutoAccept records round's circling decision as an automatic, not yet settled accept on a spent budget.
+// It returns ErrCirclingDecided when a decision file for the round already exists, leaving it untouched.
+func recordAutoAccept(runDir string, round int) error {
+	return createCirclingDecision(runDir, round, CirclingAccept, EscalationBudget, true)
+}
+
+// createCirclingDecision writes round's pending decision file, refusing with ErrCirclingDecided to overwrite one.
+func createCirclingDecision(runDir string, round int, d CirclingDecision, cause EscalationCause, automatic bool) error {
 	path := circlingDecisionPath(runDir, round)
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		if errors.Is(err, fs.ErrExist) {
-			return 0, "", ErrCirclingDecided
+			return ErrCirclingDecided
 		}
-		return 0, "", fmt.Errorf("shedadapters: create circling decision %s: %w", path, err)
+		return fmt.Errorf("shedadapters: create circling decision %s: %w", path, err)
 	}
-	content, err := renderCirclingDecision(round, d, cause, false)
+	content, err := renderCirclingDecision(round, d, cause, false, automatic)
 	if err == nil {
 		_, err = f.Write(content)
 	}
@@ -84,9 +100,9 @@ func RecordCirclingDecision(runDir string, d CirclingDecision) (int, EscalationC
 		err = closeErr
 	}
 	if err != nil {
-		return 0, "", fmt.Errorf("shedadapters: write circling decision %s: %w", path, err)
+		return fmt.Errorf("shedadapters: write circling decision %s: %w", path, err)
 	}
-	return round, cause, nil
+	return nil
 }
 
 // PendingCirclingDecision reports whether the run directory's latest round carries a circling decision file that is not settled.
@@ -110,51 +126,85 @@ func PendingCirclingDecision(runDir string) (bool, error) {
 	return exists && !settled, nil
 }
 
+// PendingEscalation reports whether the run directory's latest round carries a Bouncer-written escalation that no circling decision has answered yet.
+// When pending, it returns that round and the path of its escalation brief.
+// The round resolves as PendingCirclingDecision resolves it.
+// A run directory with no round, a round with no escalation record and a round whose decision file exists, settled or not, are not pending;
+// a legacy round escalated only by a recorded CIRCLING verdict carries no escalation record, so it is not pending either.
+// A malformed escalation record is returned as its error, wrapping ErrEscalationMalformed.
+func PendingEscalation(runDir string) (round int, briefPath string, pending bool, err error) {
+	round, err = ResolveRound(runDir, func(n int) string { return filepath.Base(roundReviewPath(runDir, n)) })
+	if err != nil || round == 0 {
+		return 0, "", false, err
+	}
+	_, _, escalated, err := readEscalation(runDir, round)
+	if err != nil || !escalated {
+		return 0, "", false, err
+	}
+	_, _, _, decided, err := readCirclingDecision(runDir, round)
+	if err != nil {
+		if decided {
+			return 0, "", false, fmt.Errorf("shedadapters: circling decision %s: %w", circlingDecisionPath(runDir, round), err)
+		}
+		return 0, "", false, err
+	}
+	if decided {
+		return 0, "", false, nil
+	}
+	return round, escalationPath(runDir, round), true, nil
+}
+
 // readCirclingDecision reads round's decision file, returning the decision, its escalation cause, whether it is settled, and whether a file exists.
 // A file without a cause reads as EscalationCircling.
 // A present file that is malformed is an error:
 // the round must match the filename, the decision and the cause must each be one of their two values, and settled is legal only on an accept.
 func readCirclingDecision(runDir string, round int) (CirclingDecision, EscalationCause, bool, bool, error) {
+	decision, cause, settled, _, exists, err := readCirclingFile(runDir, round)
+	return decision, cause, settled, exists, err
+}
+
+// readCirclingFile reads round's decision file as readCirclingDecision does, and also returns whether the accept was recorded automatically.
+func readCirclingFile(runDir string, round int) (decision CirclingDecision, cause EscalationCause, settled, automatic, exists bool, err error) {
 	path := circlingDecisionPath(runDir, round)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return "", "", false, false, nil
+			return "", "", false, false, false, nil
 		}
-		return "", "", false, false, fmt.Errorf("shedadapters: read circling decision %s: %w", path, err)
+		return "", "", false, false, false, fmt.Errorf("shedadapters: read circling decision %s: %w", path, err)
 	}
 	header, err := splitFrontmatter(raw, "circling decision")
 	if err != nil {
-		return "", "", false, true, err
+		return "", "", false, false, true, err
 	}
 	var parsed circlingDecisionHeader
 	if err := yaml.Unmarshal([]byte(header), &parsed); err != nil {
-		return "", "", false, true, fmt.Errorf("bouncer: circling decision frontmatter is not valid YAML: %w", err)
+		return "", "", false, false, true, fmt.Errorf("bouncer: circling decision frontmatter is not valid YAML: %w", err)
 	}
 	if parsed.Round != round {
-		return "", "", false, true, fmt.Errorf("bouncer: circling decision round %d disagrees with its filename's round %d", parsed.Round, round)
+		return "", "", false, false, true, fmt.Errorf("bouncer: circling decision round %d disagrees with its filename's round %d", parsed.Round, round)
 	}
-	decision := CirclingDecision(parsed.Decision)
+	decision = CirclingDecision(parsed.Decision)
 	if decision != CirclingAccept && decision != CirclingContinue {
-		return "", "", false, true, fmt.Errorf("bouncer: circling decision must be %q or %q, got %q", CirclingAccept, CirclingContinue, parsed.Decision)
+		return "", "", false, false, true, fmt.Errorf("bouncer: circling decision must be %q or %q, got %q", CirclingAccept, CirclingContinue, parsed.Decision)
 	}
-	cause := EscalationCause(parsed.Cause)
+	cause = EscalationCause(parsed.Cause)
 	if parsed.Cause == "" {
 		cause = EscalationCircling
 	}
 	if cause != EscalationCircling && cause != EscalationBudget {
-		return "", "", false, true, fmt.Errorf("bouncer: circling decision cause must be %q or %q, got %q", EscalationCircling, EscalationBudget, parsed.Cause)
+		return "", "", false, false, true, fmt.Errorf("bouncer: circling decision cause must be %q or %q, got %q", EscalationCircling, EscalationBudget, parsed.Cause)
 	}
 	if parsed.Settled && decision != CirclingAccept {
-		return "", "", false, true, fmt.Errorf("bouncer: circling decision %q cannot be settled; only an accept settles", parsed.Decision)
+		return "", "", false, false, true, fmt.Errorf("bouncer: circling decision %q cannot be settled; only an accept settles", parsed.Decision)
 	}
-	return decision, cause, parsed.Settled, true, nil
+	return decision, cause, parsed.Settled, parsed.Automatic, true, nil
 }
 
 // settleCirclingAccept rewrites round's pending accept as settled.
-// It errors when the decision is absent or is not an accept.
+// It errors when the decision is absent or is not an accept, and keeps the record's automatic value.
 func settleCirclingAccept(runDir string, round int) error {
-	decision, cause, _, exists, err := readCirclingDecision(runDir, round)
+	decision, cause, _, automatic, exists, err := readCirclingFile(runDir, round)
 	if err != nil {
 		return err
 	}
@@ -164,7 +214,7 @@ func settleCirclingAccept(runDir string, round int) error {
 	if decision != CirclingAccept {
 		return fmt.Errorf("shedadapters: round %d circling decision is %q; only an accept settles", round, decision)
 	}
-	content, err := renderCirclingDecision(round, decision, cause, true)
+	content, err := renderCirclingDecision(round, decision, cause, true, automatic)
 	if err != nil {
 		return err
 	}
@@ -176,8 +226,8 @@ func settleCirclingAccept(runDir string, round int) error {
 }
 
 // renderCirclingDecision marshals a decision file's bytes: the YAML frontmatter alone.
-func renderCirclingDecision(round int, d CirclingDecision, cause EscalationCause, settled bool) ([]byte, error) {
-	headerBytes, err := yaml.Marshal(circlingDecisionHeader{Round: round, Decision: string(d), Cause: string(cause), Settled: settled})
+func renderCirclingDecision(round int, d CirclingDecision, cause EscalationCause, settled, automatic bool) ([]byte, error) {
+	headerBytes, err := yaml.Marshal(circlingDecisionHeader{Round: round, Decision: string(d), Cause: string(cause), Settled: settled, Automatic: automatic})
 	if err != nil {
 		return nil, fmt.Errorf("bouncer: render circling decision frontmatter: %w", err)
 	}

@@ -3,6 +3,7 @@ package shedrecipe
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -127,12 +128,21 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 			map[string]any{"name": "bogus", "attempts": 1},
 		}}, `"gates" element 1`},
 		{"BadPassOnCap", Config{"gates": []any{map[string]any{"name": "plan", "attempts": 1, "pass_on_cap": "yes"}}}, "pass_on_cap"},
+		{"ParentReviewPassOnCapTrue", Config{"gates": []any{map[string]any{"name": "parent-review", "attempts": 1, "pass_on_cap": true}}}, "pass_on_cap"},
+		{"ParentReviewNotLast", Config{"gates": []any{
+			map[string]any{"name": "parent-review", "attempts": 1},
+			map[string]any{"name": "discussion", "attempts": 1},
+		}}, `"parent-review" must be the last element`},
+		{"ParentReviewPassOnCapFalse", Config{"gates": []any{map[string]any{"name": "parent-review", "attempts": 1, "pass_on_cap": false}}}, "pass_on_cap"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := resolveGateSpec("TheRow", tt.cfg, newTestEnv(t))
+			_, err := resolveGateSpec("TheRow", tt.cfg, parentReviewEnv(t))
 			assertErrContains(t, err, "TheRow")
 			assertErrContains(t, err, tt.want)
+			if strings.HasPrefix(tt.name, "ParentReview") {
+				assertErrContains(t, err, "way forward:")
+			}
 		})
 	}
 }
@@ -149,10 +159,10 @@ func TestGateCapableEntries_RejectLeftoverOldKeys(t *testing.T) {
 	}
 
 	for _, key := range []string{"gate", "gate_attempts"} {
-		t.Run("BurlerRound/"+key, func(t *testing.T) {
-			cfg := minimalBurlerConfig()
+		t.Run("BurlerFix/"+key, func(t *testing.T) {
+			cfg := minimalFixConfig()
 			cfg[key] = "plan"
-			_, err := burlerRoundEntry("Row", cfg, newTestEnv(t))
+			_, err := burlerFixEntry("Row", cfg, newTestEnv(t))
 			assertErrContains(t, err, "unrecognized config key")
 			assertErrContains(t, err, key)
 		})
@@ -183,12 +193,16 @@ func parentReviewCfg(attempts int) Config {
 }
 
 func TestResolveGateSpec_ParentReviewResolvesMustPassMayHold(t *testing.T) {
-	spec, err := resolveGateSpec("Row", parentReviewCfg(3), parentReviewEnv(t))
+	cfg := Config{"gates": []any{
+		map[string]any{"name": "discussion", "attempts": 1},
+		map[string]any{"name": "parent-review", "attempts": 3},
+	}}
+	spec, err := resolveGateSpec("Row", cfg, parentReviewEnv(t))
 	if err != nil {
 		t.Fatalf("resolveGateSpec() error = %v; want nil", err)
 	}
-	if len(spec) != 1 || spec[0].Gate == nil || spec[0].Final == nil || spec[0].PassOnCap || !spec[0].MayHold || spec[0].Attempts != 3 {
-		t.Fatalf("resolveGateSpec() = %+v; want one must-pass MayHold entry with Gate and Final set and Attempts 3", spec)
+	if len(spec) != 2 || spec[1].Name != "parent-review" || spec[1].Gate == nil || spec[1].Final == nil || spec[1].Expired == nil || spec[1].PassOnCap || !spec[1].MayHold || spec[1].Attempts != 3 {
+		t.Fatalf("resolveGateSpec() = %+v; want parent-review last as a must-pass MayHold entry with Gate, Final and Expired set and Attempts 3", spec)
 	}
 }
 
@@ -242,39 +256,9 @@ func TestResolveGateSpec_OtherNamesCarryNoFinal(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: resolveGateSpec() error = %v", name, err)
 		}
-		if spec[0].Final != nil {
-			t.Errorf("%s: Final is set; want nil", name)
+		if spec[0].Final != nil || spec[0].Expired != nil {
+			t.Errorf("%s: Final or Expired is set; want both nil", name)
 		}
-	}
-}
-
-// TestResolveGateSpec_ParentReviewPassOnCapLetsRewriteThrough asserts "pass_on_cap: true" on parent-review reaches the gate, not the engine:
-// the entry stays must-pass MayHold, the cap's reject goes back to the writer as a non-terminal failure, and the rewrite after it passes.
-func TestResolveGateSpec_ParentReviewPassOnCapLetsRewriteThrough(t *testing.T) {
-	env := parentReviewEnv(t)
-	cfg := Config{"gates": []any{map[string]any{"name": "parent-review", "attempts": 1, "pass_on_cap": true}}}
-	spec, err := resolveGateSpec("Row", cfg, env)
-	if err != nil {
-		t.Fatalf("resolveGateSpec() error = %v; want nil", err)
-	}
-	if len(spec) != 1 || spec[0].PassOnCap || !spec[0].MayHold || spec[0].Attempts != 1 {
-		t.Fatalf("resolveGateSpec() = %+v; want one must-pass MayHold entry with Attempts 1", spec)
-	}
-	review := filepath.Join(t.TempDir(), "review.md")
-	if err := os.WriteFile(review, []byte("out of scope"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if res, err := spec[0].Gate(); err != nil || !res.Pending {
-		t.Fatalf("first arrival = %+v, %v; want pending", res, err)
-	}
-	if err := env.ParentReview.Store.RecordVerdict(parentreview.VerdictReject, review); err != nil {
-		t.Fatalf("RecordVerdict() error = %v", err)
-	}
-	if res, err := spec[0].Gate(); err != nil || res.Passed || res.Pending || res.Terminal {
-		t.Fatalf("reject = %+v, %v; want a non-terminal failure", res, err)
-	}
-	if res, err := spec[0].Gate(); err != nil || !res.Passed {
-		t.Fatalf("rewrite after the reject = %+v, %v; want passed", res, err)
 	}
 }
 
@@ -288,6 +272,10 @@ func TestResolveGateSpec_ParentReviewMissingEnv(t *testing.T) {
 		{"ParentReview.Slug", func(e *Env) { e.ParentReview.Slug = "" }},
 		{"ParentReview.RenderDelivery", func(e *Env) { e.ParentReview.RenderDelivery = nil }},
 		{"ParentReview.RenderBrief", func(e *Env) { e.ParentReview.RenderBrief = nil }},
+		{"ParentReview.RenderKeepAlive", func(e *Env) {
+			e.ParentReview.KeepAlive = time.Minute
+			e.ParentReview.RenderKeepAlive = nil
+		}},
 		{"ParentReview.DecisionRecord", func(e *Env) { e.ParentReview.DecisionRecord = "" }},
 		{"ParentReview.SupportLog", func(e *Env) { e.ParentReview.SupportLog = "relative.md" }},
 	}

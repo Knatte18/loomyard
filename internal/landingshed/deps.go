@@ -183,6 +183,9 @@ type Deps struct {
 	// Empty asks to fix forward on the task branch instead.
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
 	VerifyFailedWayForward string
+	// VerifyFailureTarget is the row the recipe routes a failed Publish verify back to, written into the failure record's target.
+	// Empty writes no target.
+	VerifyFailureTarget string
 	// VerifyWaitMark sets or clears the pane mark of the run's driver strand around the post-merge verify,
 	// so the wait shows on screen.
 	// The gate clears the mark before each verify, sets it with the label `verify <producer>` and the verify's start time immediately before the verify runs,

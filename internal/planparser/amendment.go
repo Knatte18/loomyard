@@ -19,6 +19,10 @@ import (
 // plan directory the same way overviewFileName is. This package is the sole declarer of that name.
 const AmendmentsFileName = "amendments.md"
 
+// LensReviewFileName is the fixed filename of the plan-directory file the twill plan writer records its lens review in.
+// It is tracked with the plan's generation and never parsed or validated.
+const LensReviewFileName = "lens-review.md"
+
 // amendmentsFileHeading is the fixed heading AppendAmendment writes when it creates the amendments
 // file for the first time.
 const amendmentsFileHeading = "# Amendments\n"

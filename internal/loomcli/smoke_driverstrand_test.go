@@ -59,8 +59,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
+// stubRecordSessionStart is the shell a stubbed claude runs on its own arguments before it draws its first box.
+// It appends claudeengine's startup SessionStart payload to the events file the --settings file's recording hooks name, as a real launch's SessionStart hook does.
+// Shuttle starts a claude run only once its events file holds a session start beside the ready pane.
+const stubRecordSessionStart = `record_session_start() {
+  while [ $# -gt 0 ]; do
+    if [ "$1" = --settings ]; then
+      printf '%s\n' '` + claudeengine.SessionStartupPayloadFixture + `' >> "$(grep -o "[^']*events\.jsonl" "$2" | head -1)"
+    fi
+    shift
+  done
+}
+record_session_start "$@"
+`
+
 // writeStubDriverScript writes a POSIX shell script standing in for the claude binary this file's
-// spawns launch: it ignores every argument the claude engine's own launch line appends, prints
+// spawns launch: it records a session start through stubRecordSessionStart, ignores every other argument the claude engine's own launch line appends, prints
 // claudeengine's own idle-input-box fixture, then sleeps for a long, harmless duration.
 // The fixture is required under the readiness signal this file now drives: without it shuttle's own startup step would never observe readiness and no verified send would find the session idle,
 // so every "loom start --no-attach" below would refuse instead of succeeding.
@@ -76,7 +90,7 @@ func writeStubDriverScript(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "stub-claude.sh")
 	script := `#!/bin/sh
-box() { printf '%s\n' '` + claudeengine.IdleInputBoxFixture + `'; }
+` + stubRecordSessionStart + `box() { printf '%s\n' '` + claudeengine.IdleInputBoxFixture + `'; }
 box
 IFS= read -r line
 box

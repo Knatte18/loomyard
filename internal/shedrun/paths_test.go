@@ -70,8 +70,16 @@ func TestPathConstructors(t *testing.T) {
 			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), BattenWatchedFileName) }},
 		{"DriveReportsDir", func(l *lyxcwd.Location) string { return DriveReportsDir(l, "self") },
 			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "drive-reports") }},
+		{"ArbiterDir", func(l *lyxcwd.Location) string { return ArbiterDir(l, "self") },
+			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "arbiter") }},
+		{"ArbiterAttemptDir", func(l *lyxcwd.Location) string { return ArbiterAttemptDir(l, "self", 2) },
+			func(l *lyxcwd.Location) string { return filepath.Join(ArbiterDir(l, "self"), "attempt-2") }},
+		{"ArbiterMarker", func(l *lyxcwd.Location) string { return ArbiterMarker(l, "self") },
+			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "arbiter-inflight.json") }},
 		{"PrimeRunLock", PrimeRunLock,
 			func(l *lyxcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lyx", "shed", "run.lock") }},
+		{"LandLock", LandLock,
+			func(l *lyxcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lyx", "shed", "land.lock") }},
 		{"SeedRel", func(l *lyxcwd.Location) string { return SeedRel(l, "self") },
 			func(l *lyxcwd.Location) string { return filepath.Join("_lyx", "shed", worktreeName, "seed.json") }},
 		{"StatusRel", func(l *lyxcwd.Location) string { return StatusRel(l, "self") },
@@ -118,6 +126,12 @@ func TestRunsRootRel(t *testing.T) {
 	if want := filepath.Join(lyxdirs.LyxDirName, "shed"); root != want {
 		t.Errorf("RunsRootRel() = %q; want %q", root, want)
 	}
+	if got, want := RunsRoot(l), filepath.Dir(RunDir(l, "x")); got != want {
+		t.Errorf("RunsRoot(l) = %q; want %q", got, want)
+	}
+	if got, want := ScratchRoot(l), filepath.Dir(ScratchDir(l, "x")); got != want {
+		t.Errorf("ScratchRoot(l) = %q; want %q", got, want)
+	}
 	prefix := root + string(filepath.Separator)
 	for name, got := range map[string]string{
 		"SeedRel":   SeedRel(l, "x"),
@@ -152,25 +166,33 @@ func TestDriveReportsRel(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			got := DriveReportsRel(l, "self")
-			want, err := filepath.Rel(l.AnchorPath(), DriveReportsDir(l, "self"))
-			if err != nil {
-				t.Fatalf("filepath.Rel: %v", err)
-			}
-			if got != want {
-				t.Errorf("DriveReportsRel = %q; want %q", got, want)
+			for relName, pair := range map[string][2]string{
+				"DriveReportsRel": {DriveReportsRel(l, "self"), DriveReportsDir(l, "self")},
+				"ArbiterRel":      {ArbiterRel(l, "self"), ArbiterDir(l, "self")},
+			} {
+				want, err := filepath.Rel(l.AnchorPath(), pair[1])
+				if err != nil {
+					t.Fatalf("filepath.Rel: %v", err)
+				}
+				if pair[0] != want {
+					t.Errorf("%s = %q; want %q", relName, pair[0], want)
+				}
 			}
 		})
 	}
 }
 
-// TestLocksAreDistinct pins that a run's RunLock and StatusLock never share a file, which shedengine.Shed's own validation rejects outright (a shared file would hang on the first persist rather than fail), and that PrimeRunLock is a distinct hub-scoped lock from any single run-id's locks.
+// TestLocksAreDistinct pins that a run's RunLock and StatusLock never share a file, which shedengine.Shed's own validation rejects outright (a shared file would hang on the first persist rather than fail), and that PrimeRunLock and LandLock are distinct hub-scoped locks from each other and from any single run-id's locks.
 //
-//testtiming:keep pins that RunLock, StatusLock and PrimeRunLock never share a file, which its covering tests do not
+//testtiming:keep pins that RunLock, StatusLock, PrimeRunLock and LandLock never share a file, which its covering tests do not
 func TestLocksAreDistinct(t *testing.T) {
 	t.Parallel()
 	l := syntheticLocation(t)
 	prime := PrimeRunLock(l)
+	land := LandLock(l)
+	if prime == land {
+		t.Errorf("PrimeRunLock(l) == LandLock(l) = %q; must differ", prime)
+	}
 	for _, runID := range []string{"self", "abc123", "run-two", "another-run-id"} {
 		t.Run(runID, func(t *testing.T) {
 			t.Parallel()
@@ -182,6 +204,9 @@ func TestLocksAreDistinct(t *testing.T) {
 			}
 			if prime == StatusLock(l, runID) {
 				t.Errorf("PrimeRunLock(l) == StatusLock(l, %q) = %q; must differ", runID, prime)
+			}
+			if land == RunLock(l, runID) || land == StatusLock(l, runID) {
+				t.Errorf("LandLock(l) = %q; must differ from RunLock and StatusLock of %q", land, runID)
 			}
 			if got := LoopLock(l, runID); got == RunLock(l, runID) || got == StatusLock(l, runID) {
 				t.Errorf("LoopLock(l, %q) = %q; must differ from RunLock and StatusLock", runID, got)

@@ -40,10 +40,13 @@ type Config struct {
 	// PublishVerify is the shell command Publish runs in the task worktree after the plan's verify passes.
 	// Empty runs nothing; Finalize never runs it.
 	PublishVerify string `yaml:"publish_verify"`
+	// Deploy is the shell command batten's Land row runs in the prime after a landing into the prime's branch.
+	// Empty runs nothing.
+	Deploy string `yaml:"deploy"`
 }
 
 // ConfigSpec returns landing's layered-load spec.
-// Keys that gate or shape what lands on the parent branch, and the shell command Publish runs, are barred from the local layer.
+// Keys that gate or shape what lands on the parent branch, and the shell commands Publish and Land run, are barred from the local layer.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     "landing",
@@ -58,6 +61,7 @@ func ConfigSpec() configengine.Spec {
 			"describe_timeout_min": configengine.CategoryNone,
 			"co_authored_by":       configengine.CategoryCrossPair,
 			"publish_verify":       configengine.CategoryExecutable,
+			"deploy":               configengine.CategoryExecutable,
 		},
 	}
 }

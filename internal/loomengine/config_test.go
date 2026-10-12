@@ -91,6 +91,7 @@ func templateConfig() Config {
 		DiscussionAdvisors:       ModelSpecList{"sonnet[high]"},
 		Plan:                     "opus[medium]",
 		PlanTimeoutMin:           120,
+		PlanProducer:             "single",
 		Review:                   ModelSpecList{"opus[medium]"},
 		Fix:                      ModelSpecList{"opus[medium]"},
 		DiscussionReview:         ModelSpecList{""},
@@ -109,8 +110,17 @@ func templateConfig() Config {
 		Driver:                   "sonnet[medium]",
 		ParentReviewWaitMin:      60,
 		StepIdleTimeoutMin:       60,
+		Arbiter:                  "opus[high]",
+		ArbiterTimeoutMin:        30,
+		ArbiterMaxSpawns:         3,
 		ReviewCirclingCheckpoint: 3,
 		ReviewMaxBounces:         3,
+		DiscussionMaxBounces:     0,
+		PlanMaxBounces:           0,
+		WebsterMaxBounces:        0,
+		DiscussionAutoAccept:     false,
+		PlanAutoAccept:           false,
+		WebsterAutoAccept:        false,
 	}
 }
 
@@ -199,6 +209,16 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.DiscussionProducer = "twill" },
 		},
 		{
+			name:   "plan_producer twill",
+			values: map[string]string{"plan_producer": "twill"},
+			mutate: func(c *Config) { c.PlanProducer = "twill" },
+		},
+		{
+			name:   "empty plan_producer reads as single",
+			values: map[string]string{"plan_producer": `""`},
+			mutate: func(c *Config) { c.PlanProducer = "single" },
+		},
+		{
 			name:   "discussion_advisors as an empty string means no advisors",
 			values: map[string]string{"discussion_advisors": `""`},
 			mutate: func(c *Config) { c.DiscussionAdvisors = nil },
@@ -261,6 +281,16 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.Driver = "" },
 		},
 		{
+			name:   "explicit arbiter keys",
+			values: map[string]string{"arbiter": "sonnet[low]", "arbiter_timeout_min": "45", "arbiter_max_spawns": "5"},
+			mutate: func(c *Config) { c.Arbiter, c.ArbiterTimeoutMin, c.ArbiterMaxSpawns = "sonnet[low]", 45, 5 },
+		},
+		{
+			name:   "zero and empty arbiter keys load as their off and default meanings",
+			values: map[string]string{"arbiter": `""`, "arbiter_timeout_min": "0", "arbiter_max_spawns": "0"},
+			mutate: func(c *Config) { c.Arbiter, c.ArbiterTimeoutMin, c.ArbiterMaxSpawns = "", 0, 0 },
+		},
+		{
 			name:   "explicit parent_review_wait_min",
 			values: map[string]string{"parent_review_wait_min": "5"},
 			mutate: func(c *Config) { c.ParentReviewWaitMin = 5 },
@@ -279,6 +309,17 @@ review_timeout_min: 240
 			name:   "explicit review checkpoint and budget",
 			values: map[string]string{"review_circling_checkpoint": "2", "review_max_bounces": "7"},
 			mutate: func(c *Config) { c.ReviewCirclingCheckpoint, c.ReviewMaxBounces = 2, 7 },
+		},
+		{
+			name: "explicit per-perch budgets and auto-accept flags",
+			values: map[string]string{
+				"discussion_max_bounces": "1", "plan_max_bounces": "2", "webster_max_bounces": "4",
+				"discussion_auto_accept": "true", "plan_auto_accept": "true", "webster_auto_accept": "true",
+			},
+			mutate: func(c *Config) {
+				c.DiscussionMaxBounces, c.PlanMaxBounces, c.WebsterMaxBounces = 1, 2, 4
+				c.DiscussionAutoAccept, c.PlanAutoAccept, c.WebsterAutoAccept = true, true, true
+			},
 		},
 		{
 			name:   "checkpoint above budget",
@@ -481,6 +522,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed fan_review spec", "fan_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"empty fan_review list", "fan_review", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
 		{"unknown discussion_producer", "discussion_producer", "sideways", []string{`"single"`, `"seats"`, `"twill"`}, ""},
+		{"unknown plan_producer", "plan_producer", "sideways", []string{`"single"`, `"twill"`, "set it to"}, ""},
 		{"empty discussion_advisors entry beside another", "discussion_advisors", `["", "sonnet[high]"]`, []string{"entry 1", advisorWayForward}, ""},
 		{"malformed discussion_advisors entry", "discussion_advisors", `["opus[effort"]`, []string{"entry 1", advisorWayForward}, ""},
 		{"unknown discussion_advisors alias", "discussion_advisors", `["sonnet[high]", "ghost"]`, []string{"entry 2", "ghost", advisorWayForward}, ""},
@@ -498,12 +540,18 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed rework spec", "rework", `"opus[effort"`, nil, ""},
 		{"malformed friction spec", "friction", `"opus[effort"`, nil, ""},
 		{"malformed driver spec", "driver", `"opus[effort"`, nil, ""},
+		{"malformed arbiter spec", "arbiter", `"opus[effort"`, nil, ""},
+		{"negative arbiter_timeout_min", "arbiter_timeout_min", "-1", []string{"must not be negative", "0 for the 30 minute default"}, ""},
+		{"negative arbiter_max_spawns", "arbiter_max_spawns", "-1", []string{"must not be negative", "0 to turn the arbiter off"}, ""},
 		{"zero parent_review_wait_min", "parent_review_wait_min", "0", []string{"attempts: 0"}, ""},
 		{"negative parent_review_wait_min", "parent_review_wait_min", "-1", []string{"attempts: 0"}, ""},
 		{"zero review_circling_checkpoint", "review_circling_checkpoint", "0", []string{positiveIntegerForward}, ""},
 		{"negative review_circling_checkpoint", "review_circling_checkpoint", "-1", []string{positiveIntegerForward}, ""},
 		{"zero review_max_bounces", "review_max_bounces", "0", []string{positiveIntegerForward}, ""},
 		{"negative review_max_bounces", "review_max_bounces", "-1", []string{positiveIntegerForward}, ""},
+		{"negative discussion_max_bounces", "discussion_max_bounces", "-1", []string{"must not be negative", "set it to 0 to take review_max_bounces"}, ""},
+		{"negative plan_max_bounces", "plan_max_bounces", "-1", []string{"must not be negative", "set it to 0 to take review_max_bounces"}, ""},
+		{"negative webster_max_bounces", "webster_max_bounces", "-1", []string{"must not be negative", "set it to 0 to take review_max_bounces"}, ""},
 		{"negative discussion timeout", "discussion_timeout_min", "-1", []string{"must not be negative"}, ""},
 		{"negative plan timeout", "plan_timeout_min", "-1", []string{"must not be negative"}, ""},
 		{"negative review timeout", "review_timeout_min", "-1", []string{"must not be negative"}, ""},

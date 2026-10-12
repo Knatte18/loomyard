@@ -34,7 +34,7 @@ The question the discussion worked through was whether the *other* rows (the loo
 
 **Geometry** (absolute paths — `AnchorPath`, `WorktreeRoot`, `StencilsDir`, `PlanDir`, etc.) is resolved once, centrally, by whichever caller invokes the recipe-builder — `lyx loom start` for hub mode, a standalone CLI entry point for told mode (mirroring the existing `hubgeom`/`standalonegeom` dual-constructor split) — and merged with each row's `Config` when its `ProducerDef` is constructed. The recipe itself never names a geometry mode and never contains a path; it stays portable across every worktree of the product it describes. This follows directly from the existing Told-Geometry Invariant — nothing new, just extending the same discipline to the recipe layer.
 
-**Live seams**, alongside geometry, are the other thing never in a recipe: `shedadapters.Shuttle`, `shedadapters.BurlerRunner`, `shedadapters.WebsterRunner`, `shedadapters.SeatRunner` (`Env.Seats`), `websterengine.RunDeps`, `landingshed.Deps`'s closures and its `modelspec.Registry`, and the injected clock.
+**Live seams**, alongside geometry, are the other thing never in a recipe: `shedadapters.Shuttle`, `shedadapters.BurlerHalfRunner`, `shedadapters.WebsterRunner`, `shedadapters.SeatRunner` (`Env.Seats`), `websterengine.RunDeps`, `landingshed.Deps`'s closures and its `modelspec.Registry`, and the injected clock.
 None of these can be written in a file at all — a recipe row names an `Engine` and carries `Config`, and a seam is neither.
 They travel in the same told bundle as geometry, `shedrecipe.Env`, filled once by whichever caller invokes the registry — this extends the existing discipline rather than inventing a second one.
 The rule that makes the `Env`-versus-`Config` split decidable: `Env` holds roots and run-wide values only, never a value that differs between two rows, and anything per-row is a relative path or scalar in `Config`, resolved against one of those roots by the entry that reads it.
@@ -58,15 +58,17 @@ The row drives `Env.Seats`, and a nil seam is a construction error.
 
 A gate-capable row's `gates` key selects validators by name from a closed vocabulary, in order, each element carrying its own `attempts` budget (0 means off) and an optional `pass_on_cap`.
 An absent key is ungated, while an empty list, a duplicate name, or a negative budget is a construction error.
+`parent-review` must be the last element of its list, else construction fails.
 The vocabulary is `discussion`, `plan`, `rework-plan`, `description`, `verify` and `parent-review`.
 `verify` lints the comments, then runs the verify command the wiring tells in `Env.VerifyCommand`, which it requires.
 `Env.VerifyWholeDiff` selects the whole-diff form and the round form is the default.
 `Env.VerifyMergeBase`, when set, is the base of the headroom lint, which runs before the comment lint, or of both lints under the whole-diff form, which requires it.
 `parent-review` waits for the run's parent to review the discussion, so it can return a pending result that the wait loop holds without stalling its liveness and deadline checks, and it carries a `Final` closure that `finalize` evaluates in its place.
-The entry is must-pass and may hold the run, and its `attempts` is the reject cap: the gate fails terminally at that many rejected rounds.
-With `pass_on_cap: true` the cap's reject instead goes to the writer like any other, and the rewrite after it passes without another round, so `attempts: 1` gives one parent review whose findings the writer addresses before the row below reviews in detail.
+It also carries an expiry probe the wait loop calls off the boundary, a read-only check that the latest round's request is open, has no verdict and is older than the wait bound.
+The entry is must-pass and may hold the run, and its `attempts` is the reject cap: the gate fails terminally at that many rejected rounds, halting the run `blocked` until the parent approves.
+A `pass_on_cap` key on the element is a construction error.
 The gate's own store counts the rejects, so the engine's own pass-on-cap never applies to this entry.
-It reads `Env.ParentReview`, and a Discussion-Write row with an enabled `parent-review` entry opens a new review round on each fresh spawn, except that the latest round is kept after a reject or a superseding approve so the gate can read it.
+It reads `Env.ParentReview`, and a Discussion-Write row with an enabled `parent-review` entry opens a new review round on each fresh spawn, except that the latest round is kept when it holds no request, or after a reject or a superseding approve so the gate can read it.
 
 ## The recipe loader/builder
 
