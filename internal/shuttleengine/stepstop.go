@@ -40,9 +40,10 @@ func (r *Runner) SetStepTie(tie StepTie) {
 	r.step = &tie
 }
 
-// StopStepRuns stops every run under the runner's run-directory root that is still running, has a live strand and records tie as its step.
+// StopStepRuns stops every run under the runner's run-directory root that is still running, has a removable strand and records tie as its step.
+// A strand is removable when it is live or an own-window strand whose pane is dead, so a step stop ends the window of a run whose own-window agent died.
 // Each is stopped through the stop verb, which records the stop before removing the strand.
-// A live running run with no step is listed under Untied without being touched, a run of another step and a run with a terminal record or a dead strand are left alone, and a record that does not decode is skipped.
+// A removable running run with no step is listed under Untied without being touched, a run of another step and a run with a terminal record or a dead window 0 strand are left alone, and a record that does not decode is skipped.
 // A stop that fails is listed under Failed and the stop goes on with the next run.
 func (r *Runner) StopStepRuns(tie StepTie) (StepStopReport, error) {
 	var report StepStopReport
@@ -70,7 +71,7 @@ func (r *Runner) StopStepRuns(tie StepTie) (StepStopReport, error) {
 		if err != nil || !found || rs.Outcome != runOutcomeRunning {
 			continue
 		}
-		if strand, tracked := strandStatusByGUID(status.Strands, rs.StrandGUID); !tracked || !strand.Live {
+		if strand, tracked := strandStatusByGUID(status.Strands, rs.StrandGUID); !tracked || !strandRemovable(strand) {
 			continue
 		}
 		name := rs.StrandName

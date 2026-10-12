@@ -51,6 +51,8 @@
 // A turn end without every output file never ends a run: Wait holds it, logs it at Info and keeps polling the same agent,
 // whether the turn end is a Stop or a live ask.
 // A run ends only as done (every output file present at a turn end, or at the deadline or a pane's death), died, timeout or a mechanism failure.
+// A died run whose strand is own-window keeps its last pane capture in `died-capture.txt` in the run directory and loses its strand;
+// a timed-out run keeps its strand, since its agent may still be live.
 // A turn end that precedes the start prompt's own turn start is not a task turn end:
 // Wait logs it at Warn as `turn end before the prompt's turn start; not held` and neither holds nor notifies it.
 // The hold guard arms when the events file holds a turn start before `promptOffset`, which proves the provider writes turn starts for typed turns.
@@ -127,14 +129,15 @@
 //
 // # Stop verb
 //
-// Run.Stop and Runner.StopStrand (the guid form, for a caller holding no handle) end a run's strand after recording the stop in run.json.
+// Run.Stop and Runner.StopStrand (the guid form, for a caller holding no handle) remove a run's strand, when it is live or an own-window strand whose pane is dead, after recording the stop in run.json.
+// A dead window 0 strand is left to reed's reconcile.
 // The record reads "stopped", a record-only terminal outcome that is never a Result.Outcome;
 // a record already terminal keeps its outcome, and one still reading running whose output files all exist keeps running, so a stop never turns finished work into a stopped record.
 // The record is written first: a failed write returns its error with the strand untouched, and a failed removal leaves the terminal record over a live strand, which Attach reads as respawn-eligible and stops as superseded.
 // A guid with no run record is stopped by removing its strand alone.
 // Runner.SetStepTie tells a runner the shed step its process runs (StepTie: the steps directory and the step's trace id), which every run it starts records in run.json as `step`; a runner never told one writes no step.
-// Runner.StopStepRuns stops, through the same record-then-remove step, every run under the runner's run-directory root that still reads running, has a live strand and records the given step.
-// A live running run with no step is listed under StepStopReport.Untied and left alone, a run of another step is left alone, and a stop that fails is listed under Failed while the stop goes on.
+// Runner.StopStepRuns stops, through the same record-then-remove step, every run under the runner's run-directory root that still reads running, has a live or dead own-window strand and records the given step.
+// A running run with such a strand and no step is listed under StepStopReport.Untied and left alone, a run of another step is left alone, and a stop that fails is listed under Failed while the stop goes on.
 // Attach's removal of a superseded run's strand goes through the same record-then-remove step.
 // A Wait on a stopped handle finalizes with the stop mark and records "stopped" unless the files show the run done.
 // A Wait in another process may overwrite "stopped" with its own terminal outcome, and either answer is terminal.
