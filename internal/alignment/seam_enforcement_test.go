@@ -20,6 +20,7 @@ var alignmentAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/pauserecord",
 	"github.com/Knatte18/loomyard/internal/segmentcolor",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
+	"github.com/Knatte18/loomyard/internal/state",
 	"github.com/Knatte18/loomyard/internal/stencil",
 	"github.com/Knatte18/loomyard/internal/stencilstore",
 	"gopkg.in/yaml.v3",

@@ -5,6 +5,7 @@ package pauserecord
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -235,4 +236,24 @@ func writeMarker(path string, marker NetOp) error {
 		return err
 	}
 	return writeAtomically(path, data)
+}
+
+// writeAtomically writes data to a temp file beside path and renames it over path.
+func writeAtomically(path string, data []byte) error {
+	temp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temp file for %s: %w", path, err)
+	}
+	tempPath := temp.Name()
+	_, writeErr := temp.Write(data)
+	closeErr := temp.Close()
+	if err := errors.Join(writeErr, closeErr); err != nil {
+		os.Remove(tempPath)
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		os.Remove(tempPath)
+		return fmt.Errorf("replace %s: %w", path, err)
+	}
+	return nil
 }

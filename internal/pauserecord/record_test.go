@@ -123,6 +123,76 @@ func TestUpdate(t *testing.T) {
 		}
 	})
 
+	t.Run("keeps keys the record types do not declare", func(t *testing.T) {
+		t.Parallel()
+		path := filepath.Join(t.TempDir(), RecordFileName)
+		seed := `{"future_top":1,"live":[{"scope":"a","future_entry":"x"}]}`
+		if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Update(path, epoch, func(r *Record) error {
+			r.Live = append(r.Live, Entry{Scope: "b"})
+			return nil
+		}); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{`"future_top"`, `"future_entry"`} {
+			if !strings.Contains(string(data), key) {
+				t.Errorf("record after Update lost %s:\n%s", key, data)
+			}
+		}
+	})
+
+	t.Run("keeps keys of an entry that shifts index when an earlier one is removed", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name   string
+			seed   string
+			mutate func(r *Record)
+		}{
+			{
+				name: "live entry behind a lifted one",
+				seed: `{"live":[{"scope":"a"},{"scope":"b","future_entry":"x"}]}`,
+				mutate: func(r *Record) {
+					r.Live = r.Live[1:]
+				},
+			},
+			{
+				name: "resumed entry behind an expired one",
+				seed: `{"resumed":[{"scope":"old","resumed_at":"2000-01-01T00:00:00Z"},{"scope":"young","resumed_at":"2030-01-01T00:00:00Z","future_entry":"x"}]}`,
+				mutate: func(r *Record) {
+					r.Live = nil
+				},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				path := filepath.Join(t.TempDir(), RecordFileName)
+				if err := os.WriteFile(path, []byte(tt.seed), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := Update(path, epoch, func(r *Record) error {
+					tt.mutate(r)
+					return nil
+				}); err != nil {
+					t.Fatalf("Update: %v", err)
+				}
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(string(data), `"future_entry"`) {
+					t.Errorf("record after Update lost the shifted entry's key:\n%s", data)
+				}
+			})
+		}
+	})
+
 	t.Run("concurrent updates each keep their entry", func(t *testing.T) {
 		t.Parallel()
 		path := filepath.Join(t.TempDir(), RecordFileName)

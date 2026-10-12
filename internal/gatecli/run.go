@@ -11,7 +11,9 @@ import (
 	"os/exec"
 	"os/signal"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -23,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/preflight"
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 // siteLabelPrefix starts every holder and wait record this verb writes, so `lyx loom status` names the command that holds or waits for a slot.
@@ -53,6 +56,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	// The tests run without the strand name, so a test driving `lyx fabric` never meets a role guard that reads it.
 	env := slices.DeleteFunc(os.Environ(), func(entry string) bool { return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") })
 	var parallel int
+	var busyQuit time.Duration
 	if inHub {
 		pool := hubgeom.GateSlots(location)
 		limits, err := pool.Limits()
@@ -63,6 +67,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 			return output.Err(out, fmt.Sprintf("gate test: cannot read the hub's gate limits: %v; way forward: fix the file with \"lyx config gate\" from the prime, then re-run the same command", err))
 		}
 		parallel = limits.GoParallel
+		busyQuit = limits.BusyQuit
 		if inherited := os.Getenv(gateslot.InheritEnv); inherited != "" && pool.Inherited(inherited) {
 			logger.Info("gate test: running inside the slot an enclosing gate run holds", "slot", inherited, "dir", dir)
 		} else {
@@ -79,6 +84,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 			return output.Err(out, fmt.Sprintf("gate test: cannot read the gate template: %v", err))
 		}
 		parallel = template.GoParallel
+		busyQuit = template.Limits().BusyQuit
 		logger.Info("gate test: no hub bound applies; running unslotted under the template's -p cap", "dir", dir, "parallel", parallel)
 	}
 
@@ -97,12 +103,30 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		}
 	}
 
+	watching, reason := watchdogApplies(busyQuit, request.flags, os.Getenv(enclosingGateEnv), proc.IsAncestor)
+	logger.Info("gate test: CPU watchdog decision", "applies", watching, "reason", reason)
+	// A nested `lyx gate test` reads the variable to learn this run's watchdog already sees its test binaries.
+	env = append(slices.DeleteFunc(env, func(entry string) bool { return strings.HasPrefix(entry, enclosingGateEnv+"=") }), enclosingGateEnv+"="+strconv.Itoa(os.Getpid()))
+
 	cmd := exec.CommandContext(runCtx, request.goBinary, goTestArgs(dir, parallel, request.tags, request.packages, request.flags)...)
 	cmd.Env = env
 	cmd.Stdout = out
 	cmd.Stderr = out
 	logger.Info("gate test: spawning go test", "binary", request.goBinary, "args", strings.Join(cmd.Args[1:], " "))
-	runErr := runTiedChild(cmd)
+	watchCtx, stopWatching := context.WithCancel(runCtx)
+	var watchdogDone sync.WaitGroup
+	runErr := runTiedChild(cmd, func(pid int) {
+		if !watching {
+			return
+		}
+		watchdogDone.Add(1)
+		go func() {
+			defer watchdogDone.Done()
+			newWatchdog(busyQuit, request.samplePeriod, request.stderr).run(watchCtx, pid)
+		}()
+	})
+	stopWatching()
+	watchdogDone.Wait()
 	code := exitCodeOf(runErr)
 	logger.Info("gate test: go test ended", "exit", code, "error", runErr)
 	if cmd.Process == nil && caught.Load() == 0 {

@@ -69,7 +69,7 @@ func pairMergeBase(l *lyxcwd.Location) func() (string, error) {
 // Reason is the status file's error while the run is halted at the Darn-Write row, and empty otherwise.
 // An absent status file and a history with no Darn-Write entry report not found.
 func latestDarnOutcome(statusPath, statusLockPath string) (loomshed.DarnOutcome, bool, error) {
-	st, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
 	// A run directory not yet created fails the lock open with not-exist; that is an absent status file too.
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return loomshed.DarnOutcome{}, false, err

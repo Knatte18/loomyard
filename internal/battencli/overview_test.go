@@ -294,11 +294,11 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A seed with an unknown key is listed but fails the strict decode.
-	strictSeed := shedrun.SeedFile(prime, "strict")
-	writeOverviewFile(t, strictSeed, []byte(`{"recipe":"batten","driver":"go","unknown":1}`), minutesAgo(100))
-	writeOverviewStatus(t, shedrun.StatusFile(prime, "strict"), shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan"}, minutesAgo(100))
-	if err := os.MkdirAll(fabricengine.WorktreePath(prime, "strict"), 0o755); err != nil {
+	// A seed with an unknown key decodes and is listed like any other; its `-` columns come from the seed lacking started_at.
+	futureKeySeed := shedrun.SeedFile(prime, "future-key")
+	writeOverviewFile(t, futureKeySeed, []byte(`{"recipe":"batten","driver":"go","unknown":1}`), minutesAgo(100))
+	writeOverviewStatus(t, shedrun.StatusFile(prime, "future-key"), shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan"}, minutesAgo(100))
+	if err := os.MkdirAll(fabricengine.WorktreePath(prime, "future-key"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -307,9 +307,9 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 	source.childStatus = func(string) (string, error) { return childStatusPath, nil }
 
 	want := []string{
-		"run-a   running  Plan-Write  2h00m  2h00m  run-a",
-		"run-b   running  Plan        1h00m  1h00m  run-b",
-		"strict  running  Plan        -      -      strict",
+		"run-a       running  Plan-Write  2h00m  2h00m  run-a",
+		"run-b       running  Plan        1h00m  1h00m  run-b",
+		"future-key  running  Plan        -      -      future-key",
 	}
 	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
 		t.Fatalf("first frame mismatch (-want +got):\n%s", diff)
@@ -321,15 +321,15 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 	}
 	writeOverviewFile(t, runBStatus, []byte("{not json"), minutesAgo(40))
 	want = []string{
-		"run-a   running  Run-Shed  2h00m  2h00m  run-a",
-		"run-b   running  Plan      1h00m  1h00m  run-b",
-		"strict  running  Plan      -      -      strict",
+		"run-a       running  Run-Shed  2h00m  2h00m  run-a",
+		"run-b       running  Plan      1h00m  1h00m  run-b",
+		"future-key  running  Plan      -      -      future-key",
 	}
 	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
 		t.Errorf("second frame mismatch (-want +got):\n%s", diff)
 	}
 
-	want[1] = "run-b   status unreadable"
+	want[1] = "run-b       status unreadable"
 	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
 		t.Errorf("third frame mismatch (-want +got):\n%s", diff)
 	}

@@ -29,7 +29,7 @@ import (
 // An absent status file reads as not paused.
 func pauseRequested(location *lyxcwd.Location, slug string) func() (bool, error) {
 	return func() (bool, error) {
-		status, found, err := state.ReadJSONStrict[shedengine.Status](StatusFile(location, slug), StatusLock(location, slug))
+		status, found, err := state.ReadJSONNoMkdir[shedengine.Status](StatusFile(location, slug), StatusLock(location, slug))
 		if err != nil || !found {
 			return false, err
 		}

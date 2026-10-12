@@ -211,7 +211,7 @@ func TestStatusCmd_DecodeErrorPrefixIsTold(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(paths.StatusLockPath), 0o755); err != nil {
 		t.Fatalf("mkdir status lock parent: %v", err)
 	}
-	// Malformed JSON: state.ReadJSONStrict fails to decode.
+	// Malformed JSON: state.ReadJSONNoMkdir fails to decode.
 	if err := os.WriteFile(paths.StatusPath, []byte("not json"), 0o644); err != nil {
 		t.Fatalf("write malformed status file: %v", err)
 	}
@@ -442,7 +442,7 @@ func seededStatusSpec(t *testing.T, hooks Hooks) *Spec {
 		t.Fatalf("mkdir status lock parent: %v", err)
 	}
 	seedStatus(t, paths, "Only")
-	st, _, err := state.ReadJSONStrict[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	st, _, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil {
 		t.Fatalf("read seeded status: %v", err)
 	}
@@ -599,7 +599,7 @@ func TestRenderStatusLine_ProducerReasonReachesWait(t *testing.T) {
 	if _, err := shed.Step(context.Background()); err != nil {
 		t.Fatalf("Step(...) = _, %v; want nil error", err)
 	}
-	st, found, err := state.ReadJSONStrict[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil || !found {
 		t.Fatalf("read status: found=%v err=%v", found, err)
 	}
@@ -644,7 +644,7 @@ func TestStatusCmd_WaitingNote_RunningOnly(t *testing.T) {
 
 	t.Run("not running skips the hook", func(t *testing.T) {
 		spec := seededStatusSpec(t, Hooks{Waiting: hook})
-		st, _, err := state.ReadJSONStrict[shedengine.Status](spec.StatusPath, spec.StatusLockPath)
+		st, _, err := state.ReadJSONNoMkdir[shedengine.Status](spec.StatusPath, spec.StatusLockPath)
 		if err != nil {
 			t.Fatalf("read status: %v", err)
 		}

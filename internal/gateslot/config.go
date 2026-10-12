@@ -21,6 +21,8 @@ type Config struct {
 	GoParallel int `yaml:"go_parallel"`
 	// CLIWaitSec is how many seconds `lyx gate test` waits for a slot.
 	CLIWaitSec int `yaml:"cli_wait_sec"`
+	// BusyQuitSec is the continuous seconds a Go test binary may keep a core busy before the watchdog quits it; 0 turns the watchdog off.
+	BusyQuitSec int `yaml:"busy_quit_sec"`
 }
 
 // ErrConfigAbsent is LoadConfig's error for a baseDir with no gate.yaml; its way forward is `lyx fabric reconcile`, which writes the file from the template.
@@ -34,9 +36,10 @@ func ConfigSpec() configengine.Spec {
 		Template: []byte(ConfigTemplate()),
 		HubWide:  true,
 		Categories: map[string]configengine.Category{
-			"slots":        configengine.CategoryCrossPair,
-			"go_parallel":  configengine.CategoryCrossPair,
-			"cli_wait_sec": configengine.CategoryCrossPair,
+			"slots":         configengine.CategoryCrossPair,
+			"go_parallel":   configengine.CategoryCrossPair,
+			"cli_wait_sec":  configengine.CategoryCrossPair,
+			"busy_quit_sec": configengine.CategoryCrossPair,
 		},
 	}
 }
@@ -83,10 +86,18 @@ func decodeConfig(data []byte) (Config, error) {
 			return Config{}, fmt.Errorf("gate config key %q: %d; want at least 1", key.name, key.value)
 		}
 	}
+	if cfg.BusyQuitSec < 0 {
+		return Config{}, fmt.Errorf("gate config key %q: %d; want at least 0", "busy_quit_sec", cfg.BusyQuitSec)
+	}
 	return cfg, nil
 }
 
-// Limits converts the config to the pool limits, cli_wait_sec as a duration.
+// Limits converts the config to the pool limits, cli_wait_sec and busy_quit_sec as durations.
 func (c Config) Limits() Limits {
-	return Limits{Slots: c.Slots, GoParallel: c.GoParallel, CLIWait: time.Duration(c.CLIWaitSec) * time.Second}
+	return Limits{
+		Slots:      c.Slots,
+		GoParallel: c.GoParallel,
+		CLIWait:    time.Duration(c.CLIWaitSec) * time.Second,
+		BusyQuit:   time.Duration(c.BusyQuitSec) * time.Second,
+	}
 }

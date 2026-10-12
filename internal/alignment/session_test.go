@@ -443,16 +443,30 @@ func TestSession(t *testing.T) {
 		}
 	})
 
-	t.Run("MarkApplied round-trips through Attempts", func(t *testing.T) {
+	t.Run("MarkApplied round-trips through Attempts and keeps a key a newer binary wrote", func(t *testing.T) {
 		t.Parallel()
 		h := newSessionHarness(t)
 		attempt := h.begin(t, "round-1")
+		path := filepath.Join(attempt.Dir, attemptFileName)
+		written, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("ReadFile(%q) = %v; want nil", path, err)
+		}
+		withExtra := strings.Replace(string(written), "{", `{"newer_key": "kept",`, 1)
+		if err := os.WriteFile(path, []byte(withExtra), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+		}
+
 		if err := h.session.MarkApplied(attempt, VerdictApprove, true); err != nil {
 			t.Fatalf("MarkApplied() error = %v; want nil", err)
 		}
 		attempts, err := h.session.Attempts()
 		if err != nil || len(attempts) != 1 || attempts[0].Applied != VerdictApprove || !attempts[0].Notified {
 			t.Errorf("Attempts() = %+v, %v; want one attempt applied as approve and notified", attempts, err)
+		}
+		rewritten, err := os.ReadFile(path)
+		if err != nil || !strings.Contains(string(rewritten), `"newer_key": "kept"`) {
+			t.Errorf("attempt.json after MarkApplied = %s, %v; want the newer_key kept", rewritten, err)
 		}
 	})
 }

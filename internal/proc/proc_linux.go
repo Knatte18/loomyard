@@ -7,11 +7,13 @@
 package proc
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // HideWindow is a no-op on Linux (no console windows to suppress).
@@ -56,6 +58,92 @@ func statFieldsAfterName(pid int) ([]string, bool) {
 		return nil, false
 	}
 	return fields, true
+}
+
+// userHZ is the kernel's fixed tick rate for the CPU times in /proc/<pid>/stat, in ticks per second.
+const userHZ = 100
+
+// TreeCPU returns root and every descendant of it, each with its executable path and the user plus system CPU time it has used.
+// A process that ends between the /proc listing and its reads is skipped; an unreadable /proc is an error.
+func TreeCPU(root int) ([]ProcessCPU, error) {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil, fmt.Errorf("proc: list /proc: %w", err)
+	}
+
+	children := map[int][]int{}
+	cpu := map[int]time.Duration{}
+	for _, entry := range entries {
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil {
+			continue
+		}
+		fields, ok := statFieldsAfterName(pid)
+		if !ok {
+			continue
+		}
+		// The remainder starts at field 3, so field 4 (parent pid) is entry 1, and fields 14 and 15 (user and system ticks) are entries 11 and 12.
+		parent, parentErr := strconv.Atoi(fields[1])
+		userTicks, userErr := strconv.ParseInt(fields[11], 10, 64)
+		systemTicks, systemErr := strconv.ParseInt(fields[12], 10, 64)
+		if parentErr != nil || userErr != nil || systemErr != nil {
+			continue
+		}
+		children[parent] = append(children[parent], pid)
+		cpu[pid] = time.Duration(userTicks+systemTicks) * time.Second / userHZ
+	}
+
+	var tree []ProcessCPU
+	pending := []int{root}
+	for len(pending) > 0 {
+		pid := pending[0]
+		pending = pending[1:]
+		used, found := cpu[pid]
+		if !found {
+			continue
+		}
+		tree = append(tree, ProcessCPU{PID: pid, Path: executablePath(pid), CPU: used})
+		pending = append(pending, children[pid]...)
+	}
+	return tree, nil
+}
+
+// executablePath returns the executable of pid from its /proc exe link, falling back to the first field of its command line.
+// The 15-character command name in stat is never used, so a long test-binary name keeps its suffix.
+func executablePath(pid int) string {
+	base := "/proc/" + strconv.Itoa(pid)
+	if path, err := os.Readlink(base + "/exe"); err == nil {
+		return path
+	}
+	cmdline, err := os.ReadFile(base + "/cmdline")
+	if err != nil {
+		return ""
+	}
+	first, _, _ := strings.Cut(string(cmdline), "\x00")
+	return first
+}
+
+// IsAncestor reports whether pid is a parent, grandparent or further ancestor of the calling process.
+// The process itself, pid 0 and a pid that is not alive are never ancestors.
+func IsAncestor(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	for current := os.Getppid(); current > 0; {
+		if current == pid {
+			return true
+		}
+		fields, ok := statFieldsAfterName(current)
+		if !ok {
+			return false
+		}
+		parent, err := strconv.Atoi(fields[1])
+		if err != nil {
+			return false
+		}
+		current = parent
+	}
+	return false
 }
 
 // KillPID force-kills the process identified by pid.

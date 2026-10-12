@@ -21,9 +21,14 @@
 //
 // # Config
 //
-// The hub-wide `gate` config module keeps `slots`, `go_parallel` and `cli_wait_sec` at `<BoardDir>/_lyx/config/gate.yaml`, seeded from template.yaml by the hub-wide reconcile.
-// LoadConfig reads it strictly and refuses any value below 1 naming its key; Config.Limits converts it to the Limits a Pool reads.
+// The hub-wide `gate` config module keeps `slots`, `go_parallel`, `cli_wait_sec` and `busy_quit_sec` at `<BoardDir>/_lyx/config/gate.yaml`, seeded from template.yaml by the hub-wide reconcile.
+// LoadConfig reads it strictly and refuses any value below 1 naming its key, except `busy_quit_sec`, which accepts 0 and is refused below it; Config.Limits converts it to the Limits a Pool reads.
 // TemplateConfig decodes the template alone, for a run outside every hub.
+//
+// # Watchdog line
+//
+// The line the gate test's CPU watchdog prints after a quit is rendered by WatchdogLine and found by FindWatchdogQuit.
+// BusyQuitWayForward is the way forward after one.
 //
 // # Wait records
 //

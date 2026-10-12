@@ -101,11 +101,14 @@ func TestVerifyGateReport_RoundTrip(t *testing.T) {
 			{ID: "m/a.TestX", Kind: FailureKindTest, Package: "m/a", Tail: "boom"},
 			{ID: "m/b", Kind: FailureKindPackage, Package: "m/b", Tail: "build failed"},
 		},
-		TimedOut:   "1h0m0s",
-		LogTail:    "hung in TestSlow",
-		LogPath:    "/scratch/verify.log",
-		Hint:       []string{"03-third"},
-		FixCommits: []string{"abc123", "def456"},
+		TimedOut:       "1h0m0s",
+		LogTail:        "hung in TestSlow",
+		Hang:           "CPU watchdog SIGQUIT",
+		HangStacks:     true,
+		WatchdogWindow: "2m0s",
+		LogPath:        "/scratch/verify.log",
+		Hint:           []string{"03-third"},
+		FixCommits:     []string{"abc123", "def456"},
 	}
 	if err := WriteVerifyGateReport(path, want); err != nil {
 		t.Fatalf("WriteVerifyGateReport() error = %v", err)
@@ -166,13 +169,32 @@ func TestRenderVerifyGateFindings(t *testing.T) {
 
 	timedOut := renderVerifyGateFindings(VerifyGateReport{Attempt: 1, Cap: 3, TimedOut: "1h0m0s", LogPath: "/scratch/verify.log", LogTail: "hung in TestSlow"}, fixPromptPath)
 	assertOpensWithWayForward(timedOut)
-	for _, want := range []string{"attempt 1 of 3", "did not finish within 1h0m0s and was killed", "/scratch/verify.log", "hung in TestSlow"} {
+	for _, want := range []string{"attempt 1 of 3", "did not finish within 1h0m0s and was killed", "not re-run", "/scratch/verify.log", "hung in TestSlow"} {
 		if !strings.Contains(timedOut, want) {
 			t.Errorf("timed-out findings missing %q:\n%s", want, timedOut)
 		}
 	}
 	if strings.Contains(timedOut, "Failing identities") {
 		t.Errorf("timed-out findings must not list identities:\n%s", timedOut)
+	}
+
+	hangFailures := []VerifyFailure{{ID: "m/a", Kind: FailureKindPackage, Package: "m/a", Tail: "boom"}}
+	watchdogHang := renderVerifyGateFindings(VerifyGateReport{Attempt: 1, Cap: 3, Hang: "CPU watchdog SIGQUIT", HangStacks: true, WatchdogWindow: "2m0s", Failures: hangFailures, LogPath: "/scratch/verify.log", LogTail: "goroutine 1"}, fixPromptPath)
+	assertOpensWithWayForward(watchdogHang)
+	for _, want := range []string{"not re-run", "goroutine stacks are in the log", "2m0s", "busy_quit_sec", "CPU watchdog SIGQUIT", "m/a", "/scratch/verify.log", "goroutine 1"} {
+		if !strings.Contains(watchdogHang, want) {
+			t.Errorf("watchdog hang findings missing %q:\n%s", want, watchdogHang)
+		}
+	}
+
+	exitHang := renderVerifyGateFindings(VerifyGateReport{Attempt: 1, Cap: 3, Hang: "exit code 137", Failures: hangFailures, LogPath: "/scratch/verify.log"}, fixPromptPath)
+	for _, want := range []string{"not re-run", "exit code 137", "m/a"} {
+		if !strings.Contains(exitHang, want) {
+			t.Errorf("exit-code hang findings missing %q:\n%s", want, exitHang)
+		}
+	}
+	if strings.Contains(exitHang, "stacks") || strings.Contains(exitHang, "busy_quit_sec") {
+		t.Errorf("exit-code hang findings must name no stacks and no watchdog key:\n%s", exitHang)
 	}
 
 	dirty := renderVerifyGateFindings(VerifyGateReport{Attempt: 1, Cap: 3, Dirty: []string{"a.go", "b.txt"}}, fixPromptPath)
