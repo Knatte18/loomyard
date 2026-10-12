@@ -133,6 +133,7 @@
 //
 // A pack holds the member glyphs the batch's cards name in their targets and `Uses:`.
 // Each is resolved to its declarations with file, line span and signature.
+// A `var` or `const` entry shows the first line of its signature only, while its span still covers the whole declaration.
 // Beside them sit the refs that did not resolve, each with a reason in plain words, `plan:` handles included.
 // begin-batch builds it (buildKickstartPack) immediately before it renders the fork prompt, after the dispatch re-resolution and its fingerprint re-stamp.
 // It parses the plan afresh, because that re-resolution may have canonicalized handles on disk.

@@ -16,9 +16,19 @@ import (
 func TestKickstartPack(t *testing.T) {
 	t.Parallel()
 
-	const source = "package sub\n\nfunc Foo() {}\n\nfunc Bar() {}\n\nfunc Baz() {}\n\nfunc Qux() {}\n"
+	const source = "package sub\n\nfunc Foo() {}\n\nfunc Bar() {}\n\nfunc Baz() {}\n\nfunc Qux() {}\n" +
+		"\nvar single = map[string]int{\n\t\"a\": 1,\n}\n" +
+		"\nvar (\n\tfirst  = 1\n\tsecond = []int{\n\t\t1,\n\t}\n)\n" +
+		"\nconst joined = \"a\" +\n\t\"b\"\n" +
+		"\nconst (\n\tone = 1\n\ttwo = \"a\" +\n\t\t\"b\"\n)\n" +
+		"\nfunc Long(\n\ta int,\n\tb int,\n) {}\n" +
+		"\ntype T struct{}\n" +
+		"\nfunc (T) LongMethod(\n\ta int,\n\tb int,\n) {}\n"
 	declaration := func(start int, signature string) []planindex.PackDeclaration {
 		return []planindex.PackDeclaration{{File: "sub/a.go", Start: start, End: start, Signature: signature}}
+	}
+	spanned := func(start, end int, signature string) []planindex.PackDeclaration {
+		return []planindex.PackDeclaration{{File: "sub/a.go", Start: start, End: end, Signature: signature}}
 	}
 	group := func(cardType planparser.CardType, refs ...string) planparser.TargetGroup {
 		return planparser.TargetGroup{Type: cardType, Refs: refs}
@@ -89,6 +99,19 @@ func TestKickstartPack(t *testing.T) {
 					{Ref: "plan:sub#Later", Reason: handleReason},
 				},
 			},
+		},
+		{
+			name: "a var or const keeps the first line of its signature, a multi-line function keeps all of it",
+			cards: []planparser.Card{card(1, nil, group(planparser.CardTypeEdit,
+				"sub#single", "sub#second", "sub#joined", "sub#two", "sub#Long", "sub#T.LongMethod"))},
+			want: planindex.Pack{Resolved: []planindex.PackEntry{
+				{Glyph: "sub#single", Declarations: spanned(11, 13, "var single = map[string]int{")},
+				{Glyph: "sub#second", Declarations: spanned(17, 19, "var second = []int{")},
+				{Glyph: "sub#joined", Declarations: spanned(22, 23, `const joined = "a" +`)},
+				{Glyph: "sub#two", Declarations: spanned(27, 28, `const two = "a" +`)},
+				{Glyph: "sub#Long", Declarations: spanned(31, 34, "func Long(\n\ta int,\n\tb int,\n)")},
+				{Glyph: "sub#T.LongMethod", Declarations: spanned(38, 41, "func (T) LongMethod(\n\ta int,\n\tb int,\n)")},
+			}},
 		},
 		{
 			name:  "a not_found member glyph is listed unresolved with its status",

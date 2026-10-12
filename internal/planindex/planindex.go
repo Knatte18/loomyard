@@ -43,7 +43,8 @@ func (f Finding) Error() string {
 	return fmt.Sprintf("%s/%s[%s]: %s", f.Check, f.Card, f.Severity, f.Detail)
 }
 
-// PackDeclaration is one declaration of a resolved member: its file, its line span and its verbatim signature.
+// PackDeclaration is one declaration of a resolved member: its file, its line span and its signature.
+// The signature is the code index's verbatim, except a var or const keeps its first line only, since its signature carries the whole initializer.
 type PackDeclaration struct {
 	File      string
 	Start     int

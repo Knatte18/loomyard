@@ -4,6 +4,7 @@ package planglyph
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -109,17 +110,22 @@ func selectPackRefs(cards []planparser.Card) []packRef {
 	return refs
 }
 
-// appendPackAnswer files one member's resolve answer into pack: found and multipart as an entry with a declaration per quarry symbol, anything else as unresolved with quarry's status, or with the grammar rejection's error and reason.
+// appendPackAnswer files one member's resolve answer into pack: found and multipart as an entry with a declaration per quarry symbol (a var or const keeping the first line of its signature only), anything else as unresolved with quarry's status, or with the grammar rejection's error and reason.
 func appendPackAnswer(pack *planindex.Pack, ref string, result quarry.ResolveResult) {
 	switch result.Status {
 	case quarry.StatusFound, quarry.StatusMultipart:
 		entry := planindex.PackEntry{Glyph: ref}
 		for _, symbol := range result.Symbols {
+			signature := symbol.Signature
+			if symbol.Kind == quarry.KindVar || symbol.Kind == quarry.KindConst {
+				firstLine, _, _ := strings.Cut(signature, "\n")
+				signature = strings.TrimRight(firstLine, " \t\r")
+			}
 			entry.Declarations = append(entry.Declarations, planindex.PackDeclaration{
 				File:      symbol.File,
 				Start:     symbol.Start,
 				End:       symbol.End,
-				Signature: symbol.Signature,
+				Signature: signature,
 			})
 		}
 		pack.Resolved = append(pack.Resolved, entry)
