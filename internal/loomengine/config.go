@@ -419,6 +419,55 @@ func ConfigOpenMaps() []string {
 	return []string{"review", "fix", "discussion_review", "discussion_fix", "plan_review", "plan_fix", "webster_review", "webster_fix", "fan_review", "discussion_advisors"}
 }
 
+// ConfigSpec returns loom's layered-load spec.
+// Only the keys that can switch off or hollow a review or approval gate are barred from the local layer.
+func ConfigSpec() configengine.Spec {
+	none := configengine.CategoryNone
+	guard := configengine.CategoryGuard
+	return configengine.Spec{
+		Name:     "loom",
+		Template: []byte(ConfigTemplate()),
+		OpenMaps: ConfigOpenMaps(),
+		Categories: map[string]configengine.Category{
+			"discussion":                 none,
+			"discussion_timeout_min":     none,
+			"discussion_interactive":     none,
+			"discussion_producer":        guard,
+			"discussion_advisors":        none,
+			"plan":                       none,
+			"plan_timeout_min":           none,
+			"review":                     none,
+			"fix":                        none,
+			"discussion_review":          none,
+			"discussion_fix":             none,
+			"plan_review":                none,
+			"plan_fix":                   none,
+			"webster_review":             none,
+			"webster_fix":                none,
+			"discussion_fan":             guard,
+			"plan_fan":                   guard,
+			"fan_review":                 none,
+			"judge":                      none,
+			"seed":                       none,
+			"discussion_judge":           none,
+			"plan_judge":                 none,
+			"webster_judge":              none,
+			"discussion_seed":            none,
+			"plan_seed":                  none,
+			"webster_seed":               none,
+			"rework":                     none,
+			"review_timeout_min":         none,
+			"friction":                   none,
+			"friction_timeout_min":       none,
+			"driver":                     none,
+			"parent_review_wait_min":     guard,
+			"step_idle_timeout_min":      none,
+			"review_circling_checkpoint": none,
+			"review_max_bounces":         none,
+		},
+	}
+}
+
 // segmentModelList is one per-segment reviewer or fixer model-spec list with the loom.yaml key it came from.
 type segmentModelList struct {
 	key   string
@@ -496,7 +545,7 @@ func validateAdvisorSpecs(key string, specs ModelSpecList, reg modelspec.Registr
 // A fan that does not resolve is refused naming the key, the unknown name and the fans that exist,
 // and an unreadable burler.yaml is refused naming the first set key.
 // With both fan keys empty, burler.yaml is never read.
-func validateFanKeys(baseDir string, cfg Config) error {
+func validateFanKeys(dirs configengine.Dirs, cfg Config) error {
 	var burlerCfg *burlerengine.Config
 	for _, fan := range []struct {
 		key  string
@@ -509,7 +558,7 @@ func validateFanKeys(baseDir string, cfg Config) error {
 			continue
 		}
 		if burlerCfg == nil {
-			loaded, err := burlerengine.LoadConfig(configengine.Dirs{Anchor: baseDir})
+			loaded, err := burlerengine.LoadConfig(dirs)
 			if err != nil {
 				return fmt.Errorf("loom config key %q: %w; fix burler.yaml, or set the key to empty to run the segment solo", fan.key, err)
 			}
@@ -537,10 +586,12 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	return rewritten, []string{line}, nil
 }
 
-// LoadConfig loads and unmarshals configuration for the loom module.
-// It validates model-spec grammar at load time.
-func LoadConfig(baseDir, module string) (Config, error) {
-	resolved, err := configengine.Load(configengine.Dirs{Anchor: baseDir}, configengine.Spec{Name: module, Template: []byte(ConfigTemplate()), OpenMaps: ConfigOpenMaps()})
+// LoadConfig loads and unmarshals configuration for the loom module strictly through the layer stack under dirs.
+// It validates model-spec grammar at load time, and reads burler.yaml and models.yaml through the same dirs.
+func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
+	spec := ConfigSpec()
+	spec.Name = module
+	resolved, err := configengine.Load(dirs, spec)
 	if err != nil {
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it")
@@ -590,14 +641,14 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		return Config{}, err
 	}
 
-	if err := validateFanKeys(baseDir, cfg); err != nil {
+	if err := validateFanKeys(dirs, cfg); err != nil {
 		return Config{}, err
 	}
 
 	if isUnsetModelSpecList(cfg.DiscussionAdvisors) {
 		cfg.DiscussionAdvisors = nil
 	} else {
-		reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: baseDir})
+		reg, err := modelspec.LoadRegistry(dirs)
 		if err != nil {
 			return Config{}, fmt.Errorf("loom config key %q: %w; fix models.yaml, or set the key to an empty list for no advisors", discussionAdvisorsKey, err)
 		}

@@ -16,10 +16,10 @@ import (
 const twillFan = "twill-discussion"
 
 // twillBlocks returns the twill directive and the twill write-scope paragraph for the Discussion-Write prompt.
-// The lenses come from the twillFan fan, resolved against the worktree's burler.yaml and the embedded template.
+// The lenses come from the twillFan fan, resolved against burler.yaml's layer stack under dirs and the embedded template.
 // An unreadable burler.yaml, or a fan that does not resolve, fails with an error naming the fan and burler.yaml and the way forward.
-func twillBlocks(layout *lyxcwd.Location, stencilsDir string) (string, string, error) {
-	burlerConfig, err := burlerengine.LoadConfig(configengine.Dirs{Anchor: layout.AnchorPath()})
+func twillBlocks(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir string) (string, string, error) {
+	burlerConfig, err := burlerengine.LoadConfig(dirs)
 	if err != nil {
 		return "", "", fmt.Errorf("Discussion-Write: burler.yaml unreadable for twill, which needs the %s fan; fix burler.yaml: %w", twillFan, err)
 	}

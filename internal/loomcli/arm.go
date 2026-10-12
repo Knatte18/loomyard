@@ -37,6 +37,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
@@ -260,7 +261,7 @@ func (c *loomCLI) reviewBudget() (int, error) {
 		return c.cfg.ReviewMaxBounces, nil
 	}
 
-	cfg, err := loomengine.LoadConfig(c.location.AnchorPath(), "loom")
+	cfg, err := loomengine.LoadConfig(configengine.Dirs{Anchor: c.location.AnchorPath()}, "loom")
 	if err == nil {
 		return cfg.ReviewMaxBounces, nil
 	}

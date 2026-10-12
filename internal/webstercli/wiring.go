@@ -125,7 +125,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	// empty Friction key, both leave it "": a `lyx webster` verb must never fail because an unrelated
 	// module's config could not be read, and the whole value is optional bookkeeping.
 	c.frictionDir = ""
-	if loomCfg, err := loomengine.LoadConfig(anchorPath, "loom"); err != nil {
+	if loomCfg, err := loomengine.LoadConfig(configengine.Dirs{Anchor: anchorPath}, "loom"); err != nil {
 		logger.Warn("webstercli: could not load loom config; Tier 2 friction notes are disabled for this invocation", "error", err)
 	} else if loomCfg.Friction != "" {
 		c.frictionDir = loomengine.LoomFrictionDir(loc)

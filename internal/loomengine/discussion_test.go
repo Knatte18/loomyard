@@ -55,7 +55,7 @@ func TestDiscussionSpec(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := cfg
 			cfg.DiscussionProducer = tt.producer
-			spec, err := DiscussionSpec(layout, newTestStencilsDir(t), "", cfg, reg, "add-json-flag", tt.autonomous)
+			spec, err := DiscussionSpec(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, newTestStencilsDir(t), "", cfg, reg, "add-json-flag", tt.autonomous)
 			if err != nil {
 				t.Fatalf("DiscussionSpec(..., autonomous=%v) = _, %v; want nil error", tt.autonomous, err)
 			}
@@ -133,7 +133,7 @@ func TestDiscussionSpec_Refuses(t *testing.T) {
 				stencilsDir = filepath.Join(t.TempDir(), "does-not-exist")
 			}
 
-			_, err = DiscussionSpec(layout, stencilsDir, "", cfg, reg, tt.slug, false)
+			_, err = DiscussionSpec(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, "", cfg, reg, tt.slug, false)
 			if err == nil {
 				t.Fatalf("DiscussionSpec(slug=%q, missingDir=%v) = _, nil; want non-nil error", tt.slug, tt.missingDir)
 			}
@@ -175,10 +175,13 @@ func TestDiscussionSpec_Twill(t *testing.T) {
 	tests := []struct {
 		name       string
 		burlerYAML string
-		wantLenses []string
+		// defaultYAML, when non-empty, is the burler.yaml of a temp board dir the load is told, so the fan lives only in the repo default.
+		defaultYAML string
+		wantLenses  []string
 	}{
 		{name: "template fan without burler.yaml", wantLenses: lensNames(templateFan)},
 		{name: "burler.yaml redefines the fan", burlerYAML: "fans:\n  twill-discussion: [goal-scope]\n", wantLenses: []string{"goal-scope"}},
+		{name: "the fan lives only in the repo default", defaultYAML: "fans:\n  twill-discussion: [goal-scope]\n", wantLenses: []string{"goal-scope"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -187,9 +190,20 @@ func TestDiscussionSpec_Twill(t *testing.T) {
 			if tt.burlerYAML != "" {
 				writeBurlerYAML(t, layout, tt.burlerYAML)
 			}
+			dirs := configengine.Dirs{Anchor: layout.AnchorPath()}
+			if tt.defaultYAML != "" {
+				dirs.Board = t.TempDir()
+				defaultPath := configengine.ConfigFile(dirs.Board, "burler")
+				if err := os.MkdirAll(filepath.Dir(defaultPath), 0o755); err != nil {
+					t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(defaultPath), err)
+				}
+				if err := os.WriteFile(defaultPath, []byte(tt.defaultYAML), 0o644); err != nil {
+					t.Fatalf("WriteFile(%q) = %v; want nil", defaultPath, err)
+				}
+			}
 			stencilsDir := newTestStencilsDir(t)
 
-			spec, err := DiscussionSpec(layout, stencilsDir, "", cfg, reg, "add-json-flag", true)
+			spec, err := DiscussionSpec(layout, dirs, stencilsDir, "", cfg, reg, "add-json-flag", true)
 			if err != nil {
 				t.Fatalf("DiscussionSpec(twill) = _, %v; want nil error", err)
 			}
@@ -203,7 +217,7 @@ func TestDiscussionSpec_Twill(t *testing.T) {
 				}
 				at += next
 			}
-			if tt.burlerYAML != "" {
+			if tt.burlerYAML != "" || tt.defaultYAML != "" {
 				for _, dropped := range templateFan {
 					if dropped.Name != "goal-scope" && strings.Contains(prompt, "- "+dropped.Name+": ") {
 						t.Errorf("DiscussionSpec(twill).Prompt carries lens %q; want only the burler.yaml fan %v", dropped.Name, tt.wantLenses)
@@ -267,7 +281,7 @@ func TestDiscussionSpec_ReadsStencilAtCallTime(t *testing.T) {
 		t.Fatalf("WriteFile(%q) = %v; want nil", discussionPath, err)
 	}
 
-	spec, err := DiscussionSpec(layout, stencilsDir, "", cfg, reg, "add-json-flag", false)
+	spec, err := DiscussionSpec(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, "", cfg, reg, "add-json-flag", false)
 	if err != nil {
 		t.Fatalf("DiscussionSpec(...) = _, %v; want nil error", err)
 	}
@@ -306,7 +320,7 @@ func TestDiscussionSpec_PatternDirective(t *testing.T) {
 				}
 			}
 
-			spec, err := DiscussionSpec(layout, newTestStencilsDir(t), "", cfg, reg, "add-json-flag", false)
+			spec, err := DiscussionSpec(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, newTestStencilsDir(t), "", cfg, reg, "add-json-flag", false)
 			if err != nil {
 				t.Fatalf("DiscussionSpec(...) = _, %v; want nil error", err)
 			}
@@ -343,10 +357,10 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 	const operatorBan = "A question to the operator in your pane is never the way forward."
 	build := map[string]func(parent string) (shuttleengine.Spec, error){
 		"discussion-interactive": func(parent string) (shuttleengine.Spec, error) {
-			return DiscussionSpec(layout, newTestStencilsDir(t), parent, cfg, reg, "add-json-flag", false)
+			return DiscussionSpec(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, newTestStencilsDir(t), parent, cfg, reg, "add-json-flag", false)
 		},
 		"discussion-autonomous": func(parent string) (shuttleengine.Spec, error) {
-			return DiscussionSpec(layout, newTestStencilsDir(t), parent, cfg, reg, "add-json-flag", true)
+			return DiscussionSpec(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, newTestStencilsDir(t), parent, cfg, reg, "add-json-flag", true)
 		},
 		"plan": func(parent string) (shuttleengine.Spec, error) {
 			return PlanSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), parent, cfg, reg)
