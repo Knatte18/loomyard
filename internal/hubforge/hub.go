@@ -312,6 +312,8 @@ func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string) (*Hub
 		tb.Fatalf("NewHub: lyxcwd.Resolve(%s): %v", res.PrimeCwd, err)
 	}
 
+	forgetCloneCorrespondence(tb, res.WeftBase, loc)
+
 	return &Hub{
 		Path:        res.HubPath,
 		Anchor:      res.Anchor,
@@ -323,6 +325,28 @@ func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string) (*Hub
 		Container:   container,
 		Mutations:   res.Mutated(),
 	}, res.PrimeCwd
+}
+
+// forgetCloneCorrespondence drops the Warp-SHA trailer the clone's walk put on the weft prime's reconcile commit, and the correspondence entry that came with it.
+// A fresh fixture hub starts with no warp-to-weft correspondence, so a scenario that records its own sees only those.
+// The commit is local to the prime's branch, so rewording it leaves no remote diverged.
+func forgetCloneCorrespondence(tb testing.TB, weftBase string, loc *lyxcwd.Location) {
+	tb.Helper()
+
+	message := gitkit.Git(tb, weftBase, "log", "-1", "--format=%B")
+	if !strings.Contains(message, fabricengine.WarpSHATrailerKey+":") {
+		return
+	}
+	subject := gitkit.Git(tb, weftBase, "log", "-1", "--format=%s")
+	gitkit.MustRun(tb, weftBase, "git", "commit", "--amend", "--allow-empty", "-m", subject)
+
+	f, err := fabricengine.Open(loc)
+	if err != nil {
+		tb.Fatalf("NewHub: fabricengine.Open(%s): %v", weftBase, err)
+	}
+	if err := f.RebuildIndex(); err != nil {
+		tb.Fatalf("NewHub: RebuildIndex after rewording the clone's reconcile commit: %v", err)
+	}
 }
 
 // registerTeardown installs a tb.Cleanup that removes every junction under hubPath before Go's own
