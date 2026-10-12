@@ -39,7 +39,7 @@ const steerAskUserQuestionDeny = "you cannot open an interactive dialog here. If
 const steerWebsterForkDeny = "lyx webster verbs belong to the Master session, never a fork. You are an implementer fork: do your batch work and write your report, and do NOT run any lyx webster command (not await-batch, not anything) — polling for the report you must write only deadlocks the run. This call is refused."
 
 // steerPythonDeny refuses a Bash python invocation; it must contain no single/double quote or backslash (checked at init).
-const steerPythonDeny = "lyx agents never run Python; edit files with Edit or Write, search and read with grep, awk or cat"
+const steerPythonDeny = "lyx agents never run Python; edit files with Edit or Write, search and read with grep, awk, cat or sed -n"
 
 // noticePythonDeny announces the python deny in the same wording as its steer.
 const noticePythonDeny = steerPythonDeny + "."
@@ -53,6 +53,30 @@ const commandPositionPattern = `("command"[[:space:]]*:[[:space:]]*"|\\n|[;&|(` 
 // pythonCommandPattern is the grep -E pattern the python deny matches against the raw PreToolUse payload JSON.
 // It matches python, python3 or python3.<minor>, optionally path-prefixed, as a whole word in command position.
 const pythonCommandPattern = commandPositionPattern + `python(3(\.[0-9]+)?)?([^A-Za-z0-9_./-]|$)`
+
+// steerInPlaceEditDeny refuses a Bash sed or perl in-place edit; it must contain no single/double quote or backslash (checked at init).
+// It points at the edit directive's rule and does not restate it.
+const steerInPlaceEditDeny = "scripted in-place edits are refused here under the edit directive in your prompt; reading with sed -n is fine"
+
+// noticeInPlaceEditDeny announces the in-place edit deny in the same wording as its steer.
+const noticeInPlaceEditDeny = steerInPlaceEditDeny + "."
+
+// inPlaceEditCommandPattern is the grep -E pattern the in-place edit deny matches against the raw PreToolUse payload JSON.
+// It matches sed or perl in command position, optionally path-prefixed, followed by that command's words up to the next ; & | ) backtick or JSON-escaped newline, then an in-place flag word:
+// for sed, -i or -i<suffix>, a short-flag cluster holding i such as -ni or -Ei, or a -- word that is a prefix of --in-place at least as long as --i, optionally followed by =<suffix>;
+// for perl, a short-flag cluster holding i such as -i, -i.bak or -pi.
+// A short-flag word opens after whitespace with a single dash and letters, so --quiet and --expression= never match as a cluster.
+// GNU sed accepts any unambiguous abbreviation of a long option and no other sed long option starts with --i.
+// It sees static text only, so it is a guardrail and not a barrier:
+// it lets through sed writing by redirection, a w command inside a script, awk, find -exec sed -i, anything behind bash -c, eval or a variable, and anything after a prefix commandPositionPattern does not list.
+// It falsely denies a matching spelling inside a quoted argument, a grep alternation or another payload field, and a perl read whose cluster holds an i, such as perl -Mstrict -ne.
+const inPlaceEditCommandPattern = commandPositionPattern + `(` +
+	`sed[[:space:]]` + inPlaceCommandWordsPattern + `(-[A-Za-z]*i|--i(n(-(p(l(a(c(e)?)?)?)?)?)?)?(=[^[:space:]"\\;&|)` + "`" + `]*)?([[:space:]"\\;&|)` + "`" + `]|$))` +
+	`|perl[[:space:]]` + inPlaceCommandWordsPattern + `-[A-Za-z]*i` +
+	`)`
+
+// inPlaceCommandWordsPattern matches the words of a command between its name and an in-place flag: optionally anything up to the next separator or JSON-escaped newline, ending on whitespace.
+const inPlaceCommandWordsPattern = `(([^;&|)\\` + "`" + `]|\\[^n])*[[:space:]])?`
 
 // steerRawGoDeny refuses a Bash go run that bypasses the gate slots; it must contain no single/double quote or backslash (checked at init).
 // It is the gate rule every lyx-spawned session and its forks read, which stencils point at as "the gate rule in your system prompt".
@@ -242,6 +266,16 @@ var standingDenies = []standingDeny{
 		command:   "grep -Eq '" + rawGoCommandPattern + "' && echo '" + denyJSON(steerRawGoDeny) + "'; true",
 		steer:     steerRawGoDeny,
 		notice:    noticeRawGoDeny,
+		installed: func(denyInputs) bool { return true },
+	},
+	{
+		// Installed for every run, the orch included, with no config key.
+		// A guardrail, not a barrier: inPlaceEditCommandPattern states what it lets through and what it falsely denies.
+		// Ending with `; true` guarantees exit 0 so a non-match allows the call.
+		matcher:   "Bash",
+		command:   "grep -Eq '" + inPlaceEditCommandPattern + "' && echo '" + denyJSON(steerInPlaceEditDeny) + "'; true",
+		steer:     steerInPlaceEditDeny,
+		notice:    noticeInPlaceEditDeny,
 		installed: func(denyInputs) bool { return true },
 	},
 }

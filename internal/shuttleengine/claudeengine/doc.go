@@ -161,6 +161,13 @@
 // It is a guardrail, not a barrier: its hook sees static text only, so a run hidden behind a script, `bash -c`, a `cd` plus a relative pattern it does not cover, or a shell variable passes, as does any raw package-scoped `go test`,
 // and a matching spelling inside a quoted argument, a commit message or a `grep` is falsely denied.
 //
+// The in-place edit row denies a Bash `sed` or `perl` whose words include an in-place flag, and every run installs it, the orch included, with no config key.
+// For `sed` that is `-i`, `-i<suffix>`, a short-flag cluster holding `i`, or any prefix of `--in-place` from `--i` up;
+// for `perl`, a short-flag cluster holding `i`.
+// Reading with `sed -n` passes, and the steer points at the edit directive's rule.
+// It is a guardrail, not a barrier: its hook sees static text only, so `sed` writing by redirection, a `w` command inside a script, `awk`, `find -exec sed -i`, anything behind `bash -c`, `eval` or a variable, and anything after a prefix the pattern does not list pass,
+// and a matching spelling inside a quoted argument, a `grep` alternation or another payload field, or a `perl` read whose cluster holds an `i`, is falsely denied.
+//
 // A replay corpus of real turn ends lives under testdata/corpus, one directory per case:
 // transcript.jsonl holds the source transcript's lines the parsers read, trimmed to the fields they read;
 // events.jsonl is the run's events file, or one rebuilt from the transcript's turn ends when the run directory is gone;

@@ -288,10 +288,11 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 					t.Errorf("autonomous AskUserQuestion command = %q; want the deny JSON payload", command)
 				}
 			}
-			pythonInstalled, rawGoInstalled := false, false
+			pythonInstalled, rawGoInstalled, inPlaceInstalled := false, false, false
 			for _, command := range matcherCommands(doc, "Bash") {
 				pythonInstalled = pythonInstalled || strings.Contains(command, steerPythonDeny)
 				rawGoInstalled = rawGoInstalled || strings.Contains(command, steerRawGoDeny)
+				inPlaceInstalled = inPlaceInstalled || strings.Contains(command, steerInPlaceEditDeny)
 			}
 			if pythonInstalled != tt.pythonDeny {
 				t.Errorf("python Bash PreToolUse entry present = %v; want %v (preToolUse: %v)", pythonInstalled, tt.pythonDeny, preToolUse)
@@ -300,8 +301,12 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 			if !rawGoInstalled {
 				t.Errorf("raw go Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
 			}
-			if !tt.wantAgentEntry && !tt.wantAskUserEntry && !tt.pythonDeny && len(preToolUse) != 1 {
-				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the raw go deny", preToolUse)
+			// The in-place edit deny has no toggle either.
+			if !inPlaceInstalled {
+				t.Errorf("in-place edit Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
+			}
+			if !tt.wantAgentEntry && !tt.wantAskUserEntry && !tt.pythonDeny && len(preToolUse) != 2 {
+				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the raw go and in-place edit denies", preToolUse)
 			}
 		})
 	}
@@ -412,17 +417,23 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 				}
 			}
 
-			// The raw go deny is installed under every input; the rest of the Bash entries are the fork guard.
-			var bashCommands, rawGoCommands []string
+			// The raw go and in-place edit denies are installed under every input; the rest of the Bash entries are the fork guard.
+			var bashCommands, rawGoCommands, inPlaceCommands []string
 			for _, command := range matcherCommands(doc, "Bash") {
-				if strings.Contains(command, steerRawGoDeny) {
+				switch {
+				case strings.Contains(command, steerRawGoDeny):
 					rawGoCommands = append(rawGoCommands, command)
-				} else {
+				case strings.Contains(command, steerInPlaceEditDeny):
+					inPlaceCommands = append(inPlaceCommands, command)
+				default:
 					bashCommands = append(bashCommands, command)
 				}
 			}
 			if len(rawGoCommands) != 1 {
 				t.Errorf("raw go Bash PreToolUse entries = %q; want exactly one (data: %s)", rawGoCommands, data)
+			}
+			if len(inPlaceCommands) != 1 {
+				t.Errorf("in-place edit Bash PreToolUse entries = %q; want exactly one (data: %s)", inPlaceCommands, data)
 			}
 			if !tt.wantBashGuard {
 				if len(bashCommands) != 0 {
@@ -649,6 +660,11 @@ func TestBuildDenyNotice_SentenceContent(t *testing.T) {
 		t.Errorf("fork notice = %q; want it to name fork subagents as permitted and forbid a fork spawning more", forkNotice)
 	}
 	nonFork := buildDenyNotice(false, cfg, false, false)
+	for name, notice := range map[string]string{"autonomous": nonFork, "interactive": buildDenyNotice(true, cfg, false, false), "fork": forkNotice} {
+		if !strings.Contains(notice, noticeInPlaceEditDeny) {
+			t.Errorf("%s notice = %q; want it to contain the in-place edit sentence", name, notice)
+		}
+	}
 	if !strings.Contains(nonFork, "The Agent tool is unavailable") {
 		t.Errorf("non-fork notice = %q; want the Agent tool named unavailable", nonFork)
 	}
