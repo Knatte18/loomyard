@@ -33,7 +33,11 @@ driver: sonnet[medium]  # model-spec for the model that runs an llm-driven run's
 arbiter: opus[high]  # model-spec for the arbiter, the cold agent a run's driver asks to settle a stop it cannot (see contracts/specs/llm-model-spec.md); empty takes opus[high]
 arbiter_timeout_min: 30  # minutes one arbiter spawn is allowed to run; 0 takes 30
 arbiter_max_spawns: 3  # arbiter spawns a run may use; 0 turns the arbiter off, so every eligible stop escalates to the run's parent as without it
-parent_review_wait_min: 60  # minutes Discussion-Write's gate waits for the parent's verdict before passing with a Warn
+alignment: opus[high]  # model-spec for the alignment agent, the cold agent that settles a parent review or a PR-Gate itself unless it finds an overlap or a question it cannot settle (see contracts/specs/llm-model-spec.md); empty takes opus[high]
+alignment_timeout_min: 20  # minutes one alignment spawn is allowed to run; 0 takes 20, and the resolved value must stay below parent_review_wait_min
+skip_alignment: false  # true sends parent review and PR-Gate to the run's parent exactly as before the alignment agent
+alignment_pr_approve: true  # false makes an agent approve at PR-Gate an escalation, so the parent gives the yes
+parent_review_wait_min: 60 # minutes Discussion-Write's gate waits for the parent's verdict before passing with a Warn
 step_idle_timeout_min: 60  # minutes a --until-stop step may show no activity (no trace write and no agent activity) before the loop kills it; a value below 1 is raised to 1
 review_circling_checkpoint: 3  # first judged round from which a review segment's judge may rule CIRCLING; with review_max_bounces also 3 a run reaches the budget escalation at round 3 before a CIRCLING verdict could change the outcome, so lower this for an earlier circling escalation; a value above review_max_bounces means a run never rules CIRCLING and reaches the budget escalation instead
 review_max_bounces: 3  # bounce budget of every Bouncer review segment's rows (Discussion-Review, Plan-Review, Webster-Review); a spent budget escalates to the parent; with review_circling_checkpoint also 3 the budget escalation at round 3 comes before a CIRCLING verdict could change the outcome, and lowering the checkpoint gives an earlier circling escalation
