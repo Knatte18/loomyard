@@ -9,13 +9,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-// TestDirective_RendersEveryValueVerbatim covers the seeded stencil: each value lands, a lens's inner newlines collapse to spaces, and the text has no marker, leading banner or trailing newline.
-func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
-	t.Parallel()
-	dir := stencilkit.Seed(t)
-
-	got, err := Directive(dir, Values{
-		ReviewedFiles:    []string{"/abs/one.md", "/abs/two.md"},
+// filledValues returns a Values with every field set.
+func filledValues() Values {
+	return Values{
+		ReviewedFiles:    "`/abs/one.md` and `/abs/two.md`",
+		SpawnPoint:       "SPAWN-POINT-SENTENCE",
+		RejectionRule:    "REJECTION-RULE-SENTENCE",
+		SeverityRule:     "SEVERITY-RULE-PHRASE",
 		ReadyMarker:      "/abs/.ready/marker",
 		RubricPath:       "/abs/rubric.md",
 		Lenses:           []Lens{{Name: "alpha", Text: "Look at A.\nThen at B.\n"}, {Name: "beta", Text: "Look at C."}},
@@ -23,12 +23,23 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 		SelfCheckStep:    "STEP-CHECK",
 		SelfCheckCommand: "lyx check --now",
 		DispositionPlace: "the PLACE section",
-	})
+	}
+}
+
+// TestDirective_RendersEveryValueVerbatim covers the seeded stencil: each value lands, a lens's inner newlines collapse to spaces, and the text has no marker, leading banner or trailing newline.
+func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
+	t.Parallel()
+	dir := stencilkit.Seed(t)
+
+	got, err := Directive(dir, filledValues())
 	if err != nil {
 		t.Fatalf("Directive = _, %v; want nil error", err)
 	}
 	for _, want := range []string{
-		"- `/abs/one.md`\n- `/abs/two.md`",
+		"read `/abs/one.md` and `/abs/two.md` and review them",
+		"SPAWN-POINT-SENTENCE\n",
+		"REJECTION-RULE-SENTENCE",
+		"each with SEVERITY-RULE-PHRASE, the section or decision it concerns",
 		"/abs/.ready/marker",
 		"/abs/rubric.md",
 		"- alpha: Look at A. Then at B.\n- beta: Look at C.",
@@ -49,6 +60,39 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 	}
 	if strings.HasSuffix(got, "\n") {
 		t.Errorf("Directive = %q; want no trailing newline", got)
+	}
+}
+
+// TestDirective_MissingValueNamesTheMarker covers a host value or the lens list left empty: Directive errors and the error names that value's marker.
+func TestDirective_MissingValueNamesTheMarker(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		empty  func(v *Values)
+		marker string
+	}{
+		{"ReviewedFiles", func(v *Values) { v.ReviewedFiles = "" }, "reviewed_files"},
+		{"SpawnPoint", func(v *Values) { v.SpawnPoint = "" }, "spawn_point"},
+		{"RejectionRule", func(v *Values) { v.RejectionRule = "" }, "rejection_rule"},
+		{"SeverityRule", func(v *Values) { v.SeverityRule = "" }, "severity_rule"},
+		{"Lenses", func(v *Values) { v.Lenses = nil }, "lens_list"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := stencilkit.Seed(t)
+			values := filledValues()
+			tt.empty(&values)
+
+			got, err := Directive(dir, values)
+			if err == nil {
+				t.Fatalf("Directive = %q, nil; want an error", got)
+			}
+			if !strings.Contains(err.Error(), tt.marker) {
+				t.Errorf("error = %q; want it to name %q", err, tt.marker)
+			}
+		})
 	}
 }
 

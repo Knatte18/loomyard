@@ -296,6 +296,22 @@ func TestValidate_IndexFileMismatch(t *testing.T) {
 			t.Errorf("countFor(findings, index-file-mismatch) = %d; want 0 (amendments.md is a known non-card file)", got)
 		}
 	})
+
+	t.Run("a plan directory containing lens-review.md produces no finding", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, planparser.LensReviewFileName), []byte("# Lens review\n"), 0o644); err != nil {
+			t.Fatalf("write lens review file: %v", err)
+		}
+		plan := &planparser.Plan{
+			Dir: dir, Format: 5, Approved: true,
+			Cards: []planparser.Card{validCard(1, "a")},
+		}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "index-file-mismatch"); got != 0 {
+			t.Errorf("countFor(findings, index-file-mismatch) = %d; want 0 (lens-review.md is a known non-card file)", got)
+		}
+	})
 }
 
 // TestValidate_CardTypeMissing covers card-type-missing: zero type labels produces one finding, while one label or more than one label both produce none — carrying multiple labels is legal.

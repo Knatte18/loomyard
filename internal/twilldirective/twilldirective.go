@@ -33,8 +33,14 @@ type Lens struct {
 
 // Values are the host-specific values Directive fills into the directive stencil's markers.
 type Values struct {
-	// ReviewedFiles are the files each fork reviews, one path each.
-	ReviewedFiles []string
+	// ReviewedFiles is the phrase naming the files each fork reviews, rendered verbatim after "read" with the host's own backticks.
+	ReviewedFiles string
+	// SpawnPoint is the sentence that opens the procedure and says when the writer runs it, rendered verbatim.
+	SpawnPoint string
+	// RejectionRule is the sentence that says how the writer may reject a finding, rendered verbatim.
+	RejectionRule string
+	// SeverityRule is the phrase that tells each fork how to grade a finding, rendered verbatim after "each with".
+	SeverityRule string
 	// ReadyMarker is the file the writer creates once the self-check passes and the forks wait for.
 	ReadyMarker string
 	// RubricPath is the rubric the writer reads before spawning.
@@ -52,11 +58,14 @@ type Values struct {
 }
 
 // Directive returns the lens review directive read from stencilsDir, filled with v, without its leading banner and trailing newlines.
-// Every marker is required: an empty value, or an empty ReviewedFiles or Lenses, fails the fill with an error naming the marker.
+// Every marker is required: an empty value, or an empty Lenses, fails the fill with an error naming the marker.
 // Every error names the stencil.
 func Directive(stencilsDir string, v Values) (string, error) {
 	values := map[string]string{
-		"reviewed_files":     bulletList(v.ReviewedFiles, func(path string) string { return "`" + path + "`" }),
+		"reviewed_files":     v.ReviewedFiles,
+		"spawn_point":        v.SpawnPoint,
+		"rejection_rule":     v.RejectionRule,
+		"severity_rule":      v.SeverityRule,
 		"ready_marker":       v.ReadyMarker,
 		"rubric_path":        v.RubricPath,
 		"lens_list":          bulletList(v.Lenses, func(l Lens) string { return l.Name + ": " + strings.Join(strings.Fields(l.Text), " ") }),

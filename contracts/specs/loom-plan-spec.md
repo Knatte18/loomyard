@@ -367,6 +367,7 @@ The rows that name `internal/planglyph` as their emitter are an exception: that 
 `glyph-ambiguous` is not raised for a member declared once per mutually exclusive build-constraint set, which resolves as one member.
 `card-fabric-reference` is the other exception: it is a `planparser` function outside both entry points, which the plan index appends to its own format validation.
 `done-card-edited` is the third: `loomshed.ValidatePlan` appends it after the index's validation.
+`fabric-vocabulary-name` is the fourth: it is a `planparser` function outside both entry points, which the plan index appends to its format, rework and dispatch validation.
 The rows below stay in one fixed order regardless of which entry point runs them, and `plan-unapproved` keeps its position-three slot in that order even though it alone belongs to the wider entry point:
 
 1. `format-unrecognized` — `format:` is a recognized version (currently only `5`); else refuse to run.
@@ -492,6 +493,14 @@ The rows below stay in one fixed order regardless of which entry point runs them
     The finding names the card.
     Its way forward is to restore the card file, because a done card is frozen: a finding against its work goes in a follow-up card placed after the last begun batch, with its Card Index line in `00-overview.md`.
     It gates the done-card edit only; a begun batch's card-set change, a failed batch with uncheckable findings and an overview change outside the Card Index pass the plan gate and block at the Webster row.
+41. `fabric-vocabulary-name` — a name a card declares that the fabric-vocabulary scan would refuse once it lands.
+    It reads each `Create` handle's member and each `Rename` pair's `New` handle, and skips a handle that does not split into a unit and a member, which the handle checks already report.
+    With `first` the unit's first path segment and `last` the member's last dot-segment, a name fails the bare-token rule when the whole member carries a bare fabric side token, the unit's directory is not in the owner set (`internal/configsync` still fails, under its identifier rule), and `first` is `internal` or a doc root or `last` carries a `Test`, `Benchmark`, `Fuzz` or `Example` prefix.
+    An external `_test` unit counts as its package's directory for the owner check.
+    A name fails the host-geometry rule when `last` has no such test prefix, is a retired host-geometry identifier, and `first` is `internal` or `cmd`.
+    One blocking finding per name, attributed to the card naming the member, naming `PATTERN-fabric-vocabulary` and the rule broken; its way forward is to rename the member.
+    Runs under any `language:`, and the plan index appends it to its format, rework and dispatch validation, so both plan gates, `lyx loom validate-plan`'s default and `--rework` modes and webster dispatch report it; dispatch drops a finding against a completed card, and `--require-approved` and webster's own `validate` verb do not run it.
+    It only refuses: it misses a name spelled only in prose, such as a test row or subtest name, or built at implementation time, which the verify gate still catches, and it may refuse a host-geometry helper declared in a `_test.go` file under `internal/`, which the scan admits.
 
 One further check, `rework-first-card`, is outside both entry points and has no row above.
 Only the rework gate runs it: `planglyph.ValidateRework` runs it after the format-only set, and it reports a `first_card:` that differs from the card number Go told the rework session to start at.

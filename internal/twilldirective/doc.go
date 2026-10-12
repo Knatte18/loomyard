@@ -7,7 +7,7 @@
 // Directive renders the lens review procedure: the writer reads its rubric, spawns one fork per lens in one message, writes and self-checks its files, writes a ready marker and judges the findings the forks return.
 // Each fork's boilerplate tells it to wait for the ready marker through `lyx shuttle await`, review the written files through its lens and return its findings as its final message.
 // WriteScope renders the paragraph that adds the ready marker to the writer's write scope.
-// Both blocks are host-neutral: every host-specific value (the reviewed files, the marker, the rubric, the lenses, the steps, the self-check command and the place the review is recorded) arrives through Values, so a later host can render them with its own values.
+// Both blocks are host-neutral: every host-specific value (the reviewed files, the spawn point, the rejection rule, the severity rule, the marker, the rubric, the lenses, the steps, the self-check command and the place the review is recorded) arrives through Values, so a later host can render them with its own values.
 //
 // # Who renders it
 //

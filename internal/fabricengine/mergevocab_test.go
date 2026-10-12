@@ -168,9 +168,9 @@ var mergeVocabHostPhrases = []string{
 }
 
 // mergeVocabContainsBareToken reports whether s contains, case-insensitively, the bare token "weft"
-// or "warp" anywhere as a substring -- fabric has no other meaning for either token in this repo, so
-// substring matching (not whole-word matching) is deliberate, mirroring
-// internal/lyxcwd/enforcement_test.go's bareVocabularyToken.
+// or "warp" anywhere as a substring.
+// Fabric has no other meaning for either token in this repo, so substring matching (not whole-word matching) is deliberate.
+// It mirrors internal/fabricvocab's BareToken.
 func mergeVocabContainsBareToken(s string) bool {
 	lower := strings.ToLower(s)
 	return strings.Contains(lower, "weft") || strings.Contains(lower, "warp")

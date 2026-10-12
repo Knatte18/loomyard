@@ -8,8 +8,16 @@
 // per card plus `00-overview.md`, written LAST as the run's done-sentinel (see
 // contracts/specs/loom-plan-spec.md).
 // The producer always writes `approved: false` in `00-overview.md`'s frontmatter — it has no review
-// logic of its own (that is the Bouncer+Burler segment's separate job); `Plan-Bouncer`'s approved
+// logic of its own beyond the twill lens review below (the Bouncer+Burler segment's separate job); `Plan-Bouncer`'s approved
 // settle is what flips `approved` to `true`, immediately before its commit seam fires.
+//
+// With plan_producer twill the spec is the single writer's with the twill directive rendered into the plan template between Step 2 and Step 3, and fork subagents authorized.
+// The directive's lenses come from the twill-plan fan in burler.yaml, the forks wait on the ready marker, which the writer creates once its plan passes the self-check and Go removes before every fresh spawn, and the writer records the lens review in the plan directory's lens-review.md.
+// The spec sets ForkSubagents, so the writer may spawn subagents of type fork.
+// While the shuttle config's claude_deny_agent_tool is true, the Agent hook admits fork subagents only and refuses every other subagent type; with it false no Agent hook is installed.
+// Forks run on the writer's model, read-only and without the Agent tool by the stencil's boilerplate, and give up after 15 empty waits of up to five minutes each.
+// The plan gates and the Plan-Review segment still bound what lands in the plan.
+// With plan_producer single the prompt keeps its bytes and ForkSubagents stays false.
 //
 // PlanSpec is a pure composer, exactly like DiscussionSpec: it does not stat the decision record,
 // does not stat or create `_lyx/plan/`, and does not spawn anything.
@@ -34,6 +42,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/twilldirective"
 )
 
 // planRole is the agent-name role this module's Plan-Write spawn carries.
@@ -50,7 +59,7 @@ var planSkills = []string{"scribe:prose", "scribe:testing"}
 // pattern_directive and friction.MarkerName, specs_dir stays out of the optional-names slice, so a
 // prompt composed without a specs directory fails loudly at composition instead of rendering a blank
 // path into the agent's instructions.
-func composePlanPrompt(stencilsDir, specsDir, decisionRecordPath, planDir, overviewPath, patternDirective, frictionDirective, parentDirective string) ([]byte, error) {
+func composePlanPrompt(stencilsDir, specsDir, decisionRecordPath, planDir, overviewPath, patternDirective, frictionDirective, parentDirective, twillDirective string) ([]byte, error) {
 	template, err := stencilstore.Read(stencilsDir, "loom-template-plan")
 	if err != nil {
 		return nil, err
@@ -72,9 +81,10 @@ func composePlanPrompt(stencilsDir, specsDir, decisionRecordPath, planDir, overv
 		friction.MarkerName:        frictionDirective,
 		parentdirective.MarkerName: parentDirective,
 		editdirective.MarkerName:   editDirective,
+		twilldirective.MarkerName:  setOffParagraph(twillDirective),
 	}
 
-	rendered, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName, parentdirective.MarkerName})
+	rendered, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName, parentdirective.MarkerName, twilldirective.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("loom: compose plan prompt: %w", err)
 	}
@@ -123,21 +133,31 @@ func PlanSpec(layout *lyxcwd.Location, stencilsDir, specsDir, parentName string,
 		frictionDirective = ""
 	}
 
-	prompt, err := composePlanPrompt(stencilsDir, specsDir, decisionRecordPath, planDir, overviewPath, directive, frictionDirective, parentDirective)
+	var twillDirective string
+	twill := cfg.PlanProducer == PlanProducerTwill
+	if twill {
+		twillDirective, err = planTwillDirective(layout, stencilsDir)
+		if err != nil {
+			return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: %w", err)
+		}
+	}
+
+	prompt, err := composePlanPrompt(stencilsDir, specsDir, decisionRecordPath, planDir, overviewPath, directive, frictionDirective, parentDirective, twillDirective)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: %w", err)
 	}
 
 	return shuttleengine.Spec{
-		Prompt:      string(prompt),
-		OutputFiles: []string{overviewPath},
-		Model:       resolved.Model,
-		Effort:      resolved.Params["effort"],
-		Version:     resolved.Params["version"],
-		Interactive: false,
-		Role:        planRole,
-		Segment:     segmentcolor.Plan,
-		Skills:      planSkills,
-		Timeout:     time.Duration(cfg.PlanTimeoutMin) * time.Minute,
+		Prompt:        string(prompt),
+		OutputFiles:   []string{overviewPath},
+		Model:         resolved.Model,
+		Effort:        resolved.Params["effort"],
+		Version:       resolved.Params["version"],
+		Interactive:   false,
+		Role:          planRole,
+		Segment:       segmentcolor.Plan,
+		Skills:        planSkills,
+		Timeout:       time.Duration(cfg.PlanTimeoutMin) * time.Minute,
+		ForkSubagents: twill,
 	}, nil
 }

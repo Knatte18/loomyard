@@ -193,6 +193,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		Landing:                LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
 		DiscussionSpec:         specOver("test discussion prompt", "discussion-output.md"),
 		PrepareDiscussionSpawn: func() error { return nil },
+		PreparePlanSpawn:       func() error { return nil },
 		DiscussionTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "discussion",

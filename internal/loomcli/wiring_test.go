@@ -399,6 +399,33 @@ func TestWire_DefaultConfig(t *testing.T) {
 		if strings.Contains(spec.Prompt, "{{") {
 			t.Errorf("spec.Prompt contains an unrendered {{ marker: %q", spec.Prompt)
 		}
+
+		// PreparePlanSpawn is the one caller of RemovePlanReadyMarker.
+		marker := loomengine.PlanReadyMarker(loc)
+		if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(marker), err)
+		}
+		if err := os.WriteFile(marker, nil, 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", marker, err)
+		}
+		if err := c.env.PreparePlanSpawn(); err != nil {
+			t.Errorf("c.env.PreparePlanSpawn() = %v; want nil", err)
+		}
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Errorf("Stat(%q) = %v after PreparePlanSpawn; want the marker removed", marker, err)
+		}
+		if err := c.env.PreparePlanSpawn(); err != nil {
+			t.Errorf("c.env.PreparePlanSpawn() with the marker absent = %v; want nil", err)
+		}
+		if err := os.RemoveAll(filepath.Dir(marker)); err != nil {
+			t.Fatalf("RemoveAll(%q) = %v; want nil", filepath.Dir(marker), err)
+		}
+		if err := os.WriteFile(filepath.Dir(marker), nil, 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", filepath.Dir(marker), err)
+		}
+		if err := c.env.PreparePlanSpawn(); err == nil {
+			t.Error("c.env.PreparePlanSpawn() with a regular file where the marker's directory belongs = nil; want the removal error")
+		}
 	})
 
 	t.Run("commit status seam is filled", func(t *testing.T) {

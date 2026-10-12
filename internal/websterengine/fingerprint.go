@@ -23,11 +23,10 @@ import (
 )
 
 // fingerprint computes a SHA-256 digest over every "*.md" file's name and
-// contents in planDir (sorted lexically). Non-.md entries are ignored, and so
-// is planparser.AmendmentsFileName: the amendment log is an append-only record
-// OF plan changes written by the pipeline itself, never plan content an author
-// wrote, so folding it into plan identity made webster's own drift repair
-// invalidate the plan it had just repaired.
+// contents in planDir (sorted lexically).
+// Non-.md entries are ignored, and so are planparser.AmendmentsFileName and planparser.LensReviewFileName.
+// The amendment log is an append-only record OF plan changes written by the pipeline itself, and the lens review is a record ABOUT the plan written by the pipeline's writer.
+// Neither is plan content an author wrote, so folding either into plan identity made webster's own drift repair invalidate the plan it had just repaired.
 func fingerprint(planDir string) (string, error) {
 	names, err := planFileNames(planDir)
 	if err != nil {
@@ -50,7 +49,7 @@ func fingerprint(planDir string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// planFileNames lists the plan files fingerprint covers, sorted: every ".md" file in planDir but planparser.AmendmentsFileName.
+// planFileNames lists the plan files fingerprint covers, sorted: every ".md" file in planDir but planparser.AmendmentsFileName and planparser.LensReviewFileName, neither of which is plan content.
 func planFileNames(planDir string) ([]string, error) {
 	entries, err := os.ReadDir(planDir)
 	if err != nil {
@@ -58,7 +57,7 @@ func planFileNames(planDir string) ([]string, error) {
 	}
 	var names []string
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || e.Name() == planparser.AmendmentsFileName {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || e.Name() == planparser.AmendmentsFileName || e.Name() == planparser.LensReviewFileName {
 			continue
 		}
 		names = append(names, e.Name())

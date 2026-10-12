@@ -170,7 +170,7 @@ func TestCompose_FrictionDirective(t *testing.T) {
 			templateFile: "loom-template-plan.md",
 			templateBody: stencils.LoomTemplatePlan,
 			compose: func(t *testing.T, stencilsDir, frictionDirective string) (string, error) {
-				got, err := composePlanPrompt(stencilsDir, newTestSpecsDir(t), decisionRecordPath, "/hub/repo/_lyx/plan", "/hub/repo/_lyx/plan/00-overview.md", "", frictionDirective, "")
+				got, err := composePlanPrompt(stencilsDir, newTestSpecsDir(t), decisionRecordPath, "/hub/repo/_lyx/plan", "/hub/repo/_lyx/plan/00-overview.md", "", frictionDirective, "", "")
 				return string(got), err
 			},
 		},
