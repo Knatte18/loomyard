@@ -6,23 +6,7 @@ It then implements the plan batch by batch, has independent agents review every 
 Each task runs in its own isolated git worktree pair, and many tasks can run at once.
 
 At its center is **`lyx`**, a single Go binary (LoomYard eXecutable) that owns the task board, the git topology, every phase transition, and every agent launch.
-
-**LoomYard is developed by LoomYard.**
-This repository's own tasks are discussed, planned, implemented, reviewed, and landed by its own pipeline, and that is its daily workload.
-A landing commit on `main` carries the change description its run wrote.
-Every run's records — the decision record, the plan, each review round, the agents' friction notes — are public in the companion repository [loomyard-weft](https://github.com/Knatte18/loomyard-weft) (see [The records of this repository](#the-records-of-this-repository)).
-
-In short:
-
-- **Deterministic Go around narrow LLM calls.**
-  Control flow, state, git, and validation are a tested program;
-  inside a run, models do only the steps that need judgment, each through a file contract checked by a mechanical gate.
-- **Independent multi-agent review.**
-  Every artifact — decision record, plan, implementation — is reviewed and fixed by fresh agents that did not write it, under a judge with a bounce budget.
-- **Worktree isolation.**
-  Each task runs in its own git worktree pair, code and records, so many tasks run at once without seeing each other.
-- **Resumable runs.**
-  A run's state is versioned in git at producer granularity, so a crashed or paused run resumes where it stopped, on any machine.
+LoomYard is developed with LoomYard: its own tasks run through the same pipeline, with their state in its own companion records repository.
 
 ## The central idea: deterministic Go around narrow LLM calls
 
@@ -55,8 +39,6 @@ Preflight → Loom-Preflight
   → Finalize → Friction-Reflect
 ```
 
-A smaller task can run the `darn` recipe instead ([`contracts/recipes/darn-recipe.yaml`](contracts/recipes/darn-recipe.yaml)): one writer that edits, tests, and commits, one review segment over the committed diff, then the same landing rows.
-
 - **Discussion** — an agent turns the task into a decision record: scope, decisions taken, what is out of scope.
   It can stop and ask you when a decision is yours to make.
 - **Plan** — an agent writes a plan as a list of cards, each naming the code it touches by *glyph* — a stable symbol spelling resolved against the real tree through [quarry](https://github.com/Knatte18/quarry), so a plan that names a function that does not exist fails validation before any code is written.
@@ -85,7 +67,7 @@ what calls it is a choice of driver.
 - **the loom driver** — a Claude Code session launched from the driver stencil (`contracts/stencils/shed/shed-template-driver.md`) that drives a run by repeated `lyx shed step`, reads each envelope and trace, repairs what it can, re-steps after a transient failure, and escalates what it cannot.
   It carries no phase knowledge: which recipe runs is a property of the run's seed alone.
   `lyx loom start` (alias `lyx start`) bootstraps a task worktree and launches its driver session.
-- **`lyx batten`** — drives a task worktree's whole lifecycle from the hub's main worktree as one run of its own: create the worktree pair, seed the task's run, watch it to a terminal state, land it into the prime, tear the pair down.
+- **`lyx batten`** — drives a task worktree's whole lifecycle from the hub's main worktree as one run of its own: create the worktree pair, seed the task's run, watch it to a terminal state, tear the pair down.
 - **`lyx orch`** — hosts the hub orchestrator: one long-lived Claude session that dispatches and supervises runs.
   A detached watcher reads its context usage after each turn;
   past a threshold, while idle, it has the session write a note, then clears it and resumes it from that note, or compacts it in place, so the orchestrator outlives any single context window.
@@ -143,24 +125,6 @@ pick the task up on another machine and it resumes where it stopped, and two tas
   └── _launchers/         per-worktree launcher scripts and workspaces
 ```
 
-## The records of this repository
-
-This repository's records side is [loomyard-weft](https://github.com/Knatte18/loomyard-weft), public, so the runs that built LoomYard can be read artifact by artifact.
-
-- **The board** — the `main` branch is the task board.
-  Its [README](https://github.com/Knatte18/loomyard-weft/blob/main/README.md) is the board rendered by `lyx board`: running, ready, and blocked tasks with their dependencies, and where each run stands.
-  `board.json` is the store, and each `design-<slug>.md` is the design of a task not yet built.
-- **Landed runs** — when a task lands, its records branch is deleted and an [`archive/<slug>/<tip>` tag](https://github.com/Knatte18/loomyard-weft/tags) keeps its whole run under `_lyx/`.
-  - `discussion/decision-record.md` — scope, decisions, and what is out of scope.
-  - `plan/` — the plan's cards.
-  - `reviews/` — each review segment's rounds: reviewer findings, fixer report, judge verdict, token usage.
-  - `landing/summary.md` — the change description that became the landing commit's message.
-  - `loom/` — the agents' friction reflection.
-  - `shed/<slug>/drive-reports/` — the driver's reports.
-
-  For example, [`archive/driver-arbiter`](https://github.com/Knatte18/loomyard-weft/tree/archive/driver-arbiter/c1dbcb49a0f5/_lyx) is the run that built the driver arbiter.
-- **Runs in flight** — a `<slug>-weft` branch per running task, and `main-weft`, the records side of `main`, with the module configs and batten's status for each task it ran.
-
 ## Engineering discipline
 
 - **Structural invariants as tests.**
@@ -170,8 +134,7 @@ This repository's records side is [loomyard-weft](https://github.com/Knatte18/lo
 - **Prompts are versioned contracts.**
   Every prompt an agent reads is a stencil under [`contracts/stencils/`](contracts/stencils/), embedded as a default and read from the hub at call time, so an operator can edit a live prompt without a rebuild and `lyx stencil` shows the drift.
 - **Correctness by tool design, not by recall.**
-  A `lyx` command makes the correct path the path of least resistance and makes drift detectable, instead of relying on an agent to remember a rule.
-- **Crucible.**
+  A `lyx` command makes the correct path the path of least resistance and makes drift detectable, instead of relying on an agent to remember a rule.- **Crucible.**
   Modules that drive live tmux and real agents are hardened by [crucible](crucible/README.md): serial, model-rotating review-and-fix rounds against the live substrate, each finding proved by sabotage — revert the fix, watch the regression test fail, restore.
 
 ## Modules
@@ -235,7 +198,7 @@ its marketplace also carries `prowler`, the web-fetch plugin that used to live h
 
 LoomYard grew out of [Millhouse](https://github.com/Knatte18/millhouse), a set of Claude Code skills and Python tools for running parallel Claude Code sessions with minimal input:
 isolated worktrees per task, a wiki-backed task board, and subagents for discussion, planning, implementation, and review.
-Millhouse proved the workflow and built much of LoomYard before LoomYard took over its own development.
+Millhouse proved the workflow and is still how much of LoomYard was built.
 LoomYard is the rebuild that moved the workflow out of prompts and into a program: the phase machine is data, review is a Go-owned gate loop, and the git topology is a model Millhouse has no equivalent of.
 
 Through Millhouse, LoomYard builds on ideas from [claude-code-plugins](https://github.com/motlin/claude-code-plugins) (Craig Motlin), [autoboard](https://github.com/willietran/autoboard) (Willie Tran), and [skills](https://github.com/mattpocock/skills) (Matt Pocock).
