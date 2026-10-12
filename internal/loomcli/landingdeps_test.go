@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -233,4 +234,62 @@ func TestLoopLockOwner(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestLandingAlignmentDeps_Config drives the real Config closure over a temp location with loom.yaml seeded:
+// skip_alignment and a hub with no board dir read Off, and otherwise it reads the resolved settings and alignment_pr_approve.
+// This pins the PR-side half of the criterion that skip_alignment or no board dir leaves both alignment points as before.
+func TestLandingAlignmentDeps_Config(t *testing.T) {
+	t.Parallel()
+
+	configOf := func(t *testing.T, loc *lyxcwd.Location) landingshed.AlignmentConfig {
+		t.Helper()
+		registry, err := modelspec.LoadRegistry(fabricengine.ConfigDirs(loc))
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := landingAlignmentDeps(loc, t.TempDir(), registry, nil).Config()
+		if err != nil {
+			t.Fatalf("Config() = %v; want nil", err)
+		}
+		return cfg
+	}
+
+	t.Run("skip_alignment reads off", func(t *testing.T) {
+		t.Parallel()
+		loc := hubLocation(t, "pair", ".")
+		seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"skip_alignment": "true"})
+		if cfg := configOf(t, loc); !cfg.Off {
+			t.Errorf("Config() = %+v; want Off", cfg)
+		}
+	})
+
+	t.Run("no board dir reads off", func(t *testing.T) {
+		t.Parallel()
+		loc := hubLocation(t, "pair", ".")
+		if err := os.RemoveAll(fabricengine.BoardDir(loc.HubPath)); err != nil {
+			t.Fatal(err)
+		}
+		if cfg := configOf(t, loc); !cfg.Off {
+			t.Errorf("Config() = %+v; want Off", cfg)
+		}
+	})
+
+	t.Run("the template reads on with pr approve and the resolved default settings", func(t *testing.T) {
+		t.Parallel()
+		loc := hubLocation(t, "pair", ".")
+		cfg := configOf(t, loc)
+		if cfg.Off || !cfg.PRApprove || cfg.Settings.Model == "" || cfg.Settings.Timeout != 20*time.Minute {
+			t.Errorf("Config() = %+v; want on, pr approve and the opus[high] settings with a 20 minute timeout", cfg)
+		}
+	})
+
+	t.Run("alignment_pr_approve false reads pr approve false", func(t *testing.T) {
+		t.Parallel()
+		loc := hubLocation(t, "pair", ".")
+		seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"alignment_pr_approve": "false"})
+		if cfg := configOf(t, loc); cfg.Off || cfg.PRApprove {
+			t.Errorf("Config() = %+v; want on with pr approve false", cfg)
+		}
+	})
 }
