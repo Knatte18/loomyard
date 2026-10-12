@@ -1,5 +1,5 @@
-// tmuxisolation_test.go enforces the Tmux Test Isolation Invariant: every test package with an `integration`-, `tmux`- or `llm`-tagged test file runs its tests through tmuxkit.Main, under every tag set and on every platform that compile any of its test files.
-// "Starts tmux" has no static shape, so the rule keys on "has a tagged test file" instead, at the cost of one temp directory per tagged package.
+// tmuxisolation_test.go enforces the Tmux Test Isolation Invariant: every test package runs its tests through tmuxkit.Main, under every tag set and on every platform that compile any of its test files.
+// "Starts tmux" has no static shape, and a package's `t.TempDir` trees belong in the process run directory, so the rule covers every test package at the cost of one run directory per test binary.
 // Modelled on hermeticenv_test.go; see `PATTERN-test-isolation`.
 
 package main
@@ -20,7 +20,9 @@ import (
 )
 
 // allowedNoTmuxMain is the Tmux Test Isolation Invariant allowlist, keyed by package directory with a trailing "/".
-// An entry is admitted only for a package whose TestMain cannot call tmuxkit.Main, and its reason names that obstacle.
+// An entry names one package and a reason naming why that package's TestMain cannot call tmuxkit.Main.
+// That TestMain removes the process run directory after m.Run through lyxtemp.Remove.
+// What the entry lets through is the package's tmux isolation, and its `t.TempDir` trees left in the bare system temp directory after a kill.
 // "Does not start tmux" is not a reason.
 var allowedNoTmuxMain = []scankit.Entry{}
 
@@ -189,6 +191,7 @@ func declaresTestMain(file *ast.File, dir string) (declared, callsKitMain bool) 
 }
 
 // tmuxIsolationFailures walks the test files under opts and returns the violating packages' failure lines, the number of tagged packages found and the number of files scanned.
+// Every package with a test file is checked, tagged or not.
 func tmuxIsolationFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowlist) (failures []string, tagged, scanned int) {
 	t.Helper()
 	opts.Filter = scankit.Test
@@ -211,14 +214,12 @@ func tmuxIsolationFailures(t *testing.T, opts scankit.Options, allow *scankit.Al
 	})
 
 	for dir, files := range packages {
-		isTagged := false
 		for _, f := range files {
-			isTagged = isTagged || f.tagged
+			if f.tagged {
+				tagged++
+				break
+			}
 		}
-		if !isTagged {
-			continue
-		}
-		tagged++
 		if allow.Allowed(dir + "/") {
 			continue
 		}
@@ -250,7 +251,7 @@ func tmuxIsolationFailures(t *testing.T, opts scankit.Options, allow *scankit.Al
 	return failures, tagged, scanned
 }
 
-// TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain fails for every package with an integration-, tmux- or llm-tagged test file unless a TestMain compiles under each tag set and on each platform that compile any of its test files and every TestMain in the package calls tmuxkit.Main.
+// TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain fails for every package with a test file unless a TestMain compiles under each tag set and on each platform that compile any of its test files and every TestMain in the package calls tmuxkit.Main.
 //
 //lyx:guard
 func TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain(t *testing.T) {
@@ -304,7 +305,8 @@ func TestTmuxIsolation_FixtureTrees(t *testing.T) {
 		{"missing kit call", map[string]string{"p/main_test.go": bareMain, "p/i_test.go": taggedTest}, 1, 1},
 		{"no TestMain at all", map[string]string{"p/a_test.go": untaggedTest, "p/i_test.go": taggedTest}, 1, 5},
 		{"integration-only main", map[string]string{"p/main_test.go": "//go:build integration\n\n" + withMain, "p/a_test.go": untaggedTest}, 1, 3},
-		{"untagged package", map[string]string{"p/a_test.go": untaggedTest}, 0, 0},
+		{"untagged package without TestMain", map[string]string{"p/a_test.go": untaggedTest}, 0, 5},
+		{"untagged package with the kit's TestMain", map[string]string{"p/a_test.go": untaggedTest, "p/main_test.go": withMain}, 0, 0},
 		{"main confined by constraint to another platform", map[string]string{"p/main_test.go": "//go:build windows\n\n" + withMain, "p/i_test.go": "//go:build integration && linux\n\npackage p\n"}, 1, 2},
 		{"main confined by file name to another platform", map[string]string{"p/main_windows_test.go": withMain, "p/i_test.go": "//go:build integration && linux\n\npackage p\n"}, 1, 2},
 		{"main on every platform its tests compile on", map[string]string{"p/main_linux_test.go": withMain, "p/i_linux_test.go": taggedTest}, 1, 0},

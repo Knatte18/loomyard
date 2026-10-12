@@ -10,11 +10,13 @@ A test package never reaches the operator's global gitconfig or default tmux soc
 
 ## tmux isolation
 
-- Every test package with an `integration`-, `tmux`- or `llm`-tagged test file runs its tests through `tmuxkit.Main`, so no test touches the operator's default tmux socket directory.
+- Every test package runs its tests through `tmuxkit.Main`, so no test touches the operator's default tmux socket directory and its `t.TempDir` trees live in the process run directory.
 - Under every tag set (untagged, each of `integration`, `tmux` and `llm` alone, and the three together) and on every platform that compile any of the package's test files, a file declaring `TestMain` compiles, and every `TestMain` in the package calls `tmuxkit.Main`.
-- The rule keys on "has a tagged test file", not "starts tmux": starting tmux has no static shape, so a tagged package that never starts tmux still carries the one call, which costs one temp directory.
+- The rule covers every test package, not only those that start tmux: starting tmux has no static shape, so every package carries the one call, which costs one run directory per test binary.
 - In an untagged run the entry point spawns nothing.
 - A package whose `TestMain` cannot call the entry point is admitted by an allowlist entry whose reason names that obstacle; "does not start tmux" is not a reason.
+  That `TestMain` removes the process run directory after `m.Run` through `lyxtemp.Remove`.
+  The entry lets through the package's tmux isolation and its `t.TempDir` trees left in the bare system temp directory after a kill.
 - Enforced by `cmd/lyx/tmuxisolation_test.go`.
 
 ## tmux socket files
@@ -33,7 +35,7 @@ A test package never reaches the operator's global gitconfig or default tmux soc
 
 ## Private temp directory and leftovers
 
-- `tmuxkit.Main` runs in the process run directory of `internal/lyxtemp` and points `TMPDIR` (and `TMP` and `TEMP` on Windows) at it, as it does `TMUX_TMPDIR`, so every `t.TempDir`, `os.MkdirTemp("")`, `lyxbin` build and child temp file of a tagged package lands there.
+- `tmuxkit.Main` runs in the process run directory of `internal/lyxtemp` and points `TMPDIR` (and `TMP` and `TEMP` on Windows) at it, as it does `TMUX_TMPDIR`, so every `t.TempDir`, `os.MkdirTemp("")`, `lyxbin` build and child temp file of a test package lands there.
   A test binary re-executed as a helper inherits that directory, and its own run directory is made beside it by the temp package's beside-the-parent rule rather than inside it, so nesting never pushes a socket path past the `sun_path` limit.
 - After the run `Main` removes the run directory on every platform, Windows included.
   A removal that fails, such as one a lingering child's cwd blocks on Windows, is reported on stderr and leaves the exit code unchanged.
@@ -46,7 +48,7 @@ A test package never reaches the operator's global gitconfig or default tmux soc
   A finding fails the package with exit 1, naming the key and the way forward: tag the file `tmux`, or register the key.
   The check runs before the sweep because the sweep removes the socket files it reads.
 - The per-user directory `tmux-<uid>` is no finding by itself: tmux creates it on any invocation that names a `-L` key, a client probe of a server that never started included, and a client probe starts no server.
-- Bound: the check misses a test that points `TMUX_TMPDIR` elsewhere, a server started by a binary other than tmux, and a package with only untagged files, which never calls `Main`.
+- Bound: the check misses a test that points `TMUX_TMPDIR` elsewhere and a server started by a binary other than tmux.
   It also misses a server that reed tore down itself within the run, since reed removes its server's socket file, in tier 2 and under any tag alike.
 - Bound: a test binary killed by a panic or timeout skips the post-run check.
 
