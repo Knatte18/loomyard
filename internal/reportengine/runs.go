@@ -74,6 +74,9 @@ type RunRow struct {
 	automaticSteps []battenshed.AutomaticStep
 	accountedChild []int
 
+	// Landing is the parent-branch commit that landed the run, nil when no join maps one.
+	Landing *Landing `json:"landing"`
+
 	// parentRounds are the parent-review rounds that decoded, and arbiterRecords the arbiter attempts that did.
 	parentRounds   []parentreview.Round
 	arbiterRecords []loomengine.ArbiterRecord
@@ -126,8 +129,14 @@ func selectRuns(src Sources, opts Options, report *Report) error {
 			return err
 		}
 		report.Findings = append(report.Findings, findings...)
+		var earlierCommitted *time.Time
+		if previous != nil {
+			at := previous.Committed
+			earlierCommitted = &at
+		}
 		if reason != "" {
 			report.Partial = append(report.Partial, PartialRun{Tag: tag.Name, Slug: slug, Week: week, Reason: reason})
+			report.inputs.selected = append(report.inputs.selected, selectedTag{tag: tag, slug: slug, previous: earlierCommitted, run: -1, noFinalize: reason == noFinalizeReason()})
 			continue
 		}
 
@@ -139,11 +148,6 @@ func selectRuns(src Sources, opts Options, report *Report) error {
 			Week:         week,
 			Sources:      map[string]bool{},
 			childHistory: status.History,
-		}
-		var earlierCommitted *time.Time
-		if previous != nil {
-			at := previous.Committed
-			earlierCommitted = &at
 		}
 		snapshots, battenFindings, err := batten.snapshotsOfRun(slug, tag.Name, earlierCommitted, tag.Committed)
 		if err != nil {
@@ -167,9 +171,42 @@ func selectRuns(src Sources, opts Options, report *Report) error {
 		report.Findings = append(report.Findings, wakeFindings...)
 		report.Findings = append(report.Findings, stopFindings...)
 		report.Findings = append(report.Findings, roundFindings...)
+		finalizeDone := slices.ContainsFunc(status.History, func(entry shedengine.HistoryEntry) bool {
+			return entry.Producer == loomshed.NameFinalize && entry.Outcome == shedengine.Done
+		})
+		report.inputs.selected = append(report.inputs.selected, selectedTag{tag: tag, slug: slug, previous: earlierCommitted, run: len(report.Runs), finalizeDone: finalizeDone})
 		report.Runs = append(report.Runs, row)
 	}
+
+	report.inputs.checkpoints = batten.checkpoints
+	report.inputs.newestTag = map[string]time.Time{}
+	for slug, tag := range previousTag {
+		report.inputs.newestTag[slug] = tag.Committed
+	}
 	return nil
+}
+
+// noFinalizeReason is the reason of a partial run whose loom history holds no Finalize entry.
+func noFinalizeReason() string {
+	return fmt.Sprintf("the loom history holds no %s entry", loomshed.NameFinalize)
+}
+
+// selectedTag is an archive tag the selection read, kept for the landing join.
+// run indexes Report.Runs and is -1 for a partial tag; finalizeDone is meaningful for a full run, noFinalize for a partial one.
+type selectedTag struct {
+	tag          gitrepo.TagRef
+	slug         string
+	previous     *time.Time
+	run          int
+	finalizeDone bool
+	noFinalize   bool
+}
+
+// landingInputs are what run selection hands the landing join: the tags it read, each slug's landing checkpoints oldest first, and each slug's newest archive tag time.
+type landingInputs struct {
+	selected    []selectedTag
+	checkpoints map[string][]time.Time
+	newestTag   map[string]time.Time
 }
 
 // readLoomRecords reads the loom seed and status at tag's commit through the tolerant parses.
@@ -211,7 +248,7 @@ func readLoomRecords(records Reader, tag gitrepo.TagRef, slug string) (status sh
 		return entry.Producer == loomshed.NameFinalize
 	})
 	if !finalized {
-		return shedengine.Status{}, fmt.Sprintf("the loom history holds no %s entry", loomshed.NameFinalize), nil, nil
+		return shedengine.Status{}, noFinalizeReason(), nil, nil
 	}
 	return status, "", nil, nil
 }

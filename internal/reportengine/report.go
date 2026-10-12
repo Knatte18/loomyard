@@ -38,7 +38,11 @@ type Report struct {
 	Selection Selection    `json:"selection"`
 	Runs      []RunRow     `json:"runs"`
 	Partial   []PartialRun `json:"partial"`
+	Landings  []Landing    `json:"landings"`
 	Findings  []Finding    `json:"findings"`
+
+	// inputs are what run selection hands the landing join.
+	inputs landingInputs
 }
 
 // Compute selects the finished runs of src and reads each run's sources.
@@ -57,11 +61,15 @@ func Compute(src Sources, opts Options) (Report, error) {
 		},
 		Runs:     []RunRow{},
 		Partial:  []PartialRun{},
+		Landings: []Landing{},
 		Findings: []Finding{},
 	}
 	if err := selectRuns(src, opts, &report); err != nil {
 		return Report{}, err
 	}
 	markAbsentSegments(report.Runs)
+	if err := readLandings(src, opts, &report); err != nil {
+		return Report{}, err
+	}
 	return report, nil
 }

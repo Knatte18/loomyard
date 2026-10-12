@@ -54,7 +54,7 @@ func TestCompute_RepairsAndRounds(t *testing.T) {
 						arbiterAttemptFiles(w.t, "a", 2, arbiterAt("Publish", "failed", 5), "verdict: hand-on\nreason: r\nquestion: q\n", false)))
 				return map[string]roundFigures{"a": {
 					arbiter:  []ArbiterOutcome{{Verdict: "hand-on", Count: 1}, {Verdict: "resume", Count: 1, Applied: 1}},
-					llm:      map[string]int{"loom": 0, "batten": 0},
+					llm:      map[string]int{"loom": 0, "batten": 0, "landing": 0},
 					segments: map[string]*SegmentRounds{},
 				}}
 			},
@@ -73,7 +73,7 @@ func TestCompute_RepairsAndRounds(t *testing.T) {
 						{Producer: "Plan-Write", Outcome: shedengine.OutcomeGoto, At: hourAt(30)},
 						{Producer: "Plan-Review", Outcome: shedengine.OutcomeReroute, At: hourAt(31)},
 					}, nil)
-				return map[string]roundFigures{"a": {llm: map[string]int{"loom": 2, "batten": 1}, segments: map[string]*SegmentRounds{}}}
+				return map[string]roundFigures{"a": {llm: map[string]int{"loom": 2, "batten": 1, "landing": 0}, segments: map[string]*SegmentRounds{}}}
 			},
 		},
 		{
@@ -87,7 +87,7 @@ func TestCompute_RepairsAndRounds(t *testing.T) {
 					arbiterAttemptFiles(w.t, "a", 1, arbiterAt("Publish", "failed", 10), "verdict: resume\nreason: r\ngoto: Plan-Write\n", true))
 				return map[string]roundFigures{"a": {
 					arbiter:  []ArbiterOutcome{{Verdict: "resume", Count: 1, Applied: 1}},
-					llm:      map[string]int{"loom": 1},
+					llm:      map[string]int{"loom": 1, "landing": 0},
 					segments: map[string]*SegmentRounds{},
 				}}
 			},
@@ -100,8 +100,8 @@ func TestCompute_RepairsAndRounds(t *testing.T) {
 					driveReportFiles(w.t, "a", 2)))
 				w.fullRun("b", "tb", 101, nil, nil, nil)
 				return map[string]roundFigures{
-					"a": {llm: map[string]int{"loom": 0}, drive: intPtr(2), segments: map[string]*SegmentRounds{}, decisions: map[string]int{"alice": 2, "bob": 1}},
-					"b": {llm: map[string]int{"loom": 0}, segments: map[string]*SegmentRounds{}},
+					"a": {llm: map[string]int{"loom": 0, "landing": 0}, drive: intPtr(2), segments: map[string]*SegmentRounds{}, decisions: map[string]int{"alice": 2, "bob": 1}},
+					"b": {llm: map[string]int{"loom": 0, "landing": 0}, segments: map[string]*SegmentRounds{}},
 				}
 			},
 		},
@@ -111,7 +111,7 @@ func TestCompute_RepairsAndRounds(t *testing.T) {
 				w.fullRun("a", "ta", 100, nil, nil, mergeFiles(
 					decisionRecordFiles("### Added after Discussion (broken"),
 					driveReportFiles(w.t, "a", 1)))
-				return map[string]roundFigures{"a": {llm: map[string]int{"loom": 0}, drive: intPtr(1), segments: map[string]*SegmentRounds{}}}
+				return map[string]roundFigures{"a": {llm: map[string]int{"loom": 0, "landing": 0}, drive: intPtr(1), segments: map[string]*SegmentRounds{}}}
 			},
 			findings: []Finding{{Tag: tagName("a", "ta"), File: filepath.ToSlash(loomengine.DiscussionDecisionRecordRel())}},
 		},
@@ -125,13 +125,13 @@ func TestCompute_RepairsAndRounds(t *testing.T) {
 					reviewFiles("delta", "round-1-review.md", "round-2-focus.md")))
 				w.fullRun("b", "tb", 101, nil, nil, reviewFiles("alpha", "round-1-review.md"))
 				return map[string]roundFigures{
-					"a": {llm: map[string]int{"loom": 0}, segments: map[string]*SegmentRounds{
+					"a": {llm: map[string]int{"loom": 0, "landing": 0}, segments: map[string]*SegmentRounds{
 						"alpha": {Rounds: 2, Outcome: "escalated"},
 						"beta":  {Rounds: 1, Outcome: "circling-decided"},
 						"gamma": {Rounds: 1, Outcome: "accepted"},
 						"delta": {Rounds: 1, Outcome: "accepted"},
 					}},
-					"b": {llm: map[string]int{"loom": 0}, segments: map[string]*SegmentRounds{
+					"b": {llm: map[string]int{"loom": 0, "landing": 0}, segments: map[string]*SegmentRounds{
 						"alpha": {Rounds: 1, Outcome: "accepted"},
 						"beta":  nil,
 						"gamma": nil,
@@ -146,7 +146,7 @@ func TestCompute_RepairsAndRounds(t *testing.T) {
 				w.fullRun("a", "ta", 100, nil, nil, mergeFiles(
 					reviewFiles("plan", "round-1-review.md"),
 					reviewFiles("plan-20261012T101500Z", "round-1-review.md", "round-2-review.md")))
-				return map[string]roundFigures{"a": {llm: map[string]int{"loom": 0}, segments: map[string]*SegmentRounds{"plan": {Rounds: 3, Outcome: "accepted"}}}}
+				return map[string]roundFigures{"a": {llm: map[string]int{"loom": 0, "landing": 0}, segments: map[string]*SegmentRounds{"plan": {Rounds: 3, Outcome: "accepted"}}}}
 			},
 		},
 		{
@@ -157,8 +157,8 @@ func TestCompute_RepairsAndRounds(t *testing.T) {
 					parentRoundFiles(2, true, 0, "", "approve")))
 				w.fullRun("b", "tb", 101, nil, nil, parentRoundFiles(1, true, 0, "", ""))
 				return map[string]roundFigures{
-					"a": {llm: map[string]int{"loom": 0}, segments: map[string]*SegmentRounds{"parent-review": {Rounds: 2, Outcome: "approve"}}},
-					"b": {llm: map[string]int{"loom": 0}, segments: map[string]*SegmentRounds{"parent-review": {Rounds: 1, Outcome: "none"}}},
+					"a": {llm: map[string]int{"loom": 0, "landing": 0}, segments: map[string]*SegmentRounds{"parent-review": {Rounds: 2, Outcome: "approve"}}},
+					"b": {llm: map[string]int{"loom": 0, "landing": 0}, segments: map[string]*SegmentRounds{"parent-review": {Rounds: 1, Outcome: "none"}}},
 				}
 			},
 		},
@@ -257,7 +257,7 @@ func TestCompute_FullRunCounts(t *testing.T) {
 		"stops":      3,
 		"failures":   map[string]int{"Publish: died": 1},
 		"arbiter":    []ArbiterOutcome{{Verdict: "resume", Count: 1, Applied: 1}},
-		"llm":        map[string]int{"loom": 1, "batten": 0},
+		"llm":        map[string]int{"loom": 1, "batten": 0, "landing": 0},
 		"drive":      2,
 		"segments":   map[string]*SegmentRounds{"plan": {Rounds: 1, Outcome: "escalated"}, "parent-review": {Rounds: 1, Outcome: "approve"}},
 		"decisions":  map[string]int{"alice": 1},

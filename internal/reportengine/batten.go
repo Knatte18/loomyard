@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -32,9 +33,13 @@ type battenIndex struct {
 	records  Reader
 	touching map[string][]gitrepo.LogCommit
 	read     map[string][]battenCommit
+
+	// checkpoints are the committer times of the landing checkpoint commits per slug, oldest first.
+	checkpoints map[string][]time.Time
 }
 
 // newBattenIndex walks the records branch once for the commits touching a run's directory and groups them by slug, oldest first.
+// The same walk collects the landing checkpoint commits, named by their subject.
 func newBattenIndex(src Sources) (*battenIndex, error) {
 	root := filepath.ToSlash(shedrun.RunsRootRel())
 	commits, err := src.Records.Log(src.RecordsTip, gitrepo.LogQuery{PathPrefix: root})
@@ -42,8 +47,12 @@ func newBattenIndex(src Sources) (*battenIndex, error) {
 		return nil, fmt.Errorf("reportengine: walk the records branch: %w", err)
 	}
 
-	index := &battenIndex{records: src.Records, touching: map[string][]gitrepo.LogCommit{}, read: map[string][]battenCommit{}}
+	index := &battenIndex{records: src.Records, touching: map[string][]gitrepo.LogCommit{}, read: map[string][]battenCommit{}, checkpoints: map[string][]time.Time{}}
 	for i := len(commits) - 1; i >= 0; i-- {
+		subject, _, _ := strings.Cut(commits[i].Message, "\n")
+		if slug, ok := loomengine.LandingCheckpointSlug(subject); ok {
+			index.checkpoints[slug] = append(index.checkpoints[slug], commits[i].Committed)
+		}
 		for _, path := range commits[i].Paths {
 			if slug, ok := statusPathSlug(root, path); ok {
 				index.touching[slug] = append(index.touching[slug], commits[i])

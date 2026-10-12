@@ -64,4 +64,24 @@
 // A Bouncer re-seed's archived generation adds its rounds to its segment and is no segment of its own.
 // A segment some selected run holds and another lacks is nil in the run lacking it.
 // RunRow.Decisions counts the entries added after the discussion per author, and RunRow.DriveReports the driver attempts reported.
+//
+// # Landings
+//
+// Report.Landings lists the first-parent commits of the parent branch committed at or after Options.Since, oldest first, from one walk that reaches Options.FreshDays further back to date the owners of blamed lines.
+// The exact join reads each selected tag's task commit from the newest task-commit trailer in the first-parent history below the tag, walked in growing pages.
+// The landing is the first-parent commit that is the task commit (a fast-forward), has it as a parent (a merge) or holds its tree (a squash).
+// A fast-forwarded branch's own commits, back to the nearest older merge or exact-joined landing, belong to its landing and are neither landings nor unmapped.
+// The time join serves a tag the exact join found no task commit for, and a slug whose pair has checkpoints after its newest tag:
+// its window opens at the newest landing checkpoint of the run's interval and closes at the first board commit that shows the slug's entry done, and the landing is the first commit inside it that no exact join claimed.
+// Two runs claiming one commit within a join are both left unmapped, and the clash is a finding.
+// A landing no join maps is of kind unmapped; any other takes its kind from the slug's labels in the newest board commit at or before it: bug is fix, feature and enhancement are feature, the rest other.
+// An exact-joined tag whose loom history holds no done Finalize entry was landed by hand, and a full run so landed counts one landing LLM step.
+// RunRow.Landing points at a full run's own landing, and its LandIncomplete says a finished Finalize never reached Land in the batten record.
+//
+// # Fresh-code fixes
+//
+// For each fix and unmapped landing the lines its commit modifies or deletes, outside test, docs and markdown files, are blamed in its first parent.
+// A line is fresh when the landing that brought its blamed commit, the fast-forward landing for a task-branch commit, was committed within Options.FreshDays before it.
+// The landing is fresh when more than half its lines are, aged otherwise, and has no pre-image when no such line remains.
+// A feature or other landing is never blamed.
 package reportengine
