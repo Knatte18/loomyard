@@ -48,7 +48,21 @@
 // go test runs through `internal/proc`'s tied child, which keeps its tree killable without signalling the shell that called the verb and ends it when the verb dies, a hard kill included.
 // On a terminating signal, including one sent to the verb's own group, the verb kills that tree, releases its slot and exits with 128 plus the signal number.
 //
+// # CPU watchdog
+//
+// While go test runs, the verb samples its child tree once per period, 5 seconds in production, through `proc.TreeCPU`.
+// A process whose path ends in `.test` that keeps at least 90 percent of one core busy for `busy_quit_sec` gets one SIGQUIT, so the Go runtime prints every goroutine's stack and go test reports the package failed long before its own `-timeout`.
+// The window counts whole samples, a pid's first sample is its baseline, and any sample below 90 percent restarts the count.
+// The verb prints `gateslot.WatchdogLine` to its stderr after the quit, and a halt names `gateslot.BusyQuitWayForward`.
+// Off Linux `proc.TreeCPU` reports `errors.ErrUnsupported`, the watchdog logs that no watchdog applies and ends, and go test runs as before.
+// The watchdog is off when `busy_quit_sec` is 0, when the go test flags after `--` carry `-bench` or `-fuzz`, which keep a core busy by intent, and when `LYX_GATE_TEST_PID` names a live ancestor, the pid an outer `lyx gate test` sets in go test's environment, since that run's watchdog already sees this run's test binaries.
+// An empty, unparsable or non-ancestor value is ignored, such as one a tmux server a test started carried into its panes after leaving the outer run's tree.
+// An inherited slot does not turn it off: `verifytree.Verify` holds a slot and passes it to a verify command that calls `lyx gate test`, which is the outermost gate run there.
+// Bound: it signals only `.test` processes in the verb's own child tree, once each, and covers only verify commands that run through `lyx gate test`.
+// A CPU-bound package that is healthy but busy past the window is quit and fails, and the operator raises the key.
+// A run carrying `-bench` or `-fuzz`, a run under a live enclosing `lyx gate test`, a run whose inherited variable names a live ancestor, and a non-Go hub's verify are bounded only by go test's own `-timeout` or the verify timeout.
+//
 // # Exit codes
 //
-// go test's own code; SlotBusyExit (75) for a busy hub; 128 plus the signal number after a terminating signal; 1 for a refusal, with a JSON error envelope on stdout.
+// go test's own code, which for a test binary the watchdog quit is go test's failure code; SlotBusyExit (75) for a busy hub; 128 plus the signal number after a terminating signal; 1 for a refusal, with a JSON error envelope on stdout.
 package gatecli

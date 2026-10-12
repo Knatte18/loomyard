@@ -53,7 +53,7 @@ func Goto(req GotoRequest) (Status, error) {
 	}
 	defer runLock.Release()
 
-	st, found, err := state.ReadJSONStrict[Status](req.StatusPath, req.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[Status](req.StatusPath, req.StatusLockPath)
 	if err != nil {
 		return Status{}, fmt.Errorf("shedengine: read status file %q: %w", req.StatusPath, err)
 	}

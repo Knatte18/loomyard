@@ -116,7 +116,7 @@ func runStatusWatch(out io.Writer, spec *Spec, interval time.Duration) {
 // statusWatchLine renders one poll of the --watch tail: the status line, with " | waiting <note>" appended while the Waiting hook reports a note.
 // A hook error drops the note rather than ending the tail.
 func statusWatchLine(spec *Spec) string {
-	polled, found, err := state.ReadJSONStrict[shedengine.Status](spec.StatusPath, spec.StatusLockPath)
+	polled, found, err := state.ReadJSONNoMkdir[shedengine.Status](spec.StatusPath, spec.StatusLockPath)
 	if err != nil || !found {
 		return UnavailableLine(spec.StatusLabel)
 	}
@@ -158,7 +158,7 @@ func statusCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				}
 			}
 
-			st, found, err := state.ReadJSONStrict[shedengine.Status](spec.StatusPath, spec.StatusLockPath)
+			st, found, err := state.ReadJSONNoMkdir[shedengine.Status](spec.StatusPath, spec.StatusLockPath)
 			if err != nil {
 				clihelp.SetExit(ctx, output.ErrFields(out, spec.DecodeErrPrefix+" decode status file "+spec.StatusPath+": "+err.Error(), map[string]any{"trace_dir": traceDir}))
 				return nil

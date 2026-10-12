@@ -50,7 +50,7 @@ It is its own package because `gitrepo`'s in-package test imports `gitkit`, whic
 
 ## `internal/pauserecord`
 
-Imports only the standard library and `internal/lock`, and `gofrs/flock` through it.
+Imports only the standard library and `internal/state`, and `gofrs/flock` through it.
 It is the one leaf every reader of a pause imports, and each reader is told its `Geometry` and derives no path of its own.
 
 ## `internal/lyxtemp`

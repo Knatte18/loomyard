@@ -16,7 +16,7 @@
 // WriteSeed stamps `started_at`, the RFC 3339 UTC time the run was seeded, when the seed has none and keeps a given one;
 // a re-written agreeing seed keeps its original stamp, and a seed written before the field existed has none.
 //
-// A seed written when it carried a top-level `parent` key still decodes; the key is discarded and never re-encoded.
+// A seed decodes with any key this binary does not know, the retired `parent` key included, and an agreeing WriteSeed leaves the file as it is.
 // A run's parent is resolved at use from the pair's origin record alone; see PATTERN-agent-name.
 //
 // The ephemeral run-directory contents include the loop's files, all under StepsDir:
@@ -34,7 +34,7 @@
 // RunDirRel is a run directory's anchor-relative form, the pathspec of a records commit that deletes the whole directory.
 //
 // TreeRunFileRels names a run's seed.json and status.json as slash-separated paths relative to a git tree, with no alias and no legacy fallback.
-// ParseSeed decodes seed bytes a caller read elsewhere, with the same strictness as ReadSeed.
+// ParseSeed decodes seed bytes a caller read elsewhere, as ReadSeed does.
 //
 // Every constructor that returns an absolute path joins onto a told *lyxcwd.Location's AnchorPath(), per the Cwd Resolution Invariant;
 // the *Rel constructors and TreeRunFileRels return relative paths, and no constructor resolves a cwd or spawns git.

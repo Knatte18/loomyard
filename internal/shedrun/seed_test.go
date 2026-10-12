@@ -191,50 +191,31 @@ func writeLegacySeedFile(t *testing.T, l *lyxcwd.Location, body string) {
 	}
 }
 
-// TestSeed_LegacyParentKey pins that a seed.json carrying the retired parent key still reads, is dropped on a round trip, agrees with an identical new seed, and that any other unknown key is still refused.
-func TestSeed_LegacyParentKey(t *testing.T) {
+// TestSeed_UnknownKey pins that a seed.json carrying keys this binary does not know, the retired parent key included, reads with its known fields decoded, and that an agreeing WriteSeed leaves the file byte for byte.
+func TestSeed_UnknownKey(t *testing.T) {
 	t.Parallel()
-	t.Run("decodes and is dropped on a round trip", func(t *testing.T) {
-		t.Parallel()
-		l := syntheticLocation(t)
-		writeLegacySeedFile(t, l, `{"recipe":"loom","driver":"go","parent":"ab:hub"}`)
-		got, found, err := ReadSeed(l, "self")
-		if err != nil || !found {
-			t.Fatalf("ReadSeed() = (found=%v, err=%v); want (true, nil)", found, err)
-		}
-		want := Seed{Recipe: RecipeLoom, Driver: DriverGo}
-		if got.Recipe != want.Recipe || got.Driver != want.Driver || len(got.Params) != 0 {
-			t.Errorf("ReadSeed() = %+v; want %+v", got, want)
-		}
+	l := syntheticLocation(t)
+	body := `{"recipe":"loom","driver":"go","parent":"ab:hub","future":{"x":1}}`
+	writeLegacySeedFile(t, l, body)
 
-		l2 := syntheticLocation(t)
-		if err := WriteSeed(l2, "self", got); err != nil {
-			t.Fatalf("WriteSeed() = %v; want nil", err)
-		}
-		data, err := os.ReadFile(SeedFile(l2, "self"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if strings.Contains(string(data), "parent") {
-			t.Errorf("seed.json = %s; want no parent key after a round trip", data)
-		}
-	})
-	t.Run("an agreeing new seed is a no-op", func(t *testing.T) {
-		t.Parallel()
-		l := syntheticLocation(t)
-		writeLegacySeedFile(t, l, `{"recipe":"loom","driver":"go","parent":"ab:first"}`)
-		if err := WriteSeed(l, "self", Seed{Recipe: RecipeLoom, Driver: DriverGo}); err != nil {
-			t.Fatalf("WriteSeed() = %v; want a no-op against an agreeing legacy seed", err)
-		}
-	})
-	t.Run("another unknown key is still refused", func(t *testing.T) {
-		t.Parallel()
-		l := syntheticLocation(t)
-		writeLegacySeedFile(t, l, `{"recipe":"loom","driver":"go","parent":"ab:hub","bogus":"x"}`)
-		if _, _, err := ReadSeed(l, "self"); err == nil {
-			t.Error("ReadSeed() with an unknown key error = nil; want a decode error")
-		}
-	})
+	got, found, err := ReadSeed(l, "self")
+	if err != nil || !found {
+		t.Fatalf("ReadSeed() = (found=%v, err=%v); want (true, nil)", found, err)
+	}
+	if got.Recipe != RecipeLoom || got.Driver != DriverGo {
+		t.Errorf("ReadSeed() = %+v; want recipe %q and driver %q decoded", got, RecipeLoom, DriverGo)
+	}
+
+	if err := WriteSeed(l, "self", Seed{Recipe: RecipeLoom, Driver: DriverGo}); err != nil {
+		t.Fatalf("WriteSeed() = %v; want nil against an agreeing seed", err)
+	}
+	data, err := os.ReadFile(SeedFile(l, "self"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != body {
+		t.Errorf("seed.json = %s; want it left as %s", data, body)
+	}
 }
 
 func TestWriteSeed_RefusesDisagreeingSeed(t *testing.T) {

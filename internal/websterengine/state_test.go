@@ -111,7 +111,7 @@ func TestState_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestLoadState_UnusualFiles pins LoadState on a state.json that is absent (nil, nil), corrupt (a wrapped error, never a guessed value) or written before the integration stage was retired (the retired integrationFix and assertedModel fields are ignored, every other field loads intact and a save writes no assertedModel key, the reserved -1 batch record stays an ordinary entry, and the audit-ledger fields it predates decode as nil).
+// TestLoadState_UnusualFiles pins LoadState on a state.json that is absent (nil, nil), corrupt (a wrapped error, never a guessed value) or written before the integration stage was retired (the retired integrationFix and assertedModel fields are ignored on load, every other field loads intact and a save keeps both retired keys as unknown keys, the reserved -1 batch record stays an ordinary entry, and the audit-ledger fields it predates decode as nil).
 func TestLoadState_UnusualFiles(t *testing.T) {
 	t.Parallel()
 
@@ -213,8 +213,8 @@ func TestLoadState_UnusualFiles(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read saved state.json: %v", err)
 			}
-			if strings.Contains(string(saved), "assertedModel") {
-				t.Errorf("saved state.json = %s; want no assertedModel key", saved)
+			if !strings.Contains(string(saved), `"assertedModel": "opus"`) || !strings.Contains(string(saved), `"integrationFix"`) {
+				t.Errorf("saved state.json = %s; want the retired assertedModel and integrationFix keys kept", saved)
 			}
 		})
 	}

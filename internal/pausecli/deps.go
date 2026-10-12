@@ -188,7 +188,7 @@ func (p shuttlePair) Running() (string, bool, error) {
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
 		return "", false, err
 	}
-	status, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, lockPath)
+	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, lockPath)
 	if err != nil || !found {
 		return "", false, err
 	}

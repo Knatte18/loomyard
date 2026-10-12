@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -119,6 +120,7 @@ type verifyGateSeams struct {
 // once a pre-fix head is recorded, it fails `Terminal` when a commit above it is neither a non-merge commit nor a clean parent merge;
 // it passes with a warning when the plan has no `## verify:` section;
 // otherwise it runs verifytree.Verify, reruns once on a failure, and passes a flaky failure whose rerun passed.
+// A run that timed out or hung, as classifyHang reads its log and exit code, is not re-run: it fails at once.
 // A failure that survives returns findings, and the first failure of any kind records HEAD as the pre-fix head.
 // Every failed evaluation writes the verify-gate report.
 // Attempt counts and the pre-fix head live in the closure for one shuttle run;
@@ -240,23 +242,36 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		return shuttleengine.GateResult{Passed: true}, nil
 	}
 
-	// failures parses the verify log of res into failing identities.
-	failures := func(res verifytree.Result) ([]VerifyFailure, error) {
+	// readOutput returns the verify log of res.
+	readOutput := func(res verifytree.Result) (string, error) {
 		output, err := s.readLog(res.Log)
 		if err != nil {
-			return nil, fmt.Errorf("websterengine: read verify log %s: %w", res.Log, err)
+			return "", fmt.Errorf("websterengine: read verify log %s: %w", res.Log, err)
 		}
-		return parseVerifyFailures(output, false), nil
+		return output, nil
 	}
 
 	// failTimedOut fails the gate for res, a verify that outlived its timeout: a hang is not flakiness,
 	// so it is never rerun.
 	failTimedOut := func(res verifytree.Result) (shuttleengine.GateResult, error) {
-		output, err := s.readLog(res.Log)
+		output, err := readOutput(res)
 		if err != nil {
-			return shuttleengine.GateResult{}, fmt.Errorf("websterengine: read verify log %s: %w", res.Log, err)
+			return shuttleengine.GateResult{}, err
 		}
 		return fail(VerifyGateReport{TimedOut: verifytree.Timeout.String(), LogPath: res.Log, LogTail: logTail(output)})
+	}
+
+	// failHung fails the gate for res, a failed verify whose output classifyHang read as a hang: a hang is not flakiness,
+	// so it is never rerun.
+	failHung := func(res verifytree.Result, output string, hang verifyHang) (shuttleengine.GateResult, error) {
+		return fail(VerifyGateReport{
+			Failures:       parseVerifyFailures(output, false),
+			LogPath:        res.Log,
+			LogTail:        logTail(output),
+			Hang:           hang.Matched,
+			HangStacks:     hang.Stacks,
+			WatchdogWindow: hang.Window,
+		})
 	}
 
 	return func() (shuttleengine.GateResult, error) {
@@ -315,10 +330,14 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 			return failTimedOut(res)
 		}
 
-		first, err := failures(res)
+		firstOutput, err := readOutput(res)
 		if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
+		if hang, hung := classifyHang(res, firstOutput); hung {
+			return failHung(res, firstOutput, hang)
+		}
+		first := parseVerifyFailures(firstOutput, false)
 		res, err = s.verify(site, command)
 		if err != nil {
 			return shuttleengine.GateResult{}, fmt.Errorf("websterengine: verify gate: %w", err)
@@ -334,11 +353,14 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		if res.TimedOut {
 			return failTimedOut(res)
 		}
-		surviving, err := failures(res)
+		rerunOutput, err := readOutput(res)
 		if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
-		return fail(VerifyGateReport{Failures: surviving, LogPath: res.Log})
+		if hang, hung := classifyHang(res, rerunOutput); hung {
+			return failHung(res, rerunOutput, hang)
+		}
+		return fail(VerifyGateReport{Failures: parseVerifyFailures(rerunOutput, false), LogPath: res.Log})
 	}
 }
 
@@ -357,7 +379,8 @@ func readVerifyGateReport(path string) (VerifyGateReport, error) {
 
 // verifyGateStuckReason is the stuck reason of a done run whose verify gate did not pass.
 // A Terminal failure, the rejection of a fixer commit, names the gate's own reason and ends in the reset to the pre-fix head followed by reentry.
-// Otherwise it names the failing identities, the dirty paths or the verify timeout and its log the latest failed evaluation's report holds, and the attempts spent.
+// Otherwise it names the hang, the failing identities, the dirty paths or the verify timeout and its log the latest failed evaluation's report holds, and the attempts spent.
+// After a CPU watchdog quit the reason also names the window and the way forward for a package that is CPU-bound but healthy, then reentry.
 func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, reentry string) string {
 	if gate.Reason != "" {
 		return "verify gate failed: " + oneLine(gate.Reason) + "; " + wayForwardSteps("lyx webster reset --to pre-fix", reentry)
@@ -368,14 +391,28 @@ func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, r
 	}
 	what := "none named"
 	switch {
+	case report.Hang != "":
+		what = hangStuckReason(report, reentry)
 	case len(report.Failures) > 0:
 		what = strings.Join(failureIDs(report.Failures), ", ")
 	case len(report.Dirty) > 0:
 		what = "uncommitted paths " + strings.Join(report.Dirty, ", ")
 	case report.TimedOut != "":
-		what = fmt.Sprintf("the verify command did not finish within %s and was killed, see %s", report.TimedOut, report.LogPath)
+		what = fmt.Sprintf("the verify command did not finish within %s, was killed and was not re-run, see %s", report.TimedOut, report.LogPath)
 	}
 	return fmt.Sprintf("verify gate failed after %d attempt(s) of %d: %s", report.Attempt, report.Cap, what)
+}
+
+// hangStuckReason describes a hang report for the stuck reason: the hang and that it was not re-run, then after a CPU watchdog quit the window, the way forward and reentry.
+func hangStuckReason(report VerifyGateReport, reentry string) string {
+	what := fmt.Sprintf("the verify command was killed or exited with %s and was not re-run, see %s", report.Hang, report.LogPath)
+	if report.HangStacks {
+		what = fmt.Sprintf("the verify command hung (%s) and was not re-run; its goroutine stacks are in %s", report.Hang, report.LogPath)
+	}
+	if report.WatchdogWindow != "" {
+		what += fmt.Sprintf("; the gate test's CPU watchdog quit a test binary busy for %s: if that package is CPU-bound but healthy, %s, then %s", report.WatchdogWindow, gateslot.BusyQuitWayForward, reentry)
+	}
+	return what
 }
 
 // oneLine collapses s's line breaks into spaces, for a reason that rides a one-line outcome.

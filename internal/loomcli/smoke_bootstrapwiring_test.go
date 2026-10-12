@@ -101,12 +101,12 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 	// Relies on the first step's completed `step`.
 	// It must run before the re-entry step changes the status again.
 	t.Run("step records a handoff voucher matching the persisted status", func(t *testing.T) {
-		persisted, found, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
+		persisted, found, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
 		if err != nil || !found {
 			t.Fatalf("read persisted status after step: found=%v err=%v", found, err)
 		}
 
-		voucher, found, err := state.ReadJSONStrict[handoffVoucher](loomengine.LoomHandoffVoucher(loc), loomengine.LoomHandoffVoucherLock(loc))
+		voucher, found, err := state.ReadJSONNoMkdir[handoffVoucher](loomengine.LoomHandoffVoucher(loc), loomengine.LoomHandoffVoucherLock(loc))
 		if err != nil {
 			t.Fatalf("read handoff voucher: %v", err)
 		}

@@ -1070,9 +1070,10 @@ func TestLoad(t *testing.T) {
 		check func(t *testing.T, tasks []boardengine.Task)
 		// act mutates the loaded store after check and before the save.
 		act func(t *testing.T, store *boardengine.Store)
-		// save writes the store back, as do act and wantKeys; saveContains and saveAbsent are the whitespace-free substrings the saved file must and must not contain.
+		// save writes the store back, as do act and wantKeys; saveContains and saveAbsent are the whitespace-free substrings the saved file must and must not contain, and a non-empty saveExact is the whole file, byte for byte.
 		save                     bool
 		saveContains, saveAbsent []string
+		saveExact                string
 		// saveOrder lists whitespace-free substrings that must appear in this order in the saved file.
 		saveOrder []string
 		// wantKeys lists slug, key and compact value read back from the saved file; an empty value means the key must be absent.
@@ -1127,6 +1128,27 @@ func TestLoad(t *testing.T) {
 			saveContains: []string{`"kind":"task"`, `"labels"`},
 			saveAbsent:   []string{`"tier"`, `"type"`},
 			wantKeys:     [][3]string{{"a", "zz_scalar", "9007199254740993"}},
+			saveExact: `{
+  "version": 1,
+  "entries": [
+    {
+      "id": 0,
+      "slug": "a",
+      "title": "A",
+      "kind": "task",
+      "labels": [
+        "bug",
+        "infra"
+      ],
+      "issues": [],
+      "depends_on": [],
+      "isolated": false,
+      "brief": "fix it",
+      "body": "",
+      "zz_scalar": 9007199254740993
+    }
+  ]
+}`,
 		},
 		{
 			name: "set-status keeps kept keys after the known fields in key order",
@@ -1139,6 +1161,96 @@ func TestLoad(t *testing.T) {
 			},
 			saveOrder: []string{`"status":`, `"zz_nested"`, `"zz_scalar"`},
 			wantKeys:  keptA,
+			saveExact: `{
+  "version": 1,
+  "entries": [
+    {
+      "id": 0,
+      "slug": "a",
+      "title": "A",
+      "kind": "task",
+      "labels": [
+        "bug"
+      ],
+      "issues": [],
+      "depends_on": [],
+      "isolated": false,
+      "brief": "",
+      "body": "",
+      "status": "active",
+      "zz_esc": 1,
+      "zz_nested": {
+        "a": [
+          1,
+          {
+            "b": "c"
+          }
+        ]
+      },
+      "zz_nested_quote": {
+        "s": [
+          "q\"}],x",
+          {
+            "t": "\\}],"
+          }
+        ]
+      },
+      "zz_quote": "q\"}],x",
+      "zz_scalar": 9007199254740993
+    },
+    {
+      "id": 1,
+      "slug": "b",
+      "title": "B",
+      "kind": "task",
+      "labels": [
+        "bug"
+      ],
+      "issues": [],
+      "depends_on": [],
+      "isolated": false,
+      "brief": "",
+      "body": "",
+      "zz_b": true
+    },
+    {
+      "id": 2,
+      "slug": "n",
+      "title": "N",
+      "kind": "note",
+      "labels": [
+        "bug"
+      ],
+      "issues": [],
+      "depends_on": [],
+      "isolated": false,
+      "brief": "",
+      "body": "",
+      "zz_n": "x"
+    },
+    {
+      "id": 3,
+      "slug": "fin",
+      "title": "Fin",
+      "kind": "task",
+      "labels": [
+        "bug"
+      ],
+      "issues": [],
+      "depends_on": [],
+      "isolated": false,
+      "brief": "",
+      "body": "",
+      "status": "done"
+    }
+  ],
+  "zz_top": {
+    "k": [
+      1,
+      2
+    ]
+  }
+}`,
 		},
 		{
 			name: "an upsert keeps kept keys",
@@ -1289,6 +1401,9 @@ func TestLoad(t *testing.T) {
 				if strings.Contains(compact, absent) {
 					t.Errorf("Save output must not contain %s: %s", absent, raw)
 				}
+			}
+			if tt.saveExact != "" && string(raw) != tt.saveExact {
+				t.Errorf("Save output = %q; want %q", raw, tt.saveExact)
 			}
 			position := 0
 			for _, want := range tt.saveOrder {

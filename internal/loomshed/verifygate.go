@@ -45,7 +45,7 @@ const verifyLogTailBytes = 4096
 //
 // `StatusPassed` and `StatusSkipped` pass.
 // `StatusDirty` fails with the dirty paths.
-// `StatusFailed` fails with the exit code, the log path and the log's tail.
+// `StatusFailed` fails with the exit code, the log path and the log's tail, and, after a CPU watchdog quit, the window and the `busy_quit_sec` way forward.
 // A headroom finding, a comment lint finding, or in the round form a test file the guard scan rejects such as a misplaced `//lyx:guard` marker, fails with its file and line or its bytes and the way forward.
 // A command or merge base read error, a failure to read git or a package directory, a lint run error or a cancelled verify is a returned error, since none is a defect the writer can fix.
 func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase func() (string, error), wholeDiff bool, slots *gateslot.Pool) shuttleengine.Gate {
@@ -174,7 +174,9 @@ func commentLintFindings(findings []commentlint.Finding) string {
 }
 
 // verifyFailureFindings renders a StatusFailed result as the exit code or the timeout, the log path and the log's tail.
+// When the whole log holds the CPU watchdog's line, a paragraph after the first sentence names the window and the way forward for a healthy package that is CPU-bound.
 func verifyFailureFindings(res verifytree.Result, logPath string) string {
+	log, _ := os.ReadFile(logPath)
 	var b strings.Builder
 	if res.TimedOut {
 		fmt.Fprintf(&b, "The verify command did not finish within %s and was killed.", verifytree.Timeout)
@@ -184,21 +186,20 @@ func verifyFailureFindings(res verifytree.Result, logPath string) string {
 			fmt.Fprintf(&b, " Its shell could not start: %s.", res.Detail)
 		}
 	}
+	if window, quit := gateslot.FindWatchdogQuit(string(log)); quit {
+		fmt.Fprintf(&b, "\n\nThe gate test's CPU watchdog quit a test binary that kept a CPU core busy for %s, so its goroutine stacks are in the log: look there for a livelock or a spin, and if the package is CPU-bound but healthy, %s, then re-step the row.", window, gateslot.BusyQuitWayForward)
+	}
 	fmt.Fprintf(&b, "\n\nFull log: %s\n", logPath)
-	if tail := readLogTail(logPath); tail != "" {
+	if tail := logTail(log); tail != "" {
 		fmt.Fprintf(&b, "\nLog tail:\n\n%s\n", tail)
 	}
 	return b.String()
 }
 
-// readLogTail returns the last verifyLogTailBytes of the log at path, or empty when it cannot be read.
-func readLogTail(path string) string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
+// logTail returns the last verifyLogTailBytes of log, trimmed.
+func logTail(log []byte) string {
+	if len(log) > verifyLogTailBytes {
+		log = log[len(log)-verifyLogTailBytes:]
 	}
-	if len(data) > verifyLogTailBytes {
-		data = data[len(data)-verifyLogTailBytes:]
-	}
-	return string(bytes.TrimSpace(data))
+	return string(bytes.TrimSpace(log))
 }

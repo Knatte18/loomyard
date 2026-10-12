@@ -441,7 +441,7 @@ func readStatusFile(spec *Spec) (shedengine.Status, bool) {
 
 // readStatusAt reads the status file at statusPath, reporting false when it is missing or unreadable.
 func readStatusAt(statusPath, statusLockPath string) (shedengine.Status, bool) {
-	st, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
 	if err != nil || !found {
 		return shedengine.Status{}, false
 	}

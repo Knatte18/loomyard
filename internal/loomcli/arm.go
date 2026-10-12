@@ -533,7 +533,7 @@ func (c *loomCLI) loomPreStepUnmarked(ctx context.Context) (string, error) {
 	} else {
 		// An unreadable status file leaves the placeholder; the refusal still names the command's shape.
 		var currentProducer string
-		if st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath); err == nil && found {
+		if st, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath); err == nil && found {
 			currentProducer = st.CurrentProducer
 		}
 		return shedverbs.KindBusy, errors.New("loom: a driver already holds the run lock; run \"" + c.pauseAfterCommand(currentProducer) + "\" to request a pause at the end of the current producer")

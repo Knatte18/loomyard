@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
@@ -209,9 +210,24 @@ func (g verifyGate) checkPublishVerify(ctx context.Context, producer, parentBran
 	return g.verdict(result, "publish_verify", producer, parentBranch, recorded)
 }
 
+// watchdogClause returns the clause a failed verify's reason carries when the log at logPath holds the CPU watchdog's line, and empty for an unreadable log or one without it.
+// The clause names the window, says the goroutine stacks are in the log, and gives the way forward for a package that is CPU-bound but healthy.
+func watchdogClause(logPath string) string {
+	log, err := os.ReadFile(logPath)
+	if err != nil {
+		return ""
+	}
+	window, quit := gateslot.FindWatchdogQuit(string(log))
+	if !quit {
+		return ""
+	}
+	return fmt.Sprintf("; the gate test's CPU watchdog quit a test binary that kept a CPU core busy for %s, with its goroutine stacks in the log; if the package is CPU-bound but healthy, %s, then resume", window, gateslot.BusyQuitWayForward)
+}
+
 // verdict maps a verify result to the producer's decision, naming the command's config source as what.
 // It returns a non-empty Stuck reason for a dirty tree or a failed command, an error for an unknown status, and ("", nil) when the producer may proceed.
 // recorded says the failure record was written; a failed command with an exit code then ends with the told way-forward clause, and otherwise, or with no clause told, asks to fix forward on the task branch.
+// After a CPU watchdog quit the reason names the window and the busy_quit_sec way forward before that clause.
 func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBranch string, recorded bool) (string, error) {
 	switch result.Status {
 	case verifytree.StatusPassed:
@@ -227,10 +243,11 @@ func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBran
 		if result.ExitCode < 0 {
 			return fmt.Sprintf("%s could not start after merging parent branch %q: %s; output: %s", what, parentBranch, result.Detail, result.Log), nil
 		}
+		watchdog := watchdogClause(result.Log)
 		if recorded && g.failedWayForward != "" {
-			return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s; way forward: %s", what, parentBranch, result.ExitCode, result.Log, g.failedWayForward), nil
+			return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s%s; way forward: %s", what, parentBranch, result.ExitCode, result.Log, watchdog, g.failedWayForward), nil
 		}
-		return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s; fix forward on the task branch, then resume", what, parentBranch, result.ExitCode, result.Log), nil
+		return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s%s; fix forward on the task branch, then resume", what, parentBranch, result.ExitCode, result.Log, watchdog), nil
 	default:
 		return "", fmt.Errorf("landingshed: %s: unknown %s status %q", producer, what, result.Status)
 	}

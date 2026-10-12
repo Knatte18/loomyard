@@ -501,7 +501,7 @@ func orchStrandRecorded(prime *lyxcwd.Location) (bool, error) {
 
 // battenHistoryLen returns the length of batten's own status history for slug, 0 when the status file is absent.
 func battenHistoryLen(location *lyxcwd.Location, slug string) (int, error) {
-	status, found, err := state.ReadJSONStrict[shedengine.Status](StatusFile(location, slug), StatusLock(location, slug))
+	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](StatusFile(location, slug), StatusLock(location, slug))
 	if err != nil || !found {
 		return 0, err
 	}
@@ -1047,7 +1047,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				return childSpawnError(runErr, childOutput.String())
 			},
 			ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
-				return state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
+				return state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
 			},
 			OpenTerminal: c.openTerminal(slug, locateTask),
 		},

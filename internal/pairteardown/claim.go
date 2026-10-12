@@ -124,7 +124,7 @@ func (t *Teardown) battenRunState(slug string) (seeded bool, state string, err e
 
 // readStatus reads the shed status file at path under its lock; found is false when the file is absent.
 func readStatus(path, lockPath string) (shedengine.Status, bool, error) {
-	return state.ReadJSONStrict[shedengine.Status](path, lockPath)
+	return state.ReadJSONNoMkdir[shedengine.Status](path, lockPath)
 }
 
 // readBoardClaim reads the status of the slug's board entry through the hub's board.

@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 const (
@@ -473,17 +474,9 @@ func (p *prRework) finishRound(roundDir string, rec roundRecord, coveragePath st
 }
 
 // writeRoundRecord encodes rec into the file at recordPath.
-// It writes a sibling temp file and renames it into place, so a crash never leaves a torn record for roundFor to misread.
+// The write replaces the file atomically, so a crash never leaves a torn record for roundFor to misread, and keeps every key of a record a newer binary wrote that roundRecord does not declare.
 func writeRoundRecord(recordPath string, rec roundRecord) error {
-	data, err := json.MarshalIndent(rec, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode round record: %w", err)
-	}
-	tmp := recordPath + ".tmp"
-	if err := os.WriteFile(tmp, append(data, '\n'), 0o644); err != nil {
-		return fmt.Errorf("write round %s: %w", reworkRecordFile, err)
-	}
-	if err := os.Rename(tmp, recordPath); err != nil {
+	if err := state.WriteJSON(recordPath, recordPath+".lock", rec); err != nil {
 		return fmt.Errorf("write round %s: %w", reworkRecordFile, err)
 	}
 	return nil

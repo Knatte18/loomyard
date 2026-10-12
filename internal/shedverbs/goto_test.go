@@ -67,7 +67,7 @@ func TestGotoCmd_MovesBlockedRunOntoRow(t *testing.T) {
 		t.Errorf("envelope run_id/status_file = %v/%v", env["run_id"], env["status_file"])
 	}
 
-	st, found, err := state.ReadJSONStrict[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil || !found {
 		t.Fatalf("re-read status: found=%v err=%v", found, err)
 	}

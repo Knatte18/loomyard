@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Knatte18/loomyard/internal/gateslot"
 )
 
 // verifyGateReportFileName is the verify-gate report's file name inside the reports dir.
@@ -33,8 +35,15 @@ type VerifyGateReport struct {
 	// TimedOut is the verify timeout as a duration string when the verify outlived it and was killed, and empty otherwise.
 	// Such a failure has no Failures and carries LogTail instead.
 	TimedOut string `yaml:"timed_out,omitempty"`
-	// LogTail is the bounded tail of the verify log of a timed-out run.
+	// LogTail is the bounded tail of the verify log of a timed-out or hung run.
 	LogTail string `yaml:"log_tail,omitempty"`
+	// Hang is the marker, log line or `exit code <n>` that read the failed run as a hang, and empty for any other failure.
+	// Such a failure carries the Failures its log parses to and LogTail.
+	Hang string `yaml:"hang,omitempty"`
+	// HangStacks is set when the hung run's log holds goroutine stacks.
+	HangStacks bool `yaml:"hang_stacks,omitempty"`
+	// WatchdogWindow is the CPU watchdog's busy window when it quit a test binary, as a duration string.
+	WatchdogWindow string `yaml:"watchdog_window,omitempty"`
 	// Failures lists the failing identities the verify output parsed to.
 	Failures []VerifyFailure `yaml:"failures,omitempty"`
 	// LogPath is the full verify log.
@@ -142,7 +151,10 @@ func verifyGateReprompt(fixPromptPath string) func(findingsPath string) string {
 }
 
 // renderVerifyGateFindings returns the findings text the gate returns to Merriam:
-// the way forward, the attempt and the cap, then either the dirty paths, the timeout sentence with the log path and tail, or each failing identity with its output tail, the full log path, and the hint.
+// the way forward, the attempt and the cap, then the dirty paths, the timeout sentence, a hang or the failing identities.
+// A timeout carries the log path and tail, and a hang its matched marker, identities, log path and tail.
+// Identities carry their output tail, the full log path and the hint.
+// A timeout or hang says the step was not re-run, and a watchdog quit also names the window and the operator's way forward.
 func renderVerifyGateFindings(r VerifyGateReport, fixPromptPath string) string {
 	var b strings.Builder
 	b.WriteString(verifyGateWayForward(fixPromptPath) + "\n")
@@ -157,32 +169,56 @@ func renderVerifyGateFindings(r VerifyGateReport, fixPromptPath string) string {
 	}
 
 	if r.TimedOut != "" {
-		fmt.Fprintf(&b, "The verify command did not finish within %s and was killed.\n", r.TimedOut)
-		if r.LogPath != "" {
-			fmt.Fprintf(&b, "Full log: %s\n", r.LogPath)
-		}
-		if r.LogTail != "" {
-			fmt.Fprintf(&b, "Log tail:\n%s\n", r.LogTail)
-		}
+		fmt.Fprintf(&b, "The verify command did not finish within %s and was killed; the step was not re-run.\n", r.TimedOut)
+		writeLogLocation(&b, r)
 		return b.String()
 	}
 
-	b.WriteString("Failing identities:\n")
-	for _, f := range r.Failures {
-		fmt.Fprintf(&b, "- %s (%s)\n", f.ID, f.Kind)
-		if f.Tail != "" {
-			for _, line := range strings.Split(f.Tail, "\n") {
-				fmt.Fprintf(&b, "    %s\n", line)
-			}
+	if r.Hang != "" {
+		if r.HangStacks {
+			b.WriteString("The verify step hung and was not re-run; its goroutine stacks are in the log.\n")
+		} else {
+			fmt.Fprintf(&b, "The verify step was killed or exited with %s and was not re-run.\n", r.Hang)
 		}
+		if r.WatchdogWindow != "" {
+			fmt.Fprintf(&b, "The gate test's CPU watchdog quit a test binary that kept a core busy for %s.\n", r.WatchdogWindow)
+			fmt.Fprintf(&b, "A package that is CPU-bound but healthy needs the operator to %s; that is not yours to do.\n", gateslot.BusyQuitWayForward)
+		}
+		fmt.Fprintf(&b, "Matched: %s\n", r.Hang)
+		writeFailingIdentities(&b, r.Failures)
+		writeLogLocation(&b, r)
+		return b.String()
 	}
-	if r.LogPath != "" {
-		fmt.Fprintf(&b, "Full log: %s\n", r.LogPath)
-	}
+
+	writeFailingIdentities(&b, r.Failures)
+	writeLogLocation(&b, r)
 	if len(r.Hint) > 0 {
 		fmt.Fprintf(&b, "Cards whose commits touched a failing package: %s\n", strings.Join(r.Hint, ", "))
 	} else {
 		b.WriteString("No recorded card touched a failing package.\n")
 	}
 	return b.String()
+}
+
+// writeFailingIdentities writes the failing-identities list, each identity with its output tail indented under it.
+func writeFailingIdentities(b *strings.Builder, failures []VerifyFailure) {
+	b.WriteString("Failing identities:\n")
+	for _, f := range failures {
+		fmt.Fprintf(b, "- %s (%s)\n", f.ID, f.Kind)
+		if f.Tail != "" {
+			for _, line := range strings.Split(f.Tail, "\n") {
+				fmt.Fprintf(b, "    %s\n", line)
+			}
+		}
+	}
+}
+
+// writeLogLocation writes the full log path and the log tail, each only when the report has it.
+func writeLogLocation(b *strings.Builder, r VerifyGateReport) {
+	if r.LogPath != "" {
+		fmt.Fprintf(b, "Full log: %s\n", r.LogPath)
+	}
+	if r.LogTail != "" {
+		fmt.Fprintf(b, "Log tail:\n%s\n", r.LogTail)
+	}
 }

@@ -152,7 +152,7 @@ func waitForCurrentProducer(t *testing.T, loc *lyxcwd.Location, want string, tim
 	deadline := time.Now().Add(timeout)
 	var last string
 	for {
-		st, found, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
+		st, found, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
 		if err == nil && found {
 			last = string(st.CurrentProducer)
 			if st.CurrentProducer == want && st.State == shedengine.StateRunning {
@@ -166,14 +166,24 @@ func waitForCurrentProducer(t *testing.T, loc *lyxcwd.Location, want string, tim
 	}
 }
 
-// poisonStatusFile adds an unrecognised top-level field to loc's already-seeded status file and
-// commits the change records-side. This is the whole rig behind the driver-failure regression cases: the
-// lenient json.Unmarshal shedengine.persist and loomshed.Seed both read through
-// (internal/state.UpdateJSON) tolerates an unknown field, so ordinary re-entrant seeding stays
-// unaffected, while the strict decoder Shed.Run's own read gate uses (state.ReadJSONStrict,
-// DisallowUnknownFields) rejects it outright, and does so BEFORE the loop ever calls a producer or
-// performs a persist -- an environment condition the production code already honours, not a change to
-// it.
+// readDriverLogContaining polls loc's driver log until its lowercased content contains want or a 20s deadline passes, and returns the last content read.
+// The bootstrap can return while the driver is still between taking the run lock and writing its failure, so a single read can see an empty log.
+func readDriverLogContaining(loc *lyxcwd.Location, want string) []byte {
+	logPath := loomengine.LoomDriverLog(loc)
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		content, _ := os.ReadFile(logPath)
+		if strings.Contains(strings.ToLower(string(content)), want) || time.Now().After(deadline) {
+			return content
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+// poisonStatusFile rewrites the state of loc's already-seeded status file to an unrecognised value and commits the change records-side.
+// This is the whole rig behind the driver-failure regression cases.
+// The file still decodes, so loomshed.Seed's UpdateJSON takes its found branch and ordinary re-entrant seeding stays unaffected.
+// Shed.Run's own read gate refuses the unrecognised state BEFORE the loop ever calls a producer or performs a persist -- an environment condition the production code already honours, not a change to it.
 func poisonStatusFile(t *testing.T, loc *lyxcwd.Location) {
 	t.Helper()
 	statusPath := shedrun.StatusFile(loc, shedrun.SelfRunID)
@@ -186,7 +196,7 @@ func poisonStatusFile(t *testing.T, loc *lyxcwd.Location) {
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		t.Fatalf("unmarshal status file: %v", err)
 	}
-	fields["__smoke_unknown_field__"] = true
+	fields["state"] = "poisoned"
 	poisoned, err := json.MarshalIndent(fields, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal poisoned status: %v", err)
@@ -201,13 +211,10 @@ func poisonStatusFile(t *testing.T, loc *lyxcwd.Location) {
 	}
 }
 
-// poisonStatusFileMalformed overwrites loc's already-seeded status file with genuinely malformed
-// JSON (not merely an unknown field) and commits it records-side. It is the second poison shape the
-// crash-recovery design promises never looks like bootstrap's own gate: unlike the unknown-field
-// shape poisonStatusFile writes, malformed JSON does not decode even leniently, so before crucible
-// round fable5-high-r5's F3 fix it made loomshed.Seed (and therefore `lyx loom start`) refuse on the
-// envelope before ever spawning a driver. loomshed.Seed now maps a decode failure to ErrSeedExists,
-// so both poison shapes reach the same "a driver that died is a run that finished" bootstrap path.
+// poisonStatusFileMalformed overwrites loc's already-seeded status file with genuinely malformed JSON (not merely an unrecognised state) and commits it records-side.
+// It is the second poison shape the crash-recovery design promises never looks like bootstrap's own gate.
+// Unlike the unrecognised-state shape poisonStatusFile writes, malformed JSON does not decode at all, so before crucible round fable5-high-r5's F3 fix it made loomshed.Seed (and therefore `lyx loom start`) refuse on the envelope before ever spawning a driver.
+// loomshed.Seed now maps a decode failure to ErrSeedExists, so both poison shapes reach the same "a driver that died is a run that finished" bootstrap path.
 func poisonStatusFileMalformed(t *testing.T, loc *lyxcwd.Location) {
 	t.Helper()
 	statusPath := shedrun.StatusFile(loc, shedrun.SelfRunID)
@@ -281,7 +288,7 @@ func TestSmokeRunStandalone(t *testing.T) {
 		}
 		waitRunLockFree(t, loc, 20*time.Second)
 
-		before, foundBefore, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
+		before, foundBefore, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
 		if err != nil || !foundBefore {
 			t.Fatalf("read status file before standalone drive: found=%v err=%v", foundBefore, err)
 		}
@@ -315,7 +322,7 @@ func TestSmokeRunStandalone(t *testing.T) {
 		}
 		t.Logf("loom run exited %d: %s", driveCode, strings.TrimSpace(driveOut))
 
-		after, foundAfter, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
+		after, foundAfter, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
 		if err != nil || !foundAfter {
 			t.Fatalf("read status file after standalone drive: found=%v err=%v", foundAfter, err)
 		}
@@ -333,10 +340,8 @@ func TestSmokeRunStandalone(t *testing.T) {
 		}
 	})
 
-	// A driver rigged to fail before its first persist leaves a non-empty driver log naming the
-	// failure. See poisonStatusFile's doc comment for the rig itself: an unknown field state.UpdateJSON
-	// tolerates but state.ReadJSONStrict rejects, so Shed.Run's own read gate fails before the loop ever
-	// calls a producer -- before any persist can happen.
+	// A driver rigged to fail before its first persist leaves a non-empty driver log naming the failure.
+	// See poisonStatusFile's doc comment for the rig itself: an unrecognised state that decodes but that Shed.Run's own read gate refuses, so it fails before the loop ever calls a producer -- before any persist can happen.
 	t.Run("failure before the first persist leaves a non-empty driver log", func(t *testing.T) {
 		poisonStatusFile(t, loc)
 		poisonedBytes, err := os.ReadFile(shedrun.StatusFile(loc, shedrun.SelfRunID))
@@ -372,8 +377,8 @@ func TestSmokeRunStandalone(t *testing.T) {
 		if strings.TrimSpace(string(content)) == "" {
 			t.Fatalf("driver log is empty; want it to name the failure")
 		}
-		if !strings.Contains(strings.ToLower(string(content)), "decode") {
-			t.Errorf("driver log = %q; want it to name the decode failure", content)
+		if !strings.Contains(strings.ToLower(string(content)), "invalid state") {
+			t.Errorf("driver log = %q; want it to name the invalid state", content)
 		}
 
 		after, err := os.ReadFile(shedrun.StatusFile(loc, shedrun.SelfRunID))
@@ -517,7 +522,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 			t.Errorf("driver pid %d found but not alive", pids[0])
 		}
 
-		st, found, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
+		st, found, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
 		if err != nil || !found {
 			t.Fatalf("read status file after bootstrap: found=%v err=%v", found, err)
 		}
@@ -617,11 +622,8 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 	// the driver log carries the real reason the run halted, and the bootstrap lock is released rather
 	// than stranded.
 	//
-	// The rig is the poisoned-status-file mechanism poisonStatusFile documents, applied after the earlier
-	// steps' genuine bootstraps so the pair already has a live reed substrate and the run lock has been
-	// observed free again. The bootstrap's own steps 1-4 use only the lenient read paths (ReadOrigin,
-	// Seed, CommitRecordsPaths) that tolerate the poisoned field, so only the spawned CHILD's strict read
-	// gate ever sees the failure.
+	// The rig is the poisoned-status-file mechanism poisonStatusFile documents, applied after the earlier steps' genuine bootstraps so the pair already has a live reed substrate and the run lock has been observed free again.
+	// The bootstrap's own steps 1-4 (ReadOrigin, Seed, CommitRecordsPaths) tolerate the unrecognised state, so only the spawned CHILD's read gate ever sees the failure.
 	t.Run("died driver proceeds to the success envelope and logs why", func(t *testing.T) {
 		bootstrapUnlessSeeded(t)
 		killDriversAndClearLog(t)
@@ -640,16 +642,12 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 			t.Errorf("rigged bootstrap emitted a refusal envelope: %s -- a driver that died is a run that finished, not a broken bootstrap", stdout)
 		}
 
-		// The rig is confirmed by the driver log's own content: the poisoned read gate's decode failure,
-		// not an ordinary completed run. Without this the step would pass against any fast-exiting
-		// driver and prove nothing about the rig.
-		wantLog := loomengine.LoomDriverLog(loc)
-		driverLog, err := os.ReadFile(wantLog)
-		if err != nil {
-			t.Fatalf("read driver log %s: %v", wantLog, err)
-		}
-		if !strings.Contains(strings.ToLower(string(driverLog)), "decode") {
-			t.Errorf("driver log = %q; want it to name the poisoned status file's decode failure -- the reason the run halted must survive in the log even though the bootstrap proceeded", driverLog)
+		// The rig is confirmed by the driver log's own content: the read gate's invalid-state refusal, not an ordinary completed run.
+		// Without this the step would pass against any fast-exiting driver and prove nothing about the rig.
+		// The poisoned state is not running, so the handshake reports halted on its first poll and the bootstrap can return while the driver is still starting; the log is polled for rather than read once.
+		driverLog := readDriverLogContaining(loc, "invalid state")
+		if !strings.Contains(strings.ToLower(string(driverLog)), "invalid state") {
+			t.Errorf("driver log = %q; want it to name the poisoned status file's invalid state -- the reason the run halted must survive in the log even though the bootstrap proceeded", driverLog)
 		}
 
 		fl, free, err := lock.TryAcquireWriteLock(loomengine.LoomBootstrapLock(loc))
@@ -663,7 +661,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		}
 	})
 
-	// `lyx loom start` against a MALFORMED-JSON status file proceeds to the success envelope exactly as the unknown-field shape does, rather than refusing on the envelope at the Seed step.
+	// `lyx loom start` against a MALFORMED-JSON status file proceeds to the success envelope exactly as the unrecognised-state shape does, rather than refusing on the envelope at the Seed step.
 	// This is a regression guard for a crucible finding, and the composed CLI-verb half its unit tests (loomshed.TestSeed_RefusesUndecodableFileAsExists, state.TestCorruptFile) cannot see:
 	// only the real `lyx loom start` binary exercises the whole Seed -> VerifySeedOwnership -> commit -> spawn -> handshake chain against a poisoned records-committed status file.
 	//
@@ -672,7 +670,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 	// "poisoned status file looks like bootstrap's own gate" state the crash-recovery design forbids.
 	// After it, Seed maps the decode failure to ErrSeedExists, the bootstrap tolerates it, and the
 	// spawned driver's own Shed.Run step-1 read gate diagnoses the decode failure in the driver log,
-	// exactly as the died-driver step pins for the unknown-field shape.
+	// exactly as the died-driver step pins for the unrecognised-state shape.
 	t.Run("malformed status proceeds to the success envelope and logs why", func(t *testing.T) {
 		bootstrapUnlessSeeded(t)
 		killDriversAndClearLog(t)
@@ -692,10 +690,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		}
 
 		// The driver log carries the decode failure from Shed.Run's own step-1 read gate.
-		driverLog, err := os.ReadFile(loomengine.LoomDriverLog(loc))
-		if err != nil {
-			t.Fatalf("read driver log: %v", err)
-		}
+		driverLog := readDriverLogContaining(loc, "decode")
 		if !strings.Contains(strings.ToLower(string(driverLog)), "decode") {
 			t.Errorf("driver log = %q; want it to name the malformed status file's decode failure", driverLog)
 		}

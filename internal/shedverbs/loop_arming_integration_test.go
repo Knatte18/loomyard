@@ -78,7 +78,7 @@ func (f *loomRunFixture) resetRunning() {
 
 func (f *loomRunFixture) status() shedengine.Status {
 	f.t.Helper()
-	st, found, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(f.loc, shedrun.SelfRunID), shedrun.StatusLock(f.loc, shedrun.SelfRunID))
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(f.loc, shedrun.SelfRunID), shedrun.StatusLock(f.loc, shedrun.SelfRunID))
 	if err != nil || !found {
 		f.t.Fatalf("read the status file = %v, found %v; want it", err, found)
 	}

@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -18,6 +17,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // Role is the agent-name role of an alignment strand; a second agent of a run takes the numbered form.
@@ -41,8 +42,9 @@ const (
 )
 
 const (
-	attemptFileName = "attempt.json"
-	promptFileName  = "prompt.md"
+	attemptFileName     = "attempt.json"
+	attemptLockFileName = "attempt.lock"
+	promptFileName      = "prompt.md"
 )
 
 // Attempt is attempt.json: the record written before the agent spawns, so a restarted driver finds the attempt.
@@ -84,18 +86,33 @@ func (a Attempt) PromptPath() string {
 	return filepath.Join(a.Dir, promptFileName)
 }
 
-// WriteAttempt creates a.Dir and writes a as its attempt.json.
+// attemptPaths names the attempt.json in dir and the lock that guards it.
+func attemptPaths(dir string) (path, lockPath string) {
+	return filepath.Join(dir, attemptFileName), filepath.Join(dir, attemptLockFileName)
+}
+
+// WriteAttempt creates a.Dir and writes a as its attempt.json, keeping the keys of a file it replaces that Attempt does not declare.
 func WriteAttempt(a Attempt) error {
-	data, err := json.MarshalIndent(a, "", "  ")
-	if err != nil {
-		return fmt.Errorf("alignment: encode attempt %q: %w", a.Dir, err)
-	}
-	if err := os.MkdirAll(a.Dir, 0o755); err != nil {
-		return fmt.Errorf("alignment: create attempt directory: %w", err)
-	}
-	path := filepath.Join(a.Dir, attemptFileName)
-	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+	path, lockPath := attemptPaths(a.Dir)
+	if err := state.WriteJSON(path, lockPath, a); err != nil {
 		return fmt.Errorf("alignment: write attempt %q: %w", path, err)
+	}
+	return nil
+}
+
+// updateAttempt applies mutate to the attempt.json in dir under its write lock, keeping the keys Attempt does not declare.
+// A directory without the file is an error.
+func updateAttempt(dir string, mutate func(current Attempt) Attempt) error {
+	path, lockPath := attemptPaths(dir)
+	err := state.UpdateJSON(path, lockPath, func(current Attempt, found bool) (Attempt, error) {
+		if !found {
+			return Attempt{}, fmt.Errorf("alignment: attempt directory %q has no %s", dir, attemptFileName)
+		}
+		current.Dir = dir
+		return mutate(current), nil
+	})
+	if err != nil {
+		return fmt.Errorf("alignment: update attempt %q: %w", path, err)
 	}
 	return nil
 }
@@ -143,16 +160,13 @@ func ListAttempts(root string) ([]Attempt, error) {
 
 // readAttemptFile reads dir's attempt.json; an absent file returns found false.
 func readAttemptFile(dir string) (a Attempt, found bool, err error) {
-	path := filepath.Join(dir, attemptFileName)
-	data, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return Attempt{}, false, nil
-	}
+	path, lockPath := attemptPaths(dir)
+	a, found, err = state.ReadJSONNoMkdir[Attempt](path, lockPath)
 	if err != nil {
 		return Attempt{}, false, fmt.Errorf("alignment: read attempt %q: %w", path, err)
 	}
-	if err := json.Unmarshal(data, &a); err != nil {
-		return Attempt{}, false, fmt.Errorf("alignment: parse attempt %q: %w", path, err)
+	if !found {
+		return Attempt{}, false, nil
 	}
 	a.Dir = dir
 	return a, true, nil

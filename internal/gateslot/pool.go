@@ -60,6 +60,8 @@ type Limits struct {
 	GoParallel int
 	// CLIWait is how long `lyx gate test` waits for a slot before refusing.
 	CLIWait time.Duration
+	// BusyQuit is the continuous CPU-busy window after which `lyx gate test` quits a Go test binary; 0 means the watchdog is off.
+	BusyQuit time.Duration
 }
 
 // Holder is the record written beside a held slot's lock.

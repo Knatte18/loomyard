@@ -7,11 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // RecordFileName is the pause record's file name within its directory.
@@ -97,34 +96,22 @@ func Read(path string) (Record, error) {
 	return record, nil
 }
 
-// Update applies mutate to the record at path under the write lock beside it, drops resumed entries older than Retention before now, and replaces the file atomically.
-// A mutate error writes nothing and is returned.
+// Update applies mutate to the record at path under the write lock beside it, drops resumed entries older than Retention before now, and replaces the file atomically, keeping every key of the replaced file that the record types do not declare.
+// A mutate error or an undecodable file writes nothing and is returned.
 func Update(path string, now time.Time, mutate func(*Record) error) (Record, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return Record{}, fmt.Errorf("create pause record directory: %w", err)
-	}
-	fileLock, err := lock.AcquireWriteLock(path + ".lock")
+	var updated Record
+	err := state.UpdateJSON(path, path+".lock", func(current Record, _ bool) (Record, error) {
+		if err := mutate(&current); err != nil {
+			return Record{}, err
+		}
+		current.Resumed = withoutExpired(current.Resumed, now)
+		updated = current
+		return current, nil
+	})
 	if err != nil {
-		return Record{}, fmt.Errorf("lock pause record %s: %w", path, err)
+		return Record{}, fmt.Errorf("update pause record %s: %w", path, err)
 	}
-	defer fileLock.Release()
-
-	record, err := Read(path)
-	if err != nil {
-		return Record{}, err
-	}
-	if err := mutate(&record); err != nil {
-		return Record{}, err
-	}
-	record.Resumed = withoutExpired(record.Resumed, now)
-	data, err := json.MarshalIndent(record, "", "  ")
-	if err != nil {
-		return Record{}, fmt.Errorf("encode pause record: %w", err)
-	}
-	if err := writeAtomically(path, data); err != nil {
-		return Record{}, err
-	}
-	return record, nil
+	return updated, nil
 }
 
 // withoutExpired returns the entries resumed within Retention before now.
@@ -137,26 +124,6 @@ func withoutExpired(entries []Entry, now time.Time) []Entry {
 		}
 	}
 	return kept
-}
-
-// writeAtomically writes data to a temp file beside path and renames it over path.
-func writeAtomically(path string, data []byte) error {
-	temp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("create temp file for %s: %w", path, err)
-	}
-	tempPath := temp.Name()
-	_, writeErr := temp.Write(data)
-	closeErr := temp.Close()
-	if err := errors.Join(writeErr, closeErr); err != nil {
-		os.Remove(tempPath)
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-	if err := os.Rename(tempPath, path); err != nil {
-		os.Remove(tempPath)
-		return fmt.Errorf("replace %s: %w", path, err)
-	}
-	return nil
 }
 
 // covers reports whether an entry of this scope covers slug; an empty slug is covered by a hub entry only.

@@ -18,7 +18,8 @@ var terminatingSignalSet = []os.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.
 
 // runTiedChild starts cmd tied to this process's life, waits for it and returns Wait's error.
 // A cancelled context kills the child's whole tree, logging the kill.
-func runTiedChild(cmd *exec.Cmd) error {
+// A non-nil started is called with the child's pid once it is running, before the wait.
+func runTiedChild(cmd *exec.Cmd, started func(pid int)) error {
 	var tied atomic.Pointer[proc.Tied]
 	cmd.Cancel = func() error {
 		pid := cmd.Process.Pid
@@ -34,10 +35,13 @@ func runTiedChild(cmd *exec.Cmd) error {
 		}
 		return err
 	}
-	started, err := proc.StartTied(cmd)
+	handle, err := proc.StartTied(cmd)
 	if err != nil {
 		return err
 	}
-	tied.Store(started)
-	return started.Wait()
+	tied.Store(handle)
+	if started != nil {
+		started(cmd.Process.Pid)
+	}
+	return handle.Wait()
 }

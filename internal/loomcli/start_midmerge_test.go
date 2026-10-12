@@ -43,8 +43,8 @@ func writeTestRunStateAt(t *testing.T, c *loomCLI, st shedengine.State, producer
 	}
 }
 
-// unknownFieldStatusBody is a status file the spawned driver's own read gate diagnoses, since it carries a field the status type lacks.
-const unknownFieldStatusBody = `{"state":"running","current_producer":"Publish","__unknown_field__":true}`
+// malformedStatusBody is a status file that does not parse, which the spawned driver's own read gate diagnoses.
+const malformedStatusBody = `{not json`
 
 // writeTestRunStateRaw writes body verbatim as the run's status file.
 func writeTestRunStateRaw(t *testing.T, c *loomCLI, body string) {
@@ -149,7 +149,7 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 		{name: "parked merge verb at Merge-In", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: "merge", Source: "main", Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg, producer: loomshed.NameMergeIn, parentErr: errors.New("origin record unreadable")},
 		{name: "merge-in of another source at Merge-In", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: fabricengine.MergeVerbMergeIn, Source: "other", Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg, producer: loomshed.NameMergeIn},
 		{name: "foreign state at Finalize", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeForeign, Conflicts: []string{"x"}}, want: []string{"x"}, wantIn: []string{"git"}, wantNotIn: []string{"merge-stage"}, producer: loomshed.NameFinalize, parentErr: errors.New("origin record unreadable")},
-		{name: "own leftover under an undecodable status file", driver: shedrun.DriverLLM, state: ownLeftoverState, want: []string{"a.go"}, wantIn: fabricMsg, statusBody: unknownFieldStatusBody, parentErr: errors.New("origin record unreadable")},
+		{name: "own leftover under an undecodable status file", driver: shedrun.DriverLLM, state: ownLeftoverState, want: []string{"a.go"}, wantIn: fabricMsg, statusBody: malformedStatusBody, parentErr: errors.New("origin record unreadable")},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -330,7 +330,7 @@ func TestRunDriverSpawnAndWait_MidMerge_CleanPairProceeds(t *testing.T) {
 		statusBody string
 	}{
 		{name: "clean pair", state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}},
-		{name: "clean pair with a status file carrying an unknown field", state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}, statusBody: unknownFieldStatusBody},
+		{name: "clean pair with a malformed status file", state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}, statusBody: malformedStatusBody},
 		{name: "own leftover at Merge-In on a halted run", state: ownLeftoverState, runState: shedengine.StateBlocked, producer: loomshed.NameMergeIn},
 		{name: "own leftover at Finalize on a running run with a dead driver", state: ownLeftoverState, runState: shedengine.StateRunning, producer: loomshed.NameFinalize},
 	}

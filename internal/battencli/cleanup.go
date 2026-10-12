@@ -7,7 +7,6 @@
 package battencli
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -285,9 +284,7 @@ func judgeRunDirectory(location *lyxcwd.Location, slug string, deps cleanupDeps)
 // tracked is set when the prefix is non-empty, which marks a status read from the records HEAD rather than the disk.
 func judgeStatus(data []byte, prefix string) (candidate, tracked bool, reason string) {
 	var st shedengine.Status
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&st); err != nil {
+	if err := json.Unmarshal(data, &st); err != nil {
 		return false, false, "decode " + prefix + "status: " + err.Error()
 	}
 	if st.State != shedengine.StateDone {

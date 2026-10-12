@@ -114,7 +114,7 @@ func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID 
 // readRunStatus reads the run's status file, reporting found false when the file is absent or does not decode.
 // An undecodable file is logged rather than refused, since the driver's own read gate diagnoses it in the driver log and hand-editing a status file is no way forward.
 func (c *loomCLI) readRunStatus() (shedengine.Status, bool, error) {
-	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	if errors.Is(err, state.ErrDecode) {
 		logger.Warn("loom: the status file does not decode; deferring its diagnosis to the driver", "path", c.shedPaths.StatusPath, "error", err)
 		return shedengine.Status{}, false, nil
@@ -249,7 +249,7 @@ func (c *loomCLI) vouchForSpawnedResume() {
 	if c.frictionDir == "" {
 		return
 	}
-	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	if err != nil {
 		logger.Warn("loom: could not read the status file to vouch for the spawned resume", "path", c.shedPaths.StatusPath, "cause", err)
 		return
@@ -446,7 +446,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		// false rather than true: neither is evidence the machine halted, so neither may
 		// shortcut the handshake -- the deadline stays the arbiter in that case.
 		halted := func() bool {
-			st, found, readErr := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+			st, found, readErr := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 			if readErr != nil || !found {
 				return false
 			}

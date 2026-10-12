@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -21,10 +22,10 @@ import (
 // ErrRead sentinels a read failure other than not-exist.
 var ErrRead = errors.New("state: read failed")
 
-// ErrDecode sentinels a decode failure (malformed or unknown field).
+// ErrDecode sentinels a decode failure (malformed JSON).
 var ErrDecode = errors.New("state: decode failed")
 
-// WriteJSON writes a value as indented JSON to path atomically.
+// WriteJSON writes a value as indented JSON to path atomically, keeping every key of the file it replaces that the value's type does not declare.
 func WriteJSON[T any](path, lockPath string, v T) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -42,15 +43,32 @@ func WriteJSON[T any](path, lockPath string, v T) error {
 
 // writeJSONUnlocked marshals v as indented JSON and writes it to path atomically, assuming the
 // caller already holds whatever lock guards path.
+// It keeps every key of the file it replaces that T does not declare.
 // It exists so WriteJSON and UpdateJSON can share this body without either composing on top of the
 // other's own internal lock acquisition.
 func writeJSONUnlocked[T any](path string, v T) error {
-	data, err := json.MarshalIndent(v, "", "  ")
+	data, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("marshal state: %w", err)
 	}
 
-	return fsx.AtomicWriteBytes(path, data)
+	replaced, err := os.ReadFile(path)
+	switch {
+	case err == nil:
+		// A file that does not parse adds nothing: v is written alone over it.
+		if json.Valid(replaced) {
+			data = keepUnknown(reflect.TypeFor[T](), replaced, data)
+		}
+	case !os.IsNotExist(err):
+		return fmt.Errorf("read state to keep its unknown keys: %w", err)
+	}
+
+	var indented bytes.Buffer
+	if err := json.Indent(&indented, data, "", "  "); err != nil {
+		return fmt.Errorf("indent state: %w", err)
+	}
+
+	return fsx.AtomicWriteBytes(path, indented.Bytes())
 }
 
 // ReadJSON reads a JSON value from the given path.
@@ -90,12 +108,9 @@ func readJSONUnlocked[T any](path string) (T, bool, error) {
 
 	var v T
 	if err := json.Unmarshal(data, &v); err != nil {
-		// Wrapped in ErrDecode (alongside the underlying json error, both via %w) so a caller can
-		// tell a decode failure apart from a read or lock failure with errors.Is, exactly as
-		// ReadJSONStrict already does on its own strict path. loomshed.Seed relies on this to refuse
-		// — never overwrite — a present-but-undecodable status file rather than escalate it as
-		// bootstrap's own gate (crucible round fable5-high-r5, F3). The "unmarshal state" wording is
-		// kept for readers of the message.
+		// Wrapped in ErrDecode (alongside the underlying json error, both via %w) so a caller can tell a decode failure apart from a read or lock failure with errors.Is, exactly as ReadJSONNoMkdir already does on its own path.
+		// loomshed.Seed relies on this to refuse — never overwrite — a present-but-undecodable status file rather than escalate it as bootstrap's own gate (crucible round fable5-high-r5, F3).
+		// The "unmarshal state" wording is kept for readers of the message.
 		return zero, false, fmt.Errorf("%w: unmarshal state: %w", ErrDecode, err)
 	}
 
@@ -138,10 +153,10 @@ func UpdateJSON[T any](path, lockPath string, mutate func(cur T, found bool) (T,
 	return writeJSONUnlocked(path, next)
 }
 
-// ReadJSONStrict reads a JSON value from path, rejecting unknown fields.
+// ReadJSONNoMkdir reads a JSON value from path, accepting fields T does not declare.
 // Returns (zero, false, nil) if the file does not exist.
-// Unlike ReadJSON, does not create missing parent directories.
-func ReadJSONStrict[T any](path, lockPath string) (T, bool, error) {
+// Does not create missing parent directories.
+func ReadJSONNoMkdir[T any](path, lockPath string) (T, bool, error) {
 	var zero T
 
 	l, err := lock.AcquireReadLock(lockPath)
@@ -159,9 +174,7 @@ func ReadJSONStrict[T any](path, lockPath string) (T, bool, error) {
 	}
 
 	var v T
-	d := json.NewDecoder(bytes.NewReader(data))
-	d.DisallowUnknownFields()
-	if err := d.Decode(&v); err != nil {
+	if err := json.Unmarshal(data, &v); err != nil {
 		return zero, false, fmt.Errorf("%w: %v", ErrDecode, err)
 	}
 

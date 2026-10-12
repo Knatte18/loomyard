@@ -136,7 +136,7 @@ func (c *loomCLI) failedHalt(err error) (haltNote, bool) {
 	if err == nil || errors.Is(err, shedengine.ErrShedBusy) {
 		return haltNote{}, false
 	}
-	st, found, readErr := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	st, found, readErr := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	if readErr != nil || !found {
 		return haltNote{}, false
 	}

@@ -109,10 +109,10 @@ It is display only: no Go decision reads it.
 
 ## Parse discipline
 
-Strict, fail-loud parsing: the `internal/state` read (`state.ReadJSONStrict`) rejects unknown or malformed fields via `json.Decoder.DisallowUnknownFields()` at the shell level — the JSON analogue of the discipline webster's own strict `outcome.yaml` decode and the burler verdict-parse apply to their own YAML.
+Fail-loud parsing: the `internal/state` read (`state.ReadJSONNoMkdir`) rejects malformed JSON and accepts unknown fields, and a rewrite keeps them.
 An unparseable or malformed status file is a hard error;
 loom never guesses a status.
-`product` is decoded separately, after the strict shell decode succeeds — see [Validation checklist](#validation-checklist) below for how a `product` that fails to decode as loom's own shape is classified.
+`product` is decoded separately, after the shell decode succeeds — see [Validation checklist](#validation-checklist) below for how a `product` that fails to decode as loom's own shape is classified.
 
 ## Validation checklist
 
