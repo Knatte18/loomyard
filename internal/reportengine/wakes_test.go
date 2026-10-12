@@ -4,7 +4,6 @@ package reportengine
 
 import (
 	"encoding/json"
-	"fmt"
 	"path"
 	"path/filepath"
 	"reflect"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/haltnote"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -59,14 +57,9 @@ func wakesOf(batten, parentReview, alignment *WakeSource) map[string]*WakeSource
 
 func intPtr(n int) *int { return &n }
 
-// wakeRun adds the archive tag of slug wakeSlug at hour 100, holding extra files, with the batten snapshots committed before it and entries in the loom history before its Finalize.
+// wakeRun adds the one full run of slug wakeSlug that a wakes row builds.
 func (w *world) wakeRun(snapshots []shedengine.Status, entries []shedengine.HistoryEntry, extra map[string]string) {
-	for i, snapshot := range snapshots {
-		w.battenRecord(fmt.Sprintf("b%d", i), i+1, wakeSlug, snapshot)
-	}
-	history := append(entries, shedengine.HistoryEntry{Producer: loomshed.NameFinalize, Outcome: shedengine.Done, At: at(90).Format(time.RFC3339)})
-	status := statusJSON(w.t, shedengine.Status{State: shedengine.StateDone, History: history})
-	w.tagWith(wakeSlug, "t1", at(100), seedText("loom"), status, extra)
+	w.fullRun(wakeSlug, "t1", 100, snapshots, entries, extra)
 }
 
 func frictionDirRel() string { return filepath.ToSlash(loomengine.LoomFrictionDirRel()) }
@@ -152,9 +145,9 @@ func TestCompute_WakesAndStops(t *testing.T) {
 			name: "a round settled by an applied alignment verdict is no wake, a delivered fallback is one, its pings add none and an undelivered round is none",
 			setup: func(w *world) {
 				w.wakeRun(nil, nil, mergeFiles(
-					parentRoundFiles(1, true, 0, "applied"),
-					parentRoundFiles(2, true, 2, "fallback"),
-					parentRoundFiles(3, false, 0, "")))
+					parentRoundFiles(1, true, 0, "applied", ""),
+					parentRoundFiles(2, true, 2, "fallback", ""),
+					parentRoundFiles(3, false, 0, "", "")))
 			},
 			want: figures{wakes: wakesOf(nil, sourceOf(map[string]int{"fallback": 1}), nil), pings: intPtr(2)},
 		},

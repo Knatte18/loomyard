@@ -136,6 +136,7 @@ func (row *RunRow) classifyBatten(records Reader, rev string) error {
 	paused := len(result.Paused)
 	row.Paused = &paused
 	row.changes = result.Changes
+	row.automaticSteps = result.Automatic
 	row.accountedChild = result.AccountedChild
 	return nil
 }
@@ -203,6 +204,7 @@ func (row *RunRow) readParentReviewWakes(records Reader, tag gitrepo.TagRef) ([]
 			findings = append(findings, Finding{Tag: tag.Name, File: path.Join(root, dir), Error: err.Error()})
 			continue
 		}
+		row.parentRounds = append(row.parentRounds, round)
 		pings += round.Delivery.Pings
 		if round.Delivery.DeliveredAt.IsZero() || (round.Alignment != nil && round.Alignment.State == parentreview.AlignmentApplied) {
 			continue

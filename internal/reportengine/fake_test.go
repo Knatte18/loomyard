@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/haltnote"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -264,8 +265,8 @@ func reviewFiles(segment string, names ...string) map[string]string {
 	return files
 }
 
-// parentRoundFiles returns the files of parent-review round number: a delivery stamped when delivered, with pings keep-alives, and an alignment record in state alignmentState unless that is empty.
-func parentRoundFiles(number int, delivered bool, pings int, alignmentState string) map[string]string {
+// parentRoundFiles returns the files of parent-review round number: a delivery stamped when delivered, with pings keep-alives, an alignment record in state alignmentState unless that is empty, and a verdict of kind verdictKind unless that is empty.
+func parentRoundFiles(number int, delivered bool, pings int, alignmentState, verdictKind string) map[string]string {
 	dir := path.Join(filepath.ToSlash(loomengine.LoomParentReviewDirRel()), fmt.Sprintf("round-%d", number))
 	delivery := fmt.Sprintf(`{"pings":%d}`, pings)
 	if delivered {
@@ -278,7 +279,65 @@ func parentRoundFiles(number int, delivered bool, pings int, alignmentState stri
 	if alignmentState != "" {
 		files[path.Join(dir, "alignment.json")] = fmt.Sprintf(`{"state":%q}`, alignmentState)
 	}
+	if verdictKind != "" {
+		files[path.Join(dir, "verdict.json")] = fmt.Sprintf(`{"kind":%q}`, verdictKind)
+	}
 	return files
+}
+
+// arbiterAttemptFiles returns the files of attempt number of slug's arbiter: attempt.json holding attempt, a verdict file unless verdictYAML is empty, and the applied mark when applied.
+func arbiterAttemptFiles(t *testing.T, slug string, number int, attempt loomengine.ArbiterAttempt, verdictYAML string, applied bool) map[string]string {
+	t.Helper()
+
+	attempt.Number = number
+	data, err := json.Marshal(attempt)
+	if err != nil {
+		t.Fatalf("marshal arbiter attempt: %v", err)
+	}
+	dir := path.Join(recordPaths(t, slug).Arbiter, fmt.Sprintf("attempt-%d", number))
+	files := map[string]string{path.Join(dir, "attempt.json"): string(data)}
+	if verdictYAML != "" {
+		files[path.Join(dir, "verdict.yaml")] = verdictYAML
+	}
+	if applied {
+		files[path.Join(dir, "applied")] = ""
+	}
+	return files
+}
+
+// driveReportFiles returns count drive reports of slug.
+func driveReportFiles(t *testing.T, slug string, count int) map[string]string {
+	t.Helper()
+
+	files := map[string]string{}
+	for i := 1; i <= count; i++ {
+		files[path.Join(recordPaths(t, slug).DriveReports, fmt.Sprintf("attempt-%d.md", i))] = "report"
+	}
+	return files
+}
+
+// decisionRecordFiles returns the discussion's decision record holding the given lines after its Decisions heading.
+func decisionRecordFiles(lines ...string) map[string]string {
+	text := "# Decision record\n\n## Decisions\n\n"
+	for _, line := range lines {
+		text += line + "\n\n"
+	}
+	return map[string]string{filepath.ToSlash(loomengine.DiscussionDecisionRecordRel()): text}
+}
+
+// addedDecision is the heading line of an entry added after the discussion by author.
+func addedDecision(author, title string) string {
+	return fmt.Sprintf("### Added after Discussion (%s, 2026-01-05): %s", author, title)
+}
+
+// fullRun adds the archive tag of a full loom run of slug at hour holding extra files, with the batten snapshots committed before it and entries in the loom history before its Finalize.
+func (w *world) fullRun(slug, sha string, hour int, snapshots []shedengine.Status, entries []shedengine.HistoryEntry, extra map[string]string) {
+	for i, snapshot := range snapshots {
+		w.battenRecord(fmt.Sprintf("%s-b%d", slug, i), hour-len(snapshots)+i, slug, snapshot)
+	}
+	history := append(entries, shedengine.HistoryEntry{Producer: loomshed.NameFinalize, Outcome: shedengine.Done, At: at(hour - 10).Format(time.RFC3339)})
+	status := statusJSON(w.t, shedengine.Status{State: shedengine.StateDone, History: history})
+	w.tagWith(slug, sha, at(hour), seedText("loom"), status, extra)
 }
 
 // alignmentAttemptFiles returns the files of attempt number of slug's alignment agent at point: attempt.json recording applied, and a verdict file unless verdict is empty.

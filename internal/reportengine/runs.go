@@ -11,7 +11,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -46,6 +48,21 @@ type RunRow struct {
 	Stops    []Stop         `json:"stops"`
 	Failures map[string]int `json:"failures"`
 
+	// Arbiter counts the arbiter attempts per verdict word; nil without the arbiter directory.
+	Arbiter []ArbiterOutcome `json:"arbiter"`
+
+	// LLMSteps counts the steps an LLM took by hand per source; a source the run lacks has no key.
+	LLMSteps map[string]int `json:"llm_steps"`
+
+	// DriveReports is the number of driver attempts reported; nil without the drive-reports directory.
+	DriveReports *int `json:"drive_reports"`
+
+	// Segments maps each review segment, and the parent review, to its rounds; a segment the run lacks but another selected run holds is nil.
+	Segments map[string]*SegmentRounds `json:"segments"`
+
+	// Decisions counts the entries added after the discussion per author; nil without the decision record.
+	Decisions map[string]int `json:"decisions"`
+
 	// battenSnapshots are the batten status files in the run's span, oldest first, the last being the run's batten record.
 	battenSnapshots []shedengine.Status
 
@@ -54,7 +71,12 @@ type RunRow struct {
 
 	// changes are the child state changes batten recorded, and accountedChild the indexes of childHistory entries an automatic step accounts for.
 	changes        []battenshed.StateChange
+	automaticSteps []battenshed.AutomaticStep
 	accountedChild []int
+
+	// parentRounds are the parent-review rounds that decoded, and arbiterRecords the arbiter attempts that did.
+	parentRounds   []parentreview.Round
+	arbiterRecords []loomengine.ArbiterRecord
 }
 
 // PartialRun is a tag that names a run which did not finish as a full loom run, with the reason.
@@ -138,8 +160,13 @@ func selectRuns(src Sources, opts Options, report *Report) error {
 		if err != nil {
 			return err
 		}
+		roundFindings, err := row.readRounds(src.Records, tag)
+		if err != nil {
+			return err
+		}
 		report.Findings = append(report.Findings, wakeFindings...)
 		report.Findings = append(report.Findings, stopFindings...)
+		report.Findings = append(report.Findings, roundFindings...)
 		report.Runs = append(report.Runs, row)
 	}
 	return nil

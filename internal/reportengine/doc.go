@@ -48,4 +48,20 @@
 // A change with no note is a no-note stop, a note left unmatched is a stop of its own class without a change, and a change into awaiting is an awaiting stop and no failure.
 // A stop carrying a note has a failure class: its producer and the reason's leading clause with quoted strings, paths and digit runs normalised.
 // Without the source, Stops and Failures are absent whatever the batten changes.
+//
+// # Repairs by actor
+//
+// Automatic steps are batten's own and count in RunRow.Automatic.
+// Arbiter repairs count per verdict word in RunRow.Arbiter, with how many carry the applied mark.
+// Every other repair is an LLM step, counted per source in RunRow.LLMSteps since the records do not tell the loom driver from the orch:
+// the loom history's goto and reroute entries, and the batten record's goto and reroute entries and its resumes from a halt.
+// An entry or resume that an automatic step or an applied arbiter attempt accounts for is not one; a verify retry accounts for the goto it sends and the first resume after its halt.
+// A source a run lacks has no key.
+//
+// # Review rounds and decisions
+//
+// RunRow.Segments maps each review segment, and the parent review, to its round count and the outcome of its last round.
+// A Bouncer re-seed's archived generation adds its rounds to its segment and is no segment of its own.
+// A segment some selected run holds and another lacks is nil in the run lacking it.
+// RunRow.Decisions counts the entries added after the discussion per author, and RunRow.DriveReports the driver attempts reported.
 package reportengine

@@ -62,5 +62,6 @@ func Compute(src Sources, opts Options) (Report, error) {
 	if err := selectRuns(src, opts, &report); err != nil {
 		return Report{}, err
 	}
+	markAbsentSegments(report.Runs)
 	return report, nil
 }
