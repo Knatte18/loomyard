@@ -14,5 +14,9 @@
 // Excluded measures how much of a time span the covered intervals took, so overlapping pauses are subtracted once.
 // CoveredError is the refusal every held entry point returns, and `ResumeLine` is the one line a resumed session is given.
 //
+// SleepWatch detects machine sleep: each reading pairs a wall time with an awake clock, and the wall delta in excess of the awake delta, past `SleepTolerance`, is a sleep ending at that reading.
+// AwakeSince returns the time since an activity net of the union of the sleeps and pauses after it, so every idle clock measures awake, unpaused time.
+// `MonotonicAwake` is the default awake clock; it stops during suspend on Linux and macOS and keeps running on Windows.
+//
 // The package imports the standard library and `internal/lock` only.
 package pauserecord
