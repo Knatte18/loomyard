@@ -96,6 +96,18 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantModule:  "loom",
 			wantInvalid: true,
 		},
+		{
+			name:        "guard key skip_alignment is closed to run settings",
+			settings:    map[string]any{"loom": map[string]any{"skip_alignment": true}},
+			wantRefusal: "skip_alignment",
+			wantModule:  "loom",
+			wantInvalid: true,
+		},
+		{
+			name:     "alignment_timeout_min is open to run settings",
+			settings: map[string]any{"loom": map[string]any{"alignment_timeout_min": float64(10)}},
+			wantDocs: map[string]string{"loom": "alignment_timeout_min: 10\n"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

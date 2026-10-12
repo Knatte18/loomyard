@@ -37,6 +37,8 @@ This list holds every `lyx` command you may use, and `lyx <command> --help` give
 
 ## Parent-review
 
+A parent-review request reaches you only when the alignment agent escalated or gave no verdict, since the agent settles every other review itself.
+The brief names the alignment report, which the fork reads first, or why no verdict came.
 A message naming a parent-review request goes to a one-shot fork.
 Reviewer forks inherit your context on purpose, since you know the operator's settled decisions best; keep forking for reviews even when token use runs high.
 The fork reads the brief the message names, checks the work against the board entry's scope only, and submits with the brief's `lyx loom review` command.
@@ -62,6 +64,7 @@ Its stop report then carries the arbiter's verdict path and question: read the v
 - A parent lock held too long: `lyx batten lock list` shows who holds each parent lock, and `lyx batten lock release <branch>` frees one whose owner is alive but wedged.
   A release never stops a run: the released run takes the lock again at its next lock-taking row and reroutes if the parent moved meanwhile.
 - A design call the child cannot make: decide it and record it with `lyx loom decision add`.
+- An escalation naming a peer run that has its own open escalation is handled together with that peer's.
 
 ## Investigating a stop
 
@@ -101,6 +104,9 @@ A brief for a non-fork agent that runs `lyx gate test` carries a copy of the gat
 
 ## PR-Gate
 
+An awaiting PR-Gate reaches you only when the alignment agent escalated, gave no verdict, or approved under `alignment_pr_approve: false`.
+The awaiting notice names the alignment report, which the fork reads first.
+A run the agent approved lands with no orch turn.
 At an awaiting Publish you approve or reject the PR yourself, never the operator.
 Start a one-shot reviewer fork that judges the run against its own board goal and the operator's recorded decisions.
 Code review is left to the Webster and Merge reviews, so the fork does not repeat it.
@@ -109,7 +115,8 @@ Never widen the scope through rejects: a reject names a defect in the task's own
 A small defect in that goal is fixed on the task branch; new hardening goes on the board as its own entry.
 Approve with `lyx loom approve`, or reject with `lyx loom reject <review-file>`, in the task worktree.
 Batten reads the decision and resumes the child itself, so you run no `lyx loom start` loop after either.
-After approving, amend the board entries the run superseded.
+After approving yourself, amend the board entries the run superseded.
+For a run the agent approved, amend the entries a queued alignment notice names as superseded.
 In a darn run the same reject sends the findings to a fresh `Darn-Write` spawn.
 Finalize lands the task branch under the parent lock: a parent that moved since Merge-In sends the run back to Merge-In by itself.
 It syncs the task branch with main, squashes it onto main, marks the board task done, pushes main and closes the PR with a comment naming the landing commit, so the PR ends closed, not merged.
@@ -119,7 +126,7 @@ It syncs the task branch with main, squashes it onto main, marks the board task 
 A landing needs nothing from you: batten's Land row pulls the prime, runs the hub's landing `deploy` command and prunes the board, and then Worktree-Teardown removes the pair.
 A `[batten notice]` naming a Land or Worktree-Teardown failure is a stop, handled under Investigating a stop.
 A notice naming newly ready tasks is the cue to start them with `lyx batten run <slug> --window`.
-While the hub's landing `deploy` key is empty, run `update-plugins.sh` by hand on a ready notice, or at your next wake after an approval.
+While the hub's landing `deploy` key is empty, run `update-plugins.sh` by hand on a ready notice, or at your next wake after any landing, since an agent approval lands with no orch turn.
 A hub config edit you make carries its own fabric commit whenever you make one; it is no landing step.
 Read the driver's drive reports from the prime's own copies only when the run had trouble: a halt, a block, a failed or repaired step, or a hub intervention.
 Never read the run's friction notes: its Friction-Reflect files them as issues, and intake takes those onto the board.
@@ -130,6 +137,12 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
 - A proposal goes on the board as a note at once, never held in your head.
 - One finding per note, written as what was seen plus the idea; never append a finding to a note about something else.
 - A task whose run has started is frozen: a new finding becomes its own note, even when it fits the task.
+- An operator decision made in chat is recorded in the same turn, split by who holds the entry:
+  - A decision on an entry no run holds is written into that entry's body through `lyx board`.
+  - A decision on a task a run holds is recorded with `lyx loom decision add <slug> --by parent`.
+  - When that verb refuses because the run has no decision record (batten's pre-loom rows such as `running · Worktree-Create`, `Preflight` and `Loom-Preflight`, a halt before Discussion-Write, or any darn run), the decision becomes a board note of its own through `lyx board upsert` with kind note, naming the held task's slug.
+  - Only when the verb refuses because Discussion-Write is running and owns the record does the decision go by message to the Discussion-Write session.
+  - The board's run lock is unchanged, so a held task's entry is never edited.
 - Fewer and larger tasks: bundle notes whose fixes touch the same packages into one run.
   A shared theme is not enough; notes about different packages stay in different tasks.
 - Which notes become a task, and when a task starts, is the operator's call: propose the bundle and its start, and merge, promote or start only after the operator approves that bundle.

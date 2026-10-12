@@ -26,6 +26,14 @@ func minimalEntries() map[string]minimalEntry {
 		"Preflight": {newTestEnv, emptyConfig},
 		"MergeIn":   {withLanding, emptyConfig},
 		"Publish":   {withLanding, emptyConfig},
+		"PRAlign": {
+			env: func(t *testing.T) Env {
+				env := withLanding(t)
+				armPRAlign(&env.Landing)
+				return env
+			},
+			cfg: emptyConfig,
+		},
 		"PRGate": {
 			env: func(t *testing.T) Env {
 				env := withLanding(t)

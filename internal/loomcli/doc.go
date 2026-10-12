@@ -114,4 +114,27 @@
 // The verb moves no run itself;
 // `lyx shed step <run-id> --until-stop --arbiter-attempt <N>` performs the verdict's goto under the run and status locks, once per attempt.
 // A pair's session end ends a live arbiter strand with the pair's other strands.
+//
+// # Peers
+//
+// `lyx loom peers` lists the other runs in flight in the hub, and `lyx loom peers show <slug> --record decision|plan` prints one peer's decision record or its plan's `00-overview.md` under a `content` key.
+// An agent in one pair uses them to compare its run with the others without forming another worktree's path itself.
+//
+// The peer set is every board task whose status is a run status, whatever the run's state, with the caller's own slug left out.
+// Each peer line carries `slug`, `title`, `status`, `parent_branch`, `changed_paths` (the committed paths between the peer's merge base with its parent branch and its head), `decision_record` and `plan` (whether the peer holds them) and `unreadable`.
+// A peer whose pair, origin record, branch or records cannot be read is listed with that reason in `unreadable`, never dropped and never an error.
+// From a task pair the list also carries `parent_commits`, the commits on the pair's parent branch since the pair forked, as short SHA and subject, newest first; the prime has none.
+// Both verbs refuse in a hub with no board, and `show` refuses an unknown slug, a task holding no run status, the caller's own slug, an unknown record name and a record the peer lacks, each naming its way forward.
+//
+// The verbs write nothing and read only the board, the peers' two records and git history through `internal/fabricengine`.
+// They resolve the location through `lyxcwd` in the group's own pre-run, as the `review` and `decision` groups do; every loom verb is hub-only, so `internal/cliwire` does not apply.
+// A bare `lyx loom peers` outside a lyx worktree lists the group's verbs instead of resolving.
+//
+// # Parent-review alignment
+//
+// The wiring sets the parent-review gate's Aligner to an adapter over an `internal/alignment` session rooted at the run's `parent-review` alignment directory, one agent per round (key `round-<N>`).
+// Alignment is off, and the gate delivers straight to the run's parent, when `skip_alignment` is set or the hub has no board dir.
+// The decision snapshot taken at spawn covers the decision record and every board note naming the task; an agent approve is turned into an escalation when the snapshot has changed by the time it is polled, so a decision recorded during the review is never passed over.
+// An escalation, a timeout or any failure leaves the gate to deliver to the parent, with the reviewer brief naming the agent's report and the reason.
+// The status commit stages the alignment directory with the run records.
 package loomcli

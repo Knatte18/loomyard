@@ -21,6 +21,7 @@ import (
 // landingshedAllowedImports are the only non-stdlib import paths production code in this package
 // may use.
 var landingshedAllowedImports = []string{
+	"github.com/Knatte18/loomyard/internal/alignment",
 	"github.com/Knatte18/loomyard/internal/fabricengine",
 	"github.com/Knatte18/loomyard/internal/gateslot",
 	"github.com/Knatte18/loomyard/internal/mergeresolve",

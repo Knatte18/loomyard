@@ -40,10 +40,8 @@ type rejectDeps struct {
 	headSHA func() (string, error)
 	// readReviewFile reads the operator's review file.
 	readReviewFile func(path string) (string, error)
-	// removeApproval deletes any approval record; an absent record is success.
-	removeApproval func() error
-	// writeRejection records the rejection, replacing any earlier one.
-	writeRejection func(landingshed.Rejection) error
+	// recordRejection records the rejection, removing any approval and replacing any earlier rejection.
+	recordRejection func(landingshed.Rejection) error
 	// routing is the run's recipe's routing, read for the PR-Gate bounce budget.
 	routing shedengine.Routing
 	// reworkRow is the recipe's row that answers a rejection: PR-Rework in loom, Darn-Write in darn.
@@ -130,10 +128,7 @@ func rejectVerb(ctx context.Context, out io.Writer, d rejectDeps, reviewFile str
 		RejectedAt: d.now().UTC().Format(time.RFC3339),
 		Findings:   findings,
 	}
-	if err := d.removeApproval(); err != nil {
-		return output.Err(out, "loom: reject: remove the approval: "+err.Error())
-	}
-	if err := d.writeRejection(rec); err != nil {
+	if err := d.recordRejection(rec); err != nil {
 		return output.Err(out, "loom: reject: record the rejection: "+err.Error())
 	}
 
@@ -238,11 +233,8 @@ Example:
 					data, err := os.ReadFile(path)
 					return string(data), err
 				},
-				removeApproval: func() error {
-					return landingshed.RemoveRecord(loomengine.LoomApprovalPath(location))
-				},
-				writeRejection: func(r landingshed.Rejection) error {
-					return landingshed.WriteRejection(loomengine.LoomRejectionPath(location), r)
+				recordRejection: func(r landingshed.Rejection) error {
+					return landingshed.RecordRejection(loomengine.LoomApprovalPath(location), loomengine.LoomRejectionPath(location), r)
 				},
 				routing:   routing,
 				reworkRow: reworkRowFor(c.recipe),
