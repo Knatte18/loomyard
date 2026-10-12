@@ -338,6 +338,22 @@
 //   - A notice can be delayed by a busy session, a too-short pane or a cycle, but is never typed over a draft or a running turn.
 //   - `Watcher.Run` drops the queue at start when the orch state records no strand.
 //
+// # Hub pause
+//
+// The watcher alone covers the orch under a hub pause entry, so it stays the single writer into the orch pane.
+// A watcher told a PauseWatch (the pause record path and a process liveness check) reads the record after each tick's events read and before the phase switch.
+// A slug entry never covers the orch.
+//
+//   - While a live hub entry stands the tick returns there: no notice is delivered and no context cycle starts or advances, however long the pause lasts.
+//   - Each live hub entry is acted on once, remembered in memory by its PausedAt.
+//     Nothing is interrupted or recorded for an entry the orch itself ran, one that already owns the orch's session, one that began at or before State.LaunchedAt (a zero LaunchedAt reads as launched before every entry), or one whose grace end lay before the watcher's first tick.
+//   - Before the grace end, an orch the idle probe reads idle with no network operation marker naming the orch is left alone; any other waits.
+//   - At the grace end, a busy orch is recorded in the entry under the record lock and then interrupted, once more when the probe still reads busy, so at most twice.
+//     An entry resumed before that point, or one a live entry already owns the orch in, sends nothing.
+//   - After the entry is resumed, an orch it owns gets the resume line once, queued as a notice and delivered idle-gated, then marked noticed in the record.
+//     An orch the entry does not own, such as an idle one or the caller, gets none.
+//   - An unreadable record holds nothing, with one Warn per change of error.
+//
 // # Migrating from an operator's own terminal session
 //
 // In the running terminal session, ask for a note in the orch note's three sections and note the file it writes, then exit that session.

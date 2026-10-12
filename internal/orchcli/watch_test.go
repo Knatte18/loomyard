@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
@@ -103,6 +104,11 @@ func TestWatch(t *testing.T) {
 			t.Parallel()
 
 			c := newTestCLI(t, &fakeStrands{})
+			// The watch verb tells the watcher the prime's pause record, which needs a prime worktree to tell.
+			c.location = &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime", AnchorRel: "."}
+			if err := os.MkdirAll(filepath.Join(c.location.WorktreePath(), ".git"), 0o755); err != nil {
+				t.Fatal(err)
+			}
 			if tc.recorded {
 				if err := orchengine.SaveState(c.paths, orchengine.State{Strand: "g1"}); err != nil {
 					t.Fatal(err)

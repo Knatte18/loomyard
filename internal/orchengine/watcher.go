@@ -57,6 +57,8 @@ type Session interface {
 	ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error)
 	// CompactedSince returns the newest compaction boundary after since in the transcript turnEnd names, with the turn ends that follow it.
 	CompactedSince(turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error)
+	// Interrupt stops the session's in-progress turn with the provider's interrupt key.
+	Interrupt(guid string) error
 }
 
 // Clock supplies the current time, settable in tests.
@@ -116,6 +118,15 @@ type Watcher struct {
 	// lastSendHeld is the reason a typed step was last held by the session, as logged, empty once a typed step passes.
 	// It is memory only: binding to another strand clears it.
 	lastSendHeld string
+
+	// pause is the told pause-record reading, nil when the watcher was never told one.
+	pause *PauseWatch
+	// firstTick is the time of the watcher's first tick, zero before it.
+	firstTick time.Time
+	// pauseHandled holds the PausedAt, as Unix nanoseconds, of each hub entry already handled.
+	pauseHandled map[int64]bool
+	// pauseReadError is the text of the record read error last logged, empty while the record reads.
+	pauseReadError string
 }
 
 // idleStatePair is one idle probe answer beside the session state it disagreed with.
@@ -287,6 +298,14 @@ func (w *Watcher) tick() (done bool, err error) {
 		if err := w.save(st); err != nil {
 			return false, err
 		}
+	}
+
+	held, err := w.pauseTick(st, now)
+	if err != nil {
+		return false, err
+	}
+	if held {
+		return false, nil
 	}
 
 	if err := w.typeStartColor(&st); err != nil {
