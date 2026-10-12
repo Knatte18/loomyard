@@ -34,9 +34,8 @@ func approveFixture() (approveDeps, *[]landingshed.Approval) {
 				Head:    &github.PullRequestBranch{SHA: github.Ptr("abc123")},
 			}, nil
 		},
-		headSHA:         func() (string, error) { return "abc123", nil },
-		removeRejection: func() error { return nil },
-		writeApproval: func(a landingshed.Approval) error {
+		headSHA: func() (string, error) { return "abc123", nil },
+		recordApproval: func(a landingshed.Approval) error {
 			written = append(written, a)
 			return nil
 		},
@@ -139,7 +138,7 @@ func TestApproveVerb_Refusals(t *testing.T) {
 			}
 			// Taking the way forward (the run halts at Publish, the PR opens, the HEAD syncs, the transient clears) leaves a state the same verb accepts.
 			fixed, _ := approveFixture()
-			fixed.writeApproval = d.writeApproval
+			fixed.recordApproval = d.recordApproval
 			out.Reset()
 			if code := approveVerb(context.Background(), &out, fixed); code != 0 {
 				t.Fatalf("re-run after the way forward: exit = %d; want 0; out = %s", code, out.String())
@@ -151,22 +150,15 @@ func TestApproveVerb_Refusals(t *testing.T) {
 	}
 }
 
-// TestApproveVerb_Success asserts approval at the gate, whether the run is awaiting or blocked, writes one approval, prints the resume envelope and removes the rejection before it writes the approval.
+// TestApproveVerb_Success asserts approval at the gate, whether the run is awaiting or blocked, records one approval and prints the resume envelope.
 //
-//testtiming:keep pins approval at the gate when the run is awaiting or blocked: one approval with the PR number, head SHA and timestamp, the resume envelope with the PR URL, and the rejection removed before the approval is written; the refusal test re-runs only the blocked success without checking the envelope or order
+//testtiming:keep pins approval at the gate when the run is awaiting or blocked: one approval with the PR number, head SHA and timestamp, and the resume envelope with the PR URL; the refusal test re-runs only the blocked success without checking the envelope
 func TestApproveVerb_Success(t *testing.T) {
 	for _, state := range []shedengine.State{shedengine.StateBlocked, shedengine.StateAwaiting} {
 		t.Run(string(state), func(t *testing.T) {
 			d, written := approveFixture()
 			d.readStatus = func() (shedengine.Status, bool, error) {
 				return shedengine.Status{State: state, CurrentProducer: loomshed.NamePRGate}, true, nil
-			}
-			var calls []string
-			d.removeRejection = func() error { calls = append(calls, "remove"); return nil }
-			recordApproval := d.writeApproval
-			d.writeApproval = func(a landingshed.Approval) error {
-				calls = append(calls, "write")
-				return recordApproval(a)
 			}
 			var out bytes.Buffer
 			if code := approveVerb(context.Background(), &out, d); code != 0 {
@@ -186,16 +178,14 @@ func TestApproveVerb_Success(t *testing.T) {
 			if !strings.Contains(out.String(), "pull/7") {
 				t.Errorf("envelope %q does not name the PR URL", out.String())
 			}
-			if strings.Join(calls, ",") != "remove,write" {
-				t.Errorf("call order = %v; want remove then write", calls)
-			}
 		})
 	}
 }
 
+// TestApproveVerb_RemoveRejectionFailureWritesNoApproval asserts that when the record step's removal of the pending rejection fails, no approval is recorded and one error envelope names the failure.
 func TestApproveVerb_RemoveRejectionFailureWritesNoApproval(t *testing.T) {
 	d, written := approveFixture()
-	d.removeRejection = func() error { return errors.New("disk full") }
+	d.recordApproval = func(landingshed.Approval) error { return errors.New("disk full") }
 	var out bytes.Buffer
 	if code := approveVerb(context.Background(), &out, d); code != 1 {
 		t.Fatalf("exit = %d; want 1; out = %s", code, out.String())

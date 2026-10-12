@@ -29,6 +29,15 @@ func WriteApproval(path string, a Approval) error {
 	return writeRecordAtomic(path, "approval", a)
 }
 
+// RecordApproval records a as the latest decision: it removes the rejection record at rejectionPath, then writes the approval to approvalPath.
+// A removal that fails writes no approval and returns its error.
+func RecordApproval(approvalPath, rejectionPath string, a Approval) error {
+	if err := RemoveRecord(rejectionPath); err != nil {
+		return err
+	}
+	return WriteApproval(approvalPath, a)
+}
+
 // writeRecordAtomic encodes v as JSON and writes it to path through a temp file in the same directory and a rename, creating the parent directory;
 // kind names the record in error messages.
 func writeRecordAtomic(path, kind string, v any) error {

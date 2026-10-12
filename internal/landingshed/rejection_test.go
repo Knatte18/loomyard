@@ -33,6 +33,39 @@ func TestRejection_RoundTripAndOverwrite(t *testing.T) {
 	if err != nil || got != want {
 		t.Fatalf("overwrite: got %+v err=%v", got, err)
 	}
+
+	t.Run("RecordRejection removes a pending approval and writes the rejection", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		approvalPath, rejectionPath := filepath.Join(dir, "approval.json"), filepath.Join(dir, "rejection.json")
+		if err := WriteApproval(approvalPath, Approval{PRNumber: 7, HeadSHA: "abc123", ApprovedAt: "2026-01-02T03:04:05Z"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := RecordRejection(approvalPath, rejectionPath, want); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(approvalPath); !os.IsNotExist(err) {
+			t.Errorf("approval still present: %v", err)
+		}
+		if got, found, err := ReadRejection(rejectionPath); err != nil || !found || got != want {
+			t.Errorf("ReadRejection = %+v, %v, %v; want %+v, true, nil", got, found, err, want)
+		}
+	})
+
+	t.Run("RecordRejection writes no rejection when the approval cannot be removed", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		approvalPath, rejectionPath := filepath.Join(dir, "approval.json"), filepath.Join(dir, "rejection.json")
+		if err := os.MkdirAll(filepath.Join(approvalPath, "held"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := RecordRejection(approvalPath, rejectionPath, want); err == nil {
+			t.Fatal("RecordRejection = nil; want the removal's error")
+		}
+		if _, err := os.Stat(rejectionPath); !os.IsNotExist(err) {
+			t.Errorf("rejection written despite the failed removal: %v", err)
+		}
+	})
 }
 
 func TestReadRejection_AbsentOrInvalid(t *testing.T) {
