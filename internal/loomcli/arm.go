@@ -320,6 +320,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		spec.RunID = shedrun.ResolveRunID(c.location, c.runID)
 		spec.Loop = loopSpecFor(c.location, c.runID, c.stepIdleTimeout, agentActivityFor(c.location, c.shuttleCfg))
 		spec.Hooks.AfterInterrupt = c.loomAfterInterrupt
+		spec.Hooks.ConsumeAttempt = c.loomConsumeAttempt
 	}
 	spec.Routing = c.routing
 

@@ -126,6 +126,34 @@ func PendingCirclingDecision(runDir string) (bool, error) {
 	return exists && !settled, nil
 }
 
+// PendingEscalation reports whether the run directory's latest round carries a Bouncer-written escalation that no circling decision has answered yet.
+// When pending, it returns that round and the path of its escalation brief.
+// The round resolves as PendingCirclingDecision resolves it.
+// A run directory with no round, a round with no escalation record and a round whose decision file exists, settled or not, are not pending;
+// a legacy round escalated only by a recorded CIRCLING verdict carries no escalation record, so it is not pending either.
+// A malformed escalation record is returned as its error, wrapping ErrEscalationMalformed.
+func PendingEscalation(runDir string) (round int, briefPath string, pending bool, err error) {
+	round, err = ResolveRound(runDir, func(n int) string { return filepath.Base(roundReviewPath(runDir, n)) })
+	if err != nil || round == 0 {
+		return 0, "", false, err
+	}
+	_, _, escalated, err := readEscalation(runDir, round)
+	if err != nil || !escalated {
+		return 0, "", false, err
+	}
+	_, _, _, decided, err := readCirclingDecision(runDir, round)
+	if err != nil {
+		if decided {
+			return 0, "", false, fmt.Errorf("shedadapters: circling decision %s: %w", circlingDecisionPath(runDir, round), err)
+		}
+		return 0, "", false, err
+	}
+	if decided {
+		return 0, "", false, nil
+	}
+	return round, escalationPath(runDir, round), true, nil
+}
+
 // readCirclingDecision reads round's decision file, returning the decision, its escalation cause, whether it is settled, and whether a file exists.
 // A file without a cause reads as EscalationCircling.
 // A present file that is malformed is an error:

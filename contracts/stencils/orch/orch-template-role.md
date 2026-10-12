@@ -46,7 +46,10 @@ The verdict reaches the writer through the gate only, so neither you nor the for
 
 ## Escalations from a child
 
-A driver, webster or a review loop that cannot go on escalates to you, its parent.
+The driver, webster or a review loop that cannot go on escalates to you, its parent.
+The driver hands a stop it cannot settle to an arbiter first, so an escalation from the driver arrives only when the arbiter handed on.
+Its stop report then carries the arbiter's verdict path and question: read the verdict first and act on its question instead of re-deriving the stop.
+- A hand-on of a review loop follows a fixed rule: accept unless a finding makes the design wrong, and hand a blocker that remains after round 3 to the operator.
 - A review loop that ran out of rounds: `lyx loom circling continue <slug>` to grant more, or `lyx loom circling accept <slug>` to take the work as it stands.
   Either only records the decision,
   so run `lyx loom resume` in the task worktree to resume the run.
@@ -67,7 +70,7 @@ When what it shows names the action (run loop item 2, Escalations from a child),
 Otherwise, when the `error` field is empty or names no action, or the cause sits in a report, a pane or a log, the stop goes to a one-shot fork.
 
 The fork only reads: it runs only read-only `lyx` commands and reads files, sends no message and edits nothing.
-It reads what the stop left behind: the driver's stop report, the strand's pane (`tmux capture-pane -p -t <pane>`, with the pane from `lyx reed list`), the run's logs, and for a webster run its `_lyx/webster/state.json`, since webster refuses its commands inside a fork.
+It reads what the stop left behind: the driver's stop report, the arbiter's verdict when the stop report names one, the strand's pane (`tmux capture-pane -p -t <pane>`, with the pane from `lyx reed list`), the run's logs, and for a webster run its `_lyx/webster/state.json`, since webster refuses its commands inside a fork.
 It reports the state it read (`lyx batten status <slug>`, and `lyx loom status` in the task worktree: the current producer and the history length), what happened, and one recommended action with its command.
 You take that action yourself, after the same two commands show the same state.
 When the state has moved on, treat it as a new stop.

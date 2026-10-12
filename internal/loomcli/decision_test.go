@@ -33,10 +33,12 @@ type decisionFake struct {
 	strandName string
 	parent     hubgeom.Parent
 	parentErr  error
-	appends    int
-	commits    int
-	lastAdded  discussionparser.AddedDecision
-	clock      time.Time
+	// arbiterName is the one strand name the run's arbiter check accepts.
+	arbiterName string
+	appends     int
+	commits     int
+	lastAdded   discussionparser.AddedDecision
+	clock       time.Time
 }
 
 func newDecisionFake(t *testing.T) *decisionFake {
@@ -50,10 +52,11 @@ func newDecisionFake(t *testing.T) *decisionFake {
 
 func (f *decisionFake) deps() decisionDeps {
 	return decisionDeps{
-		strandName: f.strandName,
-		parent:     func() (hubgeom.Parent, error) { return f.parent, f.parentErr },
-		readStatus: func() (shedengine.Status, bool, error) { return f.status, f.found, f.statusErr },
-		recordPath: f.path,
+		strandName:    f.strandName,
+		parent:        func() (hubgeom.Parent, error) { return f.parent, f.parentErr },
+		arbiterStrand: func(name string) bool { return name == f.arbiterName },
+		readStatus:    func() (shedengine.Status, bool, error) { return f.status, f.found, f.statusErr },
+		recordPath:    f.path,
 		append: func(d discussionparser.AddedDecision) ([]discussionparser.Finding, error) {
 			f.appends++
 			f.lastAdded = d
@@ -91,21 +94,24 @@ func readDecisionRecord(t *testing.T, path string) string {
 // TestDecisionVerb_AppendsAndCommits asserts an entry from an unnamed shell or from the run's recorded parent is appended after the prior record byte-identical and committed once, with no status file.
 func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 	tests := []struct {
-		name       string
-		by         string
-		strandName string
-		parentName string
+		name        string
+		by          string
+		strandName  string
+		parentName  string
+		arbiterName string
 	}{
 		{name: "parent label from an unnamed shell", by: "parent"},
 		{name: "operator label from an unnamed shell", by: "operator"},
 		{name: "recorded parent's own name", by: "parent", strandName: "hub:orch", parentName: "hub:orch"},
 		{name: "slug-bearing recorded parent's own name", by: "parent", strandName: "hub:other:orch", parentName: "hub:other:orch"},
+		{name: "the run's arbiter strand with the arbiter label", by: "arbiter", strandName: "hub:slug:arbiter", parentName: "hub:orch", arbiterName: "hub:slug:arbiter"},
 	}
 	for _, tc := range tests {
 		by := tc.by
 		t.Run(tc.name, func(t *testing.T) {
 			f := newDecisionFake(t)
 			f.strandName = tc.strandName
+			f.arbiterName = tc.arbiterName
 			f.parent = hubgeom.Parent{Name: tc.parentName}
 			input := goodDecisionInput()
 			input.by = by
@@ -207,6 +213,42 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 			},
 			inputRefusal: true,
 			want:         []string{`"hub:slug:plan"`, "way forward:", "could not be resolved (origin boom)", "operator's own unnamed shell"},
+		},
+		{
+			name:         "arbiter label from the operator's unnamed shell",
+			setup:        func(_ *decisionFake, in *decisionInput) { in.by = "arbiter" },
+			inputRefusal: true,
+			want:         []string{"not the run's arbiter", "way forward:", "--by parent", "--by operator"},
+		},
+		{
+			name: "arbiter label from the run's parent",
+			setup: func(f *decisionFake, in *decisionInput) {
+				in.by = "arbiter"
+				f.strandName = "hub:orch"
+				f.parent = hubgeom.Parent{Name: "hub:orch"}
+			},
+			inputRefusal: true,
+			want:         []string{`"hub:orch"`, "not the run's arbiter", "way forward:", "--by parent"},
+		},
+		{
+			name: "arbiter label from another task strand",
+			setup: func(f *decisionFake, in *decisionInput) {
+				in.by = "arbiter"
+				f.strandName = "hub:slug:plan"
+				f.arbiterName = "hub:slug:arbiter"
+			},
+			inputRefusal: true,
+			want:         []string{`"hub:slug:plan"`, "not the run's arbiter", "way forward:", "--by operator"},
+		},
+		{
+			name: "arbiter strand passing the parent label",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.strandName = "hub:slug:arbiter"
+				f.arbiterName = "hub:slug:arbiter"
+				f.parent = hubgeom.Parent{Name: "hub:orch"}
+			},
+			inputRefusal: true,
+			want:         []string{`"hub:slug:arbiter"`, "task session", "way forward:", "ask hub:orch to run the verb"},
 		},
 		{
 			name: "check finding after the append",
