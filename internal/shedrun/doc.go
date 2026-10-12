@@ -23,6 +23,11 @@
 // the loop lock, pid file and log, the envelope the waiter prints and the per-loop-id slot it is retired into, and each step's trace copy and stderr file.
 // LoopJobName names the loop's Windows job object from a hash of the steps directory, so it is unique across hubs.
 //
+// The arbiter's paths are declared here too.
+// ArbiterDir is the durable directory of a run's arbiter attempts, and ArbiterRel its anchor-relative form.
+// ArbiterAttemptDir is one attempt's directory (attempt-<N>, 1-based).
+// ArbiterMarker is the ephemeral in-flight marker under ScratchDir.
+//
 // RunsRootRel names the anchor-relative run-records root, because fabricengine's Add drops everything under it from a freshly forked pair.
 //
 // TreeRunFileRels names a run's seed.json and status.json as slash-separated paths relative to a git tree, with no alias and no legacy fallback.
