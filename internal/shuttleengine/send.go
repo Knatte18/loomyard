@@ -17,6 +17,20 @@ import (
 // Nothing was typed, so the caller may retry the send later.
 var ErrSessionBusy = errors.New("shuttle: the session is not idle")
 
+// SessionBusyError is the error of a verified send held by its idle wait.
+// Reason is the hold the wait's last reading named, without the pane's last lines.
+// Err is the full error, which wraps ErrSessionBusy, and is what Error returns, so the message is Err's.
+type SessionBusyError struct {
+	Reason string
+	Err    error
+}
+
+// Error returns the message of the full error.
+func (e *SessionBusyError) Error() string { return e.Err.Error() }
+
+// Unwrap returns the full error, so errors.Is(err, ErrSessionBusy) holds.
+func (e *SessionBusyError) Unwrap() error { return e.Err }
+
 const (
 	// defaultSendReadyTimeoutS is the template.yaml default idle wait in seconds.
 	defaultSendReadyTimeoutS = 60
@@ -112,7 +126,7 @@ func awaitIdleSession(sc sendContext) error {
 			return err
 		}
 		if hold := operatorActivityHold(sc.reed, sc.guid); hold != "" {
-			return fmt.Errorf("%w: strand %q: %s; retry once the operator is idle", ErrSessionBusy, sc.guid, hold)
+			return &SessionBusyError{Reason: hold, Err: fmt.Errorf("%w: strand %q: %s; retry once the operator is idle", ErrSessionBusy, sc.guid, hold)}
 		}
 		return nil
 	}
@@ -141,7 +155,7 @@ func awaitIdleSession(sc sendContext) error {
 		}
 		now := sc.clock.Now()
 		if !now.Before(limit) || poll >= maxPolls {
-			return fmt.Errorf("%w: strand %q: %s; retry once the session is idle. The pane's last lines:\n%s", ErrSessionBusy, sc.guid, busy, paneTail(sc.reed, sc.guid))
+			return &SessionBusyError{Reason: busy, Err: fmt.Errorf("%w: strand %q: %s; retry once the session is idle. The pane's last lines:\n%s", ErrSessionBusy, sc.guid, busy, paneTail(sc.reed, sc.guid))}
 		}
 		sc.clock.Sleep(min(interval, limit.Sub(now)))
 		interval = min(interval*2, idlePollMax)
