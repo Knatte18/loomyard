@@ -338,7 +338,7 @@ func assertCardPointerIsRelative(t *testing.T, got, sourcePath string) {
 
 // renderFork renders the fork prompt for batch with the shared placeholder paths; root is both the
 // anchor root and the prompt worktree root, and the plan directory is derived under it.
-func renderFork(batch batcher.Batch, root, stencilsDir, specsDir, prevDigest string, selfFixCap int, notePath string, pack *planindex.Pack) (string, error) {
+func renderFork(batch batcher.Batch, root, stencilsDir, specsDir, prevDigest string, selfFixCap int, notePath string, pack []planindex.CardPack) (string, error) {
 	got, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, prevDigest, "/reports/01-alpha.yaml", filepath.Join(root, "_lyx", "plan"), root, stencilsDir, specsDir, testOutcomePath, testSummaryPath, selfFixCap, notePath, pack)
 	return string(got), err
 }
@@ -784,7 +784,8 @@ func TestRenderPrompts(t *testing.T) {
 				notContains: []string{"## Kick-start pack", "The pack below lists"}}
 		}},
 		{"fork with a resolved multipart pack lists each declaration and locates by the pack", func(t *testing.T) promptCheck {
-			pack := &planindex.Pack{Resolved: []planindex.PackEntry{
+			beta := cardWithSourcePath(2, "beta", "add the second flag")
+			barBaz := planindex.Pack{Resolved: []planindex.PackEntry{
 				{Glyph: "internal/foo#Bar", Declarations: []planindex.PackDeclaration{
 					{File: "internal/foo/a.go", Start: 3, End: 5, Signature: "func Bar()"},
 					{File: "internal/foo/b.go", Start: 7, End: 9, Signature: "func (x X) Bar()"},
@@ -793,56 +794,80 @@ func TestRenderPrompts(t *testing.T) {
 					{File: "internal/foo/a.go", Start: 11, End: 12, Signature: "func Baz()"},
 				}},
 			}}
+			baz := planindex.Pack{Resolved: []planindex.PackEntry{
+				{Glyph: "internal/foo#Baz", Declarations: []planindex.PackDeclaration{{File: "internal/foo/c.go", Start: 1, End: 2, Signature: "func Baz()"}}},
+			}}
+			pack := []planindex.CardPack{{Card: alpha.Cards[0], Pack: barBaz}, {Card: beta, Pack: baz}}
 			root, stencilsDir := testLayout(t)
 			specsDir := newTestSpecsDir(t)
-			text, err := renderFork(alpha, root, stencilsDir, specsDir, "", 2, "", pack)
+			text, err := renderFork(batcher.Batch{Cards: []planparser.Card{alpha.Cards[0], beta}}, root, stencilsDir, specsDir, "", 2, "", pack)
 			return promptCheck{text: text, err: err,
 				contains: []string{
 					"The pack below lists where each member glyph on the cards is.",
 					"`" + specsDir + "/loom/loom-plan-spec.md`",
 					"## Kick-start pack",
 				},
-				notContains: []string{"Locate them with one", "{{", "no member glyphs on this batch's cards"},
+				notContains: []string{"Locate them with one", "{{", "no member glyphs on this card", "#### Unresolved"},
 				inOrder: []string{
+					"- `_lyx/plan/01-alpha.md`",
+					"- `_lyx/plan/02-beta.md`",
+					"### `_lyx/plan/01-alpha.md`",
 					"- `internal/foo#Bar`",
 					"  - `internal/foo/a.go:3-5` — func Bar()",
 					"  - `internal/foo/b.go:7-9` — func (x X) Bar()",
 					"- `internal/foo#Baz`",
 					"  - `internal/foo/a.go:11-12` — func Baz()",
-					"### Unresolved",
-					"\nnone\n",
+					"### `_lyx/plan/02-beta.md`",
+					"  - `internal/foo/c.go:1-2` — func Baz()",
 				}}
 		}},
 		{"fork with unresolved refs lists each with its reason", func(t *testing.T) promptCheck {
-			pack := &planindex.Pack{
+			pack := []planindex.CardPack{{Card: alpha.Cards[0], Pack: planindex.Pack{
 				Resolved: []planindex.PackEntry{{Glyph: "internal/foo#Bar", Declarations: []planindex.PackDeclaration{{File: "internal/foo/a.go", Start: 3, End: 5, Signature: "func Bar()"}}}},
 				Unresolved: []planindex.PackUnresolved{
 					{Ref: "internal/foo#Gone", Reason: "no such member"},
 					{Ref: "plan:internal/foo#New", Reason: "a member this batch creates"},
 				},
-			}
+			}}}
 			root, stencilsDir := testLayout(t)
 			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", pack)
 			return promptCheck{text: text, err: err,
 				notContains: []string{"\nnone\n"},
 				inOrder: []string{
-					"### Unresolved",
+					"### `_lyx/plan/01-alpha.md`",
+					"  - `internal/foo/a.go:3-5` — func Bar()",
+					"#### Unresolved",
 					"- `internal/foo#Gone` — no such member",
 					"- `plan:internal/foo#New` — a member this batch creates",
 				}}
 		}},
-		{"fork with a pack naming no member glyph renders the empty line", func(t *testing.T) promptCheck {
-			root, stencilsDir := testLayout(t)
-			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", &planindex.Pack{})
-			return promptCheck{text: text, err: err,
-				contains: []string{"The pack below lists where each member glyph on the cards is.", "## Kick-start pack", "no member glyphs on this batch's cards"}}
-		}},
-		{"fork with a pack of only plan: handles renders the empty line and lists the handle", func(t *testing.T) promptCheck {
-			pack := &planindex.Pack{Unresolved: []planindex.PackUnresolved{{Ref: "plan:internal/foo#New", Reason: "a member this batch creates"}}}
+		{"fork with a card whose member glyphs none resolved renders none then its unresolved list", func(t *testing.T) promptCheck {
+			pack := []planindex.CardPack{{Card: alpha.Cards[0], Pack: planindex.Pack{
+				Unresolved: []planindex.PackUnresolved{{Ref: "internal/foo#Gone", Reason: "no such member"}},
+			}}}
 			root, stencilsDir := testLayout(t)
 			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", pack)
 			return promptCheck{text: text, err: err,
-				inOrder: []string{"no member glyphs on this batch's cards", "- `plan:internal/foo#New` — a member this batch creates"}}
+				inOrder: []string{
+					"### `_lyx/plan/01-alpha.md`",
+					"\nnone\n",
+					"#### Unresolved",
+					"- `internal/foo#Gone` — no such member",
+				}}
+		}},
+		{"fork with a card naming no member glyph renders the empty line", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", []planindex.CardPack{{Card: alpha.Cards[0]}})
+			return promptCheck{text: text, err: err,
+				contains:    []string{"The pack below lists where each member glyph on the cards is.", "## Kick-start pack", "no member glyphs on this card"},
+				notContains: []string{"#### Unresolved"}}
+		}},
+		{"fork with a card of only plan: handles renders the empty line and lists the handle", func(t *testing.T) promptCheck {
+			pack := []planindex.CardPack{{Card: alpha.Cards[0], Pack: planindex.Pack{Unresolved: []planindex.PackUnresolved{{Ref: "plan:internal/foo#New", Reason: "a member this batch creates"}}}}}
+			root, stencilsDir := testLayout(t)
+			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", pack)
+			return promptCheck{text: text, err: err,
+				inOrder: []string{"no member glyphs on this card", "#### Unresolved", "- `plan:internal/foo#New` — a member this batch creates"}}
 		}},
 		{"recovery locates by quarry and carries no pack section", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)

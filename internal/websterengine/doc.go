@@ -131,10 +131,10 @@
 //
 // # the kick-start pack
 //
-// A pack holds the member glyphs the batch's cards name in their targets and `Uses:`.
+// A pack holds the member glyphs the batch's cards name in their targets and `Uses:`, grouped per card from one resolve call.
 // Each is resolved to its declarations with file, line span and signature.
 // A `var` or `const` entry shows the first line of its signature only, while its span still covers the whole declaration.
-// Beside them sit the refs that did not resolve, each with a reason in plain words, `plan:` handles included.
+// Beside them sit the card's refs that did not resolve, each with a reason in plain words, `plan:` handles included.
 // begin-batch builds it (buildKickstartPack) immediately before it renders the fork prompt, after the dispatch re-resolution and its fingerprint re-stamp.
 // It parses the plan afresh, because that re-resolution may have canonicalized handles on disk.
 // A plan that no longer parses degrades to the loaded plan and the batch's cards with a Warn.
@@ -147,11 +147,13 @@
 // The locate step and the pack section are stencils RenderForkPrompt fills.
 // Without a pack the locate marker takes the quarry fragment, which is the step as it stood before the pack, so the prompt renders the same bytes as before.
 // With a pack it takes the pack fragment, which sends the fork to the listed spans and keeps the quarry or grep path for an unresolved member glyph,
-// and the pack section lists the entries and the unresolved refs, or says the cards name no member glyph.
+// and the pack section holds one subsection per card.
+// Each subsection sits under the card's pointer path, the same spelling as its bullet in the card list, and lists the card's entries, or `none` when none of its member glyphs resolved, or says the card names no member glyph.
+// A card's unresolved list follows its entries only when the card has unresolved refs.
 //
 // Every begin-batch logs one Info line, `webster: kickstart pack`.
 // Its keys are batch, kickstart_pack (`on`, `off` or `language-none`), resolved and unresolved.
-// The last two are entry counts that stay 0 when no pack is built.
+// The last two count distinct refs across the batch, so a ref listed under two cards counts once, and stay 0 when no pack is built.
 // The `kickstart_pack` key of webster.yaml switches the pack on and off, so runs with and without it can be compared;
 // each begin-batch reads it afresh, so a flip applies from the next call on.
 //

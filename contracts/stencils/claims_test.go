@@ -481,7 +481,17 @@ var wordingClaims = []stencilClaims{
 			"`{{.specs_dir}}/loom/loom-plan-spec.md`"),
 	)},
 	{"webster-fragment-pack-empty.md", WebsterFragmentPackEmpty, joinClaims(
-		wantAll("a pack that names no member glyph says so in one line", "no member glyphs on this batch's cards"),
+		wantAll("a card that names no member glyph says so in one line", "no member glyphs on this card"),
+		wantNone("the line is per card, never per batch", "this batch's cards"),
+	)},
+	{"webster-fragment-pack-card.md", WebsterFragmentPackCard, joinClaims(
+		wantAll("a card's subsection opens with a heading that is the card's path", "### `{{.card_path}}`"),
+	)},
+	{"webster-fragment-pack-unresolved.md", WebsterFragmentPackUnresolved, joinClaims(
+		wantAll("a card's unresolved refs sit under their own heading", "#### Unresolved"),
+	)},
+	{"webster-fragment-pack-section.md", WebsterFragmentPackSection, joinClaims(
+		wantAll("each card's subsection sits under its path in the card list", "Each card's subsection sits under a heading that is that card's path in the card list above"),
 	)},
 	{"webster-prefix-fork.md", WebsterPrefixFork, joinClaims(
 		wantAll("the fork inherits Master's loop instructions and must be told forcefully not to drive the loop itself or wait for a report only it writes",

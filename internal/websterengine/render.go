@@ -135,9 +135,9 @@ func readFragment(stencilsDir, name string) (string, error) {
 }
 
 // renderLocate returns the text filled into the body's locate marker:
-// the pack fragment, with specsDir filled in, for a non-nil pack, and the quarry fragment otherwise.
-func renderLocate(stencilsDir, specsDir string, pack *planindex.Pack) (string, error) {
-	if pack == nil {
+// the pack fragment, with specsDir filled in, when packOn, and the quarry fragment otherwise.
+func renderLocate(stencilsDir, specsDir string, packOn bool) (string, error) {
+	if !packOn {
 		return readFragment(stencilsDir, "webster-fragment-locate-quarry")
 	}
 	raw, err := stencilstore.Read(stencilsDir, "webster-fragment-locate-pack")
@@ -152,10 +152,33 @@ func renderLocate(stencilsDir, specsDir string, pack *planindex.Pack) (string, e
 }
 
 // renderPackSection renders the kick-start pack section from stencilsDir:
-// one bullet per resolved member glyph with a sub-bullet per declaration, and one bullet per unresolved ref with its reason.
-// A pack that names no member glyph at all, resolved or unresolved, lists the empty-pack line in place of the entries.
-func renderPackSection(stencilsDir string, pack planindex.Pack) (string, error) {
+// one subsection per card of pack, in slice order and joined by a blank line, each under the card's pointer path in planDirDisplay (see renderCardPack).
+func renderPackSection(stencilsDir string, pack []planindex.CardPack, planDirDisplay string) (string, error) {
 	raw, err := stencilstore.Read(stencilsDir, "webster-fragment-pack-section")
+	if err != nil {
+		return "", err
+	}
+
+	subsections := make([]string, len(pack))
+	for i, cp := range pack {
+		subsections[i], err = renderCardPack(stencilsDir, cardPointerPath(cp.Card, planDirDisplay), cp.Pack)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	filled, err := stencil.Fill(raw, map[string]string{"pack_cards": strings.Join(subsections, "\n\n")})
+	if err != nil {
+		return "", fmt.Errorf("fill the pack section: %w", err)
+	}
+	return strings.TrimRight(string(filled), "\r\n"), nil
+}
+
+// renderCardPack renders one card's subsection of the kick-start pack from stencilsDir, under the heading cardPath:
+// one bullet per resolved member glyph with a sub-bullet per declaration, then, only when pack has unresolved refs, an unresolved list with one bullet per ref and its reason.
+// A pack that names no member glyph at all, resolved or unresolved, lists the empty-pack line in place of the entries.
+func renderCardPack(stencilsDir, cardPath string, pack planindex.Pack) (string, error) {
+	raw, err := stencilstore.Read(stencilsDir, "webster-fragment-pack-card")
 	if err != nil {
 		return "", err
 	}
@@ -186,18 +209,26 @@ func renderPackSection(stencilsDir string, pack planindex.Pack) (string, error) 
 		}
 	}
 
-	unresolved := "none"
+	var unresolved string
 	if len(pack.Unresolved) > 0 {
 		lines := make([]string, len(pack.Unresolved))
 		for i, u := range pack.Unresolved {
 			lines[i] = fmt.Sprintf("- `%s` — %s", u.Ref, u.Reason)
 		}
-		unresolved = strings.Join(lines, "\n")
+		raw, err := stencilstore.Read(stencilsDir, "webster-fragment-pack-unresolved")
+		if err != nil {
+			return "", err
+		}
+		list, err := stencil.Fill(raw, map[string]string{"pack_unresolved": strings.Join(lines, "\n")})
+		if err != nil {
+			return "", fmt.Errorf("fill the pack unresolved list: %w", err)
+		}
+		unresolved = "\n\n" + strings.TrimRight(string(list), "\r\n")
 	}
 
-	filled, err := stencil.Fill(raw, map[string]string{"pack_entries": entries, "pack_unresolved": unresolved})
+	filled, err := stencil.FillOptional(raw, map[string]string{"card_path": cardPath, "pack_entries": entries, "pack_unresolved": unresolved}, []string{"pack_unresolved"})
 	if err != nil {
-		return "", fmt.Errorf("fill the pack section: %w", err)
+		return "", fmt.Errorf("fill the pack card: %w", err)
 	}
 	return strings.TrimRight(string(filled), "\r\n"), nil
 }
@@ -219,9 +250,14 @@ const noPrecedingBatchDigest = "none (first batch)"
 func renderCardPointers(cards []planparser.Card, planDirDisplay string) string {
 	bullets := make([]string, 0, len(cards))
 	for _, c := range cards {
-		bullets = append(bullets, fmt.Sprintf("- `%s/%s`", planDirDisplay, filepath.Base(c.SourcePath)))
+		bullets = append(bullets, fmt.Sprintf("- `%s`", cardPointerPath(c, planDirDisplay)))
 	}
 	return strings.Join(bullets, "\n")
+}
+
+// cardPointerPath returns c's card file path re-rooted onto planDirDisplay: the path its pointer bullet and its pack subsection heading both spell.
+func cardPointerPath(c planparser.Card, planDirDisplay string) string {
+	return planDirDisplay + "/" + filepath.Base(c.SourcePath)
 }
 
 // RenderForkPrompt fills ForkTemplate for one execution batch's in-session fork, read from
@@ -238,22 +274,23 @@ func renderCardPointers(cards []planparser.Card, planDirDisplay string) string {
 // cardGates is the caller-rendered per-card gate step list (renderCardGates), filled into the body's required card_gates marker.
 // batchGate is the caller-rendered batch package list and gate (renderBatchGate), filled into the body's required batch_gate marker.
 // outcomePath and summaryPath are Merriam's two contract files, filled into the fork prefix's outcome_path and summary_path markers so the fork is told never to write them.
-// pack is the batch's kick-start pack, or nil to render the prompt without one:
-// a non-nil pack swaps the quarry locate fragment for the pack locate fragment and fills the pack section, a nil one fills the quarry fragment and leaves the section empty.
+// pack is the batch's kick-start pack, one entry per card, or nil to render the prompt without one:
+// a non-nil slice swaps the quarry locate fragment for the pack locate fragment and fills the pack section with a subsection per card, a nil one fills the quarry fragment and leaves the section empty.
 // The plan is not a parameter, per the fork-context-hygiene rule.
-func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir, outcomePath, summaryPath string, selfFixCap int, notePath string, pack *planindex.Pack) ([]byte, error) {
+func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir, outcomePath, summaryPath string, selfFixCap int, notePath string, pack []planindex.CardPack) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
 	}
 
-	locate, err := renderLocate(stencilsDir, specsDir, pack)
+	planDirDisplay := masterPlanDirDisplay(promptWorktreeRoot, planDir)
+	locate, err := renderLocate(stencilsDir, specsDir, pack != nil)
 	if err != nil {
 		return nil, fmt.Errorf("webster: render fork locate step: %w", err)
 	}
 	var packSection string
 	if pack != nil {
-		section, err := renderPackSection(stencilsDir, *pack)
+		section, err := renderPackSection(stencilsDir, pack, planDirDisplay)
 		if err != nil {
 			return nil, fmt.Errorf("webster: render kick-start pack: %w", err)
 		}
@@ -268,7 +305,7 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 	}
 
 	values := map[string]string{
-		"card_pointers":     renderCardPointers(batch.Cards, masterPlanDirDisplay(promptWorktreeRoot, planDir)),
+		"card_pointers":     renderCardPointers(batch.Cards, planDirDisplay),
 		"card_gates":        cardGates,
 		"batch_gate":        batchGate,
 		"report_path":       reportPath,
@@ -328,7 +365,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		uncommittedLine = "none"
 	}
 
-	locate, err := renderLocate(stencilsDir, specsDir, nil)
+	locate, err := renderLocate(stencilsDir, specsDir, false)
 	if err != nil {
 		return nil, fmt.Errorf("webster: render recovery locate step: %w", err)
 	}

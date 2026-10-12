@@ -222,12 +222,22 @@ var WebsterFragmentLocateQuarry []byte
 //go:embed webster/webster-fragment-locate-pack.md
 var WebsterFragmentLocatePack []byte
 
-// WebsterFragmentPackSection is webster's shipped-default kick-start pack section, filled into the shared implementer-job body's kickstart_pack marker.
+// WebsterFragmentPackSection is webster's shipped-default kick-start pack section, filled into the shared implementer-job body's kickstart_pack marker and holding one subsection per card.
 //
 //go:embed webster/webster-fragment-pack-section.md
 var WebsterFragmentPackSection []byte
 
-// WebsterFragmentPackEmpty is webster's shipped-default empty-pack line, filled into the pack section when the batch's cards name no member glyph.
+// WebsterFragmentPackCard is webster's shipped-default per-card subsection of the kick-start pack, one of which is filled into the pack section's pack_cards marker for each card of the batch.
+//
+//go:embed webster/webster-fragment-pack-card.md
+var WebsterFragmentPackCard []byte
+
+// WebsterFragmentPackUnresolved is webster's shipped-default unresolved list of a card's pack subsection, filled into the card subsection's pack_unresolved marker when the card has unresolved refs.
+//
+//go:embed webster/webster-fragment-pack-unresolved.md
+var WebsterFragmentPackUnresolved []byte
+
+// WebsterFragmentPackEmpty is webster's shipped-default empty-pack line, filled into a card's pack subsection when the card names no member glyph.
 //
 //go:embed webster/webster-fragment-pack-empty.md
 var WebsterFragmentPackEmpty []byte
@@ -437,6 +447,8 @@ var entries = []registryEntry{
 	{"webster-fragment-locate-quarry", &WebsterFragmentLocateQuarry},
 	{"webster-fragment-locate-pack", &WebsterFragmentLocatePack},
 	{"webster-fragment-pack-section", &WebsterFragmentPackSection},
+	{"webster-fragment-pack-card", &WebsterFragmentPackCard},
+	{"webster-fragment-pack-unresolved", &WebsterFragmentPackUnresolved},
 	{"webster-fragment-pack-empty", &WebsterFragmentPackEmpty},
 	{"orch-template-start", &OrchTemplateStart},
 	{"orch-template-handoff", &OrchTemplateHandoff},
