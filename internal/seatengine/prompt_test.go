@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
 // promptGeometry returns a geometry whose stencils directory holds the shipped seat blocks and the test seat stencils.
@@ -147,6 +149,10 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 	advisorSpec := seatSpec(table, table.Seats[1], advisorPrompt)
 	if chairSpec.ForkSubagents || !advisorSpec.ForkSubagents || chairSpec.Round != "r7" || advisorSpec.Round != "r7" {
 		t.Errorf("spec ForkSubagents/Round = chair %v/%q, advisor %v/%q, want the seat's flag and the table's round", chairSpec.ForkSubagents, chairSpec.Round, advisorSpec.ForkSubagents, advisorSpec.Round)
+	}
+	wantDisplay := render.Display{Size: render.Size{Kind: render.SizeSharing}}
+	if chairSpec.Display != wantDisplay || advisorSpec.Display != wantDisplay {
+		t.Errorf("spec Display = chair %+v, advisor %+v; want the sharing size and no anchor on both", chairSpec.Display, advisorSpec.Display)
 	}
 	requiredSpec := seatSpec(table, Seat{Name: AdvisorName(1), Required: true}, "")
 	if requiredSpec.QuietHold || !requiredSpec.KeepPane {

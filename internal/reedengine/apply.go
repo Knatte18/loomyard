@@ -77,9 +77,10 @@ type renderInputs struct {
 // toRenderInputs performs the persisted-state-to-render mapping exactly once: it filters st.Strands
 // to the present pane set, blanks the Selvage id when its pane is not present (via
 // selvageRenderParams), assembles the render.Params this engine's config implies, and orders live's
-// pane ids top to bottom. It touches no tmux and queries nothing of its own — box and live are told
+// pane ids top to bottom. It touches no tmux and queries nothing of its own — box, live and titleRow are told
 // to it by the caller, matching planLayout's own told-box contract.
-func (e *Engine) toRenderInputs(st *ReedState, live []LivePane) renderInputs {
+// The titleRow argument is whether the strands' window draws a pane-border title row at window row 0.
+func (e *Engine) toRenderInputs(st *ReedState, live []LivePane, titleRow bool) renderInputs {
 	presentIDs := liveIDSet(live)
 	strands := toRenderStrands(st.Strands, presentIDs)
 	return renderInputs{
@@ -88,6 +89,7 @@ func (e *Engine) toRenderInputs(st *ReedState, live []LivePane) renderInputs {
 			CollapsedRows: e.cfg.CollapsedRows,
 			MinFullRows:   e.cfg.MinFullRows,
 			Selvage:       e.selvageRenderParams(st, presentIDs),
+			TitleRow:      titleRow,
 		},
 		paneOrder: paneIDsByTop(live),
 	}
@@ -105,19 +107,17 @@ func (e *Engine) toRenderInputs(st *ReedState, live []LivePane) renderInputs {
 // box on failure), while AttachArgv (batch 2) passes the box it computes from
 // the attaching client's own told terminal size and never calls
 // liveBoxLocked — see the Shared Decision told-box-wins-live-query-is-the-fallback.
-func (e *Engine) planLayout(st *ReedState, live []LivePane, box render.Box) (layout, focus string, err error) {
-	in := e.toRenderInputs(st, live)
+func (e *Engine) planLayout(st *ReedState, live []LivePane, box render.Box, titleRow bool) (layout, focus string, err error) {
+	in := e.toRenderInputs(st, live, titleRow)
 	return render.Rules(in.strands, box, in.params, in.paneOrder)
 }
 
-// fixedHeightPins reports the panes whose heights are absolute row budgets — the Selvage band and
-// every collapsed placement — for st's current strand table against live, within box. It calls
-// toRenderInputs and queries nothing of its own: box is told to it by the caller exactly as
-// planLayout is, and it must always be called with the same st, live and box triple the layout for
-// that same call was planned from, so the pins it returns never disagree with what was actually laid
-// out.
-func (e *Engine) fixedHeightPins(st *ReedState, live []LivePane, box render.Box) []render.Pin {
-	in := e.toRenderInputs(st, live)
+// fixedHeightPins reports the panes whose heights are absolute row budgets for st's current strand table against live, within box:
+// the Selvage band, every collapsed positional placement and every content placement.
+// It calls toRenderInputs and queries nothing of its own: box and titleRow are told to it by the caller exactly as planLayout is.
+// It must always be called with the same st, live, box and titleRow the layout for that same call was planned from, so the pins it returns never disagree with what was actually laid out.
+func (e *Engine) fixedHeightPins(st *ReedState, live []LivePane, box render.Box, titleRow bool) []render.Pin {
+	in := e.toRenderInputs(st, live, titleRow)
 	return render.FixedHeightPins(in.strands, box, in.params)
 }
 
@@ -148,6 +148,9 @@ type applyOpts struct {
 	// operator-invoked op and wrong for an unattended watcher that would otherwise yank the
 	// operator's cursor out of the pane they are typing in on every window resize.
 	SkipFocus bool
+	// InstallPins makes a SkipFocus apply still install the window-resized hook array, because a changed content height changes the pins the hook replays.
+	// Without SkipFocus the array is always installed.
+	InstallPins bool
 	// SkipWhenBoxEquals, when non-nil, suppresses select-layout entirely if the
 	// resolved live box is an observation and equals *SkipWhenBoxEquals.
 	SkipWhenBoxEquals *render.Box
@@ -223,7 +226,8 @@ func (e *Engine) applyLayoutLockedOpts(st *ReedState, live []LivePane, opts appl
 		return applyResult{Applied: false, Box: box, BoxIsLive: true}, nil
 	}
 
-	layout, focus, err := e.planLayout(st, live, box)
+	titleRow := e.readBorderTitleRowLocked(windowTarget)
+	layout, focus, err := e.planLayout(st, live, box, titleRow)
 	if err != nil {
 		return applyResult{}, fmt.Errorf("plan layout: %w", err)
 	}
@@ -231,13 +235,13 @@ func (e *Engine) applyLayoutLockedOpts(st *ReedState, live []LivePane, opts appl
 	if err := e.tmux.run("select-layout", "-t", windowTarget, layout); err != nil {
 		return applyResult{}, fmt.Errorf("select-layout: %w", err)
 	}
-	pins := e.contentPinsLocked(windowTarget, st, live, box)
+	pins := e.contentPinsLocked(st, live, box, titleRow)
 	e.runResizePinsLocked(pins)
-	if opts.SkipFocus {
+	if opts.SkipFocus && !opts.InstallPins {
 		return applyResult{Applied: true, Box: box, BoxIsLive: boxIsLive}, nil
 	}
 	e.installResizePinsLocked(windowTarget, pins)
-	if focus == "" {
+	if opts.SkipFocus || focus == "" {
 		return applyResult{Applied: true, Box: box, BoxIsLive: boxIsLive}, nil
 	}
 	if err := e.tmux.run("select-pane", "-t", focus); err != nil {

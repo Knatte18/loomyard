@@ -162,7 +162,7 @@ func TestAttachArgv_ChainedArgv(t *testing.T) {
 
 			got := e.AttachArgv(cols, rows)
 
-			wantLayout, _, err := e.planLayout(&ReedState{Strands: goodAttachStrands()}, goodAttachLive(), render.Box{X: 0, Y: 0, W: cols, H: rows - tt.wantReserved})
+			wantLayout, _, err := e.planLayout(&ReedState{Strands: goodAttachStrands()}, goodAttachLive(), render.Box{X: 0, Y: 0, W: cols, H: rows - tt.wantReserved}, false)
 			if err != nil {
 				t.Fatalf("planLayout() unexpected error: %v", err)
 			}
@@ -371,7 +371,7 @@ func assertStrandOptionsReasserted(t *testing.T, fake *fakeTmux, wantShellPins i
 // byte-identical to what the same script produces today without re-deriving the expectation.
 func wantChainedAttachArgv(t *testing.T, e *Engine, cols, rows int) []string {
 	t.Helper()
-	layout, _, err := e.planLayout(&ReedState{Strands: goodAttachStrands()}, goodAttachLive(), render.Box{X: 0, Y: 0, W: cols, H: rows})
+	layout, _, err := e.planLayout(&ReedState{Strands: goodAttachStrands()}, goodAttachLive(), render.Box{X: 0, Y: 0, W: cols, H: rows}, false)
 	if err != nil {
 		t.Fatalf("planLayout() unexpected error: %v", err)
 	}
