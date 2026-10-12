@@ -236,6 +236,8 @@ github.com/Knatte18/loomyard/
 ├── internal/reedcli/             the reed CLI command
 ├── internal/reedengine/          the reed domain kernel (overlay + strand bookkeeping)
 ├── internal/reedengine/render/   pure display-vocabulary leaf (layout = Rules(strands))
+├── internal/reportcli/           the report CLI command (`lyx report convergence`, the read-only convergence report, prime only)
+├── internal/reportengine/        the report domain kernel (finished runs, wakes, stops, repairs, review rounds and landings, read from git objects)
 ├── internal/orchcli/             the orch CLI command
 ├── internal/orchengine/          the orch domain kernel (config, stencil renders, persisted state, cycle state machine)
 ├── internal/ghissuescli/         the ghissues CLI command
@@ -391,6 +393,9 @@ User-facing modules each get one `lyx <module>` namespace:
   The segments run in order and each calls its owner's own cleanup in-process: `lyx batten cleanup`, `lyx board prune`, `lyx orch cleanup`, the prime's `.scratch/` children older than 14 days that no open board entry cites, logger's trace retention sweep, and the temp root's sweep of dead owners' run directories.
   A failing segment never stops the later ones.
   ✅ Implemented. See the `internal/cleanupcli` package documentation.
+- **report** — the read-only convergence report (`internal/reportcli` + `internal/reportengine`; `lyx report convergence [--since <date>] [--fresh-days <n>] [--format json|markdown]`, prime only).
+  It reports, per finished run and per ISO week, what woke the orch, what stopped and repaired runs, how many review rounds each segment took and how landings fared, from records lyx already writes.
+  ✅ Implemented. See the `internal/reportengine` package documentation.
 - **gate** — the one sanctioned route for an agent's slotted `go test`: it waits for a free slot of the hub-wide gate pool, runs `go test` inside it under the slot's `-p` cap and exits with go's code, or with 75 when the hub stays busy past `cli_wait_sec` (`internal/gatecli`; `lyx gate test [-C <dir>] [--tags <tags>] <packages...> [-- <go test flags>]`). A run inside a slot an enclosing gate run holds takes no second one, and a target outside every hub runs unslotted. ✅ Implemented. See the `internal/gatecli` package documentation.
 - **quarry** — the planner's only source of glyph spellings: four read-only repository queries over the current worktree's own glyph alphabet, each delegating to a `planglyph` wrapper and emitting quarry's own rendering verbatim, with no repository-path flag on any of them (`internal/quarrycli`; `lyx quarry toc|glyphs|resolve|expand`).
   `toc` answers a table-of-contents query for a path;

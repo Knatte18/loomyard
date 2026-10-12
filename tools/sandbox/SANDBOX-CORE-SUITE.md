@@ -318,6 +318,22 @@ Does `lyx cleanup` run from a task worktree instead refuse, name the prime workt
 
 ---
 
+### S12 -- Convergence report from the prime
+
+**Goal:** "Ask lyx for the convergence report of the hub's finished runs and landings, and confirm that asking changes nothing."
+
+**Covers:** report
+
+**Watch:** Does `lyx report convergence` from the sandbox's prime print one `{"ok":true}` envelope holding `runs`, `weeks` and `findings`?
+Does `lyx report convergence --format markdown` print the four section headings, each opening a table or `no data`?
+Does `lyx report convergence --fresh-days 0` refuse, naming the flag?
+Does `lyx report convergence` run from a task worktree instead refuse, name the prime worktree and say to re-run it there?
+Is anything on disk or in the hub's history different afterwards?
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 reed has its own dedicated suite, `SANDBOX-REED-SUITE.md` in this same directory, launched via `sandbox/reed-suite.cmd` -- reed needs a live tmux server and visual verification, a different test mode from this suite.
 
 ## Session log format
@@ -340,6 +356,7 @@ S8: <OK|WARN|FAIL> -- <one-line note if not OK>
 S9: <OK|WARN|FAIL> -- <one-line note if not OK>
 S10: <OK|WARN|FAIL> -- <one-line note if not OK>
 S11: <OK|WARN|FAIL> -- <one-line note if not OK>
+S12: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
