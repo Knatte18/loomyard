@@ -89,7 +89,8 @@ func deleteReferencedWayForward(number int, uncheckable bool) string {
 	return fmt.Sprintf("move the delete to a card after the one that still references it, run `lyx webster rebaseline --card NN` naming each card you edited, then `lyx webster recover-batch %02d`", number)
 }
 
-// laterDeleteReferenceReasons returns one reason per reference an unbegun card still has to a symbol the cards in own delete.
+// laterDeleteReferenceReasons returns one reason per blocking reference an unbegun card still has to a symbol the cards in own delete.
+// A method matched by name alone is informational and gives no reason, since its receiver is not resolved and the later card's verify build catches a real call.
 // An infrastructure error is wrapped in planindex.ErrQuarryUnavailable.
 func laterDeleteReferenceReasons(plan *planparser.Plan, batches []batcher.Batch, st *State, own []planparser.Card, geom Geometry) ([]string, error) {
 	index, err := geom.index()
@@ -102,7 +103,9 @@ func laterDeleteReferenceReasons(plan *planparser.Plan, batches []batcher.Batch,
 	}
 	reasons := make([]string, 0, len(findings))
 	for _, f := range findings {
-		reasons = append(reasons, f.Error())
+		if f.Severity == planindex.SeverityBlocking {
+			reasons = append(reasons, f.Error())
+		}
 	}
 	return reasons, nil
 }

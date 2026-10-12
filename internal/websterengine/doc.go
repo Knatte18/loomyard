@@ -318,8 +318,9 @@
 // A delete-not-done finding gets one more check, planindex.Index.LaterDeleteReferences over the batch's own cards and the cards of every batch with no record:
 // when an unbegun later card's Edit code still references the target, the failure's reasons name that card and the reference,
 // and the BatchFailedError's way forward is the plan edit (move the delete after that card, rebaseline, then recover-batch), or the reset-to-start steps when the record also lists uncheckable entries, since recover-batch would repeat the same failure.
+// Only a reference resolved to the deleted member counts, which is the blocking finding; a method matched by name alone is informational, adds no reason and changes no way forward.
 // PersistRecoveryTerminal fails a recovered batch the same way, and recover-batch runs the same check before spawning:
-// while it fires it refuses with ErrRecoveryDeleteReferenced, which the CLI maps to the `batch_failed` flag.
+// while a blocking reference fires it refuses with ErrRecoveryDeleteReferenced, which the CLI maps to the `batch_failed` flag.
 // At run exit the audit cross-check drops dispositioned findings, records the rest of the policy findings as run-level warnings, appended to summary.md under "Audit warnings", and demotes Master's outcome done to stuck for an undispositioned correctness finding.
 // A correctness finding stays pending in state.json until `lyx webster accept-audit` clears it, and run entry refuses with ErrPendingAuditFindings meanwhile.
 // accept-audit needs evidence: it checks every suspect path against the last batch head (a plan file against the run's recorded plan hashes) and refuses with ErrAuditNotAcceptable while any path differs, cannot be checked, or a finding names no path;

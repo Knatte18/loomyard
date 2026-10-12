@@ -1,4 +1,4 @@
-// typesload.go gives caller-uncovered type information: the loader seam, its real go list implementation, and the walk that turns loaded packages into resolved reference lines.
+// typesload.go gives the reference computation caller-uncovered and delete-before-reference share its type information: the loader seam, its real go list implementation, and the walk that turns loaded packages into resolved reference lines.
 // A load that fails or times out is logged and answered by the import-path scan, never by an error.
 
 package planglyph
@@ -109,9 +109,12 @@ func (l goListLoader) acquireSlot(root string) (*gateslot.Lease, error) {
 
 // loadTypedReferences loads the packages that can hold a subject's references and returns, from them, the checked files and the typed and unresolved references per subject.
 // The load covers the directories of candidates plus each subject's declaring directory, less every directory inside a nested module, since it runs from the root module.
-// It is skipped, with no loader called, when root holds no go.mod or no directory is left.
+// It is skipped, with no loader called, when loader is nil, root holds no go.mod or no directory is left.
 // A failed load is logged by the loader and leaves everything empty.
 func loadTypedReferences(plan *planparser.Plan, root string, subjects []coverageSubject, candidates []string, loader typesLoader) (checked map[string]bool, typed, unresolved []map[string][]int) {
+	if loader == nil {
+		return typedReferences(nil, root, subjects)
+	}
 	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
 		return typedReferences(nil, root, subjects)
 	}
