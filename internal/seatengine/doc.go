@@ -14,7 +14,8 @@
 // A required advisor's held turn end still notifies the parent, where every other advisor holds quietly.
 // The chair seat is named RoleChair; the advisors are named AdvisorName(1), AdvisorName(2) and so on, in table order.
 // A seat's strand role is SeatRole(prefix, name), so a spec never spells a role as a literal.
-// Every seat strand, the chair and each advisor, declares the sharing size and no anchor, so seat agents that run side by side split the free rows evenly and the driver strand collapses while they are live.
+// Every seat strand, the chair and each advisor, declares the own-window anchor, the table's window group named by its role prefix and round, and its seat count, so reed shares one window for a small table and gives each seat its own for a large one.
+// A one-seat table gets a window of its own.
 //
 // # The table rules
 //
