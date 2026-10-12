@@ -277,7 +277,7 @@ func parityLoomStatusSeeded(t *testing.T, h *hubforge.Hub) {
 	)
 }
 
-// parityLoomPauseSeeded drives "lyx loom pause --after" and "lyx shed pause --after" over a pair seeded at "self" for loom with a seeded status file, exercising the success envelope. The condition is idempotent and the envelope carries only status_file and the recorded conditions, so running both invocations sequentially over the same fixture does not disturb the comparison.
+// parityLoomPauseSeeded drives "lyx loom pause --after" and "lyx shed pause --after" over a pair seeded at "self" for loom with a seeded status file, exercising the success envelope. The envelope carries status_file and the recorded conditions; the shed call clears the loom call's condition first, so neither answers a replaced one.
 func parityLoomPauseSeeded(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-pause")
 	cwd := h.PairCodeWorktree("parity-pause")
@@ -296,6 +296,11 @@ func parityLoomPauseSeeded(t *testing.T, h *hubforge.Hub) {
 			return code, out.String()
 		},
 		func() (int, string) {
+			// The loom call recorded the condition; clearing it first keeps this call from answering replaced_after.
+			var cleared bytes.Buffer
+			if code := RunCLIIn(cwd, &cleared, []string{"pause", "--clear"}); code != 0 {
+				t.Fatalf("shed pause --clear exit code = %d; output: %s", code, cleared.String())
+			}
 			var out bytes.Buffer
 			code := RunCLIIn(cwd, &out, []string{"pause", "--after", "Discussion-Write"})
 			return code, out.String()
