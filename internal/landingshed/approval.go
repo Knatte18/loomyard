@@ -36,6 +36,12 @@ func writeRecordAtomic(path, kind string, v any) error {
 	if err != nil {
 		return fmt.Errorf("landingshed: encode %s: %w", kind, err)
 	}
+	return writeBytesAtomic(path, kind, data)
+}
+
+// writeBytesAtomic writes data to path through a temp file in the same directory and a rename, creating the parent directory;
+// kind names the record in error messages.
+func writeBytesAtomic(path, kind string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("landingshed: create %s directory: %w", kind, err)
