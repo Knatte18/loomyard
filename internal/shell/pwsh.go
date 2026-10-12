@@ -80,3 +80,13 @@ func (pwshShell) ScriptExt() string {
 func (p pwshShell) Chain(parts ...string) string {
 	return chainStatements(parts...)
 }
+
+// OrElse returns `first || second`, the pipeline-chain operator of PowerShell 7, which tmux launches as pwsh.
+func (pwshShell) OrElse(first, second string) string {
+	return first + " || " + second
+}
+
+// Exit returns the pwsh `exit` statement.
+func (pwshShell) Exit() string {
+	return "exit"
+}

@@ -101,7 +101,7 @@ internal/shedrecipe: 103
 internal/shedrun: 23
 internal/shedtransient: 2
 internal/shedverbs: 83
-internal/shell: 12
+internal/shell: 14
 internal/shortcutcli: 2
 internal/shuttlecli: 25
 internal/shuttleengine: 168
