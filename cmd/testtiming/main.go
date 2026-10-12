@@ -22,11 +22,10 @@
 //
 // It runs the selected packages one at a time, each as its own `go test -json -count=1` child over one package, inside one gate slot when the working directory is in a hub, and under the template's -p cap otherwise.
 // -pkg takes comma-separated package patterns and defaults to every package; -tags and -full pick the tier as in the timing mode.
-// Each package gets a private temp directory its child's TMPDIR, TMP and TEMP point at.
 // The columns are PACKAGE, WALL (child start to exit), CPU, PEAK_MEM, PROCS and LEFTOVER, plus a FAIL mark.
 // CPU and PEAK_MEM come from the child's cgroup when `systemd-run --user --scope` works, read from cpu.stat's usage_usec and memory.peak while the scope lives, and from the child's rusage otherwise, where PEAK_MEM is the largest single process's max RSS and the row carries a rusage mark.
 // PROCS is the delta of the `processes` line of /proc/stat across the child, so it is system-wide and blank where /proc/stat is unreadable.
-// LEFTOVER counts the processes still referencing the package's temp directory through cwd, executable or argv after the child exited; a trailing list names each as `pid argv`.
+// LEFTOVER counts the processes still carrying the package's marker, an environment variable every descendant of the child inherits, after the child exited; a trailing list names each as `pid argv`.
 // GIT_FIXTURE and GIT_CODE count the git processes the package ran, split on the fixture marker `LYX_FIXTURE_GIT`: git that gitkit's spawn helpers or a hub build started carries it, and all other git is code under test.
 // The census reads git's trace2 event files, one per git process, from a trace directory the child's environment points at, and a second table after the first lists the processes by subcommand with total, fixture and code counts.
 // The split is exact for a serial package and approximate where a hub build overlaps other tests of the same package, so a before-to-after comparison reads the total.
@@ -70,6 +69,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 )
 
 // testEvent is one line of `go test -json` output (decoded fields only).
@@ -112,6 +112,7 @@ func main() {
 	err := modeConflict(*redundancy, *resources)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "testtiming:", err)
+		lyxtemp.Remove()
 		os.Exit(1)
 	}
 	if *resources {
@@ -129,6 +130,9 @@ func main() {
 		if tags, err = resolveTags(*full, *tagFlag); err == nil {
 			err = run(tags, *top)
 		}
+	}
+	if removeErr := lyxtemp.Remove(); removeErr != nil {
+		fmt.Fprintln(os.Stderr, "testtiming:", removeErr)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "testtiming:", err)
