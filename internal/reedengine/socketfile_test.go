@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 )
 
 // listenUnixSocket listens on the socket path dir/key and removes the file on close.
@@ -114,7 +116,7 @@ func TestRemoveSocketFileOnceGone(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			dir, err := os.MkdirTemp("", "rg")
+			dir, err := lyxtemp.MkdirTemp("rg")
 			if err != nil {
 				t.Fatalf("MkdirTemp: %v", err)
 			}
@@ -174,7 +176,7 @@ func TestRemoveStaleSocket(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			dir, err := os.MkdirTemp("", "rs")
+			dir, err := lyxtemp.MkdirTemp("rs")
 			if err != nil {
 				t.Fatalf("MkdirTemp: %v", err)
 			}
