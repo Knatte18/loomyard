@@ -25,6 +25,9 @@ const driveReportsDirName = "drive-reports"
 // arbiterDirName is the segment under a run's directory that holds its arbiter attempts.
 const arbiterDirName = "arbiter"
 
+// alignmentDirName is the segment under a run's directory that holds its alignment attempts, one directory per point.
+const alignmentDirName = "alignment"
+
 // arbiterMarkerFileName is the filename of the arbiter in-flight marker, whose path ArbiterMarker returns.
 const arbiterMarkerFileName = "arbiter-inflight.json"
 
@@ -174,6 +177,18 @@ func ArbiterRel(l *lyxcwd.Location, runID string) string {
 // ArbiterAttemptDir returns the path to one arbiter attempt's durable directory, attempt-<N> under ArbiterDir(l, runID), where attempt is the attempt's 1-based number.
 func ArbiterAttemptDir(l *lyxcwd.Location, runID string, attempt int) string {
 	return filepath.Join(ArbiterDir(l, runID), "attempt-"+strconv.Itoa(attempt))
+}
+
+// AlignmentDir returns the path to the durable directory holding the alignment agent's attempts at one point of a run:
+// RunDir(l, runID) joined with alignmentDirName and point, which is a single path segment.
+func AlignmentDir(l *lyxcwd.Location, runID, point string) string {
+	return filepath.Join(RunDir(l, runID), alignmentDirName, point)
+}
+
+// AlignmentRel returns the worktree-anchor-relative form of the run's alignment directory, which holds one directory per point: the join of lyxdirs.LyxDirName, shedDirName, the run's directory segment under l, and alignmentDirName.
+// It exists so a caller building a fabric commit pathspec never has to name a segment shedrun owns.
+func AlignmentRel(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(lyxdirs.LyxDirName, shedDirName, runSegment(l, runID), alignmentDirName)
 }
 
 // ArbiterMarker returns the path to the ephemeral arbiter in-flight marker, arbiterMarkerFileName under ScratchDir(l, runID).
