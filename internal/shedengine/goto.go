@@ -133,6 +133,8 @@ func gotoAdmitted(producers []ProducerDef, st Status) (reference string, admitte
 					routed = def.OnDone
 				case Stuck:
 					routed = def.OnStuck
+				case OutcomeReroute:
+					routed = def.OnReroute
 				}
 				break
 			}
