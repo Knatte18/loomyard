@@ -309,6 +309,7 @@ Each module contributes a `Command() *cobra.Command` that is passed to `root.Add
 The `help` module is the one exception: `newRoot()` mounts it with `root.SetHelpCommand(helpcli.Command())` followed by `root.InitDefaultHelpCmd()`, replacing cobra's built-in help command.
 Adding a module is three steps: import the package, add `<module>.Command()` to `root.AddCommand(...)` in `newRoot()`, and append the module name to `root.Long`.
 Every invocable command also carries an `audience` annotation (`operator`, `role` or `internal`), and `lyx help index` renders the operator commands as a one-line-per-command index of the running binary, which the orch's role file and the `ly:cli` skill carry.
+Which commands count as invocable, and so carry one, is the audience bullet of [PATTERN-cli-cobra](../pattern/PATTERN-cli-cobra.md).
 A tree walk in `cmd/lyx/clitree_test.go` pins the form of `Use`, `Short` and `Long` beside the audience.
 
 `run(args, out)` is the testable seam: it builds a fresh root, merges stdout and stderr into `out`, and calls `root.ExecuteContext`, returning the process exit code without spawning a binary or trapping `os.Exit`.
