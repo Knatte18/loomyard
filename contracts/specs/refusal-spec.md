@@ -1,6 +1,6 @@
 # Refusal contract: every refusal and its way forward
 
-> **Status: Contract — kept on landing.** This is the table of refusals that `lyx webster`, `lyx shed`, `lyx loom` and `lyx gate` can reach, each with the way forward its message names, a durable reference doc, not deleted on landing.
+> **Status: Contract — kept on landing.** This is the table of refusals that `lyx webster`, `lyx shed`, `lyx loom`, `lyx gate` and `lyx batten lock` can reach, each with the way forward its message names, a durable reference doc, not deleted on landing.
 > It is the lookup the loom driver and the operator use for an escalation, and it is plain markdown, not registered in `contracts/specs/specs.go`.
 
 ## What a way forward is
@@ -358,9 +358,20 @@ Its JSON error envelopes carry the way forward as a trailing `way forward:` clau
 | gate.yaml unreadable or invalid | the hub's `gate.yaml` cannot be read, does not parse, or holds a value below 1 | correctness halt | fix the file with "lyx config gate" from the prime, then re-run the same command |
 | raw I/O | the working directory or the worktree cannot be resolved, a slot cannot be acquired for a reason other than the wait bound, or go cannot be started | transient | re-run the same command, or put go on PATH when go cannot be started |
 
+## batten lock
+
+`lyx batten lock list` and `lyx batten lock release` are the verbs.
+Their JSON error envelopes carry the way forward in the message, and a read or write of a lock record that fails is a raw I/O failure that names its path.
+
+| Refusal | Trigger | Class | Way forward |
+|---|---|---|---|
+| no parent lock on the branch | `lyx batten lock release <parent-branch>` names a branch with no lock record | correctness halt | run "lyx batten lock list" to see the held locks |
+| release arguments | `lyx batten lock release` names a branch beside `--all`, or neither | correctness halt | run "lyx batten lock release <parent-branch>" or "lyx batten lock release --all" |
+| not the prime worktree | a lock verb runs from a task worktree, from the pair's fabric sibling or from `_board` | correctness halt | re-run the verb from the hub's prime worktree |
+
 ## Out of scope
 
-Landing, batten, orch, fabric, burler and board refusals are not in this table, except the verify-gate, dirty-tree, conflict-session, superseded-strand and hub-wide config write rows above;
+Landing, batten, orch, fabric, burler and board refusals are not in this table, except the batten lock rows above, and the verify-gate, dirty-tree, conflict-session, superseded-strand and hub-wide config write rows above;
 a later audit adds each as its own section.
 Burler's own round errors stay out too, as the strict review parse and the cluster audit already do:
 a changed review and a failed write of the acceptance record each name the file concerned in their message and land no row.

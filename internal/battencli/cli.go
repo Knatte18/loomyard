@@ -220,9 +220,10 @@ worktree's own run, run it to a terminal state, and tear down -- as a single
 Shed run over a per-slug status.json. "run" starts or resumes that run for a
 slug; "step" drives it exactly one producer forward; "status" reports its
 current state; "pause" requests a pause at the run's next producer boundary;
-"goto" moves a halted run onto a named row, paused, with a fresh segment budget.
+"goto" moves a halted run onto a named row, paused, with a fresh segment budget;
+"lock list" and "lock release" show and free the hub's parent locks.
 
-All five verbs run from the hub's prime worktree only: they refuse when invoked
+Every verb runs from the hub's prime worktree only: they refuse when invoked
 from a task worktree, from the pair's fabric sibling, or from _board.
 
 Example:
@@ -230,7 +231,8 @@ Example:
   lyx batten step some-slug
   lyx batten status some-slug
   lyx batten pause some-slug
-  lyx batten goto some-slug --to Run-Shed`,
+  lyx batten goto some-slug --to Run-Shed
+  lyx batten lock list`,
 		// RunE is set so that bare "lyx batten" lists subcommands and "lyx batten bogus"
 		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE:              clihelp.GroupRunE,
@@ -270,7 +272,7 @@ Example:
 	stepVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
 	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", shedrun.DriverLLM, "the driver the task worktree's own inner run uses")
 
-	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb)
+	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, lockCommand())
 
 	return parent
 }
@@ -283,8 +285,9 @@ Example:
 // Skips resolution entirely when the batten group command itself is invoked (bare listing or
 // unknown-subcommand error path via clihelp.GroupRunE), so neither path requires a git repository to
 // be present.
+// The lock group is skipped too: its verbs address no slug, and resolve the prime in lockStore.
 func (c *battenCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
-	if cmd.Name() == "batten" {
+	if cmd.Name() == "batten" || inLockGroup(cmd) {
 		return nil
 	}
 
