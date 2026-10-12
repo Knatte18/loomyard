@@ -92,6 +92,13 @@
 // A retry that gave up, or a second Publish halt after the retry ran, sends the usual blocked notice with words saying so, which tells the orch the failure needs judgement.
 // Any record that does not match, and any read error on the way to the decision, leaves the halt to the handling above.
 //
+// With deps.ParentLock wired, the wait also looks after the parent lock of the child's run on every probe check (innerrun_parentlock.go).
+// A lock record handed to this batten at PR-Gate is kept while the child awaits there, until that awaiting has lasted the idle bound with no decision to resume on, and while the child runs after a resume, so the resumed loop takes it back; in any other state the record is released.
+// A record owned by another process is released once every agent of that owner has waited for the idle bound with none busy, a watch that restarts whenever the owner changes; a failed agent read releases nothing.
+// Every release logs one Warn, and batten releases only a record naming its own child's run.
+// A child awaiting at PR-Gate with no decision pending whose parent branch moved upstream is resumed through the same spawn as a decided one, so the gate's next call reroutes it to Merge-In under the lock, and its awaiting notice is suppressed.
+// The moved-parent read may fetch, so it runs only for a child awaiting at the gate row, at most once per probe.
+//
 // Its counterpart is equally by design: a driver that finishes NORMALLY leaves its strand and its
 // run directory behind. Nothing here tears either down as part of a clean finish -- only the
 // whole-worktree teardown row cleans up, at the very end, by removing the worktree they live in.

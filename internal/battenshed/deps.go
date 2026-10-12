@@ -9,6 +9,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -212,6 +213,28 @@ type InnerRunDeps struct {
 	// Goto runs the child's goto verb onto target.
 	// A goto refused because the child's run lock is held returns an error wrapping ErrChildRunBusy.
 	Goto func(ctx context.Context, target string) error
+	// ParentLock carries the seams of the parent lock backstop and of the stale-base resume; nil switches both off.
+	ParentLock *ChildParentLock
+}
+
+// ChildParentLock carries the seams InnerRun reads the parent lock of the child's run through.
+// A lock handed to batten at PR-Gate is kept while the orch reviews, a lock a stalled loop kept is released, and a child awaiting at PR-Gate whose parent moved is resumed.
+type ChildParentLock struct {
+	// Read returns the lock record naming the child's run, and found false when none does.
+	Read func() (record parentlock.Record, found bool, err error)
+	// Release removes record when its owner is still the one it names, and reports whether it did.
+	Release func(record parentlock.Record) (released bool, err error)
+	// Agents returns the child pair's agent states, for the idle rule.
+	Agents func() ([]parentlock.AgentState, error)
+	// SelfPID is this batten's pid: a record it owns was handed over by the child's loop.
+	SelfPID int
+	// IdleBound is how long a handed record is kept while the child awaits without a decision, and how long a loop's agents must all wait for its record to be released.
+	IdleBound time.Duration
+	// ParentMoved reports whether the child's parent branch moved upstream since the child merged it in and no longer holds the child's work.
+	// It may fetch, so InnerRun reads it only for a child awaiting at GateRow.
+	ParentMoved func() (bool, error)
+	// GateRow is the row a child awaits the orch's decision at.
+	GateRow string
 }
 
 // ChildPublishFailure is the part of the child's verify failure record the automatic retry reads.

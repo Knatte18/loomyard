@@ -53,6 +53,7 @@ var intentionallyNil = map[string]string{
 	"InnerRun.PublishFailure":             "batten-only seam, filled by battencli",
 	"InnerRun.ChildHead":                  "batten-only seam, filled by battencli",
 	"InnerRun.Goto":                       "batten-only seam, filled by battencli",
+	"InnerRun.ParentLock":                 "batten-only seam, filled by battencli",
 	"Teardown.Shutdown":                   "batten-only seam, filled by battencli",
 	"Teardown.Remove":                     "batten-only seam, filled by battencli",
 	"Teardown.Notices.OrchStrandRecorded": "batten-only seam, filled by battencli",

@@ -748,6 +748,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 			MarkWatched: markWatched,
 			VerifyRows:  []string{loomshed.NameMergeIn, loomshed.NamePublish},
+			ParentLock:  childParentLock(slug, locateTask, fabricengine.BoardDir(location.HubPath), lockIdleBound(location)),
 			PublishFailure: func() (battenshed.ChildPublishFailure, bool, error) {
 				taskLocation, err := locateTask()
 				if err != nil {

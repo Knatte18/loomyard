@@ -285,6 +285,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			MarkWatched:        func(context.Context) (bool, error) { return false, nil },
 			OrchStrandRecorded: func() (bool, error) { return true, nil },
 			VerifyRows:         []string{"Merge-In", "Publish"},
+			ParentLock:         &battenshed.ChildParentLock{},
 			PublishFailure: func() (battenshed.ChildPublishFailure, bool, error) {
 				return battenshed.ChildPublishFailure{}, false, nil
 			},
