@@ -167,6 +167,9 @@ type Env struct {
 	// PrepareDiscussionSpawn is the injected closure every fresh Discussion-Write spawn runs after the attach probe and before the spawn, read by the DiscussionWrite entry.
 	// It arrives as a closure for the same reason DiscussionSpec does.
 	PrepareDiscussionSpawn func() error
+	// PreparePlanSpawn is the injected closure every fresh Plan-Write spawn runs after the attach probe and before the plan-directory rotation, read by the PlanWrite entry.
+	// It arrives as a closure for the same reason DiscussionSpec does.
+	PreparePlanSpawn func() error
 	// DiscussionTable is the injected shedadapters.TableSource the DiscussionSeats entry evaluates once per Call.
 	// It arrives as a closure for the same reason DiscussionSpec does: building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly.
 	DiscussionTable shedadapters.TableSource

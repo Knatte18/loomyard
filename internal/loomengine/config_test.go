@@ -89,6 +89,7 @@ func templateConfig() Config {
 		DiscussionAdvisors:       ModelSpecList{"sonnet[high]"},
 		Plan:                     "opus[medium]",
 		PlanTimeoutMin:           120,
+		PlanProducer:             "single",
 		Review:                   ModelSpecList{"opus[medium]"},
 		Fix:                      ModelSpecList{"opus[medium]"},
 		DiscussionReview:         ModelSpecList{""},
@@ -204,6 +205,16 @@ review_timeout_min: 240
 			name:   "discussion_producer twill",
 			values: map[string]string{"discussion_producer": "twill"},
 			mutate: func(c *Config) { c.DiscussionProducer = "twill" },
+		},
+		{
+			name:   "plan_producer twill",
+			values: map[string]string{"plan_producer": "twill"},
+			mutate: func(c *Config) { c.PlanProducer = "twill" },
+		},
+		{
+			name:   "empty plan_producer reads as single",
+			values: map[string]string{"plan_producer": `""`},
+			mutate: func(c *Config) { c.PlanProducer = "single" },
 		},
 		{
 			name:   "discussion_advisors as an empty string means no advisors",
@@ -403,6 +414,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed fan_review spec", "fan_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"empty fan_review list", "fan_review", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
 		{"unknown discussion_producer", "discussion_producer", "sideways", []string{`"single"`, `"seats"`, `"twill"`}, ""},
+		{"unknown plan_producer", "plan_producer", "sideways", []string{`"single"`, `"twill"`, "set it to"}, ""},
 		{"empty discussion_advisors entry beside another", "discussion_advisors", `["", "sonnet[high]"]`, []string{"entry 1", advisorWayForward}, ""},
 		{"malformed discussion_advisors entry", "discussion_advisors", `["opus[effort"]`, []string{"entry 1", advisorWayForward}, ""},
 		{"unknown discussion_advisors alias", "discussion_advisors", `["sonnet[high]", "ghost"]`, []string{"entry 2", "ghost", advisorWayForward}, ""},

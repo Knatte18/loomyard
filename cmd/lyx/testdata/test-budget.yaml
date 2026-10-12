@@ -31,6 +31,7 @@ internal/editdirective: 2
 internal/envsource: 3
 internal/fabriccli: 21
 internal/fabricengine: 635
+internal/fabricvocab: 1
 internal/friction: 6
 internal/frictionengine: 15
 internal/fslink: 5
@@ -55,7 +56,7 @@ internal/lock: 4
 internal/logger: 34
 internal/loggerconfig: 3
 internal/loomcli: 207
-internal/loomengine: 51
+internal/loomengine: 52
 internal/loomrecipe: 52
 internal/loomshed: 76
 internal/lyxcwd: 23
@@ -68,8 +69,8 @@ internal/pairteardown: 6
 internal/parentdirective: 4
 internal/parentreview: 54
 internal/pattern: 8
-internal/planglyph: 85
-internal/planparser: 90
+internal/planglyph: 86
+internal/planparser: 91
 internal/preflight: 7
 internal/preflightshed: 8
 internal/proc: 17
@@ -117,7 +118,7 @@ internal/testkit/shuttlefake: 8
 internal/testkit/stencilkit: 3
 internal/testkit/tmuxkit: 15
 internal/treadleengine: 34
-internal/twilldirective: 3
+internal/twilldirective: 4
 internal/verifyrun: 4
 internal/verifytree: 7
 internal/vscode: 12
