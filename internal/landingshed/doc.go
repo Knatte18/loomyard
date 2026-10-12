@@ -1,4 +1,4 @@
-// Package landingshed owns landing's three general producers, Publish, PR-Gate and Finalize, which any producer list may name -- none is special-cased by the engine that drives them.
+// Package landingshed owns landing's general producers, Merge-In, Publish, PR-Gate and Finalize, which any producer list may name -- none is special-cased by the engine that drives them.
 //
 // Publish checks the configured require_pr_to_base list (see LoadConfig) against the task's own
 // parent branch. When the parent is absent from that list, Publish is a no-op: Done immediately, no
@@ -14,6 +14,18 @@
 // Any other parked merge and git merge state fabric did not start is Stuck with its way forward, never stopped over or touched.
 // The resolver's own abort stays as crash recovery within one merge-in step.
 // The seams are nil-is-absent: a nil Deps.MergeState skips the step.
+//
+// Merge-In is a fourth producer, built here and listed by a recipe's producer list like the others.
+// It commits the status file, takes the parent lock through the shared guard, and only then brings the local parent branch level with its upstream.
+// Under the told push skip it neither fetches nor fast-forwards, and merges the local tip.
+// A parent branch behind its upstream is fast-forwarded in its own pair under the lock, which moves it to the upstream tip and touches no local commit;
+// one that is ahead of or diverged from its upstream, and a parent pair that is missing, dirty, mid-merge or no longer a fast-forward of its upstream, are Stuck with a way forward, since Merge-In never pushes or rewrites the parent.
+// A paused lock wait and an unreadable lock record are Stuck with Halt, so the run stops at the row.
+// It then clears a parked merge-in, merges the parent tip into the task worktree through internal/mergeresolve and runs the same clean-tree checks and plan verify as Publish.
+// A failed verify writes the Publish failure record with row `Merge-In`, and a passing one removes it.
+// Last it writes the merge record: the tip merged, the task head before the merge, the parent tip last merged into the task, the parent tip the last finished merge review reached, the merge commit and where the parent's changes since that reviewed tip meet the task's changes since its last merge base.
+// An up-to-date merge records an empty overlap, and a failed record write is an error, never Stuck.
+// The lock is kept on every way out of the row: a later landing row or the loop's exit frees it.
 //
 // Publish checks the task worktree is clean at three points: before the merge-in (after the status commit), after the merge-in, and after the verify.
 // A dirty tree at any of them is Stuck naming the paths, before anything is pushed;

@@ -320,17 +320,7 @@ func (p *Publish) noteMergeCommit(merge mergeresolve.Result) {
 // Otherwise the other values are what Call returns at once:
 // a cancellation or an infrastructure fault as an error, a Stuck reason as a Stuck verdict.
 func (p *Publish) gateStop(ctx context.Context, reason string, err error) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	if err != nil {
-		if cerr := cancelErr(ctx, publishName); cerr != nil {
-			return "", shedengine.OutputPointer{}, cerr, true
-		}
-		return "", shedengine.OutputPointer{}, err, true
-	}
-	if reason != "" {
-		outcome, out, err := p.stuckOrCancelled(ctx, reason)
-		return outcome, out, err, true
-	}
-	return "", shedengine.OutputPointer{}, nil, false
+	return gateStop(ctx, publishName, reason, err)
 }
 
 // refreshPullRequest brings an open pull request's title and body in line with the change description, editing only when either differs, and returns Done.
@@ -370,11 +360,7 @@ func (p *Publish) refreshPullRequest(ctx context.Context, client *github.Client,
 // output pointer.
 // Callers that can see a transient remote failure return it as an error first (transientFailure), so a verdict here is always one for a human.
 func (p *Publish) stuckOrCancelled(ctx context.Context, reason string, fields ...any) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	if cerr := cancelErr(ctx, publishName); cerr != nil {
-		return "", shedengine.OutputPointer{}, cerr
-	}
-	reportStuck(publishName, reason, fields...)
-	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
+	return stuckVerdict(ctx, publishName, reason, false, fields...)
 }
 
 // withPRURL ends a pull-request-state reason with the pull request's URL, or returns the bare
