@@ -50,7 +50,7 @@ func Build(r Recipe, env shedrecipe.Env) ([]shedengine.ProducerDef, error) {
 			OnDone:     row.OnDone,
 			OnStuck:    row.OnStuck,
 			OnReroute:  row.OnReroute,
-			Segment:   row.Segment,
+			Segment:    row.Segment,
 			MaxBounces: row.MaxBounces,
 		}
 	}

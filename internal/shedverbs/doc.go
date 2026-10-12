@@ -74,6 +74,11 @@
 // A child that exits on its own with a non-zero status and no record keeps cause exited with the exit status.
 // The watch kills only the loop's own in-flight child and its process group or job.
 //
+// Two optional seams let the arming module hook the loop.
+// Spec.Loop.OnWake runs on every wake of the child watch; with a zero idle window and OnWake set, the watch runs on the same wake schedule without ever killing the child, until the child exits.
+// Spec.Loop.OnExit runs once at every stop, after the stop is final and a failed stop is written, with the stop and the status file as it then reads, and before the envelope is written.
+// A loop that refuses before its first step, and a dead loop the waiter reports, never run it.
+//
 // A loop that is gone without an envelope ends in the dead-loop stop.
 // It kills what is left of the loop's step tree from the pid file's child record, writes the run failed while the status file still reads running, and reports an interrupted stop with cause loop-exited and loop.status_moved from the recorded producer and history length against the status file.
 // It writes that stop as the loop's envelope under the dead loop's id, delivers it and retires the pid file.

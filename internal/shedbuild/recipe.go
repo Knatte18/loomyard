@@ -27,6 +27,6 @@ type Row struct {
 	OnDone     string         `yaml:"on_done"`
 	OnStuck    string         `yaml:"on_stuck"`
 	OnReroute  string         `yaml:"on_reroute"`
-	Segment   string         `yaml:"segment"`
+	Segment    string         `yaml:"segment"`
 	MaxBounces int            `yaml:"max_bounces"`
 }

@@ -57,6 +57,12 @@ type LoopSpec struct {
 	IdleTimeout time.Duration
 	// Activity reports the newest agent activity of the run, and false when it knows of none.
 	Activity func() (time.Time, bool, error)
+	// OnExit runs once in runLoop after the stop is final, with the stop and the status file as it then reads, and before the envelope is written; nil is skipped.
+	// A loop that refuses before its first step never runs it.
+	OnExit func(stop LoopStop, st shedengine.Status)
+	// OnWake runs on every wake of the child watch; nil is skipped.
+	// With a zero IdleTimeout and OnWake set, the watch runs without ever killing the child.
+	OnWake func()
 	// Delivered is the path of the delivered record of a loop id, where a retired envelope of that loop lands.
 	Delivered func(loopID string) string
 	// LockGrace is how long a starting loop waits for the loop lock before it gives up; zero selects loopLockGrace.
@@ -136,6 +142,7 @@ func (r childResult) ok() bool {
 // It returns the stop step's exit code.
 // argv is the child's command line after the executable, the loop's own without the flag that selects the loop.
 // A transient error gets one immediate re-step; an error or interrupted stop on a run still reading running writes it failed.
+// LoopSpec.OnExit runs once at every stop kind, after the stop is final and before the envelope is written.
 // A loop that cannot take the lock within the grace period, or that finds the teardown's mark, an undelivered envelope or a dead loop's pid file, returns 1 at once, before any step and without an envelope.
 func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out io.Writer) int {
 	loop := spec.Loop
@@ -277,6 +284,9 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 	logger.Info("shed: loop stop", "stop", string(stop), "steps", obj.Steps, "trace_id", res.traceID, "error", errText)
 
 	after, _ := readStatusFile(spec)
+	if loop.OnExit != nil {
+		loop.OnExit(stop, after)
+	}
 	obj.Stop = stop
 	obj.CurrentProducer = after.CurrentProducer
 	obj.HistoryLength = len(after.History)

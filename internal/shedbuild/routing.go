@@ -29,7 +29,7 @@ func RoutingOf(recipe []byte) (shedengine.Routing, error) {
 			OnDone:     row.OnDone,
 			OnStuck:    row.OnStuck,
 			OnReroute:  row.OnReroute,
-			Segment:   row.Segment,
+			Segment:    row.Segment,
 			MaxBounces: row.MaxBounces,
 		}
 	}
