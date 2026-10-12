@@ -63,6 +63,11 @@
 // The Selvage pane carries the user option @lyx_console (consolePaneOption), set when it is split and re-asserted by every attach pre-flight.
 // The options are display only: the status bar and the key bindings read them, no Go decision does, and Selvage never gets @strand or @strand_color.
 // A strand's Segment is an opaque field its spawner names through AddSpec.Segment; reed reads it only to look up the segment's color, which the strand an add or replace returns and Status carry as Color.
+// An own window gets a status-bar button on line 1 in its segment's color, read from the window options @lyx_own and @strand_color, labelled with the window name and carrying its panes' wait marks.
+// The button is lit while the window is current, and otherwise that color on dark grey, underscored while the window carries @lyx_unseen.
+// Outside Windows, the geometry pins also pin the session hook `session-window-changed` with `set-option -w -u @lyx_unseen`, so selecting the window clears the mark; boot and every attach pre-flight run the pin.
+// On Windows no hook is pinned and the mark is never set.
+// A window carrying @lyx_hidden still gets no button, and no Go decision reads @strand_color or @lyx_unseen.
 //
 // The navigation bindings (bindings.go) are root-table bindings on the hub's reed server, issued by pinBindingsLocked at the end of the geometry pins, so boot and every attach pre-flight pin them and a server booted by an older lyx gets them at its next attach.
 // Alt+z zooms or unzooms a strand pane or Selvage in the strands' window, and does nothing in any other window;

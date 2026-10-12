@@ -5,6 +5,8 @@ package reedengine
 
 import (
 	"errors"
+	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -196,6 +198,40 @@ func (f *fakeTmux) StdinFor(verb string) []string {
 		}
 	}
 	return out
+}
+
+// SetHookCalls returns the argv of every set-hook call naming hook, in order.
+func (f *fakeTmux) SetHookCalls(hook string) [][]string {
+	var out [][]string
+	for _, c := range f.ArgvFor("set-hook") {
+		if containsArg(c, hook) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// unseenClearPinCount is how many unseen-clear hook pins one pinGeometryOptionsLocked run issues: one wherever set-hook exists, none on Windows.
+func unseenClearPinCount() int {
+	if runtime.GOOS == "windows" {
+		return 0
+	}
+	return 1
+}
+
+// assertUnseenClearHookPinned fails unless fake saw exactly the unseen-clear hook pins one pinGeometryOptionsLocked run issues, each on e's session with the hook's own command.
+func assertUnseenClearHookPinned(t *testing.T, e *Engine, fake *fakeTmux) {
+	t.Helper()
+	want := []string{"set-hook", "-t", exactSessionTarget(e.SessionName()), unseenClearHookName, unseenClearHookCommand}
+	calls := fake.SetHookCalls(unseenClearHookName)
+	if len(calls) != unseenClearPinCount() {
+		t.Fatalf("session-window-changed set-hook calls = %v, want %d", calls, unseenClearPinCount())
+	}
+	for _, call := range calls {
+		if !slices.Equal(call, want) {
+			t.Errorf("session-window-changed set-hook argv = %v, want %v", call, want)
+		}
+	}
 }
 
 // Count reports how many calls ran verb.

@@ -182,9 +182,10 @@ func TestServerSpawnArgv(t *testing.T) {
 
 // TestPinBootOptionsLocked_InstallsTheSignalEntry pins that a fresh boot's pins end in a zero-pin rebuild of the window-resized hook array when the watchdog is on, the clear and the signal entry alone,
 // and that watchdog off leaves the one unset and installs no entry.
+// Both steps also see the unseen-clear hook pinned once.
 // Windows issues no hook call and cannot be faked, so both steps skip there.
 func TestPinBootOptionsLocked_InstallsTheSignalEntry(t *testing.T) {
-	bootPins := func(t *testing.T, watchdog string) (*Engine, [][]string) {
+	bootPins := func(t *testing.T, watchdog string) (*Engine, *fakeTmux) {
 		t.Helper()
 		if runtime.GOOS == "windows" {
 			t.Skip("the window-resized hook is never installed on Windows")
@@ -195,26 +196,27 @@ func TestPinBootOptionsLocked_InstallsTheSignalEntry(t *testing.T) {
 		if err := e.pinBootOptionsLocked("off", ""); err != nil {
 			t.Fatalf("pinBootOptionsLocked() = %v, want nil", err)
 		}
-		return e, fake.Calls()
+		return e, fake
 	}
 
 	t.Run("WatchdogOn", func(t *testing.T) {
-		e, calls := bootPins(t, "on")
+		e, fake := bootPins(t, "on")
 		target := exactSessionWindowTarget(e.SessionName())
 
 		var hooks [][]string
 		lastOption, firstHook := -1, -1
-		for i, call := range calls {
-			switch call[0] {
-			case "set-option":
+		for i, call := range fake.Calls() {
+			switch {
+			case call[0] == "set-option":
 				lastOption = i
-			case "set-hook":
+			case call[0] == "set-hook" && containsArg(call, windowResizedHookName):
 				hooks = append(hooks, call)
 				if firstHook == -1 {
 					firstHook = i
 				}
 			}
 		}
+		assertUnseenClearHookPinned(t, e, fake)
 		want := [][]string{
 			{"set-hook", "-u", "-w", "-t", target, windowResizedHookName},
 			{"set-hook", "-w", "-t", target, windowResizedHookName, resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())},
@@ -228,14 +230,10 @@ func TestPinBootOptionsLocked_InstallsTheSignalEntry(t *testing.T) {
 	})
 
 	t.Run("WatchdogOff", func(t *testing.T) {
-		e, calls := bootPins(t, "off")
+		e, fake := bootPins(t, "off")
 
-		var hooks [][]string
-		for _, call := range calls {
-			if call[0] == "set-hook" {
-				hooks = append(hooks, call)
-			}
-		}
+		hooks := fake.SetHookCalls(windowResizedHookName)
+		assertUnseenClearHookPinned(t, e, fake)
 		want := [][]string{{"set-hook", "-u", "-t", exactSessionWindowTarget(e.SessionName()), windowResizedHookName}}
 		if !slices.EqualFunc(hooks, want, slices.Equal[[]string]) {
 			t.Errorf("set-hook calls = %v, want the one unset %v", hooks, want)
