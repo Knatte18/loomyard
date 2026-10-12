@@ -279,9 +279,20 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			}
 			ctx := cmd.Context()
 
+			attempt, _ := cmd.Flags().GetString(ArbiterAttemptFlag)
+			untilStop, _ := cmd.Flags().GetBool(UntilStopFlag)
+			refuseAttempt := func(msg string) {
+				logger.Warn("shed: step refused", "kind", KindBootstrap, "error", msg)
+				clihelp.SetExit(ctx, output.ErrFields(cmd.OutOrStdout(), msg, map[string]any{"kind": KindBootstrap, "trace_file": logger.TraceFile(), "arbiter_attempt": attempt}))
+			}
+			if attempt != "" && !untilStop {
+				refuseAttempt("shedverbs: --" + ArbiterAttemptFlag + " is consumed by the loop's waiter; way forward: run the step with --" + UntilStopFlag + " --" + ArbiterAttemptFlag + " " + attempt)
+				return nil
+			}
+
 			// The loop branch returns before the in-flight record is written.
 			// The invocation carrying the flag therefore keeps no record of its own, and last_step only ever names a child's step.
-			if untilStop, _ := cmd.Flags().GetBool(UntilStopFlag); untilStop {
+			if untilStop {
 				if spec.Loop.EnvelopePath == "" {
 					msg := "shedverbs: this recipe arms no loop; way forward: run the step without --" + UntilStopFlag
 					logger.Warn("shed: step refused", "kind", KindBootstrap, "error", msg)
@@ -296,6 +307,21 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 					}
 					clihelp.SetExit(ctx, runLoop(ctx, spec, loopID, argv, cmd.OutOrStdout()))
 					return nil
+				}
+				if attempt != "" {
+					if spec.Hooks.ConsumeAttempt == nil {
+						refuseAttempt("shedverbs: this recipe consumes no arbiter attempt; way forward: run the step with --" + UntilStopFlag + " alone")
+						return nil
+					}
+					if err := spec.Hooks.ConsumeAttempt(ctx, attempt); err != nil {
+						if errors.Is(err, shedengine.ErrShedBusy) {
+							logger.Warn("shed: step refused", "kind", spec.StepBusyKind, "error", err.Error())
+							clihelp.SetExit(ctx, output.ErrFields(cmd.OutOrStdout(), err.Error(), map[string]any{"kind": spec.StepBusyKind, "trace_file": logger.TraceFile(), "arbiter_attempt": attempt}))
+							return nil
+						}
+						refuseAttempt(err.Error())
+						return nil
+					}
 				}
 				clihelp.SetExit(ctx, runUntilStop(ctx, spec, argv, cmd.OutOrStdout()))
 				return nil
@@ -376,5 +402,6 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 	cmd.Flags().Bool(UntilStopFlag, false, "run steps one after another in a detached loop until the run halts, errors or reaches a stop condition, and print the one envelope of that stop")
 	cmd.Flags().String(LoopDetachedFlag, "", "marks the detached loop process itself; set only by the waiter that spawns it")
 	_ = cmd.Flags().MarkHidden(LoopDetachedFlag)
+	cmd.Flags().String(ArbiterAttemptFlag, "", "with --"+UntilStopFlag+", consume the named arbiter attempt before the loop starts; the arbiter verb's relaunch line carries it")
 	return cmd
 }

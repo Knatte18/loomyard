@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -585,15 +586,28 @@ func TestLoop_StopDetailAndTraceCopy(t *testing.T) {
 }
 
 func TestLoop_RefusalsBeforeAnyStep(t *testing.T) {
+	busyErr := fmt.Errorf("%w: run lock held", shedengine.ErrShedBusy)
 	tests := []struct {
 		name      string
 		unarm     bool
 		loopID    string
 		wantError string
 		wantKind  any
+		// args, when set, replaces the detached loop's command line.
+		args []string
+		// noHook leaves Hooks.ConsumeAttempt nil; otherwise a row with args installs a hook returning consumeErr.
+		noHook     bool
+		consumeErr error
+		// wantHookCalls is how many times the hook may have been called; a row without args never installs one.
+		wantHookCalls int
+		wantAttempt   bool
 	}{
 		{name: "unarmed spec", unarm: true, loopID: detachedLoopID, wantError: "arms no loop; way forward: run the step without --until-stop", wantKind: KindBootstrap},
 		{name: "unusable loop id", loopID: "../escape", wantError: "way forward: run the step with --until-stop alone", wantKind: nil},
+		{name: "attempt flag without until-stop", args: []string{"--" + ArbiterAttemptFlag, "3"}, wantError: "way forward: run the step with --until-stop --arbiter-attempt 3", wantKind: KindBootstrap, wantAttempt: true},
+		{name: "attempt flag on a recipe consuming none", args: []string{"--" + UntilStopFlag, "--" + ArbiterAttemptFlag, "3"}, noHook: true, wantError: "this recipe consumes no arbiter attempt", wantKind: KindBootstrap, wantAttempt: true},
+		{name: "attempt hook busy", args: []string{"--" + UntilStopFlag, "--" + ArbiterAttemptFlag, "3"}, consumeErr: busyErr, wantHookCalls: 1, wantError: "run lock held", wantKind: KindBusy, wantAttempt: true},
+		{name: "attempt hook refuses", args: []string{"--" + UntilStopFlag, "--" + ArbiterAttemptFlag, "3"}, consumeErr: errors.New("attempt already applied"), wantHookCalls: 1, wantError: "attempt already applied", wantKind: KindBootstrap, wantAttempt: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -601,8 +615,23 @@ func TestLoop_RefusalsBeforeAnyStep(t *testing.T) {
 			if tt.unarm {
 				fx.spec.Loop = LoopSpec{}
 			}
+			hookCalls := 0
+			if tt.args != nil && !tt.noHook {
+				fx.spec.StepBusyKind = KindBusy
+				fx.spec.Hooks.ConsumeAttempt = func(_ context.Context, attempt string) error {
+					hookCalls++
+					if attempt != "3" {
+						t.Errorf("ConsumeAttempt attempt = %q; want the flag's value 3", attempt)
+					}
+					return tt.consumeErr
+				}
+			}
+			args := tt.args
+			if args == nil {
+				args = detachedArgs(tt.loopID)
+			}
 
-			env, code := execEnvelope(t, stepCmd(stepTexts(), fx.spec), detachedArgs(tt.loopID))
+			env, code := execEnvelope(t, stepCmd(stepTexts(), fx.spec), args)
 
 			if code != 1 || env["kind"] != tt.wantKind || !strings.Contains(fmt.Sprint(env["error"]), tt.wantError) {
 				t.Errorf("exit/kind/error = %d/%v/%v; want a refusal of kind %v naming %q", code, env["kind"], env["error"], tt.wantKind, tt.wantError)
@@ -610,8 +639,56 @@ func TestLoop_RefusalsBeforeAnyStep(t *testing.T) {
 			if _, present := env["loop"]; present || len(fx.requests) != 0 {
 				t.Errorf("envelope %v and %d children; want no loop object and no child, since the refusal ran no loop", env, len(fx.requests))
 			}
+			if hookCalls != tt.wantHookCalls {
+				t.Errorf("ConsumeAttempt called %d times; want %d", hookCalls, tt.wantHookCalls)
+			}
+			if _, present := env["arbiter_attempt"]; present != tt.wantAttempt || (tt.wantAttempt && env["arbiter_attempt"] != "3") {
+				t.Errorf("arbiter_attempt = %v (present %v); want 3 present %v", env["arbiter_attempt"], present, tt.wantAttempt)
+			}
 		})
 	}
+}
+
+// TestLoop_ArbiterAttemptConsumedByTheWaiter pins the one path no refusal covers: a ConsumeAttempt returning nil runs once with the flag's value before the loop is spawned or any child started, and neither the loop nor its children carry the attempt.
+func TestLoop_ArbiterAttemptConsumedByTheWaiter(t *testing.T) {
+	w := newWaitWorld(t, halting(shedengine.StateAwaiting, "", 1))
+	var consumed []string
+	var spawnedBeforeHook, childrenBeforeHook int
+	w.spec.Hooks.ConsumeAttempt = func(_ context.Context, attempt string) error {
+		consumed = append(consumed, attempt)
+		spawnedBeforeHook = len(w.spawnedIDs())
+		childrenBeforeHook = len(w.requests)
+		return nil
+	}
+	var loopArgv []string
+	w.spec.Loop.Spawn = func(argv []string) (<-chan struct{}, error) {
+		loopArgv = argv
+		return w.spawnDetached(argv)
+	}
+
+	var printed bytes.Buffer
+	code := clihelp.Execute(stepCmd(stepTexts(), w.spec), &printed, []string{"--" + UntilStopFlag, "--" + ArbiterAttemptFlag, "3"})
+
+	if code != 0 || !strings.Contains(printed.String(), `"stop":"halted"`) {
+		t.Fatalf("exit %d, output %q; want the loop to run to its halted stop", code, printed.String())
+	}
+	if !reflect.DeepEqual(consumed, []string{"3"}) || spawnedBeforeHook != 0 || childrenBeforeHook != 0 {
+		t.Errorf("ConsumeAttempt calls %v, %d loops and %d children before it; want one call with 3 and nothing started yet", consumed, spawnedBeforeHook, childrenBeforeHook)
+	}
+	for _, argv := range append([][]string{loopArgv}, childArgvs(w.requests)...) {
+		if slices.ContainsFunc(argv, func(arg string) bool { return strings.Contains(arg, ArbiterAttemptFlag) }) {
+			t.Errorf("argv %v carries the arbiter attempt; want it dropped", argv)
+		}
+	}
+}
+
+// childArgvs lists the command line of each request.
+func childArgvs(requests []ChildRequest) [][]string {
+	var argvs [][]string
+	for _, req := range requests {
+		argvs = append(argvs, req.Argv)
+	}
+	return argvs
 }
 
 // fakeClock is a clock whose Sleep advances it at once, so a watch of minutes runs in no time.

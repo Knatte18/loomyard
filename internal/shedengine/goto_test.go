@@ -3,6 +3,8 @@ package shedengine
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -395,4 +397,120 @@ func TestGoto_BlockedRunAdmitsOnlyEarlierRows(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRelaunch pins each refusal Relaunch makes before it writes, that Admit runs only after every check passed, and that a valid goto keeps a human's pause conditions where Goto clears them.
+func TestRelaunch(t *testing.T) {
+	t.Parallel()
+	errAdmit := errors.New("admit refused")
+	tests := []struct {
+		name string
+		// seed is the status written before the call; nil leaves the status file absent.
+		seed       *Status
+		holdLock   bool
+		target     string
+		admitErr   error
+		wantErr    string
+		wantBusy   bool
+		wantAdmits int
+		check      func(t *testing.T, got Status)
+	}{
+		{name: "run lock held", seed: seedWith(StateBlocked, "B"), holdLock: true, target: "A", wantBusy: true, wantErr: "lyx shed pause"},
+		{name: "status file absent", target: "A", wantErr: "way forward: told clause"},
+		{name: "done run", seed: seedWith(StateDone, "B"), target: "A", wantErr: "relaunch never re-opens a finished run; way forward: seed a new run"},
+		{name: "running run", seed: seedWith(StateRunning, "B"), target: "A", wantErr: "another loop owns this run; way forward:"},
+		{name: "target past the current row", seed: seedWith(StateBlocked, "A"), target: "B", wantErr: "lies past the run's current row"},
+		{name: "admit error returned verbatim", seed: seedWith(StateBlocked, "B"), target: "A", admitErr: errAdmit, wantErr: errAdmit.Error(), wantAdmits: 1},
+		{
+			name: "backward target keeps the pause conditions", seed: seedWith(StateBlocked, "B"), target: "A", wantAdmits: 1,
+			check: func(t *testing.T, got Status) {
+				if got.CurrentProducer != "A" || got.State != StatePaused || got.Error != "" || got.Transient != "" {
+					t.Errorf("CurrentProducer, State, Error, Transient = %q, %q, %q, %q; want A, paused, cleared", got.CurrentProducer, got.State, got.Error, got.Transient)
+				}
+				if len(got.History) != 1 || got.History[0].Producer != "A" || got.History[0].Outcome != OutcomeGoto {
+					t.Fatalf("History = %+v; want one goto entry for A", got.History)
+				}
+				if !got.PauseRequested || got.PauseBefore != "B" || got.PauseAfter != "A" {
+					t.Errorf("PauseRequested, PauseBefore, PauseAfter = %v, %q, %q; want true, B, A kept", got.PauseRequested, got.PauseBefore, got.PauseAfter)
+				}
+			},
+		},
+		{name: "no target writes the status unchanged", seed: seedWith(StateBlocked, "B"), wantAdmits: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shed, _, _ := gotoShed(t)
+			var before Status
+			if tt.seed != nil {
+				seedStatus(t, shed.StatusPath, shed.StatusLockPath, *tt.seed)
+				before = readStatus(t, shed.StatusPath, shed.StatusLockPath)
+			}
+			if tt.holdLock {
+				// The lock parent is normally made by Relaunch itself, so make it here before holding the lock.
+				if err := os.MkdirAll(filepath.Dir(shed.LockPath), 0o755); err != nil {
+					t.Fatalf("create lock parent: %v", err)
+				}
+				held, locked, err := lock.TryAcquireWriteLock(shed.LockPath)
+				if err != nil || !locked {
+					t.Fatalf("TryAcquireWriteLock = _, %v, %v; want acquired", locked, err)
+				}
+				defer held.Release()
+			}
+			admits := 0
+			got, err := Relaunch(RelaunchRequest{
+				StatusPath:              shed.StatusPath,
+				LockPath:                shed.LockPath,
+				StatusLockPath:          shed.StatusLockPath,
+				Producers:               shed.Producers,
+				MissingStatusWayForward: "way forward: told clause",
+				Target:                  tt.target,
+				Admit:                   func(Status) error { admits++; return tt.admitErr },
+			})
+			if admits != tt.wantAdmits {
+				t.Errorf("Admit called %d times; want %d", admits, tt.wantAdmits)
+			}
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Relaunch error = %v; want it to contain %q", err, tt.wantErr)
+				}
+				if tt.wantBusy != errors.Is(err, ErrShedBusy) {
+					t.Errorf("errors.Is(err, ErrShedBusy) = %v; want %v", !tt.wantBusy, tt.wantBusy)
+				}
+				if tt.admitErr != nil && err != tt.admitErr {
+					t.Errorf("Relaunch error = %v; want Admit's error unchanged", err)
+				}
+				if tt.seed != nil {
+					if after := readStatus(t, shed.StatusPath, shed.StatusLockPath); !reflect.DeepEqual(before, after) {
+						t.Errorf("status file changed on a refusal: %+v -> %+v", before, after)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Relaunch = _, %v; want nil error", err)
+			}
+			after := readStatus(t, shed.StatusPath, shed.StatusLockPath)
+			if !reflect.DeepEqual(got, after) {
+				t.Errorf("returned Status = %+v; want the written file %+v", got, after)
+			}
+			if tt.check != nil {
+				tt.check(t, after)
+			} else if !reflect.DeepEqual(before, after) {
+				t.Errorf("status file changed without a target: %+v -> %+v", before, after)
+			}
+		})
+	}
+}
+
+// seedWith returns a seed status in the given state at the given current producer, with every pause condition set.
+func seedWith(s State, currentProducer string) *Status {
+	seed := commonSeed(currentProducer)
+	seed.State = s
+	seed.Error = "stuck on " + currentProducer
+	seed.Transient = "network"
+	seed.PauseRequested = true
+	seed.PauseBefore = "B"
+	seed.PauseAfter = "A"
+	return &seed
 }

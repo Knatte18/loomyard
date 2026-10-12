@@ -91,6 +91,11 @@ type Hooks struct {
 	// AfterInterrupt runs when the loop stops on a child step that ended without an envelope, after the stop is classified and before its envelope is written.
 	// It receives the stop row, the cause and the first trace file of the child, and its return is the envelope's friction key, like AfterStep's.
 	AfterInterrupt func(ctx context.Context, producer, cause, traceFile string) string
+	// ConsumeAttempt runs in step's waiter, on `--until-stop --arbiter-attempt <attempt>`, before the loop is spawned.
+	// It is the arming module's consumption of the named attempt.
+	// An error wrapping shedengine.ErrShedBusy is reported with the spec's StepBusyKind, any other error with kind bootstrap, and no loop starts.
+	// Nil for a recipe that consumes none, which refuses the flag.
+	ConsumeAttempt func(ctx context.Context, attempt string) error
 }
 
 // VerbTexts carries each verb's cobra Use/Short/Long strings, passed by value at Verbs'

@@ -213,16 +213,25 @@ func TestReadCirclingDecision(t *testing.T) {
 	}
 }
 
+// escalationRecord is a well-formed round-1 escalation record.
+const escalationRecord = "---\nround: 1\ncause: budget\n---\nbrief\n"
+
+// TestPendingCirclingDecision pins PendingCirclingDecision over each layout of the latest round, and PendingEscalation over the same layouts.
 func TestPendingCirclingDecision(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
 		// decisionFile is the round-1 decision file's content; empty leaves it absent.
 		decisionFile string
+		// escalationFile is the round-1 escalation record's content; empty leaves it absent.
+		escalationFile string
 		// noRound leaves the run directory without any round.
 		noRound     bool
 		want        bool
 		wantErrPath bool
+		// wantEscalation is PendingEscalation's pending result; wantEscalationMalformed is its error instead.
+		wantEscalation          bool
+		wantEscalationMalformed bool
 	}{
 		{name: "no round", noRound: true},
 		{name: "no decision file"},
@@ -230,6 +239,19 @@ func TestPendingCirclingDecision(t *testing.T) {
 		{name: "pending continue", decisionFile: "---\nround: 1\ndecision: continue\ncause: budget\nsettled: false\n---\n", want: true},
 		{name: "settled accept", decisionFile: "---\nround: 1\ndecision: accept\ncause: circling\nsettled: true\n---\n"},
 		{name: "malformed decision file names its path", decisionFile: "accept\n", wantErrPath: true},
+		{name: "escalated with no decision", escalationFile: escalationRecord, wantEscalation: true},
+		{
+			name:           "escalated with a pending decision",
+			escalationFile: escalationRecord,
+			decisionFile:   "---\nround: 1\ndecision: accept\ncause: budget\nsettled: false\n---\n",
+			want:           true,
+		},
+		{
+			name:           "escalated with a settled decision",
+			escalationFile: escalationRecord,
+			decisionFile:   "---\nround: 1\ndecision: accept\ncause: budget\nsettled: true\n---\n",
+		},
+		{name: "malformed escalation record", escalationFile: "not frontmatter\n", wantEscalationMalformed: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -242,6 +264,23 @@ func TestPendingCirclingDecision(t *testing.T) {
 				if err := os.WriteFile(circlingDecisionPath(dir, 1), []byte(tt.decisionFile), 0o644); err != nil {
 					t.Fatalf("WriteFile = %v; want nil", err)
 				}
+			}
+
+			if tt.escalationFile != "" {
+				if err := os.WriteFile(escalationPath(dir, 1), []byte(tt.escalationFile), 0o644); err != nil {
+					t.Fatalf("WriteFile = %v; want nil", err)
+				}
+			}
+
+			round, brief, pending, escErr := PendingEscalation(dir)
+			if tt.wantEscalationMalformed {
+				if !errors.Is(escErr, ErrEscalationMalformed) || pending {
+					t.Errorf("PendingEscalation = (%v, %v); want an error wrapping ErrEscalationMalformed and not pending", pending, escErr)
+				}
+			} else if escErr != nil || pending != tt.wantEscalation {
+				t.Errorf("PendingEscalation = (%v, %v); want (%v, nil)", pending, escErr, tt.wantEscalation)
+			} else if pending && (round != 1 || brief != escalationPath(dir, 1)) {
+				t.Errorf("PendingEscalation round, brief = %d, %q; want 1, %q", round, brief, escalationPath(dir, 1))
 			}
 
 			got, err := PendingCirclingDecision(dir)

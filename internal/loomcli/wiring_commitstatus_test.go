@@ -136,7 +136,23 @@ func TestStatusCommitPathspec(t *testing.T) {
 		wantReviews bool
 		wantLoom    bool
 		wantDrive   bool
+		wantArbiter bool
 	}{
+		{
+			name: "arbiter directory holding only an empty attempt directory",
+			setup: func(t *testing.T, loc *lyxcwd.Location) {
+				if err := os.MkdirAll(shedrun.ArbiterAttemptDir(loc, shedrun.SelfRunID, 1), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "arbiter attempt file",
+			setup: func(t *testing.T, loc *lyxcwd.Location) {
+				writeFile(t, filepath.Join(shedrun.ArbiterAttemptDir(loc, shedrun.SelfRunID, 1), "attempt.json"), "{}\n")
+			},
+			wantArbiter: true,
+		},
 		{name: "nothing on disk", setup: func(t *testing.T, loc *lyxcwd.Location) {}},
 		{
 			name: "only empty segment directories",
@@ -242,6 +258,9 @@ func TestStatusCommitPathspec(t *testing.T) {
 			}
 			if tt.wantDrive {
 				want = append(want, shedrun.DriveReportsRel(location, shedrun.SelfRunID))
+			}
+			if tt.wantArbiter {
+				want = append(want, shedrun.ArbiterRel(location, shedrun.SelfRunID))
 			}
 			got := statusCommitPathspec(location, shedrun.SelfRunID)
 			if !reflect.DeepEqual(got, want) {

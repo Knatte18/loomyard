@@ -97,6 +97,7 @@
 //     A recorded decision is acted on first, whatever the budget:
 //     a continue maps to Stuck, marked BudgetExempt exactly when the escalation's cause is budget, so a continue after a budget escalation spends no budget;
 //     a pending accept settles its record and maps to Done after Approve and Commit, for either cause.
+//     PendingCirclingDecision and PendingEscalation read a run directory's latest round: the first reports a decision file not yet settled, the second a Bouncer-written escalation, with its round and brief path, that no decision file answers.
 //     Auto-accept: a Bouncer told BouncerConfig.AutoAccept settles a spent budget as an accept instead of escalating.
 //     It fires for the budget cause alone, also over a CIRCLING verdict, and only on a harvest, the judge having written the verdict in this call, over a round with no decision and no escalation record.
 //     It records the round's decision file as an accept with cause budget and `automatic: true`, then takes the path a recorded parent accept takes (carry-over, settled record, Approve, Commit, Done),

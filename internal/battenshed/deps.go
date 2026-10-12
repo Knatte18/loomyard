@@ -85,6 +85,14 @@ type ChildDecision struct {
 	HeadSHA string
 }
 
+// ChildArbiter is the reading of the child's in-flight arbiter marker.
+type ChildArbiter struct {
+	// Deadline is the time the arbiter's wait for its verdict ends.
+	Deadline time.Time
+	// Alive reports whether the arbiter strand the marker names is live.
+	Alive bool
+}
+
 // InnerRunDeps carries every told value and injected closure NewInnerRun needs: spawning the
 // inner shed run, resolving and reading its persisted status, and the sleep seam a test replaces
 // to keep the poll interval out of real time.
@@ -168,6 +176,11 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil StopReport resolves to reporting none in NewInnerRun.
 	StopReport func() (path string, at time.Time, found bool, err error)
+	// ArbiterInFlight reads the child's in-flight arbiter marker, reporting found == false when there is none.
+	// The state-changed notice is held while a live arbiter may still settle the child's stop.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil ArbiterInFlight resolves to reporting none in NewInnerRun.
+	ArbiterInFlight func(ctx context.Context) (arbiter ChildArbiter, found bool, err error)
 	// NoticeQuiet is how long a running child's agents may all stay idle, with its driver strand alive and no wait marker live, before the row sends a quiet notice.
 	// Zero disables the quiet notice.
 	NoticeQuiet time.Duration

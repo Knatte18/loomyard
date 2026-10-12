@@ -9,6 +9,7 @@ package loomengine
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -42,6 +43,57 @@ type DriverSettings struct {
 	Effort string
 	// Version is the resolved driver role's "version" parameter, empty when unset.
 	Version string
+}
+
+// arbiterDefaultModelSpec is the model-spec an empty arbiter key takes.
+const arbiterDefaultModelSpec = "opus[high]"
+
+// arbiterDefaultTimeout is the timeout a zero arbiter_timeout_min takes.
+const arbiterDefaultTimeout = 30 * time.Minute
+
+// ArbiterSettings is the arbiter role's resolved model settings, timeout and spawn budget, threaded onto the arbiter session's launch spec.
+type ArbiterSettings struct {
+	// Model is the resolved provider-side model string.
+	Model string
+	// Effort is the resolved "effort" parameter, empty when unset.
+	Effort string
+	// Version is the resolved "version" parameter, empty when unset.
+	Version string
+	// Timeout is how long one arbiter spawn may run.
+	Timeout time.Duration
+	// MaxSpawns is how many arbiter spawns a run may use; zero turns the arbiter off.
+	MaxSpawns int
+}
+
+// ResolveArbiter parses and resolves the arbiter role's model-spec from cfg through reg.
+// An empty cfg.Arbiter takes opus[high] and a zero cfg.ArbiterTimeoutMin takes 30 minutes;
+// cfg.ArbiterMaxSpawns passes through.
+// A spec that does not parse or resolve is an error naming the arbiter key.
+func ResolveArbiter(cfg Config, reg modelspec.Registry) (ArbiterSettings, error) {
+	specText := cfg.Arbiter
+	if specText == "" {
+		specText = arbiterDefaultModelSpec
+	}
+	spec, err := modelspec.Parse(specText)
+	if err != nil {
+		return ArbiterSettings{}, fmt.Errorf("loom: ResolveArbiter: arbiter role model-spec: %w", err)
+	}
+	resolved, err := reg.Resolve(spec)
+	if err != nil {
+		return ArbiterSettings{}, fmt.Errorf("loom: ResolveArbiter: arbiter role model-spec: %w", err)
+	}
+
+	timeout := arbiterDefaultTimeout
+	if cfg.ArbiterTimeoutMin > 0 {
+		timeout = time.Duration(cfg.ArbiterTimeoutMin) * time.Minute
+	}
+	return ArbiterSettings{
+		Model:     resolved.Model,
+		Effort:    resolved.Params["effort"],
+		Version:   resolved.Params["version"],
+		Timeout:   timeout,
+		MaxSpawns: cfg.ArbiterMaxSpawns,
+	}, nil
 }
 
 // ResolveDriver parses and resolves the driver role's model-spec from cfg, returning the

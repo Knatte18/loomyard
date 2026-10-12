@@ -38,7 +38,11 @@
 // A refusal of the --until-stop invocation's own arming goes through ReportLoopArmError, which prints the bootstrap error with a loop object that stopped with no step run.
 //
 // The loop runs detached, and the --until-stop invocation is a waiter on it.
-// The waiter reads the loop lock, the pid file and the envelope file first.
+// The waiter may carry --arbiter-attempt <N>, which names the arbiter attempt a driver's re-launch consumes.
+// Before it reads the loop's files or spawns anything, the waiter calls Hooks.ConsumeAttempt with the value;
+// a nil hook, or a flag without --until-stop, is refused with kind bootstrap, and a hook error is refused with its own message (kind busy for a busy error, bootstrap otherwise).
+// Every such refusal carries arbiter_attempt on its envelope and starts no loop, and the flag is dropped from the loop's and its children's command lines, so the attempt is consumed once.
+// The waiter then reads the loop lock, the pid file and the envelope file first.
 // A free lock beside the teardown's mark, or beside a pid file and no envelope, runs the dead-loop stop.
 // A held lock beside a pid file is a live loop: the waiter spawns nothing, adopts the loop id the pid file records and waits.
 // A held lock with no pid file is an instant liveness probe or a loop between taking its lock and writing its pid file, so the waiter adopts nothing and reads again on its timer until a pid file appears or the lock reads free.

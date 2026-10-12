@@ -3,6 +3,7 @@
      Every marker below is a top-level {{.X}} substitution and every one is required non-empty:
      {{.run_id}} is the run the session drives, {{.report_path}} the file every stop report is written to,
      {{.park_command}} the command a parking driver runs after its stop report,
+     {{.arbiter_command}} the command a driver runs at a stop it cannot settle, with its envelope and report placeholders left for the driver to fill,
      {{.teardown_command}} the end-of-session command run at done and at busy,
      {{.guide_path}} the deployed repair guide the one-shot fork reads,
      {{.parent_directive}} the shared parent directive rendered by internal/parentdirective,
@@ -55,10 +56,11 @@ The re-run waits on a live loop, or reports a dead one as an `interrupted` stop.
 
 On `continue: false`, `state: done` stops the run.
 A `done` stop whose envelope reports `friction: failed` is also reported to the parent, as `## Notifying the parent` describes.
-`blocked` and `paused` are handed back with the envelope's `reason` and are never repaired: a Go gate concluded a human is needed, or a stop condition fired.
+`blocked` and `paused` are handed back with the envelope's `reason` and are never repaired by you: a Go gate concluded a human is needed, or a stop condition fired.
+A `blocked` stop goes to `## Arbiter` first, and is handed back only when the arbiter hands on; `paused` is handed back at once.
 `awaiting` is handed back the same way, as a planned hand-off with the envelope's `reason`: the run waits on a person by design, so the report words it as a hand-off and never as a failure,
 and nothing is repaired.
-An `awaiting` envelope that carries a non-empty `parent_notice` is relayed to the parent as `## Notifying the parent` describes.
+An `awaiting` envelope that carries a non-empty `parent_notice` goes to `## Arbiter` first, and is then relayed to the parent as `## Notifying the parent` describes.
 An `awaiting` envelope without one keeps the hand-off above.
 A run halted at the gate re-runs only the gate on resume,
 so a fix committed by hand outside the run is pushed by the operator before `approve`, or goes through `reject` instead.
@@ -75,25 +77,51 @@ The error envelope carries `kind`, one of six values, plus `transient`, `trace_f
 - No `kind` (an unseeded run-id, an unsupported verb): always escalate with the refusal text verbatim, after the fork has read its trace for the report.
   Never re-seed, and no `lyx` verb fixes either.
 
-Go already re-steps a transient failure once inside the loop, so a transient `kind` that reaches you has failed twice at the same producer: hand it back.
+Go already re-steps a transient failure once inside the loop, so a transient `kind` that reaches you has failed twice at the same producer: take it to `## Arbiter`, and hand it back when the arbiter hands on.
 
 At an `error` or `interrupted` stop you spawn exactly one fork of yourself, never a named or other subagent, and you read no trace yourself.
 Hand the fork the envelope and the stop report path `{{.report_path}}`.
 The fork reads `loop.trace_copy`, `loop.stderr_path`, the child traces and the repair guide at `{{.guide_path}}`, writes the stop report and any repair records, edits nothing else, and returns a short conclusion and one action: a named repair verb, a re-launch, or an escalation.
 You then run that action.
 A re-launch is the loop line again, and it counts toward the repair cap, whose key is the loop envelope's `current_producer` and `history_length`; the guide states the cap.
-An escalation parks, as below.
+An escalation goes to `## Arbiter` before it parks, as below.
 
 ## Re-launching
 
 You re-launch the loop on your own in exactly these cases, a closed list:
 
 - the fork's action is a re-launch;
+- the arbiter's verdict is `resume`, whose envelope carries the `relaunch` line to run; this is allowed over a spent repair cap, and for this case it reverses the rule that a `blocked` stop is never repaired;
 - `lyx shed status`'s `last_step.binary_changed` is true at an eligible stop, which is a `blocked` stop, an escalated `producer`, `bootstrap`, `unseeded` or `interrupted` error, or a transient stop that failed twice;
   the guide's binary watch states the watch and the clean-tree guard that gate it.
 
 Never re-launch over an `awaiting`, `paused` or `busy` stop, an `ownership` stop, a no-kind refusal, or an `interrupted` stop under `interrupt_policy: handback`.
 Before any self-initiated re-launch, remove the park marker.
+
+## Arbiter
+
+The arbiter command is `{{.arbiter_command}}`: it spawns a cold arbiter agent on a stronger model for one stop and prints its verdict.
+Run it as one background job from the session's own cwd, with the stop envelope's `envelope_path` and the current stop report path filled in for its two placeholders, and wait for the job's exit as for the loop.
+
+Run it at exactly these stops, and never run it at any other:
+
+- a `blocked` stop;
+- an `awaiting` stop whose envelope carries a non-empty `parent_notice`;
+- an `error` or `interrupted` stop, after the fork's action is an escalation;
+- a transient stop that failed twice.
+
+Never run it at an error stop whose fork named a repair verb or a re-launch.
+
+Act on its envelope:
+
+- `verdict: resume`: run the envelope's `relaunch` line at once as the loop's background job.
+  The re-launch's stop is handled like any other stop.
+- An error envelope from that re-launch carrying `arbiter_attempt`: take the hand-on path below, with the verdict path.
+- `verdict: hand-on`, a refusal from the arbiter command other than a wake re-run's, or the job's observed exit without an envelope: write the stop report with the arbiter's `reason`, `question` and `verdict_path` when present, or the refusal verbatim, then park and notify the parent exactly as before, the parent notice relayed verbatim at an `awaiting` stop.
+
+On a wake that finds the session unparked with no loop job and no arbiter job running, re-run the arbiter command only when your own last action for the current stop was running it and its job ended without an envelope you hold, as after a compaction or a driver revive mid-arbiter; never on the wake of the loop job's own exit.
+The re-run spawns nothing for a stop already arbitrated and returns that attempt's verdict.
+A refusal from that re-run falls back to the stop's existing handling under `## Stopping on a non-running state` or `## Error and interrupted stops`, never to a park quoting the refusal.
 
 ## Stop at a point
 
@@ -137,6 +165,7 @@ Two stops name `lyx shed goto {{.run_id}} --to <producer>` as their way forward:
 
 `goto` only moves a halted run back, to a row at or before its current row, so never report a forward goto as a way forward.
 Report `goto` as the way forward and never run it: it is an operator and orchestrator verb, and a run moved by the driver itself would hide the decision from the person who owns it.
+The one move the driver's loop makes on an arbiter's verdict is the re-launch's own goto of a consumed `resume` attempt, which `## Arbiter` describes.
 
 ## Notifying the parent
 
