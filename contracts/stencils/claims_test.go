@@ -173,6 +173,12 @@ var wordingClaims = []stencilClaims{
 	{"loom-template-rework.md", LoomTemplateRework, []claim{
 		{must: "never plan an entry as scope", why: "a carry-over entry in the record's Open risks lists findings the closing round's fixer fixed or disputed and no fresh reviewer has seen, never scope for a rework generation"},
 	}},
+	{"loom-template-arbiter.md", LoomTemplateArbiter, joinClaims(
+		wantAll("the arbiter's closed change list, its author tag, its verdict file and its fixed escalation rule reach the agent",
+			"lyx loom circling accept", "lyx loom circling continue", "--by arbiter", "{{.verdict_path}}", "hand-on", "after round 3"),
+		wantNone("the arbiter moves and resumes nothing itself and messages no session",
+			"lyx loom goto", "lyx loom resume", "lyx loom approve", "lyx loom reject", "lyx loom review", "SendMessage"),
+	)},
 	{"landing-template-describe.md", LandingTemplateDescribe, []claim{
 		{must: "one item to check by hand", why: "a Plan-Review or Webster-Review carry-over finding reaches the reviewer as a manual-check item"},
 		{must: "A Discussion-Review entry is not carried into the description", why: "a Discussion-Review carry-over finding concerns the record, not the change under review"},
