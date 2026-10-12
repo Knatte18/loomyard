@@ -310,7 +310,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 			InterruptPolicyFor: loomshed.InterruptPolicyFor,
 			StatusExtras:       c.loomStatusExtras,
 			BarePause:          c.loomBarePause,
-			Waiting:           reviewWaitingFor(c.location),
+			Waiting:            reviewWaitingFor(c.location),
 		},
 	}
 
