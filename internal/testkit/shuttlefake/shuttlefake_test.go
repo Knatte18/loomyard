@@ -33,6 +33,9 @@ func TestEngine_InertDefaults(t *testing.T) {
 	if audit, err := e.AuditForksIncremental("s", "w", nil); err != nil || audit.SpawnCalls != 0 {
 		t.Errorf("AuditForksIncremental = %+v, %v; want zero, nil", audit, err)
 	}
+	if e.RunningTurn("x") || e.RewindPicker("x") || e.InterruptSettle() != 0 {
+		t.Error("guard readings must default to no running turn, no picker and no settle")
+	}
 }
 
 func TestEngine_PrepareRecordsCalls(t *testing.T) {
@@ -120,6 +123,22 @@ func TestEngine_Overrides(t *testing.T) {
 		}
 		if got := e.ColorSequence(segmentcolor.Cyan); got[0].Text != "cyan" {
 			t.Errorf("ColorSequence = %v", got)
+		}
+	})
+	t.Run("Guard readings", func(t *testing.T) {
+		e := &Engine{
+			RunningTurnFn:     func(capture string) bool { return capture == "running" },
+			RewindPickerFn:    func(capture string) bool { return capture == "picker" },
+			InterruptSettleFn: func() time.Duration { return 2 * time.Second },
+		}
+		if !e.RunningTurn("running") || e.RunningTurn("picker") {
+			t.Error("RunningTurn must answer RunningTurnFn")
+		}
+		if !e.RewindPicker("picker") || e.RewindPicker("running") {
+			t.Error("RewindPicker must answer RewindPickerFn")
+		}
+		if got := e.InterruptSettle(); got != 2*time.Second {
+			t.Errorf("InterruptSettle = %v, want 2s", got)
 		}
 	})
 	t.Run("Audit", func(t *testing.T) {

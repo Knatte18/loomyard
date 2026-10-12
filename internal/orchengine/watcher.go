@@ -57,8 +57,11 @@ type Session interface {
 	ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error)
 	// CompactedSince returns the newest compaction boundary after since in the transcript turnEnd names, with the turn ends that follow it.
 	CompactedSince(turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error)
-	// Interrupt stops the session's in-progress turn with the provider's interrupt key.
+	// Interrupt stops the session's running turn with the provider's interrupt key, sent only into a pane showing one.
+	// It fails with shuttleengine.ErrNoRunningTurn when the pane shows none, and with shuttleengine.ErrRewindPickerOpen when it closed an open rewind picker.
 	Interrupt(guid string) error
+	// InterruptSettle is how long after an interrupt key the pane needs before it is read again.
+	InterruptSettle() time.Duration
 }
 
 // Clock supplies the current time, settable in tests.
@@ -125,6 +128,9 @@ type Watcher struct {
 	firstTick time.Time
 	// pauseHandled holds the PausedAt, as Unix nanoseconds, of each hub entry already handled.
 	pauseHandled map[int64]bool
+	// pauseFirstEsc holds, per hub entry key, when the first interrupt key went.
+	// It is memory only: a watcher restarted during the settle has lost the time, finds the orch recorded in the entry, settles it through settledWithoutInterrupt and sends no second key.
+	pauseFirstEsc map[int64]time.Time
 	// pauseReadError is the text of the record read error last logged, empty while the record reads.
 	pauseReadError string
 }

@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -73,6 +74,49 @@ func TestIdleSession(t *testing.T) {
 	}
 }
 
+func TestInterruptGuardReadings(t *testing.T) {
+	t.Parallel()
+
+	rule := "────────────────────────────────"
+	tests := []struct {
+		name        string
+		capture     string
+		wantRunning bool
+		wantPicker  bool
+	}{
+		{"rewind picker", readPaneFixture(t, "pane-rewind-picker.txt"), false, true},
+		{"turn running", readPaneFixture(t, "pane-turn-running.txt"), true, false},
+		{"idle empty box", readPaneFixture(t, "pane-idle-empty.txt"), false, false},
+		{
+			name:       "transcript quoting the picker subtitle above an empty box",
+			capture:    "● Restore the code and/or conversation to the point before…\n\n" + rule + "\n❯ \n" + rule + "\n  ? for shortcuts\n",
+			wantPicker: false,
+		},
+		{
+			name:        "transcript quoting the running hint above an empty box",
+			capture:     "● the hint reads: esc to interrupt\n\n" + rule + "\n❯ \n" + rule + "\n  ? for shortcuts\n",
+			wantRunning: true,
+		},
+		{"permission prompt is not the picker", readPaneFixture(t, "pane-permission-prompt.txt"), false, false},
+	}
+	c := New()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := c.RunningTurn(tt.capture); got != tt.wantRunning {
+				t.Errorf("RunningTurn = %v; want %v", got, tt.wantRunning)
+			}
+			if got := c.RewindPicker(tt.capture); got != tt.wantPicker {
+				t.Errorf("RewindPicker = %v; want %v", got, tt.wantPicker)
+			}
+		})
+	}
+	if got := c.InterruptSettle(); got != 2*time.Second {
+		t.Errorf("InterruptSettle = %v; want %v", got, 2*time.Second)
+	}
+}
+
 func TestInputBoxText(t *testing.T) {
 	t.Parallel()
 
@@ -90,6 +134,7 @@ func TestInputBoxText(t *testing.T) {
 		{"turn running over an empty box", readPaneFixture(t, "pane-turn-running.txt"), "", true},
 		{"boxed side bars", "╭" + rule + "╮\n│ ❯ hello     │\n╰" + rule + "╯\n", "hello", true},
 		{"permission prompt has no box", readPaneFixture(t, "pane-permission-prompt.txt"), "", false},
+		{"rewind picker has no box", readPaneFixture(t, "pane-rewind-picker.txt"), "", false},
 		{"no input box", "● some transcript\n", "", false},
 		{"lone percent mark in the box", readPaneFixture(t, "pane-idle-eol-mark.txt"), "", true},
 		{"boxed side bars around a lone percent mark", "╭" + rule + "╮\n│ ❯     %   │\n╰" + rule + "╯\n", "", true},

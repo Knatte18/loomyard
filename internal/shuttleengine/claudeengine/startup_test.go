@@ -196,6 +196,12 @@ func TestStartup_Classification(t *testing.T) {
 			capture: "● The modal's accepting option reads yes, i accept.\n● Then press Enter to confirm the selection.\n\n❯\n? for shortcuts",
 			want:    shuttleengine.StartupReady,
 		},
+		{
+			// The picker's caret marks it ready, so the guards that close it run after the ready-agent-pane check.
+			name:    "rewind picker reads ready",
+			capture: readPaneFixture(t, "pane-rewind-picker.txt"),
+			want:    shuttleengine.StartupReady,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

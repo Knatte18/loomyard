@@ -18,3 +18,4 @@ The bounded exception is a lone stray character in an idle box: the guard clears
   The next send to the strand reads it: the same text with a turn start past the offset went out already and types nothing; otherwise the send types as usual.
 - Explicit key deliveries stay outside the rule: `Runner.Interrupt`, `Runner.Inject`, `InterruptSequence`, `ModelSwitchSequence`, the trust-prompt dismissal and the clear sent into a box holding exactly one stray-character candidate the guard reading found.
   Each names its keys itself and is not text for a draft box.
+  `Runner.Interrupt` and `Runner.Inject` stay outside this rule as explicit key deliveries, but their interrupt key follows `PATTERN-guarded-interrupt`.

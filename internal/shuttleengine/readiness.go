@@ -73,7 +73,7 @@ func judgeReadiness(state SessionState, unmatched bool, box boxReading) readines
 			return readiness{reason: "the session waits on an answer"}
 		}
 	case SessionBusy:
-		if state.Cause != SessionCauseBackground {
+		if state.RunningTurn() {
 			return readiness{reason: "a turn is running"}
 		}
 	case SessionDead:

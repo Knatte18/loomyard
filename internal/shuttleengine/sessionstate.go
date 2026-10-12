@@ -60,6 +60,12 @@ type SessionState struct {
 	Since time.Time
 }
 
+// RunningTurn reports whether the session is in the middle of a turn.
+// A busy state whose cause is background is a turn that ended with background work still running, so it is not a running turn.
+func (s SessionState) RunningTurn() bool {
+	return s.Name == SessionBusy && s.Cause != SessionCauseBackground
+}
+
 // Liveness is what the caller proved about the session's process.
 type Liveness int
 

@@ -66,15 +66,20 @@ func Command() *cobra.Command {
 	var status bool
 	cmd := &cobra.Command{
 		Use:         "pause [<slug>]",
-		Short:       "pause the hub or one pair: hold agent and network work and interrupt busy sessions",
+		Short:       "pause the hub or one pair: hold agent and network work and interrupt running turns",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `pause records a pause, waits a short grace for busy agent sessions and network
-operations to finish, interrupts every covered session still busy with Esc, and
-holds every path that would start agent or network work until "lyx resume".
+operations to finish, interrupts every covered session still in a running turn
+with Esc, and holds every path that would start agent or network work until
+"lyx resume".
+
+A second Esc goes only after the provider's settle time, and only into a pane
+still showing a running turn. A session whose turn ended with background work
+is sent no Esc and is reported under "background".
 
 With no slug it covers the whole hub; with a slug it covers that pair. A repeated
-pause adds no entry and interrupts only the sessions busy now. The orchestrator
-is interrupted by its own watcher at the grace end, not by pause.
+pause adds no entry and interrupts only the sessions in a running turn now. The
+orchestrator is interrupted by its own watcher at the grace end, not by pause.
 
 --grace sets the grace in seconds, 0 to 60. --status prints the live entries,
 the network operations in flight and the parent locks held, and changes nothing.
@@ -155,10 +160,11 @@ func ResumeCommand() *cobra.Command {
 slug it lifts that pair's own entry. A slug covered only by a hub-wide pause is
 refused: run "lyx resume" to lift the hub pause. Resuming nothing is a no-op.
 
-Each session the pause interrupted gets one line to carry on, unless it is not
-live, reads busy or holds a draft in its input box; those are named with the
-reason. A session another live entry still covers moves to that entry with no
-line. The orchestrator's line comes from its own watcher.
+Each session the pause interrupted gets one line to carry on, unless its strand
+is not live or its guarded send is refused, as for a running turn, a draft, a
+dialog on screen or an open rewind picker; those are named with the reason. A
+session another live entry still covers moves to that entry with no line. The
+orchestrator's line comes from its own watcher.
 
 Example:
   lyx resume

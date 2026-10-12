@@ -26,11 +26,18 @@ type Pair interface {
 	Slug() string
 	// Sessions lists the pair's live shuttle-run strands, the loom driver included.
 	Sessions() ([]SessionInfo, error)
-	// Busy reports whether the session is in a turn or holds an unsent draft.
+	// Busy reports whether the session is in a running turn: busy with any cause but background work.
 	Busy(guid string) (bool, error)
+	// Background reports whether the session's turn ended with background work still running, with the outstanding tasks' labels.
+	Background(guid string) (labels []string, background bool, err error)
+	// PaneRunningTurn reports whether the session's pane shows a running turn, from one fresh capture.
+	PaneRunningTurn(guid string) (bool, error)
+	// InterruptSettle is how long after an interrupt key the pane needs before it is read again.
+	InterruptSettle() time.Duration
 	// Live reports whether the strand exists with a live pane.
 	Live(guid string) (bool, error)
-	// Interrupt sends the provider's interrupt key to the session after the pane check.
+	// Interrupt sends the provider's interrupt key through shuttle's guarded interrupt.
+	// It fails with shuttleengine.ErrNoRunningTurn when the pane shows no running turn, and with shuttleengine.ErrRewindPickerOpen when it closed an open rewind picker.
 	Interrupt(guid string) error
 	// Send types text into the session through the guarded paste-submit.
 	Send(guid, text string) error

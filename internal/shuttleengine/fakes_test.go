@@ -42,6 +42,9 @@ type fakeReed struct {
 
 	CaptureQueue []string // Consumed FIFO by CapturePane, like StatusQueue.
 	CaptureErr   error
+	// CaptureErrQueue is consumed FIFO by CapturePane, last entry sticking like CaptureQueue.
+	// A nil entry answers from CaptureQueue as usual and a non-nil entry fails that call; CaptureErr keeps failing every call.
+	CaptureErrQueue []error
 
 	SendTextCalls []struct {
 		GUID   string
@@ -179,6 +182,15 @@ func (m *fakeReed) CapturePane(guid string) (string, error) {
 	if m.CaptureErr != nil {
 		return "", m.CaptureErr
 	}
+	if len(m.CaptureErrQueue) > 0 {
+		scripted := m.CaptureErrQueue[0]
+		if len(m.CaptureErrQueue) > 1 {
+			m.CaptureErrQueue = m.CaptureErrQueue[1:]
+		}
+		if scripted != nil {
+			return "", scripted
+		}
+	}
 	if len(m.CaptureQueue) == 0 {
 		return "", nil
 	}
@@ -206,8 +218,12 @@ var _ ReedOps = (*fakeReed)(nil)
 // StartupPending). InterruptSequence/ComposeSend return fixed, inspectable
 // choreographies rather than scripted ones — Interrupt/Send tests assert
 // against these canonical sequences directly.
+// It implements InterruptGuard: a capture shows a running turn when it contains "RUNNING", and the interrupt settle is Settle.
 type fakeEngine struct {
 	mu sync.Mutex
+
+	// Settle is what InterruptSettle answers.
+	Settle time.Duration
 
 	PrepareLaunch Launch
 	PrepareErr    error
@@ -323,6 +339,12 @@ func (e *fakeEngine) Startup(capture string) StartupState {
 func (e *fakeEngine) InterruptSequence() []PaneInput {
 	return []PaneInput{{Key: "Escape"}}
 }
+
+func (e *fakeEngine) RunningTurn(capture string) bool { return strings.Contains(capture, "RUNNING") }
+
+func (e *fakeEngine) InterruptSettle() time.Duration { return e.Settle }
+
+var _ InterruptGuard = (*fakeEngine)(nil)
 
 // TrustDismissSequence records the capture it was handed and returns the canonical single-Enter
 // trust dismissal — fixed, not scripted, so tests assert against it directly.
@@ -730,6 +752,29 @@ func (e *readinessEngine) TypeSequence(text string) []PaneInput { return []PaneI
 var (
 	_ SessionCycler  = (*readinessEngine)(nil)
 	_ InputBoxReader = (*readinessEngine)(nil)
+)
+
+// pickerEngine is readinessEngine plus the RewindPickerReader capability: a capture shows the picker when it contains "REWIND-PICKER".
+type pickerEngine struct {
+	readinessEngine
+}
+
+func (e *pickerEngine) RewindPicker(capture string) bool {
+	return strings.Contains(capture, "REWIND-PICKER")
+}
+
+// pickerOnlyEngine is fakeEngine plus the RewindPickerReader capability with pickerEngine's needle, so it reads the picker without being a SessionCycler.
+type pickerOnlyEngine struct {
+	fakeEngine
+}
+
+func (e *pickerOnlyEngine) RewindPicker(capture string) bool {
+	return strings.Contains(capture, "REWIND-PICKER")
+}
+
+var (
+	_ RewindPickerReader = (*pickerEngine)(nil)
+	_ RewindPickerReader = (*pickerOnlyEngine)(nil)
 )
 
 // idleReed is a fakeReed whose pane reads busyFrame until idleAt on its clock and "IDLE" after, followed by the last text typed.

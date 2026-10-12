@@ -80,7 +80,7 @@ func TestNewRunner_RefusesUnusableToldPaths(t *testing.T) {
 			if err := runner.Send("strand-1", "hi"); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
 				t.Errorf("Send() error = %v; want it to name %q", err, tt.wantIn)
 			}
-			if err := runner.Inject("strand-1", []PaneInput{{Key: "Escape"}}); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
+			if err := runner.Inject("strand-1", []PaneInput{{Key: "C-u"}}); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
 				t.Errorf("Inject() error = %v; want it to name %q", err, tt.wantIn)
 			}
 		})
@@ -134,7 +134,7 @@ func TestNewDetachedRunner_RefusesUnusableToldPaths(t *testing.T) {
 			if err := runner.Send("strand-1", "hi"); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
 				t.Errorf("Send() error = %v; want it to name %q", err, tt.wantIn)
 			}
-			if err := runner.Inject("strand-1", []PaneInput{{Key: "Escape"}}); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
+			if err := runner.Inject("strand-1", []PaneInput{{Key: "C-u"}}); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
 				t.Errorf("Inject() error = %v; want it to name %q", err, tt.wantIn)
 			}
 		})
@@ -744,36 +744,210 @@ func readyAgentEngine() *fakeEngine {
 	return &fakeEngine{StartupScript: []StartupState{StartupReady}}
 }
 
-// TestRun_Interrupt_PlaysEscape covers Interrupt on a live pane: exactly one Escape and no text.
+// TestRun_Interrupt_PlaysEscape covers the guarded Interrupt on a live pane: the guard sends the key only into a pane showing a running turn.
 // One capture can land mid-redraw and classify a healthy TUI as still booting, so the ready probe
 // must retry within agentPaneProbeAttempts and pass once a later capture classifies Ready, rather
 // than refusing on the first inconclusive frame.
+// A runner row also asserts the Runner's settle and pane running-turn readings on the same fixture.
 func TestRun_Interrupt_PlaysEscape(t *testing.T) {
+	boom := errors.New("boom")
 	tests := []struct {
-		name   string
-		script []StartupState
+		name        string
+		script      []StartupState
+		viaRunner   bool
+		captures    []string
+		captureErrs []error
+		wantKeys    int
+		wantErr     error
+		wantMsg     string
+		wantRunning bool
 	}{
-		{name: "ready pane", script: []StartupState{StartupReady}},
-		{name: "ready probe retries a transient boot", script: []StartupState{StartupPending, StartupReady}},
+		{name: "ready pane showing a running turn", script: []StartupState{StartupReady}, captures: []string{"RUNNING"}, wantKeys: 1, wantRunning: true},
+		{name: "ready probe retries a transient boot", script: []StartupState{StartupPending, StartupReady}, captures: []string{"RUNNING"}, wantKeys: 1, wantRunning: true},
+		{name: "runner interrupt into a running turn", script: []StartupState{StartupReady}, viaRunner: true, captures: []string{"RUNNING"}, wantKeys: 1, wantRunning: true},
+		{name: "a pane showing no running turn gets no key", script: []StartupState{StartupReady}, captures: []string{"idle"}, wantErr: ErrNoRunningTurn, wantMsg: "lyx shuttle send"},
+		{name: "a pane showing no running turn gets no key from the runner", script: []StartupState{StartupReady}, viaRunner: true, captures: []string{"idle"}, wantErr: ErrNoRunningTurn, wantMsg: "lyx shuttle send"},
+		{name: "a failed guard capture sends no key", script: []StartupState{StartupReady}, captures: []string{"RUNNING"}, captureErrs: []error{nil, boom}, wantErr: boom},
+		{name: "a failed guard capture sends no key from the runner", script: []StartupState{StartupReady}, viaRunner: true, captures: []string{"RUNNING"}, captureErrs: []error{nil, boom}, wantErr: boom},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			stubInputSleep(t)
-			reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-			engine := &fakeEngine{StartupScript: tt.script}
-			run := newFixture(t, reed, engine, withConfig(Config{})).newRun(Spec{})
-
-			if err := run.Interrupt(); err != nil {
-				t.Fatalf("Interrupt() error: %v", err)
+			reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: tt.captures, CaptureErrQueue: tt.captureErrs}
+			engine := &fakeEngine{StartupScript: tt.script, Settle: 2 * time.Second}
+			var err error
+			var runner *Runner
+			if tt.viaRunner {
+				runner = newFixture(t, reed, engine, withConfig(Config{}), withStrand("strand-1")).Runner
+				err = runner.Interrupt("strand-1")
+			} else {
+				err = newFixture(t, reed, engine, withConfig(Config{})).newRun(Spec{}).Interrupt()
 			}
 
-			if len(reed.SendKeyCalls) != 1 || reed.SendKeyCalls[0].Key != "Escape" {
-				t.Errorf("SendKey calls = %+v, want exactly one Escape", reed.SendKeyCalls)
+			if tt.wantErr == nil && err != nil {
+				t.Fatalf("Interrupt() error: %v", err)
+			}
+			if tt.wantErr != nil && !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Interrupt() error = %v; want it to wrap %v", err, tt.wantErr)
+			}
+			if tt.wantErr == boom && errors.Is(err, ErrNoRunningTurn) {
+				t.Errorf("Interrupt() error = %v; a failed capture must not read as no running turn", err)
+			}
+			if tt.wantMsg != "" && !strings.Contains(err.Error(), tt.wantMsg) {
+				t.Errorf("Interrupt() error = %v; want it to contain %q", err, tt.wantMsg)
+			}
+			if len(reed.SendKeyCalls) != tt.wantKeys {
+				t.Errorf("SendKey calls = %+v, want %d", reed.SendKeyCalls, tt.wantKeys)
+			}
+			if tt.wantKeys == 1 && reed.SendKeyCalls[0].Key != "Escape" {
+				t.Errorf("SendKey calls = %+v, want one Escape", reed.SendKeyCalls)
 			}
 			if len(reed.SendTextCalls) != 0 {
 				t.Errorf("SendText calls = %+v, want none", reed.SendTextCalls)
 			}
+			if !tt.viaRunner {
+				return
+			}
+			if got := runner.InterruptSettle(); got != 2*time.Second {
+				t.Errorf("InterruptSettle() = %v; want 2s", got)
+			}
+			running, runningErr := runner.PaneRunningTurn("strand-1")
+			if tt.wantErr == boom {
+				if !errors.Is(runningErr, boom) {
+					t.Errorf("PaneRunningTurn() error = %v; want it to wrap boom", runningErr)
+				}
+				return
+			}
+			if runningErr != nil || running != tt.wantRunning {
+				t.Errorf("PaneRunningTurn() = %v, %v; want %v, nil", running, runningErr, tt.wantRunning)
+			}
 		})
+	}
+}
+
+// TestGuardedPickerClose covers the guarded rewind-picker close before an interrupt and before a verified send:
+// one interrupt key closes an open picker and fails the operation, nothing more is sent, and no text is typed.
+func TestGuardedPickerClose(t *testing.T) {
+	boom := errors.New("boom")
+	const (
+		runInterrupt    = "run-interrupt"
+		runnerInterrupt = "runner-interrupt"
+		runnerSend      = "runner-send"
+	)
+	tests := []struct {
+		name        string
+		ops         []string
+		pickerOnly  bool
+		captures    []string
+		captureErrs []error
+		wantKeys    int
+		wantErr     error
+		wantNotErr  error
+		wantMsg     string
+		wantSettle  bool
+	}{
+		{
+			name: "a picker on an interrupt is closed with one key and fails", ops: []string{runInterrupt, runnerInterrupt},
+			captures: []string{"REWIND-PICKER", "REWIND-PICKER", "❯ "},
+			wantKeys: 1, wantErr: ErrRewindPickerOpen, wantNotErr: ErrSessionBusy, wantMsg: "closed it", wantSettle: true,
+		},
+		{
+			name: "a picker on a send is closed with one key, fails and types nothing", ops: []string{runnerSend},
+			captures: []string{"REWIND-PICKER", "❯ "},
+			wantKeys: 1, wantErr: ErrRewindPickerOpen, wantNotErr: ErrSessionBusy, wantMsg: "closed it", wantSettle: true,
+		},
+		{
+			name: "a picker still on screen after the close sends nothing more", ops: []string{runnerInterrupt, runnerSend},
+			captures: []string{"REWIND-PICKER"},
+			wantKeys: 1, wantErr: ErrRewindPickerOpen, wantNotErr: ErrSessionBusy, wantMsg: "still on screen", wantSettle: true,
+		},
+		{
+			name: "no picker on an interrupt: the close sends nothing and the guard decides", ops: []string{runInterrupt, runnerInterrupt},
+			captures: []string{"RUNNING ❯ "},
+			wantKeys: 1,
+		},
+		{
+			name: "no picker on a send: the close sends nothing and the send goes on to its idle wait", ops: []string{runnerSend},
+			captures: []string{"working"},
+			wantErr:  ErrSessionBusy,
+		},
+		{
+			name: "a failed picker capture on a send skips the close and the idle wait holds", ops: []string{runnerSend},
+			captures: []string{"working"}, captureErrs: []error{boom, nil},
+			wantErr: ErrSessionBusy,
+		},
+		{
+			name: "a failed picker capture on a send without polls fails closed", ops: []string{runnerSend}, pickerOnly: true,
+			captures: []string{"❯ "}, captureErrs: []error{nil, boom},
+			wantErr: boom, wantNotErr: ErrSessionBusy,
+		},
+	}
+	for _, tt := range tests {
+		for _, op := range tt.ops {
+			t.Run(tt.name+"/"+op, func(t *testing.T) {
+				stubInputSleep(t)
+				reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: tt.captures, CaptureErrQueue: tt.captureErrs}
+				clock := newFakeClock(time.Now())
+				start := clock.Now()
+				cfg := Config{SendReadyTimeoutS: 5}
+				var engine Engine
+				if tt.pickerOnly {
+					picker := &pickerOnlyEngine{}
+					picker.StartupScript, picker.Settle = []StartupState{StartupReady}, 2*time.Second
+					engine = picker
+				} else {
+					picker := &pickerEngine{}
+					picker.StartupScript, picker.Settle = []StartupState{StartupReady}, 2*time.Second
+					engine = picker
+				}
+				fx := newFixture(t, reed, engine, withConfig(cfg), withClock(clock), withStrand("strand-1"))
+
+				var err error
+				switch op {
+				case runInterrupt:
+					err = fx.newRun(Spec{}, withRunClock(clock, time.Time{})).Interrupt()
+				case runnerInterrupt:
+					err = fx.Runner.Interrupt("strand-1")
+				case runnerSend:
+					err = fx.Runner.Send("strand-1", "hello")
+				}
+
+				switch {
+				case tt.wantErr == nil && err != nil:
+					t.Fatalf("%s error: %v", op, err)
+				case tt.wantErr != nil && !errors.Is(err, tt.wantErr):
+					t.Fatalf("%s error = %v; want it to wrap %v", op, err, tt.wantErr)
+				}
+				if tt.wantNotErr != nil && errors.Is(err, tt.wantNotErr) {
+					t.Errorf("%s error = %v; must not wrap %v", op, err, tt.wantNotErr)
+				}
+				if tt.wantMsg != "" && !strings.Contains(err.Error(), tt.wantMsg) {
+					t.Errorf("%s error = %v; want it to contain %q", op, err, tt.wantMsg)
+				}
+				if len(reed.SendKeyCalls) != tt.wantKeys {
+					t.Errorf("SendKey calls = %+v; want %d", reed.SendKeyCalls, tt.wantKeys)
+				}
+				for _, call := range reed.SendKeyCalls {
+					if call.Key != "Escape" {
+						t.Errorf("SendKey calls = %+v; want only Escape", reed.SendKeyCalls)
+					}
+				}
+				if len(reed.SendTextCalls) != 0 || len(reed.PasteSubmitCalls) != 0 {
+					t.Errorf("text reached the pane: SendText=%+v PasteSubmit=%+v", reed.SendTextCalls, reed.PasteSubmitCalls)
+				}
+				if tt.wantSettle {
+					if waited := clock.Now().Sub(start); waited < 2*time.Second {
+						t.Errorf("clock advanced %v; want at least the 2s settle", waited)
+					}
+					if last := reed.CallLog[len(reed.CallLog)-1]; last != "CapturePane" {
+						t.Errorf("last reed call = %q; want the re-check CapturePane", last)
+					}
+					if len(reed.CallLog) < 2 || reed.CallLog[len(reed.CallLog)-2] != "SendKey:Escape" {
+						t.Errorf("reed calls = %v; want the re-check capture right after the Escape", reed.CallLog)
+					}
+				}
+			})
+		}
 	}
 }
 
@@ -1748,7 +1922,9 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		// wantTypedBetween is the window the first typed key lands in; ignored when wantBusy is set.
 		wantTypedMin, wantTypedMax time.Duration
 		wantBusy                   []string
-		wantWarns                  int
+		// wantReason, when set, is the prefix the busy error's Reason must carry.
+		wantReason string
+		wantWarns  int
 		// stray, when set, drives the row through a pane holding a lone stray character instead.
 		stray *strayRow
 	}{
@@ -1769,10 +1945,10 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		{name: "a busy pane under a clock that never advances fails busy at the poll count", idleAfter: never, busyFrame: "working", frozen: true, wantBusy: []string{"the pane is not idle"}},
 		{name: "unmatched turn start is released by the idle override", events: "START\n", reading: true, wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
 		{name: "unmatched turn start is released by an interrupt report", events: "START\n", reading: true, interrupted: true},
-		{name: "unmatched turn start against a busy pane fails busy with the reading's reason", events: "START\n", reading: true, idleAfter: never, busyFrame: "working", wantBusy: []string{"a turn is running"}},
-		{name: "draft in the box fails busy with the reading's reason", events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the input box holds a draft", "a half-typed draft"}},
+		{name: "unmatched turn start against a busy pane fails busy with the reading's reason", events: "START\n", reading: true, idleAfter: never, busyFrame: "working", wantBusy: []string{"a turn is running"}, wantReason: "a turn is running"},
+		{name: "draft in the box fails busy with the reading's reason", events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the input box holds a draft", "a half-typed draft"}, wantReason: "the input box holds a draft"},
 		{name: "an active operator holds the write until it goes quiet", activeQueue: []bool{true, true, true, false}, wantTypedMin: time.Second, wantTypedMax: 3 * time.Second},
-		{name: "an operator active through the whole window fails busy naming the activity", activeQueue: []bool{true}, wantBusy: []string{"the operator typed in this pane within the last 5 s"}},
+		{name: "an operator active through the whole window fails busy naming the activity", activeQueue: []bool{true}, wantBusy: []string{"the operator typed in this pane within the last 5 s"}, wantReason: "the operator typed in this pane"},
 		{name: "an unreadable activity query still holds on a draft", activityErr: errors.New("list-clients failed"), events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the input box holds a draft", "a half-typed draft"}},
 		{name: "an unreadable activity query holds nothing over an empty box", activityErr: errors.New("list-clients failed"), events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: time.Millisecond, busyFrame: "IDLE\n❯ "},
 		{name: "turn end after the turn start releases at once", events: "START\nSTOP:done\n"},
@@ -1827,6 +2003,16 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 			if tt.wantBusy != nil {
 				if !errors.Is(err, ErrSessionBusy) {
 					t.Fatalf("Send error = %v, want ErrSessionBusy", err)
+				}
+				var busy *SessionBusyError
+				if !errors.As(err, &busy) {
+					t.Fatalf("Send error = %T, want a *SessionBusyError", err)
+				}
+				if busy.Reason == "" || strings.Contains(busy.Reason, "The pane's last lines") {
+					t.Errorf("busy Reason = %q, want a non-empty reason without the pane tail", busy.Reason)
+				}
+				if tt.wantReason != "" && !strings.HasPrefix(busy.Reason, tt.wantReason) {
+					t.Errorf("busy Reason = %q, want prefix %q", busy.Reason, tt.wantReason)
 				}
 				for _, want := range tt.wantBusy {
 					if !strings.Contains(err.Error(), want) {

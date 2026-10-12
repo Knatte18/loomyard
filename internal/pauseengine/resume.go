@@ -115,6 +115,7 @@ func moveToCoveringEntry(record *pauserecord.Record, held pauserecord.Session) b
 }
 
 // sendResumeLine gives held the resume line once and returns why it did not, empty when it did.
+// A send the guard holds is reported by the guard's own reason, and any other failure by its message.
 func sendResumeLine(deps Deps, held pauserecord.Session) string {
 	var pair Pair
 	for _, candidate := range deps.Pairs {
@@ -132,16 +133,11 @@ func sendResumeLine(deps Deps, held pauserecord.Session) string {
 	if !live {
 		return "the strand is not live"
 	}
-	busy, err := pair.Busy(held.GUID)
-	if err != nil {
-		return "busy reading failed: " + err.Error()
-	}
-	if busy {
-		return "the session reads busy"
-	}
-	switch err := pair.Send(held.GUID, pauserecord.ResumeLine); {
-	case errors.Is(err, shuttleengine.ErrSessionBusy):
-		return "the input box holds a draft"
+	err = pair.Send(held.GUID, pauserecord.ResumeLine)
+	var busy *shuttleengine.SessionBusyError
+	switch {
+	case errors.As(err, &busy):
+		return busy.Reason
 	case err != nil:
 		return "the send failed: " + err.Error()
 	}

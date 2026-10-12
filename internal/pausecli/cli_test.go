@@ -70,9 +70,10 @@ func TestPauseAndResume_WriteLiftAndRefuseOverTheHub(t *testing.T) {
 		t.Fatalf("pause: ok=%v code=%d error=%q", first.OK, code, first.Error)
 	}
 	body := report(t, first, "pause")
-	for _, list := range []string{"interrupted", "still_busy", "net_ops", "go_producers"} {
-		if items, _ := body[list].([]any); len(items) != 0 {
-			t.Errorf("pause %s = %v; want empty with nothing running", list, items)
+	for _, list := range []string{"interrupted", "no_running_turn", "background", "still_busy", "net_ops", "go_producers"} {
+		items, isArray := body[list].([]any)
+		if !isArray || len(items) != 0 {
+			t.Errorf("pause %s = %v; want an empty array with nothing running", list, body[list])
 		}
 	}
 	if live, _ := liveEntries(t, h); len(live) != 1 || live[0].Scope != pauserecord.ScopeHub || live[0].Caller != "EXTERNAL" {

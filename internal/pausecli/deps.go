@@ -3,6 +3,7 @@
 package pausecli
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -144,19 +145,53 @@ func (p shuttlePair) Sessions() ([]pauseengine.SessionInfo, error) {
 	return sessions, nil
 }
 
-// Busy reports whether the run's session state reads busy.
-func (p shuttlePair) Busy(guid string) (bool, error) {
+// state reads the session state of the running run with the strand guid, or the zero state when the strand has none.
+func (p shuttlePair) state(guid string) (shuttleengine.SessionState, error) {
 	readings, err := shuttleengine.ReadSessionStates(p.cfg, p.location.AnchorPath(), p.engine, time.Now())
 	if err != nil {
-		return false, err
+		return shuttleengine.SessionState{}, err
 	}
 	for _, reading := range readings {
 		if reading.StrandGUID == guid {
-			return reading.State.Name == shuttleengine.SessionBusy, nil
+			return reading.State, nil
 		}
 	}
-	return false, nil
+	return shuttleengine.SessionState{}, nil
 }
+
+// readTurn derives from state whether the session is in a running turn, and whether its turn ended with background work, with one label per outstanding task.
+// A task's label is its description, or its id when it has none.
+func readTurn(state shuttleengine.SessionState) (running bool, labels []string, background bool) {
+	if state.Name == shuttleengine.SessionBusy && state.Cause == shuttleengine.SessionCauseBackground {
+		for _, task := range state.Outstanding {
+			labels = append(labels, cmp.Or(task.Label, task.ID))
+		}
+		return false, labels, true
+	}
+	return state.RunningTurn(), nil, false
+}
+
+// Busy reports whether the run's session state reads a running turn.
+func (p shuttlePair) Busy(guid string) (bool, error) {
+	state, err := p.state(guid)
+	running, _, _ := readTurn(state)
+	return running, err
+}
+
+// Background reports whether the run's session turn ended with background work still running, with the outstanding tasks' labels.
+func (p shuttlePair) Background(guid string) ([]string, bool, error) {
+	state, err := p.state(guid)
+	_, labels, background := readTurn(state)
+	return labels, background, err
+}
+
+// PaneRunningTurn reports whether the strand's pane shows a running turn.
+func (p shuttlePair) PaneRunningTurn(guid string) (bool, error) {
+	return p.runner.PaneRunningTurn(guid)
+}
+
+// InterruptSettle is how long after an interrupt key the strand's pane needs before it is read again.
+func (p shuttlePair) InterruptSettle() time.Duration { return p.runner.InterruptSettle() }
 
 // Live reports whether reed tracks the strand with a live pane.
 func (p shuttlePair) Live(guid string) (bool, error) {

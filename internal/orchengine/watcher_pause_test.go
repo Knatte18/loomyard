@@ -4,14 +4,18 @@ package orchengine
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 const pauseGrace = 30 * time.Second
@@ -94,6 +98,23 @@ func (e *watchEnv) orchSessions() []pauserecord.Session {
 	return sessions
 }
 
+// assertPauseLogs checks the pause's guard logs in logs: wantInfo counts the "no running turn" Info lines and wantPicker the "rewind picker" Warn lines, each naming s1, and the could-not-interrupt Warn is absent.
+func assertPauseLogs(t *testing.T, logs string, wantInfo, wantPicker int) {
+	t.Helper()
+	if got := strings.Count(logs, "the pause found no running turn on the orch pane"); got != wantInfo {
+		t.Errorf("no-running-turn lines = %d; want %d; logs: %s", got, wantInfo, logs)
+	}
+	if got := strings.Count(logs, "the pause found the rewind picker open on the orch pane"); got != wantPicker {
+		t.Errorf("rewind-picker lines = %d; want %d; logs: %s", got, wantPicker, logs)
+	}
+	if got := strings.Count(logs, "could not interrupt the orch"); got != 0 {
+		t.Errorf("could-not-interrupt lines = %d; want 0; logs: %s", got, logs)
+	}
+	if wantInfo+wantPicker > 0 && !strings.Contains(logs, "s1") {
+		t.Errorf("logs do not name the strand s1: %s", logs)
+	}
+}
+
 func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *testing.T) {
 	orchCaller, err := agentname.Format("lyx", "", agentname.RoleOrch)
 	if err != nil {
@@ -104,7 +125,8 @@ func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *test
 		name string
 		run  func(t *testing.T, e *watchEnv)
 	}{
-		{"a busy orch is interrupted at the grace end and not before, twice when still busy, and recorded", func(t *testing.T, e *watchEnv) {
+		{"a busy orch is interrupted at the grace end and not before, a second time only on a tick past the settle while still busy, and recorded", func(t *testing.T, e *watchEnv) {
+			e.s.settle = 2 * time.Second
 			e.s.idle = false
 			e.tick()
 			e.pauseHub("EXTERNAL", pauseGrace)
@@ -114,12 +136,116 @@ func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *test
 			}
 			e.clock.advance(pauseGrace)
 			e.tick()
+			if n := e.callCount(interruptCall); n != 1 {
+				t.Fatalf("interrupts at the grace end = %d; want 1", n)
+			}
+			e.tick()
+			if n := e.callCount(interruptCall); n != 1 {
+				t.Fatalf("interrupts on a tick within the settle = %d; want still 1", n)
+			}
+			e.clock.advance(2 * time.Second)
 			e.tick()
 			if n := e.callCount(interruptCall); n != 2 {
-				t.Errorf("interrupts = %d; want 2, one per probe that still reads busy", n)
+				t.Errorf("interrupts after the settle = %d; want 2", n)
 			}
 			if got := e.orchSessions(); !reflect.DeepEqual(got, ownedBy) {
 				t.Errorf("orch sessions in the entry = %+v; want %+v", got, ownedBy)
+			}
+		}},
+		{"an orch idle at the settled re-probe gets no second Esc", func(t *testing.T, e *watchEnv) {
+			e.s.settle = 2 * time.Second
+			e.s.idle = false
+			e.tick()
+			e.pauseHub("EXTERNAL", pauseGrace)
+			e.clock.advance(pauseGrace)
+			e.tick()
+			e.s.idle = true
+			e.clock.advance(2 * time.Second)
+			e.tick()
+			e.tick()
+			if n := e.callCount(interruptCall); n != 1 {
+				t.Errorf("interrupts = %d; want 1", n)
+			}
+		}},
+		{"a resume during the settle sends no second Esc", func(t *testing.T, e *watchEnv) {
+			e.s.settle = 2 * time.Second
+			e.s.idle = false
+			e.tick()
+			e.pauseHub("EXTERNAL", pauseGrace)
+			e.clock.advance(pauseGrace)
+			e.tick()
+			e.resumeHub()
+			e.clock.advance(2 * time.Second)
+			e.tick()
+			if n := e.callCount(interruptCall); n != 1 {
+				t.Errorf("interrupts = %d; want 1", n)
+			}
+			if lines := e.noticeLines(); !reflect.DeepEqual(lines, []string{pauserecord.ResumeLine}) {
+				t.Errorf("notices = %v; want the orch's resume line", lines)
+			}
+		}},
+		{"a guarded refusal reads as an idle orch and is logged once at Info", func(t *testing.T, e *watchEnv) {
+			logs := logcapture.CaptureVerbose(t)
+			e.s.settle = 2 * time.Second
+			e.s.interruptErrs = []error{fmt.Errorf("%w (strand %q)", shuttleengine.ErrNoRunningTurn, "s1")}
+			e.s.idle = false
+			e.tick()
+			e.pauseHub("EXTERNAL", pauseGrace)
+			e.clock.advance(pauseGrace)
+			e.tick()
+			e.clock.advance(2 * time.Second)
+			e.tick()
+			e.tick()
+			if n := e.callCount(interruptCall); n != 1 {
+				t.Errorf("interrupts = %d; want 1", n)
+			}
+			assertPauseLogs(t, logs.String(), 1, 0)
+		}},
+		{"a guarded refusal of the settled second Esc is logged once at Info and ends the entry", func(t *testing.T, e *watchEnv) {
+			logs := logcapture.CaptureVerbose(t)
+			e.s.settle = 2 * time.Second
+			e.s.interruptErrs = []error{nil, fmt.Errorf("%w (strand %q)", shuttleengine.ErrNoRunningTurn, "s1")}
+			e.s.idle = false
+			e.tick()
+			e.pauseHub("EXTERNAL", pauseGrace)
+			e.clock.advance(pauseGrace)
+			e.tick()
+			e.clock.advance(2 * time.Second)
+			e.tick()
+			e.tick()
+			if n := e.callCount(interruptCall); n != 2 {
+				t.Errorf("interrupts = %d; want 2", n)
+			}
+			assertPauseLogs(t, logs.String(), 1, 0)
+		}},
+		{"an open rewind picker is logged at Warn and gets no further Esc", func(t *testing.T, e *watchEnv) {
+			logs := logcapture.CaptureVerbose(t)
+			e.s.settle = 2 * time.Second
+			e.s.interruptErrs = []error{fmt.Errorf("%w (strand %q)", shuttleengine.ErrRewindPickerOpen, "s1")}
+			e.s.idle = false
+			e.tick()
+			e.pauseHub("EXTERNAL", pauseGrace)
+			e.clock.advance(pauseGrace)
+			e.tick()
+			e.clock.advance(2 * time.Second)
+			e.tick()
+			if n := e.callCount(interruptCall); n != 1 {
+				t.Errorf("interrupts = %d; want 1", n)
+			}
+			assertPauseLogs(t, logs.String(), 0, 1)
+		}},
+		{"a watcher restarted during the settle sends no second Esc", func(t *testing.T, e *watchEnv) {
+			e.s.settle = 2 * time.Second
+			e.s.idle = false
+			e.tick()
+			e.pauseHub("EXTERNAL", pauseGrace)
+			e.clock.advance(pauseGrace)
+			e.tick()
+			e.w = e.newWatcher()
+			e.clock.advance(2 * time.Second)
+			e.tick()
+			if n := e.callCount(interruptCall); n != 1 {
+				t.Errorf("interrupts = %d; want 1", n)
 			}
 		}},
 		{"an idle orch with no marker is never interrupted or recorded, and gets no resume line", func(t *testing.T, e *watchEnv) {
@@ -165,8 +291,8 @@ func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *test
 			}
 			e.clock.advance(pauseGrace)
 			e.tick()
-			if n := e.callCount(interruptCall); n != 2 {
-				t.Errorf("interrupts = %d; want 2", n)
+			if n := e.callCount(interruptCall); n != 1 {
+				t.Errorf("interrupts = %d; want 1", n)
 			}
 		}},
 		{"an entry the orch itself ran interrupts nothing", func(t *testing.T, e *watchEnv) {
@@ -202,8 +328,8 @@ func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *test
 			e.pauseHub("EXTERNAL", 0)
 			e.clock.advance(5 * time.Second)
 			e.tick()
-			if n := e.callCount(interruptCall); n != 2 {
-				t.Errorf("interrupts = %d; want 2", n)
+			if n := e.callCount(interruptCall); n != 1 {
+				t.Errorf("interrupts = %d; want 1", n)
 			}
 			if got := e.orchSessions(); !reflect.DeepEqual(got, ownedBy) {
 				t.Errorf("orch sessions = %+v; want %+v", got, ownedBy)
@@ -248,7 +374,7 @@ func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *test
 			for range 4 {
 				e.tick()
 			}
-			want := []string{interruptCall, interruptCall, "send:n1", "send:" + pauserecord.ResumeLine}
+			want := []string{interruptCall, "send:n1", "send:" + pauserecord.ResumeLine}
 			if !reflect.DeepEqual(e.s.calls, want) {
 				t.Errorf("calls = %v; want %v", e.s.calls, want)
 			}

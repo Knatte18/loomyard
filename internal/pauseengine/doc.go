@@ -1,7 +1,7 @@
 // Package pauseengine implements the pause, resume and status sequences behind `lyx pause` and `lyx resume`, over seams.
 //
 // A pause records an entry in the pause record and waits a short grace for busy sessions and network operations to finish.
-// It then interrupts every covered session still busy with Esc, and reports what it saw.
+// It then interrupts every covered session still in a running turn with Esc, and reports what it saw.
 // A resume lifts entries and gives each session it interrupted one line to carry on.
 // Status reads the live entries and the holds a pause leaves, and changes nothing.
 //
@@ -15,10 +15,14 @@
 // It then polls each second until every covered session reads idle and no covered network operation is in flight, the grace end passes, or the entry is no longer live.
 // An entry resumed during the grace ends the sequence with no Esc.
 //
-// Each covered session that still reads busy is then recorded in the entry under the record lock, and only then interrupted, so a pause killed before its Esc leaves the session recorded.
+// Each covered session that reads a running turn is then recorded in the entry under the record lock, and only then interrupted through shuttle's guarded interrupt, so a pause killed before its Esc leaves the session recorded.
 // The caller's own session and a session another live entry owns are skipped.
-// A session still busy after an Esc is interrupted once more, so at most twice, and a pane that is not ready is reported as refused.
-// An entry that is no longer live at the check stops the step, so no Esc follows a resume.
+// The keys go in passes over the sessions, each followed by one wait of the provider's settle time, so a pause waits each settle once whatever the number of sessions.
+// A session whose state still reads a running turn after the first key's settle is guarded and interrupted once more, so at most twice, and its pane is read once after the second key's settle.
+// A pane the guard finds with no running turn gets no key: after the first key's settle that is `interrupted`, and on the first key it is `no_running_turn`, a session that stays recorded.
+// A session whose turn ended with background work is sent no key and not recorded; it is listed under `background` with its outstanding tasks and holds no grace.
+// A pane that is not ready, a failed capture and an open rewind picker are reported as refused with the error's message, and a session whose pane still shows a running turn after the second settle as `still_busy`.
+// An entry that is no longer live at a check stops the step, so no Esc follows a resume.
 // The engine sends Esc only, never text; it kills no pane, strand or process and never touches the orch.
 // Under a hub entry the report says whether the orch ran the pause, is left to a live orch watcher, or is not interrupted because no watcher is live.
 //
@@ -28,7 +32,8 @@
 // A slug that only a live hub entry covers is refused, naming `lyx resume`.
 // Under the record lock each resumed entry moves to the resumed list, and each session it owns that another live entry still covers moves to that entry with no line.
 // After the lock, each remaining non-orch session gets `pauserecord.ResumeLine` once through the guarded send.
-// A strand that is not live, a session that reads busy, and a send refused because the box holds a draft get no line and are named with the reason.
+// There is no busy pre-check: a recorded session gets its attempt whatever its state reads now.
+// A strand that is not live and a send the guard refuses get no line and are named with the reason, which is the guard's own for a held send and the error's message for any other failure, such as an open rewind picker.
 // The orch's session is left to the orch watcher.
 //
 // # Status
