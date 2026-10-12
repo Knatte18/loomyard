@@ -366,8 +366,11 @@ func normalizeAttachSpec(spec Spec, worktreeRoot string, cfg Config) (Spec, erro
 	// carve-out and classify OutcomeDied instead of surfacing errStrandPaneBindingCleared. This
 	// normalization matters to the attached RUN's own liveness checks, not to matching — see
 	// attach-reconstructs-the-run-explicitly.
+	// It defaults to own-window as Spec.validate does, so run and attach agree.
+	// Attach never relaunches or moves a strand.
+	// Own-window and below-parent are both non-hidden and classify a cleared binding alike, so attaching to a strand an older binary recorded in window 0 leaves it where it is.
 	if spec.Display.Anchor == "" {
-		spec.Display.Anchor = render.AnchorBelowParent
+		spec.Display.Anchor = render.AnchorOwnWindow
 	}
 
 	return spec, nil

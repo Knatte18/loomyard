@@ -61,6 +61,8 @@ envelope. A run's output files ARE its return value: "done" means every
 A turn end without them holds the run: it keeps waiting until the outputs
 exist, the pane dies or the deadline passes, and an interactive run is
 answered in its pane.
+A run's strand opens in a detached window of its own unless --anchor says
+otherwise.
 
 An --output-file entry may be absolute or relative — a
 relative path resolves against the WORKTREE ROOT, not the shell's cwd — and
@@ -166,7 +168,7 @@ the provider default.`,
 	cmd.Flags().StringVar(&role, "role", "", "role token used to fill the strand-name template")
 	cmd.Flags().StringVar(&round, "round", "", "round token used to fill the strand-name template")
 	cmd.Flags().StringVar(&parent, "parent", "", "parent strand's guid")
-	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorBelowParent), "placement: below-parent|hidden")
+	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorOwnWindow), "placement: own-window|below-parent|hidden")
 	cmd.Flags().BoolVar(&focus, "focus", true, "give this strand tmux input focus")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "wall-clock deadline before an in-progress run is classified as timed out (0 = config default)")
 	cmd.Flags().BoolVar(&keepPane, "keep-pane", false, `leave the strand and its pane alive after a "done" outcome`)

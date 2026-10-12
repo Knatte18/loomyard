@@ -212,6 +212,10 @@ func TestAttach_OutcomeDisposition(t *testing.T) {
 			if !tt.wantFound && !isZeroResult(result) {
 				t.Errorf("result = %+v; want zero Result when not found", result)
 			}
+			// The empty anchor defaults to own-window, yet attaching to a window 0 strand never moves or refuses it.
+			if len(reed.AddStrandCalls) != 0 {
+				t.Errorf("AddStrand calls = %v; want none, since attach never relaunches a strand", reed.AddStrandCalls)
+			}
 		})
 	}
 }
@@ -1094,11 +1098,11 @@ func TestAttach_StartedSeededTrue(t *testing.T) {
 // Attach's own dispositioning read sees a live pane (so the candidate is attachable) and Wait's
 // first liveness tick sees the binding cleared. With output files present a hidden-anchor spec
 // still classifies OutcomeDone, proving the inherited checkLivenessTick branches are reached. With
-// the output file never created and an empty Anchor, Attach defaults it to AnchorBelowParent on the
+// the output file never created and an empty Anchor, Attach defaults it to AnchorOwnWindow on the
 // reconstructed Run, so Wait surfaces errStrandPaneBindingCleared rather than the empty Anchor
 // taking the hidden-strand carve-out and classifying OutcomeDied.
 //
-//testtiming:keep pins that an attached run keeps liveness coverage after a cleared binding: done with files present, and errStrandPaneBindingCleared once an empty Anchor is defaulted
+//testtiming:keep pins that an attached run keeps liveness coverage after a cleared binding: done with files present, and errStrandPaneBindingCleared once an empty Anchor is defaulted to own-window
 func TestAttach_StrandLaterLosesPaneBinding(t *testing.T) {
 	tests := []struct {
 		name         string
