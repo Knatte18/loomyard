@@ -2,6 +2,7 @@ package battencli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -129,6 +131,35 @@ func wiredPrime(t *testing.T) (*battenCLI, *lyxcwd.Location) {
 		t.Fatalf("wire() error = %v; want nil", err)
 	}
 	return c, location
+}
+
+// TestWire_PointsTheNetworkGateAtItsSlug installs a gate with no slug over a record holding a live entry for the wired slug, and asserts a network call made after wire waits.
+// It is not parallel because the network gate is process-wide.
+func TestWire_PointsTheNetworkGateAtItsSlug(t *testing.T) {
+	recordPath := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
+	now := time.Now()
+	if _, err := pauserecord.Update(recordPath, now, func(record *pauserecord.Record) error {
+		record.Live = append(record.Live, pauserecord.Entry{Scope: "a-slug", PausedAt: now})
+		return nil
+	}); err != nil {
+		t.Fatalf("pauserecord.Update: %v", err)
+	}
+	slept := false
+	t.Cleanup(pauserecord.InstallGate(pauserecord.Gate{
+		Geometry: pauserecord.Geometry{RecordPath: recordPath},
+		Notify:   func(string) {},
+		Sleep: func(context.Context, time.Duration) error {
+			slept = true
+			return errors.New("stop waiting")
+		},
+	}))
+
+	wiredPrime(t)
+	pauserecord.Network("git fetch")()
+
+	if !slept {
+		t.Error("a network call after wire did not wait; want the gate pointed at the wired slug's entry")
+	}
 }
 
 func TestWire_NotifyQueuesOnThePrimesOrch(t *testing.T) {

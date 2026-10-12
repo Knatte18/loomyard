@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -139,6 +140,10 @@ type InnerRunDeps struct {
 	// PauseRequested reports whether batten's own status carries pause_requested, which ends the wait within one check.
 	// A nil PauseRequested resolves to reporting false in NewInnerRun; an error is warned about and reads as not paused.
 	PauseRequested func() (bool, error)
+	// Pause reads what the hub's pause record says about this run's slug.
+	// The wait reads it once per check: while it reports covered, the wait spawns, resumes and revives nothing and sends no running-child notice, and its idle clocks leave out the covered intervals.
+	// A nil Pause resolves to never covered in NewInnerRun; an error is warned about and reads as not covered.
+	Pause func() (pauserecord.Coverage, error)
 	// NoticeProbe is how rarely the wait does anything costing a process or a multiplexer round trip: the driver, review and agent-activity reads, the forced status decode, the not-parked resume retry, the watched-marker refresh and a notice's delivery.
 	// Zero makes every check a probe.
 	NoticeProbe time.Duration

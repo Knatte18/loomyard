@@ -71,6 +71,7 @@ var nilLegal = map[string]bool{
 	"InnerRun.ReviewWait":                              true,
 	"InnerRun.Now":                                     true,
 	"InnerRun.Awake":                                   true,
+	"InnerRun.Pause":                                   true,
 	"InnerRun.OpenTerminal":                            true,
 	"InnerRun.Notify":                                  true,
 	"InnerRun.PairDir":                                 true,

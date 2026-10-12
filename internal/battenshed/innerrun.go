@@ -185,7 +185,7 @@ var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 // A nil deps.Notify resolves to a no-op and switches the notice step off.
 // A nil deps.OrchStrandRecorded resolves to reporting a strand recorded, and a nil deps.StopReport to reporting no stop report.
 // A nil deps.DriverStrand resolves to reporting no driver strand, a nil deps.ChildRunLockHeld to reporting no held lock and a nil deps.ReviveStrands to a revive that fails as not wired.
-// A nil deps.PauseRequested resolves to never paused.
+// A nil deps.PauseRequested resolves to never paused, and a nil deps.Pause to never covered by a pause record.
 // An empty deps.VerifyRows, or a nil deps.PublishFailure, deps.ChildHead or deps.Goto, switches the automatic verify retry off.
 // A nil deps.MarkWatched resolves to reporting not held, a nil deps.Activity to reporting no live run and no live wait, and a nil deps.ArbiterInFlight to reporting no arbiter.
 // A nil deps.ParentLock switches the parent lock step and the stale-base resume off.
@@ -196,6 +196,9 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	}
 	if deps.PauseRequested == nil {
 		deps.PauseRequested = func() (bool, error) { return false, nil }
+	}
+	if deps.Pause == nil {
+		deps.Pause = func() (pauserecord.Coverage, error) { return pauserecord.Coverage{}, nil }
 	}
 	if deps.MarkWatched == nil {
 		deps.MarkWatched = func(context.Context) (bool, error) { return false, nil }
@@ -349,6 +352,9 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 		}
 	}
 	if mustSpawn {
+		if end := p.holdSpawnWhileCovered(ctx); end != nil {
+			return end.results()
+		}
 		if err := os.Remove(confirmedPath); err != nil && !os.IsNotExist(err) {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: clear spawn confirmation: %w", p.name, err)
 		}
@@ -489,6 +495,9 @@ type childWait struct {
 	reason string
 	// pauseWarned is the pause-flag read error last warned about, so a persistent one warns once.
 	pauseWarned string
+	// pause is the newest reading of the pause record's coverage of the slug, and coverageWarned the read error last warned about.
+	pause          pauserecord.Coverage
+	coverageWarned string
 
 	// reviewNote is the running arm's newest reviewer-wait note.
 	reviewNote string
@@ -573,8 +582,9 @@ func (p *innerRunProducer) wait(ctx context.Context, w *childWait, step armStep)
 	w.aliveStale = true
 	w.activityStale = true
 	w.baseStale = true
+	p.coverage(w)
 	p.noticeStep(ctx, w)
-	if end := step(ctx, w); end != nil {
+	if end := p.runArm(ctx, w, step); end != nil {
 		return end.results()
 	}
 	for {
@@ -598,7 +608,9 @@ func (p *innerRunProducer) wait(ctx context.Context, w *childWait, step armStep)
 
 // check is one check of the wait: the child's status file, the watched-marker refresh and the parent lock step on the probe checks, the notice step, the arm's step, and last batten's own pause flag.
 // It returns nil to keep waiting.
+// While the pause record covers the slug, a state change still ends the wait and a halted child's notice still goes, but the arm's step does not run.
 func (p *innerRunProducer) check(ctx context.Context, w *childWait, step armStep, now time.Time) *waitEnd {
+	p.coverage(w)
 	if end := p.checkChild(ctx, w); end != nil {
 		return end
 	}
@@ -607,7 +619,7 @@ func (p *innerRunProducer) check(ctx context.Context, w *childWait, step armStep
 		p.lockStep(ctx, w)
 	}
 	p.noticeStep(ctx, w)
-	if end := step(ctx, w); end != nil {
+	if end := p.runArm(ctx, w, step); end != nil {
 		return end
 	}
 	if p.pauseRequested(w) {

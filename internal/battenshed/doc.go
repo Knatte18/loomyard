@@ -23,6 +23,10 @@
 // Both episodes are keyed by the newest agent activity, so they end when an agent is active again, with `since` on the line as content only.
 // Both idle clocks measure awake time, read through the injected Awake seam: each sleep seen between two checks is an interval, and the time since an activity is net of the sleeps after it.
 // A sleep under a minute still counts as idle, and the subtraction can delay a notice and never raise one earlier.
+// The InnerRun row also reads the hub's pause record through the Pause seam, once per check.
+// While it covers the slug, the row spawns, resumes and revives nothing, sends no notice for a running child, keeps a covered holder's parent lock and reports `held by the pause of <scope> since <paused_at>` as its wait reason;
+// a child that halts still ends the wait with its state-changed notice, and batten's own pause is still honoured.
+// The paused intervals leave the idle clocks, so after the resume a run idle for its window is noticed as before.
 // Limits: a run whose pid is dead is not read, a run that keeps writing or hangs in a live wait is never quiet, and both notices are informational.
 // A marker under the row's scratch directory records the notices sent, and only those queued, so a batten restart sends the notices not yet sent and never one already sent.
 // A state-changed notice names what happened, the child's state and the row it stopped at, for example `awaiting at PR-Gate`.

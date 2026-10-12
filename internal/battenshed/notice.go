@@ -329,6 +329,10 @@ func (p *innerRunProducer) noticeCondition(ctx context.Context, w *childWait) (n
 		}
 		return noticeFinding{condition: noticeStateChanged, stamp: p.episode.since.UnixNano(), text: p.publishRetryNoticeText(w)}, activityStamp{}
 	}
+	// A running child under a pause has no agents at work and no driver to wait for, so none of its conditions is an event.
+	if w.pause.Covered {
+		return noticeFinding{}, activityStamp{}
+	}
 	alive, known := p.driverAlive(ctx, w)
 	if !known {
 		return noticeFinding{}, activityStamp{}
@@ -356,7 +360,7 @@ func (p *innerRunProducer) agentActivity(ctx context.Context, w *childWait) (rea
 // judgeAgents returns the api-error or quiet finding of a running child with a live driver, and the newest agent activity.
 // With several live runs, api-error needs any one and quiet needs every run idle.
 // With no live run found, quiet falls back to the later of the child's newest history entry and the state episode's since.
-// Both idle clocks measure awake time: every sleep the watch saw after an activity is subtracted from the time since it, so a sleep can delay a notice and never raise one earlier.
+// Both idle clocks measure awake unpaused time: every sleep the watch saw and every paused interval after an activity is subtracted from the time since it, so a sleep or a pause can delay a notice and never raise one earlier.
 func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (noticeFinding, activityStamp) {
 	reading, ok := p.agentActivity(ctx, w)
 	now := p.deps.Now()
@@ -373,7 +377,7 @@ func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (notic
 			}
 		}
 		stamp := activityStamp{nanos: newest.UnixNano(), known: true}
-		if idle := w.awakeSince(now, newest, nil); p.noticeQuiet > 0 && !reading.waitLive && idle >= p.noticeQuiet {
+		if idle := w.awakeSince(now, newest, w.pause.Intervals); p.noticeQuiet > 0 && !reading.waitLive && idle >= p.noticeQuiet {
 			text := fmt.Sprintf("no agent activity readable for %s", idle.Round(time.Second))
 			return noticeFinding{condition: noticeQuiet, stamp: stamp.nanos, text: text}, stamp
 		}
@@ -388,13 +392,13 @@ func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (notic
 	}
 	stamp := activityStamp{nanos: newest.UnixNano(), known: true}
 	for _, run := range reading.runs {
-		if run.APIError && w.awakeSince(now, run.LastActivity, nil) >= noticeAPIErrorIdle {
+		if run.APIError && w.awakeSince(now, run.LastActivity, w.pause.Intervals) >= noticeAPIErrorIdle {
 			text := fmt.Sprintf("agent %s hit an API error: %s", run.Producer, oneLine(run.APIErrorText, noticeErrorMax))
 			p.logSessionStatesAtNotice(reading.runs, noticeAPIError)
 			return noticeFinding{condition: noticeAPIError, stamp: stamp.nanos, text: text}, stamp
 		}
 	}
-	if idle := w.awakeSince(now, newest, nil); p.noticeQuiet > 0 && !reading.waitLive && idle >= p.noticeQuiet {
+	if idle := w.awakeSince(now, newest, w.pause.Intervals); p.noticeQuiet > 0 && !reading.waitLive && idle >= p.noticeQuiet {
 		text := fmt.Sprintf("agents idle for %s", idle.Round(time.Second))
 		p.logSessionStatesAtNotice(reading.runs, noticeQuiet)
 		return noticeFinding{condition: noticeQuiet, stamp: stamp.nanos, text: text}, stamp
