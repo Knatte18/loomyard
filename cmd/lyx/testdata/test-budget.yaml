@@ -68,7 +68,7 @@ internal/orchcli: 27
 internal/orchengine: 138
 internal/output: 4
 internal/pairteardown: 6
-internal/pauserecord: 12
+internal/pauserecord: 14
 internal/parentdirective: 4
 internal/parentlock: 15
 internal/parentreview: 54

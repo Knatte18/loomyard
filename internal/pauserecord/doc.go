@@ -18,5 +18,14 @@
 // AwakeSince returns the time since an activity net of the union of the sleeps and pauses after it, so every idle clock measures awake, unpaused time.
 // `MonotonicAwake` is the default awake clock; it stops during suspend on Linux and macOS and keeps running on Windows.
 //
+// WaitUncovered is the wait every held entry point shares: it returns once no live entry covers the slug, polling from one second and doubling to five while the covering entry is unchanged.
+// It writes one line when the wait starts and has no deadline of its own.
+// A caller whose run holds a parent lock is exempt from slug entries, so only a hub entry holds it.
+//
+// Network is the process gate that holds network calls: the CLI root installs a Gate once per process, and a call waits at entry while a pause covers the process, then writes a marker under `NetDir` that its returned function removes.
+// ListNetOps lists the markers of live processes, which are the operations in flight.
+// With no gate installed, as in every test binary, Network does nothing.
+// The gate only waits and marks; it fails no call.
+//
 // The package imports the standard library and `internal/lock` only.
 package pauserecord

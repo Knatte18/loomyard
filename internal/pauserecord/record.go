@@ -117,7 +117,11 @@ func Update(path string, now time.Time, mutate func(*Record) error) (Record, err
 		return Record{}, err
 	}
 	record.Resumed = withoutExpired(record.Resumed, now)
-	if err := writeAtomically(path, record); err != nil {
+	data, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		return Record{}, fmt.Errorf("encode pause record: %w", err)
+	}
+	if err := writeAtomically(path, data); err != nil {
 		return Record{}, err
 	}
 	return record, nil
@@ -135,26 +139,22 @@ func withoutExpired(entries []Entry, now time.Time) []Entry {
 	return kept
 }
 
-// writeAtomically writes the record to a temp file beside path and renames it over path.
-func writeAtomically(path string, record Record) error {
-	data, err := json.MarshalIndent(record, "", "  ")
+// writeAtomically writes data to a temp file beside path and renames it over path.
+func writeAtomically(path string, data []byte) error {
+	temp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
 	if err != nil {
-		return fmt.Errorf("encode pause record: %w", err)
-	}
-	temp, err := os.CreateTemp(filepath.Dir(path), RecordFileName+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("create pause record temp file: %w", err)
+		return fmt.Errorf("create temp file for %s: %w", path, err)
 	}
 	tempPath := temp.Name()
 	_, writeErr := temp.Write(data)
 	closeErr := temp.Close()
 	if err := errors.Join(writeErr, closeErr); err != nil {
 		os.Remove(tempPath)
-		return fmt.Errorf("write pause record %s: %w", path, err)
+		return fmt.Errorf("write %s: %w", path, err)
 	}
 	if err := os.Rename(tempPath, path); err != nil {
 		os.Remove(tempPath)
-		return fmt.Errorf("replace pause record %s: %w", path, err)
+		return fmt.Errorf("replace %s: %w", path, err)
 	}
 	return nil
 }
