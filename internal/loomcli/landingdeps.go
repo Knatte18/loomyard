@@ -324,7 +324,7 @@ func parentRecordsCommitter(l *lyxcwd.Location, slug string) func() error {
 		if !holdsFile(filepath.Join(parentLocation.AnchorPath(), runsRoot)) {
 			return nil
 		}
-		_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), parentLocation, []string{runsRoot}, fmt.Sprintf("loom: run records checkpoint for landing %s", slug), fabricengine.EnvSyncOptions())
+		_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), parentLocation, []string{runsRoot}, loomengine.LandingCheckpointSubject(slug), fabricengine.EnvSyncOptions())
 		return err
 	}
 }
