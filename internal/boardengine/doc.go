@@ -56,6 +56,14 @@
 // A merge gives the upserted entry the oldest created date among it and the entries it removes.
 // No view stores an age: the README and `lyx board list --text` compute each as they render, in one compact unit such as `3d` or `5w`, through FormatAge.
 //
+// # Unknown keys
+//
+// An entry's and the store's unknown keys, the board.json keys this binary does not declare, are kept as raw JSON and written back after the known fields in key order on every write, while the known fields beside them change.
+// The guarantee starts with this binary: a process started from an older one still drops them.
+// Retiring a board field means naming it in the decode shape so it is consumed and dropped, as tier and type are, and a field a binary merely stops declaring is kept forever.
+// The only keys that pass through are those already in board.json, from another binary, a hand edit or a git merge of the records repository; this binary adds, changes or merges none.
+// A kept value has no size or shape limit and is trusted exactly as far as an entry's body is.
+//
 // # Migration
 //
 // A board.json entry in the old shape, with a numeric tier and a type, converts in memory on load and persists in the new shape on the next write.

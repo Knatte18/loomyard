@@ -7,16 +7,51 @@
 package boardengine
 
 import (
+	"encoding/json"
+	"reflect"
 	"slices"
 	"strings"
 	"unicode"
 )
 
 // storedEntry is the decode shape of one board.json entry: a Task plus the retired tier and type fields.
+// Decoding consumes the two retired keys, so they are never kept in Task.Unknown and the saved entry carries neither.
+// Nothing encodes one.
 type storedEntry struct {
 	Task
 	Tier *int    `json:"tier"`
 	Type *string `json:"type"`
+}
+
+// UnmarshalJSON decodes the known fields and the retired tier and type through decodedEntry and keeps every other key in Task.Unknown.
+// It shadows the promoted Task.UnmarshalJSON, which would fill the Task alone.
+func (e *storedEntry) UnmarshalJSON(data []byte) error {
+	var decoded decodedEntry
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*e = storedEntryFrom(decoded, data)
+	return nil
+}
+
+// taskFields is Task without its methods, so decoding it fills the known fields alone and never runs Task.UnmarshalJSON.
+type taskFields Task
+
+// decodedEntry is the json shape of one board.json entry: the known fields of Task plus the retired tier and type.
+type decodedEntry struct {
+	taskFields
+	Tier *int    `json:"tier"`
+	Type *string `json:"type"`
+}
+
+// storedEntryKeys is the set of lower-cased JSON keys an entry declares, the retired tier and type among them, so neither is ever kept in Task.Unknown.
+var storedEntryKeys = jsonKeySet(reflect.TypeFor[decodedEntry]())
+
+// storedEntryFrom builds the entry from its decoded fields and its raw JSON, taking every key outside storedEntryKeys into Task.Unknown.
+func storedEntryFrom(decoded decodedEntry, raw []byte) storedEntry {
+	task := Task(decoded.taskFields)
+	task.Unknown = unknownMembers(raw, storedEntryKeys)
+	return storedEntry{Task: task, Tier: decoded.Tier, Type: decoded.Type}
 }
 
 // legacyTypeNames are the type names the retired type field and bracketed brief prefixes used.

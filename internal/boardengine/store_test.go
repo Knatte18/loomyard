@@ -5,6 +5,8 @@
 package boardengine_test
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1000,7 +1002,62 @@ func TestUpsertTasksBatch(t *testing.T) {
 	})
 }
 
+// keptValue decodes the saved board.json raw and returns the compact value of key on the entry slug, or on the top level when slug is empty, and whether it is present.
+func keptValue(t *testing.T, raw []byte, slug, key string) (string, bool) {
+	t.Helper()
+	members := map[string]json.RawMessage{}
+	if err := json.Unmarshal(raw, &members); err != nil {
+		t.Fatalf("decode board.json: %v", err)
+	}
+	if slug != "" {
+		var entries []map[string]json.RawMessage
+		if err := json.Unmarshal(members["entries"], &entries); err != nil {
+			t.Fatalf("decode entries: %v", err)
+		}
+		members = nil
+		for _, entry := range entries {
+			var entrySlug string
+			if err := json.Unmarshal(entry["slug"], &entrySlug); err != nil {
+				t.Fatalf("decode slug: %v", err)
+			}
+			if entrySlug == slug {
+				members = entry
+				break
+			}
+		}
+	}
+	value, present := members[key]
+	if !present {
+		return "", false
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, value); err != nil {
+		t.Fatalf("compact %s: %v", key, err)
+	}
+	return compact.String(), true
+}
+
+// keptBoardBody is the board.json the kept-key rows of TestLoad share: a top-level key, a task a with a big integer, a nested value, strings holding an escaped quote and closing brackets, and a key spelled with an escape, listed unsorted, a task b, a note n and a done task fin.
+const keptBoardBody = `{"version":1,"entries":[` +
+	`{"id":0,"slug":"a","title":"A","kind":"task","labels":["bug"],"zz_scalar":9007199254740993,"zz_nested":{"a":[1,{"b":"c"}]},` +
+	`"zz_quote":"q\"}],x","zz_nested_quote":{"s":["q\"}],x",{"t":"\\}],"}]},"zz\u005fesc":1},` +
+	`{"id":1,"slug":"b","title":"B","kind":"task","labels":["bug"],"zz_b":true},` +
+	`{"id":2,"slug":"n","title":"N","kind":"note","labels":["bug"],"zz_n":"x"},` +
+	`{"id":3,"slug":"fin","title":"Fin","kind":"task","labels":["bug"],"status":"done"}],` +
+	`"zz_top":{"k":[1,2]}}`
+
+// keptA lists the kept keys of task a and the top level in keptBoardBody, as slug, key and compact value.
+var keptA = [][3]string{
+	{"a", "zz_scalar", "9007199254740993"},
+	{"a", "zz_nested", `{"a":[1,{"b":"c"}]}`},
+	{"a", "zz_quote", `"q\"}],x"`},
+	{"a", "zz_nested_quote", `{"s":["q\"}],x",{"t":"\\}],"}]}`},
+	{"a", "zz_esc", "1"},
+	{"", "zz_top", `{"k":[1,2]}`},
+}
+
 // TestLoad asserts Store.Load's handling of board.json: a missing file yields an empty store, nil depends_on and labels normalize to empty slices, the version-1 and old tier-and-type shapes load and a Save round-trips them, and an unknown version or corrupt file is an error.
+// It also pins the kept keys: an entry key or top-level key this binary does not know survives every write path with its exact digits, after the known fields in key order, while the retired tier and type are still dropped.
 func TestLoad(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -1009,11 +1066,17 @@ func TestLoad(t *testing.T) {
 		body string
 		// wantErr is a substring the Load error must contain; empty means Load succeeds.
 		wantErr string
-		// check inspects the loaded entries.
+		// check inspects the loaded entries; nil skips it.
 		check func(t *testing.T, tasks []boardengine.Task)
-		// save writes the store back; saveContains and saveAbsent are the whitespace-free substrings the saved file must and must not contain.
+		// act mutates the loaded store after check and before the save.
+		act func(t *testing.T, store *boardengine.Store)
+		// save writes the store back, as do act and wantKeys; saveContains and saveAbsent are the whitespace-free substrings the saved file must and must not contain.
 		save                     bool
 		saveContains, saveAbsent []string
+		// saveOrder lists whitespace-free substrings that must appear in this order in the saved file.
+		saveOrder []string
+		// wantKeys lists slug, key and compact value read back from the saved file; an empty value means the key must be absent.
+		wantKeys [][3]string
 	}{
 		{
 			name: "a missing file yields an empty store",
@@ -1054,7 +1117,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "the old tier-and-type shape converts on Load and Save writes kind and labels",
-			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","tier":1,"type":"bug","brief":"[infra] fix it","depends_on":[]}]}`,
+			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","tier":1,"type":"bug","brief":"[infra] fix it","depends_on":[],"zz_scalar":9007199254740993}]}`,
 			check: func(t *testing.T, tasks []boardengine.Task) {
 				if len(tasks) != 1 || tasks[0].Kind != boardengine.KindTask || strings.Join(tasks[0].Labels, ",") != "bug,infra" || tasks[0].Brief != "fix it" {
 					t.Errorf("loaded %+v; want a task labelled bug, infra with the stripped brief", tasks)
@@ -1063,6 +1126,109 @@ func TestLoad(t *testing.T) {
 			save:         true,
 			saveContains: []string{`"kind":"task"`, `"labels"`},
 			saveAbsent:   []string{`"tier"`, `"type"`},
+			wantKeys:     [][3]string{{"a", "zz_scalar", "9007199254740993"}},
+		},
+		{
+			name: "set-status keeps kept keys after the known fields in key order",
+			body: keptBoardBody,
+			act: func(t *testing.T, store *boardengine.Store) {
+				status := "active"
+				if err := store.SetStatus("a", &status); err != nil {
+					t.Fatalf("SetStatus: %v", err)
+				}
+			},
+			saveOrder: []string{`"status":`, `"zz_nested"`, `"zz_scalar"`},
+			wantKeys:  keptA,
+		},
+		{
+			name: "an upsert keeps kept keys",
+			body: keptBoardBody,
+			act: func(t *testing.T, store *boardengine.Store) {
+				if _, err := store.UpsertTask(map[string]any{"slug": "a", "title": "A2"}); err != nil {
+					t.Fatalf("UpsertTask: %v", err)
+				}
+			},
+			wantKeys: keptA,
+		},
+		{
+			name: "a batch upsert keeps kept keys",
+			body: keptBoardBody,
+			act: func(t *testing.T, store *boardengine.Store) {
+				if err := store.UpsertTasksBatch([]map[string]any{{"slug": "a", "title": "A2"}, {"slug": "b", "title": "B2"}}); err != nil {
+					t.Fatalf("UpsertTasksBatch: %v", err)
+				}
+			},
+			wantKeys: append([][3]string{{"b", "zz_b", "true"}}, keptA...),
+		},
+		{
+			name: "promote keeps kept keys",
+			body: keptBoardBody,
+			act: func(t *testing.T, store *boardengine.Store) {
+				if _, _, err := store.Promote("n"); err != nil {
+					t.Fatalf("Promote: %v", err)
+				}
+			},
+			wantKeys: append([][3]string{{"n", "zz_n", `"x"`}}, keptA...),
+		},
+		{
+			name: "prune keeps kept keys",
+			body: keptBoardBody,
+			act: func(t *testing.T, store *boardengine.Store) {
+				store.Prune()
+			},
+			wantKeys: keptA,
+		},
+		{
+			name: "set-deps keeps kept keys",
+			body: keptBoardBody,
+			act: func(t *testing.T, store *boardengine.Store) {
+				if err := store.SetDeps("a", []string{"b"}); err != nil {
+					t.Fatalf("SetDeps: %v", err)
+				}
+			},
+			wantKeys: keptA,
+		},
+		{
+			name: "a merge keeps the upserted entry's keys and drops the removed entry's",
+			body: keptBoardBody,
+			act: func(t *testing.T, store *boardengine.Store) {
+				if _, err := store.MergeTasks([]string{"b"}, map[string]any{"slug": "a", "title": "A2"}, nil); err != nil {
+					t.Fatalf("MergeTasks: %v", err)
+				}
+			},
+			wantKeys: append([][3]string{{"a", "zz_b", ""}, {"", "zz_b", ""}}, keptA...),
+		},
+		{
+			name: "a remove drops the removed entry's keys",
+			body: keptBoardBody,
+			act: func(t *testing.T, store *boardengine.Store) {
+				if err := store.RemoveTask("b"); err != nil {
+					t.Fatalf("RemoveTask: %v", err)
+				}
+			},
+			wantKeys: append([][3]string{{"a", "zz_b", ""}, {"", "zz_b", ""}}, keptA...),
+		},
+		{
+			name: "a top-level key survives the first entry added to an empty store",
+			body: `{"version":1,"entries":[],"zz_top":"x"}`,
+			act: func(t *testing.T, store *boardengine.Store) {
+				if _, err := store.UpsertTask(map[string]any{"slug": "first"}); err != nil {
+					t.Fatalf("UpsertTask: %v", err)
+				}
+			},
+			wantKeys: [][3]string{{"", "zz_top", `"x"`}},
+		},
+		{
+			name: "a case-variant of a known key fills the field and is not also kept",
+			body: `{"version":1,"entries":[{"id":0,"slug":"a","Title":"A","kind":"note"}]}`,
+			check: func(t *testing.T, tasks []boardengine.Task) {
+				if len(tasks) != 1 || tasks[0].Title != "A" {
+					t.Errorf("loaded %+v; want title A", tasks)
+				}
+			},
+			save:         true,
+			saveContains: []string{`"title":"A"`},
+			saveAbsent:   []string{`"Title"`},
 		},
 		{
 			name:    "an unknown version is refused naming it",
@@ -1096,9 +1262,14 @@ func TestLoad(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Load: %v", err)
 			}
-			tt.check(t, store.Tasks())
+			if tt.check != nil {
+				tt.check(t, store.Tasks())
+			}
+			if tt.act != nil {
+				tt.act(t, store)
+			}
 
-			if !tt.save {
+			if !tt.save && tt.act == nil && tt.wantKeys == nil {
 				return
 			}
 			if err := store.Save(); err != nil {
@@ -1117,6 +1288,28 @@ func TestLoad(t *testing.T) {
 			for _, absent := range tt.saveAbsent {
 				if strings.Contains(compact, absent) {
 					t.Errorf("Save output must not contain %s: %s", absent, raw)
+				}
+			}
+			position := 0
+			for _, want := range tt.saveOrder {
+				index := strings.Index(compact[position:], want)
+				if index < 0 {
+					t.Errorf("Save output lacks %s after offset %d: %s", want, position, compact)
+					break
+				}
+				position += index + len(want)
+			}
+			for _, key := range tt.wantKeys {
+				slug, name, want := key[0], key[1], key[2]
+				got, present := keptValue(t, raw, slug, name)
+				if want == "" {
+					if present {
+						t.Errorf("entry %q key %s = %s; want it absent", slug, name, got)
+					}
+					continue
+				}
+				if !present || got != want {
+					t.Errorf("entry %q key %s = %q (present %v); want %q", slug, name, got, present, want)
 				}
 			}
 		})

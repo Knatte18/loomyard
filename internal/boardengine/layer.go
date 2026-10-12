@@ -150,6 +150,7 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 }
 
 // TaskWithLayer wraps a Task with its computed layer string.
+// It is never JSON-encoded: the embedded Task's MarshalJSON is promoted onto it and would drop Layer.
 type TaskWithLayer struct {
 	Task
 	Layer string

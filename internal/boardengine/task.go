@@ -8,6 +8,10 @@ package boardengine
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
+	"reflect"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -34,6 +38,199 @@ type Task struct {
 
 	// RunSettings maps a module name to a mapping of that module's config keys, nested as in its YAML file; an empty value is stored as no field.
 	RunSettings map[string]any `json:"run_settings,omitempty"`
+
+	// Unknown holds the decoded entry's keys this binary does not know, each with its raw JSON value, nil when there are none.
+	// Encoding writes them back after the known fields in key order, and no step decodes a value into a Go type.
+	Unknown map[string]json.RawMessage `json:"-"`
+}
+
+// taskKeys is the set of lower-cased JSON keys Task declares, which unknownMembers subtracts from a decoded entry.
+var taskKeys = jsonKeySet(reflect.TypeFor[Task]())
+
+// jsonKeySet returns the lower-cased JSON key of each exported field of struct type t: the tag name, else the field name, skipping fields tagged "-".
+// The fields of an embedded struct without a tag name count as t's own.
+func jsonKeySet(t reflect.Type) map[string]bool {
+	keys := map[string]bool{}
+	for i := range t.NumField() {
+		field := t.Field(i)
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if field.Anonymous && name == "" && field.Type.Kind() == reflect.Struct {
+			maps.Copy(keys, jsonKeySet(field.Type))
+			continue
+		}
+		if !field.IsExported() {
+			continue
+		}
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = field.Name
+		}
+		keys[strings.ToLower(name)] = true
+	}
+	return keys
+}
+
+// unknownMembers returns the members of the JSON object data whose key is not in known, each with its raw value, nil when none is left or data is not an object.
+// A key matches case-insensitively, as encoding/json matches a key to a field, so "Title" fills Title and is not also kept.
+// data must already be valid JSON.
+func unknownMembers(data []byte, known map[string]bool) map[string]json.RawMessage {
+	var unknown map[string]json.RawMessage
+	eachMember(data, func(key string, value []byte) {
+		if known[strings.ToLower(key)] {
+			return
+		}
+		if unknown == nil {
+			unknown = map[string]json.RawMessage{}
+		}
+		unknown[key] = slices.Clone(value)
+	})
+	return unknown
+}
+
+// eachMember calls visit with the key and raw value of each member of the JSON object data, in order; it visits nothing when data is not an object.
+// data must already be valid JSON: the walk is a single byte pass that trusts its structure.
+// value aliases data.
+func eachMember(data []byte, visit func(key string, value []byte)) {
+	position := skipSpace(data, 0)
+	if position >= len(data) || data[position] != '{' {
+		return
+	}
+	position++
+	for {
+		position = skipSpace(data, position)
+		if data[position] == '}' {
+			return
+		}
+		if data[position] == ',' {
+			position = skipSpace(data, position+1)
+		}
+		keyEnd := skipValue(data, position)
+		key := string(data[position+1 : keyEnd-1])
+		if strings.Contains(key, `\`) {
+			if err := json.Unmarshal(data[position:keyEnd], &key); err != nil {
+				return
+			}
+		}
+		position = skipSpace(data, keyEnd)
+		position = skipSpace(data, position+1)
+		valueEnd := skipValue(data, position)
+		visit(key, data[position:valueEnd])
+		position = valueEnd
+	}
+}
+
+// eachElement calls visit with the raw value of each element of the JSON array data, in order; it visits nothing when data is not an array.
+// data must already be valid JSON, and each value aliases data.
+func eachElement(data []byte, visit func(value []byte)) {
+	position := skipSpace(data, 0)
+	if position >= len(data) || data[position] != '[' {
+		return
+	}
+	position++
+	for {
+		position = skipSpace(data, position)
+		if data[position] == ']' {
+			return
+		}
+		if data[position] == ',' {
+			position = skipSpace(data, position+1)
+		}
+		valueEnd := skipValue(data, position)
+		visit(data[position:valueEnd])
+		position = valueEnd
+	}
+}
+
+// skipSpace returns the index of the first byte at or after position that is not JSON whitespace.
+func skipSpace(data []byte, position int) int {
+	for position < len(data) && (data[position] == ' ' || data[position] == '\t' || data[position] == '\n' || data[position] == '\r') {
+		position++
+	}
+	return position
+}
+
+// skipValue returns the index just past the JSON value that starts at position in valid JSON data.
+func skipValue(data []byte, position int) int {
+	depth := 0
+	for position < len(data) {
+		switch data[position] {
+		case '"':
+			position++
+			for data[position] != '"' {
+				if data[position] == '\\' {
+					position++
+				}
+				position++
+			}
+			if depth == 0 {
+				return position + 1
+			}
+		case '{', '[':
+			depth++
+		case '}', ']':
+			if depth == 0 {
+				return position
+			}
+			depth--
+			if depth == 0 {
+				return position + 1
+			}
+		case ',', ' ', '\t', '\n', '\r':
+			if depth == 0 {
+				return position
+			}
+		}
+		position++
+	}
+	return position
+}
+
+// appendUnknown writes the unknown members into the encoded JSON object before its closing brace, in sorted key order.
+// An empty unknown returns object unchanged.
+func appendUnknown(object []byte, unknown map[string]json.RawMessage) ([]byte, error) {
+	if len(unknown) == 0 {
+		return object, nil
+	}
+	out := slices.Clone(object[:len(object)-1])
+	needComma := string(object) != "{}"
+	for _, key := range slices.Sorted(maps.Keys(unknown)) {
+		name, err := json.Marshal(key)
+		if err != nil {
+			return nil, err
+		}
+		if needComma {
+			out = append(out, ',')
+		}
+		needComma = true
+		out = append(out, name...)
+		out = append(out, ':')
+		out = append(out, unknown[key]...)
+	}
+	return append(out, '}'), nil
+}
+
+// UnmarshalJSON decodes the known fields over t's current values, so a caller's pre-set defaults survive, and keeps every other key in Unknown.
+func (t *Task) UnmarshalJSON(data []byte) error {
+	type plain Task
+	decoded := plain(*t)
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*t = Task(decoded)
+	t.Unknown = unknownMembers(data, taskKeys)
+	return nil
+}
+
+// MarshalJSON encodes the known fields, then the Unknown members after them in key order.
+func (t Task) MarshalJSON() ([]byte, error) {
+	type plain Task
+	object, err := json.Marshal(plain(t))
+	if err != nil {
+		return nil, err
+	}
+	return appendUnknown(object, t.Unknown)
 }
 
 const (
@@ -158,7 +355,8 @@ func NewTask(fields map[string]any, nextID int) (Task, error) {
 }
 
 // ApplyPatch overlays fields onto existing and returns the updated Task.
-// Uses JSON round-trip: existing → map → overlay fields → Task, preserving fields not in the patch.
+// Uses JSON round-trip: existing → raw members → each patch field overlaid as its own encoding → Task, preserving fields not in the patch.
+// The members stay raw, so the existing entry's kept keys come back with their exact digits.
 // Unknown-field validation is the caller's responsibility (store.validateUpsertFields).
 func ApplyPatch(existing Task, fields map[string]any) (Task, error) {
 	existingJSON, err := json.Marshal(existing)
@@ -166,14 +364,18 @@ func ApplyPatch(existing Task, fields map[string]any) (Task, error) {
 		return Task{}, fmt.Errorf("marshal existing: %w", err)
 	}
 
-	var existingMap map[string]any
+	var existingMap map[string]json.RawMessage
 	err = json.Unmarshal(existingJSON, &existingMap)
 	if err != nil {
 		return Task{}, fmt.Errorf("unmarshal existing: %w", err)
 	}
 
 	for k, v := range fields {
-		existingMap[k] = v
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			return Task{}, fmt.Errorf("marshal field %q: %w", k, err)
+		}
+		existingMap[k] = encoded
 	}
 
 	mergedJSON, err := json.Marshal(existingMap)

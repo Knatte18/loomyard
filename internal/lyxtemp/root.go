@@ -16,6 +16,10 @@ import (
 type Root struct {
 	path string
 	now  func() time.Time
+	// remove, retryNow and sleep are the sweep's removal, retry-budget clock and retry pause, replaceable so a test retries without waiting.
+	remove   func(string) error
+	retryNow func() time.Time
+	sleep    func(time.Duration)
 }
 
 // Path returns the root's absolute path.
@@ -39,7 +43,7 @@ func openRoot(path string, uid int, now func() time.Time) (*Root, error) {
 	if err := checkRoot(path, uid); err != nil {
 		return nil, err
 	}
-	return &Root{path: path, now: now}, nil
+	return &Root{path: path, now: now, remove: os.RemoveAll, retryNow: time.Now, sleep: time.Sleep}, nil
 }
 
 // resolveRootPath returns the root path under tempDir.

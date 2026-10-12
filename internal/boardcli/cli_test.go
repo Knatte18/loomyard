@@ -57,6 +57,18 @@ func seedHubBoardConfig(t *testing.T, hub, content string) {
 	}
 }
 
+// seedBoardFile writes body as the board.json in the board dir of the hub above cwd, creating the directory.
+func seedBoardFile(t *testing.T, cwd, body string) {
+	t.Helper()
+	boardDir := fabricengine.BoardDir(filepath.Dir(cwd))
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatalf("create board dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+}
+
 // cliFixture is the one seeded repository the steps of TestCLI share.
 type cliFixture struct {
 	cwd string
@@ -575,7 +587,39 @@ func stepStrictPayloadShapes(t *testing.T, f *cliFixture) {
 // neither key and both keys error;
 // unknown keys (e.g.
 // old id_or_slug) error.
+// The step also pins that get, list-full and the task envelope of upsert, promote and merge print an entry's kept keys with exact digits.
 func stepLookupContract(t *testing.T, f *cliFixture) {
+	// seedKeptBoard starts from an empty board holding tasks a and b and a note n, a and n each carrying the kept key zz_kept.
+	seedKeptBoard := func(t *testing.T) {
+		f.reset(t)
+		seedBoardFile(t, f.cwd, `{"version":1,"entries":[`+
+			`{"id":0,"slug":"a","title":"A","kind":"task","labels":["bug"],"zz_kept":{"n":9007199254740993}},`+
+			`{"id":1,"slug":"n","title":"N","kind":"note","labels":["bug"],"zz_kept":{"n":9007199254740993}},`+
+			`{"id":2,"slug":"b","title":"B","kind":"task","labels":["bug"]}]}`)
+	}
+	// requireKept fails unless entry carries zz_kept with its digits unrounded.
+	requireKept := func(t *testing.T, entry map[string]any) {
+		t.Helper()
+		kept, err := json.Marshal(entry["zz_kept"])
+		if err != nil || string(kept) != `{"n":9007199254740993}` {
+			t.Errorf("zz_kept = %s (err %v); want {\"n\":9007199254740993} in %v", kept, err, entry)
+		}
+	}
+	// printedTask decodes stdout keeping numbers exact and returns the envelope's task object.
+	printedTask := func(t *testing.T, stdout string) map[string]any {
+		t.Helper()
+		decoder := json.NewDecoder(strings.NewReader(stdout))
+		decoder.UseNumber()
+		var envelope map[string]any
+		if err := decoder.Decode(&envelope); err != nil {
+			t.Fatalf("parse: %v; stdout: %s", err, stdout)
+		}
+		task, _ := envelope["task"].(map[string]any)
+		if task == nil {
+			t.Fatalf("no task object in %s", stdout)
+		}
+		return task
+	}
 
 	tests := []struct {
 		name         string
@@ -586,6 +630,8 @@ func stepLookupContract(t *testing.T, f *cliFixture) {
 		wantOK       bool
 		wantError    string // substring; empty means any error message is fine
 		assertResult func(*testing.T, map[string]any)
+		// assertStdout receives the raw stdout, for a check the runner's float64 decode would blur.
+		assertStdout func(*testing.T, string)
 	}{
 		{
 			name: "get_by_slug",
@@ -822,13 +868,78 @@ func stepLookupContract(t *testing.T, f *cliFixture) {
 			wantOK:       false,
 			wantError:    "only one of slug or id may be given",
 		},
+		{
+			name:         "get_prints_kept_keys",
+			setup:        seedKeptBoard,
+			verb:         "get",
+			payload:      `{"slug":"a"}`,
+			wantExitCode: 0,
+			wantOK:       true,
+			assertStdout: func(t *testing.T, stdout string) { requireKept(t, printedTask(t, stdout)) },
+		},
+		{
+			name:         "list_full_prints_kept_keys",
+			setup:        seedKeptBoard,
+			verb:         "list-full",
+			wantExitCode: 0,
+			wantOK:       true,
+			assertStdout: func(t *testing.T, stdout string) {
+				decoder := json.NewDecoder(strings.NewReader(stdout))
+				decoder.UseNumber()
+				var envelope struct {
+					Tasks []map[string]any `json:"tasks"`
+				}
+				if err := decoder.Decode(&envelope); err != nil {
+					t.Fatalf("parse: %v; stdout: %s", err, stdout)
+				}
+				for _, task := range envelope.Tasks {
+					if task["slug"] == "a" {
+						requireKept(t, task)
+						return
+					}
+				}
+				t.Errorf("no task a in %s", stdout)
+			},
+		},
+		{
+			name:         "upsert_prints_kept_keys",
+			setup:        seedKeptBoard,
+			verb:         "upsert",
+			payload:      `{"slug":"a","title":"A2"}`,
+			wantExitCode: 0,
+			wantOK:       true,
+			assertStdout: func(t *testing.T, stdout string) { requireKept(t, printedTask(t, stdout)) },
+		},
+		{
+			name:         "promote_prints_kept_keys",
+			setup:        seedKeptBoard,
+			verb:         "promote",
+			payload:      `{"slug":"n"}`,
+			wantExitCode: 0,
+			wantOK:       true,
+			assertStdout: func(t *testing.T, stdout string) { requireKept(t, printedTask(t, stdout)) },
+		},
+		{
+			name:         "merge_prints_kept_keys",
+			setup:        seedKeptBoard,
+			verb:         "merge",
+			payload:      `{"remove_slugs":["b"],"upsert":{"slug":"a","title":"A2"}}`,
+			wantExitCode: 0,
+			wantOK:       true,
+			assertStdout: func(t *testing.T, stdout string) { requireKept(t, printedTask(t, stdout)) },
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setup(t)
 
-			exitCode, stdout := runCLI(t, tt.verb, tt.payload)
+			var args []string
+			args = append(args, tt.verb)
+			if tt.payload != "" {
+				args = append(args, tt.payload)
+			}
+			exitCode, stdout := runCLI(t, args...)
 
 			if exitCode != tt.wantExitCode {
 				t.Fatalf("exit = %d; want %d; stdout: %s", exitCode, tt.wantExitCode, stdout)
@@ -851,6 +962,10 @@ func stepLookupContract(t *testing.T, f *cliFixture) {
 
 			if tt.assertResult != nil {
 				tt.assertResult(t, result)
+			}
+
+			if tt.assertStdout != nil {
+				tt.assertStdout(t, stdout)
 			}
 		})
 	}

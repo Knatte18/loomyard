@@ -3,10 +3,12 @@
 package boardengine_test
 
 import (
+	"encoding/json"
 	"errors"
 	"maps"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -34,6 +36,8 @@ func TestRunLock(t *testing.T) {
 		extra   []map[string]any
 		act     func(b *boardengine.Board) error
 		refused bool
+		// unknown is raw JSON members spliced into the locked entry after seeding; an accepted row requires the written file to still carry each.
+		unknown string
 	}{
 		{name: "upsert body", refused: true, act: upsertLocked(map[string]any{"body": "new"})},
 		{name: "upsert brief", refused: true, act: upsertLocked(map[string]any{"brief": "new"})},
@@ -74,7 +78,7 @@ func TestRunLock(t *testing.T) {
 			return b.UpsertTasksBatch([]map[string]any{{"slug": "locked", "status": ""}, {"slug": "locked", "body": "new"}})
 		}},
 
-		{name: "set-status to another value", act: func(b *boardengine.Board) error { return b.SetStatus("locked", strPtr("paused · X")) }},
+		{name: "set-status to another value", unknown: `"zz_scalar":9007199254740993`, act: func(b *boardengine.Board) error { return b.SetStatus("locked", strPtr("paused · X")) }},
 		{name: "set-status to nil", act: func(b *boardengine.Board) error { return b.SetStatus("locked", nil) }},
 		{name: "merge whose set_status targets it", extra: []map[string]any{other}, act: func(b *boardengine.Board) error {
 			_, err := b.MergeTasks(nil, map[string]any{"slug": "other", "body": "merged"}, &boardengine.MergeStatusUpdate{Selector: "locked", Status: strPtr("done")})
@@ -116,6 +120,9 @@ func TestRunLock(t *testing.T) {
 					t.Fatalf("seed %v: %v", seed["slug"], err)
 				}
 			}
+			if tc.unknown != "" {
+				addEntryKeys(t, boardPath, "locked", tc.unknown)
+			}
 			before, err := os.ReadFile(filepath.Join(boardPath, "board.json"))
 			if err != nil {
 				t.Fatalf("read board.json: %v", err)
@@ -130,6 +137,17 @@ func TestRunLock(t *testing.T) {
 			if !tc.refused {
 				if err != nil {
 					t.Fatalf("write refused: %v", err)
+				}
+				if tc.unknown != "" {
+					var members map[string]json.RawMessage
+					if err := json.Unmarshal([]byte("{"+tc.unknown+"}"), &members); err != nil {
+						t.Fatalf("decode unknown members: %v", err)
+					}
+					for key, value := range members {
+						if got, present := keptValue(t, after, "locked", key); !present || got != string(value) {
+							t.Errorf("locked key %s = %q (present %v); want %q", key, got, present, value)
+						}
+					}
 				}
 				return
 			}
@@ -177,6 +195,47 @@ func TestRunLock(t *testing.T) {
 			t.Errorf("RunStatusProducer = %q, %v; want %q, true", producer, ok, "Seed-Child")
 		}
 	})
+}
+
+// addEntryKeys splices the raw JSON members into the entry slug of the board.json under boardPath, leaving every value byte-for-byte as decoded raw.
+func addEntryKeys(t *testing.T, boardPath, slug, members string) {
+	t.Helper()
+	path := filepath.Join(boardPath, "board.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read board.json: %v", err)
+	}
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &top); err != nil {
+		t.Fatalf("decode board.json: %v", err)
+	}
+	var entries []map[string]json.RawMessage
+	if err := json.Unmarshal(top["entries"], &entries); err != nil {
+		t.Fatalf("decode entries: %v", err)
+	}
+	var added map[string]json.RawMessage
+	if err := json.Unmarshal([]byte("{"+members+"}"), &added); err != nil {
+		t.Fatalf("decode members: %v", err)
+	}
+	found := false
+	for _, entry := range entries {
+		if string(entry["slug"]) == strconv.Quote(slug) {
+			maps.Copy(entry, added)
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no entry %q in board.json", slug)
+	}
+	if top["entries"], err = json.Marshal(entries); err != nil {
+		t.Fatalf("encode entries: %v", err)
+	}
+	if raw, err = json.Marshal(top); err != nil {
+		t.Fatalf("encode board.json: %v", err)
+	}
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
 }
 
 // upsertLocked returns an action upserting patch onto the entry "locked".
