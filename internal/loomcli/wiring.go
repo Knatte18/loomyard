@@ -436,8 +436,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return fmt.Errorf("%w; %s", err, hubConfigWayForward)
 	}
-	// burlerengine.LoadConfig takes one argument, not the (baseDir, module) shape every other
-	// loader above takes: it is an optional-file loader, so an absent burler.yaml yields a zero
+	// burlerengine.LoadConfig is an optional-file loader: an absent burler.yaml yields a zero
 	// Config and a nil error rather than a load failure.
 	burlerCfg, err := burlerengine.LoadConfig(fabricengine.ConfigDirs(location))
 	if err != nil {
