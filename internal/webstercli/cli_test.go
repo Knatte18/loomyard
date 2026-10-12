@@ -1,5 +1,5 @@
 // cli_test.go covers the webstercli cobra seam through RunCLI: the PersistentPreRunE group-command guard and the help-tree stale-language check.
-// It also covers the spawn-free verbs (validate, status, pause, await-batch, rebaseline, restore-plan, and the no-run refusals of accept-audit and restore-plan) and fabricSync's SkipGit-before-Open guard ordering directly, since none of those need a live tmux/claude substrate or even a git repository beyond a plain t.TempDir().
+// It also covers the spawn-free verbs (validate, status, await-batch, rebaseline, restore-plan, and the no-run refusals of accept-audit and restore-plan) and fabricSync's SkipGit-before-Open guard ordering directly, since none of those need a live tmux/claude substrate or even a git repository beyond a plain t.TempDir().
 // Pathspec-shape coverage now lives in sync_integration_test.go, which proves the exclude-file transients stay uncommitted through a real git repo rather than asserting a pathspec string shape against a since-deleted helper.
 // Every fixture here builds a *websterCLI literal directly, bypassing Command()'s PersistentPreRunE, webster's own package-local injection point for these tests.
 // Every other verb's own behavior (begin-batch, record-batch, recover-batch, run) is covered by verbs_test.go.
@@ -113,7 +113,7 @@ func TestFabricSync_GuardOrdering(t *testing.T) {
 	}
 }
 
-// newTestCLI builds a minimal *websterCLI for validate/status/pause testing without a live git repo.
+// newTestCLI builds a minimal *websterCLI for validate/status testing without a live git repo.
 //
 // The layout anchors at the non-"." subpath "backend" so AnchorPath() and WorktreePath() are
 // distinguishable strings, proving the plan paths behave correctly at a nested anchor. It does NOT

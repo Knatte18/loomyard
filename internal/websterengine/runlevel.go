@@ -3,7 +3,7 @@
 // entry-time reclaim of webster's own two reclaimable substrates (Master's own strand and any
 // non-terminal recovery-batch strand — forks die with Master, so there is never a third), the
 // plan-fingerprint crash/resume guard with its --fresh archive/re-init escape, the
-// never-instantly-re-pause clear, the stale-outcome/summary archive, the always-fresh Master spawn
+// stale-outcome/summary archive, the always-fresh Master spawn
 // (fork-authorized, both output files), the shuttle-outcome-to-RunResult mapping, and the run-exit
 // whole-session audit cross-check that backstops record-batch's own per-batch incremental audit.
 // Named runlevel.go, not run.go, to avoid a clash with any future poll/spawn-style file name.

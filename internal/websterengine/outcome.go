@@ -1,7 +1,7 @@
 // outcome.go implements webster's own Master-outcome contract: outcome, the in-memory schema
 // parseOutcome strictly decodes, and archiveStaleOutcome, the archive-never-refuse act performed
 // before Master's own outcome.yaml is next written.
-// Unlike gitwrap.go/fingerprint.go/pause.go/archive.go, which are webster-local mechanism copies,
+// Unlike gitwrap.go/fingerprint.go/archive.go, which are webster-local mechanism copies,
 // outcome.go defines a shape webster owns outright: Outcome/ParseOutcome are webster's own
 // contract, not derived from any sibling module's.
 // Consumed only in-package (runlevel.go/summary.go, wired in batch 7), so every symbol here stays

@@ -66,7 +66,7 @@ type websterCLI struct {
 	// true, recover-batch passes false, because recover-batch is a short-lived verb whose context
 	// would be gone before a bound watcher observed anything.
 	//
-	// It is called by those two spawning verbs alone, never from wiring, so validate, status, pause
+	// It is called by those two spawning verbs alone, never from wiring, so validate, status
 	// and await-batch still boot no tmux server. The membership rule is "does this verb start an OS
 	// process of its own", not "does it write": begin-batch and record-batch mutate state but only
 	// inject into or read around a pane Master already owns, so a session they could reach exists by

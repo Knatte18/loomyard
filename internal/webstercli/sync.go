@@ -2,7 +2,7 @@
 // batch-boundary commit point calls to stage, commit, and push the webster artifacts it just wrote
 // (state.json, a batch report, outcome.yaml) through the fabric repo via
 // fabricengine.Fabric.Commit.
-// Machine-local runtime artifacts (run.lock, mutate.lock, both round-loop modules' pause flags,
+// Machine-local runtime artifacts (run.lock, mutate.lock, treadle's round-loop pause flag,
 // webster's rendered fork prompts) are never staged in the first place: they live under .lyx and so
 // never reach the pathspec this helper stages against -- this helper passes only a positive pathspec,
 // with no ":(exclude)" magic of its own.
