@@ -125,9 +125,24 @@ func (s *Shed) preflight() error {
 	return nil
 }
 
-// busyWayForward returns the trailing clause Run, Step and Goto put on an ErrShedBusy wrap, addressing the run by runID when one is told.
-func busyWayForward(runID string) string {
-	return fmt.Sprintf("way forward: %s asks the live driver to stop at its next producer boundary; check the holder with %s, then retry", runVerb("pause", runID), runVerb("status", runID))
+// busyWayForward returns the trailing clause Run, Step and Goto put on an ErrShedBusy wrap, addressing the run by runID when one is told and naming pauseCommand as the command that halts the live driver.
+func busyWayForward(runID, pauseCommand string) string {
+	return fmt.Sprintf("way forward: %q halts the live driver at its next producer boundary; check the holder with %s, then retry", pauseCommand, runVerb("status", runID))
+}
+
+// pauseCommandFor returns the command a way forward names to stop the run at a producer boundary: the told command when one is set, and otherwise the shed default `lyx shed pause <run-id> --after <producer>`.
+// The run-id is omitted when none is told, and an unknown producer reads `<current_producer>`.
+func pauseCommandFor(told, runID, producer string) string {
+	if told != "" {
+		return told
+	}
+	if producer == "" {
+		producer = "<current_producer>"
+	}
+	if runID == "" {
+		return "lyx shed pause --after " + producer
+	}
+	return "lyx shed pause " + runID + " --after " + producer
 }
 
 // missingStatusWayForward is the trailing clause Step and Goto put on a missing-status-file refusal.
@@ -439,7 +454,7 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 		return Result{}, fmt.Errorf("shedengine: acquire run lock %q: %w", s.LockPath, err)
 	}
 	if !locked {
-		return Result{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, s.LockPath, busyWayForward(s.RunID))
+		return Result{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, s.LockPath, busyWayForward(s.RunID, pauseCommandFor(s.PauseWayForward, s.RunID, "")))
 	}
 	defer runLock.Release()
 
@@ -487,7 +502,7 @@ func (s *Shed) Step(ctx context.Context) (StepResult, error) {
 		return StepResult{}, fmt.Errorf("shedengine: acquire run lock %q: %w", s.LockPath, err)
 	}
 	if !locked {
-		return StepResult{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, s.LockPath, busyWayForward(s.RunID))
+		return StepResult{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, s.LockPath, busyWayForward(s.RunID, pauseCommandFor(s.PauseWayForward, s.RunID, "")))
 	}
 	defer runLock.Release()
 

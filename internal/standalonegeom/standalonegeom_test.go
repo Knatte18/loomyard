@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
@@ -61,6 +62,10 @@ func TestStandaloneDirs(t *testing.T) {
 		{"StencilsDir", StencilsDir(stateDir), filepath.Join(stateDir, lyxdirs.LyxDirName, "stencils")},
 		{"SpecsDir", SpecsDir(stateDir), filepath.Join(stateDir, lyxdirs.LyxDirName, "specs")},
 		{"LogsDir", LogsDir(stateDir), filepath.Join(stateDir, lyxdirs.DotLyxDirName, "logs")},
+		{"PauseGeometry", PauseGeometry(stateDir).RecordPath, filepath.Join(stateDir, lyxdirs.DotLyxDirName, lyxdirs.PauseDirName, pauserecord.RecordFileName)},
+	}
+	if slug := PauseGeometry(stateDir).Slug; slug != "" {
+		t.Errorf("PauseGeometry(%q).Slug = %q; want empty", stateDir, slug)
 	}
 	seen := map[string]string{}
 	for _, c := range cases {

@@ -25,15 +25,13 @@ type WebsterRunner func(websterengine.RunDeps, websterengine.RunOptions) (webste
 // Compile-time proof that websterengine.Run satisfies WebsterRunner.
 var _ WebsterRunner = websterengine.Run
 
-// Webster's own outcome values (websterengine's own outcomeDone/outcomeStuck/outcomePaused
-// constants) are unexported, so this adapter compares RunResult.Outcome against its own copies of
-// the same literals. The duplication is named rather than hidden: the default: branch in Call below
-// errors on any value that is not one of these three, and a test row drives that branch, so a
-// webster-side rename surfaces as a failing test here instead of a silently mis-mapped verdict.
+// Webster's own outcome values (websterengine's own outcomeDone/outcomeStuck constants) are unexported, so this adapter compares RunResult.Outcome against its own copies of the same literals.
+// The duplication is named rather than hidden:
+// the default: branch in Call below errors on any value that is not one of these two, and a test row drives that branch,
+// so a webster-side rename surfaces as a failing test here instead of a silently mis-mapped verdict.
 const (
-	websterOutcomeDone   = "done"
-	websterOutcomeStuck  = "stuck"
-	websterOutcomePaused = "paused"
+	websterOutcomeDone  = "done"
+	websterOutcomeStuck = "stuck"
 )
 
 // WebsterProducer is the shedadapters adapter over websterengine's Run seam: it invokes run once per
@@ -67,11 +65,7 @@ func NewWebsterProducer(name string, run WebsterRunner, deps websterengine.RunDe
 // AutoRebaseline is the non-destructive counterpart this row sets: a plan changed between steps is rebaselined on entry.
 // Every failure of that path, a refusal or a transient alike, maps to Stuck with its text, whose way forward re-steps this row.
 //
-// No mid-run bridge is installed: Webster's pause is an operator-owned flag file the batch loop
-// polls, and writing it from a context watcher would conflate the two pause channels, race the
-// run's own clear calls, and risk leaving the next invocation permanently paused. The accepted
-// consequence is that a cancel is not observed until Master reaches a terminal outcome or its own
-// configured whole-run timeout elapses.
+// No mid-run bridge is installed, so a cancel is not observed until Master reaches a terminal outcome or its own configured whole-run timeout elapses.
 func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name, websterEngineLabel); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -106,12 +100,6 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		}
 		logger.Warn("shedadapters: webster run is stuck", "producer", p.name, "engine", websterEngineLabel, "stuckReason", result.StuckReason, "batchesDone", result.BatchesDone)
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: result.StuckReason}, nil
-
-	case websterOutcomePaused:
-		if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {
-			return "", shedengine.OutputPointer{}, cerr
-		}
-		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): webster run paused out of band; way forward: re-step the %s row, since lyx webster run clears the pause and resumes", p.name, websterEngineLabel, p.name)
 
 	default:
 		if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {

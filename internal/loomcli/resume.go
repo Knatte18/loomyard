@@ -202,7 +202,8 @@ driver strand exists, the circling verbs at a review segment awaiting a
 decision, "lyx loom approve" or "lyx loom reject" at any other awaiting row,
 and a retry shortly for the kind "driver_not_parked", while the driver
 finishes its post-run work. An unfinished merge in the worktree is refused
-with the kind "merge_in_progress".
+with the kind "merge_in_progress". While a pause covers this task it refuses
+and names "lyx resume".
 
 Example:
   lyx loom resume`,
@@ -213,6 +214,11 @@ Example:
 			}
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
+
+			if err := c.refuseCovered(`run "lyx loom resume" again`); err != nil {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
 
 			bootstrapLockPath := loomengine.LoomBootstrapLock(c.location)
 			if err := os.MkdirAll(filepath.Dir(bootstrapLockPath), 0o755); err != nil {

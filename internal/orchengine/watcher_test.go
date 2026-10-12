@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -107,6 +108,11 @@ func (f *fakeSession) SessionIdle(string) (shuttleengine.IdleProbe, error) {
 	return probe, nil
 }
 
+func (f *fakeSession) Interrupt(string) error {
+	f.calls = append(f.calls, interruptCall)
+	return nil
+}
+
 func (f *fakeSession) Send(_, text string) error {
 	f.calls = append(f.calls, "send:"+text)
 	if f.onSend != nil {
@@ -169,6 +175,9 @@ var errHeld = fmt.Errorf("%w: strand \"s1\": the input box holds a draft; retry 
 // reloadPluginsCall is the call the fake records for the plugins step.
 const reloadPluginsCall = "reload-plugins"
 
+// interruptCall is the call the fake records for an interrupt.
+const interruptCall = "interrupt"
+
 type watchEnv struct {
 	t     *testing.T
 	w     *Watcher
@@ -177,6 +186,8 @@ type watchEnv struct {
 	paths Paths
 	stDir string
 	cfg   Config
+	// pausePath is the pause record the watcher is told.
+	pausePath string
 
 	skills []string // The skill list the watcher reloads, set before newWatcher.
 
@@ -206,6 +217,7 @@ func newWatchEnv(t *testing.T) *watchEnv {
 		clock: &fakeClock{now: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)},
 	}
 	e.paths.NoticesDir = filepath.Join(e.paths.Dir, "notices")
+	e.pausePath = filepath.Join(t.TempDir(), "pause", pauserecord.RecordFileName)
 	if err := SaveState(e.paths, State{Strand: "s1", Phase: PhaseIdle}); err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +255,9 @@ func (e *watchEnv) newWatcher() *Watcher {
 		}
 		return testIndex, nil
 	}
-	return NewWatcher(e.s, e.cfg, e.paths, e.stDir, e.skills, index, e.clock)
+	w := NewWatcher(e.s, e.cfg, e.paths, e.stDir, e.skills, index, e.clock)
+	w.WatchPause(PauseWatch{RecordPath: e.pausePath, Alive: func(int, string) bool { return true }})
+	return w
 }
 
 func (e *watchEnv) tick() {

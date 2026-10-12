@@ -134,6 +134,11 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 	}
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	runner := shuttleengine.NewRunner(reedEngine, claudeengine.NewFromConfig(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	pauseGeom, err := hubgeom.PauseGeometry(loc)
+	if err != nil {
+		return err
+	}
+	runner.SetPause(pauseGeom)
 	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(loc, line) })
 
 	// A `lyx burler` run is not a loom run and has no friction directory in either mode.
@@ -189,6 +194,7 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 	// Standalone's anchor (the derived state directory) is deliberately outside its worktree root
 	// (the target), which NewRunner's containment assertion would refuse -- NewDetachedRunner stays.
 	runner := shuttleengine.NewDetachedRunner(reedEngine, claudeengine.NewFromConfig(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
+	runner.SetPause(standalonegeom.PauseGeometry(res.StateDir))
 
 	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach —
 	// `lyx reed up` is hub-only — so the run verb boots it in-process through this seam (see the

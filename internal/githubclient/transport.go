@@ -8,6 +8,8 @@ package githubclient
 import (
 	"fmt"
 	"net/http"
+
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
 // authRT owns the Authorization header on every request, resolving a token per
@@ -31,7 +33,11 @@ func (rt *authRT) base() http.RoundTripper {
 // It sends req with a resolved token,
 // and on a 401, it invalidates the cache and replays exactly once with a fresh token (unless the
 // token is environment-sourced, in which case it returns an error instead).
+//
+// It first waits while a pause covers the process; the hold is outside the replay, so a replay is not held twice.
 func (rt *authRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	defer pauserecord.Network("github")()
+
 	tok, source, err := resolveToken()
 	if err != nil {
 		return nil, err

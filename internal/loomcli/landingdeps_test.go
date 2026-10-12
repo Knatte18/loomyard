@@ -8,6 +8,7 @@ package loomcli
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -17,8 +18,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -236,6 +239,40 @@ func TestLoopLockOwner(t *testing.T) {
 	}
 }
 
+// TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait writes a status running at Publish and asserts the pause seam reports false with no condition, false with pause_after naming another row, true with it naming Publish, and false with only pause_requested set.
+func TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		apply func(st *shedengine.Status)
+		want  bool
+	}{
+		{"no condition", func(*shedengine.Status) {}, false},
+		{"pause_after naming another row", func(st *shedengine.Status) { st.PauseAfter = "Finalize" }, false},
+		{"pause_after naming the waiting row", func(st *shedengine.Status) { st.PauseAfter = "Publish" }, true},
+		{"pause_requested alone", func(st *shedengine.Status) { st.PauseRequested = true }, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			statusPath := filepath.Join(dir, "status.json")
+			statusLockPath := filepath.Join(dir, "status.json.lock")
+			st := shedengine.Status{CurrentProducer: "Publish", State: shedengine.StateRunning}
+			tt.apply(&st)
+			writeStatusFixture(t, statusPath, statusLockPath, st)
+
+			loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
+			got, err := parentLockDeps(loc, shedrun.SelfRunID, statusPath, statusLockPath).PauseRequested()
+			if err != nil || got != tt.want {
+				t.Errorf("PauseRequested() = %v, %v; want %v, nil", got, err, tt.want)
+			}
+		})
+	}
+}
+
 // TestLandingAlignmentDeps_Config drives the real Config closure over a temp location with loom.yaml seeded:
 // skip_alignment and a hub with no board dir read Off, and otherwise it reads the resolved settings and alignment_pr_approve.
 // This pins the PR-side half of the criterion that skip_alignment or no board dir leaves both alignment points as before.
@@ -248,7 +285,7 @@ func TestLandingAlignmentDeps_Config(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		cfg, err := landingAlignmentDeps(loc, t.TempDir(), registry, nil).Config()
+		cfg, err := landingAlignmentDeps(loc, t.TempDir(), registry, nil, pauserecord.Geometry{}).Config()
 		if err != nil {
 			t.Fatalf("Config() = %v; want nil", err)
 		}

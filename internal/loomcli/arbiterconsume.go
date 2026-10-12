@@ -17,7 +17,8 @@ import (
 // It reads the attempt record and the verb's validated envelope.json, never the agent's verdict.yaml.
 // Before taking any lock it refuses an attempt whose envelope is missing or unparseable, whose verdict is not a resume or carries a cause, and one already applied.
 // It then calls shedengine.Relaunch with the envelope's goto target and an Admit that refuses, under the status lock, unless the run is in the state the arbiter left:
-// its stop key is the attempt's, no pause is requested, and the pause conditions equal those the attempt recorded at spawn.
+// its stop key is the attempt's and the pause conditions equal those the attempt recorded at spawn.
+// A pause_requested left by an older binary does not refuse: Relaunch carries it through and the shed honours it at the next producer boundary.
 // Admit writes the applied mark before the goto is performed, so the mark and the move land under one hold of the status lock.
 // Every refusal names the verdict path and the hand-on way forward: the driver's stop report quotes the verdict and the run's parent decides.
 func consumeArbiterAttempt(attemptDir string, base shedengine.RelaunchRequest) error {
@@ -53,7 +54,7 @@ func consumeArbiterAttempt(attemptDir string, base shedengine.RelaunchRequest) e
 		if loomengine.StopKeyOf(current) != attempt.StopKey {
 			return refuse("the run moved since the arbiter spawned: its stop key is no longer the attempt's")
 		}
-		if current.PauseRequested || current.PauseBefore != attempt.PauseBefore || current.PauseAfter != attempt.PauseAfter {
+		if current.PauseBefore != attempt.PauseBefore || current.PauseAfter != attempt.PauseAfter {
 			return refuse("the run was paused since the arbiter spawned")
 		}
 		return loomengine.MarkArbiterApplied(attemptDir)

@@ -95,28 +95,35 @@ func TestLoopIdleRelease(t *testing.T) {
 	busyBeside := []parentlock.AgentState{{Name: "writer", Waiting: true}, {Name: "fixer", Busy: true}}
 
 	tests := []struct {
-		name         string
-		states       []parentlock.AgentState
-		readErr      error
-		wakeAt       []time.Duration
+		name    string
+		states  []parentlock.AgentState
+		readErr error
+		wakeAt  []time.Duration
+		// covered reports whether a pause covers the run at the nth wake; nil never covers it.
+		covered      func(wake int) bool
 		wantReleased bool
 	}{
-		{"released once the wait passes the bound", waiting, nil, []time.Duration{0, bound}, true},
-		{"kept below the bound", waiting, nil, []time.Duration{0, bound - time.Second}, false},
-		{"kept beside a busy agent", busyBeside, nil, []time.Duration{0, bound}, false},
-		{"kept on a failed read", waiting, errors.New("unreadable"), []time.Duration{0, bound}, false},
+		{"released once the wait passes the bound", waiting, nil, []time.Duration{0, bound}, nil, true},
+		{"kept below the bound", waiting, nil, []time.Duration{0, bound - time.Second}, nil, false},
+		{"kept beside a busy agent", busyBeside, nil, []time.Duration{0, bound}, nil, false},
+		{"kept on a failed read", waiting, errors.New("unreadable"), []time.Duration{0, bound}, nil, false},
+		{"kept while every wake is covered", waiting, nil, []time.Duration{0, bound, 2 * bound}, func(int) bool { return true }, false},
+		{"kept until the bound passes again after the resume", waiting, nil, []time.Duration{0, bound, bound + bound/2}, func(wake int) bool { return wake < 2 }, false},
+		{"released once the bound passed again after the resume", waiting, nil, []time.Duration{0, bound, bound + bound/2, bound + bound/2 + bound}, func(wake int) bool { return wake < 2 }, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			store := lockedStore(t, loopOwner)
 			var now time.Duration
+			var wakeNumber int
 			wake := idleReleaseOn(store, func() parentlock.Owner { return loopOwner },
 				func() ([]parentlock.AgentState, error) { return tt.states, tt.readErr },
-				bound, func() time.Duration { return now })
+				bound, func() time.Duration { return now },
+				func() bool { return tt.covered != nil && tt.covered(wakeNumber) })
 
-			for _, at := range tt.wakeAt {
-				now = at
+			for i, at := range tt.wakeAt {
+				now, wakeNumber = at, i
 				wake()
 			}
 

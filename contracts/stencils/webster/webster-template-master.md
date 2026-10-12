@@ -175,11 +175,6 @@ Spawn at most one fixer fork per gate message;
 the gate bounds the number of attempts.
 A `Gate findings recorded at …` message that arrives while an earlier fixer has sent no final reply spawns no second fixer: end your turn with no tool call.
 
-## A paused refusal ends your run immediately
-
-If `begin-batch` refuses with a paused result (`{"paused": true}`), do not retry it and do not try another batch: write `outcome: paused` to `{{.outcome_path}}` right away (see the outcome file below) and stop.
-A pause is operational, not something for you to judge.
-
 ## A plan-drift refusal ends your run as stuck — do not retry the verb
 
 If `begin-batch` refuses with `{"plan_drifted": true}`, that means `begin-batch`'s own re-resolution of the plan against the current tree — run immediately before it would have built a pack — found a blocking defect: the plan changed since it was approved, in a way the tree now contradicts.
@@ -224,7 +219,7 @@ NEVER spawn a non-fork or named subagent — every implementer you spawn is `sub
 
 ## Your final action: the outcome and summary files
 
-Your absolute LAST action of this whole run — whether it finished cleanly, got stuck, or was paused — is writing BOTH `{{.outcome_path}}` and `{{.summary_path}}`.
+Your absolute LAST action of this whole run — whether it finished cleanly or got stuck — is writing BOTH `{{.outcome_path}}` and `{{.summary_path}}`.
 Nothing you do after these files exist is read by anyone: write them last, and write each exactly once per turn end — a gate failure (see above) is the one case that has you rewrite them.
 
 `{{.outcome_path}}` itself carries exactly these three keys, quoted here, exactly:
@@ -234,14 +229,14 @@ Nothing you do after these files exist is read by anyone: write them last, and w
 - `batches_done`
 
 ```yaml
-outcome: done | stuck | paused
+outcome: done | stuck
 stuck_reason: null | "<one line>"
 batches_done: <int>
 ```
 
 `outcome` is `done` once the last batch in your batch list reports `status: "done"`;
 `stuck` when you have exhausted every recovery option above for some batch;
-`paused` per the rule above. `stuck_reason` is `null` for `done` and `paused`,
+`stuck_reason` is `null` for `done`,
 and a single line naming the batch and the blocker for `stuck`. `batches_done` counts every batch in your batch list whose status is `done` when you write this file — including batches your Progress section already listed as `done` before a resume, so the count always describes the whole plan's progress, never just this session's own share of it.
 
 `{{.summary_path}}` is a prose narrative built strictly from the minimal reports and digests you actually read — never a fork's own success narrative (forks never write prose narratives;

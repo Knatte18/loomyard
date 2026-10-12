@@ -395,20 +395,4 @@ func TestPRAlign(t *testing.T) {
 			t.Errorf("closes = %v; want one", f.session.closes)
 		}
 	})
-
-	t.Run("a pause request closes the attempt, leaves the pause note and ends Done", func(t *testing.T) {
-		f := newAlignFixture(t, openPR(3, prGateHead))
-		f.deps.Lock.PauseRequested = func() (bool, error) { return true, nil }
-		f.session.script = []alignment.Outcome{pendingOutcome()}
-		outcome, _, err := f.callAlign(t, context.Background())
-		if err != nil || outcome != shedengine.Done {
-			t.Fatalf("Call() = %q, %v; want Done", outcome, err)
-		}
-		if note, _, _ := ReadAlignmentNote(f.deps.Alignment.NotePath); note.Reason != pausedReason {
-			t.Errorf("note reason = %q; want the pause reason", note.Reason)
-		}
-		if len(f.session.closes) != 1 {
-			t.Errorf("closes = %v; want one", f.session.closes)
-		}
-	})
 }

@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/cliwire"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -139,6 +140,13 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 			if c.reedUp != nil {
 				t.Error("wireHub armed c.reedUp; want nil -- hub mode's reed session is not run's to boot")
 			}
+			wantPause, err := hubgeom.PauseGeometry(loc)
+			if err != nil {
+				t.Fatalf("hubgeom.PauseGeometry(loc) = %v; want nil", err)
+			}
+			if got := c.runner.PauseGeometry(); got != wantPause {
+				t.Errorf("runner.PauseGeometry() = %+v; want %+v", got, wantPause)
+			}
 			if c.openFabric == nil {
 				t.Fatal("openFabric = nil; want a wired opener closure in hub mode")
 			}
@@ -233,6 +241,10 @@ func TestWire_StandaloneMode(t *testing.T) {
 	}
 	if c.frictionDir != "" {
 		t.Errorf("c.frictionDir = %q; want \"\" in standalone mode", c.frictionDir)
+	}
+
+	if pause := c.runner.PauseGeometry(); !strings.HasPrefix(pause.RecordPath, stateDir) || pause.Slug != "" {
+		t.Errorf("runner.PauseGeometry() = %+v; want a record path under the derived state directory %q and an empty slug", pause, stateDir)
 	}
 
 	// A runner that is merely non-nil proves nothing: NewRunner holds a told-path verdict and surfaces it only when a verb runs, so this drives a public entry point with a guid no strand will ever match.

@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/statuspane"
 )
 
@@ -344,5 +345,7 @@ func (c *loomCLI) buildLoomShed() (*shedengine.Shed, error) {
 		parentLockDeps(c.location, c.runID, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath),
 	)
 
+	// A loop's step child adopts its trace id from LYX_TRACE_ID, so this tie names the step the loop runs and the watchdog can stop that step's runs.
+	c.runner.SetStepTie(shuttleengine.StepTie{StepsDir: shedrun.StepsDir(c.location, c.runID), TraceID: logger.TraceID()})
 	return c.newShed()
 }

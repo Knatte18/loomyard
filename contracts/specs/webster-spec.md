@@ -17,7 +17,7 @@ The grouping is computed once per run and recorded in `state.json`, and every ve
 ## `_lyx/webster/` as an ownership boundary
 
 Webster owns `_lyx/webster/` and everything in it — `state.json`, the reports directory, `plan-baseline/` (the content store behind the recorded plan hashes), `outcome.yaml`, `summary.md` — resolved via `internal/websterengine`'s own `Dir`/`ReportsDir` helpers, which are the sole declarers of that path segment.
-Its never-tracked siblings — the pause flag, the rendered fork prompts, every `*.lock` — live at the mirrored subpath under `.lyx/webster/` via `internal/websterengine`'s `ScratchDir`/`PromptsDir` helpers, and are deliberately outside the fabric-committed pathspec.
+Its never-tracked siblings — the rendered fork prompts, every `*.lock` — live at the mirrored subpath under `.lyx/webster/` via `internal/websterengine`'s `ScratchDir`/`PromptsDir` helpers, and are deliberately outside the fabric-committed pathspec.
 No other module writes into either directory.
 
 ## `outcome.yaml`
@@ -25,12 +25,12 @@ No other module writes into either directory.
 Master's final-action file:
 
 ```yaml
-outcome: done | stuck | paused
+outcome: done | stuck
 stuck_reason: null | "<one line>"   # required non-empty when outcome: stuck
 batches_done: <int>
 ```
 
-`outcome` is one of `done`, `paused`, `stuck`.
+`outcome` is one of `done`, `stuck`.
 `stuck_reason` is required non-empty when `outcome: stuck` and empty otherwise.
 `batches_done` is the count of batches that reached `status: done` this run.
 The file is strictly decoded — unknown fields are rejected — and follows archive-never-refuse: a stale file is timestamp-renamed, never overwritten or refused.

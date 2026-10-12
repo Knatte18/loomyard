@@ -56,6 +56,12 @@ func (s runnerSession) Send(guid, text string) error {
 	return s.runner.Send(guid, text)
 }
 
+// Interrupt delegates to Runner.Interrupt, which refuses a pane that is not a ready agent pane and otherwise sends the provider's interrupt key.
+func (s runnerSession) Interrupt(guid string) error {
+	logger.Debug("orch: interrupt session", "strandGUID", guid)
+	return s.runner.Interrupt(guid)
+}
+
 // ClearSession delegates to Runner.ClearSession, which types into the pane through tmux.
 func (s runnerSession) ClearSession(guid string) error {
 	logger.Debug("orch: clear session", "strandGUID", guid)

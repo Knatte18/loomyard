@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
@@ -40,6 +41,8 @@ type lockHarness struct {
 	movedCalls int
 	spawns     *int
 	notices    []string
+	// coveredThrough makes the fake pause record cover the slug until that many Sleep calls have been made; zero never covers it.
+	coveredThrough int
 
 	producer shedengine.ShedProducer
 }
@@ -69,6 +72,9 @@ func newLockHarness(t *testing.T, status shedengine.Status) *lockHarness {
 		return *h.decision, true, nil
 	}
 	deps.PairDir = func() (string, error) { return "/pair", nil }
+	deps.Pause = func() (pauserecord.Coverage, error) {
+		return pauserecord.Coverage{Covered: h.clock.sleepCalls < h.coveredThrough, Entry: pauserecord.Entry{Scope: pauserecord.ScopeHub}}, nil
+	}
 	deps.Notify = func(_ context.Context, line string) (bool, error) {
 		h.notices = append(h.notices, line)
 		return true, nil
@@ -158,9 +164,15 @@ func TestInnerRun_ParentLockReleasesAStalledLoopsRecord(t *testing.T) {
 		agents       []parentlock.AgentState
 		agentsErr    error
 		newOwnerAt   int
+		coveredUntil int
+		// checks is how many checks the Call makes; zero means eleven, just past the bound.
+		checks       int
 		wantReleased bool
 	}{
 		{name: "released once the agents waited the bound", agents: waiting, wantReleased: true},
+		{name: "kept while a pause covers it", agents: waiting, coveredUntil: 12},
+		{name: "kept when the bound has not passed again since the resume", agents: waiting, coveredUntil: 6},
+		{name: "released once the bound passes again after the resume", agents: waiting, coveredUntil: 6, checks: 18, wantReleased: true},
 		{name: "kept when the owner changed meanwhile", agents: waiting, newOwnerAt: 6},
 		{name: "kept beside a busy agent", agents: busyBeside},
 		{name: "kept on a failed read", agents: waiting, agentsErr: errors.New("unreadable")},
@@ -171,6 +183,7 @@ func TestInnerRun_ParentLockReleasesAStalledLoopsRecord(t *testing.T) {
 			h := newLockHarness(t, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Webster"})
 			h.record = loopRecord()
 			h.agents, h.agentsErr = tt.agents, tt.agentsErr
+			h.coveredThrough = tt.coveredUntil
 			if tt.newOwnerAt > 0 {
 				h.clock.onSleep = func(call int) {
 					if call == tt.newOwnerAt {
@@ -179,7 +192,11 @@ func TestInnerRun_ParentLockReleasesAStalledLoopsRecord(t *testing.T) {
 				}
 			}
 
-			h.runChecks(11)
+			checks := tt.checks
+			if checks == 0 {
+				checks = 11
+			}
+			h.runChecks(checks)
 
 			if got := len(h.released) == 1; got != tt.wantReleased {
 				t.Errorf("released = %v; want released %v", h.released, tt.wantReleased)

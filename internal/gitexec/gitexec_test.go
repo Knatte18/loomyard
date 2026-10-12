@@ -5,6 +5,7 @@
 package gitexec_test
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -222,7 +224,7 @@ func TestRun_StdoutOnError(t *testing.T) {
 }
 
 // TestRun_RemoteBounds drives the bounds on a remote git command through git's ext:: transport, a remote that accepts and never answers, with no network.
-// Its rows run serially because they set the remote deadline and the kill reporter, which are process-global state.
+// Its rows run serially because they set the remote deadline, the kill reporter and the pause network gate, which are process-global state.
 // The ext:: command is a shell script, so the test is Unix-only.
 func TestRun_RemoteBounds(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -258,6 +260,76 @@ func TestRun_RemoteBounds(t *testing.T) {
 		}
 	}
 	repoDir := t.TempDir()
+
+	if !t.Run("a remote command waits while a pause covers the process, a local one does not", func(t *testing.T) {
+		marker := filepath.Join(scriptDir, "ran")
+		touch := filepath.Join(scriptDir, "touch.sh")
+		if err := os.WriteFile(touch, []byte("#!/bin/sh\ntouch "+marker+"\nexit 0\n"), 0o755); err != nil {
+			t.Fatalf("write %s: %v", touch, err)
+		}
+		recordPath := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
+		setLive := func(entries ...pauserecord.Entry) {
+			t.Helper()
+			if _, err := pauserecord.Update(recordPath, time.Now(), func(r *pauserecord.Record) error {
+				r.Live = entries
+				return nil
+			}); err != nil {
+				t.Fatalf("update the pause record: %v", err)
+			}
+		}
+		setLive(pauserecord.Entry{Scope: pauserecord.ScopeHub, PausedAt: time.Now()})
+
+		wakes := make(chan struct{}, 100)
+		restore := pauserecord.InstallGate(pauserecord.Gate{
+			Geometry: pauserecord.Geometry{RecordPath: recordPath},
+			Notify:   func(string) {},
+			Sleep: func(ctx context.Context, d time.Duration) error {
+				wakes <- struct{}{}
+				time.Sleep(20 * time.Millisecond)
+				return nil
+			},
+		})
+		t.Cleanup(restore)
+
+		finished := make(chan struct{})
+		go func() {
+			defer close(finished)
+			// The ext:: command exits without speaking the protocol, so the call's own error is not the assertion.
+			_, _ = gitexec.Run([]string{"-c", "protocol.ext.allow=always", "ls-remote", "ext::" + touch}, repoDir)
+		}()
+
+		select {
+		case <-wakes:
+		case <-time.After(10 * time.Second):
+			t.Fatal("the held remote command never woke its wait")
+		}
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Fatalf("marker stat error = %v; want the remote command not to have run while the pause covers the process", err)
+		}
+
+		setLive()
+		select {
+		case <-finished:
+		case <-time.After(10 * time.Second):
+			t.Fatal("the remote command did not run after the pause was resumed")
+		}
+		if _, err := os.Stat(marker); err != nil {
+			t.Fatalf("marker stat error = %v; want the remote command to have run after the resume", err)
+		}
+
+		setLive(pauserecord.Entry{Scope: pauserecord.ScopeHub, PausedAt: time.Now()})
+		for len(wakes) > 0 {
+			<-wakes
+		}
+		if _, err := gitexec.Run([]string{"-c", "alias.ok=!true", "ok"}, repoDir); err != nil {
+			t.Fatalf("local command under a live pause: %v", err)
+		}
+		if len(wakes) != 0 {
+			t.Fatalf("a local command woke the pause wait %d times; want none", len(wakes))
+		}
+	}) {
+		return
+	}
 
 	if !t.Run("a hung remote command is killed at the deadline", func(t *testing.T) {
 		args := []string{"-c", "protocol.ext.allow=always", "ls-remote", "ext::" + hang}

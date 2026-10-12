@@ -7,7 +7,7 @@
 // The one resolving import it admits is internal/logger, for boundary logging and the two
 // sink-location accessors, per the Shed Verb-Set Invariant.
 //
-// pause with no flag requests a pause at the next producer boundary.
+// pause with no flag requests a pause at the next producer boundary, unless the spec's BarePause hook refuses it, which loom's does.
 // --before <producer> and --after <producer> record a stop condition the engine fires at that producer, and --clear removes both; none of the three touches the bare request, and --clear refuses beside the other two.
 //
 // step prints a short envelope by default.
@@ -72,8 +72,11 @@
 // a zero window disarms the watch, and one below a minute is raised to a minute with one Warn.
 // Activity is a write to any of the child's trace files, listed through Spec.Loop.TraceFiles on each wake since a child opens its trace after it starts, or a newer reading of Spec.Loop.Activity, the arming module's report of the run's agent activity.
 // The watch counts the idle time from the child's start until the first activity, wakes at most once a second, doubles its wake to a minute while nothing changes and returns to a second on a change.
+// The idle time is awake, unpaused time: the watch reads Spec.Loop.Awake (default the monotonic clock) against the wall clock on each wake to see a machine sleep, and the intervals Spec.Loop.Pause reports a pause covered the run, and neither counts.
+// While Spec.Loop.Pause reports the run covered the watch judges nothing and never kills, and a pause record it cannot read reads uncovered with one Warn.
 // When the window passes the loop asks the child to dump its goroutines with Quit so the dump lands in its captured stderr, gives it five seconds to exit, then kills it with its descendants.
-// The stop is interrupted with cause watchdog and loop.detail naming the idle time.
+// The stop is interrupted with a cause that names the watchdog, the awake idle time, the window and the last activity time, and loop.detail naming the idle time.
+// Spec.Loop.OnWatchdogKill runs once after the kill, with what the watchdog read, and the note it returns ends the cause; both Warn lines of the kill carry the same reading in the step's trace.
 // The loop never re-steps an interrupted step itself; loop.interrupt_policy and loop.status_moved let the driver's rule decide.
 // A child that exits on its own with a non-zero status and no record keeps cause exited with the exit status.
 // The watch kills only the loop's own in-flight child and its process group or job.

@@ -6,10 +6,6 @@
 // The freshly-written fork prompt is deliberately NOT part of that commit: the sync pathspec
 // excludes prompts/* as machine-local re-renderable artifacts (BeginBatch rewrites a batch's own
 // prompt on every begin).
-// ErrPaused is an operational refusal, not a hard error: Master reads the {"paused": true} envelope
-// and writes its own outcome.yaml with outcome: paused, webster's own pausedEnvelope
-// pattern with an exit-0 success code, since begin-batch's own pause refusal is a steady-state
-// signal Master's prompt is written to expect on every call, not a failure.
 package webstercli
 
 import (
@@ -37,8 +33,7 @@ func (c *websterCLI) beginBatchCmd() *cobra.Command {
 		Use:         "begin-batch <nn>",
 		Short:       "open one batch's bracket before forking its implementer: record its start and render its fork prompt",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
-		Long: `begin-batch <nn> checks the webster pause flag (refusing with a
-"paused": true envelope if "lyx webster pause" was called), refuses loud
+		Long: `begin-batch <nn> refuses loud
 when the batch's report file already exists for a batch state.json records
 (finished work is never silently overwritten -- a stuck batch escalates via
 recover-batch; a refusal over a batch whose recoveries are exhausted carries
@@ -127,10 +122,6 @@ Example:
 
 				if saveErr != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("%s; additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v; %s", err.Error(), saveErr, rebaselineWayForward)))
-					return nil
-				}
-				if errors.Is(err, websterengine.ErrPaused) {
-					clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{"paused": true}))
 					return nil
 				}
 				if errors.Is(err, websterengine.ErrPlanDrifted) {

@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -189,7 +190,7 @@ func landingDeps(
 		},
 		MergeRecordPath:   landingshed.MergeRecordPath(loomengine.LoomScratchDir(l)),
 		MergeReviewedPath: landingshed.MergeReviewedPath(loomengine.LoomScratchDir(l)),
-		Alignment:         landingAlignmentDeps(l, geom.StencilsDir, registry, runner),
+		Alignment:         landingAlignmentDeps(l, geom.StencilsDir, registry, runner, runner.PauseGeometry()),
 	}
 }
 
@@ -199,7 +200,7 @@ const alignmentNoteFile = "note.json"
 // landingAlignmentDeps builds PR-Align's seams for the worktree l.
 // Its Config loads loom's config on each call, so an edit to skip_alignment or alignment_pr_approve takes effect at the next step;
 // its session works under the run's PR-Gate alignment directory, which also holds the alignment note.
-func landingAlignmentDeps(l *lyxcwd.Location, stencilsDir string, registry modelspec.Registry, runner *shuttleengine.Runner) landingshed.AlignmentDeps {
+func landingAlignmentDeps(l *lyxcwd.Location, stencilsDir string, registry modelspec.Registry, runner *shuttleengine.Runner, pause pauserecord.Geometry) landingshed.AlignmentDeps {
 	root := shedrun.AlignmentDir(l, shedrun.SelfRunID, string(alignment.PointPRGate))
 	slug := seedSlug(l.WorktreeName)
 	return landingshed.AlignmentDeps{
@@ -222,6 +223,7 @@ func landingAlignmentDeps(l *lyxcwd.Location, stencilsDir string, registry model
 			StencilsDir: stencilsDir,
 			Shuttle:     alignment.RunnerShuttle(runner),
 			Now:         time.Now,
+			Pause:       pause,
 		}),
 		Snapshot: alignmentSnapshot(loomengine.DiscussionDecisionRecord(l), slug, hubBoardTasks(l)),
 		Prompt: alignment.PromptInput{
@@ -235,12 +237,34 @@ func landingAlignmentDeps(l *lyxcwd.Location, stencilsDir string, registry model
 	}
 }
 
+// pauseCovered returns the parent lock store's Covered seam: whether the hub's pause record covers a slug now.
+// A geometry or record that cannot be read covers nothing, so a corrupt file never freezes the lock queue.
+func pauseCovered(l *lyxcwd.Location) func(slug string) bool {
+	return func(slug string) bool {
+		geometry, err := hubgeom.PauseGeometry(l)
+		if err != nil {
+			logger.Warn("loomcli: pause geometry unreadable, treating the run as uncovered", "slug", slug, "cause", err)
+			return false
+		}
+		coverage, err := pauserecord.ReadCoverage(geometry.RecordPath, slug, time.Now())
+		if err != nil {
+			logger.Warn("loomcli: pause record unreadable, treating the run as uncovered", "slug", slug, "cause", err)
+			return false
+		}
+		return coverage.Covered
+	}
+}
+
 // parentLockDeps builds the parent lock seams for the run runID of the worktree l.
 // The store sits in the hub-level ephemeral tree, reached by path and never junctioned into a pair;
-// the wait record lives in the run's scratch directory, and a pause is the run status file's pause_requested flag read under its status lock.
+// the wait record lives in the run's scratch directory, and the wait ends when the run status file's pause_after, read under its status lock, names the run's current producer: the lock-taking row waiting in the queue.
+// The store reads the pause record to tell which slug a pause covers; an unreadable record covers nothing and logs one Warn.
 func parentLockDeps(l *lyxcwd.Location, runID, statusPath, statusLockPath string) landingshed.ParentLockDeps {
 	return landingshed.ParentLockDeps{
-		Store:    &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(l.HubPath))},
+		Store: &parentlock.Store{
+			Dir:     parentlock.Dir(fabricengine.BoardDir(l.HubPath)),
+			Covered: pauseCovered(l),
+		},
 		Owner:    loopLockOwner(l, runID),
 		WaitPath: parentlock.WaitRecordPath(loomengine.LoomScratchDir(l)),
 		PauseRequested: func() (bool, error) {
@@ -248,7 +272,7 @@ func parentLockDeps(l *lyxcwd.Location, runID, statusPath, statusLockPath string
 			if err != nil || !found {
 				return false, err
 			}
-			return status.PauseRequested, nil
+			return status.PauseAfter != "" && status.PauseAfter == status.CurrentProducer, nil
 		},
 	}
 }

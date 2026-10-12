@@ -356,7 +356,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			quiets:          []quietState{{loop: true}},
 			request:         Request{Slug: "slug", RefuseWhenBusy: true},
 			wantErrIs:       ErrDriverBusy,
-			wantErrContains: []string{"the loop is live", "lyx shed pause slug"},
+			wantErrContains: []string{"the loop is live", "lyx shed pause slug --after <current_producer>"},
 			wantCalls:       "quiet",
 		},
 		{

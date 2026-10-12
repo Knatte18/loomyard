@@ -59,7 +59,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-verified-tree` — Running a verify command: through `verifytree.Verify` only, never on a dirty tree, skipping only on a record of HEAD's tree. (test) — [background](pattern/PATTERN-verified-tree.md)
 - `PATTERN-gate-slot` — Running a gate build or test: only in a `-p`-capped hub slot of `internal/gateslot`.
 - `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch the active `batcher.yaml` profile derives via `internal/batcher`. — [background](pattern/PATTERN-batcher-registry.md)
-- `PATTERN-review-round` — Review and fix round: review accepted on disk before any edit, each finding fixed or disputed with evidence, end on a verdict. — [background](pattern/PATTERN-review-round.md)
+- `PATTERN-review-round` — Review and fix round: review accepted on disk before any edit, each finding fixed or disputed, end on a verdict. — [background](pattern/PATTERN-review-round.md)
 - `PATTERN-sole-parsers` — Parsing plan, discussion, summary or recipe: only `planparser`, `discussionparser`, `summaryparser`, `shedbuild`. (test) — [background](pattern/PATTERN-sole-parsers.md)
 
 ## Agents and prompts
@@ -71,7 +71,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-completion-signal` — Finalizing a negative "did this run finish" answer in `internal/shuttleengine`: consult `allOutputFilesExist` first. (test) — [background](pattern/PATTERN-completion-signal.md)
 - `PATTERN-shuttle-provider-seam` — Referencing a provider: its specifics live only under `internal/shuttleengine/claudeengine`. — [background](pattern/PATTERN-shuttle-provider-seam.md)
 - `PATTERN-shuttle-stop` — Stopping a shuttle run's strand from Go outside `internal/shuttleengine`: only through shuttle's stop verb. (test) — [background](pattern/PATTERN-shuttle-stop.md)
-- `PATTERN-orch-pane-single-writer` — Typing into the orch session from Go: only the orch watcher does it, idle-gated; another module queues a notice through `orchengine` instead.
+- `PATTERN-orch-pane-single-writer` — Typing into the orch session from Go: only the orch watcher does it, idle-gated except the interrupt a hub pause asks for; another module queues a notice through `orchengine` instead.
 - `PATTERN-shell-mechanics-seam` — Building a pane-shell command string: only through `internal/shell`, which imports the standard library alone.
 - `PATTERN-pane-text-injection` — Typing text into an agent pane: only reed's paste-submit, behind shuttle's pre-write guard or reed's activity check; no Enter of lyx's own into a box not holding exactly the sent text. — [background](pattern/PATTERN-pane-text-injection.md)
 - `PATTERN-pane-binary-resolution` — Creating a strand pane or detached `lyx` window in reed: resolve `lyx` via `panebin.go` only. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
@@ -93,8 +93,8 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 ## Build and tooling
 
 - `PATTERN-sandbox-coverage` — Registering a lyx module: the sandbox suite exercises it, or explicitly excludes it with a reason.
-- `PATTERN-dev-prod-binary-separation` — Resolving `lyx` in sandbox tooling: `resolveLyx` (`.dev-bin` first, then PATH), never a bare-PATH lookup.
-- `PATTERN-quarry-cgo` — Building this module: it needs `CGO_ENABLED=1` and a C compiler for quarry's tree-sitter grammars. — [background](pattern/PATTERN-quarry-cgo.md)
+- `PATTERN-dev-prod-binary-separation` — Resolving `lyx` in sandbox tooling: `resolveLyx` (`.dev-bin` first, then PATH), never bare PATH.
+- `PATTERN-quarry-cgo` — Building this module: it needs `CGO_ENABLED=1` and a C compiler for tree-sitter grammars. — [background](pattern/PATTERN-quarry-cgo.md)
 
 ## Testing
 
@@ -108,4 +108,4 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 - `PATTERN-markdown-link-integrity` — Linking in a `.md` file under `docs/`: every inline link resolves, file part and `#anchor`. (test) — [background](pattern/PATTERN-markdown-link-integrity.md)
 - `PATTERN-comment-line-breaks` — Writing a Go comment: one sentence per line, checked by `lyx loom lint-comments` alone. (test) — [background](pattern/PATTERN-comment-line-breaks.md)
-- `PATTERN-documentation-lifecycle` — Deciding which docs are kept or deleted: keep no design doc for unbuilt work; a built design lives in its package's `doc.go`. — [background](pattern/PATTERN-documentation-lifecycle.md)
+- `PATTERN-documentation-lifecycle` — Deciding which docs are kept: keep no design doc for unbuilt work; a built design lives in its package's `doc.go`. — [background](pattern/PATTERN-documentation-lifecycle.md)

@@ -1,4 +1,4 @@
-// beginbatch.go implements BeginBatch, the first of webster's two bracket verbs Master calls around each in-session fork: the pause and fingerprint refusal gates, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself.
+// beginbatch.go implements BeginBatch, the first of webster's two bracket verbs Master calls around each in-session fork: the fingerprint refusal gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself.
 // BeginBatch never touches fabric (webster is fabric-blind throughout) and never persists deps.State
 // itself — the caller holds the state-mutation lease (AcquireStateMutation) across its whole
 // begin-batch call and saves state via SaveState once BeginBatch returns successfully, webster's
@@ -25,13 +25,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
-
-// ErrPaused is the sentinel BeginBatch returns when deps.Geom.ScratchDir's pause flag is present at the
-// batch boundary (PauseRequested).
-// Exported so a caller can distinguish the operational "paused" refusal from every other
-// begin-batch failure via errors.Is(err, ErrPaused) — webster's own sentinel, per the
-// webster-owns-its-own-domain-types decision.
-var ErrPaused = errors.New("webster: paused")
 
 // ErrFingerprintMismatch is the sentinel BeginBatch returns when the on-disk plan's recomputed
 // fingerprint disagrees with State.PlanFingerprint — webster's own crash/resume guard, with its own
@@ -94,7 +87,7 @@ func cardNumberOf(name string) string {
 	return num
 }
 
-// ErrPlanDrifted is the sentinel BeginBatch returns when the dispatch-boundary re-resolution (planindex.Index.ValidateDispatch, called against deps.Geom.WorktreeRoot with the completed cards excluded) reports a non-empty blocking findings set — webster's own sentinel, per the webster-owns-its-own-domain-types decision, so a caller distinguishes this refusal from ErrPaused and ErrFingerprintMismatch via errors.Is.
+// ErrPlanDrifted is the sentinel BeginBatch returns when the dispatch-boundary re-resolution (planindex.Index.ValidateDispatch, called against deps.Geom.WorktreeRoot with the completed cards excluded) reports a non-empty blocking findings set — webster's own sentinel, per the webster-owns-its-own-domain-types decision, so a caller distinguishes this refusal from ErrFingerprintMismatch via errors.Is.
 // Dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
 var ErrPlanDrifted = errors.New("webster: plan re-resolution at begin-batch reported a blocking finding")
 
@@ -430,7 +423,7 @@ func buildKickstartPack(deps BeginDeps, index planindex.Index, batch batcher.Bat
 	return pack
 }
 
-// BeginBatch drives one begin-batch call to completion, immediately before Master forks batchNumber's implementer: the pause gate, the fingerprint gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself.
+// BeginBatch drives one begin-batch call to completion, immediately before Master forks batchNumber's implementer: the fingerprint gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself.
 // The caller holds the state-mutation lease across this whole call and is responsible for
 // persisting deps.State via SaveState once BeginBatch returns successfully — BeginBatch itself
 // never calls SaveState and never touches fabric.
@@ -446,10 +439,6 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// enforced for one of the two fields (crucible round opus-medium-r6, R6-21).
 	if deps.State == nil {
 		return nil, fmt.Errorf("webster: begin-batch requires loaded run state; BeginDeps.State is nil")
-	}
-
-	if PauseRequested(deps.Geom.ScratchDir) {
-		return nil, ErrPaused
 	}
 
 	if err := PlanEditError(deps.State, deps.Plan.Dir, deps.Geom.WebsterDir); err != nil {

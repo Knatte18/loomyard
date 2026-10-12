@@ -377,7 +377,7 @@ func fabricReferenceCommand(entry string) (string, bool) {
 // ClassifyViolation assigns v its D4 severity, checking the correctness rule first.
 // A fork-contract-write, a fork-plan-write and a fork-state-write are correctness.
 // A parent-write is correctness when its path lies under the run's state, reports or plan directory, or the run's `_lyx` directory (the parent of geom.WebsterDir).
-// It is correctness under the run's `.lyx` state directory too (the parent of geom.ScratchDir), since webster's pause flag and locks, another module's lock or pause flag, and a reed launch script all decide what a run does and are git-ignored.
+// It is correctness under the run's `.lyx` state directory too (the parent of geom.ScratchDir), since webster's locks, another module's lock or pause flag, and a reed launch script all decide what a run does and are git-ignored.
 // A write within another worktree of the task repository, or within that worktree's `_lyx`, is correctness;
 // the innermost worktree holding the write decides, so a worktree enclosing this one never claims a write inside it.
 // A write inside this worktree is correctness when git does not ignore it, and every other parent-write is policy.

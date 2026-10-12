@@ -59,8 +59,7 @@ plan the run recorded (restore it with "lyx webster restore-plan"); with an
 unchanged plan and nothing pending --fresh is a no-op and the run RESUMES
 from state.json, so a fully-completed plan re-reports done without
 re-driving anything -- force a from-scratch re-run of an unchanged plan by
-editing the plan or archiving _lyx/webster/state.json aside by hand), clears
-any leftover pause flag once those refusal gates pass, archives any stale
+editing the plan or archiving _lyx/webster/state.json aside by hand), archives any stale
 outcome.yaml/summary.md,
 spawns a fresh Master session via shuttle (fork-authorized, never resumed),
 and blocks until Master writes its own outcome.yaml and summary.md

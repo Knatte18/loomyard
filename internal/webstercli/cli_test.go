@@ -1,5 +1,5 @@
 // cli_test.go covers the webstercli cobra seam through RunCLI: the PersistentPreRunE group-command guard and the help-tree stale-language check.
-// It also covers the spawn-free verbs (validate, status, pause, await-batch, rebaseline, restore-plan, and the no-run refusals of accept-audit and restore-plan) and fabricSync's SkipGit-before-Open guard ordering directly, since none of those need a live tmux/claude substrate or even a git repository beyond a plain t.TempDir().
+// It also covers the spawn-free verbs (validate, status, await-batch, rebaseline, restore-plan, and the no-run refusals of accept-audit and restore-plan) and fabricSync's SkipGit-before-Open guard ordering directly, since none of those need a live tmux/claude substrate or even a git repository beyond a plain t.TempDir().
 // Pathspec-shape coverage now lives in sync_integration_test.go, which proves the exclude-file transients stay uncommitted through a real git repo rather than asserting a pathspec string shape against a since-deleted helper.
 // Every fixture here builds a *websterCLI literal directly, bypassing Command()'s PersistentPreRunE, webster's own package-local injection point for these tests.
 // Every other verb's own behavior (begin-batch, record-batch, recover-batch, run) is covered by verbs_test.go.
@@ -113,7 +113,7 @@ func TestFabricSync_GuardOrdering(t *testing.T) {
 	}
 }
 
-// newTestCLI builds a minimal *websterCLI for validate/status/pause testing without a live git repo.
+// newTestCLI builds a minimal *websterCLI for validate/status testing without a live git repo.
 //
 // The layout anchors at the non-"." subpath "backend" so AnchorPath() and WorktreePath() are
 // distinguishable strings, proving the plan paths behave correctly at a nested anchor. It does NOT
@@ -801,7 +801,7 @@ var singleFlagEnvelope = regexp.MustCompile(`map\[string\]any\{"([a-z_]+)": true
 // the master stencil's ladder names both all the same.
 //
 // The flag set is read out of this package's own source rather than pinned as a list, because a hand-maintained list is forgotten by exactly the change that adds a new flag -- which is how this gap arose.
-// What the regexp deliberately does NOT cover is a flag riding along inside a multi-field envelope (status's own "paused" report field, for instance): those are state a caller reads, not refusals a ladder must answer.
+// What the regexp deliberately does NOT cover is a flag riding along inside a multi-field envelope (status's own report fields, for instance): those are state a caller reads, not refusals a ladder must answer.
 //
 //testtiming:keep a guard that fires when a single-flag refusal envelope is missing from the master stencil's failure ladder, which its covering test does not assert
 func TestMasterStencilCoversEverySingleFlagRefusal(t *testing.T) {
@@ -901,22 +901,6 @@ func TestStatusCmd(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-//testtiming:keep pins that a second pause call is idempotent and reports paused again, which its covering test does not assert
-func TestPauseCmd_RequestsPauseIdempotent(t *testing.T) {
-	c, _ := newTestCLI(t)
-
-	for i := 0; i < 2; i++ {
-		var out bytes.Buffer
-		exitCode := clihelp.Execute(c.pauseCmd(), &out, []string{})
-		if exitCode != 0 {
-			t.Fatalf("pause call %d = %d; want 0, output: %s", i+1, exitCode, out.String())
-		}
-		if !strings.Contains(out.String(), `"paused":true`) {
-			t.Errorf("pause call %d output missing paused:true; got %q", i+1, out.String())
-		}
 	}
 }
 

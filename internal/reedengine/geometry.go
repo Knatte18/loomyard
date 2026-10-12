@@ -54,6 +54,9 @@ type Geometry struct {
 	// NameSlug is the task worktree's slug segment of a strand name;
 	// empty in the prime and in a standalone run.
 	NameSlug string
+	// PauseRecordPath is the hub's pause record, read by Resume to leave a covered pair's strands down.
+	// It is empty in standalone mode, where no pause covers anything.
+	PauseRecordPath string
 	// ParentName is the full name of the session that spawned this worktree's default run;
 	// empty when none is recorded.
 	// It is unrelated to Strand.Parent, which is a layout guid.

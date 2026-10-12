@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -139,6 +140,10 @@ type InnerRunDeps struct {
 	// PauseRequested reports whether batten's own status carries pause_requested, which ends the wait within one check.
 	// A nil PauseRequested resolves to reporting false in NewInnerRun; an error is warned about and reads as not paused.
 	PauseRequested func() (bool, error)
+	// Pause reads what the hub's pause record says about this run's slug.
+	// The wait reads it once per check: while it reports covered, the wait spawns, resumes and revives nothing and sends no running-child notice, and its idle clocks leave out the covered intervals.
+	// A nil Pause resolves to never covered in NewInnerRun; an error is warned about and reads as not covered.
+	Pause func() (pauserecord.Coverage, error)
 	// NoticeProbe is how rarely the wait does anything costing a process or a multiplexer round trip: the driver, review and agent-activity reads, the forced status decode, the not-parked resume retry, the watched-marker refresh and a notice's delivery.
 	// Zero makes every check a probe.
 	NoticeProbe time.Duration
@@ -159,7 +164,7 @@ type InnerRunDeps struct {
 	// A nil Now resolves to time.Now in NewInnerRun, the same way a nil Sleep resolves to waitOrCancel; a test replaces it to keep the grace out of real time.
 	Now func() time.Time
 	// Awake is a clock that stops while the machine sleeps, read as a duration from any fixed origin.
-	// The quiet and api-error idle checks subtract the time the wall clock ran ahead of it, so suspended time is not idle time.
+	// The quiet and api-error idle checks treat each time the wall clock ran ahead of it by more than a minute as a sleep, an interval that is not idle time.
 	// A nil Awake resolves in NewInnerRun to Go's monotonic reading, measured from an origin taken at construction.
 	// That reading stops during suspend on Linux and macOS; on Windows it keeps running, so a nil Awake there leaves the idle clocks counting suspended time as before.
 	Awake func() time.Duration

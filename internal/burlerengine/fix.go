@@ -200,8 +200,15 @@ func (e *Engine) ProbeFix(p Profile, opts RunOpts) (LiveHalf, error) {
 	return e.probeHalf(table, p.FixerReportPath)
 }
 
+// promptDeliverer is the optional capability of a live handle that can deliver a task prompt its agent never received.
+// DeliverPendingPrompt types the prompt when the prompt's turn never started and reports whether it did.
+type promptDeliverer interface {
+	DeliverPendingPrompt() (bool, error)
+}
+
 // ResumeFix completes the fix half whose fixer is live, attaching to it instead of starting one, and concludes it as a fresh fix is, against the same digest.
 // A LiveHalf that is not live is an error, and so is one with no probed table, which only a LiveHalf not taken from ProbeFix lacks; nothing is stopped or started.
+// A live handle that can deliver a pending task prompt is asked to before the seats resume, and a delivery error is returned as the resume's error with nothing resumed.
 func (e *Engine) ResumeFix(p Profile, opts RunOpts, digest string, live LiveHalf) (FixResult, error) {
 	if live.State != HalfLive {
 		return FixResult{}, fmt.Errorf("burler: resume needs the fix half live (state %d)", live.State)
@@ -214,6 +221,16 @@ func (e *Engine) ResumeFix(p Profile, opts RunOpts, digest string, live LiveHalf
 	}
 
 	logger.Info("burler: resuming a live fix", "round", opts.Round, "fixStrand", live.Handle.StrandGUID())
+
+	if deliverer, ok := live.Handle.(promptDeliverer); ok {
+		sent, err := deliverer.DeliverPendingPrompt()
+		if err != nil {
+			return FixResult{}, fmt.Errorf("burler: deliver the fix's task prompt before resuming: %w", err)
+		}
+		if sent {
+			logger.Info("burler: delivered the fix's task prompt before resuming", "round", opts.Round, "fixStrand", live.Handle.StrandGUID())
+		}
+	}
 
 	table := p.fixTable(opts, fixSeatValues(&p, fixFilesIn(e.probeDirOf())))
 	seats, err := e.seats.Resume(table, *live.table)

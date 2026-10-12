@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -96,6 +97,17 @@ func TestReedGeometry(t *testing.T) {
 			}
 			if got.HubPath != hub {
 				t.Errorf("ReedGeometry(l).HubPath = %q; want %q", got.HubPath, hub)
+			}
+
+			pause := pauseGeometry(l, tt.isPrime)
+			if got.PauseRecordPath != pause.RecordPath {
+				t.Errorf("ReedGeometry(l).PauseRecordPath = %q; want %q (the pause geometry's record path)", got.PauseRecordPath, pause.RecordPath)
+			}
+			if want := filepath.Join(fabricengine.HubScratchDir(hub), lyxdirs.PauseDirName, pauserecord.RecordFileName); pause.RecordPath != want {
+				t.Errorf("pauseGeometry(l).RecordPath = %q; want %q", pause.RecordPath, want)
+			}
+			if pause.Slug != tt.wantSlug {
+				t.Errorf("pauseGeometry(l).Slug = %q; want %q", pause.Slug, tt.wantSlug)
 			}
 		})
 	}

@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -48,6 +49,8 @@ type ResumeResult struct {
 	Resumed int
 	// Dropped counts the finished strands Resume removed from state instead of relaunching.
 	Dropped int
+	// Held names the strands a pause covering this pair left down instead of relaunching.
+	Held []string
 }
 
 // DownResult reports the outcome of Down: the session name that was torn down, plus the name of a
@@ -168,7 +171,8 @@ func planUpLaunches(strands []Strand) []Strand {
 // Every other non-live, non-hidden strand is relaunched;
 // a hidden strand that is not dropped is neither.
 // A live strand is in neither list.
-func planResumeLaunches(strands []Strand, liveIDs map[string]bool, exists func(path string) bool) (launch, drop []Strand) {
+// When paused, every strand that would be relaunched is returned in held instead, so a pause leaves it down.
+func planResumeLaunches(strands []Strand, liveIDs map[string]bool, exists func(path string) bool, paused bool) (launch, drop, held []Strand) {
 	for _, s := range strands {
 		live := s.PaneID != "" && liveIDs[s.PaneID]
 		if live {
@@ -181,9 +185,28 @@ func planResumeLaunches(strands []Strand, liveIDs map[string]bool, exists func(p
 		if s.Display.Anchor == render.AnchorHidden {
 			continue
 		}
+		if paused {
+			held = append(held, s)
+			continue
+		}
 		launch = append(launch, s)
 	}
-	return launch, drop
+	return launch, drop, held
+}
+
+// pairPaused reports whether a live pause entry covers this engine's pair.
+// The prime (empty NameSlug) and a standalone geometry (empty PauseRecordPath) are never covered, and an unreadable record holds nothing.
+func (e *Engine) pairPaused() bool {
+	if e.geom.PauseRecordPath == "" || e.geom.NameSlug == "" {
+		return false
+	}
+	record, err := pauserecord.Read(e.geom.PauseRecordPath)
+	if err != nil {
+		logger.Warn("reed: resuming despite an unreadable pause record", "path", e.geom.PauseRecordPath, "cause", err)
+		return false
+	}
+	_, covered := record.Covering(e.geom.NameSlug)
+	return covered
 }
 
 // dropStrands removes drop's strands from st, logs one Info line per strand, and returns how many it removed.
@@ -781,7 +804,7 @@ func (e *Engine) Resume() (ResumeResult, error) {
 		}
 		// aliveIDSet, not liveIDSet: a strand bound to a dead-but-present pane
 		// (e.g. the kept sole dead pane) is not live and must be relaunched.
-		toLaunch, toDrop := planResumeLaunches(st.Strands, aliveIDSet(live), pathExists)
+		toLaunch, toDrop, toHold := planResumeLaunches(st.Strands, aliveIDSet(live), pathExists, e.pairPaused())
 
 		// A finished strand has no live pane,
 		// so dropping it kills nothing.
@@ -830,7 +853,11 @@ func (e *Engine) Resume() (ResumeResult, error) {
 			return err
 		}
 
-		result = ResumeResult{Session: e.SessionName(), Resumed: launched, Dropped: dropped}
+		var held []string
+		for _, s := range toHold {
+			held = append(held, s.Name)
+		}
+		result = ResumeResult{Session: e.SessionName(), Resumed: launched, Dropped: dropped, Held: held}
 		return nil
 	})
 	return result, err

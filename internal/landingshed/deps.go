@@ -253,7 +253,7 @@ type ParentLockDeps struct {
 	Owner func() (parentlock.Owner, error)
 	// WaitPath is the run's wait record file.
 	WaitPath string
-	// PauseRequested reports whether the operator asked the run to pause.
+	// PauseRequested reports whether the operator asked, with a `--after` naming the row now waiting in the parent lock's queue, for the wait to end.
 	// Nil reads as never.
 	PauseRequested func() (bool, error)
 }

@@ -51,8 +51,7 @@ type Geometry struct {
 	ReportsDir string
 	// PromptsDir is the told path to the directory holding webster's rendered fork prompts.
 	PromptsDir string
-	// ScratchDir is the told path to the base directory for webster's never-tracked artifacts (the
-	// pause flag, rendered fork prompts, and every *.lock).
+	// ScratchDir is the told path to the base directory for webster's never-tracked artifacts (the rendered fork prompts, and every *.lock).
 	ScratchDir string
 	// StencilsDir is the told absolute directory the prompt stencils are read from at call time.
 	StencilsDir string

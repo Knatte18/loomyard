@@ -44,7 +44,7 @@ func newParentGuard(deps Deps) parentGuard {
 // ensure takes the parent lock for the run, waiting in the queue while another run holds it.
 // While it waits it keeps the run's wait record and the driver strand's pane mark, and removes both on every way out.
 //
-// It returns "" once the lock is held, and a non-empty Stuck reason when the operator paused the wait or the lock record is unreadable;
+// It returns "" once the lock is held, and a non-empty Stuck reason when the operator halted the wait or the lock record is unreadable;
 // a caller returns either reason as a Stuck with Halt set.
 // A cancellation and every other failure are returned as an error.
 // A guard with no lock store takes no lock.
@@ -84,7 +84,7 @@ func (g parentGuard) ensure(ctx context.Context, producer string) (string, error
 	case err == nil:
 		return "", nil
 	case errors.Is(err, parentlock.ErrPaused):
-		return fmt.Sprintf("paused while waiting for the parent lock on %q held by %s; way forward: run \"lyx loom goto --to %s\", then \"lyx loom resume\"", g.parentBranch, holderSlug, producer), nil
+		return fmt.Sprintf("halted while waiting for the parent lock on %q held by %s, as \"lyx loom pause --after %s\" asked; way forward: run \"lyx loom goto --to %s\", then \"lyx loom resume\"", g.parentBranch, holderSlug, producer, producer), nil
 	case errors.Is(err, parentlock.ErrUnreadable):
 		return fmt.Sprintf("the parent lock record of %q is unreadable: %v; way forward: run \"lyx batten lock release %s\" from the prime, then \"lyx loom resume\" in the task worktree", g.parentBranch, err, g.parentBranch), nil
 	default:
@@ -159,7 +159,7 @@ func (g parentGuard) moved(producer string) (string, error) {
 	return fmt.Sprintf("parent branch %q moved since Merge-In merged %s (local %s, upstream %s); rerouting to Merge-In", g.parentBranch, rec.MergedTip, tips.Local, tips.Upstream), nil
 }
 
-// pauseRequested reads the told pause flag; a read error counts as not paused and logs one Warn.
+// pauseRequested reads the told pause seam, which reports a `--after` naming the waiting row; a read error counts as not paused and logs one Warn.
 func (g parentGuard) pauseRequested() bool {
 	if g.lock.PauseRequested == nil {
 		return false

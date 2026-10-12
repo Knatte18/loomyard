@@ -52,6 +52,10 @@ type Shed struct {
 	// It is told;
 	// the empty string falls back to a generic clause.
 	MissingStatusWayForward string
+	// PauseWayForward is the command a busy refusal names to stop the run at a producer boundary.
+	// It is told;
+	// the empty string falls back to `lyx shed pause <run-id> --after <current_producer>`.
+	PauseWayForward string
 	// RerouteCapWayForward is the trailing "way forward:" clause of a reroute-cap halt.
 	// It is told;
 	// the empty string falls back to the run verb that resumes the row.

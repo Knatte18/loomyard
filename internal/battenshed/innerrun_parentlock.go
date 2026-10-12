@@ -28,9 +28,15 @@ type lockWatch struct {
 // It is kept while the child runs, so the resumed loop takes it back, and released when the child is in any other state.
 // A record owned by another process is released once its owner's agents have all waited for IdleBound with none busy; the watch restarts whenever the owner changes, and a failed agent read releases nothing.
 // Every release logs one Warn, and every failure of a seam is a Warn that changes nothing.
+// While a pause covers the slug it releases nothing.
 func (p *innerRunProducer) lockStep(ctx context.Context, w *childWait) {
 	lock := p.deps.ParentLock
 	if lock == nil {
+		return
+	}
+	// A covered holder keeps its record, and the idle watch restarts after the resume so paused time never counts as waiting.
+	if w.pause.Covered {
+		w.lock = lockWatch{}
 		return
 	}
 	record, found, err := lock.Read()

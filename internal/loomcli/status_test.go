@@ -6,11 +6,15 @@ package loomcli
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -28,10 +32,12 @@ func TestStatusCmd_EnvelopeKeySet(t *testing.T) {
 		name            string
 		currentProducer string
 		wantPolicy      string
+		covered         bool
 	}{
-		{"HandbackForWebster", loomshed.NameWebster, loomshed.InterruptPolicyHandback},
-		{"ReinvokeForAnotherRow", loomshed.NameDiscussionWrite, loomshed.InterruptPolicyReinvoke},
-		{"EmptyForUnknownRow", "not-a-real-row", ""},
+		{"HandbackForWebster", loomshed.NameWebster, loomshed.InterruptPolicyHandback, false},
+		{"ReinvokeForAnotherRow", loomshed.NameDiscussionWrite, loomshed.InterruptPolicyReinvoke, false},
+		{"EmptyForUnknownRow", "not-a-real-row", "", false},
+		{"PausedSinceForACoveredRun", loomshed.NameWebster, loomshed.InterruptPolicyHandback, true},
 	}
 
 	for _, tt := range tests {
@@ -55,6 +61,19 @@ func TestStatusCmd_EnvelopeKeySet(t *testing.T) {
 					StatusLockPath: statusLockPath,
 				},
 			}
+			var wantPausedSince string
+			if tt.covered {
+				c.location = &lyxcwd.Location{RepoName: "example", HubPath: filepath.Join(dir, "hub"), WorktreeName: "some-slug", AnchorRel: "."}
+				if err := os.MkdirAll(c.location.WorktreePath(), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				recordPath := coverRun(t, c)
+				record, err := pauserecord.Read(recordPath)
+				if err != nil || len(record.Live) != 1 {
+					t.Fatalf("pauserecord.Read(%q) = %v, %v; want one live entry", recordPath, record, err)
+				}
+				wantPausedSince = record.Live[0].PausedAt.Format(time.RFC3339)
+			}
 
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(loomVerbCommand(c, "status"), &out, nil)
@@ -72,6 +91,16 @@ func TestStatusCmd_EnvelopeKeySet(t *testing.T) {
 				"pause_requested": true, "activity": true, "history_length": true,
 				"slug": true, "parent": true, "interrupt_policy": true, "trace_dir": true,
 				"run_id": true, "progress": true, "last_step": true,
+			}
+			if tt.covered {
+				wantKeys["paused_since"] = true
+				wantKeys["paused_by"] = true
+				if got, _ := envelope["paused_since"].(string); got != wantPausedSince {
+					t.Errorf("statusCmd() envelope[\"paused_since\"] = %q; want %q", got, wantPausedSince)
+				}
+				if got, _ := envelope["paused_by"].(string); got != pauserecord.ScopeHub {
+					t.Errorf("statusCmd() envelope[\"paused_by\"] = %q; want %q", got, pauserecord.ScopeHub)
+				}
 			}
 			for k := range wantKeys {
 				if _, ok := envelope[k]; !ok {

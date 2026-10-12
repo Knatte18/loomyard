@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -84,12 +85,17 @@ func (s runnerShuttle) StopStrand(guid string) error {
 // Root is one point's attempt directory, and StencilsDir is where the agent's stencil is read from.
 // Now is the clock, where nil means time.Now.
 // Token draws an attempt's random token, where nil means eight random bytes as hex.
+// Pause locates the pause record and the slug it is read for; an empty RecordPath excludes no paused time.
+// Awake reads a clock that stops while the machine sleeps, where nil means pauserecord.MonotonicAwake().
+// An attempt's timeout counts awake, unpaused time only.
 type SessionConfig struct {
 	Root        string
 	StencilsDir string
 	Shuttle     Shuttle
 	Now         func() time.Time
 	Token       func() string
+	Pause       pauserecord.Geometry
+	Awake       func() time.Duration
 }
 
 // Session runs the agent's attempts at one point of a run.
@@ -98,6 +104,7 @@ type Session struct {
 
 	mu      sync.Mutex
 	watches map[int]*watch
+	sleeps  pauserecord.SleepWatch
 }
 
 // watch is the in-process wait on one attempt's run: result and err are set before done is closed.
@@ -114,6 +121,9 @@ func NewSession(cfg SessionConfig) *Session {
 	}
 	if cfg.Token == nil {
 		cfg.Token = randomToken
+	}
+	if cfg.Awake == nil {
+		cfg.Awake = pauserecord.MonotonicAwake()
 	}
 	return &Session{cfg: cfg, watches: map[int]*watch{}}
 }
@@ -204,6 +214,10 @@ func (s *Session) Begin(in SpawnInput) (Attempt, error) {
 	if err != nil {
 		return Attempt{}, s.failBegin(attempt, "start the agent", err)
 	}
+	// A start held by a pause returns only once it runs, so the timeout starts here.
+	started := s.observe()
+	attempt.SpawnedAt = started
+	attempt.Deadline = started.Add(in.Settings.Timeout)
 	attempt.StrandGUID = run.StrandGUID()
 	if err := WriteAttempt(attempt); err != nil {
 		if stopErr := s.cfg.Shuttle.StopStrand(attempt.StrandGUID); stopErr != nil {
@@ -224,6 +238,31 @@ func (s *Session) failBegin(attempt Attempt, step string, cause error) error {
 		return fmt.Errorf("%w; closing the attempt also failed: %v", failure, err)
 	}
 	return failure
+}
+
+// observe reads the clock, folds it with the awake clock into the sleep watch, and returns the wall reading.
+func (s *Session) observe() time.Time {
+	now := s.cfg.Now()
+	s.mu.Lock()
+	s.sleeps.Observe(now, s.cfg.Awake())
+	s.mu.Unlock()
+	return now
+}
+
+// awakeSpent returns the awake, unpaused time from the attempt's spawn to now.
+func (s *Session) awakeSpent(a Attempt, now time.Time) (time.Duration, error) {
+	var coverage pauserecord.Coverage
+	if s.cfg.Pause.RecordPath != "" {
+		var err error
+		coverage, err = pauserecord.ReadCoverage(s.cfg.Pause.RecordPath, s.cfg.Pause.Slug, now)
+		if err != nil {
+			return 0, fmt.Errorf("alignment: read the pause record: %w", err)
+		}
+	}
+	s.mu.Lock()
+	sleeps := s.sleeps.Sleeps()
+	s.mu.Unlock()
+	return pauserecord.AwakeSince(a.SpawnedAt, now, sleeps, coverage.Intervals), nil
 }
 
 // watchRun waits on run in the background and stores its result for Poll.
@@ -284,15 +323,20 @@ func (s *Session) Poll(a Attempt) (Outcome, error) {
 		}
 	}
 
-	now := s.cfg.Now()
-	if !now.Before(current.Deadline) {
+	now := s.observe()
+	spent, err := s.awakeSpent(current, now)
+	if err != nil {
+		return Outcome{}, err
+	}
+	timeout := current.Deadline.Sub(current.SpawnedAt)
+	if spent >= timeout {
 		return s.stopAndEnd(current, CauseTimeout, "the agent ran past its deadline")
 	}
 	if w != nil {
 		return Outcome{}, nil
 	}
 
-	spec := Spec("", current, Settings{Timeout: current.Deadline.Sub(now)})
+	spec := Spec("", current, Settings{Timeout: timeout - spent})
 	run, live, err := s.cfg.Shuttle.Probe(spec)
 	if err != nil {
 		return Outcome{}, fmt.Errorf("alignment: probe for a live agent of attempt %d: %w", current.Number, err)

@@ -44,6 +44,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/parentreview"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -663,6 +664,8 @@ func (c *battenCLI) openTerminal(slug string, locateTask func() (*lyxcwd.Locatio
 // wire builds and stores the shedrecipe.Env and shedbuild.ShedPaths the run and status verbs
 // need, over the resolved prime location and slug.
 func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
+	// Batten runs in the prime on behalf of one pair, so its network git and GitHub calls wait under that pair's pause entry.
+	pauserecord.SetGateSlug(slug)
 	primeRunLockPath := PrimeRunLock(location)
 	primeLock := battenshed.PrimeLock{
 		Path: primeRunLockPath,
@@ -823,6 +826,14 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 			// PauseRequested reads batten's own status file, the one `lyx batten pause` writes, so the in-call wait notices a pause within one check.
 			PauseRequested: pauseRequested(location, slug),
+			// Pause reads the hub's pause record at the prime's geometry, for the slug this run drives.
+			Pause: func() (pauserecord.Coverage, error) {
+				geometry, err := hubgeom.PauseGeometry(location)
+				if err != nil {
+					return pauserecord.Coverage{}, err
+				}
+				return pauserecord.ReadCoverage(geometry.RecordPath, slug, time.Now())
+			},
 			// Activity resolves the task worktree on Call like every seam here.
 			Activity: func(context.Context) ([]battenshed.AgentActivity, bool, error) {
 				taskLocation, err := locateTask()
@@ -968,6 +979,11 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return err
 				}
 				runner := shuttleengine.NewRunner(reedEngine, claudeengine.NewFromConfig(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+				pauseGeom, err := hubgeom.PauseGeometry(taskLocation)
+				if err != nil {
+					return err
+				}
+				runner.SetPause(pauseGeom)
 				if err := stopDeadArbiterStrands(rows, runner.StopStrand); err != nil {
 					logger.Warn("battencli: stopping the task worktree's dead arbiter strands failed", "slug", slug, "error", err)
 					return err
@@ -978,7 +994,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					logger.Warn("battencli: reed resume of the task worktree failed", "slug", slug, "error", err)
 					return err
 				}
-				logger.Info("battencli: reed resume of the task worktree finished", "slug", slug, "resumed", res.Resumed, "dropped", res.Dropped)
+				logger.Info("battencli: reed resume of the task worktree finished", "slug", slug, "resumed", res.Resumed, "dropped", res.Dropped, "held", res.Held)
 				return nil
 			},
 			ChildRunLockHeld: func() (bool, error) {
@@ -1189,6 +1205,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 
 		RunID:                   slug,
 		MissingStatusWayForward: fmt.Sprintf("way forward: \"lyx batten run %s\" creates the lifecycle's status file", slug),
+		PauseWayForward:         fmt.Sprintf("lyx batten pause %s", slug),
 	}
 	return nil
 }

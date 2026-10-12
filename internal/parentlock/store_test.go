@@ -134,6 +134,69 @@ func TestTryAcquire_GrantsWaitersInTicketOrderSkippingDeadOnes(t *testing.T) {
 	}
 }
 
+func TestTryAcquire_CoveredRunYieldsItsTurnAndKeepsItsTicket(t *testing.T) {
+	t.Parallel()
+
+	store, processes := newTestStore(t)
+	var mu sync.Mutex
+	covered := map[string]bool{}
+	setCovered := func(slug string, value bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		covered[slug] = value
+	}
+	store.Covered = func(slug string) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return covered[slug]
+	}
+	holder := liveOwner(processes, "holder", 1)
+	first := liveOwner(processes, "first", 2)
+	second := liveOwner(processes, "second", 3)
+	third := liveOwner(processes, "third", 4)
+
+	mustTryAcquire(t, store, "main", holder)
+	for _, waiter := range []Owner{first, second, third} {
+		mustTryAcquire(t, store, "main", waiter)
+	}
+	setCovered("first", true)
+	if released, err := store.Release("main", holder); err != nil || !released {
+		t.Fatalf("Release(holder) = (%v, %v); want released", released, err)
+	}
+
+	if attempt := mustTryAcquire(t, store, "main", first); attempt.Granted {
+		t.Fatal("covered first waiter granted on a free record")
+	}
+	if attempt := mustTryAcquire(t, store, "main", third); attempt.Granted {
+		t.Fatal("third waiter granted ahead of the older uncovered second waiter")
+	}
+	if attempt := mustTryAcquire(t, store, "main", second); !attempt.Granted {
+		t.Fatal("uncovered second waiter not granted ahead of the covered first waiter")
+	}
+	if _, err := os.Stat(store.ticketPath("main", first)); err != nil {
+		t.Fatalf("covered first waiter's ticket not kept on disk, stat error = %v", err)
+	}
+
+	if released, err := store.Release("main", second); err != nil || !released {
+		t.Fatalf("Release(second) = (%v, %v); want released", released, err)
+	}
+	setCovered("first", false)
+	if attempt := mustTryAcquire(t, store, "main", third); attempt.Granted {
+		t.Fatal("third waiter granted ahead of the resumed first waiter")
+	}
+	if attempt := mustTryAcquire(t, store, "main", first); !attempt.Granted {
+		t.Fatal("resumed first waiter not granted ahead of the third waiter")
+	}
+
+	setCovered("first", true)
+	restarted := first
+	restarted.PID = 9
+	processes.set(restarted, true)
+	if attempt := mustTryAcquire(t, store, "main", restarted); !attempt.Granted {
+		t.Fatal("covered acquirer whose run already owns the record not re-granted")
+	}
+}
+
 func TestTryAcquire_TakesRecordOfDeadOrRecycledOwner(t *testing.T) {
 	t.Parallel()
 

@@ -61,8 +61,6 @@ func finishedShellOutcome(runResult RunResult) backgroundShellOutcome {
 	switch runResult.Outcome {
 	case outcomeStuck:
 		description = "stuck (" + runResult.StuckReason + ")"
-	case outcomePaused:
-		description = "paused"
 	}
 	return backgroundShellOutcome{description: description}
 }

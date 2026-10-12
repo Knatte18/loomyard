@@ -8,7 +8,7 @@ contracts/stencils: 16
 internal/agentname: 8
 internal/alignment: 7
 internal/batcher: 9
-internal/battencli: 74
+internal/battencli: 77
 internal/battenrecipe: 9
 internal/battenshed: 109
 internal/boardcli: 13
@@ -42,7 +42,7 @@ internal/fsx: 4
 internal/gatecli: 3
 internal/gateslot: 11
 internal/gitexec: 7
-internal/githubclient: 11
+internal/githubclient: 12
 internal/gitkit: 10
 internal/gitrepo: 44
 internal/gitrepo/internal/gitoracle: 1
@@ -57,7 +57,7 @@ internal/landingshed: 85
 internal/lock: 4
 internal/logger: 35
 internal/loggerconfig: 3
-internal/loomcli: 217
+internal/loomcli: 221
 internal/loomengine: 53
 internal/loomrecipe: 54
 internal/loomshed: 76
@@ -66,11 +66,14 @@ internal/lyxtemp: 7
 internal/mergeresolve: 17
 internal/modelspec: 11
 internal/orchcli: 28
-internal/orchengine: 138
+internal/orchengine: 139
 internal/output: 4
 internal/pairteardown: 6
+internal/pausecli: 3
+internal/pauseengine: 4
+internal/pauserecord: 14
 internal/parentdirective: 4
-internal/parentlock: 15
+internal/parentlock: 16
 internal/parentreview: 54
 internal/pattern: 8
 internal/planglyph: 86
@@ -97,7 +100,7 @@ internal/shedtransient: 2
 internal/shedverbs: 83
 internal/shell: 12
 internal/shuttlecli: 25
-internal/shuttleengine: 164
+internal/shuttleengine: 168
 internal/shuttleengine/claudeengine: 108
 internal/standalonegeom: 7
 internal/standalonestate: 6

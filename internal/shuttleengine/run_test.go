@@ -302,6 +302,35 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 		}
 	})
 
+	// A runner told no step tie writes no step key, and one told a tie records it.
+	t.Run("persists the told step tie only", func(t *testing.T) {
+		data, err := os.ReadFile(filepath.Join(run.RunDir(), runStateFileName))
+		if err != nil {
+			t.Fatalf("read run.json: %v", err)
+		}
+		if strings.Contains(string(data), `"step"`) {
+			t.Errorf("run.json of a runner told no step carries a step key: %s", data)
+		}
+
+		tiedReed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-2"}}
+		tiedEngine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", SessionID: "session-2"}}
+		tiedFixture := newFixture(t, tiedReed, tiedEngine, withConfig(fastConfig))
+		readyStart(tiedReed, tiedEngine)
+		tie := StepTie{StepsDir: filepath.Join(tiedFixture.Worktree, "steps"), TraceID: "trace-1"}
+		tiedFixture.Runner.SetStepTie(tie)
+		tiedRun, err := tiedFixture.Runner.Start(Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Role: "reviewer"})
+		if err != nil {
+			t.Fatalf("Start() with a step tie error: %v", err)
+		}
+		record, found, err := loadRunState(tiedRun.RunDir())
+		if err != nil || !found {
+			t.Fatalf("loadRunState: found=%v err=%v", found, err)
+		}
+		if record.Step == nil || *record.Step != tie {
+			t.Errorf("persisted step = %+v, want %+v", record.Step, tie)
+		}
+	})
+
 	// RunDir() names the one directory holding prompt.md, settings.json and the events file, for a
 	// caller that starts a run and never Waits on it.
 	t.Run("RunDir names the directory Start created", func(t *testing.T) {
@@ -317,6 +346,110 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 			t.Errorf("RunDir() = %q, want it to name a directory Start actually created: %v", dir, err)
 		}
 	})
+}
+
+// TestRunner_Start_WaitsWhileAPauseCoversItsPair pins that a start registers no strand while a pause covers the runner's pair,
+// and that the run it then returns counts its deadline from the resume, not from the call.
+func TestRunner_Start_WaitsWhileAPauseCoversItsPair(t *testing.T) {
+	t.Parallel()
+
+	const timeout = 20 * time.Minute
+	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
+	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", SessionID: "session-1"}}
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
+	readyStart(reed, engine)
+	fc := newFakeClock(time.Now())
+	geometry, resume := coverHub(t, fc.Now())
+	fx.Runner.SetPause(geometry)
+
+	var addedWhileHeld int
+	var resumedAt time.Time
+	fx.Runner.SetClock(&liftClock{Clock: fc, liftAfter: 3, lift: func() {
+		addedWhileHeld = len(reed.AddStrandCalls)
+		resumedAt = fc.Now()
+		resume(resumedAt)
+	}})
+
+	run, err := fx.Runner.Start(Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Role: "reviewer", Timeout: timeout})
+	if err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+	if addedWhileHeld != 0 {
+		t.Errorf("AddStrand calls before the resume = %d, want none", addedWhileHeld)
+	}
+	if len(reed.AddStrandCalls) != 1 {
+		t.Errorf("AddStrand calls after the resume = %d, want 1", len(reed.AddStrandCalls))
+	}
+	if want := resumedAt.Add(timeout); !run.deadline.Equal(want) {
+		t.Errorf("run deadline = %v, want %v, the timeout past the resume", run.deadline, want)
+	}
+}
+
+// TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted pins that a run reconstructed from its record types the deferred prompt line only when no turn started at or past the prompt offset.
+func TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted(t *testing.T) {
+	t.Parallel()
+
+	const promptLine = "Read the task prompt and carry it out."
+	const loadTurns = "START\nSTOP:loaded\n"
+	tests := []struct {
+		name         string
+		promptLine   string
+		events       string
+		promptOffset int64
+		wantSent     bool
+		// wantOffset is the prompt offset the record holds afterwards.
+		wantOffset int64
+	}{
+		{name: "a record with no prompt line sends nothing", events: loadTurns, promptOffset: int64(len(loadTurns)), wantOffset: int64(len(loadTurns))},
+		{
+			name: "a turn start past the prompt offset means the prompt was taken", promptLine: promptLine, events: loadTurns + "START\n",
+			promptOffset: int64(len(loadTurns)), wantOffset: int64(len(loadTurns)),
+		},
+		{
+			name: "only the load turns before the prompt offset sends the prompt once", promptLine: promptLine, events: loadTurns,
+			promptOffset: int64(len(loadTurns)), wantSent: true, wantOffset: int64(len(loadTurns)),
+		},
+		{
+			name: "a zero prompt offset is persisted as the events size before sending", promptLine: promptLine, events: "SESSIONSTART:startup\n",
+			wantSent: true, wantOffset: int64(len("SESSIONSTART:startup\n")),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			reed := &echoReed{fakeReed: &fakeReed{StatusQueue: liveStrandStatus(true)}, pane: "❯ "}
+			engine := &sessionFakeEngine{waitingEngine: waitingEngine{fakeEngine: fakeEngine{StartupScript: []StartupState{StartupReady}}}}
+			fx := newFixture(t, reed, engine, withConfig(gateConfig))
+			record := RunState{StrandGUID: "strand-1", PromptLine: tt.promptLine, PromptOffset: tt.promptOffset}
+			run := fx.newRun(Spec{}, withRunState(record), withRunEvents(tt.events))
+			record.EventsPath = run.state.EventsPath
+			if err := saveRunState(run.runDir, record); err != nil {
+				t.Fatalf("saveRunState: %v", err)
+			}
+
+			sent, err := run.DeliverPendingPrompt()
+			if err != nil {
+				t.Fatalf("DeliverPendingPrompt() error = %v", err)
+			}
+			if sent != tt.wantSent {
+				t.Errorf("DeliverPendingPrompt() = %v, want %v", sent, tt.wantSent)
+			}
+			wantTyped := []string(nil)
+			if tt.wantSent {
+				wantTyped = []string{promptLine}
+			}
+			if !reflect.DeepEqual(reed.typed, wantTyped) {
+				t.Errorf("typed = %q, want %q", reed.typed, wantTyped)
+			}
+			persisted, _, err := loadRunState(run.runDir)
+			if err != nil {
+				t.Fatalf("loadRunState: %v", err)
+			}
+			if persisted.PromptOffset != tt.wantOffset {
+				t.Errorf("persisted PromptOffset = %d, want %d", persisted.PromptOffset, tt.wantOffset)
+			}
+		})
+	}
 }
 
 // TestRunner_Start_TypesTheSegmentColorAfterStartup pins the color step.

@@ -38,6 +38,7 @@ func dialogNotice(strandName string) string {
 // watchDialog advances the dialog latch one tick and notifies the parent once when the latch has stood for permissionNoticeBound with no input box on the pane.
 // It does nothing for an interactive run, a runner with no notifier, or an engine that cannot parse session signals or read an input box.
 // A failed capture or a pane too short to draw the box changes nothing and is retried on a later tick.
+// While a pause covers the run the latch stands but no notice is sent.
 // It never types into the pane and never changes the run's outcome.
 func (run *Run) watchDialog() {
 	if run.runner.notifier == nil || run.spec.Interactive {
@@ -63,7 +64,7 @@ func (run *Run) watchDialog() {
 		return
 	case box.read:
 		run.dialog.set, run.dialog.notified = false, false
-	case !run.dialog.notified && run.clock.Now().Sub(run.dialog.since) >= permissionNoticeBound:
+	case !run.dialog.notified && !run.covered && run.clock.Now().Sub(run.dialog.since) >= permissionNoticeBound:
 		run.dialog.notified = run.notifyDialog()
 	}
 }

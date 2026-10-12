@@ -25,9 +25,11 @@ import (
 // fakeClock is a virtual clock: Sleep instantly advances Now() by d instead
 // of blocking, so Wait's poll loop runs an arbitrarily long scripted
 // sequence at zero real wall-clock cost.
+// It is also an AwakeClock: Sleep advances the awake reading with wall time, and asleep advances wall time alone, as a machine sleep does.
 type fakeClock struct {
-	mu  sync.Mutex
-	now time.Time
+	mu    sync.Mutex
+	now   time.Time
+	awake time.Duration
 }
 
 func newFakeClock(start time.Time) *fakeClock {
@@ -40,13 +42,27 @@ func (c *fakeClock) Now() time.Time {
 	return c.now
 }
 
+func (c *fakeClock) Awake() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.awake
+}
+
 func (c *fakeClock) Sleep(d time.Duration) {
+	c.mu.Lock()
+	c.now = c.now.Add(d)
+	c.awake += d
+	c.mu.Unlock()
+}
+
+// asleep moves wall time forward by d without moving the awake reading.
+func (c *fakeClock) asleep(d time.Duration) {
 	c.mu.Lock()
 	c.now = c.now.Add(d)
 	c.mu.Unlock()
 }
 
-var _ Clock = (*fakeClock)(nil)
+var _ AwakeClock = (*fakeClock)(nil)
 
 // scriptedClock wraps a fakeClock and runs onSleep once, after the first
 // Sleep call, letting a test mutate on-disk fixtures (e.g. completing a
@@ -928,6 +944,64 @@ func TestRun_Wait_StartupWindow(t *testing.T) {
 			}
 			if captures[0] != gateCapture {
 				t.Errorf("TrustDismissSequence got capture %q; want the capture Startup classified, %q", captures[0], gateCapture)
+			}
+		})
+	}
+}
+
+// TestRun_Wait_DeadlineExcludesSleptAndPausedTime pins that the run deadline counts awake, unpaused time:
+// a one-hour run across a three-hour machine sleep, and across a three-hour pause, times out one hour after the time it excluded.
+func TestRun_Wait_DeadlineExcludesSleptAndPausedTime(t *testing.T) {
+	t.Parallel()
+	const timeout = time.Hour
+	const excludedFor = 3 * time.Hour
+	tests := []struct {
+		name string
+		// arrange returns the run's clock and the span the run should not have counted, known once Wait returns.
+		arrange func(fx *fixture, fc *fakeClock) (Clock, func() time.Duration)
+	}{
+		{
+			name: "a detected sleep",
+			arrange: func(fx *fixture, fc *fakeClock) (Clock, func() time.Duration) {
+				return &liftClock{Clock: fc, liftAfter: 10, lift: func() { fc.asleep(excludedFor) }}, func() time.Duration { return excludedFor }
+			},
+		},
+		{
+			name: "a covering pause",
+			arrange: func(fx *fixture, fc *fakeClock) (Clock, func() time.Duration) {
+				pausedAt := fc.Now()
+				geometry, resume := coverHub(t, pausedAt)
+				fx.Runner.SetPause(geometry)
+				var resumedAt time.Time
+				covered := &liftClock{Clock: fc, liftAfter: 10, lift: func() { fc.Sleep(excludedFor) }}
+				return &liftClock{Clock: covered, liftAfter: 11, lift: func() {
+					resumedAt = fc.Now()
+					resume(resumedAt)
+				}}, func() time.Duration { return resumedAt.Sub(pausedAt) }
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{}, withConfig(gateConfig))
+			fc := newFakeClock(time.Now())
+			start := fc.Now()
+			clk, excluded := tt.arrange(fx, fc)
+			run := fx.newRun(Spec{OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}, Timeout: timeout},
+				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", Started: true}),
+				withRunEvents(""),
+				withRunClock(clk, start.Add(timeout)))
+
+			result, err := run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if result.Outcome != OutcomeTimeout {
+				t.Fatalf("Outcome = %q, want %q", result.Outcome, OutcomeTimeout)
+			}
+			if counted := fc.Now().Sub(start) - excluded(); counted < timeout || counted > timeout+3*time.Second {
+				t.Errorf("run counted %v before it timed out, want %v (within a few poll ticks)", counted, timeout)
 			}
 		})
 	}

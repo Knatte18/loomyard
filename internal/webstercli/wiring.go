@@ -192,6 +192,11 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	claudeEngine := claudeengine.NewFromConfig(shuttleCfg)
 	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	pauseGeom, err := hubgeom.PauseGeometry(loc)
+	if err != nil {
+		return err
+	}
+	runner.SetPause(pauseGeom)
 	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(loc, line) })
 
 	c.setRunner(runner, claudeEngine, reedEngine)
@@ -283,12 +288,13 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	claudeEngine := claudeengine.NewFromConfig(shuttleCfg)
 	runner := shuttleengine.NewDetachedRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
+	runner.SetPause(standalonegeom.PauseGeometry(res.StateDir))
 
 	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach —
 	// `lyx reed up` is hub-only — so the verbs that need one boot it in-process through this seam
-	// (see the field's own doc comment). Assigned here, executed by the two verbs that spawn an
-	// agent themselves, run and recover-batch: wiring runs for EVERY verb, and validate, status,
-	// pause and await-batch must boot no tmux server at all.
+	// (see the field's own doc comment).
+	// Assigned here, executed by the two verbs that spawn an agent themselves, run and recover-batch:
+	// wiring runs for EVERY verb, and validate, status and await-batch must boot no tmux server at all.
 	//
 	// Standalone reed is never booted by `lyx reed up` — that verb is hub-only — it is booted
 	// in-process by a long-lived supervising run that exists for exactly the session's working

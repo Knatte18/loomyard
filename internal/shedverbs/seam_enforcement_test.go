@@ -31,6 +31,7 @@ var shedverbsAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/lock",
 	"github.com/Knatte18/loomyard/internal/logger",
 	"github.com/Knatte18/loomyard/internal/output",
+	"github.com/Knatte18/loomyard/internal/pauserecord",
 	"github.com/Knatte18/loomyard/internal/proc",
 	"github.com/Knatte18/loomyard/internal/state",
 	"github.com/Knatte18/loomyard/internal/shedengine",

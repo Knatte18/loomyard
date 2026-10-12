@@ -49,7 +49,7 @@ func RenameProducers(req RenameRequest) (bool, error) {
 		return false, fmt.Errorf("shedengine: acquire run lock %q: %w", req.LockPath, err)
 	}
 	if !locked {
-		return false, fmt.Errorf("%w: %q; %s", ErrShedBusy, req.LockPath, busyWayForward(req.RunID))
+		return false, fmt.Errorf("%w: %q; %s", ErrShedBusy, req.LockPath, busyWayForward(req.RunID, pauseCommandFor("", req.RunID, "")))
 	}
 	defer runLock.Release()
 

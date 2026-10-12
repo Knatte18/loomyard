@@ -84,20 +84,24 @@ Example:
 	Pause: shedverbs.VerbText{
 		Use:      "pause [<run-id>]",
 		Audience: clihelp.AudienceOperator,
-		Short:    "request a pause at the addressed run's next producer boundary",
-		Long: `pause arms the recipe named by the addressed run's own seed and requests a
-pause at its next producer boundary, exactly as that recipe's own "pause"
-verb does. The run-id positional defaults to "self" when omitted.
+		Short:    "record a pause for the addressed run, at its next producer boundary or a named one",
+		Long: `pause arms the recipe named by the addressed run's own seed and records a
+pause, exactly as that recipe's own "pause" verb does. The run-id positional
+defaults to "self" when omitted.
 
---before <producer> records a stop condition instead: the run pauses before
-that producer runs. --after <producer> pauses after that producer returns a
+--before <producer> records a stop condition: the run pauses before that
+producer runs. --after <producer> pauses after that producer returns a
 routed running outcome, at the row it routed to. Either replaces a recorded
-one, and neither touches the request above. --clear removes both
-conditions, and refuses beside --before or --after.
+one. --clear removes both conditions, and refuses beside --before or
+--after.
+
+A bare pause, with no flag, requests a pause at the next producer boundary
+for a recipe that allows it, and refuses for a loom run, naming "lyx pause
+<slug>" to stop its agents now and "--after <current_producer>" to halt it
+at its next producer boundary.
 
 Example:
-  lyx shed pause
-  lyx shed pause some-slug
+  lyx shed pause some-slug --after Plan-Write
   lyx shed pause --before Plan-Write
   lyx shed pause --clear`,
 	},
@@ -136,7 +140,7 @@ Example:
   lyx shed run
   lyx shed run some-slug
   lyx shed status
-  lyx shed pause
+  lyx shed pause --after Plan-Write
   lyx shed goto --to Plan-Write`,
 		// RunE is set so that bare "lyx shed" lists subcommands and "lyx shed bogus" emits a JSON
 		// error envelope instead of falling through to cobra's plain-text help.

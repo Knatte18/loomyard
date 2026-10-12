@@ -115,6 +115,8 @@
 // The LiveHalf it returns carries the half's state and, for a live half, its Handle, whose strand guid is what a caller stops the half by;
 // it also holds, unexported, what the probe found, which ResumeReview or ResumeFix hands back to the seats engine.
 // ResumeReview and ResumeFix attach to a live half: they start nothing, and the resumed half ends exactly as a fresh one does.
+// ResumeFix first asks a live handle that can deliver a pending task prompt to do so, so a fixer whose step died between its skill-load turns and its prompt is not waited on without ever receiving its task;
+// a delivery error is the resume's error and nothing is resumed.
 // A LiveHalf that is not live, and one that did not come from the half's probe, is refused with nothing started or stopped;
 // the caller settles it by stopping what is live through the handle's Stop and running the half fresh, since a live half is never started a second time.
 //

@@ -10,6 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -128,15 +129,19 @@ func loopLockExit(locks *parentlock.Store, self func() parentlock.Owner, batten 
 // The release frees the lock only; the run keeps running, and its next lock-taking row reacquires.
 // The watch starts counting when the loop first owns a record, so a wait before the lock was taken does not count.
 // A failed agent read counts as not waiting and releases nothing.
-func loopIdleRelease(locks *parentlock.Store, self func() parentlock.Owner, agents func() ([]parentlock.AgentState, error), bound time.Duration) func() {
-	created := time.Now()
-	return idleReleaseOn(locks, self, agents, bound, func() time.Duration { return time.Since(created) })
+// While covered reports true, a pause holds the run: the record is kept and the watch restarts, so the bound is measured afresh after the resume.
+func loopIdleRelease(locks *parentlock.Store, self func() parentlock.Owner, agents func() ([]parentlock.AgentState, error), bound time.Duration, covered func() bool) func() {
+	return idleReleaseOn(locks, self, agents, bound, pauserecord.MonotonicAwake(), covered)
 }
 
 // idleReleaseOn is loopIdleRelease over an awake clock, which must not advance while the host is suspended.
-func idleReleaseOn(locks *parentlock.Store, self func() parentlock.Owner, agents func() ([]parentlock.AgentState, error), bound time.Duration, awake func() time.Duration) func() {
+func idleReleaseOn(locks *parentlock.Store, self func() parentlock.Owner, agents func() ([]parentlock.AgentState, error), bound time.Duration, awake func() time.Duration, covered func() bool) func() {
 	watch := &parentlock.IdleWatch{Bound: bound}
 	return func() {
+		if covered() {
+			watch = &parentlock.IdleWatch{Bound: bound}
+			return
+		}
 		owner := self()
 		branches := ownedLockBranches(locks, owner)
 		if len(branches) == 0 {

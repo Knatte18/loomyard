@@ -297,6 +297,7 @@ func (r *Runner) reconstruct(candidate attachCandidate, normalized Spec, gate Ga
 		logger.Warn("shuttle: attach: could not record the attaching pid", "runDir", candidate.runDir, "cause", err)
 	}
 
+	createdAt := r.clock.Now()
 	run := &Run{
 		runner: r,
 		// spec is the caller's own normalized spec, never one rebuilt from run.json: RunState
@@ -315,8 +316,9 @@ func (r *Runner) reconstruct(candidate attachCandidate, normalized Spec, gate Ga
 		// deadline is a fresh now+Timeout computed at attach time, never CreatedAt+Timeout: a run
 		// that hit OutcomeTimeout leaves both its strand and its run dir behind, and inheriting
 		// CreatedAt would re-attach and re-time-it-out on every resume forever.
-		deadline: r.clock.Now().Add(normalized.Timeout),
-		gate:     gate,
+		deadline:  createdAt.Add(normalized.Timeout),
+		createdAt: createdAt,
+		gate:      gate,
 	}
 
 	// Live-Substrate Spawn Observability invariant: a re-attach to a live agent is as instrumented as

@@ -91,6 +91,10 @@ type State struct {
 	CycleMode        string    `json:"cycle_mode"`         // Mode of the current or last cycle: CycleClear or CycleCompact.
 	CycleRequestedAt time.Time `json:"cycle_requested_at"` // When the request that started the cycle was made; zero for an automatic trigger.
 
+	// LaunchedAt is when the current orch session was launched or adopted; zero in a state file an older binary wrote.
+	// A hub pause that began at or before it never interrupts this session.
+	LaunchedAt time.Time `json:"launched_at"`
+
 	// CompactionBaseline is the time of the newest compaction boundary already handled, or the launch time of the session;
 	// only a boundary after it triggers a reload.
 	CompactionBaseline time.Time `json:"compaction_baseline"`
@@ -274,10 +278,11 @@ func NewHandoffPath(p Paths, now time.Time) string {
 // the offsets are zeroed because a new run has a new events file.
 // The context reading and the turn end it was taken through are cleared, since they describe the previous session;
 // the new session's first turn end sets them again.
-// CompactionBaseline becomes launchedAt, so a compaction boundary the session already carried never triggers a reload.
+// CompactionBaseline becomes launchedAt, so a compaction boundary the session already carried never triggers a reload, and LaunchedAt records it.
 // LastHandoff, CycleCount, CycleTrigger and LastDeferral survive.
 func ResetForFreshLaunch(s State, strand string, launchedAt time.Time) State {
 	s.CompactionBaseline = launchedAt
+	s.LaunchedAt = launchedAt
 	s.ReloadStep, s.ReloadTypedAt, s.ReloadRetry, s.ReloadSkipsSkills = ReloadStepSkills, time.Time{}, nil, false
 	s.LastContextTokens, s.LastContextKnown = 0, false
 	s.ReadingTurnEnd = nil

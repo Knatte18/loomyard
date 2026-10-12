@@ -66,11 +66,10 @@ type websterCLI struct {
 	// true, recover-batch passes false, because recover-batch is a short-lived verb whose context
 	// would be gone before a bound watcher observed anything.
 	//
-	// It is called by those two spawning verbs alone, never from wiring, so validate, status, pause
-	// and await-batch still boot no tmux server. The membership rule is "does this verb start an OS
-	// process of its own", not "does it write": begin-batch and record-batch mutate state but only
-	// inject into or read around a pane Master already owns, so a session they could reach exists by
-	// construction whenever they are legitimately called.
+	// It is called by those two spawning verbs alone, never from wiring, so validate, status and await-batch still boot no tmux server.
+	// The membership rule is "does this verb start an OS process of its own", not "does it write":
+	// begin-batch and record-batch mutate state but only inject into or read around a pane Master already owns,
+	// so a session they could reach exists by construction whenever they are legitimately called.
 	reedUp func(ctx context.Context, watch bool) error
 
 	// planDirOverridden reports whether --plan-dir moved the plan off the mode's own default
@@ -231,7 +230,7 @@ func Command() *cobra.Command {
 and drives it through a long-lived Master session that reads the plan once
 and forks one implementer per batch in-session, bracketing each fork with
 begin-batch and record-batch, until the plan is built or the run reports
-stuck or paused. A fork that reports stuck, or never reports, is escalated
+stuck. A fork that reports stuck, or never reports, is escalated
 to a cold recovery strand with recover-batch.
 
 Reach for "lyx webster run" to build an approved plan, "lyx webster validate"
@@ -289,7 +288,6 @@ func (c *websterCLI) addVerbs(parent *cobra.Command) {
 	for _, verb := range []*cobra.Command{
 		c.runCmd(),
 		c.statusCmd(),
-		c.pauseCmd(),
 		c.beginBatchCmd(),
 		c.awaitBatchCmd(),
 		c.recordBatchCmd(),

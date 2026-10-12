@@ -21,6 +21,8 @@
 // TryAcquire takes a free record, a record whose owner is not alive and a record naming the acquirer's own run, which rewrites the owner process.
 // A free or stale record goes to the oldest live ticket, kept at `<Dir>/<hex(branch)>.tickets/<pid>-<start>.json`.
 // An acquirer that is not first in the queue keeps its ticket and is not granted; a dead waiter's ticket is removed in the attempt that finds it, and a granted acquirer's own ticket is removed.
+// A run a pause covers, as Store.Covered tells, yields the queue: it keeps its ticket and place and is not granted, unless the record already names its own run, and the queue head is the oldest live ticket of an uncovered run.
+// A covered waiter still first in the queue at the resume is granted next.
 //
 // # Waiting
 //

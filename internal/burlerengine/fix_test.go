@@ -249,8 +249,13 @@ func TestEngine_ProbeFix_And_ResumeFix(t *testing.T) {
 		live      bool
 		reportOn  bool
 		wantState HalfState
+		// pending makes the live fixer's handle deliver a pending task prompt, and deliverErr makes that delivery fail.
+		pending    bool
+		deliverErr error
 	}{
 		{name: "a live fixer", live: true, wantState: HalfLive},
+		{name: "a live fixer with a pending task prompt", live: true, pending: true, wantState: HalfLive},
+		{name: "a live fixer whose prompt delivery fails", live: true, deliverErr: errors.New("pane gone"), wantState: HalfLive},
 		{name: "no live run and the report present", reportOn: true, wantState: HalfDone},
 		{name: "no live run and no report", wantState: HalfGone},
 	}
@@ -258,7 +263,7 @@ func TestEngine_ProbeFix_And_ResumeFix(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			root, p, digest := newFixCase(t, blockingReview)
-			shuttle := &fakeShuttle{fix: halfScript{result: done, writes: "fixed"}, live: map[string]bool{fixHalfRole: tt.live}}
+			shuttle := &fakeShuttle{fix: halfScript{result: done, writes: "fixed", pendingPrompt: tt.pending, deliverErr: tt.deliverErr}, live: map[string]bool{fixHalfRole: tt.live}}
 			if tt.reportOn {
 				if err := os.WriteFile(filepath.Join(root, "fixer-report.md"), []byte("on disk"), 0o644); err != nil {
 					t.Fatalf("WriteFile(report) = %v; want nil", err)
@@ -283,9 +288,19 @@ func TestEngine_ProbeFix_And_ResumeFix(t *testing.T) {
 				return
 			}
 
+			handle := half.Handle.(*fakeHandle)
 			got, err := e.ResumeFix(p, RunOpts{}, digest, half)
+			if tt.deliverErr != nil {
+				if !errors.Is(err, tt.deliverErr) || handle.returned.Load() {
+					t.Fatalf("ResumeFix() = %+v, %v; want the delivery error and nothing resumed", got, err)
+				}
+				return
+			}
 			if err != nil || got.Outcome != shuttleengine.OutcomeDone {
 				t.Fatalf("ResumeFix() = %+v, %v; want a done fix", got, err)
+			}
+			if deliveries := handle.deliveries.Load(); deliveries != 1 {
+				t.Errorf("DeliverPendingPrompt calls = %d; want one, before the seats resume", deliveries)
 			}
 			if _, err := e.ResumeFix(p, RunOpts{}, reviewDigest([]byte("an earlier review")), half); !errors.Is(err, ErrReviewChanged) {
 				t.Errorf("ResumeFix(stale digest) error = %v; want it to wrap ErrReviewChanged", err)

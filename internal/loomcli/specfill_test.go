@@ -8,8 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -41,6 +44,30 @@ func TestSpecFor_FillsRunIdentityForSelf(t *testing.T) {
 	}
 	if spec.Routing.MaxBounces != 3 {
 		t.Errorf("Routing.MaxBounces = %d, want 3", spec.Routing.MaxBounces)
+	}
+
+	// The watchdog's pause seam reads the hub's record for the run's slug.
+	gitdir := "gitdir: " + filepath.Join(loc.HubPath, "store", ".git", "worktrees", "wt")
+	if err := os.MkdirAll(loc.WorktreePath(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(loc.WorktreePath(), ".git"), []byte(gitdir), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	geometry, err := hubgeom.PauseGeometry(loc)
+	if err != nil {
+		t.Fatalf("PauseGeometry: %v", err)
+	}
+	pausedAt := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	if _, err := pauserecord.Update(geometry.RecordPath, pausedAt, func(record *pauserecord.Record) error {
+		record.Live = append(record.Live, pauserecord.Entry{Scope: "wt", PausedAt: pausedAt})
+		return nil
+	}); err != nil {
+		t.Fatalf("write pause record: %v", err)
+	}
+	coverage, err := spec.Loop.Pause(pausedAt.Add(time.Hour))
+	if err != nil || !coverage.Covered {
+		t.Errorf("Loop.Pause covered/err = %v/%v; want the run covered by the live entry", coverage.Covered, err)
 	}
 }
 

@@ -13,7 +13,7 @@ import (
 // every path is built from the told anchorRoot through Dir and OutcomePath.
 //
 // A run is in flight when state.json exists and outcome.yaml is either absent or names an outcome other than done.
-// paused and stuck count as in flight because both resume with `lyx webster run`;
+// stuck counts as in flight because it resumes with `lyx webster run`;
 // only done ends the run.
 // Only webster's own durable files are read, never loom's shed status.
 //

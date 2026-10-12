@@ -26,7 +26,7 @@ func (c *websterCLI) statusCmd() *cobra.Command {
 in-flight batch cursor, the plan fingerprint, every batch's own persisted
 record (number, slug, kind, status, terminal, whether a digest is
 persisted, its counted recoveries and whether a dead recovery earns one
-more), and whether a pause has been requested. It is a plain read --
+more). It is a plain read --
 no fabric commit, no engine spawn, no state.json write -- so it is safe to
 run at any time, including mid-batch, as a navigation refresher for a human
 or Master resuming after a crash.
@@ -90,7 +90,6 @@ Example:
 				"current_batch":    st.CurrentBatch,
 				"plan_fingerprint": st.PlanFingerprint,
 				"batches":          batches,
-				"paused":           websterengine.PauseRequested(c.geom.ScratchDir),
 			}))
 			return nil
 		},

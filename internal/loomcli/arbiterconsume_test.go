@@ -64,9 +64,9 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 			wantErr: "the run moved since the arbiter spawned",
 		},
 		{
-			name: "plain pause", envelope: &resumeEnvelope,
-			mutate:  func(st *shedengine.Status) { st.PauseRequested = true },
-			wantErr: "paused since the arbiter spawned",
+			name: "a plain pause left by an older binary is carried through", envelope: &resumeEnvelope,
+			mutate:      func(st *shedengine.Status) { st.PauseRequested = true },
+			wantProduce: "Plan-Bouncer",
 		},
 		{
 			name: "pause before a row", envelope: &resumeEnvelope,
