@@ -117,4 +117,12 @@
 // The verbs write nothing and read only the board, the peers' two records and git history through `internal/fabricengine`.
 // They resolve the location through `lyxcwd` in the group's own pre-run, as the `review` and `decision` groups do; every loom verb is hub-only, so `internal/cliwire` does not apply.
 // A bare `lyx loom peers` outside a lyx worktree lists the group's verbs instead of resolving.
+//
+// # Parent-review alignment
+//
+// The wiring sets the parent-review gate's Aligner to an adapter over an `internal/alignment` session rooted at the run's `parent-review` alignment directory, one agent per round (key `round-<N>`).
+// Alignment is off, and the gate delivers straight to the run's parent, when `skip_alignment` is set or the hub has no board dir.
+// The decision snapshot taken at spawn covers the decision record and every board note naming the task; an agent approve is turned into an escalation when the snapshot has changed by the time it is polled, so a decision recorded during the review is never passed over.
+// An escalation, a timeout or any failure leaves the gate to deliver to the parent, with the reviewer brief naming the agent's report and the reason.
+// The status commit stages the alignment directory with the run records.
 package loomcli
