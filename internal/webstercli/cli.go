@@ -231,7 +231,7 @@ func Command() *cobra.Command {
 and drives it through a long-lived Master session that reads the plan once
 and forks one implementer per batch in-session, bracketing each fork with
 begin-batch and record-batch, until the plan is built or the run reports
-stuck or paused. A fork that reports stuck, or never reports, is escalated
+stuck. A fork that reports stuck, or never reports, is escalated
 to a cold recovery strand with recover-batch.
 
 Reach for "lyx webster run" to build an approved plan, "lyx webster validate"
@@ -289,7 +289,6 @@ func (c *websterCLI) addVerbs(parent *cobra.Command) {
 	for _, verb := range []*cobra.Command{
 		c.runCmd(),
 		c.statusCmd(),
-		c.pauseCmd(),
 		c.beginBatchCmd(),
 		c.awaitBatchCmd(),
 		c.recordBatchCmd(),

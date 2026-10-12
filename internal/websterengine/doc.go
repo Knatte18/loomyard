@@ -267,7 +267,7 @@
 //
 // The fork and parent audits classify each finding (ClassifyViolation) as correctness or policy.
 // A correctness finding means the delta or the run's own state may be wrong.
-// It is a fork writing one of Master's two contract files, anything under the plan directory, or anything under webster's run directory but its own report (fork-state-write), or a parent write under the run's `_lyx` directory, into the worktree's tracked (not git-ignored) content, under the run's `.lyx` state directory (webster's pause flag and locks, another module's lock or pause flag, a reed launch script), or into another worktree of the task repository.
+// It is a fork writing one of Master's two contract files, anything under the plan directory, or anything under webster's run directory but its own report (fork-state-write), or a parent write under the run's `_lyx` directory, into the worktree's tracked (not git-ignored) content, under the run's `.lyx` state directory (webster's locks, another module's lock or pause flag, a reed launch script), or into another worktree of the task repository.
 // A fabric reference is correctness too unless its command is read-only, since an agent never touches the fabric repo for a write and the command can rewrite run state the cards' verify commands cannot detect;
 // the read-only classifier is injected (RecordDeps, RunDeps and RecoverDeps carry it as ReadOnly) and sees static shape only, so a command behind `bash -c`, a variable or a substitution stays correctness, and a nil classifier accepts nothing.
 // The classifier splits a `lyx`, `git` or `sed` segment into shell words, so a quoted word is its dequoted text, and a quoted writing flag is still rejected.
@@ -354,7 +354,7 @@
 // # bracket verbs, not spawn/poll
 //
 // Because the fork runs inside Master's own session, there is nothing for Go to spawn in the normal path — spawn-batch does not exist here.
-// Go provides thin bracket verbs Master calls around each fork: begin-batch (pause/fingerprint checks, records the batch's start-SHA, renders and writes the fork prompt) immediately before forking, and record-batch (incremental fork audit, batch-report parsing, digest distillation, state update) once the fork has delivered.
+// Go provides thin bracket verbs Master calls around each fork: begin-batch (fingerprint check, records the batch's start-SHA, renders and writes the fork prompt) immediately before forking, and record-batch (incremental fork audit, batch-report parsing, digest distillation, state update) once the fork has delivered.
 // The Agent-tool fork is a BACKGROUNDED agent: the fork call returns immediately, before the batch is done,
 // so Master ends its turn right after spawning it and calls record-batch when the fork's completion notification starts its next turn.
 // That turn end does not end the run: shuttle reads a turn that ends with a background agent still running as EventWaiting, which its wait loop treats as still running,
@@ -514,7 +514,7 @@
 // Its attempt budget is Config.VerifyGateAttempts, and the count and the pre-fix head live in the closure's memory for one shuttle run, so an attach restarts them from zero.
 // The shipped Webster row supplies no gates of its own, and StartMaster is Merriam's only start, so every Merriam carries the spec.
 //
-// At each gated Done arrival the closure passes without verifying when outcome.yaml names an outcome other than done, so a stuck or paused outcome ends the run as before.
+// At each gated Done arrival the closure passes without verifying when outcome.yaml names an outcome other than done, so a stuck outcome ends the run as before.
 // Otherwise it fails with the dirty paths when the tree is not clean, and runs no verify.
 // Once a pre-fix head is recorded, every commit from it to HEAD on the first-parent chain must be a non-merge commit or a clean parent merge (fixCommitRejection, in gitwrap.go);
 // any other fails the gate `Terminal`, which ends the run at once with the commit and the reason.
@@ -549,11 +549,11 @@
 // Every shell outstanding when the run ends comes back on shuttle's `Result.EndedShells`, whatever ends the run.
 // lyx does not stop such a shell.
 // What ends the shell follows the run's final outcome.
-// When Master's turn ends shuttle-done (a webster done, Master's own stuck or paused, the verify gate's demotion, or a mapping error after that end), shuttle removes Master's strand as the run finishes, and the session and the shell end with it.
+// When Master's turn ends shuttle-done (a webster done, Master's own stuck, the verify gate's demotion, or a mapping error after that end), shuttle removes Master's strand as the run finishes, and the session and the shell end with it.
 // When the run returns a died or timeout error, Master's strand stays alive until the next `lyx webster run` reclaims it at entry.
 // Run writes one best-effort `webster-background-shell` friction note once the outcome is known, on every outcome.
 // For each shell the note states its label, signal and time outstanding, that the run never read its result, that lyx did not stop the shell, what ends it and the run's final outcome.
-// Each shell is also a `RunResult.Warnings` entry with the same wording on every outcome that returns a `RunResult` (done, stuck and paused), after the verify-gate demotion, so the warning and the note cannot drift;
+// Each shell is also a `RunResult.Warnings` entry with the same wording on every outcome that returns a `RunResult` (done and stuck), after the verify-gate demotion, so the warning and the note cannot drift;
 // an error outcome returns no `RunResult`, so the note alone carries it.
 // summary.md's "Background shells at the run's end" section (AppendBackgroundShells) stays done-only, as does its "Plan rebaselined" section, which names an accepted auto-rebaseline beside the "Audit warnings" section so the summary a step's Done points at carries it.
 //
@@ -646,8 +646,7 @@
 // every `lyx` module built on top of shuttle shares (internal/reedengine,
 // internal/shuttleengine and its claudeengine, internal/gitrepo) plus a
 // small set of webster-LOCAL mechanism helpers with no cross-module
-// import: its own plan-fingerprint hash (fingerprint.go), pause-flag
-// mechanics (pause.go), git-query helpers built on gitrepo
+// import: its own plan-fingerprint hash (fingerprint.go), git-query helpers built on gitrepo
 // (gitwrap.go, reached through the Git seam below), archive-never-refuse primitives (archive.go), and
 // recovery-classification logic (classify.go). Each of these exists as its
 // own webster-scoped implementation rather than an imported one — this

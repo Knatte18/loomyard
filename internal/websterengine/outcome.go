@@ -20,11 +20,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The three legal outcome.Outcome values.
+// The two legal outcome.Outcome values.
 const (
-	outcomeDone   = "done"
-	outcomePaused = "paused"
-	outcomeStuck  = "stuck"
+	outcomeDone  = "done"
+	outcomeStuck = "stuck"
 )
 
 // outcomeFileName is outcome.yaml's fixed filename inside a webster dir.
@@ -33,11 +32,9 @@ const outcomeFileName = "outcome.yaml"
 // outcome is Master's final-action file's in-memory form: the terminal
 // judgment it reached over one whole plan run.
 type outcome struct {
-	// Outcome is one of outcomeDone, outcomeStuck, or outcomePaused.
+	// Outcome is one of outcomeDone or outcomeStuck.
 	Outcome string `yaml:"outcome"`
-	// StuckReason is Master's one-line account of the blocker, required
-	// non-empty when Outcome is outcomeStuck; empty (YAML null) for
-	// outcomeDone and outcomePaused.
+	// StuckReason is Master's one-line account of the blocker, required non-empty when Outcome is outcomeStuck; empty (YAML null) for outcomeDone.
 	StuckReason string `yaml:"stuck_reason"`
 	// BatchesDone is the count of batches that reached status: done this
 	// run.
@@ -45,7 +42,7 @@ type outcome struct {
 }
 
 // parseOutcome reads and strictly decodes outcome.yaml. Enforces schema:
-// outcome must be one of done/stuck/paused; stuck requires non-empty stuck_reason.
+// outcome must be one of done/stuck; stuck requires non-empty stuck_reason.
 func parseOutcome(path string) (*outcome, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -60,9 +57,9 @@ func parseOutcome(path string) (*outcome, error) {
 	}
 
 	switch o.Outcome {
-	case outcomeDone, outcomeStuck, outcomePaused:
+	case outcomeDone, outcomeStuck:
 	default:
-		return nil, fmt.Errorf("websterengine: outcome file %s: unrecognized outcome %q; want %q, %q, or %q", path, o.Outcome, outcomeDone, outcomeStuck, outcomePaused)
+		return nil, fmt.Errorf("websterengine: outcome file %s: unrecognized outcome %q; want %q or %q", path, o.Outcome, outcomeDone, outcomeStuck)
 	}
 
 	if o.Outcome == outcomeStuck && strings.TrimSpace(o.StuckReason) == "" {

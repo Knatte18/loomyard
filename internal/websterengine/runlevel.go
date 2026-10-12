@@ -192,7 +192,7 @@ type RunOptions struct {
 // RunResult is what one successful Run call hands back: the parsed outcome.yaml's judgment
 // (Outcome/StuckReason/BatchesDone) plus the summary.md's title.
 type RunResult struct {
-	// Outcome is one of webster's own outcomeDone, outcomeStuck, or outcomePaused values (outcome.go),
+	// Outcome is one of webster's own outcomeDone or outcomeStuck values (outcome.go),
 	// taken verbatim from the parsed outcome.yaml — except that a done whose verify gate did not pass is demoted to outcomeStuck.
 	Outcome string
 	// StuckReason is the parsed outcome.yaml's stuck_reason, verbatim — except for a done demoted by the verify gate,
@@ -203,9 +203,7 @@ type RunResult struct {
 	// SummaryTitle is the parsed summary.md's title heading. Always
 	// populated for Outcome == outcomeDone (summaryparser.Parse is
 	// required there — a missing or malformed summary is a hard error);
-	// populated best-effort for stuck/paused (empty when summary.md is
-	// itself missing or malformed, which is not an error on those two
-	// outcomes).
+	// populated best-effort for stuck (empty when summary.md is itself missing or malformed, which is not an error on that outcome).
 	SummaryTitle string
 	// Warnings carries every non-fatal observation accumulated this run — never a failure.
 	// Mirrors RecordResult.Warnings' shape and contract: the verify gate's flaky notice, and the audit warnings.
@@ -630,17 +628,6 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// No second re-baseline: the one above already ran immediately after the rewriting call, ahead
 	// of both refusals, and persisted itself.
 
-	// Clear any leftover pause flag now that the run has passed every
-	// refusal gate (validation, the plan-fingerprint check) and is
-	// committed to spawning a fresh Master: a resumed run must not
-	// instantly re-pause on the flag that requested the very pause it is
-	// now resuming from. Placing the clear HERE — not at the bare entry —
-	// means a run that refused above leaves the operator's pending pause
-	// intact rather than silently discarding a request it never acted on.
-	if err := ClearPause(deps.Geom.ScratchDir); err != nil {
-		return RunResult{}, err
-	}
-
 	if _, err := archiveStaleOutcome(deps.Geom.WebsterDir, time.Now); err != nil {
 		return RunResult{}, err
 	}
@@ -798,7 +785,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 
 // finishMasterDone maps a shuttle-done Master run onto its RunResult:
 // the outcome file, the verify-gate warnings, the verify-gate demotion and the background-shell warnings.
-// Every outcome that returns a RunResult (done, stuck, paused) carries one warning per expired shell, stating the run's outcome after the demotion;
+// Every outcome that returns a RunResult (done, stuck) carries one warning per expired shell, stating the run's outcome after the demotion;
 // the summary's background-shell section stays done-only.
 // freshWarnings is the run's entry-time observations, and gateNotes holds the verify gate's flaky-pass notes.
 // rebaselineWarning is the warning of an auto-rebaseline accepted at entry, empty when none ran:
@@ -855,9 +842,8 @@ func finishMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summar
 
 // mapMasterDone maps a shuttle-level OutcomeDone Master spawn onto RunResult:
 // strict outcome.yaml parsing, summary.md validation (required for done,
-// best-effort otherwise), every-batch-terminal-done and run-exit audit
-// cross-checks (done outcomes only), and pause-flag clear for non-paused
-// terminals.
+// best-effort otherwise), and every-batch-terminal-done and run-exit audit
+// cross-checks (done outcomes only).
 // The run-exit audit's warnings ride RunResult.Warnings, and its stuck reason demotes a done outcome to outcomeStuck.
 func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPath string, result shuttleengine.Result) (RunResult, error) {
 	outcome, err := parseOutcome(outcomePath)
@@ -899,16 +885,10 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 			outcome.StuckReason = auditStuck
 		}
 	} else if summary, err := summaryparser.Parse(summaryPath); err == nil {
-		// summary.md's content is optional on stuck/paused: best-effort
+		// summary.md's content is optional on stuck: best-effort
 		// only, never a hard error, per discussion.md's summary-artifact
 		// decision.
 		summaryTitle = summary.Title
-	}
-
-	if outcome.Outcome != outcomePaused {
-		if err := ClearPause(deps.Geom.ScratchDir); err != nil {
-			return RunResult{}, err
-		}
 	}
 
 	return RunResult{
