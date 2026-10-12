@@ -8,6 +8,8 @@
 // those two it imports -- may name either side of the pair: write "the task worktree", "the pair",
 // and "the hub's prime worktree" instead.
 //
+// "lyx batten cleanup [--apply]" (cleanup.go) removes done runs' records and scratch and aged orphan scratch, as a dry run unless given --apply.
+//
 // "lyx batten run <slug> --window" runs the same status check as a plain run and refuses a done slug before opening anything.
 //
 // The Worktree-Create row opens by claiming the slug's board entry with "running · Worktree-Create", before the pair exists, so the board's run lock starts at the claim.
@@ -222,7 +224,11 @@ slug; "step" drives it exactly one producer forward; "status" reports its
 current state; "pause" requests a pause at the run's next producer boundary;
 "goto" moves a halted run onto a named row, paused, with a fresh segment budget.
 
-All five verbs run from the hub's prime worktree only: they refuse when invoked
+"cleanup" is the odd one out: it takes no slug and, as a dry run unless given
+--apply, removes the records and scratch of every done run, and the scratch of
+aged orphans.
+
+Every verb runs from the hub's prime worktree only: they refuse when invoked
 from a task worktree, from the pair's fabric sibling, or from _board.
 
 Example:
@@ -230,7 +236,8 @@ Example:
   lyx batten step some-slug
   lyx batten status some-slug
   lyx batten pause some-slug
-  lyx batten goto some-slug --to Run-Shed`,
+  lyx batten goto some-slug --to Run-Shed
+  lyx batten cleanup --apply`,
 		// RunE is set so that bare "lyx batten" lists subcommands and "lyx batten bogus"
 		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE:              clihelp.GroupRunE,
@@ -270,7 +277,7 @@ Example:
 	stepVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
 	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", shedrun.DriverLLM, "the driver the task worktree's own inner run uses")
 
-	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb)
+	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.cleanupCmd())
 
 	return parent
 }
@@ -282,9 +289,9 @@ Example:
 //
 // Skips resolution entirely when the batten group command itself is invoked (bare listing or
 // unknown-subcommand error path via clihelp.GroupRunE), so neither path requires a git repository to
-// be present.
+// be present, and for "cleanup", which takes no run-id, arms no shed spec and resolves its own location.
 func (c *battenCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
-	if cmd.Name() == "batten" {
+	if cmd.Name() == "batten" || cmd.Name() == "cleanup" {
 		return nil
 	}
 
