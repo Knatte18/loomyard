@@ -143,7 +143,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	if err != nil {
 		return configLoadError("webster.yaml", err)
 	}
-	activeBatcher, err := batcher.Active(anchorPath)
+	activeBatcher, err := batcher.Active(fabricengine.ConfigDirs(loc))
 	if err != nil {
 		return configLoadError("batcher.yaml", err)
 	}
@@ -269,7 +269,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	if err != nil {
 		return configLoadError("webster.yaml", err)
 	}
-	activeBatcher, err := batcher.Active(res.StateDir)
+	activeBatcher, err := batcher.Active(configengine.Dirs{Anchor: res.StateDir})
 	if err != nil {
 		return configLoadError("batcher.yaml", err)
 	}

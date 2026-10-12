@@ -244,7 +244,7 @@ func TestReconcileAll(t *testing.T) {
 					}
 				}
 				if want.loadsAsBatcher {
-					if _, err := batcher.Active(baseDir); err != nil {
+					if _, err := batcher.Active(configengine.Dirs{Anchor: baseDir}); err != nil {
 						t.Errorf("batcher.Active after the run = %v; want nil error", err)
 					}
 				}

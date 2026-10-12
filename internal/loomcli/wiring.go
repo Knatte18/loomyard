@@ -451,7 +451,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	activeBatcher, err := batcher.Active(anchorPath)
+	activeBatcher, err := batcher.Active(fabricengine.ConfigDirs(location))
 	if err != nil {
 		return err
 	}
@@ -570,6 +570,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ParentReview: parentReviewCfg,
 		Cwd:          cwd,
 		AnchorPath:   anchorPath,
+		ConfigDirs:   fabricengine.ConfigDirs(location),
 		WorktreeRoot: location.WorktreePath(),
 		// RunScratchDir is the directory the step envelope reports as scratch_dir.
 		RunScratchDir: shedrun.ScratchDir(location, c.runID),

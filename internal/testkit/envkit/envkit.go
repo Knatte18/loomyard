@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -153,6 +154,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 	return shedrecipe.Env{
 		Cwd:                mustMkdir(t, filepath.Join(dir, "cwd")),
 		AnchorPath:         mustMkdir(t, filepath.Join(dir, "anchor")),
+		ConfigDirs:         configengine.Dirs{Anchor: filepath.Join(dir, "anchor")},
 		WorktreeRoot:       mustMkdir(t, filepath.Join(dir, "worktree")),
 		VerifyDir:          mustMkdir(t, filepath.Join(dir, "verify")),
 		VerifyCommand:      func() (string, error) { return "go test ./...", nil },

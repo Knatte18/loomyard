@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/parentreview"
@@ -450,6 +451,7 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 	env.ParentReview = testParentReviewConfig(dir, decisionRecordPath, supportLogPath)
 	env.Cwd = cwd
 	env.AnchorPath = dir
+	env.ConfigDirs = configengine.Dirs{Anchor: dir}
 	env.WorktreeRoot = dir
 	env.StatusPath = statusPath
 	env.StatusLockPath = statusLockPath

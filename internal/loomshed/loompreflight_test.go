@@ -64,7 +64,7 @@ func TestLoomPreflight_Call_CoherentSeedReportsDone(t *testing.T) {
 	statusLockPath := filepath.Join(dir, "status.json.lock")
 	writeLoomPreflightFixture(t, statusPath, statusLockPath, NameLoomPreflight)
 
-	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, t.TempDir())
+	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()})
 	shedfake.RequireOutcome(t, p, shedengine.Done)
 }
 
@@ -84,7 +84,7 @@ func TestLoomPreflight_Call_LockParentUncreatableReturnsError(t *testing.T) {
 	}
 	statusLockPath := filepath.Join(blocker, "status.json.lock")
 
-	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, t.TempDir())
+	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()})
 	outcome, _, err := p.Call(context.Background())
 	if err == nil {
 		t.Fatalf("Call() error = nil; want non-nil (lock parent dir cannot be created)")
@@ -108,7 +108,7 @@ func TestLoomPreflight_Call_StuckReasonNamesTheFailures(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CheckSeed() error = %v", err)
 		}
-		pointer := shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, t.TempDir()), shedengine.Stuck)
+		pointer := shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()}), shedengine.Stuck)
 		return pointer.Reason, "seed is not a coherent fresh start: " + formatSeedFailures(report)
 	}
 
@@ -176,7 +176,7 @@ func TestLoomPreflight_Call_GotoReentryPassesAndLeavesStatusUnchanged(t *testing
 		t.Fatalf("read status: %v", err)
 	}
 
-	outcome, pointer := shedfake.CallOK(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, t.TempDir()))
+	outcome, pointer := shedfake.CallOK(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()}))
 	if outcome != shedengine.Done || pointer.Reason != "" {
 		t.Errorf("Call() = (%q, reason %q); want (%q, no reason)", outcome, pointer.Reason, shedengine.Done)
 	}
@@ -199,7 +199,7 @@ func TestLoomPreflight_Call_HalfFinishedWithoutGotoStuckNamesReentry(t *testing.
 		t.Fatalf("UpdateJSON: %v", err)
 	}
 
-	pointer := shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, t.TempDir()), shedengine.Stuck)
+	pointer := shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()}), shedengine.Stuck)
 	for _, want := range []string{"seed a new run", "lyx loom goto --to " + NameLoomPreflight} {
 		if !strings.Contains(pointer.Reason, want) {
 			t.Errorf("Reason = %q; want it to contain %q", pointer.Reason, want)
@@ -220,7 +220,7 @@ func TestLoomPreflight_Call_GotoThenLaterRowIsNotReentry(t *testing.T) {
 		t.Fatalf("UpdateJSON: %v", err)
 	}
 
-	shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, t.TempDir()), shedengine.Stuck)
+	shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()}), shedengine.Stuck)
 }
 
 func TestLoomPreflight_Call_ReentryWithOtherFailureStaysStuck(t *testing.T) {
@@ -228,7 +228,7 @@ func TestLoomPreflight_Call_ReentryWithOtherFailureStaysStuck(t *testing.T) {
 	statusPath, statusLockPath, gotoTo := halfFinishedRun(t, "")
 	gotoTo(NameLoomPreflight)
 
-	pointer := shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, t.TempDir()), shedengine.Stuck)
+	pointer := shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()}), shedengine.Stuck)
 	if !strings.Contains(pointer.Reason, string(loomengine.CheckSeedIncoherent)) {
 		t.Errorf("Reason = %q; want it to name %q", pointer.Reason, loomengine.CheckSeedIncoherent)
 	}
@@ -277,7 +277,7 @@ func TestLoomPreflight_Call_BatcherConfig(t *testing.T) {
 				}
 			}
 
-			pointer := shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configBaseDir), tt.wantOutcome)
+			pointer := shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: configBaseDir}), tt.wantOutcome)
 			for _, want := range tt.wantReason {
 				if !strings.Contains(pointer.Reason, want) {
 					t.Errorf("Reason = %q; want it to contain %q", pointer.Reason, want)
