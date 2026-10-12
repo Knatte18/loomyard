@@ -148,6 +148,9 @@ type applyOpts struct {
 	// operator-invoked op and wrong for an unattended watcher that would otherwise yank the
 	// operator's cursor out of the pane they are typing in on every window resize.
 	SkipFocus bool
+	// InstallPins makes a SkipFocus apply still install the window-resized hook array, because a changed content height changes the pins the hook replays.
+	// Without SkipFocus the array is always installed.
+	InstallPins bool
 	// SkipWhenBoxEquals, when non-nil, suppresses select-layout entirely if the
 	// resolved live box is an observation and equals *SkipWhenBoxEquals.
 	SkipWhenBoxEquals *render.Box
@@ -234,11 +237,11 @@ func (e *Engine) applyLayoutLockedOpts(st *ReedState, live []LivePane, opts appl
 	}
 	pins := e.contentPinsLocked(st, live, box, titleRow)
 	e.runResizePinsLocked(pins)
-	if opts.SkipFocus {
+	if opts.SkipFocus && !opts.InstallPins {
 		return applyResult{Applied: true, Box: box, BoxIsLive: boxIsLive}, nil
 	}
 	e.installResizePinsLocked(windowTarget, pins)
-	if focus == "" {
+	if opts.SkipFocus || focus == "" {
 		return applyResult{Applied: true, Box: box, BoxIsLive: boxIsLive}, nil
 	}
 	if err := e.tmux.run("select-pane", "-t", focus); err != nil {
