@@ -345,6 +345,10 @@ func (c *battenCLI) runInWindow(cmd *cobra.Command) error {
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 
+	if err := c.refuseCovered(); err != nil {
+		clihelp.SetExit(ctx, output.Err(out, err.Error()))
+		return nil
+	}
 	if _, err := c.checkRunStatus(); err != nil {
 		clihelp.SetExit(ctx, output.Err(out, err.Error()))
 		return nil

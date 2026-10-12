@@ -171,6 +171,8 @@ func TestResumeVerb(t *testing.T) {
 		directory fakeDriverDirectory
 		runLock   bool
 		marker    bool
+		// covered records a live pause entry covering the run before the verb runs.
+		covered bool
 		// noScratch points the lock paths at a directory that does not exist after the status file is written, as on a pair re-created from its branch.
 		noScratch bool
 		merge     fabricengine.MidMergeState
@@ -208,6 +210,7 @@ func TestResumeVerb(t *testing.T) {
 		{name: "parked driver over an unfinished merge is refused", runState: shedengine.StateBlocked, directory: liveDriver, marker: true, merge: mergeParked, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{`"lyx loom resume"`, "lyx fabric merge"}},
 		{name: "no live driver over an unfinished merge is refused", runState: shedengine.StateBlocked, directory: deadDriver, merge: mergeParked, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{`"lyx loom resume"`}},
 		{name: "parked driver at Merge-In over the own leftover is woken", runState: shedengine.StateBlocked, producer: loomshed.NameMergeIn, directory: liveDriver, marker: true, merge: ownLeftoverState, wantOK: true, wantSent: true, wantIn: []string{"woken"}},
+		{name: "a parked driver under a pause is refused and not woken", runState: shedengine.StateBlocked, directory: liveDriver, marker: true, covered: true, wantIn: []string{"lyx resume", `"lyx loom resume" again`}},
 		{name: "no live driver at Merge-In over the own leftover reports the dead driver", runState: shedengine.StateBlocked, producer: loomshed.NameMergeIn, directory: deadDriver, merge: ownLeftoverState, wantIn: []string{"dead", "lyx batten run <slug>"}},
 		{name: "own leftover at another row keeps the merge refusal", runState: shedengine.StateBlocked, producer: loomshed.NamePRGate, directory: liveDriver, marker: true, merge: ownLeftoverState, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{"lyx fabric merge"}},
 		{name: "parked merge of another source at Finalize keeps the merge refusal", runState: shedengine.StateBlocked, producer: loomshed.NameFinalize, directory: liveDriver, marker: true, merge: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: "merge-in", Source: "other", Conflicts: []string{"a.go"}}, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{"lyx fabric merge"}},
@@ -245,6 +248,9 @@ func TestResumeVerb(t *testing.T) {
 			marker := ""
 			if tt.marker {
 				marker = putParkMarker(t, c)
+			}
+			if tt.covered {
+				coverRun(t, c)
 			}
 
 			env, code := runResume(t, c)
@@ -287,7 +293,10 @@ func TestResumeVerb(t *testing.T) {
 					t.Errorf("park marker removed by a refused resume: %v", err)
 				}
 			}
-			assertBootstrapLockReleased(t, loomengine.LoomBootstrapLock(c.location))
+			// A covered run is refused before the bootstrap lock is taken, so there is no lock to release.
+			if !tt.covered {
+				assertBootstrapLockReleased(t, loomengine.LoomBootstrapLock(c.location))
+			}
 		})
 	}
 }

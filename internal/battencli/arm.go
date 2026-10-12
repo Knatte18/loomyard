@@ -30,13 +30,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
@@ -458,12 +461,34 @@ func (c *battenCLI) checkRunStatus() (found bool, err error) {
 	}
 }
 
+// refuseCovered returns the refusal naming "lyx resume" when a live pause entry covers this run's slug, and nil otherwise.
+// A geometry or record that cannot be read refuses nothing and logs one Warn, so a corrupt file never blocks a run.
+func (c *battenCLI) refuseCovered() error {
+	geometry, err := hubgeom.PauseGeometry(c.location)
+	if err != nil {
+		logger.Warn("battencli: pause geometry unreadable, running despite a possible pause", "slug", c.slug, "cause", err)
+		return nil
+	}
+	coverage, err := pauserecord.ReadCoverage(geometry.RecordPath, c.slug, time.Now())
+	if err != nil {
+		logger.Warn("battencli: pause record unreadable, running despite a possible pause", "slug", c.slug, "cause", err)
+		return nil
+	}
+	if !coverage.Covered {
+		return nil
+	}
+	return pauserecord.CoveredError(coverage.Entry, c.slug, fmt.Sprintf(`run "lyx batten run %s" again`, c.slug))
+}
+
 // battenPreRun implements the PreRun hook for batten's spec: run's whole existing pre-flight, in today's order: checkRunStatus, then seeding a fresh status when absent.
 // Each step's error becomes a returned error the generic body reports on the error envelope exactly as run's own inline handling did.
 //
 // This seed-when-absent behaviour is batten's alone and must not leak into the generic body:
 // loom refuses in exactly the situation batten seeds here, because only "lyx loom start" may seed loom's own status file.
 func (c *battenCLI) battenPreRun(ctx context.Context) error {
+	if err := c.refuseCovered(); err != nil {
+		return err
+	}
 	found, err := c.checkRunStatus()
 	if err != nil {
 		return err

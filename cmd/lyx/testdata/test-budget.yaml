@@ -7,7 +7,7 @@ contracts/specs: 3
 contracts/stencils: 16
 internal/agentname: 8
 internal/batcher: 9
-internal/battencli: 70
+internal/battencli: 71
 internal/battenrecipe: 9
 internal/battenshed: 108
 internal/boardcli: 13
@@ -56,7 +56,7 @@ internal/landingshed: 84
 internal/lock: 4
 internal/logger: 35
 internal/loggerconfig: 3
-internal/loomcli: 213
+internal/loomcli: 214
 internal/loomengine: 52
 internal/loomrecipe: 53
 internal/loomshed: 76

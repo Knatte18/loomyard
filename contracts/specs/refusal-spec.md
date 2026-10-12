@@ -400,6 +400,9 @@ Its JSON error envelope carries the way forward in the message, through `pausere
 | Refusal | Trigger | Class | Way forward |
 |---|---|---|---|
 | shuttle send under a pause | `lyx shuttle send` names a strand of a pair a live pause entry covers | transient | run "lyx resume <slug>", or "lyx resume" for a hub-wide pause, then re-run the send |
+| loom start under a pause | `lyx loom start` runs on a slug a live pause entry covers | transient | run "lyx resume <slug>", or "lyx resume" for a hub-wide pause, then re-run "lyx loom start" |
+| loom resume under a pause | `lyx loom resume` runs on a slug a live pause entry covers | transient | run "lyx resume <slug>", or "lyx resume" for a hub-wide pause, then re-run "lyx loom resume" |
+| batten run under a pause | `lyx batten run` names a slug a live pause entry covers, with or without `--window` | transient | run "lyx resume <slug>", or "lyx resume" for a hub-wide pause, then re-run "lyx batten run <slug>" |
 
 ## Out of scope
 
