@@ -7,7 +7,7 @@ contracts/specs: 3
 contracts/stencils: 16
 internal/agentname: 7
 internal/batcher: 9
-internal/battencli: 65
+internal/battencli: 66
 internal/battenrecipe: 9
 internal/battenshed: 103
 internal/boardcli: 13
@@ -17,7 +17,7 @@ internal/buildinfo: 2
 internal/buildvcs: 2
 internal/burlercli: 19
 internal/burlerengine: 32
-internal/cleanupcli: 1
+internal/cleanupcli: 4
 internal/clihelp: 13
 internal/cliwire: 12
 internal/commentlint: 3

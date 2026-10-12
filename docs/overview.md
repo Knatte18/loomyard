@@ -224,6 +224,7 @@ github.com/Knatte18/loomyard/
 ├── internal/agentname/           the sole former, parser and validator of agent names (`<shortname>:<slug>:<role>`), a stdlib-only leaf
 ├── internal/boardcli/            the board CLI command
 ├── internal/boardengine/         the board domain kernel
+├── internal/cleanupcli/          the cleanup CLI command (`lyx cleanup`, the routine cleanups of the hub prime's leftover state, a dry run by default)
 ├── internal/fabriccli/           the fabric CLI command (git coordination of code and records)
 ├── internal/fabricengine/        the fabric domain kernel
 ├── internal/gatecli/             the gate CLI command (`lyx gate test`, the slotted route for an agent's go test)
@@ -378,6 +379,11 @@ User-facing modules each get one `lyx <module>` namespace:
 - **planglyph** — the sole owner of every `quarry.Repo` call (`Open`, `Resolve`, `DeltaGit`) and of the package-level `quarry.Name`, plus the resolve-backed validation pass layered on top of `planparser`'s pure checks: `planglyph.ValidateFormat`/`Validate` call `planparser.ValidateFormat`/`Validate` and append only resolve findings, composing rather than reimplementing (`internal/planglyph`). ✅ Implemented.
 - **planindex** — the cgo-free seam over `planglyph`: the plan gates' finding types, `ErrQuarryUnavailable` and the `Index` and `Delta` interfaces a package receives instead of importing the package that links tree-sitter (`internal/planindex`). ✅ Implemented.
 - **help** — cobra's help command, replaced: `lyx help [<command>...]` prints a command's help and refuses a word that names no subcommand, and `lyx help index [--audience <audience>]` prints a generated one-line-per-command index of the running binary, filtered by the `audience` annotation every invocable command carries (`internal/helpcli`; the renderer is `clihelp.RenderIndex`). ✅ Implemented. See the `internal/helpcli` package documentation.
+- **cleanup** — the routine cleanups of the hub prime's leftover state, as one verb (`internal/cleanupcli`; `lyx cleanup [--apply]`, prime only).
+  Without `--apply` it is a dry run that lists, per segment, what `--apply` would remove.
+  The segments run in order and each calls its owner's own cleanup in-process: `lyx batten cleanup`, `lyx board prune`, `lyx orch cleanup`, the prime's `.scratch/` children older than 14 days that no open board entry cites, logger's trace retention sweep, and the temp root's sweep of dead owners' run directories.
+  A failing segment never stops the later ones.
+  ✅ Implemented. See the `internal/cleanupcli` package documentation.
 - **gate** — the one sanctioned route for an agent's slotted `go test`: it waits for a free slot of the hub-wide gate pool, runs `go test` inside it under the slot's `-p` cap and exits with go's code, or with 75 when the hub stays busy past `cli_wait_sec` (`internal/gatecli`; `lyx gate test [-C <dir>] [--tags <tags>] <packages...> [-- <go test flags>]`). A run inside a slot an enclosing gate run holds takes no second one, and a target outside every hub runs unslotted. ✅ Implemented. See the `internal/gatecli` package documentation.
 - **quarry** — the planner's only source of glyph spellings: four read-only repository queries over the current worktree's own glyph alphabet, each delegating to a `planglyph` wrapper and emitting quarry's own rendering verbatim, with no repository-path flag on any of them (`internal/quarrycli`; `lyx quarry toc|glyphs|resolve|expand`).
   `toc` answers a table-of-contents query for a path;
