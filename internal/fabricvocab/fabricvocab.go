@@ -48,6 +48,10 @@ var sideTokens = []string{"weft", "warp"}
 // packageNamePattern matches the side-named name package's spelling as a whole word.
 var packageNamePattern = regexp.MustCompile(`\bweftname\b`)
 
+// recordsRepoNamePattern matches the proper name of this repository's public records repository as a whole word.
+// The repo-root docs link that repository by name and URL; the name is not a side-token use.
+var recordsRepoNamePattern = regexp.MustCompile(`\bloomyard-weft\b`)
+
 // SideTokens returns a fresh copy of the two fabric side tokens,
 // so a test outside the owner set can build a side-token name without spelling one.
 func SideTokens() []string {
@@ -70,6 +74,12 @@ func BareTokenIn(s string, stripPackageName bool) bool {
 		s = packageNamePattern.ReplaceAllString(s, "")
 	}
 	return containsSideToken(strings.ToLower(s))
+}
+
+// BareTokenInRootDoc is BareToken for a repo-root markdown file:
+// it strips the records repository's proper name first, so that name passes and every other side token still fails.
+func BareTokenInRootDoc(s string) bool {
+	return BareToken(recordsRepoNamePattern.ReplaceAllString(s, ""))
 }
 
 func containsSideToken(lower string) bool {

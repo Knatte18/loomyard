@@ -1,5 +1,7 @@
 # CLAUDE.md — Loomyard (lyx)
 
+This repository develops LoomYard and is itself developed by LoomYard: its tasks run through its own pipeline, with their board and run records in [loomyard-weft](https://github.com/Knatte18/loomyard-weft).
+
 ## PATTERN.md is authoritative
 
 Read `PATTERN.md`, and the `pattern/` background files that touch a change, before writing or reviewing code.
