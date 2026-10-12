@@ -3,5 +3,7 @@
 
 ## Editing files
 
-Change files only with Edit or Write, never with a script that rewrites them: never `sed`, `awk` or `perl`, and never `python` or `node` in an inline heredoc.
+Change files only with Edit or Write, never with a script that rewrites them: never `sed -i`, never `perl -i`, never `awk`, and never `python` or `node` in an inline heredoc.
 A bulk change is one Edit per site, or `replace_all` for an identical string.
+Reading with `sed -n`, `grep` or `cat` is fine.
+Scratch files go under `.scratch/` in the working directory, never a system temp directory, and are removed by their literal path.

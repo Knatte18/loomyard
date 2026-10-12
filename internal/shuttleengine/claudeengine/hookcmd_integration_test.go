@@ -1,7 +1,7 @@
 //go:build integration
 
 // hookcmd_integration_test.go runs the hook commands settings.go builds under `sh`:
-// the python deny's against PreToolUse payloads, pinning which Bash commands it denies and which it lets through,
+// the python, in-place edit and computed-rm denies' against PreToolUse payloads, pinning which Bash commands it denies and which it lets through,
 // and the recording hooks' against payloads on standard input, pinning what they append to the events file.
 
 package claudeengine
@@ -137,6 +137,89 @@ func TestPythonDenyHook_DeniesCommandPositionPythonOnly(t *testing.T) {
 			want := ""
 			if tt.denied {
 				want = denyJSON(steerPythonDeny) + "\n"
+			}
+			if got := preToolUseOutput(t, hookCommand, tt.command); got != want {
+				t.Errorf("hook output for %q = %q; want %q", tt.command, got, want)
+			}
+		})
+	}
+}
+
+// TestInPlaceEditDenyHook_DeniesInPlaceScriptEditsOnly feeds the in-place row's hook command a PreToolUse payload per Bash command and asserts the deny JSON, or empty output and exit 0 for a command it lets through.
+func TestInPlaceEditDenyHook_DeniesInPlaceScriptEditsOnly(t *testing.T) {
+	t.Parallel()
+
+	hookCommand := denyHookCommand(t, steerInPlaceEditDeny)
+	tests := []struct {
+		name    string
+		command string
+		denied  bool
+	}{
+		{"sed_dash_i", "sed -i 's/a/b/' f", true},
+		{"sed_dash_i_suffix", "sed -i.bak s/a/b/ f", true},
+		{"sed_cluster_ni", "sed -ni 3p f", true},
+		{"sed_long_in_place", "sed --in-place s/a/b/ f", true},
+		{"sed_long_in_place_suffix", "sed --in-place=.bak s/a/b/ f", true},
+		{"sed_long_abbreviation", "sed --in s/a/b/ f", true},
+		{"sed_long_abbreviation_suffix", "sed --in-pl=.bak s/a/b/ f", true},
+		{"sed_flag_after_script", "sed -n 3p f -i", true},
+		{"perl_cluster_pi", "perl -pi -e s/a/b/ f", true},
+		{"path_prefixed_sed", "/usr/bin/sed -i s/a/b/ f", true},
+		{"after_and_separator", "cd x && sed -i s/a/b/ f", true},
+		{"after_semicolon", "true; sed -i s/a/b/ f", true},
+		{"after_pipe", "cat f | sed -i s/a/b/ f", true},
+		{"sed_print_range", "sed -n 1,5p f", false},
+		{"sed_substitute_to_stdout", "sed s/a/b/ f", false},
+		{"sed_long_quiet", "sed --quiet 3p f", false},
+		{"sed_long_silent", "sed --silent 3p f", false},
+		{"sed_read_then_grep_dash_i_on_next_line", "sed -n 3p f\ngrep -i x f", false},
+		{"grep_dash_i", "grep -i x f", false},
+		{"git_diff", "git diff", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			want := ""
+			if tt.denied {
+				want = denyJSON(steerInPlaceEditDeny) + "\n"
+			}
+			if got := preToolUseOutput(t, hookCommand, tt.command); got != want {
+				t.Errorf("hook output for %q = %q; want %q", tt.command, got, want)
+			}
+		})
+	}
+}
+
+// TestComputedRmDenyHook_DeniesRmOnComputedPathsOnly feeds the computed-rm row's hook command a PreToolUse payload per Bash command and asserts the deny JSON, or empty output and exit 0 for a command it lets through.
+func TestComputedRmDenyHook_DeniesRmOnComputedPathsOnly(t *testing.T) {
+	t.Parallel()
+
+	hookCommand := denyHookCommand(t, steerComputedRmDeny)
+	tests := []struct {
+		name    string
+		command string
+		denied  bool
+	}{
+		{"command_substitution", `rm -rf "$(cat x)"`, true},
+		{"variable_path", "rm $DIR/f", true},
+		{"positional_parameter", "rm $1", true},
+		{"braced_variable", "rm ${D}/f", true},
+		{"backtick_substitution", "rm `cat list`", true},
+		{"rm_after_separator", "cd x && rm $DIR/f", true},
+		{"rm_behind_xargs", "ls | xargs rm $F", true},
+		{"literal_path", "rm -f .scratch/a", false},
+		{"two_literal_paths", "rm a b", false},
+		{"process_id_parameter", "rm -f .scratch/a-$$", false},
+		{"exit_status_parameter", "rm -f .scratch/a && echo $?", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			want := ""
+			if tt.denied {
+				want = denyJSON(steerComputedRmDeny) + "\n"
 			}
 			if got := preToolUseOutput(t, hookCommand, tt.command); got != want {
 				t.Errorf("hook output for %q = %q; want %q", tt.command, got, want)
