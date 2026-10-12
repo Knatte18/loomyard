@@ -297,6 +297,12 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | decision: append failed | `lyx loom decision add` fails to append the entry for a reason other than a missing record or heading | transient | re-run "lyx loom decision add"; nothing is appended |
 | decision: commit failed after the append | `lyx loom decision add` appended the entry and the commit of the record fails | transient | run `lyx fabric commit` to commit the record; a session lyx refuses the verb from reports status: FAILED and the orch runs it |
 | decision: slug required from the prime | `lyx loom decision add` runs from the prime with no slug | correctness halt | pass the task's slug as listed by `lyx board list`, e.g. `lyx loom decision add <slug>` |
+| peers: no board | `lyx loom peers` or `lyx loom peers show` runs in a hub with no board directory | correctness halt | nothing to compare, and a standalone run's review stays with its parent |
+| peers show: unknown slug | `lyx loom peers show` names a slug with no board task | correctness halt | `lyx loom peers` lists the in-flight peers |
+| peers show: not an in-flight run | `lyx loom peers show` names a board task whose status is no run status | correctness halt | `lyx loom peers` lists the in-flight peers |
+| peers show: own slug | `lyx loom peers show` names the caller's own slug | correctness halt | read your own records in this worktree |
+| peers show: unknown record | `lyx loom peers show` gets a `--record` other than `decision` or `plan` | correctness halt | pass `--record decision` or `--record plan` |
+| peers show: record not yet written | `lyx loom peers show` names a peer that does not hold the record yet | correctness halt | `lyx loom peers` shows which records exist |
 | decision: unknown slug | `lyx loom decision add` names a slug with no worktree in the hub | correctness halt | pass the task's slug as listed by `lyx board list` |
 | commit-records: probe or commit failed | the merge-state probe or the commit fails | transient | transient, re-run `lyx loom commit-records` |
 | commit-records: push rejected | the commit landed locally but a remote rejected the push of the records or the task branch, alone or beside another failure | transient | merge the remote branch into the local branch in the worktree the error names, or clear what a remote rule objects to, then run `lyx fabric push` or re-run `lyx loom commit-records`; a session lyx refuses the verb from reports status: FAILED and the orch runs it |
