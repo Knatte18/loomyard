@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	flock "github.com/Knatte18/loomyard/internal/lock"
 )
@@ -19,16 +20,22 @@ type Board struct {
 	vocab     Vocabulary
 	skipGit   bool
 	skipPush  bool
+	now       func() time.Time
 }
 
 // New returns a Board operating with the given config.
 func New(cfg Config) *Board {
+	now := cfg.Clock
+	if now == nil {
+		now = time.Now
+	}
 	return &Board{
 		boardPath: cfg.Path,
 		out:       cfg.Outputs(),
 		vocab:     cfg.Vocabulary(),
 		skipGit:   cfg.SkipGit,
 		skipPush:  cfg.SkipPush,
+		now:       now,
 	}
 }
 
@@ -37,7 +44,7 @@ func New(cfg Config) *Board {
 type noWrite struct{ result any }
 
 // boardCriticalSection runs the locked write scaffolding shared by every mutating Board method:
-// it acquires the lock, loads the store, calls fn to mutate it, refuses a net change to a run-held entry's scope, saves board.json, runs afterSave when non-nil, renders outputs, and spawns a detached sync.
+// it acquires the lock, loads the store, calls fn to mutate it, stamps the entry dates, refuses a net change to a run-held entry's scope, saves board.json, runs afterSave when non-nil, renders outputs, and spawns a detached sync.
 // afterSave runs under the lock after the save and before the render.
 // fn returning a noWrite skips every step after the mutation.
 func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSave func() error) (any, error) {
@@ -76,6 +83,17 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 		return skipped.result, nil
 	}
 
+	now := b.now()
+	stampDates(loaded, store.tasks, now)
+	// A returned entry was copied before the stamp, so it is read again to carry its dates.
+	switch r := result.(type) {
+	case Task:
+		result, _ = store.GetTask(r.Slug)
+	case ImportResult:
+		r.Entry, _ = store.GetTask(r.Entry.Slug)
+		result = r
+	}
+
 	if err := checkRunLocks(loaded, store.Tasks()); err != nil {
 		return nil, err
 	}
@@ -91,7 +109,7 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 		}
 	}
 
-	if err := RenderToDisk(b.boardPath, store.Tasks(), b.out); err != nil {
+	if err := RenderToDisk(b.boardPath, store.Tasks(), b.out, now); err != nil {
 		return nil, fmt.Errorf("render: %w", err)
 	}
 

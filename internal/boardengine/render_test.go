@@ -13,9 +13,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 )
+
+// renderTime is the time every render in these tests reads its ages as of.
+var renderTime = time.Date(2026, 10, 12, 9, 30, 0, 0, time.UTC)
 
 // seedManifest writes a .board-rendered.json manifest into dir listing names,
 // simulating the sidecar that a prior render would have left behind.
@@ -47,7 +51,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		}
 		seedManifest(t, dir, []string{"prop-ghost.md"})
 
-		if err := boardengine.RenderToDisk(dir, tasks, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "prop-"}); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "prop-"}, renderTime); err != nil {
 			t.Fatalf("RenderToDisk: %v", err)
 		}
 
@@ -71,14 +75,14 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 		// First render produces Home.md and seeds the manifest with it.
 		out1 := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
-		if err := boardengine.RenderToDisk(dir, tasks, out1); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out1, renderTime); err != nil {
 			t.Fatalf("first RenderToDisk: %v", err)
 		}
 
 		// Second render uses Index.md; the manifest from the first render lists Home.md,
 		// so it is removed because the new output set does not contain it.
 		out2 := boardengine.Outputs{Readme: "Index.md", DesignPrefix: "proposal-"}
-		if err := boardengine.RenderToDisk(dir, tasks, out2); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out2, renderTime); err != nil {
 			t.Fatalf("second RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "Index.md")); err != nil {
@@ -95,7 +99,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 		// First render with prefix "proposal-" produces proposal-a.md.
 		out1 := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
-		if err := boardengine.RenderToDisk(dir, tasks, out1); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out1, renderTime); err != nil {
 			t.Fatalf("first RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "proposal-a.md")); err != nil {
@@ -105,7 +109,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		// Second render with prefix "task-" produces task-a.md; manifest cleanup
 		// removes proposal-a.md because it is no longer in the output set.
 		out2 := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "task-"}
-		if err := boardengine.RenderToDisk(dir, tasks, out2); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out2, renderTime); err != nil {
 			t.Fatalf("second RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "task-a.md")); err != nil {
@@ -122,7 +126,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		out := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
 
 		// First render: task has a body → proposal-a.md is produced and recorded in the manifest.
-		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, out, renderTime); err != nil {
 			t.Fatalf("first RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "proposal-a.md")); err != nil {
@@ -132,7 +136,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		// Second render: task loses its body → proposal-a.md is absent from the new
 		// output set but present in the manifest, so the manifest cleanup removes it.
 		task.Body = ""
-		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, out, renderTime); err != nil {
 			t.Fatalf("second RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "proposal-a.md")); !os.IsNotExist(err) {
@@ -152,11 +156,11 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 		out := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
 		// First render seeds the manifest with the rendered files (not NOTES.md).
-		if err := boardengine.RenderToDisk(dir, tasks, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out, renderTime); err != nil {
 			t.Fatalf("first RenderToDisk: %v", err)
 		}
 		// Second render triggers cleanup; NOTES.md was never in the manifest so it is untouched.
-		if err := boardengine.RenderToDisk(dir, tasks, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out, renderTime); err != nil {
 			t.Fatalf("second RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(readme); err != nil {
@@ -179,7 +183,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 		// First render with no prior manifest: nothing is removed (graceful degradation),
 		// and the manifest is seeded with the current output set.
-		if err := boardengine.RenderToDisk(dir, tasks, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out, renderTime); err != nil {
 			t.Fatalf("RenderToDisk should not fail when no manifest exists: %v", err)
 		}
 		if _, err := os.Stat(stale); err != nil {
@@ -201,7 +205,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		}
 
 		out := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
-		if err := boardengine.RenderToDisk(dir, tasks, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out, renderTime); err != nil {
 			t.Errorf("RenderToDisk should not fail with a corrupt manifest: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "Home.md")); err != nil {
@@ -213,24 +217,25 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 // readmeTypes is the type-label order the README goldens render Notes sections in.
 var readmeTypes = []string{"bug", "enhancement"}
 
-// readmeFixture holds tasks and notes with labels, plus a done task that another task depends on, an abandoned note, a body, an isolated task, a two-layer chain, a title with a pipe, a two-line brief, a note whose type label is not in readmeTypes, a high-priority task, and a low-priority note listed before a normal one of the same type.
+// readmeFixture holds tasks and notes with labels, two entries with dates and the rest without, plus a done task that another task depends on, an abandoned note, a body, an isolated task, a two-layer chain, a title with a pipe, a two-line brief, a note whose type label is not in readmeTypes, a high-priority task, and a low-priority note listed before a normal one of the same type.
 func readmeFixture() []boardengine.Task {
 	task, note := boardengine.KindTask, boardengine.KindNote
 	return []boardengine.Task{
-		{ID: 1, Slug: "base", Title: "Base work", Kind: task, Labels: []string{"enhancement"}, Brief: "The foundation."},
+		{ID: 1, Slug: "base", Title: "Base work", Kind: task, Labels: []string{"enhancement"}, Brief: "The foundation.", Created: renderTime.AddDate(0, 0, -40), Revised: renderTime.AddDate(0, 0, -3)},
 		{ID: 2, Slug: "top", Title: "Top | work", Kind: task, Labels: []string{"bug", "area"}, Status: stringPtr("running"), Brief: "Builds on base.\nSecond brief line.", Body: "Design.\nSecond line.", DependsOn: []string{"base", "shipped"}},
 		{ID: 6, Slug: "alone", Title: "Alone work", Kind: task, Labels: []string{"enhancement"}, Isolated: true, Priority: boardengine.PriorityHigh, Recipe: "darn"},
 		{ID: 3, Slug: "idea", Title: "An idea", Kind: note, Labels: []string{"enhancement", "undecided"}, Priority: boardengine.PriorityLow},
 		{ID: 8, Slug: "plain", Title: "Plain idea", Kind: note, Labels: []string{"enhancement"}},
 		{ID: 4, Slug: "dropped", Title: "Dropped idea", Kind: note, Labels: []string{"bug"}, Status: stringPtr("abandoned"), Brief: "No longer wanted."},
 		{ID: 7, Slug: "stray", Title: "Stray note", Kind: note, Labels: []string{"retired"}},
-		{ID: 5, Slug: "shipped", Title: "Shipped work", Kind: task, Labels: []string{"enhancement"}, Status: stringPtr("done")},
+		{ID: 5, Slug: "shipped", Title: "Shipped work", Kind: task, Labels: []string{"enhancement"}, Status: stringPtr("done"), Created: renderTime.AddDate(-1, 0, -10), Revised: renderTime.AddDate(0, -5, 0)},
 	}
 }
 
 // TestRenderReadmeGolden pins the README tables for a fixture with tasks and notes, notes grouped by type in Outputs.Types order and an Other group, a done entry, an abandoned note, a slug linked to its design doc, only non-type labels, an After cell that leaves out a done dependency, an isolated task, and a Ready task with one in Layer A after it.
 // The same row pins that each open group splits into one table per priority present, under a `####` priority heading, high, normal, low, with no heading for an absent priority and the rows numbered on across the group's tables, that a low note follows a normal note with a higher ID, and that a pipe in a title is escaped and a line break in a brief becomes a space, so each row stays one table row.
 // Every Tasks table pins a Recipe column after the slug, loom for an empty recipe and the stored name otherwise, and the Notes and Done tables pin its absence.
+// Every README pins the render time at its top, and every table pins the Age and Revised columns before Labels, as of that time and blank for an unknown date.
 // A second row pins that Ready renders _None._ when empty, and that the Done section and every empty Notes subsection are omitted when no entry is done and no note exists for them.
 // Neither row has a run status, the first only the hand-set word "running", so neither renders a Running subsection.
 // A third row pins that a task with a run status renders under Running, before Ready and in no layer, its At cell dropping the state `running` and keeping any other.
@@ -247,6 +252,8 @@ func TestRenderReadmeGolden(t *testing.T) {
 			tasks: readmeFixture(),
 			want: "# Board\n" +
 				"\n" +
+				"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
+				"\n" +
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 				"\n" +
@@ -260,9 +267,9 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"#### Normal priority\n" +
 				"\n" +
-				"| # | Task | Slug | Recipe | After | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Base work**<br>• The foundation. | `base` | loom |  |  |\n" +
+				"| # | Task | Slug | Recipe | After | Age | Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Base work**<br>• The foundation. | `base` | loom |  | 5w | 3d |  |\n" +
 				"\n" +
 				"### Layer A\n" +
 				"\n" +
@@ -270,9 +277,9 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"#### Normal priority\n" +
 				"\n" +
-				"| # | Task | Slug | Recipe | After | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Top \\| work**<br>• Builds on base. Second brief line. | [`top`](design-top.md) | loom | `base` | area |\n" +
+				"| # | Task | Slug | Recipe | After | Age | Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Top \\| work**<br>• Builds on base. Second brief line. | [`top`](design-top.md) | loom | `base` |  |  | area |\n" +
 				"\n" +
 				"### Independent\n" +
 				"\n" +
@@ -280,9 +287,9 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"#### High priority\n" +
 				"\n" +
-				"| # | Task | Slug | Recipe | After | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Alone work** | `alone` | darn |  |  |\n" +
+				"| # | Task | Slug | Recipe | After | Age | Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Alone work** | `alone` | darn |  |  |  |  |\n" +
 				"\n" +
 				"## Notes\n" +
 				"\n" +
@@ -292,44 +299,46 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"#### Normal priority\n" +
 				"\n" +
-				"| # | Note | Slug | Labels |\n" +
-				"| --- | --- | --- | --- |\n" +
-				"| 1 | **Dropped idea**<br>• No longer wanted. | `dropped` |  |\n" +
+				"| # | Note | Slug | Age | Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Dropped idea**<br>• No longer wanted. | `dropped` |  |  |  |\n" +
 				"\n" +
 				"### Enhancements\n" +
 				"\n" +
 				"#### Normal priority\n" +
 				"\n" +
-				"| # | Note | Slug | Labels |\n" +
-				"| --- | --- | --- | --- |\n" +
-				"| 1 | **Plain idea** | `plain` |  |\n" +
+				"| # | Note | Slug | Age | Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Plain idea** | `plain` |  |  |  |\n" +
 				"\n" +
 				"#### Low priority\n" +
 				"\n" +
-				"| # | Note | Slug | Labels |\n" +
-				"| --- | --- | --- | --- |\n" +
-				"| 2 | **An idea** | `idea` | undecided |\n" +
+				"| # | Note | Slug | Age | Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- |\n" +
+				"| 2 | **An idea** | `idea` |  |  | undecided |\n" +
 				"\n" +
 				"### Other\n" +
 				"\n" +
 				"#### Normal priority\n" +
 				"\n" +
-				"| # | Note | Slug | Labels |\n" +
-				"| --- | --- | --- | --- |\n" +
-				"| 1 | **Stray note** | `stray` | retired |\n" +
+				"| # | Note | Slug | Age | Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Stray note** | `stray` |  |  | retired |\n" +
 				"\n" +
 				"## Done\n" +
 				"\n" +
 				"Finished, awaiting `lyx board prune --apply`.\n" +
 				"\n" +
-				"| # | Entry | Slug | Labels |\n" +
-				"| --- | --- | --- | --- |\n" +
-				"| 1 | **Shipped work** | `shipped` |  |\n",
+				"| # | Entry | Slug | Age | Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Shipped work** | `shipped` | 1y | 5mo |  |\n",
 		},
 		{
 			name:  "no done section and no empty notes subsections",
 			tasks: []boardengine.Task{{ID: 1, Slug: "a", Title: "A", Kind: boardengine.KindNote, Labels: []string{"enhancement"}}},
 			want: "# Board\n" +
+				"\n" +
+				"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
 				"\n" +
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
@@ -352,9 +361,9 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"#### Normal priority\n" +
 				"\n" +
-				"| # | Note | Slug | Labels |\n" +
-				"| --- | --- | --- | --- |\n" +
-				"| 1 | **A** | `a` |  |\n",
+				"| # | Note | Slug | Age | Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- |\n" +
+				"| 1 | **A** | `a` |  |  |  |\n",
 		},
 		{
 			name: "running task under Running before Ready and in no layer",
@@ -366,6 +375,8 @@ func TestRenderReadmeGolden(t *testing.T) {
 				{ID: 5, Slug: "halted", Title: "Halted work", Kind: boardengine.KindTask, Labels: []string{"bug"}, Status: stringPtr(boardengine.RunStatus("paused", "Plan-Write")), Recipe: "darn"},
 			},
 			want: "# Board\n" +
+				"\n" +
+				"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
 				"\n" +
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
@@ -380,10 +391,10 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"#### Normal priority\n" +
 				"\n" +
-				"| # | Task | Slug | Recipe | At | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Held work** | `held` | loom | Webster | area |\n" +
-				"| 2 | **Halted work** | `halted` | darn | paused · Plan-Write |  |\n" +
+				"| # | Task | Slug | Recipe | At | Age | Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Held work** | `held` | loom | Webster |  |  | area |\n" +
+				"| 2 | **Halted work** | `halted` | darn | paused · Plan-Write |  |  |  |\n" +
 				"\n" +
 				"### Ready\n" +
 				"\n" +
@@ -391,9 +402,9 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"#### Normal priority\n" +
 				"\n" +
-				"| # | Task | Slug | Recipe | After | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Base work** | `base` | loom |  |  |\n" +
+				"| # | Task | Slug | Recipe | After | Age | Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Base work** | `base` | loom |  |  |  |  |\n" +
 				"\n" +
 				"### Layer A\n" +
 				"\n" +
@@ -401,9 +412,9 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"#### Normal priority\n" +
 				"\n" +
-				"| # | Task | Slug | Recipe | After | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Next work** | `next` | loom | `held` |  |\n" +
+				"| # | Task | Slug | Recipe | After | Age | Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Next work** | `next` | loom | `held` |  |  |  |\n" +
 				"\n" +
 				"### Layer B\n" +
 				"\n" +
@@ -411,9 +422,9 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"#### Normal priority\n" +
 				"\n" +
-				"| # | Task | Slug | Recipe | After | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Last work** | `last` | loom | `next` |  |\n" +
+				"| # | Task | Slug | Recipe | After | Age | Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Last work** | `last` | loom | `next` |  |  |  |\n" +
 				"\n" +
 				"## Notes\n" +
 				"\n" +
@@ -423,7 +434,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result, err := boardengine.Render(tt.tasks, boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes})
+			result, err := boardengine.Render(tt.tasks, boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes}, renderTime)
 			if err != nil {
 				t.Fatalf("Render: %v", err)
 			}
@@ -450,7 +461,7 @@ func TestRenderDesignDocGoldens(t *testing.T) {
 			DependsOn: []string{"linked", "bare"}, Body: "line one\n\n  indented\nline three"},
 		{ID: 4, Slug: "plain", Title: "Plain", Kind: note, Labels: []string{"enhancement"}, Body: "just a body"},
 	}
-	result, err := boardengine.Render(tasks, boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes})
+	result, err := boardengine.Render(tasks, boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes}, renderTime)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -499,7 +510,7 @@ func TestRenderCustomOutputs(t *testing.T) {
 			Readme:       "README.md",
 			DesignPrefix: "proposal-",
 		}
-		result, err := boardengine.Render([]boardengine.Task{task}, out)
+		result, err := boardengine.Render([]boardengine.Task{task}, out, renderTime)
 		if err != nil {
 			t.Fatalf("Render failed: %v", err)
 		}
@@ -526,7 +537,7 @@ func TestRenderCustomOutputs(t *testing.T) {
 			Readme:       "Home.md",
 			DesignPrefix: "prop-",
 		}
-		result, err := boardengine.Render([]boardengine.Task{task}, out)
+		result, err := boardengine.Render([]boardengine.Task{task}, out, renderTime)
 		if err != nil {
 			t.Fatalf("Render failed: %v", err)
 		}

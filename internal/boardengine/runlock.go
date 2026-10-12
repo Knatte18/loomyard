@@ -61,13 +61,7 @@ func checkRunLocks(loaded, after []Task) error {
 	for _, task := range after {
 		afterBySlug[task.Slug] = task
 	}
-
-	removedDone := make(map[string]bool)
-	for _, task := range loaded {
-		if _, kept := afterBySlug[task.Slug]; !kept && isDone(task) {
-			removedDone[task.Slug] = true
-		}
-	}
+	removedDone := removedDoneSlugs(loaded, after)
 
 	for _, before := range loaded {
 		if !IsRunStatus(before.Status) {
@@ -81,7 +75,22 @@ func checkRunLocks(loaded, after []Task) error {
 	return nil
 }
 
-// scopeChanged reports whether any field but Status differs between before and now.
+// removedDoneSlugs is the set of done entries of loaded that after no longer holds.
+func removedDoneSlugs(loaded, after []Task) map[string]bool {
+	kept := make(map[string]bool, len(after))
+	for _, task := range after {
+		kept[task.Slug] = true
+	}
+	removedDone := make(map[string]bool)
+	for _, task := range loaded {
+		if !kept[task.Slug] && isDone(task) {
+			removedDone[task.Slug] = true
+		}
+	}
+	return removedDone
+}
+
+// scopeChanged reports whether any field but Status, Created and Revised differs between before and now.
 // Slices compare element-wise with nil equal to empty;
 // before's DependsOn is first stripped of the slugs in removedDone.
 func scopeChanged(before, now Task, removedDone map[string]bool) bool {

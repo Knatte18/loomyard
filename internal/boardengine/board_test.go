@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	flock "github.com/Knatte18/loomyard/internal/lock"
@@ -759,5 +760,61 @@ func TestPriorityRoundTrip(t *testing.T) {
 	}
 	if got := strings.Count(string(raw), `"priority"`); got != 2 {
 		t.Errorf("board.json names priority %d times; want 2, on hi and lo only:\n%s", got, raw)
+	}
+}
+
+// TestEntryDates pins how every write stamps an entry's dates from the configured clock:
+// a new entry gets both, a status change or a promote revises nothing, a scope change revises, an upsert's own dates are kept even on a run-held entry, and a merge keeps the oldest creation date of the entries it joins.
+func TestEntryDates(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, 10, 12, 9, 30, 0, 0, time.UTC)
+	now := start
+	b := boardengine.New(boardengine.Config{Path: t.TempDir(), Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true,
+		Clock: func() time.Time { return now }})
+	backfilled := time.Date(2025, 3, 4, 5, 6, 7, 0, time.UTC)
+
+	steps := []struct {
+		name                     string
+		write                    func() error
+		slug                     string
+		wantCreated, wantRevised time.Time
+	}{
+		{"new entry", func() error {
+			_, err := b.UpsertTask(map[string]any{"slug": "a", "title": "A", "labels": bugLabels})
+			return err
+		}, "a", start, start},
+		{"status change", func() error { return b.SetStatus("a", strPtr("active")) }, "a", start, start},
+		{"scope change", func() error {
+			_, err := b.UpsertTask(map[string]any{"slug": "a", "title": "A revised"})
+			return err
+		}, "a", start, start.Add(2 * time.Hour)},
+		{"promote", func() error { _, err := b.Promote("a"); return err }, "a", start, start.Add(2 * time.Hour)},
+		{"backfill on a run-held entry", func() error {
+			if err := b.SetRunStatus("a", boardengine.RunStatus("running", "Webster")); err != nil {
+				return err
+			}
+			_, err := b.UpsertTask(map[string]any{"slug": "a", "created": backfilled.Format(time.RFC3339), "revised": backfilled.Add(time.Hour).Format(time.RFC3339)})
+			return err
+		}, "a", backfilled, backfilled.Add(time.Hour)},
+		{"merge", func() error {
+			if err := b.SetStatus("a", nil); err != nil {
+				return err
+			}
+			_, err := b.MergeTasks([]string{"a"}, map[string]any{"slug": "c", "title": "C", "labels": bugLabels}, nil)
+			return err
+		}, "c", backfilled, start.Add(5 * time.Hour)},
+	}
+	for i, step := range steps {
+		now = start.Add(time.Duration(i) * time.Hour)
+		if err := step.write(); err != nil {
+			t.Fatalf("%s: %v", step.name, err)
+		}
+		got, found, err := b.GetTask(step.slug)
+		if err != nil || !found {
+			t.Fatalf("%s: GetTask(%s) found %v, err %v", step.name, step.slug, found, err)
+		}
+		if !got.Created.Equal(step.wantCreated) || !got.Revised.Equal(step.wantRevised) {
+			t.Errorf("%s: %s created %v, revised %v; want %v, %v", step.name, step.slug, got.Created, got.Revised, step.wantCreated, step.wantRevised)
+		}
 	}
 }
