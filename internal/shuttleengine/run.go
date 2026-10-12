@@ -320,6 +320,8 @@ type Run struct {
 	promptTurnStarted bool
 	// shadow is the session-state logging Wait keeps beside its classification, display only.
 	shadow sessionShadow
+	// dialog is the pending-dialog latch of one Wait, in memory.
+	dialog dialogLatch
 
 	// gate is the GateSpec this run was told, empty for an ungated run — the same zero value Run/Attach's own RunGated(spec, GateSpec{})/AttachGated(spec, GateSpec{}) delegation passes, so an ungated run behaves byte-for-byte as it did before the gate existed.
 	gate GateSpec
