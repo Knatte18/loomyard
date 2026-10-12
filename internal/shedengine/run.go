@@ -163,7 +163,7 @@ func gotoCommand(runID, target string) string {
 func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	// Step 1, the read gate. A found of false is a hard error: Shed never seeds a status
 	// file.
-	st, found, err := state.ReadJSONStrict[Status](s.StatusPath, s.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[Status](s.StatusPath, s.StatusLockPath)
 	if err != nil {
 		return StepResult{}, fmt.Errorf("shedengine: read status file %q: %w", s.StatusPath, err)
 	}
@@ -650,7 +650,7 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // After the write, and only after UpdateJSON has returned and released StatusLockPath, persist
 // calls s.CommitStatus with the transition's own nextCurrentProducer and string(nextState),
 // never from inside the mutate callback above: a synchronous network push made while
-// StatusLockPath is held would block every ReadJSON/ReadJSONStrict reader on that path for the
+// StatusLockPath is held would block every ReadJSON/ReadJSONNoMkdir reader on that path for the
 // push's duration -- "lyx loom status --watch" included, which is precisely the observability
 // this seam exists to deliver. A nil CommitStatus is a silent no-op. A non-nil error the closure
 // returns propagates out of persist and therefore halts Run, but by then the status-file write
@@ -687,7 +687,7 @@ func conditionReason(when, target string) string {
 // routedState returns the state a routed running outcome of def persists.
 // It is StatePaused with the pause_after reason when the status file's pause_after names def, read fresh because an outside actor may have recorded it while def ran, and StateRunning otherwise.
 func (s *Shed) routedState(def ProducerDef) (State, string, error) {
-	cur, found, err := state.ReadJSONStrict[Status](s.StatusPath, s.StatusLockPath)
+	cur, found, err := state.ReadJSONNoMkdir[Status](s.StatusPath, s.StatusLockPath)
 	if err != nil {
 		return "", "", fmt.Errorf("shedengine: read status file %q: %w", s.StatusPath, err)
 	}

@@ -535,7 +535,7 @@ func voucherOnDisk(t *testing.T, c *loomCLI) (handoffVoucher, bool) {
 	if _, err := os.Stat(loomengine.LoomHandoffVoucher(c.location)); errors.Is(err, os.ErrNotExist) {
 		return handoffVoucher{}, false
 	}
-	voucher, found, err := state.ReadJSONStrict[handoffVoucher](loomengine.LoomHandoffVoucher(c.location), loomengine.LoomHandoffVoucherLock(c.location))
+	voucher, found, err := state.ReadJSONNoMkdir[handoffVoucher](loomengine.LoomHandoffVoucher(c.location), loomengine.LoomHandoffVoucherLock(c.location))
 	if err != nil {
 		t.Fatalf("read handoff voucher: %v", err)
 	}

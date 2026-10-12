@@ -276,7 +276,7 @@ func (s *reviewState) preRun(cmd *cobra.Command, args []string) error {
 	statusPath := shedrun.StatusFile(target, shedrun.SelfRunID)
 	statusLock := shedrun.StatusLock(target, shedrun.SelfRunID)
 	s.readStatus = func() (shedengine.Status, bool, error) {
-		return state.ReadJSONStrict[shedengine.Status](statusPath, statusLock)
+		return state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLock)
 	}
 	return nil
 }

@@ -42,7 +42,7 @@ func TestPauseCmd_SetsPauseRequested(t *testing.T) {
 		t.Errorf("status_file = %v; want %q", env["status_file"], paths.StatusPath)
 	}
 
-	st, found, err := state.ReadJSONStrict[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil || !found {
 		t.Fatalf("re-read status: found=%v err=%v", found, err)
 	}
@@ -166,7 +166,7 @@ func TestPauseCmd_Conditions(t *testing.T) {
 				}
 			}
 
-			got, found, err := state.ReadJSONStrict[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+			got, found, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 			if err != nil || !found {
 				t.Fatalf("re-read status: found=%v err=%v", found, err)
 			}

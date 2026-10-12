@@ -431,13 +431,13 @@ func ArmAt(location *lyxcwd.Location, verb string, runID string) (shedverbs.Spec
 // A decode failure, an unrecognized state and a done slug come back as the error.
 //
 // It MkdirAlls the status lock's own ephemeral directory before the first read, mirroring battenPreStep's own MkdirAll(filepath.Dir(LockPath)) call:
-// StatusPath is durable and StatusLockPath is ephemeral, the two no longer share a directory the way they did before this task's durable/ephemeral split, and state.ReadJSONStrict deliberately never creates one itself (see its own "no MkdirAll" contract).
+// StatusPath is durable and StatusLockPath is ephemeral, the two no longer share a directory the way they did before this task's durable/ephemeral split, and state.ReadJSONNoMkdir deliberately never creates one itself (see its own "no MkdirAll" contract).
 // On a run-id that has never stepped on this machine, the very first read here would otherwise fail to acquire the lock with a bare "no such file or directory", before the run ever reaches shedengine's own run-lock probe.
 func (c *battenCLI) checkRunStatus() (found bool, err error) {
 	if err := os.MkdirAll(filepath.Dir(c.shedPaths.StatusLockPath), 0o755); err != nil {
 		return false, err
 	}
-	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	if err != nil {
 		return false, errors.New("battencli: decode status file " + c.shedPaths.StatusPath + ": " + err.Error())
 	}
@@ -545,7 +545,7 @@ func (c *battenCLI) battenPreStepUnmarked(ctx context.Context) (string, error) {
 		return shedverbs.KindBusy, fmt.Errorf("battencli: another batten run already holds the run lock %q", c.shedPaths.LockPath)
 	}
 
-	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	if err != nil {
 		return shedverbs.KindUnseeded, errors.New("battencli: decode status file " + c.shedPaths.StatusPath + ": " + err.Error())
 	}
@@ -666,7 +666,7 @@ func (c *battenCLI) readChildStatus() (shedengine.Status, bool) {
 	if err != nil {
 		return shedengine.Status{}, false
 	}
-	child, found, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(task, shedrun.SelfRunID), shedrun.StatusLock(task, shedrun.SelfRunID))
+	child, found, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(task, shedrun.SelfRunID), shedrun.StatusLock(task, shedrun.SelfRunID))
 	if err != nil || !found {
 		return shedengine.Status{}, false
 	}

@@ -149,7 +149,7 @@ Example:
 					if err := os.MkdirAll(filepath.Dir(c.shedPaths.StatusLockPath), 0o755); err != nil {
 						return shedengine.Status{}, false, err
 					}
-					return state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+					return state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 				},
 				branches: func() (string, string, string, error) {
 					f, err := open()

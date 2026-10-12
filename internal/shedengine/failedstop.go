@@ -62,7 +62,7 @@ func WriteFailedStop(req FailedStopRequest) (FailedStopResult, error) {
 	}
 
 	// The strict read refuses a malformed file and leaves a file in any other state byte-for-byte untouched.
-	current, found, err := state.ReadJSONStrict[Status](req.StatusPath, req.StatusLockPath)
+	current, found, err := state.ReadJSONNoMkdir[Status](req.StatusPath, req.StatusLockPath)
 	if err != nil {
 		return FailedStopResult{}, fmt.Errorf("shedengine: read status file %q: %w", req.StatusPath, err)
 	}

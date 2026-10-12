@@ -33,7 +33,7 @@
 //
 // # Unknown keys
 //
-// No read refuses a field its type does not declare: ReadJSON, ReadJSONStrict and UpdateJSON's own read all decode with a plain unmarshal.
+// No read refuses a field its type does not declare: ReadJSON, ReadJSONNoMkdir and UpdateJSON's own read all decode with a plain unmarshal.
 // Every write keeps, in the file it replaces, each key the record's Go type does not declare, so a record a newer binary wrote loses nothing when an older one rewrites it.
 // WriteJSON and UpdateJSON do this under the write lock they already hold, by reading the file they replace and merging it into the new encoding.
 // A kept key lands after the declared ones, in the old file's order, with its raw value, so its exact digits survive.

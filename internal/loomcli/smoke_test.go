@@ -152,7 +152,7 @@ func waitForCurrentProducer(t *testing.T, loc *lyxcwd.Location, want string, tim
 	deadline := time.Now().Add(timeout)
 	var last string
 	for {
-		st, found, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
+		st, found, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
 		if err == nil && found {
 			last = string(st.CurrentProducer)
 			if st.CurrentProducer == want && st.State == shedengine.StateRunning {
@@ -274,7 +274,7 @@ func TestSmokeRunStandalone(t *testing.T) {
 		}
 		waitRunLockFree(t, loc, 20*time.Second)
 
-		before, foundBefore, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
+		before, foundBefore, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
 		if err != nil || !foundBefore {
 			t.Fatalf("read status file before standalone drive: found=%v err=%v", foundBefore, err)
 		}
@@ -308,7 +308,7 @@ func TestSmokeRunStandalone(t *testing.T) {
 		}
 		t.Logf("loom run exited %d: %s", driveCode, strings.TrimSpace(driveOut))
 
-		after, foundAfter, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
+		after, foundAfter, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
 		if err != nil || !foundAfter {
 			t.Fatalf("read status file after standalone drive: found=%v err=%v", foundAfter, err)
 		}
@@ -508,7 +508,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 			t.Errorf("driver pid %d found but not alive", pids[0])
 		}
 
-		st, found, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
+		st, found, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
 		if err != nil || !found {
 			t.Fatalf("read status file after bootstrap: found=%v err=%v", found, err)
 		}

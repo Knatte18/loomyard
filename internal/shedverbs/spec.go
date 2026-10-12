@@ -164,7 +164,7 @@ type Spec struct {
 	Hooks Hooks
 	// StatusLabel is the --watch line's literal prefix -- "loom" for the loom recipe.
 	StatusLabel string
-	// DecodeErrPrefix is the told prefix for this spec's own state.ReadJSONStrict failure on the
+	// DecodeErrPrefix is the told prefix for this spec's own state.ReadJSONNoMkdir failure on the
 	// status file -- "loom:" for loom and "lifecyclecli:" for lifecycle. It also seeds
 	// ensureStatusLockDir's own error text, reproducing loomcli's existing wording for loom's spec
 	// rather than inventing a second prefix field for one string.

@@ -200,7 +200,7 @@ func parentLockDeps(l *lyxcwd.Location, runID, statusPath, statusLockPath string
 		Owner:    loopLockOwner(l, runID),
 		WaitPath: parentlock.WaitRecordPath(loomengine.LoomScratchDir(l)),
 		PauseRequested: func() (bool, error) {
-			status, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
+			status, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
 			if err != nil || !found {
 				return false, err
 			}

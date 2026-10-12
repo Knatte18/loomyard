@@ -96,7 +96,7 @@ func agentActivityFor(loc *lyxcwd.Location, cfg shuttleengine.Config) func() (ti
 // With Tier 2 off it reports skipped.
 func (c *loomCLI) loomAfterInterrupt(_ context.Context, producer, cause, traceFile string) string {
 	var history []shedengine.HistoryEntry
-	if st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath); err == nil && found {
+	if st, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath); err == nil && found {
 		history = st.History
 	}
 	return c.reflectHalt(haltNote{

@@ -30,7 +30,7 @@ import (
 func TestBattenPreStep_SeedsAbsentStatus(t *testing.T) {
 	c := newFakeReceiver(t, nil)
 
-	if _, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath); err != nil || found {
+	if _, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath); err != nil || found {
 		t.Fatalf("precondition: status read = (found=%v, err=%v); want (false, nil)", found, err)
 	}
 
@@ -57,7 +57,7 @@ func TestBattenPreStep_SeedsAbsentStatus(t *testing.T) {
 		t.Errorf("row-notice marker stat error = %v; want it cleared by the fresh seed", err)
 	}
 
-	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	if err != nil || !found {
 		t.Fatalf("status after battenPreStep = (found=%v, err=%v); want (true, nil)", found, err)
 	}

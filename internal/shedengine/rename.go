@@ -32,7 +32,7 @@ type RenameRequest struct {
 // A run lock held by a live driver refuses with ErrShedBusy and leaves the file unchanged.
 // Like Goto, it calls no CommitStatus: the next step's persist commits the file.
 func RenameProducers(req RenameRequest) (bool, error) {
-	st, found, err := state.ReadJSONStrict[Status](req.StatusPath, req.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[Status](req.StatusPath, req.StatusLockPath)
 	// A run directory not yet created fails the status lock open with not-exist; that is an absent status file too.
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return false, fmt.Errorf("shedengine: read status file %q: %w", req.StatusPath, err)

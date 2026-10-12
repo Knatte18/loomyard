@@ -108,12 +108,9 @@ func readJSONUnlocked[T any](path string) (T, bool, error) {
 
 	var v T
 	if err := json.Unmarshal(data, &v); err != nil {
-		// Wrapped in ErrDecode (alongside the underlying json error, both via %w) so a caller can
-		// tell a decode failure apart from a read or lock failure with errors.Is, exactly as
-		// ReadJSONStrict already does on its own path. loomshed.Seed relies on this to refuse
-		// — never overwrite — a present-but-undecodable status file rather than escalate it as
-		// bootstrap's own gate (crucible round fable5-high-r5, F3). The "unmarshal state" wording is
-		// kept for readers of the message.
+		// Wrapped in ErrDecode (alongside the underlying json error, both via %w) so a caller can tell a decode failure apart from a read or lock failure with errors.Is, exactly as ReadJSONNoMkdir already does on its own path.
+		// loomshed.Seed relies on this to refuse — never overwrite — a present-but-undecodable status file rather than escalate it as bootstrap's own gate (crucible round fable5-high-r5, F3).
+		// The "unmarshal state" wording is kept for readers of the message.
 		return zero, false, fmt.Errorf("%w: unmarshal state: %w", ErrDecode, err)
 	}
 
@@ -156,10 +153,10 @@ func UpdateJSON[T any](path, lockPath string, mutate func(cur T, found bool) (T,
 	return writeJSONUnlocked(path, next)
 }
 
-// ReadJSONStrict reads a JSON value from path, accepting fields T does not declare.
+// ReadJSONNoMkdir reads a JSON value from path, accepting fields T does not declare.
 // Returns (zero, false, nil) if the file does not exist.
 // Does not create missing parent directories.
-func ReadJSONStrict[T any](path, lockPath string) (T, bool, error) {
+func ReadJSONNoMkdir[T any](path, lockPath string) (T, bool, error) {
 	var zero T
 
 	l, err := lock.AcquireReadLock(lockPath)

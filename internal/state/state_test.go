@@ -133,7 +133,7 @@ func TestCorruptFile(t *testing.T) {
 	if err == nil {
 		t.Fatal("ReadJSON() on corrupt file error = nil; want non-nil")
 	}
-	// The lenient read path now wraps ErrDecode too, matching ReadJSONStrict, so a caller can tell a
+	// The lenient read path now wraps ErrDecode too, matching ReadJSONNoMkdir, so a caller can tell a
 	// decode failure apart from a read or lock failure with errors.Is (loomshed.Seed relies on this
 	// to refuse rather than escalate a present-but-undecodable status file — crucible round
 	// fable5-high-r5, F3).
