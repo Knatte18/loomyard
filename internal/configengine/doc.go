@@ -57,8 +57,9 @@
 // [LocalKeys] and [LocalDenied] list the classification's two sides.
 // A local file failing the rule is an [ErrInvalid] error naming the file and the key.
 // No cleanup deletes a local override file.
-// The only removals are Seed-Child rewriting the pair's local layer to equal the task's run settings,
-// and reconcile deleting a local file whose retired keys it pruned to nothing.
+// Seed-Child removes a local file when it rewrites the pair's local layer to equal the task's run settings.
+// Reconcile removes a local file whose retired keys it pruned to nothing.
+// Those are the only removals.
 //
 // # Open maps
 //
