@@ -186,7 +186,7 @@ var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 // A nil deps.DriverStrand resolves to reporting no driver strand, a nil deps.ChildRunLockHeld to reporting no held lock and a nil deps.ReviveStrands to a revive that fails as not wired.
 // A nil deps.PauseRequested resolves to never paused.
 // An empty deps.PublishRow, or a nil deps.PublishFailure, deps.ChildHead or deps.Goto, switches the automatic Publish verify retry off.
-// A nil deps.MarkWatched resolves to reporting not held, and a nil deps.Activity to reporting no live run and no live wait.
+// A nil deps.MarkWatched resolves to reporting not held, a nil deps.Activity to reporting no live run and no live wait, and a nil deps.ArbiterInFlight to reporting no arbiter.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
 	if pollInterval < pollFloor {
 		logger.Warn("battenshed: poll_interval_s is below the floor and is raised to it", "key", "poll_interval_s", "value", pollInterval, "floor_s", int(pollFloor.Seconds()))
@@ -197,6 +197,9 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	}
 	if deps.MarkWatched == nil {
 		deps.MarkWatched = func(context.Context) (bool, error) { return false, nil }
+	}
+	if deps.ArbiterInFlight == nil {
+		deps.ArbiterInFlight = func(context.Context) (ChildArbiter, bool, error) { return ChildArbiter{}, false, nil }
 	}
 	if deps.Activity == nil {
 		deps.Activity = func(context.Context) ([]AgentActivity, bool, error) { return nil, false, nil }

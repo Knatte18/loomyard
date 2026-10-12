@@ -6,6 +6,7 @@
 // It resolves the target worktree through the same resolver the review group uses.
 //
 // The verb refuses a task session's label: a caller whose exported strand name differs from the run's recorded parent is refused, and the operator's own unnamed shell always passes.
+// The one other caller is the run's own arbiter strand, which alone may pass `--by arbiter`; any other caller of that label is refused.
 // The check reads only the exported strand name and the recorded parent name, so it guards a mistaken call, not a session that clears or forges the variable, and `--by` stays an unverified label.
 // That is bounded by the entry being append-only, one entry per call, under an `Added after Discussion` heading with the claimed label and the date, in a committed diff.
 // The verb never routes the run, never touches the support log or the plan, and an approved plan is not re-planned by it.
@@ -39,12 +40,14 @@ const (
 
 	decisionByParent   = "parent"
 	decisionByOperator = "operator"
+	decisionByArbiter  = "arbiter"
 
 	decisionWayNoRecord  = `way forward: the record exists once Discussion-Write has written it; "lyx loom status <slug>" shows whether the run has reached that row, and "lyx loom start" begins or resumes the run; a darn run never has one, so name the call in your report to the run's parent instead`
 	decisionWayWriter    = `way forward: Discussion-Write owns the record while it runs; message the Discussion-Write session with the decision instead, or re-run once the row has handed off`
 	decisionWayNoHeading = `way forward: restore the "## Decisions" heading in the decision record, then re-run the verb`
 	decisionWayRetry     = `way forward: re-run "lyx loom decision add"; nothing is appended`
 	decisionWayFindings  = `way forward: the record is restored; fix the named section and re-run the verb`
+	decisionWayArbiter   = `way forward: the "arbiter" label is the run's own arbiter's; pass --by parent from the run's parent, or --by operator from the operator's own shell`
 )
 
 // decisionInput is the four flag values of one `decision add` call.
@@ -58,6 +61,8 @@ type decisionDeps struct {
 	strandName string
 	// parent resolves the run's recorded parent, called only for a named caller.
 	parent func() (hubgeom.Parent, error)
+	// arbiterStrand reports whether name is the target run's own arbiter strand, called only for a named caller.
+	arbiterStrand func(name string) bool
 	// readStatus reads the target worktree's default run status; found is false when the run has no status file.
 	readStatus reviewStatusReader
 	// recordPath is the decision record the entry lands in, reported on the success envelope.
@@ -76,7 +81,7 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		return output.Err(out, fmt.Sprintf("loom: %s add: ", decisionGroup)+fmt.Sprintf(format, args...))
 	}
 
-	if input.by != decisionByParent && input.by != decisionByOperator {
+	if input.by != decisionByParent && input.by != decisionByOperator && input.by != decisionByArbiter {
 		return refuse("--by is %q; way forward: pass --by %s or --by %s", input.by, decisionByParent, decisionByOperator)
 	}
 	for _, flag := range []struct{ name, value string }{{"title", input.title}, {"decision", input.decision}, {"rationale", input.rationale}} {
@@ -85,7 +90,11 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		}
 	}
 
-	if deps.strandName != "" {
+	if input.by == decisionByArbiter {
+		if deps.strandName == "" || !deps.arbiterStrand(deps.strandName) {
+			return refuse("the caller %q is not the run's arbiter; %s", deps.strandName, decisionWayArbiter)
+		}
+	} else if deps.strandName != "" {
 		parent, err := deps.parent()
 		if err != nil {
 			return refuse("the caller %q is a named session; way forward: the run's parent could not be resolved (%s); the operator's own unnamed shell may still run the verb", deps.strandName, err)
@@ -182,6 +191,14 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 	s.deps = decisionDeps{
 		strandName: os.Getenv(agentname.StrandNameEnv),
 		parent:     func() (hubgeom.Parent, error) { return hubgeom.ResolveParent(target) },
+		arbiterStrand: func(name string) bool {
+			geometry, err := hubgeom.ReedGeometry(target)
+			if err != nil {
+				return false
+			}
+			parsed, err := agentname.Parse(name)
+			return err == nil && parsed.Shortname == geometry.NameShortname && parsed.Slug == geometry.NameSlug && loomengine.IsArbiterStrand(name)
+		},
 		readStatus: circlingStatusReader(shedrun.StatusFile(target, shedrun.SelfRunID), shedrun.StatusLock(target, shedrun.SelfRunID)),
 		recordPath: recordPath,
 		append: func(d discussionparser.AddedDecision) ([]discussionparser.Finding, error) {
@@ -207,6 +224,7 @@ The verb takes an optional slug naming the task worktree. A task worktree
 addresses itself; from the prime the slug is required. It refuses a task
 session's label: a caller whose reed strand name differs from the run's
 recorded parent is refused, and the operator's own unnamed shell always passes.
+The one other caller is the run's own arbiter strand, which passes --by arbiter.
 --by is a label that is not verified.
 
 Example:
@@ -225,9 +243,11 @@ section. It re-runs the discussion check over the record, restores the record
 when the check flags it, and commits the record. It resumes nothing and
 changes neither the support log nor the plan.
 
---by is parent or operator. --title, --decision and --rationale are all
-required. It is refused for a named session other than the run's recorded
-parent: ask the parent to run it, or run it from the operator's own shell. It is
+--by is parent, operator or arbiter; arbiter is the run's own arbiter strand's
+label, refused from any other caller. --title, --decision and --rationale are
+all required. It is refused for a named session other than the run's recorded
+parent or, for --by arbiter, its arbiter: ask the parent to run it, or run it
+from the operator's own shell. It is
 refused while Discussion-Write is running, since that row owns the record;
 message the Discussion-Write session with the decision instead.
 
@@ -242,7 +262,7 @@ Example:
 			return nil
 		},
 	}
-	add.Flags().StringVar(&st.input.by, "by", "", "who made the call: parent or operator")
+	add.Flags().StringVar(&st.input.by, "by", "", "who made the call: parent, operator or arbiter")
 	add.Flags().StringVar(&st.input.title, "title", "", "the decision's heading title")
 	add.Flags().StringVar(&st.input.decision, "decision", "", "what was decided")
 	add.Flags().StringVar(&st.input.rationale, "rationale", "", "why it was decided")
