@@ -224,6 +224,34 @@ func RunDirRel(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(lyxdirs.LyxDirName, shedDirName, runSegment(l, runID))
 }
 
+// RunTreeRels holds the slash-separated, tree-relative paths of one run's records, as a git tree read takes them.
+type RunTreeRels struct {
+	Dir          string
+	Seed         string
+	Status       string
+	DriveReports string
+	Arbiter      string
+	Alignment    string
+}
+
+// TreeRunRels returns the tree-relative record paths of runID.
+// It validates runID and applies no "self" alias and no legacy directory fallback, since a tree read from git has no disk to resolve against.
+// A runID that fails validation returns that error and a zero value.
+func TreeRunRels(runID string) (RunTreeRels, error) {
+	if err := ValidateRunID(runID); err != nil {
+		return RunTreeRels{}, err
+	}
+	dir := path.Join(lyxdirs.LyxDirName, shedDirName, runID)
+	return RunTreeRels{
+		Dir:          dir,
+		Seed:         path.Join(dir, "seed.json"),
+		Status:       path.Join(dir, "status.json"),
+		DriveReports: path.Join(dir, driveReportsDirName),
+		Arbiter:      path.Join(dir, arbiterDirName),
+		Alignment:    path.Join(dir, alignmentDirName),
+	}, nil
+}
+
 // TreeRunFileRels returns the slash-separated, tree-relative paths of a run's seed.json and status.json, as a git tree read takes them.
 // It validates runID and applies no "self" alias and no legacy directory fallback, since a tree read from git has no disk to resolve against.
 // A runID that fails validation returns that error and empty paths.

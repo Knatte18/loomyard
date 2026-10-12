@@ -37,6 +37,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pausecli"
 	"github.com/Knatte18/loomyard/internal/quarrycli"
 	"github.com/Knatte18/loomyard/internal/reedcli"
+	"github.com/Knatte18/loomyard/internal/reportcli"
 	"github.com/Knatte18/loomyard/internal/selfreportcli"
 	"github.com/Knatte18/loomyard/internal/shedcli"
 	"github.com/Knatte18/loomyard/internal/shortcutcli"
@@ -95,7 +96,7 @@ all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output; --json prints the help as JSON and
 never runs the command.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed, orch, cleanup, pause, resume, gate, help.
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed, orch, cleanup, report, pause, resume, gate, help.
 Shortcuts, declared in internal/shortcutcli's embedded file, are listed under their own heading in lyx --help.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -140,6 +141,7 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 		shedcli.Command(),
 		orchcli.Command(),
 		cleanupcli.Command(),
+		reportcli.Command(),
 		// StartAliasCommand registers the same "start" verb as loomcli.Command()'s
 		// subtree already carries, a second time, as a bare root child rather
 		// than spliced into the argument vector, so it is discoverable in help

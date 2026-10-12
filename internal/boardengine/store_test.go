@@ -1369,10 +1369,28 @@ func TestLoad(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Load error = %v; want one containing %q", err, tt.wantErr)
 				}
+				if _, parseErr := boardengine.ParseBoardTasks([]byte(tt.body)); parseErr == nil {
+					t.Errorf("ParseBoardTasks error = nil; want an error for %q", tt.body)
+				}
 				return
 			}
 			if err != nil {
 				t.Fatalf("Load: %v", err)
+			}
+			if tt.body != "" {
+				parsed, parseErr := boardengine.ParseBoardTasks([]byte(tt.body))
+				if parseErr != nil {
+					t.Fatalf("ParseBoardTasks: %v", parseErr)
+				}
+				loaded := store.Tasks()
+				if len(parsed) != len(loaded) {
+					t.Fatalf("ParseBoardTasks returned %d entries; Load returned %d", len(parsed), len(loaded))
+				}
+				for i := range parsed {
+					if parsed[i].Slug != loaded[i].Slug || !slices.Equal(parsed[i].Labels, loaded[i].Labels) {
+						t.Errorf("ParseBoardTasks entry %d = (%q, %v); Load gave (%q, %v)", i, parsed[i].Slug, parsed[i].Labels, loaded[i].Slug, loaded[i].Labels)
+					}
+				}
 			}
 			if tt.check != nil {
 				tt.check(t, store.Tasks())

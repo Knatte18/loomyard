@@ -89,6 +89,10 @@ func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
 			if got := readFile(t, supportPath); got != "log" {
 				t.Errorf("support log = %q; want it unchanged", got)
 			}
+			added, err := ParseAddedDecisions([]byte(readFile(t, decisionPath)))
+			if err != nil || len(added) != 1 || added[0].By != "parent" || added[0].Title != "Keep the cache" || !added[0].Date.Equal(time.Date(2026, 3, 4, 0, 0, 0, 0, time.UTC)) {
+				t.Errorf("ParseAddedDecisions() = %+v, %v; want the appended entry's author, date and title", added, err)
+			}
 		})
 	}
 }
@@ -153,5 +157,65 @@ func TestAppendDecision_FindingRestoresRecord(t *testing.T) {
 	}
 	if got := readFile(t, decisionPath); got != prior {
 		t.Errorf("record not restored:\n%q", got)
+	}
+}
+
+func TestParseAddedDecisions(t *testing.T) {
+	t.Parallel()
+
+	day := func(d int) time.Time { return time.Date(2026, 3, d, 0, 0, 0, 0, time.UTC) }
+	entry := func(by, date, title string) string {
+		return "\n### Added after Discussion (" + by + ", " + date + "): " + title + "\n\nDecision: d.\n\nRationale: r.\n"
+	}
+
+	tests := []struct {
+		name    string
+		record  string
+		want    []AddedDecision
+		wantErr string
+	}{
+		{
+			name:   "entries in order",
+			record: "## Decisions\n" + entry("alice", "2026-03-01", "one") + entry("alice", "2026-03-02", "two") + entry("bob", "2026-03-03", "three"),
+			want: []AddedDecision{
+				{By: "alice", Date: day(1), Title: "one"},
+				{By: "alice", Date: day(2), Title: "two"},
+				{By: "bob", Date: day(3), Title: "three"},
+			},
+		},
+		{
+			name:   "heading inside a fence is skipped",
+			record: "## Decisions\n\n```\n### Added after Discussion (alice, 2026-03-01): fenced\n```\n" + entry("bob", "2026-03-03", "real"),
+			want:   []AddedDecision{{By: "bob", Date: day(3), Title: "real"}},
+		},
+		{
+			name:    "heading without a date names its line",
+			record:  "## Decisions\n\n### Added after Discussion (alice): t\n",
+			wantErr: "line 3",
+		},
+		{name: "no entries", record: "## Decisions\n\n### First\n", want: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ParseAddedDecisions([]byte(tt.record))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("ParseAddedDecisions() error = %v; want one naming %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseAddedDecisions() error = %v; want nil", err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("ParseAddedDecisions() = %+v; want %+v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("entry %d = %+v; want %+v", i, got[i], tt.want[i])
+				}
+			}
+		})
 	}
 }

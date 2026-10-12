@@ -160,6 +160,22 @@ func TestRunsRootRel(t *testing.T) {
 	if seedRel, statusRel, err := TreeRunFileRels("a/b"); err == nil || seedRel != "" || statusRel != "" {
 		t.Errorf("TreeRunFileRels(%q) = %q, %q, %v; want empty paths and an error", "a/b", seedRel, statusRel, err)
 	}
+
+	rels, err := TreeRunRels("my-slug")
+	wantRels := RunTreeRels{
+		Dir:          filepath.ToSlash(RunDirRel(l, "my-slug")),
+		Seed:         filepath.ToSlash(SeedRel(l, "my-slug")),
+		Status:       filepath.ToSlash(StatusRel(l, "my-slug")),
+		DriveReports: filepath.ToSlash(DriveReportsRel(l, "my-slug")),
+		Arbiter:      filepath.ToSlash(ArbiterRel(l, "my-slug")),
+		Alignment:    filepath.ToSlash(AlignmentRel(l, "my-slug")),
+	}
+	if err != nil || rels != wantRels {
+		t.Errorf("TreeRunRels(%q) = %+v, %v; want %+v, nil", "my-slug", rels, err, wantRels)
+	}
+	if rels, err := TreeRunRels("a/b"); err == nil || rels != (RunTreeRels{}) {
+		t.Errorf("TreeRunRels(%q) = %+v, %v; want a zero value and an error", "a/b", rels, err)
+	}
 }
 
 func TestDriveReportsRel(t *testing.T) {
