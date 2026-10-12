@@ -7,7 +7,9 @@
 //
 // The verbs check no caller identity, like `lyx loom review` and `lyx loom approve`:
 // any shell addressing the run can record a decision, an agent's tmux session in the task worktree included.
-// That is bounded by the refusal preconditions alone — the round carries an escalation the Bouncer wrote (a CIRCLING judgement or a spent review budget), one decision per round, and only while the run awaits at that Bouncer row — and by no agent stencil naming the verbs.
+// // That is bounded by which stencils name the verbs, the Bouncer escalation brief and the arbiter stencil only;
+// by the arbiter's eligibility, which admits only a stop on a Bouncer escalation;
+// and by the refusal preconditions — the round carries an escalation the Bouncer wrote (a CIRCLING judgement or a spent review budget), one decision per round, and only while the run awaits at that Bouncer row.
 // The decision file in the committed run directory records the decision and the escalation's cause for that round.
 
 package loomcli
