@@ -32,7 +32,7 @@ internal/dotgit: 3
 internal/editdirective: 2
 internal/envsource: 3
 internal/fabriccli: 21
-internal/fabricengine: 644
+internal/fabricengine: 645
 internal/fabricvocab: 1
 internal/friction: 6
 internal/frictionengine: 15
