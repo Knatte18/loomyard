@@ -201,8 +201,8 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil MarkWatched resolves to a function reporting not held in NewInnerRun.
 	MarkWatched func(ctx context.Context) (held bool, err error)
-	// PublishRow is the child recipe's Publish row name; empty, like a nil PublishFailure, ChildHead or Goto, switches the automatic Publish verify retry off.
-	PublishRow string
+	// VerifyRows names the child recipe's rows that run a verify and write the failure record; empty, like a nil PublishFailure, ChildHead or Goto, switches the automatic verify retry off.
+	VerifyRows []string
 	// PublishFailure reads the task worktree's Publish failure record and reports found == false when there is none.
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	PublishFailure func() (record ChildPublishFailure, found bool, err error)
@@ -214,8 +214,10 @@ type InnerRunDeps struct {
 	Goto func(ctx context.Context, target string) error
 }
 
-// ChildPublishFailure is the part of the child's Publish failure record the automatic retry reads.
+// ChildPublishFailure is the part of the child's verify failure record the automatic retry reads.
 type ChildPublishFailure struct {
+	// Row is the producer row whose verify failed; empty for a record written before the field existed.
+	Row string
 	// Head is the commit the failing verify ran at.
 	Head string
 	// Target is the producer row a fix is routed back to; empty when the writer told none.

@@ -185,7 +185,7 @@ var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 // A nil deps.OrchStrandRecorded resolves to reporting a strand recorded, and a nil deps.StopReport to reporting no stop report.
 // A nil deps.DriverStrand resolves to reporting no driver strand, a nil deps.ChildRunLockHeld to reporting no held lock and a nil deps.ReviveStrands to a revive that fails as not wired.
 // A nil deps.PauseRequested resolves to never paused.
-// An empty deps.PublishRow, or a nil deps.PublishFailure, deps.ChildHead or deps.Goto, switches the automatic Publish verify retry off.
+// An empty deps.VerifyRows, or a nil deps.PublishFailure, deps.ChildHead or deps.Goto, switches the automatic verify retry off.
 // A nil deps.MarkWatched resolves to reporting not held, and a nil deps.Activity to reporting no live run and no live wait.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
 	if pollInterval < pollFloor {
@@ -244,7 +244,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 		driverExitGrace: driverExitGrace,
 		notices:         notices,
 		noticeQuiet:     deps.NoticeQuiet,
-		retryOn:         deps.PublishRow != "" && deps.PublishFailure != nil && deps.ChildHead != nil && deps.Goto != nil,
+		retryOn:         len(deps.VerifyRows) > 0 && deps.PublishFailure != nil && deps.ChildHead != nil && deps.Goto != nil,
 	}
 }
 

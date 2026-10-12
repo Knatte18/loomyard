@@ -13,9 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -262,7 +264,7 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	}
 }
 
-// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto battenshed's type, with the session state of its stamped turn end, skips a run whose process has ended, and reports a live wait marker.
+// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto battenshed's type, with the session state of its stamped turn end, skips a run whose process has ended, and reports a live wait marker or a live parent lock wait record, ignoring one whose writer is dead.
 // It points HOME at a session registry through t.Setenv, so it does not run in parallel.
 func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	home := t.TempDir()
@@ -336,6 +338,28 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	}
 	if _, waitLive, err := readAgentActivity(taskLocation); err != nil || !waitLive {
 		t.Errorf("readAgentActivity() waitLive = %v, error = %v with a live wait marker; want true, nil", waitLive, err)
+	}
+
+	if err := os.Remove(filepath.Join(liveDir, "wait.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	scratch := loomengine.LoomScratchDir(taskLocation)
+	if err := os.MkdirAll(scratch, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lockWaitPath := parentlock.WaitRecordPath(scratch)
+	deadWriter := parentlock.Wait{Branch: "main", Holder: "other-task", PID: 1 << 30, StartTime: "gone", Started: activeAt}
+	if err := parentlock.WriteWait(lockWaitPath, deadWriter); err != nil {
+		t.Fatal(err)
+	}
+	if _, waitLive, err := readAgentActivity(taskLocation); err != nil || waitLive {
+		t.Errorf("readAgentActivity() waitLive = %v, error = %v with a lock wait record of a dead writer; want false, nil", waitLive, err)
+	}
+	if err := parentlock.WriteWait(lockWaitPath, parentlock.NewWait("main", "other-task")); err != nil {
+		t.Fatal(err)
+	}
+	if _, waitLive, err := readAgentActivity(taskLocation); err != nil || !waitLive {
+		t.Errorf("readAgentActivity() waitLive = %v, error = %v with a live lock wait record; want true, nil", waitLive, err)
 	}
 }
 

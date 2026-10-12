@@ -18,7 +18,7 @@
 // a rewrite of the file in the same state does not move it, and only a batten start reads it from the file.
 // The api-error and quiet notices need a running child with a live driver strand, and read the agents through the injected Activity seam at most once per notice_probe_s; a failed read sends neither.
 // The api-error notice goes when the newest turn end of any live run is an API error and that run has not been active for two minutes since; it names the producer and the error text cut to one line, and takes precedence over quiet.
-// The quiet notice goes when every live run has been idle for the quiet window and no verify or shuttle wait marker is live, and says how long the agents have been idle;
+// The quiet notice goes when every live run has been idle for the quiet window and no verify marker, shuttle wait marker or parent lock wait record is live, and says how long the agents have been idle;
 // with no live run found, it falls back to "no agent activity readable" counted from the later of the child's newest history entry and since.
 // Both episodes are keyed by the newest agent activity, so they end when an agent is active again, with `since` on the line as content only.
 // Both idle clocks measure awake time, read through the injected Awake seam: suspended time observed between two checks is subtracted until the newest activity moves.
@@ -84,8 +84,8 @@
 // a revive that fails, and a child with no driver strand, make the reason also name "lyx loom start" in the task worktree.
 // The wait has no time limit and spends no bounce budget; "lyx batten pause" stops it within one check, and the row reads the child as running again once the operator resumes it.
 //
-// The one exception is the first Publish verify failure of a batten run (publishretry.go).
-// A child blocked at the Publish row whose failure record names a target, carries the child's HEAD and was written during the halting attempt is sent to that target through the child's goto verb and then resumed through its bootstrap, with no notice for the halt or the paused state in between.
+// The one exception is the first verify failure of a batten run, at Merge-In or Publish (publishretry.go).
+// A child blocked at one of those rows whose failure record names that row and a target, carries the child's HEAD and was written during the halting attempt is sent to that target through the child's goto verb and then resumed through its bootstrap, with no notice for the halt or the paused state in between.
 // The `<row>-publish-retry` marker holds the retry's state and start time: `started` before the goto, `goto-done` after it, `resumed` after a resume that landed and `capped` when the retry gave up.
 // `resumed` and `capped` each spend the run's one retry, and the marker is cleared only where batten seeds a fresh status, so a restart neither repeats a finished retry nor resets the cap.
 // A goto refused as busy and a resume refused as not parked or as a busy pane are retried once per notice probe until the cap of thirty minutes after the start; any other goto refusal gives up at once.
