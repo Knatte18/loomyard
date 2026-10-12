@@ -16,7 +16,7 @@
 // form that treats a non-zero exit as failure and returns it as *GitError.
 // gitrepo used to route every CLI-bound method through a single unexported
 // run helper over RunGit; it now has a matching pair, run and runChecked.
-// The read surface — CurrentSHA, SHAExists, ChangedFilesSince, CurrentBranch, BranchExists, RefSHA, HeadRef, RefTree, and Upstream — resolves state entirely through go-git's own object and ref access (see gogit.go), bypassing both of them completely.
+// The read surface — CurrentSHA, SHAExists, ChangedFilesSince, CurrentBranch, BranchExists, RefSHA, HeadRef, RefTree, Upstream, TagRefs, Log, and SubdirsAtRevision — resolves state entirely through go-git's own object and ref access (see gogit.go), bypassing both of them completely.
 // Of the CLI-bound methods, only Pull and Fetch sit on the raw run — a non-zero exit is a failure at both sites too,
 // but the package's test-enforced no-`fatal:`-leak surface forbids folding git's stderr into their messages, which is what run's raw form lets them keep working around.
 // The geometry reads — GitDir and CommonDir — are the one local read beside go-git:
@@ -67,6 +67,10 @@
 //   - CurrentBranch reads the branch HEAD points to, and errors on a detached HEAD.
 //   - UpstreamSHA resolves the current branch's configured upstream to its remote-tracking SHA, as last fetched, and returns ErrNoUpstream when there is none.
 //   - CommitDetail returns one commit's full message and the paths its tree changes against its first parent, read through go-git.
+//   - TagRefs lists the tags under a name prefix, each peeled to its commit and sorted by the commit's date.
+//     Log walks the commits reachable from an arbitrary tip, first-parent or over every parent, bounded by a date, a path prefix and a limit.
+//     SubdirsAtRevision lists the directories directly in one directory as of a revision.
+//     All three are go-git local reads.
 //   - CherryPick replays one commit onto HEAD via `git cherry-pick --empty=drop`, so a commit whose change the branch already carries is dropped; CherryPickAbort abandons one in progress, and succeeds when none is.
 //   - A push whose recovery rebase failed and was aborted returns an error satisfying errors.Is(err, ErrPullRebaseFailed), which tells a replayable conflict from every other push failure.
 //
