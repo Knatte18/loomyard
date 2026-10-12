@@ -957,6 +957,11 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return err
 				}
 				runner := shuttleengine.NewRunner(reedEngine, claudeengine.NewFromConfig(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+				pauseGeom, err := hubgeom.PauseGeometry(taskLocation)
+				if err != nil {
+					return err
+				}
+				runner.SetPause(pauseGeom)
 				if err := stopDeadArbiterStrands(rows, runner.StopStrand); err != nil {
 					logger.Warn("battencli: stopping the task worktree's dead arbiter strands failed", "slug", slug, "error", err)
 					return err

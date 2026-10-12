@@ -192,6 +192,11 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	claudeEngine := claudeengine.NewFromConfig(shuttleCfg)
 	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	pauseGeom, err := hubgeom.PauseGeometry(loc)
+	if err != nil {
+		return err
+	}
+	runner.SetPause(pauseGeom)
 	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(loc, line) })
 
 	c.setRunner(runner, claudeEngine, reedEngine)
@@ -283,6 +288,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	claudeEngine := claudeengine.NewFromConfig(shuttleCfg)
 	runner := shuttleengine.NewDetachedRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
+	runner.SetPause(standalonegeom.PauseGeometry(res.StateDir))
 
 	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach —
 	// `lyx reed up` is hub-only — so the verbs that need one boot it in-process through this seam

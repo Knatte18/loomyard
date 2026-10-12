@@ -506,6 +506,11 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	claudeEngine := claudeengine.NewFromConfig(shuttleCfg)
 	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	pauseGeom, err := hubgeom.PauseGeometry(location)
+	if err != nil {
+		return err
+	}
+	runner.SetPause(pauseGeom)
 	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(location, line) })
 
 	websterGeom := hubgeom.WebsterGeometry(location)

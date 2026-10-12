@@ -108,6 +108,13 @@ provider specifics.`,
 			reedEngine := reedengine.New(reedCfg, reedGeom)
 			c.cfg, c.anchorPath, c.engine = shuttleCfg, reedGeom.AnchorPath, claudeengine.NewFromConfig(shuttleCfg)
 			c.runner = shuttleengine.NewRunner(reedEngine, c.engine, c.anchorPath, reedGeom.WorktreeRoot, c.cfg)
+			pauseGeom, err := hubgeom.PauseGeometry(layout)
+			if err != nil {
+				output.Err(out, err.Error())
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
+			c.runner.SetPause(pauseGeom)
 			return nil
 		},
 	}
