@@ -383,25 +383,27 @@ Example:
 	Pause: shedverbs.VerbText{
 		Use:      "pause [<run-id>]",
 		Audience: clihelp.AudienceOperator,
-		Short:    "request a pause at loom's next producer boundary",
-		Long: `pause sets a request the running phase machine consumes at its next
-producer boundary. It does not kill anything -- the machine itself clears
-the flag in the persist that records the paused state.
+		Short:    "record a stop condition that pauses loom at a named producer boundary",
+		Long: `pause records a stop condition the running phase machine fires at a named
+producer boundary. It does not kill anything.
+
+--before <producer> pauses the run before that producer runs. --after
+<producer> pauses after that producer returns a routed running outcome, at
+the row it routed to. Either replaces a recorded one. --clear removes both
+conditions, and refuses beside --before or --after.
+
+A bare pause, with no flag, refuses for a loom run: it no longer stops
+anything. The refusal names the two ways forward: "lyx pause <slug>" stops
+the run's agents now, and "--after <current_producer>" halts the run at its
+next producer boundary.
 
 An optional run-id positional addresses a run other than this worktree's
 own default ("self"); pause refuses when no seed already exists at that
 run-id.
 
---before <producer> records a stop condition instead: the run pauses before
-that producer runs. --after <producer> pauses after that producer returns a
-routed running outcome, at the row it routed to. Either replaces a recorded
-one, and neither touches the request above. --clear removes both
-conditions, and refuses beside --before or --after.
-
 Example:
-  lyx loom pause
-  lyx loom pause <run-id>
-  lyx loom pause --before Plan-Write
+  lyx loom pause --after Plan-Write
+  lyx loom pause <run-id> --before Plan-Write
   lyx loom pause --clear`,
 	},
 	Goto: shedverbs.VerbText{

@@ -262,7 +262,8 @@ This is the supervisor skill's literal first instruction, so it is the first thi
 Then write both fixtures and continue.
 Does `lyx loom status` round-trip the fixture's own `slug`/`parent`/`current_producer`/`state`/`activity`/`history` values back out through its JSON envelope unchanged -- this also pins that envelope against the status contract?
 Does the same envelope carry an `interrupt_policy` matching the fixture's own `current_producer` -- `handback` for `Webster`, `reinvoke` for every other row name, absent for a name that is no row at all?
-Does `lyx loom pause` set `pause_requested` true while leaving every other field -- `current_producer`, `state`, `activity`, `history`, and `product` -- untouched?
+Does a bare `lyx loom pause` refuse naming both ways forward -- `lyx pause <slug>` to stop the run's agents now and `lyx loom pause --after <current_producer>` to halt it at the next producer boundary -- and leave the status file unchanged?
+Does `lyx loom pause --after <a row name>` record `pause_after` as that row while leaving every other field -- `current_producer`, `state`, `activity`, `history`, and `product` -- untouched?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

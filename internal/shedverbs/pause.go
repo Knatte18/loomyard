@@ -107,6 +107,9 @@ func pauseCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 					return shedengine.Status{}, errors.New(spec.PauseAbsentMessage)
 				}
 				if !flags.conditional() {
+					if spec.Hooks.BarePause != nil {
+						return cur, spec.Hooks.BarePause(cur)
+					}
 					cur.PauseRequested = true
 					return cur, nil
 				}

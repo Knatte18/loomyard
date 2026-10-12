@@ -7,7 +7,7 @@
 // The one resolving import it admits is internal/logger, for boundary logging and the two
 // sink-location accessors, per the Shed Verb-Set Invariant.
 //
-// pause with no flag requests a pause at the next producer boundary.
+// pause with no flag requests a pause at the next producer boundary, unless the spec's BarePause hook refuses it, which loom's does.
 // --before <producer> and --after <producer> record a stop condition the engine fires at that producer, and --clear removes both; none of the three touches the bare request, and --clear refuses beside the other two.
 //
 // step prints a short envelope by default.

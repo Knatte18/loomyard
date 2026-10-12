@@ -444,7 +444,7 @@ User-facing modules each get one `lyx <module>` namespace:
   A routed `stuck` reads as `bounced to <row>` in `activity.last`.
   The run directory is named by the worktree slug (`_lyx/shed/<slug>/`), with `self` kept as an alias that resolves to it,
   and a legacy `_lyx/shed/self/` still resolves.
-  `pause` requests a pause at the next producer boundary.
+  `pause` records a `--before` or `--after` condition and refuses bare, naming `lyx pause` for stopping the agents.
   `validate-discussion` runs the same checks Discussion-Write's and Discussion-Burler-Fix's own gates run, standalone, exiting 0 on a clean gate and 1 otherwise, with findings in the failure envelope so a writer agent can self-check before handing off.
   `decision add [<slug>] --by parent|operator --title <t> --decision <d> --rationale <r>` appends one design call made after the Discussion to the decision record under an `Added after Discussion` heading, re-runs the discussion check (restoring the record on a finding) and commits the record.
   It is refused while Discussion-Write is running, refuses a named session other than the run's recorded parent (the operator's own unnamed shell always passes) and resumes nothing.

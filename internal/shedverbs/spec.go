@@ -96,6 +96,10 @@ type Hooks struct {
 	// An error wrapping shedengine.ErrShedBusy is reported with the spec's StepBusyKind, any other error with kind bootstrap, and no loop starts.
 	// Nil for a recipe that consumes none, which refuses the flag.
 	ConsumeAttempt func(ctx context.Context, attempt string) error
+	// BarePause runs in pause's RunE for a flagless pause, after the absent-file check, with the status file's content.
+	// A non-nil error is reported verbatim on the error envelope and the status file is not written.
+	// Nil sets pause_requested as the generic body always did.
+	BarePause func(st shedengine.Status) error
 }
 
 // VerbTexts carries each verb's cobra Use/Short/Long strings, passed by value at Verbs'
