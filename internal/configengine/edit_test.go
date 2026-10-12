@@ -41,7 +41,48 @@ func TestEdit(t *testing.T) {
 		wantErr     string
 		// wantFile is the file's final content; nil means the file must not exist.
 		wantFile *string
+		// layer is the layer edited; empty means the worktree layer.
+		layer configengine.Layer
+		// board tells the call a board dir, which makes the worktree layer sparse.
+		board bool
+		// categories classify the template for a local edit.
+		categories map[string]configengine.Category
+		// localExisting is the local file before the call; empty means it is absent.
+		localExisting string
 	}{
+		{
+			name:     "missing worktree file under a board is scaffolded empty",
+			state:    baseLyx,
+			board:    true,
+			steps:    []editStep{{leave: true}},
+			wantSaw:  "",
+			wantFile: ptr(""),
+		},
+		{
+			name:     "local edit of an open key is kept",
+			state:    baseLyx,
+			layer:    configengine.LayerLocal,
+			steps:    []editStep{{write: "key1: mine\n"}},
+			wantFile: ptr("key1: mine\n"),
+		},
+		{
+			name:       "refused local save removes a file the call created",
+			state:      baseLyx,
+			layer:      configengine.LayerLocal,
+			categories: map[string]configengine.Category{"key2": configengine.CategoryExecutable},
+			steps:      []editStep{{write: "key2: evil\n"}},
+			wantErr:    "key2",
+		},
+		{
+			name:          "refused local save restores the previous bytes",
+			state:         baseLyx,
+			layer:         configengine.LayerLocal,
+			categories:    map[string]configengine.Category{"key2": configengine.CategoryExecutable},
+			localExisting: "key1: mine\n",
+			steps:         []editStep{{write: "key2: evil\n"}},
+			wantErr:       "key2",
+			wantFile:      ptr("key1: mine\n"),
+		},
 		{
 			name:     "missing file is scaffolded from the template before the editor runs",
 			state:    baseLyx,
@@ -92,6 +133,26 @@ func TestEdit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			baseDir, path := newBase(t, tt.state, "testmod", original)
+			dirs := configengine.Dirs{Anchor: baseDir}
+			if tt.board {
+				dirs.Board = t.TempDir()
+			}
+			layer := tt.layer
+			if layer == "" {
+				layer = configengine.LayerWorktree
+			}
+			if layer == configengine.LayerLocal {
+				path = configengine.LocalFile(baseDir, "testmod")
+				if tt.localExisting != "" {
+					if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+						t.Fatalf("mkdir: %v", err)
+					}
+					if err := os.WriteFile(path, []byte(tt.localExisting), 0o644); err != nil {
+						t.Fatalf("write local file: %v", err)
+					}
+				}
+			}
+			spec := configengine.Spec{Name: "testmod", Template: []byte(template), Categories: tt.categories}
 
 			var calls int
 			var saw string
@@ -117,7 +178,7 @@ func TestEdit(t *testing.T) {
 				return os.WriteFile(editPath, []byte(step.write), 0644)
 			}
 
-			err := configengine.Edit(baseDir, "testmod", template, editor)
+			err := configengine.Edit(dirs, spec, layer, editor)
 
 			if aborted := errors.Is(err, configengine.ErrAborted); aborted != tt.wantAborted {
 				t.Fatalf("Edit() = %v; ErrAborted = %v, want %v", err, aborted, tt.wantAborted)

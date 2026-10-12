@@ -39,7 +39,7 @@ type syncFunc func(w io.Writer) int
 // cannot be read. On os.IsNotExist it returns a descriptive "not configured" message
 // rather than a raw OS error so the caller gets actionable output. On success the raw
 // file bytes are written verbatim and exit 0 is returned.
-// A hub-wide module is read at the board dir, any other at the worktree.
+// The file is the selected layer's: without --layer, a hub-wide module's at the board dir and any other at the worktree.
 func printModule(dirs configDirs, out io.Writer, module string) int {
 	// Validate the module name against the registry before touching the filesystem.
 	mod, ok := configreg.Lookup(module)
@@ -47,7 +47,10 @@ func printModule(dirs configDirs, out io.Writer, module string) int {
 		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
 	}
 
-	path := configengine.ConfigFile(dirs.baseFor(mod), module)
+	path, _, err := dirs.layerFile(mod)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -71,14 +74,18 @@ func printModule(dirs configDirs, out io.Writer, module string) int {
 // The aggregate form never errors on absence — it exits 0 regardless of how many
 // modules are configured so callers can use it for inspection without a fully-seeded
 // workspace.
-// A hub-wide module's section is read at the board dir, any other at the worktree.
+// Each section is the module's own default file: a hub-wide module's at the board dir, any other at the worktree.
 func printAll(dirs configDirs, out io.Writer) int {
+	dirs.layer = ""
 	for _, mod := range configreg.Modules() {
 		name := mod.Name
 		// Write a section delimiter so the reader can separate module blocks.
 		fmt.Fprintf(out, "# %s\n", name)
 
-		path := configengine.ConfigFile(dirs.baseFor(mod), name)
+		path, _, err := dirs.layerFile(mod)
+		if err != nil {
+			return output.Err(out, err.Error())
+		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -98,22 +105,30 @@ func printAll(dirs configDirs, out io.Writer) int {
 	return 0
 }
 
-// editOne edits a single config module and, on success, commits a hub-wide module in _board or syncs fabric for any other.
+// editOne edits a single config module's selected layer.
+// On success it commits a default-layer file in _board, leaves a local override uncommitted, or syncs fabric for a worktree file.
 func editOne(dirs configDirs, out io.Writer, module string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc) int {
 	// Look up the template for this module.
 	mod, ok := configreg.Lookup(module)
 	if !ok {
 		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
 	}
-	if mod.HubWide {
+	path, layer, err := dirs.layerFile(mod)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	switch layer {
+	case configengine.LayerDefault:
 		if exitCode, refused := dirs.refuseHubWrite(out); refused {
 			return exitCode
 		}
 		return editHubWide(dirs, out, mod, edit, commit)
+	case configengine.LayerLocal:
+		return editLocal(dirs, out, mod, path, edit)
 	}
 
 	// Call configengine.Edit to open the file in the editor.
-	err := configengine.Edit(dirs.worktree, module, mod.Template(), edit)
+	err = configengine.Edit(dirs.engineDirs(), mod.Spec(), configengine.LayerWorktree, edit)
 	if err != nil {
 		// Check if this is an abort (user saved without fixing YAML).
 		if errors.Is(err, configengine.ErrAborted) {
@@ -160,7 +175,7 @@ func parseSetFlags(raw []string) ([]yamlengine.KV, error) {
 // setModule writes pairs into a single config module's file and optionally
 // syncs on success. Like editOne, but with no editor: configengine.Set performs
 // the write non-interactively in one call.
-// A hub-wide module is written at the board dir and committed in _board instead of syncing fabric.
+// A default-layer file is written at the board dir and committed in _board, a local override is written uncommitted, and a worktree file syncs fabric.
 func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine.KV, sync syncFunc, commit hubCommitFunc) int {
 	// Look up the module;
 	// its declared open maps let --set add or rewrite one entry.
@@ -168,16 +183,23 @@ func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine
 	if !ok {
 		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
 	}
-	if mod.HubWide {
+	path, layer, err := dirs.layerFile(mod)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	switch layer {
+	case configengine.LayerDefault:
 		if exitCode, refused := dirs.refuseHubWrite(out); refused {
 			return exitCode
 		}
 		return setHubWide(dirs, out, mod, pairs, commit)
+	case configengine.LayerLocal:
+		return setLocal(dirs, out, mod, path, pairs)
 	}
 
-	// Call configengine.Set to scaffold-if-missing and apply pairs directly,
-	// with no editor invocation.
-	preserved, err := configengine.Set(dirs.worktree, module, mod.Template(), pairs, mod.OpenMaps...)
+	// Call configengine.Set to apply pairs directly, with no editor invocation;
+	// a worktree file under a board is sparse and holds only the keys set.
+	preserved, err := configengine.Set(dirs.engineDirs(), mod.Spec(), configengine.LayerWorktree, pairs)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -202,6 +224,38 @@ func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine
 	return output.Err(out, fmt.Sprintf("edited _lyx/config/%s.yaml but fabric sync failed: %s", module, buf.String()))
 }
 
+// setLocal writes pairs into a module's local override file at path.
+// A local override is never committed and runs no fabric sync, and a key the local layer refuses leaves the file as it was.
+func setLocal(dirs configDirs, out io.Writer, mod configreg.Module, path string, pairs []yamlengine.KV) int {
+	preserved, err := configengine.Set(dirs.engineDirs(), mod.Spec(), configengine.LayerLocal, pairs)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	fields := map[string]any{
+		"module":  mod.Name,
+		"message": fmt.Sprintf("edited local override %s; it is not committed", path),
+	}
+	if len(preserved) > 0 {
+		fields["preserved"] = preserved
+	}
+	return output.Ok(out, fields)
+}
+
+// editLocal edits a module's local override file at path in the editor.
+// A local override is never committed and runs no fabric sync, and a saved key the local layer refuses leaves the file as it was.
+func editLocal(dirs configDirs, out io.Writer, mod configreg.Module, path string, edit configengine.EditorFunc) int {
+	if err := configengine.Edit(dirs.engineDirs(), mod.Spec(), configengine.LayerLocal, edit); err != nil {
+		if errors.Is(err, configengine.ErrAborted) {
+			return output.Err(out, fmt.Sprintf("aborted: %s unchanged", path))
+		}
+		return output.Err(out, err.Error())
+	}
+	return output.Ok(out, map[string]any{
+		"module":  mod.Name,
+		"message": fmt.Sprintf("edited local override %s; it is not committed", path),
+	})
+}
+
 // dispatch routes the config command to the print path (when printOnly is true),
 // the --set path (when setFlags is non-empty),
 // editOne (if a module is specified).
@@ -211,9 +265,14 @@ func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine
 // The print path is evaluated before any edit logic.
 // The --set path is a fully non-interactive write: it never calls edit and is mutually exclusive with --print.
 // The worktree base dir is computed from the layout as filepath.Join(WorktreeRoot, RelPath), and the board dir is the hub's.
-// hubWriteGuard is called before a hub-wide write and refuses it with its message; a nil guard allows every write.
-func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc, printOnly bool, setFlags []string, hubWriteGuard func() (string, error)) int {
+// layer is the --layer value, empty or one of the three layer names; any other value is refused before anything is read or written.
+// hubWriteGuard is called before a default-layer write and refuses it with its message; a nil guard allows every write.
+func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc, printOnly bool, setFlags []string, layer string, hubWriteGuard func() (string, error)) int {
+	if !validLayer(layer) {
+		return output.Err(out, fmt.Sprintf("unknown --layer %q; use default, worktree or local", layer))
+	}
 	dirs := dirsOf(l)
+	dirs.layer = layer
 	dirs.hubWriteGuard = hubWriteGuard
 
 	// Handle --set before any --print/edit dispatch:
@@ -291,6 +350,8 @@ func buildConfigLong() string {
 		"preserved untouched (never dropped) and reported via a \"preserved\" field\n" +
 		"in the JSON success output; run \"lyx config reconcile\" to actually remove\n" +
 		"them.\n\n" +
+		"--layer default|worktree|local picks the file to print or write: default is the board's\n" +
+		"repo default, committed from the prime; local is an untracked override.\n\n" +
 		"Known modules: " + strings.Join(configreg.Names(), ", ") + "."
 }
 
@@ -391,6 +452,7 @@ func Command() *cobra.Command {
 	}
 	configCmd.Flags().Bool("print", false, "print on-disk config as YAML without launching the editor")
 	configCmd.Flags().StringArray("set", nil, "set config key=value directly, bypassing the editor (repeatable)")
+	configCmd.Flags().String("layer", "", "the layer to print or write: default, worktree or local (default: the module's own file)")
 	// The RunE closure captures configCmd so the --print/--set flags are
 	// readable without consulting os.Args directly.
 	configCmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -399,6 +461,7 @@ func Command() *cobra.Command {
 		}
 		printOnly, _ := cmd.Flags().GetBool("print")
 		setFlags, _ := cmd.Flags().GetStringArray("set")
+		layer, _ := cmd.Flags().GetString("layer")
 		if len(args) == 0 && !printOnly && len(setFlags) == 0 {
 			return cmd.Help()
 		}
@@ -407,7 +470,7 @@ func Command() *cobra.Command {
 				return fmt.Errorf("unknown subcommand %q for %q; run \"lyx config\" to list modules and verbs", args[0], cmd.CommandPath())
 			}
 		}
-		clihelp.SetExit(cmd.Context(), runConfig(cmd.Context(), cmd.OutOrStdout(), args, printOnly, setFlags))
+		clihelp.SetExit(cmd.Context(), runConfig(cmd.Context(), cmd.OutOrStdout(), args, printOnly, setFlags, layer))
 		return nil
 	}
 
@@ -488,14 +551,14 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 // When printOnly is true the command is read-only: it prints on-disk YAML
 // without opening an editor or running sync. setFlags carries the raw
 // "key=value" strings collected from repeated --set flags.
-func runConfig(ctx context.Context, out io.Writer, args []string, printOnly bool, setFlags []string) int {
+func runConfig(ctx context.Context, out io.Writer, args []string, printOnly bool, setFlags []string, layer string) int {
 	l, realSync, realCommit, err := resolveReal(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
 	// Dispatch to the print path, --set path, or specific module.
-	return dispatch(l, out, args, configengine.DefaultEditor, realSync, realCommit, printOnly, setFlags, realHubWriteGuard(l))
+	return dispatch(l, out, args, configengine.DefaultEditor, realSync, realCommit, printOnly, setFlags, layer, realHubWriteGuard(l))
 }
 
 // realHubWriteGuard returns the guard over l and the calling session's strand name from the environment.
