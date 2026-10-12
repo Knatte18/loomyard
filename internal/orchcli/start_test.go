@@ -17,8 +17,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/statuspane"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/spf13/cobra"
@@ -30,9 +33,14 @@ type fakeStarter struct {
 	guid    string
 	warning string
 	err     error
+	// calls, when set, receives "start" as each session starts.
+	calls *[]string
 }
 
 func (f *fakeStarter) StartSession(spec shuttleengine.Spec) (string, string, error) {
+	if f.calls != nil {
+		*f.calls = append(*f.calls, "start")
+	}
 	f.specs = append(f.specs, spec)
 	return f.guid, f.warning, f.err
 }
@@ -49,6 +57,11 @@ type startHarness struct {
 	// onSleep, when set, runs on each.
 	sleeps  int
 	onSleep func()
+	// calls is the order of start's adds, replaces and session starts.
+	calls []string
+	// exe and build are what the receiver's executable and currentBuild answer; a test changes them before it runs start.
+	exe   string
+	build statuspane.BuildIdentity
 }
 
 func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHarness {
@@ -62,7 +75,14 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 	c.cfg.Model, c.cfg.Effort = "opus", "high"
 	c.stencilsDir = stencilkit.Seed(t)
 	c.location = locationkit.Location(t.TempDir(), "main", "")
-	h := &startHarness{cli: c, strands: fake, starter: &fakeStarter{guid: "new-guid"}}
+	h := &startHarness{
+		cli: c, strands: fake, starter: &fakeStarter{guid: "new-guid"},
+		exe:   "/fixed/lyx",
+		build: statuspane.BuildIdentity{Path: "/fixed/lyx", Size: 1, ModTime: 2},
+	}
+	fake.calls, h.starter.calls = &h.calls, &h.calls
+	c.executable = func() (string, error) { return h.exe, nil }
+	c.currentBuild = func() (statuspane.BuildIdentity, error) { return h.build, nil }
 	c.starter = h.starter
 	c.reedUp = func() error { return nil }
 	c.spawnWatcher = func() error { h.spawns++; return nil }
@@ -97,6 +117,114 @@ func (h *startHarness) state(t *testing.T) orchengine.State {
 		t.Fatal(err)
 	}
 	return st
+}
+
+func TestStart_EnsuresTheRunsStrandBeforeTheOrch(t *testing.T) {
+	t.Parallel()
+
+	otherBuild := statuspane.BuildIdentity{Path: "/older/lyx", Size: 9, ModTime: 9}
+	wantDisplay := render.Display{
+		Anchor: render.AnchorTop,
+		Size:   render.Size{Kind: render.SizeContent, ShareNum: 1, ShareDen: 3, MinRows: 3},
+	}
+	tests := []struct {
+		name    string
+		strands []reedengine.StrandStatus
+		// sidecarGUID and sidecarBuild, when the guid is set, are the sidecar written before start runs.
+		sidecarGUID  string
+		sidecarBuild *statuspane.BuildIdentity
+		addErr       error
+		wantCalls    []string
+		// wantSidecarGUID is the guid the sidecar holds after start, empty for none.
+		wantSidecarGUID string
+	}{
+		{
+			name:            "no runs strand adds one before the orch starts",
+			wantCalls:       []string{"add", "start"},
+			wantSidecarGUID: "added-runs",
+		},
+		{
+			name:            "a live runs strand of this build is kept",
+			strands:         []reedengine.StrandStatus{{GUID: "r1", Name: "runs", Live: true}},
+			sidecarGUID:     "r1",
+			wantCalls:       []string{"start"},
+			wantSidecarGUID: "r1",
+		},
+		{
+			name:            "a live runs strand of another build is replaced",
+			strands:         []reedengine.StrandStatus{{GUID: "r1", Name: "runs", Live: true}},
+			sidecarGUID:     "r1",
+			sidecarBuild:    &otherBuild,
+			wantCalls:       []string{"replace", "start"},
+			wantSidecarGUID: "replaced-runs",
+		},
+		{
+			name:            "a dead runs strand is replaced",
+			strands:         []reedengine.StrandStatus{{GUID: "r1", Name: "runs"}},
+			sidecarGUID:     "r1",
+			wantCalls:       []string{"replace", "start"},
+			wantSidecarGUID: "replaced-runs",
+		},
+		{
+			name:      "a failing add leaves start a success with the orch launched",
+			addErr:    errors.New("reed refused"),
+			wantCalls: []string{"add", "start"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newStartHarness(t, tt.strands...)
+			h.cli.cfg.PermissionMode = "bypass"
+			h.strands.addErr = tt.addErr
+			sidecarPath := filepath.Join(h.cli.paths.Dir, runsSidecarFile)
+			if tt.sidecarGUID != "" {
+				build := h.build
+				if tt.sidecarBuild != nil {
+					build = *tt.sidecarBuild
+				}
+				if err := statuspane.WriteSidecar(sidecarPath, tt.sidecarGUID, build); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if code, env := h.run(t); code != 0 || env["ok"] != true {
+				t.Fatalf("start = exit %d, %v; want a success", code, env)
+			}
+
+			if !slices.Equal(h.calls, tt.wantCalls) {
+				t.Errorf("calls = %v; want %v", h.calls, tt.wantCalls)
+			}
+			var specs []reedengine.AddSpec
+			for _, added := range h.strands.added {
+				specs = append(specs, added.spec)
+			}
+			for _, replaced := range h.strands.replaced {
+				specs = append(specs, replaced.spec)
+				if replaced.replaced != "r1" {
+					t.Errorf("replaced guid = %q; want r1", replaced.replaced)
+				}
+			}
+			for _, spec := range specs {
+				if spec.NameOverride != "runs" || spec.Segment != "" || spec.Display != wantDisplay {
+					t.Errorf("runs strand spec = %+v; want the runs name, no segment and the top content display", spec)
+				}
+				sh := shell.ForGOOS()
+				if want := sh.Invoke(h.exe) + " " + sh.Quote("batten") + " " + sh.Quote("overview"); spec.Cmd != want {
+					t.Errorf("runs strand command = %q; want %q", spec.Cmd, want)
+				}
+			}
+
+			sidecar := statuspane.ReadSidecar(sidecarPath)
+			switch {
+			case tt.wantSidecarGUID == "" && sidecar != nil:
+				t.Errorf("sidecar = %+v; want none", sidecar)
+			case tt.wantSidecarGUID != "" && (sidecar == nil || sidecar.GUID != tt.wantSidecarGUID || sidecar.Build != h.build):
+				t.Errorf("sidecar = %+v; want guid %q with the current build", sidecar, tt.wantSidecarGUID)
+			}
+		})
+	}
 }
 
 func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {

@@ -98,10 +98,11 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 		}
 	}
 
-	splitTargetID, insertAbove, err := planPaneTarget(st, live)
+	split, err := planPaneTarget(st, live, s.Display)
 	if err != nil {
 		return err
 	}
+	splitTargetID := split.target
 
 	// -c pins the new pane's cwd to Geometry.PaneCwd, exactly as
 	// new-session and Selvage's own split (lifecycle.go) already do. Without
@@ -114,12 +115,15 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	// point every strand command would run against the wrong tree while
 	// reed reported success.
 	//
-	// -b is the one exception to "a strand split always lands below its
-	// target"; see planPaneTarget's doc comment for why insertAbove is true
-	// on exactly its third tier and nowhere else.
+	// -b is the exception to "a strand split always lands below its target";
+	// see planPaneTarget's doc comment for when it is set.
+	// -f, set with -b for a top-anchored strand, makes the split full-width and takes its rows from the whole window.
 	argv := []string{"split-window"}
-	if insertAbove {
+	if split.above {
 		argv = append(argv, "-b")
+	}
+	if split.full {
+		argv = append(argv, "-f")
 	}
 	argv = append(argv, "-t", splitTargetID, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}")
 	out, err := e.tmux.output(argv...)

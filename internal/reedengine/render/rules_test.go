@@ -30,6 +30,19 @@ func belowParentChainWithRootFocus() []Strand {
 	return strands
 }
 
+// contentStrand returns a live content-sized strand with a share of 1/3, a minimum of 3 rows and the given reported line count.
+func contentStrand(guid, paneID string, anchor Anchor, contentRows int) Strand {
+	return Strand{
+		GUID: guid, PaneID: paneID, Live: true, ContentRows: contentRows,
+		Display: Display{Anchor: anchor, Size: Size{Kind: SizeContent, ShareNum: 1, ShareDen: 3, MinRows: 3}},
+	}
+}
+
+// sharingStrand returns a below-parent sharing-sized strand.
+func sharingStrand(guid, paneID string, live bool) Strand {
+	return Strand{GUID: guid, PaneID: paneID, Live: live, Display: Display{Anchor: AnchorBelowParent, Size: Size{Kind: SizeSharing}}}
+}
+
 func TestRulesGolden(t *testing.T) {
 	t.Parallel()
 	params := Params{CollapsedRows: 2, MinFullRows: 3}
@@ -39,6 +52,7 @@ func TestRulesGolden(t *testing.T) {
 		strands   []Strand
 		box       Box
 		selvage   Selvage
+		titleRow  bool
 		wantBody  string
 		wantFocus string
 	}{
@@ -171,12 +185,131 @@ func TestRulesGolden(t *testing.T) {
 			wantBody:  "100x21,0,0,h",
 			wantFocus: "",
 		},
+		{
+			// 29 usable rows; the content cell shows its 2 reported lines plus the title row, and the positional cell expands below it.
+			name: "TopContentStrandWithTitleRowTakesItsReportedLinesPlusOne",
+			strands: []Strand{
+				contentStrand("top", "%1", AnchorTop, 2),
+				{GUID: "pos", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+			},
+			box:       Box{X: 0, Y: 0, W: 100, H: 30},
+			titleRow:  true,
+			wantBody:  "100x30,0,0[100x3,0,0,1,100x26,0,4,2]",
+			wantFocus: "%2",
+		},
+		{
+			name: "TopContentStrandWithoutAReportTakesItsMinimumPlusTheTitleRow",
+			strands: []Strand{
+				contentStrand("top", "%1", AnchorTop, 0),
+				{GUID: "pos", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+			},
+			box:       Box{X: 0, Y: 0, W: 100, H: 30},
+			titleRow:  true,
+			wantBody:  "100x30,0,0[100x4,0,0,1,100x25,0,5,2]",
+			wantFocus: "%2",
+		},
+		{
+			name: "BelowParentContentStrandBetweenTwoPositionalOnes",
+			strands: []Strand{
+				{GUID: "first", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+				contentStrand("content", "%2", AnchorBelowParent, 5),
+				{GUID: "last", PaneID: "%3", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+			},
+			box:       Box{X: 0, Y: 0, W: 100, H: 30},
+			wantBody:  "100x30,0,0[100x2,0,0,1,100x5,0,3,2,100x21,0,9,3]",
+			wantFocus: "%3",
+		},
+		{
+			// The positional cell collapses while a sharing cell is live; the two sharing cells split the 26 free rows.
+			name: "LiveSharingStrandsCollapseThePositionalOneAndSplitTheRestEvenly",
+			strands: []Strand{
+				{GUID: "pos", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+				sharingStrand("s1", "%2", true),
+				sharingStrand("s2", "%3", true),
+			},
+			box:       Box{X: 0, Y: 0, W: 100, H: 30},
+			wantBody:  "100x30,0,0[100x2,0,0,1,100x13,0,3,2,100x13,0,17,3]",
+			wantFocus: "%3",
+		},
+		{
+			name: "ThreeSharingStrandsSplitEqually",
+			strands: []Strand{
+				{GUID: "pos", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+				sharingStrand("s1", "%2", true),
+				sharingStrand("s2", "%3", true),
+				sharingStrand("s3", "%4", true),
+			},
+			box:       Box{X: 0, Y: 0, W: 100, H: 32},
+			wantBody:  "100x32,0,0[100x2,0,0,1,100x9,0,3,2,100x9,0,13,3,100x9,0,23,4]",
+			wantFocus: "%4",
+		},
+		{
+			name: "SharingRemainderRowGoesToTheBottomMostSharingStrand",
+			strands: []Strand{
+				{GUID: "pos", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+				sharingStrand("s1", "%2", true),
+				sharingStrand("s2", "%3", true),
+			},
+			box:       Box{X: 0, Y: 0, W: 100, H: 29},
+			wantBody:  "100x29,0,0[100x2,0,0,1,100x12,0,3,2,100x13,0,16,3]",
+			wantFocus: "%3",
+		},
+		{
+			name: "SharingStrandsThatAreNotLiveLetTheBottomMostPositionalStrandExpandAgain",
+			strands: []Strand{
+				{GUID: "first", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+				{GUID: "last", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+				sharingStrand("s1", "%3", false),
+				sharingStrand("s2", "%4", false),
+			},
+			box:       Box{X: 0, Y: 0, W: 100, H: 21},
+			wantBody:  "100x21,0,0[100x2,0,0,1,100x18,0,3,2]",
+			wantFocus: "%2",
+		},
+		{
+			// The sole content strand is the bottom-most cell, so it expands past its maximum to the whole 17-row stack region.
+			name:      "SoleContentStrandWithABandTakesEveryRowOfTheStack",
+			strands:   []Strand{contentStrand("only", "%1", AnchorBelowParent, 2)},
+			box:       Box{X: 0, Y: 0, W: 100, H: 21},
+			selvage:   Selvage{PaneID: "%h", HeightRows: 3},
+			wantBody:  "100x21,0,0[100x17,0,0,1,100x3,0,18,h]",
+			wantFocus: "%1",
+		},
+		{
+			// 5 usable rows against a 2-row collapsed cell, a 3-row content cell and an expanding cell left with none: the collapsed cell yields its one row first and the content cell keeps its rows.
+			name: "BoxTooShortForEveryMinimumReclaimsFromTheCollapsedCellBeforeTheContentCell",
+			strands: []Strand{
+				{GUID: "first", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+				contentStrand("content", "%2", AnchorBelowParent, 0),
+				{GUID: "last", PaneID: "%3", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+			},
+			box:       Box{X: 0, Y: 0, W: 100, H: 7},
+			wantBody:  "100x7,0,0[100x1,0,0,1,100x3,0,2,2,100x1,0,6,3]",
+			wantFocus: "%3",
+		},
+		{
+			// Five sharing cells leave the free rows short of one each, so after the collapsed cell and the content cell are down to their floors the bottom-most sharing cell gives up the 1 row still owed.
+			name: "BoxShorterStillTakesTheRestFromTheBottomMostExpandingCell",
+			strands: []Strand{
+				{GUID: "first", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+				contentStrand("content", "%2", AnchorBelowParent, 0),
+				sharingStrand("s1", "%3", true),
+				sharingStrand("s2", "%4", true),
+				sharingStrand("s3", "%5", true),
+				sharingStrand("s4", "%6", true),
+				sharingStrand("s5", "%7", true),
+			},
+			box:       Box{X: 0, Y: 0, W: 100, H: 15},
+			wantBody:  "100x15,0,0[100x1,0,0,1,100x1,0,2,2,100x1,0,4,3,100x1,0,6,4,100x1,0,8,5,100x1,0,10,6,100x3,0,12,7]",
+			wantFocus: "%7",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := params
+			p.TitleRow = tt.titleRow
 			if tt.selvage != (Selvage{}) {
 				p.Selvage = tt.selvage
 			}

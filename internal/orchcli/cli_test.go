@@ -23,10 +23,29 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// fakeStrands is a strandOps over a fixed strand list that records removals.
+// fakeAdd is one AddStrand call a fakeStrands recorded, with the guid it answered.
+type fakeAdd struct {
+	spec reedengine.AddSpec
+	guid string
+}
+
+// fakeReplace is one ReplaceStrand call a fakeStrands recorded, with the guid it replaced and the guid it answered.
+type fakeReplace struct {
+	replaced string
+	spec     reedengine.AddSpec
+	guid     string
+}
+
+// fakeStrands is a strandOps over a fixed strand list that records removals, adds and replaces.
 type fakeStrands struct {
-	strands []reedengine.StrandStatus
-	removed []string
+	strands  []reedengine.StrandStatus
+	removed  []string
+	added    []fakeAdd
+	replaced []fakeReplace
+	// addErr, when set, is what AddStrand returns instead of adding.
+	addErr error
+	// calls, when set, receives "add" and "replace" as they happen.
+	calls *[]string
 }
 
 func (f *fakeStrands) Strands() ([]reedengine.StrandStatus, error) { return f.strands, nil }
@@ -34,6 +53,27 @@ func (f *fakeStrands) Strands() ([]reedengine.StrandStatus, error) { return f.st
 func (f *fakeStrands) RemoveStrand(guid string) error {
 	f.removed = append(f.removed, guid)
 	return nil
+}
+
+func (f *fakeStrands) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
+	if f.calls != nil {
+		*f.calls = append(*f.calls, "add")
+	}
+	if f.addErr != nil {
+		return reedengine.Strand{}, f.addErr
+	}
+	guid := "added-" + spec.NameOverride
+	f.added = append(f.added, fakeAdd{spec: spec, guid: guid})
+	return reedengine.Strand{GUID: guid}, nil
+}
+
+func (f *fakeStrands) ReplaceStrand(guid string, spec reedengine.AddSpec) (reedengine.Strand, error) {
+	if f.calls != nil {
+		*f.calls = append(*f.calls, "replace")
+	}
+	replacement := "replaced-" + spec.NameOverride
+	f.replaced = append(f.replaced, fakeReplace{replaced: guid, spec: spec, guid: replacement})
+	return reedengine.Strand{GUID: replacement}, nil
 }
 
 // fakeRunnerIndex is the index the fake index runner returns.
@@ -237,6 +277,7 @@ func TestStop(t *testing.T) {
 		{"removes the tracked strand", []reedengine.StrandStatus{{GUID: "g1", Name: "orch"}}, "g1", true, "g1", []string{"g1"}},
 		{"reports a recorded but untracked strand as not removed", nil, "gone", false, "", nil},
 		{"reports an unrecorded strand as not removed", nil, "", false, "", nil},
+		{"leaves the runs strand beside the orch", []reedengine.StrandStatus{{GUID: "g1", Name: "orch"}, {GUID: "g2", Name: "runs"}}, "g1", true, "g1", []string{"g1"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -3,6 +3,7 @@ package termwindow
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -60,9 +61,13 @@ func TestResolve_ChoosesLauncherPerPlatform(t *testing.T) {
 func TestLauncher_ArgumentsOpenTitledWindowRunningAttach(t *testing.T) {
 	t.Parallel()
 
-	line := attachLine("/opt/lyx dev/lyx")
-	if want := `'/opt/lyx dev/lyx' reed attach; exec bash`; line != want {
-		t.Fatalf("attachLine() = %q; want %q", line, want)
+	line := attachLine("/opt/lyx dev/lyx", "/hub/my slug")
+	const wantLine = `'/opt/lyx dev/lyx' reed attach; status=$?; if [ $status -eq 0 ]; then exit 0; fi; ` +
+		`echo 'reed attach ended with status' $status '- waiting up to 30s for the run worktree to be removed'; ` +
+		`i=0; while [ $i -lt 30 ]; do [ -d '/hub/my slug' ] || exit 0; sleep 1; i=$((i+1)); done; ` +
+		`[ -d '/hub/my slug' ] || exit 0; exec bash`
+	if line != wantLine {
+		t.Fatalf("attachLine() = %q; want %q", line, wantLine)
 	}
 	tests := []struct {
 		name      string
@@ -77,7 +82,7 @@ func TestLauncher_ArgumentsOpenTitledWindowRunningAttach(t *testing.T) {
 		{
 			name:      "WindowsTerminal",
 			arguments: windowsTerminalArguments,
-			want:      []string{"-w", "new", "--title", "slug", "wsl.exe", "--cd", "/hub/slug", "--", "bash", "-lc", `'/opt/lyx dev/lyx' reed attach\; exec bash`},
+			want:      []string{"-w", "new", "--title", "slug", "wsl.exe", "--cd", "/hub/slug", "--", "bash", "-lc", strings.ReplaceAll(wantLine, ";", `\;`)},
 		},
 	}
 	for _, tt := range tests {

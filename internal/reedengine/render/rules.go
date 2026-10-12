@@ -27,20 +27,19 @@ type cellPlan struct {
 	// stackBox is the region the strand stack is laid out within, above the
 	// Selvage band and its one-row divider when hasBand is true.
 	stackBox Box
-	// ordered is the below-parent stack, filtered and ordered by insertion.
+	// ordered holds the placed cells, top-anchored first, each group in insertion order.
 	ordered []Strand
 	// placements is ordered's per-strand height assignment from stackHeights.
 	placements []placement
 }
 
-// planCells performs the policy half of Rules: filtering and ordering strands into the below-parent
-// stack, and deciding the Selvage/stack height split. It returns the same AnchorOwnWindow rejection
-// error Rules has always returned. Rules and FixedHeightPins are the mechanics layer built on top of
-// this shared policy result.
+// planCells performs the policy half of Rules: validating every strand's display, filtering and ordering strands into the placed cells, and deciding the Selvage/stack height split.
+// A display ValidateDisplay refuses fails the plan with an error naming the strand.
+// Rules and FixedHeightPins are the mechanics layer built on top of this shared policy result.
 func planCells(strands []Strand, box Box, p Params) (cellPlan, error) {
 	for _, s := range strands {
-		if s.Display.Anchor == AnchorOwnWindow {
-			return cellPlan{}, fmt.Errorf("render: strand %s uses deferred anchor %q", s.GUID, AnchorOwnWindow)
+		if err := ValidateDisplay(s.Display); err != nil {
+			return cellPlan{}, fmt.Errorf("render: strand %s: %w", s.GUID, err)
 		}
 	}
 
@@ -89,7 +88,7 @@ func planCells(strands []Strand, box Box, p Params) (cellPlan, error) {
 }
 
 // Rules computes the tmux window_layout string and focus pane id for strands laid out within box.
-// It rejects any strand declaring AnchorOwnWindow, repairs corrupt cyclic parent chains, and drops
+// It rejects any strand whose display ValidateDisplay refuses, repairs corrupt cyclic parent chains, and drops
 // any strand whose PaneID is already spoken for by the Selvage band or by an earlier strand
 // (see removeDuplicatePaneCells for why emitting one pane number twice is destructive).
 // When p.Selvage.PaneID is non-empty, Rules carves a fixed-height bottom band for the Selvage before
@@ -118,7 +117,7 @@ func Rules(strands []Strand, box Box, p Params, paneOrder []string) (layout stri
 }
 
 // Pin is one pane whose height is an absolute row budget rather than "whatever is left" — the
-// Selvage band or a collapsed placement. Height is the height Rules actually placed the cell at,
+// Selvage band, a collapsed positional placement or a content placement. Height is the height Rules actually placed the cell at,
 // after clampBandHeight/clampToFit — never the raw configured budget (p.Selvage.HeightRows or
 // p.CollapsedRows read directly), since either can yield rows under a too-short window.
 type Pin struct {
@@ -128,10 +127,10 @@ type Pin struct {
 	Height int
 }
 
-// FixedHeightPins reports the panes whose heights are absolute row budgets — the Selvage band and
-// every collapsed placement — at the heights Rules actually placed them at for
-// the identical (strands, box, p) inputs. It shares Rules' own policy composition (planCells) so the
-// two can never disagree about a placed height.
+// FixedHeightPins reports the panes whose heights are absolute row budgets:
+// the Selvage band, every collapsed positional placement and every content placement, the expanding one included.
+// It reports them at the heights Rules actually placed them at for the identical (strands, box, p) inputs.
+// It shares Rules' own policy composition (planCells) so the two can never disagree about a placed height.
 //
 // FixedHeightPins takes no paneOrder: a pin names its pane by tmux pane id, so emission order carries
 // no geometry — paneOrder only resequences layout-string cells, which FixedHeightPins never produces.
