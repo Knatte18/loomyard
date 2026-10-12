@@ -243,6 +243,8 @@ func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *test
 				t.Fatal(err)
 			}
 			e.resumeHub()
+			// Notices sort by queue time, so the resume line must be queued after n1's instant.
+			e.clock.advance(time.Millisecond)
 			for range 4 {
 				e.tick()
 			}
