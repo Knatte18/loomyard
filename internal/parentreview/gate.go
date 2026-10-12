@@ -426,9 +426,12 @@ func (c *closures) pollAlignment(r Round) (shuttleengine.GateResult, bool, error
 
 // closeAlignment stops the round's agent and settles its record as state with the record's report and the reason.
 // An Aligner.Close error is logged and never returned, so the record is settled and the agent is never polled again.
+// With no Aligner (alignment switched off after the record was written) only the record is settled.
 func (c *closures) closeAlignment(r Round, settled, reason string) error {
-	if err := c.cfg.Aligner.Close(*r.Alignment, reason); err != nil {
-		logger.Warn("parent review alignment agent did not close cleanly", "slug", c.cfg.Slug, "round", r.Number, "error", err.Error())
+	if c.cfg.Aligner != nil {
+		if err := c.cfg.Aligner.Close(*r.Alignment, reason); err != nil {
+			logger.Warn("parent review alignment agent did not close cleanly", "slug", c.cfg.Slug, "round", r.Number, "error", err.Error())
+		}
 	}
 	return c.cfg.Store.SettleAlignment(settled, r.Alignment.Report, reason)
 }

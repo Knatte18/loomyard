@@ -334,6 +334,50 @@ func TestGate_Alignment(t *testing.T) {
 		}
 	})
 
+	t.Run("a gate rebuilt with no Aligner settles a running record as stopped without panicking", func(t *testing.T) {
+		t.Parallel()
+		for name, settle := range map[string]func(t *testing.T, s Store, c *clock, gate, final shuttleengine.Gate){
+			"a parent verdict": func(t *testing.T, s Store, _ *clock, gate, _ shuttleengine.Gate) {
+				if err := s.RecordVerdict(VerdictApprove, ""); err != nil {
+					t.Fatal(err)
+				}
+				if !mustEval(t, gate).Passed {
+					t.Fatal("a parent approve must pass")
+				}
+			},
+			"the wait bound": func(t *testing.T, _ Store, c *clock, gate, _ shuttleengine.Gate) {
+				c.t = c.t.Add(2 * time.Hour)
+				if !mustEval(t, gate).Passed {
+					t.Fatal("the wait bound must pass")
+				}
+			},
+			"the writer's end": func(t *testing.T, _ Store, _ *clock, _, final shuttleengine.Gate) {
+				if !mustEval(t, final).Passed {
+					t.Fatal("final must pass")
+				}
+			},
+		} {
+			s, c := newStore(t)
+			gate, _ := newAlignGates(t, s, &fakeAligner{}, alignOpts{reviewer: reviewer})
+			wantHold(t, mustEval(t, gate))
+			offGate, offFinal := NewGate(GateConfig{
+				Store:           s,
+				Slug:            "x",
+				Reviewer:        reviewer,
+				DecisionRecord:  "d.md",
+				SupportLog:      "s.md",
+				WaitBound:       time.Hour,
+				RenderDelivery:  func(p string) (string, error) { return "review " + p, nil },
+				RenderBrief:     func() (string, error) { return "brief", nil },
+				RenderKeepAlive: func(n int) (string, error) { return "ping", nil },
+			})
+			settle(t, s, c, offGate, offFinal)
+			if a := latest(t, s).Alignment; a == nil || a.State != AlignmentStopped {
+				t.Fatalf("%s: alignment = %+v, want state %s", name, a, AlignmentStopped)
+			}
+		}
+	})
+
 	t.Run("final fails terminally on an agent reject even with no reviewer", func(t *testing.T) {
 		t.Parallel()
 		s, _ := newStore(t)
