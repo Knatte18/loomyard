@@ -22,10 +22,10 @@ import (
 // so the bootstrap's re-entrant call finds the pane it created on an earlier invocation instead of having its add refused.
 const statusStrandDisplayName = "loom-status"
 
-// The status strand's size: a content strand sized to its checklist, at most a quarter of the free height and never under statusStrandMinRows.
+// The status strand's size: a content strand sized to its checklist, at most an eighth of the free height and never under statusStrandMinRows.
 const (
 	statusStrandShareNum = 1
-	statusStrandShareDen = 4
+	statusStrandShareDen = 8
 	statusStrandMinRows  = 3
 )
 

@@ -1,15 +1,15 @@
 // main.go is the entry point for the lyx CLI.
 //
-// It assembles a single cobra root command from every module's Command(), wires the persistent
-// --json flag and JSON help renderer, and routes output to the appropriate writer.
+// It assembles a single cobra root command from every module's Command(), then mounts the shortcuts of internal/shortcutcli.
+// It wires the persistent --json flag and JSON help renderer, and routes output to the appropriate writer.
 // Cobra-level errors (unknown command, bad flag) are wrapped in the JSON envelope by
 // clihelp.RunRoot so the caller always receives a machine-parseable error.
 // The testable run() seam merges stdout and stderr so tests capture all output from one buffer;
 // main() keeps stdout and stderr split as callers of the production binary expect.
 
 // Package main is the cobra root for the lyx CLI.
-// It assembles each module's Command() into a single root, installs --json help, and delegates
-// execution to cobra via clihelp.RunRoot.
+// It assembles each module's Command() into a single root and mounts the shortcuts of internal/shortcutcli on it.
+// It installs --json help and delegates execution to cobra via clihelp.RunRoot.
 package main
 
 import (
@@ -40,6 +40,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reportcli"
 	"github.com/Knatte18/loomyard/internal/selfreportcli"
 	"github.com/Knatte18/loomyard/internal/shedcli"
+	"github.com/Knatte18/loomyard/internal/shortcutcli"
 	"github.com/Knatte18/loomyard/internal/shuttlecli"
 	"github.com/Knatte18/loomyard/internal/stencilcli"
 	"github.com/Knatte18/loomyard/internal/webstercli"
@@ -95,7 +96,8 @@ all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output; --json prints the help as JSON and
 never runs the command.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed, orch, cleanup, report, pause, resume, gate, help.`,
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed, orch, cleanup, report, pause, resume, gate, help.
+Shortcuts, declared in internal/shortcutcli's embedded file, are listed under their own heading in lyx --help.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Modules' PersistentPreRunE hooks run after root's via EnableTraverseRunHooks.
@@ -155,6 +157,8 @@ Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler
 	// SetHelpCommand replaces cobra's built-in help command; InitDefaultHelpCmd adds it now, because cobra would add it only at execution and the tree walks read root.Commands() before that.
 	root.SetHelpCommand(helpcli.Command())
 	root.InitDefaultHelpCmd()
+
+	shortcutcli.Mount(root, newRoot)
 
 	return root
 }

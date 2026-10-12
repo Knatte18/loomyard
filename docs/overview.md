@@ -230,6 +230,7 @@ github.com/Knatte18/loomyard/
 ├── internal/fabricengine/        the fabric domain kernel
 ├── internal/gatecli/             the gate CLI command (`lyx gate test`, the slotted route for an agent's go test)
 ├── internal/helpcli/             the help CLI command (`lyx help [<command>...]`, `lyx help index`)
+├── internal/shortcutcli/         the top-level operator shortcuts (`lyx attach`, `lyx prime`) from one embedded file
 ├── internal/idecli/              the ide CLI command
 ├── internal/ideengine/           the ide domain kernel
 ├── internal/pairteardown/        the one sequence that ends a pair: quiet wait, refusal probe, reed session end, then fabric removal
@@ -390,6 +391,7 @@ User-facing modules each get one `lyx <module>` namespace:
 - **planglyph** — the sole owner of every `quarry.Repo` call (`Open`, `Resolve`, `DeltaGit`) and of the package-level `quarry.Name`, plus the resolve-backed validation pass layered on top of `planparser`'s pure checks: `planglyph.ValidateFormat`/`Validate` call `planparser.ValidateFormat`/`Validate` and append only resolve findings, composing rather than reimplementing (`internal/planglyph`). ✅ Implemented.
 - **planindex** — the cgo-free seam over `planglyph`: the plan gates' finding types, `ErrQuarryUnavailable` and the `Index` and `Delta` interfaces a package receives instead of importing the package that links tree-sitter (`internal/planindex`). ✅ Implemented.
 - **help** — cobra's help command, replaced: `lyx help [<command>...]` prints a command's help and refuses a word that names no subcommand, and `lyx help index [--audience <audience>]` prints a generated one-line-per-command index of the running binary, filtered by the `audience` annotation every invocable command carries (`internal/helpcli`; the renderer is `clihelp.RenderIndex`). ✅ Implemented. See the `internal/helpcli` package documentation.
+- **shortcuts** — `lyx attach` (`lyx reed attach`) and `lyx prime` (`lyx orch start`, then `lyx reed attach`) are top-level operator shortcuts declared in `internal/shortcutcli/shortcuts.yaml`, embedded in the binary and added only by a commit to that file; global verbosity flags reach every expanded command and other words the last; they are not modules. See the `internal/shortcutcli` package documentation.
 - **cleanup** — the routine cleanups of the hub prime's leftover state, as one verb (`internal/cleanupcli`; `lyx cleanup [--apply]`, prime only).
   Without `--apply` it is a dry run that lists, per segment, what `--apply` would remove.
   The segments run in order and each calls its owner's own cleanup in-process: `lyx batten cleanup`, `lyx board prune`, `lyx orch cleanup`, the prime's `.scratch/` children older than 14 days that no open board entry cites, logger's trace retention sweep, and the temp root's sweep of dead owners' run directories.
@@ -542,7 +544,7 @@ User-facing modules each get one `lyx <module>` namespace:
   on-demand, post-loom, **off the spine**, shares only the `burler` round discipline.
   See the board's `hardener` note.
 - **batten** — drives one task worktree's whole lifecycle — create, seed the child's own inner run from the Board task's own `recipe` (`loom`, or `darn` for a darn child, empty meaning `loom`), run it to a terminal state, land it into the prime, and tear down — as a single Shed run from the hub's prime worktree (`internal/battenshed` + `internal/battenrecipe` + `internal/battencli`; `lyx batten run|step|status|pause <run-id>`, `lyx batten lock list|release` for the hub's parent locks, and `lyx batten cleanup [--apply]`).
-  The hidden `lyx batten overview` is the pane process of the prime's `runs` strand, which `lyx orch start` ensures: it lists the runs in flight with their state, stage, time in stage, age and reed session, and reads files only.
+  The hidden `lyx batten overview` is the pane process of the prime's `runs` strand, which `lyx orch start` ensures: it lists the runs in flight with their state, stage, time in stage, age and reed session, and reads files only; a run a live pause covers shows `paused <minutes>` in its state cell.
   `lyx batten cleanup` is a dry run unless given `--apply`: it removes each done run's records run directory with a records commit and push, and empties that run's scratch beside its lock files and any orphan scratch older than a day.
   `lyx batten run <slug> --window` starts the same run in its own tmux window of the orch's reed session and returns at once; the window lives as long as the reed session.
   It also has the run open one desktop terminal window on the task worktree, titled with the slug and running `lyx reed attach`, through `internal/termwindow`'s per-platform launcher: Konsole on Linux, Windows Terminal into `wsl.exe` on WSL.

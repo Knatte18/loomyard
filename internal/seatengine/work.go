@@ -31,7 +31,9 @@ func (w *advisorWork) bindSender(sender *noticeSender) {
 }
 
 // outstanding reports whether any advisor whose run has not ended either has an up line the sender has not landed or reads mid-turn.
-// An advisor whose run ended never counts, a timed-out one included, and a session-state reading that errors counts as not mid-turn.
+// An advisor whose run ended never counts, a timed-out one included.
+// Each advisor's session state is read before its up line: one reading asking, idle-stalled, idle-done or dead is held or gone, so it never counts, whether or not its up line has landed.
+// A session-state reading that errors counts as neither held nor mid-turn, so only the up line can still count that advisor.
 func (w *advisorWork) outstanding() bool {
 	w.mu.Lock()
 	sender := w.sender
@@ -42,10 +44,16 @@ func (w *advisorWork) outstanding() bool {
 		if run.handle == nil || run.ended() {
 			continue
 		}
+		state, err := run.handle.SessionState()
+		if err == nil {
+			switch state.State.Name {
+			case shuttleengine.SessionAsking, shuttleengine.SessionIdleStalled, shuttleengine.SessionIdleDone, shuttleengine.SessionDead:
+				continue
+			}
+		}
 		if sender != nil && !sender.wasSent(advisorUpNotice(run.name)) {
 			return true
 		}
-		state, err := run.handle.SessionState()
 		if err == nil && state.State.Name == shuttleengine.SessionBusy && state.State.Cause == shuttleengine.SessionCauseTurn {
 			return true
 		}
