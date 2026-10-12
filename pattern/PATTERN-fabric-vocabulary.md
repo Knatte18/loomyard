@@ -5,7 +5,8 @@
 "repo" alone never substitutes for warp.
 **`host` is retired** in the fabric sense, everywhere.
 
-- Owner set (bare weft and warp carve-out): `fabricengine`, `fabriccli`, `weftname`, `gitkit`, `hubforge`, `boardengine`, `configsync`.
+- Owner set (bare weft and warp carve-out): `fabricengine`, `fabriccli`, `weftname`, `gitkit`, `hubforge`, `boardengine`, `configsync`, `fabricvocab`.
+- `internal/fabricvocab` is the home of the predicates the scan and the plan check share; neither declares its own.
 - Scope of the bare weft and warp rule outside the owner set:
   - every `*_test.go` file anywhere in the module;
   - every non-test `.go` file under `internal/` and the doc roots;
