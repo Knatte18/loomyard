@@ -136,7 +136,7 @@ This separation keeps code commits focused on project code and delegates lyx inf
 
 | Artifact | Location | Repo | Purpose |
 |----------|----------|------|---------|
-| `_lyx/config/` | Records worktree | Records | Live YAML configuration files for all modules (board, fabric); reconciled via `lyx config reconcile` |
+| `_lyx/config/` | Records worktree | Records | Live YAML configuration files for all modules (board, fabric); reconciled via `lyx config reconcile`; a module resolves key by key through a layer stack, see [internal/configengine](../internal/configengine/doc.go) |
 | `.env` | Records worktree | Records | Git-ignored per-machine environment variable overrides (KEY=value format) |
 | `_lyx/raddle/` | Records worktree | Records | Raddle documentation (the raddle nav-doc overlay), reached through the `_lyx` junction like every other `_lyx` subtree |
 | `_board/` | Hub | Board | A second records worktree, checked out on the code repo's own unsuffixed default branch (the records main branch in the common case) — never a separate clone, never a per-task records branch |
@@ -170,6 +170,7 @@ and it is not purely the repo-wide `pathspec` list either: it is `structuralComm
 The two structural sets — `_lyx` and `.lyx` — are injected in code, never read from `fabric.yaml`;
 only the third piece comes from the **repo-wide** `pathspec` list recorded once at `<BoardDir>/_lyx/config/fabric.yaml` (read from the records main branch, via `fabricengine.BoardDir`), filtered against `fabricengine.HubReservedNames()` (the hub-structural tokens — `_board`, `_portals`, `_launchers` — that can never be a per-worktree junction).
 `board.yaml` is hub-wide like it: read and written at `<BoardDir>/_lyx/config/board.yaml` and never in a worktree's `_lyx/config/`.
+A hub-wide module skips the worktree file in its layer stack, which [internal/configengine](../internal/configengine/doc.go) describes.
 Because the pathspec is repo-wide, `lyx fabric reconcile` declaratively converges **every** worktree to the same recorded set — adding a junction missing on disk, removing one absent from the wired set,
 and no-op'ing one already correct — rather than each worktree carrying its own drift-prone copy. `lyxcwd` itself stays config-blind;
 it only resolves the cwd coordinates that `fabricengine` builds the junction records onto.
@@ -328,7 +329,10 @@ User-facing modules each get one `lyx <module>` namespace:
 - **config** — bare `lyx config` lists modules and verbs, `lyx config menu` picks a module to edit interactively, and `lyx config <module>` edits that module's config;
   `lyx config reconcile` reconciles all module config files against their live templates (dry-run by default, `--apply` writes atomically) except seed-only modules (today: `models`), which are materialized once when absent and never rewritten again since the file is operator-owned;
   `lyx config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path.
-  A key under a module's declared open map adds or rewrites one entry, e.g. `lyx config board --set labels.quarry="glyphs and the quarry index"`. ✅ Implemented.
+  A key under a module's declared open map adds or rewrites one entry, e.g. `lyx config board --set labels.quarry="glyphs and the quarry index"`.
+  A module resolves key by key through the embedded template, the repo default at `<BoardDir>/_lyx/config/<module>.yaml`, the worktree's sparse file and the untracked local override at `<anchor>/.lyx/config/<module>.local.yaml`; see [internal/configengine](../internal/configengine/doc.go).
+  `lyx config --layer default|worktree|local` picks the layer a verb addresses, and `lyx config <module> --resolved` prints the merged result with each unit annotated by its layer.
+  A board task's `run_settings` reach the pair's local layer at batten's Seed-Child, bounded by `configreg`'s `LocalKeys` and `LocalDenied`. ✅ Implemented.
 - **fabric** — the sole git-coordination module over the code and its records, unified over two `internal/gitrepo.Repo` instances: clone (the hub creator), dual-worktree add/remove, coordinated checkout (switches code and records together + re-points junctions), reconcile, status, prune, cleanup, records content-sync (commit/push/pull/sync/diff; in the prime, push, commit and sync push the records side only and `push` reports an unpushed code branch as `code_push_skipped`), and a merge/conflict lifecycle (`merge-in`/`merge`/`merge-stage`/`merge --continue`/`merge --abort`, mirroring git's own exit codes and surfacing conflicts as unified, worktree-relative paths; `merge-stage` marks resolved paths so `--continue`'s index gate can pass, and is the only route for a conflict under a wired junction name, which git refuses to stage through), all in one command tree (`internal/fabriccli` + `internal/fabricengine`);
   CLI surface is `lyx fabric clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|unwire|shortname|status|commit|push|pull|sync|diff|merge-in|merge|merge-stage`.
   `clone` takes the records URL first with the code URL optional, derived from the code binding recorded on the records main branch when omitted;
