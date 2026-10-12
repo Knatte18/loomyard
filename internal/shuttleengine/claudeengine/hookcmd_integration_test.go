@@ -206,8 +206,12 @@ func TestComputedRmDenyHook_DeniesRmOnComputedPathsOnly(t *testing.T) {
 		{"positional_parameter", "rm $1", true},
 		{"braced_variable", "rm ${D}/f", true},
 		{"backtick_substitution", "rm `cat list`", true},
+		{"rm_after_separator", "cd x && rm $DIR/f", true},
+		{"rm_behind_xargs", "ls | xargs rm $F", true},
 		{"literal_path", "rm -f .scratch/a", false},
 		{"two_literal_paths", "rm a b", false},
+		{"process_id_parameter", "rm -f .scratch/a-$$", false},
+		{"exit_status_parameter", "rm -f .scratch/a && echo $?", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
