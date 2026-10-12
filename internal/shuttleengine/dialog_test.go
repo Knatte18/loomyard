@@ -35,6 +35,8 @@ var _ ReedOps = (*dialogReed)(nil)
 type dialogEnv struct {
 	appendEvents func(line string)
 	reed         *dialogReed
+	// resume ends the pause a covered row began with.
+	resume func()
 }
 
 const (
@@ -62,6 +64,8 @@ func TestWait_DialogNotice(t *testing.T) {
 		quiet      bool
 		noNotifier bool
 		strand     string
+		// covered tells the runner a pause record whose live hub entry covers the run until a step calls env.resume.
+		covered bool
 		// dialogOffset is the persisted DialogNotifiedOffset the run starts with.
 		dialogOffset int64
 		failCapture  bool
@@ -86,6 +90,13 @@ func TestWait_DialogNotice(t *testing.T) {
 		{
 			name: "an input box shown before the bound sends nothing", events: "ASK\n",
 			steps: map[int]func(*dialogEnv){1: func(env *dialogEnv) { env.reed.pane = dialogPaneBox }},
+		},
+		{
+			name: "a dialog latched past the bound while a pause covers the run sends no notice", events: "ASK\n", covered: true,
+			steps: map[int]func(*dialogEnv){15: func(env *dialogEnv) {
+				env.reed.pane = dialogPaneBox
+				env.resume()
+			}},
 		},
 		{name: "an interactive run sends nothing", events: "ASK\n", interact: true},
 		{name: "a runner with no notifier sends nothing and persists no offset", events: "ASK\n", noNotifier: true},
@@ -173,6 +184,11 @@ func TestWait_DialogNotice(t *testing.T) {
 				withRunEvents(tt.events),
 				withRunClock(clk, fc.Now().Add(timeout)))
 			env := &dialogEnv{appendEvents: func(line string) { appendEventsLine(t, run.state.EventsPath, line) }, reed: reed}
+			if tt.covered {
+				geometry, resume := coverHub(t, fc.Now())
+				fx.Runner.SetPause(geometry)
+				env.resume = func() { resume(fc.Now()) }
+			}
 			for index, step := range tt.steps {
 				steps[index] = func() { step(env) }
 			}

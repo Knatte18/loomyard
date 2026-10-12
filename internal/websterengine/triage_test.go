@@ -91,7 +91,6 @@ func TestBackgroundShellNoteAndWarning(t *testing.T) {
 	}{
 		{"done", finishedShellOutcome(RunResult{Outcome: outcomeDone}), removal, "the run's final outcome: done"},
 		{"stuck with a reason", finishedShellOutcome(RunResult{Outcome: outcomeStuck, StuckReason: "batch 2 red"}), removal, "the run's final outcome: stuck (batch 2 red)"},
-		{"paused", finishedShellOutcome(RunResult{Outcome: outcomePaused}), removal, "the run's final outcome: paused"},
 		{"mapping error after a shuttle-done end", errorShellOutcome(errors.New("summary.md malformed"), false), removal, "the run's final outcome: error (summary.md malformed)"},
 		{"died or timeout error", errorShellOutcome(errors.New("master died"), true), reclaim, "the run's final outcome: error (master died)"},
 	}

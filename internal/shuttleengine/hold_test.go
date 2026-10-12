@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,39 @@ type heldRun struct {
 	// noticeElapsed is the run clock's time since Wait began at each notifier call.
 	noticeElapsed []time.Duration
 	result        Result
+	// notifiedOffset is the run's NotifiedOffset when Wait returned.
+	notifiedOffset int64
+	// apiContinued is the run's APIContinued flag when Wait returned.
+	apiContinued bool
+	// sent holds each line the run typed into its pane, in order.
+	sent []string
+}
+
+// echoReed is a fakeReed whose pane shows every text typed into it after the input prompt.
+type echoReed struct {
+	*fakeReed
+
+	pane  string
+	typed []string
+}
+
+func (r *echoReed) CapturePane(string) (string, error) { return r.pane, nil }
+
+func (r *echoReed) SendText(guid, text string, submit bool) error {
+	if err := r.fakeReed.SendText(guid, text, submit); err != nil {
+		return err
+	}
+	r.pane += " " + text
+	r.typed = append(r.typed, text)
+	return nil
+}
+
+// apiErrorAfterSleep is a script: the machine sleeps for three hours while an API-error turn end lands.
+func apiErrorAfterSleep(appendLine func(string), asleep func(time.Duration)) []func() {
+	return []func(){func() {
+		asleep(3 * time.Hour)
+		appendLine("STOP:overloaded")
+	}}
 }
 
 func TestWait_HeldTurnEndNotice(t *testing.T) {
@@ -40,10 +74,16 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 		session      bool
 		promptOffset int64
 		// script returns the agent's actions between ticks, run once per Sleep.
-		script func(appendLine func(string)) []func()
+		// asleep moves wall time forward without the awake reading, as a machine sleep does.
+		script func(appendLine func(string), asleep func(time.Duration)) []func()
+		// apiError makes the engine read the "STOP:overloaded" turn end as an API error and the pane take the lines sent to it, and sendFails makes that send fail.
+		apiError  bool
+		sendFails bool
 		// sleepJump is the clock jump per Sleep, nonzero to reach a wait bound in a few ticks, and timeout is the run's deadline, heldTestTimeout when zero.
 		sleepJump time.Duration
 		timeout   time.Duration
+		// coveredSleeps, when positive, tells the runner a pause record whose live hub entry covers the run until that many Sleeps have passed.
+		coveredSleeps int
 		// deferral builds the run's Spec.HoldDeferral from the time elapsed since Wait began, nil for a run that notifies at once.
 		deferral func(t *testing.T, elapsed func() time.Duration) func() bool
 		check    func(t *testing.T, got heldRun)
@@ -73,7 +113,7 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 		},
 		{
 			name: "a second held turn end notifies again", events: "STOP:first\n", strand: strandName,
-			script: func(appendLine func(string)) []func() {
+			script: func(appendLine func(string), _ func(time.Duration)) []func() {
 				return []func(){func() { appendLine("STOP:second") }}
 			},
 			check: func(t *testing.T, got heldRun) {
@@ -87,6 +127,64 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 			check: func(t *testing.T, got heldRun) {
 				if len(got.notices) != 1 || !strings.HasSuffix(got.notices[0], "«second»") {
 					t.Errorf("notices = %q, want one for the last turn end", got.notices)
+				}
+			},
+		},
+		{
+			name: "a held stop read while a pause covers the run sends no notice and leaves the offset, and is not re-notified after the resume", events: "STOP:hello\n", strand: strandName,
+			coveredSleeps: 3,
+			check: func(t *testing.T, got heldRun) {
+				if len(got.notices) != 0 || got.notifiedOffset != 0 || got.result.Outcome != OutcomeTimeout {
+					t.Errorf("notices = %q, NotifiedOffset = %d, outcome = %q; want none, 0 and a hold to the deadline", got.notices, got.notifiedOffset, got.result.Outcome)
+				}
+			},
+		},
+		{
+			name: "an API-error stop after a detected sleep types one continue line and sends no notice", apiError: true, strand: strandName,
+			script: apiErrorAfterSleep,
+			check: func(t *testing.T, got heldRun) {
+				if !slices.Equal(got.sent, []string{apiErrorContinueLine}) || len(got.notices) != 0 || !got.apiContinued {
+					t.Errorf("sent = %q, notices = %q, APIContinued = %v; want the continue line once, no notice and the flag set", got.sent, got.notices, got.apiContinued)
+				}
+			},
+		},
+		{
+			name: "a second API-error stop after the continue's turn start is notified and types nothing more", apiError: true, strand: strandName,
+			script: func(appendLine func(string), asleep func(time.Duration)) []func() {
+				return append(apiErrorAfterSleep(appendLine, asleep), func() { appendLine("START") }, func() { appendLine("STOP:overloaded") })
+			},
+			check: func(t *testing.T, got heldRun) {
+				if !slices.Equal(got.sent, []string{apiErrorContinueLine}) || len(got.notices) != 1 {
+					t.Errorf("sent = %q, notices = %q; want the continue line once and one notice for the second stop", got.sent, got.notices)
+				}
+			},
+		},
+		{
+			name: "an API-error stop with no sleep is notified and types nothing", apiError: true, strand: strandName,
+			script: func(appendLine func(string), _ func(time.Duration)) []func() {
+				return []func(){func() { appendLine("STOP:overloaded") }}
+			},
+			check: func(t *testing.T, got heldRun) {
+				if len(got.sent) != 0 || len(got.notices) != 1 {
+					t.Errorf("sent = %q, notices = %q; want nothing typed and one notice", got.sent, got.notices)
+				}
+			},
+		},
+		{
+			name: "an API-error stop after a sleep while a pause covers the run types nothing", apiError: true, strand: strandName,
+			script: apiErrorAfterSleep, coveredSleeps: 4,
+			check: func(t *testing.T, got heldRun) {
+				if len(got.sent) != 0 || len(got.notices) != 0 || got.apiContinued {
+					t.Errorf("sent = %q, notices = %q, APIContinued = %v; want nothing typed, no notice and the flag clear", got.sent, got.notices, got.apiContinued)
+				}
+			},
+		},
+		{
+			name: "a continue whose send fails is notified as any held stop", apiError: true, sendFails: true, strand: strandName,
+			script: apiErrorAfterSleep,
+			check: func(t *testing.T, got heldRun) {
+				if len(got.sent) != 0 || len(got.notices) != 1 {
+					t.Errorf("sent = %q, notices = %q; want nothing typed and one notice", got.sent, got.notices)
 				}
 			},
 		},
@@ -135,7 +233,7 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 		{
 			name: "a stray stop before the prompt's turn start sends no notice, and the stop after it sends one", events: skillLoadEvents + "STOP:stray\n",
 			session: true, promptOffset: skillLoadOffset,
-			script: func(appendLine func(string)) []func() {
+			script: func(appendLine func(string), _ func(time.Duration)) []func() {
 				return []func(){func() { appendLine("START") }, func() { appendLine("STOP:real") }}
 			},
 			check: func(t *testing.T, got heldRun) {
@@ -202,7 +300,7 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 		{
 			name: "a deferred run whose agent starts a new turn before the settle interval sends no notice for the old turn end", events: "STOP:first\n", session: true,
 			sleepJump: 10 * time.Second, timeout: 5 * time.Minute,
-			script: func(appendLine func(string)) []func() {
+			script: func(appendLine func(string), _ func(time.Duration)) []func() {
 				return []func(){func() { appendLine("START") }}
 			},
 			deferral: func(*testing.T, func() time.Duration) func() bool { return func() bool { return false } },
@@ -240,7 +338,17 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 			if tt.session {
 				engine = &sessionFakeEngine{waitingEngine: waitingEngine{outstanding: tt.outstand}}
 			}
-			fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, engine, withConfig(gateConfig))
+			var reed ReedOps = &fakeReed{StatusQueue: liveStrandStatus(true)}
+			var paneReed *echoReed
+			if tt.apiError {
+				engine = &sessionFakeEngine{waitingEngine: waitingEngine{fakeEngine: fakeEngine{StartupScript: []StartupState{StartupReady}}}, liveness: LivenessAlive, apiErrorLine: "STOP:overloaded"}
+				paneReed = &echoReed{fakeReed: &fakeReed{StatusQueue: liveStrandStatus(true)}, pane: "❯ "}
+				if tt.sendFails {
+					paneReed.SendTextErr = errors.New("pane gone")
+				}
+				reed = paneReed
+			}
+			fx := newFixture(t, reed, engine, withConfig(gateConfig))
 			timeout := cmp.Or(tt.timeout, heldTestTimeout)
 			fc := newFakeClock(time.Now())
 			start := fc.Now()
@@ -257,6 +365,11 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 				plainSteps := &multiStepClock{fakeClock: fc}
 				clk, setSteps = plainSteps, func(steps []func()) { plainSteps.steps = steps }
 			}
+			if tt.coveredSleeps > 0 {
+				geometry, resume := coverHub(t, fc.Now())
+				fx.Runner.SetPause(geometry)
+				clk = &liftClock{Clock: clk, liftAfter: tt.coveredSleeps, lift: func() { resume(fc.Now()) }}
+			}
 			var holdDeferral func() bool
 			if tt.deferral != nil {
 				holdDeferral = tt.deferral(t, elapsed)
@@ -267,7 +380,7 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 				withRunOffset(tt.promptOffset),
 				withRunClock(clk, fc.Now().Add(timeout)))
 			if setSteps != nil {
-				setSteps(tt.script(func(line string) { appendEventsLine(t, run.state.EventsPath, line) }))
+				setSteps(tt.script(func(line string) { appendEventsLine(t, run.state.EventsPath, line) }, fc.asleep))
 			}
 
 			var got heldRun
@@ -288,6 +401,11 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 				t.Fatalf("Wait() error: %v", err)
 			}
 			got.result = result
+			got.notifiedOffset = run.state.NotifiedOffset
+			got.apiContinued = run.state.APIContinued
+			if paneReed != nil {
+				got.sent = paneReed.typed
+			}
 			tt.check(t, got)
 		})
 	}

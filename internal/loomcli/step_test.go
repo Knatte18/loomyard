@@ -128,8 +128,8 @@ func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
 	if !strings.Contains(out.String(), `"transient":""`) {
 		t.Errorf("stepCmd() output missing transient:\"\"; got: %q", out.String())
 	}
-	if !strings.Contains(out.String(), "lyx loom pause") {
-		t.Errorf("stepCmd() output missing the lyx loom pause remedy; got: %q", out.String())
+	if !strings.Contains(out.String(), "lyx loom pause --after "+loomshed.NameWebster) {
+		t.Errorf("stepCmd() output missing the lyx loom pause --after remedy; got: %q", out.String())
 	}
 
 	if _, found, err := shedrun.ReadSeed(c.location, shedrun.SelfRunID); err != nil || found {

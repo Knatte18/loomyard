@@ -80,6 +80,10 @@
 // and ends with the start of the agent's last message.
 // Every agent-written part is delimited, has its control and delimiter characters replaced by spaces and is cut to 200 runes, so the line is bounded and has no newline.
 // There is one notice per held turn end.
+// A held turn end that is an API error across a detected sleep of at least pauserecord.SleepTolerance is first given one automatic continue line, typed through the guarded paste-submit, and sends no notice and defers none:
+// no pause covers the run, the session state names the newest turn end an API error, and the sleep lies after the latest turn start Wait read.
+// RunState.APIContinued is persisted before typing and cleared by the next held turn end that is not an API error, so a turn gets at most one continue.
+// A send that fails, the guard's ErrSessionBusy included, types nothing more and the stall is held and notified as any other.
 // RunState.NotifiedOffset, the events-file offset past the last notified one, is persisted before the notifier is called,
 // and a held turn end at or below it is never notified again, including when an Attach replays it.
 // A batch of several new events is classified by its last event, so only its last held turn end is notified.
@@ -99,6 +103,28 @@
 // AwaitAny is the shared wait: it stats the told paths once a second until one exists or the cap elapses, and watches no directory.
 // It is the poll every capped keep-cache-warm wait verb runs on, and DefaultAwaitCap is the cap those verbs default to.
 //
+// # Pending prompt
+//
+// A launch that defers its prompt to a typed line (Launch.PromptLine) records the line in run.json as `promptLine`.
+// Run.DeliverPendingPrompt reads that record and types the line through the guarded paste-submit when no turn start lies at or past RunState.PromptOffset, so a step that died between its skill-load turns and its prompt delivery does not leave an agent that never got its task.
+// It persists the events file's size as the prompt offset first when none was recorded, reports whether it sent, and changes nothing when it fails.
+//
+// # Pause
+//
+// Runner.SetPause tells the runner a pauserecord.Geometry; a runner never told one reads no record.
+// Every agent spawn starts through the runner, so it is the hold point: a start waits at entry while a pause covers the geometry's slug, starts nothing and registers no strand while held, and has no deadline of its own.
+// The run's deadline is taken after that wait, so a started run's deadline counts from its start.
+// Each Wait tick reads the runner's coverage first.
+// While a pause covers the run the deadline check is skipped, a held turn end sends no notice and leaves RunState.NotifiedOffset alone, and a latched dialog sends no notice.
+// A held turn end read while covered is not re-notified after the resume, since the resume line starts the next turn.
+// An unreadable record reads uncovered, with one Warn per change of error.
+//
+// # Awake deadline
+//
+// The run deadline counts awake, unpaused time.
+// A Clock that is also an AwakeClock feeds the run's sleep watch each tick, and the deadline moves later by the union of the detected sleeps and the coverage's paused intervals since the run was created.
+// A clock without Awake detects no sleep.
+//
 // # Stop verb
 //
 // Run.Stop and Runner.StopStrand (the guid form, for a caller holding no handle) end a run's strand after recording the stop in run.json.
@@ -106,6 +132,9 @@
 // a record already terminal keeps its outcome, and one still reading running whose output files all exist keeps running, so a stop never turns finished work into a stopped record.
 // The record is written first: a failed write returns its error with the strand untouched, and a failed removal leaves the terminal record over a live strand, which Attach reads as respawn-eligible and stops as superseded.
 // A guid with no run record is stopped by removing its strand alone.
+// Runner.SetStepTie tells a runner the shed step its process runs (StepTie: the steps directory and the step's trace id), which every run it starts records in run.json as `step`; a runner never told one writes no step.
+// Runner.StopStepRuns stops, through the same record-then-remove step, every run under the runner's run-directory root that still reads running, has a live strand and records the given step.
+// A live running run with no step is listed under StepStopReport.Untied and left alone, a run of another step is left alone, and a stop that fails is listed under Failed while the stop goes on.
 // Attach's removal of a superseded run's strand goes through the same record-then-remove step.
 // A Wait on a stopped handle finalizes with the stop mark and records "stopped" unless the files show the run done.
 // A Wait in another process may overwrite "stopped" with its own terminal outcome, and either answer is terminal.

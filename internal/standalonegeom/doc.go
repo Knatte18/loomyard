@@ -28,6 +28,7 @@
 // websterengine.Geometry, or burlerengine.Geometry
 // respectively, plus the StencilsDir helper, which converts a told stateDir alone into the
 // standalone stencils directory path, and the LogsDir helper, which converts a told stateDir
-// alone into the standalone trace-log directory path. Neither engine imports this package back —
+// alone into the standalone trace-log directory path, and PauseGeometry, which converts a told stateDir
+// alone into the pauserecord.Geometry of the standalone pause record, with an empty slug. Neither engine imports this package back —
 // the told direction stays one-way.
 package standalonegeom

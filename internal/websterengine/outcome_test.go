@@ -22,8 +22,8 @@ func outcomeWriteFile(t *testing.T, path, content string) {
 }
 
 // TestParseOutcome_AcceptReject tables every outcome.yaml accept/reject case parseOutcome's
-// fail-loud discipline pins: a well-formed done/stuck/paused file parses;
-// an unrecognized outcome value, a stuck file missing stuck_reason, an unknown extra key and a
+// fail-loud discipline pins: a well-formed done/stuck file parses;
+// an unrecognized outcome value (the retired paused included), a stuck file missing stuck_reason, an unknown extra key and a
 // missing file are all rejected loudly rather than guessed at.
 func TestParseOutcome_AcceptReject(t *testing.T) {
 	t.Parallel()
@@ -47,9 +47,9 @@ func TestParseOutcome_AcceptReject(t *testing.T) {
 			want:    outcome{Outcome: "stuck", StuckReason: "batch 03 red after 2 self-fix attempts", BatchesDone: 2},
 		},
 		{
-			name:    "paused accepted",
+			name:    "paused rejected",
 			content: "outcome: paused\nstuck_reason: null\nbatches_done: 1\n",
-			want:    outcome{Outcome: "paused", StuckReason: "", BatchesDone: 1},
+			wantErr: true,
 		},
 		{
 			name:    "unrecognized outcome value rejected",

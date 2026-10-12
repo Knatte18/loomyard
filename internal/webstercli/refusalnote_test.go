@@ -103,10 +103,10 @@ func TestNoteRefusals_VerbEnvelopes(t *testing.T) {
 
 	okVerb := func(c *websterCLI) *cobra.Command {
 		return c.noteRefusals(&cobra.Command{
-			Use:  "paused",
+			Use:  "report",
 			Args: cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, args []string) error {
-				clihelp.SetExit(cmd.Context(), output.Ok(cmd.OutOrStdout(), map[string]any{"paused": true}))
+				clihelp.SetExit(cmd.Context(), output.Ok(cmd.OutOrStdout(), map[string]any{"current_batch": 1}))
 				return nil
 			},
 		})
@@ -120,7 +120,7 @@ func TestNoteRefusals_VerbEnvelopes(t *testing.T) {
 		wantNote []string
 	}{
 		{"an ErrFields refusal writes a note carrying its field", stubRefusal, []string{"stub"}, 1, []string{"lyx webster stub refused", "webster: the plan drifted", "plan_drifted: true"}},
-		{"an ok envelope writes nothing", okVerb, []string{"paused"}, 0, nil},
+		{"an ok envelope writes nothing", okVerb, []string{"report"}, 0, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

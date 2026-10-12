@@ -59,6 +59,10 @@
 // question rather than leaving it to be answered by whichever transport
 // happens to run last.
 //
+// authRT also holds every request while a pause covers the process.
+// It waits at entry through pauserecord's network gate, before it resolves a token and outside the 401 replay, so a replay is not held twice.
+// The hold only delays the request; with no gate installed it does nothing.
+//
 // # The 401 replay, and why environment-sourced tokens skip it
 //
 // On a 401 response, authRT invalidates the token cache, re-resolves once,
