@@ -101,6 +101,13 @@ type Store struct {
 	Alive func(pid int, startTime string) bool
 	// Now stamps AcquiredAt and ticket times; nil selects time.Now.
 	Now func() time.Time
+	// Covered reports whether a pause covers the run of slug; nil covers nothing.
+	// A covered run keeps its ticket and place but is never granted, and the queue head is the oldest live ticket of an uncovered run.
+	Covered func(slug string) bool
+}
+
+func (s *Store) covered(slug string) bool {
+	return s.Covered != nil && s.Covered(slug)
 }
 
 func (s *Store) alive(owner Owner) bool {
@@ -229,6 +236,7 @@ func (s *Store) liveTickets(branch string, prune bool) ([]Ticket, error) {
 
 // TryAcquire makes one attempt to take branch's lock for owner.
 // A free record, a record whose owner process is not alive and a record naming owner's run are each taken; a free or stale record goes to the oldest live ticket, so an acquirer that is not first in the queue keeps its ticket and is not granted.
+// An acquirer whose run is covered keeps its ticket and is not granted, unless the record already names its own run; the queue head is then the oldest live ticket of an uncovered run, so a covered waiter is passed over and keeps its place.
 // A record that cannot be read returns an error wrapping ErrUnreadable and changes nothing.
 func (s *Store) TryAcquire(branch string, owner Owner) (Attempt, error) {
 	var attempt Attempt
@@ -237,17 +245,27 @@ func (s *Store) TryAcquire(branch string, owner Owner) (Attempt, error) {
 		if err != nil {
 			return err
 		}
-		if found && !record.Owner.SameRun(owner) && s.alive(record.Owner) {
+		ownRecord := found && record.Owner.SameRun(owner)
+		if found && !ownRecord && s.alive(record.Owner) {
 			attempt.Holder = record
 			return s.keepTicket(branch, owner)
 		}
-		if !found || !record.Owner.SameRun(owner) {
+		if !ownRecord {
+			if s.covered(owner.Slug) {
+				return s.keepTicket(branch, owner)
+			}
 			tickets, err := s.liveTickets(branch, true)
 			if err != nil {
 				return err
 			}
-			if len(tickets) > 0 && !tickets[0].Owner.SameProcess(owner) {
-				return s.keepTicket(branch, owner)
+			for _, ticket := range tickets {
+				if s.covered(ticket.Owner.Slug) {
+					continue
+				}
+				if !ticket.Owner.SameProcess(owner) {
+					return s.keepTicket(branch, owner)
+				}
+				break
 			}
 		}
 		if err := writeJSONAtomic(s.recordPath(branch), Record{Branch: branch, Owner: owner, AcquiredAt: s.now()}); err != nil {

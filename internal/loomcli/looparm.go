@@ -4,13 +4,19 @@ package loomcli
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -24,6 +30,7 @@ import (
 // The loop's files and job name come from shedrun over the resolved run-id.
 // The step children run the same binary from the same cwd as the loop, so they share its trace directory and the loop lists a child's trace files there.
 // idle is the watchdog window, zero disarming it, and activity is the reading of the run's agent activity.
+// The watchdog reads the pause record of loc's hub for loc's slug, and reads the run uncovered when the geometry or the record cannot be read.
 func loopSpecFor(loc *lyxcwd.Location, runID string, idle time.Duration, activity func() (time.Time, bool, error)) shedverbs.LoopSpec {
 	executable, err := os.Executable()
 	if err != nil {
@@ -43,7 +50,60 @@ func loopSpecFor(loc *lyxcwd.Location, runID string, idle time.Duration, activit
 		Executable:  executable,
 		IdleTimeout: idle,
 		Activity:    activity,
+		Pause: func(now time.Time) (pauserecord.Coverage, error) {
+			geometry, err := hubgeom.PauseGeometry(loc)
+			if err != nil {
+				return pauserecord.Coverage{}, err
+			}
+			return pauserecord.ReadCoverage(geometry.RecordPath, geometry.Slug, now)
+		},
 	}
+}
+
+// watchdogKillNote returns the hook the loop calls after the watchdog killed a step.
+// It stops the shuttle runs of the killed step through stop, told the steps directory and the kill's trace id, and renders the note that ends the interrupted cause:
+// the runs it stopped, the live runs whose record names no step, which it leaves alone, and a stop that failed.
+func watchdogKillNote(stop func(shuttleengine.StepTie) (shuttleengine.StepStopReport, error), stepsDir string) func(shedverbs.WatchdogKill) string {
+	return func(kill shedverbs.WatchdogKill) string {
+		report, err := stop(shuttleengine.StepTie{StepsDir: stepsDir, TraceID: kill.TraceID})
+		var parts []string
+		if len(report.Stopped) > 0 {
+			parts = append(parts, "stopped shuttle runs: "+strings.Join(report.Stopped, ", "))
+		}
+		if len(report.Untied) > 0 {
+			parts = append(parts, "left live runs naming no step: "+strings.Join(report.Untied, ", "))
+		}
+		for _, failure := range report.Failed {
+			parts = append(parts, fmt.Sprintf("could not stop the run %s: %s", failure.Strand, failure.Error))
+		}
+		if err != nil {
+			parts = append(parts, "could not stop the step's runs: "+err.Error())
+		}
+		return strings.Join(parts, "; ")
+	}
+}
+
+// stopStepRuns stops the shuttle runs recorded under tie.
+// The receiver's runner is used when wire built one; a receiver wired lightly gets the pair's runner built the way wire builds it.
+func (c *loomCLI) stopStepRuns(tie shuttleengine.StepTie) (shuttleengine.StepStopReport, error) {
+	runner := c.runner
+	if runner == nil {
+		configDirs := fabricengine.ConfigDirs(c.location)
+		reedCfg, err := reedengine.LoadConfig(configDirs, "reed")
+		if err != nil {
+			return shuttleengine.StepStopReport{}, err
+		}
+		shuttleCfg, err := shuttleengine.LoadConfig(configDirs, "shuttle")
+		if err != nil {
+			return shuttleengine.StepStopReport{}, err
+		}
+		reedGeom, err := hubgeom.ReedGeometry(c.location)
+		if err != nil {
+			return shuttleengine.StepStopReport{}, err
+		}
+		runner = shuttleengine.NewRunner(reedengine.New(reedCfg, reedGeom), claudeengine.NewFromConfig(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	}
+	return runner.StopStepRuns(tie)
 }
 
 // agentActivityFor returns the reading of the run's agent activity: the newest LastActivity over every live agent run of loc's worktree.
@@ -96,7 +156,7 @@ func agentActivityFor(loc *lyxcwd.Location, cfg shuttleengine.Config) func() (ti
 // With Tier 2 off it reports skipped.
 func (c *loomCLI) loomAfterInterrupt(_ context.Context, producer, cause, traceFile string) string {
 	var history []shedengine.HistoryEntry
-	if st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath); err == nil && found {
+	if st, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath); err == nil && found {
 		history = st.History
 	}
 	return c.reflectHalt(haltNote{

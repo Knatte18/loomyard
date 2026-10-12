@@ -29,6 +29,9 @@
 // The form is a told flag, never inferred from the reader's presence.
 // It lints the comments added since the told command's last recorded pass, then runs the command impactset derives from that diff through verifytree.Verify, falling back to the told command wherever impactset cannot narrow.
 // The narrowing is impactset's; Webster's gate, Publish and Finalize keep the full plan verify on the tree that lands.
+// A failed run's findings carry the exit code, the log path and the log's tail, and when the whole log holds the CPU watchdog's line that `lyx gate test` prints after it quits a busy test binary, a paragraph naming the window.
+// A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lyx config gate` from the prime, then re-stepping the row.
+// The gate runs no flake rerun.
 // The round compiles the `tmux` and `llm` tiers and never runs `llm`.
 // It runs the `tmux` tier only while a checked Publish failure record is present, as the failing top-level tests the record names, one step per package and test with the subtests collapsed into it, and, for a `publish_verify` failure, the impacted-set pass, to confirm the fix.
 // Publish reruns both verifies in full regardless, and stays the guard.

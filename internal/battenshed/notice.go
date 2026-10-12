@@ -15,6 +15,7 @@ import (
 	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -59,46 +60,14 @@ const noticeDriverBusyCondition = "driver pane busy: clear the draft in the driv
 // noticeAPIErrorIdle is how long an agent run whose newest turn end is an API error must stay inactive before the api-error notice goes.
 const noticeAPIErrorIdle = 2 * time.Minute
 
-// sleepGapTolerance is how far the wall clock may run ahead of the awake clock between two checks before the excess counts as the machine having slept.
-// A shorter lag is clock drift or a scheduling delay and still counts as idle time.
-const sleepGapTolerance = time.Minute
-
-// sleepGap returns how long the machine slept between two checks: the excess of the wall delta over the awake delta when it exceeds sleepGapTolerance, else zero.
-// The wall readings are UnixNano values, so they carry no monotonic part that would hide a sleep.
-func sleepGap(prevWallNanos, wallNanos int64, prevAwake, awake time.Duration) time.Duration {
-	excess := time.Duration(wallNanos-prevWallNanos) - (awake - prevAwake)
-	if excess <= sleepGapTolerance {
-		return 0
-	}
-	return excess
+// observeClocks folds one check's wall and awake readings into the wait's sleep watch.
+func (w *childWait) observeClocks(wall time.Time, awake time.Duration) {
+	w.sleep.Observe(wall, awake)
 }
 
-// observeClocks folds one check's wall and awake readings into the accumulated suspended time.
-// The first check only records the readings and, when known, the activity stamp.
-// Later, a known stamp that differs from the recorded one drops the accumulation without adding the gap, since the activity it was counted against has ended; any other check adds the gap.
-func (w *childWait) observeClocks(wallNanos int64, awake time.Duration, stamp activityStamp) {
-	if !w.clocksSeen {
-		w.clocksSeen, w.prevWallNanos, w.prevAwake = true, wallNanos, awake
-		if stamp.known {
-			w.asleepStamp = stamp
-		}
-		return
-	}
-	gap := sleepGap(w.prevWallNanos, wallNanos, w.prevAwake, awake)
-	w.prevWallNanos, w.prevAwake = wallNanos, awake
-	if stamp.known && w.asleepStamp.known && stamp.nanos != w.asleepStamp.nanos {
-		w.asleep, w.asleepStamp = 0, stamp
-		return
-	}
-	if stamp.known {
-		w.asleepStamp = stamp
-	}
-	w.asleep += gap
-}
-
-// awakeSince returns how long ago at was as of now, less the suspended time observed since the newest agent activity moved.
-func (w *childWait) awakeSince(now, at time.Time) time.Duration {
-	return now.Sub(at) - w.asleep
+// awakeSince returns how long ago at was as of now, less the sleeps the watch saw after at and the paused intervals.
+func (w *childWait) awakeSince(now, at time.Time, paused []pauserecord.Interval) time.Duration {
+	return pauserecord.AwakeSince(at, now, w.sleep.Sleeps(), paused)
 }
 
 // noticeEpisodeFile returns the path of the marker holding one episode key per line.
@@ -360,6 +329,10 @@ func (p *innerRunProducer) noticeCondition(ctx context.Context, w *childWait) (n
 		}
 		return noticeFinding{condition: noticeStateChanged, stamp: p.episode.since.UnixNano(), text: p.publishRetryNoticeText(w)}, activityStamp{}
 	}
+	// A running child under a pause has no agents at work and no driver to wait for, so none of its conditions is an event.
+	if w.pause.Covered {
+		return noticeFinding{}, activityStamp{}
+	}
 	alive, known := p.driverAlive(ctx, w)
 	if !known {
 		return noticeFinding{}, activityStamp{}
@@ -387,13 +360,12 @@ func (p *innerRunProducer) agentActivity(ctx context.Context, w *childWait) (rea
 // judgeAgents returns the api-error or quiet finding of a running child with a live driver, and the newest agent activity.
 // With several live runs, api-error needs any one and quiet needs every run idle.
 // With no live run found, quiet falls back to the later of the child's newest history entry and the state episode's since.
-// Both idle clocks measure awake time: suspended time observed between two checks is subtracted until the newest activity moves, so it can delay a notice and never raise one earlier.
+// Both idle clocks measure awake unpaused time: every sleep the watch saw and every paused interval after an activity is subtracted from the time since it, so a sleep or a pause can delay a notice and never raise one earlier.
 func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (noticeFinding, activityStamp) {
 	reading, ok := p.agentActivity(ctx, w)
 	now := p.deps.Now()
-	awake := p.deps.Awake()
+	w.observeClocks(now, p.deps.Awake())
 	if !ok {
-		w.observeClocks(now.UnixNano(), awake, activityStamp{})
 		return noticeFinding{}, activityStamp{}
 	}
 
@@ -405,8 +377,7 @@ func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (notic
 			}
 		}
 		stamp := activityStamp{nanos: newest.UnixNano(), known: true}
-		w.observeClocks(now.UnixNano(), awake, stamp)
-		if idle := w.awakeSince(now, newest); p.noticeQuiet > 0 && !reading.waitLive && idle >= p.noticeQuiet {
+		if idle := w.awakeSince(now, newest, w.pause.Intervals); p.noticeQuiet > 0 && !reading.waitLive && idle >= p.noticeQuiet {
 			text := fmt.Sprintf("no agent activity readable for %s", idle.Round(time.Second))
 			return noticeFinding{condition: noticeQuiet, stamp: stamp.nanos, text: text}, stamp
 		}
@@ -420,15 +391,14 @@ func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (notic
 		}
 	}
 	stamp := activityStamp{nanos: newest.UnixNano(), known: true}
-	w.observeClocks(now.UnixNano(), awake, stamp)
 	for _, run := range reading.runs {
-		if run.APIError && w.awakeSince(now, run.LastActivity) >= noticeAPIErrorIdle {
+		if run.APIError && w.awakeSince(now, run.LastActivity, w.pause.Intervals) >= noticeAPIErrorIdle {
 			text := fmt.Sprintf("agent %s hit an API error: %s", run.Producer, oneLine(run.APIErrorText, noticeErrorMax))
 			p.logSessionStatesAtNotice(reading.runs, noticeAPIError)
 			return noticeFinding{condition: noticeAPIError, stamp: stamp.nanos, text: text}, stamp
 		}
 	}
-	if idle := w.awakeSince(now, newest); p.noticeQuiet > 0 && !reading.waitLive && idle >= p.noticeQuiet {
+	if idle := w.awakeSince(now, newest, w.pause.Intervals); p.noticeQuiet > 0 && !reading.waitLive && idle >= p.noticeQuiet {
 		text := fmt.Sprintf("agents idle for %s", idle.Round(time.Second))
 		p.logSessionStatesAtNotice(reading.runs, noticeQuiet)
 		return noticeFinding{condition: noticeQuiet, stamp: stamp.nanos, text: text}, stamp

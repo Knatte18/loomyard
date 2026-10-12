@@ -174,15 +174,6 @@ func TestBeginBatch_Refusals(t *testing.T) {
 		check       func(t *testing.T, fx *beginFixture)
 	}{
 		{
-			name: "a pause request",
-			prepare: func(t *testing.T, fx *beginFixture) {
-				if err := websterengine.RequestPause(fx.Deps.Geom.ScratchDir); err != nil {
-					t.Fatalf("RequestPause() error = %v; want nil", err)
-				}
-			},
-			wantIs: websterengine.ErrPaused,
-		},
-		{
 			name: "a plan edited after run init points at the reset-to-start route",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				fx.Deps.State.PlanFingerprint = "0000000000000000000000000000000000000000000000000000000000000000"
@@ -991,7 +982,7 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 
 	const quarryLocate = "Locate them with one `lyx quarry resolve <glyph>...` call"
 	const packHeading = "## Kick-start pack"
-	const packStepOne = "in parallel, in one turn, before doing anything else"
+	const packFirstTurn = "Your first turn, before any edit, reads in parallel every card file"
 	const plainStepOne = "1. Read the card file."
 	resolvedBaz := []string{
 		packHeading,
@@ -1019,7 +1010,7 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 		{
 			name:          "switch on lists the resolved member glyph",
 			cardHeadings:  []string{"01-json-flag.md"},
-			wantPrompt:    append([]string{packStepOne}, resolvedBaz...),
+			wantPrompt:    append([]string{packFirstTurn}, resolvedBaz...),
 			wantNotPrompt: []string{quarryLocate, plainStepOne},
 			wantLog:       []string{"batch=1 kickstart_pack=on resolved=1 unresolved=0"},
 		},
@@ -1049,14 +1040,14 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			name:          "switch off renders the quarry locate step",
 			off:           true,
 			wantPrompt:    []string{quarryLocate, plainStepOne},
-			wantNotPrompt: []string{packHeading, packStepOne},
+			wantNotPrompt: []string{packHeading, packFirstTurn},
 			wantLog:       []string{"batch=1 kickstart_pack=off resolved=0 unresolved=0"},
 		},
 		{
 			name:          "a plan without a glyph language renders as switch off",
 			language:      "none",
 			wantPrompt:    []string{quarryLocate, plainStepOne},
-			wantNotPrompt: []string{packHeading, packStepOne},
+			wantNotPrompt: []string{packHeading, packFirstTurn},
 			wantLog:       []string{"batch=1 kickstart_pack=language-none resolved=0 unresolved=0"},
 		},
 		{
@@ -1067,7 +1058,7 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 				}
 				index.packErr = fmt.Errorf("%w: pack boom", planglyph.ErrQuarryUnavailable)
 			},
-			wantPrompt: []string{packHeading, "#### Unresolved", "- `internal/foo#Baz` — quarry could not answer"},
+			wantPrompt: []string{packFirstTurn, packHeading, "#### Unresolved", "- `internal/foo#Baz` — quarry could not answer"},
 			wantLog: []string{
 				"level=WARN",
 				"pack boom",

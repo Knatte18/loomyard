@@ -104,28 +104,6 @@ func TestWebsterProducer_OutcomeStuck(t *testing.T) {
 	}
 }
 
-func TestWebsterProducer_OutcomePaused(t *testing.T) {
-	dir := t.TempDir()
-	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
-	fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "paused"}}
-	p := NewWebsterProducer("loom", fake.run, deps)
-
-	_, _, err := p.Call(context.Background())
-	if err == nil {
-		t.Fatal("Call() error = nil; want non-nil")
-	}
-	if !strings.Contains(err.Error(), "way forward: re-step the loom row") || !strings.Contains(err.Error(), "lyx webster run") {
-		t.Errorf("Call() error %q does not end in the re-step way forward", err.Error())
-	}
-
-	// Taking the way forward: the pause is cleared, so the re-step proceeds.
-	fake.result = websterengine.RunResult{Outcome: "done"}
-	outcome, _, err := p.Call(context.Background())
-	if err != nil || outcome != shedengine.Done {
-		t.Errorf("re-step Call() = (%q, %v); want Done once the pause is cleared", outcome, err)
-	}
-}
-
 func TestWebsterProducer_UnrecognizedOutcome(t *testing.T) {
 	dir := t.TempDir()
 	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
@@ -301,7 +279,6 @@ func TestWebsterProducer_CancelledDuringRun_StuckPausedAndErrorBecomeContextErro
 		err    error
 	}{
 		{"Stuck", websterengine.RunResult{Outcome: "stuck", StuckReason: "x"}, nil},
-		{"Paused", websterengine.RunResult{Outcome: "paused"}, nil},
 		{"EngineError", websterengine.RunResult{}, &websterengine.MasterDiedError{SessionID: "s", RunDir: "d"}},
 	}
 	for _, tt := range tests {
@@ -332,9 +309,8 @@ func TestWebsterProducer_CancelledDuringRun_StuckPausedAndErrorBecomeContextErro
 // --- No mid-run bridge ---
 
 func TestWebsterProducer_NoBridgeInstalled(t *testing.T) {
-	scratchDir := t.TempDir()
 	websterDir := t.TempDir()
-	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: websterDir, ScratchDir: scratchDir}}
+	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: websterDir}}
 	ctx, cancel := context.WithCancel(context.Background())
 	fake := &fakeWebsterRunner{
 		result:    websterengine.RunResult{Outcome: "stuck", StuckReason: "x"},
@@ -342,10 +318,7 @@ func TestWebsterProducer_NoBridgeInstalled(t *testing.T) {
 	}
 	p := NewWebsterProducer("loom", fake.run, deps)
 
-	if _, _, err := p.Call(ctx); err == nil {
-		t.Fatal("Call() error = nil; want the context error")
-	}
-	if websterengine.PauseRequested(scratchDir) {
-		t.Error("PauseRequested(scratchDir) = true after a cancelled call; want false (operator's own pause channel untouched)")
+	if _, _, err := p.Call(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Call() error = %v; want errors.Is(err, context.Canceled)", err)
 	}
 }

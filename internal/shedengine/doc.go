@@ -68,6 +68,8 @@
 // Its goto differs from Goto's in keeping pause_requested, pause_before and pause_after, so a human's pause survives the re-launch; without a Target it writes the status unchanged.
 // The checks run before Admit so a refused target never lets Admit write its side effect.
 //
+// A busy refusal, and goto's refusal of a running run, name the command that halts the live driver at its next producer boundary: the told Shed.PauseWayForward, or `lyx shed pause <run-id> --after <current_producer>` when none is told.
+//
 // Two stops name goto as their way forward in a trailing `way forward:` clause:
 // the missing-producer refusal, which lists every valid producer name, and the budget-exhausted reason, whose ReasonBounceBudgetExhausted stays its exact prefix.
 // Every refusal's way forward is tabulated in contracts/specs/refusal-spec.md, which this documentation links rather than restates.

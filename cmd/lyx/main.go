@@ -34,6 +34,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/pausecli"
 	"github.com/Knatte18/loomyard/internal/quarrycli"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reportcli"
@@ -94,7 +95,7 @@ all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output; --json prints the help as JSON and
 never runs the command.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed, orch, cleanup, report, gate, help.`,
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed, orch, cleanup, report, pause, resume, gate, help.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Modules' PersistentPreRunE hooks run after root's via EnableTraverseRunHooks.
@@ -107,6 +108,8 @@ Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler
 			if !testing.Testing() {
 				logger.MintOrAdoptAndExport()
 				logger.Arm()
+				// The pause gate holds this process's network git and GitHub calls while a pause covers it.
+				pausecli.InstallNetworkGate(cmd.Context())
 			}
 			// Seeding must never block a command from running, regardless of its outcome.
 			seedStencils(cmd)
@@ -142,6 +145,9 @@ Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler
 		// than spliced into the argument vector, so it is discoverable in help
 		// and covered by the help-tree and registration guards.
 		loomcli.StartAliasCommand(),
+		pausecli.Command(),
+		// ResumeCommand is the pause module's second root command, beside pause.
+		pausecli.ResumeCommand(),
 		quarrycli.Command(),
 		gatecli.Command(),
 	)

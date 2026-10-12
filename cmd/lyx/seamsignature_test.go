@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/idecli"
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/pausecli"
 	"github.com/Knatte18/loomyard/internal/quarrycli"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reportcli"
@@ -38,6 +39,7 @@ var _ = []func(io.Writer, []string) int{
 	idecli.RunCLI,
 	loomcli.RunCLI,
 	orchcli.RunCLI,
+	pausecli.RunCLI,
 	quarrycli.RunCLI,
 	reedcli.RunCLI,
 	reportcli.RunCLI,
@@ -63,6 +65,7 @@ var _ = []func(string, io.Writer, []string) int{
 	idecli.RunCLIIn,
 	loomcli.RunCLIIn,
 	orchcli.RunCLIIn,
+	pausecli.RunCLIIn,
 	quarrycli.RunCLIIn,
 	reedcli.RunCLIIn,
 	reportcli.RunCLIIn,

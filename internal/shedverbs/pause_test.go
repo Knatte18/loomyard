@@ -5,6 +5,7 @@
 package shedverbs
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -42,7 +43,7 @@ func TestPauseCmd_SetsPauseRequested(t *testing.T) {
 		t.Errorf("status_file = %v; want %q", env["status_file"], paths.StatusPath)
 	}
 
-	st, found, err := state.ReadJSONStrict[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil || !found {
 		t.Fatalf("re-read status: found=%v err=%v", found, err)
 	}
@@ -101,6 +102,7 @@ func TestPauseCmd_Conditions(t *testing.T) {
 	const (
 		wantContradiction = "shedverbs: pause --clear cannot be combined with --before or --after; way forward: run pause --clear alone, then pause --before or --after"
 		wantUnknown       = "shedverbs: pause target Nope names no producer; way forward: re-run pause with --before or --after naming one of: One, Two"
+		wantBareRefusal   = "bare pause refused"
 	)
 	tests := []struct {
 		name string
@@ -108,6 +110,8 @@ func TestPauseCmd_Conditions(t *testing.T) {
 		// seedBefore, seedAfter and seedRequested are the conditions and bare request recorded before the verb runs.
 		seedBefore, seedAfter string
 		seedRequested         bool
+		// barePause is the spec's BarePause hook, nil for a spec that sets none.
+		barePause             func(shedengine.Status) error
 		wantError             string
 		wantEnvelope          map[string]any
 		wantBefore, wantAfter string
@@ -127,6 +131,12 @@ func TestPauseCmd_Conditions(t *testing.T) {
 			seedBefore: "Two", wantError: wantContradiction, wantBefore: "Two"},
 		{name: "unknown target is refused", args: []string{"--after", "Nope"},
 			seedAfter: "One", wantError: wantUnknown, wantAfter: "One"},
+		{name: "a bare pause under a refusing hook is refused and records nothing", args: nil,
+			barePause: func(shedengine.Status) error { return errors.New(wantBareRefusal) },
+			wantError: wantBareRefusal},
+		{name: "a condition under a refusing hook is recorded", args: []string{"--after", "One"},
+			barePause:    func(shedengine.Status) error { return errors.New(wantBareRefusal) },
+			wantEnvelope: map[string]any{"before": "", "after": "One"}, wantAfter: "One"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -146,6 +156,7 @@ func TestPauseCmd_Conditions(t *testing.T) {
 				StatusLockPath:     paths.StatusLockPath,
 				PauseAbsentMessage: "no status file",
 				Routing:            shedengine.Routing{Producers: []shedengine.ProducerDef{stubRow("One"), stubRow("Two")}},
+				Hooks:              Hooks{BarePause: tt.barePause},
 			}
 
 			env, code := execEnvelope(t, pauseCmd(pauseTexts(), spec), tt.args)
@@ -166,7 +177,7 @@ func TestPauseCmd_Conditions(t *testing.T) {
 				}
 			}
 
-			got, found, err := state.ReadJSONStrict[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+			got, found, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 			if err != nil || !found {
 				t.Fatalf("re-read status: found=%v err=%v", found, err)
 			}

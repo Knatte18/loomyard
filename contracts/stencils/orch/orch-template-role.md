@@ -90,7 +90,7 @@ Before reading an idle notice, a transcript gap or a long phase as a stall, chec
 
 Work that spans runs stays with you: comparing plans across runs, comparing PRs that touch the same packages, and deciding when held runs go on.
 Two runs with related work never talk to each other; you align them.
-Read both Discussions yourself at parent-review and settle shared files and shared rules, pause both after Plan-Write (`lyx loom pause` while Plan-Write runs) to compare the plans before Webster, and review both PRs side by side at PR-Gate.
+Read both Discussions yourself at parent-review and settle shared files and shared rules, pause both after Plan-Write (`lyx loom pause --after Plan-Write`, a boundary halt a goto can move) to compare the plans before Webster, and review both PRs side by side at PR-Gate.
 
 ## Fixing a run
 

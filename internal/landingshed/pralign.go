@@ -28,7 +28,6 @@ const (
 	decisionRecordedReason = "a decision was recorded for this task while the alignment agent ran"
 	approveNotGivenReason  = "the alignment agent approves; alignment_pr_approve is false, so the approval is the run's parent's to give"
 	secondRejectReason     = "the alignment agent rejected this run once already; a second agent reject goes to the run's parent"
-	pausedReason           = "the run was paused while the alignment agent ran"
 )
 
 // AlignmentConfig is the alignment settings PR-Align reads on each call.
@@ -200,16 +199,6 @@ func (p *PRAlign) wait(ctx context.Context, attempt alignment.Attempt) (alignmen
 		}
 		if outcome.Done {
 			return outcome, waitEnd{Done: true}, nil
-		}
-		if p.deps.Lock.PauseRequested != nil {
-			paused, err := p.deps.Lock.PauseRequested()
-			if err != nil {
-				logger.Warn("landingshed: reading the pause request failed", "producer", prAlignName, "cause", err)
-			}
-			if err == nil && paused {
-				p.closeAttempt(attempt, pausedReason)
-				return alignment.Outcome{}, waitEnd{Detail: pausedReason}, nil
-			}
 		}
 		timer := time.NewTimer(tick)
 		select {

@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -153,7 +154,7 @@ func (fx *loopFixture) setStatus(current string, st shedengine.State, history in
 
 func (fx *loopFixture) readStatus() shedengine.Status {
 	fx.t.Helper()
-	st, found, err := state.ReadJSONStrict[shedengine.Status](fx.paths.StatusPath, fx.paths.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](fx.paths.StatusPath, fx.paths.StatusLockPath)
 	if err != nil || !found {
 		fx.t.Fatalf("read status = %v, found %v; want the file", err, found)
 	}
@@ -692,11 +693,13 @@ func childArgvs(requests []ChildRequest) [][]string {
 }
 
 // fakeClock is a clock whose Sleep advances it at once, so a watch of minutes runs in no time.
+// Sleep advances the awake reading with wall time, and asleep moves wall time alone, the way a machine suspend does.
 // onAdvance, when set, runs after each advance with the time elapsed since the clock's start.
 type fakeClock struct {
 	mu        sync.Mutex
 	start     time.Time
 	now       time.Time
+	awake     time.Duration
 	sleeps    int
 	onAdvance func(elapsed time.Duration)
 }
@@ -718,6 +721,7 @@ func (c *fakeClock) Sleep(ctx context.Context, delay time.Duration) error {
 	}
 	c.mu.Lock()
 	c.now = c.now.Add(delay)
+	c.awake += delay
 	c.sleeps++
 	elapsed := c.now.Sub(c.start)
 	hook := c.onAdvance
@@ -726,6 +730,20 @@ func (c *fakeClock) Sleep(ctx context.Context, delay time.Duration) error {
 		hook(elapsed)
 	}
 	return ctx.Err()
+}
+
+// Awake is the awake-clock reading, which a sleep does not advance.
+func (c *fakeClock) Awake() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.awake
+}
+
+// asleep moves wall time by d alone.
+func (c *fakeClock) asleep(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
 }
 
 func (c *fakeClock) sleepCount() int {
@@ -791,16 +809,28 @@ func TestLoop_WatchdogKillsAnIdleChild(t *testing.T) {
 		// activity, when set, is the activity reading: it answers the clock's time until elapsed passes the window twice over, when the child finishes its step on its own.
 		activity bool
 		// quiet is a child that exits at once with a record, under a watchdog that is disarmed.
-		quiet     bool
-		wantStop  LoopStop
-		wantCalls []string
-		wantIdle  string
+		quiet bool
+		// sleep is a machine sleep of that length, taken once two minutes have elapsed.
+		sleep time.Duration
+		// pausedFor is how long a live pause entry covers the run from the clock's start; with resumed set the entry is resumed then, otherwise it lasts until the script halts the child.
+		pausedFor time.Duration
+		resumed   bool
+		// haltAfter is the elapsed time after which the script lets the child finish its step on its own.
+		haltAfter time.Duration
+		// wantElapsed, when set, is the time the clock has run when the loop ends, the kill's quit grace included.
+		wantElapsed time.Duration
+		wantStop    LoopStop
+		wantCalls   []string
+		wantIdle    string
 	}{
 		{name: "an idle child is quit, then killed", idleTimeout: window, wantStop: LoopStopInterrupted, wantCalls: []string{"quit", "kill"}, wantIdle: "10m0s"},
 		{name: "a child that exits within the grace after quit is still reported watchdog", idleTimeout: window, exitOnQuit: true, wantStop: LoopStopInterrupted, wantCalls: []string{"quit", "kill"}, wantIdle: "10m0s"},
 		{name: "a window below the floor is raised to a minute", idleTimeout: 10 * time.Second, wantStop: LoopStopInterrupted, wantCalls: []string{"quit", "kill"}, wantIdle: "1m0s"},
 		{name: "advancing agent activity keeps the child alive past the window", idleTimeout: window, activity: true, wantStop: LoopStopHalted},
 		{name: "a zero window never kills", quiet: true, wantStop: LoopStopHalted},
+		{name: "a three-hour sleep does not count as idle time", idleTimeout: window, sleep: 3 * time.Hour, wantElapsed: 3*time.Hour + window + quitGrace, wantStop: LoopStopInterrupted, wantCalls: []string{"quit", "kill"}, wantIdle: "10m0s"},
+		{name: "a child covered by a pause past its window is never killed", idleTimeout: window, pausedFor: window + 2*time.Hour, haltAfter: window + 2*time.Hour, wantStop: LoopStopHalted},
+		{name: "a resumed pause counts no idle time until the resume", idleTimeout: window, pausedFor: time.Hour, resumed: true, wantElapsed: time.Hour + window + quitGrace, wantStop: LoopStopInterrupted, wantCalls: []string{"quit", "kill"}, wantIdle: "10m0s"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -810,6 +840,12 @@ func TestLoop_WatchdogKillsAnIdleChild(t *testing.T) {
 			fx.spec.Loop.IdleTimeout = tt.idleTimeout
 			fx.spec.Loop.Now = clock.Now
 			fx.spec.Loop.Sleep = clock.Sleep
+			fx.spec.Loop.Awake = clock.Awake
+			var kills []WatchdogKill
+			fx.spec.Loop.OnWatchdogKill = func(kill WatchdogKill) string {
+				kills = append(kills, kill)
+				return "stopped runs"
+			}
 			fx.spec.Loop.Runner = func(_ context.Context, req ChildRequest) (Child, error) {
 				fx.mu.Lock()
 				fx.requests = append(fx.requests, req)
@@ -819,13 +855,30 @@ func TestLoop_WatchdogKillsAnIdleChild(t *testing.T) {
 				}
 				return child, nil
 			}
+			haltAfter := tt.haltAfter
 			if tt.activity {
 				fx.spec.Loop.Activity = func() (time.Time, bool, error) { return clock.Now(), true, nil }
-				clock.onAdvance = func(elapsed time.Duration) {
-					if elapsed > 2*window {
-						_ = halting(shedengine.StateDone, "", 1)(fx, traceIDOf(fx.requests[0]), fx.requests[0])
-						child.release()
+				haltAfter = 2 * window
+			}
+			slept := false
+			clock.onAdvance = func(elapsed time.Duration) {
+				if tt.sleep > 0 && !slept && elapsed > 2*time.Minute {
+					slept = true
+					clock.asleep(tt.sleep)
+				}
+				if haltAfter > 0 && elapsed > haltAfter {
+					_ = halting(shedengine.StateDone, "", 1)(fx, traceIDOf(fx.requests[0]), fx.requests[0])
+					child.release()
+				}
+			}
+			if tt.pausedFor > 0 {
+				pauseEnd := clock.start.Add(tt.pausedFor)
+				fx.spec.Loop.Pause = func(now time.Time) (pauserecord.Coverage, error) {
+					if tt.resumed && !now.Before(pauseEnd) {
+						return pauserecord.Coverage{Intervals: []pauserecord.Interval{{Start: clock.start, End: pauseEnd}}}, nil
 					}
+					entry := pauserecord.Entry{PausedAt: clock.start}
+					return pauserecord.Coverage{Covered: true, Entry: entry, Intervals: []pauserecord.Interval{{Start: clock.start, End: now}}}, nil
 				}
 			}
 
@@ -838,14 +891,25 @@ func TestLoop_WatchdogKillsAnIdleChild(t *testing.T) {
 			if got := child.recorded(); !reflect.DeepEqual(got, tt.wantCalls) {
 				t.Errorf("child calls = %v; want %v", got, tt.wantCalls)
 			}
+			if tt.wantStop != LoopStopInterrupted && len(kills) != 0 {
+				t.Errorf("OnWatchdogKill calls = %+v; want none for a child the watchdog did not kill", kills)
+			}
 			if tt.quiet && clock.sleepCount() != 0 {
 				t.Errorf("clock slept %d times; want none under a disarmed watchdog", clock.sleepCount())
+			}
+			if elapsed := clock.Now().Sub(clock.start); tt.wantElapsed > 0 && elapsed != tt.wantElapsed {
+				t.Errorf("clock ran %s; want %s", elapsed, tt.wantElapsed)
 			}
 			if tt.wantStop != LoopStopInterrupted {
 				return
 			}
 
-			wantText := "shedverbs: step A interrupted (watchdog); way forward: read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lyx shed step run-1 --until-stop"
+			wantCause := fmt.Sprintf("watchdog: the step watchdog killed the step after %s of awake idle time (window %s, last activity %s); stopped runs",
+				tt.wantIdle, max(tt.idleTimeout, time.Minute), clock.start.Format(time.RFC3339))
+			if len(kills) != 1 || kills[0].TraceID != fx.childIDs()[0] || kills[0].Window != max(tt.idleTimeout, time.Minute) || kills[0].Idle.String() != tt.wantIdle || !kills[0].LastActivity.Equal(clock.start) {
+				t.Errorf("OnWatchdogKill calls = %+v; want one with the child's trace id, the window, idle %s and the clock's start as last activity", kills, tt.wantIdle)
+			}
+			wantText := "shedverbs: step A interrupted (" + wantCause + "); way forward: read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lyx shed step run-1 --until-stop"
 			_, wantStderr := fx.spec.Loop.StopFiles(fx.childIDs()[0])
 			if code != 1 || env["kind"] != KindInterrupted || env["error"] != wantText {
 				t.Errorf("exit/kind/error = %d/%v/%v; want the interrupted watchdog stop %q", code, env["kind"], env["error"], wantText)

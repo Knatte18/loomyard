@@ -47,7 +47,7 @@ func recordHandoffVoucher(path, lockPath string, historyLength int, persistedSta
 // so what it left on disk is vouched for like a clean step's.
 // It reads the status file strictly and warns, recording nothing, when the read fails or the file is absent.
 func recordHandoffVoucherFromStatus(path, lockPath, statusPath, statusLockPath string) {
-	st, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
 	if err != nil {
 		logger.Warn("loomcli: could not read the status file to record the handoff voucher", "path", statusPath, "cause", err)
 		return
@@ -67,7 +67,7 @@ func recordHandoffVoucherFromStatus(path, lockPath, statusPath, statusLockPath s
 // a delete failure is warned and does not change the result,
 // since a lingering voucher can at worst suppress one further matching observation and the warn names it.
 func consumeHandoffVoucher(path, lockPath string, historyLength int, observedState shedengine.State) (voucher handoffVoucher, found, matches bool) {
-	voucher, found, err := state.ReadJSONStrict[handoffVoucher](path, lockPath)
+	voucher, found, err := state.ReadJSONNoMkdir[handoffVoucher](path, lockPath)
 	if err != nil {
 		logger.Warn("loomcli: could not read the handoff voucher; treating it as absent", "path", path, "cause", err)
 		return handoffVoucher{}, false, false
@@ -108,7 +108,7 @@ func observeEntry(enabled bool, runLockPath, statusPath, statusLockPath, handoff
 		_ = probe.Release()
 	}
 
-	shed, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
+	shed, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
 	if err != nil {
 		logger.Warn("loomcli: could not read the status file for the entry observation", "path", statusPath, "cause", err)
 		return loomengine.EntryObservation{}

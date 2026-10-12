@@ -34,6 +34,9 @@ type halfScript struct {
 	beforeReturn func()
 	// rewrites holds the review file content the reviewer writes at each gate re-prompt, in order.
 	rewrites []string
+	// pendingPrompt makes the seat's handle report that it delivered a pending task prompt, and deliverErr makes that delivery fail.
+	pendingPrompt bool
+	deliverErr    error
 }
 
 // fakeStrandPrefix is the shortname and slug every fake strand name is formed under.
@@ -86,6 +89,14 @@ type fakeHandle struct {
 	stopped  chan struct{}
 	stopOnce sync.Once
 	returned atomic.Bool
+	// deliveries counts the DeliverPendingPrompt calls.
+	deliveries atomic.Int32
+}
+
+// DeliverPendingPrompt counts the call and answers from the seat's script.
+func (h *fakeHandle) DeliverPendingPrompt() (bool, error) {
+	h.deliveries.Add(1)
+	return h.script.pendingPrompt, h.script.deliverErr
 }
 
 func (h *fakeHandle) StrandGUID() string { return h.guid }

@@ -834,17 +834,19 @@ func TestRenderPrompts(t *testing.T) {
 			text, err := renderFork(batcher.Batch{Cards: []planparser.Card{alpha.Cards[0], beta}}, root, stencilsDir, specsDir, "", 2, "", pack)
 			return promptCheck{text: text, err: err,
 				contains: []string{
-					"The kick-start pack below lists, under each card's path, where each member glyph on that card is",
+					"   The kick-start pack below lists, under each card's path, where each member glyph on that card is, and your first turn read every listed span.\n",
 					"`" + specsDir + "/loom/loom-plan-spec.md`",
 					"## Kick-start pack",
-					"in parallel, in one turn, before doing anything else",
-					"not the whole files that hold them",
 					"that no listed span covers",
-					"find the member by its glyph's member name",
+					"describes the tree before any edit, so after an edit locate code by its text",
+					"1. The card file, which your first turn read, is your whole instruction for that card.\n   If its `**Intent:**` field is empty",
 					"read further code, callers or whole files whenever the card needs it",
 				},
-				notContains: []string{"Locate them with one", "{{", "no member glyphs on this card", "#### Unresolved", "Before you edit anything, re-read"},
+				notContains: []string{"Locate them with one", "{{", "no member glyphs on this card", "#### Unresolved", "Before you edit anything, re-read",
+					"step 1 read the card's listed spans", "find the member by its glyph's member name", "read that file whole", "is that card's fresh read"},
 				inOrder: []string{
+					"## The FRESH-READ rule",
+					"Your first turn, before any edit, reads in parallel every card file",
 					"- `_lyx/plan/01-alpha.md`",
 					"- `_lyx/plan/02-beta.md`",
 					"### `_lyx/plan/01-alpha.md`",
@@ -884,6 +886,7 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", pack)
 			return promptCheck{text: text, err: err,
+				contains: []string{"Your first turn, before any edit, reads in parallel every card file"},
 				inOrder: []string{
 					"### `_lyx/plan/01-alpha.md`",
 					"\nnone\n",
@@ -895,7 +898,7 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", []planindex.CardPack{{Card: alpha.Cards[0]}})
 			return promptCheck{text: text, err: err,
-				contains:    []string{"The kick-start pack below lists, under each card's path, where each member glyph on that card is", "## Kick-start pack", "no member glyphs on this card"},
+				contains:    []string{"The kick-start pack below lists, under each card's path, where each member glyph on that card is", "Your first turn, before any edit, reads in parallel every card file", "## Kick-start pack", "no member glyphs on this card"},
 				notContains: []string{"#### Unresolved"}}
 		}},
 		{"fork with a card of only plan: handles renders the empty line and lists the handle", func(t *testing.T) promptCheck {

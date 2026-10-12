@@ -1,14 +1,11 @@
 //go:build windows
 
-// Package proc provides cross-OS primitives for controlling child-process window visibility and detachment.
-//
-// On Windows, HideWindow suppresses the console window using CREATE_NO_WINDOW, and Detach
-// additionally creates a new process group (CREATE_NEW_PROCESS_GROUP) so the child survives
-// parent exit and is unaffected by the parent's Ctrl-C signal.
+// proc_windows.go — Windows process control primitives.
 
 package proc
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"syscall"
@@ -53,6 +50,16 @@ func IsAlive(pid int) bool {
 // StartTime reports the start time as unreadable on Windows, which keeps the resume check failing closed there.
 func StartTime(pid int) (string, bool) {
 	return "", false
+}
+
+// TreeCPU reports errors.ErrUnsupported on Windows, which a CPU watchdog reads as no watchdog applying.
+func TreeCPU(root int) ([]ProcessCPU, error) {
+	return nil, errors.ErrUnsupported
+}
+
+// IsAncestor is always false on Windows, where the ancestry walk is not implemented.
+func IsAncestor(pid int) bool {
+	return false
 }
 
 // KillPID force-kills the process identified by pid.

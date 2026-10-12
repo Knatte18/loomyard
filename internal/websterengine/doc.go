@@ -146,17 +146,19 @@
 // and the recovery prompt never takes one.
 // The locate step and the pack section are stencils RenderForkPrompt fills.
 // Without a pack the locate marker takes the quarry fragment, which is the step as it stood before the pack, so the prompt renders the same bytes as before.
-// With a pack it takes the pack fragment, which sends the fork to the listed spans and keeps the quarry or grep path for an unresolved member glyph,
+// With a pack it takes the pack fragment, which says the fork's first turn read the listed spans, says every line number obtained before the first edit holds before any edit only, and keeps the quarry or grep path for an unresolved member glyph,
 // and the pack section holds one subsection per card.
 // Each subsection sits under the card's pointer path, the same spelling as its bullet in the card list, and lists the card's entries, or `none` when none of its member glyphs resolved, or says the card names no member glyph.
 // A card's unresolved list follows its entries only when the card has unresolved refs.
 //
 // Step 1 of the implementer body and its FRESH-READ rule are markers too, card_read and fresh_read, filled per mode by renderReadRules.
 // Without a pack the fragments carry the text as it stood before, so a fork without a pack and every recovery prompt render the bytes they did before the pack existed.
-// With a pack, step 1 reads the card file and its listed spans in one parallel turn, and a file an earlier card of the batch edited whole instead.
-// FRESH-READ then names those spans plus the target and `Uses:` files no listed span covers.
+// With a pack, FRESH-READ has the fork read every card file and every listed span in its first turn, in parallel, then the target and `Uses:` files no span covers and the located unresolved glyphs' files, all before any edit;
+// step 1 only names the card file as the card's instruction.
 // That bounds the fork's reading: it is no longer told to re-read whole a file that holds a listed span, so an edit outside a listed span in such a file is read only when the fork chooses to.
-// What bounds that is the member-name rule for a file an earlier card edited, the locate fragment's "read further whenever the card needs it", and the card and batch gates, which still run every card's tests.
+// What can now get through is anything read before the first edit and changed since by an earlier card's edit or a self-fix.
+// An Edit whose `old_string` no longer matches fails loudly, the Edit-only rule keeps a Write built from a pre-edit read from dropping an earlier edit,
+// and the card and batch gates, which run every card's tests, catch reasoning over stale content.
 //
 // Every begin-batch logs one Info line, `webster: kickstart pack`.
 // Its keys are batch, kickstart_pack (`on`, `off` or `language-none`), resolved and unresolved.
@@ -277,7 +279,7 @@
 //
 // The fork and parent audits classify each finding (ClassifyViolation) as correctness or policy.
 // A correctness finding means the delta or the run's own state may be wrong.
-// It is a fork writing one of Master's two contract files, anything under the plan directory, or anything under webster's run directory but its own report (fork-state-write), or a parent write under the run's `_lyx` directory, into the worktree's tracked (not git-ignored) content, under the run's `.lyx` state directory (webster's pause flag and locks, another module's lock or pause flag, a reed launch script), or into another worktree of the task repository.
+// It is a fork writing one of Master's two contract files, anything under the plan directory, or anything under webster's run directory but its own report (fork-state-write), or a parent write under the run's `_lyx` directory, into the worktree's tracked (not git-ignored) content, under the run's `.lyx` state directory (webster's locks, another module's lock or pause flag, a reed launch script), or into another worktree of the task repository.
 // A fabric reference is correctness too unless its command is read-only, since an agent never touches the fabric repo for a write and the command can rewrite run state the cards' verify commands cannot detect;
 // the read-only classifier is injected (RecordDeps, RunDeps and RecoverDeps carry it as ReadOnly) and sees static shape only, so a command behind `bash -c`, a variable or a substitution stays correctness, and a nil classifier accepts nothing.
 // The classifier splits a `lyx`, `git` or `sed` segment into shell words, so a quoted word is its dequoted text, and a quoted writing flag is still rejected.
@@ -365,7 +367,7 @@
 // # bracket verbs, not spawn/poll
 //
 // Because the fork runs inside Master's own session, there is nothing for Go to spawn in the normal path — spawn-batch does not exist here.
-// Go provides thin bracket verbs Master calls around each fork: begin-batch (pause/fingerprint checks, records the batch's start-SHA, renders and writes the fork prompt) immediately before forking, and record-batch (incremental fork audit, batch-report parsing, digest distillation, state update) once the fork has delivered.
+// Go provides thin bracket verbs Master calls around each fork: begin-batch (fingerprint check, records the batch's start-SHA, renders and writes the fork prompt) immediately before forking, and record-batch (incremental fork audit, batch-report parsing, digest distillation, state update) once the fork has delivered.
 // The Agent-tool fork is a BACKGROUNDED agent: the fork call returns immediately, before the batch is done,
 // so Master ends its turn right after spawning it and calls record-batch when the fork's completion notification starts its next turn.
 // That turn end does not end the run: shuttle reads a turn that ends with a background agent still running as EventWaiting, which its wait loop treats as still running,
@@ -525,7 +527,7 @@
 // Its attempt budget is Config.VerifyGateAttempts, and the count and the pre-fix head live in the closure's memory for one shuttle run, so an attach restarts them from zero.
 // The shipped Webster row supplies no gates of its own, and StartMaster is Merriam's only start, so every Merriam carries the spec.
 //
-// At each gated Done arrival the closure passes without verifying when outcome.yaml names an outcome other than done, so a stuck or paused outcome ends the run as before.
+// At each gated Done arrival the closure passes without verifying when outcome.yaml names an outcome other than done, so a stuck outcome ends the run as before.
 // Otherwise it fails with the dirty paths when the tree is not clean, and runs no verify.
 // Once a pre-fix head is recorded, every commit from it to HEAD on the first-parent chain must be a non-merge commit or a clean parent merge (fixCommitRejection, in gitwrap.go);
 // any other fails the gate `Terminal`, which ends the run at once with the commit and the reason.
@@ -534,7 +536,15 @@
 // A failure is parsed from the log and rerun once: a rerun pass passes the gate, and the identities that failed once are flaky, which Run reports after the wait as a warning, a summary.md section and a friction note (VerifyGateNotes.Apply).
 // A failure that survives the rerun returns findings.
 // A run that outlives the verify timeout is never rerun, since a hang is not flakiness: it fails the gate at once,
-// and the report names the timeout, the log path and the log tail.
+// and the report names the timeout, the log path and the log tail, and says the step was not re-run.
+// A failed run that hung is not re-run either: classifyHang reads the log and exit code, and the first failure and the rerun's failure are both checked.
+// The markers are checked in this order: the CPU watchdog line of `lyx gate test`, go test's `panic: test timed out after`, the runtime's `SIGQUIT: quit` dump header and a log line starting `signal: `.
+// Without a marker, an exit code of 128 or above, or -1 with no `Detail`, which `verifyrun` returns for a shell killed by a signal, is a hang.
+// A shell that could not start and an ordinary non-zero exit below 128 are no hang.
+// Bound: the markers are matched as text anywhere in the log, so a test that prints one, or a test binary the OOM killer ends, also reads as a hang, and any exit code of 128 or above reads as one whatever caused it.
+// A false match skips only the one rerun, and a flaky failure in the same run reaches the fixer without its retry.
+// The hang report carries `Hang` (the marker or `exit code <n>` matched), `HangStacks`, `WatchdogWindow` after a watchdog quit, the failing identities the log parses to, the log path and the log tail.
+// Its findings say the step was not re-run and whether goroutine stacks are in the log, and after a watchdog quit name the window and that a package that is CPU-bound but healthy needs `gateslot.BusyQuitWayForward`, the operator's to do.
 // The first failed evaluation of any kind records HEAD as the pre-fix head, so every commit a fixer makes afterwards is checked at the next arrival.
 // The same moment persists it as state.json's `PreFixHead`, overwriting a value an earlier shuttle run left, so a later verb can reset to it;
 // a passing evaluation clears it, and `run --fresh` archives state.json with it.
@@ -560,11 +570,11 @@
 // Every shell outstanding when the run ends comes back on shuttle's `Result.EndedShells`, whatever ends the run.
 // lyx does not stop such a shell.
 // What ends the shell follows the run's final outcome.
-// When Master's turn ends shuttle-done (a webster done, Master's own stuck or paused, the verify gate's demotion, or a mapping error after that end), shuttle removes Master's strand as the run finishes, and the session and the shell end with it.
+// When Master's turn ends shuttle-done (a webster done, Master's own stuck, the verify gate's demotion, or a mapping error after that end), shuttle removes Master's strand as the run finishes, and the session and the shell end with it.
 // When the run returns a died or timeout error, Master's strand stays alive until the next `lyx webster run` reclaims it at entry.
 // Run writes one best-effort `webster-background-shell` friction note once the outcome is known, on every outcome.
 // For each shell the note states its label, signal and time outstanding, that the run never read its result, that lyx did not stop the shell, what ends it and the run's final outcome.
-// Each shell is also a `RunResult.Warnings` entry with the same wording on every outcome that returns a `RunResult` (done, stuck and paused), after the verify-gate demotion, so the warning and the note cannot drift;
+// Each shell is also a `RunResult.Warnings` entry with the same wording on every outcome that returns a `RunResult` (done and stuck), after the verify-gate demotion, so the warning and the note cannot drift;
 // an error outcome returns no `RunResult`, so the note alone carries it.
 // summary.md's "Background shells at the run's end" section (AppendBackgroundShells) stays done-only, as does its "Plan rebaselined" section, which names an accepted auto-rebaseline beside the "Audit warnings" section so the summary a step's Done points at carries it.
 //
@@ -657,8 +667,7 @@
 // every `lyx` module built on top of shuttle shares (internal/reedengine,
 // internal/shuttleengine and its claudeengine, internal/gitrepo) plus a
 // small set of webster-LOCAL mechanism helpers with no cross-module
-// import: its own plan-fingerprint hash (fingerprint.go), pause-flag
-// mechanics (pause.go), git-query helpers built on gitrepo
+// import: its own plan-fingerprint hash (fingerprint.go), git-query helpers built on gitrepo
 // (gitwrap.go, reached through the Git seam below), archive-never-refuse primitives (archive.go), and
 // recovery-classification logic (classify.go). Each of these exists as its
 // own webster-scoped implementation rather than an imported one — this

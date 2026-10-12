@@ -46,9 +46,9 @@ func buildFrictionShed(t *testing.T, env shedrecipe.Env, paths shedbuild.ShedPat
 
 func readStatus(t *testing.T, paths shedbuild.ShedPaths) shedengine.Status {
 	t.Helper()
-	st, found, err := state.ReadJSONStrict[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil || !found {
-		t.Fatalf("ReadJSONStrict(status) found = %v, error = %v; want found and nil", found, err)
+		t.Fatalf("ReadJSONNoMkdir(status) found = %v, error = %v; want found and nil", found, err)
 	}
 	return st
 }

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
@@ -59,6 +60,9 @@ type noticeHarness struct {
 	quiet time.Duration
 	probe time.Duration
 	poll  time.Duration
+
+	// pause is what the fake Pause seam reports.
+	pause pauserecord.Coverage
 
 	// started is the fake clock's time when the harness was built, and asleep the time suspend has taken out of the awake clock since.
 	started time.Time
@@ -111,6 +115,20 @@ func (h *noticeHarness) setStatus(status shedengine.Status) {
 	h.touch(h.clock.Now())
 }
 
+// coverFrom makes the fake pause record cover the slug from since, with one paused interval from since to until.
+func (h *noticeHarness) coverFrom(since, until time.Time) {
+	h.pause = pauserecord.Coverage{
+		Covered:   true,
+		Entry:     pauserecord.Entry{Scope: pauserecord.ScopeHub, PausedAt: since},
+		Intervals: []pauserecord.Interval{{Start: since, End: until}},
+	}
+}
+
+// resumeFrom lifts the cover, leaving the interval from since to until behind as a resumed pause.
+func (h *noticeHarness) resumeFrom(since, until time.Time) {
+	h.pause = pauserecord.Coverage{Intervals: []pauserecord.Interval{{Start: since, End: until}}}
+}
+
 // parked is a child halted in state, with a history of two entries.
 func parked(state shedengine.State) shedengine.Status {
 	return shedengine.Status{State: state, Error: "stuck", CurrentProducer: "Publish", History: make([]shedengine.HistoryEntry, 2)}
@@ -133,6 +151,7 @@ func (h *noticeHarness) producer() shedengine.ShedProducer {
 		Now:            h.clock.Now,
 		Awake:          func() time.Duration { return h.clock.Now().Sub(h.started) - h.asleep },
 		PauseRequested: h.clock.pauseRequested,
+		Pause:          func() (pauserecord.Coverage, error) { return h.pause, nil },
 		NoticeProbe:    h.probe,
 		ReadDecision: func() (ChildDecision, bool, error) {
 			return ChildDecision{Kind: DecisionApprove, At: "2026-01-01T10:00:00Z"}, h.decided, nil
@@ -294,6 +313,19 @@ func TestNotice_StateChangeNotifiesOncePerEpisode(t *testing.T) {
 	if len(h.notified) != 1 || !strings.Contains(h.notified[0], "blocked") {
 		t.Fatalf("notified = %v; want exactly one blocked notice across two Calls", h.notified)
 	}
+
+	t.Run("AHaltingChildStillNotifiesUnderAPause", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		h.coverFrom(h.clock.Now(), h.clock.Now().Add(time.Hour))
+		h.setStatus(parked(shedengine.StateBlocked))
+		h.writeReport(h.clock.Now())
+		h.call(p)
+		h.call(p)
+		if len(h.notified) != 1 || !strings.Contains(h.notified[0], "blocked") {
+			t.Fatalf("notified = %v; want the state-changed notice once although a pause covers the child", h.notified)
+		}
+	})
 }
 
 func TestNotice_StateChangeStartsNewEpisode(t *testing.T) {
@@ -342,6 +374,19 @@ func TestNotice_DeadDriverWhileRunning(t *testing.T) {
 	if strings.Contains(h.notified[0], "while the child is running") {
 		t.Fatalf("notified = %v; want the state to say the child is running, not the condition", h.notified)
 	}
+
+	t.Run("ACoveredChildSendsNoDriverDeadNotice", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		h.alive = false
+		h.coverFrom(h.clock.Now(), h.clock.Now().Add(time.Hour))
+		h.setStatus(shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Write"})
+		h.call(p)
+		h.call(p)
+		if len(h.notified) != 0 {
+			t.Fatalf("notified = %v; want none while a pause covers the child", h.notified)
+		}
+	})
 }
 
 func TestNotice_QuietOnlyForRunningChildWithLiveDriver(t *testing.T) {
@@ -360,6 +405,40 @@ func TestNotice_QuietOnlyForRunningChildWithLiveDriver(t *testing.T) {
 		h.call(p)
 		if len(h.notified) != 1 || !strings.Contains(h.notified[0], "running at Plan-Write; agents idle for 45m") || strings.Contains(h.notified[0], "while the child is running") {
 			t.Fatalf("notified = %v; want exactly one quiet notice leading with the child's state and row, measured from the newest run", h.notified)
+		}
+	})
+
+	t.Run("ACoveredChildSendsNoQuietNoticeHoweverLong", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		start := h.clock.Now()
+		h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: start}}
+		h.coverFrom(start, start.Add(2*time.Hour))
+		h.clock.advance(2 * time.Hour)
+		h.run(p, 3)
+		if len(h.notified) != 0 {
+			t.Fatalf("notified = %v; want none while a pause covers the child", h.notified)
+		}
+	})
+
+	t.Run("AfterTheResumeThePausedIntervalIsNotIdleTime", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		start := h.clock.Now()
+		h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: start}}
+		h.coverFrom(start, start.Add(time.Hour))
+		h.clock.advance(time.Hour)
+		h.call(p)
+		h.resumeFrom(start, start.Add(time.Hour))
+		h.clock.advance(44 * time.Minute)
+		h.call(p)
+		if len(h.notified) != 0 {
+			t.Fatalf("notified = %v; want none until 45 unpaused minutes have passed", h.notified)
+		}
+		h.clock.advance(time.Minute)
+		h.call(p)
+		if len(h.notified) != 1 || !strings.Contains(h.notified[0], "agents idle for 45m") || strings.Contains(h.notified[0], "1h") {
+			t.Fatalf("notified = %v; want one quiet notice reporting 45m", h.notified)
 		}
 	})
 
@@ -477,6 +556,23 @@ func TestNotice_QuietOnlyForRunningChildWithLiveDriver(t *testing.T) {
 		}
 	})
 
+	t.Run("AnActivityWrittenJustBeforeTheSleepKeepsTheGap", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now()}}
+		onCheck(h, map[int]func(){
+			2: func() {
+				h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now()}}
+				h.suspend(3 * time.Hour)
+			},
+			3: func() { h.clock.advance(h.quiet) },
+		})
+		h.run(p, 6)
+		if len(h.notified) != 1 || !strings.Contains(h.notified[0], "agents idle for 45m") || strings.Contains(h.notified[0], "3h") {
+			t.Fatalf("notified = %v; want one quiet notice reporting 45m of awake idle time, not the night's gap", h.notified)
+		}
+	})
+
 	t.Run("AMovedNewestActivityDropsTheGapObservedWithIt", func(t *testing.T) {
 		h := newNoticeHarness(t)
 		p := h.producer()
@@ -531,31 +627,6 @@ func TestNotice_QuietOnlyForRunningChildWithLiveDriver(t *testing.T) {
 	})
 }
 
-func TestSleepGap(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name             string
-		prevWall, wall   time.Duration
-		prevAwake, awake time.Duration
-		want             time.Duration
-	}{
-		{name: "HoursOfWallAgainstSecondsAwake", prevWall: 0, wall: 3 * time.Hour, prevAwake: 0, awake: 5 * time.Second, want: 3*time.Hour - 5*time.Second},
-		{name: "ExcessAtTheToleranceIsZero", prevWall: 0, wall: time.Hour, prevAwake: 0, awake: time.Hour - sleepGapTolerance, want: 0},
-		{name: "ExcessJustOverTheToleranceCounts", prevWall: 0, wall: time.Hour, prevAwake: 0, awake: time.Hour - sleepGapTolerance - time.Second, want: sleepGapTolerance + time.Second},
-		{name: "EqualDeltasAreZero", prevWall: time.Hour, wall: 2 * time.Hour, prevAwake: 10 * time.Second, awake: time.Hour + 10*time.Second, want: 0},
-		{name: "WallBehindAwakeIsZero", prevWall: 0, wall: time.Minute, prevAwake: 0, awake: time.Hour, want: 0},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := sleepGap(int64(tt.prevWall), int64(tt.wall), tt.prevAwake, tt.awake); got != tt.want {
-				t.Errorf("sleepGap = %s; want %s", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestNotice_APIErrorStall(t *testing.T) {
 	h := newNoticeHarness(t)
 	p := h.producer()
@@ -591,6 +662,19 @@ func TestNotice_APIErrorStall(t *testing.T) {
 	if len(h.notified) != 2 || !strings.Contains(h.notified[1], "API error") {
 		t.Fatalf("notified = %v; want a second api-error notice and no quiet one", h.notified)
 	}
+
+	t.Run("ACoveredChildSendsNoApiErrorNotice", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		start := h.clock.Now()
+		h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: start, APIError: true, APIErrorText: "overloaded"}}
+		h.coverFrom(start, start.Add(time.Hour))
+		h.clock.advance(time.Hour)
+		h.run(p, 3)
+		if len(h.notified) != 0 {
+			t.Fatalf("notified = %v; want none while a pause covers the child", h.notified)
+		}
+	})
 
 	// A sleep after the stall is not time the error has stood: the notice waits for the awake idle time, within one Call.
 	t.Run("ASleepGapRaisesNoNoticeUntilTheAwakeIdleTimeReachesTheIdle", func(t *testing.T) {

@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
@@ -312,6 +313,16 @@ func TestWire_DefaultConfig(t *testing.T) {
 	t.Run("a pair landing.yaml does not reach the wired config", func(t *testing.T) {
 		if c.landingCfg.PublishVerify != hubPublishVerify {
 			t.Errorf("c.landingCfg.PublishVerify = %q; want the hub file's %q", c.landingCfg.PublishVerify, hubPublishVerify)
+		}
+	})
+
+	t.Run("the runner is told the location's pause geometry", func(t *testing.T) {
+		want, err := hubgeom.PauseGeometry(loc)
+		if err != nil {
+			t.Fatalf("hubgeom.PauseGeometry(loc) = %v; want nil", err)
+		}
+		if got := c.runner.PauseGeometry(); got != want {
+			t.Errorf("c.runner.PauseGeometry() = %+v; want %+v", got, want)
 		}
 	})
 

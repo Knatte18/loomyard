@@ -96,6 +96,10 @@ type Hooks struct {
 	// An error wrapping shedengine.ErrShedBusy is reported with the spec's StepBusyKind, any other error with kind bootstrap, and no loop starts.
 	// Nil for a recipe that consumes none, which refuses the flag.
 	ConsumeAttempt func(ctx context.Context, attempt string) error
+	// BarePause runs in pause's RunE for a flagless pause, after the absent-file check, with the status file's content.
+	// A non-nil error is reported verbatim on the error envelope and the status file is not written.
+	// Nil sets pause_requested as the generic body always did.
+	BarePause func(st shedengine.Status) error
 }
 
 // VerbTexts carries each verb's cobra Use/Short/Long strings, passed by value at Verbs'
@@ -136,6 +140,9 @@ type Spec struct {
 	// MissingStatusWayForward is the told trailing "way forward:" clause for a missing status file, passed to goto.
 	// The empty string falls back to shedengine's generic clause.
 	MissingStatusWayForward string
+	// PauseWayForward is the told command goto's refusals name to stop the run at a boundary, passed to goto.
+	// The empty string falls back to shedengine's `lyx shed pause` default.
+	PauseWayForward string
 	// Routing is the told projection of the recipe's producer graph that the envelopes' progress key
 	// is derived from. The zero value (no producers) means no progress is known, and progress is
 	// then reported as null.
@@ -164,7 +171,7 @@ type Spec struct {
 	Hooks Hooks
 	// StatusLabel is the --watch line's literal prefix -- "loom" for the loom recipe.
 	StatusLabel string
-	// DecodeErrPrefix is the told prefix for this spec's own state.ReadJSONStrict failure on the
+	// DecodeErrPrefix is the told prefix for this spec's own state.ReadJSONNoMkdir failure on the
 	// status file -- "loom:" for loom and "lifecyclecli:" for lifecycle. It also seeds
 	// ensureStatusLockDir's own error text, reproducing loomcli's existing wording for loom's spec
 	// rather than inventing a second prefix field for one string.

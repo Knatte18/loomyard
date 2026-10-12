@@ -1,14 +1,14 @@
 # Top-level test functions per package, in its _test.go files under every build tag.
 # TestTestBudget_PackagesStayWithinBudget fails when a package exceeds its row or has tests and no row.
 # Raise a row in the commit that adds the tests that need it.
-cmd/lyx: 78
+cmd/lyx: 79
 cmd/testtiming: 21
 contracts/specs: 3
 contracts/stencils: 16
 internal/agentname: 8
 internal/alignment: 7
 internal/batcher: 9
-internal/battencli: 74
+internal/battencli: 77
 internal/battenrecipe: 9
 internal/battenshed: 110
 internal/boardcli: 13
@@ -40,10 +40,10 @@ internal/haltnote: 4
 internal/fslink: 5
 internal/fswatch: 5
 internal/fsx: 4
-internal/gatecli: 3
-internal/gateslot: 11
+internal/gatecli: 4
+internal/gateslot: 12
 internal/gitexec: 7
-internal/githubclient: 11
+internal/githubclient: 12
 internal/gitkit: 10
 internal/gitrepo: 45
 internal/gitrepo/internal/gitoracle: 1
@@ -58,7 +58,7 @@ internal/landingshed: 85
 internal/lock: 4
 internal/logger: 35
 internal/loggerconfig: 3
-internal/loomcli: 217
+internal/loomcli: 221
 internal/loomengine: 53
 internal/loomrecipe: 54
 internal/loomshed: 76
@@ -67,18 +67,21 @@ internal/lyxtemp: 7
 internal/mergeresolve: 17
 internal/modelspec: 11
 internal/orchcli: 28
-internal/orchengine: 138
+internal/orchengine: 139
 internal/output: 4
 internal/pairteardown: 6
+internal/pausecli: 3
+internal/pauseengine: 4
+internal/pauserecord: 14
 internal/parentdirective: 4
-internal/parentlock: 15
+internal/parentlock: 16
 internal/parentreview: 54
 internal/pattern: 8
 internal/planglyph: 86
 internal/planparser: 92
 internal/preflight: 7
 internal/preflightshed: 8
-internal/proc: 17
+internal/proc: 18
 internal/quarrycli: 7
 internal/reedcli: 38
 internal/reedengine: 257
@@ -100,11 +103,11 @@ internal/shedtransient: 2
 internal/shedverbs: 83
 internal/shell: 12
 internal/shuttlecli: 25
-internal/shuttleengine: 164
+internal/shuttleengine: 168
 internal/shuttleengine/claudeengine: 108
 internal/standalonegeom: 7
 internal/standalonestate: 6
-internal/state: 8
+internal/state: 9
 internal/statuscommit: 6
 internal/statuspane: 6
 internal/stencil: 4

@@ -514,6 +514,11 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	claudeEngine := claudeengine.NewFromConfig(shuttleCfg)
 	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	pauseGeom, err := hubgeom.PauseGeometry(location)
+	if err != nil {
+		return err
+	}
+	runner.SetPause(pauseGeom)
 	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(location, line) })
 
 	websterGeom := hubgeom.WebsterGeometry(location)
@@ -957,7 +962,7 @@ func perchAutoAccept(cfg loomengine.Config) map[string]bool {
 // routing projects the run's recipe with the review budget its builder applies, so the reported budget is the one Shed blocks on.
 func segmentBounces(statusPath, statusLockPath string, routing func() (shedengine.Routing, error)) func(row string) (int, int, bool, error) {
 	return func(row string) (int, int, bool, error) {
-		st, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
+		st, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
 		// A run directory not yet created fails the lock open with not-exist; that is an absent status file too.
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return 0, 0, false, err

@@ -163,7 +163,7 @@ shares the burler round discipline).
 | mill:mill-merge-in | loom / fabric merge (conflict → `ly-git-resolve`) |
 | mill:mill-cleanup | `lyx fabric cleanup` |
 | mill:mill-abandon | `lyx loom abandon` |
-| mill:mill-pause | `lyx loom pause` |
+| mill:mill-pause | `lyx pause <slug>` |
 | mill:mill-resume | loom resume + fabric-sync + session-sync |
 | mill:mill-status | `lyx loom status` |
 | mill:mill-inspect | `lyx board` / `lyx loom status` |

@@ -10,6 +10,8 @@
 // When the deadline expires the whole process group is killed on Unix, and git alone on Windows, and the call returns a *GitError whose Timeout is the deadline and whose exit code is -1, though git did not exit on its own.
 // IsTransportFailure reports such a timeout, and a transfer the low-speed limit stopped, as a transport failure, so a caller's existing transport handling takes over.
 // A local subcommand runs unbounded.
+// Before the deadline starts, a remote subcommand waits while a pause covers the process, through the process's network gate: the wait counts against no deadline, and with no gate installed there is none.
+// The hold only delays the call's start and never fails it.
 //
 // # Environment
 //

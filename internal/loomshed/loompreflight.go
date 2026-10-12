@@ -150,7 +150,7 @@ func (p *loomPreflightProducer) waivesHalfFinished(report loomengine.Report) boo
 	if !halfFinished {
 		return false
 	}
-	st, found, err := state.ReadJSONStrict[shedengine.Status](p.statusPath, p.statusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](p.statusPath, p.statusLockPath)
 	if err != nil || !found || !isGotoReentry(st.History) {
 		return false
 	}

@@ -467,9 +467,26 @@ func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 		name       string
 		strands    []Strand
 		liveIDs    map[string]bool
+		paused     bool
 		wantLaunch []string
 		wantDrop   []string
+		wantHeld   []string
 	}{
+		{
+			// A pause leaves the not-live strand down; the live and the hidden one are untouched.
+			name:     "PausedPlanHoldsTheNotLiveStrandAndLaunchesNothing",
+			strands:  []Strand{notLive, stillLive, hidden},
+			liveIDs:  map[string]bool{"%2": true},
+			paused:   true,
+			wantHeld: []string{"a"},
+		},
+		{
+			name:     "PausedPlanStillDropsAFinishedStrand",
+			strands:  []Strand{withDoneWhen(notLive, "/out/one", "/out/two")},
+			liveIDs:  map[string]bool{},
+			paused:   true,
+			wantDrop: []string{"a"},
+		},
 		{
 			// Server dead (reboot): list-panes reports nothing live at all,
 			// so every not-hidden strand — even ones with a stale PaneID —
@@ -538,12 +555,15 @@ func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			launch, drop := planResumeLaunches(tt.strands, tt.liveIDs, exists)
+			launch, drop, held := planResumeLaunches(tt.strands, tt.liveIDs, exists, tt.paused)
 			if got := guids(launch); !slices.Equal(got, tt.wantLaunch) {
 				t.Errorf("planResumeLaunches() launch guids = %v, want %v", got, tt.wantLaunch)
 			}
 			if got := guids(drop); !slices.Equal(got, tt.wantDrop) {
 				t.Errorf("planResumeLaunches() drop guids = %v, want %v", got, tt.wantDrop)
+			}
+			if got := guids(held); !slices.Equal(got, tt.wantHeld) {
+				t.Errorf("planResumeLaunches() held guids = %v, want %v", got, tt.wantHeld)
 			}
 		})
 	}

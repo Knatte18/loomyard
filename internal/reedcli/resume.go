@@ -22,7 +22,8 @@ resumeCmd (or cmd, when resumeCmd is empty). Anchor:hidden strands are
 skipped — they are pending first surface, not dead. Already-live strands are
 left untouched (no double send-keys). A not-live strand whose done-when paths
 all exist is finished: it is dropped from state instead of relaunched, and
-counted in the envelope's dropped.
+counted in the envelope's dropped. While a pause covers this pair, its strands
+are left down and named in the envelope's held, until "lyx resume".
 
 Example:
   lyx reed resume`,
@@ -46,6 +47,7 @@ Example:
 				"session": result.Session,
 				"resumed": result.Resumed,
 				"dropped": result.Dropped,
+				"held":    result.Held,
 			}))
 			return nil
 		},

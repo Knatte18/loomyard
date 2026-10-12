@@ -53,6 +53,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/state"
 	"gopkg.in/yaml.v3"
 )
 
@@ -308,6 +309,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 			AfterStep:          c.loomAfterStep,
 			InterruptPolicyFor: loomshed.InterruptPolicyFor,
 			StatusExtras:       c.loomStatusExtras,
+			BarePause:          c.loomBarePause,
 			Waiting:            reviewWaitingFor(c.location),
 		},
 	}
@@ -320,11 +322,14 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		spec.StepsDir = shedrun.StepsDir(c.location, c.runID)
 		spec.RunID = shedrun.ResolveRunID(c.location, c.runID)
 		spec.Loop = loopSpecFor(c.location, c.runID, c.stepIdleTimeout, agentActivityFor(c.location, c.shuttleCfg))
+		spec.Loop.OnWatchdogKill = watchdogKillNote(c.stopStepRuns, spec.StepsDir)
 		locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(c.location.HubPath))}
 		self := selfLockOwner(c.location, c.runID)
 		spec.Loop.OnExit = loopLockExit(locks, self, battenWatcher(c.location, c.runID))
+		covered := pauseCovered(c.location)
 		spec.Loop.OnWake = builtOnFirstCall(func() func() {
-			return loopIdleRelease(locks, self, readAgentStates(c.location, c.shuttleCfg), c.landingCfg.IdleRelease())
+			return loopIdleRelease(locks, self, readAgentStates(c.location, c.shuttleCfg), c.landingCfg.IdleRelease(),
+				func() bool { return covered(c.location.WorktreeName) })
 		})
 		spec.Hooks.AfterInterrupt = c.loomAfterInterrupt
 		spec.Hooks.ConsumeAttempt = c.loomConsumeAttempt
@@ -526,7 +531,12 @@ func (c *loomCLI) loomPreStepUnmarked(ctx context.Context) (string, error) {
 	if runLockFree {
 		_ = probe.Release()
 	} else {
-		return shedverbs.KindBusy, errors.New("loom: a driver already holds the run lock; run \"lyx loom pause\" to request a pause at the next producer boundary")
+		// An unreadable status file leaves the placeholder; the refusal still names the command's shape.
+		var currentProducer string
+		if st, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath); err == nil && found {
+			currentProducer = st.CurrentProducer
+		}
+		return shedverbs.KindBusy, errors.New("loom: a driver already holds the run lock; run \"" + c.pauseAfterCommand(currentProducer) + "\" to request a pause at the end of the current producer")
 	}
 
 	slug := seedSlug(c.location.WorktreeName)
@@ -569,8 +579,33 @@ func (c *loomCLI) loomPostStep(res shedengine.StepResult) {
 	recordHandoffVoucher(loomengine.LoomHandoffVoucher(c.location), loomengine.LoomHandoffVoucherLock(c.location), len(res.History), res.State)
 }
 
+// pauseAfterCommand returns the `lyx loom pause --after` command halting this run at the end of currentProducer, naming the run-id when it is not the worktree's own.
+// An empty currentProducer is filled with the placeholder "<current_producer>".
+func (c *loomCLI) pauseAfterCommand(currentProducer string) string {
+	if currentProducer == "" {
+		currentProducer = "<current_producer>"
+	}
+	command := "lyx loom pause --after " + currentProducer
+	if c.location != nil {
+		if runID := shedrun.ResolveRunID(c.location, c.runID); runID != shedrun.SelfRunID {
+			command += " " + runID
+		}
+	}
+	return command
+}
+
+// loomBarePause implements the BarePause hook for loom's spec: a flagless pause no longer stops a loom run, so it refuses naming both ways forward.
+func (c *loomCLI) loomBarePause(st shedengine.Status) error {
+	slug := "<slug>"
+	if c.location != nil {
+		slug = c.location.WorktreeName
+	}
+	return errors.New("loom: a bare pause no longer stops a loom run; way forward: run \"lyx pause " + slug + "\" to stop its agents now, or \"" + c.pauseAfterCommand(st.CurrentProducer) + "\" to halt it at its next producer boundary")
+}
+
 // loomStatusExtras implements the StatusExtras hook for loom's spec: loom's own three status keys
 // (pause_requested, slug, parent), decoded from st.Product only when non-empty, and no others.
+// A run a live pause covers also carries paused_since and paused_by.
 func (c *loomCLI) loomStatusExtras(st shedengine.Status) (map[string]any, error) {
 	var product loomengine.Status
 	if len(st.Product) > 0 {
@@ -580,9 +615,13 @@ func (c *loomCLI) loomStatusExtras(st shedengine.Status) (map[string]any, error)
 			return nil, errors.New("loom: decode status file " + c.shedPaths.StatusPath + "'s product payload: " + err.Error())
 		}
 	}
-	return map[string]any{
+	extras := map[string]any{
 		"pause_requested": st.PauseRequested,
 		"slug":            product.Slug,
 		"parent":          product.Parent,
-	}, nil
+	}
+	for key, value := range c.pausedExtras() {
+		extras[key] = value
+	}
+	return extras, nil
 }

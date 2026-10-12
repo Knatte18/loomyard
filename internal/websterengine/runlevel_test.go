@@ -572,7 +572,6 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			wayForward:  []string{"approve the plan", "lyx webster run"},
 		},
 		{
-			// A refusal leaves a pending pause request untouched: only a run that passes every gate clears it.
 			name:  "a stale fingerprint without --fresh",
 			cards: 1,
 			setup: func(t *testing.T, fx *runFixture) func() {
@@ -580,18 +579,10 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
 					t.Fatalf("seed stale state: %v", err)
 				}
-				if err := websterengine.RequestPause(fx.Deps.Geom.ScratchDir); err != nil {
-					t.Fatalf("RequestPause() error = %v", err)
-				}
 				return nil
 			},
 			errIs:      websterengine.ErrFingerprintMismatch,
 			wayForward: []string{"lyx webster rebaseline", "2) lyx webster run"},
-			check: func(t *testing.T, fx *runFixture, err error) {
-				if !websterengine.PauseRequested(fx.Deps.Geom.ScratchDir) {
-					t.Error("pause flag cleared on a refused run; want it left intact")
-				}
-			},
 		},
 		{
 			name:  "an edited card names the card to rebaseline",
@@ -1753,9 +1744,6 @@ func TestRun_DoneOutcome(t *testing.T) {
 				if result.SummaryTitle != "Shipped" {
 					t.Errorf("RunResult.SummaryTitle = %q; want %q", result.SummaryTitle, "Shipped")
 				}
-				if websterengine.PauseRequested(fx.Deps.Geom.ScratchDir) {
-					t.Error("pause flag present after a done outcome; want it cleared")
-				}
 			},
 		},
 		{
@@ -2121,49 +2109,6 @@ func TestRun_ExpiredShells(t *testing.T) {
 			t.Errorf("friction note stat error = %v; want not-exist", err)
 		}
 	})
-}
-
-// TestRun_PausedOutcomeLeavesPauseFlagIntact proves a genuinely mid-run pause request (one
-// requested WHILE Master is working, i.e.
-// present again by the time Master's own "outcome: paused" final action lands — Run's own pre-spawn
-// commitment-point clear already ran before Master ever started) is left intact by the post-run
-// mapping: the operator's own record that a pause is still pending, never silently cleared out from
-// under them.
-func TestRun_PausedOutcomeLeavesPauseFlagIntact(t *testing.T) {
-	t.Parallel()
-	fx := newRunFixture(t, 1)
-
-	handle := &runFakeHandle{
-		strandGUID: "master-strand-paused",
-		result: shuttleengine.Result{
-			Outcome:   shuttleengine.OutcomeDone,
-			SessionID: "master-session-paused",
-			RunDir:    "/run/dir/paused",
-		},
-		onWait: func() {
-			// Simulate an operator pausing DURING Master's own run: the
-			// pre-spawn ClearPause already ran before Master started, so
-			// this is a genuinely new request Master's own paused final
-			// action is responding to.
-			if err := websterengine.RequestPause(fx.Deps.Geom.ScratchDir); err != nil {
-				t.Fatalf("RequestPause() error = %v", err)
-			}
-			writeContractFiles(t, fx, "outcome: paused\nstuck_reason: null\nbatches_done: 0\n", "# Paused mid-run\n")
-		},
-	}
-	fx.Starter.handle = handle
-	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-paused", "master-session-paused")
-
-	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
-	if err != nil {
-		t.Fatalf("Run() error = %v; want nil", err)
-	}
-	if result.Outcome != "paused" {
-		t.Errorf("RunResult.Outcome = %q; want %q", result.Outcome, "paused")
-	}
-	if !websterengine.PauseRequested(fx.Deps.Geom.ScratchDir) {
-		t.Error("pause flag cleared on a paused outcome; want it left intact as the operator's own record")
-	}
 }
 
 // auditDoneHandle builds a done Master handle whose onWait writes outcome.yaml (batchesDone batches) and a valid summary.md, with audit as the whole-session fork audit.

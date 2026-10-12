@@ -11,9 +11,11 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - batten's Run-Shed wait,
 - batten's Land row land-lock wait in `internal/battenshed/land.go`, which polls from one second and doubles to thirty seconds,
 - the parent lock wait in `internal/parentlock/acquire.go`, which polls from one second and doubles to thirty seconds,
+- the pause hold in `internal/pauserecord/hold.go`, which polls from one second and doubles to five seconds while the covering entry is unchanged,
 - shuttle's `Wait`,
 - webster's long poll,
 - `lyx shed status --watch`,
+- the gate test's CPU watchdog in `internal/gatecli/watchdog.go`, which samples once per period, 5 seconds in production, for as long as go test runs and spawns nothing,
 - the `--until-stop` waiter in `internal/shedverbs/loopwait.go`, whose event source is `internal/fswatch` on the run's steps directory and whose timer starts at the one-second floor,
 - the step watchdog in `internal/shedverbs/loopwatchdog.go`, which wakes at most once a second and backs off to a minute while the child shows no change,
 - the status panes' loop in `internal/statuspane/pane.go`, which polls from one second and backs off to eight seconds while the text shows no change.

@@ -30,13 +30,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
@@ -357,6 +360,7 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 		StatusLockPath: c.shedPaths.StatusLockPath,
 
 		MissingStatusWayForward: c.shedPaths.MissingStatusWayForward,
+		PauseWayForward:         c.shedPaths.PauseWayForward,
 		// The status file is durable and its lock is ephemeral, so a machine that never stepped
 		// this slug -- a fresh clone, or a hand-seeded run -- has the file and not the lock's
 		// directory. Creating that directory is not a write to the run: it is what lets the
@@ -431,13 +435,13 @@ func ArmAt(location *lyxcwd.Location, verb string, runID string) (shedverbs.Spec
 // A decode failure, an unrecognized state and a done slug come back as the error.
 //
 // It MkdirAlls the status lock's own ephemeral directory before the first read, mirroring battenPreStep's own MkdirAll(filepath.Dir(LockPath)) call:
-// StatusPath is durable and StatusLockPath is ephemeral, the two no longer share a directory the way they did before this task's durable/ephemeral split, and state.ReadJSONStrict deliberately never creates one itself (see its own "no MkdirAll" contract).
+// StatusPath is durable and StatusLockPath is ephemeral, the two no longer share a directory the way they did before this task's durable/ephemeral split, and state.ReadJSONNoMkdir deliberately never creates one itself (see its own "no MkdirAll" contract).
 // On a run-id that has never stepped on this machine, the very first read here would otherwise fail to acquire the lock with a bare "no such file or directory", before the run ever reaches shedengine's own run-lock probe.
 func (c *battenCLI) checkRunStatus() (found bool, err error) {
 	if err := os.MkdirAll(filepath.Dir(c.shedPaths.StatusLockPath), 0o755); err != nil {
 		return false, err
 	}
-	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	if err != nil {
 		return false, errors.New("battencli: decode status file " + c.shedPaths.StatusPath + ": " + err.Error())
 	}
@@ -458,12 +462,59 @@ func (c *battenCLI) checkRunStatus() (found bool, err error) {
 	}
 }
 
+// refuseCovered returns the refusal naming "lyx resume" when a live pause entry covers this run's slug, and nil otherwise.
+// A geometry or record that cannot be read refuses nothing and logs one Warn, so a corrupt file never blocks a run.
+func (c *battenCLI) refuseCovered() error {
+	geometry, err := hubgeom.PauseGeometry(c.location)
+	if err != nil {
+		logger.Warn("battencli: pause geometry unreadable, running despite a possible pause", "slug", c.slug, "cause", err)
+		return nil
+	}
+	coverage, err := pauserecord.ReadCoverage(geometry.RecordPath, c.slug, time.Now())
+	if err != nil {
+		logger.Warn("battencli: pause record unreadable, running despite a possible pause", "slug", c.slug, "cause", err)
+		return nil
+	}
+	if !coverage.Covered {
+		return nil
+	}
+	return pauserecord.CoveredError(coverage.Entry, c.slug, fmt.Sprintf(`run "lyx batten run %s" again`, c.slug))
+}
+
+// pausedExtras returns the status keys a live pause entry covering this run's slug adds: paused_since (the entry's time, RFC 3339) and paused_by (its scope).
+// An uncovered run, a receiver without a location and an unreadable record add nothing; the last logs one Warn, so a status read never fails on the record.
+func (c *battenCLI) pausedExtras() map[string]any {
+	if c.location == nil {
+		return nil
+	}
+	geometry, err := hubgeom.PauseGeometry(c.location)
+	if err != nil {
+		logger.Warn("battencli: pause geometry unreadable, status omits paused_since", "slug", c.slug, "cause", err)
+		return nil
+	}
+	coverage, err := pauserecord.ReadCoverage(geometry.RecordPath, c.slug, time.Now())
+	if err != nil {
+		logger.Warn("battencli: pause record unreadable, status omits paused_since", "slug", c.slug, "cause", err)
+		return nil
+	}
+	if !coverage.Covered {
+		return nil
+	}
+	return map[string]any{
+		"paused_since": coverage.Entry.PausedAt.Format(time.RFC3339),
+		"paused_by":    coverage.Entry.Scope,
+	}
+}
+
 // battenPreRun implements the PreRun hook for batten's spec: run's whole existing pre-flight, in today's order: checkRunStatus, then seeding a fresh status when absent.
 // Each step's error becomes a returned error the generic body reports on the error envelope exactly as run's own inline handling did.
 //
 // This seed-when-absent behaviour is batten's alone and must not leak into the generic body:
 // loom refuses in exactly the situation batten seeds here, because only "lyx loom start" may seed loom's own status file.
 func (c *battenCLI) battenPreRun(ctx context.Context) error {
+	if err := c.refuseCovered(); err != nil {
+		return err
+	}
 	found, err := c.checkRunStatus()
 	if err != nil {
 		return err
@@ -545,7 +596,7 @@ func (c *battenCLI) battenPreStepUnmarked(ctx context.Context) (string, error) {
 		return shedverbs.KindBusy, fmt.Errorf("battencli: another batten run already holds the run lock %q", c.shedPaths.LockPath)
 	}
 
-	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	if err != nil {
 		return shedverbs.KindUnseeded, errors.New("battencli: decode status file " + c.shedPaths.StatusPath + ": " + err.Error())
 	}
@@ -616,6 +667,7 @@ const maxStatusHistoryEntries = 20
 // extra is kept for the Run-Shed block through the budget arm, whose error stays the fixed budget
 // literal.
 // A batten run that stopped before its teardown while its child loom run is done also carries childDoneFlagKey, naming the step that closes it.
+// A run a live pause covers also carries paused_since and paused_by.
 func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, error) {
 	history, truncated := recentHistory(st.History)
 	extras := map[string]any{
@@ -638,6 +690,9 @@ func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, er
 	child, childFound := c.readChildStatus()
 	if flag, flagged := haltedOverDoneChild(c.slug, st, child, childFound); flagged {
 		extras[childDoneFlagKey] = flag
+	}
+	for key, value := range c.pausedExtras() {
+		extras[key] = value
 	}
 	return extras, nil
 }
@@ -666,7 +721,7 @@ func (c *battenCLI) readChildStatus() (shedengine.Status, bool) {
 	if err != nil {
 		return shedengine.Status{}, false
 	}
-	child, found, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(task, shedrun.SelfRunID), shedrun.StatusLock(task, shedrun.SelfRunID))
+	child, found, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(task, shedrun.SelfRunID), shedrun.StatusLock(task, shedrun.SelfRunID))
 	if err != nil || !found {
 		return shedengine.Status{}, false
 	}

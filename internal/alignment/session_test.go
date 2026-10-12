@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
@@ -94,6 +95,8 @@ type sessionHarness struct {
 	fake    *fakeShuttle
 	session *Session
 	now     time.Time
+	// epoch is the clock's start; the awake clock reads the time since it, so no sleep is seen.
+	epoch time.Time
 }
 
 func newSessionHarness(t *testing.T) *sessionHarness {
@@ -104,6 +107,7 @@ func newSessionHarness(t *testing.T) *sessionHarness {
 		fake:    &fakeShuttle{},
 		now:     time.Date(2026, 3, 3, 12, 0, 0, 0, time.UTC),
 	}
+	h.epoch = h.now
 	stencilkit.SeedInto(t, h.stencil)
 	h.session = h.newSession()
 	return h
@@ -117,6 +121,7 @@ func (h *sessionHarness) newSession() *Session {
 		Shuttle:     h.fake,
 		Now:         func() time.Time { return h.now },
 		Token:       func() string { return "tok" },
+		Awake:       func() time.Duration { return h.now.Sub(h.epoch) },
 	})
 }
 
@@ -244,6 +249,52 @@ func TestSession(t *testing.T) {
 		got := h.poll(t, attempt)
 		if !got.Done || got.Cause != CauseTimeout || len(h.fake.stops) != 1 || h.fake.stops[0] != "guid-1" {
 			t.Errorf("Poll() at the deadline = %+v with stops %v; want a timeout and one stop of guid-1", got, h.fake.stops)
+		}
+	})
+
+	t.Run("a paused interval and a detected sleep do not spend the timeout", func(t *testing.T) {
+		t.Parallel()
+		h := newSessionHarness(t)
+		awake := time.Duration(0)
+		recordPath := filepath.Join(t.TempDir(), "pause.json")
+		h.session = NewSession(SessionConfig{
+			Root:        h.root,
+			StencilsDir: h.stencil,
+			Shuttle:     h.fake,
+			Now:         func() time.Time { return h.now },
+			Token:       func() string { return "tok" },
+			Pause:       pauserecord.Geometry{RecordPath: recordPath, Slug: "task-a"},
+			Awake:       func() time.Duration { return awake },
+		})
+		attempt := h.begin(t, "round-1")
+
+		pausedAt := h.now.Add(2 * time.Minute)
+		resumedAt := pausedAt.Add(15 * time.Minute)
+		if _, err := pauserecord.Update(recordPath, resumedAt, func(r *pauserecord.Record) error {
+			r.Resumed = append(r.Resumed, pauserecord.Entry{Scope: "task-a", PausedAt: pausedAt, ResumedAt: resumedAt})
+			return nil
+		}); err != nil {
+			t.Fatalf("Update() error = %v; want nil", err)
+		}
+		h.now = h.now.Add(25 * time.Minute)
+		awake = 25 * time.Minute
+		if got := h.poll(t, attempt); got.Done {
+			t.Fatalf("Poll() 25 minutes in with 15 paused = %+v; want pending", got)
+		}
+
+		h.now = h.now.Add(30 * time.Minute)
+		awake += 5 * time.Minute
+		if got := h.poll(t, attempt); got.Done {
+			t.Fatalf("Poll() after a 25 minute sleep = %+v; want pending", got)
+		}
+		if len(h.fake.stops) != 0 {
+			t.Errorf("stops = %v; want none", h.fake.stops)
+		}
+
+		h.now = h.now.Add(5 * time.Minute)
+		awake += 5 * time.Minute
+		if got := h.poll(t, attempt); !got.Done || got.Cause != CauseTimeout {
+			t.Errorf("Poll() with 20 awake unpaused minutes spent = %+v; want a timeout", got)
 		}
 	})
 
@@ -392,16 +443,30 @@ func TestSession(t *testing.T) {
 		}
 	})
 
-	t.Run("MarkApplied round-trips through Attempts", func(t *testing.T) {
+	t.Run("MarkApplied round-trips through Attempts and keeps a key a newer binary wrote", func(t *testing.T) {
 		t.Parallel()
 		h := newSessionHarness(t)
 		attempt := h.begin(t, "round-1")
+		path := filepath.Join(attempt.Dir, attemptFileName)
+		written, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("ReadFile(%q) = %v; want nil", path, err)
+		}
+		withExtra := strings.Replace(string(written), "{", `{"newer_key": "kept",`, 1)
+		if err := os.WriteFile(path, []byte(withExtra), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+		}
+
 		if err := h.session.MarkApplied(attempt, VerdictApprove, true); err != nil {
 			t.Fatalf("MarkApplied() error = %v; want nil", err)
 		}
 		attempts, err := h.session.Attempts()
 		if err != nil || len(attempts) != 1 || attempts[0].Applied != VerdictApprove || !attempts[0].Notified {
 			t.Errorf("Attempts() = %+v, %v; want one attempt applied as approve and notified", attempts, err)
+		}
+		rewritten, err := os.ReadFile(path)
+		if err != nil || !strings.Contains(string(rewritten), `"newer_key": "kept"`) {
+			t.Errorf("attempt.json after MarkApplied = %s, %v; want the newer_key kept", rewritten, err)
 		}
 	})
 }

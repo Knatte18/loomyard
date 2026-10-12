@@ -65,7 +65,9 @@ type standInRecord struct {
 	// Strand is the strand-name variable the stand-in saw; empty when the gate dropped it.
 	Strand string `json:"strand"`
 	// Prebuilt is the prebuilt-lyx variable the stand-in saw.
-	Prebuilt   string `json:"prebuilt"`
+	Prebuilt string `json:"prebuilt"`
+	// Enclosing is the enclosing-gate pid variable the stand-in saw.
+	Enclosing  string `json:"enclosing"`
 	PID        int    `json:"pid"`
 	Grandchild int    `json:"grandchild"`
 }
@@ -78,14 +80,14 @@ func runGateHelper() int {
 	if standIn := os.Getenv(helperGoEnv); standIn != "" {
 		goBinary = standIn
 	}
-	code := clihelp.ExecuteIn(newCommand(goBinary), os.Getenv(helperCwdEnv), os.Stdout, os.Args[1:])
+	code := clihelp.ExecuteIn(newCommand(goBinary, time.Second), os.Getenv(helperCwdEnv), os.Stdout, os.Args[1:])
 	// The helper stands for `lyx`'s main, which removes the process run directory on exit.
 	_ = lyxtemp.Remove()
 	return code
 }
 
 func runStandIn() int {
-	record := standInRecord{Args: os.Args[1:], GoFlags: os.Getenv("GOFLAGS"), Slot: os.Getenv(gateslot.InheritEnv), Strand: os.Getenv(agentname.StrandNameEnv), Prebuilt: os.Getenv(gateslot.PrebuiltLyxEnv), PID: os.Getpid()}
+	record := standInRecord{Args: os.Args[1:], GoFlags: os.Getenv("GOFLAGS"), Slot: os.Getenv(gateslot.InheritEnv), Strand: os.Getenv(agentname.StrandNameEnv), Prebuilt: os.Getenv(gateslot.PrebuiltLyxEnv), Enclosing: os.Getenv(enclosingGateEnv), PID: os.Getpid()}
 	// A build invocation only records itself and exits with its own code; the hold belongs to the test invocation.
 	isBuild := len(os.Args) > 1 && os.Args[1] == "build"
 	hold := !isBuild && os.Getenv(helperHoldEnv) != ""
@@ -150,8 +152,10 @@ func startGate(t *testing.T, run gateRun) *runningGate {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 	g.cmd = exec.CommandContext(ctx, os.Args[0], run.args...)
-	// The outer environment's slot, if any, must not make the gate think it is nested.
-	g.cmd.Env = slices.DeleteFunc(os.Environ(), func(entry string) bool { return strings.HasPrefix(entry, gateslot.InheritEnv+"=") })
+	// The outer environment's slot or enclosing gate, if any, must not make the gate think it is nested.
+	g.cmd.Env = slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		return strings.HasPrefix(entry, gateslot.InheritEnv+"=") || strings.HasPrefix(entry, enclosingGateEnv+"=")
+	})
 	g.cmd.Env = append(g.cmd.Env, helperEnv+"="+helperRoleGate, helperCwdEnv+"="+run.cwd, helperRecordEnv+"="+g.record)
 	if !run.realGo {
 		g.cmd.Env = append(g.cmd.Env, helperGoEnv+"="+os.Args[0])
@@ -283,6 +287,9 @@ func TestGateTest_Scenario(t *testing.T) {
 		if record.Strand != "" {
 			t.Errorf("go environment %s = %q; want it dropped", agentname.StrandNameEnv, record.Strand)
 		}
+		if want := strconv.Itoa(g.cmd.Process.Pid); record.Enclosing != want {
+			t.Errorf("go environment %s = %q; want the gate's pid %s", enclosingGateEnv, record.Enclosing, want)
+		}
 		if want := []string{"test", "-C", prime, "-p", "3", "-tags", "integration", "./pkg", "-run", "X"}; !slices.Equal(record.Args, want) {
 			t.Errorf("go args = %q; want %q", record.Args, want)
 		}
@@ -340,6 +347,18 @@ func TestGateTest_Scenario(t *testing.T) {
 		if nestedRecord.Strand != "" {
 			t.Errorf("nested go environment %s = %q; want it dropped", agentname.StrandNameEnv, nestedRecord.Strand)
 		}
+		if !strings.Contains(nested.stderr.String(), "CPU watchdog started") {
+			t.Errorf("nested stderr = %q; want the watchdog's start log, an inherited slot being no enclosing run", nested.stderr.String())
+		}
+
+		// The gate is a child of this process, so a value naming this process names a live ancestor of the gate.
+		enclosed := startGate(t, gateRun{cwd: prime, args: []string{"test", "./enclosed"}, env: []string{gateslot.InheritEnv + "=" + held.Slot, enclosingGateEnv + "=" + strconv.Itoa(os.Getpid())}})
+		if code := enclosed.wait(t); code != 0 {
+			t.Errorf("enclosed exit code = %d, stdout %q; want 0 inside the held slot", code, enclosed.stdout.String())
+		}
+		if stderr := enclosed.stderr.String(); !strings.Contains(stderr, "enclosing lyx gate test") || strings.Contains(stderr, "CPU watchdog started") {
+			t.Errorf("enclosed stderr = %q; want the enclosing-run reason and no watchdog start", stderr)
+		}
 
 		_ = holder.cmd.Process.Kill()
 		holder.wait(t)
@@ -386,6 +405,52 @@ func TestGateTest_Scenario(t *testing.T) {
 		code, stdout := runGate(t, gateRun{cwd: t.TempDir(), realGo: true, args: []string{"test", "-C", nestedModule, "./..."}})
 		if code != 0 || !strings.Contains(stdout, "ok") {
 			t.Errorf("real go test = exit %d, %q; want 0 and go's ok line", code, stdout)
+		}
+		requireFree(t)
+	})
+
+	t.Run("a test binary that keeps cores busy past busy_quit_sec is quit with its stacks printed", func(t *testing.T) {
+		if runtime.GOOS != "linux" {
+			t.Skip("the CPU watchdog samples /proc, which only Linux has")
+		}
+		spinModule := filepath.Join(prime, "spin")
+		if err := os.MkdirAll(spinModule, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		files := map[string]string{
+			"go.mod":       "module example.com/spin\n\ngo 1.21\n",
+			"spin_test.go": "package spin\n\nimport (\n\t\"sync/atomic\"\n\t\"testing\"\n)\n\nvar sink atomic.Uint64\n\nfunc spinForever() {\n\tfor {\n\t\tsink.Add(1)\n\t}\n}\n\nfunc TestSpin(t *testing.T) {\n\tfor i := 0; i < 4; i++ {\n\t\tgo spinForever()\n\t}\n\tspinForever()\n}\n",
+		}
+		for name, content := range files {
+			if err := os.WriteFile(filepath.Join(spinModule, name), []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		configPath := configengine.ConfigFile(h.BoardDir(), "gate")
+		if err := os.WriteFile(configPath, []byte(gateConfig+"busy_quit_sec: 1\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.WriteFile(configPath, []byte(gateConfig), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}()
+
+		started := time.Now()
+		g := startGate(t, gateRun{cwd: t.TempDir(), realGo: true, args: []string{"test", "-C", spinModule, "./..."}})
+		code := g.wait(t)
+		elapsed := time.Since(started)
+
+		stdout := g.stdout.String()
+		if code == 0 || !strings.Contains(stdout, "SIGQUIT: quit") || !strings.Contains(stdout, "goroutine ") {
+			t.Errorf("spin run = exit %d, stdout %q; want a non-zero exit and the Go runtime's SIGQUIT stacks", code, stdout)
+		}
+		// The test helper hands the verb's stdout as its error stream, so the watchdog line is in stdout.
+		if window, ok := gateslot.FindWatchdogQuit(stdout); !ok || window != "1s" {
+			t.Errorf("FindWatchdogQuit(stdout) = %q, %v; want the run's own 1s window, which the template's 120s cannot produce", window, ok)
+		}
+		if elapsed > time.Minute {
+			t.Errorf("spin run took %s; want the quit to end it long before go test's own timeout", elapsed)
 		}
 		requireFree(t)
 	})

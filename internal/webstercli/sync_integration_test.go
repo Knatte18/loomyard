@@ -22,7 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // newPairFixture builds a hub with a code repo and its records sibling and returns the layout and the sibling's path.
@@ -119,7 +118,7 @@ func newPairFixtureAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
 	}
 	for name, content := range map[string]string{
 		"mutate.lock":                    "lock",
-		websterengine.PauseFlagName:      "paused",
+		"pause":                          "paused",
 		filepath.Join("prompts", "1.md"): "rendered fork prompt",
 	} {
 		if err := os.WriteFile(filepath.Join(websterScratchDir, name), []byte(content), 0o644); err != nil {
@@ -245,7 +244,7 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 			}
 			wantAbsent := []string{
 				scratchBase + "/webster/mutate.lock",
-				scratchBase + "/webster/" + websterengine.PauseFlagName,
+				scratchBase + "/webster/pause",
 				scratchBase + "/webster/prompts/1.md",
 				scratchBase + "/loom/run.lock",
 			}

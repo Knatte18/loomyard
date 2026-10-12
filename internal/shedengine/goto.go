@@ -27,6 +27,8 @@ type GotoRequest struct {
 	RunID string
 	// MissingStatusWayForward is the told clause for a missing status file; see Shed.MissingStatusWayForward.
 	MissingStatusWayForward string
+	// PauseWayForward is the told command the busy and running-run refusals name to stop the run at a boundary; see Shed.PauseWayForward.
+	PauseWayForward string
 }
 
 // Goto moves a halted run onto the Target row and leaves it paused.
@@ -47,11 +49,11 @@ func Goto(req GotoRequest) (Status, error) {
 		return Status{}, fmt.Errorf("shedengine: acquire run lock %q: %w", req.LockPath, err)
 	}
 	if !locked {
-		return Status{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, req.LockPath, busyWayForward(req.RunID))
+		return Status{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, req.LockPath, busyWayForward(req.RunID, pauseCommandFor(req.PauseWayForward, req.RunID, "")))
 	}
 	defer runLock.Release()
 
-	st, found, err := state.ReadJSONStrict[Status](req.StatusPath, req.StatusLockPath)
+	st, found, err := state.ReadJSONNoMkdir[Status](req.StatusPath, req.StatusLockPath)
 	if err != nil {
 		return Status{}, fmt.Errorf("shedengine: read status file %q: %w", req.StatusPath, err)
 	}
@@ -73,7 +75,7 @@ func Goto(req GotoRequest) (Status, error) {
 	}
 
 	if st.State == StateRunning {
-		return Status{}, fmt.Errorf("shedengine: goto moves only a halted run, and this run is running; way forward: %s then %s leaves the run paused at its next producer boundary, then re-run goto", runVerb("pause", req.RunID), runVerb("step", req.RunID))
+		return Status{}, fmt.Errorf("shedengine: goto moves only a halted run, and this run is running; way forward: %q then %s leaves the run paused at its next producer boundary, then re-run goto", pauseCommandFor(req.PauseWayForward, req.RunID, st.CurrentProducer), runVerb("step", req.RunID))
 	}
 	if err := CheckGotoTarget(req.Producers, st, req.Target, req.RunID); err != nil {
 		return Status{}, err
@@ -161,7 +163,7 @@ func Relaunch(req RelaunchRequest) (Status, error) {
 		return Status{}, fmt.Errorf("shedengine: acquire run lock %q: %w", req.LockPath, err)
 	}
 	if !locked {
-		return Status{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, req.LockPath, busyWayForward(req.RunID))
+		return Status{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, req.LockPath, busyWayForward(req.RunID, pauseCommandFor("", req.RunID, "")))
 	}
 	defer runLock.Release()
 

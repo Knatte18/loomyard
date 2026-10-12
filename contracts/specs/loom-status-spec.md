@@ -63,7 +63,7 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
 - **`product.slug` / `product.parent`** — the only handoff pointers into the wider task record;
   the board owns durable title/description, not this file.
 - **`product.start_sha`** — the repo `HEAD` stamped when Webster begins, so Raddle can diff `start_sha..HEAD`. `null` until Webster starts.
-- **`pause_before` / `pause_after`** — stop conditions an outside actor records through `lyx shed pause --before|--after`; both keys are absent when empty.
+- **`pause_before` / `pause_after`** — stop conditions an outside actor records through `lyx loom pause --before|--after` or `lyx shed pause --before|--after`, the loom pause verb's only forms; both keys are absent when empty.
   `pause_before` fires when `current_producer` equals it, before that producer is called.
   `pause_after` fires when the named producer returns a routed running outcome, pausing at the routed row, and stays recorded across a halting outcome or a producer error.
   A fired condition pauses the run with the reason `paused before <target>, as requested` or `paused after <target>, as requested` and clears both keys.
@@ -109,10 +109,10 @@ It is display only: no Go decision reads it.
 
 ## Parse discipline
 
-Strict, fail-loud parsing: the `internal/state` read (`state.ReadJSONStrict`) rejects unknown or malformed fields via `json.Decoder.DisallowUnknownFields()` at the shell level — the JSON analogue of the discipline webster's own strict `outcome.yaml` decode and the burler verdict-parse apply to their own YAML.
+Fail-loud parsing: the `internal/state` read (`state.ReadJSONNoMkdir`) rejects malformed JSON and accepts unknown fields, and a rewrite keeps them.
 An unparseable or malformed status file is a hard error;
 loom never guesses a status.
-`product` is decoded separately, after the strict shell decode succeeds — see [Validation checklist](#validation-checklist) below for how a `product` that fails to decode as loom's own shape is classified.
+`product` is decoded separately, after the shell decode succeeds — see [Validation checklist](#validation-checklist) below for how a `product` that fails to decode as loom's own shape is classified.
 
 ## Validation checklist
 

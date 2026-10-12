@@ -111,13 +111,9 @@ func TestSeed_RefusesExistingFile(t *testing.T) {
 }
 
 // TestSeed_RefusesUndecodableFileAsExists is crucible round fable5-high-r5's F3 regression guard: a
-// status file that is PRESENT but cannot be decoded (malformed JSON, or an unknown top-level field)
-// is still present, so Seed must refuse it via ErrSeedExists — never overwrite it, and never
-// escalate the decode failure as its own error. Escalating it made `lyx loom start` refuse on the
-// envelope before ever spawning a driver, for the exact "poisoned status file" state
-// the Completion Signal Invariant promises never looks like bootstrap's own gate;
-// mapping it to ErrSeedExists lets the bootstrap proceed and defers the decode diagnosis to the
-// driver's own Shed.Run step-1 read gate, exactly as a cleanly-decoding existing file already does.
+// status file that is PRESENT but cannot be decoded (malformed JSON) is still present, so Seed must refuse it via ErrSeedExists — never overwrite it, and never escalate the decode failure as its own error.
+// Escalating it made `lyx loom start` refuse on the envelope before ever spawning a driver, for the exact "poisoned status file" state the Completion Signal Invariant promises never looks like bootstrap's own gate.
+// Mapping it to ErrSeedExists lets the bootstrap proceed and defers the decode diagnosis to the driver's own Shed.Run step-1 read gate, exactly as a cleanly-decoding existing file already does.
 //
 // Reproduced live before this test: `lyx loom start` against a status file overwritten with non-JSON
 // returned `{"error":"unmarshal state: invalid character...","ok":false}` and never spawned a
@@ -129,7 +125,7 @@ func TestSeed_RefusesUndecodableFileAsExists(t *testing.T) {
 	}{
 		{name: "malformed JSON", content: `{ "current_producer": "Discussion-Write", "state": "run`},
 		{name: "not JSON at all", content: `THIS IS NOT JSON AT ALL {{{`},
-		{name: "unknown top-level field", content: `{"current_producer":"Preflight","state":"running","history":[],"__unknown__":true}`},
+		{name: "decodable file with an unknown top-level field, still refused as existing", content: `{"current_producer":"Preflight","state":"running","history":[],"__unknown__":true}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

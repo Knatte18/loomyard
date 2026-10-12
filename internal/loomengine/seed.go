@@ -31,15 +31,12 @@ import (
 // escalate, not treat this as "not ready". See internal/preflight/doc.go's "report-not-error
 // contract" section for the same three-case shape stated in full.
 //
-// The step-1 pre-emption rule, stated once and generally: every verdict shedengine.Run's step-1
-// read gate already hard-errors or short-circuits on is unreachable when CheckSeed is driven as a
-// producer row, because step 1 reads the same told path through the same
-// state.ReadJSONStrict[shedengine.Status] decoder before any producer is looked up.
+// The step-1 pre-emption rule, stated once and generally: every verdict shedengine.Run's step-1 read gate already hard-errors or short-circuits on is unreachable when CheckSeed is driven as a producer row, because step 1 reads the same told path through the same state.ReadJSONNoMkdir[shedengine.Status] decoder before any producer is looked up.
 // Four of the verdicts below are covered by that rule, and are kept anyway:
 //
 //   - CheckSeedMissing: step 1's !found hard-errors, "status file %q does not exist; Shed never
 //     seeds one".
-//   - CheckSeedIncoherent via the state.ErrDecode branch: step 1's identical strict read errors
+//   - CheckSeedIncoherent via the state.ErrDecode branch: step 1's identical read errors
 //     first.
 //   - CheckSeedIncoherent via checkCoherence's invalid-state rule: step 1's !st.State.valid()
 //     hard-errors.
@@ -65,7 +62,7 @@ func CheckSeed(statusPath, statusLockPath, expectedProducer string, toleratedPro
 			report.AddFailure(CheckSeedUnreadable, err.Error())
 		}
 	} else {
-		// state.ReadJSONStrict does not create missing parent directories (see its own doc
+		// state.ReadJSONNoMkdir does not create missing parent directories (see its own doc
 		// comment), and neither does internal/lock's AcquireReadLock/AcquireWriteLock --
 		// gofrs/flock opens the lock file with O_CREATE but never creates parents, the same
 		// gap internal/reedengine/lock.go already works around with its own
@@ -75,10 +72,10 @@ func CheckSeed(statusPath, statusLockPath, expectedProducer string, toleratedPro
 		if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
 			return Report{}, err
 		}
-		shed, found, rerr := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
+		shed, found, rerr := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
 		switch {
 		case rerr != nil:
-			// A decode failure (malformed JSON or an unknown field) is a determined
+			// A decode failure (malformed JSON) is a determined
 			// incoherent-seed verdict; anything else (a raw read failure, a
 			// lock-acquire failure) is an infra failure to escalate.
 			if errors.Is(rerr, state.ErrDecode) {
@@ -87,7 +84,7 @@ func CheckSeed(statusPath, statusLockPath, expectedProducer string, toleratedPro
 				return Report{}, rerr
 			}
 		case !found:
-			// The stat above just succeeded, so ReadJSONStrict returning not-found (its
+			// The stat above just succeeded, so ReadJSONNoMkdir returning not-found (its
 			// (zero,false,nil) not-exist path) means the file vanished between the two
 			// calls -- a TOCTOU race, not a determined verdict. Synthesize a non-nil
 			// error so this never masquerades as Report{}, nil.
@@ -124,14 +121,9 @@ func CheckSeed(statusPath, statusLockPath, expectedProducer string, toleratedPro
 // the OLD task's Finalize, with the status envelope naming the old slug (crucible round
 // fable5-high-r3, F-B7).
 //
-// A missing file, an empty recorded slug, a product that does not decode, and a decode failure on
-// the outer shed envelope itself (malformed JSON or an unknown field) all pass: each is some other
-// check's business — the caller's own missing-file handling, and, for the coherence cases (an empty
-// slug and the like), CheckSeed's own rules. A decode failure specifically is diagnosed one layer
-// earlier than CheckSeed: the spawned driver's Shed.Run step-1 read gate does the same strict
-// ReadJSONStrict read at the top of its loop and errors on it BEFORE any producer — the
-// Loom-Preflight row that calls CheckSeed included — is ever looked up, so CheckSeed-as-producer
-// never even runs on a decode failure (see CheckSeed's own doc comment on that step-1 pre-emption).
+// A missing file, an empty recorded slug, a product that does not decode, and a decode failure on the outer shed envelope itself (malformed JSON) all pass: each is some other check's business — the caller's own missing-file handling, and, for the coherence cases (an empty slug and the like), CheckSeed's own rules.
+// A decode failure specifically is diagnosed one layer earlier than CheckSeed.
+// The spawned driver's Shed.Run step-1 read gate does the same ReadJSONNoMkdir read at the top of its loop and errors on it BEFORE any producer — the Loom-Preflight row that calls CheckSeed included — is ever looked up, so CheckSeed-as-producer never even runs on a decode failure (see CheckSeed's own doc comment on that step-1 pre-emption).
 // Either way this function answers ownership alone.
 // Escalating a decode failure here stopped the bootstrap before it ever spawned a driver or reached its success envelope, for a condition the driver's own run loop already surfaces in its own log —
 // reproduced live via a poisoned status file that made both "lyx loom start" and "lyx loom run" refuse on the envelope instead of letting the spawned driver's own step-1 gate report the decode failure.
@@ -142,7 +134,7 @@ func VerifySeedOwnership(statusPath, statusLockPath, wantSlug string) error {
 	if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
 		return err
 	}
-	shed, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
+	shed, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
 	if err != nil {
 		if errors.Is(err, state.ErrDecode) {
 			return nil

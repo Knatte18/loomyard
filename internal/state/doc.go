@@ -30,4 +30,18 @@
 // exactly as before.
 // Closing that second direction requires the other writer to route through UpdateJSON as well;
 // nothing here makes a file race-free on its own.
+//
+// # Unknown keys
+//
+// No read refuses a field its type does not declare: ReadJSON, ReadJSONNoMkdir and UpdateJSON's own read all decode with a plain unmarshal.
+// Every write keeps, in the file it replaces, each key the record's Go type does not declare, so a record a newer binary wrote loses nothing when an older one rewrites it.
+// WriteJSON and UpdateJSON do this under the write lock they already hold, by reading the file they replace and merging it into the new encoding.
+// A kept key lands after the declared ones, in the old file's order, with its raw value, so its exact digits survive.
+// A struct merges key by key, matching declared names as encoding/json does, case-insensitively, and promoted fields of embedded structs count as declared.
+// A pointer merges through to its element, and a map merges the values under keys both files hold, adding no key the new map lacks.
+// A slice or array element merges with the old element at its index only when both decode to the same value, so an element updated in place, removed or moved loses its unknown keys, and an untouched or appended neighbour keeps its own.
+// A type that encodes itself (a json.Marshaler or json.Unmarshaler, json.RawMessage, an interface, or a scalar) is opaque and is written whole.
+// An absent file, or one that does not parse, adds nothing.
+//
+// The bound: only keys already in the file being replaced pass through, and each write costs one extra read of that file under the held lock.
 package state
