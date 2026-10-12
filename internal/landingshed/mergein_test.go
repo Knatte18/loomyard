@@ -395,6 +395,155 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 	})
 }
 
+// TestMergeIn_VerifyGate pins the clean-tree checks and the plan verify around the merge-in:
+// the verify is asked once at site Merge-In between three checks, and every stop leaves no merge record.
+func TestMergeIn_VerifyGate(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a passed or skipped verify lets the record be written", func(t *testing.T) {
+		t.Parallel()
+		for _, status := range []verifytree.Status{verifytree.StatusPassed, verifytree.StatusSkipped} {
+			fx := newMergeInFixture(t)
+			fx.gate.fake.result = verifytree.Result{Status: status}
+
+			outcome, ptr := fx.call(t)
+
+			if outcome != shedengine.Done {
+				t.Fatalf("status %q: Call() = %q, %+v; want Done", status, outcome, ptr)
+			}
+			if fx.gate.fake.verifyCalls != 1 || fx.gate.fake.site.Label != "Merge-In" {
+				t.Errorf("status %q: verify calls=%d site=%+v; want 1 call at site Merge-In", status, fx.gate.fake.verifyCalls, fx.gate.fake.site)
+			}
+			if fx.gate.fake.dirtyCalls != 3 {
+				t.Errorf("status %q: clean-tree checks = %d; want 3", status, fx.gate.fake.dirtyCalls)
+			}
+			fx.readRecord(t)
+		}
+	})
+
+	t.Run("a failed, dirty or unstartable verify is Stuck naming its cause", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name         string
+			result       verifytree.Result
+			wantInReason []string
+		}{
+			{"failed", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 3, Log: "/verify/verify-1.log"}, []string{`"main"`, "exit code 3", "/verify/verify-1.log"}},
+			{"dirty result", verifytree.Result{Status: verifytree.StatusDirty, Dirty: []string{"late.txt"}}, []string{"late.txt"}},
+			{"could not start", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, Detail: "no shell"}, []string{"no shell"}},
+		}
+		for _, tt := range tests {
+			fx := newMergeInFixture(t)
+			fx.gate.fake.result = tt.result
+
+			outcome, ptr := fx.call(t)
+
+			if outcome != shedengine.Stuck || ptr.Halt {
+				t.Fatalf("%s: Call() = %q, %+v; want a non-halting Stuck", tt.name, outcome, ptr)
+			}
+			for _, want := range tt.wantInReason {
+				if !strings.Contains(ptr.Reason, want) {
+					t.Errorf("%s: reason %q lacks %q", tt.name, ptr.Reason, want)
+				}
+			}
+			if fx.gate.fake.dirtyCalls != 2 {
+				t.Errorf("%s: clean-tree checks = %d; want 2, the check after the verify never running", tt.name, fx.gate.fake.dirtyCalls)
+			}
+			if _, found, _ := ReadMergeRecord(fx.m.deps.MergeRecordPath); found {
+				t.Errorf("%s: a merge record was written after a halted verify", tt.name)
+			}
+		}
+	})
+
+	t.Run("a dirty tree at each of the three points is Stuck naming the paths", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			point      int
+			wantPoint  string
+			wantMerge  bool
+			wantVerify int
+		}{
+			{0, "before the merge-in", false, 0},
+			{1, "after the merge-in", true, 0},
+			{2, "after the verify", true, 1},
+		}
+		for _, tt := range tests {
+			fx := newMergeInFixture(t)
+			fx.gate.fake.dirtyAt(tt.point, "stray.txt", "gen/out.go")
+
+			outcome, ptr := fx.call(t)
+
+			if outcome != shedengine.Stuck {
+				t.Fatalf("%s: Call() = %q; want Stuck", tt.wantPoint, outcome)
+			}
+			for _, want := range []string{tt.wantPoint, "stray.txt", "gen/out.go"} {
+				if !strings.Contains(ptr.Reason, want) {
+					t.Errorf("%s: reason %q lacks %q", tt.wantPoint, ptr.Reason, want)
+				}
+			}
+			if merged := strings.Contains(strings.Join(fx.events, ","), "merge main"); merged != tt.wantMerge {
+				t.Errorf("%s: merge-in ran = %v; want %v", tt.wantPoint, merged, tt.wantMerge)
+			}
+			if fx.gate.fake.verifyCalls != tt.wantVerify {
+				t.Errorf("%s: verify calls = %d; want %d", tt.wantPoint, fx.gate.fake.verifyCalls, tt.wantVerify)
+			}
+			if _, found, _ := ReadMergeRecord(fx.m.deps.MergeRecordPath); found {
+				t.Errorf("%s: a merge record was written on a dirty tree", tt.wantPoint)
+			}
+		}
+	})
+
+	t.Run("a failing check, an unreadable command and a cancellation are returned as errors", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name  string
+			setup func(fx *mergeInFixture) context.Context
+			// wantErrHas is a substring of the returned error, when one is required.
+			wantErrHas string
+		}{
+			{
+				name: "clean-tree check error",
+				setup: func(fx *mergeInFixture) context.Context {
+					fx.gate.fake.dirtyErr = errors.New("git exploded")
+					return context.Background()
+				},
+				wantErrHas: "git exploded",
+			},
+			{
+				name: "verify command closure error",
+				setup: func(fx *mergeInFixture) context.Context {
+					fx.m.gate.command = func() (string, error) { return "", errors.New("plan unreadable") }
+					return context.Background()
+				},
+				wantErrHas: "plan unreadable",
+			},
+			{
+				name: "cancellation",
+				setup: func(fx *mergeInFixture) context.Context {
+					ctx, cancel := context.WithCancel(context.Background())
+					fx.gate.fake.onVerify = cancel
+					fx.gate.fake.verifyErr = context.Canceled
+					return ctx
+				},
+				wantErrHas: context.Canceled.Error(),
+			},
+		}
+		for _, tt := range tests {
+			fx := newMergeInFixture(t)
+			ctx := tt.setup(fx)
+
+			outcome, _, err := fx.m.Call(ctx)
+
+			if err == nil || outcome == shedengine.Stuck || !strings.Contains(err.Error(), tt.wantErrHas) {
+				t.Errorf("%s: Call() = %q, %v; want a returned error containing %q", tt.name, outcome, err, tt.wantErrHas)
+			}
+			if _, found, _ := ReadMergeRecord(fx.m.deps.MergeRecordPath); found {
+				t.Errorf("%s: a merge record was written after a returned error", tt.name)
+			}
+		}
+	})
+}
+
 func TestMergeIn_UnreadableLockRecordHaltsNamingTheReleaseVerb(t *testing.T) {
 	t.Parallel()
 

@@ -880,11 +880,12 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
-	wantRowMaxBounces := map[string]int{loomshed.NameDiscussionBouncer: 0, loomshed.NamePlanBouncer: 2, loomshed.NameWebsterBouncer: 1}
+	// The Merge-Bouncer row keeps the template's merge_max_bounces and merge_auto_accept.
+	wantRowMaxBounces := map[string]int{loomshed.NameDiscussionBouncer: 0, loomshed.NamePlanBouncer: 2, loomshed.NameWebsterBouncer: 1, loomshed.NameMergeBouncer: 1}
 	if !reflect.DeepEqual(c.env.RowMaxBounces, wantRowMaxBounces) {
 		t.Errorf("RowMaxBounces = %v; want %v", c.env.RowMaxBounces, wantRowMaxBounces)
 	}
-	wantRowAutoAccept := map[string]bool{loomshed.NameDiscussionBouncer: false, loomshed.NamePlanBouncer: false, loomshed.NameWebsterBouncer: true}
+	wantRowAutoAccept := map[string]bool{loomshed.NameDiscussionBouncer: false, loomshed.NamePlanBouncer: false, loomshed.NameWebsterBouncer: true, loomshed.NameMergeBouncer: true}
 	if !reflect.DeepEqual(c.env.RowAutoAccept, wantRowAutoAccept) {
 		t.Errorf("RowAutoAccept = %v; want %v", c.env.RowAutoAccept, wantRowAutoAccept)
 	}
@@ -903,7 +904,11 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			Seed:  burlerengine.ModelChoice{Model: "opus", Effort: "low"},
 			Judge: burlerengine.ModelChoice{Model: "sonnet", Effort: "medium"},
 		},
-		// The darn recipe's Darn-Review perch takes Webster-Review's pair.
+		// The merge review and the darn recipe's Darn-Review perch take Webster-Review's pair.
+		loomshed.NameMergeBouncer: {
+			Seed:  burlerengine.ModelChoice{Model: "opus", Effort: "low"},
+			Judge: burlerengine.ModelChoice{Model: "sonnet", Effort: "medium"},
+		},
 		loomshed.NameDarnBouncer: {
 			Seed:  burlerengine.ModelChoice{Model: "opus", Effort: "low"},
 			Judge: burlerengine.ModelChoice{Model: "sonnet", Effort: "medium"},
@@ -927,7 +932,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			t.Errorf("RowReviewModels[%q] = %+v; want the run-wide %+v", row, got, c.env.ReviewModels)
 		}
 	}
-	for _, row := range []string{loomshed.NameWebsterBurlerReview, loomshed.NameWebsterBurlerFix, loomshed.NameDarnBurlerReview, loomshed.NameDarnBurlerFix} {
+	for _, row := range []string{loomshed.NameWebsterBurlerReview, loomshed.NameWebsterBurlerFix, loomshed.NameMergeBurlerReview, loomshed.NameMergeBurlerFix, loomshed.NameDarnBurlerReview, loomshed.NameDarnBurlerFix} {
 		webster := c.env.RowReviewModels[row]
 		if len(webster.Review) != 1 || webster.Review[0].Model != "sonnet" || webster.Review[0].Effort != "high" {
 			t.Errorf("RowReviewModels[%q].Review = %+v; want one sonnet entry of effort high", row, webster.Review)
@@ -948,9 +953,9 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			t.Errorf("RowClusterFans[%q] = %q; want empty under the template's empty fans", row, fan)
 		}
 	}
-	for _, row := range []string{loomshed.NameWebsterBurlerReview, loomshed.NameWebsterBurlerFix, loomshed.NameWebsterBouncer} {
+	for _, row := range []string{loomshed.NameWebsterBurlerReview, loomshed.NameWebsterBurlerFix, loomshed.NameWebsterBouncer, loomshed.NameMergeBurlerReview, loomshed.NameMergeBurlerFix, loomshed.NameMergeBouncer} {
 		if _, present := c.env.RowClusterFans[row]; present {
-			t.Errorf("RowClusterFans has an entry for %q; want none, Webster-Review stays solo", row)
+			t.Errorf("RowClusterFans has an entry for %q; want none, Webster-Review and Merge-Review stay solo", row)
 		}
 	}
 

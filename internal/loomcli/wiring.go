@@ -269,6 +269,7 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 
 		RunID:                   c.runID,
 		MissingStatusWayForward: loomMissingStatusWayForward,
+		RerouteCapWayForward:    loomRerouteCapWayForward,
 	}
 	// c.env is otherwise left at its zero value deliberately: status/pause/approve read nothing from
 	// it, and filling only the fields the validate verbs actually read (rather than the whole of
@@ -825,6 +826,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			loomshed.NamePlanBurlerFix:          reviewSettings.Plan,
 			loomshed.NameWebsterBurlerReview:    reviewSettings.Webster,
 			loomshed.NameWebsterBurlerFix:       reviewSettings.Webster,
+			// The merge review reviews a committed diff as Webster-Review does, so it takes that segment's models.
+			loomshed.NameMergeBurlerReview: reviewSettings.Webster,
+			loomshed.NameMergeBurlerFix:    reviewSettings.Webster,
 			// The darn recipe's Darn-Review perch reviews a committed diff as Webster-Review does, so it takes that segment's models.
 			loomshed.NameDarnBurlerReview: reviewSettings.Webster,
 			loomshed.NameDarnBurlerFix:    reviewSettings.Webster,
@@ -842,6 +846,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			loomshed.NameDiscussionBouncer: shedadapters.BouncerModels(judgeSettings.Discussion),
 			loomshed.NamePlanBouncer:       shedadapters.BouncerModels(judgeSettings.Plan),
 			loomshed.NameWebsterBouncer:    shedadapters.BouncerModels(judgeSettings.Webster),
+			loomshed.NameMergeBouncer:      shedadapters.BouncerModels(judgeSettings.Webster),
 			loomshed.NameDarnBouncer:       shedadapters.BouncerModels(judgeSettings.Webster),
 		},
 
@@ -872,6 +877,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 		RunID:                   c.runID,
 		MissingStatusWayForward: loomMissingStatusWayForward,
+		RerouteCapWayForward:    loomRerouteCapWayForward,
 	}
 
 	// A darn run swaps in the darn recipe's verify source and Describe spec and fills the Darn-Write row's seams; a loom run leaves them nil.
@@ -904,22 +910,24 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	return nil
 }
 
-// perchMaxBounces maps loom.yaml's per-perch budget keys onto the Discussion, Plan and Webster Bouncer rows' names.
+// perchMaxBounces maps loom.yaml's per-perch budget keys onto the Discussion, Plan, Webster and Merge Bouncer rows' names.
 // A 0 entry means the perch takes the run-wide review_max_bounces.
 func perchMaxBounces(cfg loomengine.Config) map[string]int {
 	return map[string]int{
 		loomshed.NameDiscussionBouncer: cfg.DiscussionMaxBounces,
 		loomshed.NamePlanBouncer:       cfg.PlanMaxBounces,
 		loomshed.NameWebsterBouncer:    cfg.WebsterMaxBounces,
+		loomshed.NameMergeBouncer:      cfg.MergeMaxBounces,
 	}
 }
 
-// perchAutoAccept maps loom.yaml's per-perch auto-accept keys onto the Discussion, Plan and Webster Bouncer rows' names.
+// perchAutoAccept maps loom.yaml's per-perch auto-accept keys onto the Discussion, Plan, Webster and Merge Bouncer rows' names.
 func perchAutoAccept(cfg loomengine.Config) map[string]bool {
 	return map[string]bool{
 		loomshed.NameDiscussionBouncer: cfg.DiscussionAutoAccept,
 		loomshed.NamePlanBouncer:       cfg.PlanAutoAccept,
 		loomshed.NameWebsterBouncer:    cfg.WebsterAutoAccept,
+		loomshed.NameMergeBouncer:      cfg.MergeAutoAccept,
 	}
 }
 
@@ -947,6 +955,9 @@ func segmentBounces(statusPath, statusLockPath string, routing func() (shedengin
 
 // loomMissingStatusWayForward is the told trailing clause for a missing status file: loom's own start verb is what bootstraps one.
 const loomMissingStatusWayForward = "way forward: run \"lyx loom start\" first to bootstrap this task"
+
+// loomRerouteCapWayForward is the told clause a reroute-cap halt ends with: a row that keeps finding the parent moved is resumed once the parent branch has settled.
+const loomRerouteCapWayForward = "run \"lyx loom resume\" in the task worktree once the parent branch has settled"
 
 // hubConfigWayForward is the trailing clause for a failed load of the hub-wide landing config: reconciling the hub's config is what restores it.
 const hubConfigWayForward = "way forward: run lyx config reconcile --apply in the hub, then step again"

@@ -25,7 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 )
 
-// TestShippedRecipe_SeamsWiredOnPlanBouncerOnly parses the real embedded recipes.LoomRecipe and asserts each seam key's shipped shape: approve_seam: plan and skip_seam: rework-exempt each sit on the Plan-Bouncer row and no other row, and require_approved is present on no row at all -- the key is no longer recognized by any registry entry now that both rows sharing the old PlanValidate engine are deleted, and a row carrying it would fail construction outright rather than silently doing nothing.
+// TestShippedRecipe_SeamsWiredOnPlanBouncerOnly parses the real embedded recipes.LoomRecipe and asserts each seam key's shipped shape: approve_seam: plan and skip_seam: rework-exempt sit on the Plan-Bouncer row, approve_seam: merge and skip_seam: merge-overlap sit on the Merge-Bouncer row, and no other row carries either key, and require_approved is present on no row at all -- the key is no longer recognized by any registry entry now that both rows sharing the old PlanValidate engine are deleted, and a row carrying it would fail construction outright rather than silently doing nothing.
 //
 //testtiming:keep pins which shipped rows carry approve_seam and skip_seam, which TestApproveSeam_FailsToBuild never reads off the shipped recipe
 func TestShippedRecipe_SeamsWiredOnPlanBouncerOnly(t *testing.T) {
@@ -41,18 +41,22 @@ func TestShippedRecipe_SeamsWiredOnPlanBouncerOnly(t *testing.T) {
 		}
 	}
 
-	seams := []struct{ key, want string }{
-		{"approve_seam", "plan"},
-		{"skip_seam", "rework-exempt"},
+	seams := []struct {
+		key string
+		// want maps each row that carries the key to its shipped value.
+		want map[string]string
+	}{
+		{"approve_seam", map[string]string{loomshed.NamePlanBouncer: "plan", loomshed.NameMergeBouncer: "merge"}},
+		{"skip_seam", map[string]string{loomshed.NamePlanBouncer: "rework-exempt", loomshed.NameMergeBouncer: "merge-overlap"}},
 	}
 	for _, seam := range seams {
 		t.Run(seam.key, func(t *testing.T) {
 			t.Parallel()
 			for _, row := range r.Producers {
 				got, has := row.Config[seam.key]
-				if row.Name == loomshed.NamePlanBouncer {
-					if !has || got != seam.want {
-						t.Errorf("row %q: config[%q] = %v (present=%v); want %q", row.Name, seam.key, got, has, seam.want)
+				if want, carries := seam.want[row.Name]; carries {
+					if !has || got != want {
+						t.Errorf("row %q: config[%q] = %v (present=%v); want %q", row.Name, seam.key, got, has, want)
 					}
 					continue
 				}

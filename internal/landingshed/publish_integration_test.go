@@ -1,6 +1,6 @@
 //go:build integration
 
-// publish_integration_test.go drives Publish's merge-in half against a real pair built by the
+// publish_integration_test.go drives Merge-In and Publish against a real pair built by the
 // standard hub fixture (internal/hubforge), with only the GitHub client faked -- an httptest server
 // standing in for the real service, mirroring the in-package unit tier's own publishGitHubServer.
 // No conflict is staged in this scenario: the merge-in half is the point, and the byte-identical
@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -104,11 +105,47 @@ func newPublishDepsAt(t *testing.T, taskWorktree string) landingshed.Deps {
 	return deps
 }
 
-// TestPublish_MergesInCleanlyBeforeCreatingPullRequest drives Publish against a real pair: the task
-// worktree catches up with the parent branch (a clean, non-conflicting merge-in), pushes (a no-op
-// closure -- push mechanics are internal/gitrepo's own tier's job), and only then queries and creates
-// against the faked GitHub client, which itself asserts the pair is clean and carries the parent
-// branch's own content before it ever answers the create call.
+// newMergeInDepsAt builds Merge-In's Deps over the task worktree at taskWorktree on top of newPublishDepsAt's: the real pair's tip, path and head reads, and a temporary lock store.
+// The push is told skipped, so the parent tip is read locally with no fetch and no fast-forward;
+// the caller sets PushSkipped back for the Publish that follows.
+func newMergeInDepsAt(t *testing.T, taskWorktree string) landingshed.Deps {
+	t.Helper()
+	deps := newPublishDepsAt(t, taskWorktree)
+	fabricHandle := openFabricAtLanding(t, taskWorktree)
+	owner := parentlock.Owner{Slug: "task", Pair: taskWorktree, RunID: "r1", PID: os.Getpid(), StartTime: "t1"}
+	scratch := t.TempDir()
+	deps.PushSkipped = true
+	deps.OpenParentFabric = func() (*fabricengine.Fabric, error) { return fabricHandle, nil }
+	deps.ReadParentTips = func(fetch bool) (fabricengine.ParentTips, error) { return fabricHandle.ReadParentTips("main", fetch) }
+	deps.ChangedPaths = fabricHandle.ChangedPaths
+	deps.MergeBase = fabricHandle.MergeBase
+	deps.TaskHead = fabricHandle.HeadSHA
+	deps.Lock = landingshed.ParentLockDeps{
+		Store:    &parentlock.Store{Dir: filepath.Join(scratch, "locks"), Alive: func(int, string) bool { return true }},
+		Owner:    func() (parentlock.Owner, error) { return owner, nil },
+		WaitPath: parentlock.WaitRecordPath(scratch),
+	}
+	deps.MergeRecordPath = landingshed.MergeRecordPath(scratch)
+	deps.MergeReviewedPath = landingshed.MergeReviewedPath(scratch)
+	return deps
+}
+
+// mergeInAt runs Merge-In over a real pair, expecting Done, and returns the Deps it ran with.
+func mergeInAt(t *testing.T, taskWorktree string) landingshed.Deps {
+	t.Helper()
+	deps := newMergeInDepsAt(t, taskWorktree)
+	m, err := landingshed.NewMergeIn(deps)
+	if err != nil {
+		t.Fatalf("NewMergeIn() error = %v; want nil", err)
+	}
+	shedfake.RequireOutcome(t, m, shedengine.Done)
+	return deps
+}
+
+// TestPublish_MergesInCleanlyBeforeCreatingPullRequest drives Merge-In and then Publish against a real pair:
+// the task worktree catches up with the parent branch (a clean, non-conflicting merge-in) and writes its merge record.
+// Publish then pushes (a no-op closure -- push mechanics are internal/gitrepo's own tier's job), and only then queries and creates against the faked GitHub client.
+// That client asserts the pair is clean and carries the parent branch's own content before it ever answers the create call.
 func TestPublish_MergesInCleanlyBeforeCreatingPullRequest(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	taskWorktree := h.PrimeWorktree()
@@ -119,6 +156,11 @@ func TestPublish_MergesInCleanlyBeforeCreatingPullRequest(t *testing.T) {
 	gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "main")
 	gitkit.CommitFile(t, taskWorktree, "parent-progress.txt", "parent progress\n", "main: progress")
 	gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "task-branch")
+
+	mergeDeps := mergeInAt(t, taskWorktree)
+	if rec, found, err := landingshed.ReadMergeRecord(mergeDeps.MergeRecordPath); err != nil || !found || rec.ParentBranch != "main" || rec.MergeCommit == "" || rec.UpToDate {
+		t.Fatalf("merge record = %+v, %v, %v; want a record of a real merge of main", rec, found, err)
+	}
 
 	var pushed bool
 	deps := newPublishDepsAt(t, taskWorktree)
@@ -159,6 +201,8 @@ func TestPublish_RejectedPushNamesRemoteTipThenResumesAfterMerge(t *testing.T) {
 	gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "main")
 	gitkit.CommitFile(t, taskWorktree, "parent-progress.txt", "parent progress\n", "main: progress")
 	gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "task-branch")
+
+	mergeInAt(t, taskWorktree)
 
 	deps := newPublishDepsAt(t, taskWorktree)
 	fabricHandle := openFabricAtLanding(t, taskWorktree)

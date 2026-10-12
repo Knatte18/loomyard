@@ -1,6 +1,6 @@
 //go:build integration
 
-// wiring_publish_integration_test.go drives Publish's rejected-push half through wire()'s real seams and the production landingDeps closures over a real fabric pair,
+// wiring_publish_integration_test.go drives Merge-In and then Publish's rejected-push half through wire()'s real seams and the production landingDeps closures over a real fabric pair,
 // so the stuck reason carries what the production RemoteOnlyCommits closure reads from the pair's origin.
 
 package loomcli
@@ -82,6 +82,17 @@ func TestWire_Real_PublishRejectedPushNamesRemoteTip(t *testing.T) {
 	deps.CommitStatus = nil
 	deps.VerifyCommand = nil
 	c.env.Landing = deps
+
+	// The parent moved locally and was never pushed, so Merge-In runs with the push told skipped and reads the local tip alone.
+	mergeInDeps := c.env.Landing
+	mergeInDeps.PushSkipped = true
+	mergeIn, err := landingshed.NewMergeIn(mergeInDeps)
+	if err != nil {
+		t.Fatalf("NewMergeIn error = %v; want nil", err)
+	}
+	if outcome, ptr, err := mergeIn.Call(context.Background()); err != nil || outcome != shedengine.Done {
+		t.Fatalf("Merge-In Call = %q, %q, %v; want Done", outcome, ptr.Reason, err)
+	}
 
 	publish, err := landingshed.NewPublish(c.env.Landing)
 	if err != nil {

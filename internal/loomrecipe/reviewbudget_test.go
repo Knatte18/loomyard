@@ -15,6 +15,7 @@ var reviewSegmentBouncers = map[string]string{
 	"Discussion-Review": "Discussion-Bouncer",
 	"Plan-Review":       "Plan-Bouncer",
 	"Webster-Review":    "Webster-Bouncer",
+	"Merge-Review":      "Merge-Bouncer",
 }
 
 // assertReviewBudget fails unless every review-segment row carries its Bouncer's rowBudgets entry, or budget where that is absent or 0, and PR-Gate carries prGate.
@@ -57,7 +58,7 @@ func TestReviewBudget_AppliedByNewAndRouting(t *testing.T) {
 		{"run-wide budget on every segment", nil},
 		{"zero entries take the run-wide budget", map[string]int{"Plan-Bouncer": 0}},
 		{"one perch's own budget", map[string]int{"Plan-Bouncer": 2}},
-		{"every perch's own budget", map[string]int{"Discussion-Bouncer": 1, "Plan-Bouncer": 2, "Webster-Bouncer": 9}},
+		{"every perch's own budget", map[string]int{"Discussion-Bouncer": 1, "Plan-Bouncer": 2, "Webster-Bouncer": 9, "Merge-Bouncer": 4}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

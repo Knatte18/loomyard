@@ -1,4 +1,4 @@
-// publish.go implements the Publish producer: when the task's parent branch requires a pull request, it merges the parent's own catch-up into the task worktree, pushes the task branch, and opens or refreshes the pull request (title and body included) against that parent, then returns Done because the PR-Gate producer that follows owns the review wait.
+// publish.go implements the Publish producer: when the task's parent branch requires a pull request, it runs the repo's publish_verify, pushes the task branch, and opens or refreshes the pull request (title and body included) against that parent, then returns Done because the PR-Gate producer that follows owns the review wait.
 // It reports only what the shedengine.ShedProducer seam can carry: a verdict, an output pointer whose Reason the engine persists, and an error.
 //
 // Only the externally visible branch is pushed: the pull request is an artifact of the repository
@@ -38,29 +38,14 @@ var NewGitHubClient = githubclient.New
 // Publish is the ShedProducer that opens or refreshes a pull request from the task branch against
 // the configured parent branch, once the task branch itself has been pushed.
 type Publish struct {
-	deps     Deps
-	resolver resolver
-	gate     verifyGate
-	// premerge clears the merge-in a previous attempt left parked.
-	// A zero value runs no probe, so struct-literal tests run without it.
-	premerge preMerge
+	deps Deps
+	gate verifyGate
 }
 
 var _ shedengine.ShedProducer = (*Publish)(nil)
 
-// NewPublish constructs a Publish from deps, rejecting a nil OpenFabric, PushBranch or RemoteOnlyCommits closure up front with a distinct error each -- rather than nil-panicking at call time.
-//
-// It builds the resolver at construction time, opening deps.OpenFabric's lazily-opened handle and
-// calling mergeresolve.New with it alongside every other told value. Construction time is correct
-// here and is not in tension with the laziness rule the pair opener carries: that rule exists
-// because the pair constructor stat-checks a layout that may not be wired yet, whereas the
-// resolver's own constructor performs no I/O at all and only rejects nil or empty told values.
-// Building it eagerly therefore turns a mis-wired resolver into a construction error, which is
-// exactly where it belongs.
+// NewPublish constructs a Publish from deps, rejecting a nil PushBranch or RemoteOnlyCommits closure and an empty DescriptionPath up front with a distinct error each -- rather than nil-panicking at call time.
 func NewPublish(deps Deps) (*Publish, error) {
-	if deps.OpenFabric == nil {
-		return nil, fmt.Errorf("landingshed: NewPublish: Deps.OpenFabric must not be nil")
-	}
 	if deps.PushBranch == nil {
 		return nil, fmt.Errorf("landingshed: NewPublish: Deps.PushBranch must not be nil")
 	}
@@ -71,29 +56,9 @@ func NewPublish(deps Deps) (*Publish, error) {
 		return nil, fmt.Errorf("landingshed: NewPublish: Deps.DescriptionPath must not be empty")
 	}
 
-	fabricHandle, err := deps.OpenFabric()
-	if err != nil {
-		return nil, fmt.Errorf("landingshed: NewPublish: open pair: %w", err)
-	}
-
-	res, err := mergeresolve.New(mergeresolve.Deps{
-		Fabric:       fabricHandle,
-		Shuttle:      deps.Shuttle,
-		WorktreeRoot: deps.WorktreeRoot,
-		ScratchDir:   deps.ScratchDir,
-		StencilsDir:  deps.StencilsDir,
-		ParentName:   deps.ParentName,
-		ConflictSpec: deps.Config.Conflict,
-		Registry:     deps.Registry,
-		Timeout:      time.Duration(deps.Config.ConflictTimeoutMin) * time.Minute,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("landingshed: NewPublish: build resolver: %w", err)
-	}
-
 	gate := newVerifyGate(deps)
 	gate.recorder = &failureRecorder{failingTests: deps.FailingTests, head: deps.TaskHead}
-	return &Publish{deps: deps, resolver: res, gate: gate, premerge: newPreMerge(deps)}, nil
+	return &Publish{deps: deps, gate: gate}, nil
 }
 
 // Call runs one Publish iteration.
@@ -126,57 +91,11 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		return p.stuckOrCancelled(ctx, fmt.Sprintf("push skipped; a pull request is required against parent branch %q", p.deps.ParentBranch))
 	}
 
-	// Step 3a: commit the product's own status file before the merge below, for the reason
-	// Finalize's own identical step states: Shed rewrites that file on every transition and
-	// commits it only at bootstrap, and fabricengine's merge guard refuses any tracked
-	// modification on either side of the pair. It sits after step 2's early return deliberately --
-	// a run that needs no pull request never merges here, so it has nothing to commit for.
-	if p.deps.CommitStatus != nil {
-		if err := p.deps.CommitStatus(); err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: commit status file: %w", publishName, err)
-		}
-	}
-
-	// Step 3b: a merge-in this row left parked is aborted first, so the clean check and a fresh merge-in follow.
-	reason, err := p.premerge.clear(publishName, p.deps.ParentBranch)
-	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
-		return outcome, out, err
-	}
-
-	// Step 3c: a dirty tree before the merge-in is Stuck, so nothing uncommitted is merged over or pushed.
-	reason, err = p.gate.clean(publishName, "before the merge-in")
-	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
-		return outcome, out, err
-	}
-
-	// Step 4: catch the task worktree up with the parent branch first.
-	mergeResult, err := p.resolver.Resolve(ctx, p.deps.ParentBranch)
-	if err != nil {
-		if cerr := cancelErr(ctx, publishName); cerr != nil {
-			return "", shedengine.OutputPointer{}, cerr
-		}
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: merge-in against parent branch %q: %w", publishName, p.deps.ParentBranch, err)
-	}
-	if mergeResult.Outcome == mergeresolve.OutcomeStuck {
-		return p.stuckOrCancelled(ctx, mergeResult.Reason)
-	}
-	p.noteMergeCommit(mergeResult)
-
-	// Step 4a: verify the merged tree before anything leaves the worktree.
-	// A merge can compile cleanly and still break tests;
-	// the verified-tree record decides whether this tree was already verified.
-	// The tree must be clean after the merge-in, so the verify runs on committed content,
-	// and clean after the verify, since a verify that dirties the tree is a non-hermetic test and halts rather than ships.
-	// The repo's publish_verify, when set, runs after the plan's verify and before that last check.
-	reason, err = p.gate.clean(publishName, "after the merge-in")
-	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
-		return outcome, out, err
-	}
-	reason, err = p.gate.check(ctx, publishName, p.deps.ParentBranch)
-	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
-		return outcome, out, err
-	}
-	reason, err = p.gate.checkPublishVerify(ctx, publishName, p.deps.ParentBranch, p.deps.Config.PublishVerify)
+	// Step 4: run the repo's publish_verify, when set, before anything leaves the worktree.
+	// The merge-in and the plan's verify ran at Merge-In, so a failure record written here names the merge commit from the merge record.
+	// A verify that dirties the tree is a non-hermetic test and halts rather than ships.
+	p.takeMergeCommitFromRecord()
+	reason, err := p.gate.checkPublishVerify(ctx, publishName, p.deps.ParentBranch, p.deps.Config.PublishVerify)
 	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
 		return outcome, out, err
 	}
@@ -313,6 +232,23 @@ func (p *Publish) noteMergeCommit(merge mergeresolve.Result) {
 		return
 	}
 	p.gate.recorder.mergeCommit = head
+}
+
+// takeMergeCommitFromRecord hands the failure recorder the merge commit of Merge-In's merge record, empty when there is none.
+// An unreadable record is logged and leaves it empty.
+func (p *Publish) takeMergeCommitFromRecord() {
+	if p.gate.recorder == nil || p.deps.Config.PublishVerify == "" {
+		return
+	}
+	p.gate.recorder.mergeCommit = ""
+	record, found, err := ReadMergeRecord(p.deps.MergeRecordPath)
+	if err != nil {
+		logger.Warn("landingshed: could not read the merge record for the publish failure record", "producer", publishName, "cause", err)
+		return
+	}
+	if found {
+		p.gate.recorder.mergeCommit = record.MergeCommit
+	}
 }
 
 // gateStop maps one gate call's result onto Call's return.

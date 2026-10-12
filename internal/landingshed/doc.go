@@ -1,13 +1,14 @@
 // Package landingshed owns landing's general producers, Merge-In, Publish, PR-Gate and Finalize, which any producer list may name -- none is special-cased by the engine that drives them.
 //
 // Publish checks the configured require_pr_to_base list (see LoadConfig) against the task's own
-// parent branch. When the parent is absent from that list, Publish is a no-op: Done immediately, no
-// merge-in, no push, no GitHub call.
-// When the parent is present, Publish syncs the task branch against the parent through internal/mergeresolve, verifies the merged tree, pushes it, and opens the pull request, or refreshes an open one's title and body, from the change description (the file the Describe row writes, one source shared with the landing commit), then returns Done.
+// parent branch.
+// When the parent is absent from that list, Publish is a no-op: Done immediately, no push, no GitHub call.
+// When the parent is present, Publish runs the repo's `publish_verify`, pushes the task branch, and opens the pull request, or refreshes an open one's title and body, from the change description (the file the Describe row writes, one source shared with the landing commit), then returns Done.
+// The merge-in and the plan's verify are Merge-In's, which runs ahead of Publish in a recipe's order.
 // The PR-Gate producer in this package then owns approval, rejection and the wait for the reviewer;
 // PRGate.Call documents its decision table.
 //
-// Both producers clear the merge-in their own earlier attempt left parked before the clean-tree check that precedes each merge-in, Finalize's retry pass included.
+// Merge-In and Finalize clear the merge-in their own earlier attempt left parked before the clean-tree check that precedes each merge-in, Finalize's retry pass included.
 // A parked fabric `merge-in` of the parent branch is aborted, whoever started it, so a conflict session's resolution and a hand-started merge-in with its partial resolution are both discarded and the merge starts afresh.
 // Every live conflict-session strand of the run is stopped through Deps.StopConflictSession first, and only after every stop succeeded is the merge aborted, so no session is left writing into the redone merge;
 // a stop that fails is Stuck naming the strand, with the merge untouched.
@@ -15,34 +16,32 @@
 // The resolver's own abort stays as crash recovery within one merge-in step.
 // The seams are nil-is-absent: a nil Deps.MergeState skips the step.
 //
-// Merge-In is a fourth producer, built here and listed by a recipe's producer list like the others.
+// Merge-In is built here and listed by a recipe's producer list like the others.
 // It commits the status file, takes the parent lock through the shared guard, and only then brings the local parent branch level with its upstream.
 // Under the told push skip it neither fetches nor fast-forwards, and merges the local tip.
 // A parent branch behind its upstream is fast-forwarded in its own pair under the lock, which moves it to the upstream tip and touches no local commit;
 // one that is ahead of or diverged from its upstream, and a parent pair that is missing, dirty, mid-merge or no longer a fast-forward of its upstream, are Stuck with a way forward, since Merge-In never pushes or rewrites the parent.
 // A paused lock wait and an unreadable lock record are Stuck with Halt, so the run stops at the row.
-// It then clears a parked merge-in, merges the parent tip into the task worktree through internal/mergeresolve and runs the same clean-tree checks and plan verify as Publish.
+// It then clears a parked merge-in, merges the parent tip into the task worktree through internal/mergeresolve, and verifies the merged tree.
+// The task worktree must be clean at three points: before the merge-in (after the status commit), after the merge-in, and after the verify.
+// A dirty tree at any of them is Stuck naming the paths, so nothing uncommitted is merged over or reviewed;
+// a verify that dirties the tree is a non-hermetic test and halts rather than ships.
+// The told verify command runs through internal/verifytree, unless its verified-tree record already names the tree and the command.
+// A verify that does not finish within the verify timeout is killed and halts the run Stuck with the log path.
+// While the verify runs, the told Deps.VerifyWaitMark callback marks the run's driver strand on screen as `verify <producer>`, and clears the mark on every way out of the verify.
+// The mark is display only: a failing or absent callback changes no Stuck reason, error or verify outcome.
+// The record is keyed on the tree, so the verify runs after a resolved conflict, after new parent commits and after a crash between a merge and its verify, and a no-op merge onto a verified tree skips it.
+// A failure is Stuck with the merge commit kept for the operator to fix forward, and a missing command logs a warning and proceeds.
 // A failed verify writes the Publish failure record with row `Merge-In`, and a passing one removes it.
 // Last it writes the merge record: the tip merged, the task head before the merge, the parent tip last merged into the task, the parent tip the last finished merge review reached, the merge commit and where the parent's changes since that reviewed tip meet the task's changes since its last merge base.
 // An up-to-date merge records an empty overlap, and a failed record write is an error, never Stuck.
 // The lock is kept on every way out of the row: a later landing row or the loop's exit frees it.
 //
-// Publish checks the task worktree is clean at three points: before the merge-in (after the status commit), after the merge-in, and after the verify.
-// A dirty tree at any of them is Stuck naming the paths, before anything is pushed;
-// a verify that dirties the tree is a non-hermetic test and halts rather than ships.
-//
-// After the merge-in, the told verify command runs through internal/verifytree before the push, unless its verified-tree record already names the tree and the command.
-// A verify that does not finish within the verify timeout is killed and halts the run Stuck with the log path.
-// While the verify runs, the told Deps.VerifyWaitMark callback marks the run's driver strand on screen as `verify <producer>`, and clears the mark on every way out of the verify.
-// The mark is display only: a failing or absent callback changes no Stuck reason, error or verify outcome.
-// The record is keyed on the tree, so the verify runs after a resolved conflict, after new parent commits and after a crash between a merge and its verify, and a no-op merge onto a verified tree skips it.
-// A failure is Stuck with the merge commit kept for the operator to fix forward,
-// and a missing command logs a warning and proceeds.
-//
-// When landing.yaml's `publish_verify` is non-empty, Publish then runs that shell command in the task worktree through the same function, at site `Publish`, before the clean-tree check after the verify.
+// When landing.yaml's `publish_verify` is non-empty, Publish runs that shell command in the task worktree through the same verify function, at site `Publish`, before it pushes, and the tree must be clean after it.
+// A dirty tree is Stuck naming the paths, before anything is pushed.
 // It carries a repo's extra test tier, which the plan's `## verify:` leaves out so every round and every gate does not pay for it.
 // The plan's verify command is the site's base command, so the pass keeps the plan-verify entry of the record.
-// A failure is Stuck with the exit code and the log path, naming `publish_verify`, and a dirty tree is Stuck as for the plan's verify.
+// A failure is Stuck with the exit code and the log path, naming `publish_verify`, and a dirty tree is Stuck as for Merge-In's verify.
 // An empty or absent value runs nothing and logs nothing, and Finalize never runs it.
 // The key is the same trust class as the plan's `## verify:`: it runs any shell command in the task worktree.
 // It runs only where Publish does, so a landing into a parent outside require_pr_to_base runs no such tier and only Finalize's plan verify gates it.
@@ -54,11 +53,12 @@
 // Landing config is hub-wide: Publish and Finalize read it from the board dir, never from a task worktree's `_lyx/config/`, and `lyx config` refuses a write to it from a pair, so a task cannot weaken the key, or set `require_pr_to_base` or `squash`, through its own tree.
 // A landing change is an operator or hub-orch `lyx config landing` run from the prime, committed in `_board` and effective for every pair at once.
 //
-// Publish alone persists its failure.
-// When its plan verify or `publish_verify` fails with a non-zero exit, it writes the verifytree Publish failure record with the failing kind, the failing tests the told Deps.FailingTests parses from the log, HEAD, the told Deps.VerifyFailureTarget row, the write time in whole-second UTC, and the merge-in commit, which is HEAD after a merge-in that was not already up to date and empty otherwise.
+// Merge-In and Publish persist their verify failure; Finalize neither writes nor removes the record.
+// When Merge-In's plan verify or Publish's `publish_verify` fails with a non-zero exit, the row writes the verifytree Publish failure record with the failing kind, the row that ran the verify, the failing tests the told Deps.FailingTests parses from the log, HEAD, the told Deps.VerifyFailureTarget row, the write time in whole-second UTC, and the merge-in commit.
+// The merge-in commit is HEAD after a merge-in that was not already up to date and empty otherwise; Publish reads it from Merge-In's merge record.
 // A dirty tree, a timeout and a shell that could not start write no record, and a write failure is logged and never changes the Stuck verdict.
 // The Stuck reason of a failed verify ends with the way-forward clause the recipe tells in Deps.VerifyFailedWayForward only when the record was written; otherwise, and when none is told, it asks to fix forward on the task branch.
-// A Publish that passes both verifies removes the record before its push, and Finalize neither writes nor removes it.
+// Merge-In removes the record once its plan verify passes, and Publish removes it once its `publish_verify` passes, or at once when none is set.
 //
 // The push that follows is never retried when the remote rejects it, because the remote task branch moved and a repeat would be rejected again.
 // Publish reads the remote task branch's tip and the commits on it that the local branch lacks through Deps.RemoteOnlyCommits, and stops Stuck with a reason stating that the merge-in already ran, the tip, the commit count, and the way forward:
@@ -76,7 +76,7 @@
 // of which branch Publish took -- the only sync in the no-pull-request case, a second one catching
 // whatever landed in the parent while a pull request sat out for review in the other case -- and then
 // merges the task branch into the parent pair itself.
-// Each catch-up merge-in, the retry after the parent moved included, runs the same three clean-tree checks and the same post-merge verify gate as Publish before the parent-side merge,
+// Each catch-up merge-in, the retry after the parent moved included, runs the same three clean-tree checks and the same post-merge verify gate as Merge-In before the parent-side merge,
 // and a dirty tree or a failure is Stuck with the parent branch untouched.
 // After each catch-up merge-in and before the parent-side merge, Finalize commits the parent pair's own run records through the told Deps.CommitParentRecords, so a sibling run's uncommitted status record does not trip the merge guard;
 // a clean subtree is a no-op, an absent seam skips the step, and a commit failure is Stuck naming the parent pair and its run records, with nothing merged.
@@ -104,7 +104,7 @@
 //
 // The Describe session loads `scribe:prose` before its prompt.
 // Its stencil, like the conflict session's, carries the parent directive that internal/parentdirective renders from the told name:
-// DescribeInputs.ParentName for Describe, and Deps.ParentName passed through to the resolver for Publish and Finalize.
+// DescribeInputs.ParentName for Describe, and Deps.ParentName passed through to the resolver for Merge-In and Finalize.
 // DescribeSpec composes a loom run's session, which reads the decision record and the webster run records;
 // DarnDescribeSpec composes a darn run's from its own stencil, `landing-template-describe-darn`, which reads the board entry, the diff and the review perch's run directory, under the same describe keys, role and skills.
 //

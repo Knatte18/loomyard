@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/parentreview"
@@ -378,14 +379,10 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 // and WebsterDeps keeps FullEnv's placeholder seams.
 // LockPath and StatusLockPath are given two distinct paths, since shedengine rejects them naming one file.
 //
-// Rows 12 (Publish) and 13 (Finalize) are the real producers as of this task, and this fixture
-// deliberately never drives either to a genuine merge: env.Landing.Config.RequirePRToBase names the
-// same parent branch loomshed.Seed above records, and PushSkipped is true, so Publish's own
-// told-skip gate reports Stuck -- with OnStuck: "", which blocks the whole run right there -- before
-// Publish ever reaches its resolver and long before Finalize's Call is ever invoked. Driving either
-// producer's own merge logic for real needs a genuine two-worktree pair and therefore git, which
-// this task's own decision keeps out of this package's untagged tier; the real thing is covered by
-// a later integration tier instead.
+// Merge-In, Publish and Finalize are the real producers, and this fixture deliberately never drives any of them to a genuine merge.
+// The fixture's fake tip reads report the local parent ahead of its upstream, so Merge-In reports Stuck -- with OnStuck: "", which blocks the whole run right there -- before it merges anything and long before Publish's or Finalize's Call is ever invoked.
+// Driving their merge logic for real needs a genuine two-worktree pair and therefore git, which this package's untagged tier stays out of.
+// The real thing is covered by an integration tier instead.
 //
 // Row 3 (Discussion-Write) is no longer skipped over by a Stub: it now runs a real
 // shedadapters.SingleLLMProducer behind loomshed's commit decorator. env.Shuttle is a
@@ -428,8 +425,11 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 	}
 
 	landing := envkit.LandingDeps(dir)
-	landing.PushSkipped = true
 	landing.Config.RequirePRToBase = []string{landing.ParentBranch}
+	// The local parent reads as ahead of its upstream, so Merge-In halts before it merges anything.
+	landing.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
+		return fabricengine.ParentTips{Local: "local-tip", Upstream: "upstream-tip", Relation: fabricengine.ParentAhead}, nil
+	}
 
 	cwd := filepath.Join(dir, "cwd")
 	if err := os.MkdirAll(cwd, 0o755); err != nil {

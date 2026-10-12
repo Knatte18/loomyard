@@ -198,6 +198,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			loomshed.NameDiscussionBouncer: {},
 			loomshed.NamePlanBouncer:       {},
 			loomshed.NameWebsterBouncer:    {},
+			loomshed.NameMergeBouncer:      {},
 			loomshed.NameDarnBouncer:       {},
 		},
 		WebsterRun: func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {

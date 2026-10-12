@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
@@ -41,6 +42,12 @@ func validLandingDeps(t *testing.T) landingshed.Deps {
 		OpenFabric:        nilFabricOpener,
 		OpenParentFabric:  nilFabricOpener,
 		Shuttle:           &shedfake.MergeShuttle{},
+		Lock:              landingshed.ParentLockDeps{Store: &parentlock.Store{Dir: filepath.Join(dir, "locks")}},
+		ReadParentTips:    func(bool) (fabricengine.ParentTips, error) { return fabricengine.ParentTips{}, nil },
+		ChangedPaths:      func(string, string) ([]string, error) { return nil, nil },
+		MergeBase:         func(string) (string, error) { return "base", nil },
+		TaskHead:          func() (string, error) { return "head", nil },
+		MergeRecordPath:   landingshed.MergeRecordPath(dir),
 	}
 }
 
@@ -118,6 +125,17 @@ func simpleEntryCases() []simpleEntryCase {
 			buildEnv:        newTestEnv,
 			validatedFields: []string{"Cwd"},
 			unreadField:     "AnchorPath",
+		},
+		{
+			registryKey: "MergeIn",
+			entry:       mergeInEntry,
+			buildEnv: func(t *testing.T) Env {
+				env := newTestEnv(t)
+				env.Landing = validLandingDeps(t)
+				return env
+			},
+			validatedFields: nil,
+			unreadField:     "Cwd",
 		},
 		{
 			registryKey: "Publish",
