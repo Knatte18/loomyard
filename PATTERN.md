@@ -10,7 +10,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-lyx-temp-root` — Creating a temp file or directory: under `internal/lyxtemp`'s run directory; `os.MkdirTemp`/`os.CreateTemp` never take `""` or `os.TempDir()` elsewhere. (test) — [background](pattern/PATTERN-lyx-temp-root.md)
 - `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked content lives under `_lyx`, anything never tracked under `.lyx` at the mirrored subpath. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-hub-containment` — Linking hub-level containers: `_board`, `_portals` and `_launchers` are reachable from the hub only, never junctioned into a worktree. — [background](pattern/PATTERN-hub-containment.md)
-- `PATTERN-hub-wide-config` — A hub-level config module: mark it `HubWide` in `configreg`; its file lives only at `<BoardDir>/_lyx/config/`, with the local override limited to `LocalKeys`. — [background](pattern/PATTERN-hub-wide-config.md)
+- `PATTERN-hub-wide-config` — A hub-level config module: `HubWide` in `configreg`, its file on the board only. — [background](pattern/PATTERN-hub-wide-config.md)
 - `PATTERN-hub-suffix` — Touching hub naming: `-LYXHUB` is the sole hub container suffix, and no code parses, trims or recognises the retired `-HUB`. (test) — [background](pattern/PATTERN-hub-suffix.md)
 
 ## CLI
@@ -25,11 +25,11 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 ## Fabric and git
 
-- `PATTERN-fabric-vocabulary` — Naming the wired composite: "fabric"; warp and weft only where the two sides must be told apart, and `host` is retired. (test) — [background](pattern/PATTERN-fabric-vocabulary.md)
+- `PATTERN-fabric-vocabulary` — Naming the wired composite: "fabric"; warp and weft only to tell its sides apart. (test) — [background](pattern/PATTERN-fabric-vocabulary.md)
 - `PATTERN-fabric-git` — Running git on warp or weft: only `internal/fabricengine`, in-process, never raw git. — [background](pattern/PATTERN-fabric-git.md)
 - `PATTERN-fabric-destruction-chokepoint` — Destroying anything in fabric: only `internal/fabricengine/destroy.go`. — [background](pattern/PATTERN-fabric-destruction-chokepoint.md)
 - `PATTERN-fabric-write-containment` — Writing under `_launchers` or `_portals` from `fabricengine`: through an `os.Root` rooted at the hub, never raw `os.MkdirAll`, `os.WriteFile` or `fslink`.
-- `PATTERN-push-both-sides` — Pushing run records from Go: a pair's code branch goes along, rebase-free under fabric's lock, never by an agent; the prime sends records only. — [background](pattern/PATTERN-push-both-sides.md)
+- `PATTERN-push-both-sides` — Pushing run records from Go: the pair's code branch goes along; the prime sends records only. — [background](pattern/PATTERN-push-both-sides.md)
 - `PATTERN-mutation-record` — Adding a mutating fabric verb: it accumulates a `*Mutations` record and its result embeds `MutationRecord` under a fixed envelope key set. — [background](pattern/PATTERN-mutation-record.md)
 - `PATTERN-pair-teardown` — Tearing down a pair: only through `internal/pairteardown`, which ends the pair's reed session before any worktree is removed. (test) — [background](pattern/PATTERN-pair-teardown.md)
 - `PATTERN-batten-bookend` — Creating or destroying a task worktree: the producer never runs from inside it, and session shutdown precedes removal in one row. — [background](pattern/PATTERN-batten-bookend.md)
@@ -48,6 +48,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-shed-recipe-registry` — Registering a shed producer: one `map[string]Constructor` in `internal/shedrecipe`, reached through `Lookup`/`Names`, with no `init()`, no `Register`, no `lyxcwd`.
 - `PATTERN-shed-verb-set` — Adding a run, step, status, pause or goto verb: the generic bodies live in `internal/shedverbs` only. (test) — [background](pattern/PATTERN-shed-verb-set.md)
 - `PATTERN-shed-run-directory` — Touching run directories or `seed.json`: `internal/shedrun` alone declares their paths, ids and `Seed`. — [background](pattern/PATTERN-shed-run-directory.md)
+- `PATTERN-tolerant-records` — Go-written JSON records: never refuse an unknown key; rewrite via `internal/state`. (test) — [background](pattern/PATTERN-tolerant-records.md)
 - `PATTERN-transient-stop` — Marking a failure transient: the `internal/shedengine` mark, set only at a producer or step-bootstrap boundary. — [background](pattern/PATTERN-transient-stop.md)
 - `PATTERN-failure-stop-visible` — An `--until-stop` failure as sole lock holder: status is non-running before the waiter returns. (test) — [background](pattern/PATTERN-failure-stop-visible.md)
 - `PATTERN-driver-choice-single-site` — Reading a seed driver: once per recipe, in its bootstrap verb, for the surface only. (test) — [background](pattern/PATTERN-driver-choice-single-site.md)
@@ -73,7 +74,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-shuttle-stop` — Stopping a shuttle run's strand from Go outside `internal/shuttleengine`: only through shuttle's stop verb. (test) — [background](pattern/PATTERN-shuttle-stop.md)
 - `PATTERN-orch-pane-single-writer` — Typing into the orch session from Go: only the orch watcher does it, idle-gated; another module queues a notice through `orchengine` instead.
 - `PATTERN-shell-mechanics-seam` — Building a pane-shell command string: only through `internal/shell`, which imports the standard library alone.
-- `PATTERN-pane-text-injection` — Typing text into an agent pane: only reed's paste-submit, behind shuttle's pre-write guard or reed's activity check; no Enter of lyx's own into a box not holding exactly the sent text. — [background](pattern/PATTERN-pane-text-injection.md)
+- `PATTERN-pane-text-injection` — Typing text into an agent pane: only reed's guarded paste-submit. — [background](pattern/PATTERN-pane-text-injection.md)
 - `PATTERN-pane-binary-resolution` — Creating a strand pane or detached `lyx` window in reed: resolve `lyx` via `panebin.go` only. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
 - `PATTERN-role-skills-typed` — Loading a skill into a spawned session: the spawning module names it on the launch spec and lyx types it; no stencil asks an agent to load a skill. (test)
 - `PATTERN-parent-directive` — Writing a spawned role's top-level stencil: it renders the parent directive, and no stencil tells an agent to ask the operator. (test) — [background](pattern/PATTERN-parent-directive.md)
