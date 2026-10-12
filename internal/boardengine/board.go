@@ -43,6 +43,10 @@ func New(cfg Config) *Board {
 // result is what the caller receives.
 type noWrite struct{ result any }
 
+// promoted is returned as a mutation's result when it made task a task out of a note;
+// boardCriticalSection unwraps it, and the promote keeps the note's dates.
+type promoted struct{ task Task }
+
 // boardCriticalSection runs the locked write scaffolding shared by every mutating Board method:
 // it acquires the lock, loads the store, calls fn to mutate it, stamps the entry dates, refuses a net change to a run-held entry's scope, saves board.json, runs afterSave when non-nil, renders outputs, and spawns a detached sync.
 // afterSave runs under the lock after the save and before the render.
@@ -84,7 +88,12 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 	}
 
 	now := b.now()
-	stampDates(loaded, store.tasks, now)
+	promotedSlug := ""
+	if p, ok := result.(promoted); ok {
+		promotedSlug = p.task.Slug
+		result = p.task
+	}
+	stampDates(loaded, store.tasks, now, promotedSlug)
 	// A returned entry was copied before the stamp, so it is read again to carry its dates.
 	switch r := result.(type) {
 	case Task:
@@ -301,7 +310,7 @@ func (b *Board) Promote(idOrSlug any) (Task, error) {
 		if !changed {
 			return noWrite{result: task}, nil
 		}
-		return task, nil
+		return promoted{task: task}, nil
 	}, nil)
 	if err != nil {
 		return Task{}, err

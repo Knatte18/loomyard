@@ -764,7 +764,7 @@ func TestPriorityRoundTrip(t *testing.T) {
 }
 
 // TestEntryDates pins how every write stamps an entry's dates from the configured clock:
-// a new entry gets both, a status change or a promote revises nothing, a scope change revises, an upsert's own dates are kept even on a run-held entry, and a merge keeps the oldest creation date of the entries it joins.
+// a new entry gets both, a status change or a promote revises nothing, a scope change revises (an upsert flipping a note to a task included), an upsert's own dates are kept even on a run-held entry, and a merge keeps the oldest creation date of the entries it joins.
 func TestEntryDates(t *testing.T) {
 	t.Parallel()
 	start := time.Date(2026, 10, 12, 9, 30, 0, 0, time.UTC)
@@ -803,6 +803,14 @@ func TestEntryDates(t *testing.T) {
 			_, err := b.MergeTasks([]string{"a"}, map[string]any{"slug": "c", "title": "C", "labels": bugLabels}, nil)
 			return err
 		}, "c", backfilled, start.Add(5 * time.Hour)},
+		{"new note", func() error {
+			_, err := b.UpsertTask(map[string]any{"slug": "n", "title": "N", "kind": boardengine.KindNote, "labels": bugLabels})
+			return err
+		}, "n", start.Add(6 * time.Hour), start.Add(6 * time.Hour)},
+		{"upsert flips a note to a task", func() error {
+			_, err := b.UpsertTask(map[string]any{"slug": "n", "kind": boardengine.KindTask})
+			return err
+		}, "n", start.Add(6 * time.Hour), start.Add(7 * time.Hour)},
 	}
 	for i, step := range steps {
 		now = start.Add(time.Duration(i) * time.Hour)
