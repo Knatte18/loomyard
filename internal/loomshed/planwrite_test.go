@@ -289,6 +289,46 @@ func TestNewPlanDirRotator(t *testing.T) {
 		}
 	})
 
+	t.Run("LensReviewMovesWithThePlanButIsNeverAnnounced", func(t *testing.T) {
+		anchorPath, planDir := setupPlanDir(t, "00-overview.md", "01-card-one.md", planparser.LensReviewFileName)
+
+		amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), noWebsterArchive, fixedPlanClock)()
+		if err != nil {
+			t.Fatalf("rotate() error = %v; want nil", err)
+		}
+
+		archiveDir := filepath.Join(planDir, planparser.ArchiveDirName(fixedPlanClock().UTC().Format(archiveTimestampFormat), ""))
+		for _, name := range []string{"00-overview.md", "01-card-one.md", planparser.LensReviewFileName} {
+			if _, err := os.Stat(filepath.Join(archiveDir, name)); err != nil {
+				t.Errorf("Stat(archived %s) error = %v; want it moved into the archive", name, err)
+			}
+		}
+		for _, want := range []string{"00-overview.md", "01-card-one.md"} {
+			if !strings.Contains(amendment, want) {
+				t.Errorf("rotate() amendment = %q; want it to name %q", amendment, want)
+			}
+		}
+		if strings.Contains(amendment, planparser.LensReviewFileName) {
+			t.Errorf("rotate() amendment = %q; want it not to name %q", amendment, planparser.LensReviewFileName)
+		}
+	})
+
+	t.Run("LensReviewAloneMovesWithAnEmptyAmendment", func(t *testing.T) {
+		anchorPath, planDir := setupPlanDir(t, planparser.LensReviewFileName)
+
+		amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), noWebsterArchive, fixedPlanClock)()
+		if err != nil {
+			t.Fatalf("rotate() error = %v; want nil", err)
+		}
+		if amendment != "" {
+			t.Errorf("rotate() amendment = %q; want empty, since no plan is left to carry forward", amendment)
+		}
+		archiveDir := filepath.Join(planDir, planparser.ArchiveDirName(fixedPlanClock().UTC().Format(archiveTimestampFormat), ""))
+		if _, err := os.Stat(filepath.Join(archiveDir, planparser.LensReviewFileName)); err != nil {
+			t.Errorf("Stat(archived lens review) error = %v; want it moved into the archive", err)
+		}
+	})
+
 	t.Run("NothingToRotateNeverArchivesTheWebsterRecord", func(t *testing.T) {
 		for name, setup := range map[string]func(t *testing.T) (string, string){
 			"empty plan directory": func(t *testing.T) (string, string) { return setupPlanDir(t) },
