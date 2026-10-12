@@ -71,7 +71,7 @@ func statusPathSlug(root, path string) (string, bool) {
 }
 
 // commitsOf reads the status file at every commit that touched slug's, oldest first.
-func (b *battenIndex) commitsOf(slug, statusRel string)([]battenCommit, error) {
+func (b *battenIndex) commitsOf(slug, statusRel string) ([]battenCommit, error) {
 	if read, ok := b.read[slug]; ok {
 		return read, nil
 	}
