@@ -107,6 +107,9 @@ func TestParseWarpSHATrailer(t *testing.T) {
 			if ok != tt.wantOK || gotSHA != tt.wantSHA {
 				t.Errorf("parseWarpSHATrailer(%q) = (%q, %v); want (%q, %v)", tt.message, gotSHA, ok, tt.wantSHA, tt.wantOK)
 			}
+			if taskSHA, taskOK := TaskCommitOf(tt.message); taskSHA != gotSHA || taskOK != ok {
+				t.Errorf("TaskCommitOf(%q) = (%q, %v); want (%q, %v)", tt.message, taskSHA, taskOK, gotSHA, ok)
+			}
 		})
 	}
 }

@@ -45,6 +45,24 @@ func TestLoomFrictionPaths(t *testing.T) {
 		t.Errorf("LoomFrictionArchivePrefix() = %q; want %q", got, want)
 	}
 
+	if got, want := LoomFrictionDirRel(), filepath.Join(LoomDurableDirRel(), "friction"); got != want {
+		t.Errorf("LoomFrictionDirRel() = %q; want %q", got, want)
+	}
+	if got := strings.TrimPrefix(LoomFrictionDir(l), l.AnchorPath()+string(filepath.Separator)); got != LoomFrictionDirRel() {
+		t.Errorf("LoomFrictionDir() suffix = %q; want LoomFrictionDirRel() = %q", got, LoomFrictionDirRel())
+	}
+	for name, want := range map[string]bool{
+		"friction-20261012-120446":   true,
+		"friction-20261012-120446-2": true,
+		"friction":                   false,
+		"friction-":                  false,
+		"plan":                       false,
+	} {
+		if got := IsLoomFrictionArchive(name); got != want {
+			t.Errorf("IsLoomFrictionArchive(%q) = %v; want %v", name, got, want)
+		}
+	}
+
 	wantLock := filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "loom", "friction.lock")
 	if got := LoomFrictionLock(l); got != wantLock {
 		t.Errorf("LoomFrictionLock() = %q; want %q", got, wantLock)

@@ -3,6 +3,7 @@
 package shedengine
 
 import (
+	"bytes"
 	"encoding/json"
 	"reflect"
 	"strings"
@@ -85,6 +86,18 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 	}
 	if !semanticJSONEqual(t, got.Product, want.Product) {
 		t.Errorf("Product = %s; want (semantically) %s", got.Product, want.Product)
+	}
+
+	withBogus := append(bytes.TrimSuffix(data, []byte("}")), []byte(`,"bogus":1}`)...)
+	tolerant, err := ParseStatusTolerant(withBogus)
+	if err != nil {
+		t.Fatalf("ParseStatusTolerant(with bogus key) = %v", err)
+	}
+	if tolerant.CurrentProducer != want.CurrentProducer || tolerant.State != want.State || !reflect.DeepEqual(tolerant.History, want.History) {
+		t.Errorf("ParseStatusTolerant() = %+v; want the round-tripped producer, state and history", tolerant)
+	}
+	if _, err := ParseStatusTolerant([]byte("{")); err == nil {
+		t.Error("ParseStatusTolerant({) error = nil; want a decode error")
 	}
 }
 

@@ -236,6 +236,8 @@ github.com/Knatte18/loomyard/
 ├── internal/reedcli/             the reed CLI command
 ├── internal/reedengine/          the reed domain kernel (overlay + strand bookkeeping)
 ├── internal/reedengine/render/   pure display-vocabulary leaf (layout = Rules(strands))
+├── internal/reportcli/           the report CLI command (`lyx report convergence`, the read-only convergence report, prime only)
+├── internal/reportengine/        the report domain kernel (finished runs, wakes, stops, repairs, review rounds and landings, read from git objects)
 ├── internal/orchcli/             the orch CLI command
 ├── internal/orchengine/          the orch domain kernel (config, stencil renders, persisted state, cycle state machine)
 ├── internal/ghissuescli/         the ghissues CLI command
@@ -393,6 +395,9 @@ User-facing modules each get one `lyx <module>` namespace:
   The segments run in order and each calls its owner's own cleanup in-process: `lyx batten cleanup`, `lyx board prune`, `lyx orch cleanup`, the prime's `.scratch/` children older than 14 days that no open board entry cites, logger's trace retention sweep, and the temp root's sweep of dead owners' run directories.
   A failing segment never stops the later ones.
   ✅ Implemented. See the `internal/cleanupcli` package documentation.
+- **report** — the read-only convergence report (`internal/reportcli` + `internal/reportengine`; `lyx report convergence [--since <date>] [--fresh-days <n>] [--format json|markdown]`, prime only).
+  It reports, per finished run and per ISO week, what woke the orch, what stopped and repaired runs, how many review rounds each segment took and how landings fared, from records lyx already writes.
+  ✅ Implemented. See the `internal/reportengine` package documentation.
 - **pause** — the one ordered pause that makes the hub safe to suspend within seconds (`internal/pausecli` + `internal/pauseengine`; `lyx pause [<slug>] [--grace <seconds>]`, `lyx pause --status` and `lyx resume [<slug>]`, from any worktree of the hub).
   `lyx pause` records an entry, waits a short grace for busy agent sessions and network operations to finish, interrupts every covered session still busy with Esc and holds every path that would start agent or network work; the orchestrator is interrupted by its own watcher at the grace end.
   `lyx resume` lifts the entry and gives each interrupted session one line to carry on.

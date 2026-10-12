@@ -138,6 +138,12 @@ func endsInTrailerBlock(message string) bool {
 	return true
 }
 
+// TaskCommitOf returns the code-side commit a records commit message names in its trailer.
+// It is false when the message carries no such trailer.
+func TaskCommitOf(message string) (string, bool) {
+	return parseWarpSHATrailer(message)
+}
+
 // parseWarpSHATrailer extracts the Warp-SHA trailer value from a full commit message.
 // When multiple "Warp-SHA:" lines exist, the last one wins, matching git's trailer
 // semantics. Reports ok=false when the message carries no Warp-SHA trailer at all.
