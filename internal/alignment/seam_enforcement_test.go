@@ -15,6 +15,7 @@ import (
 // alignmentAllowedImports are the only non-stdlib import paths production code in this package may use.
 var alignmentAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/editdirective",
+	"github.com/Knatte18/loomyard/internal/logger",
 	"github.com/Knatte18/loomyard/internal/parentdirective",
 	"github.com/Knatte18/loomyard/internal/segmentcolor",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
