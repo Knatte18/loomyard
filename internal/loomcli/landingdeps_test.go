@@ -8,6 +8,7 @@ package loomcli
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -230,6 +232,40 @@ func TestLoopLockOwner(t *testing.T) {
 			}
 			if owner.Slug != "pair" || owner.Pair != loc.WorktreePath() || owner.RunID != "pair" {
 				t.Errorf("owner = %+v; want the run named for the worktree %q at %q", owner, "pair", loc.WorktreePath())
+			}
+		})
+	}
+}
+
+// TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait writes a status running at Publish and asserts the pause seam reports false with no condition, false with pause_after naming another row, true with it naming Publish, and false with only pause_requested set.
+func TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		apply func(st *shedengine.Status)
+		want  bool
+	}{
+		{"no condition", func(*shedengine.Status) {}, false},
+		{"pause_after naming another row", func(st *shedengine.Status) { st.PauseAfter = "Finalize" }, false},
+		{"pause_after naming the waiting row", func(st *shedengine.Status) { st.PauseAfter = "Publish" }, true},
+		{"pause_requested alone", func(st *shedengine.Status) { st.PauseRequested = true }, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			statusPath := filepath.Join(dir, "status.json")
+			statusLockPath := filepath.Join(dir, "status.json.lock")
+			st := shedengine.Status{CurrentProducer: "Publish", State: shedengine.StateRunning}
+			tt.apply(&st)
+			writeStatusFixture(t, statusPath, statusLockPath, st)
+
+			loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
+			got, err := parentLockDeps(loc, shedrun.SelfRunID, statusPath, statusLockPath).PauseRequested()
+			if err != nil || got != tt.want {
+				t.Errorf("PauseRequested() = %v, %v; want %v, nil", got, err, tt.want)
 			}
 		})
 	}

@@ -397,6 +397,10 @@ anything. The refusal names the two ways forward: "lyx pause <slug>" stops
 the run's agents now, and "--after <current_producer>" halts the run at its
 next producer boundary.
 
+--after naming a row that waits for the parent lock also ends that wait
+mid-row, halting the run at the row; the condition stays recorded until
+"lyx loom goto" clears it, and "lyx loom resume" then moves the run.
+
 An optional run-id positional addresses a run other than this worktree's
 own default ("self"); pause refuses when no seed already exists at that
 run-id.

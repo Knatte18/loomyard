@@ -212,7 +212,7 @@ func pauseCovered(l *lyxcwd.Location) func(slug string) bool {
 
 // parentLockDeps builds the parent lock seams for the run runID of the worktree l.
 // The store sits in the hub-level ephemeral tree, reached by path and never junctioned into a pair;
-// the wait record lives in the run's scratch directory, and a pause is the run status file's pause_requested flag read under its status lock.
+// the wait record lives in the run's scratch directory, and the wait ends when the run status file's pause_after, read under its status lock, names the run's current producer: the lock-taking row waiting in the queue.
 // The store reads the pause record to tell which slug a pause covers; an unreadable record covers nothing and logs one Warn.
 func parentLockDeps(l *lyxcwd.Location, runID, statusPath, statusLockPath string) landingshed.ParentLockDeps {
 	return landingshed.ParentLockDeps{
@@ -227,7 +227,7 @@ func parentLockDeps(l *lyxcwd.Location, runID, statusPath, statusLockPath string
 			if err != nil || !found {
 				return false, err
 			}
-			return status.PauseRequested, nil
+			return status.PauseAfter != "" && status.PauseAfter == status.CurrentProducer, nil
 		},
 	}
 }
