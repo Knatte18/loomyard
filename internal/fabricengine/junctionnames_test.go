@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -24,7 +25,7 @@ import (
 func TestJunctionNames_NoFallbackOnLoadFailure(t *testing.T) {
 	baseDir := t.TempDir() // no _lyx/, so LoadConfig cannot find fabric.yaml
 
-	names, err := junctionNames(baseDir)
+	names, err := junctionNames(configengine.Dirs{Board: baseDir})
 	if err == nil {
 		t.Fatalf("junctionNames(%q) error = nil; want a config-load error", baseDir)
 	}

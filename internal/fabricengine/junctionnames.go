@@ -4,8 +4,7 @@
 // (structuralCommittedDirs, structuralNeverCommittedDirs) that never come from that config at all.
 // Every wiring caller sources names through junctionNames/WiredNames/RepoWiredNames — never applies
 // filterHubReserved itself — so the guard cannot be forgotten at a call site.
-// reconcile/status callers read the name-set from the repo-wide `weft:main` base
-// (repoWideFabricBase), not each pair's own weft base.
+// reconcile/status callers read the name-set from the repo-wide `weft:main` base, the board dir ConfigDirs tells, not each pair's own weft base.
 
 package fabricengine
 
@@ -73,12 +72,12 @@ func slugReservedNames(cfg Config) []string {
 	return dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, cfg.Dirs(), HubReservedNames())
 }
 
-// PathspecNames loads the fabric config at baseDir and returns its pathspec/commit-routing set (see
+// PathspecNames loads the fabric config under dirs and returns its pathspec/commit-routing set (see
 // pathspecNames) for callers outside this package — internal/fabriccli's weft sync pre-run in
 // particular, which must never fall back to a raw, unfiltered cfg.Dirs() once `_lyx` leaves
 // template.yaml's default.
-func PathspecNames(baseDir string) ([]string, error) {
-	cfg, err := LoadConfig(baseDir)
+func PathspecNames(dirs configengine.Dirs) ([]string, error) {
+	cfg, err := LoadConfig(dirs)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +254,7 @@ func filterHubReserved(names []string) []string {
 	return kept
 }
 
-// junctionNames loads the fabric config at baseDir and returns its wired name-set:
+// junctionNames loads the fabric config under dirs and returns its wired name-set:
 // structuralCommittedDirs unioned with structuralNeverCommittedDirs unioned with the pathspec
 // directory names with the wiring guard applied (see filterHubReserved) — in that order,
 // deduplicated by dedupUnion.
@@ -274,15 +273,15 @@ func filterHubReserved(names []string) []string {
 // default; see the callers of this function for how each one surfaces that
 // failure (a hard error for wiring callers, a determinable reason string
 // for the read-only health checks).
-func junctionNames(baseDir string) ([]string, error) {
-	cfg, err := LoadConfig(baseDir)
+func junctionNames(dirs configengine.Dirs) ([]string, error) {
+	cfg, err := LoadConfig(dirs)
 	if err != nil {
 		return nil, err
 	}
 	return dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, filterHubReserved(cfg.Dirs())), nil
 }
 
-// WiredNames loads the fabric config at baseDir and returns its wired name-set — structuralCommittedDirs
+// WiredNames loads the fabric config under dirs and returns its wired name-set — structuralCommittedDirs
 // unioned with structuralNeverCommittedDirs unioned with the pathspec directory names, hub-reserved
 // names filtered out — for callers outside this package.
 // It is a thin wrapper over junctionNames so out-of-package callers (internal/fabriccli's clone and
@@ -301,22 +300,14 @@ func junctionNames(baseDir string) ([]string, error) {
 // The raw, unfiltered Config.Dirs() is used only by Topology.Add's reserved-name union (which must
 // include every pathspec name, filtered or not, in the set a new slug cannot claim) — never by
 // WiredNames.
-func WiredNames(baseDir string) ([]string, error) {
-	return junctionNames(baseDir)
-}
-
-// repoWideFabricBase returns the single named source of the repo-wide fabric
-// config base: the `weft:main` checkout at BoardDir(l.HubPath) that
-// holds `_lyx/config/fabric.yaml`. It exists so every reconcile/status call
-// site names the same base instead of re-deriving BoardDir(l.HubPath) inline.
-func repoWideFabricBase(l *lyxcwd.Location) string {
-	return BoardDir(l.HubPath)
+func WiredNames(dirs configengine.Dirs) ([]string, error) {
+	return junctionNames(dirs)
 }
 
 // RepoWiredNames loads the repo-wide fabric config and returns its wired name-set.
 // It is a Location-taking convenience for callers that want the repo-wide junction name-set without
-// re-deriving the base.
+// re-deriving the dirs.
 // Callers use this so every worktree converges to the one repo-wide pathspec.
 func RepoWiredNames(l *lyxcwd.Location) ([]string, error) {
-	return WiredNames(repoWideFabricBase(l))
+	return WiredNames(ConfigDirs(l))
 }

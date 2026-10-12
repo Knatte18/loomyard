@@ -272,7 +272,7 @@ func (t *Teardown) taskAnchor(slug string) string {
 
 // topology loads the hub's fabric config fresh and builds a topology over it.
 func (t *Teardown) topology() (*fabricengine.Topology, error) {
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(t.prime.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(t.prime))
 	if err != nil {
 		return nil, err
 	}

@@ -294,7 +294,7 @@ func assertRealHub(t *testing.T, h *Hub) {
 		t.Errorf("hub scratch %s at %s: want a real directory, got a link", lyxdirs.DotLyxDirName, hubScratch)
 	}
 
-	names, err := fabricengine.WiredNames(h.BoardDir())
+	names, err := fabricengine.WiredNames(configengine.Dirs{Board: h.BoardDir()})
 	if err != nil {
 		t.Fatalf("fabricengine.WiredNames(%s): %v", h.BoardDir(), err)
 	}
@@ -472,7 +472,7 @@ func TestNewHub_TeardownSurvivesCorruptHub(t *testing.T) {
 
 		h := NewHub(t, ".")
 
-		names, err := fabricengine.WiredNames(h.BoardDir())
+		names, err := fabricengine.WiredNames(configengine.Dirs{Board: h.BoardDir()})
 		if err != nil {
 			t.Fatalf("fabricengine.WiredNames(%s): %v", h.BoardDir(), err)
 		}

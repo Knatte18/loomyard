@@ -83,7 +83,7 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	if err != nil {
 		return fabricengine.CloneResult{}, err
 	}
-	names, err := fabricengine.WiredNames(res.BoardDir)
+	names, err := fabricengine.WiredNames(configengine.Dirs{Anchor: res.WeftBase, Board: res.BoardDir})
 	if err != nil {
 		return fabricengine.CloneResult{}, err
 	}

@@ -472,7 +472,7 @@ func runAdd(ctx context.Context, out io.Writer, args []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -509,7 +509,7 @@ func runList(ctx context.Context, out io.Writer, _ []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -560,7 +560,7 @@ func runCheckout(ctx context.Context, out io.Writer, args []string) int {
 		}
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -585,7 +585,7 @@ func runPairs(ctx context.Context, out io.Writer, _ []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -706,7 +706,7 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 		healFields = map[string]any{"hub_config_detail": hubConfigDetail}
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
 	if err != nil {
 		return errWithRecordFields(out, rec.Snapshot(), err, healFields)
 	}
@@ -853,7 +853,7 @@ func runPruneWithFlags(ctx context.Context, out io.Writer, apply, force bool) in
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -878,7 +878,7 @@ func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force, remot
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -1006,7 +1006,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}

@@ -1016,7 +1016,7 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 	}
 
 	// The remedy, verbatim: the fabric verb's own engine call with --force, then the branch, only if it survived the removal.
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(h.Location.HubPath))
+	cfg, err := fabricengine.LoadConfig(configengine.Dirs{Board: fabricengine.BoardDir(h.Location.HubPath)})
 	if err != nil {
 		t.Fatalf("load fabric config: %v", err)
 	}

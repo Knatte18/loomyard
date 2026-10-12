@@ -631,7 +631,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				logger.Warn("battencli: claim board entry failed", "slug", slug, "err", err)
 			}
 
-			cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(location.HubPath))
+			cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
 			if err != nil {
 				return err
 			}
