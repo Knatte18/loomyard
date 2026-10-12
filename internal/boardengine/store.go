@@ -82,21 +82,40 @@ type loadedStoreFile struct {
 	Unknown    map[string]json.RawMessage `json:"-"`
 }
 
-// UnmarshalJSON decodes the known fields and keeps every other top-level key in Unknown.
+// UnmarshalJSON decodes the known fields in one json pass, then walks the raw bytes once to keep every other key, top-level and per entry, in Unknown.
+// The entries decode through decodedEntry, not storedEntry, so no json call is nested per entry and the load stays as cheap as one decode while the shared lock is held.
 func (f *loadedStoreFile) UnmarshalJSON(data []byte) error {
-	type plain loadedStoreFile
-	var decoded plain
+	var decoded struct {
+		Version    int            `json:"version"`
+		Entries    []decodedEntry `json:"entries"`
+		LegacyDone []string       `json:"legacy_done,omitempty"`
+	}
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
 	}
-	unknown, err := splitUnknown(data, jsonKeys(reflect.TypeFor[plain]()))
-	if err != nil {
-		return err
+	var rawEntries []byte
+	unknown := map[string]json.RawMessage{}
+	eachMember(data, func(key string, value []byte) {
+		switch {
+		case strings.EqualFold(key, "entries"):
+			rawEntries = value
+		case !loadedStoreFileKeys[strings.ToLower(key)]:
+			unknown[key] = slices.Clone(value)
+		}
+	})
+	entries := make([]storedEntry, 0, len(decoded.Entries))
+	eachElement(rawEntries, func(raw []byte) {
+		entries = append(entries, storedEntryFrom(decoded.Entries[len(entries)], raw))
+	})
+	*f = loadedStoreFile{Version: decoded.Version, Entries: entries, LegacyDone: decoded.LegacyDone}
+	if len(unknown) > 0 {
+		f.Unknown = unknown
 	}
-	*f = loadedStoreFile(decoded)
-	f.Unknown = unknown
 	return nil
 }
+
+// loadedStoreFileKeys is the set of lower-cased JSON keys loadedStoreFile declares.
+var loadedStoreFileKeys = jsonKeySet(reflect.TypeFor[loadedStoreFile]())
 
 // Store holds the in-memory entry list for one board directory's board.json.
 type Store struct {
@@ -146,11 +165,17 @@ func (s *Store) Load() error {
 	var legacyDone []string
 	var unknown map[string]json.RawMessage
 	if fileExists(path) {
-		file, found, err := state.ReadJSON[loadedStoreFile](path, path+swapLockSuffix)
+		// The raw bytes are read under the shared lock and decoded after it is released,
+		// so the decode never holds off a writer waiting for the exclusive lock.
+		raw, found, err := state.ReadJSON[json.RawMessage](path, path+swapLockSuffix)
 		if err != nil {
 			return fmt.Errorf("load store: %w", err)
 		}
 		if found {
+			var file loadedStoreFile
+			if err := json.Unmarshal(raw, &file); err != nil {
+				return fmt.Errorf("load store: %w: unmarshal state: %w", state.ErrDecode, err)
+			}
 			if file.Version != storeVersion {
 				return fmt.Errorf("load store: %s has version %d; this binary reads only version %d", boardFile, file.Version, storeVersion)
 			}
