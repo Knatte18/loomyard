@@ -347,9 +347,9 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 	}
 	writeOverviewFile(t, pauseRecordPath, record, minutesAgo(1))
 	want = []string{
-		"run-a   paused 10m  Run-Shed  2h00m  2h00m  run-a",
-		"run-b   paused 4m   Plan      1h00m  1h00m  run-b",
-		"strict  paused 4m   Plan      -      -      strict",
+		"run-a       paused 10m  Run-Shed  2h00m  2h00m  run-a",
+		"run-b       paused 4m   Plan      1h00m  1h00m  run-b",
+		"future-key  paused 4m   Plan      -      -      future-key",
 	}
 	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
 		t.Errorf("fourth frame mismatch (-want +got):\n%s", diff)
@@ -358,9 +358,9 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 	// A record that does not decode never blanks the pane.
 	writeOverviewFile(t, pauseRecordPath, []byte("{not json"), minutesAgo(1))
 	want = []string{
-		"run-a   running  Run-Shed  2h00m  2h00m  run-a",
-		"run-b   running  Plan      1h00m  1h00m  run-b",
-		"strict  running  Plan      -      -      strict",
+		"run-a       running  Run-Shed  2h00m  2h00m  run-a",
+		"run-b       running  Plan      1h00m  1h00m  run-b",
+		"future-key  running  Plan      -      -      future-key",
 	}
 	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
 		t.Errorf("fifth frame mismatch (-want +got):\n%s", diff)
