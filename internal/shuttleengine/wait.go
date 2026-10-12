@@ -19,6 +19,7 @@
 // (.lyx/logs/trace-<stamp>-<trace>-<pid>.log, unconditionally enabled at Info) and not the detached
 // driver's own log, which captures stderr and therefore only Warn and above. An operator asking "is
 // this interview waiting for me, or is it wedged?" reads the trace sink.
+// An autonomous run's pane that shows a permission or input dialog past a bound is also reported to the parent, once per dialog, through the same notifier; see dialog.go.
 // A hold never extends run.deadline: a held run is bounded by its caller's own Spec.Timeout (run_timeout_min only where that is zero),
 // and by the liveness check, which still classifies a dead pane.
 // A turn end that leaves background work outstanding while an output file is missing is a wait, never a held stop: a shell of either signal and a fork are live work, so none expires into a hold or a notice.
@@ -267,6 +268,9 @@ func (run *Run) Wait() (Result, error) {
 	run.shadow = sessionShadow{active: true, cursor: run.state.PromptOffset}
 	defer func() { run.shadow.active = false }()
 
+	// The dialog latch reads asks from the larger of the prompt offset and the last dialog-notified offset, so a reattach never re-notifies a dialog it already did.
+	run.dialog = dialogLatch{cursor: max(run.state.PromptOffset, run.state.DialogNotifiedOffset)}
+
 	for tick := 1; ; tick++ {
 		outcome, held, err := run.pollEventsTick()
 		run.syncShellWait()
@@ -339,6 +343,7 @@ func (run *Run) Wait() (Result, error) {
 		}
 
 		run.settleDeferredHold()
+		run.watchDialog()
 		run.logSessionState("", tick%livenessEvery == 0)
 
 		if tick%livenessEvery == 0 {
