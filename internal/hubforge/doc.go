@@ -19,7 +19,7 @@
 // The same template-and-copy model extends to the hub.
 // A Shape is an anchor plus an ordered list of pair slugs, and Shapes is the closed set: the "." and "backend" anchors, each with no pair and with the one pair TemplatePairSlug.
 // The first CopyHub or SharedHub of a shape builds its template once per test binary, through NewHub's CloneAndWire plus AddPair, in a directory whose name begins with templatePrefix so no copy path has the template root as a string prefix.
-// The template directory holds the bares and the hub, and lives in the binary's temp directory, which tmuxkit.Main removes.
+// The template directory holds the bares and the hub, and lives in the process run directory of internal/lyxtemp, which tmuxkit.Main removes.
 // CopyHub relocates the template into the test's own tb.TempDir: files are copied without following links, the template root path is rewritten to the copy's in every text file in both separator spellings, each link is recreated with its rewritten target, and the copy is verified to name the template root nowhere.
 // The board's tracked `.lyx-warp` binding is among the rewritten files, so CopyHub amends it into the board's one commit and force-pushes that to the copy's own records bare, leaving every checkout of the copy clean, as a fresh hub's is.
 // A link keeps its one-hop target, so a chain of links stays a chain.
@@ -36,11 +36,12 @@
 // h.WeftBase and committing at the weft worktree root h.PrimeRecords().
 // SeedFabricConfig overrides the repo-wide fabric.yaml, writing into h.BoardDir() and committing
 // through fabricengine.NewBolt, matching what CloneAndWire itself does after ReconcileHubWideAt.
-// Most former seeding sites need neither: fabriccli.CloneAndWire already runs
-// configsync.ReconcileAll and ReconcileHubWideAt, so a real hub arrives with every registered module's
-// default config already materialized and committed on the weft primary branch — which is why
-// SeedConfig commits with an empty stage allowed: a seed byte-identical to the already-committed
-// file stages nothing, and a bare commit over nothing would otherwise fail.
+// Most former seeding sites need neither: fabriccli.CloneAndWire already ends in the hub walk.
+// A real hub therefore arrives with each per-worktree module's repo default committed on the board, and its prime carries only the per-worktree config files the records repository already held.
+// The clone's walk also migrates the prime, so its prime arrives with the sparse marker committed.
+// SeedConfig writes a sparse worktree layer over those defaults.
+// SeedConfig commits with an empty stage allowed: a seed byte-identical to a file already committed stages nothing, and a bare commit over nothing would otherwise fail.
+// cloneHub removes the build stamp the clone's walk wrote, so a start verb driven in a test walks the hub as on a binary change while the seeded defaults stay committed.
 //
 // Fixture marker: git a hub build spawns carries gitkit.FixtureGitEnv, set two ways.
 // The local mustGit helper sets it on its own child's environment.

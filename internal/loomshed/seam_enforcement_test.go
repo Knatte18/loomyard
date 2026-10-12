@@ -34,6 +34,9 @@ var loomshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/planindex",
 	"github.com/Knatte18/loomyard/internal/discussionparser",
 	"github.com/Knatte18/loomyard/internal/batcher",
+	// internal/configengine carries the told Dirs the batcher-backed rows load through.
+	// It is handed the dirs and resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/configengine",
 	"github.com/Knatte18/loomyard/internal/state",
 	// internal/logger is a genuine new dependency rather than a loosened rule: the gate producers
 	// here surface the determined findings they used to discard, and it resolves no geometry of any

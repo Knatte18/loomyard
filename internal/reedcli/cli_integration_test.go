@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -34,7 +35,7 @@ func coldAddLaunchCmd() string {
 // machine without the tool never hard-fails on a scenario that has to boot a real session.
 func skipWithoutMultiplexer(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
-	cfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
+	cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: h.Location.AnchorPath()}, "reed")
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}

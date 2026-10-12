@@ -41,12 +41,25 @@ func ConfigPath(anchorPath string) string {
 	return configengine.ConfigFile(anchorPath, moduleName)
 }
 
-// Load resolves the trace-retention bounds from logger.yaml under anchorPath.
-// An absent _lyx/ directory or an absent logger.yaml resolves the embedded ConfigTemplate() instead of erroring;
+// ConfigSpec returns the logger's layered-load spec.
+// It carries the template and the per-key classification that decides which keys a local override may hold.
+func ConfigSpec() configengine.Spec {
+	return configengine.Spec{
+		Name:     moduleName,
+		Template: []byte(ConfigTemplate()),
+		Categories: map[string]configengine.Category{
+			countKey: configengine.CategoryNone,
+			daysKey:  configengine.CategoryNone,
+		},
+	}
+}
+
+// Load resolves the trace-retention bounds from logger.yaml through the layer stack under dirs.
+// An absent logger.yaml in every layer resolves the embedded ConfigTemplate() instead of erroring;
 // a file that exists but is invalid, or carries a non-positive or non-integer value, errors naming the key.
 // A trace_retention_days value above maxRetentionDays also errors naming the key.
-func Load(anchorPath string) (logger.RetentionBounds, error) {
-	resolved, err := configengine.LoadOrTemplate(anchorPath, moduleName, []byte(ConfigTemplate()))
+func Load(dirs configengine.Dirs) (logger.RetentionBounds, error) {
+	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
 	if err != nil {
 		return logger.RetentionBounds{}, err
 	}
@@ -69,6 +82,18 @@ func Load(anchorPath string) (logger.RetentionBounds, error) {
 	}
 
 	return logger.RetentionBounds{Count: count, MaxAge: time.Duration(days) * day}, nil
+}
+
+// LoadOrDefault returns the trace-retention bounds logger.yaml resolves to through the layer stack under dirs.
+// An unusable config logs one Warn naming the anchor's file and the error, and yields the compiled-in default bounds.
+func LoadOrDefault(dirs configengine.Dirs) logger.RetentionBounds {
+	bounds, err := Load(dirs)
+	if err != nil {
+		logger.Warn("logger config unusable; sweeping with default retention bounds",
+			"path", ConfigPath(dirs.Anchor), "error", err)
+		return logger.DefaultRetentionBounds()
+	}
+	return bounds
 }
 
 // positiveInt decodes node as a positive integer.

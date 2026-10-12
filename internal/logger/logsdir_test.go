@@ -40,6 +40,9 @@ func TestLogsDir_AnchorsAtAnchorPath(t *testing.T) {
 			if got != want {
 				t.Errorf("LogsDir(l) = %q; want %q", got, want)
 			}
+			if atAnchor := logger.LogsDirAt(l.AnchorPath()); got != atAnchor {
+				t.Errorf("LogsDir(l) = %q; want LogsDirAt(l.AnchorPath()) = %q", got, atAnchor)
+			}
 			worktreeBased := filepath.Join(l.WorktreePath(), ".lyx", "logs")
 			if (got == worktreeBased) != tt.sameAsWorktreePath {
 				t.Errorf("LogsDir(l) = %q equals the WorktreePath-based path %q: %v; want %v", got, worktreeBased, got == worktreeBased, tt.sameAsWorktreePath)

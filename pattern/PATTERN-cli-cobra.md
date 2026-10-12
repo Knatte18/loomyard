@@ -28,3 +28,4 @@ Deviations:
 - `quarrycli` uses `internal/planglyph`.
 - `battencli` uses `internal/battenshed` and `internal/battenrecipe`, with no engine package of its own.
 - `shedcli` uses `internal/shedverbs`, `internal/loomcli` and `internal/battencli`, with no engine package of its own.
+- `cleanupcli` calls the cleanup functions of `battencli`, `boardengine`, `orchengine`, `logger` and `lyxtemp`, with no engine package of its own.

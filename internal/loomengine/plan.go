@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -94,8 +95,9 @@ func composePlanPrompt(stencilsDir, specsDir, decisionRecordPath, planDir, overv
 // PlanSpec builds the shuttleengine.Spec for one Plan producer run. specsDir is told, never
 // derived: this package is bound by the Told-Geometry Invariant and derives no path of its own.
 // parentName is told likewise; an empty one renders the no-parent directive.
+// dirs is the told config geometry the twill fan's burler.yaml is read through.
 // Segment is the plan segment, because the run is the Plan-Write phase.
-func PlanSpec(layout *lyxcwd.Location, stencilsDir, specsDir, parentName string, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
+func PlanSpec(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir, parentName string, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
 	spec, err := modelspec.Parse(cfg.Plan)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: plan role model-spec: %w", err)
@@ -136,7 +138,7 @@ func PlanSpec(layout *lyxcwd.Location, stencilsDir, specsDir, parentName string,
 	var twillDirective string
 	twill := cfg.PlanProducer == PlanProducerTwill
 	if twill {
-		twillDirective, err = planTwillDirective(layout, stencilsDir)
+		twillDirective, err = planTwillDirective(layout, dirs, stencilsDir)
 		if err != nil {
 			return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: %w", err)
 		}

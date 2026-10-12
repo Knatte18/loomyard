@@ -102,7 +102,7 @@ available subcommands without requiring a git repo.
 			}
 			boardDir := fabricengine.BoardDir(layout.HubPath)
 
-			cfg, err = boardengine.LoadConfig(boardDir, "board")
+			cfg, err = boardengine.LoadConfig(fabricengine.ConfigDirs(layout), "board")
 			if err != nil {
 				output.Err(cmd.OutOrStdout(), err.Error())
 				clihelp.Abort(ctx, 1)
@@ -142,7 +142,7 @@ Example:
 			if err != nil {
 				return outputError(out, err.Error())
 			}
-			return outputSuccessWithTask(out, task)
+			return outputSuccessWithTask(out, task, "")
 		}),
 	}
 
@@ -332,7 +332,7 @@ func storeVerbs(board func() *boardengine.Board) []*cobra.Command {
 	// upsert subcommand: create or update a single task.
 	var bodyFile string
 	upsertCmd := &cobra.Command{
-		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?}",
+		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?}",
 		Short:       "create or update a single task",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Create or update a task identified by its slug.
@@ -355,6 +355,7 @@ Optional fields:
   "issues"     array  — inbox issue numbers the entry records
   "created"    string — RFC 3339 time the entry was added; a new entry without it gets the time of the write
   "revised"    string — RFC 3339 time its scope last changed; a write that changes the scope without it gets the time of the write
+  "run_settings" object — module name to config keys, written into the pair's local config at Seed-Child; {} clears it
 
 Flag:
   --body-file <path>  read "body" from the file, or from stdin when the path is "-"; every other field still comes from the payload.
@@ -384,11 +385,15 @@ Example:
 				if decodeErr != nil {
 					return outputError(out, fmt.Sprintf("invalid json: %v", decodeErr))
 				}
+				notice, err := prepareRunSettings(board(), fields, strandNameFromEnv())
+				if err != nil {
+					return outputError(out, err.Error())
+				}
 				task, err := board().UpsertTask(fields)
 				if err != nil {
 					return outputError(out, err.Error())
 				}
-				return outputSuccessWithTask(out, task)
+				return outputSuccessWithTask(out, task, notice)
 			})(cmd, args)
 		},
 	}
@@ -439,10 +444,18 @@ Example:
 			}
 
 			tasks := make([]map[string]any, len(tasksArr))
+			var notices []string
 			for i, v := range tasksArr {
 				m, ok := v.(map[string]any)
 				if !ok {
 					return outputError(out, fmt.Sprintf("tasks[%d] must be an object", i))
+				}
+				notice, err := prepareRunSettings(board(), m, strandNameFromEnv())
+				if err != nil {
+					return outputError(out, fmt.Sprintf("tasks[%d]: %v", i, err))
+				}
+				if notice != "" {
+					notices = append(notices, notice)
 				}
 				tasks[i] = m
 			}
@@ -450,7 +463,7 @@ Example:
 			if err := board().UpsertTasksBatch(tasks); err != nil {
 				return outputError(out, err.Error())
 			}
-			return outputSuccessWithCount(out, len(tasks))
+			return outputSuccessWithCount(out, len(tasks), strings.Join(notices, "\n"))
 		}),
 	}
 
@@ -728,11 +741,15 @@ Example:
 					setStatusPtr = &boardengine.MergeStatusUpdate{Selector: selector, Status: status}
 				}
 
+				notice, err := prepareRunSettings(board(), upsertFields, strandNameFromEnv())
+				if err != nil {
+					return outputError(out, err.Error())
+				}
 				task, err := board().MergeTasks(removeSlugs, upsertFields, setStatusPtr)
 				if err != nil {
 					return outputError(out, err.Error())
 				}
-				return outputSuccessWithTask(out, task)
+				return outputSuccessWithTask(out, task, notice)
 			})(cmd, args)
 		},
 	}
@@ -930,14 +947,22 @@ func outputSuccess(out io.Writer) int {
 	return output.Ok(out, map[string]any{})
 }
 
-// outputSuccessWithCount writes {"ok":true,"count":N} with exit code 0.
-func outputSuccessWithCount(out io.Writer, count int) int {
-	return output.Ok(out, map[string]any{"count": count})
+// outputSuccessWithCount writes {"ok":true,"count":N} with exit code 0, plus a "notice" field when notice is not empty.
+func outputSuccessWithCount(out io.Writer, count int, notice string) int {
+	envelope := map[string]any{"count": count}
+	if notice != "" {
+		envelope["notice"] = notice
+	}
+	return output.Ok(out, envelope)
 }
 
-// outputSuccessWithTask writes {"ok":true,"task":{...}} with exit code 0.
-func outputSuccessWithTask(out io.Writer, task boardengine.Task) int {
-	return output.Ok(out, map[string]any{"task": task})
+// outputSuccessWithTask writes {"ok":true,"task":{...}} with exit code 0, plus a "notice" field when notice is not empty.
+func outputSuccessWithTask(out io.Writer, task boardengine.Task, notice string) int {
+	envelope := map[string]any{"task": task}
+	if notice != "" {
+		envelope["notice"] = notice
+	}
+	return output.Ok(out, envelope)
 }
 
 // outputGetTask writes {"ok":true,"task":{...}} with task as pointer (nil → null).

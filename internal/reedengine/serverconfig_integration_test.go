@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -25,7 +26,7 @@ func newHubEngine(t *testing.T, hubDir, worktree string, configure func(cfg *Con
 		t.Fatalf("mkdir worktree dir: %v", err)
 	}
 	seedReedConfig(t, worktreeDir)
-	cfg, err := LoadConfig(worktreeDir, "reed")
+	cfg, err := LoadConfig(configengine.Dirs{Anchor: worktreeDir}, "reed")
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}

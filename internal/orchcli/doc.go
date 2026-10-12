@@ -1,5 +1,5 @@
 // Package orchcli is the CLI for the hub orchestrator: the long-lived session in the hub's prime worktree that runs the task loop for the operator.
-// Its verbs (`start`, `status`, `refresh`, `distill`, `stop` and the watcher behind them) host that session as an interactive agent in a reed strand and cycle its context before it fills; this comment records the loop the session runs, which the verbs exist to serve.
+// Its verbs (`start`, `status`, `refresh`, `distill`, `stop`, `cleanup` and the watcher behind them) host that session as an interactive agent in a reed strand and cycle its context before it fills; this comment records the loop the session runs, which the verbs exist to serve.
 //
 // # The role file and the note
 //

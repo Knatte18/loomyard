@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -69,7 +70,7 @@ func driveOwnershipGateRefusal(t testing.TB, h *hubforge.Hub, slug string) error
 
 	hubforge.AddPair(t, h, slug)
 
-	names, err := fabricengine.WiredNames(h.BoardDir())
+	names, err := fabricengine.WiredNames(configengine.Dirs{Board: h.BoardDir()})
 	if err != nil {
 		t.Fatalf("fabricengine.WiredNames(%s): %v", h.BoardDir(), err)
 	}

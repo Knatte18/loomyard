@@ -15,7 +15,10 @@
 // a configured profile named identity wins over that default.
 // A load error names batcher.yaml and the offending profile or key: an active: naming no profile, an unknown batchifier kind, or a cost profile with a missing or non-positive budget, a max_cards below 2, a missing, negative or unknown weights coefficient, or a retired key.
 // The retired keys are alone_above, and master_base and startup_context in weights:;
-// a retired-key error wraps ErrRetiredKey and ends with the way forward, running "lyx config reconcile --apply", which migrates the profile.
+// a retired-key error wraps ErrRetiredKey, names the layer file that carries the key and ends with the way forward that file calls for:
+// running "lyx config reconcile --apply", which migrates the profile, for a worktree or local file, and for the repo default, which only the hub-wide reconcile rewrites, running "lyx fabric reconcile", a verb a session lyx refuses it from reports status: FAILED for, so the orch runs it.
+// Active loads batcher.yaml through the layer stack under a configengine.Dirs, ConfigSpec classifying both keys as meeting no category, so any layer may hold them;
+// profiles is taken whole from the highest layer holding it, and a retired key in any layer reaches the retired-key refusal.
 // Every load error is marked configengine.ErrInvalid, so a caller tells a file's content from an unreadable file.
 // MigrateConfig is that migration: a pure rewrite of a batcher.yaml document that drops the retired keys from every profile and adds weights.orientation at the template's value where a retired weights key stood and the profile had none.
 // It touches only those keys, carries every other entry and comment through yaml node editing, and is never called by the loader.

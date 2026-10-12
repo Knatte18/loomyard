@@ -72,6 +72,9 @@ func TestRunDirResolution(t *testing.T) {
 				if got := RunDir(l, id); got != want {
 					t.Errorf("RunDir(%q) = %q; want %q", id, got, want)
 				}
+				if got := filepath.Join(l.AnchorPath(), RunDirRel(l, id)); got != RunDir(l, id) {
+					t.Errorf("anchor joined with RunDirRel(%q) = %q; want RunDir %q", id, got, RunDir(l, id))
+				}
 			}
 			if tt.wantScratchSelfSeg != "" {
 				wantScratch := filepath.Join(l.AnchorPath(), ".lyx", "shed", tt.wantScratchSelfSeg)

@@ -316,7 +316,8 @@
 //   - cycle-request: the JSON marker `refresh` and `distill` write and the watcher consumes.
 //   - resume-mark: the JSON delivery mark `resume-context` writes after a successful render and the pointer step reads; removed when the reload ends.
 //   - watch.log: the detached watcher's stdout and stderr.
-//   - handoffs/: one timestamped handoff file per cycle, all kept.
+//   - handoffs/: one timestamped handoff file per cycle.
+//     The one State.LastHandoff names is kept, and `lyx orch cleanup --apply` removes the rest.
 //   - notices/: one file per queued notice, removed on delivery.
 //   - session-*.never: one sentinel per launch, an output file nothing ever writes.
 //     A shuttle Spec needs an output file to validate, and the watcher, not shuttle's Wait, owns the session's lifetime.

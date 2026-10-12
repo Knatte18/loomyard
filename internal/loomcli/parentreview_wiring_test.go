@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/contracts/recipes"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -129,7 +130,7 @@ func TestNewParentReviewConfig_KeepAliveInterval(t *testing.T) {
 			t.Parallel()
 
 			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-			shuttleCfg, err := shuttleengine.LoadConfig(t.TempDir(), "shuttle")
+			shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: t.TempDir()}, "shuttle")
 			if err != nil {
 				t.Fatalf("load the shipped shuttle template: %v", err)
 			}

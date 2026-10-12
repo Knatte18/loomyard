@@ -1027,7 +1027,7 @@ func unusableGatePool(t *testing.T) *gateslot.Pool {
 	return &gateslot.Pool{
 		Dir: filepath.Join(t.TempDir(), "gate"),
 		Limits: func() (gateslot.Limits, error) {
-			cfg, err := gateslot.LoadConfig(boardDir)
+			cfg, err := gateslot.LoadConfig(configengine.Dirs{Board: boardDir})
 			return cfg.Limits(), err
 		},
 	}

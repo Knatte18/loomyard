@@ -503,7 +503,7 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 // It also names the other way forward: giving the new task a different slug.
 func (c *battenCLI) doneSlugRefusal() error {
 	return fmt.Errorf(
-		"battencli: %q has already completed; to run it again, delete its run directory %s (a change on the pair's fabric sibling) and the task branch its torn-down pair left behind, locally and on the remote (\"lyx fabric cleanup --apply --remote\" removes any orphaned sibling branch), or give the new task a different slug",
+		"battencli: %q has already completed; to run it again, run \"lyx batten cleanup --apply\" from the prime, which removes its run directory %s, and delete the task branch its torn-down pair left behind, locally and on the remote (\"lyx fabric cleanup --apply --remote\" removes any orphaned sibling branch), or give the new task a different slug",
 		c.slug, shedrun.RunDir(c.location, c.slug),
 	)
 }

@@ -74,15 +74,14 @@ func TestOrchIntegration_Refusals(t *testing.T) {
 
 	t.Run("hub config reconcile", func(t *testing.T) {
 		pairLoomYAML := configengine.ConfigFile(h.PairCodeWorktree("orch-task"), "loom")
-		original, err := os.ReadFile(pairLoomYAML)
-		if err != nil {
-			t.Fatalf("read pair loom.yaml: %v", err)
-		}
 		defer func() {
-			if err := os.WriteFile(pairLoomYAML, original, 0o644); err != nil {
-				t.Errorf("restore pair loom.yaml: %v", err)
+			if err := os.Remove(pairLoomYAML); err != nil {
+				t.Errorf("remove pair loom.yaml: %v", err)
 			}
 		}()
+		if err := os.MkdirAll(filepath.Dir(pairLoomYAML), 0o755); err != nil {
+			t.Fatalf("mkdir the pair's config dir: %v", err)
+		}
 		if err := os.WriteFile(pairLoomYAML, []byte("a: [unclosed\n"), 0o644); err != nil {
 			t.Fatalf("write unparseable loom.yaml: %v", err)
 		}

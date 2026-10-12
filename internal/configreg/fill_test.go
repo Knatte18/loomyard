@@ -81,7 +81,7 @@ func loadFilled(t *testing.T, module, template string, content []byte) (loaded m
 		logger.SetVerbosity(0)
 	})
 
-	resolved, err := configengine.Load(baseDir, module, []byte(template))
+	resolved, err := configengine.Load(configengine.Dirs{Anchor: baseDir}, configengine.Spec{Name: module, Template: []byte(template)})
 	if err != nil {
 		t.Fatalf("Load(%s): %v", module, err)
 	}

@@ -4,7 +4,7 @@ Each package below imports a closed set and never a feature package; a reverse i
 
 ## `internal/gitkit`
 
-Imports only the standard library, `lyxcwd`, `weftname`, `configengine` and `lyxdirs`.
+Imports only the standard library, `lyxcwd`, `weftname`, `configengine`, `lyxdirs` and `lyxtemp`, and `gofrs/flock` through `lyxtemp`.
 - `gitkit.CopyRepo` is callable from `lyxcwd` alone; everyone else takes a hub from `hubforge`.
 - Test git plumbing lives in `gitkit`; a package-local `_test.go` helper that shells out to git is a review flag.
   This is review discipline, not a scan.
@@ -47,6 +47,11 @@ Imports only the standard library, `internal/logger`, `internal/stencil` and `in
 Imports only the standard library.
 It is the sole `.git` parser: git dir, common dir, the repository test and the walk-up to a worktree root, in-process and spawning nothing.
 It is its own package because `gitrepo`'s in-package test imports `gitkit`, which reaches `lyxcwd`, so `lyxcwd` importing `gitrepo` would close a cycle.
+
+## `internal/lyxtemp`
+
+Imports only the standard library and `internal/lock`, and `gofrs/flock` through it.
+It is importable from production code, not a kit.
 
 ## `internal/fswatch`
 

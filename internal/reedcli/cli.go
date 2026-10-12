@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -132,7 +133,7 @@ rather than booting substrate it cannot reach.`,
 			// The _lyx/config/ root is anchored at location.AnchorPath(), not WorktreeRoot or
 			// any fabric sibling — reed config lives with the worktree the operator is
 			// actually standing in.
-			cfg, err := reedengine.LoadConfig(location.AnchorPath(), "reed")
+			cfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)

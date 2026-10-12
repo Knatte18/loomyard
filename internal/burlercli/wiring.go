@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/cliwire"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -97,9 +98,7 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 	// Both configs anchor at loc.AnchorPath() -- the worktree the operator is actually standing in,
 	// never WorktreeRoot or any fabric sibling. hubgeom.BurlerGeometry now tells burlerengine that
 	// same anchor path as its own WorktreeRoot, so the geometry beside this wiring agrees with it.
-	anchorPath := loc.AnchorPath()
-
-	shuttleCfg, err := shuttleengine.LoadConfig(anchorPath, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(loc), "shuttle")
 	if err != nil {
 		return err
 	}
@@ -107,12 +106,12 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 	// burlerengine.LoadConfig's only error today is a read/decode failure -- an absent burler.yaml is
 	// not an error, it decodes to the zero Config (clustering then fails later, at fan resolution,
 	// with a message naming `lyx config reconcile`).
-	burlerCfg, err := burlerengine.LoadConfig(anchorPath)
+	burlerCfg, err := burlerengine.LoadConfig(fabricengine.ConfigDirs(loc))
 	if err != nil {
 		return err
 	}
 
-	reedCfg, err := reedengine.LoadConfig(anchorPath, "reed")
+	reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(loc), "reed")
 	if err != nil {
 		return err
 	}
@@ -172,15 +171,15 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 		return err
 	}
 
-	shuttleCfg, err := shuttleengine.LoadConfig(res.StateDir, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: res.StateDir}, "shuttle")
 	if err != nil {
 		return err
 	}
-	burlerCfg, err := burlerengine.LoadConfig(res.StateDir)
+	burlerCfg, err := burlerengine.LoadConfig(configengine.Dirs{Anchor: res.StateDir})
 	if err != nil {
 		return err
 	}
-	reedCfg, err := reedengine.LoadConfig(res.StateDir, "reed")
+	reedCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: res.StateDir}, "reed")
 	if err != nil {
 		return err
 	}

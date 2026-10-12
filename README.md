@@ -159,7 +159,7 @@ This repository's records side is [loomyard-weft](https://github.com/Knatte18/lo
   - `shed/<slug>/drive-reports/` — the driver's reports.
 
   For example, [`archive/driver-arbiter`](https://github.com/Knatte18/loomyard-weft/tree/archive/driver-arbiter/c1dbcb49a0f5/_lyx) is the run that built the driver arbiter.
-- **Runs in flight** — a records branch per running task, and one for `main`, with the module configs and batten's status for each task it ran.
+- **Runs in flight** — a records branch per running task, and the records branch of `main`, with the module configs and batten's status for each task it ran.
 
 ## Engineering discipline
 

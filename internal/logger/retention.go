@@ -85,7 +85,24 @@ func Sweep(dir string, bounds RetentionBounds) error {
 	return sweep(dir, bounds, time.Now(), os.Stat)
 }
 
+// SweepDir applies the trace-file retention policy to dir at the current time and returns the paths the policy deletes, sorted.
+// It deletes them only when apply is true, so a dry run and an apply list the same paths.
+// Delete failures are silently tolerated, and an empty or absent directory returns no paths.
+func SweepDir(dir string, bounds RetentionBounds, apply bool) ([]string, error) {
+	doomed := planSweep(dir, bounds, time.Now(), os.Stat)
+	if apply {
+		removePaths(doomed)
+	}
+	return doomed, nil
+}
+
 func sweep(dir string, bounds RetentionBounds, now time.Time, stat func(string) (fs.FileInfo, error)) error {
+	removePaths(planSweep(dir, bounds, now, stat))
+	return nil
+}
+
+// planSweep decides Sweep's policy without deleting anything and returns the paths it deletes, sorted.
+func planSweep(dir string, bounds RetentionBounds, now time.Time, stat func(string) (fs.FileInfo, error)) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
@@ -131,13 +148,14 @@ func sweep(dir string, bounds RetentionBounds, now time.Time, stat func(string) 
 	}
 
 	cutoff := now.Add(-bounds.MaxAge)
+	var doomed []string
 	var ranked []*traceGroup
 	for _, group := range groups {
 		if group.live {
 			continue
 		}
 		if group.activity.Before(cutoff) {
-			removeGroup(group)
+			doomed = append(doomed, group.paths...)
 			continue
 		}
 		ranked = append(ranked, group)
@@ -154,13 +172,14 @@ func sweep(dir string, bounds RetentionBounds, now time.Time, stat func(string) 
 		keep = len(ranked)
 	}
 	for _, group := range ranked[keep:] {
-		removeGroup(group)
+		doomed = append(doomed, group.paths...)
 	}
-	return nil
+	sort.Strings(doomed)
+	return doomed
 }
 
-func removeGroup(group *traceGroup) {
-	for _, path := range group.paths {
+func removePaths(paths []string) {
+	for _, path := range paths {
 		_ = os.Remove(path)
 	}
 }

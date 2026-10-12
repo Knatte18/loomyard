@@ -127,7 +127,7 @@ parent_review_wait_min: 60
 }
 
 // hubLocation returns a *lyxcwd.Location standing in for a real hub location, with its anchor path
-// seeded on disk with loom.yaml and a pair landing.yaml that blanks publish_verify, and its hub seeded with the hub-wide landing.yaml at the board dir and both loom stencils.
+// seeded on disk with loom.yaml and a pair landing.yaml that blanks publish_verify, and its hub seeded with loom's repo default and the hub-wide landing.yaml at the board dir and both loom stencils.
 func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location {
 	t.Helper()
 	hub := t.TempDir()
@@ -137,6 +137,7 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location 
 		t.Fatalf("MkdirAll(.git) = %v; want nil", err)
 	}
 	seedLoomConfig(t, loc.AnchorPath())
+	seedLoomConfig(t, fabricengine.BoardDir(hub))
 	seedLandingConfig(t, fabricengine.BoardDir(hub), hubPublishVerify)
 	seedLandingConfig(t, loc.AnchorPath(), "")
 	// stencilstore.Read hard-errors on a missing file, so the stencils the Spec closures read are seeded into the hub's stencils directory.
@@ -297,10 +298,10 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Error("c.runner = nil; want the constructed shuttle runner")
 		}
 
-		boardDir := fabricengine.BoardDir(loc.HubPath)
-		want, err := landingshed.LoadConfig(boardDir, "landing")
+		dirs := fabricengine.ConfigDirs(loc)
+		want, err := landingshed.LoadConfig(dirs, "landing")
 		if err != nil {
-			t.Fatalf("landingshed.LoadConfig(%q, \"landing\") = %v; want nil", boardDir, err)
+			t.Fatalf("landingshed.LoadConfig(%+v, \"landing\") = %v; want nil", dirs, err)
 		}
 		if !reflect.DeepEqual(c.landingCfg, want) {
 			t.Errorf("c.landingCfg = %+v; want %+v", c.landingCfg, want)
@@ -345,7 +346,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 	// same loaded config and registry -- resolved here rather than hardcoded against the template's
 	// literal spec, so a later template edit does not silently break this assertion's meaning.
 	t.Run("review models match the loaded config", func(t *testing.T) {
-		registry, err := modelspec.LoadRegistry(loc.AnchorPath())
+		registry, err := modelspec.LoadRegistry(fabricengine.ConfigDirs(loc))
 		if err != nil {
 			t.Fatalf("modelspec.LoadRegistry(%q) = %v; want nil", loc.AnchorPath(), err)
 		}

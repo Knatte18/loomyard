@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -118,7 +119,7 @@ func writeFile(t *testing.T, path, content string) {
 // holdBoardEntry upserts a board entry named slug at a run status, as a run holds it, and returns the board.
 func holdBoardEntry(t *testing.T, h *hubforge.Hub, slug string) *boardengine.Board {
 	t.Helper()
-	boardConfig, err := boardengine.LoadConfig(h.BoardDir(), "board")
+	boardConfig, err := boardengine.LoadConfig(configengine.Dirs{Board: h.BoardDir()}, "board")
 	if err != nil {
 		t.Fatalf("load board config: %v", err)
 	}
@@ -210,7 +211,7 @@ func TestRun_TeardownScenario(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	cfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
+	cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: h.Location.AnchorPath()}, "reed")
 	if err != nil {
 		t.Fatalf("reedengine.LoadConfig: %v", err)
 	}

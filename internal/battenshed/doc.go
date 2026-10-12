@@ -62,6 +62,13 @@
 // Bound: a running child is waited on without a time limit, bounded by "lyx batten pause" (honoured within one check), cancellation and the notices;
 // a running child whose driver is dead and whose status file does not change returns nothing from the wait, the driver-dead notice being the only signal.
 //
+// Seed-Child writes the task worktree's local config layer from the board task's run settings, after reading the child driver and before the seed:
+// it reads the settings fresh on every Call, writes the local file of each module they name, then removes the local file of every other registered module with one Warn per removed file, so the layer is exactly the task's run settings.
+// A key that no longer validates (a key a later binary retired or closed to the local layer, or one written to `board.json` by hand) stands the row Stuck, naming the module, the key and the way forward, correcting the task's `run_settings` with `lyx board upsert` and then `lyx batten run <slug>`; an unreadable board is Stuck as for the type, and any other prepare, write or remove failure is a hard error.
+// A resume redoes the whole write from the current board entry, and no other row writes these files.
+// Bound: a local file written while the row stood Stuck is discarded by the resume, so a hand edit to the pair's local layer before the resume is lost.
+// Batten writes no seed field for run settings.
+//
 // Seed-Child and the InnerRun row also keep the batten-watched marker of the task worktree's run (MarkWatched), which holds this batten's pid while its notices have a destination that is also the child driver's parent.
 // Seed-Child asks once the seed is committed, so the child's first driver launch already renders the watched rule;
 // InnerRun asks at the start of every Call and once per notice_probe_s inside the wait.
