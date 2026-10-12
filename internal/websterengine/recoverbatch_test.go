@@ -1205,7 +1205,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 		{
 			name: "a delete an unbegun later card still references is refused before spawning toward the plan edit",
 			setup: func(fx *recoverFixture) {
-				fx.Deps.Batches = deleteReferencedBatches(t, fx.Worktree, true)
+				fx.Deps.Batches = deleteReferencedBatches(t, fx.Worktree, deleteGone, userCallsGone)
 				fx.Deps.State.Batches[1] = failedRecord("delete-not-done/1-json-flag[blocking]: Delete target \"internal/foo#Gone\" still resolves found")
 			},
 			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
@@ -1225,8 +1225,18 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 		{
 			name: "the same failed batch spawns once the later card no longer references the delete",
 			setup: func(fx *recoverFixture) {
-				fx.Deps.Batches = deleteReferencedBatches(t, fx.Worktree, false)
+				fx.Deps.Batches = deleteReferencedBatches(t, fx.Worktree, deleteGone, userCallsNothing)
 				fx.Deps.State.Batches[1] = failedRecord("delete-not-done/1-json-flag[blocking]: Delete target \"internal/foo#Gone\" still resolves found")
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				requireSpawned(t, spawned, err)
+			},
+		},
+		{
+			name: "the same failed batch spawns when the later card only calls a method of the same name",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.Batches = deleteReferencedBatches(t, fx.Worktree, deleteThingGone, userCallsThingGone)
+				fx.Deps.State.Batches[1] = failedRecord("delete-not-done/1-json-flag[blocking]: Delete target \"internal/foo#Thing.Gone\" still resolves found")
 			},
 			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
 				requireSpawned(t, spawned, err)
