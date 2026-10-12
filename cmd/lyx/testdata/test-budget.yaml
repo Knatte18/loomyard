@@ -36,6 +36,7 @@ internal/fabricengine: 644
 internal/fabricvocab: 1
 internal/friction: 6
 internal/frictionengine: 15
+internal/haltnote: 4
 internal/fslink: 5
 internal/fswatch: 5
 internal/fsx: 4

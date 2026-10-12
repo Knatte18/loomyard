@@ -14,6 +14,10 @@ Imports only the standard library, `lyxcwd`, `weftname`, `configengine`, `lyxdir
 Imports only the standard library.
 It holds only the vocabulary predicates and their data, since the owner-set row exempts the whole package from the bare-token rule.
 
+## `internal/haltnote`
+
+Imports only the standard library.
+
 ## `internal/modelspec`
 
 Imports only the standard library, `configengine` and `gopkg.in/yaml.v3`.
