@@ -1,6 +1,6 @@
 //go:build integration
 
-// reportreads_integration_test.go covers the reads a report over finished runs builds on — TagRefs, Log and SubdirsAtRevision — against one real git repository whose commits carry fixed committer dates, reusing blobread_integration_test.go's commitAllAt and gitrepo_test.go's newRepo and writeFile fixture helpers.
+// reportreads_integration_test.go covers the reads a report over finished runs builds on — TagRefs, Log, SubdirsAtRevision, PreImageLines and BlameLines — against one real git repository whose commits carry fixed committer dates, reusing blobread_integration_test.go's commitAllAt and gitrepo_test.go's newRepo and writeFile fixture helpers.
 
 package gitrepo_test
 
@@ -23,6 +23,7 @@ const (
 	dateB = "2026-01-02T12:00:00Z"
 	dateS = "2026-01-03T12:00:00Z"
 	dateM = "2026-01-04T12:00:00Z"
+	dateF = "2026-01-05T12:00:00Z"
 )
 
 // mustParseDate parses an RFC 3339 fixture date.
@@ -57,8 +58,8 @@ func logSHAs(commits []gitrepo.LogCommit) []string {
 	return shas
 }
 
-// TestReportReads drives the three reads over one repository:
-// commit A adds runs/a/status.json holding four lines, B rewrites it to three lines and adds docs/x.md, a side branch adds side.txt in S, and M merges S into the main line with --no-ff;
+// TestReportReads drives the report reads over one repository:
+// commit A adds runs/a/status.json holding four lines, B rewrites it to three lines and adds docs/x.md, a side branch adds side.txt in S, M merges S into the main line with --no-ff, and F rewrites the first line of the file;
 // an annotated tag archive/a/1 points at A, a lightweight archive/b/2 at M and other at B.
 // Every step only reads, so the steps run serially in one order over the shared repository.
 func TestReportReads(t *testing.T) {
@@ -94,6 +95,11 @@ func TestReportReads(t *testing.T) {
 	gitkit.Git(t, dir, "tag", "-a", "-m", "archive a", "archive/a/1", shaA)
 	gitkit.Git(t, dir, "tag", "archive/b/2", shaM)
 	gitkit.Git(t, dir, "tag", "other", shaB)
+
+	writeFile(t, dir, "runs/a/status.json", "X1\nL2\nl4\n")
+	gitkit.Git(t, dir, "add", ".")
+	commitAllAt(t, dir, "commit F", dateF)
+	shaF := requireCurrentSHA(t, repo)
 
 	steps := []struct {
 		name string
@@ -188,6 +194,59 @@ func TestReportReads(t *testing.T) {
 
 			if _, err := repo.SubdirsAtRevision("not-a-sha", ""); !errors.Is(err, gitrepo.ErrInvalidSHA) {
 				t.Errorf("SubdirsAtRevision(not-a-sha) error = %v; want ErrInvalidSHA", err)
+			}
+		}},
+		{"PreImageLines lists the first parent's lines a commit removes or replaces", func(t *testing.T) {
+			tests := []struct {
+				name string
+				sha  string
+				want map[string][]int
+			}{
+				{"a rewrite of two lines, with the added file absent", shaB, map[string][]int{"runs/a/status.json": {2, 3}}},
+				{"a replaced first line", shaF, map[string][]int{"runs/a/status.json": {1}}},
+				{"a root commit", shaA, map[string][]int{}},
+				{"a merge that only adds a file against its first parent", shaM, map[string][]int{}},
+			}
+			for _, tt := range tests {
+				got, err := repo.PreImageLines(tt.sha)
+				if err != nil {
+					t.Fatalf("PreImageLines(%s) error = %v", tt.name, err)
+				}
+				if !reflect.DeepEqual(got, tt.want) {
+					t.Errorf("PreImageLines(%s) = %v; want %v", tt.name, got, tt.want)
+				}
+			}
+
+			if _, err := repo.PreImageLines("not-a-sha"); !errors.Is(err, gitrepo.ErrInvalidSHA) {
+				t.Errorf("PreImageLines(not-a-sha) error = %v; want ErrInvalidSHA", err)
+			}
+		}},
+		{"BlameLines attributes each line to the first-parent commit that brought it", func(t *testing.T) {
+			got, err := repo.BlameLines(shaM, "runs/a/status.json", []int{1, 2, 3})
+			if err != nil {
+				t.Fatalf("BlameLines(status.json) error = %v", err)
+			}
+			if want := map[int]string{1: shaA, 2: shaB, 3: shaA}; !reflect.DeepEqual(got, want) {
+				t.Errorf("BlameLines(M, status.json, [1 2 3]) = %v; want %v", got, want)
+			}
+
+			got, err = repo.BlameLines(shaM, "side.txt", []int{1})
+			if err != nil {
+				t.Fatalf("BlameLines(side.txt) error = %v", err)
+			}
+			if want := map[int]string{1: shaM}; !reflect.DeepEqual(got, want) {
+				t.Errorf("BlameLines(M, side.txt, [1]) = %v; want %v, the merge and not the side commit %s", got, want, shaS)
+			}
+
+			got, err = repo.BlameLines(shaM, "runs/a/status.json", nil)
+			if err != nil || len(got) != 0 {
+				t.Errorf("BlameLines(no lines) = (%v, %v); want an empty map", got, err)
+			}
+
+			for _, bad := range []struct{ rev, path string }{{"not-a-sha", "side.txt"}, {shaM, "-x"}} {
+				if _, err := repo.BlameLines(bad.rev, bad.path, []int{1}); !errors.Is(err, gitrepo.ErrInvalidSHA) {
+					t.Errorf("BlameLines(%q, %q) error = %v; want ErrInvalidSHA", bad.rev, bad.path, err)
+				}
 			}
 		}},
 	}
