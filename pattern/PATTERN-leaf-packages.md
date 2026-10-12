@@ -9,6 +9,11 @@ Imports only the standard library, `lyxcwd`, `weftname`, `configengine`, `lyxdir
 - Test git plumbing lives in `gitkit`; a package-local `_test.go` helper that shells out to git is a review flag.
   This is review discipline, not a scan.
 
+## `internal/fabricvocab`
+
+Imports only the standard library.
+It holds only the vocabulary predicates and their data, since the owner-set row exempts the whole package from the bare-token rule.
+
 ## `internal/modelspec`
 
 Imports only the standard library, `configengine` and `gopkg.in/yaml.v3`.

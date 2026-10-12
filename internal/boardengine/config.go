@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"slices"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -38,6 +39,9 @@ type Config struct {
 	// ApplySkipEnv is the fold every CLI entry calls.
 	SkipGit  bool
 	SkipPush bool
+	// Clock is the time a write stamps entry dates with and renders the README's ages as of;
+	// nil is the wall clock.
+	Clock func() time.Time `yaml:"-"`
 }
 
 // Label is one configured label with its description, which is empty when board.yaml gives none.

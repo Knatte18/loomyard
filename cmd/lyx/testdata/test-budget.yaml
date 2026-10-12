@@ -7,11 +7,11 @@ contracts/specs: 3
 contracts/stencils: 16
 internal/agentname: 7
 internal/batcher: 9
-internal/battencli: 66
+internal/battencli: 68
 internal/battenrecipe: 9
-internal/battenshed: 103
+internal/battenshed: 104
 internal/boardcli: 13
-internal/boardengine: 76
+internal/boardengine: 78
 internal/boardengine/boardtest: 3
 internal/buildinfo: 2
 internal/buildvcs: 2
@@ -32,6 +32,7 @@ internal/editdirective: 2
 internal/envsource: 3
 internal/fabriccli: 21
 internal/fabricengine: 635
+internal/fabricvocab: 1
 internal/friction: 6
 internal/frictionengine: 15
 internal/fslink: 5
@@ -55,8 +56,8 @@ internal/landingshed: 68
 internal/lock: 4
 internal/logger: 35
 internal/loggerconfig: 3
-internal/loomcli: 201
-internal/loomengine: 43
+internal/loomcli: 207
+internal/loomengine: 52
 internal/loomrecipe: 52
 internal/loomshed: 76
 internal/lyxcwd: 23
@@ -70,8 +71,8 @@ internal/pairteardown: 6
 internal/parentdirective: 4
 internal/parentreview: 54
 internal/pattern: 8
-internal/planglyph: 85
-internal/planparser: 90
+internal/planglyph: 86
+internal/planparser: 91
 internal/preflight: 7
 internal/preflightshed: 8
 internal/proc: 17
@@ -87,11 +88,11 @@ internal/shedadapters: 154
 internal/shedbuild: 13
 internal/shedcheck: 3
 internal/shedcli: 17
-internal/shedengine: 134
+internal/shedengine: 135
 internal/shedrecipe: 101
 internal/shedrun: 23
 internal/shedtransient: 2
-internal/shedverbs: 80
+internal/shedverbs: 81
 internal/shell: 12
 internal/shuttlecli: 24
 internal/shuttleengine: 162
@@ -119,7 +120,7 @@ internal/testkit/shuttlefake: 8
 internal/testkit/stencilkit: 3
 internal/testkit/tmuxkit: 16
 internal/treadleengine: 34
-internal/twilldirective: 3
+internal/twilldirective: 4
 internal/verifyrun: 4
 internal/verifytree: 7
 internal/vscode: 12

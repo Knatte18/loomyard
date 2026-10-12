@@ -70,6 +70,12 @@ func TestPathConstructors(t *testing.T) {
 			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), BattenWatchedFileName) }},
 		{"DriveReportsDir", func(l *lyxcwd.Location) string { return DriveReportsDir(l, "self") },
 			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "drive-reports") }},
+		{"ArbiterDir", func(l *lyxcwd.Location) string { return ArbiterDir(l, "self") },
+			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "arbiter") }},
+		{"ArbiterAttemptDir", func(l *lyxcwd.Location) string { return ArbiterAttemptDir(l, "self", 2) },
+			func(l *lyxcwd.Location) string { return filepath.Join(ArbiterDir(l, "self"), "attempt-2") }},
+		{"ArbiterMarker", func(l *lyxcwd.Location) string { return ArbiterMarker(l, "self") },
+			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "arbiter-inflight.json") }},
 		{"PrimeRunLock", PrimeRunLock,
 			func(l *lyxcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lyx", "shed", "run.lock") }},
 		{"LandLock", LandLock,
@@ -160,13 +166,17 @@ func TestDriveReportsRel(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			got := DriveReportsRel(l, "self")
-			want, err := filepath.Rel(l.AnchorPath(), DriveReportsDir(l, "self"))
-			if err != nil {
-				t.Fatalf("filepath.Rel: %v", err)
-			}
-			if got != want {
-				t.Errorf("DriveReportsRel = %q; want %q", got, want)
+			for relName, pair := range map[string][2]string{
+				"DriveReportsRel": {DriveReportsRel(l, "self"), DriveReportsDir(l, "self")},
+				"ArbiterRel":      {ArbiterRel(l, "self"), ArbiterDir(l, "self")},
+			} {
+				want, err := filepath.Rel(l.AnchorPath(), pair[1])
+				if err != nil {
+					t.Fatalf("filepath.Rel: %v", err)
+				}
+				if pair[0] != want {
+					t.Errorf("%s = %q; want %q", relName, pair[0], want)
+				}
 			}
 		})
 	}

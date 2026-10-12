@@ -25,6 +25,9 @@ import (
 // UntilStopFlag is the name of step's flag that runs steps in a loop until a stop.
 const UntilStopFlag = "until-stop"
 
+// ArbiterAttemptFlag is the name of step's flag that names the arbiter attempt the waiter consumes before it starts the loop.
+const ArbiterAttemptFlag = "arbiter-attempt"
+
 // LoopDetachedFlag is the name of step's hidden flag that marks the detached loop process itself and carries its loop id.
 // It only selects runLoop in the process the waiter spawned; the loop refuses to step over a dead loop's record whatever process it runs in.
 const LoopDetachedFlag = "loop-detached"

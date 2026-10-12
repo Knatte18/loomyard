@@ -445,12 +445,16 @@ func (p *innerRunProducer) logSessionStatesAtNotice(runs []AgentActivity, condit
 // a report older than since never qualifies, and a notice that goes without one says `report none yet`.
 // An awaiting child that carries a parent notice, while this batten holds the watched marker, is left to its driver's own relay:
 // its notice goes when the driver strand has ended, or noticeReportWait passed with no report, or noticeRelayWait passed since the report with no decision record.
+// A live arbiter in flight holds the notice of a halted or awaiting child until its deadline plus noticeReportWait has passed.
 func (p *innerRunProducer) stateChangeReady(ctx context.Context, w *childWait) (ready bool, clause string) {
 	status := w.status
 	now := p.deps.Now()
 	path, at, found := p.stopReport()
 	qualifies := found && !at.Before(p.episode.since)
 	clause = reportClause(path, qualifies)
+	if p.arbiterHolds(ctx, now) {
+		return false, clause
+	}
 	alive, known := p.driverAlive(ctx, w)
 	ended := known && !alive
 	waited := now.Sub(p.episode.since) >= noticeReportWait
@@ -468,6 +472,17 @@ func (p *innerRunProducer) stateChangeReady(ctx context.Context, w *childWait) (
 		}
 	}
 	return qualifies || ended || waited, clause
+}
+
+// arbiterHolds reports whether a live arbiter is in flight within its deadline plus noticeReportWait.
+// A read error is a Warn and holds nothing.
+func (p *innerRunProducer) arbiterHolds(ctx context.Context, now time.Time) bool {
+	arbiter, found, err := p.deps.ArbiterInFlight(ctx)
+	if err != nil {
+		logger.Warn("battenshed: arbiter marker unreadable; holding nothing", "producer", p.name, "slug", p.slug, "error", err)
+		return false
+	}
+	return found && arbiter.Alive && now.Before(arbiter.Deadline.Add(noticeReportWait))
 }
 
 // stopReport reads the driver's stop report through deps.StopReport; an error is a Warn and reads as none.

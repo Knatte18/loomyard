@@ -173,6 +173,12 @@ var wordingClaims = []stencilClaims{
 	{"loom-template-rework.md", LoomTemplateRework, []claim{
 		{must: "never plan an entry as scope", why: "a carry-over entry in the record's Open risks lists findings the closing round's fixer fixed or disputed and no fresh reviewer has seen, never scope for a rework generation"},
 	}},
+	{"loom-template-arbiter.md", LoomTemplateArbiter, joinClaims(
+		wantAll("the arbiter's closed change list, its author tag, its verdict file and its fixed escalation rule reach the agent",
+			"lyx loom circling accept", "lyx loom circling continue", "--by arbiter", "{{.verdict_path}}", "hand-on", "after round 3"),
+		wantNone("the arbiter moves and resumes nothing itself and messages no session",
+			"lyx loom goto", "lyx loom resume", "lyx loom approve", "lyx loom reject", "lyx loom review", "SendMessage"),
+	)},
 	{"landing-template-describe.md", LandingTemplateDescribe, []claim{
 		{must: "one item to check by hand", why: "a Plan-Review or Webster-Review carry-over finding reaches the reviewer as a manual-check item"},
 		{must: "A Discussion-Review entry is not carried into the description", why: "a Discussion-Review carry-over finding concerns the record, not the change under review"},
@@ -209,6 +215,7 @@ var wordingClaims = []stencilClaims{
 		wantAll("a carry-over entry in the record's Open risks is checked against the code and never planned as scope", "never plan an entry as scope"),
 		[]claim{
 			{must: "ends with a `Prior plan` section", why: "the template tells the agent to act on a trailing Prior plan section before writing"},
+			{must: "{{.twill_directive}}", section: "## Step 2 — Explore the codebase", why: "the lens review spawns once Step 2's reading is done and before Step 3 writes a plan file"},
 			{must: "must cover every package any card targets", why: "the verify section covers every targeted package"},
 			{must: "hermetic build-tagged tests", why: "the verify section includes hermetic build-tagged tests"},
 			{must: "compiled rather than run", why: "live-substrate tags are compiled rather than run"},
@@ -322,6 +329,9 @@ var wordingClaims = []stencilClaims{
 		{must: "{{.self_check_command}}", why: "the host names the self-check command"},
 		{must: "{{.disposition_place}}", why: "the host names where the lens review is recorded"},
 		{must: "{{.reviewed_files}}", why: "the host names the files a fork reviews"},
+		{must: "{{.spawn_point}}", why: "the host names when the writer runs the procedure"},
+		{must: "{{.rejection_rule}}", why: "the host names how the writer may reject a finding"},
+		{must: "{{.severity_rule}}", why: "the host names how a fork grades a finding"},
 	}, hostNeutralClaims())},
 	{"twill-write-scope.md", TwillWriteScope, joinClaims([]claim{
 		{must: "{{.ready_marker}}", why: "the marker path arrives through its marker"},
@@ -673,6 +683,8 @@ var wordingClaims = []stencilClaims{
 			{mustNot: "`lyx board prune`", section: "## After landing", why: "batten's Land row prunes the board"},
 			{must: "you run no `lyx loom start` loop after either", section: "## PR-Gate", why: "batten resumes the child after a PR-Gate decision"},
 			{must: "batten retries the first such failure of a run itself", section: "## Escalations from a child", why: "a Publish verify failure reaches the orch only on its second failure in the run"},
+			{must: "read the verdict first", section: "## Escalations from a child", why: "an escalation from the driver arrives after the arbiter handed on, so the orch reads the arbiter's verdict before the stop"},
+			{must: "after round 3", section: "## Escalations from a child", why: "the fixed review-escalation rule hands a blocker that remains after round 3 to the operator"},
 			{mustNot: "read the friction notes", why: "a run's Friction-Reflect files its findings as issues, which intake takes onto the board"},
 			{must: "run `lyx loom resume` in the task worktree to resume the run", why: "a circling decision resumes nothing by itself"},
 			{must: "A goto leaves the run paused,\n  so run `lyx loom resume`", why: "a goto leaves the run paused"},
@@ -729,6 +741,11 @@ var wordingClaims = []stencilClaims{
 		{must: "friction: failed", why: "the parent is notified on a done stop whose envelope reports a failed reflection"},
 		{must: "`parent_notice`", why: "an awaiting stop's parent_notice is relayed to the parent"},
 		{must: "{{.parent_notify}}", section: "## Notifying the parent", why: "the parent-notification rule is rendered under its heading from one of the two notify stencils"},
+		{must: "{{.arbiter_command}}", section: "## Arbiter", why: "the arbiter command arrives through its marker, so the recipe-blind body spells no verb"},
+		{must: "`relaunch`", section: "## Arbiter", why: "a resume verdict is applied by running the envelope's relaunch line"},
+		{must: "`arbiter_attempt`", section: "## Arbiter", why: "a refused consumption is recognised by the error envelope's arbiter_attempt key"},
+		{must: "never run it", why: "the driver runs the arbiter at its listed stops only"},
+		{must: "never on the wake of the loop job's own exit", section: "## Arbiter", why: "the wake re-run is narrowed to a driver whose own last action was the arbiter command"},
 		{must: "--until-stop", why: "the driver's one background job is the loop"},
 		{must: "one fork", why: "an error or interrupted stop spawns exactly one fork"},
 		{must: "--before", why: "a stop request before a producer becomes a pause condition"},
@@ -766,7 +783,7 @@ var wordingClaims = []stencilClaims{
 
 // hostNeutralClaims bars every host-specific name from a twill stencil, matched in any case, so another host can render it with its own values.
 func hostNeutralClaims() []claim {
-	phrases := []string{"decision record", "support log", "decision-record.md", "support-log.md", "_lyx/discussion", "Step 5", "Step 6", "validate-discussion", "## Interview", "Discussion"}
+	phrases := []string{"decision record", "support log", "decision-record.md", "support-log.md", "_lyx/discussion", "Step 5", "Step 6", "validate-discussion", "## Interview", "Discussion", "validate-plan", "00-overview.md", "lens-review.md", "Card Index"}
 	claims := wantNone("a twill stencil is host-neutral: every host value arrives through a marker", phrases...)
 	for i := range claims {
 		claims[i].anyCase = true

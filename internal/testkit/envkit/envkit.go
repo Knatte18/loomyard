@@ -193,6 +193,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		Landing:                LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
 		DiscussionSpec:         specOver("test discussion prompt", "discussion-output.md"),
 		PrepareDiscussionSpawn: func() error { return nil },
+		PreparePlanSpawn:       func() error { return nil },
 		DiscussionTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "discussion",
@@ -260,8 +261,11 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			DriverStrand: func(context.Context) (battenshed.ChildDriverStrand, error) {
 				return battenshed.ChildDriverNone, nil
 			},
-			ChildRunLockHeld:   func() (bool, error) { return false, nil },
-			ReviveStrands:      func(context.Context) error { return nil },
+			ChildRunLockHeld: func() (bool, error) { return false, nil },
+			ReviveStrands:    func(context.Context) error { return nil },
+			ArbiterInFlight: func(context.Context) (battenshed.ChildArbiter, bool, error) {
+				return battenshed.ChildArbiter{}, false, nil
+			},
 			PauseRequested:     func() (bool, error) { return false, nil },
 			MarkWatched:        func(context.Context) (bool, error) { return false, nil },
 			OrchStrandRecorded: func() (bool, error) { return true, nil },

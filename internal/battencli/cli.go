@@ -16,6 +16,11 @@
 // An absent or done entry is skipped, and a board failure only warns: the board is the hub's overview, never the run's bookkeeping.
 // The claim stays when the row then fails, and the stopped run resumes with the same verb.
 // No other row writes a board status; loom's transitions are the only later writer.
+//
+// The Inner-Run row's state-changed notice is held while the child's arbiter is live:
+// the row reads the child's in-flight arbiter marker against the pair's reed directory.
+// Its strand revive ends the pair's dead arbiter strands through shuttle's stop verb before reed's resume, so an arbiter strand is never relaunched and its attempt reads as hand-on;
+// a live arbiter strand is left to finish.
 package battencli
 
 import (

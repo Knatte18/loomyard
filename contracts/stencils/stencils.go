@@ -58,6 +58,11 @@ var LoomTemplatePlan []byte
 //go:embed loom/loom-template-rework.md
 var LoomTemplateRework []byte
 
+// LoomTemplateArbiter is the loom arbiter's shipped-default opening prompt: the cold session that settles one stop its run's driver could not.
+//
+//go:embed loom/loom-template-arbiter.md
+var LoomTemplateArbiter []byte
+
 // LoomRubricDiscussionReview is the Discussion-Review rubric, read by both rows of the
 // Discussion-Review perch.
 //
@@ -395,6 +400,7 @@ var entries = []registryEntry{
 	{"loom-template-discussion-advisor", &LoomTemplateDiscussionAdvisor},
 	{"loom-template-plan", &LoomTemplatePlan},
 	{"loom-template-rework", &LoomTemplateRework},
+	{"loom-template-arbiter", &LoomTemplateArbiter},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
 	{"loom-rubric-webster-review", &LoomRubricWebsterReview},
@@ -463,6 +469,7 @@ var entries = []registryEntry{
 // Each carries both the parent directive marker and the edit directive marker, which parentdirective_test.go enforces.
 var roleOpeningStencils = map[string][]string{
 	"driver":              {"shed-template-driver"},
+	"arbiter":             {"loom-template-arbiter"},
 	"discussion":          {"loom-template-discussion"},
 	"discussion-chair":    {"loom-template-discussion-chair"},
 	"discussion-advisor":  {"loom-template-discussion-advisor"},
