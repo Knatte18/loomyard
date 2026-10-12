@@ -84,7 +84,7 @@ func (f *alignerFixture) aligner(t *testing.T) parentreview.Aligner {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The origin record sits in a weft repository, which a tier 1 test has none of.
+	// The origin record sits in a fabric record, which a tier 1 test has none of.
 	if concrete, ok := aligner.(*parentReviewAligner); ok {
 		concrete.parentBranch = func() (string, error) { return "main", nil }
 	}
