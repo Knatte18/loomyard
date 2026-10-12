@@ -33,7 +33,10 @@ func twillBlocks(layout *lyxcwd.Location, stencilsDir string) (string, string, e
 
 	readyMarker := DiscussionReadyMarker(layout)
 	directive, err := twilldirective.Directive(stencilsDir, twilldirective.Values{
-		ReviewedFiles:    []string{DiscussionDecisionRecord(layout), DiscussionSupportLog(layout)},
+		ReviewedFiles:    "`" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "`",
+		SpawnPoint:       "When the design is settled and before you write any output file, run this procedure once:",
+		RejectionRule:    "Fix the record, or reject the finding with a one-line reason.",
+		SeverityRule:     "a severity (`BLOCKING`, `MEDIUM` or `LOW`)",
 		ReadyMarker:      readyMarker,
 		RubricPath:       stencilstore.Path(stencilsDir, "loom-rubric-discussion-review"),
 		Lenses:           lenses,

@@ -322,6 +322,9 @@ var wordingClaims = []stencilClaims{
 		{must: "{{.self_check_command}}", why: "the host names the self-check command"},
 		{must: "{{.disposition_place}}", why: "the host names where the lens review is recorded"},
 		{must: "{{.reviewed_files}}", why: "the host names the files a fork reviews"},
+		{must: "{{.spawn_point}}", why: "the host names when the writer runs the procedure"},
+		{must: "{{.rejection_rule}}", why: "the host names how the writer may reject a finding"},
+		{must: "{{.severity_rule}}", why: "the host names how a fork grades a finding"},
 	}, hostNeutralClaims())},
 	{"twill-write-scope.md", TwillWriteScope, joinClaims([]claim{
 		{must: "{{.ready_marker}}", why: "the marker path arrives through its marker"},
@@ -766,7 +769,7 @@ var wordingClaims = []stencilClaims{
 
 // hostNeutralClaims bars every host-specific name from a twill stencil, matched in any case, so another host can render it with its own values.
 func hostNeutralClaims() []claim {
-	phrases := []string{"decision record", "support log", "decision-record.md", "support-log.md", "_lyx/discussion", "Step 5", "Step 6", "validate-discussion", "## Interview", "Discussion"}
+	phrases := []string{"decision record", "support log", "decision-record.md", "support-log.md", "_lyx/discussion", "Step 5", "Step 6", "validate-discussion", "## Interview", "Discussion", "validate-plan", "00-overview.md", "lens-review.md", "Card Index"}
 	claims := wantNone("a twill stencil is host-neutral: every host value arrives through a marker", phrases...)
 	for i := range claims {
 		claims[i].anyCase = true
