@@ -127,7 +127,7 @@ parent_review_wait_min: 60
 }
 
 // hubLocation returns a *lyxcwd.Location standing in for a real hub location, with its anchor path
-// seeded on disk with loom.yaml and a pair landing.yaml that blanks publish_verify, and its hub seeded with the hub-wide landing.yaml at the board dir and both loom stencils.
+// seeded on disk with loom.yaml and a pair landing.yaml that blanks publish_verify, and its hub seeded with loom's repo default and the hub-wide landing.yaml at the board dir and both loom stencils.
 func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location {
 	t.Helper()
 	hub := t.TempDir()
@@ -137,6 +137,7 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location 
 		t.Fatalf("MkdirAll(.git) = %v; want nil", err)
 	}
 	seedLoomConfig(t, loc.AnchorPath())
+	seedLoomConfig(t, fabricengine.BoardDir(hub))
 	seedLandingConfig(t, fabricengine.BoardDir(hub), hubPublishVerify)
 	seedLandingConfig(t, loc.AnchorPath(), "")
 	// stencilstore.Read hard-errors on a missing file, so the stencils the Spec closures read are seeded into the hub's stencils directory.

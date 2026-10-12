@@ -46,8 +46,8 @@ func reconcileModule(t *testing.T, result map[string]any, module string) map[str
 	return nil
 }
 
-// TestConfigReconcileInGitRepo runs `lyx config reconcile` over one git repository: a dry run reports without writing, a --set-planted orphan key is reported by reconcile instead of being lost, and --apply writes the missing module files and retires a per-worktree hub-wide copy the hub file subsumes.
-// Its steps run in this order in one repository; the apply step relies on the dry-run step having left reed.yaml unwritten.
+// TestConfigReconcileInGitRepo runs `lyx config reconcile` over one git repository: a dry run reports without writing, a --set-planted orphan key is reported by reconcile instead of being lost, and --apply prunes the sparse worktree layer without creating an absent file and retires a per-worktree hub-wide copy the hub file subsumes.
+// Its steps run in this order in one repository.
 // The scenario runs in one repository so it spawns git once.
 func TestConfigReconcileInGitRepo(t *testing.T) {
 	t.Parallel()
@@ -97,7 +97,7 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 			t.Fatal("modules array is empty; want non-empty")
 		}
 		mod, _ := modules[0].(map[string]any)
-		for _, field := range []string{"module", "added", "removed", "applied"} {
+		for _, field := range []string{"module", "added", "removed", "applied", "layer"} {
 			if _, has := mod[field]; !has {
 				t.Errorf("module entry missing %q field", field)
 			}
@@ -131,7 +131,7 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		return
 	}
 
-	t.Run("apply writes the missing module files and retires the subsumed board copy", func(t *testing.T) {
+	t.Run("apply prunes the sparse worktree layer and retires the subsumed board copy", func(t *testing.T) {
 		const subsumedBoard = "labels:\n  area-x: Area X\n"
 		boardPath := configengine.ConfigFile(tmpDir, "board")
 		seedModuleConfig(t, tmpDir, "board", subsumedBoard)
@@ -152,9 +152,15 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		if applied, _ := result["applied"].(bool); !applied {
 			t.Error("applied is false; want true")
 		}
-		// Hub-wide modules are never written per-worktree, so "reed" is the generic module this reconcile-writes-to-disk assertion exercises.
-		if _, err := os.Stat(reedPath); err != nil {
-			t.Errorf("reed.yaml not created: %v", err)
+		// In a hub the worktree file is a sparse layer: apply prunes retired keys but never creates an absent module's file.
+		if _, err := os.Stat(reedPath); !os.IsNotExist(err) {
+			t.Errorf("reed.yaml created by --apply (stat err = %v); want it left absent", err)
+		}
+		if content, err := os.ReadFile(loomPath); err != nil || bytes.Contains(content, []byte("legacy_key")) {
+			t.Errorf("loom.yaml = %q, %v; want its retired legacy_key pruned", content, err)
+		}
+		if layer, _ := reconcileModule(t, result, "loom")["layer"].(string); layer != "worktree" {
+			t.Errorf("loom module layer = %q; want worktree", layer)
 		}
 		if retired, _ := reconcileModule(t, result, "board")["retired"].(bool); !retired {
 			t.Errorf("board module not reported retired; result = %v", result)

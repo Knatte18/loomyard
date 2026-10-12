@@ -36,11 +36,11 @@
 // h.WeftBase and committing at the weft worktree root h.PrimeRecords().
 // SeedFabricConfig overrides the repo-wide fabric.yaml, writing into h.BoardDir() and committing
 // through fabricengine.NewBolt, matching what CloneAndWire itself does after ReconcileHubWideAt.
-// Most former seeding sites need neither: fabriccli.CloneAndWire already runs
-// configsync.ReconcileAll and ReconcileHubWideAt, so a real hub arrives with every registered module's
-// default config already materialized and committed on the weft primary branch — which is why
-// SeedConfig commits with an empty stage allowed: a seed byte-identical to the already-committed
-// file stages nothing, and a bare commit over nothing would otherwise fail.
+// Most former seeding sites need neither: fabriccli.CloneAndWire already ends in the hub walk.
+// A real hub therefore arrives with each per-worktree module's repo default committed on the board, and its prime carries only the per-worktree config files the records repository already held.
+// SeedConfig writes a sparse worktree layer over those defaults.
+// SeedConfig commits with an empty stage allowed: a seed byte-identical to a file already committed stages nothing, and a bare commit over nothing would otherwise fail.
+// cloneHub removes the build stamp the clone's walk wrote, so a start verb driven in a test walks the hub as on a binary change while the seeded defaults stay committed.
 //
 // Fixture marker: git a hub build spawns carries gitkit.FixtureGitEnv, set two ways.
 // The local mustGit helper sets it on its own child's environment.

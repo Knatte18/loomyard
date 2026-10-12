@@ -109,7 +109,7 @@ func TestNewHub(t *testing.T) {
 					}
 				}},
 				{"ConfigMaterializedWithoutSeeding", func(t *testing.T) {
-					// A freshly built hub already carries a materialized config file for at least one registered module without any seeding call.
+					// A freshly built hub already carries a committed repo default on its board for at least one per-worktree module without any seeding call.
 					// This is what licenses deleting a SeedConfig call rather than retargeting it, so it is not optional colour.
 					const module = "loom"
 					template, ok := configreg.Template(module)
@@ -117,7 +117,7 @@ func TestNewHub(t *testing.T) {
 						t.Fatalf("configreg.Template(%q): module not registered", module)
 					}
 
-					configPath := configengine.ConfigFile(h.Location.AnchorPath(), module)
+					configPath := configengine.ConfigFile(h.BoardDir(), module)
 					got, err := os.ReadFile(configPath)
 					if err != nil {
 						t.Fatalf("read %s: %v", configPath, err)
@@ -139,10 +139,12 @@ func TestNewHub(t *testing.T) {
 				}},
 				{"SeedConfigRedundantSeedDoesNotFatal", func(t *testing.T) {
 					// SeedConfig returns normally when handed a seed byte-identical to what the clone already committed -- a seed that stages nothing, exactly the shape its --allow-empty commit exists to tolerate -- and a genuinely different seed still lands on disk, proving --allow-empty did not turn the helper into a no-op.
+					// The clone leaves no loom file in the prime, so loom is seeded once before it is read back.
 					loomConfigPath := configengine.ConfigFile(h.WeftBase, "loom")
+					SeedConfig(t, h, map[string]string{"loom": "review_max_bounces: 2\n"})
 					original, err := os.ReadFile(loomConfigPath)
 					if err != nil {
-						t.Fatalf("read already-materialised loom config %s: %v", loomConfigPath, err)
+						t.Fatalf("read seeded loom config %s: %v", loomConfigPath, err)
 					}
 
 					SeedConfig(t, h, map[string]string{"loom": string(original)})

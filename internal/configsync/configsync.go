@@ -2,8 +2,9 @@
 //
 // It provides atomic writes and per-module reconciliation via yamlengine.Reconcile, tracking
 // added/removed keys and applying changes when requested.
-// ReconcileAll covers the per-worktree modules at a worktree's anchor;
-// ReconcileHubWideAt covers the hub-wide modules at the board dir.
+// The base layer of a config stack stays full and every layer above it is sparse.
+// ReconcileHubWideAt covers every module's file at the board dir, hub files and per-worktree repo defaults;
+// ReconcileAll covers a worktree's sparse and local layers.
 // Their failures are *FileError values naming the file that failed.
 
 package configsync
@@ -73,6 +74,22 @@ type Result struct {
 	// The copy is left in place.
 	// Set only by ReconcileAll.
 	Divergent []string
+	// Layer names the layer the result reports: the repo default or hub file, the worktree file, or the local override.
+	Layer configengine.Layer
+}
+
+// Options configures ReconcileAll.
+type Options struct {
+	// Apply writes and removes files; false reports what would change.
+	Apply bool
+}
+
+// HubWideOptions configures ReconcileHubWideAt.
+type HubWideOptions struct {
+	// Apply writes and removes files; false reports what would change.
+	Apply bool
+	// SeedDefaults seeds a per-worktree module's absent repo default; false leaves an absent default absent.
+	SeedDefaults bool
 }
 
 // legacyConfig reads the pre-cutover config files the module covers, present under baseDir's config dir,
@@ -151,11 +168,14 @@ func decodeLeafValues(data []byte) (map[string]any, error) {
 }
 
 // retireHubWideCopy decides the outcome of a hub-wide module's per-worktree copy against the hub file.
-// A missing copy or a missing hub file yields an empty result and leaves the copy alone.
+// A missing copy, a missing hub file or an empty boardDir yields an empty result and leaves the copy alone.
 // A copy whose every leaf is present in the hub file at the same key path with an equal value is Retired, and apply deletes it.
 // Any other copy is Divergent, listing each leaf the hub file lacks or holds differently, and stays.
 func retireHubWideCopy(module, baseDir, boardDir string, apply bool) (Result, error) {
-	result := Result{Module: module}
+	result := Result{Module: module, Layer: configengine.LayerWorktree}
+	if boardDir == "" {
+		return result, nil
+	}
 
 	copyPath := configengine.ConfigFile(baseDir, module)
 	copyData, err := os.ReadFile(copyPath)
@@ -204,102 +224,151 @@ func retireHubWideCopy(module, baseDir, boardDir string, apply bool) (Result, er
 	return result, nil
 }
 
-// ReconcileAll reconciles the per-worktree module config files under baseDir against their templates,
+// ReconcileAll reconciles a worktree's layers under baseDir against the module templates,
 // returning the slice of results and any I/O or YAML parsing error.
-// Seed-only modules (e.g. "models") with present files are reported untouched;
-// absent files materialize the template verbatim.
-// A hub-wide module is never reconciled or written under baseDir.
+// Standalone (boardDir empty) the worktree file is the base layer and is fully reconciled;
+// in a hub it is sparse: a present file is migrated and its retired keys pruned, nothing is added, and an absent one stays absent.
+// The local file of every module is a sparse layer reconciled the same way, and is reported with layer local only when present.
+// A seed-only module's worktree and local files are never rewritten; standalone, an absent worktree file materializes the template verbatim.
+// A hub-wide module is never reconciled or written as a worktree file.
 // Its result reports whether a leftover per-worktree copy is Retired (the hub file at boardDir holds everything the copy holds, and apply deletes it)
 // or Divergent (the copy holds something the hub file lacks, and it stays).
-// When apply is false, files are never written or removed.
-func ReconcileAll(baseDir, boardDir string, apply bool) ([]Result, error) {
+// A file emptied by a prune is deleted.
+// When opts.Apply is false, files are never written or removed.
+func ReconcileAll(baseDir, boardDir string, opts Options) ([]Result, error) {
 	var results []Result
 
 	for _, m := range configreg.Modules() {
-		if m.HubWide {
-			result, err := retireHubWideCopy(m.Name, baseDir, boardDir, apply)
-			if err != nil {
-				return nil, err
-			}
-			results = append(results, result)
-			continue
+		var result Result
+		var err error
+		switch {
+		case m.HubWide:
+			result, err = retireHubWideCopy(m.Name, baseDir, boardDir, opts.Apply)
+		case boardDir == "":
+			result, err = reconcileBaseWorktreeFile(m, baseDir, opts.Apply)
+		default:
+			result, _, err = reconcileSparseFile(m, configengine.ConfigFile(baseDir, m.Name), configengine.LayerWorktree, opts.Apply)
 		}
-
-		cfgPath := configengine.ConfigFile(baseDir, m.Name)
-
-		existing, err := os.ReadFile(cfgPath)
-		fileAbsent := os.IsNotExist(err)
-		if err != nil && !os.IsNotExist(err) {
-			return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("read config for %s: %w", m.Name, err)}
-		}
-		if fileAbsent {
-			existing = []byte{}
-		}
-
-		var migratedFrom []string
-
-		if m.SeedOnly {
-			if !fileAbsent {
-				results = append(results, Result{Module: m.Name, Applied: false})
-				continue
-			}
-			added, err := yamlengine.MissingKeys([]byte(m.Template()), nil)
-			if err != nil {
-				return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("reconcile %s: %w", m.Name, err)}
-			}
-
-			result := Result{Module: m.Name, Added: added, Applied: false}
-			if apply {
-				if err := fsx.AtomicWriteBytes(cfgPath, []byte(m.Template())); err != nil {
-					return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("write config for %s: %w", m.Name, err)}
-				}
-				result.Applied = true
-			}
-			results = append(results, result)
-			continue
-		}
-
-		var migrated []string
-		if m.Migrate != nil && !fileAbsent {
-			existing, migrated, err = m.Migrate(existing)
-			if err != nil {
-				return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("migrate %s: %w", m.Name, err)}
-			}
-		}
-
-		merged, added, removed, err := yamlengine.Reconcile([]byte(m.Template()), existing, m.OpenMaps...)
 		if err != nil {
-			return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("reconcile %s: %w", m.Name, err)}
+			return nil, err
 		}
-
-		result := Result{
-			Module:       m.Name,
-			Added:        added,
-			Removed:      removed,
-			Applied:      false,
-			MigratedFrom: migratedFrom,
-			Migrated:     migrated,
-		}
-
-		hasChanges := len(added)+len(removed)+len(migrated) > 0
-
-		if apply && (fileAbsent || hasChanges) {
-			if err := fsx.AtomicWriteBytes(cfgPath, merged); err != nil {
-				return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("write config for %s: %w", m.Name, err)}
-			}
-			result.Applied = true
-			for _, legacy := range migratedFrom {
-				legacyPath := configengine.ConfigFile(baseDir, legacy)
-				if err := os.Remove(legacyPath); err != nil && !os.IsNotExist(err) {
-					return nil, &FileError{Module: m.Name, Path: legacyPath, Err: fmt.Errorf("remove migrated legacy config %s: %w", legacy, err)}
-				}
-			}
-		}
-
 		results = append(results, result)
+
+		localResult, present, err := reconcileSparseFile(m, configengine.LocalFile(baseDir, m.Name), configengine.LayerLocal, opts.Apply)
+		if err != nil {
+			return nil, err
+		}
+		if present {
+			results = append(results, localResult)
+		}
 	}
 
 	return results, nil
+}
+
+// reconcileBaseWorktreeFile fully reconciles a per-worktree module's worktree file, the base layer of a standalone stack.
+// A seed-only module's present file is reported untouched and an absent one materializes the template verbatim.
+func reconcileBaseWorktreeFile(m configreg.Module, baseDir string, apply bool) (Result, error) {
+	cfgPath := configengine.ConfigFile(baseDir, m.Name)
+
+	existing, err := os.ReadFile(cfgPath)
+	fileAbsent := os.IsNotExist(err)
+	if err != nil && !fileAbsent {
+		return Result{}, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("read config for %s: %w", m.Name, err)}
+	}
+	if fileAbsent {
+		existing = []byte{}
+	}
+
+	if m.SeedOnly {
+		if !fileAbsent {
+			return Result{Module: m.Name, Layer: configengine.LayerWorktree}, nil
+		}
+		added, err := yamlengine.MissingKeys([]byte(m.Template()), nil)
+		if err != nil {
+			return Result{}, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("reconcile %s: %w", m.Name, err)}
+		}
+
+		result := Result{Module: m.Name, Added: added, Layer: configengine.LayerWorktree}
+		if apply {
+			if err := fsx.AtomicWriteBytes(cfgPath, []byte(m.Template())); err != nil {
+				return Result{}, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("write config for %s: %w", m.Name, err)}
+			}
+			result.Applied = true
+		}
+		return result, nil
+	}
+
+	var migrated []string
+	if m.Migrate != nil && !fileAbsent {
+		existing, migrated, err = m.Migrate(existing)
+		if err != nil {
+			return Result{}, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("migrate %s: %w", m.Name, err)}
+		}
+	}
+
+	merged, added, removed, err := yamlengine.Reconcile([]byte(m.Template()), existing, m.OpenMaps...)
+	if err != nil {
+		return Result{}, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("reconcile %s: %w", m.Name, err)}
+	}
+
+	result := Result{
+		Module:   m.Name,
+		Added:    added,
+		Removed:  removed,
+		Migrated: migrated,
+		Layer:    configengine.LayerWorktree,
+	}
+	if apply && (fileAbsent || len(added)+len(removed)+len(migrated) > 0) {
+		if err := fsx.AtomicWriteBytes(cfgPath, merged); err != nil {
+			return Result{}, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("write config for %s: %w", m.Name, err)}
+		}
+		result.Applied = true
+	}
+	return result, nil
+}
+
+// reconcileSparseFile reconciles one sparse layer file of a module: its Migrate hook runs over it and its retired keys are pruned, and nothing is ever added.
+// An absent file stays absent and reports present false;
+// a seed-only module's present file is reported untouched.
+// A file emptied by a prune is deleted and reported applied.
+func reconcileSparseFile(m configreg.Module, path string, layer configengine.Layer, apply bool) (result Result, present bool, err error) {
+	result = Result{Module: m.Name, Layer: layer}
+	existing, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return result, false, nil
+	}
+	if err != nil {
+		return Result{}, false, &FileError{Module: m.Name, Path: path, Err: fmt.Errorf("read config for %s: %w", m.Name, err)}
+	}
+	if m.SeedOnly {
+		return result, true, nil
+	}
+
+	if m.Migrate != nil {
+		existing, result.Migrated, err = m.Migrate(existing)
+		if err != nil {
+			return Result{}, true, &FileError{Module: m.Name, Path: path, Err: fmt.Errorf("migrate %s: %w", m.Name, err)}
+		}
+	}
+	pruned, removed, err := yamlengine.Prune([]byte(m.Template()), existing, m.OpenMaps...)
+	if err != nil {
+		return Result{}, true, &FileError{Module: m.Name, Path: path, Err: fmt.Errorf("reconcile %s: %w", m.Name, err)}
+	}
+	result.Removed = removed
+
+	if !apply || len(removed)+len(result.Migrated) == 0 {
+		return result, true, nil
+	}
+	if len(removed) > 0 && len(pruned) == 0 {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return Result{}, true, &FileError{Module: m.Name, Path: path, Err: fmt.Errorf("remove emptied config for %s: %w", m.Name, err)}
+		}
+	} else if err := fsx.AtomicWriteBytes(path, pruned); err != nil {
+		return Result{}, true, &FileError{Module: m.Name, Path: path, Err: fmt.Errorf("write config for %s: %w", m.Name, err)}
+	}
+	result.Applied = true
+	return result, true, nil
 }
 
 // primeConfig reads the prime worktree's copy of a module's config under primeBaseDir.
@@ -319,24 +388,23 @@ func primeConfig(primeBaseDir, module string) []byte {
 	return data
 }
 
-// ReconcileHubWideAt reconciles every hub-wide module's file at configengine.ConfigFile(boardDir, name),
-// in registry order, and returns one Result per module.
+// ReconcileHubWideAt reconciles every module's file at configengine.ConfigFile(boardDir, name),
+// in registry order, and returns one Result per module with Layer default:
+// a hub-wide module's hub file and a per-worktree module's repo default, which is that module's full base layer.
 // primeBaseDir is the prime worktree's anchor dir; empty means no prime is resolvable.
 //
-// A present hub file is the reconcile input and is never replaced.
-// An absent file of a module with open maps, or one marked SeedsFromPrime, is seeded from the prime's copy when that copy exists and parses;
-// any other module never reads the prime, since its per-worktree copy was never in effect.
-// Otherwise an absent file folds in the module's pre-cutover legacy files, and failing that starts from the template.
-// Legacy files are pruned only when apply succeeds.
-// When apply is false, nothing is written or removed.
-func ReconcileHubWideAt(boardDir, primeBaseDir string, apply bool) ([]Result, error) {
+// A present file is the reconcile input and is never replaced; a present seed-only default is never rewritten.
+// An absent hub file of a module with open maps, or one marked SeedsFromPrime, is seeded from the prime's copy when that copy exists and parses;
+// any other hub-wide module never reads the prime, since its per-worktree copy was never in effect.
+// Otherwise an absent hub file folds in the module's pre-cutover legacy files, and failing that starts from the template.
+// An absent per-worktree default is seeded only under opts.SeedDefaults, from the prime's copy when it exists and parses, else from the template;
+// without it the default stays absent.
+// Legacy files are pruned only when opts.Apply succeeds.
+// When opts.Apply is false, nothing is written or removed.
+func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]Result, error) {
 	var results []Result
 
 	for _, m := range configreg.Modules() {
-		if !m.HubWide {
-			continue
-		}
-
 		cfgPath := configengine.ConfigFile(boardDir, m.Name)
 
 		existing, err := os.ReadFile(cfgPath)
@@ -345,18 +413,30 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, apply bool) ([]Result, er
 			return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("read config for %s: %w", m.Name, err)}
 		}
 
+		presentSeedOnly := !fileAbsent && m.SeedOnly
+		absentUnseeded := fileAbsent && !opts.SeedDefaults
+		if !m.HubWide && (presentSeedOnly || absentUnseeded) {
+			untouched := Result{Module: m.Name, Layer: configengine.LayerDefault}
+			if presentSeedOnly {
+				untouched.Seed = SeedHub
+			}
+			results = append(results, untouched)
+			continue
+		}
+
 		seed := SeedHub
 		var migratedFrom []string
+		var migrated []string
 		if fileAbsent {
 			existing = nil
 			seed = SeedTemplate
-			if len(m.OpenMaps) > 0 || m.SeedsFromPrime {
+			if len(m.OpenMaps) > 0 || m.SeedsFromPrime || !m.HubWide {
 				if prime := primeConfig(primeBaseDir, m.Name); prime != nil {
 					existing = prime
 					seed = SeedPrime
 				}
 			}
-			if seed == SeedTemplate {
+			if seed == SeedTemplate && m.HubWide {
 				if legacy, from := legacyConfig(m.Name, boardDir); len(from) > 0 {
 					existing = legacy
 					migratedFrom = from
@@ -365,9 +445,27 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, apply bool) ([]Result, er
 			}
 		}
 
-		merged, added, removed, err := yamlengine.Reconcile([]byte(m.Template()), existing, m.OpenMaps...)
-		if err != nil {
-			return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("reconcile %s: %w", m.Name, err)}
+		var added, removed []string
+		var mergedBytes []byte
+		var reconcileErr error
+		if m.SeedOnly {
+			// An absent seed-only default is the prime's copy or the template, verbatim.
+			mergedBytes = existing
+			if mergedBytes == nil {
+				mergedBytes = []byte(m.Template())
+				added, reconcileErr = yamlengine.MissingKeys(mergedBytes, nil)
+			}
+		} else {
+			if m.Migrate != nil && !fileAbsent {
+				existing, migrated, err = m.Migrate(existing)
+				if err != nil {
+					return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("migrate %s: %w", m.Name, err)}
+				}
+			}
+			mergedBytes, added, removed, reconcileErr = yamlengine.Reconcile([]byte(m.Template()), existing, m.OpenMaps...)
+		}
+		if reconcileErr != nil {
+			return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("reconcile %s: %w", m.Name, reconcileErr)}
 		}
 
 		result := Result{
@@ -375,14 +473,16 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, apply bool) ([]Result, er
 			Added:        added,
 			Removed:      removed,
 			MigratedFrom: migratedFrom,
+			Migrated:     migrated,
 			Seed:         seed,
+			Layer:        configengine.LayerDefault,
 		}
 
-		if apply && (fileAbsent || len(added)+len(removed) > 0) {
+		if opts.Apply && (fileAbsent || len(added)+len(removed)+len(migrated) > 0) {
 			if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 				return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("mkdir config dir for %s: %w", m.Name, err)}
 			}
-			if err := fsx.AtomicWriteBytes(cfgPath, merged); err != nil {
+			if err := fsx.AtomicWriteBytes(cfgPath, mergedBytes); err != nil {
 				return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("write config for %s: %w", m.Name, err)}
 			}
 			result.Applied = true

@@ -7,14 +7,15 @@
 //
 // The build stamp is <BoardDir>/.lyx/config/build-stamp.json and the hub lock <BoardDir>/.lyx/config/reconcile.lock, both in the never-tracked mirror of the hub-wide config dir.
 // The stamp holds a build key, the hex SHA-256 of the binary's VCS revision, its modified flag and the config registry's fingerprint, with the revision and the flag in readable form for the log.
-// A stamp naming the running key makes Ensure return after one file read, with no lock and no git; an absent or unreadable stamp counts as stale.
+// A stamp naming the running key makes Ensure return after one file read and one stat per per-worktree module, with no lock and no git; an absent or unreadable stamp counts as stale.
+// A stamp naming the running key also counts as stale when any per-worktree module's repo default is absent under the board dir, so a default deleted after a walk is reseeded by the next start verb.
 // The lock wait defaults to DefaultLockWait and is an Options field; a lock still held when it runs out returns *LockTimeoutError and touches nothing.
 // The holder's own per-worktree commits wait on each pair's write lock as a plain commit does, unbounded.
 //
 // # The walk
 //
 // Under the lock the stamp is read again, and a fresh one returns nil.
-// The walk pulls the board first, reconciles the hub-wide config and commits it on the board under a subject carrying the binary label, then reconciles the prime, then lists the hub's code worktrees again and reconciles each pair not yet walked.
+// The walk pulls the board first, reconciles the board's config and commits it on the board under a subject carrying the binary label, seeding every absent per-worktree repo default from the prime or the template, then reconciles the prime's sparse layers, then lists the hub's code worktrees again and reconciles each pair not yet walked.
 // It repeats until a listing finds no new pair, so a pair registered while the walk ran is walked before the stamp is written.
 // Each worktree's applied files are committed in that worktree, and the board is pushed, carrying the hub-wide commit and any an earlier run left unpushed.
 // Worktrees that committed before a failure keep their commits.

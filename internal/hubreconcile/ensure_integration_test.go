@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -175,27 +176,36 @@ func TestEnsure_StaleBuildReconcilesAndCommitsEveryWorktree(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		name        string
-		boardBehind bool
+		name            string
+		boardBehind     bool
+		loomDefaultGone bool
 	}{
 		{name: "board up to date"},
 		{name: "board behind its upstream", boardBehind: true},
+		{name: "loom default deleted beside a current stamp", loomDefaultGone: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			runStaleBuildReconcile(t, tc.boardBehind)
+			runStaleBuildReconcile(t, tc.boardBehind, tc.loomDefaultGone)
 		})
 	}
 }
 
 // runStaleBuildReconcile walks a stale hub and asserts every worktree and the board got one reconcile commit, with the board's pulled from upstream when boardBehind.
-func runStaleBuildReconcile(t *testing.T, boardBehind bool) {
+// With loomDefaultGone the stamp names the running build but loom's committed repo default is deleted, and the walk reseeds and commits it on the board; batcher's default stays intact so retiredKeyPresent keeps reading it.
+func runStaleBuildReconcile(t *testing.T, boardBehind, loomDefaultGone bool) {
 	t.Helper()
 
 	h := newStaleHub(t, "pair-a")
 	geom := geometryOf(h)
 	pair := h.PairCodeWorktree("pair-a")
 	hubforge.SeedFabricConfig(t, h, staleHubWideConfig)
+	loomDefault := configengine.ConfigFileRel("loom")
+	if loomDefaultGone {
+		gitkit.Git(t, h.BoardDir(), "rm", "-q", loomDefault)
+		gitkit.Git(t, h.BoardDir(), "commit", "-q", "-m", "fixture: delete loom default")
+		writeCurrentStamp(t, geom)
+	}
 	var movedUpstream string
 	if boardBehind {
 		pushBoardFromSecondClone(t, h.BoardDir())
@@ -220,6 +230,9 @@ func runStaleBuildReconcile(t *testing.T, boardBehind bool) {
 		}
 	}
 
+	if loomDefaultGone && !slices.Contains(gitkit.LsFiles(t, h.BoardDir()), loomDefault) {
+		t.Errorf("the board does not track the reseeded %s", loomDefault)
+	}
 	for name, root := range map[string]string{"prime": h.PrimeWorktree(), "pair": pair} {
 		if retiredKeyPresent(t, root) {
 			t.Errorf("%s batcher.yaml still carries %s", name, retiredKey)

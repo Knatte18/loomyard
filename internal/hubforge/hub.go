@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -254,9 +255,9 @@ func (h *Hub) PairLauncherDir(slug string) string {
 // warp binding, but no junctions and no repo-wide fabric.yaml — which leaves three of the gate's eight
 // path-ownership kinds (ownedWiredJunction, ownedDriftedWiredJunction, ownedUnderGeometryRoot)
 // structurally unreachable.
-// The hub CloneAndWire returns arrives with its weft prime worktree clean: each registered
-// non-"fabric" module's config is committed on the weft primary branch, rather than carried as
-// untracked content.
+// The hub CloneAndWire returns arrives with its weft prime worktree clean.
+// Each per-worktree module's repo default is committed on the board, and the prime carries only the per-worktree config files the records repository already held.
+// The clone's build stamp is removed, so a start verb driven in a test walks the hub as on a binary change.
 // CopyHub and SharedHub hand out a hub of the closed Shapes set from a template built once per test binary, and are the entry points for every hub a test does not need built fresh;
 // NewHub stays for a shape outside that set.
 // It calls tb.Fatalf on any error.
@@ -298,6 +299,12 @@ func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string) (*Hub
 	})
 	if err != nil {
 		tb.Fatalf("NewHub: CloneAndWire: %v", err)
+	}
+
+	// The clone's walk stamped the build; removing the stamp leaves the stale one a start verb driven in a test walks as on a binary change, while the seeded repo defaults stay committed.
+	stamp := hubreconcile.Geometry{BoardDir: res.BoardDir}.StampPath()
+	if err := os.Remove(stamp); err != nil && !os.IsNotExist(err) {
+		tb.Fatalf("NewHub: remove the clone's build stamp %s: %v", stamp, err)
 	}
 
 	loc, err := lyxcwd.Resolve(res.PrimeCwd)

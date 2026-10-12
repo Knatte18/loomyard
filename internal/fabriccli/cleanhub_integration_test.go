@@ -27,12 +27,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // perWorktreeModuleNames returns configreg.Modules() filtered to every entry that is not hub-wide
-// -- the set CloneAndWire's per-worktree reconcile loop materializes, derived fresh every call so
+// -- the set whose repo defaults the clone's walk seeds on the board, derived fresh every call so
 // a newly registered module never silently makes these tests wrong.
 func perWorktreeModuleNames() []string {
 	var names []string
@@ -105,30 +107,29 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 		run  func(t *testing.T)
 	}{
 		{"CloneConfigCommit_WeftPrimeCleanAfterClone", func(t *testing.T) {
-			// A freshly-built hub's weft prime worktree is clean, and git ls-files reports every per-worktree module's config file.
+			// A freshly-built hub's weft prime worktree is clean, and git ls-files on the board lists every per-worktree module's committed repo default.
 			if status := gitkit.GitStatusPorcelain(t, h.PrimeRecords()); status != "" {
 				t.Errorf("weft prime status --porcelain = %q; want empty (clean)", status)
 			}
 
-			tracked := gitkit.LsFiles(t, h.PrimeRecords())
+			tracked := gitkit.LsFiles(t, h.BoardDir())
 			for _, name := range perWorktreeModuleNames() {
 				want := configengine.ConfigFileRel(name)
 				if !slices.Contains(tracked, want) {
-					t.Errorf("git ls-files in weft prime does not contain %q; got %v", want, tracked)
+					t.Errorf("git ls-files in the board does not contain %q; got %v", want, tracked)
 				}
 			}
 		}},
 		{"CloneConfigCommit_OneCommitNotOnePerModule", func(t *testing.T) {
-			// The weft primary branch carries the clone's config commit subject exactly once, and a second ReconcileAll over the same weft base reports Applied false for every module.
+			// A fresh clone's weft prime carries no per-module config commit, and a second ReconcileAll over the same weft base reports Applied false for every module.
 			out := gitOutputCLI(t, h.PrimeRecords(), "log", "--oneline")
 
-			const wantSubject = "fabric clone: record module configs"
-			count := strings.Count(out, wantSubject)
-			if count != 1 {
-				t.Errorf("weft primary git log --oneline contains %q %d times; want exactly 1\nlog:\n%s", wantSubject, count, out)
+			const unwantedSubject = "fabric clone: record module configs"
+			if strings.Contains(out, unwantedSubject) {
+				t.Errorf("weft primary git log --oneline contains %q; want none\nlog:\n%s", unwantedSubject, out)
 			}
 
-			results, err := configsync.ReconcileAll(h.WeftBase, h.BoardDir(), true)
+			results, err := configsync.ReconcileAll(h.WeftBase, h.BoardDir(), configsync.Options{Apply: true})
 			if err != nil {
 				t.Fatalf("second ReconcileAll: %v", err)
 			}
@@ -139,33 +140,30 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			}
 		}},
 		{"CloneConfigCommit_MutationRecordShape", func(t *testing.T) {
-			// The mutation record CloneAndWire produced holds one KindFileWritten entry per per-worktree module followed by a KindCommitCreated entry targeting the weft worktree, commit last -- array order is part of the vocabulary.
+			// The mutation record CloneAndWire produced holds one KindFileWritten entry per seeded per-worktree repo default, each targeting that module's file under the board dir, and no weft config commit.
+			boardRel, err := filepath.Rel(h.Path, h.BoardDir())
+			if err != nil {
+				t.Fatalf("Rel(%s, %s): %v", h.Path, h.BoardDir(), err)
+			}
+			boardPrefix := filepath.ToSlash(boardRel) + "/"
 			entries := h.Mutations.Entries()
-			moduleNames := perWorktreeModuleNames()
-
-			wantLen := len(moduleNames) + 1
-			if len(entries) < wantLen {
-				t.Fatalf("mutation record has %d entries; want at least %d (one KindFileWritten per module plus a trailing KindCommitCreated)\nentries: %+v", len(entries), wantLen, entries)
-			}
-			tail := entries[len(entries)-wantLen:]
-
-			for i, name := range moduleNames {
-				e := tail[i]
-				if e.Kind != fabricengine.KindFileWritten {
-					t.Errorf("tail entry %d Kind = %q; want %q (module %s)", i, e.Kind, fabricengine.KindFileWritten, name)
+			for _, name := range perWorktreeModuleNames() {
+				wantTarget := boardPrefix + configengine.ConfigFileRel(name)
+				written := 0
+				for _, e := range entries {
+					if e.Kind == fabricengine.KindFileWritten && e.Target == wantTarget {
+						written++
+					}
 				}
-				wantSuffix := "/" + configengine.ConfigFileRel(name)
-				if !strings.HasSuffix(e.Target, wantSuffix) {
-					t.Errorf("tail entry %d Target = %q; want a suffix of %q (module %s)", i, e.Target, wantSuffix, name)
+				if written != 1 {
+					t.Errorf("mutation record holds %d KindFileWritten entries targeting %q; want exactly 1\nentries: %+v", written, wantTarget, entries)
 				}
 			}
-
-			last := tail[len(tail)-1]
-			if last.Kind != fabricengine.KindCommitCreated {
-				t.Errorf("last mutation record entry Kind = %q; want %q", last.Kind, fabricengine.KindCommitCreated)
-			}
-			if wantTarget := hubRelativeWeftTarget(t, h); last.Target != wantTarget {
-				t.Errorf("last entry Target = %q; want %q (the weft worktree)", last.Target, wantTarget)
+			weftTarget := hubRelativeWeftTarget(t, h)
+			for _, e := range entries {
+				if e.Kind == fabricengine.KindCommitCreated && e.Target == weftTarget {
+					t.Errorf("mutation record holds a commit targeting the weft worktree %q; want none (the prime carries no config commit)", weftTarget)
+				}
 			}
 		}},
 		{"PairsReturnsPairsKey", func(t *testing.T) {
@@ -358,13 +356,19 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			envelope.RequireErr(t, output, "not found")
 		}},
 		{"CloneConfigCommit_PairInheritsConfigs", func(t *testing.T) {
-			// A pair created off a freshly-built hub has its anchored loom.yaml config on disk, the direct end-to-end proof that the clone's config commit reaches a forked pair.
+			// A pair created off a freshly-built hub resolves loom from the board's repo default, with no worktree file present: the end-to-end proof that the clone's seeded defaults reach a forked pair.
 			hubforge.AddPair(t, h, "pair-inherits-configs")
 
-			anchoredWeftBase := filepath.Join(h.PairRecordsSibling("pair-inherits-configs"), h.Anchor)
-			loomConfigPath := configengine.ConfigFile(anchoredWeftBase, "loom")
-			if _, err := os.Stat(loomConfigPath); err != nil {
-				t.Errorf("pair weft sibling loom config %s: %v; want it present on disk (inherited from the clone commit)", loomConfigPath, err)
+			pairLocation, err := lyxcwd.Resolve(filepath.Join(h.PairCodeWorktree("pair-inherits-configs"), h.Anchor))
+			if err != nil {
+				t.Fatalf("lyxcwd.Resolve the pair: %v", err)
+			}
+			loomConfigPath := configengine.ConfigFile(pairLocation.AnchorPath(), "loom")
+			if _, err := os.Stat(loomConfigPath); !os.IsNotExist(err) {
+				t.Errorf("pair worktree loom config %s: stat err = %v; want it absent", loomConfigPath, err)
+			}
+			if _, err := loomengine.LoadConfig(fabricengine.ConfigDirs(pairLocation), "loom"); err != nil {
+				t.Errorf("loomengine.LoadConfig over the pair: %v; want the board's repo default to load", err)
 			}
 		}},
 		{"ShortnameVerb_PrintsRecordedShortname", func(t *testing.T) {
@@ -520,16 +524,16 @@ func TestRunCLI_AnchoredHubScenario(t *testing.T) {
 		run  func(t *testing.T)
 	}{
 		{"CloneConfigCommit_AnchorScoped", func(t *testing.T) {
-			// The clean-and-tracked assertion at a non-"." anchor, with committed paths prefixed by the anchor, proving the clone's config commit was anchor-scoped rather than run at the weft base, which at a non-"." anchor is a subdirectory of the worktree root.
+			// At a non-"." anchor the weft prime is clean, and the board lists every per-worktree module's repo default: the defaults are repo-wide, so they carry no anchor prefix.
 			if status := gitkit.GitStatusPorcelain(t, h.PrimeRecords()); status != "" {
 				t.Errorf("weft prime status --porcelain = %q; want empty (clean)", status)
 			}
 
-			tracked := gitkit.LsFiles(t, h.PrimeRecords())
+			tracked := gitkit.LsFiles(t, h.BoardDir())
 			for _, name := range perWorktreeModuleNames() {
-				want := "backend/" + configengine.ConfigFileRel(name)
+				want := configengine.ConfigFileRel(name)
 				if !slices.Contains(tracked, want) {
-					t.Errorf("git ls-files in weft prime does not contain %q; got %v", want, tracked)
+					t.Errorf("git ls-files in the board does not contain %q; got %v", want, tracked)
 				}
 			}
 		}},

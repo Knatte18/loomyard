@@ -18,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -416,7 +415,7 @@ func strandLive(name string, status func() (reedengine.StatusResult, error)) (bo
 func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	anchorPath := location.AnchorPath()
 
-	loomCfg, err := loomengine.LoadConfig(configengine.Dirs{Anchor: anchorPath}, "loom")
+	loomCfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(location), "loom")
 	if err != nil {
 		return err
 	}
@@ -630,7 +629,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// live-agent evidence, so flipping the key between a crash and a resume is permitted and
 		// benign -- it means only that the next spawn is interviewed differently.
 		DiscussionSpec: func() (shuttleengine.Spec, error) {
-			return loomengine.DiscussionSpec(location, configengine.Dirs{Anchor: anchorPath}, websterGeom.StencilsDir, c.parentName, loomCfg, registry, seedSlug(location.WorktreeName), !loomCfg.DiscussionInteractive)
+			return loomengine.DiscussionSpec(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, c.parentName, loomCfg, registry, seedSlug(location.WorktreeName), !loomCfg.DiscussionInteractive)
 		},
 		// PrepareDiscussionSpawn removes a ready marker an earlier writer spawn left, whichever producer is configured, since removing an absent marker is a no-op.
 		PrepareDiscussionSpawn: func() error {

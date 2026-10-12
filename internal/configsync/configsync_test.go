@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -205,7 +206,7 @@ func TestReconcileAll(t *testing.T) {
 				writeModuleFile(t, baseDir, module, content)
 			}
 
-			results, err := ReconcileAll(baseDir, t.TempDir(), tt.apply)
+			results, err := ReconcileAll(baseDir, "", Options{Apply: tt.apply})
 			if err != nil {
 				t.Fatalf("ReconcileAll(%v): %v", tt.apply, err)
 			}
@@ -280,13 +281,13 @@ func TestReconcileAll_Idempotent(t *testing.T) {
 	}
 
 	// First apply
-	results1, err := ReconcileAll(tmpDir, t.TempDir(), true)
+	results1, err := ReconcileAll(tmpDir, "", Options{Apply: true})
 	if err != nil {
 		t.Fatalf("ReconcileAll first apply: %v", err)
 	}
 
 	// Second apply should be idempotent
-	results2, err := ReconcileAll(tmpDir, t.TempDir(), true)
+	results2, err := ReconcileAll(tmpDir, "", Options{Apply: true})
 	if err != nil {
 		t.Fatalf("ReconcileAll second apply: %v", err)
 	}
@@ -311,7 +312,7 @@ func TestReconcileAll_Idempotent(t *testing.T) {
 
 // reconcileFabricResult runs ReconcileHubWideAt and returns the "fabric" result.
 func reconcileFabricResult(boardDir, primeBaseDir string, apply bool) (Result, error) {
-	results, err := ReconcileHubWideAt(boardDir, primeBaseDir, apply)
+	results, err := ReconcileHubWideAt(boardDir, primeBaseDir, HubWideOptions{Apply: apply})
 	if err != nil {
 		return Result{}, err
 	}
@@ -336,10 +337,70 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 		hubFile      string
 		primeFile    string
 		legacyFirst  string
+		seedDefaults bool
+		// wantNoFile pins that the file is still absent after an apply.
+		wantNoFile   bool
 		wantSeed     string
 		wantContains []string
 		wantAbsent   []string
 	}{
+		{
+			name:         "loom default absent with a prime copy is seeded from the prime",
+			module:       "loom",
+			primeFile:    "discussion_timeout_min: 480\n",
+			seedDefaults: true,
+			wantSeed:     SeedPrime,
+			wantContains: []string{"discussion_timeout_min: 480", "review_max_bounces:"},
+		},
+		{
+			name:         "loom default absent and no prime copy starts from the template",
+			module:       "loom",
+			seedDefaults: true,
+			wantSeed:     SeedTemplate,
+			wantContains: []string{"review_max_bounces:"},
+		},
+		{
+			name:         "loom default present is reconciled in place",
+			module:       "loom",
+			hubFile:      "discussion_timeout_min: 7\nstale_key: old\n",
+			primeFile:    "discussion_timeout_min: 480\n",
+			seedDefaults: true,
+			wantSeed:     SeedHub,
+			wantContains: []string{"discussion_timeout_min: 7", "review_max_bounces:"},
+			wantAbsent:   []string{"stale_key", "480"},
+		},
+		{
+			name:         "loom default present is reconciled without SeedDefaults",
+			module:       "loom",
+			hubFile:      "discussion_timeout_min: 7\nstale_key: old\n",
+			wantSeed:     SeedHub,
+			wantContains: []string{"discussion_timeout_min: 7", "review_max_bounces:"},
+			wantAbsent:   []string{"stale_key"},
+		},
+		{
+			name:       "loom default absent stays absent without SeedDefaults",
+			module:     "loom",
+			primeFile:  "discussion_timeout_min: 480\n",
+			wantNoFile: true,
+		},
+		{
+			name:         "models default absent is seeded from the prime verbatim",
+			module:       "models",
+			primeFile:    "zephyr:\n  engine: claude\n  model: claude-zephyr-1\n",
+			seedDefaults: true,
+			wantSeed:     SeedPrime,
+			wantContains: []string{"zephyr:"},
+			wantAbsent:   []string{"sonnet:"},
+		},
+		{
+			name:         "models default present is never rewritten",
+			module:       "models",
+			hubFile:      "zephyr:\n  engine: claude\n  model: claude-zephyr-1\n",
+			seedDefaults: true,
+			wantSeed:     SeedHub,
+			wantContains: []string{"zephyr:"},
+			wantAbsent:   []string{"sonnet:"},
+		},
 		{
 			name:         "board absent with a prime copy is seeded from the prime",
 			module:       "board",
@@ -403,13 +464,13 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			writeModuleFile(t, boardDir, "warp", tt.legacyFirst)
 			hubPath := configengine.ConfigFile(boardDir, tt.module)
 
-			dry, err := ReconcileHubWideAt(boardDir, primeDir, false)
+			dry, err := ReconcileHubWideAt(boardDir, primeDir, HubWideOptions{SeedDefaults: tt.seedDefaults})
 			if err != nil {
-				t.Fatalf("ReconcileHubWideAt(false): %v", err)
+				t.Fatalf("ReconcileHubWideAt(dry): %v", err)
 			}
 			dryResult := findResult(dry, tt.module)
-			if dryResult == nil || dryResult.Seed != tt.wantSeed || dryResult.Applied {
-				t.Errorf("dry-run result = %+v; want Seed %q and Applied false", dryResult, tt.wantSeed)
+			if dryResult == nil || dryResult.Seed != tt.wantSeed || dryResult.Applied || dryResult.Layer != configengine.LayerDefault {
+				t.Errorf("dry-run result = %+v; want Seed %q, Layer default and Applied false", dryResult, tt.wantSeed)
 			}
 			if tt.hubFile == "" {
 				if _, err := os.Stat(hubPath); !os.IsNotExist(err) {
@@ -422,13 +483,19 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 				}
 			}
 
-			applied, err := ReconcileHubWideAt(boardDir, primeDir, true)
+			applied, err := ReconcileHubWideAt(boardDir, primeDir, HubWideOptions{Apply: true, SeedDefaults: tt.seedDefaults})
 			if err != nil {
-				t.Fatalf("ReconcileHubWideAt(true): %v", err)
+				t.Fatalf("ReconcileHubWideAt(apply): %v", err)
 			}
 			appliedResult := findResult(applied, tt.module)
 			if appliedResult == nil || appliedResult.Seed != tt.wantSeed {
 				t.Fatalf("applied result = %+v; want Seed %q", appliedResult, tt.wantSeed)
+			}
+			if tt.wantNoFile {
+				if _, err := os.Stat(hubPath); !os.IsNotExist(err) {
+					t.Errorf("default written without SeedDefaults (stat err = %v)", err)
+				}
+				return
 			}
 			got, err := os.ReadFile(hubPath)
 			if err != nil {
@@ -632,7 +699,7 @@ func TestReconcileAll_HubWideCopy(t *testing.T) {
 
 			check := func(apply bool) {
 				t.Helper()
-				results, err := ReconcileAll(baseDir, boardDir, apply)
+				results, err := ReconcileAll(baseDir, boardDir, Options{Apply: apply})
 				if err != nil {
 					t.Fatalf("ReconcileAll(%v): %v", apply, err)
 				}
@@ -669,6 +736,126 @@ func TestReconcileAll_HubWideCopy(t *testing.T) {
 	}
 }
 
+// TestReconcileAll_SparseLayers pins that in a hub a worktree file and a local file are sparse layers: retired keys are pruned and a below-floor value is migrated, but nothing is ever added, an absent file stays absent, a seed-only module's files are untouched, and a file emptied by a prune is deleted.
+func TestReconcileAll_SparseLayers(t *testing.T) {
+	t.Parallel()
+	const modelsAlias = "zephyr:\n  engine: claude\n  model: claude-zephyr-1\n"
+	tests := []struct {
+		name   string
+		module string
+		layer  configengine.Layer
+		// content is the layer file before the run; empty means the file is absent.
+		content string
+		// wantFile is the file after the run; nil means it must not exist.
+		wantFile    *string
+		wantApplied bool
+		wantRemoved []string
+		wantMigrate []string
+		// wantResult is false when the layer is absent and no result is reported.
+		wantResult bool
+	}{
+		{
+			name: "worktree file loses a retired key and gains no template key", module: "loom", layer: configengine.LayerWorktree,
+			content: "discussion_timeout_min: 480\nstale_key: old\n", wantFile: ptr("discussion_timeout_min: 480\n"),
+			wantApplied: true, wantRemoved: []string{"stale_key"}, wantResult: true,
+		},
+		{
+			name: "below-floor loom value is raised by Migrate", module: "loom", layer: configengine.LayerWorktree,
+			content: "step_idle_timeout_min: 0\n", wantFile: ptr("step_idle_timeout_min: 1\n"),
+			wantApplied: true, wantMigrate: []string{"step_idle_timeout_min: raised from 0 to 1"}, wantResult: true,
+		},
+		{
+			name: "absent worktree file stays absent", module: "loom", layer: configengine.LayerWorktree,
+			wantResult: true,
+		},
+		{
+			name: "local file is pruned and reported with layer local", module: "loom", layer: configengine.LayerLocal,
+			content: "review_max_bounces: 2\nstale_key: old\n", wantFile: ptr("review_max_bounces: 2\n"),
+			wantApplied: true, wantRemoved: []string{"stale_key"}, wantResult: true,
+		},
+		{
+			name: "seed-only worktree file is left byte-identical", module: "models", layer: configengine.LayerWorktree,
+			content: modelsAlias, wantFile: ptr(modelsAlias), wantResult: true,
+		},
+		{
+			name: "seed-only local file is left byte-identical", module: "models", layer: configengine.LayerLocal,
+			content: modelsAlias, wantFile: ptr(modelsAlias), wantResult: true,
+		},
+		{
+			name: "file emptied by a prune is deleted", module: "loom", layer: configengine.LayerWorktree,
+			content: "stale_key: old\n", wantApplied: true, wantRemoved: []string{"stale_key"}, wantResult: true,
+		},
+		{
+			name: "absent local file reports nothing", module: "loom", layer: configengine.LayerLocal,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			anchor, boardDir := t.TempDir(), t.TempDir()
+			path := configengine.ConfigFile(anchor, tt.module)
+			if tt.layer == configengine.LayerLocal {
+				path = configengine.LocalFile(anchor, tt.module)
+			}
+			if tt.content != "" {
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				if err := os.WriteFile(path, []byte(tt.content), 0o644); err != nil {
+					t.Fatalf("write %s: %v", path, err)
+				}
+			}
+
+			dry, err := ReconcileAll(anchor, boardDir, Options{})
+			if err != nil {
+				t.Fatalf("ReconcileAll(dry): %v", err)
+			}
+			if tt.content != "" {
+				if got, _ := os.ReadFile(path); string(got) != tt.content {
+					t.Errorf("dry run changed %s to %q; want %q", path, got, tt.content)
+				}
+			}
+			if dryResult := findLayerResult(dry, tt.module, tt.layer); dryResult != nil && dryResult.Applied {
+				t.Errorf("dry run result = %+v; want Applied false", dryResult)
+			}
+
+			results, err := ReconcileAll(anchor, boardDir, Options{Apply: true})
+			if err != nil {
+				t.Fatalf("ReconcileAll(apply): %v", err)
+			}
+			result := findLayerResult(results, tt.module, tt.layer)
+			if (result != nil) != tt.wantResult {
+				t.Fatalf("result for %s layer %s = %+v; want present = %v", tt.module, tt.layer, result, tt.wantResult)
+			}
+			if result != nil {
+				if result.Applied != tt.wantApplied || !slices.Equal(result.Removed, tt.wantRemoved) || !slices.Equal(result.Migrated, tt.wantMigrate) || len(result.Added) != 0 {
+					t.Errorf("result = %+v; want Applied %v, Removed %v, Migrated %v and nothing Added", result, tt.wantApplied, tt.wantRemoved, tt.wantMigrate)
+				}
+			}
+			got, readErr := os.ReadFile(path)
+			if tt.wantFile == nil {
+				if !os.IsNotExist(readErr) {
+					t.Errorf("%s = %q (err %v); want it absent", path, got, readErr)
+				}
+				return
+			}
+			if string(got) != *tt.wantFile {
+				t.Errorf("%s = %q; want %q", path, got, *tt.wantFile)
+			}
+		})
+	}
+}
+
+// findLayerResult returns the Result for the named module and layer, or nil if absent.
+func findLayerResult(results []Result, module string, layer configengine.Layer) *Result {
+	for i := range results {
+		if results[i].Module == module && results[i].Layer == layer {
+			return &results[i]
+		}
+	}
+	return nil
+}
+
 // TestReconcile_FailureNamesItsFile pins that a reconcile failure is a *FileError naming the module and the absolute path of the file that failed, with the path leading its message.
 func TestReconcile_FailureNamesItsFile(t *testing.T) {
 	t.Parallel()
@@ -683,7 +870,7 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 		{
 			name: "ReconcileAll on an unparseable per-worktree file",
 			run: func(baseDir, boardDir string) error {
-				_, err := ReconcileAll(baseDir, boardDir, false)
+				_, err := ReconcileAll(baseDir, boardDir, Options{})
 				return err
 			},
 			module:     "batcher",
@@ -692,7 +879,7 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 		{
 			name: "ReconcileHubWideAt on an unparseable hub file",
 			run: func(baseDir, boardDir string) error {
-				_, err := ReconcileHubWideAt(boardDir, "", false)
+				_, err := ReconcileHubWideAt(boardDir, "", HubWideOptions{})
 				return err
 			},
 			module: "fabric",
@@ -700,7 +887,7 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 		{
 			name: "ReconcileAll retiring an unparseable hub-wide copy",
 			run: func(baseDir, boardDir string) error {
-				_, err := ReconcileAll(baseDir, boardDir, false)
+				_, err := ReconcileAll(baseDir, boardDir, Options{})
 				return err
 			},
 			module:     "board",

@@ -318,7 +318,7 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
 	baseDir := baseDirOf(l)
 
 	// Reconcile all modules; apply controls whether changes are written to disk.
-	results, err := configsync.ReconcileAll(baseDir, fabricengine.BoardDir(l.HubPath), apply)
+	results, err := configsync.ReconcileAll(baseDir, fabricengine.BoardDir(l.HubPath), configsync.Options{Apply: apply})
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("reconcile: %v", err))
 	}
@@ -331,6 +331,7 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
 			"added":   result.Added,
 			"removed": result.Removed,
 			"applied": result.Applied,
+			"layer":   string(result.Layer),
 		}
 		// migratedFrom is exceptional -- only "fabric", only when a
 		// pre-cutover legacy config file's values were folded in this round
