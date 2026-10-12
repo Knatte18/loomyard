@@ -190,7 +190,7 @@ func landingDeps(
 		},
 		MergeRecordPath:   landingshed.MergeRecordPath(loomengine.LoomScratchDir(l)),
 		MergeReviewedPath: landingshed.MergeReviewedPath(loomengine.LoomScratchDir(l)),
-		Alignment:         landingAlignmentDeps(l, geom.StencilsDir, registry, runner),
+		Alignment:         landingAlignmentDeps(l, geom.StencilsDir, registry, runner, runner.PauseGeometry()),
 	}
 }
 
@@ -200,7 +200,7 @@ const alignmentNoteFile = "note.json"
 // landingAlignmentDeps builds PR-Align's seams for the worktree l.
 // Its Config loads loom's config on each call, so an edit to skip_alignment or alignment_pr_approve takes effect at the next step;
 // its session works under the run's PR-Gate alignment directory, which also holds the alignment note.
-func landingAlignmentDeps(l *lyxcwd.Location, stencilsDir string, registry modelspec.Registry, runner *shuttleengine.Runner) landingshed.AlignmentDeps {
+func landingAlignmentDeps(l *lyxcwd.Location, stencilsDir string, registry modelspec.Registry, runner *shuttleengine.Runner, pause pauserecord.Geometry) landingshed.AlignmentDeps {
 	root := shedrun.AlignmentDir(l, shedrun.SelfRunID, string(alignment.PointPRGate))
 	slug := seedSlug(l.WorktreeName)
 	return landingshed.AlignmentDeps{
@@ -223,6 +223,7 @@ func landingAlignmentDeps(l *lyxcwd.Location, stencilsDir string, registry model
 			StencilsDir: stencilsDir,
 			Shuttle:     alignment.RunnerShuttle(runner),
 			Now:         time.Now,
+			Pause:       pause,
 		}),
 		Snapshot: alignmentSnapshot(loomengine.DiscussionDecisionRecord(l), slug, hubBoardTasks(l)),
 		Prompt: alignment.PromptInput{

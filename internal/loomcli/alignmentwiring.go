@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -101,6 +102,10 @@ func newParentReviewAligner(location *lyxcwd.Location, runID string, cfg loomeng
 	if err != nil {
 		return nil, err
 	}
+	pauseGeometry, err := hubgeom.PauseGeometry(location)
+	if err != nil {
+		return nil, err
+	}
 	slug := seedSlug(location.WorktreeName)
 	return &parentReviewAligner{
 		location: location,
@@ -109,6 +114,7 @@ func newParentReviewAligner(location *lyxcwd.Location, runID string, cfg loomeng
 			StencilsDir: stencilsDir,
 			Shuttle:     shuttle,
 			Now:         time.Now,
+			Pause:       pauseGeometry,
 		}),
 		settings:     settings,
 		parentBranch: func() (string, error) { return readRecordedParentBranch(location) },

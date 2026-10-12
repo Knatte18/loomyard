@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -284,7 +285,7 @@ func TestLandingAlignmentDeps_Config(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		cfg, err := landingAlignmentDeps(loc, t.TempDir(), registry, nil).Config()
+		cfg, err := landingAlignmentDeps(loc, t.TempDir(), registry, nil, pauserecord.Geometry{}).Config()
 		if err != nil {
 			t.Fatalf("Config() = %v; want nil", err)
 		}
