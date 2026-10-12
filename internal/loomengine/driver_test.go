@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 )
 
@@ -18,7 +19,7 @@ import (
 func TestResolveDriver(t *testing.T) {
 	cfg := Config{Driver: "opus[effort=high,v=1]"}
 
-	reg, err := modelspec.LoadRegistry(t.TempDir())
+	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 	if err != nil {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
@@ -64,7 +65,7 @@ func TestResolveDriver_Refuses(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			reg, err := modelspec.LoadRegistry(t.TempDir())
+			reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 			if err != nil {
 				t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 			}
@@ -88,7 +89,7 @@ func TestResolveDriver_Refuses(t *testing.T) {
 func TestResolveDriver_EmptyDriverIsOffDefault(t *testing.T) {
 	cfg := Config{Driver: ""}
 
-	reg, err := modelspec.LoadRegistry(t.TempDir())
+	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 	if err != nil {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}

@@ -108,7 +108,7 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 	// burlerengine.LoadConfig's only error today is a read/decode failure -- an absent burler.yaml is
 	// not an error, it decodes to the zero Config (clustering then fails later, at fan resolution,
 	// with a message naming `lyx config reconcile`).
-	burlerCfg, err := burlerengine.LoadConfig(anchorPath)
+	burlerCfg, err := burlerengine.LoadConfig(fabricengine.ConfigDirs(loc))
 	if err != nil {
 		return err
 	}
@@ -179,7 +179,7 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 	if err != nil {
 		return err
 	}
-	burlerCfg, err := burlerengine.LoadConfig(res.StateDir)
+	burlerCfg, err := burlerengine.LoadConfig(configengine.Dirs{Anchor: res.StateDir})
 	if err != nil {
 		return err
 	}

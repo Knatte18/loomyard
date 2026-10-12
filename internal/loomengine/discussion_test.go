@@ -29,7 +29,7 @@ func TestDiscussionSpec(t *testing.T) {
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 	cfg := Config{Discussion: "opus[effort=high]", DiscussionTimeoutMin: 480}
 
-	reg, err := modelspec.LoadRegistry(t.TempDir())
+	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 	if err != nil {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
@@ -124,7 +124,7 @@ func TestDiscussionSpec_Refuses(t *testing.T) {
 				writeBurlerYAML(t, layout, tt.burlerYAML)
 				cfg.DiscussionProducer = DiscussionProducerTwill
 			}
-			reg, err := modelspec.LoadRegistry(t.TempDir())
+			reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 			if err != nil {
 				t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 			}
@@ -161,7 +161,7 @@ func writeBurlerYAML(t *testing.T, layout *lyxcwd.Location, content string) {
 // TestDiscussionSpec_Twill verifies the twill producer's rendered prompt: the template fan's lenses in order, the ready marker, the rubric path, the await command, the fork instruction, the host's self-check and step names and the write-scope sentence, with the directive between the mode rules and Step 5, and that a burler.yaml redefining the fan replaces the lenses.
 func TestDiscussionSpec_Twill(t *testing.T) {
 	t.Parallel()
-	reg, err := modelspec.LoadRegistry(t.TempDir())
+	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 	if err != nil {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
@@ -253,7 +253,7 @@ func TestDiscussionSpec_ReadsStencilAtCallTime(t *testing.T) {
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 	cfg := Config{Discussion: "opus[effort=high]", DiscussionTimeoutMin: 480}
 
-	reg, err := modelspec.LoadRegistry(t.TempDir())
+	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 	if err != nil {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
@@ -282,7 +282,7 @@ func TestDiscussionSpec_ReadsStencilAtCallTime(t *testing.T) {
 //testtiming:keep pins the designer directive text and its place before Step 1 for the discussion prompt, which the covering tests do not assert
 func TestDiscussionSpec_PatternDirective(t *testing.T) {
 	cfg := Config{Discussion: "opus[effort=high]", DiscussionTimeoutMin: 480}
-	reg, err := modelspec.LoadRegistry(t.TempDir())
+	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 	if err != nil {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
@@ -335,7 +335,7 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 	worktreeRoot := filepath.Join("home", "user", "repo")
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 	cfg := Config{Discussion: "opus[effort=high]", Plan: "opus[effort=high]"}
-	reg, err := modelspec.LoadRegistry(t.TempDir())
+	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 	if err != nil {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}

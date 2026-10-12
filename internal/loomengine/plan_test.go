@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -38,7 +39,7 @@ func TestPlanSpec(t *testing.T) {
 			t.Parallel()
 			layout := &lyxcwd.Location{HubPath: filepath.Join("home", "user"), WorktreeName: "repo", AnchorRel: tt.anchorRel}
 			cfg := Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120}
-			reg, err := modelspec.LoadRegistry(t.TempDir())
+			reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 			if err != nil {
 				t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 			}
@@ -134,7 +135,7 @@ func TestPlanSpec_PatternDirective(t *testing.T) {
 			case "anchor":
 				writeTestPattern(t, layout.AnchorPath())
 			}
-			reg, err := modelspec.LoadRegistry(t.TempDir())
+			reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 			if err != nil {
 				t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 			}
@@ -198,7 +199,7 @@ func TestPlanSpec_Refuses(t *testing.T) {
 			t.Parallel()
 			worktreeRoot := filepath.Join("home", "user", "repo")
 			layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
-			reg, err := modelspec.LoadRegistry(t.TempDir())
+			reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 			if err != nil {
 				t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 			}

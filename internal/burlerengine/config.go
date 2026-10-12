@@ -1,5 +1,5 @@
 // config.go defines the lens/fan configuration for burler cluster review: the Config decode shape,
-// the embedded seed template, the direct-read loader, and the fan-to-lens resolver.
+// the embedded seed template, the layered loader, and the fan-to-lens resolver.
 //
 // burler.yaml is registered in configreg as a SEED-ONLY module (see configreg.go): its lens/fan key
 // set is open-ended and operator-owned, the same posture models.yaml has for its aliases.
@@ -8,9 +8,8 @@
 // template) and deletes them on the next --apply — seed-only materialization
 // (configsync.ReconcileAll) instead writes the template VERBATIM once, only when the file is
 // absent, and never rewrites a present file again.
-// Consequently LoadConfig follows modelspec.LoadRegistry's direct-read pattern — os.ReadFile plus a
-// strict top-level decode — rather than configengine.Load, whose MissingKeys gate would also
-// wrongly reject an operator who deliberately removed a standard lens they don't want.
+// Consequently LoadConfig keeps its own strict decoder over the layers configengine.StackLayers stacks.
+// It does not use configengine.Load, whose MissingKeys gate would also wrongly reject an operator who deliberately removed a standard lens they don't want.
 
 package burlerengine
 
@@ -21,7 +20,6 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -58,32 +56,47 @@ func ConfigTemplate() string {
 	return configTemplate
 }
 
-// LoadConfig reads burler.yaml.
-// A missing file returns zero Config.
-// When present, it is decoded with strict yaml.Decoder.
-func LoadConfig(baseDir string) (Config, error) {
-	path := configengine.ConfigFile(baseDir, "burler")
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			// Optional file — no file means nothing seeded yet.
-			return Config{}, nil
-		}
-		return Config{}, fmt.Errorf("burler: read %s: %w", path, err)
+// ConfigSpec returns burler's layered-load spec.
+// It has no open maps, so the stack merges lenses and fans per name, and both keys are guard: a lens's prose and a fan's lens set are what every review fork is given, so no local override may hold them.
+func ConfigSpec() configengine.Spec {
+	return configengine.Spec{
+		Name:     "burler",
+		Template: []byte(ConfigTemplate()),
+		Categories: map[string]configengine.Category{
+			"lenses": configengine.CategoryGuard,
+			"fans":   configengine.CategoryGuard,
+		},
 	}
+}
 
+// LoadConfig reads burler.yaml through the layer stack under dirs.
+// No layer file returns zero Config.
+// Each present layer is decoded with a strict yaml.Decoder, a parse error naming that layer's file, then the merged document is decoded, in which a lens string or a fan list in an upper layer has replaced the lower one whole.
+func LoadConfig(dirs configengine.Dirs) (Config, error) {
+	stack, err := configengine.StackLayers(dirs, ConfigSpec())
+	if err != nil {
+		return Config{}, fmt.Errorf("burler: %w", err)
+	}
+	for _, layer := range stack.Layers {
+		if _, err := decodeStrict(layer.Bytes, layer.Path); err != nil {
+			return Config{}, err
+		}
+	}
+	return decodeStrict(stack.Doc, "the merged layers")
+}
+
+// decodeStrict decodes burler.yaml content strictly, with an empty or comments-only document yielding the zero Config.
+// source names the content in a parse error.
+func decodeStrict(data []byte, source string) (Config, error) {
 	var cfg Config
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&cfg); err != nil {
-		// Empty or comments-only file yields io.EOF — valid "nothing configured".
 		if errors.Is(err, io.EOF) {
 			return Config{}, nil
 		}
-		return Config{}, fmt.Errorf("burler: parse %s: %w", path, err)
+		return Config{}, fmt.Errorf("burler: parse %s: %w", source, err)
 	}
-
 	return cfg, nil
 }
 

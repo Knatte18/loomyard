@@ -346,7 +346,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 	// same loaded config and registry -- resolved here rather than hardcoded against the template's
 	// literal spec, so a later template edit does not silently break this assertion's meaning.
 	t.Run("review models match the loaded config", func(t *testing.T) {
-		registry, err := modelspec.LoadRegistry(loc.AnchorPath())
+		registry, err := modelspec.LoadRegistry(fabricengine.ConfigDirs(loc))
 		if err != nil {
 			t.Fatalf("modelspec.LoadRegistry(%q) = %v; want nil", loc.AnchorPath(), err)
 		}

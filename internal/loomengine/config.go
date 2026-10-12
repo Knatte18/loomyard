@@ -509,7 +509,7 @@ func validateFanKeys(baseDir string, cfg Config) error {
 			continue
 		}
 		if burlerCfg == nil {
-			loaded, err := burlerengine.LoadConfig(baseDir)
+			loaded, err := burlerengine.LoadConfig(configengine.Dirs{Anchor: baseDir})
 			if err != nil {
 				return fmt.Errorf("loom config key %q: %w; fix burler.yaml, or set the key to empty to run the segment solo", fan.key, err)
 			}
@@ -597,7 +597,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	if isUnsetModelSpecList(cfg.DiscussionAdvisors) {
 		cfg.DiscussionAdvisors = nil
 	} else {
-		reg, err := modelspec.LoadRegistry(baseDir)
+		reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: baseDir})
 		if err != nil {
 			return Config{}, fmt.Errorf("loom config key %q: %w; fix models.yaml, or set the key to an empty list for no advisors", discussionAdvisorsKey, err)
 		}

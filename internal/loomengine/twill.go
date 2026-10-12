@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/twilldirective"
@@ -18,7 +19,7 @@ const twillFan = "twill-discussion"
 // The lenses come from the twillFan fan, resolved against the worktree's burler.yaml and the embedded template.
 // An unreadable burler.yaml, or a fan that does not resolve, fails with an error naming the fan and burler.yaml and the way forward.
 func twillBlocks(layout *lyxcwd.Location, stencilsDir string) (string, string, error) {
-	burlerConfig, err := burlerengine.LoadConfig(layout.AnchorPath())
+	burlerConfig, err := burlerengine.LoadConfig(configengine.Dirs{Anchor: layout.AnchorPath()})
 	if err != nil {
 		return "", "", fmt.Errorf("Discussion-Write: burler.yaml unreadable for twill, which needs the %s fan; fix burler.yaml: %w", twillFan, err)
 	}

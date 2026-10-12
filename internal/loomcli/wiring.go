@@ -439,11 +439,11 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	// burlerengine.LoadConfig takes one argument, not the (baseDir, module) shape every other
 	// loader above takes: it is an optional-file loader, so an absent burler.yaml yields a zero
 	// Config and a nil error rather than a load failure.
-	burlerCfg, err := burlerengine.LoadConfig(anchorPath)
+	burlerCfg, err := burlerengine.LoadConfig(fabricengine.ConfigDirs(location))
 	if err != nil {
 		return err
 	}
-	registry, err := modelspec.LoadRegistry(anchorPath)
+	registry, err := modelspec.LoadRegistry(fabricengine.ConfigDirs(location))
 	if err != nil {
 		return err
 	}

@@ -369,7 +369,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed later webster_fix entry", "webster_fix", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},
 		{"unknown discussion_fan", "discussion_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "standard", "to empty to run the segment solo"}, ""},
 		{"unknown plan_fan", "plan_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "full", "to empty to run the segment solo"}, ""},
-		{"set discussion_fan with a malformed burler.yaml", "discussion_fan", "standard", []string{"burler: parse ", "fix burler.yaml, or set the key to empty"}, malformedBurlerYAML},
+		{"set discussion_fan with a malformed burler.yaml", "discussion_fan", "standard", []string{"burler: config file ", "parse doc YAML", "fix burler.yaml, or set the key to empty"}, malformedBurlerYAML},
 		{"malformed fan_review spec", "fan_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"empty fan_review list", "fan_review", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
 		{"unknown discussion_producer", "discussion_producer", "sideways", []string{`"single"`, `"seats"`, `"twill"`}, ""},
