@@ -40,7 +40,7 @@ internal/gatecli: 3
 internal/gateslot: 11
 internal/gitexec: 7
 internal/githubclient: 11
-internal/gitkit: 9
+internal/gitkit: 10
 internal/gitrepo: 44
 internal/gitrepo/internal/gitoracle: 1
 internal/helpcli: 1
