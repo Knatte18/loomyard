@@ -14,6 +14,7 @@
 // WebsterGeometry hands that pool to webster.
 // Later waves add their own siblings here rather than spawning per-engine packages or re-deriving the
 // construction inline at each call site.
+// PauseGeometry converts a Location into the pauserecord.Geometry every reader of a pause is told: the record under the board-level `.lyx` and the pair's slug, empty for the prime.
 //
 // ReedGeometry tells reed the hub-level discover signal file in DiscoverSignalPath, beside LogsDir: reedengine.DiscoverSignalFileName under fabricengine.HubScratchDir.
 //
