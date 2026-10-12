@@ -49,7 +49,8 @@ func Build(r Recipe, env shedrecipe.Env) ([]shedengine.ProducerDef, error) {
 			Producer:   producer,
 			OnDone:     row.OnDone,
 			OnStuck:    row.OnStuck,
-			Segment:    row.Segment,
+			OnReroute:  row.OnReroute,
+			Segment:   row.Segment,
 			MaxBounces: row.MaxBounces,
 		}
 	}
