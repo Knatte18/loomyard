@@ -147,6 +147,62 @@ func TestAttempts(t *testing.T) {
 			t.Errorf("ListAttempts() error = %v; want it to name the record", err)
 		}
 	})
+
+	t.Run("ParseAttemptDir reads tolerantly and names the failing file", func(t *testing.T) {
+		t.Parallel()
+		const attemptJSON = `{"number":2,"point":"pr-gate","token":"tok","applied":"approve","pr_number":9,"extra":1}`
+		tests := []struct {
+			name        string
+			files       map[string][]byte
+			want        Attempt
+			wantVerdict *Verdict
+			wantErr     string
+		}{
+			{
+				name: "approve verdict with superseded slugs and an unknown key",
+				files: map[string][]byte{
+					"attempt.json":     []byte(attemptJSON),
+					"verdict-tok.yaml": []byte("verdict: approve\nreason: ok\nsuperseded: [a, b]\nextra: x\n"),
+					"prompt.md":        []byte("ignored"),
+				},
+				want:        Attempt{Number: 2, Point: PointPRGate, Token: "tok", Applied: VerdictApprove, PRNumber: 9},
+				wantVerdict: &Verdict{Verdict: VerdictApprove, Reason: "ok", Superseded: []string{"a", "b"}},
+			},
+			{
+				name:  "no verdict file",
+				files: map[string][]byte{"attempt.json": []byte(attemptJSON)},
+				want:  Attempt{Number: 2, Point: PointPRGate, Token: "tok", Applied: VerdictApprove, PRNumber: 9},
+			},
+			{
+				name: "escalate verdict without a question",
+				files: map[string][]byte{
+					"attempt.json":     []byte(attemptJSON),
+					"verdict-tok.yaml": []byte("verdict: escalate\nreason: unsure\n"),
+				},
+				want:        Attempt{Number: 2, Point: PointPRGate, Token: "tok", Applied: VerdictApprove, PRNumber: 9},
+				wantVerdict: &Verdict{Verdict: VerdictEscalate, Reason: "unsure"},
+			},
+			{name: "undecodable attempt.json", files: map[string][]byte{"attempt.json": []byte("{")}, wantErr: "attempt.json"},
+		}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				attempt, verdict, err := ParseAttemptDir(tc.files)
+				if tc.wantErr != "" {
+					if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+						t.Fatalf("ParseAttemptDir() error = %v; want one naming %s", err, tc.wantErr)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("ParseAttemptDir() error = %v; want nil", err)
+				}
+				if !reflect.DeepEqual(attempt, tc.want) || !reflect.DeepEqual(verdict, tc.wantVerdict) {
+					t.Errorf("ParseAttemptDir() = %+v, %+v; want %+v, %+v", attempt, verdict, tc.want, tc.wantVerdict)
+				}
+			})
+		}
+	})
 }
 
 // TestSnapshot verifies equal input hashes equal and that an altered record, an altered, added or removed note, and a moved note boundary each change the hash.

@@ -180,7 +180,7 @@ func hasWeftEvidence(slug, weftBranch string, weftBranches map[string]string, ar
 	if _, ok := weftBranches[weftBranch]; ok {
 		return true
 	}
-	tagPrefix := "refs/tags/archive/" + slug + "/"
+	tagPrefix := "refs/tags/" + ArchiveTagPrefix + slug + "/"
 	for _, ref := range archiveTagRefs {
 		if strings.HasPrefix(ref, tagPrefix) {
 			return true

@@ -90,6 +90,52 @@ func AppendDecision(decisionRecordPath, supportLogPath string, d AddedDecision) 
 	return findings, err
 }
 
+// addedDecisionHeadingPrefix starts the heading of every entry AppendDecision writes.
+const addedDecisionHeadingPrefix = "### Added after Discussion ("
+
+// ParseAddedDecisions returns every `### Added after Discussion (<by>, <date>): <title>` heading of record outside a fenced block, in order.
+// Each comes back with By, Date (the `2006-01-02` day in UTC) and Title set, and Decision and Rationale empty.
+// A heading that starts that way but does not parse to a non-empty author and a valid date is an error naming its line number.
+func ParseAddedDecisions(record []byte) ([]AddedDecision, error) {
+	lines := strings.Split(string(record), "\n")
+	fenced := fencedLines(lines)
+	var decisions []AddedDecision
+	for i, line := range lines {
+		if fenced[i] {
+			continue
+		}
+		heading := strings.TrimRight(line, " \t\r")
+		rest, ok := strings.CutPrefix(heading, addedDecisionHeadingPrefix)
+		if !ok {
+			continue
+		}
+		decision, ok := parseAddedDecisionHeading(rest)
+		if !ok {
+			return nil, fmt.Errorf("line %d: %q is not an added-decision heading with an author and a date", i+1, heading)
+		}
+		decisions = append(decisions, decision)
+	}
+	return decisions, nil
+}
+
+// parseAddedDecisionHeading parses the part of an added-decision heading after its opening parenthesis: `<by>, <date>): <title>`.
+func parseAddedDecisionHeading(rest string) (AddedDecision, bool) {
+	inside, title, ok := strings.Cut(rest, "): ")
+	if !ok {
+		return AddedDecision{}, false
+	}
+	by, dateText, ok := strings.Cut(inside, ", ")
+	by = strings.TrimSpace(by)
+	if !ok || by == "" {
+		return AddedDecision{}, false
+	}
+	date, err := time.Parse("2006-01-02", strings.TrimSpace(dateText))
+	if err != nil {
+		return AddedDecision{}, false
+	}
+	return AddedDecision{By: by, Date: date, Title: strings.TrimSpace(title)}, true
+}
+
 // decisionsInsertOffset returns the byte offset in content where a new entry goes: just after the
 // last non-blank line of the `## Decisions` section, which ends at the next H2 line or at the end
 // of content.

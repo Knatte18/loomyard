@@ -672,5 +672,13 @@ func TestInnerRun_EachStateChangeIsItsOwnHistoryEntry(t *testing.T) {
 		if entry.Producer != "Run-Shed" || entry.Outcome != shedengine.Stuck || !entry.BudgetExempt || entry.Output != wantPath || entry.Repeats != 0 {
 			t.Errorf("entry %d = %+v; want an unfolded Run-Shed budget-exempt Stuck with output %q", i, entry, wantPath)
 		}
+		wantFrom, wantTo := shedengine.StateAwaiting, shedengine.StateRunning
+		if i%2 == 1 {
+			wantFrom, wantTo = wantTo, wantFrom
+		}
+		change, ok := ParseStateChange(entry.Output)
+		if !ok || change.From != wantFrom || change.To != wantTo || change.Producer != "Publish" {
+			t.Errorf("ParseStateChange(%q) = (%+v, %v); want %s → %s at Publish", entry.Output, change, ok, wantFrom, wantTo)
+		}
 	}
 }

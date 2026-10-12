@@ -150,19 +150,9 @@ func (r *Repo) FilesInDirAtRevision(rev, dir string) ([]string, error) {
 	}
 
 	return readGoGit(r, func(repo *git.Repository) ([]string, error) {
-		tree, err := treeForRev(repo, rev)
-		if err != nil {
-			return nil, fmt.Errorf("gitrepo: resolve tree for %s: %w", rev, err)
-		}
-
-		if dir != "" && dir != "." {
-			tree, err = tree.Tree(dir)
-			if err != nil {
-				if errors.Is(err, object.ErrDirectoryNotFound) {
-					return nil, nil
-				}
-				return nil, fmt.Errorf("gitrepo: find directory %s at %s: %w", dir, rev, err)
-			}
+		tree, err := dirTreeAtRevision(repo, rev, dir)
+		if err != nil || tree == nil {
+			return nil, err
 		}
 
 		var names []string
@@ -320,43 +310,73 @@ func (r *Repo) CommitDetail(sha string) (CommitDetail, error) {
 		if err != nil {
 			return CommitDetail{}, fmt.Errorf("gitrepo: resolve commit %s: %w", sha, err)
 		}
-		tree, err := commit.Tree()
+		paths, err := changedPaths(commit)
 		if err != nil {
-			return CommitDetail{}, fmt.Errorf("gitrepo: read tree of %s: %w", sha, err)
+			return CommitDetail{}, err
 		}
-
-		var paths []string
-		if commit.NumParents() == 0 {
-			err = tree.Files().ForEach(func(file *object.File) error {
-				paths = append(paths, file.Name)
-				return nil
-			})
-			if err != nil {
-				return CommitDetail{}, fmt.Errorf("gitrepo: list files of %s: %w", sha, err)
-			}
-		} else {
-			parent, err := commit.Parent(0)
-			if err != nil {
-				return CommitDetail{}, fmt.Errorf("gitrepo: read first parent of %s: %w", sha, err)
-			}
-			parentTree, err := parent.Tree()
-			if err != nil {
-				return CommitDetail{}, fmt.Errorf("gitrepo: read tree of first parent of %s: %w", sha, err)
-			}
-			changes, err := parentTree.Diff(tree)
-			if err != nil {
-				return CommitDetail{}, fmt.Errorf("gitrepo: diff %s against its first parent: %w", sha, err)
-			}
-			for _, change := range changes {
-				name := change.To.Name
-				if name == "" {
-					name = change.From.Name
-				}
-				paths = append(paths, name)
-			}
-		}
-
-		sort.Strings(paths)
 		return CommitDetail{Message: commit.Message, Paths: paths}, nil
 	})
+}
+
+// changedPaths returns the sorted paths commit's tree changes against its first parent, a deleted path included, or every path in its tree for a root commit.
+func changedPaths(commit *object.Commit) ([]string, error) {
+	sha := commit.Hash.String()
+	tree, err := commit.Tree()
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: read tree of %s: %w", sha, err)
+	}
+
+	var paths []string
+	if commit.NumParents() == 0 {
+		err = tree.Files().ForEach(func(file *object.File) error {
+			paths = append(paths, file.Name)
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: list files of %s: %w", sha, err)
+		}
+	} else {
+		parent, err := commit.Parent(0)
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: read first parent of %s: %w", sha, err)
+		}
+		parentTree, err := parent.Tree()
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: read tree of first parent of %s: %w", sha, err)
+		}
+		changes, err := parentTree.Diff(tree)
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: diff %s against its first parent: %w", sha, err)
+		}
+		for _, change := range changes {
+			name := change.To.Name
+			if name == "" {
+				name = change.From.Name
+			}
+			paths = append(paths, name)
+		}
+	}
+
+	sort.Strings(paths)
+	return paths, nil
+}
+
+// dirTreeAtRevision returns the tree of dir in rev's tree; "" or "." names the root.
+// An absent directory is a nil tree and no error.
+func dirTreeAtRevision(repo *git.Repository, rev, dir string) (*object.Tree, error) {
+	tree, err := treeForRev(repo, rev)
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: resolve tree for %s: %w", rev, err)
+	}
+	if dir == "" || dir == "." {
+		return tree, nil
+	}
+	tree, err = tree.Tree(dir)
+	if err != nil {
+		if errors.Is(err, object.ErrDirectoryNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("gitrepo: find directory %s at %s: %w", dir, rev, err)
+	}
+	return tree, nil
 }

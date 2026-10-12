@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -534,4 +536,81 @@ func TestSupersedeCapReject_Refusals(t *testing.T) {
 			t.Fatalf("err = %v", err)
 		}
 	})
+}
+
+func TestParseRoundDir(t *testing.T) {
+	t.Parallel()
+
+	delivered := time.Date(2026, 10, 2, 12, 5, 0, 0, time.UTC)
+	tests := []struct {
+		name          string
+		files         map[string]string
+		wantRequest   bool
+		wantDelivery  Delivery
+		wantVerdict   *Verdict
+		wantAlignment *Alignment
+		wantErr       string
+	}{
+		{
+			name: "every file reads, unknown key included",
+			files: map[string]string{
+				"request.json":   `{"slug":"x","round":3,"state":"open"}`,
+				"delivery.json":  `{"delivered_at":"2026-10-02T12:05:00Z","pings":2,"bogus":true}`,
+				"alignment.json": `{"attempt":"a","state":"fallback"}`,
+				"verdict.json":   `{"kind":"reject"}`,
+			},
+			wantRequest:   true,
+			wantDelivery:  Delivery{DeliveredAt: delivered, Pings: 2},
+			wantVerdict:   &Verdict{Kind: "reject"},
+			wantAlignment: &Alignment{Attempt: "a", State: AlignmentFallback},
+		},
+		{
+			name:        "request only",
+			files:       map[string]string{"request.json": `{"slug":"x","round":3,"state":"open"}`},
+			wantRequest: true,
+		},
+		{
+			name:    "undecodable verdict",
+			files:   map[string]string{"verdict.json": "{"},
+			wantErr: "verdict.json",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			files := map[string][]byte{}
+			for name, content := range tc.files {
+				files[name] = []byte(content)
+			}
+			got, err := ParseRoundDir(3, files)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("ParseRoundDir error = %v; want one naming %s", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseRoundDir error = %v; want nil", err)
+			}
+			if got.Number != 3 || got.Dir != "" || (got.Request != nil) != tc.wantRequest {
+				t.Errorf("ParseRoundDir = %+v; want number 3, empty Dir, request %v", got, tc.wantRequest)
+			}
+			if got.Request != nil && (got.Request.Slug != "x" || got.Request.Round != 3) {
+				t.Errorf("Request = %+v; want slug x, round 3", got.Request)
+			}
+			if got.Delivery != tc.wantDelivery {
+				t.Errorf("Delivery = %+v; want %+v", got.Delivery, tc.wantDelivery)
+			}
+			if !reflect.DeepEqual(got.Verdict, tc.wantVerdict) || !reflect.DeepEqual(got.Alignment, tc.wantAlignment) {
+				t.Errorf("Verdict, Alignment = %+v, %+v; want %+v, %+v", got.Verdict, got.Alignment, tc.wantVerdict, tc.wantAlignment)
+			}
+		})
+	}
+
+	for name, want := range map[string]bool{"round-1": true, "round-12": true, "round-0": false, "round-": false, "round-1a": false, "brief.md": false} {
+		n, ok := RoundNumber(name)
+		if ok != want || (ok && strconv.Itoa(n) != strings.TrimPrefix(name, "round-")) {
+			t.Errorf("RoundNumber(%q) = %d, %v; want ok %v", name, n, ok, want)
+		}
+	}
 }

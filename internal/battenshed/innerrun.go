@@ -658,6 +658,7 @@ func (p *innerRunProducer) checkChild(ctx context.Context, w *childWait) *waitEn
 }
 
 // stateChangeText names a change of the child's state, with the producer the child's new status is at.
+// ParseStateChange reads the text back, so the two change together.
 func stateChangeText(from shedengine.State, to shedengine.Status) string {
 	text := fmt.Sprintf("child %s → %s", from, to.State)
 	if to.CurrentProducer != "" {

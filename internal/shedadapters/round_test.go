@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"testing"
 )
@@ -130,6 +131,50 @@ func TestRoundPathHelpers_PinExactFilenameSpellings(t *testing.T) {
 			want := filepath.Join("/run", tt.want)
 			if got != want {
 				t.Errorf("%s(%q, 5) = %q; want %q", tt.name, "/run", got, want)
+			}
+		})
+	}
+}
+
+func TestReviewRounds(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		names []string
+		want  RoundSummary
+	}{
+		{
+			name:  "a focus-only round is not a round",
+			names: []string{"round-1-review.md", "round-2-review.md", "round-3-focus.md"},
+			want:  RoundSummary{Rounds: 2, Outcome: RoundOutcomeAccepted},
+		},
+		{
+			name:  "circling decision wins over an escalation file",
+			names: []string{"round-1-review.md", "round-2-review.md", "round-2-circling-decision.md", "round-2-escalation.md"},
+			want:  RoundSummary{Rounds: 2, Outcome: RoundOutcomeCirclingDecided, EscalatedRounds: []int{2}},
+		},
+		{
+			name:  "last round with only an escalation file",
+			names: []string{"round-1-review.md", "round-2-review.md", "round-2-escalation.md"},
+			want:  RoundSummary{Rounds: 2, Outcome: RoundOutcomeEscalated, EscalatedRounds: []int{2}},
+		},
+		{
+			name:  "an earlier escalation still lands in EscalatedRounds",
+			names: []string{"round-1-review.md", "round-1-escalation.md", "round-2-review.md"},
+			want:  RoundSummary{Rounds: 2, Outcome: RoundOutcomeAccepted, EscalatedRounds: []int{1}},
+		},
+		{name: "empty list", want: RoundSummary{}},
+		{
+			name:  "unrecognised names are ignored",
+			names: []string{"round-x-review.md", "notes.md", "round-1-review.md"},
+			want:  RoundSummary{Rounds: 1, Outcome: RoundOutcomeAccepted},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := ReviewRounds(tt.names); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ReviewRounds(%v) = %+v; want %+v", tt.names, got, tt.want)
 			}
 		})
 	}

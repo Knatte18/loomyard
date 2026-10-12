@@ -125,6 +125,58 @@ type Round struct {
 	Alignment *Alignment
 }
 
+// RoundNumber parses a round directory name, `round-<N>` with N a positive decimal; anything else is false.
+func RoundNumber(dirName string) (int, bool) {
+	digits, ok := strings.CutPrefix(dirName, roundPrefix)
+	if !ok || digits == "" {
+		return 0, false
+	}
+	for _, r := range digits {
+		if r < '0' || r > '9' {
+			return 0, false
+		}
+	}
+	n, err := strconv.Atoi(digits)
+	if err != nil || n < 1 {
+		return 0, false
+	}
+	return n, true
+}
+
+// ParseRoundDir returns the Round of one round directory's files, keyed by file name, as they sit in a git tree.
+// Number is set and Dir stays empty; Request, Verdict and Alignment are non-nil only when their file is among the files, and Delivery is decoded when delivery.json is.
+// An unknown key reads, and a file that does not decode is an error naming it.
+func ParseRoundDir(number int, files map[string][]byte) (Round, error) {
+	round := Round{Number: number}
+	if data, ok := files[requestFile]; ok {
+		var request Request
+		if err := json.Unmarshal(data, &request); err != nil {
+			return Round{}, fmt.Errorf("parentreview: decode %s: %w", requestFile, err)
+		}
+		round.Request = &request
+	}
+	if data, ok := files[deliveryFile]; ok {
+		if err := json.Unmarshal(data, &round.Delivery); err != nil {
+			return Round{}, fmt.Errorf("parentreview: decode %s: %w", deliveryFile, err)
+		}
+	}
+	if data, ok := files[verdictFile]; ok {
+		var verdict Verdict
+		if err := json.Unmarshal(data, &verdict); err != nil {
+			return Round{}, fmt.Errorf("parentreview: decode %s: %w", verdictFile, err)
+		}
+		round.Verdict = &verdict
+	}
+	if data, ok := files[alignmentFile]; ok {
+		var alignment Alignment
+		if err := json.Unmarshal(data, &alignment); err != nil {
+			return Round{}, fmt.Errorf("parentreview: decode %s: %w", alignmentFile, err)
+		}
+		round.Alignment = &alignment
+	}
+	return round, nil
+}
+
 // RequestPath is the round's request.json path.
 func (r Round) RequestPath() string { return filepath.Join(r.Dir, requestFile) }
 

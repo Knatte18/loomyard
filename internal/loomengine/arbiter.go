@@ -119,6 +119,37 @@ func ListArbiterAttempts(arbiterDir string) ([]ArbiterAttempt, error) {
 	return attempts, nil
 }
 
+// ArbiterRecord is one attempt directory's parsed content.
+// Verdict is nil when the directory holds no verdict.yaml.
+type ArbiterRecord struct {
+	Attempt ArbiterAttempt
+	Verdict *ArbiterVerdict
+	Applied bool
+}
+
+// ParseArbiterAttemptDir parses an attempt directory's files, keyed by file name, as they sit in a git tree.
+// An unknown key reads in attempt.json and verdict.yaml, and no verdict validation runs.
+// It errors, naming the file, for an attempt.json that is absent or does not decode and for a verdict.yaml that does not decode.
+func ParseArbiterAttemptDir(files map[string][]byte) (ArbiterRecord, error) {
+	var record ArbiterRecord
+	attemptData, ok := files[arbiterAttemptFileName]
+	if !ok {
+		return ArbiterRecord{}, fmt.Errorf("loom: arbiter attempt directory has no %s", arbiterAttemptFileName)
+	}
+	if err := json.Unmarshal(attemptData, &record.Attempt); err != nil {
+		return ArbiterRecord{}, fmt.Errorf("loom: parse arbiter %s: %w", arbiterAttemptFileName, err)
+	}
+	if verdictData, ok := files[arbiterVerdictFileName]; ok {
+		var verdict ArbiterVerdict
+		if err := yaml.NewDecoder(bytes.NewReader(verdictData)).Decode(&verdict); err != nil {
+			return ArbiterRecord{}, fmt.Errorf("loom: parse arbiter %s: %w", arbiterVerdictFileName, err)
+		}
+		record.Verdict = &verdict
+	}
+	_, record.Applied = files[arbiterAppliedFileName]
+	return record, nil
+}
+
 // ArbiterPromptPath names the prompt.md of the attempt directory dir.
 func ArbiterPromptPath(dir string) string { return filepath.Join(dir, arbiterPromptFileName) }
 

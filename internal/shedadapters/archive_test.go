@@ -91,6 +91,9 @@ func TestArchiveStaleOutputs(t *testing.T) {
 //testtiming:keep pins that the run dir moves whole to a stamped sibling and is recreated empty, the numeric collision suffix, and that an absent run dir is an error
 func TestArchiveRunDir(t *testing.T) {
 	t.Parallel()
+	if segment, ok := ArchivedRunDirSegment("run"); segment != "" || ok {
+		t.Errorf("ArchivedRunDirSegment(run) = %q, %v; want empty, false", segment, ok)
+	}
 	tests := []struct {
 		name string
 		// files are created in the run dir before the first archive.
@@ -149,6 +152,9 @@ func TestArchiveRunDir(t *testing.T) {
 			}
 
 			for sibling, wantEntries := range tt.wantSiblings {
+				if segment, ok := ArchivedRunDirSegment(sibling); segment != "run" || !ok {
+					t.Errorf("ArchivedRunDirSegment(%q) = %q, %v; want run, true", sibling, segment, ok)
+				}
 				entries, err := os.ReadDir(filepath.Join(parent, sibling))
 				if err != nil {
 					t.Fatalf("expected archived sibling %s to exist: %v", sibling, err)

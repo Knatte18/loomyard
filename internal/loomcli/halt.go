@@ -10,12 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
+	"github.com/Knatte18/loomyard/internal/haltnote"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -64,27 +64,27 @@ func writeHaltNote(frictionDir string, n haltNote) error {
 		return nil
 	}
 	friction.EnsureDir(frictionDir)
-	path := friction.NotePath(frictionDir, "loom-halt")
+	path := friction.NotePath(frictionDir, haltnote.NoteID)
 	if path == "" {
 		return nil
 	}
 
-	var b strings.Builder
-	b.WriteString("loom halted " + string(n.State) + " at " + n.Producer + "\n\n")
-	b.WriteString("```\n" + n.Reason + "\n```\n\n")
-	b.WriteString("producer: " + n.Producer + "\n")
-	b.WriteString("state: " + string(n.State) + "\n")
-	if kind, ok := loomengine.ClassifyHalt(n.State, n.Reason); ok {
-		b.WriteString("anomaly: " + string(kind) + "\n")
+	note := haltnote.Note{
+		Producer:       n.Producer,
+		State:          string(n.State),
+		Reason:         n.Reason,
+		HistoryEntries: len(n.History),
+		TraceFile:      n.TraceFile,
+		ParentStatus:   n.ParentFabricStatus,
 	}
-	b.WriteString("history_entries: " + strconv.Itoa(len(n.History)) + "\n")
-	b.WriteString("trace_file: " + n.TraceFile + "\n")
-	writeHistoryRows(&b, n.History)
-	if n.ParentFabricStatus != "" {
-		b.WriteString("\nparent fabric status:\n" + n.ParentFabricStatus + "\n")
+	if kind, ok := loomengine.ClassifyHalt(n.State, n.Reason); ok {
+		note.Anomaly = string(kind)
+	}
+	for _, h := range n.History {
+		note.History = append(note.History, haltnote.Row{Producer: h.Producer, Outcome: string(h.Outcome), At: h.At})
 	}
 
-	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+	if err := os.WriteFile(path, haltnote.Render(note), 0o644); err != nil {
 		return fmt.Errorf("loom: write halt note %s: %w", path, err)
 	}
 	return nil

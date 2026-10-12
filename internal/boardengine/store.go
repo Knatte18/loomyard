@@ -212,6 +212,25 @@ func (s *Store) Load() error {
 	return nil
 }
 
+// BoardFileRel returns the board file's name relative to the board directory, the board checkout's root.
+func BoardFileRel() string {
+	return boardFile
+}
+
+// ParseBoardTasks decodes board.json bytes read from a board commit, as Load decodes the stored file.
+// It takes no lock and reads no legacy file; an old tier-and-type entry still yields its labels, and an unknown key is ignored.
+// A version other than the one this binary reads is an error.
+func ParseBoardTasks(data []byte) ([]Task, error) {
+	var file loadedStoreFile
+	if err := json.Unmarshal(data, &file); err != nil {
+		return nil, fmt.Errorf("load store: %w: unmarshal state: %w", state.ErrDecode, err)
+	}
+	if file.Version != storeVersion {
+		return nil, fmt.Errorf("load store: %s has version %d; this binary reads only version %d", boardFile, file.Version, storeVersion)
+	}
+	return migrateEntries(file.Entries, nil), nil
+}
+
 // readLegacyFile reads one legacy file when it exists, under the swap lock the pre-upgrade binary wrote it with.
 // Existence is checked first so a read never creates a lock file for an absent file.
 func readLegacyFile(path string) ([]legacyRecord, bool, error) {

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -77,6 +78,19 @@ func archiveRunDir(runDir string, now func() time.Time) error {
 		return fmt.Errorf("shedadapters: recreate run dir %s: %w", runDir, err)
 	}
 	return nil
+}
+
+// archivedRunDirPattern matches the name archiveRunDir gives a sibling: a segment, the UTC stamp and an optional numeric collision suffix.
+var archivedRunDirPattern = regexp.MustCompile(`^(.+)-\d{8}T\d{6}Z(?:-\d+)?$`)
+
+// ArchivedRunDirSegment returns the segment a timestamped run-directory sibling belongs to, with true.
+// A name that does not end in the archive stamp, with or without a `-<n>` collision suffix, returns "" and false.
+func ArchivedRunDirSegment(dirName string) (string, bool) {
+	match := archivedRunDirPattern.FindStringSubmatch(dirName)
+	if match == nil {
+		return "", false
+	}
+	return match[1], true
 }
 
 // firstFreeArchivePath returns the first path in the sequence candidate(""), candidate("-1"),

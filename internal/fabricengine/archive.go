@@ -16,6 +16,23 @@ import (
 // archiveTagSHALen is how many leading hex digits of the tip SHA the archive tag name carries.
 const archiveTagSHALen = 12
 
+// ArchiveTagPrefix is the short-name prefix every archive tag carries.
+const ArchiveTagPrefix = "archive/"
+
+// ArchiveTagSlug returns the slug of the short tag name archive/<slug>/<sha>.
+// It is true only for the archive prefix, a non-empty slug segment and a non-empty final segment.
+func ArchiveTagSlug(name string) (string, bool) {
+	rest, ok := strings.CutPrefix(name, ArchiveTagPrefix)
+	if !ok {
+		return "", false
+	}
+	slug, tip, ok := strings.Cut(rest, "/")
+	if !ok || slug == "" || tip == "" {
+		return "", false
+	}
+	return slug, true
+}
+
 // ErrArchiveFailed is the sentinel every archiveWeftTip error wraps, so a teardown caller can tell a failed archive -- which left the pair untouched, so a plain re-run retries it -- from any other refusal with errors.Is and offer its own remedy.
 // It is worded without naming either side of the pair, for callers outside the fabric vocabulary owner set.
 var ErrArchiveFailed = errors.New("archiving the pair's records before teardown failed")
@@ -55,7 +72,7 @@ func archiveWeftTip(rec *Mutations, l *lyxcwd.Location, slug, weftBranch string)
 		return "", "", nil
 	}
 
-	tag = "archive/" + slug + "/" + tip[:archiveTagSHALen]
+	tag = ArchiveTagPrefix + slug + "/" + tip[:archiveTagSHALen]
 	tagRef := "refs/tags/" + tag
 
 	existing, err := gitexec.Run([]string{"for-each-ref", "--format=%(objectname)", tagRef}, weftRoot)

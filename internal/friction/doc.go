@@ -29,7 +29,7 @@
 // # Go-authored notes
 //
 // Besides the agent-written notes the directive asks for, internal/loomcli and webster code write Go-authored notes through NotePath, which keeps this package free of feature imports.
-// The notes are the loom halt note, which names its anomaly kind and recent history, the loom crash-resume note written at a run or step entry, and the webster refusal note.
+// The notes are the loom halt note, which names its anomaly kind and recent history and whose format internal/haltnote owns, the loom crash-resume note written at a run or step entry, and the webster refusal note.
 // The reflection decides from them whether a lyx problem is worth an issue.
 //
 // # Why four roles

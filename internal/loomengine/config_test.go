@@ -816,6 +816,15 @@ func TestLandingAndApprovalAccessors(t *testing.T) {
 	if got, want := LoomReworkDir(l), filepath.Join(l.AnchorPath(), "_lyx", "loom", "rework"); got != want {
 		t.Errorf("LoomReworkDir() = %q; want %q", got, want)
 	}
+
+	if slug, ok := LandingCheckpointSlug(LandingCheckpointSubject("my-slug")); slug != "my-slug" || !ok {
+		t.Errorf("LandingCheckpointSlug(LandingCheckpointSubject(my-slug)) = %q, %v; want my-slug, true", slug, ok)
+	}
+	for _, subject := range []string{"loom: run records checkpoint for landing ", "batten: Land -> running"} {
+		if slug, ok := LandingCheckpointSlug(subject); ok || slug != "" {
+			t.Errorf("LandingCheckpointSlug(%q) = %q, %v; want empty, false", subject, slug, ok)
+		}
+	}
 }
 
 // TestConfigTemplate_ContainsEveryConfigYAMLTag walks Config's fields via reflection and asserts every yaml tag appears in the template text -- so a struct field added without a matching template line is caught mechanically rather than relying on review to notice the gap.
