@@ -36,11 +36,5 @@ func exitSweepBounds(state logger.SinkArmState) logger.RetentionBounds {
 	if state.Redirected {
 		return logger.DefaultRetentionBounds()
 	}
-	bounds, err := loggerconfig.Load(state.AnchorPath)
-	if err != nil {
-		logger.Warn("logger config unusable; sweeping with default retention bounds",
-			"path", loggerconfig.ConfigPath(state.AnchorPath), "error", err)
-		return logger.DefaultRetentionBounds()
-	}
-	return bounds
+	return loggerconfig.LoadOrDefault(state.AnchorPath)
 }

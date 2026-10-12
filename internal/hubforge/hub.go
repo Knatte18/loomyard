@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 )
 
 // bareTemplateOnce guards buildBareTemplate so the warp/weft bare pair is built exactly once per test
@@ -92,7 +93,7 @@ func buildBareTemplate() (warpBare, weftBare string) {
 	defer markFixtureBuild()()
 
 	bareTemplateOnce.Do(func() {
-		tmpDir, err := os.MkdirTemp("", "hubforge-bare-*")
+		tmpDir, err := lyxtemp.MkdirTemp("hubforge-bare-*")
 		if err != nil {
 			panic(err)
 		}

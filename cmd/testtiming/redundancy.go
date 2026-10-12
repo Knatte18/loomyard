@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 )
 
 const (
@@ -357,7 +359,7 @@ func runRedundancy(tags, pkgFlag, outPath string) error {
 		return err
 	}
 
-	tmp, err := os.MkdirTemp("", "testtiming-redundancy-")
+	tmp, err := lyxtemp.MkdirTemp("testtiming-redundancy-")
 	if err != nil {
 		return err
 	}

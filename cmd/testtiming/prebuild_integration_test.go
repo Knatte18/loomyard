@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 )
 
 func TestPrebuildLyx(t *testing.T) {
@@ -105,6 +106,13 @@ func TestPrebuildLyx(t *testing.T) {
 			}
 			if info, err := os.Stat(exported[0]); err != nil || !info.Mode().IsRegular() {
 				t.Fatalf("the exported binary %s is not a file (err=%v)", exported[0], err)
+			}
+			runDirectory, err := lyxtemp.Dir()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if relative, err := filepath.Rel(runDirectory, exported[0]); err != nil || strings.HasPrefix(relative, "..") {
+				t.Errorf("the built binary %s lies outside the run directory %s", exported[0], runDirectory)
 			}
 			if row.wantBuildArgs != nil {
 				recorded, err := os.ReadFile(record)
