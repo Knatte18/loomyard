@@ -209,7 +209,7 @@ type landingInputs struct {
 	newestTag   map[string]time.Time
 }
 
-// readLoomRecords reads the loom seed and status at tag's commit through the tolerant parses.
+// readLoomRecords reads the loom seed and status at tag's commit through the shared record parsers.
 // A non-empty reason means the tag is not a full run: its seed names another recipe, a record is absent or does not decode, or the history holds no Finalize entry.
 // A record that exists but does not decode is also a finding.
 func readLoomRecords(records Reader, tag gitrepo.TagRef, slug string) (status shedengine.Status, reason string, findings []Finding, err error) {
@@ -225,7 +225,7 @@ func readLoomRecords(records Reader, tag gitrepo.TagRef, slug string) (status sh
 	if err != nil {
 		return shedengine.Status{}, "", nil, fmt.Errorf("reportengine: read %s at %s: %w", rels.Seed, tag.Name, err)
 	}
-	seed, err := shedrun.ParseSeedTolerant(seedBytes)
+	seed, err := shedrun.ParseSeed(seedBytes)
 	if err != nil {
 		return shedengine.Status{}, "the seed does not decode", []Finding{{Tag: tag.Name, File: rels.Seed, Error: err.Error()}}, nil
 	}

@@ -141,13 +141,7 @@ func TestParseSeed(t *testing.T) {
 			if _, err := ParseSeed([]byte(tt.data)); err == nil {
 				t.Errorf("ParseSeed(%s) = nil error; want an error", tt.data)
 			}
-			if tolerant, err := ParseSeedTolerant([]byte(tt.data)); err != nil || tolerant.Recipe != RecipeLoom {
-				t.Errorf("ParseSeedTolerant(%s) = %+v, %v; want recipe loom, nil", tt.data, tolerant, err)
-			}
 		})
-	}
-	if _, err := ParseSeedTolerant([]byte("[1]")); err == nil {
-		t.Error("ParseSeedTolerant([1]) error = nil; want a decode error")
 	}
 }
 

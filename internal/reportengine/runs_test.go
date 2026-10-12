@@ -98,12 +98,16 @@ func TestCompute_SelectsRuns(t *testing.T) {
 			},
 		},
 		{
-			name: "a status that does not decode is a finding and the tag is partial",
+			name: "a seed or a status that does not decode is a finding and the tag is partial",
 			setup: func(w *world) expectation {
 				w.tag("broken", "t1", at(1), seedText("loom"), "{not json")
+				w.tag("badseed", "t2", at(2), `{"recipe":"loom","driver":"rust"}`, "")
 				return expectation{
-					partial:  []string{tagName("broken", "t1")},
-					findings: []Finding{{Tag: tagName("broken", "t1"), File: recordPaths(w.t, "broken").Status}},
+					partial: []string{tagName("broken", "t1"), tagName("badseed", "t2")},
+					findings: []Finding{
+						{Tag: tagName("broken", "t1"), File: recordPaths(w.t, "broken").Status},
+						{Tag: tagName("badseed", "t2"), File: recordPaths(w.t, "badseed").Seed},
+					},
 				}
 			},
 		},
