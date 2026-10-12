@@ -669,7 +669,7 @@ func TestStatusStrandAddSpec(t *testing.T) {
 		}
 		wantDisplay := render.Display{
 			Anchor: render.AnchorTop,
-			Size:   render.Size{Kind: render.SizeContent, ShareNum: 1, ShareDen: 4, MinRows: 3},
+			Size:   render.Size{Kind: render.SizeContent, ShareNum: 1, ShareDen: 8, MinRows: 3},
 		}
 		if got.Display != wantDisplay {
 			t.Errorf("Display = %+v; want %+v", got.Display, wantDisplay)

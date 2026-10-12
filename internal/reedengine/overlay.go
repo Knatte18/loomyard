@@ -41,7 +41,9 @@ type TmuxCmd struct {
 	// discard-stdout call (false); args is the tmux subcommand argv WITHOUT the
 	// leading "-L <socket>", so a hook matches on args[0] (the subcommand)
 	// directly. Production never sets it; a set hook is a test-only override.
-	execHook func(capture bool, args ...string) (string, error)
+	// stdin is the bytes a runStdin call writes to the command's standard input.
+	// It is nil for run and output, and passed beside the subcommand argv rather than inside it.
+	execHook func(capture bool, stdin []byte, args ...string) (string, error)
 }
 
 // NewTmuxCmd builds a TmuxCmd bound to the given binary and -L socket.
@@ -70,7 +72,7 @@ func (p TmuxCmd) serverArgs() []string {
 // folding stderr into the returned error.
 func (p TmuxCmd) run(args ...string) error {
 	if p.execHook != nil {
-		_, err := p.execHook(false, args...)
+		_, err := p.execHook(false, nil, args...)
 		return err
 	}
 	fullArgs := append(p.serverArgs(), args...)
@@ -83,11 +85,29 @@ func (p TmuxCmd) run(args ...string) error {
 	return wrapTmuxError(err, stderr.Bytes())
 }
 
+// runStdin is run with stdin written to the command's standard input.
+// The bytes are never logged.
+func (p TmuxCmd) runStdin(stdin []byte, args ...string) error {
+	if p.execHook != nil {
+		_, err := p.execHook(false, stdin, args...)
+		return err
+	}
+	fullArgs := append(p.serverArgs(), args...)
+	logger.Debug("tmux", "args", fullArgs)
+	cmd := exec.Command(p.tmuxPath, fullArgs...)
+	var stderr bytes.Buffer
+	cmd.Stdin = bytes.NewReader(stdin)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return wrapTmuxError(err, stderr.Bytes())
+}
+
 // output builds and runs a command with the server flags prepended,
 // capturing stdout and folding stderr into the error.
 func (p TmuxCmd) output(args ...string) (string, error) {
 	if p.execHook != nil {
-		return p.execHook(true, args...)
+		return p.execHook(true, nil, args...)
 	}
 	fullArgs := append(p.serverArgs(), args...)
 	logger.Debug("tmux", "args", fullArgs)

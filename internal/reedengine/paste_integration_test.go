@@ -1,11 +1,13 @@
 //go:build tmux
 
 // paste_integration_test.go drives PasteSubmit against a real tmux pane running cat:
-// the text and the Enter arrive, no lyx-inject buffer outlives the paste, and the operator's own paste buffer stays on top of the default stack.
+// the text and the Enter arrive, a long line pastes whole, no lyx-inject buffer outlives the paste, and the operator's own paste buffer stays on top of the default stack.
 
 package reedengine
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -61,6 +63,35 @@ func TestPasteSubmit_DeliversTextAndLeavesTheBufferStackAlone(t *testing.T) {
 	})
 	if strings.Count(screen, "draft only") != 1 {
 		t.Errorf("screen shows %d copies of the unsubmitted text, want 1:\n%s", strings.Count(screen, "draft only"), screen)
+	}
+
+	// A long line, dash-leading and semicolon-ending, goes whole through standard input.
+	// The pane's terminal is made non-canonical because a canonical tty line holds at most 4095 bytes.
+	sinkFile := filepath.Join(t.TempDir(), "long-paste.txt")
+	sink, err := e.AddStrand(AddSpec{Cmd: "stty -icanon -echo; cat > " + sinkFile, Display: render.Display{Anchor: render.AnchorBelowParent}})
+	if err != nil {
+		t.Fatalf("AddStrand(sink): %v", err)
+	}
+	longText := "-" + strings.Repeat("x", 70000) + ";"
+	if err := e.PasteSubmit(sink.GUID, longText, false); err != nil {
+		t.Fatalf("PasteSubmit(long): %v", err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if info, err := os.Stat(sinkFile); err == nil && info.Size() >= int64(len(longText)) {
+			break
+		}
+		if time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	got, err := os.ReadFile(sinkFile)
+	if err != nil {
+		t.Fatalf("read the sink file: %v", err)
+	}
+	if string(got) != longText {
+		t.Errorf("sink file holds %d bytes, want the %d-byte long paste verbatim", len(got), len(longText))
 	}
 
 	buffers := mustTmuxOutput(t, e, "list-buffers", "-F", "#{buffer_name}")

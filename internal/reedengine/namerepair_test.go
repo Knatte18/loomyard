@@ -167,10 +167,10 @@ func TestRepairNames_SessionName(t *testing.T) {
 				t.Errorf("repairNames repaired = %v, want %v", repaired, tt.wantRename)
 			}
 
-			pastes := fake.ArgvFor("set-buffer")
+			pastes := fake.ArgvFor("load-buffer")
 			if !tt.wantRename {
 				if len(pastes) != 0 {
-					t.Errorf("set-buffer calls = %v, want none", pastes)
+					t.Errorf("load-buffer calls = %v, want none", pastes)
 				}
 				return
 			}
@@ -179,7 +179,7 @@ func TestRepairNames_SessionName(t *testing.T) {
 				t.Errorf("drift queries = %v, want [%v]", namer.queries, wantQuery)
 			}
 			if len(pastes) != 1 {
-				t.Fatalf("set-buffer calls = %v, want exactly one paste-submit invocation", pastes)
+				t.Fatalf("load-buffer calls = %v, want exactly one paste-submit invocation", pastes)
 			}
 			argv := pastes[0]
 			if !containsArg(argv, "paste-buffer") || !containsArg(argv, "-p") || !containsArg(argv, "-d") {
@@ -188,8 +188,8 @@ func TestRepairNames_SessionName(t *testing.T) {
 			if argv[len(argv)-1] != "Enter" || !containsArg(argv, "send-keys") {
 				t.Errorf("paste-submit argv = %v, want it to end in send-keys Enter", argv)
 			}
-			if !containsArg(argv, "/rename tc:s:worker") {
-				t.Errorf("paste-submit argv = %v, want the rename text", argv)
+			if got := fake.StdinFor("load-buffer"); !reflect.DeepEqual(got, []string{"/rename tc:s:worker"}) {
+				t.Errorf("load-buffer stdin = %q, want the rename text", got)
 			}
 			if keys := fake.ArgvFor("send-keys"); len(keys) != 0 {
 				t.Errorf("separate send-keys calls = %v, want none, the whole write is one invocation", keys)

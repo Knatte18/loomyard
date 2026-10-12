@@ -217,8 +217,9 @@
 // A resize while a poll-mode watcher is backed off heals at the next tick, up to a minute late.
 // Windows is poll-only, and on POSIX a watcher stays in poll mode when its file watch failed at promotion or until a later attach or apply installs the hook.
 // PasteSubmit is the pane-write transport op: one tmux invocation fills a fresh named buffer (`lyx-inject-` plus 8 hex characters) with the text, pastes it as a bracketed paste, deletes the buffer, and, when asked, sends Enter behind it.
+// The buffer is loaded with `load-buffer -` from the tmux client's standard input in the same invocation.
 // The paste and the Enter reach the pane in one command list, so nothing the operator types lands between them, and the operator's automatic paste-buffer stack is never touched.
-// A text longer than tmux's message limit fails the whole invocation and pastes nothing; every text lyx injects is one short line.
+// A text of any length pastes whole, since tmux's command size limit applies to the command list and not to a buffer read from standard input.
 // A failed invocation stops before the paste's own delete, so a best-effort `delete-buffer` of its own removes the buffer.
 // OperatorActive is the operator-activity query: it lists the session's attached clients with their active pane and last-activity epoch second, and answers whether any client is on the strand's pane with activity within the quiet window, plus that window.
 // The window is the reed.yaml key `operator_quiet_s` (seconds, default 5; a zero or negative value takes the default, as does a materialized reed.yaml lacking the key until `lyx config reconcile` writes it).

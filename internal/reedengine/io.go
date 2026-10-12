@@ -117,7 +117,7 @@ func (e *Engine) SendText(guid, text string, submit bool) error {
 
 // PasteSubmit pastes text into guid's live pane as one bracketed paste and, when submit is true, sends Enter right behind it.
 // The paste and the Enter reach the pane in one tmux invocation, so nothing the operator types lands between them.
-// A text longer than tmux's message limit fails the whole invocation and pastes nothing.
+// The text, of any length, is loaded from standard input.
 // It does not reconcile, re-render, or persist — pure transport.
 func (e *Engine) PasteSubmit(guid, text string, submit bool) error {
 	return e.withOpLock(func() error {
@@ -147,23 +147,19 @@ func (e *Engine) pasteSubmitLocked(paneID, text string, submit bool) error {
 	if err != nil {
 		return err
 	}
-	if err := e.tmux.run(pasteSubmitArgv(paneID, buffer, text, submit)...); err != nil {
+	if err := e.tmux.runStdin([]byte(text), pasteSubmitArgv(paneID, buffer, submit)...); err != nil {
 		_ = e.tmux.run("delete-buffer", "-b", buffer)
 		return fmt.Errorf("paste text: %w", err)
 	}
 	return nil
 }
 
-// pasteSubmitArgv returns the tmux command list that fills buffer with text, pastes it into paneID and deletes the buffer, then sends Enter when submit is true.
+// pasteSubmitArgv returns the tmux command list that fills buffer from standard input, pastes it into paneID and deletes the buffer, then sends Enter when submit is true.
 // The commands are joined by the literal one-character ";" element chainedAttachArgv documents.
-// A text ending in ";" gets that final character written as `\;`, which tmux turns back into a literal ";" instead of reading a separator.
-// The "--" keeps a dash-leading text from being read as a flag, and -p makes tmux send a bracketed paste when the pane's application enabled it.
-func pasteSubmitArgv(paneID, buffer, text string, submit bool) []string {
-	if strings.HasSuffix(text, ";") {
-		text = strings.TrimSuffix(text, ";") + `\;`
-	}
+// The text arrives on standard input and so never adds, ends or alters a command in the list; -p makes tmux send a bracketed paste when the pane's application enabled it.
+func pasteSubmitArgv(paneID, buffer string, submit bool) []string {
 	argv := []string{
-		"set-buffer", "-b", buffer, "--", text,
+		"load-buffer", "-b", buffer, "-",
 		";", "paste-buffer", "-p", "-d", "-b", buffer, "-t", paneID,
 	}
 	if submit {

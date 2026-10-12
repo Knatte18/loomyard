@@ -50,6 +50,7 @@ type fakeTmux struct {
 	forbidden map[string]bool
 	calls     [][]string
 	captures  []bool
+	stdins    [][]byte
 	real      *TmuxCmd
 }
 
@@ -174,16 +175,30 @@ func (f *fakeTmux) CapturedFor(verb string) []bool {
 	return out
 }
 
+// StdinFor returns, per call to verb in order, the standard input bytes the call carried as a string; empty for a call that carried none.
+func (f *fakeTmux) StdinFor(verb string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []string
+	for i, c := range f.calls {
+		if callVerb(c) == verb {
+			out = append(out, string(f.stdins[i]))
+		}
+	}
+	return out
+}
+
 // Count reports how many calls ran verb.
 func (f *fakeTmux) Count(verb string) int {
 	return len(f.ArgvFor(verb))
 }
 
-func (f *fakeTmux) exec(capture bool, args ...string) (string, error) {
+func (f *fakeTmux) exec(capture bool, stdin []byte, args ...string) (string, error) {
 	verb := callVerb(args)
 	f.mu.Lock()
 	f.calls = append(f.calls, append([]string{}, args...))
 	f.captures = append(f.captures, capture)
+	f.stdins = append(f.stdins, stdin)
 	forbidden := f.forbidden[verb]
 	fn := f.funcs[verb]
 	real := f.real
@@ -210,6 +225,9 @@ func (f *fakeTmux) exec(capture bool, args ...string) (string, error) {
 	}
 	if !ok {
 		if real != nil {
+			if stdin != nil {
+				return "", real.runStdin(stdin, args...)
+			}
 			if capture {
 				return real.output(args...)
 			}

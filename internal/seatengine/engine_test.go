@@ -519,13 +519,19 @@ func TestEngine_Run_ChairHoldDeferral(t *testing.T) {
 		name string
 		// upLineStuck keeps the chair's session busy, so no up line lands.
 		upLineStuck bool
-		// act scripts the advisor after its up line landed.
+		// act scripts the advisor once it is counted, after its up line landed unless upLineStuck.
 		act        func(advisor *fakeHandle)
 		wantDefers bool
 		resume     bool
 	}{
 		{name: "an advisor mid-turn defers", act: func(a *fakeHandle) { a.setSession(midTurn, nil) }, wantDefers: true},
-		{name: "an advisor whose up line has not landed defers", upLineStuck: true, wantDefers: true},
+		{name: "an advisor whose up line has not landed defers", upLineStuck: true, act: func(a *fakeHandle) { a.setSession(shuttleengine.RunSessionState{}, nil) }, wantDefers: true},
+		{name: "an asking advisor whose up line has not landed does not defer", upLineStuck: true, act: heldAdvisor(shuttleengine.SessionAsking)},
+		{name: "an idle-stalled advisor whose up line has not landed does not defer", upLineStuck: true, act: heldAdvisor(shuttleengine.SessionIdleStalled)},
+		{name: "an idle-done advisor whose up line has not landed does not defer", upLineStuck: true, act: heldAdvisor(shuttleengine.SessionIdleDone)},
+		{name: "a dead advisor whose up line has not landed does not defer", upLineStuck: true, act: heldAdvisor(shuttleengine.SessionDead)},
+		{name: "a dead advisor whose up line landed does not defer", act: heldAdvisor(shuttleengine.SessionDead)},
+		{name: "an unreadable session with the up line not landed still defers", upLineStuck: true, act: func(a *fakeHandle) { a.setSession(midTurn, errors.New("unreadable")) }, wantDefers: true},
 		{name: "idle advisors with landed up lines do not defer", act: func(a *fakeHandle) {}},
 		{name: "an advisor that ended done never defers", act: func(a *fakeHandle) {
 			a.setSession(midTurn, nil)
@@ -600,6 +606,13 @@ func TestEngine_Run_ChairHoldDeferral(t *testing.T) {
 			chair.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
 			await(t, ended)
 		})
+	}
+}
+
+// heldAdvisor scripts an advisor's session to read as name.
+func heldAdvisor(name shuttleengine.SessionStateName) func(*fakeHandle) {
+	return func(a *fakeHandle) {
+		a.setSession(shuttleengine.RunSessionState{State: shuttleengine.SessionState{Name: name}}, nil)
 	}
 }
 
