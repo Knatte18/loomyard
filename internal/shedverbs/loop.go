@@ -66,6 +66,8 @@ type LoopSpec struct {
 	// Pause reports what the pause record says about the run at now; nil never covers.
 	// While it reports the run covered the watchdog never kills the child, and its covered intervals do not count as idle time.
 	Pause func(now time.Time) (pauserecord.Coverage, error)
+	// OnWatchdogKill runs once after the watchdog killed a child, before the loop reads back what the child left, and returns a note the interrupted cause ends with; nil is skipped.
+	OnWatchdogKill func(kill WatchdogKill) string
 	// OnExit runs once in runLoop after the stop is final, with the stop and the status file as it then reads, and before the envelope is written; nil is skipped.
 	// A loop that refuses before its first step never runs it.
 	OnExit func(stop LoopStop, st shedengine.Status)
@@ -359,7 +361,7 @@ func loopStartRefusal(loop LoopSpec) string {
 // runChild runs one child step under a fresh trace id and reads back what it left.
 // The child's own record, <StepsDir>/<traceID>.json, is its full envelope;
 // a child that refused before its step body ran left an error envelope on stdout instead;
-// a child that left neither is reported interrupted for the cause its exit gives, or for the cause watchdog when the idle watch killed it.
+// a child that left neither is reported interrupted for the cause its exit gives, or for the cause the watchdog's kill renders when the idle watch killed it, which ends with the note OnWatchdogKill returned.
 // record is told the child's process tree when it starts and the zero record when it has exited.
 // idleWindow is the window of the child's idle watch, and zero disarms it.
 func runChild(ctx context.Context, spec *Spec, argv []string, traceID string, idleWindow time.Duration, record func(proc.TreeRecord)) childResult {
@@ -390,9 +392,13 @@ func runChild(ctx context.Context, spec *Spec, argv []string, traceID string, id
 	}
 	waitDone := make(chan error, 1)
 	go func() { waitDone <- child.Wait() }()
-	idled, waitErr := waitForChild(ctx, loop, child, now(), traceID, idleWindow, waitDone)
-	logger.Info("shed: loop child exited", "pid", child.Record().PID, "trace_id", traceID, "idle_kill", idled > 0, "error", errorText(waitErr))
+	kill, waitErr := waitForChild(ctx, loop, child, now(), traceID, idleWindow, waitDone)
+	logger.Info("shed: loop child exited", "pid", child.Record().PID, "trace_id", traceID, "idle_kill", kill != nil, "error", errorText(waitErr))
 	record(proc.TreeRecord{})
+	killNote := ""
+	if kill != nil && loop.OnWatchdogKill != nil {
+		killNote = loop.OnWatchdogKill(*kill)
+	}
 	appendLoopLog(loop.LogPath, stdout.Bytes())
 
 	if spec.StepsDir != "" {
@@ -407,8 +413,8 @@ func runChild(ctx context.Context, spec *Spec, argv []string, traceID string, id
 	if full, ok := stdoutErrEnvelope(stdout.Bytes()); ok {
 		return childResult{traceID: traceID, full: full}
 	}
-	if idled > 0 {
-		return childResult{traceID: traceID, cause: "watchdog", note: "watchdog: the step showed no trace write or agent activity for " + idled.Round(time.Second).String() + " and was killed"}
+	if kill != nil {
+		return childResult{traceID: traceID, cause: kill.cause(killNote), note: "watchdog: the step showed no trace write or agent activity for " + kill.Idle.Round(time.Second).String() + " and was killed"}
 	}
 	cause := "exited"
 	if waitErr != nil {

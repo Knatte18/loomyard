@@ -4,6 +4,7 @@ package shedverbs
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -24,8 +25,32 @@ const (
 	noKillWindow = 24 * 365 * 100 * time.Hour
 )
 
+// WatchdogKill is what the step watchdog read when it killed a child.
+type WatchdogKill struct {
+	// TraceID is the killed step's trace id.
+	TraceID string
+	// Window is the idle window the child exceeded.
+	Window time.Duration
+	// Idle is the awake, unpaused idle time at the kill.
+	Idle time.Duration
+	// LastActivity is the newest activity time the watch read, the child's start when it read none.
+	LastActivity time.Time
+}
+
+// cause renders the interrupted cause of the killed step: what the watchdog read, then note when the kill's hook returned one.
+func (k WatchdogKill) cause(note string) string {
+	cause := fmt.Sprintf("watchdog: the step watchdog killed the step after %s of awake idle time (window %s, last activity %s)",
+		k.Idle.Round(time.Second), k.Window.Round(time.Second), k.LastActivity.Format(time.RFC3339))
+	if note != "" {
+		cause += "; " + note
+	}
+	return cause
+}
+
 // idleWatch is what watchIdle watches.
 type idleWatch struct {
+	// TraceID is the watched child's trace id.
+	TraceID string
 	// Started is when the child started; the idle time counts from it until the first activity.
 	Started time.Time
 	// Window is how long the child may show no activity.
@@ -46,13 +71,13 @@ type idleWatch struct {
 	Pause func(now time.Time) (pauserecord.Coverage, error)
 }
 
-// watchIdle watches until the window passes with no activity, and returns the idle time and true.
+// watchIdle watches until the window passes with no activity, and returns what it read and true.
 // The idle time is awake, unpaused time: the sleeps the watch sees between its own wakes and the intervals a pause covered the run do not count.
 // While a pause covers the run it judges nothing, so the child is never killed, and it keeps waking on its backoff.
 // It returns false when ctx ends first, which is how a child that exited stops its watch.
 // It wakes at most once a second, doubling from one second to a one-minute ceiling while the reading is unchanged and returning to one second on a change.
 // It never sleeps past the end of the window's remaining awake time.
-func watchIdle(ctx context.Context, w idleWatch) (time.Duration, bool) {
+func watchIdle(ctx context.Context, w idleWatch) (WatchdogKill, bool) {
 	newest := w.Started
 	var delay time.Duration
 	var sleeps pauserecord.SleepWatch
@@ -89,16 +114,16 @@ func watchIdle(ctx context.Context, w idleWatch) (time.Duration, bool) {
 		}
 		if coverage.Covered {
 			if err := w.Sleep(ctx, delay); err != nil {
-				return 0, false
+				return WatchdogKill{}, false
 			}
 			continue
 		}
 		idle := pauserecord.AwakeSince(newest, now, sleeps.Sleeps(), coverage.Intervals)
 		if idle >= w.Window {
-			return idle, true
+			return WatchdogKill{TraceID: w.TraceID, Window: w.Window, Idle: idle, LastActivity: newest}, true
 		}
 		if err := w.Sleep(ctx, max(min(delay, w.Window-idle), idleWakeFloor)); err != nil {
-			return 0, false
+			return WatchdogKill{}, false
 		}
 	}
 }
@@ -139,10 +164,10 @@ func idleWindowOf(loop LoopSpec) time.Duration {
 
 // waitForChild waits for child's exit, which the goroutine behind waitDone reports, and kills the child when it shows no activity for window.
 // A window of zero waits for the exit alone, or, when loop.OnWake is set, runs the same watch with a window no child reaches, so the hook wakes until the child exits and nothing is killed.
-// It returns the idle time of a child the watchdog killed, which is zero for one that exited on its own, and the error the child's Wait reported.
-func waitForChild(ctx context.Context, loop LoopSpec, child Child, started time.Time, traceID string, window time.Duration, waitDone <-chan error) (time.Duration, error) {
+// It returns what the watchdog read when it killed the child, nil for one that exited on its own, and the error the child's Wait reported.
+func waitForChild(ctx context.Context, loop LoopSpec, child Child, started time.Time, traceID string, window time.Duration, waitDone <-chan error) (*WatchdogKill, error) {
 	if window == 0 && loop.OnWake == nil {
-		return 0, <-waitDone
+		return nil, <-waitDone
 	}
 	if window == 0 {
 		window = noKillWindow
@@ -162,12 +187,13 @@ func waitForChild(ctx context.Context, loop LoopSpec, child Child, started time.
 	watchCtx, stopWatching := context.WithCancel(ctx)
 	defer stopWatching()
 	type idleOutcome struct {
-		idle  time.Duration
+		kill  WatchdogKill
 		found bool
 	}
 	outcome := make(chan idleOutcome, 1)
 	go func() {
-		idle, found := watchIdle(watchCtx, idleWatch{
+		kill, found := watchIdle(watchCtx, idleWatch{
+			TraceID:    traceID,
 			Started:    started,
 			Window:     window,
 			TraceFiles: func() []string { return traceFilesOf(loop, traceID) },
@@ -178,30 +204,32 @@ func waitForChild(ctx context.Context, loop LoopSpec, child Child, started time.
 			Awake:      awake,
 			Pause:      loop.Pause,
 		})
-		outcome <- idleOutcome{idle, found}
+		outcome <- idleOutcome{kill, found}
 	}()
 
 	select {
 	case err := <-waitDone:
 		stopWatching()
 		<-outcome
-		return 0, err
-	case idle := <-outcome:
-		if !idle.found {
-			return 0, <-waitDone
+		return nil, err
+	case watched := <-outcome:
+		if !watched.found {
+			return nil, <-waitDone
 		}
-		return idle.idle, killIdleChild(ctx, sleep, child, waitDone, idle.idle)
+		return &watched.kill, killIdleChild(ctx, sleep, child, waitDone, watched.kill)
 	}
 }
 
 // killIdleChild asks child to dump its goroutines with Quit, gives it quitGrace to exit through sleep, then kills it with its descendants.
+// Both its Warn lines carry what the watchdog read, so the step's trace names the reading.
 // It returns the error the child's Wait reported.
-func killIdleChild(ctx context.Context, sleep func(context.Context, time.Duration) error, child Child, waitDone <-chan error, idle time.Duration) error {
+func killIdleChild(ctx context.Context, sleep func(context.Context, time.Duration) error, child Child, waitDone <-chan error, kill WatchdogKill) error {
 	record := child.Record()
+	reading := []any{"window", kill.Window.String(), "last_activity", kill.LastActivity.Format(time.RFC3339), "idle", kill.Idle.String()}
 	if err := child.Quit(); err != nil {
 		logger.Warn("shed: the watchdog could not ask the idle child to dump its goroutines", "pid", record.PID, "error", err.Error())
 	}
-	logger.Warn("shed: the watchdog asked the idle child to dump its goroutines", "pid", record.PID, "group", record.PGID, "idle", idle.String())
+	logger.Warn("shed: the watchdog asked the idle child to dump its goroutines", append([]any{"pid", record.PID, "group", record.PGID}, reading...)...)
 
 	graceCtx, endGrace := context.WithCancel(ctx)
 	graceOver := make(chan struct{})
@@ -223,7 +251,7 @@ func killIdleChild(ctx context.Context, sleep func(context.Context, time.Duratio
 	}
 	endGrace()
 
-	logger.Warn("shed: the watchdog kills the idle child", "pid", record.PID, "group", record.PGID, "idle", idle.String(), "exited_within_grace", exited)
+	logger.Warn("shed: the watchdog kills the idle child", append([]any{"pid", record.PID, "group", record.PGID}, append(reading, "exited_within_grace", exited)...)...)
 	if err := child.Kill(); err != nil {
 		logger.Warn("shed: the watchdog could not kill the idle child", "pid", record.PID, "error", err.Error())
 	}

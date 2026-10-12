@@ -4,15 +4,19 @@ package loomcli
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -54,6 +58,52 @@ func loopSpecFor(loc *lyxcwd.Location, runID string, idle time.Duration, activit
 			return pauserecord.ReadCoverage(geometry.RecordPath, geometry.Slug, now)
 		},
 	}
+}
+
+// watchdogKillNote returns the hook the loop calls after the watchdog killed a step.
+// It stops the shuttle runs of the killed step through stop, told the steps directory and the kill's trace id, and renders the note that ends the interrupted cause:
+// the runs it stopped, the live runs whose record names no step, which it leaves alone, and a stop that failed.
+func watchdogKillNote(stop func(shuttleengine.StepTie) (shuttleengine.StepStopReport, error), stepsDir string) func(shedverbs.WatchdogKill) string {
+	return func(kill shedverbs.WatchdogKill) string {
+		report, err := stop(shuttleengine.StepTie{StepsDir: stepsDir, TraceID: kill.TraceID})
+		var parts []string
+		if len(report.Stopped) > 0 {
+			parts = append(parts, "stopped shuttle runs: "+strings.Join(report.Stopped, ", "))
+		}
+		if len(report.Untied) > 0 {
+			parts = append(parts, "left live runs naming no step: "+strings.Join(report.Untied, ", "))
+		}
+		for _, failure := range report.Failed {
+			parts = append(parts, fmt.Sprintf("could not stop the run %s: %s", failure.Strand, failure.Error))
+		}
+		if err != nil {
+			parts = append(parts, "could not stop the step's runs: "+err.Error())
+		}
+		return strings.Join(parts, "; ")
+	}
+}
+
+// stopStepRuns stops the shuttle runs recorded under tie.
+// The receiver's runner is used when wire built one; a receiver wired lightly gets the pair's runner built the way wire builds it.
+func (c *loomCLI) stopStepRuns(tie shuttleengine.StepTie) (shuttleengine.StepStopReport, error) {
+	runner := c.runner
+	if runner == nil {
+		configDirs := fabricengine.ConfigDirs(c.location)
+		reedCfg, err := reedengine.LoadConfig(configDirs, "reed")
+		if err != nil {
+			return shuttleengine.StepStopReport{}, err
+		}
+		shuttleCfg, err := shuttleengine.LoadConfig(configDirs, "shuttle")
+		if err != nil {
+			return shuttleengine.StepStopReport{}, err
+		}
+		reedGeom, err := hubgeom.ReedGeometry(c.location)
+		if err != nil {
+			return shuttleengine.StepStopReport{}, err
+		}
+		runner = shuttleengine.NewRunner(reedengine.New(reedCfg, reedGeom), claudeengine.NewFromConfig(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	}
+	return runner.StopStepRuns(tie)
 }
 
 // agentActivityFor returns the reading of the run's agent activity: the newest LastActivity over every live agent run of loc's worktree.

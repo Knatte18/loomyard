@@ -841,6 +841,11 @@ func TestLoop_WatchdogKillsAnIdleChild(t *testing.T) {
 			fx.spec.Loop.Now = clock.Now
 			fx.spec.Loop.Sleep = clock.Sleep
 			fx.spec.Loop.Awake = clock.Awake
+			var kills []WatchdogKill
+			fx.spec.Loop.OnWatchdogKill = func(kill WatchdogKill) string {
+				kills = append(kills, kill)
+				return "stopped runs"
+			}
 			fx.spec.Loop.Runner = func(_ context.Context, req ChildRequest) (Child, error) {
 				fx.mu.Lock()
 				fx.requests = append(fx.requests, req)
@@ -886,6 +891,9 @@ func TestLoop_WatchdogKillsAnIdleChild(t *testing.T) {
 			if got := child.recorded(); !reflect.DeepEqual(got, tt.wantCalls) {
 				t.Errorf("child calls = %v; want %v", got, tt.wantCalls)
 			}
+			if tt.wantStop != LoopStopInterrupted && len(kills) != 0 {
+				t.Errorf("OnWatchdogKill calls = %+v; want none for a child the watchdog did not kill", kills)
+			}
 			if tt.quiet && clock.sleepCount() != 0 {
 				t.Errorf("clock slept %d times; want none under a disarmed watchdog", clock.sleepCount())
 			}
@@ -896,7 +904,12 @@ func TestLoop_WatchdogKillsAnIdleChild(t *testing.T) {
 				return
 			}
 
-			wantText := "shedverbs: step A interrupted (watchdog); way forward: read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lyx shed step run-1 --until-stop"
+			wantCause := fmt.Sprintf("watchdog: the step watchdog killed the step after %s of awake idle time (window %s, last activity %s); stopped runs",
+				tt.wantIdle, max(tt.idleTimeout, time.Minute), clock.start.Format(time.RFC3339))
+			if len(kills) != 1 || kills[0].TraceID != fx.childIDs()[0] || kills[0].Window != max(tt.idleTimeout, time.Minute) || kills[0].Idle.String() != tt.wantIdle || !kills[0].LastActivity.Equal(clock.start) {
+				t.Errorf("OnWatchdogKill calls = %+v; want one with the child's trace id, the window, idle %s and the clock's start as last activity", kills, tt.wantIdle)
+			}
+			wantText := "shedverbs: step A interrupted (" + wantCause + "); way forward: read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lyx shed step run-1 --until-stop"
 			_, wantStderr := fx.spec.Loop.StopFiles(fx.childIDs()[0])
 			if code != 1 || env["kind"] != KindInterrupted || env["error"] != wantText {
 				t.Errorf("exit/kind/error = %d/%v/%v; want the interrupted watchdog stop %q", code, env["kind"], env["error"], wantText)
