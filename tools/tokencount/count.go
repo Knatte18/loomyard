@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
@@ -610,16 +611,19 @@ func archivedSlugs(refs string) map[string][]ArchiveTag {
 		if len(fields) != 3 {
 			continue
 		}
-		rest, ok := strings.CutPrefix(fields[0], "refs/tags/archive/")
-		slug, sha, found := strings.Cut(rest, "/")
-		if !ok || !found || slug == "" || sha == "" || fields[1] == "" {
+		name, ok := strings.CutPrefix(fields[0], "refs/tags/")
+		if !ok || fields[1] == "" {
+			continue
+		}
+		slug, ok := fabricengine.ArchiveTagSlug(name)
+		if !ok {
 			continue
 		}
 		committed, err := time.Parse(time.RFC3339, fields[2])
 		if err != nil {
 			continue
 		}
-		slugs[slug] = append(slugs[slug], ArchiveTag{Name: strings.TrimPrefix(fields[0], "refs/tags/"), Commit: fields[1], Committed: committed})
+		slugs[slug] = append(slugs[slug], ArchiveTag{Name: name, Commit: fields[1], Committed: committed})
 	}
 	for _, tags := range slugs {
 		sort.Slice(tags, func(i, j int) bool {
