@@ -17,6 +17,7 @@ internal/buildinfo: 2
 internal/buildvcs: 2
 internal/burlercli: 19
 internal/burlerengine: 32
+internal/cleanupcli: 1
 internal/clihelp: 13
 internal/cliwire: 12
 internal/commentlint: 3
