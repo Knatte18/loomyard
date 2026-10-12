@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -130,6 +131,43 @@ func absoluteDir(cwd, dir string) (string, error) {
 		return "", fmt.Errorf("gate test: -C directory %q does not exist; way forward: pass an existing directory to -C", dir)
 	}
 	return dir, nil
+}
+
+// missingPackageDirs returns the refusal text for relative package arguments that name no directory under dir, or "" when every one does.
+// An argument spelled `.`, `..`, `./…` or `../…` and not ending in `.go` is read with a trailing `/...` removed.
+// Import paths, absolute paths and `.go` file arguments are not read.
+// The text names every missing argument in order, and for an external test package whose `_test`-less directory exists it names that directory as the replacement.
+func missingPackageDirs(dir string, packages []string) string {
+	var clauses []string
+	for _, pkg := range packages {
+		if !isRelativePackageArg(pkg) || strings.HasSuffix(pkg, ".go") {
+			continue
+		}
+		trimmed := strings.TrimSuffix(pkg, "/...")
+		if isDirectory(filepath.Join(dir, filepath.FromSlash(trimmed))) {
+			continue
+		}
+		if stem, isTest := strings.CutSuffix(trimmed, "_test"); isTest && isDirectory(filepath.Join(dir, filepath.FromSlash(stem))) {
+			clauses = append(clauses, fmt.Sprintf("gate test: package argument %s is an external test package whose tests live in %s; pass %s", pkg, stem, stem))
+			continue
+		}
+		clauses = append(clauses, fmt.Sprintf("gate test: package argument %s names no directory under %s", pkg, dir))
+	}
+	if len(clauses) == 0 {
+		return ""
+	}
+	return strings.Join(clauses, "; ") + "; way forward: re-run the same command with each named package argument corrected"
+}
+
+// isRelativePackageArg reports whether arg is spelled `.`, `..`, `./…` or `../…`.
+func isRelativePackageArg(arg string) bool {
+	return arg == "." || arg == ".." || strings.HasPrefix(arg, "./") || strings.HasPrefix(arg, "../")
+}
+
+// isDirectory reports whether path is an existing directory.
+func isDirectory(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 // refusePackages is the refusal for a request that names no package.

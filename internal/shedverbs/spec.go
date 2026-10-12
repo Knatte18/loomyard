@@ -90,6 +90,7 @@ type Hooks struct {
 	Waiting func(st shedengine.Status) (string, error)
 	// AfterInterrupt runs when the loop stops on a child step that ended without an envelope, after the stop is classified and before its envelope is written.
 	// It receives the stop row, the cause and the first trace file of the child, and its return is the envelope's friction key, like AfterStep's.
+	// At a stop on the status read, absent or unreadable, no child ran and the trace file is the loop log.
 	AfterInterrupt func(ctx context.Context, producer, cause, traceFile string) string
 	// ConsumeAttempt runs in step's waiter, on `--until-stop --arbiter-attempt <attempt>`, before the loop is spawned.
 	// It is the arming module's consumption of the named attempt.
@@ -137,7 +138,7 @@ type Spec struct {
 	// RunID is the resolved run-id the arming module addressed, reported as run_id on the status and
 	// every step envelope. The empty string means the arming module supplied none.
 	RunID string
-	// MissingStatusWayForward is the told trailing "way forward:" clause for a missing status file, passed to goto.
+	// MissingStatusWayForward is the told trailing "way forward:" clause for a missing status file, passed to goto and read by the loop's status-missing stop.
 	// The empty string falls back to shedengine's generic clause.
 	MissingStatusWayForward string
 	// PauseWayForward is the told command goto's refusals name to stop the run at a boundary, passed to goto.

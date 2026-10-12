@@ -312,6 +312,7 @@ Each module contributes a `Command() *cobra.Command` that is passed to `root.Add
 The `help` module is the one exception: `newRoot()` mounts it with `root.SetHelpCommand(helpcli.Command())` followed by `root.InitDefaultHelpCmd()`, replacing cobra's built-in help command.
 Adding a module is three steps: import the package, add `<module>.Command()` to `root.AddCommand(...)` in `newRoot()`, and append the module name to `root.Long`.
 Every invocable command also carries an `audience` annotation (`operator`, `role` or `internal`), and `lyx help index` renders the operator commands as a one-line-per-command index of the running binary, which the orch's role file and the `ly:cli` skill carry.
+Which commands count as invocable, and so carry one, is the audience bullet of [PATTERN-cli-cobra](../pattern/PATTERN-cli-cobra.md).
 A tree walk in `cmd/lyx/clitree_test.go` pins the form of `Use`, `Short` and `Long` beside the audience.
 
 `run(args, out)` is the testable seam: it builds a fresh root, merges stdout and stderr into `out`, and calls `root.ExecuteContext`, returning the process exit code without spawning a binary or trapping `os.Exit`.
@@ -401,7 +402,7 @@ User-facing modules each get one `lyx <module>` namespace:
   It reports, per finished run and per ISO week, what woke the orch, what stopped and repaired runs, how many review rounds each segment took and how landings fared, from records lyx already writes.
   ✅ Implemented. See the `internal/reportengine` package documentation.
 - **pause** — the one ordered pause that makes the hub safe to suspend within seconds (`internal/pausecli` + `internal/pauseengine`; `lyx pause [<slug>] [--grace <seconds>]`, `lyx pause --status` and `lyx resume [<slug>]`, from any worktree of the hub).
-  `lyx pause` records an entry, waits a short grace for busy agent sessions and network operations to finish, interrupts every covered session still busy with Esc and holds every path that would start agent or network work; the orchestrator is interrupted by its own watcher at the grace end.
+  `lyx pause` records an entry, waits a short grace for busy agent sessions and network operations to finish, interrupts every covered session still in a running turn with Esc and holds every path that would start agent or network work; the orchestrator is interrupted by its own watcher at the grace end.
   `lyx resume` lifts the entry and gives each interrupted session one line to carry on.
   An agent may pause or resume only its own pair; the orchestrator and an external caller may do both for the hub or any pair.
   Every lyx process in a hub runs its network git and GitHub calls under a gate that waits while a pause covers it, and every reader that reacts to an unexpected stop or to idle time consults the record (`internal/pauserecord`).

@@ -264,6 +264,21 @@ type StrayInputReader interface {
 	StrayInput(capture string) (text string, ok bool)
 }
 
+// InterruptGuard is an optional capability beside Engine: the provider's reading of whether a pane shows a turn in progress, and how long an interrupt key needs to settle.
+type InterruptGuard interface {
+	// RunningTurn reports whether capture shows a turn in progress.
+	RunningTurn(capture string) bool
+	// InterruptSettle is how long after an interrupt key the pane needs before it is read again.
+	// It is longer than the provider's double-interrupt window.
+	InterruptSettle() time.Duration
+}
+
+// RewindPickerReader is an optional capability beside Engine: the provider's reading of whether a pane shows its rewind picker in place of its input box.
+type RewindPickerReader interface {
+	// RewindPicker reports whether capture shows the provider's rewind picker.
+	RewindPicker(capture string) bool
+}
+
 // TextPaster is an optional capability beside Engine: a provider that takes text as one bracketed paste.
 // An engine with it, InputBoxReader and SessionCycler is written to through reed's paste-submit instead of typed keys.
 type TextPaster interface {

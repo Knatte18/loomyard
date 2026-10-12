@@ -188,7 +188,7 @@ func crossModuleCommands(chain string, modules []string) []crossModuleCommand {
 			}
 			runDir = next
 		case "go":
-			commandDir, packageArgs, ok := goCommandDirAndPackages(runDir, fields[1:])
+			commandDir, _, packageArgs, ok := goCommandDirAndPackages(runDir, fields[1:])
 			if !ok {
 				return found
 			}
@@ -205,9 +205,10 @@ func crossModuleCommands(chain string, modules []string) []crossModuleCommand {
 	return found
 }
 
-// goCommandDirAndPackages reads the fields after `go`: the directory the command runs in, and its relative package arguments.
+// goCommandDirAndPackages reads the fields after `go`: the directory the command runs in, its subcommand and its relative package arguments.
+// subcommand is empty when the fields hold none.
 // ok is false when a -C directory cannot be placed.
-func goCommandDirAndPackages(runDir string, fields []string) (commandDir string, packageArgs []string, ok bool) {
+func goCommandDirAndPackages(runDir string, fields []string) (commandDir, subcommand string, packageArgs []string, ok bool) {
 	commandDir = runDir
 	i := 0
 	for i < len(fields) && strings.HasPrefix(fields[i], "-") {
@@ -221,33 +222,38 @@ func goCommandDirAndPackages(runDir string, fields []string) (commandDir string,
 			target = strings.TrimPrefix(flag, "-C=")
 			i++
 		default:
-			return runDir, nil, false
+			return runDir, "", nil, false
 		}
 		commandDir, ok = resolveRunDir(commandDir, target)
 		if !ok {
-			return "", nil, false
+			return "", "", nil, false
 		}
 	}
 	if i >= len(fields) {
-		return commandDir, nil, true
+		return commandDir, "", nil, true
 	}
 
-	// fields[i] is the subcommand.
+	subcommand = fields[i]
 	rest := fields[i+1:]
 	for j := 0; j < len(rest); j++ {
 		field := rest[j]
 		switch {
 		case field == "--" || field == "-args":
-			return commandDir, packageArgs, true
+			return commandDir, subcommand, packageArgs, true
 		case strings.HasPrefix(field, "-"):
 			if !strings.Contains(field, "=") && goValueFlags[field] {
 				j++
 			}
-		case field == "." || field == ".." || strings.HasPrefix(field, "./") || strings.HasPrefix(field, "../"):
+		case isRelativePackageSpelling(field):
 			packageArgs = append(packageArgs, field)
 		}
 	}
-	return commandDir, packageArgs, true
+	return commandDir, subcommand, packageArgs, true
+}
+
+// isRelativePackageSpelling reports whether field is spelled as a relative package path: `.`, `..`, `./…` or `../…`.
+func isRelativePackageSpelling(field string) bool {
+	return field == "." || field == ".." || strings.HasPrefix(field, "./") || strings.HasPrefix(field, "../")
 }
 
 // resolveRunDir joins target onto dir, both worktree-relative and slash-separated.

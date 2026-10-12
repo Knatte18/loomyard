@@ -53,12 +53,41 @@ type Engine struct {
 	ClassifySkillLoadFn     func(turnEnd shuttleengine.Event, skills []string) shuttleengine.SkillLoadReport
 	AuditForksFn            func(sessionID, workdir string) (shuttleengine.ForkAudit, error)
 	AuditForksIncrementalFn func(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error)
+	RunningTurnFn           func(capture string) bool
+	RewindPickerFn          func(capture string) bool
+	InterruptSettleFn       func() time.Duration
 }
 
 var (
-	_ shuttleengine.Engine      = (*Engine)(nil)
-	_ shuttleengine.SkillLoader = (*Engine)(nil)
+	_ shuttleengine.Engine             = (*Engine)(nil)
+	_ shuttleengine.SkillLoader        = (*Engine)(nil)
+	_ shuttleengine.InterruptGuard     = (*Engine)(nil)
+	_ shuttleengine.RewindPickerReader = (*Engine)(nil)
 )
+
+// RunningTurn answers RunningTurnFn, else false.
+func (e *Engine) RunningTurn(capture string) bool {
+	if e.RunningTurnFn != nil {
+		return e.RunningTurnFn(capture)
+	}
+	return false
+}
+
+// RewindPicker answers RewindPickerFn, else false.
+func (e *Engine) RewindPicker(capture string) bool {
+	if e.RewindPickerFn != nil {
+		return e.RewindPickerFn(capture)
+	}
+	return false
+}
+
+// InterruptSettle answers InterruptSettleFn, else 0.
+func (e *Engine) InterruptSettle() time.Duration {
+	if e.InterruptSettleFn != nil {
+		return e.InterruptSettleFn()
+	}
+	return 0
+}
 
 // Prepare records the call and answers PrepareFn, else PrepareErr, else PrepareLaunch, else a canned launch.
 func (e *Engine) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {

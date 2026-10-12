@@ -913,15 +913,14 @@ func (r *Runner) sweepOrphansOpportunistic() {
 }
 
 // Interrupt stops run's in-progress turn without killing its pane or session.
+// The interrupt goes only into a pane showing a running turn: a pane with none gets no key and ErrNoRunningTurn.
+// An open rewind picker is closed with one key and the call fails with ErrRewindPickerOpen.
 // Safe to call concurrently with a blocked Wait.
 // Note: Wait may classify and return from the interrupted turn's Stop event before a subsequent
 // Send is issued;
 // the redirect is delivered but the same Wait call won't observe it.
 func (run *Run) Interrupt() error {
-	if err := requireReadyAgentPane(run.runner.reed, run.runner.engine, run.state.StrandGUID); err != nil {
-		return err
-	}
-	return playInputs(run.runner.reed, run.state.StrandGUID, run.runner.engine.InterruptSequence())
+	return guardedInterrupt(run.runner.reed, run.runner.engine, run.clock, run.state.StrandGUID)
 }
 
 // Send types text as run's next turn.
@@ -958,6 +957,8 @@ func validateSendText(text string) error {
 // Interrupt stops the in-progress turn of the run identified by guid, without needing an in-process
 // Run handle.
 // This is how the CLI's interrupt verb reaches a run started by a separate process.
+// The interrupt goes only into a pane showing a running turn: a pane with none gets no key and ErrNoRunningTurn.
+// An open rewind picker is closed with one key and the call fails with ErrRewindPickerOpen.
 func (r *Runner) Interrupt(guid string) error {
 	if r.toldErr != nil {
 		return r.toldErr
@@ -965,10 +966,39 @@ func (r *Runner) Interrupt(guid string) error {
 	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	if err := requireReadyAgentPane(r.reed, r.engine, guid); err != nil {
-		return err
+	return guardedInterrupt(r.reed, r.engine, r.clock, guid)
+}
+
+// InterruptSettle returns how long after an interrupt key the pane needs before it is read again, or 0 for an engine that does not say.
+// A caller that retries an interrupt waits at least this long after its first key.
+func (r *Runner) InterruptSettle() time.Duration {
+	if guard, ok := r.engine.(InterruptGuard); ok {
+		return guard.InterruptSettle()
 	}
-	return playInputs(r.reed, guid, r.engine.InterruptSequence())
+	return 0
+}
+
+// PaneRunningTurn reports whether the pane of the run identified by guid shows a running turn, from one fresh capture.
+// It fails when guid is not a live shuttle strand, when the capture fails, and for an engine with no running-turn reading.
+func (r *Runner) PaneRunningTurn(guid string) (bool, error) {
+	if r.toldErr != nil {
+		return false, r.toldErr
+	}
+	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
+		return false, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	if err := requireLiveStrand(r.reed, guid); err != nil {
+		return false, err
+	}
+	guard, ok := r.engine.(InterruptGuard)
+	if !ok {
+		return false, fmt.Errorf("shuttle: the engine has no running-turn reading for strand %q", guid)
+	}
+	capture, err := r.reed.CapturePane(guid)
+	if err != nil {
+		return false, fmt.Errorf("shuttle: capture strand %q's pane: %w", guid, err)
+	}
+	return guard.RunningTurn(capture), nil
 }
 
 // Send types text as the next turn of the run identified by guid, without needing an in-process Run
@@ -992,6 +1022,7 @@ func (r *Runner) Send(guid, text string) error {
 // in-process Run handle.
 // Unlike Send/Interrupt, Inject deliberately skips the requireReadyAgentPane guard to deliver keys
 // while the provider is busy.
+// It refuses any input list holding the engine's interrupt key or a control character in a text, and names "lyx shuttle interrupt", the guarded way to send the interrupt key.
 // Empty inputs is rejected.
 func (r *Runner) Inject(guid string, inputs []PaneInput) error {
 	if r.toldErr != nil {
@@ -999,6 +1030,9 @@ func (r *Runner) Inject(guid string, inputs []PaneInput) error {
 	}
 	if len(inputs) == 0 {
 		return fmt.Errorf("shuttle: Inject: inputs must not be empty — there is nothing to deliver")
+	}
+	if err := refuseInterruptKey(r.engine, inputs); err != nil {
+		return err
 	}
 	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)

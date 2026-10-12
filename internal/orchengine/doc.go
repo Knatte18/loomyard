@@ -350,8 +350,10 @@
 //   - Each live hub entry is acted on once, remembered in memory by its PausedAt.
 //     Nothing is interrupted or recorded for an entry the orch itself ran, one that already owns the orch's session, one that began at or before State.LaunchedAt (a zero LaunchedAt reads as launched before every entry), or one whose grace end lay before the watcher's first tick.
 //   - Before the grace end, an orch the idle probe reads idle with no network operation marker naming the orch is left alone; any other waits.
-//   - At the grace end, a busy orch is recorded in the entry under the record lock and then interrupted, once more when the probe still reads busy, so at most twice.
-//     An entry resumed before that point, or one a live entry already owns the orch in, sends nothing.
+//   - At the grace end, a busy orch is recorded in the entry under the record lock and interrupted once through shuttle's guarded interrupt.
+//     A later tick at least the provider's settle time after it re-probes and, when the orch still reads busy, sends the guarded second and last key.
+//     A guarded refusal reads as an idle orch, with one Info line; an open rewind picker gets one Warn line and no further key.
+//     An entry resumed before that point or during the settle, one a live entry already owns the orch in, and a watcher restarted during the settle send no key.
 //   - After the entry is resumed, an orch it owns gets the resume line once, queued as a notice and delivered idle-gated, then marked noticed in the record.
 //     An orch the entry does not own, such as an idle one or the caller, gets none.
 //   - An unreadable record holds nothing, with one Warn per change of error.

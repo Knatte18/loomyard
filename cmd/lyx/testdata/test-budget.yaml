@@ -70,7 +70,7 @@ internal/orchcli: 28
 internal/orchengine: 139
 internal/output: 4
 internal/pairteardown: 6
-internal/pausecli: 3
+internal/pausecli: 4
 internal/pauseengine: 4
 internal/pauserecord: 14
 internal/parentdirective: 4
@@ -78,7 +78,7 @@ internal/parentlock: 16
 internal/parentreview: 54
 internal/pattern: 8
 internal/planglyph: 86
-internal/planparser: 92
+internal/planparser: 93
 internal/preflight: 7
 internal/preflightshed: 8
 internal/proc: 18
@@ -103,8 +103,8 @@ internal/shedtransient: 2
 internal/shedverbs: 83
 internal/shell: 14
 internal/shortcutcli: 2
-internal/shuttlecli: 25
-internal/shuttleengine: 169
+internal/shuttlecli: 26
+internal/shuttleengine: 171
 internal/shuttleengine/claudeengine: 109
 internal/standalonegeom: 7
 internal/standalonestate: 6

@@ -4,9 +4,11 @@
 package pauseengine
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -23,22 +25,39 @@ type fakePair struct {
 	slug     string
 	sessions []SessionInfo
 	// busy holds each session's scripted busy answers, consumed in order with the last repeating; a session with none reads idle.
-	busy         map[string][]bool
-	dead         map[string]bool
-	interruptErr map[string]error
-	sendErr      map[string]error
-	producer     string
-	running      bool
+	busy map[string][]bool
+	dead map[string]bool
+	// interruptErrs holds each session's scripted interrupt errors, consumed in order with the last repeating; an empty list answers nil.
+	interruptErrs map[string][]error
+	sendErr       map[string]error
+	// background holds the labels of each session whose turn ended with background work; a key present reads as background.
+	background map[string][]string
+	// backgroundErr and paneErr fail Background and PaneRunningTurn for a key present.
+	backgroundErr map[string]error
+	paneErr       map[string]error
+	// paneRunning is what PaneRunningTurn answers per session.
+	paneRunning map[string]bool
+	// settle is the InterruptSettle answer.
+	settle   time.Duration
+	producer string
+	running  bool
 	// onInterrupt runs after an interrupt is recorded, outside the lock.
 	onInterrupt func(guid string)
+	// onPaneRead runs after a pane reading is counted, outside the lock.
+	onPaneRead func()
 
 	interrupts []string
 	sends      []string
+	paneReads  int
 }
 
-// newPair builds a pair with one session per strand name, whose guid is "g-" and the name.
+// newPair builds a pair with one session per strand name, whose guid is "g-" and the name, and a 2 s interrupt settle.
 func newPair(slug string, strands ...string) *fakePair {
-	p := &fakePair{slug: slug, busy: map[string][]bool{}, dead: map[string]bool{}, interruptErr: map[string]error{}, sendErr: map[string]error{}}
+	p := &fakePair{
+		slug: slug, busy: map[string][]bool{}, dead: map[string]bool{}, interruptErrs: map[string][]error{}, sendErr: map[string]error{},
+		background: map[string][]string{}, backgroundErr: map[string]error{}, paneErr: map[string]error{}, paneRunning: map[string]bool{},
+		settle: 2 * time.Second,
+	}
 	for _, strand := range strands {
 		p.sessions = append(p.sessions, SessionInfo{Strand: strand, GUID: "g-" + strand, Slug: slug})
 	}
@@ -63,10 +82,38 @@ func (p *fakePair) Busy(guid string) (bool, error) {
 	return answers[0], nil
 }
 
+func (p *fakePair) Background(guid string) ([]string, bool, error) {
+	if err := p.backgroundErr[guid]; err != nil {
+		return nil, false, err
+	}
+	labels, background := p.background[guid]
+	return labels, background, nil
+}
+
+func (p *fakePair) PaneRunningTurn(guid string) (bool, error) {
+	p.mu.Lock()
+	p.paneReads++
+	running, err, hook := p.paneRunning[guid], p.paneErr[guid], p.onPaneRead
+	p.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	return running, err
+}
+
+func (p *fakePair) InterruptSettle() time.Duration { return p.settle }
+
 func (p *fakePair) Interrupt(guid string) error {
 	p.mu.Lock()
 	p.interrupts = append(p.interrupts, guid)
-	err, hook := p.interruptErr[guid], p.onInterrupt
+	var err error
+	if answers := p.interruptErrs[guid]; len(answers) > 0 {
+		err = answers[0]
+		if len(answers) > 1 {
+			p.interruptErrs[guid] = answers[1:]
+		}
+	}
+	hook := p.onInterrupt
 	p.mu.Unlock()
 	if hook != nil {
 		hook(guid)
@@ -226,13 +273,15 @@ func TestPause(t *testing.T) {
 			if len(atEsc.Live) != 1 || !reflect.DeepEqual(atEsc.Live[0].Sessions, []pauserecord.Session{recorded("p1", "a")}) {
 				t.Errorf("record at the first Esc = %+v; want the hub entry owning the session", atEsc)
 			}
-			if !reflect.DeepEqual(report.Interrupted, []string{"a"}) || report.Scope != pauserecord.ScopeHub {
-				t.Errorf("report = %+v; want scope hub and a interrupted", report)
+			if !reflect.DeepEqual(report.Interrupted, []string{"a"}) || report.Scope != pauserecord.ScopeHub || len(p.interrupts) != 1 {
+				t.Errorf("report = %+v with %d Esc; want scope hub and a interrupted by the first Esc alone", report, len(p.interrupts))
 			}
 		}},
 		{"the grace waits for a busy session and never past the grace end", func(t *testing.T) {
 			p := newPair("p1", "a")
 			p.busy["g-a"] = []bool{true}
+			// The session stays busy through both keys, and the row pins the clock at exactly the grace.
+			p.settle = 0
 			e := newEnv(t, p)
 
 			e.pause("", 10*time.Second)
@@ -257,15 +306,161 @@ func TestPause(t *testing.T) {
 				t.Errorf("clock ran %s with net ops %+v; want 3s and none left", got, report.NetOps)
 			}
 		}},
-		{"a busy session is interrupted at most twice and reported still busy", func(t *testing.T) {
+		{"busy sessions are interrupted at most twice, share each settle and are reported still busy", func(t *testing.T) {
+			pa := newPair("p1", "a")
+			pb := newPair("p2", "b")
+			pa.busy["g-a"], pb.busy["g-b"] = []bool{true}, []bool{true}
+			pa.paneRunning["g-a"], pb.paneRunning["g-b"] = true, true
+			e := newEnv(t, pa, pb)
+			var keyTimes, paneTimes []time.Duration
+			hookInterrupt := func(string) { keyTimes = append(keyTimes, e.clock.elapsed()) }
+			hookPane := func() { paneTimes = append(paneTimes, e.clock.elapsed()) }
+			pa.onInterrupt, pb.onInterrupt = hookInterrupt, hookInterrupt
+			pa.onPaneRead, pb.onPaneRead = hookPane, hookPane
+
+			report := e.pause("", 0)
+
+			if got := e.interrupts(); !reflect.DeepEqual(got, []string{"g-a", "g-a", "g-b", "g-b"}) || !reflect.DeepEqual(report.StillBusy, []string{"a", "b"}) || len(report.Interrupted) != 0 {
+				t.Errorf("interrupts %v and report %+v; want two Esc each and both still busy", got, report)
+			}
+			// The keys of a pass share one settle: [first a, first b, second a, second b], then the pane reads.
+			wantKeys := []time.Duration{0, 0, 2 * time.Second, 2 * time.Second}
+			if !reflect.DeepEqual(keyTimes, wantKeys) {
+				t.Errorf("key times = %v; want %v, each second key one settle after the first", keyTimes, wantKeys)
+			}
+			if want := []time.Duration{4 * time.Second, 4 * time.Second}; !reflect.DeepEqual(paneTimes, want) {
+				t.Errorf("pane read times = %v; want %v, one settle after the second keys", paneTimes, want)
+			}
+			if got := e.clock.elapsed(); got != 4*time.Second {
+				t.Errorf("clock ran %s; want exactly 2 settles", got)
+			}
+		}},
+		{"a second Esc whose settle leaves no running turn on the pane is interrupted", func(t *testing.T) {
 			p := newPair("p1", "a")
 			p.busy["g-a"] = []bool{true}
 			e := newEnv(t, p)
 
 			report := e.pause("", 0)
 
-			if !reflect.DeepEqual(p.interrupts, []string{"g-a", "g-a"}) || !reflect.DeepEqual(report.StillBusy, []string{"a"}) || len(report.Interrupted) != 0 {
-				t.Errorf("interrupts %v and report %+v; want two Esc and a still busy", p.interrupts, report)
+			if len(p.interrupts) != 2 || !reflect.DeepEqual(report.Interrupted, []string{"a"}) || len(report.StillBusy) != 0 {
+				t.Errorf("interrupts %v and report %+v; want two Esc and a interrupted", p.interrupts, report)
+			}
+		}},
+		{"a guarded second Esc that finds no running turn ends interrupted", func(t *testing.T) {
+			p := newPair("p1", "a")
+			p.busy["g-a"] = []bool{true}
+			p.interruptErrs["g-a"] = []error{nil, fmt.Errorf("%w: strand g-a", shuttleengine.ErrNoRunningTurn)}
+			e := newEnv(t, p)
+
+			report := e.pause("", 0)
+
+			if len(p.interrupts) != 2 || !reflect.DeepEqual(report.Interrupted, []string{"a"}) || p.paneReads != 0 {
+				t.Errorf("interrupts %v, pane reads %d and report %+v; want two Esc, a interrupted and no pane reading", p.interrupts, p.paneReads, report)
+			}
+		}},
+		{"an open rewind picker found by the guarded second Esc is refused", func(t *testing.T) {
+			p := newPair("p1", "a")
+			p.busy["g-a"] = []bool{true}
+			p.interruptErrs["g-a"] = []error{nil, fmt.Errorf("%w: strand g-a: one interrupt key closed it", shuttleengine.ErrRewindPickerOpen)}
+			e := newEnv(t, p)
+
+			report := e.pause("", 0)
+
+			if len(p.interrupts) != 2 || len(report.Refused) != 1 || !strings.Contains(report.Refused[0].Reason, "rewind picker was open") {
+				t.Errorf("interrupts %v and report %+v; want two Esc and a refused for the picker", p.interrupts, report)
+			}
+		}},
+		{"a running state whose first guarded Esc finds no running turn is no_running_turn and stays recorded", func(t *testing.T) {
+			p := newPair("p1", "a")
+			p.busy["g-a"] = []bool{true}
+			p.interruptErrs["g-a"] = []error{fmt.Errorf("%w: strand g-a", shuttleengine.ErrNoRunningTurn)}
+			e := newEnv(t, p)
+
+			report := e.pause("", 0)
+
+			if len(p.interrupts) != 1 || !reflect.DeepEqual(report.NoRunningTurn, []string{"a"}) || len(report.Interrupted)+len(report.AlreadyIdle) != 0 {
+				t.Errorf("interrupts %v and report %+v; want one Esc and a no_running_turn", p.interrupts, report)
+			}
+			if live := e.record().Live; len(live) != 1 || !reflect.DeepEqual(live[0].Sessions, []pauserecord.Session{recorded("p1", "a")}) {
+				t.Errorf("live entries = %+v; want the session still recorded", live)
+			}
+		}},
+		{"a background session holds no grace, gets no Esc, is not recorded and is listed with its tasks", func(t *testing.T) {
+			p := newPair("p1", "a")
+			p.busy["g-a"] = []bool{false}
+			p.background["g-a"] = []string{"sleep 600", "lyx shed step"}
+			e := newEnv(t, p)
+
+			report := e.pause("", 10*time.Second)
+
+			want := []BackgroundSession{{Strand: "a", Slug: "p1", Tasks: []string{"sleep 600", "lyx shed step"}}}
+			if !reflect.DeepEqual(report.Background, want) || len(p.interrupts) != 0 || e.clock.elapsed() != 0 {
+				t.Errorf("report %+v, interrupts %v, clock %s; want the background listed, no Esc and no grace", report, p.interrupts, e.clock.elapsed())
+			}
+			if live := e.record().Live; len(live) != 1 || len(live[0].Sessions) != 0 {
+				t.Errorf("live entries = %+v; want one with no sessions", live)
+			}
+		}},
+		{"an open rewind picker found by the guarded Esc is refused with its message", func(t *testing.T) {
+			p := newPair("p1", "a")
+			p.busy["g-a"] = []bool{true}
+			p.interruptErrs["g-a"] = []error{fmt.Errorf("%w: strand g-a: one interrupt key closed it", shuttleengine.ErrRewindPickerOpen)}
+			e := newEnv(t, p)
+
+			report := e.pause("", 0)
+
+			if len(p.interrupts) != 1 || len(report.Refused) != 1 || !strings.Contains(report.Refused[0].Reason, "rewind picker was open") {
+				t.Errorf("interrupts %v and report %+v; want one Esc and a refused for the picker", p.interrupts, report)
+			}
+		}},
+		{"a failed guard capture is refused", func(t *testing.T) {
+			p := newPair("p1", "a")
+			p.busy["g-a"] = []bool{true}
+			p.interruptErrs["g-a"] = []error{errors.New("shuttle: capture strand \"g-a\"'s pane before the interrupt: boom")}
+			e := newEnv(t, p)
+
+			report := e.pause("", 0)
+
+			if len(report.Refused) != 1 || !strings.Contains(report.Refused[0].Reason, "boom") {
+				t.Errorf("report = %+v; want a refused naming the capture failure", report)
+			}
+		}},
+		{"a resume during the settle sends no second Esc", func(t *testing.T) {
+			p := newPair("p1", "a")
+			p.busy["g-a"] = []bool{true}
+			e := newEnv(t, p)
+			p.onInterrupt = func(string) {
+				e.clock.onSleep = func() {
+					if _, err := e.resume(""); err != nil {
+						t.Error(err)
+					}
+				}
+			}
+
+			report := e.pause("", 0)
+
+			if len(p.interrupts) != 1 || !report.ResumedDuringGrace {
+				t.Errorf("interrupts %v, resumed during grace %v; want one Esc and the flag", p.interrupts, report.ResumedDuringGrace)
+			}
+		}},
+		{"a failed background or pane reading is refused with its prefix", func(t *testing.T) {
+			p := newPair("p1", "a", "b")
+			boom := errors.New("boom")
+			p.busy["g-a"], p.busy["g-b"] = []bool{false}, []bool{true}
+			p.backgroundErr["g-a"] = boom
+			p.paneErr["g-b"] = boom
+			e := newEnv(t, p)
+
+			report := e.pause("", 0)
+
+			if !reflect.DeepEqual(p.interrupts, []string{"g-b", "g-b"}) || len(report.Refused) != 2 {
+				t.Fatalf("interrupts %v and report %+v; want only b interrupted, twice, and two refused", p.interrupts, report)
+			}
+			if got := report.Refused[0]; got.Strand != "a" || !strings.HasPrefix(got.Reason, "background reading failed: ") {
+				t.Errorf("first refusal = %+v; want a's background reading", got)
+			}
+			if got := report.Refused[1]; got.Strand != "b" || !strings.HasPrefix(got.Reason, "pane reading failed: ") {
+				t.Errorf("second refusal = %+v; want b's pane reading", got)
 			}
 		}},
 		{"the caller's own strand is skipped", func(t *testing.T) {
@@ -350,7 +545,7 @@ func TestPause(t *testing.T) {
 		{"a pane refusal is reported as refused", func(t *testing.T) {
 			p := newPair("p1", "a")
 			p.busy["g-a"] = []bool{true}
-			p.interruptErr["g-a"] = fmt.Errorf("%w: strand g-a", shuttleengine.ErrPaneNotReady)
+			p.interruptErrs["g-a"] = []error{fmt.Errorf("%w: strand g-a", shuttleengine.ErrPaneNotReady)}
 			e := newEnv(t, p)
 
 			report := e.pause("", 0)
