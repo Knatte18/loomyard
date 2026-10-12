@@ -99,17 +99,36 @@ func (v Vocabulary) Known(label string) bool {
 	return v.IsType(label) || slices.Contains(v.Labels, label)
 }
 
-// LoadConfig loads and unmarshals the board module configuration from baseDir, the hub's board dir.
-// An absent `_lyx/` under baseDir and an absent board.yaml under a present one both refuse naming the file and the `lyx fabric reconcile` way forward.
-func LoadConfig(baseDir, module string) (Config, error) {
-	configFile := configengine.ConfigFile(baseDir, module)
+// ConfigSpec returns the board's layered-load spec.
+// Every key is the one board's vocabulary or files, so none may be set in the local layer.
+func ConfigSpec() configengine.Spec {
+	return configengine.Spec{
+		Name:     "board",
+		Template: []byte(ConfigTemplate()),
+		OpenMaps: ConfigOpenMaps(),
+		HubWide:  true,
+		Categories: map[string]configengine.Category{
+			"readme":        configengine.CategoryCrossPair,
+			"design_prefix": configengine.CategoryCrossPair,
+			"types":         configengine.CategoryCrossPair,
+			"labels":        configengine.CategoryCrossPair,
+		},
+	}
+}
+
+// LoadConfig loads and unmarshals the board module configuration strictly through the hub-wide layer stack under dirs.
+// An absent `_lyx/` under the hub's board dir and an absent board.yaml under a present one both refuse naming the file and the `lyx fabric reconcile` way forward.
+func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
+	spec := ConfigSpec()
+	spec.Name = module
+	configFile, _ := configengine.LayerFile(dirs, spec, configengine.BaseLayer(dirs, spec))
 	notInitialized := fmt.Errorf("board config %s not initialized; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it", configFile)
 	if _, err := os.Stat(configFile); errors.Is(err, fs.ErrNotExist) {
 		return Config{}, notInitialized
 	}
 
 	// Load and resolve the config file using the template.
-	resolved, err := configengine.Load(configengine.Dirs{Board: baseDir}, configengine.Spec{Name: module, Template: []byte(ConfigTemplate()), OpenMaps: ConfigOpenMaps(), HubWide: true})
+	resolved, err := configengine.Load(dirs, spec)
 	if err != nil {
 		if errors.Is(err, configengine.ErrNotInitialized) {
 			return Config{}, notInitialized
@@ -176,9 +195,10 @@ func decodeLabels(key string, node *yaml.Node) ([]Label, error) {
 // OpenHub opens the board of the hub at hubPath.
 // It reads the config from the hub's own board directory and points Path at it, so no worktree link is followed,
 // and applies ApplySkipEnv so render and sync behave as they do for `lyx board`.
+// It is told only a hub path, so it loads with no anchor and therefore no local layer.
 func OpenHub(hubPath string) (*Board, error) {
 	boardDir := fabricengine.BoardDir(hubPath)
-	cfg, err := LoadConfig(boardDir, "board")
+	cfg, err := LoadConfig(configengine.Dirs{Board: boardDir}, "board")
 	if err != nil {
 		return nil, err
 	}

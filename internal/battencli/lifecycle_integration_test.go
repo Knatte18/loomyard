@@ -162,7 +162,7 @@ func seedEntryStatus(t *testing.T, c *battenCLI, producer string, rowState shede
 // Worktree-Create through Seed-Child needs one seeded first.
 func seedBoardTask(t *testing.T, h *hubforge.Hub, slug, recipeType string) {
 	t.Helper()
-	cfg, err := boardengine.LoadConfig(h.BoardDir(), "board")
+	cfg, err := boardengine.LoadConfig(configengine.Dirs{Board: h.BoardDir()}, "board")
 	if err != nil {
 		t.Fatalf("load board config: %v", err)
 	}
@@ -499,7 +499,7 @@ func fourRowRunForRecipe(t *testing.T, h *hubforge.Hub, recipe string) {
 
 	// The entry stands at a run status, as a run holds it.
 	// Only the teardown request's landed flag can turn it done, since the stubbed child status holds no Finalize Done and batten's own run is still running.
-	boardConfig, err := boardengine.LoadConfig(h.BoardDir(), "board")
+	boardConfig, err := boardengine.LoadConfig(configengine.Dirs{Board: h.BoardDir()}, "board")
 	if err != nil {
 		t.Fatalf("load board config: %v", err)
 	}

@@ -119,7 +119,7 @@ func writeFile(t *testing.T, path, content string) {
 // holdBoardEntry upserts a board entry named slug at a run status, as a run holds it, and returns the board.
 func holdBoardEntry(t *testing.T, h *hubforge.Hub, slug string) *boardengine.Board {
 	t.Helper()
-	boardConfig, err := boardengine.LoadConfig(h.BoardDir(), "board")
+	boardConfig, err := boardengine.LoadConfig(configengine.Dirs{Board: h.BoardDir()}, "board")
 	if err != nil {
 		t.Fatalf("load board config: %v", err)
 	}

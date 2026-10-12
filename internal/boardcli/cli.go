@@ -100,7 +100,7 @@ available subcommands without requiring a git repo.
 			}
 			boardDir := fabricengine.BoardDir(layout.HubPath)
 
-			cfg, err = boardengine.LoadConfig(boardDir, "board")
+			cfg, err = boardengine.LoadConfig(fabricengine.ConfigDirs(layout), "board")
 			if err != nil {
 				output.Err(cmd.OutOrStdout(), err.Error())
 				clihelp.Abort(ctx, 1)
