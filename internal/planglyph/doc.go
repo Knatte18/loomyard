@@ -94,7 +94,9 @@
 //   - plan-references-deleted-symbol (blocking), rename-candidate (informational) — DetectDrift
 //     (drift.go), the exact-tier and evidence-tier halves of drift detection.
 //   - scope-outside-plan (informational) — ScopeGuard (scope.go), a symbol a completed batch's
-//     delta touched outside its own cards' declared targets.
+//     delta touched outside its own cards' declared targets, and a changed file the delta gives no
+//     symbols for that no card target covers, file-granular: a target's file or package directory
+//     lets a symbol-less change through.
 //   - create-not-done, delete-not-done, rename-not-done (all blocking) — DoneChecks (donecheck.go):
 //     a Create target that still does not resolve, a Delete target that still does, or a Rename
 //     pair whose old side still resolves or whose new side still does not, after the batch that was

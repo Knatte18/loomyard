@@ -10,8 +10,26 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
+
+// loomRowNumber returns the 1-based position of row in the embedded loom recipe.
+func loomRowNumber(t *testing.T, row string) int {
+	t.Helper()
+	rows, err := loomrecipe.RowNames(shedrun.RecipeLoom)
+	if err != nil {
+		t.Fatalf("loomrecipe.RowNames(loom) error = %v; want nil", err)
+	}
+	for i, name := range rows {
+		if name == row {
+			return i + 1
+		}
+	}
+	t.Fatalf("loom recipe has no row %q", row)
+	return 0
+}
 
 // peersFakeTasks holds one task per status shape the peer set must tell apart.
 func peersFakeTasks() []boardengine.Task {
@@ -20,6 +38,8 @@ func peersFakeTasks() []boardengine.Task {
 		{Slug: "running-peer", Title: "Running peer", Status: status("running · Webster-Write")},
 		{Slug: "awaiting-peer", Title: "Awaiting peer", Status: status("awaiting · PR-Gate")},
 		{Slug: "blocked-peer", Title: "Blocked peer", Status: status("blocked · Plan-Write")},
+		{Slug: "darn-peer", Title: "Darn peer", Status: status("blocked · Darn-Write")},
+		{Slug: "publish-peer", Title: "Publish peer", Status: status("awaiting · Publish")},
 		{Slug: "idle", Title: "Idle", Status: nil},
 		{Slug: "finished", Title: "Finished", Status: status("done")},
 		{Slug: "hand-set", Title: "Hand set", Status: status("someday")},
@@ -29,9 +49,14 @@ func peersFakeTasks() []boardengine.Task {
 
 // peersFakeDeps is a peersDeps over peersFakeTasks whose caller, board and records the test sets.
 func peersFakeDeps(caller string) peersDeps {
+	loomRows, err := loomrecipe.RowNames(shedrun.RecipeLoom)
+	if err != nil {
+		panic(err)
+	}
 	return peersDeps{
-		board:  func() ([]boardengine.Task, bool, error) { return peersFakeTasks(), true, nil },
-		caller: func() (string, error) { return caller, nil },
+		loomRows: loomRows,
+		board:    func() ([]boardengine.Task, bool, error) { return peersFakeTasks(), true, nil },
+		caller:   func() (string, error) { return caller, nil },
 		readPeer: func(slug string) peerLine {
 			if slug == "blocked-peer" {
 				return peerLine{Unreadable: []string{"pair: no worktree", "branch: no origin record", "decision: unreadable"}}
@@ -68,8 +93,24 @@ func TestPeersVerb(t *testing.T) {
 		for _, peer := range raw["peers"].([]any) {
 			slugs = append(slugs, peer.(map[string]any)["slug"].(string))
 		}
-		if want := []string{"running-peer", "awaiting-peer", "blocked-peer"}; !reflect.DeepEqual(slugs, want) {
+		if want := []string{"running-peer", "awaiting-peer", "blocked-peer", "darn-peer", "publish-peer"}; !reflect.DeepEqual(slugs, want) {
 			t.Errorf("peers = %v; want %v", slugs, want)
+		}
+		wantRows := map[string]int{
+			"running-peer":  0,
+			"awaiting-peer": loomRowNumber(t, "PR-Gate"),
+			"blocked-peer":  loomRowNumber(t, "Plan-Write"),
+			"darn-peer":     0,
+			"publish-peer":  loomRowNumber(t, "Publish"),
+		}
+		for _, peer := range raw["peers"].([]any) {
+			line := peer.(map[string]any)
+			if got, want := line["row"], float64(wantRows[line["slug"].(string)]); got != want {
+				t.Errorf("peer %v row = %v; want %v", line["slug"], got, want)
+			}
+		}
+		if got, want := raw["own_row"], float64(loomRowNumber(t, "Plan-Write")); got != want {
+			t.Errorf("own_row = %v; want %v", got, want)
 		}
 		first := raw["peers"].([]any)[0].(map[string]any)
 		if first["title"] != "Running peer" || first["status"] != "running · Webster-Write" || first["parent_branch"] != "main" || first["decision_record"] != true || first["plan"] != false {
@@ -82,6 +123,9 @@ func TestPeersVerb(t *testing.T) {
 			t.Errorf("first peer unreadable = %v; want an empty list", first["unreadable"])
 		}
 		blocked := raw["peers"].([]any)[2].(map[string]any)
+		if blocked["row"] != float64(loomRowNumber(t, "Plan-Write")) {
+			t.Errorf("blocked peer row = %v; want the board's row though its pair is unreadable", blocked["row"])
+		}
 		if want := []any{"pair: no worktree", "branch: no origin record", "decision: unreadable"}; !reflect.DeepEqual(blocked["unreadable"], want) {
 			t.Errorf("blocked peer unreadable = %v; want %v", blocked["unreadable"], want)
 		}
@@ -99,11 +143,14 @@ func TestPeersVerb(t *testing.T) {
 			t.Fatalf("exit = %d, out %s; want 0", code, out.String())
 		}
 		raw := envelope.RequireOK(t, out.String()).Raw
-		if got := len(raw["peers"].([]any)); got != 4 {
-			t.Errorf("peers = %d entries; want the four run-status tasks", got)
+		if got, want := len(raw["peers"].([]any)), len(runStatusTasks(peersFakeTasks())); got != want {
+			t.Errorf("peers = %d entries; want the %d run-status tasks", got, want)
 		}
 		if _, present := raw["parent_commits"]; present {
 			t.Errorf("parent_commits present from the prime; want it absent")
+		}
+		if _, present := raw["own_row"]; present {
+			t.Errorf("own_row present from the prime; want it absent")
 		}
 	})
 

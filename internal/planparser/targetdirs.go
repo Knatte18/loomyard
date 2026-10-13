@@ -86,6 +86,27 @@ func RefFile(plan *Plan, ref string) (string, bool) {
 	return path.Clean(unit), true
 }
 
+// RefScope returns the worktree scope a card ref covers, and false when the ref names no unit.
+// A unit or path with a file extension is that cleaned file and isFile is true, so a changed file is covered only by equality.
+// Any other unit is its package directory with isFile false, a glyph's or `plan:` handle's unit taken through goPackageDir, so an external test package's pseudo-unit names its package directory.
+// A nil plan reads as the default language.
+func RefScope(plan *Plan, ref string) (scope string, isFile bool, ok bool) {
+	if plan == nil {
+		plan = &Plan{}
+	}
+	unit, fromGlyph, ok := refUnit(plan, ref)
+	if !ok || unit == "" {
+		return "", false, false
+	}
+	if hasFileExtension(unit) {
+		return path.Clean(unit), true, true
+	}
+	if fromGlyph {
+		unit = goPackageDir(unit)
+	}
+	return path.Clean(unit), false, true
+}
+
 // targetDir maps one target ref to its directory and whether the ref names Go source.
 // ok is false for a ref that cannot be mapped to a directory.
 func targetDir(plan *Plan, raw string) (dir string, namesGo, ok bool) {

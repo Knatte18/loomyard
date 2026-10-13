@@ -77,7 +77,7 @@ internal/parentdirective: 4
 internal/parentlock: 16
 internal/parentreview: 54
 internal/pattern: 8
-internal/planglyph: 86
+internal/planglyph: 87
 internal/planparser: 93
 internal/preflight: 7
 internal/preflightshed: 8

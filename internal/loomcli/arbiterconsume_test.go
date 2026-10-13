@@ -27,6 +27,13 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 		History:         []shedengine.HistoryEntry{{Producer: "Plan-Write", Outcome: shedengine.Done}, {Producer: "Plan-Bouncer", Outcome: shedengine.Done}},
 	}
 	resumeEnvelope := loomengine.ArbiterEnvelope{Verdict: loomengine.ArbiterVerdictResume, Reason: "safe"}
+	gotoPlanWriteEnvelope := loomengine.ArbiterEnvelope{Verdict: loomengine.ArbiterVerdictResume, Reason: "safe", Goto: blocked}
+	// arbiterVerdictInEffect leaves the run as the verdict's own goto to Plan-Write would.
+	arbiterVerdictInEffect := func(st *shedengine.Status) {
+		st.History = append(st.History, shedengine.HistoryEntry{Producer: "Plan-Write", Outcome: shedengine.OutcomeGoto})
+		st.CurrentProducer = "Plan-Write"
+		st.State = shedengine.StatePaused
+	}
 	tests := []struct {
 		name string
 		// envelope is written as envelope.json unless nil; rawEnvelope overrides it with raw bytes.
@@ -37,10 +44,14 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 		applied     bool
 		// mutate changes the status file after the attempt recorded its stop key and pause conditions.
 		mutate func(st *shedengine.Status)
+		// spawn changes the attempt record before it is written.
+		spawn func(a *loomengine.ArbiterAttempt)
 		// attemptArg drives loomConsumeAttempt with this argument instead of consumeArbiterAttempt.
 		attemptArg  string
 		wantErr     string
 		wantProduce string
+		// wantHistory is the history length asserted on a success row when non-zero.
+		wantHistory int
 		// pauseAfterCall requests a plain pause once the call returned and expects it to survive.
 		pauseAfterCall bool
 	}{
@@ -83,6 +94,49 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 			name:     "resume with a backward target",
 			envelope: &loomengine.ArbiterEnvelope{Verdict: loomengine.ArbiterVerdictResume, Reason: "safe", Goto: blocked}, wantProduce: blocked,
 		},
+		{
+			name: "verdict already in effect is consumed with no second goto", envelope: &gotoPlanWriteEnvelope,
+			mutate: arbiterVerdictInEffect, wantProduce: "Plan-Write", wantHistory: 3,
+		},
+		{
+			name: "a pause the goto cleared does not refuse the in-effect admit", envelope: &gotoPlanWriteEnvelope,
+			spawn:  func(a *loomengine.ArbiterAttempt) { a.PauseBefore = "Plan-Bouncer" },
+			mutate: arbiterVerdictInEffect, wantProduce: "Plan-Write", wantHistory: 3,
+		},
+		{
+			name: "a pause added since the spawn refuses the in-effect admit", envelope: &gotoPlanWriteEnvelope,
+			mutate: func(st *shedengine.Status) {
+				arbiterVerdictInEffect(st)
+				st.PauseAfter = "Plan-Write"
+			},
+			wantErr: "paused since the arbiter spawned",
+		},
+		{
+			name: "an unmoved run whose pause was cleared by hand is refused", envelope: &resumeEnvelope,
+			spawn:   func(a *loomengine.ArbiterAttempt) { a.PauseBefore = "Plan-Bouncer" },
+			wantErr: "paused since the arbiter spawned",
+		},
+		{
+			name: "moved by a goto to another row is refused", envelope: &gotoPlanWriteEnvelope,
+			mutate: func(st *shedengine.Status) {
+				st.History = append(st.History, shedengine.HistoryEntry{Producer: "Plan-Bouncer", Outcome: shedengine.OutcomeGoto})
+				st.State = shedengine.StatePaused
+			},
+			wantErr: "the run moved",
+		},
+		{
+			name: "moved by a goto and then stepped is refused", envelope: &gotoPlanWriteEnvelope,
+			mutate: func(st *shedengine.Status) {
+				st.History = append(st.History,
+					shedengine.HistoryEntry{Producer: "Plan-Write", Outcome: shedengine.OutcomeGoto},
+					shedengine.HistoryEntry{Producer: "Plan-Write", Outcome: shedengine.Stuck},
+					shedengine.HistoryEntry{Producer: "Plan-Write", Outcome: shedengine.OutcomeGoto},
+				)
+				st.CurrentProducer = "Plan-Write"
+				st.State = shedengine.StatePaused
+			},
+			wantErr: "the run moved",
+		},
 		{name: "a plain pause written after the call survives", envelope: &resumeEnvelope, wantProduce: "Plan-Bouncer", pauseAfterCall: true},
 		{name: "attempt number 0", attemptArg: "0", wantErr: "not a positive integer"},
 		{name: "attempt number -1", attemptArg: "-1", wantErr: "not a positive integer"},
@@ -104,6 +158,9 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 				t.Fatal(err)
 			}
 			attempt := loomengine.ArbiterAttempt{Number: 1, StopKey: loomengine.StopKeyOf(baseStatus)}
+			if tt.spawn != nil {
+				tt.spawn(&attempt)
+			}
 			if err := loomengine.WriteArbiterAttempt(attemptDir, attempt); err != nil {
 				t.Fatal(err)
 			}
@@ -182,6 +239,9 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 			}
 			if got.CurrentProducer != tt.wantProduce {
 				t.Errorf("current producer = %q; want %q", got.CurrentProducer, tt.wantProduce)
+			}
+			if tt.wantHistory != 0 && len(got.History) != tt.wantHistory {
+				t.Errorf("history length = %d; want %d", len(got.History), tt.wantHistory)
 			}
 			if tt.pauseAfterCall && !got.PauseRequested {
 				t.Error("pause_requested = false after a pause written following the call; want it set for the next step")

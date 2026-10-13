@@ -141,13 +141,15 @@ type RelaunchRequest struct {
 	Target string
 	// Admit is called with the status the run holds once every check has passed, under the status lock, before anything is written.
 	// An error it returns is returned unchanged from Relaunch and nothing is written.
-	Admit func(cur Status) error
+	// inEffect true reports that the run already stands where Target would move it, so the re-launch performs no goto and writes the status unchanged.
+	Admit func(cur Status) (inEffect bool, err error)
 }
 
 // Relaunch is the status-file mutation behind a driver's re-launch of a halted run.
 // Under the run lock and one hold of the status lock, it refuses a missing file, an invalid state, a done run and a running run, checks a non-empty Target with CheckGotoTarget, then calls Admit.
 // Only after Admit passes does it write: with a Target, it moves the run as Goto does, except that pause_requested, pause_before and pause_after stay as they stand; without one, the status is written unchanged.
 // The checks run before Admit so a refused target never lets Admit write its side effect.
+// When Admit reports the target already in effect, no goto is performed and the status is written unchanged, so the history gains no entry.
 // A held run lock returns ErrShedBusy and Admit is never called.
 // It calls no CommitStatus, as Goto does not.
 func Relaunch(req RelaunchRequest) (Status, error) {
@@ -186,10 +188,11 @@ func Relaunch(req RelaunchRequest) (Status, error) {
 				return Status{}, err
 			}
 		}
-		if err := req.Admit(cur); err != nil {
+		inEffect, err := req.Admit(cur)
+		if err != nil {
 			return Status{}, err
 		}
-		if req.Target != "" {
+		if req.Target != "" && !inEffect {
 			cur.CurrentProducer = req.Target
 			cur.State = StatePaused
 			cur.Error = ""

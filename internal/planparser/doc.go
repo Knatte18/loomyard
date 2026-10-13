@@ -73,6 +73,7 @@
 // (Glyph.UnitPath, used only by validate.go's disk-existence checks), per the
 // glyph-conversion-chokepoint Shared Decision;
 // goPackageDir (targetdirs.go) stands beside Glyph.UnitPath as the external-test unit mapping.
+// CardTargetDirs and RefScope call it.
 //
 // # The root:/// resolution rule
 //

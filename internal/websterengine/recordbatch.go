@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -494,7 +495,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		}
 	}
 
-	postWarnings, err := postBatchChecks(postBatchInputs{
+	deviations, postWarnings, err := postBatchChecks(postBatchInputs{
 		Plan:      deps.Plan,
 		State:     deps.State,
 		Batch:     bs,
@@ -551,6 +552,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 
 	digest := distill(report)
 	digest.Batch = polledID
+	digest.Deviations = deviations
 
 	bs.Digest = &digest
 	bs.CardSHAs = []string{report.HeadSHA}
@@ -782,10 +784,12 @@ func logBindOutcomes(batch int, outcomes []planindex.BindOutcome) {
 	}
 }
 
-// postBatchChecks runs the mechanical pass every terminal batch owes, whichever verb takes it
-// terminal: the card done-checks, the single delta the rest of the pass shares, handle binding, the
-// informational glyph scope guard, and drift detection with its exact-tier auto-repair — plus the
-// plan-staleness re-baseline each of those rewrites requires.
+// postBatchChecks runs the mechanical pass every terminal batch owes, whichever verb takes it terminal.
+// The pass is the card done-checks, the single delta the rest of the pass shares, handle binding, the glyph scope guard, and drift detection with its exact-tier auto-repair.
+// It also runs the plan-staleness re-baseline each of those rewrites requires.
+//
+// The scope guard's findings come back as deviations: the deduplicated, sorted files the batch changed outside its targets.
+// They are informational and never join the warnings; a delta that could not be computed returns none, beside the could-not-run warning.
 //
 // It is one function rather than two because a batch that reached done through recover-batch is
 // exactly as done as one that reached it through record-batch: its Create targets have to resolve,
@@ -798,17 +802,17 @@ func logBindOutcomes(batch int, outcomes []planindex.BindOutcome) {
 // ErrCardNotDone-wrapped error.
 // Drift findings concern later cards, so they become `later card:` warnings recorded once on in.Batch;
 // informational findings ride out on warnings too, which are returned alongside any error so a caller never loses them.
-func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
+func postBatchChecks(in postBatchInputs) (deviations, warnings []string, err error) {
 	// A card's completion has a mechanical verdict: a Create target that still does not resolve,
 	// or a Delete target that still does, blocks — neither is a judgment call. This runs its own
 	// batched Resolve against the post-card tree, distinct from the single delta call below.
 	index, err := in.Geom.index()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	doneFindings, err := index.DoneChecks(in.Plan, in.Cards, in.Geom.WorktreeRoot)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	notDone := &cardNotDoneError{}
 	notDoneCards := map[string]bool{}
@@ -826,7 +830,7 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 			}
 			return bindBatchNotDone
 		}))
-		return nil, notDone
+		return nil, nil, notDone
 	}
 
 	// The batch's single delta call: BindHandles, ScopeGuard and DetectDrift all consume this one planindex.Delta rather than each spawning their own.
@@ -839,7 +843,7 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// one — an unconfirmed Create is exactly a not-done card.
 	delta, deltaErr := index.Delta(in.Geom.WorktreeRoot, in.StartSHA, in.HeadSHA)
 	if deltaErr != nil && !errors.Is(deltaErr, planindex.ErrQuarryUnavailable) {
-		return nil, deltaErr
+		return nil, nil, deltaErr
 	}
 
 	// Binding runs after the done-checks above, so a card that already failed create-not-done is
@@ -862,17 +866,17 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// doc.go for what restamping past the refusals cost.
 	// A restamp failure never masks bindErr: the caller is already returning for that reason.
 	if rebaseErr := restampFingerprint(in.State, in.Geom.PlanDir, in.Geom.WebsterDir); rebaseErr != nil && bindErr == nil {
-		return nil, rebaseErr
+		return nil, nil, rebaseErr
 	}
 	if bindErr != nil {
-		return nil, bindErr
+		return nil, nil, bindErr
 	}
 	var bindBlocking []string
 	for _, f := range bindFindings {
 		bindBlocking = append(bindBlocking, f.Error())
 	}
 	if len(bindBlocking) > 0 {
-		return nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(bindBlocking, "; "))
+		return nil, nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(bindBlocking, "; "))
 	}
 
 	// The informational glyph scope guard: it stays informational and never blocks, and degrades
@@ -882,9 +886,14 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	if deltaErr != nil {
 		warnings = append(warnings, fmt.Sprintf("glyph scope guard could not run for batch %s: %v", in.Label, deltaErr))
 	} else {
+		deviationSet := map[string]bool{}
 		for _, f := range delta.ScopeGuard(in.Cards) {
-			warnings = append(warnings, f.Error())
+			if f.File != "" && !deviationSet[f.File] {
+				deviationSet[f.File] = true
+				deviations = append(deviations, f.File)
+			}
 		}
+		sort.Strings(deviations)
 	}
 
 	// Drift detection runs after binding and before the digest is persisted, on the delta's own
@@ -904,10 +913,10 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// its blocking plan-references-deleted-symbol finding is computed from a different part of the
 	// same delta, so re-baseline here for exactly the reason BindHandles does above.
 	if rebaseErr := restampFingerprint(in.State, in.Geom.PlanDir, in.Geom.WebsterDir); rebaseErr != nil && driftErr == nil {
-		return warnings, rebaseErr
+		return nil, warnings, rebaseErr
 	}
 	if driftErr != nil {
-		return warnings, driftErr
+		return nil, warnings, driftErr
 	}
 	// DetectDrift is the one index call in this sequence that returns a MIXED severity set:
 	// plan-references-deleted-symbol is blocking, while the evidence tier's rename-candidate is
@@ -915,7 +924,7 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// decision is the reviewer's, never the pipeline's. Failing the batch on it would destroy the very
 	// tier it belongs to, since a finding that kills the batch never reaches a reviewer at all.
 	// So the split here is by whose card the finding concerns: a blocking finding is about a later card, so it is recorded as a "later card:" warning rather than failing this batch,
-	// and an informational one rides out on warnings exactly as ScopeGuard's findings already do.
+	// and an informational one rides out on warnings.
 	for _, f := range driftFindings {
 		if f.Severity != planindex.SeverityBlocking {
 			warnings = append(warnings, f.Error())
@@ -933,5 +942,5 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// runs immediately after its own rewriting call rather than past the refusals between them.
 	// The amendment log the exact-tier repair also writes is deliberately excluded from the
 	// fingerprint (see fingerprint's own doc comment), so it needs no re-baseline of its own.
-	return warnings, nil
+	return deviations, warnings, nil
 }

@@ -14,7 +14,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -85,8 +87,10 @@ type arbiterDeps struct {
 	PendingEscalation func(producer string) (briefPath string, pending bool, err error)
 	// PendingCirclingDecision reports, at a Bouncer row, whether a circling decision is recorded and unsettled; false elsewhere.
 	PendingCirclingDecision func(producer string) (bool, error)
-	// PublishFailureTarget returns the target the Publish verify-failure record names; empty when it names none or there is no record.
-	PublishFailureTarget func() (string, error)
+	// VerifyRecord returns the verify-failure record and whether one exists.
+	VerifyRecord func() (record battenshed.ChildPublishFailure, found bool, err error)
+	// Head returns the pair's HEAD commit.
+	Head func() (string, error)
 	// InterruptPolicy returns the interrupt policy of a row.
 	InterruptPolicy func(producer string) string
 	// Prompt holds the prompt inputs that do not vary per attempt; StencilsDir is where the arbiter stencil is read from.
@@ -331,12 +335,18 @@ func (c *arbiterCall) checkEligible() (briefPath string, err error) {
 			return "", arbiterRefusal("the review escalation at %s: %v", c.status.CurrentProducer, err)
 		}
 	}
-	if c.status.State == shedengine.StateBlocked && c.status.CurrentProducer == loomshed.NamePublish {
-		target, err := c.deps.PublishFailureTarget()
+	if c.status.State == shedengine.StateBlocked && (c.status.CurrentProducer == loomshed.NameMergeIn || c.status.CurrentProducer == loomshed.NamePublish) {
+		record, found, err := c.deps.VerifyRecord()
 		if err != nil {
-			return "", arbiterRefusal("the Publish failure record: %v", err)
+			return "", arbiterRefusal("the verify failure record: %v", err)
 		}
-		stop.PublishHaltNamesTarget = target != ""
+		if found && record.Target != "" {
+			head, err := c.deps.Head()
+			if err != nil {
+				return "", arbiterRefusal("the pair's HEAD: %v", err)
+			}
+			stop.VerifyHaltNamesTarget = battenshed.RecordMatchesHalt(record, head, c.status, []string{loomshed.NameMergeIn, loomshed.NamePublish})
+		}
 	}
 	if err := arbiterEligibility(stop); err != nil {
 		return "", err
@@ -562,9 +572,19 @@ func (c *loomCLI) arbiterDepsFor() (arbiterDeps, error) {
 			}
 			return shedadapters.PendingCirclingDecision(runDir)
 		},
-		PublishFailureTarget: func() (string, error) {
-			failure, _, err := verifytree.ReadPublishFailure(verifyPaths)
-			return failure.Target, err
+		VerifyRecord: func() (battenshed.ChildPublishFailure, bool, error) {
+			record, found, err := verifytree.ReadPublishFailure(verifyPaths)
+			if err != nil || !found {
+				return battenshed.ChildPublishFailure{}, false, err
+			}
+			return battenshed.ChildPublishFailure{Row: record.Row, Head: record.Head, Target: record.Target, WrittenAt: record.WrittenAt}, true, nil
+		},
+		Head: func() (string, error) {
+			fab, err := fabricengine.Open(location)
+			if err != nil {
+				return "", err
+			}
+			return fab.HeadSHA()
 		},
 		InterruptPolicy: loomshed.InterruptPolicyFor,
 		Prompt: arbiterPromptInput{

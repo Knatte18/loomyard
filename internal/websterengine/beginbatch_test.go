@@ -424,6 +424,16 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 			want:   []string{"01-json-flag", "done", "head_sha=deadbeef"},
 		},
 		{
+			name: "the predecessor digest names the guard's deviations",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				d := done(1, "json-flag", "deadbeef")
+				d.Digest.Deviations = []string{"a.go", "docs/b.md"}
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{1: d}
+			},
+			number: 2,
+			want:   []string{"scope-guard deviations=a.go,docs/b.md"},
+		},
+		{
 			name: "reordered execution: the predecessor is the batch that ran before it",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				reordered(t, fx)

@@ -65,7 +65,7 @@
 //
 // Relaunch is the status write a driver's re-launch performs, beside Goto.
 // Under the run lock and one hold of the status lock it refuses a missing file, a done run and a running run, checks a non-empty Target with CheckGotoTarget, then calls the caller's Admit, and writes only if every one passed.
-// Its goto differs from Goto's in keeping pause_requested, pause_before and pause_after, so a human's pause survives the re-launch; without a Target it writes the status unchanged.
+// Its goto differs from Goto's in keeping pause_requested, pause_before and pause_after, so a human's pause survives the re-launch; without a Target, or when Admit reports the target already in effect, it writes the status unchanged.
 // The checks run before Admit so a refused target never lets Admit write its side effect.
 //
 // A busy refusal, and goto's refusal of a running run, name the command that halts the live driver at its next producer boundary: the told Shed.PauseWayForward, or `lyx shed pause <run-id> --after <current_producer>` when none is told.

@@ -616,7 +616,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		return nil, err
 	}
 
-	warnings, err = postBatchChecks(postBatchInputs{
+	deviations, warnings, err := postBatchChecks(postBatchInputs{
 		Plan:      deps.Plan,
 		State:     st,
 		Batch:     bs,
@@ -669,6 +669,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		return warnings, bfe
 	}
 
+	digest.Deviations = deviations
 	bs.Digest = digest
 	bs.Terminal = true
 	bs.Status = digest.Status

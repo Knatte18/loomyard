@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -93,7 +94,8 @@ type arbiterFixture struct {
 	escalationBrief  string
 	escalationOpen   bool
 	circlingPending  bool
-	publishTarget    string
+	verifyRecord     *battenshed.ChildPublishFailure
+	head             string
 	settings         loomengine.ArbiterSettings
 	fake             *arbiterFake
 	envelopePath     string
@@ -129,6 +131,16 @@ func newArbiterFixture(t *testing.T, producer string, state shedengine.State) *a
 	return f
 }
 
+// haltAtVerifyRow stops the run at row with a Stuck entry at 11:30 after an entry at 11:00, and leaves a verify record naming a target at HEAD, written at writtenAt.
+func (f *arbiterFixture) haltAtVerifyRow(row, writtenAt string) {
+	f.head = "head-1"
+	f.status.History = []shedengine.HistoryEntry{
+		{Producer: "Plan-Bouncer", Outcome: shedengine.Done, At: "2026-10-12T11:00:00Z"},
+		{Producer: row, Outcome: shedengine.Stuck, At: "2026-10-12T11:30:00Z"},
+	}
+	f.verifyRecord = &battenshed.ChildPublishFailure{Row: row, Head: f.head, Target: "Webster-Burler-Review", WrittenAt: writtenAt}
+}
+
 func (f *arbiterFixture) arbiterDir() string { return filepath.Join(f.root, "arbiter") }
 func (f *arbiterFixture) markerPath() string { return filepath.Join(f.root, "scratch", "arbiter.json") }
 func (f *arbiterFixture) attemptDir(n int) string {
@@ -156,8 +168,14 @@ func (f *arbiterFixture) deps() arbiterDeps {
 			return f.escalationBrief, f.escalationOpen, nil
 		},
 		PendingCirclingDecision: func(string) (bool, error) { return f.circlingPending, nil },
-		PublishFailureTarget:    func() (string, error) { return f.publishTarget, nil },
-		InterruptPolicy:         func(producer string) string { return f.interruptPolicy[producer] },
+		VerifyRecord: func() (battenshed.ChildPublishFailure, bool, error) {
+			if f.verifyRecord == nil {
+				return battenshed.ChildPublishFailure{}, false, nil
+			}
+			return *f.verifyRecord, true, nil
+		},
+		Head:            func() (string, error) { return f.head, nil },
+		InterruptPolicy: func(producer string) string { return f.interruptPolicy[producer] },
 		Prompt: arbiterPromptInput{
 			Slug:               "operator-surface-task",
 			Worktree:           f.root,
@@ -272,8 +290,25 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 		},
 		{
 			name: "Publish halt naming a target refused", producer: loomshed.NamePublish, state: shedengine.StateBlocked,
-			setup:       func(f *arbiterFixture) { f.publishTarget = "Webster-Burler-Review" },
-			wantRefusal: "Publish halt that names a target", wantNoSpawn: true,
+			setup:       func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NamePublish, "2026-10-12T11:15:00Z") },
+			wantRefusal: "verify halt whose failure record names a target", wantNoSpawn: true,
+		},
+		{
+			name: "Merge-In verify halt naming a target refused", producer: loomshed.NameMergeIn, state: shedengine.StateBlocked,
+			setup:       func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NameMergeIn, "2026-10-12T11:15:00Z") },
+			wantRefusal: "verify halt whose failure record names a target", wantNoSpawn: true,
+		},
+		{
+			name: "Merge-In stop of another cause with an earlier verify's record stays eligible", producer: loomshed.NameMergeIn, state: shedengine.StateBlocked,
+			setup: func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NameMergeIn, "2026-10-12T11:00:00Z") },
+		},
+		{
+			name: "Publish stop of another cause with an earlier verify's record is eligible", producer: loomshed.NamePublish, state: shedengine.StateBlocked,
+			setup: func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NamePublish, "2026-10-12T11:00:00Z") },
+		},
+		{
+			name: "blocked stop at another row with a record naming a target stays eligible", producer: "Plan-Write", state: shedengine.StateBlocked,
+			setup: func(f *arbiterFixture) { f.haltAtVerifyRow("Plan-Write", "2026-10-12T11:15:00Z") },
 		},
 		{name: "awaiting with a parent notice but no escalation refused", producer: "PR-Gate", state: shedengine.StateAwaiting, wantRefusal: "no pending review escalation", wantNoSpawn: true},
 		{name: "paused refused", producer: "Plan-Write", state: shedengine.StatePaused, wantRefusal: "a paused run is not a halted stop", wantNoSpawn: true},

@@ -110,7 +110,7 @@
 // It spawns a cold arbiter agent on the `arbiter` model through shuttle, waits for its verdict file and prints the validated verdict.
 // It is a role verb, so the orch's command index leaves it out.
 //
-// A stop is eligible only if the verb's closed list admits it: an error stop of kind `producer` or `bootstrap`, an `interrupted` stop under the `reinvoke` policy or with a transient class, a halted `blocked` stop other than a Publish halt that names a target, and a halted `awaiting` stop whose Bouncer row has a pending escalation.
+// A stop is eligible only if the verb's closed list admits it: an error stop of kind `producer` or `bootstrap`, an `interrupted` stop under the `reinvoke` policy or with a transient class, a halted `blocked` stop other than a Merge-In or Publish verify halt whose own failure record names a target, and a halted `awaiting` stop whose Bouncer row has a pending escalation.
 // Every other stop, a missing status file, an unreadable envelope, `arbiter_max_spawns` of 0 and a spent budget are refused with the hand-back to the run's parent as the way forward.
 //
 // Each spawn is an attempt, numbered from 1 under the run's arbiter directory in `attempt-<N>`.
@@ -127,7 +127,8 @@
 // The printed envelope carries `verdict`, `reason`, `question`, `goto`, `verbs`, `cause`, `attempt`, `attempt_dir` and `verdict_path`, and for a `resume` the `relaunch` line.
 // A `resume` the verb finds unsound reads `hand-on` with cause `precondition`: no circling decision pending at an escalation, no goto target at a `blocked` stop, or a goto target the run's current row does not admit.
 // The verb moves no run itself;
-// `lyx shed step <run-id> --until-stop --arbiter-attempt <N>` performs the verdict's goto under the run and status locks, once per attempt.
+// `lyx shed step <run-id> --until-stop --arbiter-attempt <N>` performs the verdict's goto under the run and status locks, once per attempt;
+// a run already paused at the verdict's goto target with only goto entries since the spawn, the last naming that target, is admitted with no second goto.
 // A pair's session end ends a live arbiter strand with the pair's other strands.
 //
 // The Go driver calls this same path in-process, so eligibility, `arbiter_max_spawns`, the attempts, the applied mark and the deadlines are shared;
@@ -176,7 +177,7 @@
 //
 // A re-run for a stop key an attempt already judged spawns nothing: it returns that attempt's verdict or waits on its live tackler, unless a hand-back record for the key closed it.
 // An applied `resume` whose stop key is unchanged goes to the arbiter.
-// The driver consumes a `resume` through the shed's re-launch, which refuses under the status lock unless the run is still where the tackler found it, and marks the attempt applied in the same hold.
+// The driver consumes a `resume` through the shed's re-launch, which refuses under the status lock unless the run is still where the tackler found it or already stands paused at the verdict's goto target after only goto entries, and marks the attempt applied in the same hold.
 //
 // Tampering is the spawn snapshot of the worktree and a fresh one differing, read only after the stop key proved unchanged:
 // a tackler that changed the code worktree hands back with cause `tampered`, and a run an orch moved meanwhile discards the verdict and acts on the fresh state instead.
@@ -188,9 +189,9 @@
 // An agent in one pair uses them to compare its run with the others without forming another worktree's path itself.
 //
 // The peer set is every board task whose status is a run status, whatever the run's state, with the caller's own slug left out.
-// Each peer line carries `slug`, `title`, `status`, `parent_branch`, `changed_paths` (the committed paths between the peer's merge base with its parent branch and its head), `decision_record` and `plan` (whether the peer holds them) and `unreadable`.
+// Each peer line carries `slug`, `title`, `status`, `row` (the 1-based position of the status's producer in the loom recipe the binary embeds, 0 when it names no row), `parent_branch`, `changed_paths` (the committed paths between the peer's merge base with its parent branch and its head), `decision_record` and `plan` (whether the peer holds them) and `unreadable`.
 // A peer whose pair, origin record, branch or records cannot be read is listed with that reason in `unreadable`, never dropped and never an error.
-// From a task pair the list also carries `parent_commits`, the commits on the pair's parent branch since the pair forked, as short SHA and subject, newest first; the prime has none.
+// From a task pair the list also carries `own_row`, the caller's own position by the same rule, 0 when the caller has no board task, and `parent_commits`, the commits on the pair's parent branch since the pair forked, as short SHA and subject, newest first; the prime has none.
 // Both verbs refuse in a hub with no board, and `show` refuses an unknown slug, a task holding no run status, the caller's own slug, an unknown record name and a record the peer lacks, each naming its way forward.
 //
 // The verbs write nothing and read only the board, the peers' two records and git history through `internal/fabricengine`.
