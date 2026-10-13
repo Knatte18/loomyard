@@ -1,4 +1,4 @@
-// pane_test.go pins the pane loop's redraw, fit, cut, report, back-off and resize behavior against fake size and wait seams, ReportFromEnv's gating, and FormatMinutes' format boundaries.
+// pane_test.go pins the pane loop's redraw, uncut drawing, binary check, back-off and resize behavior against fake size and wait seams, and FormatMinutes' format boundaries.
 
 package statuspane
 
@@ -29,7 +29,7 @@ func rendered(lines ...string) string {
 
 func frameOf(lines ...string) Frame { return Frame{Lines: lines} }
 
-func TestPane_RunAndReportFromEnv(t *testing.T) {
+func TestPane_Run(t *testing.T) {
 	t.Parallel()
 
 	const cols, rows = 80, 24
@@ -40,24 +40,22 @@ func TestPane_RunAndReportFromEnv(t *testing.T) {
 		}
 		return steps
 	}
-	fitTo := func(rows int) []string { return []string{"l1", "l2", "+3 not shown"}[:rows] }
 
 	tests := []struct {
 		name        string
 		steps       []paneStep
-		failReports int
-		noReport    bool
 		wantRedraws int
 		wantWaits   []time.Duration
-		wantReports []int
-		wantLast    string
+		// wantChecks is the number of Check calls: one per poll.
+		wantChecks int
+		wantLast   string
 	}{
 		{
 			name:        "UnchangedFrameRedrawsOnceAndTheWaitsDoubleToTheCeiling",
 			steps:       same(6, frameOf("a", "b")),
 			wantRedraws: 1,
 			wantWaits:   []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 8 * time.Second, 8 * time.Second},
-			wantReports: []int{2},
+			wantChecks:  6,
 			wantLast:    rendered("a", "b"),
 		},
 		{
@@ -65,16 +63,16 @@ func TestPane_RunAndReportFromEnv(t *testing.T) {
 			steps:       append(same(2, frameOf("a", "b")), same(1, frameOf("a", "b", "c"))...),
 			wantRedraws: 2,
 			wantWaits:   []time.Duration{time.Second, 2 * time.Second, time.Second},
-			wantReports: []int{2, 3},
+			wantChecks:  3,
 			wantLast:    rendered("a", "b", "c"),
 		},
 		{
-			name:        "FrameTallerThanTheTermRowsPrintsFitRowsAndNeverMore",
-			steps:       []paneStep{{frame: Frame{Lines: []string{"l1", "l2", "l3", "l4", "l5"}, Fit: fitTo}, cols: cols, rows: 3}},
+			name:        "FrameTallerThanTheTermRowsIsDrawnWhole",
+			steps:       []paneStep{{frame: frameOf("l1", "l2", "l3", "l4", "l5"), cols: cols, rows: 3}},
 			wantRedraws: 1,
 			wantWaits:   []time.Duration{time.Second},
-			wantReports: []int{5},
-			wantLast:    rendered("l1", "l2", "+3 not shown"),
+			wantChecks:  1,
+			wantLast:    rendered("l1", "l2", "l3", "l4", "l5"),
 		},
 		{
 			name: "SizeChangeAloneRedraws",
@@ -84,7 +82,7 @@ func TestPane_RunAndReportFromEnv(t *testing.T) {
 			},
 			wantRedraws: 2,
 			wantWaits:   []time.Duration{time.Second, time.Second},
-			wantReports: []int{1},
+			wantChecks:  2,
 			wantLast:    rendered("a"),
 		},
 		{
@@ -95,41 +93,24 @@ func TestPane_RunAndReportFromEnv(t *testing.T) {
 			),
 			wantRedraws: 2,
 			wantWaits:   []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, time.Second},
-			wantReports: []int{2},
+			wantChecks:  5,
 			wantLast:    rendered("a", "b"),
 		},
 		{
-			name:        "LineWiderThanTheColumnsIsCut",
+			name:        "LineWiderThanTheColumnsIsDrawnUncut",
 			steps:       []paneStep{{frame: frameOf("abcdefghij"), cols: 4, rows: rows}},
 			wantRedraws: 1,
 			wantWaits:   []time.Duration{time.Second},
-			wantReports: []int{1},
-			wantLast:    rendered("abcd"),
+			wantChecks:  1,
+			wantLast:    rendered("abcdefghij"),
 		},
 		{
 			name:        "FailedSizeKeepsEveryLineUncut",
-			steps:       []paneStep{{frame: Frame{Lines: []string{"l1", "l2", "l3", "l4", "l5"}, Fit: fitTo}, sizeErr: true}},
+			steps:       []paneStep{{frame: frameOf("l1", "l2", "l3", "l4", "l5"), sizeErr: true}},
 			wantRedraws: 1,
 			wantWaits:   []time.Duration{time.Second},
-			wantReports: []int{5},
+			wantChecks:  1,
 			wantLast:    rendered("l1", "l2", "l3", "l4", "l5"),
-		},
-		{
-			name:        "FailedReportIsRetriedAtTheNextPollOnly",
-			steps:       same(3, frameOf("a", "b")),
-			failReports: 1,
-			wantRedraws: 1,
-			wantWaits:   []time.Duration{time.Second, 2 * time.Second, 4 * time.Second},
-			wantReports: []int{2, 2},
-			wantLast:    rendered("a", "b"),
-		},
-		{
-			name:        "NilReportReportsNothing",
-			steps:       same(2, frameOf("a")),
-			noReport:    true,
-			wantRedraws: 1,
-			wantWaits:   []time.Duration{time.Second, 2 * time.Second},
-			wantLast:    rendered("a"),
 		},
 	}
 	for _, tt := range tests {
@@ -140,10 +121,10 @@ func TestPane_RunAndReportFromEnv(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			var (
-				out     bytes.Buffer
-				polls   int
-				waits   []time.Duration
-				reports []int
+				out    bytes.Buffer
+				polls  int
+				checks int
+				waits  []time.Duration
 			)
 			resized := make(chan struct{}, 1)
 			pane := Pane{
@@ -154,6 +135,12 @@ func TestPane_RunAndReportFromEnv(t *testing.T) {
 						return 0, 0, errors.New("no terminal")
 					}
 					return step.cols, step.rows, nil
+				},
+				Check: func() {
+					checks++
+					if checks != polls+1 {
+						t.Errorf("Check call %d ran with %d polls done, want it before poll %d", checks, polls, checks)
+					}
 				},
 				After: func(d time.Duration) <-chan time.Time {
 					waits = append(waits, d)
@@ -169,15 +156,6 @@ func TestPane_RunAndReportFromEnv(t *testing.T) {
 					return fired
 				},
 				Resized: resized,
-			}
-			if !tt.noReport {
-				pane.Report = func(rows int) error {
-					reports = append(reports, rows)
-					if len(reports) <= tt.failReports {
-						return errors.New("pane not recorded yet")
-					}
-					return nil
-				}
 			}
 
 			pane.Run(ctx, func() Frame {
@@ -198,51 +176,11 @@ func TestPane_RunAndReportFromEnv(t *testing.T) {
 			if !slices.Equal(waits, tt.wantWaits) {
 				t.Errorf("waits = %v, want %v", waits, tt.wantWaits)
 			}
-			if !slices.Equal(reports, tt.wantReports) {
-				t.Errorf("reports = %v, want %v", reports, tt.wantReports)
+			if checks != tt.wantChecks {
+				t.Errorf("Check calls = %d, want %d", checks, tt.wantChecks)
 			}
 		})
 	}
-
-	t.Run("ReportFromEnvCallsSetWithTheStrandAndPaneOnlyWhenBothAreSet", func(t *testing.T) {
-		t.Parallel()
-
-		type call struct {
-			name, paneID string
-			rows         int
-		}
-		tests := []struct {
-			name string
-			env  map[string]string
-			want *call
-		}{
-			{"BothSet", map[string]string{"LYX_STRAND_NAME": "ly:slug:runs", "TMUX_PANE": "%7"}, &call{"ly:slug:runs", "%7", 3}},
-			{"NoStrandName", map[string]string{"TMUX_PANE": "%7"}, nil},
-			{"NoPane", map[string]string{"LYX_STRAND_NAME": "ly:slug:runs"}, nil},
-		}
-		for _, tt := range tests {
-			var got *call
-			report := ReportFromEnv(func(key string) string { return tt.env[key] }, func(name, paneID string, rows int) error {
-				got = &call{name, paneID, rows}
-				return nil
-			})
-			if tt.want == nil {
-				if report != nil {
-					t.Errorf("%s: ReportFromEnv returned a func, want nil", tt.name)
-				}
-				continue
-			}
-			if report == nil {
-				t.Fatalf("%s: ReportFromEnv returned nil, want a func", tt.name)
-			}
-			if err := report(3); err != nil {
-				t.Fatalf("%s: report: %v", tt.name, err)
-			}
-			if *got != *tt.want {
-				t.Errorf("%s: set called with %+v, want %+v", tt.name, *got, *tt.want)
-			}
-		}
-	})
 }
 
 func TestFormatMinutes(t *testing.T) {

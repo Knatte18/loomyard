@@ -13,12 +13,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -58,17 +55,19 @@ type checklistVisits struct {
 }
 
 // checklistCmd builds the hidden `checklist` subcommand: the loom-status strand's pane process.
-// It reads files only; its one write is the content-rows report, which reed confines to the strand that runs it.
+// It reads files only.
 func (c *loomCLI) checklistCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "checklist",
 		Short:       "draw this worktree's gate checklist in a pane (run by the loom-status strand)",
 		Hidden:      true,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
-		Long: `checklist draws the run's state line and one line per recipe row with its
-box, the time spent in it and its visit count, redrawing in place until it is
-signalled. The loom-status strand runs it, and it reports its line count to
-reed so the strand is sized to it. It reads files only.`,
+		Long: `checklist draws the run's frame, redrawing in place until it is signalled:
+a detail block per visited row, one line per recipe row with its box, the time
+spent in it and its visit count, the state line, and last the wait line with
+the full reason the run waits. Every line is drawn uncut, so a short terminal
+scrolls the detail away and keeps the row list and the wait line in view. The
+loom-status strand runs it. It reads files only.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -86,22 +85,9 @@ reed so the strand is sized to it. It reads files only.`,
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
-			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-				return nil
-			}
-			reedGeom, err := hubgeom.ReedGeometry(location)
-			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-				return nil
-			}
-			engine := reedengine.New(reedCfg, reedGeom)
-
 			pane := statuspane.Pane{
 				Out:     out,
 				Size:    statuspane.TerminalSize(os.Stdout),
-				Report:  statuspane.ReportFromEnv(os.Getenv, engine.SetContentRows),
 				Resized: statuspane.NotifyResize(cmd.Context()),
 			}
 			pane.Run(cmd.Context(), c.checklistPoll(location))

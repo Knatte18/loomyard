@@ -1,4 +1,4 @@
-// pane.go is the redraw-in-place pane loop the status panes share, the terminal-size and report seams it takes, and the panes' minute-resolution time format.
+// pane.go is the redraw-in-place pane loop the status panes share, the terminal-size and binary-check seams it takes, and the panes' minute-resolution time format.
 
 package statuspane
 
@@ -12,8 +12,7 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/Knatte18/loomyard/internal/agentname"
-	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 )
 
 const (
@@ -30,16 +29,10 @@ const (
 	eraseHistory = "\x1b[3J"
 )
 
-// tmuxPaneEnv is the environment variable tmux exports to a pane's process with the pane's id.
-const tmuxPaneEnv = "TMUX_PANE"
-
 // Frame is one poll's result.
 type Frame struct {
 	// Lines holds every content line.
 	Lines []string
-	// Fit renders Lines into at most rows rows, its last row a summary line naming how many are not shown.
-	// A nil Fit cuts Lines to the first rows.
-	Fit func(rows int) []string
 }
 
 // Pane is a status pane's output and the seams it reads, so a test drives it without a terminal or a clock.
@@ -48,8 +41,8 @@ type Pane struct {
 	Out io.Writer
 	// Size reads the terminal's columns and rows.
 	Size func() (cols, rows int, err error)
-	// Report tells reed the pane's content line count; nil reports nothing.
-	Report func(rows int) error
+	// Check runs once per poll, before the frame is read; nil means a selfexec.Watcher built when Run starts.
+	Check func()
 	// After returns a channel that fires once the wait between polls has passed; nil waits with time.After.
 	After func(time.Duration) <-chan time.Time
 	// Resized receives a value per terminal resize and ends the wait between polls at once; nil means no resize signal.
@@ -57,8 +50,9 @@ type Pane struct {
 }
 
 // Run polls until ctx ends and redraws the pane in place whenever its text or size changes.
-// Each poll it reports the line count to Report when it differs from the count last reported successfully; a failed report is logged at Debug and retried at the next poll.
-// A frame taller than the terminal prints Fit's rows, a failed Size keeps every line, and each line is cut to the terminal's columns so none wraps.
+// Every line of the frame is drawn uncut: a frame taller than the terminal scrolls its first lines into the history, and a line wider than the terminal wraps.
+// A size change alone redraws, so a wrapped frame is redrawn for the new width.
+// Each poll calls Check before reading the frame, on the poll's own wait and adding no wake of its own.
 // The wait between polls starts at one second, doubles while a poll changes nothing up to an eight-second ceiling, and returns to one second on a redraw.
 // A value on Resized ends the wait at once, so the next poll redraws for the new size without waiting out the back-off.
 // It reads and writes nothing but its seams.
@@ -67,11 +61,14 @@ func (p Pane) Run(ctx context.Context, poll func() Frame) {
 	if after == nil {
 		after = time.After
 	}
+	check := p.Check
+	if check == nil {
+		check = selfexec.New().Check
+	}
 
 	fmt.Fprint(p.Out, hideCursor)
 
 	var (
-		reported = -1
 		drawn    bool
 		lastText string
 		lastCols int
@@ -79,27 +76,19 @@ func (p Pane) Run(ctx context.Context, poll func() Frame) {
 		wait     = initialWait
 	)
 	for ctx.Err() == nil {
+		check()
 		frame := poll()
-
-		if p.Report != nil && len(frame.Lines) != reported {
-			if err := p.Report(len(frame.Lines)); err != nil {
-				logger.Debug("statuspane: reporting the line count failed, retrying at the next poll", "rows", len(frame.Lines), "err", err)
-			} else {
-				reported = len(frame.Lines)
-			}
-		}
 
 		cols, rows, err := p.Size()
 		if err != nil {
 			cols, rows = 0, 0
 		}
-		lines := fitLines(frame, rows, cols)
 
-		text := strings.Join(lines, "\n")
+		text := strings.Join(frame.Lines, "\n")
 		if drawn && text == lastText && cols == lastCols && rows == lastRows {
 			wait = min(wait*2, maxWait)
 		} else {
-			p.redraw(lines)
+			p.redraw(frame.Lines)
 			drawn, lastText, lastCols, lastRows = true, text, cols, rows
 			wait = initialWait
 		}
@@ -109,28 +98,6 @@ func (p Pane) Run(ctx context.Context, poll func() Frame) {
 		case <-p.Resized:
 		}
 	}
-}
-
-// fitLines returns the lines to print for a terminal of rows by cols; a non-positive rows or cols means that dimension is unknown and unbounded.
-func fitLines(frame Frame, rows, cols int) []string {
-	lines := frame.Lines
-	if rows > 0 && len(lines) > rows {
-		if frame.Fit != nil {
-			lines = frame.Fit(rows)
-		}
-		lines = lines[:min(len(lines), rows)]
-	}
-	if cols <= 0 {
-		return lines
-	}
-	cut := make([]string, len(lines))
-	for i, line := range lines {
-		if runes := []rune(line); len(runes) > cols {
-			line = string(runes[:cols])
-		}
-		cut[i] = line
-	}
-	return cut
 }
 
 // redraw writes lines over the pane from its home position after erasing the screen and the scrollback, so no line of an earlier, longer or wider frame survives on screen or in the history.
@@ -143,19 +110,6 @@ func (p Pane) redraw(lines []string) {
 func TerminalSize(f *os.File) func() (cols, rows int, err error) {
 	return func() (int, int, error) {
 		return term.GetSize(int(f.Fd()))
-	}
-}
-
-// ReportFromEnv returns the report func that tells set the strand name and pane id getenv gives for agentname.StrandNameEnv and TMUX_PANE.
-// It returns nil when either is empty, so a pane run by hand outside a strand reports nothing.
-func ReportFromEnv(getenv func(string) string, set func(name, paneID string, rows int) error) func(rows int) error {
-	name := getenv(agentname.StrandNameEnv)
-	paneID := getenv(tmuxPaneEnv)
-	if name == "" || paneID == "" {
-		return nil
-	}
-	return func(rows int) error {
-		return set(name, paneID, rows)
 	}
 }
 
