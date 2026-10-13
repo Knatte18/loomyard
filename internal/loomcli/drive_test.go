@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -173,6 +174,11 @@ func TestGoDriver_Settle(t *testing.T) {
 		openApplied    bool
 		restartAttempt bool
 
+		// The hand-over seams: whether the last step ran another build than the on-disk one, the uncommitted paths, and what the successor spawn fails with.
+		buildChanged bool
+		dirty        []string
+		spawnErr     error
+
 		wantCalls    []string
 		wantActions  []string
 		wantSettlers []string
@@ -182,6 +188,10 @@ func TestGoDriver_Settle(t *testing.T) {
 		wantParked    bool
 		wantNotifies  int
 		wantHandBack  bool
+		// wantOrder, when set, is the order of the parent notice, the lock release and the successor spawn.
+		wantOrder []string
+		// wantBuild, when set, is the build the last settle record names.
+		wantBuild string
 	}{
 		{name: "done commits and exits with no park", steps: []func(*testing.T) []byte{done}, wantCalls: []string{"step", "commit-records"}},
 		{
@@ -365,6 +375,38 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantReports: 2, wantParked: true, wantHandBack: true,
 		},
 		{
+			name:  "a changed build on a clean tree records the hand-over, parks, notifies before releasing the lock, spawns and exits",
+			steps: []func(*testing.T) []byte{blocked}, buildChanged: true, orchRecorded: true,
+			wantCalls: []string{"step", "release", "spawn"}, wantOrder: []string{"notify", "release", "spawn"},
+			wantActions: []string{loomengine.SettleHandOver}, wantSettlers: []string{loomengine.SettlerGoRule}, wantBuild: "newbuild1234",
+			wantReports: 1, wantParked: true, wantNotifies: 1,
+		},
+		{
+			name:  "the same stop key and build a second time does not hand over again and goes to the tackler",
+			steps: []func(*testing.T) []byte{blocked}, buildChanged: true, tacklerReturns: tacklerOutcome(loomengine.TacklerVerdictHandBack, 1),
+			settleSeed:  []loomengine.SettleRecord{{StopKey: blockedKey, Settler: loomengine.SettlerGoRule, Action: loomengine.SettleHandOver, Build: "newbuild1234"}},
+			wantCalls:   []string{"step", "tackler"},
+			wantActions: []string{loomengine.SettleHandOver, loomengine.SettleSpawn, loomengine.SettleHandBack},
+			wantReports: 2, wantParked: true, wantHandBack: true,
+		},
+		{
+			name: "a dirty tree hands back naming its paths and spawns nothing", steps: []func(*testing.T) []byte{blocked}, buildChanged: true, dirty: []string{"a.go", "b.go"},
+			wantCalls: []string{"step"}, wantActions: []string{loomengine.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true,
+			wantReportHas: map[int][]string{1: {"a.go, b.go"}},
+		},
+		{
+			name: "a failing successor spawn leaves the report and the park marker on disk", steps: []func(*testing.T) []byte{blocked}, buildChanged: true, spawnErr: errors.New("no such binary"),
+			wantCalls: []string{"step", "release", "spawn"}, wantActions: []string{loomengine.SettleHandOver}, wantBuild: "newbuild1234", wantReports: 1, wantParked: true,
+		},
+		{
+			name: "an awaiting stop is not binary-eligible and takes its usual hand-back", steps: []func(*testing.T) []byte{awaiting("")}, buildChanged: true,
+			wantCalls: []string{"step"}, wantActions: []string{loomengine.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true,
+		},
+		{
+			name: "a pause covering the slug holds the hand-over until the hold returns", steps: []func(*testing.T) []byte{blocked}, buildChanged: true, pauseCovered: []bool{true},
+			wantCalls: []string{"step", "hold", "release", "spawn"}, wantActions: []string{loomengine.SettleHandOver}, wantBuild: "newbuild1234", wantReports: 1, wantParked: true,
+		},
+		{
 			name: "interrupted under reinvoke re-steps and writes restep records", steps: []func(*testing.T) []byte{interrupted, interrupted, done},
 			wantCalls: []string{"step", "step", "step", "commit-records"}, wantActions: []string{loomengine.SettleRestep, loomengine.SettleRestep},
 		},
@@ -403,7 +445,7 @@ func TestGoDriver_Settle(t *testing.T) {
 				}
 			}
 			markerPath := filepath.Join(root, "scratch", "driver-parked")
-			var calls []string
+			var calls, order []string
 			var notified int
 			stepsTaken := 0
 			statusReads := 0
@@ -500,8 +542,12 @@ func TestGoDriver_Settle(t *testing.T) {
 						Commit:      func(string) error { return nil },
 						Push:        func() error { return nil },
 					},
-					MarkerPath:   markerPath,
-					Notify:       func(string) error { notified++; return nil },
+					MarkerPath: markerPath,
+					Notify: func(string) error {
+						notified++
+						order = append(order, "notify")
+						return nil
+					},
 					OrchRecorded: func() (bool, error) { return tt.orchRecorded, nil },
 					Now:          func() time.Time { return driveTestEpoch },
 				},
@@ -539,6 +585,19 @@ func TestGoDriver_Settle(t *testing.T) {
 						return "", "", false, nil
 					}
 					return openTackler, tt.openArbiter, tt.openApplied, nil
+				},
+				OnDiskBuild:  func() (buildvcs.Identity, error) { return buildvcs.Identity{Revision: "newbuild1234567"}, nil },
+				BuildChanged: func(buildvcs.Identity) bool { return tt.buildChanged },
+				DirtyPaths:   func() ([]string, error) { return tt.dirty, nil },
+				ReleaseLock: func() error {
+					calls = append(calls, "release")
+					order = append(order, "release")
+					return nil
+				},
+				SpawnSuccessor: func() error {
+					calls = append(calls, "spawn")
+					order = append(order, "spawn")
+					return tt.spawnErr
 				},
 				Now: func() time.Time { return driveTestEpoch },
 			}
@@ -580,6 +639,14 @@ func TestGoDriver_Settle(t *testing.T) {
 					if !strings.Contains(string(report), substring) {
 						t.Errorf("stop report %d = %q; want it to hold %q", number, report, substring)
 					}
+				}
+			}
+			if tt.wantOrder != nil && !slices.Equal(order, tt.wantOrder) {
+				t.Errorf("notice, release and spawn order = %q; want %q", order, tt.wantOrder)
+			}
+			if tt.wantBuild != "" {
+				if last := records[len(records)-1]; last.Build != tt.wantBuild {
+					t.Errorf("last settle record build = %q; want %q", last.Build, tt.wantBuild)
 				}
 			}
 			if tt.wantHandBack {

@@ -13,9 +13,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -75,6 +77,16 @@ type goDriverDeps struct {
 	OpenAttempts func(key loomengine.ArbiterStopKey) (tackler, arbiter string, tacklerApplied bool, err error)
 	// AttemptSnapshot reads the worktree snapshot the tackler attempt in tacklerDir recorded at spawn.
 	AttemptSnapshot func(tacklerDir string) (loomengine.WorktreeSnapshot, error)
+	// OnDiskBuild reads the build identity of the lyx executable now on disk.
+	OnDiskBuild func() (buildvcs.Identity, error)
+	// BuildChanged reports whether the last step ran a known build other than onDisk.
+	BuildChanged func(onDisk buildvcs.Identity) bool
+	// DirtyPaths lists the task pair's uncommitted or untracked paths outside the run's own records directories.
+	DirtyPaths func() ([]string, error)
+	// ReleaseLock releases the driver lock.
+	ReleaseLock func() error
+	// SpawnSuccessor starts a detached driver of the on-disk build.
+	SpawnSuccessor func() error
 	// Now is the clock.
 	Now func() time.Time
 }
@@ -217,10 +229,60 @@ func (d *goDriver) settleStop(ctx context.Context, stop driveStop) (attempt stri
 			return "", false, nil
 		case driveActionHandBack, driveActionRelayHandBack:
 			return "", true, d.handBackStop(stop, decision, nil)
+		case driveActionHandOver:
+			return "", true, d.handOver(ctx, stop)
 		}
-		// The tackler, the arbiter and the hand-over join the loop in later steps; until then they hand back.
-		return "", true, d.handBackStop(stop, decision, nil)
+		panic(fmt.Sprintf("loom: drive: the rule table returned the unhandled action %q", decision.Action))
 	}
+}
+
+// handedOver reports whether the settle records hold a hand-over for key under the build labelled build.
+func handedOver(records []loomengine.SettleRecord, key loomengine.ArbiterStopKey, build string) bool {
+	for _, record := range records {
+		if record.StopKey == key && record.Action == loomengine.SettleHandOver && record.Build == build {
+			return true
+		}
+	}
+	return false
+}
+
+// handOver hands the run to a fresh driver of the on-disk build at a binary-eligible stop whose last step ran another build, holding any pause first.
+// A tree with uncommitted paths outside the run's records hands back with the paths in the stop report and spawns nothing.
+// Otherwise it records the hand-over, leaves the stop report, the park marker and the unwatched parent's notice, releases the driver lock and spawns the successor.
+// A successor that fails to spawn leaves the parked run and its report for the parent, or a watching batten, to pick up.
+func (d *goDriver) handOver(ctx context.Context, stop driveStop) error {
+	if err := d.holdPause(ctx); err != nil {
+		return err
+	}
+	dirty, err := d.deps.DirtyPaths()
+	if err != nil {
+		return d.handBackAs(stop, driveHandBack{Rules: []string{"reading the uncommitted paths: " + err.Error()}}, "the hand-over could not check the tree")
+	}
+	if len(dirty) > 0 {
+		return d.handBackAs(stop, driveHandBack{Rules: []string{"the on-disk build changed but the tree has uncommitted paths outside the run's records, so no successor is spawned: " + strings.Join(dirty, ", ")}}, "the tree is not clean for a hand-over")
+	}
+	onDisk, err := d.deps.OnDiskBuild()
+	if err != nil {
+		return d.handBackAs(stop, driveHandBack{Rules: []string{"reading the on-disk build: " + err.Error()}}, "the on-disk build could not be read")
+	}
+
+	build := onDisk.Label()
+	record := loomengine.SettleRecord{StopKey: stop.key(), Settler: loomengine.SettlerGoRule, Action: loomengine.SettleHandOver, Outcome: "handed over to a fresh driver", At: d.deps.Now(), Build: build}
+	if err := loomengine.AppendSettleRecord(d.deps.SettlePath, record); err != nil {
+		return d.handBackAs(stop, driveHandBack{Rules: []string{"recording the hand-over: " + err.Error()}}, "the hand-over could not be recorded")
+	}
+	if err := d.handBack(stop, driveHandBack{Rules: []string{"handing the run over to a fresh driver of the on-disk build " + build}}); err != nil {
+		return err
+	}
+	if err := d.deps.ReleaseLock(); err != nil {
+		return fmt.Errorf("loom: drive: release the driver lock for the hand-over: %w", err)
+	}
+	if err := d.deps.SpawnSuccessor(); err != nil {
+		logger.Warn("loom: drive: spawning the successor driver failed; the run stays parked", "run", d.deps.RunID, "build", build, "error", err)
+		return nil
+	}
+	logger.Info("loom: drive: handed the run over to a fresh driver", "run", d.deps.RunID, "build", build)
+	return nil
 }
 
 // takePendingAttempt returns the arbiter attempt the next step consumes, and clears it.
@@ -500,6 +562,16 @@ func (d *goDriver) facts(stop driveStop) (driveFacts, error) {
 	facts.ResumeReturned = applied
 	watch, alive := d.deps.Watch()
 	facts.Watched = alive
+
+	if binaryEligible(stop) {
+		onDisk, err := d.deps.OnDiskBuild()
+		if err != nil {
+			logger.Warn("loom: drive: the on-disk build is unreadable; reading it as unchanged", "run", d.deps.RunID, "error", err)
+		} else {
+			facts.BuildChanged = d.deps.BuildChanged(onDisk)
+			facts.HandedOver = handedOver(records, key, onDisk.Label())
+		}
+	}
 
 	if key.State == string(shedengine.StateBlocked) {
 		record, found, err := d.deps.VerifyRecord()
