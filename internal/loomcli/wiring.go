@@ -841,7 +841,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		RowMaxBounces:            perchMaxBounces(loomCfg),
 		RowAutoAccept:            perchAutoAccept(loomCfg),
 		RowHardMaxBounces:        perchHardMaxBounces(loomCfg),
-		DiscussionSeats:         loomCfg.DiscussionProducer == loomengine.DiscussionProducerSeats,
+		DiscussionSeats:          loomCfg.DiscussionProducer == loomengine.DiscussionProducerSeats,
 		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
 
 		ReviewModels:  reviewSettings.Models,
