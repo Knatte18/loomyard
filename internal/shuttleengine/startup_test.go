@@ -150,6 +150,7 @@ func TestStartup_TrustPromptThenReady(t *testing.T) {
 }
 
 // TestStartup_NeedsSessionStartLine covers the startup criterion of a launch that records session starts: a ready pane starts the run only once the events file also holds a session-start line.
+// A session start followed by a turn start starts the run whatever the pane shows, and a turn start before the session start, or on a launch that does not record, does not.
 // A missing line and an unreadable events file each time the start out naming themselves and the events path, a gate on screen is dismissed whatever the file holds, and a launch that does not declare the recording starts on the pane alone.
 func TestStartup_NeedsSessionStartLine(t *testing.T) {
 	tests := []struct {
@@ -178,8 +179,12 @@ func TestStartup_NeedsSessionStartLine(t *testing.T) {
 		},
 		{name: "a session-start line and a ready pane start the run", records: true, script: []StartupState{StartupReady}, events: "SESSIONSTART:startup\n", wantStarted: true},
 		{name: "a gate on screen is dismissed beside a session-start line, then the ready pane starts the run", records: true, script: []StartupState{StartupTrustPrompt, StartupReady}, events: "SESSIONSTART:startup\n", wantStarted: true, wantEnter: true},
-		{name: "a session-start line of an earlier launch with a pane not yet ready is not started", records: true, script: []StartupState{StartupPending}, events: "SESSIONSTART:startup\n", wantNoErr: "session-start line"},
+		{name: "a session-start line of an earlier launch with a pane not yet ready is not started", records: true, script: []StartupState{StartupPending}, events: "SESSIONSTART:startup\n", wantErr: `outcome "died"`, wantNoErr: "session-start line"},
 		{name: "a launch that does not record session starts starts on the pane alone", script: []StartupState{StartupReady}, wantStarted: true},
+		{name: "a session start then a turn start start the run while every capture is blank", records: true, script: []StartupState{StartupPending}, events: "SESSIONSTART:startup\nSTART\n", wantStarted: true},
+		{name: "a trust gate beside a session start and no turn start is dismissed and not ready", records: true, script: []StartupState{StartupTrustPrompt}, events: "SESSIONSTART:startup\n", wantEnter: true, wantErr: `outcome "died"`},
+		{name: "a turn start before any session start does not start the run", records: true, script: []StartupState{StartupPending}, events: "START\nSESSIONSTART:startup\n", wantErr: `outcome "died"`},
+		{name: "a launch that does not record session starts ignores a turn start", script: []StartupState{StartupPending}, events: "SESSIONSTART:startup\nSTART\n", wantErr: `outcome "died"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

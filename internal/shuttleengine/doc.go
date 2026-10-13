@@ -395,6 +395,9 @@
 // Startup-gate dismissals are at least one dismissal gap apart.
 // A launch that declares Launch.RecordsSessionStarts, recorded as RunState.RecordsSessionStarts, starts only once the events file holds a session-start line of any source beside the ready pane;
 // until both hold the run stays not started and the startup error names the missing line or the unreadable events file, while gate detection and dismissal run as for any run.
+// Such a launch is also started once its events file holds a session start followed by a turn start, checked before the pane capture and in start's probe only,
+// so a blank or collapsed pane no longer holds back a provider that is past every gate and working;
+// Wait's probe of a not-yet-started run keeps the capture rule, since that events file may hold an earlier incarnation's lines.
 // An engine that leaves the flag false, and a record an older binary wrote, start on the pane alone.
 //
 // Process death: for an engine with both SessionSignalParser and SessionProber, every liveness tick of Wait and of the startup step, once the strand reads live, asks whether the provider's process is gone behind the pane's shell.
