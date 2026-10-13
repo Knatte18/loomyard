@@ -1649,6 +1649,9 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			if got := errors.Is(err, ErrSubmissionNotLanded); got != tt.wantNotLand {
 				t.Errorf("errors.Is(err, ErrSubmissionNotLanded) = %v, want %v (err %v)", got, tt.wantNotLand, err)
 			}
+			if tt.wantErr != "" && IsDraftHold(err) {
+				t.Errorf("IsDraftHold(err) = true for a send that did not land (err %v)", err)
+			}
 			var gotKeys []string
 			for _, call := range reed.SendKeyCalls {
 				gotKeys = append(gotKeys, call.Key)
@@ -1684,6 +1687,8 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 		scripted []inputBoxAnswer
 		wantErr  string
 		wantIs   []error
+		// wantDraft is whether IsDraftHold reports the error.
+		wantDraft bool
 		// wantNotLand is whether the error wraps ErrSubmissionNotLanded.
 		wantNotLand bool
 		wantKeys    []string
@@ -1696,7 +1701,7 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 		{
 			name: "a residue character beside the pasted text fails without a key of its own and records the send", text: shortPasted, pasteSubmits: true,
 			strayBox: "+", swallowFor: ms(500),
-			wantErr: "+run the suite", wantIs: []error{ErrSentTextInDraft, ErrSessionBusy}, wantKeys: keys("C-u"), wantSubmit: true, wantRecord: true,
+			wantErr: "+run the suite", wantIs: []error{ErrSentTextInDraft, ErrSessionBusy}, wantDraft: true, wantKeys: keys("C-u"), wantSubmit: true, wantRecord: true,
 		},
 		{name: "one paste-submit and no typed keys", text: shortPasted, pasteSubmits: true, wantSubmit: true},
 		{name: "a swallowed Enter leaves the exact text and gets one guarded Enter", text: shortPasted, pasteSubmits: true, swallowFor: ms(50), wantKeys: keys("Enter"), wantSubmit: true},
@@ -1704,7 +1709,7 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 		{
 			name: "a placeholder box for a short text is a foreign draft", text: shortPasted, pasteSubmits: true,
 			scripted: []inputBoxAnswer{box(pastePlaceholder)},
-			wantErr:  "not this send's", wantIs: []error{ErrSessionBusy}, wantSubmit: true,
+			wantErr:  "not this send's", wantIs: []error{ErrForeignBoxText, ErrSessionBusy}, wantDraft: true, wantSubmit: true,
 		},
 		{
 			name: "an active operator before the guarded Enter gets no Enter that read", text: shortPasted, pasteSubmits: true, swallowFor: ms(50),
@@ -1714,12 +1719,12 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 		{
 			name: "the sent text beside a draft fails without a key", text: shortPasted, pasteSubmits: true,
 			scripted: []inputBoxAnswer{box("my own draft " + shortPasted)},
-			wantErr:  "my own draft", wantIs: []error{ErrSentTextInDraft, ErrSessionBusy}, wantSubmit: true,
+			wantErr:  "my own draft", wantIs: []error{ErrSentTextInDraft, ErrSessionBusy}, wantDraft: true, wantSubmit: true,
 		},
 		{
 			name: "a foreign draft fails without a key and quotes the draft", text: shortPasted, pasteSubmits: true,
 			scripted: []inputBoxAnswer{box("somebody else's draft")},
-			wantErr:  "somebody else's draft", wantIs: []error{ErrSessionBusy}, wantSubmit: true,
+			wantErr:  "somebody else's draft", wantIs: []error{ErrForeignBoxText, ErrSessionBusy}, wantDraft: true, wantSubmit: true,
 		},
 		{
 			name: "a box that stays unreadable through the window fails without a key", text: shortPasted, pasteSubmits: true,
@@ -1767,6 +1772,9 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			}
 			if got := errors.Is(err, ErrSubmissionNotLanded); got != tt.wantNotLand {
 				t.Errorf("errors.Is(err, ErrSubmissionNotLanded) = %v, want %v (err %v)", got, tt.wantNotLand, err)
+			}
+			if got := IsDraftHold(err); got != tt.wantDraft {
+				t.Errorf("IsDraftHold(err) = %v, want %v (err %v)", got, tt.wantDraft, err)
 			}
 			if len(base.SendTextCalls) != 0 {
 				t.Errorf("SendText calls = %+v, want none on the paste path", base.SendTextCalls)
@@ -1924,7 +1932,9 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		wantBusy                   []string
 		// wantReason, when set, is the prefix the busy error's Reason must carry.
 		wantReason string
-		wantWarns  int
+		// wantDraft is whether the busy error names a draft in the input box, checked through SessionBusyError.Draft and IsDraftHold.
+		wantDraft bool
+		wantWarns int
 		// stray, when set, drives the row through a pane holding a lone stray character instead.
 		stray *strayRow
 	}{
@@ -1934,22 +1944,22 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		{name: "stray character left on screen by the clear is residue, on the pane reading", stray: &strayRow{box: "+", keepOnClear: true, wantClears: 1}},
 		{name: "operator activity in the settle holds at the post-clear reading", stray: &strayRow{box: "+", hook: true, active: []bool{false, true}, wantClears: 1, wantBusy: []string{"the operator typed in this pane"}}},
 		{name: "a quiet operator at the next reading sends the residue with no second clear", stray: &strayRow{box: "+", hook: true, keepOnClear: true, active: []bool{false, true, false}, wantClears: 1}},
-		{name: "a lone stray character beside an active operator holds with the box quoted", stray: &strayRow{box: "+", active: []bool{true}, wantBusy: []string{"the operator typed in this pane", `the input box holds "+"`}}},
-		{name: "a two-character box holds as a draft on the hook reading", stray: &strayRow{box: "++", hook: true, wantBusy: []string{"the input box holds a draft", "++"}}},
-		{name: "a two-character box holds with the box quoted on the pane reading", stray: &strayRow{box: "++", wantBusy: []string{"the pane is not idle", `the input box holds "++"`}}},
+		{name: "a lone stray character beside an active operator holds with the box quoted", stray: &strayRow{box: "+", active: []bool{true}, wantBusy: []string{"the operator typed in this pane", `the input box holds "+"`}, wantDraft: true}},
+		{name: "a two-character box holds as a draft on the hook reading", stray: &strayRow{box: "++", hook: true, wantBusy: []string{"the input box holds a draft", "++"}, wantDraft: true}},
+		{name: "a two-character box holds with the box quoted on the pane reading", stray: &strayRow{box: "++", wantBusy: []string{"the pane is not idle", `the input box holds "++"`}, wantDraft: true}},
 		{name: "idle pane types at once", wantTypedMax: 0},
 		{name: "running turn turns idle then types", idleAfter: 3 * time.Second, busyFrame: "working (esc to interrupt)", wantTypedMin: 3 * time.Second, wantTypedMax: 5 * time.Second},
 		{name: "runner send waits as run send does", idleAfter: 3 * time.Second, busyFrame: "working (esc to interrupt)", viaRunner: true, wantTypedMin: 3 * time.Second, wantTypedMax: 5 * time.Second},
-		{name: "draft that never clears fails busy", idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the pane is not idle", "a half-typed draft"}},
+		{name: "draft that never clears fails busy", reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the pane is not idle", "a half-typed draft"}, wantDraft: true},
 		{name: "failed final capture is said so", idleAfter: never, busyFrame: "working", failCaptureAfter: 59 * time.Second, wantBusy: []string{"the final pane capture failed"}},
 		{name: "a busy pane under a clock that never advances fails busy at the poll count", idleAfter: never, busyFrame: "working", frozen: true, wantBusy: []string{"the pane is not idle"}},
 		{name: "unmatched turn start is released by the idle override", events: "START\n", reading: true, wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
 		{name: "unmatched turn start is released by an interrupt report", events: "START\n", reading: true, interrupted: true},
 		{name: "unmatched turn start against a busy pane fails busy with the reading's reason", events: "START\n", reading: true, idleAfter: never, busyFrame: "working", wantBusy: []string{"a turn is running"}, wantReason: "a turn is running"},
-		{name: "draft in the box fails busy with the reading's reason", events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the input box holds a draft", "a half-typed draft"}, wantReason: "the input box holds a draft"},
+		{name: "draft in the box fails busy with the reading's reason", events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the input box holds a draft", "a half-typed draft"}, wantReason: "the input box holds a draft", wantDraft: true},
 		{name: "an active operator holds the write until it goes quiet", activeQueue: []bool{true, true, true, false}, wantTypedMin: time.Second, wantTypedMax: 3 * time.Second},
 		{name: "an operator active through the whole window fails busy naming the activity", activeQueue: []bool{true}, wantBusy: []string{"the operator typed in this pane within the last 5 s"}, wantReason: "the operator typed in this pane"},
-		{name: "an unreadable activity query still holds on a draft", activityErr: errors.New("list-clients failed"), events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the input box holds a draft", "a half-typed draft"}},
+		{name: "an unreadable activity query still holds on a draft", activityErr: errors.New("list-clients failed"), events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the input box holds a draft", "a half-typed draft"}, wantDraft: true},
 		{name: "an unreadable activity query holds nothing over an empty box", activityErr: errors.New("list-clients failed"), events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: time.Millisecond, busyFrame: "IDLE\n❯ "},
 		{name: "turn end after the turn start releases at once", events: "START\nSTOP:done\n"},
 		{name: "api error turn end counts as a turn end", events: "START\nAPIERR\n"},
@@ -2014,6 +2024,9 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 				if tt.wantReason != "" && !strings.HasPrefix(busy.Reason, tt.wantReason) {
 					t.Errorf("busy Reason = %q, want prefix %q", busy.Reason, tt.wantReason)
 				}
+				if busy.Draft != tt.wantDraft || IsDraftHold(err) != tt.wantDraft {
+					t.Errorf("busy Draft = %v and IsDraftHold = %v, want both %v", busy.Draft, IsDraftHold(err), tt.wantDraft)
+				}
 				for _, want := range tt.wantBusy {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("Send error = %q, want it to contain %q", err, want)
@@ -2049,6 +2062,8 @@ type strayRow struct {
 	active      []bool
 	wantClears  int
 	wantBusy    []string
+	// wantDraft is whether the busy error names a draft in the input box.
+	wantDraft bool
 }
 
 // checkStraySend runs row's Send and checks its outcome.
@@ -2074,6 +2089,10 @@ func checkStraySend(t *testing.T, row *strayRow) {
 	if row.wantBusy != nil {
 		if !errors.Is(err, ErrSessionBusy) {
 			t.Fatalf("Send error = %v, want ErrSessionBusy", err)
+		}
+		var busy *SessionBusyError
+		if !errors.As(err, &busy) || busy.Draft != row.wantDraft || IsDraftHold(err) != row.wantDraft {
+			t.Errorf("Send error %v: Draft and IsDraftHold = %v, want both %v", err, IsDraftHold(err), row.wantDraft)
 		}
 		for _, want := range row.wantBusy {
 			if !strings.Contains(err.Error(), want) {

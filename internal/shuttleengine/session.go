@@ -164,7 +164,7 @@ func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 			return IdleProbe{Idle: true}, nil
 		case !reading.unknown:
 			logger.Debug("shuttle: session idle probe held", "strandGUID", guid, "reason", reading.reason)
-			return IdleProbe{Reason: reading.reason, TooShort: reading.reason == readinessReasonPaneTooShort}, nil
+			return IdleProbe{Reason: reading.reason, Draft: reading.draft != "", TooShort: reading.reason == readinessReasonPaneTooShort}, nil
 		}
 		logger.Debug("shuttle: session readiness unknown, reading the pane", "strandGUID", guid, "cause", reading.cause)
 	}

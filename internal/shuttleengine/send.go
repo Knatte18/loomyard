@@ -19,9 +19,11 @@ var ErrSessionBusy = errors.New("shuttle: the session is not idle")
 
 // SessionBusyError is the error of a verified send held by its idle wait.
 // Reason is the hold the wait's last reading named, without the pane's last lines.
+// Draft is true when that hold is text in the input box.
 // Err is the full error, which wraps ErrSessionBusy, and is what Error returns, so the message is Err's.
 type SessionBusyError struct {
 	Reason string
+	Draft  bool
 	Err    error
 }
 
@@ -150,19 +152,25 @@ func awaitIdleSession(sc sendContext) error {
 	stray := &strayClear{}
 	for poll := 1; ; poll++ {
 		busy := busyReading(sc, cycler, hold, stray)
-		if busy == "" {
+		if busy.reason == "" {
 			return nil
 		}
 		now := sc.clock.Now()
 		if !now.Before(limit) || poll >= maxPolls {
-			return &SessionBusyError{Reason: busy, Err: fmt.Errorf("%w: strand %q: %s; retry once the session is idle. The pane's last lines:\n%s", ErrSessionBusy, sc.guid, busy, paneTail(sc.reed, sc.guid))}
+			return &SessionBusyError{Reason: busy.reason, Draft: busy.draft, Err: fmt.Errorf("%w: strand %q: %s; retry once the session is idle. The pane's last lines:\n%s", ErrSessionBusy, sc.guid, busy.reason, paneTail(sc.reed, sc.guid))}
 		}
 		sc.clock.Sleep(min(interval, limit.Sub(now)))
 		interval = min(interval*2, idlePollMax)
 	}
 }
 
-// busyReading polls the pane and the events file once and returns what keeps the session from being idle, or "" when it is idle.
+// busyHold is one idle-wait reading's answer: reason is what keeps the session from being idle, empty when it is idle, and draft is true when that hold is text in the input box.
+type busyHold struct {
+	reason string
+	draft  bool
+}
+
+// busyReading polls the pane and the events file once and returns what keeps the session from being idle, an empty reason when it is idle.
 // The readiness reading decides: a ready reading returns "" and a held one its reason.
 // An unknown reading falls back to the pane, logging its cause at Debug.
 // Operator activity is asked last, and only once the rest of the reading passed, so each poll is one fresh reading of readiness, box and activity.
@@ -171,10 +179,10 @@ func awaitIdleSession(sc sendContext) error {
 // see clearStrayCharacter.
 // Once stray records a clear, every reading of the attempt is a post-clear reading, and a box still holding exactly the recorded character reads as empty.
 // Every pane-reading hold whose box reads non-empty quotes the box.
-func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold, stray *strayClear) string {
+func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold, stray *strayClear) busyHold {
 	capture, err := sc.reed.CapturePane(sc.guid)
 	if err != nil {
-		return fmt.Sprintf("the pane could not be captured: %v", err)
+		return busyHold{reason: fmt.Sprintf("the pane could not be captured: %v", err)}
 	}
 	reading := sessionReadiness(sc, cycler, hold, capture)
 	if reading.draft != "" {
@@ -190,9 +198,9 @@ func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold, stra
 	}
 	switch {
 	case reading.ready:
-		return operatorActivityHold(sc.reed, sc.guid)
+		return busyHold{reason: operatorActivityHold(sc.reed, sc.guid)}
 	case !reading.unknown:
-		return reading.reason
+		return busyHold{reason: reading.reason, draft: reading.draft != ""}
 	}
 	logger.Debug("shuttle: send readiness unknown, reading the pane", "strandGUID", sc.guid, "cause", reading.cause)
 
@@ -225,7 +233,7 @@ func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold, stra
 	case unmatched != "":
 		return withBoxQuote(unmatched, sc.engine, capture)
 	}
-	return operatorActivityHold(sc.reed, sc.guid)
+	return busyHold{reason: operatorActivityHold(sc.reed, sc.guid)}
 }
 
 // strayClear is the stray-character state of one send attempt's idle wait: the zero value has cleared nothing.
@@ -249,30 +257,31 @@ func strayCandidate(engine Engine, capture string) (character string, ok bool) {
 // Otherwise an active operator holds the send, quoting the box;
 // else the clear plays right after this reading with no wait or other key between, stray records the character, the box settles for SubmitSettle, and a second full reading is taken.
 // That post-clear reading is the write's guard reading, and busy is what it returns.
-func clearStrayCharacter(sc sendContext, cycler SessionCycler, hold *turnStartHold, stray *strayClear, character string) (busy string, handled bool) {
+// The active-operator hold is a draft hold, a failed clear is not, and the post-clear reading carries its own kind.
+func clearStrayCharacter(sc sendContext, cycler SessionCycler, hold *turnStartHold, stray *strayClear, character string) (busy busyHold, handled bool) {
 	clearer, canClear := sc.engine.(InputBoxClearer)
 	reader, canRead := sc.engine.(InputBoxReader)
 	if !canClear || !canRead {
-		return "", false
+		return busyHold{}, false
 	}
 	if activity := operatorActivityHold(sc.reed, sc.guid); activity != "" {
-		return fmt.Sprintf("%s; the input box holds %q", activity, character), true
+		return busyHold{reason: fmt.Sprintf("%s; the input box holds %q", activity, character), draft: true}, true
 	}
 	if err := playInputs(sc.reed, sc.guid, clearer.ClearInputSequence()); err != nil {
-		return fmt.Sprintf("clearing the stray character %q failed: %v", character, err), true
+		return busyHold{reason: fmt.Sprintf("clearing the stray character %q failed: %v", character, err)}, true
 	}
 	stray.cleared, stray.character = true, character
 	sc.clock.Sleep(reader.SubmitSettle())
 	return busyReading(sc, cycler, hold, stray), true
 }
 
-// withBoxQuote returns reason followed by the input box's text when the engine reads a non-empty box in capture.
-func withBoxQuote(reason string, engine Engine, capture string) string {
+// withBoxQuote returns reason followed by the input box's text, as a draft hold, when the engine reads a non-empty box in capture, and the bare reason otherwise.
+func withBoxQuote(reason string, engine Engine, capture string) busyHold {
 	box := readBox(engine, capture)
 	if text := strings.TrimSpace(box.text); box.read && text != "" {
-		return fmt.Sprintf("%s; the input box holds %q", reason, text)
+		return busyHold{reason: fmt.Sprintf("%s; the input box holds %q", reason, text), draft: true}
 	}
-	return reason
+	return busyHold{reason: reason}
 }
 
 // operatorActivityHold asks reed once whether an attached client was active in the strand's pane within the quiet window, and returns the reason a write is held for it, or "" when none.
@@ -415,6 +424,21 @@ func windowClosed(clock Clock, closeAt time.Time) bool {
 // Nothing was submitted, cleared or edited.
 var ErrSentTextInDraft = fmt.Errorf("%w: the sent text sits in the operator's draft", ErrSessionBusy)
 
+// ErrForeignBoxText marks a pasted send whose input box, read after the paste, holds text that is not the send's: the operator's draft stands in the box.
+// It wraps ErrSessionBusy, so a caller that retries a busy session retries this too.
+// Nothing was submitted, cleared or edited.
+var ErrForeignBoxText = fmt.Errorf("%w: the input box holds text that is not this send's", ErrSessionBusy)
+
+// IsDraftHold reports whether err is a send held by text in the input box:
+// a *SessionBusyError whose hold is a draft, or an error wrapping ErrSentTextInDraft or ErrForeignBoxText.
+func IsDraftHold(err error) bool {
+	var busy *SessionBusyError
+	if errors.As(err, &busy) && busy.Draft {
+		return true
+	}
+	return errors.Is(err, ErrSentTextInDraft) || errors.Is(err, ErrForeignBoxText)
+}
+
 // pasteVerified writes text into the pane as one paste through reed and confirms it was submitted.
 // The paste carries its trailing Enter when the provider's Enter submits a paste; otherwise the box is settled first, so the guarded Enter lands on a redrawn box.
 // The send's window opens before the paste and is cut to the send's deadline.
@@ -511,7 +535,7 @@ func retryLanded(sc sendContext, text string) bool {
 // when they run out with none, the box read decides as for any send.
 // A box holding exactly the sent text, or the provider's placeholder for it, means the Enter did not take, and the guarded Enter is sent and the box read again.
 // No readable box sends nothing and is read again.
-// The sent text beside other text fails with ErrSentTextInDraft, and any other text fails with ErrSessionBusy quoting the box; neither sends a key.
+// The sent text beside other text fails with ErrSentTextInDraft, and any other text fails with ErrForeignBoxText quoting the box; neither sends a key.
 // A window that ends on an exact match or on no readable box fails with ErrSubmissionNotLanded.
 func confirmPasted(sc sendContext, paster TextPaster, reader InputBoxReader, text string, sentAt int64, closeAt time.Time) error {
 	normalized := normalizePaneText(text)
@@ -543,7 +567,7 @@ func confirmPasted(sc sendContext, paster TextPaster, reader InputBoxReader, tex
 			case strings.Contains(box, normalized):
 				return withPaneTail(fmt.Errorf("%w: the input box holds %q", ErrSentTextInDraft, strings.TrimSpace(boxText)), "", sc)
 			default:
-				return withPaneTail(fmt.Errorf("%w: the input box holds text that is not this send's: %q", ErrSessionBusy, strings.TrimSpace(boxText)), "", sc)
+				return withPaneTail(fmt.Errorf("%w: %q", ErrForeignBoxText, strings.TrimSpace(boxText)), "", sc)
 			}
 		}
 		if windowClosed(sc.clock, closeAt) || read >= maxReads {

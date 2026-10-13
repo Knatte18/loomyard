@@ -265,7 +265,8 @@
 // An active operator holds the send instead, quoting the box; otherwise the clear plays right after that reading, the box settles for `SubmitSettle`, and a second full reading is the write's guard reading.
 // From the clear on, every reading of the attempt is a post-clear reading: a box still holding exactly the cleared character reads as empty, so the send goes out, and anything else holds as a draft with no second clear.
 // A character that survives is submitted at the head of the message, and the post-paste confirm keeps its exact-text reading, so it fails with ErrSentTextInDraft.
-// A session that stays held fails the send with ErrSessionBusy, naming the reading and ending with the pane's last lines.
+// A session that stays held fails the send with a SessionBusyError wrapping ErrSessionBusy, naming the reading and ending with the pane's last lines;
+// its Draft field is true when the hold is text in the input box, which IsDraftHold also reports for the two paste refusals below.
 // Run.Send and the gated wait loop's own send each hold the run's send lock for the whole idle wait, typing and delivery check, so an in-process send and a gate re-prompt on one run type one after the other, never at once; the lock skips no idle wait, delivery check or gate evaluation.
 // An engine without the idle reading keeps the not-ready refusal and the operator-activity hold, with no wait: either fails the send at once.
 // That path confirms a send is submitted, not only that its text appeared in the pane, for an engine that implements the optional InputBoxReader capability, inside a window of `submit_confirm_timeout_s` from the moment typing begins.
@@ -287,7 +288,7 @@
 // a turn start past the file's size before the send, or an empty box, means the paste landed;
 // a box holding exactly the sent text, or the provider's own placeholder for it, means the Enter did not take, and the guarded Enter, sent only when no operator was active in the pane just before the key, goes out and the box is read again;
 // no readable box sends nothing and is read again, and a window that ends that way, or on an exact match, fails with ErrSubmissionNotLanded;
-// the sent text beside other text fails with ErrSentTextInDraft, which wraps ErrSessionBusy, and any other text fails with ErrSessionBusy quoting the box; neither sends a key.
+// the sent text beside other text fails with ErrSentTextInDraft, which wraps ErrSessionBusy, and any other text fails with ErrForeignBoxText, which wraps ErrSessionBusy, quoting the box; neither sends a key.
 // A pasted send that fails with ErrSentTextInDraft or ErrSubmissionNotLanded may have left its text in the box, so it records `{text, events offset}` in `pending-send.json` in the run directory, a file of its own so it never races run.json's writers.
 // A paste that landed, was held before it wrote or failed in reed records nothing.
 // The next send to the strand, once the idle wait passed on an empty box, reads and clears the record.
@@ -353,7 +354,7 @@
 //
 // Session state has two consumers: Runner.SessionIdle and the verified send's idle wait, which gate on the readiness reading built from it.
 // The reading is ready or held, or unknown when the state is, and an unknown reading falls back to the pane probe.
-// Runner.SessionIdle answers IdleProbe.Idle for a ready reading and, for a held one, IdleProbe.Reason, with TooShort set when the reason is the short pane;
+// Runner.SessionIdle answers IdleProbe.Idle for a ready reading and, for a held one, IdleProbe.Reason, with TooShort set when the reason is the short pane and Draft set when the reading names a draft in the input box;
 // the runner keeps one turn-start hold per strand guid, so the orch watcher's probes keep one hold across its ticks as a send keeps one across its polls.
 // A ready reading beside a pane that shows the needle still answers idle, and logs the disagreement with the pane's last lines at Debug.
 // Wait's own shadow logging below stays display only.
