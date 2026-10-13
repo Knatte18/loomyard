@@ -87,6 +87,16 @@ func TestRecordCirclingDecision_WritesPendingFile(t *testing.T) {
 			wantRound: 1,
 			wantCause: EscalationCircling,
 		},
+		{
+			name:     "accept over a hard-cap escalation record",
+			decision: CirclingAccept,
+			layout: func(t *testing.T, dir string) {
+				layoutCirclingRun(t, dir, 1, "CONTINUE")
+				writeEscalationRecord(t, dir, EscalationHardCap)
+			},
+			wantRound: 1,
+			wantCause: EscalationHardCap,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -185,6 +195,13 @@ func TestReadCirclingDecision(t *testing.T) {
 			wantExists:   true,
 			wantDecision: CirclingAccept,
 			wantCause:    EscalationCircling,
+		},
+		{
+			name:         "a hard-cap cause is legal",
+			content:      "---\nround: 1\ndecision: accept\ncause: hard-cap\nsettled: false\n---\n",
+			wantExists:   true,
+			wantDecision: CirclingAccept,
+			wantCause:    EscalationHardCap,
 		},
 		{name: "round disagrees with filename", content: "---\nround: 2\ndecision: accept\nsettled: false\n---\n", wantExists: true, wantErr: true},
 		{name: "unknown decision", content: "---\nround: 1\ndecision: maybe\nsettled: false\n---\n", wantExists: true, wantErr: true},
