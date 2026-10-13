@@ -196,43 +196,47 @@ func TestBindings_AltZTogglesStrandAndSelvageZoomInTheStrandsWindowOnly(t *testi
 	}
 }
 
-func TestBindings_AltUpDownCycleStrandPanesAndSelvageWrappingAndKeepingTheZoom(t *testing.T) {
+func TestBindings_AltUpDownStepWindowsInIndexOrderPastHiddenOnes(t *testing.T) {
 	f := newBindingsFixture(t)
-	f.selectStrandsWindow(t, f.alpha.PaneID)
+	if _, err := f.e.AddStrand(AddSpec{NameOverride: "agent", Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOwnWindow}}); err != nil {
+		t.Fatalf("AddStrand(agent): %v", err)
+	}
+	overview, err := f.e.AddStrand(AddSpec{NameOverride: "status", Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOverview}})
+	if err != nil {
+		t.Fatalf("AddStrand(overview): %v", err)
+	}
+	// The recorder lyx exits at once, which would close an OpenWindow window, so each hidden window is a plain detached one marked by hand.
+	for _, name := range []string{"hidden-one", "hidden-two"} {
+		windows, err := f.e.tmux.listSessionWindows(f.e.SessionName())
+		if err != nil {
+			t.Fatalf("list windows: %v", err)
+		}
+		last, _ := highestWindow(windows, false)
+		id := strings.TrimSpace(mustTmuxOutput(t, f.e, "new-window", "-d", "-a", "-t", last.ID, "-n", name, "-P", "-F", "#{window_id}"))
+		if err := f.e.tmux.run("set-option", "-w", "-t", id, "@lyx_hidden", "1"); err != nil {
+			t.Fatalf("mark %s hidden: %v", name, err)
+		}
+	}
+	if err := f.e.tmux.run("select-window", "-t", windowOfPane(t, f.e, overview.PaneID)); err != nil {
+		t.Fatalf("select-window overview: %v", err)
+	}
 
-	steps := []struct {
+	for _, step := range []struct {
 		key  string
 		want string
 	}{
-		{"\x1b[1;3B", f.beta.PaneID},
-		{"\x1b[1;3B", f.selvagePane},
-		{"\x1b[1;3B", f.alpha.PaneID},
-		{"\x1b[1;3A", f.selvagePane},
-		{"\x1b[1;3A", f.beta.PaneID},
-	}
-	for _, step := range steps {
+		{"\x1b[1;3B", "extra"},
+		{"\x1b[1;3B", "agent"},
+		{"\x1b[1;3B", "shell"},
+		{"\x1b[1;3B", "overview"},
+		{"\x1b[1;3A", "shell"},
+		{"\x1b[1;3A", "agent"},
+		{"\x1b[1;3A", "extra"},
+		{"\x1b[1;3A", "overview"},
+		{"\x1b[1;3A", "shell"},
+	} {
 		f.send(t, step.key)
-		waitUntil(t, 5*time.Second, "the Alt step never reached "+step.want, func() bool { return f.activePane(t) == step.want })
-	}
-
-	f.selectStrandsWindow(t, f.beta.PaneID)
-	if err := f.e.tmux.run("resize-pane", "-Z", "-t", f.beta.PaneID); err != nil {
-		t.Fatalf("zoom: %v", err)
-	}
-	f.send(t, "\x1b[1;3B")
-	waitUntil(t, 5*time.Second, "the zoomed Alt+Down never reached Selvage", func() bool { return f.activePane(t) == f.selvagePane })
-	if got := f.zoomed(t); got != "1" {
-		t.Errorf("zoom flag after a step in a zoomed window = %q, want 1", got)
-	}
-
-	if err := f.e.tmux.run("select-window", "-t", f.otherWindow); err != nil {
-		t.Fatalf("select-window extra: %v", err)
-	}
-	before := f.activePane(t)
-	f.send(t, "\x1b[1;3A")
-	settle()
-	if got := f.activePane(t); got != before {
-		t.Errorf("Alt+Up in the second window moved the strands' window to %q, want it left at %q", got, before)
+		waitUntil(t, 5*time.Second, "the Alt step never reached the "+step.want+" window", func() bool { return f.currentWindow(t) == step.want })
 	}
 }
 
@@ -255,15 +259,15 @@ func TestBindings_StatusBarClicksSelectAndZoomByRangeType(t *testing.T) {
 		t.Errorf("a second click on beta's button left zoom flag %q, want 1 (never toggled off)", got)
 	}
 
-	// VIEW unzooms the strands' window.
-	f.click(t, 0, " VIEW ")
-	waitUntil(t, 5*time.Second, "a click on VIEW never unzoomed the strands' window", func() bool { return f.zoomed(t) == "0" })
+	// The shell button unzooms the strands' window.
+	f.click(t, 0, " shell ")
+	waitUntil(t, 5*time.Second, "a click on shell never unzoomed the strands' window", func() bool { return f.zoomed(t) == "0" })
 
-	// A window button selects that window, and VIEW from there returns to the strands' window.
+	// A window button selects that window, and the shell button from there returns to the strands' window.
 	f.click(t, 0, " extra ")
 	waitUntil(t, 5*time.Second, "a click on the extra window's button never selected it", func() bool { return f.currentWindow(t) == "extra" })
-	f.click(t, 0, " VIEW ")
-	waitUntil(t, 5*time.Second, "a click on VIEW from the second window never returned to the strands' window", func() bool {
+	f.click(t, 0, " shell ")
+	waitUntil(t, 5*time.Second, "a click on shell from the second window never returned to the strands' window", func() bool {
 		return f.currentWindow(t) != "extra"
 	})
 
