@@ -84,7 +84,7 @@
 //     and both prompts carry the parent directive that parentdirective.Directive renders from BouncerConfig.ParentName, in its non-interactive form;
 //     an empty ParentName renders the no-parent variant.
 //     The escalation brief and the parent notice are read by the parent, not by a spawned role, and carry no directive.
-//     Escalation: a CONTINUE or CIRCLING round escalates to the run's parent instead of halting for a human, for one of two causes.
+//     Escalation: a CONTINUE or CIRCLING round escalates to the run's parent instead of halting for a human, for one of three causes.
 //     Cause budget holds whenever the BouncerConfig.Bounces seam reports count >= budget, the comparison Shed applies, even over a CIRCLING verdict;
 //     cause circling holds for a guarded CIRCLING below the budget.
 //     The Bouncer renders the bouncer-template-escalation brief and the bouncer-template-parent-notice line,
@@ -95,8 +95,12 @@
 //     A re-call over an existing record rewrites nothing and returns the same Awaiting.
 //     A CONTINUE with no spent budget, and one whose Bounces seam is unwired, unknown or errored, returns Stuck and takes Shed's generic bounce-budget block.
 //     A recorded decision is acted on first, whatever the budget:
-//     a continue maps to Stuck, marked BudgetExempt exactly when the escalation's cause is budget, so a continue after a budget escalation spends no budget;
-//     a pending accept settles its record and maps to Done after Approve and Commit, for either cause.
+//     a continue below the hard cap maps to Stuck, marked BudgetExempt when the decision's cause is budget or the budget is reached, so a continue past the soft cap spends no budget whoever recorded it;
+//     a pending accept settles its record and maps to Done after Approve and Commit, for any cause.
+//     Hard cap: BouncerConfig.HardCap is the perch's hard cap as a round number in the segment's current generation, 0 meaning none.
+//     A continue recorded at or past it is moved aside (the escalation record, its parent notice and then the decision file, each to a timestamped sibling no reader opens)
+//     and the round re-escalates with cause `hard-cap`, the third cause beside budget and circling.
+//     An escalation at or past the hard cap, whatever its cause, carries the accept-only Reason and the bouncer-fragment-decide-capped decide step; below it the Reason and the bouncer-fragment-decide-open step offer accept and continue.
 //     PendingCirclingDecision and PendingEscalation read a run directory's latest round: the first reports a decision file not yet settled, the second a Bouncer-written escalation, with its round and brief path, that no decision file answers.
 //     Auto-accept: a Bouncer told BouncerConfig.AutoAccept settles a spent budget as an accept instead of escalating.
 //     It fires for the budget cause alone, also over a CIRCLING verdict, and only on a harvest, the judge having written the verdict in this call, over a round with no decision and no escalation record.

@@ -138,6 +138,10 @@ type BouncerConfig struct {
 	// a CONTINUE or CIRCLING verdict then escalates to the parent instead of reaching Shed's generic budget block.
 	// Nil is the absent value, ok false means unknown, and an error warns; each means the budget is not reached.
 	Bounces func() (count, budget int, ok bool, err error)
+	// HardCap is the perch's hard cap as a round number, counted from 1 in the segment's current generation, so a round numbered HardCap or higher is at or past it.
+	// A round there is never continued: a recorded continue is moved aside and the round re-escalates with cause hard-cap, and every escalation there offers only accept.
+	// 0 is the absent value and means no hard cap, which keeps every caller that tells none behaving as before.
+	HardCap int
 	// AutoAccept makes a spent budget settle the round as an accept instead of escalating to the parent.
 	// It applies only to a CONTINUE or CIRCLING verdict this call's judge just wrote, over a round with no recorded decision and no escalation record;
 	// a replay, a circling-cause escalation and a round already escalated behave as when it is false, which is the default.
@@ -188,7 +192,8 @@ type Bouncer struct {
 // This row's count is the segment's whole budget on judged rounds, fresh in every generation:
 // the round producer hands back every completed or unjudged round as BudgetExempt, so only this row's Stuck returns are counted.
 // Every degrade exit, the seed and re-bounce Stuck, a CONTINUE with no decision and a circling-cause continue are counted here;
-// only a budget-cause continue is exempt, and an escalation returns Awaiting, which is never counted.
+// a continue past the soft cap is exempt whoever recorded it, meaning one of cause budget or one recorded with the budget reached, and an escalation returns Awaiting, which is never counted.
+// No round at or past cfg.HardCap is ever continued.
 // With cfg.AutoAccept set, a spent budget over a freshly judged CONTINUE or CIRCLING round settles as an automatic accept and returns Done instead of escalating.
 // So a judge that never recovers halts within MaxBounces counted Stucks, and a budget continue buys exactly one judged round.
 //
@@ -236,6 +241,9 @@ func NewBouncer(cfg BouncerConfig) (*Bouncer, error) {
 	}
 	if cfg.CirclingCheckpoint < 1 {
 		return nil, fmt.Errorf("shedadapters: NewBouncer: CirclingCheckpoint must be positive, got %d", cfg.CirclingCheckpoint)
+	}
+	if cfg.HardCap < 0 {
+		return nil, fmt.Errorf("shedadapters: NewBouncer: HardCap must not be negative, got %d", cfg.HardCap)
 	}
 	if cfg.CarryOver != nil {
 		if cfg.Segment == "" {
@@ -794,7 +802,8 @@ func (b *Bouncer) unearnedCircling(round int) string {
 
 // settleUnconverged maps a CONTINUE or CIRCLING round onto the recorded decision, then the bounce budget.
 // A decision file for the round is acted on first, whatever the budget:
-// a continue returns Stuck, marked BudgetExempt exactly when the decision's cause is budget,
+// a continue below the hard cap returns Stuck, marked BudgetExempt when the decision's cause is budget or the budget is reached;
+// a continue at or past the hard cap is moved aside (retireContinue) and the round re-escalates with cause hard-cap;
 // and a pending accept calls the CarryOver seam, settles its record, then approves and commits exactly as CONVERGED does.
 // A failed carry-over leaves the accept pending, so its re-call retries the write.
 // A failed settle write is returned before Approve runs, so an accept never passes without its settled record.
@@ -811,14 +820,39 @@ func (b *Bouncer) settleUnconverged(ctx context.Context, round int, verdict boun
 	case !exists:
 		return b.settleUndecided(round, verdict, spawned, ptr)
 	case decision == CirclingContinue:
+		if b.atHardCap(round) {
+			if err := b.retireContinue(round); err != nil {
+				return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): retire the continue decision of round %d at the hard cap: %w; way forward: make the named path writable, then run `lyx loom start`, which re-escalates the round", b.cfg.Name, bouncerEngineLabel, round, err)
+			}
+			return b.escalate(round, EscalationHardCap, ptr)
+		}
 		b.ensureFocus(round + 1)
-		ptr.BudgetExempt = cause == EscalationBudget
+		ptr.BudgetExempt = cause == EscalationBudget || b.budgetReached(round)
 		return shedengine.Stuck, ptr, nil
 	case settled:
 		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling accept for round %d is already settled; way forward: run `lyx loom start`, which re-enters the segment and archives the settled round", round), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round)
 	}
 
 	return b.acceptRound(round, ptr)
+}
+
+// retireContinue moves round's escalation record, its parent notice and then its decision file aside through archiveStaleOutputs, in that order.
+// Each goes to the timestamped sibling archiveStaleOutputs names, which no reader opens.
+// Absent files are skipped, so a round whose continue answered a legacy CIRCLING with no record moves only its decision file.
+// A crash between the moves leaves a state the next call finishes: the decision file is still there, so the continue is retired again.
+// A replay after the moves and before the fresh record finds no decision file and no record, and settles as an undecided round.
+func (b *Bouncer) retireContinue(round int) error {
+	return archiveStaleOutputs([]string{
+		escalationPath(b.cfg.RunDir, round),
+		parentNoticePath(b.cfg.RunDir, round),
+		circlingDecisionPath(b.cfg.RunDir, round),
+	}, b.cfg.Now)
+}
+
+// atHardCap reports whether round is at or past the hard cap.
+// It reads the round number alone, never Shed's count, since a goto resets that count while round numbers carry on.
+func (b *Bouncer) atHardCap(round int) bool {
+	return b.cfg.HardCap > 0 && round >= b.cfg.HardCap
 }
 
 // acceptRound passes round on a recorded accept decision, a parent's or an automatic one.
@@ -950,11 +984,24 @@ func (b *Bouncer) escalate(round int, cause EscalationCause, ptr shedengine.Outp
 }
 
 // renderEscalation renders round's escalation brief and parent notice stencils.
+// The brief's decide step is the capped fragment at or past the hard cap and the open one otherwise.
 // The notice interpolates only the slug and the brief path.
 func (b *Bouncer) renderEscalation(round int, cause EscalationCause) (brief, notice string, err error) {
 	briefTemplate, err := stencilstore.Read(b.cfg.StencilsDir, "bouncer-template-escalation")
 	if err != nil {
 		return "", "", fmt.Errorf("read escalation brief stencil: %w", err)
+	}
+	fragmentName := "bouncer-fragment-decide-open"
+	if b.atHardCap(round) {
+		fragmentName = "bouncer-fragment-decide-capped"
+	}
+	fragmentTemplate, err := stencilstore.Read(b.cfg.StencilsDir, fragmentName)
+	if err != nil {
+		return "", "", fmt.Errorf("read escalation decide fragment: %w", err)
+	}
+	decideBytes, err := stencil.Fill(fragmentTemplate, map[string]string{"slug": b.cfg.Slug})
+	if err != nil {
+		return "", "", fmt.Errorf("fill escalation decide fragment: %w", err)
 	}
 	noticeTemplate, err := stencilstore.Read(b.cfg.StencilsDir, "bouncer-template-parent-notice")
 	if err != nil {
@@ -970,6 +1017,8 @@ func (b *Bouncer) renderEscalation(round int, cause EscalationCause) (brief, not
 		"verdict_path":         verdictPath(b.cfg.RunDir, round),
 		"decision_record_path": b.cfg.DecisionRecordPath,
 		"worktree":             b.cfg.WorktreeRoot,
+		"decide_options":       strings.TrimSpace(string(decideBytes)),
+		"judge_stencil_path":   stencilstore.Path(b.cfg.StencilsDir, "bouncer-template-judge"),
 	})
 	if err != nil {
 		return "", "", fmt.Errorf("fill escalation brief stencil: %w", err)
@@ -987,6 +1036,7 @@ func (b *Bouncer) renderEscalation(round int, cause EscalationCause) (brief, not
 // escalationReason is the Awaiting Reason of an escalated round:
 // the segment, the round and the cause, the brief path when one was rendered, the verbs that record the decision, and the resume command.
 // The circling verbs take the slug, while the resume command addresses the cwd worktree's own run.
+// At or past the hard cap, whatever the cause, the decide clause names accept alone.
 func (b *Bouncer) escalationReason(round int, cause EscalationCause, briefPath string) string {
 	verbSuffix := ""
 	if b.cfg.Slug != "" {
@@ -995,6 +1045,9 @@ func (b *Bouncer) escalationReason(round int, cause EscalationCause, briefPath s
 	reason := fmt.Sprintf("bouncer %s: round %d escalated to the parent (cause: %s)", b.cfg.Name, round, cause)
 	if briefPath != "" {
 		reason += fmt.Sprintf("; brief at %s", briefPath)
+	}
+	if b.atHardCap(round) {
+		return reason + fmt.Sprintf("; the round is at or past the perch's hard cap, so it can only be accepted: decide with `lyx loom circling accept%s`, then run `lyx loom resume` in the task worktree to resume", verbSuffix)
 	}
 	return reason + fmt.Sprintf("; decide with `lyx loom circling accept%s` or `lyx loom circling continue%s`, then run `lyx loom resume` in the task worktree to resume", verbSuffix, verbSuffix)
 }

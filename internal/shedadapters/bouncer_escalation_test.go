@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -76,29 +77,35 @@ func belowBounces() (int, int, bool, error) { return 1, 3, true, nil }
 
 // TestBouncer_Escalation_AwaitsWithTheRecordAndLeavesItUntouched covers the escalation itself: the
 // Awaiting pointer, the record and notice it writes, the cause it picks (a spent budget wins over a
-// CIRCLING ruling) and that a second Call returns the same pointer and leaves the record untouched.
+// CIRCLING ruling), the accept-only offer at the hard cap, and that a second Call returns the same pointer and leaves the record untouched.
 //
-//testtiming:keep pins the escalation's Awaiting pointer and reason, the record and notice it writes, the cause it picks and that a re-call leaves the record untouched
+//testtiming:keep pins the escalation's Awaiting pointer and reason, the record and notice it writes, the cause it picks, the accept-only offer at the hard cap and that a re-call leaves the record untouched
 func TestBouncer_Escalation_AwaitsWithTheRecordAndLeavesItUntouched(t *testing.T) {
 	tests := []struct {
 		name      string
 		verdict   string
 		bounces   func() (int, int, bool, error)
+		hardCap   int
 		wantCause EscalationCause
 	}{
-		{"a spent budget over a CONTINUE", "CONTINUE", spentBounces, EscalationBudget},
-		{"a spent budget over a CIRCLING is budget", "CIRCLING", spentBounces, EscalationBudget},
-		{"a guarded CIRCLING below budget is circling", "CIRCLING", belowBounces, EscalationCircling},
+		{"a spent budget over a CONTINUE", "CONTINUE", spentBounces, 0, EscalationBudget},
+		{"a spent budget over a CIRCLING is budget", "CIRCLING", spentBounces, 0, EscalationBudget},
+		{"a guarded CIRCLING below budget is circling", "CIRCLING", belowBounces, 0, EscalationCircling},
+		{"a spent budget at the hard cap offers only accept", "CONTINUE", spentBounces, 2, EscalationBudget},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b, cfg, shuttle := escalationBouncer(t, tt.verdict, func(c *BouncerConfig) { c.Bounces = tt.bounces })
+			b, cfg, shuttle := escalationBouncer(t, tt.verdict, func(c *BouncerConfig) { c.Bounces = tt.bounces; c.HardCap = tt.hardCap })
 
 			ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
 			if want := ledgerPath(cfg.RunDir, 2); ptr.Path != want {
 				t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
 			}
-			requireReasonContains(t, ptr.Reason, "round 2", "cause: "+string(tt.wantCause), escalationPath(cfg.RunDir, 2), "lyx loom circling accept my-task", "lyx loom circling continue my-task", "lyx loom resume")
+			atCap := tt.hardCap != 0 && 2 >= tt.hardCap
+			requireReasonContains(t, ptr.Reason, "round 2", "cause: "+string(tt.wantCause), escalationPath(cfg.RunDir, 2), "lyx loom circling accept my-task", "lyx loom resume")
+			if strings.Contains(ptr.Reason, "lyx loom circling continue") == atCap {
+				t.Errorf("Reason = %q; want it to name the continue verb exactly when the round is below the hard cap", ptr.Reason)
+			}
 			notice := requireEscalation(t, cfg, tt.wantCause)
 			if notice == "" || ptr.ParentNotice != notice {
 				t.Errorf("ParentNotice = %q, notice file = %q; want them equal and non-empty", ptr.ParentNotice, notice)
@@ -107,6 +114,13 @@ func TestBouncer_Escalation_AwaitsWithTheRecordAndLeavesItUntouched(t *testing.T
 			brief, err := os.ReadFile(escalationPath(cfg.RunDir, 2))
 			if err != nil || !strings.Contains(string(brief), "round 2") {
 				t.Errorf("escalation brief = %q, err = %v; want a rendered brief naming round 2", brief, err)
+			}
+			if atCap {
+				if !strings.Contains(string(brief), "accepted or handed on") || strings.Contains(string(brief), "lyx loom circling continue") {
+					t.Errorf("escalation brief = %q; want the accept-only offer", brief)
+				}
+			} else if !strings.Contains(string(brief), "lyx loom circling continue my-task") {
+				t.Errorf("escalation brief = %q; want it to offer the continue verb", brief)
 			}
 			if _, err := os.Stat(focusPath(cfg.RunDir, 3)); err != nil {
 				t.Errorf("round-3 focus file = %v; want ensureFocus to have written it", err)
@@ -157,32 +171,74 @@ func TestBouncer_Escalation_NoBudgetEscalationReturnsAPlainStuck(t *testing.T) {
 }
 
 // TestBouncer_Escalation_RecordedDecision covers the way a recorded circling decision settles an
-// escalation of either cause: continue returns Stuck, exempt from the budget only for a budget
-// escalation; accept approves, commits and returns Done, and a re-entry afterwards archives the
-// settled generation.
+// escalation of any cause.
+// A continue returns Stuck, exempt from the budget for a budget cause or at a spent budget.
+// At the hard cap a continue is moved aside and the round re-escalates with cause hard-cap.
+// An accept approves, commits and returns Done, and a re-entry afterwards archives the settled generation.
 //
-//testtiming:keep pins how a recorded decision settles an escalation of either cause: continue is exempt from the budget only for a budget cause, and accept approves, commits and clears
+//testtiming:keep pins how a recorded decision settles an escalation of any cause: continue is exempt from the budget for a budget cause or at a spent budget, re-escalates at the hard cap, and accept approves, commits and clears
 func TestBouncer_Escalation_RecordedDecision(t *testing.T) {
 	tests := []struct {
-		name       string
-		verdict    string
-		bounces    func() (int, int, bool, error)
-		decision   CirclingDecision
-		wantCause  EscalationCause
-		wantExempt bool
+		name           string
+		verdict        string
+		bounces        func() (int, int, bool, error)
+		hardCap        int
+		preRecord      EscalationCause
+		decision       CirclingDecision
+		wantCause      EscalationCause
+		wantExempt     bool
+		wantReEscalate bool
 	}{
-		{"continue over a budget escalation", "CONTINUE", spentBounces, CirclingContinue, EscalationBudget, true},
-		{"continue over a circling escalation", "CIRCLING", belowBounces, CirclingContinue, EscalationCircling, false},
-		{"accept over a budget escalation", "CONTINUE", spentBounces, CirclingAccept, EscalationBudget, false},
-		{"accept over a circling escalation", "CIRCLING", belowBounces, CirclingAccept, EscalationCircling, false},
+		{name: "continue over a budget escalation", verdict: "CONTINUE", bounces: spentBounces, decision: CirclingContinue, wantCause: EscalationBudget, wantExempt: true},
+		{name: "continue over a circling escalation", verdict: "CIRCLING", bounces: belowBounces, decision: CirclingContinue, wantCause: EscalationCircling},
+		{name: "continue over a circling escalation at a spent budget is exempt", verdict: "CIRCLING", bounces: spentBounces, preRecord: EscalationCircling, decision: CirclingContinue, wantCause: EscalationCircling, wantExempt: true},
+		{name: "continue over a budget escalation at the hard cap re-escalates hard-cap", verdict: "CONTINUE", bounces: spentBounces, hardCap: 2, decision: CirclingContinue, wantCause: EscalationBudget, wantReEscalate: true},
+		{name: "continue over a circling escalation at the hard cap re-escalates hard-cap", verdict: "CIRCLING", bounces: belowBounces, hardCap: 2, preRecord: EscalationCircling, decision: CirclingContinue, wantCause: EscalationCircling, wantReEscalate: true},
+		{name: "accept over a budget escalation", verdict: "CONTINUE", bounces: spentBounces, decision: CirclingAccept, wantCause: EscalationBudget},
+		{name: "accept over a circling escalation", verdict: "CIRCLING", bounces: belowBounces, decision: CirclingAccept, wantCause: EscalationCircling},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			seams := &circlingSeams{}
-			b, cfg, _ := escalationBouncer(t, tt.verdict, func(c *BouncerConfig) { seams.install(c); c.Bounces = tt.bounces })
+			b, cfg, shuttle := escalationBouncer(t, tt.verdict, func(c *BouncerConfig) { seams.install(c); c.Bounces = tt.bounces; c.HardCap = tt.hardCap })
+			if tt.preRecord != "" {
+				if err := writeEscalation(cfg.RunDir, 2, tt.preRecord, "brief\n", "notice"); err != nil {
+					t.Fatalf("writeEscalation(%q) = %v; want nil", tt.preRecord, err)
+				}
+			}
 			shedfake.RequireOutcome(t, b, shedengine.Awaiting)
 			if round, cause, err := RecordCirclingDecision(cfg.RunDir, tt.decision); err != nil || round != 2 || cause != tt.wantCause {
 				t.Fatalf("RecordCirclingDecision(%s) = (%d, %q, %v); want (2, %q, nil)", tt.decision, round, cause, err, tt.wantCause)
+			}
+
+			if tt.wantReEscalate {
+				ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
+				requireReasonContains(t, ptr.Reason, "cause: hard-cap", "lyx loom circling accept my-task")
+				if strings.Contains(ptr.Reason, "lyx loom circling continue") {
+					t.Errorf("Reason = %q; want no continue verb at the hard cap", ptr.Reason)
+				}
+				if cause, notice, exists, err := readEscalation(cfg.RunDir, 2); err != nil || !exists || cause != EscalationHardCap || notice == "" {
+					t.Errorf("readEscalation = (%q, %q, %v, %v); want a hard-cap record with a notice", cause, notice, exists, err)
+				}
+				if _, err := os.Stat(circlingDecisionPath(cfg.RunDir, 2)); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("Stat(decision file) = %v; want it moved aside", err)
+				}
+				for _, pattern := range []string{"round-2-escalation-*.md", "round-2-parent-notice-*.md", "round-2-circling-decision-*.md"} {
+					if matches, err := filepath.Glob(filepath.Join(cfg.RunDir, pattern)); err != nil || len(matches) != 1 {
+						t.Errorf("Glob(%s) = %v, %v; want one retired sibling", pattern, matches, err)
+					}
+				}
+				if round, cause, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil || round != 2 || cause != EscalationHardCap {
+					t.Fatalf("RecordCirclingDecision(accept) = (%d, %q, %v); want (2, hard-cap, nil)", round, cause, err)
+				}
+				shedfake.RequireOutcome(t, b, shedengine.Done)
+				if _, cause, settled, _, err := readCirclingDecision(cfg.RunDir, 2); err != nil || !settled || cause != EscalationHardCap {
+					t.Errorf("readCirclingDecision = (cause %q, settled %v, %v); want settled with cause hard-cap", cause, settled, err)
+				}
+				if shuttle.Called {
+					t.Error("Call() spawned a run; want none")
+				}
+				return
 			}
 
 			if tt.decision == CirclingContinue {
