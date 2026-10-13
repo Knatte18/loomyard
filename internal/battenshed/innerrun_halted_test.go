@@ -60,7 +60,7 @@ func TestInnerRun_HaltedStatesWaitExemptWithoutSpawning(t *testing.T) {
 func TestInnerRun_HaltWarnsOncePerEpisode(t *testing.T) {
 	var buf bytes.Buffer
 	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 	const warnText = "inner shed run halted"
 	scratchDir := t.TempDir()
@@ -98,7 +98,7 @@ func TestInnerRun_HaltWarnsOncePerEpisode(t *testing.T) {
 func TestInnerRun_ReHaltAfterObservedResumeWarnsAgainAtTheSameHistoryLength(t *testing.T) {
 	var buf bytes.Buffer
 	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 	// A failed child resumed and failing again on the same producer appends no history entry, so both halts read length 4.
 	failed := haltedStatus(shedengine.StateFailed, 4).status
@@ -219,7 +219,7 @@ func TestInnerRun_HaltedRevivesADeadDriverOncePerEpisode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
 			logger.SetOutput(&buf)
-			t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+			t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 			scratchDir := t.TempDir()
 			if tt.marker != "" {
@@ -284,7 +284,7 @@ func TestInnerRun_HaltedRevivesADeadDriverOncePerEpisode(t *testing.T) {
 func TestInnerRun_StrandReadErrorSkipsTheReviveWithAWarn(t *testing.T) {
 	var buf bytes.Buffer
 	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 	_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{haltedStatus(shedengine.StatePaused, 2)}, &fakeClock{})
 	deps.DriverStrand = func(context.Context) (ChildDriverStrand, error) {

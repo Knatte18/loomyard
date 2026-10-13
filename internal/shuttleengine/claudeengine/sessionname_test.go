@@ -61,7 +61,7 @@ func TestSessionNameDrift_MissingTranscriptReportsNoneAndLogs(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	var buf bytes.Buffer
 	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 	if New().SessionNameDrift("absent", filepath.Join(t.TempDir(), "work"), "tst:worker") {
 		t.Error("a missing transcript reported drift")
@@ -84,7 +84,7 @@ func TestSessionNameDrift_UnreadableTranscriptReportsNoneAndLogs(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 	if New().SessionNameDrift("sid", workdir, "tst:worker") {
 		t.Error("an unreadable transcript reported drift")

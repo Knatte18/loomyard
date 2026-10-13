@@ -1,5 +1,5 @@
 // logger.go provides a thin log/slog wrapper for lyx: a package-level level threshold, an
-// injectable io.Writer stderr sink (defaulting to os.Stderr), and Debug/Info/Warn helpers that fan
+// injectable io.Writer stderr sink (defaulting to DefaultOutput), and Debug/Info/Warn helpers that fan
 // every call out to that stderr sink and, independently, to the durable trace-file sink (sink.go)
 // via the composite dualHandler defined below.
 // Callers never see slog directly;
@@ -10,8 +10,11 @@
 // diagnostic spans, and a durable per-process trace-file sink. It keeps
 // stdout free of log noise (reed and other commands write their JSON
 // envelope to stdout via internal/output) by routing all log output to a
-// dedicated stderr sink, which defaults to os.Stderr and is silent unless
-// the caller opts in via SetVerbosity. Every Debug/Info/Warn call also fans
+// dedicated stderr sink, which defaults to DefaultOutput and is silent unless
+// the caller opts in via SetVerbosity.
+// Under `go test` DefaultOutput is io.Discard, so a package test run leaves no logger output on stderr.
+// The trade-off: a developer running a failing test with -v sees no logger lines unless that test redirects the logger with SetOutput or logcapture.
+// Every Debug/Info/Warn call also fans
 // out to the durable trace-file sink (sink.go), independently gated at Info
 // and above (Debug too at Debug verbosity) regardless of the stderr threshold.
 // See dualHandler's doc comment for the composite's exact semantics.
@@ -79,12 +82,12 @@
 //     initial threshold exactly like SetVerbosity(2)/(1)/(0) would. Unset or
 //     unrecognised leaves the default Warn threshold untouched.
 //   - LYX_LOG_FILE: a file path. If set, log output is appended to that file
-//     instead of os.Stderr (created if absent). This exists because a live
+//     instead of DefaultOutput (created if absent). This exists because a live
 //     substrate test's own stdout/stderr redirection is often already
 //     spoken for by the test runner, and because a stderr-only sink is easy
 //     to lose track of across many concurrent test processes; a fixed file
 //     path any operator or orchestrator can point at removes that ambiguity.
-//     A failure to open the file falls back to os.Stderr with a one-line
+//     A failure to open the file leaves the stderr half at DefaultOutput with a one-line
 //     diagnostic (logger cannot log its own bootstrap failure through
 //     itself).
 //
@@ -147,13 +150,24 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"testing"
 )
 
 // levelVar is the package-level threshold controlling stderr verbosity.
 var levelVar slog.LevelVar
 
-// out is the stderr output destination, defaulting to os.Stderr.
-var out io.Writer = os.Stderr
+// DefaultOutput returns the stderr half's default destination:
+// io.Discard inside a `go test` binary, os.Stderr otherwise.
+// Tests that restore the stderr half after a redirect restore this value, never os.Stderr.
+func DefaultOutput() io.Writer {
+	if testing.Testing() {
+		return io.Discard
+	}
+	return os.Stderr
+}
+
+// out is the stderr output destination, defaulting to DefaultOutput().
+var out io.Writer = DefaultOutput()
 
 // currentStderr is the stderr-half inner handler, rebuilt by SetOutput to
 // respond to output redirections.

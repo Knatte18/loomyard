@@ -477,7 +477,7 @@ func TestInnerRun_DoneLivenessErrorIsTreatedAsLive(t *testing.T) {
 func TestInnerRun_DoneFinishesPastGraceWithLiveDriverAndWarns(t *testing.T) {
 	var buf bytes.Buffer
 	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}

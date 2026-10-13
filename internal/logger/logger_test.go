@@ -1,10 +1,11 @@
 // logger_test.go verifies how records route to stderr and the durable sink by level and verbosity, the LYX_LOG_LEVEL and LYX_LOG_FILE environment seams, and the SetOutput test seam.
-// No test in this file calls t.Parallel: each mutates process-global logger state (verbosity, the output writer, the durable sink, LYX_* environment variables) that the tests share.
+// Only TestDefaultOutput_DiscardsUnderGoTest calls t.Parallel; every other test mutates process-global logger state (verbosity, the output writer, the durable sink, LYX_* environment variables) that the tests share.
 
 package logger
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -23,6 +24,18 @@ func withCapturedOutput(t *testing.T) *bytes.Buffer {
 }
 
 var originalOut = out
+
+// TestDefaultOutput_DiscardsUnderGoTest pins that the stderr half defaults to io.Discard inside the test binary, both from DefaultOutput and from the value out held at package init.
+// It reads no state it mutates, so it runs in parallel.
+func TestDefaultOutput_DiscardsUnderGoTest(t *testing.T) {
+	t.Parallel()
+	if DefaultOutput() != io.Discard {
+		t.Errorf("DefaultOutput() = %v, want io.Discard", DefaultOutput())
+	}
+	if originalOut != io.Discard {
+		t.Errorf("out at package init = %v, want io.Discard", originalOut)
+	}
+}
 
 // TestLogging_RoutesRecordsByLevelAndVerbosity pins the dual-handler fan-out: Warn reaches stderr and the durable sink at every verbosity, Info reaches the durable sink always and stderr from -v, Debug reaches stderr and the durable sink only at -vv.
 // Every record a half receives carries the current trace ID, and a Warn with no durable sink armed still reaches stderr.

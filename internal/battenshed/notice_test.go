@@ -1039,7 +1039,7 @@ func TestNotice_DeliveryIsRecordedOnlyWhenQueuedAndRetriedWithinItsCaps(t *testi
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
 			logger.SetOutput(&buf)
-			t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+			t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 			h := ready(t)
 			h.notifyQueued, h.notifyErr = tt.queue, tt.err
@@ -1067,7 +1067,7 @@ func TestNotice_DeliveryIsRecordedOnlyWhenQueuedAndRetriedWithinItsCaps(t *testi
 	t.Run("NoStrandMakesNoNotifyCallAndWarnsOncePerEpisode", func(t *testing.T) {
 		var buf bytes.Buffer
 		logger.SetOutput(&buf)
-		t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+		t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 		h := ready(t)
 		h.strand = false

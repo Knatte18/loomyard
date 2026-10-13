@@ -129,7 +129,7 @@ func TestInnerRun_TerminalOpenErrorIsWarnedNotEscalated(t *testing.T) {
 	run := func(openErr error) (shedengine.Outcome, shedengine.OutputPointer, string, string) {
 		var buf bytes.Buffer
 		logger.SetOutput(&buf)
-		t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+		t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 		scratchDir := t.TempDir()
 		_, _, deps := newInnerRunDeps(t, nil, nil, absentThenRunning(), &fakeClock{})
 		deps.OpenTerminal = func(ctx context.Context) error { return openErr }

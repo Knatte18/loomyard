@@ -452,7 +452,7 @@ func TestInnerRun_RunningArmReviewWaitNote(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
 			logger.SetOutput(&buf)
-			t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+			t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 			scratchDir := t.TempDir()
 			clock := &fakeClock{}

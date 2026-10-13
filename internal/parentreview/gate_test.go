@@ -458,7 +458,7 @@ func TestGate_LivenessErrorHoldsAndWarnsOncePerError(t *testing.T) {
 	s, c := newStore(t)
 	var buf strings.Builder
 	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 	gate, _ := newLiveGates(t, s, func() (bool, error) { return false, errors.New("reed unreachable") })
 	for i := 0; i < 3; i++ {
 		wantHold(t, mustEval(t, gate))
