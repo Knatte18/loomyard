@@ -210,8 +210,9 @@ func TestMount_File(t *testing.T) {
 		wantMounted map[string]string
 	}{
 		{
-			name: "the shipped file mounts attach and prime", data: shortcutFile,
+			name: "the shipped file mounts a, attach and prime", data: shortcutFile,
 			wantMounted: map[string]string{
+				"a":      "shortcut: lyx reed attach",
 				"attach": "shortcut: lyx reed attach",
 				"prime":  "shortcut: lyx orch start, then lyx reed attach",
 			},

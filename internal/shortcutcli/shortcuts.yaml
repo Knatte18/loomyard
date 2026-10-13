@@ -4,4 +4,5 @@
 # An argv names lyx words only, never a shell string: a command path, then any args and flags of that command.
 # A shortcut is added only by a commit to this file.
 attach: [reed, attach]
+a: [reed, attach]
 prime: [[orch, start], [reed, attach]]

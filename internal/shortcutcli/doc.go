@@ -1,4 +1,4 @@
-// Package shortcutcli mounts the top-level operator shortcuts (`lyx attach`, `lyx prime`) declared in one embedded file.
+// Package shortcutcli mounts the top-level operator shortcuts (`lyx a`, `lyx attach`, `lyx prime`) declared in one embedded file.
 //
 // # The file
 //
