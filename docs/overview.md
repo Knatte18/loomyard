@@ -279,6 +279,7 @@ github.com/Knatte18/loomyard/
 ├── internal/buildvcs/            the running binary's VCS identity, a stdlib-only leaf
 ├── internal/standalonestate/     target-path-to-hash8-and-state-directory derivation, a stdlib-only leaf
 ├── internal/segmentcolor/        the loom segments, lyx's color palette and its tmux colors, a stdlib-only leaf
+├── internal/selfexec/            the self-re-exec helper a long-lived pane process calls on a changed binary, a leaf over the standard library and `internal/logger`
 ├── internal/fswatch/             the one file-change event source over fsnotify, a leaf
 ├── internal/configengine/        shared config resolution
 ├── internal/gitexec/             shared git operations

@@ -90,6 +90,7 @@ internal/reportcli: 3
 internal/reportengine: 8
 internal/seatengine: 17
 internal/segmentcolor: 4
+internal/selfexec: 2
 internal/selfreportcli: 3
 internal/selfreportengine: 12
 internal/shedadapters: 155
