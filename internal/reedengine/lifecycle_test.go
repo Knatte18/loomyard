@@ -31,11 +31,11 @@ func guids(strands []Strand) []string {
 	return out
 }
 
-// TestUp_BootValidation pins the eager boot validation of Up: an over-long socket path, an unresolvable shell, a segment color outside the palette or an invalid watchdog value
-// fails with an error naming it before any tmux round trip (validation ORDER, not just existence),
+// TestUp_BootValidation pins the eager boot validation of Up.
+// An over-long socket path, an unresolvable shell, a segment color outside the palette, an invalid watchdog value, an invalid window_split or a negative window_share_max each fail with an error naming it before any tmux round trip (validation ORDER, not just existence),
 // while "on" and "off" do not trip the watchdog check (the fixture's nonexistent tmux binary is expected to fail Up() past this point,
 // so the assertion is only that the error is NOT the watchdog validation error).
-// Each refusal is asserted at both boot entries: Up, whose op-lock bracket refuses before its zoom read, and ensureServerAndSessionLocked, which every other boot path reaches without that bracket.
+// Each refusal is asserted at three boot entries: Up and Resume, whose op-lock brackets refuse before their zoom read, and ensureServerAndSessionLocked, which every other boot path reaches without that bracket.
 func TestUp_BootValidation(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -98,6 +98,10 @@ func TestUp_BootValidation(t *testing.T) {
 		{name: "InvalidWatchdog_Yes", configure: func(cfg *Config) { cfg.Watchdog = "yes" }, wantErr: "invalid watchdog value"},
 		{name: "ValidWatchdog_On", configure: func(cfg *Config) { cfg.Watchdog = "on" }, notErr: "invalid watchdog value"},
 		{name: "ValidWatchdog_Off", configure: func(cfg *Config) { cfg.Watchdog = "off" }, notErr: "invalid watchdog value"},
+		{name: "WindowSplitInvalid", configure: func(cfg *Config) { cfg.WindowSplit = "diagonal" }, wantErr: "window_split"},
+		{name: "WindowShareMaxNegative", configure: func(cfg *Config) { cfg.WindowShareMax = -1 }, wantErr: "window_share_max"},
+		{name: "WindowSplitHeightPasses", configure: func(cfg *Config) { cfg.WindowSplit = "height" }, notErr: "window_split"},
+		{name: "WindowShareMaxZeroPasses", configure: func(cfg *Config) { cfg.WindowShareMax = 0 }, notErr: "window_share_max"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -117,10 +121,11 @@ func TestUp_BootValidation(t *testing.T) {
 
 			if tt.wantErr != "" {
 				_, _, ensureErr := e.ensureServerAndSessionLocked()
+				_, resumeErr := e.Resume()
 				for _, entry := range []struct {
 					name string
 					err  error
-				}{{"Up()", err}, {"ensureServerAndSessionLocked()", ensureErr}} {
+				}{{"Up()", err}, {"ensureServerAndSessionLocked()", ensureErr}, {"Resume()", resumeErr}} {
 					if entry.err == nil {
 						t.Fatalf("%s = nil error, want the eager validation error containing %q", entry.name, tt.wantErr)
 					}
@@ -129,7 +134,7 @@ func TestUp_BootValidation(t *testing.T) {
 					}
 				}
 				if calls := fake.Calls(); len(calls) != 0 {
-					t.Errorf("Up() and ensureServerAndSessionLocked() issued %d tmux calls before failing, want zero: %v", len(calls), calls)
+					t.Errorf("Up(), ensureServerAndSessionLocked() and Resume() issued %d tmux calls before failing, want zero: %v", len(calls), calls)
 				}
 				return
 			}
@@ -177,9 +182,10 @@ func TestServerSpawnArgv(t *testing.T) {
 
 // TestPinBootOptionsLocked_InstallsTheSignalEntry pins that a fresh boot's pins end in a zero-pin rebuild of the window-resized hook array when the watchdog is on, the clear and the signal entry alone,
 // and that watchdog off leaves the one unset and installs no entry.
+// Both steps also see the unseen-clear hook pinned once.
 // Windows issues no hook call and cannot be faked, so both steps skip there.
 func TestPinBootOptionsLocked_InstallsTheSignalEntry(t *testing.T) {
-	bootPins := func(t *testing.T, watchdog string) (*Engine, [][]string) {
+	bootPins := func(t *testing.T, watchdog string) (*Engine, *fakeTmux) {
 		t.Helper()
 		if runtime.GOOS == "windows" {
 			t.Skip("the window-resized hook is never installed on Windows")
@@ -190,26 +196,27 @@ func TestPinBootOptionsLocked_InstallsTheSignalEntry(t *testing.T) {
 		if err := e.pinBootOptionsLocked("off", ""); err != nil {
 			t.Fatalf("pinBootOptionsLocked() = %v, want nil", err)
 		}
-		return e, fake.Calls()
+		return e, fake
 	}
 
 	t.Run("WatchdogOn", func(t *testing.T) {
-		e, calls := bootPins(t, "on")
+		e, fake := bootPins(t, "on")
 		target := exactSessionWindowTarget(e.SessionName())
 
 		var hooks [][]string
 		lastOption, firstHook := -1, -1
-		for i, call := range calls {
-			switch call[0] {
-			case "set-option":
+		for i, call := range fake.Calls() {
+			switch {
+			case call[0] == "set-option":
 				lastOption = i
-			case "set-hook":
+			case call[0] == "set-hook" && containsArg(call, windowResizedHookName):
 				hooks = append(hooks, call)
 				if firstHook == -1 {
 					firstHook = i
 				}
 			}
 		}
+		assertUnseenClearHookPinned(t, e, fake)
 		want := [][]string{
 			{"set-hook", "-u", "-w", "-t", target, windowResizedHookName},
 			{"set-hook", "-w", "-t", target, windowResizedHookName, resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())},
@@ -223,14 +230,10 @@ func TestPinBootOptionsLocked_InstallsTheSignalEntry(t *testing.T) {
 	})
 
 	t.Run("WatchdogOff", func(t *testing.T) {
-		e, calls := bootPins(t, "off")
+		e, fake := bootPins(t, "off")
 
-		var hooks [][]string
-		for _, call := range calls {
-			if call[0] == "set-hook" {
-				hooks = append(hooks, call)
-			}
-		}
+		hooks := fake.SetHookCalls(windowResizedHookName)
+		assertUnseenClearHookPinned(t, e, fake)
 		want := [][]string{{"set-hook", "-u", "-t", exactSessionWindowTarget(e.SessionName()), windowResizedHookName}}
 		if !slices.EqualFunc(hooks, want, slices.Equal[[]string]) {
 			t.Errorf("set-hook calls = %v, want the one unset %v", hooks, want)
@@ -266,6 +269,46 @@ func TestStatus_ReportsSegmentColor(t *testing.T) {
 	}
 	if got := result.Strands[1].Color; got != "" {
 		t.Errorf("Status color of the strand without a segment = %q, want none", got)
+	}
+}
+
+// TestStatus_ReportsOwnWindowStrandsFromTheSessionListing pins that Status reads an own-window strand's pane from the session-wide listing: alive is live, dead is present but not live, and one in no listing is neither.
+func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
+	e := newTestEngine(t)
+	fake := installFakeTmux(t, e)
+	fake.answer("display-message", "$0|4321|1787000000", nil)
+	fake.answer("list-sessions", "worktree\n", nil)
+	fake.answer("list-panes", "%1 0 0 100 3 4322\n%2 0 3 100 20 4323\n", nil)
+	fake.answerWindowPanes("@0 0 - %1 0 4322 t\n@0 0 - %2 0 4323 t\n@3 1 - %5 0 4325 t\n@3 1 - %6 1 4326 t\n", nil)
+	st := &ReedState{
+		SelvagePaneID:  "%1",
+		PaneGeneration: PaneGeneration{SessionName: "worktree", TmuxSessionID: "$0", ServerPID: "4321", Created: "1787000000"},
+		Strands: []Strand{
+			{GUID: "w", Name: "w", PaneID: "%2"},
+			{GUID: "alive", Name: "alive", PaneID: "%5", Display: render.Display{Anchor: render.AnchorOwnWindow}},
+			{GUID: "dead", Name: "dead", PaneID: "%6", Display: render.Display{Anchor: render.AnchorOwnWindow}},
+			{GUID: "gone", Name: "gone", PaneID: "%9", Display: render.Display{Anchor: render.AnchorOwnWindow}},
+		},
+	}
+	if err := SaveState(e.stateDir(), st); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	result, err := e.Status()
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	type shape struct{ live, present, own bool }
+	want := map[string]shape{
+		"w":     {live: true, present: true},
+		"alive": {live: true, present: true, own: true},
+		"dead":  {present: true, own: true},
+		"gone":  {own: true},
+	}
+	for _, s := range result.Strands {
+		if got := (shape{s.Live, s.Present, s.OwnWindow}); got != want[s.GUID] {
+			t.Errorf("Status of strand %q = %+v, want %+v", s.GUID, got, want[s.GUID])
+		}
 	}
 }
 

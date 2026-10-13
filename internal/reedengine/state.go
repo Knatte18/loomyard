@@ -78,6 +78,9 @@ type ReedState struct {
 	// state predates this field (or has no bindings yet) and is adopted
 	// rather than treated as a mismatch.
 	PaneGeneration PaneGeneration `json:"paneGeneration"`
+	// WindowGroups records the own-window groups that have a strand, keyed by group name.
+	// An older file decodes with none.
+	WindowGroups map[string]WindowGroup `json:"windowGroups,omitempty"`
 }
 
 // PaneGeneration identifies one tmux session incarnation, so a persisted pane id can be told apart

@@ -178,6 +178,10 @@
 // It is a guardrail, not a barrier: its hook sees static text only, so a removal behind `find -delete`, `xargs rm` with no `$`, `bash -c` or a script passes, as does one through `$$`, `$?`, `$#` or `$!`,
 // and an `rm` of a literal path in a command that uses `$` elsewhere, a `grep` alternation naming `rm`, or a matching spelling in another payload field such as the description is falsely denied.
 //
+// The open launch (Claude.OpenLaunch) starts a named interactive session with no prompt.
+// Its line carries the session id and the strand-name reference, adds `--model` and `--effort` only when set, and passes no `--settings`, so the session takes the worktree's own settings.
+// Its resume line falls back to a fresh start under the same id, because Claude Code keeps no transcript for a session that never took a turn and `--resume` then fails.
+//
 // A replay corpus of real turn ends lives under testdata/corpus, one directory per case:
 // transcript.jsonl holds the source transcript's lines the parsers read, trimmed to the fields they read;
 // events.jsonl is the run's events file, or one rebuilt from the transcript's turn ends when the run directory is gone;

@@ -45,6 +45,8 @@ func TestStop_RecordsTheStopBeforeRemovingTheStrand(t *testing.T) {
 		{name: "running_run_with_every_output_file_keeps_running", outcome: runOutcomeRunning, outputExists: true, strands: liveStrand, wantOutcome: runOutcomeRunning, wantRemoved: true},
 		{name: "terminal_died_record_keeps_its_outcome", outcome: "died", strands: liveStrand, wantOutcome: "died", wantRemoved: true},
 		{name: "dead_strand_is_recorded_and_not_removed", outcome: runOutcomeRunning, strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1"}}, wantOutcome: runOutcomeStopped},
+		{name: "dead_own_window_strand_is_recorded_and_removed", outcome: runOutcomeRunning, strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", OwnWindow: true, Present: true}}, wantOutcome: runOutcomeStopped, wantRemoved: true},
+		{name: "own_window_strand_with_no_present_pane_is_recorded_and_not_removed", outcome: runOutcomeRunning, strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", OwnWindow: true}}, wantOutcome: runOutcomeStopped},
 		{name: "removal_failure_leaves_the_record_terminal_and_returns_the_error", outcome: runOutcomeRunning, strands: liveStrand, removeErr: errors.New("reed down"), wantOutcome: runOutcomeStopped, wantRemoved: true, wantErr: true},
 		{name: "probe_failure_leaves_the_record_terminal_and_removes_nothing", outcome: runOutcomeRunning, statusErr: errors.New("reed unreadable"), wantOutcome: runOutcomeStopped, wantErr: true},
 	}
@@ -194,7 +196,7 @@ func TestStopStrand_GuidWithNoRunRecordIsRemovedByStrandAlone(t *testing.T) {
 }
 
 // TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns covers the step form over one run-directory root:
-// only a live running run tied to the step is stopped, an untied one is listed and left alone, and a failed stop is reported and skipped.
+// only a running run tied to the step whose strand is live or a dead own-window one is stopped, an untied one is listed and left alone, a dead window 0 strand is left alone, and a failed stop is reported and skipped.
 func TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns(t *testing.T) {
 	t.Parallel()
 
@@ -205,6 +207,8 @@ func TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns(t *testing.T) {
 		{GUID: "guid-other", PaneID: "%2", Live: true},
 		{GUID: "guid-untied", PaneID: "%3", Live: true},
 		{GUID: "guid-terminal", PaneID: "%4", Live: true},
+		{GUID: "guid-dead-own", PaneID: "%6", OwnWindow: true, Present: true},
+		{GUID: "guid-dead-window0", PaneID: "%7", Present: true},
 		{GUID: "guid-failing", PaneID: "%5", Live: true},
 	}
 	fake := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: strands}}}
@@ -224,23 +228,25 @@ func TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns(t *testing.T) {
 		return runDir
 	}
 	dirs := map[string]string{
-		"tied":     seed("run-1", RunState{StrandGUID: "guid-tied", StrandName: "name-tied", Outcome: runOutcomeRunning, Step: &tie}),
-		"other":    seed("run-2", RunState{StrandGUID: "guid-other", StrandName: "name-other", Outcome: runOutcomeRunning, Step: &otherTie}),
-		"untied":   seed("run-3", RunState{StrandGUID: "guid-untied", StrandName: "name-untied", Outcome: runOutcomeRunning}),
-		"terminal": seed("run-4", RunState{StrandGUID: "guid-terminal", StrandName: "name-terminal", Outcome: "died", Step: &tie}),
+		"tied":         seed("run-1", RunState{StrandGUID: "guid-tied", StrandName: "name-tied", Outcome: runOutcomeRunning, Step: &tie}),
+		"other":        seed("run-2", RunState{StrandGUID: "guid-other", StrandName: "name-other", Outcome: runOutcomeRunning, Step: &otherTie}),
+		"untied":       seed("run-3", RunState{StrandGUID: "guid-untied", StrandName: "name-untied", Outcome: runOutcomeRunning}),
+		"terminal":     seed("run-4", RunState{StrandGUID: "guid-terminal", StrandName: "name-terminal", Outcome: "died", Step: &tie}),
+		"dead-own":     seed("run-5", RunState{StrandGUID: "guid-dead-own", StrandName: "name-dead-own", Outcome: runOutcomeRunning, Step: &tie}),
+		"dead-window0": seed("run-6", RunState{StrandGUID: "guid-dead-window0", StrandName: "name-dead-window0", Outcome: runOutcomeRunning, Step: &tie}),
 	}
 
 	report, err := fx.Runner.StopStepRuns(tie)
 	if err != nil {
 		t.Fatalf("StopStepRuns() error = %v", err)
 	}
-	if !slices.Equal(report.Stopped, []string{"name-tied"}) || !slices.Equal(report.Untied, []string{"name-untied"}) || len(report.Failed) != 0 {
-		t.Errorf("report = %+v; want exactly the tied run stopped and the untied one listed", report)
+	if !slices.Equal(report.Stopped, []string{"name-tied", "name-dead-own"}) || !slices.Equal(report.Untied, []string{"name-untied"}) || len(report.Failed) != 0 {
+		t.Errorf("report = %+v; want the tied live run and the tied dead own-window run stopped and the untied one listed", report)
 	}
-	if len(fake.RemoveStrandCalls) != 1 || fake.RemoveStrandCalls[0].GUID != "guid-tied" {
-		t.Errorf("RemoveStrand calls = %v; want the one removal of guid-tied", fake.RemoveStrandCalls)
+	if len(fake.RemoveStrandCalls) != 2 || fake.RemoveStrandCalls[0].GUID != "guid-tied" || fake.RemoveStrandCalls[1].GUID != "guid-dead-own" {
+		t.Errorf("RemoveStrand calls = %v; want the removals of guid-tied and guid-dead-own", fake.RemoveStrandCalls)
 	}
-	for name, wantOutcome := range map[string]string{"tied": runOutcomeStopped, "other": runOutcomeRunning, "untied": runOutcomeRunning, "terminal": "died"} {
+	for name, wantOutcome := range map[string]string{"tied": runOutcomeStopped, "other": runOutcomeRunning, "untied": runOutcomeRunning, "terminal": "died", "dead-own": runOutcomeStopped, "dead-window0": runOutcomeRunning} {
 		record, _, err := loadRunState(dirs[name])
 		if err != nil {
 			t.Fatalf("loadRunState %s: %v", name, err)
@@ -250,7 +256,7 @@ func TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns(t *testing.T) {
 		}
 	}
 
-	seed("run-5", RunState{StrandGUID: "guid-failing", Outcome: runOutcomeRunning, Step: &tie})
+	seed("run-7", RunState{StrandGUID: "guid-failing", Outcome: runOutcomeRunning, Step: &tie})
 	fake.RemoveStrandErr = errors.New("reed down")
 	report, err = fx.Runner.StopStepRuns(tie)
 	if err != nil {

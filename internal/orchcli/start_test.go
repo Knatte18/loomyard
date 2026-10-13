@@ -268,6 +268,9 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	if !spec.Interactive || spec.NameOverride != "orch" || spec.Role != "orch" || !spec.Display.Focus {
 		t.Errorf("spec = %+v; want interactive, focused, named orch", spec)
 	}
+	if spec.Display.Anchor != render.AnchorBelowParent {
+		t.Errorf("Display.Anchor = %q; want %q, so the orch keeps its window 0 pane", spec.Display.Anchor, render.AnchorBelowParent)
+	}
 	if spec.Segment != segmentcolor.Coordinator || !spec.ColorByCaller {
 		t.Errorf("Segment/ColorByCaller = %q/%v; want %q/true", spec.Segment, spec.ColorByCaller, segmentcolor.Coordinator)
 	}

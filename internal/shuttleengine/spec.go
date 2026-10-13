@@ -117,6 +117,8 @@ type Spec struct {
 	NameOverride string
 	// Display carries the reed placement/focus/shrink settings for this
 	// run's strand.
+	// An empty Anchor defaults to render.AnchorOwnWindow;
+	// a session that lives for a whole run or the whole hub names render.AnchorBelowParent to stay in window 0.
 	Display render.Display
 	// Timeout is the wall-clock deadline after which an in-progress run is
 	// classified as timed out. Zero defers to cfg.RunTimeoutMin minutes —
@@ -167,8 +169,8 @@ type Spec struct {
 // A negative Timeout is rejected (see the Timeout field's doc comment: it would launch
 // a run whose deadline is already in the past, leaving stray live state
 // behind an instant OutcomeTimeout); a zero Timeout is replaced with
-// cfg.RunTimeoutMin minutes, and an empty Display.Anchor defaults to
-// render.AnchorBelowParent.
+// cfg.RunTimeoutMin minutes.
+// An empty Display.Anchor defaults to render.AnchorOwnWindow, so a run's strand opens in a window of its own unless the spec names an anchor.
 func (s *Spec) validate(worktreeRoot string, cfg Config) error {
 	if s.Prompt == "" {
 		return fmt.Errorf("shuttle: spec.Prompt must not be empty")
@@ -212,7 +214,7 @@ func (s *Spec) validate(worktreeRoot string, cfg Config) error {
 	}
 
 	if s.Display.Anchor == "" {
-		s.Display.Anchor = render.AnchorBelowParent
+		s.Display.Anchor = render.AnchorOwnWindow
 	}
 
 	return nil

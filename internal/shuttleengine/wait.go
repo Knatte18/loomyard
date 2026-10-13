@@ -329,7 +329,7 @@ func (run *Run) Wait() (Result, error) {
 				}
 			} else if outcome != "" && (outcome != OutcomeDone || len(run.gate) == 0) {
 				// Not a gated Done: finalize exactly as this branch always has.
-				return run.finalize(outcome)
+				return run.finalizeAndRemoveDiedWindow(outcome)
 			} else if outcome == OutcomeDone {
 				// A gated Done is the writer's turn boundary: let the shared helper judge it.
 				run.gateAtBoundary = true
@@ -392,7 +392,7 @@ func (run *Run) Wait() (Result, error) {
 			} else {
 				statusFailures = 0
 				if livenessOutcome != "" {
-					return run.finalize(livenessOutcome)
+					return run.finalizeAndRemoveDiedWindow(livenessOutcome)
 				}
 			}
 		}
@@ -1614,4 +1614,43 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 	run.logEndedShells(result.EndedShells, strandRemoved)
 	logger.Info("shuttle: run finished", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "outcome", string(outcome), "cleanedUp", cleaned)
 	return result, nil
+}
+
+// diedCaptureFileName is where removeDiedOwnWindowStrand saves a died run's last pane capture in the run directory.
+const diedCaptureFileName = "died-capture.txt"
+
+// finalizeAndRemoveDiedWindow finalizes the run with outcome, then ends the window of a died run's own-window strand.
+func (run *Run) finalizeAndRemoveDiedWindow(outcome Outcome) (Result, error) {
+	result, err := run.finalize(outcome)
+	if result.Outcome == OutcomeDied {
+		run.removeDiedOwnWindowStrand()
+	}
+	return result, err
+}
+
+// removeDiedOwnWindowStrand saves a died run's last pane capture to died-capture.txt in the run directory and removes the run's strand, when the strand is tracked, own-window and present.
+// A window 0 strand is left to reed's reconcile.
+// A failed capture or write is a Warn and the removal still runs; a failed removal is a Warn naming `lyx reed remove` as the way forward.
+func (run *Run) removeDiedOwnWindowStrand() {
+	guid := run.state.StrandGUID
+	reed := run.runner.reed
+	status, err := reed.Status()
+	if err != nil {
+		logger.Warn("shuttle: died run: probe reed before removing its own-window strand failed (non-fatal)", "strandGUID", guid, "error", err)
+		return
+	}
+	strand, tracked := strandStatusByGUID(status.Strands, guid)
+	if !tracked || !strand.OwnWindow || !strand.Present {
+		return
+	}
+	if capture, err := reed.CapturePane(guid); err != nil {
+		logger.Warn("shuttle: died run: capture the own-window pane failed (non-fatal)", "strandGUID", guid, "error", err)
+	} else if err := os.WriteFile(filepath.Join(run.runDir, diedCaptureFileName), []byte(capture), 0o644); err != nil {
+		logger.Warn("shuttle: died run: save the last pane capture failed (non-fatal)", "runDir", run.runDir, "strandGUID", guid, "error", err)
+	}
+	if _, err := reed.RemoveStrand(guid, false); err != nil {
+		logger.Warn("shuttle: died run: remove the own-window strand failed; run \"lyx reed remove\" to clear it", "strandGUID", guid, "error", err)
+		return
+	}
+	logger.Info("shuttle: removed a died run's own-window strand", "runDir", run.runDir, "strandGUID", guid)
 }

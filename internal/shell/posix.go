@@ -68,3 +68,13 @@ func (posixShell) ScriptExt() string {
 func (p posixShell) Chain(parts ...string) string {
 	return chainStatements(parts...)
 }
+
+// OrElse returns `first || second`.
+func (posixShell) OrElse(first, second string) string {
+	return first + " || " + second
+}
+
+// Exit returns the POSIX `exit` statement.
+func (posixShell) Exit() string {
+	return "exit"
+}
