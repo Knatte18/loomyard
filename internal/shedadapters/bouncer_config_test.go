@@ -65,6 +65,11 @@ func TestNewBouncer_ValidationRules(t *testing.T) {
 			wantErr: "Shuttle",
 		},
 		{
+			name:    "NegativeHardCap",
+			mutate:  func(cfg *BouncerConfig) { cfg.HardCap = -1 },
+			wantErr: "HardCap",
+		},
+		{
 			name: "CarryOverWithEmptySegment",
 			mutate: func(cfg *BouncerConfig) {
 				cfg.CarryOver = func(discussionparser.CarryOver) error { return nil }

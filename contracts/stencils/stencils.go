@@ -167,6 +167,16 @@ var BouncerTemplateJudge []byte
 //go:embed bouncer/bouncer-template-escalation.md
 var BouncerTemplateEscalation []byte
 
+// BouncerFragmentDecideOpen is the Bouncer's shipped-default decide step of the escalation brief for a round below its perch's hard cap, filled into the brief's decide_options marker.
+//
+//go:embed bouncer/bouncer-fragment-decide-open.md
+var BouncerFragmentDecideOpen []byte
+
+// BouncerFragmentDecideCapped is the Bouncer's shipped-default decide step of the escalation brief for a round at or past its perch's hard cap, filled into the brief's decide_options marker.
+//
+//go:embed bouncer/bouncer-fragment-decide-capped.md
+var BouncerFragmentDecideCapped []byte
+
 // BouncerTemplateParentNotice is the Bouncer's shipped-default one-line parent notice, which
 // points the parent at the escalation brief.
 //
@@ -461,6 +471,8 @@ var entries = []registryEntry{
 	{"bouncer-template-seed", &BouncerTemplateSeed},
 	{"bouncer-template-judge", &BouncerTemplateJudge},
 	{"bouncer-template-escalation", &BouncerTemplateEscalation},
+	{"bouncer-fragment-decide-open", &BouncerFragmentDecideOpen},
+	{"bouncer-fragment-decide-capped", &BouncerFragmentDecideCapped},
 	{"bouncer-template-parent-notice", &BouncerTemplateParentNotice},
 	{"treadle-template-judge-circling", &TreadleTemplateJudgeCircling},
 	{"treadle-template-judge-milestone", &TreadleTemplateJudgeMilestone},

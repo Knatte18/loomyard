@@ -31,6 +31,12 @@ const configModule = "darn"
 // verifyWayForward is the way forward a missing or empty verify command names.
 const verifyWayForward = "run \"lyx config darn --set verify=<command>\" from the prime, then \"lyx loom resume\""
 
+// hardCapSetCommand and softCapSetCommand are the commands the hard-cap refusals name; darn's budget keys are barred from the local layer, so the hub file is the only route.
+const (
+	hardCapSetCommand = "run \"lyx config darn --set review_hard_max_bounces=<n>\" from the prime"
+	softCapSetCommand = "run \"lyx config darn --set review_max_bounces=<n>\" from the prime"
+)
+
 // Config represents the resolved darn.yaml configuration.
 type Config struct {
 	// Writer is the model-spec string selecting the model the darn writer's session runs under.
@@ -44,27 +50,31 @@ type Config struct {
 	VerifyAttempts int `yaml:"verify_attempts"`
 	// ReviewMaxBounces is the bounce budget of the Darn-Review perch that reviews the writer's diff before Publish; 0 runs neither the review nor Describe.
 	ReviewMaxBounces int `yaml:"review_max_bounces"`
+	// ReviewHardMaxBounces is the round number at or past which the Darn-Review perch never continues a round.
+	ReviewHardMaxBounces int `yaml:"review_hard_max_bounces"`
 }
 
 // ConfigSpec returns darn's layered-load spec.
-// verify runs a shell command and review_max_bounces at 0 skips Darn-Review and Describe, so neither may be set in the local layer.
+// verify runs a shell command, review_max_bounces at 0 skips Darn-Review and Describe, and a raised review_hard_max_bounces lets the review run more rounds, so none of the three may be set in the local layer.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     configModule,
 		Template: []byte(ConfigTemplate()),
 		HubWide:  true,
 		Categories: map[string]configengine.Category{
-			"writer":             configengine.CategoryNone,
-			"writer_timeout_min": configengine.CategoryNone,
-			"verify":             configengine.CategoryExecutable,
-			"verify_attempts":    configengine.CategoryNone,
-			"review_max_bounces": configengine.CategoryGuard,
+			"writer":                  configengine.CategoryNone,
+			"writer_timeout_min":      configengine.CategoryNone,
+			"verify":                  configengine.CategoryExecutable,
+			"verify_attempts":         configengine.CategoryNone,
+			"review_max_bounces":      configengine.CategoryGuard,
+			"review_hard_max_bounces": configengine.CategoryGuard,
 		},
 	}
 }
 
 // LoadConfig loads and unmarshals the darn module's configuration strictly through the hub-wide layer stack under dirs.
 // It validates the writer key's model-spec grammar at load time and leaves verify, verify_attempts and review_max_bounces to their readers.
+// review_hard_max_bounces, default 4, is refused below 1, and below review_max_bounces while that is above 0; each refusal names the command that fixes it.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -83,6 +93,15 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	if _, err := modelspec.Parse(cfg.Writer); err != nil {
 		return Config{}, fmt.Errorf("darn config key %q: %w", "writer", err)
+	}
+
+	if cfg.ReviewHardMaxBounces < 1 {
+		return Config{}, fmt.Errorf("darn config key %q: must be at least 1, got %d; way forward: %s, then \"lyx loom resume\"", "review_hard_max_bounces", cfg.ReviewHardMaxBounces, hardCapSetCommand)
+	}
+
+	// A review_max_bounces of 0 skips the review, so it carries no soft cap for the hard cap to sit under.
+	if cfg.ReviewMaxBounces > 0 && cfg.ReviewHardMaxBounces < cfg.ReviewMaxBounces {
+		return Config{}, fmt.Errorf("darn config key %q: hard cap %d is below %q %d; way forward: raise the hard cap: %s, or lower the soft cap: %s, then \"lyx loom resume\"", "review_hard_max_bounces", cfg.ReviewHardMaxBounces, "review_max_bounces", cfg.ReviewMaxBounces, hardCapSetCommand, softCapSetCommand)
 	}
 
 	return cfg, nil

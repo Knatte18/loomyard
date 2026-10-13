@@ -58,6 +58,7 @@
 //   - halted with no live driver: refused over an unfinished merge with `merge_in_progress`, otherwise naming `lyx batten run <slug>` from the prime and then resume for a dead strand, and `lyx loom start` for a retiring strand or none.
 //
 // The driver strand is read from reed's directory, which still lists a session that died with the machine, never from the run's seed.
+// `lyx loom circling continue` refuses at or past the perch's hard cap, with `circling accept` or raising the cap as its way forward.
 // A resume line that cannot be delivered is refused, naming `lyx loom status` and a re-run of resume.
 //
 // # Plan card verbs

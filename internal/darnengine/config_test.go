@@ -35,23 +35,33 @@ func TestLoadConfig(t *testing.T) {
 		contents string
 		seed     bool
 		want     Config
-		wantErr  string
+		wantErr  []string
 	}{
 		{
 			name: "template defaults", contents: ConfigTemplate(), seed: true,
-			want: Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 1},
+			want: Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 1, ReviewHardMaxBounces: 4},
 		},
 		{
 			name: "review off", seed: true,
 			contents: strings.Replace(ConfigTemplate(), "review_max_bounces: 1", "review_max_bounces: 0", 1),
-			want:     Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 0},
+			want:     Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 0, ReviewHardMaxBounces: 4},
 		},
 		{
 			name: "invalid writer spec", seed: true,
 			contents: strings.Replace(ConfigTemplate(), "writer: opus[medium]", "writer: \"opus[medium\"", 1),
-			wantErr:  "writer",
+			wantErr:  []string{"writer"},
 		},
-		{name: "not initialized", wantErr: `not initialized here; run "lyx fabric reconcile"`},
+		{
+			name: "hard cap below 1", seed: true,
+			contents: strings.Replace(ConfigTemplate(), "review_hard_max_bounces: 4", "review_hard_max_bounces: 0", 1),
+			wantErr:  []string{"review_hard_max_bounces", "must be at least 1", "lyx config darn --set"},
+		},
+		{
+			name: "budget above the default hard cap", seed: true,
+			contents: strings.Replace(ConfigTemplate(), "review_max_bounces: 1", "review_max_bounces: 5", 1),
+			wantErr:  []string{"review_hard_max_bounces", "review_max_bounces", "lyx config darn --set", "lyx loom resume"},
+		},
+		{name: "not initialized", wantErr: []string{`not initialized here; run "lyx fabric reconcile"`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -62,9 +72,14 @@ func TestLoadConfig(t *testing.T) {
 				seedDarnConfig(t, baseDir, tt.contents)
 			}
 			got, err := LoadConfig(configengine.Dirs{Board: baseDir}, "darn")
-			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("LoadConfig() = _, %v; want an error containing %q", err, tt.wantErr)
+			if tt.wantErr != nil {
+				if err == nil {
+					t.Fatalf("LoadConfig() = _, nil; want an error containing %q", tt.wantErr)
+				}
+				for _, want := range tt.wantErr {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+					}
 				}
 				return
 			}
@@ -92,22 +107,31 @@ func TestLoadConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("a local verify is refused naming the local file and the key", func(t *testing.T) {
-		t.Parallel()
-		board, anchor := t.TempDir(), t.TempDir()
-		seedDarnConfig(t, board, ConfigTemplate())
-		localPath := writeLocalDarnConfig(t, anchor, "verify: rm -rf .\n")
+	for _, tt := range []struct {
+		name  string
+		local string
+		key   string
+	}{
+		{"a local verify is refused naming the local file and the key", "verify: rm -rf .\n", "verify"},
+		{"a local review_hard_max_bounces is refused naming the local file and the key", "review_hard_max_bounces: 9\n", "review_hard_max_bounces"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			board, anchor := t.TempDir(), t.TempDir()
+			seedDarnConfig(t, board, ConfigTemplate())
+			localPath := writeLocalDarnConfig(t, anchor, tt.local)
 
-		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "darn")
-		if !errors.Is(err, configengine.ErrInvalid) {
-			t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
-		}
-		for _, want := range []string{localPath, "verify"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+			_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "darn")
+			if !errors.Is(err, configengine.ErrInvalid) {
+				t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
 			}
-		}
-	})
+			for _, want := range []string{localPath, tt.key} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+				}
+			}
+		})
+	}
 }
 
 // writeLocalDarnConfig writes contents as anchor's local darn override and returns its path.

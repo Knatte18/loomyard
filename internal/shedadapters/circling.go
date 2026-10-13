@@ -33,13 +33,19 @@ var (
 
 // circlingDecisionHeader mirrors a circling decision file's YAML frontmatter.
 // A file an older binary wrote carries no cause and reads as EscalationCircling.
-// Automatic is true only for an accept the Bouncer recorded itself on a spent budget; a parent's decision never sets it.
+// Automatic is true for a decision the Bouncer recorded itself: an auto-accept, or the soft-cap rule's accept or continue; a parent's decision never sets it.
 type circlingDecisionHeader struct {
 	Round     int    `yaml:"round"`
 	Decision  string `yaml:"decision"`
 	Cause     string `yaml:"cause"`
 	Settled   bool   `yaml:"settled"`
 	Automatic bool   `yaml:"automatic"`
+}
+
+// LatestRound returns the run directory's latest round, 0 when it holds none.
+// It is the round RecordCirclingDecision records its decision for.
+func LatestRound(runDir string) (int, error) {
+	return ResolveRound(runDir, func(n int) string { return filepath.Base(roundReviewPath(runDir, n)) })
 }
 
 // RecordCirclingDecision records d as pending for the run directory's latest round and returns that round and its escalation cause.
@@ -52,7 +58,7 @@ func RecordCirclingDecision(runDir string, d CirclingDecision) (int, EscalationC
 	if d != CirclingAccept && d != CirclingContinue {
 		return 0, "", fmt.Errorf("shedadapters: circling decision must be %q or %q, got %q", CirclingAccept, CirclingContinue, d)
 	}
-	round, err := ResolveRound(runDir, func(n int) string { return filepath.Base(roundReviewPath(runDir, n)) })
+	round, err := LatestRound(runDir)
 	if err != nil {
 		return 0, "", err
 	}
@@ -76,10 +82,17 @@ func RecordCirclingDecision(runDir string, d CirclingDecision) (int, EscalationC
 	return round, cause, nil
 }
 
-// recordAutoAccept records round's circling decision as an automatic, not yet settled accept on a spent budget.
+// recordAutoAccept records round's circling decision as an automatic, not yet settled accept with cause budget.
+// Its callers are an auto-accept perch's harvest at the soft cap and the soft-cap rule's accept over a ledger with no design-wrong entry.
 // It returns ErrCirclingDecided when a decision file for the round already exists, leaving it untouched.
 func recordAutoAccept(runDir string, round int) error {
 	return createCirclingDecision(runDir, round, CirclingAccept, EscalationBudget, true)
+}
+
+// recordAutoContinue records round's circling decision as an automatic, not yet settled continue with cause budget.
+// It returns ErrCirclingDecided when a decision file for the round already exists, leaving it untouched.
+func recordAutoContinue(runDir string, round int) error {
+	return createCirclingDecision(runDir, round, CirclingContinue, EscalationBudget, true)
 }
 
 // createCirclingDecision writes round's pending decision file, refusing with ErrCirclingDecided to overwrite one.
@@ -157,7 +170,7 @@ func PendingEscalation(runDir string) (round int, briefPath string, pending bool
 // readCirclingDecision reads round's decision file, returning the decision, its escalation cause, whether it is settled, and whether a file exists.
 // A file without a cause reads as EscalationCircling.
 // A present file that is malformed is an error:
-// the round must match the filename, the decision and the cause must each be one of their two values, and settled is legal only on an accept.
+// the round must match the filename, the decision and the cause must each be one of their values, and settled is legal only on an accept.
 func readCirclingDecision(runDir string, round int) (CirclingDecision, EscalationCause, bool, bool, error) {
 	decision, cause, settled, _, exists, err := readCirclingFile(runDir, round)
 	return decision, cause, settled, exists, err
@@ -192,8 +205,8 @@ func readCirclingFile(runDir string, round int) (decision CirclingDecision, caus
 	if parsed.Cause == "" {
 		cause = EscalationCircling
 	}
-	if cause != EscalationCircling && cause != EscalationBudget {
-		return "", "", false, false, true, fmt.Errorf("bouncer: circling decision cause must be %q or %q, got %q", EscalationCircling, EscalationBudget, parsed.Cause)
+	if !cause.valid() {
+		return "", "", false, false, true, fmt.Errorf("bouncer: circling decision cause must be %q, %q or %q, got %q", EscalationCircling, EscalationBudget, EscalationHardCap, parsed.Cause)
 	}
 	if parsed.Settled && decision != CirclingAccept {
 		return "", "", false, false, true, fmt.Errorf("bouncer: circling decision %q cannot be settled; only an accept settles", parsed.Decision)

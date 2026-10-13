@@ -180,6 +180,10 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 	c.env.VerifyWholeDiff = true
 	c.env.DarnVerifyAttempts = cfg.VerifyAttempts
 	c.env.DarnReviewMaxBounces = cfg.ReviewMaxBounces
+	if c.env.RowHardMaxBounces == nil {
+		c.env.RowHardMaxBounces = map[string]int{}
+	}
+	c.env.RowHardMaxBounces[loomshed.NameDarnBouncer] = cfg.ReviewHardMaxBounces
 	c.darnCfg = &cfg
 	// The Darn-Review perch's CIRCLING Reason names the budget the darn routing applies, not loom's.
 	c.env.SegmentBounces = segmentBounces(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func() (shedengine.Routing, error) {
