@@ -82,6 +82,12 @@ func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 	blocked := parked(shedengine.StateBlocked)
 	awaitingNoticed := parked(shedengine.StateAwaiting)
 	awaitingNoticed.ParentNotice = "pull request ready"
+	restepBlocked := haltedStatus(shedengine.StateBlocked, 2).status
+	// wireRestepSeams switches the binary re-step on over a driverless child, a changed build and a clean tree.
+	wireRestepSeams := func(deps *InnerRunDeps) {
+		deps.ChildBuildChanged = func() (string, bool, error) { return "build-1", true, nil }
+		deps.ChildDirtyPaths = func() ([]string, error) { return nil, nil }
+	}
 	tests := []struct {
 		name    string
 		message string
@@ -203,6 +209,40 @@ func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 				deps.OrchStrandRecorded = func() (bool, error) { return true, fail() }
 			},
 		},
+		{
+			name: "the re-step check's driver strand read", message: "re-step check skipped; could not read the child's driver strand",
+			status: restepBlocked,
+			wire: func(deps *InnerRunDeps, fail func() error) {
+				wireRestepSeams(deps)
+				// The revive reads the strand before the re-step check on every tick, so the seam fails twice as often to fail the check three times.
+				failBoth := failFirstCalls(6)
+				deps.DriverStrand = func(context.Context) (ChildDriverStrand, error) { return ChildDriverNone, failBoth() }
+			},
+		},
+		{
+			name: "the re-step check's lock read", message: "re-step check skipped; could not read the child's locks",
+			status: restepBlocked,
+			wire: func(deps *InnerRunDeps, fail func() error) {
+				wireRestepSeams(deps)
+				deps.ChildRunLockHeld = func() (bool, error) { return false, fail() }
+			},
+		},
+		{
+			name: "the re-step check's build read", message: "re-step check skipped; could not read the on-disk build",
+			status: restepBlocked,
+			wire: func(deps *InnerRunDeps, fail func() error) {
+				wireRestepSeams(deps)
+				deps.ChildBuildChanged = func() (string, bool, error) { return "build-1", true, fail() }
+			},
+		},
+		{
+			name: "the re-step check's dirty-path read", message: "re-step check skipped; could not read the task pair's uncommitted paths",
+			status: restepBlocked,
+			wire: func(deps *InnerRunDeps, fail func() error) {
+				wireRestepSeams(deps)
+				deps.ChildDirtyPaths = func() ([]string, error) { return nil, fail() }
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -230,6 +270,21 @@ func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 			assertRepeatedFailureEpisode(t, buf.String(), tt.message)
 		})
 	}
+
+	t.Run("the Go verify-retry records read", func(t *testing.T) {
+		buf := logcapture.CaptureVerbose(t)
+		logger.SetVerbosity(2)
+		h := newRetryHarness(t)
+		err := errors.New("seam boom")
+		h.goRetryErrs = []error{err, err, err, nil}
+		h.goRetrySpent = true
+
+		for range 5 {
+			h.call()
+		}
+
+		assertRepeatedFailureEpisode(t, buf.String(), "Go verify-retry records unreadable")
+	})
 
 	t.Run("a parent lock release logs one Info and no Warn", func(t *testing.T) {
 		buf := logcapture.CaptureVerbose(t)

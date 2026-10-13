@@ -183,9 +183,10 @@ func (p *innerRunProducer) publishRetryDecision(ctx context.Context, status shed
 		}
 		goSpent, err := p.deps.GoVerifyRetrySpent()
 		if err != nil {
-			logger.Warn("battenshed: Go verify-retry records unreadable; leaving the halt to the usual handling", "producer", p.name, "slug", p.slug, "error", err)
+			p.seamFailed(failGoVerifyRetryRecords, err)
 			return publishRetry{}
 		}
+		p.seamRecovered(failGoVerifyRetryRecords)
 		if goSpent {
 			return publishRetry{spent: true}
 		}

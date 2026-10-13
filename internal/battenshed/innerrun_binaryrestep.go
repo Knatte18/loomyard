@@ -72,23 +72,26 @@ func (p *innerRunProducer) binaryRestep(ctx context.Context, w *childWait) *wait
 
 	strand, err := p.deps.DriverStrand(ctx)
 	if err != nil {
-		return p.restepSkipped(ctx, "read the child's driver strand", err)
+		return p.restepSkipped(ctx, failRestepDriverStrand, err)
 	}
+	p.seamRecovered(failRestepDriverStrand)
 	if strand != ChildDriverNone {
 		return nil
 	}
 	atWork, err := p.driverAtWork(ctx)
 	if err != nil {
-		return p.restepSkipped(ctx, "read the child's locks", err)
+		return p.restepSkipped(ctx, failRestepLocks, err)
 	}
+	p.seamRecovered(failRestepLocks)
 	if atWork {
 		return nil
 	}
 
 	build, changed, err := p.deps.ChildBuildChanged()
 	if err != nil {
-		return p.restepSkipped(ctx, "read the on-disk build", err)
+		return p.restepSkipped(ctx, failRestepBuild, err)
 	}
+	p.seamRecovered(failRestepBuild)
 	if p.restep.build != "" && build != p.restep.build {
 		p.restep.interval = p.noticeProbe
 		p.restep.nextAt = now.Add(p.restep.interval)
@@ -104,8 +107,9 @@ func (p *innerRunProducer) binaryRestep(ctx context.Context, w *childWait) *wait
 
 	dirty, err := p.deps.ChildDirtyPaths()
 	if err != nil {
-		return p.restepSkipped(ctx, "read the task pair's uncommitted paths", err)
+		return p.restepSkipped(ctx, failRestepDirtyPaths, err)
 	}
+	p.seamRecovered(failRestepDirtyPaths)
 	if len(dirty) > 0 {
 		logger.Info("battenshed: not re-stepping the halted child on the new build; the task pair has uncommitted paths", "producer", p.name, "slug", p.slug, "build", build, "paths", dirty)
 		return nil
@@ -132,12 +136,12 @@ func (p *innerRunProducer) binaryRestep(ctx context.Context, w *childWait) *wait
 	return nil
 }
 
-// restepSkipped logs a seam failure of the re-step check at Warn and leaves the halt to the usual handling, ending the wait only when the context was cancelled.
-func (p *innerRunProducer) restepSkipped(ctx context.Context, what string, err error) *waitEnd {
+// restepSkipped counts a seam failure of the re-step check, named by failure, and leaves the halt to the usual handling, ending the wait only when the context was cancelled.
+func (p *innerRunProducer) restepSkipped(ctx context.Context, failure string, err error) *waitEnd {
 	if cerr := cancelErr(ctx, p.name); cerr != nil {
 		return hardEnd(cerr)
 	}
-	logger.Warn("battenshed: skipping the halted child's binary re-step check", "producer", p.name, "slug", p.slug, "step", what, "error", err)
+	p.seamFailed(failure, err)
 	return nil
 }
 
@@ -146,10 +150,13 @@ func (p *innerRunProducer) restepRecorded(stop, build string) bool {
 	raw, err := os.ReadFile(binaryRestepFile(p.scratchDir, p.name))
 	if err != nil {
 		if !os.IsNotExist(err) {
-			logger.Warn("battenshed: binary re-step marker unreadable; reading it as absent", "producer", p.name, "slug", p.slug, "error", err)
+			p.seamFailed(failRestepMarker, err)
+			return false
 		}
+		p.seamRecovered(failRestepMarker)
 		return false
 	}
+	p.seamRecovered(failRestepMarker)
 	return string(raw) == stop+"\n"+build+"\n"
 }
 

@@ -210,6 +210,12 @@ const (
 	failStopReport            = "battenshed: stop report unreadable; reading it as none"
 	failNoticeDecision        = "battenshed: decision unreadable for the notice step; reading it as decided"
 	failOrchStateUnreadable   = "battenshed: notice held back; the orch state is unreadable"
+	failRestepDriverStrand    = "battenshed: binary re-step check skipped; could not read the child's driver strand"
+	failRestepLocks           = "battenshed: binary re-step check skipped; could not read the child's locks"
+	failRestepBuild           = "battenshed: binary re-step check skipped; could not read the on-disk build"
+	failRestepDirtyPaths      = "battenshed: binary re-step check skipped; could not read the task pair's uncommitted paths"
+	failRestepMarker          = "battenshed: binary re-step marker unreadable; reading it as absent"
+	failGoVerifyRetryRecords  = "battenshed: Go verify-retry records unreadable; leaving the halt to the usual handling"
 )
 
 // logAttempt logs msg at Info for a first attempt and at Debug for each retry after a refusal.
