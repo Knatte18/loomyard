@@ -27,13 +27,13 @@ type arbiterStop struct {
 	InterruptPolicy string
 	// EscalationPending reports whether Producer is a Bouncer row whose latest round awaits a decision on its escalation.
 	EscalationPending bool
-	// PublishHaltNamesTarget reports whether a blocked stop at the Publish row carries a verify-failure record that names a target.
-	PublishHaltNamesTarget bool
+	// VerifyHaltNamesTarget reports whether a blocked stop at Merge-In or Publish carries a verify-failure record that names a target and belongs to the halt.
+	VerifyHaltNamesTarget bool
 }
 
 // arbiterEligibility returns nil when the arbiter may settle stop and a refusal otherwise.
 // Eligible are an error stop of kind producer or bootstrap, of kind interrupted under the reinvoke policy or with a non-empty transient class.
-// Eligible too are a halted blocked stop unless it is the Publish halt that names a target, and a halted awaiting stop with a pending escalation.
+// Eligible too are a halted blocked stop unless it is a Merge-In or Publish verify halt whose own failure record names a target, and a halted awaiting stop with a pending escalation.
 // Every other stop is refused, and the refusal ends with the hand-back way forward.
 func arbiterEligibility(stop arbiterStop) error {
 	refuse := func(reason string) error {
@@ -53,8 +53,8 @@ func arbiterEligibility(stop arbiterStop) error {
 	}
 	switch stop.State {
 	case shedengine.StateBlocked:
-		if stop.PublishHaltNamesTarget {
-			return refuse("a Publish halt that names a target belongs to batten's retry and then to the parent")
+		if stop.VerifyHaltNamesTarget {
+			return refuse("a Merge-In or Publish verify halt whose failure record names a target belongs to batten's retry and then to the parent")
 		}
 		return nil
 	case shedengine.StateAwaiting:
