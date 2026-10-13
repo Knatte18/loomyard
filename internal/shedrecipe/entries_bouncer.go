@@ -225,6 +225,7 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		ParentName:      env.ParentName,
 		Bounces:         bounces,
 		AutoAccept:      env.RowAutoAccept[name],
+		HardCap:         env.RowHardMaxBounces[name],
 
 		BlockingEscalates: blockingEscalates,
 		ColorSegment:      colorSegment,

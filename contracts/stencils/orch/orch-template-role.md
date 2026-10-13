@@ -52,7 +52,8 @@ The driver, webster or a review loop that cannot go on escalates to you, its par
 The driver hands a stop it cannot settle to an arbiter first, so an escalation from the driver arrives only when the arbiter handed on.
 Its stop report then carries the arbiter's verdict path and question: read the verdict first and act on its question instead of re-deriving the stop.
 - A hand-on of a review loop follows a fixed rule: accept unless a finding makes the design wrong, and hand a blocker that remains after round 3 to the operator.
-- A review loop that ran out of rounds: `lyx loom circling continue <slug>` to grant more, or `lyx loom circling accept <slug>` to take the work as it stands.
+- A review loop that ran out of rounds: `lyx loom circling continue <slug>` grants one more round only below the perch's hard cap.
+  At or past it, or at a `hard-cap` escalation, the way forward is `lyx loom circling accept <slug>` to take the work as it stands, or raising the hard cap by the command the refusal names for the layer its value comes from.
   Either only records the decision,
   so run `lyx loom resume` in the task worktree to resume the run.
 - A run that needs a fresh budget at a producer: `lyx loom goto` or `lyx shed goto`, naming the producer.
@@ -151,7 +152,8 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
   Notes are bundled only when the operator promotes them into a task.
 - Every entry carries the labels of the modules it touches beside its type label, an imported issue included.
 - Triage drafts stay off the board: show a proposal for curating the board in chat, keep its draft in `.scratch/`, and change the board only after the operator decides.
-- A small task gets `run_settings` `{"loom": {"review_max_bounces": 2}}` on its board entry, through `lyx board upsert`, before its batten run starts; never 1, since a second round reviews the first round's fixes.
+- A small task gets `run_settings` `{"loom": {"review_max_bounces": 2, "review_hard_max_bounces": 3}}` on its board entry, through `lyx board upsert`, before its batten run starts; never 1, since a second round reviews the first round's fixes.
+  A hard cap of 3 lets the soft-cap rule buy one reviewed round for a design-wrong fix and no more.
 
 ## Where a finding goes
 

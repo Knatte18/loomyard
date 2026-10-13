@@ -15,6 +15,7 @@ import (
 // reconcilePlan is planReconcile's decision: which strand bindings to clear, which dead panes to
 // kill, which untracked panes to reap, and which dead pane (if any) is kept alive so the session
 // survives.
+// ownWindowsToEnd names the own windows no strand holds.
 // deadPanesToKill and untrackedPanesToKill are carried apart, rather than merged into one slice,
 // because reconcileLocked's reap log line must distinguish the two kill reasons without a caller
 // having to cross-reference anything else.
@@ -23,13 +24,17 @@ type reconcilePlan struct {
 	deadPanesToKill      []string
 	untrackedPanesToKill []string
 	keptDeadPane         string
+	ownWindowsToEnd      []string
 }
 
-// planReconcile decides which pane bindings to clear, which dead panes to kill, and which
-// untracked panes to reap.
+// planReconcile decides which pane bindings to clear, which dead panes to kill, which
+// untracked panes to reap, and which own windows to end.
+// live holds window 0's panes and windows the whole session's.
+// The kill decisions and the survival rule read live alone.
+// An own-window strand's binding is judged against windows, and a window carrying the own marker with no bound pane is ended.
 // Pure logic; unit-testable without a running server.
 // Keeps at least one pane alive (session-survival rule); spares Selvage.
-func planReconcile(strands []Strand, live []LivePane, policy reapPolicy) reconcilePlan {
+func planReconcile(strands []Strand, live []LivePane, windows []windowPane, policy reapPolicy) reconcilePlan {
 	var plan reconcilePlan
 
 	liveByID := make(map[string]LivePane, len(live))
@@ -101,8 +106,19 @@ func planReconcile(strands []Strand, live []LivePane, policy reapPolicy) reconci
 		}
 	}
 
+	listedByID := make(map[string]bool, len(windows))
+	for _, w := range windows {
+		listedByID[w.PaneID] = true
+	}
 	for _, s := range strands {
 		if s.PaneID == "" {
+			continue
+		}
+		if isOwnWindow(s.Display) {
+			// A present own-window pane keeps its binding, alive or dead, and is never killed here.
+			if !listedByID[s.PaneID] {
+				plan.clearedGUIDs = append(plan.clearedGUIDs, s.GUID)
+			}
 			continue
 		}
 		p, present := liveByID[s.PaneID]
@@ -113,8 +129,35 @@ func planReconcile(strands []Strand, live []LivePane, policy reapPolicy) reconci
 		// binding stays, so render still places it.
 	}
 
+	plan.ownWindowsToEnd = ownWindowsHoldingNoStrand(strands, windows)
 	plan.keptDeadPane = keptDeadPaneID
 	return plan
+}
+
+// ownWindowsHoldingNoStrand lists, in listing order and once each, every window whose panes carry the own marker and none of whose pane ids is bound to a strand.
+// A window without the marker never qualifies.
+func ownWindowsHoldingNoStrand(strands []Strand, windows []windowPane) []string {
+	bound := make(map[string]bool, len(strands))
+	for _, s := range strands {
+		if s.PaneID != "" {
+			bound[s.PaneID] = true
+		}
+	}
+	held := make(map[string]bool)
+	for _, w := range windows {
+		if bound[w.PaneID] {
+			held[w.WindowID] = true
+		}
+	}
+	var ending []string
+	seen := make(map[string]bool)
+	for _, w := range windows {
+		if w.Own && !held[w.WindowID] && !seen[w.WindowID] {
+			seen[w.WindowID] = true
+			ending = append(ending, w.WindowID)
+		}
+	}
+	return ending
 }
 
 // clearAllPaneBindings clears every strand's PaneID after server rebirth.
@@ -175,8 +218,9 @@ func clearConflictingPaneBindings(st *ReedState) []string {
 
 // reconcileLocked reconciles the persisted table against live panes.
 // Kills panes per planReconcile's schedule; clears bindings for gone panes.
-func (e *Engine) reconcileLocked(st *ReedState, live []LivePane) (killed []string, err error) {
-	plan := planReconcile(st.Strands, live, newReapPolicy(st, live))
+// It also ends the own windows no strand holds, moving a viewer on one to the strands' window first; those windows are not in killed, since no window 0 pane went.
+func (e *Engine) reconcileLocked(st *ReedState, live []LivePane, windows []windowPane) (killed []string, err error) {
+	plan := planReconcile(st.Strands, live, windows, newReapPolicy(st, live))
 
 	// Accumulate the ids actually destroyed, separately for each kill reason,
 	// as the loops below progress -- never plan.deadPanesToKill /
@@ -223,6 +267,17 @@ func (e *Engine) reconcileLocked(st *ReedState, live []LivePane) (killed []strin
 		}
 		killed = append(killed, id)
 		untrackedKilled = append(untrackedKilled, id)
+	}
+
+	if len(plan.ownWindowsToEnd) > 0 {
+		e.selectStrandsWindowIfCurrentLocked(st, plan.ownWindowsToEnd)
+		for _, id := range plan.ownWindowsToEnd {
+			if err := e.tmux.run("kill-window", "-t", id); err != nil {
+				return killed, fmt.Errorf("kill window %s: %w", id, err)
+			}
+		}
+		logger.Info("reed: reconcile ended own windows no strand holds",
+			"socket", e.Socket(), "session", e.SessionName(), "windows", plan.ownWindowsToEnd)
 	}
 
 	clearSet := make(map[string]bool, len(plan.clearedGUIDs))

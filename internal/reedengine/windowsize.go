@@ -128,6 +128,7 @@ func shellOptionArgvs(target, shellPath string) [][]string {
 // and, window-targeted with -w on the strands' window only, "pane-border-status" "top" and "pane-border-format", so a batten window gets no border title.
 // The reserved status rows are read back by readStatusRowsLocked, so the layout box shrinks by two rows with no planner change.
 // After the option pins it issues the navigation bindings (bindings.go), so a server booted by an older lyx gets them at the next attach.
+// Then, everywhere but Windows, it pins the session hook `session-window-changed` with `set-option -w -u @lyx_unseen`, which unsets the unseen mark on the window the client moved to and nothing else.
 //
 // Each call's error is logged via logger.Warn and then ignored.
 // Every later step, including the hook block, is attempted even when an earlier one failed, per the Shared Decision geometry-tmux-failures-are-non-fatal-everywhere.
@@ -179,6 +180,13 @@ func (e *Engine) pinGeometryOptionsLocked(target, shellPath string) {
 	}
 
 	e.pinBindingsLocked()
+
+	// psmux lacks set-hook, so on Windows no hook is pinned and openOwnWindowLocked never sets @lyx_unseen.
+	if runtime.GOOS != "windows" {
+		if err := e.tmux.run("set-hook", "-t", exactSessionWindowTarget(e.SessionName()), unseenClearHookName, unseenClearHookCommand); err != nil {
+			logger.Warn("reed: failed to pin the unseen-clear hook", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		}
+	}
 
 	// watchdogOption returns nothing and is all-non-fatal by contract, so an invalid value takes the
 	// unset side here rather than propagating; the boot path (ensureServerAndSessionLocked) is where

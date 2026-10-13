@@ -217,6 +217,17 @@ func TestStrandNamingAndList(t *testing.T) {
 		if names = statusNames(t, worktree); contains(names, fullFirst) {
 			t.Errorf("names after removing the full name = %v, want %q gone", names, fullFirst)
 		}
+
+		// An own-window strand is named like any other, and an anchor outside the vocabulary names own-window among the choices.
+		runVerb(t, worktree, "add", "--role", "explorer", "--anchor", "own-window", "--cmd", "sleep 300")
+		fullExplorer := "tst:" + namingSlug + ":explorer"
+		if names = statusNames(t, worktree); !contains(names, fullExplorer) {
+			t.Errorf("names after adding the own-window strand = %v, want %q", names, fullExplorer)
+		}
+		var rejected bytes.Buffer
+		if code := RunCLIIn(worktree, &rejected, []string{"add", "--anchor", "sideways", "--cmd", "sleep 300"}); code == 0 || !strings.Contains(rejected.String(), "own-window") {
+			t.Errorf("add --anchor sideways = %d, output %q; want a non-zero exit whose error lists own-window", code, rejected.String())
+		}
 	})
 }
 

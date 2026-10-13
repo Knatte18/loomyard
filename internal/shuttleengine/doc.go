@@ -51,6 +51,9 @@
 // A turn end without every output file never ends a run: Wait holds it, logs it at Info and keeps polling the same agent,
 // whether the turn end is a Stop or a live ask.
 // A run ends only as done (every output file present at a turn end, or at the deadline or a pane's death), died, timeout or a mechanism failure.
+// A died run whose strand is own-window keeps its last pane capture in `died-capture.txt` in the run directory and loses its strand;
+// a timed-out run keeps its strand, since its agent may still be live.
+// A run's strand lands in a window of its own unless its spec names an anchor; the orch and the loom driver name below-parent and stay in window 0.
 // A turn end that precedes the start prompt's own turn start is not a task turn end:
 // Wait logs it at Warn as `turn end before the prompt's turn start; not held` and neither holds nor notifies it.
 // The hold guard arms when the events file holds a turn start before `promptOffset`, which proves the provider writes turn starts for typed turns.
@@ -125,16 +128,26 @@
 // A Clock that is also an AwakeClock feeds the run's sleep watch each tick, and the deadline moves later by the union of the detected sleeps and the coverage's paused intervals since the run was created.
 // A clock without Awake detects no sleep.
 //
+// # Opened sessions
+//
+// Runner.Open opens a named interactive session with no prompt in a window of its own, for an extra session the orch or the operator wants beside the runs.
+// It needs an engine with the optional SessionOpener capability, and a covered pause refuses it before anything is created.
+// The strand's command chains, after the provider line, an exit marker under the anchor's ephemeral `shuttle-open` directory, reed's detached self-removal and the shell's exit, so ending the session closes its window.
+// The marker is the strand's done-when path, so a resume drops a finished session instead of relaunching it.
+// The strand carries the provider's session id, which the watchdog's name repair reads.
+// An open writes no run directory, no run.json and no output file, so the state verb and the hold notices never cover an opened session.
+//
 // # Stop verb
 //
-// Run.Stop and Runner.StopStrand (the guid form, for a caller holding no handle) end a run's strand after recording the stop in run.json.
+// Run.Stop and Runner.StopStrand (the guid form, for a caller holding no handle) remove a run's strand, when it is live or an own-window strand whose pane is dead, after recording the stop in run.json.
+// A dead window 0 strand is left to reed's reconcile.
 // The record reads "stopped", a record-only terminal outcome that is never a Result.Outcome;
 // a record already terminal keeps its outcome, and one still reading running whose output files all exist keeps running, so a stop never turns finished work into a stopped record.
 // The record is written first: a failed write returns its error with the strand untouched, and a failed removal leaves the terminal record over a live strand, which Attach reads as respawn-eligible and stops as superseded.
 // A guid with no run record is stopped by removing its strand alone.
 // Runner.SetStepTie tells a runner the shed step its process runs (StepTie: the steps directory and the step's trace id), which every run it starts records in run.json as `step`; a runner never told one writes no step.
-// Runner.StopStepRuns stops, through the same record-then-remove step, every run under the runner's run-directory root that still reads running, has a live strand and records the given step.
-// A live running run with no step is listed under StepStopReport.Untied and left alone, a run of another step is left alone, and a stop that fails is listed under Failed while the stop goes on.
+// Runner.StopStepRuns stops, through the same record-then-remove step, every run under the runner's run-directory root that still reads running, has a live or dead own-window strand and records the given step.
+// A running run with such a strand and no step is listed under StepStopReport.Untied and left alone, a run of another step is left alone, and a stop that fails is listed under Failed while the stop goes on.
 // Attach's removal of a superseded run's strand goes through the same record-then-remove step.
 // A Wait on a stopped handle finalizes with the stop mark and records "stopped" unless the files show the run done.
 // A Wait in another process may overwrite "stopped" with its own terminal outcome, and either answer is terminal.
@@ -238,6 +251,15 @@
 // An unmatched turn start releases after the pane has read idle on every poll for turnStartIdleOverride, or at once when the engine reports that turn interrupted.
 // When the session state is unknown, the reading falls back to the pane, which must classify ready and idle, and for an engine that parses session signals no turn start may be left unmatched by a later turn end; the cause is logged at Debug.
 // A fallback hold whose box reads non-empty quotes the box.
+//
+// Every interrupt key shuttle sends goes through a pane guard.
+// Run.Interrupt and Runner.Interrupt send the engine's interrupt sequence only after the ready-agent-pane check and one fresh capture the engine's InterruptGuard reads as a running turn.
+// A capture that fails sends nothing and fails the call, so the guard fails closed, and a pane with no running turn gets no key and ErrNoRunningTurn, which means "nothing to stop".
+// Before every interrupt and every verified send, a capture an engine with RewindPickerReader reads as the provider's rewind picker is closed with exactly one key of the interrupt sequence.
+// The close waits the engine's interrupt settle, captures the pane once more and sends nothing further, so it never selects an entry.
+// It always fails the operation with ErrRewindPickerOpen, which never wraps ErrSessionBusy, so nothing is typed or interrupted after it.
+// A verified send whose picker capture fails skips the close when the idle wait's polls follow, and fails closed when no polls do.
+// Runner.InterruptSettle is the settle a caller that retries an interrupt waits after its first key, and Runner.PaneRunningTurn reads whether a strand's pane shows a running turn.
 // Stray character: for an engine with StrayInputReader, InputBoxClearer and InputBoxReader, a box holding exactly one stray-character candidate is cleared once per send attempt.
 // It counts on the hook reading held only for that draft, and on the pane reading that is ready but not idle.
 // An active operator holds the send instead, quoting the box; otherwise the clear plays right after that reading, the box settles for `SubmitSettle`, and a second full reading is the write's guard reading.

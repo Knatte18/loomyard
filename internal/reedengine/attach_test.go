@@ -219,8 +219,9 @@ func TestAttachArgv_ChainGate(t *testing.T) {
 // TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv covers every remaining refusal/skip path:
 // a non-positive client size, has-session failing, fewer than two live panes, no strand owning a
 // present pane, a list-panes error, and a plan error. Every one must yield exactly the bare argv,
-// asserted element by element, and issue no set-hook call at all (the guard-skip disposition
+// asserted element by element, and install no resize-pin hook (the guard-skip disposition
 // install-points-are-two-named-statements-no-guard-moves documents).
+// The unseen-clear hook is a geometry pin, so these paths past the pre-flight pins still issue it.
 func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -237,8 +238,8 @@ func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
 		{"NoStrandOwnsAPresentPane", nil, 80, 24, nil},
 		{"ListPanesErrors", goodAttachStrands(), 80, 24, func(f *fakeTmux) { f.answer("list-panes", "", errors.New("boom")) }},
 		{
-			"PlanError_DeferredAnchorRejected",
-			[]Strand{{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}},
+			"PlanError_TopAnchorWithoutContentSizeRejected",
+			[]Strand{{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorTop, Size: render.Size{Kind: render.SizePositional}}}},
 			80, 24, nil,
 		},
 	}
@@ -248,9 +249,11 @@ func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
 			if tt.mutate != nil {
 				tt.mutate(fake)
 			}
-			fake.mustNotCall("set-hook")
 
 			assertBareArgv(t, e, e.AttachArgv(tt.cols, tt.rows))
+			if resizeHooks := fake.SetHookCalls(windowResizedHookName); len(resizeHooks) != 0 {
+				t.Errorf("set-hook calls naming %s = %v, want none on a degraded path", windowResizedHookName, resizeHooks)
+			}
 		})
 	}
 }
@@ -302,7 +305,7 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 			statusReadbackIdx = i
 		case callVerb(argv) == "list-panes" && listPanesIdx == -1:
 			listPanesIdx = i
-		case argv[0] == "set-hook" && firstSetHookIdx == -1:
+		case argv[0] == "set-hook" && containsArg(argv, windowResizedHookName) && firstSetHookIdx == -1:
 			firstSetHookIdx = i
 		}
 	}
@@ -315,9 +318,10 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	if firstSetHookIdx <= listPanesIdx {
 		t.Errorf("calls = %v, want the first set-hook call (index %d) after list-panes (index %d)", calls, firstSetHookIdx, listPanesIdx)
 	}
-	if setHooks := fake.ArgvFor("set-hook"); !containsArg(setHooks[0], "-u") {
-		t.Errorf("first set-hook argv = %v, want the -u clear", setHooks[0])
+	if setHooks := fake.SetHookCalls(windowResizedHookName); !containsArg(setHooks[0], "-u") {
+		t.Errorf("first resize set-hook argv = %v, want the -u clear", setHooks[0])
 	}
+	assertUnseenClearHookPinned(t, e, fake)
 
 	stateAfter, err := LoadState(e.stateDir())
 	if err != nil {

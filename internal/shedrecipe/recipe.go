@@ -115,8 +115,13 @@ type Env struct {
 	// A nil map, a missing entry and 0 take ReviewMaxBounces.
 	RowMaxBounces map[string]int
 	// RowAutoAccept is the auto-accept flag of each Bouncer row, keyed by row name; a nil map and a missing entry mean false.
-	// A Bouncer told true settles a spent bounce budget as an accept instead of escalating to the parent.
+	// A Bouncer told true accepts a harvested round at a spent bounce budget instead of running the soft-cap rule.
+	// A replay or a blocking_escalates round goes to the rule.
 	RowAutoAccept map[string]bool
+	// RowHardMaxBounces is the resolved hard cap of each Bouncer row as a round number, keyed by row name as RowAutoAccept is.
+	// A nil map, a missing entry and 0 tell the row no hard cap.
+	// Its values are already resolved, since the per-perch fallback lives in the caller's config.
+	RowHardMaxBounces map[string]int
 
 	// DiscussionSeats, when true, runs the Discussion-Write row on the DiscussionSeats engine instead of the recipe's DiscussionWrite, read by loomrecipe alone.
 	DiscussionSeats bool

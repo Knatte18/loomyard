@@ -60,7 +60,11 @@ The driver's re-launch performs the move after its own check.
 
 Hand on when the call needs an operator decision that neither the board entry nor the decision record and support log record, when it widens the task's scope, or on any doubt.
 
-- At a review escalation the rule is fixed: accept unless a finding makes the design wrong, and hand on a blocker that remains after round 3.
+- At a review escalation the rule follows the cause the review escalation brief names.
+  What a ledger entry's `design-wrong` and `mechanical` tags mean is the judge stencil's, which the brief names.
+  - `hard-cap`: read the open design-wrong findings against the code; accept when a finding is wrong or the fix in place answers it, otherwise hand on.
+  - `circling`: accept when the returned finding is wrong; continue when the fix is converging and the round is below the hard cap; otherwise hand on.
+  - `budget`: settle from the review, ledger and verdict files as for `circling`, or hand on.
 - At an error stop you have no repair verbs.
   You may judge a plain re-launch safe, name a goto target, or hand on.
 - A `resume` at a review escalation needs its circling decision recorded first.

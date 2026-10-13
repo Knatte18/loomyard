@@ -120,10 +120,11 @@ func (e *Engine) repairNames(namer SessionNamer) (repaired bool, err error) {
 		if err != nil {
 			return err
 		}
-		live, err := e.listStrandPanes(st)
+		live, windows, err := e.listStrandAndWindowPanes(st)
 		if err != nil {
 			return fmt.Errorf("list panes: %w", err)
 		}
+		live = presentPanes(st.Strands, live, windows)
 
 		for _, r := range planTitleRepairs(st.Strands, live) {
 			if err := e.tmux.run("select-pane", "-t", r.PaneID, "-T", r.Name); err != nil {

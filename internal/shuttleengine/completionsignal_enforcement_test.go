@@ -111,7 +111,7 @@ var negativeVerdictMarkers = map[string]bool{
 //     stop, not a verdict on whether the run finished, and the write itself goes through stopOutcome.
 //   - stopRecorded [Errorf] x2 — the unreadable record and the failed record write, both returned
 //     before any strand removal; refusals to stop, with the write behind stopOutcome.
-//   - removeStrandIfLive [Errorf] x2 — the failed reed probe and the failed removal, after the record
+//   - removeStrandIfPresent [Errorf] x2 — the failed reed probe and the failed removal, after the record
 //     was written; infrastructure faults of the removal, not verdicts on any run.
 //   - AttachGated [Errorf] x5 — a rename of Attach's own unchanged set, not a new site: card 3 moved
 //     Attach's whole body into AttachGated wholesale and added no return of its own. The five are
@@ -165,7 +165,7 @@ var auditedNegativeVerdictReturns = map[string]int{
 	"leftoverThenAgeVerdict [verdictRespawnEligible]": 3,
 	"normalizeAttachSpec [Errorf]":                    1,
 	"readEventsFrom [Errorf]":                         3,
-	"removeStrandIfLive [Errorf]":                     2,
+	"removeStrandIfPresent [Errorf]":                  2,
 	"Stop [Errorf]":                                   1,
 	"stopOutcome [runOutcomeStopped]":                 1,
 	"stopRecorded [Errorf]":                           2,

@@ -35,7 +35,7 @@ func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
 	}
 }
 
-//testtiming:keep pins every shipped template default through a seeded reed.yaml: tmux and shell per GOOS, width, height, collapsed and minimum full rows, debug_log off and mouse on; its covering tests run this code without asserting it
+//testtiming:keep pins every shipped template default through a seeded reed.yaml: tmux and shell per GOOS, width, height, collapsed and minimum full rows, debug_log off, mouse on, window_share_max 2 and window_split width; its covering tests run this code without asserting it
 func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedLyxConfig(t, tmpDir, "reed", reedengine.ConfigTemplate())
@@ -69,6 +69,12 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	}
 	if cfg.OperatorQuietS != 5 {
 		t.Errorf("OperatorQuietS = %d, want 5", cfg.OperatorQuietS)
+	}
+	if cfg.WindowShareMax != 2 {
+		t.Errorf("WindowShareMax = %d, want 2", cfg.WindowShareMax)
+	}
+	if cfg.WindowSplit != "width" {
+		t.Errorf("WindowSplit = %q, want %q", cfg.WindowSplit, "width")
 	}
 	if cfg.DebugLog != "0" {
 		t.Errorf("DebugLog = %q, want %q", cfg.DebugLog, "0")

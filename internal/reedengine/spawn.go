@@ -12,9 +12,11 @@ package reedengine
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
@@ -39,8 +41,10 @@ func sendKeysLiteralArg(text string) string {
 	return text
 }
 
-// launchStrandLocked reconciles the session's panes first, then always splits a fresh pane for s and
-// runs launchCmd in it. It validates the split created a new pane and sets only s.PaneID; Live is
+// launchStrandLocked reconciles the session's panes first, then creates a fresh pane for s and runs launchCmd in it.
+// The pane is a split of window 0, or a detached window of its own for an own-window strand, and both run the same tail:
+// the title lock, the pane options, the prelude, the launch script and the send-keys.
+// It validates the split created a new pane and sets only s.PaneID; Live is
 // derived from pane binding downstream.
 //
 // Reconciling here — rather than trusting the caller's last reconcile — is the chokepoint that makes
@@ -78,12 +82,12 @@ func sendKeysLiteralArg(text string) string {
 // a script write failure degrades to typing the composed line itself.
 // The script is written on every launch, so a relaunch with a different command or a different spawning executable always regenerates it.
 func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) error {
-	live, err := e.listStrandPanes(st)
+	live, windows, err := e.listStrandAndWindowPanes(st)
 	if err != nil {
 		return fmt.Errorf("list panes: %w", err)
 	}
 
-	killed, err := e.reconcileLocked(st, live)
+	killed, err := e.reconcileLocked(st, live, windows)
 	if err != nil {
 		return fmt.Errorf("reconcile: %w", err)
 	}
@@ -98,9 +102,77 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 		}
 	}
 
-	split, err := planPaneTarget(st, live, s.Display)
+	var paneID string
+	previousPaneID := s.PaneID
+	if isOwnWindow(s.Display) {
+		paneID, err = e.createOwnWindowPaneLocked(st, s)
+	} else {
+		paneID, err = e.splitWindowZeroPaneLocked(st, live, s)
+	}
 	if err != nil {
 		return err
+	}
+
+	s.PaneID = paneID
+	if isOwnWindow(s.Display) {
+		e.killReplacedOwnWindowPaneLocked(previousPaneID, paneID)
+	}
+	// Both title commands are display mirrors: allow-set-title off stops the agent inside from overwriting the name,
+	// and no lookup or delivery ever resolves through a title, so a failure of either costs display only and never fails the launch.
+	if err := e.tmux.run("set-option", "-p", "-t", paneID, "allow-set-title", "off"); err != nil {
+		logger.Warn("reed: could not turn off allow-set-title, the pane title may drift", "strand", s.GUID, "pane", paneID, "err", err)
+	}
+	if err := e.tmux.run("select-pane", "-t", paneID, "-T", s.Name); err != nil {
+		logger.Warn("reed: could not set the pane title", "strand", s.GUID, "pane", paneID, "name", s.Name, "err", err)
+	}
+	e.setStrandPaneOptionsLocked(paneID, *s)
+	// composePaneLaunchLine joins the pane-binary prelude (panebin.go) onto launchCmd, on the same shell.ForGOOS() dialect the launch command itself was built with,
+	// so the two never disagree about which shell is typed into.
+	// stageLaunchScript writes that composed line to the strand's launch script and returns the dialect's source statement for it, which is what the pane shows;
+	// a write failure returns the composed line itself, so the pane still launches.
+	// The payload is sent as a literal string (-l) so tmux never reinterprets any part of it as a key name (e.g. "Enter", "C-c") or splits it on an embedded ';' — the launch command is opaque and shuttle builds arbitrary PowerShell command chains.
+	// A separate Enter then submits it.
+	sh := shell.ForGOOS()
+	composedLine, exe := composePaneLaunchLine(sh, launchCmd, s.GUID, s.Name, e.geom.ParentName)
+	s.LyxBin = exe
+	payload := stageLaunchScript(sh, e.stateDir(), s.GUID, composedLine)
+	if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(payload)); err != nil {
+		return fmt.Errorf("send launch command: %w", err)
+	}
+	if err := e.tmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
+		return fmt.Errorf("submit launch command: %w", err)
+	}
+	return nil
+}
+
+// killReplacedOwnWindowPaneLocked kills previousPaneID, the pane a relaunched own-window strand held before newPaneID replaced it, when the session still lists it in an own window.
+// It runs after the new pane exists, so a shared window that held only the old pane is never ended mid-launch.
+// A pane that is empty, unchanged or no longer listed is left alone; a failure is logged and never fails the launch.
+func (e *Engine) killReplacedOwnWindowPaneLocked(previousPaneID, newPaneID string) {
+	if previousPaneID == "" || previousPaneID == newPaneID {
+		return
+	}
+	windows, err := e.tmux.listWindowPanes(e.SessionName())
+	if err != nil {
+		logger.Warn("reed: could not list panes to find the replaced pane", "socket", e.Socket(), "session", e.SessionName(), "pane", previousPaneID, "err", err)
+		return
+	}
+	for _, w := range windows {
+		if w.PaneID != previousPaneID || !w.Own {
+			continue
+		}
+		if err := e.tmux.run("kill-pane", "-t", previousPaneID); err != nil {
+			logger.Warn("reed: could not kill the replaced own-window pane", "socket", e.Socket(), "session", e.SessionName(), "pane", previousPaneID, "err", err)
+		}
+		return
+	}
+}
+
+// splitWindowZeroPaneLocked splits a fresh pane for s into window 0 at the target planPaneTarget picks from live and returns its id.
+func (e *Engine) splitWindowZeroPaneLocked(st *ReedState, live []LivePane, s *Strand) (string, error) {
+	split, err := planPaneTarget(st, live, s.Display)
+	if err != nil {
+		return "", err
 	}
 	splitTargetID := split.target
 
@@ -128,40 +200,127 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	argv = append(argv, "-t", splitTargetID, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}")
 	out, err := e.tmux.output(argv...)
 	if err != nil {
-		return fmt.Errorf("split window: %w", err)
+		return "", fmt.Errorf("split window: %w", err)
 	}
 	paneID := strings.TrimSpace(out)
 	if err := validateSplitCreatedNewPane(paneID, live, splitTargetID); err != nil {
-		return err
+		return "", err
+	}
+	return paneID, nil
+}
+
+// createOwnWindowPaneLocked creates the pane of an own-window strand and returns its id.
+// A strand with no window group gets a window of its own named by its role.
+// A grouped strand follows planOwnWindowPlacement: it opens the group's shared window, joins it, or gets a window of its own.
+// The group record the plan returns is stored in st, which the caller persists with the strand.
+// A refusal returns before anything is created.
+// A shared window is laid out evenly in the window_split direction after a new pane joins or opens it.
+func (e *Engine) createOwnWindowPaneLocked(st *ReedState, s *Strand) (string, error) {
+	group := s.Display.Window
+	if group == "" {
+		return e.openOwnWindowLocked(s, strandLabel(s.Name), "")
 	}
 
-	s.PaneID = paneID
-	// Both title commands are display mirrors: allow-set-title off stops the agent inside from overwriting the name,
-	// and no lookup or delivery ever resolves through a title, so a failure of either costs display only and never fails the launch.
-	if err := e.tmux.run("set-option", "-p", "-t", paneID, "allow-set-title", "off"); err != nil {
-		logger.Warn("reed: could not turn off allow-set-title, the pane title may drift", "strand", s.GUID, "pane", paneID, "err", err)
+	// Listed here, after any head reconcile that ended an own window, so the plan and the join read the current windows.
+	windows, err := e.tmux.listWindowPanes(e.SessionName())
+	if err != nil {
+		return "", fmt.Errorf("list windows: %w", err)
 	}
-	if err := e.tmux.run("select-pane", "-t", paneID, "-T", s.Name); err != nil {
-		logger.Warn("reed: could not set the pane title", "strand", s.GUID, "pane", paneID, "name", s.Name, "err", err)
+	count, groupWindow := groupLiveCount(st.Strands, group, s.GUID, windows)
+	placement, record, err := planOwnWindowPlacement(st.WindowGroups, s.Display, e.cfg.WindowShareMax, count, groupWindow)
+	if err != nil {
+		return "", err
 	}
-	e.setStrandPaneOptionsLocked(paneID, *s)
-	// composePaneLaunchLine joins the pane-binary prelude (panebin.go) onto launchCmd, on the same shell.ForGOOS() dialect the launch command itself was built with,
-	// so the two never disagree about which shell is typed into.
-	// stageLaunchScript writes that composed line to the strand's launch script and returns the dialect's source statement for it, which is what the pane shows;
-	// a write failure returns the composed line itself, so the pane still launches.
-	// The payload is sent as a literal string (-l) so tmux never reinterprets any part of it as a key name (e.g. "Enter", "C-c") or splits it on an embedded ';' — the launch command is opaque and shuttle builds arbitrary PowerShell command chains.
-	// A separate Enter then submits it.
-	sh := shell.ForGOOS()
-	composedLine, exe := composePaneLaunchLine(sh, launchCmd, s.GUID, s.Name, e.geom.ParentName)
-	s.LyxBin = exe
-	payload := stageLaunchScript(sh, e.stateDir(), s.GUID, composedLine)
-	if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(payload)); err != nil {
-		return fmt.Errorf("send launch command: %w", err)
+	if st.WindowGroups == nil {
+		st.WindowGroups = make(map[string]WindowGroup)
 	}
-	if err := e.tmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
-		return fmt.Errorf("submit launch command: %w", err)
+	st.WindowGroups[group] = record
+
+	if placement == placeApart {
+		return e.openOwnWindowLocked(s, strandLabel(s.Name), "")
 	}
-	return nil
+
+	splitFlag, layout, err := windowSplitLayout(e.cfg.WindowSplit)
+	if err != nil {
+		return "", err
+	}
+	var paneID string
+	if placement == placeJoinShared {
+		paneID, err = e.joinGroupWindowLocked(groupWindow, windows, splitFlag)
+	} else {
+		paneID, err = e.openOwnWindowLocked(s, group, group)
+	}
+	if err != nil {
+		return "", err
+	}
+	if err := e.tmux.run("select-layout", "-t", paneID, layout); err != nil {
+		logger.Warn("reed: could not lay out the shared window", "strand", s.GUID, "pane", paneID, "layout", layout, "err", err)
+	}
+	return paneID, nil
+}
+
+// joinGroupWindowLocked splits the first listed pane of the group window groupWindow in the direction splitFlag and returns the new pane's id.
+// The split is detached, so the group window's active pane stays where it is and a joiner never takes focus from an operator viewing the window.
+// A split that reuses an existing pane is refused as in window 0.
+func (e *Engine) joinGroupWindowLocked(groupWindow string, windows []windowPane, splitFlag string) (string, error) {
+	var members []LivePane
+	for _, w := range windows {
+		if w.WindowID == groupWindow {
+			members = append(members, w.livePane())
+		}
+	}
+	if len(members) == 0 {
+		return "", fmt.Errorf("group window %s lists no pane to split", groupWindow)
+	}
+	target := members[0].ID
+	out, err := e.tmux.output("split-window", "-d", splitFlag, "-t", target, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}")
+	if err != nil {
+		return "", fmt.Errorf("split group window: %w", err)
+	}
+	paneID := strings.TrimSpace(out)
+	if err := validateSplitCreatedNewPane(paneID, members, target); err != nil {
+		return "", err
+	}
+	return paneID, nil
+}
+
+// openOwnWindowLocked opens a detached window for s named name and returns the id of its pane.
+// The window is created with -d, so the client's current window and active pane stay where they are, and nothing selects it.
+// It carries no command, so the pane is the default login shell like every strand pane.
+// A non-empty group is recorded on the window, which is how a group's shared window is found later.
+// A window option that fails to set is logged and never fails the open; a window missing the own marker is only never ended by reconcile.
+func (e *Engine) openOwnWindowLocked(s *Strand, name, group string) (string, error) {
+	out, err := e.tmux.output("new-window", "-d", "-P", "-F", "#{pane_id} #{window_id}",
+		"-t", exactSessionWindowTarget(e.SessionName()), "-n", name, "-c", e.geom.PaneCwd)
+	if err != nil {
+		return "", fmt.Errorf("new window: %w", err)
+	}
+	fields := strings.Fields(out)
+	if len(fields) != 2 {
+		return "", fmt.Errorf("new-window created no usable window (got %q)", strings.TrimSpace(out))
+	}
+	paneID, windowID := fields[0], fields[1]
+
+	setOption := func(option, value string) {
+		if err := e.tmux.run("set-option", "-w", "-t", windowID, option, value); err != nil {
+			logger.Warn("reed: could not set an own-window option", "strand", s.GUID, "window", windowID, "option", option, "err", err)
+		}
+	}
+	setOption(ownWindowOption, "1")
+	if color, ok := e.segmentColor(s.Segment); ok {
+		if tmuxColor, ok := segmentcolor.TmuxColor(color); ok {
+			setOption("@strand_color", tmuxColor)
+		}
+	}
+	if runtime.GOOS != "windows" {
+		setOption(unseenWindowOption, "1")
+	}
+	if group != "" {
+		setOption(groupWindowOption, group)
+	}
+
+	logger.Info("reed: opened own window", "socket", e.Socket(), "session", e.SessionName(), "strand", s.GUID, "window", windowID, "pane", paneID)
+	return paneID, nil
 }
 
 // loadOrInitStateLocked loads or initializes a ReedState stamped with
@@ -211,12 +370,12 @@ func (e *Engine) loadOrInitStateLocked() (*ReedState, error) {
 // pane bindings, reapplies the layout, and persists the state. It is the
 // shared tail every public op composes after mutation.
 func (e *Engine) reconcileApplyPersistLocked(st *ReedState) ([]LivePane, error) {
-	live, err := e.listStrandPanes(st)
+	live, windows, err := e.listStrandAndWindowPanes(st)
 	if err != nil {
 		return nil, fmt.Errorf("list panes: %w", err)
 	}
 
-	killed, err := e.reconcileLocked(st, live)
+	killed, err := e.reconcileLocked(st, live, windows)
 	if err != nil {
 		return nil, fmt.Errorf("reconcile: %w", err)
 	}

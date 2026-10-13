@@ -16,7 +16,7 @@ const (
 	gracePoll = time.Second
 	// externalCaller is the entry's caller when the pause is not run by a strand.
 	externalCaller = "EXTERNAL"
-	// maxInterrupts is how many Esc a session gets per pause.
+	// maxInterrupts is how many guarded interrupts a session gets per pause.
 	maxInterrupts = 2
 )
 
@@ -45,13 +45,22 @@ type PauseReport struct {
 	AlreadyPaused bool `json:"already_paused"`
 	// ResumedDuringGrace reports that the entry was resumed before the interrupts were done; no Esc went after that.
 	ResumedDuringGrace bool `json:"resumed_during_grace"`
-	// Interrupted holds the strands that stopped after an Esc.
+	// Interrupted holds the strands an Esc stopped:
+	// the state read no running turn after the first key's settle, the guarded second key found none, or the pane read none after the second key's settle.
+	// They are recorded, so resume gives each a line.
 	Interrupted []string `json:"interrupted"`
-	// AlreadyIdle holds the strands that read idle when the grace ended.
+	// NoRunningTurn holds the strands whose state read a running turn but whose guarded first key found none on the pane.
+	// They are recorded, so resume gives each a line.
+	NoRunningTurn []string `json:"no_running_turn"`
+	// AlreadyIdle holds the strands that read no running turn and no background work when the grace ended.
+	// They are not recorded, so resume gives them no line.
 	AlreadyIdle []string `json:"already_idle"`
-	// StillBusy holds the strands that still read busy after their retry.
+	// Background holds the sessions whose turn ended with background work still running.
+	// They are sent no key and not recorded, so resume gives them no line.
+	Background []BackgroundSession `json:"background"`
+	// StillBusy holds the strands whose pane still showed a running turn after the second key's settle.
 	StillBusy []string `json:"still_busy"`
-	// Refused holds the sessions whose interrupt was refused, such as a pane that is not ready.
+	// Refused holds the sessions whose interrupt or reading was refused, such as a pane that is not ready, a failed capture or an open rewind picker, each with the error's message.
 	Refused []SessionNote `json:"refused"`
 	// Skipped holds the sessions left alone: the caller's own and one another entry owns.
 	Skipped []SessionNote `json:"skipped"`
@@ -63,6 +72,13 @@ type PauseReport struct {
 	GoProducers []GoProducer `json:"go_producers"`
 	// Orch is the orch's case under a hub entry, empty for a pair pause.
 	Orch OrchCase `json:"orch,omitempty"`
+}
+
+// BackgroundSession is a covered session whose turn ended with background work still running, with the outstanding tasks' labels.
+type BackgroundSession struct {
+	Strand string   `json:"strand"`
+	Slug   string   `json:"slug"`
+	Tasks  []string `json:"tasks"`
 }
 
 // session is a covered session with the pair that reaches it.
@@ -80,7 +96,7 @@ func Pause(deps Deps, req PauseRequest) (PauseReport, error) {
 	}
 	report := PauseReport{
 		Scope:       scope,
-		Interrupted: []string{}, AlreadyIdle: []string{}, StillBusy: []string{},
+		Interrupted: []string{}, NoRunningTurn: []string{}, AlreadyIdle: []string{}, Background: []BackgroundSession{}, StillBusy: []string{},
 		Refused: []SessionNote{}, Skipped: []SessionNote{},
 	}
 
@@ -132,15 +148,16 @@ func Pause(deps Deps, req PauseRequest) (PauseReport, error) {
 		deps.Sleep(gracePoll)
 	}
 
+	var interruptible []session
 	for _, s := range covered {
 		if s.Strand == deps.Caller && deps.Caller != "" {
 			report.Skipped = append(report.Skipped, SessionNote{s.Strand, s.Slug, "the caller's own session"})
 			continue
 		}
-		if stop := interruptSession(deps, entry, s, &report); stop {
-			report.ResumedDuringGrace = true
-			break
-		}
+		interruptible = append(interruptible, s)
+	}
+	if stop := interruptSession(deps, entry, interruptible, &report); stop {
+		report.ResumedDuringGrace = true
 	}
 
 	record, err := pauserecord.Read(deps.RecordPath)
@@ -234,45 +251,134 @@ func claimSession(deps Deps, entry pauserecord.Entry, s session) error {
 	return err
 }
 
-// interruptSession interrupts s when it reads busy, at most maxInterrupts times, recording the outcome in report.
+// keyOutcome is what one guarded interrupt of a session came to.
+type keyOutcome int
+
+const (
+	// keySent: the key went to the pane.
+	keySent keyOutcome = iota
+	// keyNoRunningTurn: the guard found no running turn on the pane and sent no key.
+	keyNoRunningTurn
+	// keyRefused: the session was refused or skipped, and report says why.
+	keyRefused
+	// keyEntryGone: the entry was no longer live, which ends the interrupt step.
+	keyEntryGone
+)
+
+// interruptSession interrupts every session in sessions that reads a running turn, at most maxInterrupts times each, recording the outcomes in report.
+// The keys go in passes over the sessions, each pass followed by one settle, so a pause waits each settle once whatever the number of sessions.
+// A session whose pane still shows a running turn after its last key's settle is StillBusy.
 // stop is true when the entry was no longer live at a check, which ends the interrupt step.
-func interruptSession(deps Deps, entry pauserecord.Entry, s session, report *PauseReport) (stop bool) {
-	busy, err := s.pair.Busy(s.GUID)
-	if err != nil {
-		report.Refused = append(report.Refused, SessionNote{s.Strand, s.Slug, "busy reading failed: " + err.Error()})
-		return false
-	}
-	if !busy {
-		report.AlreadyIdle = append(report.AlreadyIdle, s.Strand)
-		return false
-	}
-	for attempt := 1; attempt <= maxInterrupts; attempt++ {
-		if err := claimSession(deps, entry, s); err != nil {
-			if errors.Is(err, errEntryGone) {
-				return true
-			}
-			report.Skipped = append(report.Skipped, SessionNote{s.Strand, s.Slug, err.Error()})
-			return false
-		}
-		if err := s.pair.Interrupt(s.GUID); err != nil {
-			reason := err.Error()
-			if errors.Is(err, shuttleengine.ErrPaneNotReady) {
-				reason = "the pane is not ready: " + reason
-			}
-			report.Refused = append(report.Refused, SessionNote{s.Strand, s.Slug, reason})
-			return false
-		}
-		if busy, err = s.pair.Busy(s.GUID); err != nil {
+func interruptSession(deps Deps, entry pauserecord.Entry, sessions []session, report *PauseReport) (stop bool) {
+	var keyed []session
+	for _, s := range sessions {
+		busy, err := s.pair.Busy(s.GUID)
+		if err != nil {
 			report.Refused = append(report.Refused, SessionNote{s.Strand, s.Slug, "busy reading failed: " + err.Error()})
-			return false
+			continue
 		}
 		if !busy {
-			report.Interrupted = append(report.Interrupted, s.Strand)
-			return false
+			noteNotRunning(s, report)
+			continue
+		}
+		switch guardedKey(deps, entry, s, report) {
+		case keyEntryGone:
+			return true
+		case keyNoRunningTurn:
+			report.NoRunningTurn = append(report.NoRunningTurn, s.Strand)
+		case keySent:
+			keyed = append(keyed, s)
 		}
 	}
-	report.StillBusy = append(report.StillBusy, s.Strand)
+
+	for attempt := 2; attempt <= maxInterrupts && len(keyed) > 0; attempt++ {
+		settle(deps, keyed)
+		var retried []session
+		for _, s := range keyed {
+			busy, err := s.pair.Busy(s.GUID)
+			if err != nil {
+				report.Refused = append(report.Refused, SessionNote{s.Strand, s.Slug, "busy reading failed: " + err.Error()})
+				continue
+			}
+			if !busy {
+				report.Interrupted = append(report.Interrupted, s.Strand)
+				continue
+			}
+			switch guardedKey(deps, entry, s, report) {
+			case keyEntryGone:
+				return true
+			case keyNoRunningTurn:
+				report.Interrupted = append(report.Interrupted, s.Strand)
+			case keySent:
+				retried = append(retried, s)
+			}
+		}
+		keyed = retried
+	}
+
+	settle(deps, keyed)
+	for _, s := range keyed {
+		running, err := s.pair.PaneRunningTurn(s.GUID)
+		switch {
+		case err != nil:
+			report.Refused = append(report.Refused, SessionNote{s.Strand, s.Slug, "pane reading failed: " + err.Error()})
+		case running:
+			report.StillBusy = append(report.StillBusy, s.Strand)
+		default:
+			report.Interrupted = append(report.Interrupted, s.Strand)
+		}
+	}
 	return false
+}
+
+// noteNotRunning records a session that reads no running turn: listed under Background with its tasks when its turn ended with background work, else AlreadyIdle.
+// A failed background reading is Refused.
+func noteNotRunning(s session, report *PauseReport) {
+	labels, background, err := s.pair.Background(s.GUID)
+	switch {
+	case err != nil:
+		report.Refused = append(report.Refused, SessionNote{s.Strand, s.Slug, "background reading failed: " + err.Error()})
+	case background:
+		report.Background = append(report.Background, BackgroundSession{Strand: s.Strand, Slug: s.Slug, Tasks: labels})
+	default:
+		report.AlreadyIdle = append(report.AlreadyIdle, s.Strand)
+	}
+}
+
+// guardedKey records s in entry and sends it one guarded interrupt.
+// Any refusal, such as a pane that is not ready, an open rewind picker or a failed capture, is recorded in report with its message.
+func guardedKey(deps Deps, entry pauserecord.Entry, s session, report *PauseReport) keyOutcome {
+	if err := claimSession(deps, entry, s); err != nil {
+		if errors.Is(err, errEntryGone) {
+			return keyEntryGone
+		}
+		report.Skipped = append(report.Skipped, SessionNote{s.Strand, s.Slug, err.Error()})
+		return keyRefused
+	}
+	err := s.pair.Interrupt(s.GUID)
+	switch {
+	case err == nil:
+		return keySent
+	case errors.Is(err, shuttleengine.ErrNoRunningTurn):
+		return keyNoRunningTurn
+	case errors.Is(err, shuttleengine.ErrPaneNotReady):
+		report.Refused = append(report.Refused, SessionNote{s.Strand, s.Slug, "the pane is not ready: " + err.Error()})
+	default:
+		report.Refused = append(report.Refused, SessionNote{s.Strand, s.Slug, err.Error()})
+	}
+	return keyRefused
+}
+
+// settle waits the longest interrupt settle among sessions once, and waits not at all for none.
+func settle(deps Deps, sessions []session) {
+	if len(sessions) == 0 {
+		return
+	}
+	var longest time.Duration
+	for _, s := range sessions {
+		longest = max(longest, s.pair.InterruptSettle())
+	}
+	deps.Sleep(longest)
 }
 
 // goProducers lists the covered pairs whose run reads running with no live session in sessions.

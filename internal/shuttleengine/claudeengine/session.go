@@ -22,6 +22,9 @@ var (
 	_ shuttleengine.InputBoxClearer  = (*Claude)(nil)
 	_ shuttleengine.StrayInputReader = (*Claude)(nil)
 	_ shuttleengine.TextPaster       = (*Claude)(nil)
+
+	_ shuttleengine.InterruptGuard     = (*Claude)(nil)
+	_ shuttleengine.RewindPickerReader = (*Claude)(nil)
 )
 
 // pastePlaceholderShape matches the whole input-box reading Claude Code shows for a collapsed paste: `[Pasted text #<n>]` or `[Pasted text #<n> +<m> lines]`.
@@ -30,6 +33,13 @@ var pastePlaceholderShape = regexp.MustCompile(`^\[Pasted text #\d+(?: \+(\d+) l
 
 // runningTurnNeedle is Claude's running-turn hint in normalizeCapture form.
 const runningTurnNeedle = "esctointerrupt"
+
+// rewindPickerNeedle is the subtitle of Claude's rewind picker in normalizeCapture form.
+const rewindPickerNeedle = "restorethecodeand/orconversationtothepointbefore"
+
+// interruptSettle is how long after an interrupt key the pane is left alone before it is read again.
+// It assumes Claude Code's double-Esc window is under 2 seconds.
+const interruptSettle = 2 * time.Second
 
 // boxRuleChars are the characters a horizontal-rule line of the input box may carry besides whitespace: the rule glyph itself, box corners and side bars.
 const boxRuleChars = "─╭╮╰╯│"
@@ -70,7 +80,7 @@ func (c *Claude) PaneTooShort(capture string) bool {
 // The operator-activity hold still runs before every write behind the pre-write guard,
 // but the session idle probe's fallback for a strand with no run reads the box with no operator-activity hold, so there a lone `%` reads idle with no operator check.
 func (c *Claude) IdleSession(capture string) bool {
-	if strings.Contains(normalizeCapture(capture), runningTurnNeedle) {
+	if c.RunningTurn(capture) {
 		return false
 	}
 	interior, ok := inputBoxInterior(capture)
@@ -117,7 +127,7 @@ func (c *Claude) InputBoxText(capture string) (text string, ok bool) {
 // A candidate is a single character that is neither a letter, a digit nor whitespace, in a box located as IdleSession locates it, with no running turn on screen.
 // The lone `%` reads as an empty box, so it is never a candidate.
 func (c *Claude) StrayInput(capture string) (text string, ok bool) {
-	if strings.Contains(normalizeCapture(capture), runningTurnNeedle) {
+	if c.RunningTurn(capture) {
 		return "", false
 	}
 	boxText, ok := c.InputBoxText(capture)
@@ -129,6 +139,29 @@ func (c *Claude) StrayInput(capture string) (text string, ok bool) {
 		return "", false
 	}
 	return boxText, true
+}
+
+// RunningTurn reports whether capture shows a turn in progress: it carries Claude's "esc to interrupt" hint.
+// Bound: a transcript line quoting the hint anywhere in the capture reads as a running turn.
+func (c *Claude) RunningTurn(capture string) bool {
+	return strings.Contains(normalizeCapture(capture), runningTurnNeedle)
+}
+
+// RewindPicker reports whether capture shows Claude's rewind picker: its subtitle is on screen and the input box is not.
+// The no-box condition keeps a transcript that quotes the subtitle above a live input box from reading as the picker.
+// Bound: a release that rewords the subtitle leaves the picker undetected.
+func (c *Claude) RewindPicker(capture string) bool {
+	if !strings.Contains(normalizeCapture(capture), rewindPickerNeedle) {
+		return false
+	}
+	_, boxShown := inputBoxInterior(capture)
+	return !boxShown
+}
+
+// InterruptSettle returns how long after an interrupt key the pane is left alone before it is read again.
+// It exceeds Claude Code's double-Esc window, so two of lyx's keys never read as a double Esc.
+func (c *Claude) InterruptSettle() time.Duration {
+	return interruptSettle
 }
 
 // SubmitSettle returns how long after an Enter the input box needs to be redrawn before it is read.

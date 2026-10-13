@@ -63,6 +63,7 @@
 //
 // The driver strand is read from reed's directory, which still lists a session that died with the machine, never from the run's seed;
 // the seed is read only to tell a go-seeded run that has no driver, which gets a Go driver.
+// `lyx loom circling continue` refuses at or past the perch's hard cap, with `circling accept` or raising the cap as its way forward.
 // A resume line that cannot be delivered is refused, naming `lyx loom status` and a re-run of resume.
 //
 // # Plan card verbs

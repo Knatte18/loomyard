@@ -2,9 +2,9 @@
 // into the standard io.Writer-based call contract.
 // The parent "shuttle" command carries a PersistentPreRunE that resolves cwd -> layout -> shuttle
 // config -> reed config -> reed engine -> claude engine -> shuttleengine.Runner exactly once per
-// invocation, into a receiver every verb (run.go, interrupt.go, send.go, state.go) closes over, so no
+// invocation, into a receiver every verb (run.go, open.go, interrupt.go, send.go, state.go) closes over, so no
 // subcommand re-resolves geometry, config, or engine construction itself.
-// The verbs are run, interrupt, send and the read-only state, which lists the session state of each running run.
+// The verbs are run, open, interrupt, send and the read-only state, which lists the session state of each running run.
 // The read-only await, the capped wait on one or more files, is implemented in await.go.
 // await is the verb that skips the resolution, so it runs the same with no hub, git repository, config or engine.
 
@@ -14,6 +14,7 @@ import (
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -35,6 +36,8 @@ type shuttleCLI struct {
 	engine     shuttleengine.Engine
 	// pause is the pair's pause geometry, set by PersistentPreRunE; send refuses into a covered strand through it.
 	pause pauserecord.Geometry
+	// configDirs are the config layers both configs load from, set by PersistentPreRunE; open resolves its model registry through them.
+	configDirs configengine.Dirs
 }
 
 // Command returns the cobra command tree for the shuttle module.
@@ -119,11 +122,12 @@ provider specifics.`,
 			}
 			c.pause = pauseGeom
 			c.runner.SetPause(pauseGeom)
+			c.configDirs = fabricengine.ConfigDirs(layout)
 			return nil
 		},
 	}
 
-	parent.AddCommand(c.runCmd(), c.interruptCmd(), c.sendCmd(), c.stateCmd(), c.awaitCmd())
+	parent.AddCommand(c.runCmd(), c.openCmd(), c.interruptCmd(), c.sendCmd(), c.stateCmd(), c.awaitCmd())
 
 	return parent
 }

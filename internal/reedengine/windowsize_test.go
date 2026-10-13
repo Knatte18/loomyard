@@ -325,18 +325,12 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 		calls := fake.Calls()
 
-		// With the new resize-pin mechanism, pinGeometryOptionsLocked no longer installs the
-		// window-resized hook — that is now the job of installResizePinsLocked, called from
-		// apply.go and attach.go. This function only pins the geometry options.
-		var hookCall []string
-		for _, c := range calls {
-			if c[0] == "set-hook" {
-				hookCall = c
-			}
+		// pinGeometryOptionsLocked installs no window-resized hook; that is the job of installResizePinsLocked, called from apply.go and attach.go.
+		// This function pins the geometry options and the unseen-clear hook.
+		if resizeHooks := fake.SetHookCalls(windowResizedHookName); len(resizeHooks) != 0 {
+			t.Fatalf("pinGeometryOptionsLocked calls = %v, want no set-hook call naming %s (hook installation moved to installResizePinsLocked)", calls, windowResizedHookName)
 		}
-		if hookCall != nil {
-			t.Fatalf("pinGeometryOptionsLocked calls = %v, want no set-hook call (hook installation moved to installResizePinsLocked)", calls)
-		}
+		assertUnseenClearHookPinned(t, e, fake)
 		// Verify that geometry options were pinned instead.
 		var setOptionCalls int
 		for _, c := range calls {
@@ -409,8 +403,9 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		if setOptionCalls := fake.Count("set-option"); setOptionCalls != 8 {
 			t.Errorf("set-option calls = %d, want 8(all preceding pins still attempted despite the later set-hook error)", setOptionCalls)
 		}
-		if setHookErrors := fake.Count("set-hook"); setHookErrors != 1 {
-			t.Errorf("set-hook errors = %d, want 1", setHookErrors)
+		// The unseen-clear pin and the resize-hook unset are both attempted while each errors.
+		if wantHooks, setHookErrors := 1+unseenClearPinCount(), fake.Count("set-hook"); setHookErrors != wantHooks {
+			t.Errorf("set-hook errors = %d, want %d", setHookErrors, wantHooks)
 		}
 	})
 

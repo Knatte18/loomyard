@@ -58,7 +58,7 @@ internal/landingshed: 85
 internal/lock: 4
 internal/logger: 35
 internal/loggerconfig: 3
-internal/loomcli: 234
+internal/loomcli: 235
 internal/loomengine: 57
 internal/loomrecipe: 54
 internal/loomshed: 76
@@ -70,7 +70,7 @@ internal/orchcli: 28
 internal/orchengine: 139
 internal/output: 4
 internal/pairteardown: 6
-internal/pausecli: 3
+internal/pausecli: 4
 internal/pauseengine: 4
 internal/pauserecord: 14
 internal/parentdirective: 4
@@ -84,7 +84,7 @@ internal/preflightshed: 8
 internal/proc: 18
 internal/quarrycli: 7
 internal/reedcli: 38
-internal/reedengine: 257
+internal/reedengine: 261
 internal/reedengine/render: 12
 internal/reportcli: 3
 internal/reportengine: 8
@@ -101,11 +101,11 @@ internal/shedrecipe: 103
 internal/shedrun: 24
 internal/shedtransient: 2
 internal/shedverbs: 83
-internal/shell: 12
+internal/shell: 14
 internal/shortcutcli: 2
-internal/shuttlecli: 25
-internal/shuttleengine: 168
-internal/shuttleengine/claudeengine: 108
+internal/shuttlecli: 26
+internal/shuttleengine: 171
+internal/shuttleengine/claudeengine: 110
 internal/standalonegeom: 7
 internal/standalonestate: 6
 internal/state: 9
