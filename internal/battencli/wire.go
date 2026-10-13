@@ -742,8 +742,8 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			}
 
 			top := fabricengine.NewTopology(cfg)
-			res, err := top.Add(location, slug, fabricengine.AddOptions{})
-			logger.Info("battencli: create worktree", "slug", slug, "mutations", res.Mutated())
+			_, err = top.Add(location, slug, fabricengine.AddOptions{})
+			logger.Info("battencli: create worktree", "slug", slug)
 			if err != nil {
 				return createRefusal(err)
 			}
