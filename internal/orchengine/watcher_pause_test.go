@@ -279,6 +279,42 @@ func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *test
 				t.Errorf("interrupts = %d; want 0 for an orch idle at the grace end", n)
 			}
 		}},
+		{"an unreadable network operation marker list warns once across the grace's ticks and logs its recovery", func(t *testing.T, e *watchEnv) {
+			logs := logcapture.CaptureVerbose(t)
+			e.tick()
+			netDir := pauserecord.NetDir(e.pausePath)
+			if err := os.MkdirAll(filepath.Dir(netDir), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(netDir, []byte("not a directory"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			e.pauseHub("EXTERNAL", pauseGrace)
+			for range 3 {
+				e.tick()
+			}
+			const unreadable, readable = "network operation markers cannot be read", "network operation markers are readable again"
+			if got := strings.Count(logs.String(), unreadable); got != 1 {
+				t.Fatalf("unreadable lines across three ticks = %d; want 1; logs: %s", got, logs.String())
+			}
+			if err := os.Remove(netDir); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(netDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			// A failed read marks its entry handled, so the readable list is first asked about by the next entry.
+			e.resumeHub()
+			e.clock.advance(time.Second)
+			e.pauseHub("EXTERNAL", pauseGrace)
+			e.tick()
+			if got := strings.Count(logs.String(), readable); got != 1 {
+				t.Errorf("recovery lines = %d; want 1; logs: %s", got, logs.String())
+			}
+			if got := strings.Count(logs.String(), unreadable); got != 1 {
+				t.Errorf("unreadable lines after the recovery = %d; want still 1", got)
+			}
+		}},
 		{"an idle orch with an open orch marker is interrupted when it reads busy at the grace end", func(t *testing.T, e *watchEnv) {
 			e.tick()
 			e.orchMarker()

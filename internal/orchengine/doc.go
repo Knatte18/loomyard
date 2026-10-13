@@ -133,6 +133,7 @@
 // Every idle probe goes through one watcher helper.
 // A probe that is not idle holds cycles and notice delivery, and records why in State.Stuck:
 // its own reason when the reading decided, `orch pane too short for the idle probe; resize or use the larger client` for a pane too short to draw an input box, else a fixed pane text.
+// A hold by text in the input box, on the probe or on a typed step's refusal, carries the constant reason `the input box holds a draft` in place of shuttle's text, which quotes the draft, so neither the log nor `State.Stuck` holds the operator's typing and the reason does not change with each keystroke.
 // The reason is saved and logged as `orch: injection held` at Info with the phase, the reload step, the reason and the time since the phase began, once per change of reason within a hold, a run of probes that are not idle which the next passing probe ends; the last reason is watcher memory and not State.
 // A passing probe clears a State.Stuck that a hold wrote and only that, so `lyx orch status` shows the hold in the idle phase too, and a Stuck written by anything else is never overwritten by a hold.
 // State.StuckByHold records that a hold wrote it, so a restarted watcher clears it too.
@@ -147,8 +148,9 @@
 // A cycle phase held for good is still marked stuck by the handoff timeout.
 //
 // Session.SessionState reads the orch session's state from its shuttle run record, which is interactive with a never-written sentinel output, so its turn ends read `asking`.
-// The watcher only logs it: after a successful probe that is not too short, a probe that reads idle beside the state `busy`, or not idle beside `idle-done`, `idle-stalled`, `idle-fresh` or `asking`, logs `orch: session state disagrees with the idle probe` at Warn.
-// A disagreement is logged once and again only after either side changes, the last pair being watcher memory and not State.
+// The watcher only logs it: after a successful probe that is not too short, a probe that reads idle beside the state `busy`, or not idle beside `idle-done`, `idle-stalled` or `idle-fresh`, logs `orch: session state disagrees with the idle probe` at Info.
+// An idle probe beside `busy` on background work agrees, and so does a probe that is not idle beside `asking`.
+// A disagreement is logged once per episode, the key being the idle answer, the state, its cause and when the state began; a probe that agrees forgets nothing, so only a changed key logs again, the last pair being watcher memory and not State.
 // A state that cannot be read is logged at Debug, and no probe result, cycle, delivery or State write depends on the state.
 // The same read logs the hook's session-start event as `orch: session start signal read` at Info, once per new time.
 //
