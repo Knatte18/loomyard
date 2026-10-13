@@ -141,6 +141,15 @@
 // than roughly 10 times without an intervening state change -- a Warn inside
 // such a loop turns one notable condition into a flood, both on stderr at
 // -v/-vv and, since Warn also reaches the durable sink, in the trace file.
+//
+// Three further rules cover the states a loop or poll logs:
+//
+//   - An ordinary state -- a wait, a pause, a halt for the operator, an ordinary
+//     retry iteration -- is Info at its change and never Warn.
+//   - A failure that repeats each tick logs Warn once per episode, Debug while it
+//     persists, and Info at recovery; Episode and EpisodeSet implement this.
+//   - A log line's dedupe key holds no text that changes while the state stays
+//     the same.
 package logger
 
 import (

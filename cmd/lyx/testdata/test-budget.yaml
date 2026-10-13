@@ -56,7 +56,7 @@ internal/ideengine: 4
 internal/impactset: 5
 internal/landingshed: 85
 internal/lock: 4
-internal/logger: 36
+internal/logger: 37
 internal/loggerconfig: 3
 internal/loomcli: 222
 internal/loomengine: 53
