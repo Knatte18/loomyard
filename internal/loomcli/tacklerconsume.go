@@ -46,14 +46,14 @@ func consumeTacklerAttempt(attemptDir string, base shedengine.RelaunchRequest) e
 
 	request := base
 	request.Target = envelope.Goto
-	request.Admit = func(current shedengine.Status) error {
+	request.Admit = func(current shedengine.Status) (bool, error) {
 		if loomengine.StopKeyOf(current) != attempt.StopKey {
-			return refuse("the run moved since the tackler spawned: its stop key is no longer the attempt's")
+			return false, refuse("the run moved since the tackler spawned: its stop key is no longer the attempt's")
 		}
 		if current.PauseBefore != attempt.PauseBefore || current.PauseAfter != attempt.PauseAfter {
-			return refuse("the run was paused since the tackler spawned")
+			return false, refuse("the run was paused since the tackler spawned")
 		}
-		return loomengine.MarkTacklerApplied(attemptDir)
+		return false, loomengine.MarkTacklerApplied(attemptDir)
 	}
 	_, err = shedengine.Relaunch(request)
 	return err

@@ -50,14 +50,14 @@ func consumeArbiterAttempt(attemptDir string, base shedengine.RelaunchRequest) e
 
 	request := base
 	request.Target = envelope.Goto
-	request.Admit = func(current shedengine.Status) error {
+	request.Admit = func(current shedengine.Status) (bool, error) {
 		if loomengine.StopKeyOf(current) != attempt.StopKey {
-			return refuse("the run moved since the arbiter spawned: its stop key is no longer the attempt's")
+			return false, refuse("the run moved since the arbiter spawned: its stop key is no longer the attempt's")
 		}
 		if current.PauseBefore != attempt.PauseBefore || current.PauseAfter != attempt.PauseAfter {
-			return refuse("the run was paused since the arbiter spawned")
+			return false, refuse("the run was paused since the arbiter spawned")
 		}
-		return loomengine.MarkArbiterApplied(attemptDir)
+		return false, loomengine.MarkArbiterApplied(attemptDir)
 	}
 	_, err = shedengine.Relaunch(request)
 	return err
