@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -38,6 +39,8 @@ type restepWatch struct {
 	interval time.Duration
 	nextAt   time.Time
 	attempts int
+	// dirtyLogged is the uncommitted-path list last logged at Info for this halt and build, so an unchanged list logs at Debug.
+	dirtyLogged []string
 }
 
 // restepStopKey identifies one halt of the child: its state, its row and the length of its history.
@@ -96,6 +99,7 @@ func (p *innerRunProducer) binaryRestep(ctx context.Context, w *childWait) *wait
 		p.restep.interval = p.noticeProbe
 		p.restep.nextAt = now.Add(p.restep.interval)
 		p.restep.attempts = 0
+		p.restep.dirtyLogged = nil
 	}
 	p.restep.build = build
 	if !changed {
@@ -111,7 +115,8 @@ func (p *innerRunProducer) binaryRestep(ctx context.Context, w *childWait) *wait
 	}
 	p.seamRecovered(failRestepDirtyPaths)
 	if len(dirty) > 0 {
-		logger.Info("battenshed: not re-stepping the halted child on the new build; the task pair has uncommitted paths", "producer", p.name, "slug", p.slug, "build", build, "paths", dirty)
+		logAttempt(!slices.Equal(dirty, p.restep.dirtyLogged), "battenshed: not re-stepping the halted child on the new build; the task pair has uncommitted paths", "producer", p.name, "slug", p.slug, "build", build, "paths", dirty)
+		p.restep.dirtyLogged = dirty
 		return nil
 	}
 	if p.restep.attempts >= binaryRestepAttemptCap {

@@ -286,6 +286,21 @@ func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 		assertRepeatedFailureEpisode(t, buf.String(), "Go verify-retry records unreadable")
 	})
 
+	t.Run("a dirty task pair blocking the re-step logs Info for the first check and Debug after", func(t *testing.T) {
+		buf := logcapture.CaptureVerbose(t)
+		logger.SetVerbosity(2)
+		h := newRestepHarness(t)
+		h.dirty = []string{"src/a.go"}
+		h.probe = time.Second
+
+		h.call(h.producer(), 8)
+
+		const skipped = "not re-stepping the halted child on the new build"
+		if info, debug := countLogLines(buf.String(), "INFO", skipped), countLogLines(buf.String(), "DEBUG", skipped); info != 1 || debug != 3 {
+			t.Errorf("dirty-pair lines: INFO %d, DEBUG %d; want 1 and 3\n%s", info, debug, buf.String())
+		}
+	})
+
 	t.Run("a parent lock release logs one Info and no Warn", func(t *testing.T) {
 		buf := logcapture.CaptureVerbose(t)
 		h := newLockHarness(t, shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Finalize"})
