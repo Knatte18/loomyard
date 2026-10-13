@@ -136,13 +136,13 @@
 // it checks the prime, where a child whose parent branch is not the prime's branch skips the pull and deploy and a prime with uncommitted tracked paths is waited on for ten minutes;
 // it pulls the prime under the prime lock and releases that lock at once, since batten never pushes the prime;
 // outside the prime lock it runs the landing config's hub-wide `deploy` command in the prime, for a parent branch in `require_pr_to_base` only, with a thirty-minute timeout and its output in the row's deploy log;
-// it writes the ready snapshot before pruning the board, so the tasks the prune made ready are named exactly once across a restart; and it queues one notice naming them.
+// it writes the ready snapshot before pruning the board, so the tasks the prune made ready are named exactly once across a restart; and it queues one landing notice per batten run, naming the tasks the prune made ready when there are any.
 // The two locks differ in what they hold: the land lock serialises whole landings, the prime lock only the pull.
 // A failed step is Stuck naming it, with one failure notice per episode.
 // A pause seen during the land-lock or dirty-prime wait halts the row blocked with no notice, rather than paused, since the row has no on_stuck route to yield through;
 // shed's blocked persist leaves the pause flag set, so the way back is `lyx batten goto <slug> --to Land`, which clears it, then `lyx batten run <slug>`.
 //
-// The rows after Run-Shed send the orch a failure notice through a row notifier (rownotice.go): Worktree-Teardown on every failure it returns, and the Land row on the same terms.
+// The rows after Run-Shed send the orch a failure notice through a row notifier (rownotice.go): Worktree-Teardown on every failure it returns, and the Land row on the same terms; the Land row also sends its landing notice there, on success.
 // A notice goes once per failure episode, an episode being one entry of the row from its predecessor's Done or from a halt at that row, told apart by the length of batten's own status history;
 // the row's `<row>-row-notice` marker keeps the length of the last noticed failure, so a re-entry that appended nothing sends nothing, and a batten that died inside the row never repeats a queued notice.
 // A notice is tried at most three times, thirty seconds apart, and dropped with a Warn after that, leaving the failed row halted and visible in `lyx batten status`.

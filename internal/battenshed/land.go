@@ -31,7 +31,8 @@ const (
 	primeDirtyPollInterval = 5 * time.Second
 	// deployTimeout is how long the deploy command may run.
 	deployTimeout = 30 * time.Minute
-	// readyMarkerLine is the row-notice marker line recording that the ready notice was queued.
+	// readyMarkerLine is the row-notice marker line recording that the landing notice was queued.
+	// It keeps the literal of the earlier ready-only notice, so a row resumed after one was queued sends no second.
 	readyMarkerLine = "ready"
 )
 
@@ -242,9 +243,7 @@ func (p *landProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine
 	if cerr := cancelErr(ctx, p.name); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
 	}
-	if len(ready) > 0 {
-		p.notifier.ready(ctx, p.slug, ready)
-	}
+	p.notifier.ready(ctx, p.slug, ready)
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
@@ -405,8 +404,8 @@ func (p *landProducer) newlyReady() (ready []string, stuckReason string) {
 	return slices.Compact(ready), ""
 }
 
-// ready queues the notice naming the tasks the landing of landed made ready, once per batten run.
-// The marker line is written only once the notice was queued, and a notice that could not be queued is dropped with a Warn.
+// ready queues the landing notice for landed, once per batten run: "landed", with "; newly ready: " and the tasks the landing made ready when there are any.
+// The marker line is written only once the notice was queued, and a notice that could not be queued is held back or dropped with a Warn, never retried.
 func (n rowNotifier) ready(ctx context.Context, landed string, slugs []string) {
 	if n.deps.Notify == nil || ctx.Err() != nil {
 		return
@@ -414,7 +413,10 @@ func (n rowNotifier) ready(ctx context.Context, landed string, slugs []string) {
 	if slices.Contains(n.readMarker(), readyMarkerLine) {
 		return
 	}
-	line := fmt.Sprintf("%s %s: landed; newly ready: %s", noticePrefix, landed, strings.Join(slugs, ", "))
+	line := fmt.Sprintf("%s %s: landed", noticePrefix, landed)
+	if len(slugs) > 0 {
+		line += "; newly ready: " + strings.Join(slugs, ", ")
+	}
 	if n.send(ctx, line) {
 		n.setMarkerLine(readyMarkerLine, readyMarkerLine)
 	}
