@@ -127,7 +127,8 @@
 // The printed envelope carries `verdict`, `reason`, `question`, `goto`, `verbs`, `cause`, `attempt`, `attempt_dir` and `verdict_path`, and for a `resume` the `relaunch` line.
 // A `resume` the verb finds unsound reads `hand-on` with cause `precondition`: no circling decision pending at an escalation, no goto target at a `blocked` stop, or a goto target the run's current row does not admit.
 // The verb moves no run itself;
-// `lyx shed step <run-id> --until-stop --arbiter-attempt <N>` performs the verdict's goto under the run and status locks, once per attempt.
+// `lyx shed step <run-id> --until-stop --arbiter-attempt <N>` performs the verdict's goto under the run and status locks, once per attempt;
+// a run already paused at the verdict's goto target with only goto entries since the spawn, the last naming that target, is admitted with no second goto.
 // A pair's session end ends a live arbiter strand with the pair's other strands.
 //
 // The Go driver calls this same path in-process, so eligibility, `arbiter_max_spawns`, the attempts, the applied mark and the deadlines are shared;
@@ -176,7 +177,7 @@
 //
 // A re-run for a stop key an attempt already judged spawns nothing: it returns that attempt's verdict or waits on its live tackler, unless a hand-back record for the key closed it.
 // An applied `resume` whose stop key is unchanged goes to the arbiter.
-// The driver consumes a `resume` through the shed's re-launch, which refuses under the status lock unless the run is still where the tackler found it, and marks the attempt applied in the same hold.
+// The driver consumes a `resume` through the shed's re-launch, which refuses under the status lock unless the run is still where the tackler found it or already stands paused at the verdict's goto target after only goto entries, and marks the attempt applied in the same hold.
 //
 // Tampering is the spawn snapshot of the worktree and a fresh one differing, read only after the stop key proved unchanged:
 // a tackler that changed the code worktree hands back with cause `tampered`, and a run an orch moved meanwhile discards the verdict and acts on the fresh state instead.

@@ -24,6 +24,13 @@ func TestConsumeTacklerAttempt(t *testing.T) {
 		History:         []shedengine.HistoryEntry{{Producer: "Plan-Write", Outcome: shedengine.Done}, {Producer: "Plan-Bouncer", Outcome: shedengine.Done}},
 	}
 	resumeEnvelope := loomengine.TacklerEnvelope{Verdict: loomengine.TacklerVerdictResume, Reason: "safe"}
+	gotoPlanWriteEnvelope := loomengine.TacklerEnvelope{Verdict: loomengine.TacklerVerdictResume, Reason: "safe", Goto: "Plan-Write"}
+	// verdictInEffect leaves the run as the verdict's own goto to Plan-Write would.
+	verdictInEffect := func(st *shedengine.Status) {
+		st.History = append(st.History, shedengine.HistoryEntry{Producer: "Plan-Write", Outcome: shedengine.OutcomeGoto})
+		st.CurrentProducer = "Plan-Write"
+		st.State = shedengine.StatePaused
+	}
 	tests := []struct {
 		name string
 		// envelope is written as envelope.json unless nil.
@@ -33,6 +40,8 @@ func TestConsumeTacklerAttempt(t *testing.T) {
 		mutate      func(st *shedengine.Status)
 		wantErr     string
 		wantProduce string
+		// wantHistory is the history length asserted on a success row when non-zero.
+		wantHistory int
 	}{
 		{name: "missing envelope", wantErr: "unusable: the tackler call left no envelope"},
 		{
@@ -55,6 +64,26 @@ func TestConsumeTacklerAttempt(t *testing.T) {
 			name: "pause condition added since the spawn", envelope: &resumeEnvelope,
 			mutate:  func(st *shedengine.Status) { st.PauseBefore = "Plan-Bouncer" },
 			wantErr: "paused since the tackler spawned",
+		},
+		{
+			name: "verdict already in effect is consumed with no second goto", envelope: &gotoPlanWriteEnvelope,
+			mutate: verdictInEffect, wantProduce: "Plan-Write", wantHistory: 3,
+		},
+		{
+			name: "a pause added since the spawn refuses the in-effect admit", envelope: &gotoPlanWriteEnvelope,
+			mutate: func(st *shedengine.Status) {
+				verdictInEffect(st)
+				st.PauseAfter = "Plan-Write"
+			},
+			wantErr: "paused since the tackler spawned",
+		},
+		{
+			name: "moved by a goto to another row is refused", envelope: &gotoPlanWriteEnvelope,
+			mutate: func(st *shedengine.Status) {
+				st.History = append(st.History, shedengine.HistoryEntry{Producer: "Plan-Bouncer", Outcome: shedengine.OutcomeGoto})
+				st.State = shedengine.StatePaused
+			},
+			wantErr: "the run moved since the tackler spawned",
 		},
 		{name: "resume without a goto leaves the status as it was", envelope: &resumeEnvelope, wantProduce: "Plan-Bouncer"},
 		{
@@ -90,10 +119,10 @@ func TestConsumeTacklerAttempt(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			written := baseStatus
 			if tt.mutate != nil {
-				mutated := baseStatus
-				tt.mutate(&mutated)
-				if err := state.WriteJSON(statusPath, statusLock, mutated); err != nil {
+				tt.mutate(&written)
+				if err := state.WriteJSON(statusPath, statusLock, written); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -112,8 +141,8 @@ func TestConsumeTacklerAttempt(t *testing.T) {
 				if readErr != nil {
 					t.Fatal(readErr)
 				}
-				if got.CurrentProducer != "Plan-Bouncer" {
-					t.Errorf("current producer = %q after a refusal; want the run unmoved", got.CurrentProducer)
+				if got.CurrentProducer != written.CurrentProducer {
+					t.Errorf("current producer = %q after a refusal; want the run unmoved at %q", got.CurrentProducer, written.CurrentProducer)
 				}
 				return
 			}
@@ -130,6 +159,9 @@ func TestConsumeTacklerAttempt(t *testing.T) {
 			}
 			if got.CurrentProducer != tt.wantProduce {
 				t.Errorf("current producer = %q; want %q", got.CurrentProducer, tt.wantProduce)
+			}
+			if tt.wantHistory != 0 && len(got.History) != tt.wantHistory {
+				t.Errorf("history length = %d; want %d", len(got.History), tt.wantHistory)
 			}
 		})
 	}
