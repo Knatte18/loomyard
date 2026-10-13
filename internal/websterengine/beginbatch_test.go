@@ -983,7 +983,8 @@ func TestBeginBatch_WayForward_UnknownBatch(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_KickstartPack asserts what begin-batch builds into the fork prompt file when kickstart_pack is on, off or inapplicable.
+// TestBeginBatch_KickstartPack asserts what begin-batch builds into the fork prompt file and its pack file when kickstart_pack is on, off or inapplicable:
+// with a pack, the prompt ends by naming the pack file, and without one no pack file is written.
 // It also asserts that the pack reaches no other part of the result, and the one trace line each call logs.
 // It lowers the process-global log threshold to Info, so it does not call t.Parallel.
 func TestBeginBatch_KickstartPack(t *testing.T) {
@@ -992,7 +993,7 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 
 	const quarryLocate = "Locate them with one `lyx quarry resolve <glyph>...` call"
 	const packHeading = "## Kick-start pack"
-	const packFirstTurn = "Your first turn, before any edit, reads in parallel every card file"
+	const packFirstTurn = "Read all of this in one turn, in parallel, before any edit"
 	const plainStepOne = "1. Read the card file."
 	resolvedBaz := []string{
 		packHeading,
@@ -1011,7 +1012,9 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 		prepare  func(index *fakeIndex)
 		// cardHeadings are card file base names whose pointer bullet and pack subsection heading the prompt must hold.
 		cardHeadings []string
-		// wantPrompt and wantNotPrompt are needles the prompt file has and lacks.
+		// noPack says begin-batch builds no pack, so it writes no pack file.
+		noPack bool
+		// wantPrompt and wantNotPrompt are needles the prompt file followed by the pack file has and lacks.
 		wantPrompt    []string
 		wantNotPrompt []string
 		// wantLog are the needles the captured log has.
@@ -1049,6 +1052,7 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 		{
 			name:          "switch off renders the quarry locate step",
 			off:           true,
+			noPack:        true,
 			wantPrompt:    []string{quarryLocate, plainStepOne},
 			wantNotPrompt: []string{packHeading, packFirstTurn},
 			wantLog:       []string{"batch=1 kickstart_pack=off resolved=0 unresolved=0"},
@@ -1056,9 +1060,26 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 		{
 			name:          "a plan without a glyph language renders as switch off",
 			language:      "none",
+			noPack:        true,
 			wantPrompt:    []string{quarryLocate, plainStepOne},
 			wantNotPrompt: []string{packHeading, packFirstTurn},
 			wantLog:       []string{"batch=1 kickstart_pack=language-none resolved=0 unresolved=0"},
+		},
+		{
+			name: "a pack with no entry on any card renders as switch off",
+			prepare: func(index *fakeIndex) {
+				index.pack = func(cards []planparser.Card) []planindex.CardPack {
+					packs := make([]planindex.CardPack, len(cards))
+					for i, c := range cards {
+						packs[i] = planindex.CardPack{Card: c}
+					}
+					return packs
+				}
+			},
+			noPack:        true,
+			wantPrompt:    []string{quarryLocate, plainStepOne},
+			wantNotPrompt: []string{packHeading, packFirstTurn},
+			wantLog:       []string{"batch=1 kickstart_pack=empty resolved=0 unresolved=0"},
 		},
 		{
 			name: "an unavailable index degrades every entry to unresolved",
@@ -1144,19 +1165,36 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read the prompt file: %v", err)
 			}
+			packPath := strings.TrimSuffix(result.PromptPath, ".md") + "-pack.md"
+			packFile, err := os.ReadFile(packPath)
+			readLine := "Now read `" + packPath + "` and do what it says.\n"
+			if tt.noPack {
+				if !os.IsNotExist(err) {
+					t.Errorf("read the pack file %s: error = %v; want it absent", packPath, err)
+				}
+				requireNotContains(t, string(prompt), readLine)
+			} else {
+				if err != nil {
+					t.Fatalf("read the pack file: %v", err)
+				}
+				if !strings.HasSuffix(string(prompt), readLine) {
+					t.Errorf("prompt does not end with %q", readLine)
+				}
+			}
+			text := string(prompt) + string(packFile)
 			for _, needle := range tt.wantPrompt {
-				requireContains(t, string(prompt), needle)
+				requireContains(t, text, needle)
 			}
 			for _, needle := range tt.wantNotPrompt {
-				requireNotContains(t, string(prompt), needle)
+				requireNotContains(t, text, needle)
 			}
 			// The plan directory sits outside the worktree, so the display is the absolute plan directory.
 			for _, base := range tt.cardHeadings {
 				path := planDir + "/" + base
 				requireContains(t, string(prompt), fmt.Sprintf("- `%s`", path))
-				requireContains(t, string(prompt), fmt.Sprintf("### `%s`", path))
+				requireContains(t, string(packFile), fmt.Sprintf("### `%s`", path))
 			}
-			// The pack reaches the prompt file alone.
+			// The pack reaches the prompt and pack files alone.
 			envelope := fmt.Sprintf("%+v", *result)
 			requireNotContains(t, envelope, "Kick-start")
 			requireNotContains(t, envelope, "internal/foo/impl.go")
