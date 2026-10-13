@@ -467,10 +467,11 @@ User-facing modules each get one `lyx <module>` namespace:
   `lint-pattern [--base <commit>]` runs `internal/patternlint` over the worktree: it compares `PATTERN.md` at HEAD with the working tree's, or at `--base` with HEAD's, and fails when the overview grew past its headroom line, naming the bytes to cut.
   An overview that stays above the line or shrinks passes.
   A PR-review wait at `PR-Gate` halts the run `awaiting`, the planned hand-off state: it behaves like `blocked` for resume but spends no bounce budget, triggers no friction reflection and raises no anomaly; a `blocked` or `failed` halt writes a Go halt note and reflects.
-  A review segment escalates to the run's parent, also `awaiting`, for one of two causes: the judge's `CIRCLING` verdict, or a bounce budget spent without convergence.
+  A review segment settles a spent bounce budget by the soft-cap rule, from the judge's per-finding `mechanical` or `design-wrong` fix tags.
+  It escalates to the run's parent, also `awaiting`, for a circling design-wrong finding, at the hard cap, or when the rule cannot read its inputs.
   The Bouncer writes a brief and a one-line parent notice into its run directory and returns the notice as `parent_notice`; the loom driver relays it to the parent, whose one-shot fork reads the brief and decides.
   The fork settles with `lyx loom circling accept|continue [<slug>]`, which records the decision and resumes nothing, and resumes the run with `lyx loom resume`.
-  A `continue` after a budget escalation runs exactly one more round without spending budget; the next round past the budget needs its own decision.
+  A `continue` past the soft cap runs exactly one more round without spending budget, and no round at or past the hard cap is continued.
   A batten-driven run is not resumed by batten on such a decision, since batten's wait reads only PR-Gate approval and rejection records, so it is resumed the same way with `lyx loom resume` in the task worktree.
   `approve` records an operator approval of the open pull request when the run is awaiting (or blocked) at the gate and the local HEAD equals the PR's head, writing `.lyx/loom/approval.json` and removing a pending rejection; resuming with `lyx loom start` then lets `PR-Gate` return Done without a GitHub merge.
   `reject <review-file>` records the operator's findings (removing a pending approval), and its refusal once the gate's bounce budget is spent exists but is unreachable under the recipe, whose `PR-Rework` Done ends the gate's episode after every rework.

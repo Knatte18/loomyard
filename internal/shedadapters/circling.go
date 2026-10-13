@@ -33,7 +33,7 @@ var (
 
 // circlingDecisionHeader mirrors a circling decision file's YAML frontmatter.
 // A file an older binary wrote carries no cause and reads as EscalationCircling.
-// Automatic is true only for an accept the Bouncer recorded itself on a spent budget; a parent's decision never sets it.
+// Automatic is true for a decision the Bouncer recorded itself: an auto-accept, or the soft-cap rule's accept or continue; a parent's decision never sets it.
 type circlingDecisionHeader struct {
 	Round     int    `yaml:"round"`
 	Decision  string `yaml:"decision"`
@@ -76,10 +76,17 @@ func RecordCirclingDecision(runDir string, d CirclingDecision) (int, EscalationC
 	return round, cause, nil
 }
 
-// recordAutoAccept records round's circling decision as an automatic, not yet settled accept on a spent budget.
+// recordAutoAccept records round's circling decision as an automatic, not yet settled accept with cause budget.
+// Its callers are an auto-accept perch's harvest at the soft cap and the soft-cap rule's accept over a ledger with no design-wrong entry.
 // It returns ErrCirclingDecided when a decision file for the round already exists, leaving it untouched.
 func recordAutoAccept(runDir string, round int) error {
 	return createCirclingDecision(runDir, round, CirclingAccept, EscalationBudget, true)
+}
+
+// recordAutoContinue records round's circling decision as an automatic, not yet settled continue with cause budget.
+// It returns ErrCirclingDecided when a decision file for the round already exists, leaving it untouched.
+func recordAutoContinue(runDir string, round int) error {
+	return createCirclingDecision(runDir, round, CirclingContinue, EscalationBudget, true)
 }
 
 // createCirclingDecision writes round's pending decision file, refusing with ErrCirclingDecided to overwrite one.

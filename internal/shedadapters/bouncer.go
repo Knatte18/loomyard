@@ -135,19 +135,19 @@ type BouncerConfig struct {
 	DecisionRecordPath string
 	// Bounces is the optional seam reporting this segment's spent bounce count and its budget.
 	// The budget is reached when ok is true, err is nil and count >= budget, the comparison Shed applies to the history it read before appending;
-	// a CONTINUE or CIRCLING verdict then escalates to the parent instead of reaching Shed's generic budget block.
+	// a CONTINUE or CIRCLING verdict then opens the soft-cap rule's window instead of reaching Shed's generic budget block.
 	// Nil is the absent value, ok false means unknown, and an error warns; each means the budget is not reached.
 	Bounces func() (count, budget int, ok bool, err error)
 	// HardCap is the perch's hard cap as a round number, counted from 1 in the segment's current generation, so a round numbered HardCap or higher is at or past it.
 	// A round there is never continued: a recorded continue is moved aside and the round re-escalates with cause hard-cap, and every escalation there offers only accept.
 	// 0 is the absent value and means no hard cap, which keeps every caller that tells none behaving as before.
 	HardCap int
-	// AutoAccept makes a spent budget settle the round as an accept instead of escalating to the parent.
-	// It applies only to a CONTINUE or CIRCLING verdict this call's judge just wrote, over a round with no recorded decision and no escalation record;
-	// a replay, a circling-cause escalation and a round already escalated behave as when it is false, which is the default.
+	// AutoAccept makes a spent budget settle the round as an accept instead of running the soft-cap rule.
+	// It accepts only a CONTINUE or CIRCLING verdict this call's judge just wrote at the soft cap, over a round with no recorded decision and no escalation record;
+	// a replay and a BlockingEscalates round go to the rule, and a round already escalated returns its record, as when it is false, which is the default.
 	AutoAccept bool
-	// BlockingEscalates makes a spent budget escalate with cause budget, instead of auto-accepting, when the round's ledger holds an open BLOCKING entry or cannot be read.
-	// It only turns some auto-accepts into escalations: it never accepts what escalates without it, and it has no effect while AutoAccept is false.
+	// BlockingEscalates sends a spent budget to the soft-cap rule, instead of auto-accepting, when the round's ledger holds an open BLOCKING entry or cannot be read.
+	// It only turns some auto-accepts into rule runs: it never accepts what the rule would not, and it has no effect while AutoAccept is false.
 	BlockingEscalates bool
 	// CirclingCheckpoint is the first round a CIRCLING verdict is legal in.
 	// The judge prompt offers CIRCLING only from this round on, and settle reads an earlier CIRCLING as CONTINUE.
@@ -194,8 +194,9 @@ type Bouncer struct {
 // Every degrade exit, the seed and re-bounce Stuck, a CONTINUE with no decision and a circling-cause continue are counted here;
 // a continue past the soft cap is exempt whoever recorded it, meaning one of cause budget or one recorded with the budget reached, and an escalation returns Awaiting, which is never counted.
 // No round at or past cfg.HardCap is ever continued.
-// With cfg.AutoAccept set, a spent budget over a freshly judged CONTINUE or CIRCLING round settles as an automatic accept and returns Done instead of escalating.
-// So a judge that never recovers halts within MaxBounces counted Stucks, and a budget continue buys exactly one judged round.
+// The soft-cap rule's automatic continue is exempt as well.
+// With cfg.AutoAccept set, a spent budget over a freshly judged CONTINUE or CIRCLING round settles as an automatic accept and returns Done instead of running the rule.
+// So a judge that never recovers halts within MaxBounces counted Stucks, and a continue past the soft cap buys exactly one judged round.
 //
 // Wiring obligation: this producer is its segment's entry point, its OnStuck names the round
 // producer for both the seed call and a rejection, and its OnDone is set explicitly to whatever
@@ -729,6 +730,7 @@ func (b *Bouncer) rejudge(ctx context.Context, round int, verdict bouncerVerdict
 // A CONTINUE that reaches neither calls ensureFocus(round + 1) and returns shedengine.Stuck with the same ledger pointer, deliberately committing nothing:
 // an unapproved artifact must not be committed,
 // and a blocked run has already escalated to a human who is the right party to judge the partial fixes.
+// An undecided round is settled by the soft-cap rule, not a budget escalation.
 // An escalation spawns nothing, and a re-call over the same on-disk state returns the same Awaiting.
 //
 // All three returns survive cancellation:
@@ -809,8 +811,8 @@ func (b *Bouncer) unearnedCircling(round int) string {
 // A failed settle write is returned before Approve runs, so an accept never passes without its settled record.
 // A settled accept is reachable here only through the entry-time attach branch, and degrades rather than settling twice.
 // A malformed decision file degrades with the read error as the Reason.
-// With no decision, a spent budget escalates with cause budget, even over a CIRCLING verdict, or settles as an automatic accept when AutoAccept is set (see settleUndecided);
-// otherwise a CIRCLING verdict escalates with cause circling and a CONTINUE returns Stuck.
+// With no decision, the undecided path is the soft-cap rule, not a budget escalation (see settleUndecided);
+// below its window a CIRCLING verdict escalates with cause circling and a CONTINUE returns Stuck.
 func (b *Bouncer) settleUnconverged(ctx context.Context, round int, verdict bouncerVerdict, spawned bool, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	decision, cause, settled, exists, err := readCirclingDecision(b.cfg.RunDir, round)
 	if err != nil {
@@ -879,34 +881,36 @@ func (b *Bouncer) acceptRound(round int, ptr shedengine.OutputPointer) (shedengi
 	return shedengine.Done, ptr, nil
 }
 
-// settleUndecided maps a CONTINUE or CIRCLING round that has no decision file onto an escalation or a plain Stuck.
-// A spent budget escalates with cause budget, also over a CIRCLING verdict;
-// with AutoAccept set it instead records an automatic accept and passes the round through acceptRound, writing no escalation record and no parent notice.
-// The automatic accept needs a harvest (spawned) over a round with no escalation record, so a replay and an already escalated round escalate as without AutoAccept.
-// With BlockingEscalates set, a round whose ledger holds an open BLOCKING entry, or whose ledger cannot be read, escalates with cause budget instead of auto-accepting.
-// Otherwise a CIRCLING verdict escalates with cause circling, and a CONTINUE calls ensureFocus(round + 1) and returns Stuck.
+// settleUndecided maps a CONTINUE or CIRCLING round that has no decision file onto an accept, an escalation, a rule-made continue or a plain Stuck.
+// The soft-cap rule's window is open when the budget is reached by Shed's count or the round is at or past the hard cap by its number, whichever comes first,
+// so a round past a goto that reset Shed's count is still settled by the rule.
+// In order:
+// first, with the soft cap reached, AutoAccept set, a harvest (spawned) and no escalation record, a round that BlockingEscalates does not send to the rule records an automatic accept and passes through acceptRound;
+// BlockingEscalates sends a round whose ledger holds an open BLOCKING entry, or cannot be read, to the rule instead.
+// Second, an open window or a CIRCLING verdict over a round whose escalation record exists or cannot be read escalates, which returns the recorded Awaiting or the unreadable-record Stuck.
+// Third, an open window runs softCapRule.
+// Fourth, a CIRCLING verdict escalates with cause circling, and a CONTINUE calls ensureFocus(round + 1) and returns Stuck.
+//
+// Bound: the rule accepts fixes no reviewer saw only when no open BLOCKING or MEDIUM entry is tagged design-wrong.
+// It buys rounds past the soft cap one at a time and never at or past the hard cap.
 func (b *Bouncer) settleUndecided(round int, verdict bouncerVerdict, spawned bool, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	switch {
-	case b.budgetReached(round):
-		if b.cfg.AutoAccept && spawned {
-			if _, _, escalated, err := readEscalation(b.cfg.RunDir, round); err == nil && !escalated {
-				if b.cfg.BlockingEscalates {
-					blocking, err := b.openBlocking(round)
-					if err != nil {
-						logger.Warn("shedadapters: bouncer could not read the ledger for the blocking check, escalating", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
-					}
-					if blocking || err != nil {
-						return b.escalate(round, EscalationBudget, ptr)
-					}
-				}
-				if err := recordAutoAccept(b.cfg.RunDir, round); err != nil {
-					return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): record automatic accept: %w", b.cfg.Name, bouncerEngineLabel, err)
-				}
-				return b.acceptRound(round, ptr)
-			}
+	softCapReached := b.budgetReached(round)
+	windowOpen := softCapReached || b.atHardCap(round)
+	_, _, escalated, readErr := readEscalation(b.cfg.RunDir, round)
+
+	if softCapReached && b.cfg.AutoAccept && spawned && readErr == nil && !escalated && !b.blockingSendsToRule(round) {
+		if err := recordAutoAccept(b.cfg.RunDir, round); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): record automatic accept: %w", b.cfg.Name, bouncerEngineLabel, err)
 		}
+		return b.acceptRound(round, ptr)
+	}
+	if (windowOpen || verdict == verdictCircling) && (escalated || readErr != nil) {
 		return b.escalate(round, EscalationBudget, ptr)
-	case verdict == verdictCircling:
+	}
+	if windowOpen {
+		return b.softCapRule(round, verdict, ptr)
+	}
+	if verdict == verdictCircling {
 		return b.escalate(round, EscalationCircling, ptr)
 	}
 	b.ensureFocus(round + 1)
@@ -917,16 +921,87 @@ func (b *Bouncer) settleUndecided(round int, verdict bouncerVerdict, spawned boo
 	return shedengine.Stuck, ptr, nil
 }
 
+// softCapRule settles a round in the soft-cap window from the judge's fix tags, in order:
+// first, a review that does not parse or a ledger that cannot be read escalates with cause budget; every caller reached settle through a verdict that already parsed this ledger, so that is a fail-loud guard;
+// second, a ledger with no design-wrong entry records an automatic accept and passes through acceptRound, which carries the open findings into `## Open risks` where the recipe sets carry_over and writes no escalation record or parent notice;
+// third, a round at or past the hard cap escalates with cause hard-cap;
+// fourth, a CIRCLING verdict escalates with cause circling, as does a design-wrong key open in this round's ledger and in the ledger of the previous round when that round's decision is a recorded continue, and an unreadable previous decision or ledger escalates with cause budget;
+// fifth, an automatic continue is recorded, round + 1 gets its focus file, and the round returns a budget-exempt Stuck.
+// Only the immediately previous round is consulted, so a key that was LOW, NIT or mechanical there does not return.
+// It reads only files in the run directory, so a harvest and a replay settle alike.
+//
+// Bound: the rule accepts fixes no reviewer saw only when no open BLOCKING or MEDIUM entry is tagged design-wrong.
+// A finding the judge mis-tags mechanical lets an unreviewed design change through, bounded only by the soft-cap window, the carry-over into `## Open risks` where the recipe sets it, and the decision file's automatic flag.
+func (b *Bouncer) softCapRule(round int, verdict bouncerVerdict, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	if row := reviewFactsRow(b.cfg.RunDir, round, b.cfg.ReportName); row.Err != "" {
+		logger.Warn("shedadapters: soft-cap rule could not read the round's review, escalating", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", row.Err)
+		return b.escalate(round, EscalationBudget, ptr)
+	}
+	ledger, err := readLedger(b.cfg.RunDir, round)
+	if err != nil {
+		logger.Warn("shedadapters: soft-cap rule could not read the round's ledger, escalating", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
+		return b.escalate(round, EscalationBudget, ptr)
+	}
+	current := designWrongKeys(ledger)
+	if len(current) == 0 {
+		if err := recordAutoAccept(b.cfg.RunDir, round); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): record automatic accept: %w", b.cfg.Name, bouncerEngineLabel, err)
+		}
+		return b.acceptRound(round, ptr)
+	}
+	if b.atHardCap(round) {
+		return b.escalate(round, EscalationHardCap, ptr)
+	}
+	if verdict == verdictCircling {
+		return b.escalate(round, EscalationCircling, ptr)
+	}
+	if round >= 2 {
+		previousDecision, _, _, previousExists, err := readCirclingDecision(b.cfg.RunDir, round-1)
+		if err != nil {
+			logger.Warn("shedadapters: soft-cap rule could not read the previous round's decision, escalating", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
+			return b.escalate(round, EscalationBudget, ptr)
+		}
+		if previousExists && previousDecision == CirclingContinue {
+			previousLedger, err := readLedger(b.cfg.RunDir, round-1)
+			if err != nil {
+				logger.Warn("shedadapters: soft-cap rule could not read the previous round's ledger, escalating", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
+				return b.escalate(round, EscalationBudget, ptr)
+			}
+			previous := designWrongKeys(previousLedger)
+			for key := range current {
+				if previous[key] {
+					return b.escalate(round, EscalationCircling, ptr)
+				}
+			}
+		}
+	}
+	if err := recordAutoContinue(b.cfg.RunDir, round); err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): record automatic continue: %w", b.cfg.Name, bouncerEngineLabel, err)
+	}
+	b.ensureFocus(round + 1)
+	ptr.BudgetExempt = true
+	return shedengine.Stuck, ptr, nil
+}
+
+// blockingSendsToRule reports whether BlockingEscalates sends round to the soft-cap rule instead of the auto-accept:
+// its ledger holds an open BLOCKING entry or cannot be read.
+func (b *Bouncer) blockingSendsToRule(round int) bool {
+	if !b.cfg.BlockingEscalates {
+		return false
+	}
+	blocking, err := b.openBlocking(round)
+	if err != nil {
+		logger.Warn("shedadapters: bouncer could not read the ledger for the blocking check, sending the round to the soft-cap rule", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
+	}
+	return blocking || err != nil
+}
+
 // openBlocking reports whether round's ledger holds an entry that is open at severity BLOCKING.
 // A ledger that cannot be read or parsed is an error.
 func (b *Bouncer) openBlocking(round int) (bool, error) {
-	raw, err := os.ReadFile(ledgerPath(b.cfg.RunDir, round))
+	ledger, err := readLedger(b.cfg.RunDir, round)
 	if err != nil {
-		return false, fmt.Errorf("shedadapters: %s (%s): read ledger of round %d: %w", b.cfg.Name, bouncerEngineLabel, round, err)
-	}
-	ledger, err := parseLedger(raw)
-	if err != nil {
-		return false, fmt.Errorf("shedadapters: %s (%s): parse ledger of round %d: %w", b.cfg.Name, bouncerEngineLabel, round, err)
+		return false, err
 	}
 	for _, entry := range ledger.Entries {
 		if entry.Status == "open" && entry.Severity == burlerengine.SeverityBlocking {

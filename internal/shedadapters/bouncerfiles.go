@@ -271,6 +271,35 @@ func parseLedger(content []byte) (ledgerFile, error) {
 	}, nil
 }
 
+// readLedger reads and parses round's ledger file inside runDir, wrapping either failure with the round.
+func readLedger(runDir string, round int) (ledgerFile, error) {
+	raw, err := os.ReadFile(ledgerPath(runDir, round))
+	if err != nil {
+		return ledgerFile{}, fmt.Errorf("shedadapters: read ledger of round %d: %w", round, err)
+	}
+	ledger, err := parseLedger(raw)
+	if err != nil {
+		return ledgerFile{}, fmt.Errorf("shedadapters: parse ledger of round %d: %w", round, err)
+	}
+	return ledger, nil
+}
+
+// designWrongKeys returns the keys of the ledger's entries that count as design-wrong:
+// open, at severity BLOCKING or MEDIUM, and tagged anything but `mechanical`, so a missing or unknown fix tag counts.
+// A LOW, NIT or unlabelled-severity entry never counts.
+func designWrongKeys(ledger ledgerFile) map[string]bool {
+	keys := map[string]bool{}
+	for _, entry := range ledger.Entries {
+		if entry.Status != "open" || entry.Fix == "mechanical" {
+			continue
+		}
+		if entry.Severity == burlerengine.SeverityBlocking || entry.Severity == burlerengine.SeverityMedium {
+			keys[entry.Key] = true
+		}
+	}
+	return keys
+}
+
 // focusFile is a parsed bouncer focus file: the Round it targets, the lenses excluded from that
 // round, the round's own focus directives, and its prose narrative.
 type focusFile struct {

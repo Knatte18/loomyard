@@ -1,5 +1,5 @@
 // escalation_test.go drives a real Discussion-Review segment, and a darn run's Darn-Review perch, through a spent review budget:
-// the Bouncer escalates to the parent instead of blocking, a budget continue grants exactly one more round, and an accept settles the segment.
+// the soft-cap rule continues a design-wrong round one round at a time, the Bouncer escalates at the hard cap instead of blocking, and an accept settles the segment.
 
 package loomrecipe
 
@@ -21,18 +21,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// budgetEscalationBudget is the small review budget the escalation tests run with.
+// budgetEscalationBudget is the small review budget the escalation tests run with; they run under a hard cap one above it.
 const budgetEscalationBudget = 2
 
-// newEscalationShed builds a Shed over the sequence fixture with a small review budget, a judge that rules CONTINUE every round,
-// and the SegmentBounces seam wired over the fixture's status file through Routing, as loomcli wires it.
+// newEscalationShed builds a Shed over the sequence fixture with a small review budget and a hard cap one above it for Discussion-Bouncer.
+// The judge rules CONTINUE over one open design-wrong entry every round.
+// The SegmentBounces seam is wired over the fixture's status file through Routing, as loomcli wires it.
 // It returns the Shed, the fixture env and the Discussion-Review run directory.
 func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.BurlerHalfRunner, func() shedengine.Status) {
 	t.Helper()
 
 	_, env, paths := buildSequenceFixture(t)
-	blockBouncerJudge(env)
+	designWrongBouncerJudge(env)
 	env.ReviewMaxBounces = budgetEscalationBudget
+	env.RowHardMaxBounces = map[string]int{loomshed.NameDiscussionBouncer: budgetEscalationBudget + 1}
 	env.SegmentBounces = func(row string) (int, int, bool, error) {
 		st, found, err := state.ReadJSONNoMkdir[shedengine.Status](env.StatusPath, env.StatusLockPath)
 		if err != nil || !found {
@@ -70,9 +72,9 @@ func (p *haltingProducer) Call(context.Context) (shedengine.Outcome, shedengine.
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: "halting fake"}, nil
 }
 
-// TestEscalation_DarnPerchBudgetSpentEscalatesThenAcceptReachesDescribe drives a darn run's Darn-Review perch past darn.yaml's default budget of 1, with no decision record on disk:
-// the Bouncer escalates to the parent with a rendered brief instead of blocking, writes no decision record, and an accept settles the perch onto Describe.
-func TestEscalation_DarnPerchBudgetSpentEscalatesThenAcceptReachesDescribe(t *testing.T) {
+// TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe drives a darn run's Darn-Review perch past darn.yaml's default budget of 1 under a hard cap of 2, with no decision record on disk:
+// the soft-cap rule continues round 1 automatically, the Bouncer escalates at the hard cap to the parent with a rendered brief instead of blocking, writes no decision record, and an accept settles the perch onto Describe.
+func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *testing.T) {
 	env, paths := testEnv(t)
 	// A round's review path must sit under the anchor.
 	env.RunRoot = filepath.Join(env.AnchorPath, "reviews")
@@ -82,7 +84,8 @@ func TestEscalation_DarnPerchBudgetSpentEscalatesThenAcceptReachesDescribe(t *te
 	if err := loomshed.Seed(env.StatusPath, env.StatusLockPath, "fixture-slug", "fixture-parent"); err != nil {
 		t.Fatalf("Seed(): %v", err)
 	}
-	blockBouncerJudge(env)
+	designWrongBouncerJudge(env)
+	env.RowHardMaxBounces = map[string]int{loomshed.NameDarnBouncer: 2}
 	env.SegmentBounces = func(row string) (int, int, bool, error) {
 		st, found, err := state.ReadJSONNoMkdir[shedengine.Status](env.StatusPath, env.StatusLockPath)
 		if err != nil || !found {
@@ -118,8 +121,8 @@ func TestEscalation_DarnPerchBudgetSpentEscalatesThenAcceptReachesDescribe(t *te
 	if result.Outcome != shedengine.RunAwaiting || result.HaltedProducer != loomshed.NameDarnBouncer {
 		t.Fatalf("Run() = %q at %q (reason %q); want %q at %q", result.Outcome, result.HaltedProducer, result.Reason, shedengine.RunAwaiting, loomshed.NameDarnBouncer)
 	}
-	if !strings.Contains(result.Reason, "(cause: budget)") || !strings.Contains(result.Reason, "brief at ") {
-		t.Errorf("Run() reason = %q; want the budget cause and the rendered brief's path", result.Reason)
+	if !strings.Contains(result.Reason, "(cause: hard-cap)") || !strings.Contains(result.Reason, "brief at ") {
+		t.Errorf("Run() reason = %q; want the hard-cap cause and the rendered brief's path", result.Reason)
 	}
 	if st, _, err := state.ReadJSONNoMkdir[shedengine.Status](env.StatusPath, env.StatusLockPath); err != nil || st.ParentNotice == "" {
 		t.Errorf("status ParentNotice = %q, %v; want the Bouncer's one-line notice", st.ParentNotice, err)
@@ -128,8 +131,8 @@ func TestEscalation_DarnPerchBudgetSpentEscalatesThenAcceptReachesDescribe(t *te
 		t.Errorf("Stat(decision record) = %v; want not-exist, since a darn run has none", err)
 	}
 
-	if _, cause, err := shedadapters.RecordCirclingDecision(runDir, shedadapters.CirclingAccept); err != nil || cause != shedadapters.EscalationBudget {
-		t.Fatalf("RecordCirclingDecision(accept) = _, %q, %v; want %q, nil", cause, err, shedadapters.EscalationBudget)
+	if _, cause, err := shedadapters.RecordCirclingDecision(runDir, shedadapters.CirclingAccept); err != nil || cause != shedadapters.EscalationHardCap {
+		t.Fatalf("RecordCirclingDecision(accept) = _, %q, %v; want %q, nil", cause, err, shedadapters.EscalationHardCap)
 	}
 	result, err = shed.Run(context.Background())
 	if err != nil {
@@ -156,10 +159,10 @@ func countStuck(history []shedengine.HistoryEntry, producer string) (total, exem
 	return total, exempt
 }
 
-// TestEscalation_BudgetContinueGrantsOneRoundThenAccept asserts the three halts of a spent review budget:
-// the budget halts awaiting with a parent notice rather than blocked, a continue runs exactly one more round before the Bouncer escalates again,
+// TestEscalation_RuleContinuesOneRoundThenHardCapThenAccept asserts the halts of a spent review budget under a hard cap one above it:
+// the soft-cap rule continues the spent budget with one automatic continue, the next round halts awaiting at the hard cap with a parent notice rather than blocked,
 // and an accept settles the segment.
-func TestEscalation_BudgetContinueGrantsOneRoundThenAccept(t *testing.T) {
+func TestEscalation_RuleContinuesOneRoundThenHardCapThenAccept(t *testing.T) {
 	shed, runDir, burler, readStatus := newEscalationShed(t)
 
 	result, err := shed.Run(context.Background())
@@ -172,6 +175,9 @@ func TestEscalation_BudgetContinueGrantsOneRoundThenAccept(t *testing.T) {
 	if result.HaltedProducer != loomshed.NameDiscussionBouncer {
 		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NameDiscussionBouncer)
 	}
+	if !strings.Contains(result.Reason, "(cause: hard-cap)") {
+		t.Errorf("Run() reason = %q; want the hard-cap cause", result.Reason)
+	}
 	st := readStatus()
 	if st.State != shedengine.StateAwaiting {
 		t.Errorf("status State = %q; want %q", st.State, shedengine.StateAwaiting)
@@ -179,43 +185,31 @@ func TestEscalation_BudgetContinueGrantsOneRoundThenAccept(t *testing.T) {
 	if st.ParentNotice == "" {
 		t.Error("status ParentNotice is empty; want the Bouncer's one-line notice")
 	}
-	roundsBefore := burler.ReviewCalls
-
-	round, cause, err := shedadapters.RecordCirclingDecision(runDir, shedadapters.CirclingContinue)
-	if err != nil {
-		t.Fatalf("RecordCirclingDecision(continue) error = %v; want nil", err)
-	}
-	if cause != shedadapters.EscalationBudget {
-		t.Fatalf("RecordCirclingDecision(continue) cause = %q; want %q", cause, shedadapters.EscalationBudget)
-	}
-	if want := roundsBefore; round != want {
-		t.Fatalf("RecordCirclingDecision(continue) round = %d; want the latest judged round %d", round, want)
-	}
-
-	result, err = shed.Run(context.Background())
-	if err != nil {
-		t.Fatalf("Run() after continue error = %v; want nil", err)
-	}
-	if result.Outcome != shedengine.RunAwaiting {
-		t.Fatalf("Run() after continue outcome = %q (reason %q); want %q -- one more round, then the next judge escalates again", result.Outcome, result.Reason, shedengine.RunAwaiting)
-	}
-	if got := burler.ReviewCalls - roundsBefore; got != 1 {
-		t.Errorf("rounds run after the budget continue = %d; want exactly 1", got)
+	if want := budgetEscalationBudget + 1; burler.ReviewCalls != want {
+		t.Errorf("review rounds run = %d; want %d", burler.ReviewCalls, want)
 	}
 	if burler.FixCalls != burler.ReviewCalls {
 		t.Errorf("fix calls = %d, review calls = %d; want one fix per review", burler.FixCalls, burler.ReviewCalls)
 	}
-	for _, row := range []string{loomshed.NameDiscussionBurlerReview, loomshed.NameDiscussionBurlerFix} {
-		if total, exempt := countStuck(result.History, row); total != burler.ReviewCalls || exempt != total {
-			t.Errorf("%s Stuck entries = %d, budget-exempt = %d; want both %d (every round's hand-back is exempt)", row, total, exempt, burler.ReviewCalls)
+	if total, exempt := countStuck(result.History, loomshed.NameDiscussionBouncer); exempt != 1 || total <= exempt {
+		t.Errorf("Discussion-Bouncer Stuck entries = %d, budget-exempt = %d; want exactly 1 exempt (the rule's continue) among the counted ones", total, exempt)
+	}
+	continued, err := os.ReadFile(filepath.Join(runDir, "round-2-circling-decision.md"))
+	if err != nil {
+		t.Fatalf("ReadFile(round 2 decision) = %v; want nil", err)
+	}
+	for _, want := range []string{"decision: continue", "cause: budget", "automatic: true"} {
+		if !strings.Contains(string(continued), want) {
+			t.Errorf("round 2 decision file = %q; want it to hold %q", continued, want)
 		}
 	}
-	if _, exempt := countStuck(result.History, loomshed.NameDiscussionBouncer); exempt != 1 {
-		t.Errorf("Discussion-Bouncer budget-exempt Stuck entries = %d; want 1 (the continue)", exempt)
-	}
 
-	if _, _, err := shedadapters.RecordCirclingDecision(runDir, shedadapters.CirclingAccept); err != nil {
+	round, cause, err := shedadapters.RecordCirclingDecision(runDir, shedadapters.CirclingAccept)
+	if err != nil {
 		t.Fatalf("RecordCirclingDecision(accept) error = %v; want nil", err)
+	}
+	if round != budgetEscalationBudget+1 || cause != shedadapters.EscalationHardCap {
+		t.Fatalf("RecordCirclingDecision(accept) = %d, %q; want round %d with cause %q", round, cause, budgetEscalationBudget+1, shedadapters.EscalationHardCap)
 	}
 	result, err = shed.Run(context.Background())
 	if err != nil {
