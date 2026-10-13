@@ -85,7 +85,7 @@
 // A zoomed strand survives every reed step (zoom.go).
 // tmux clears a window's zoom on resize-pane -y, select-layout, split-window, select-pane without -Z and kill-pane of another pane, so every step that changes panes runs inside keepZoomLocked, under the op lock.
 // It reads the strands' window's `#{window_zoomed_flag} #{pane_id}` through the stored-state window seam; for a zoomed window it unzooms the active pane with `resize-pane -Z`, runs the step, and zooms the same pane again, also when the step failed.
-// The call sites are Up, EnsureSession, Resume, AddStrand and AddStrandUnless, UpdateStrand, RemoveStrand, ReplaceStrand, the watchdog's reapplyLayout and AttachArgv's pre-flight, so every pane list a layout or a pin is planned from is read on the unzoomed window.
+// The call sites are Up, EnsureSession, Resume, AddStrand and AddStrandUnless, UpdateStrand, SetContentRows, RemoveStrand, ReplaceStrand, the watchdog's reapplyLayout and AttachArgv's pre-flight, so every pane list a layout or a pin is planned from is read on the unzoomed window.
 // The watchdog's reapplyLayout enters the bracket only for an apply it will run: a live box equal to the last applied box or to the last failed box returns before it, so a re-apply that changes nothing never toggles zoom.
 // The watch loop records the live box of a failed re-apply as the last failed box and skips it until another box applies; a strand op's own apply is never suppressed.
 // An op that refuses a bad config value or an unformable name does so before the bracket's first read.
@@ -95,7 +95,12 @@
 // the window-resized hook array, when it holds any pin, starts with an entry that records a zoomed window in the window option @lyx_rezoom and unzooms it, and ends its pins with an entry that zooms the active pane again and clears the record, ahead of the watchdog's signal entry;
 // the attach chain runs the same two entries around its select-layout and pins, each naming the strands' window, since the chain runs in the client's context.
 //
-// No pane process reports a content line count today, so a content strand's ContentRows stays unreported and the strand takes its minimum rows.
+// SetContentRows(name, paneID, rows) is the one operation through which a content strand's pane process reports its line count (strand.go).
+// It refuses rows < 1 before taking any lock, then, under the op lock and the zoom bracket, an unknown name, a strand that is not content-sized and a strand whose recorded pane is not paneID, each naming the strand and the reason.
+// A count equal to the recorded one touches neither reed.json nor tmux; otherwise it persists the count and re-applies the layout with applyOpts{SkipFocus, InstallPins}, so the operator's cursor never moves and the window-resized hook array is rebuilt from the new pins.
+// It changes nothing but that strand's ContentRows and the layout and pins derived from it.
+// Neither overview pane reports a count, so the operation stays for an explicit content-sized caller.
+// Bound: a hand-run or replaced pane process reports from a pane the strand does not hold and is refused, so it can resize no strand.
 //
 // A restarted server's sessions come back in spawn order (revive.go).
 // The teller tells Geometry.SpawnOrder, a lazy list of ReviveEntry for the hub's worktrees in spawn order, nil in standalone mode; reedengine sorts nothing and reads no loom or fabric record.

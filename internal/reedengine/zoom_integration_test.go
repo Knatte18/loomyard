@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
 // zoomStateNow reads the strands' window's zoom flag and active pane from outside the pty.
@@ -36,7 +38,7 @@ func waitZoomedOn(t *testing.T, e *Engine, paneID, step string) {
 
 // TestZoomBracket_ZoomedStrandSurvivesEveryReedStep zooms the bottom strand, which is not the top pane, and asserts it is still the zoomed pane after a client resize, a re-attach, an add and a resume,
 // and that the window's cells hold their planned heights once it is unzoomed after the resize.
-// It then zooms Selvage and asserts the zoom holds across another add.
+// It then adds a top content strand and reports content rows for it with the strand and then Selvage zoomed, asserting the zoom holds and the reported height lands once unzoomed.
 func TestZoomBracket_ZoomedStrandSurvivesEveryReedStep(t *testing.T) {
 	e := setupAttachGeometryFixture(t)
 	st, err := LoadState(e.stateDir())
@@ -76,6 +78,20 @@ func TestZoomBracket_ZoomedStrandSurvivesEveryReedStep(t *testing.T) {
 	}
 	assertZoomedOn(t, e, childPaneID, "after a resume")
 
+	top, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{
+		Anchor: render.AnchorTop,
+		Size:   render.Size{Kind: render.SizeContent, ShareNum: 1, ShareDen: 3, MinRows: 3},
+	}})
+	if err != nil {
+		t.Fatalf("AddStrand(top content): %v", err)
+	}
+	assertZoomedOn(t, e, childPaneID, "after adding a top content strand")
+
+	if err := e.SetContentRows(top.Name, top.PaneID, 5); err != nil {
+		t.Fatalf("SetContentRows(5): %v", err)
+	}
+	assertZoomedOn(t, e, childPaneID, "after a content-rows report")
+
 	reloaded, err := LoadState(e.stateDir())
 	if err != nil || reloaded == nil {
 		t.Fatalf("LoadState = (%+v, %v)", reloaded, err)
@@ -84,10 +100,16 @@ func TestZoomBracket_ZoomedStrandSurvivesEveryReedStep(t *testing.T) {
 	mustTmuxOutput(t, e, "select-pane", "-t", selvagePaneID)
 	mustTmuxOutput(t, e, "resize-pane", "-Z", "-t", selvagePaneID)
 	assertZoomedOn(t, e, selvagePaneID, "after zooming Selvage")
-	if _, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: st.Strands[1].Display}); err != nil {
-		t.Fatalf("AddStrand with Selvage zoomed: %v", err)
+	if err := e.SetContentRows(top.Name, top.PaneID, 6); err != nil {
+		t.Fatalf("SetContentRows(6): %v", err)
 	}
-	assertZoomedOn(t, e, selvagePaneID, "after an add with Selvage zoomed")
+	assertZoomedOn(t, e, selvagePaneID, "after a content-rows report with Selvage zoomed")
+
+	mustTmuxOutput(t, e, "resize-pane", "-Z", "-t", selvagePaneID)
+	height := strings.TrimSpace(mustTmuxOutput(t, e, "display-message", "-p", "-t", top.PaneID, "#{pane_height}"))
+	if height != "6" {
+		t.Errorf("content strand pane_height = %q after unzooming, want 6 (its title row taken at window row 0)", height)
+	}
 }
 
 // TestZoomBracket_RemovingTheZoomedStrandLeavesTheOverview pins that a zoomed pane gone after the step is not zoomed again: the window ends in the overview.
