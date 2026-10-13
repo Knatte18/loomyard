@@ -46,6 +46,10 @@ var paneCreationAllowlist = []scankit.Entry{
 // windowCreationAllowlist names the files in this package permitted to contain the "new-window" string literal, each with the reason.
 var windowCreationAllowlist = []scankit.Entry{
 	{
+		Key: "internal/reedengine/spawn.go",
+		Why: "the launch chokepoint's own-window branch: the window's pane then runs the same prelude-composing tail as every strand pane",
+	},
+	{
 		Key: "internal/reedengine/window.go",
 		Why: "the one detached-window op: it runs a `lyx` command composed by composeWindowCommand, which carries the pane-binary prelude",
 	},

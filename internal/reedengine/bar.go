@@ -1,7 +1,9 @@
 // bar.go declares the tmux format strings of reed's two-line status bar and the strand pane-border title.
 // The strings are built from tmux 3.6's own default status-format shape (list mode, the #{W:}, #{P:} and #{S:} loops, the < and > markers).
-// They read strands only through the pane user options @strand and @strand_color and the window user option @lyx_strands, never through the current window.
-// A window carrying the window user option @lyx_hidden gets no button.
+// They read strands through the pane user options @strand and @strand_color and the window user option @lyx_strands, never through the current window.
+// They read own windows through the window user options @lyx_own, @strand_color and @lyx_unseen.
+// A window carrying the window user option @lyx_hidden still gets no button.
+// Every option read here is display only: no Go decision reads @strand_color or @lyx_unseen.
 
 package reedengine
 
@@ -32,10 +34,24 @@ const (
 	// windowButtonFormat is one window button, a window range labelled with the window name and lit while that window is current.
 	windowButtonFormat = "#[range=window|#{window_index} #{?window_active,list=focus bg=white fg=black bold," + unlitButtonStyle + "}] #{window_name} #[norange list=on default] "
 
+	// windowWaitFormat expands, for the window the #{W:} loop is on, each of its panes' strandWaitFormat, so every waiting strand of an own window shows on its button.
+	windowWaitFormat = "#{P:" + strandWaitFormat + "}"
+
+	// ownWindowButtonFormat is one own-window button, a window range labelled with the window name and its panes' wait marks.
+	// It is lit in the window's @strand_color while the window is current; otherwise it is that color on dark grey, underscored while @lyx_unseen is set.
+	ownWindowButtonFormat = "#[range=window|#{window_index} #{?window_active,list=focus bg=" + strandColorFormat + " fg=black bold,bg=colour236 fg=" + strandColorFormat + "#{?#{@lyx_unseen}, underscore,}}] #{window_name}" + windowWaitFormat + " #[norange list=on default] "
+
 	// statusFormatButtons is status-format[0]: the VIEW button, then every strand of every window carrying @lyx_strands, in pane order.
-	// Then, when the session has more than one window, it holds one button per window carrying neither @lyx_strands nor @lyx_hidden.
+	// Then it holds one own-window button per window carrying @lyx_own and not @lyx_hidden, whether or not the session has another window.
+	// Then, when the session has more than one window, it holds one button per window carrying none of @lyx_strands, @lyx_own and @lyx_hidden.
 	statusFormatButtons = listPrologueFormat + viewButtonFormat +
-		"#{W:#{?#{@lyx_strands},#{P:#{?#{@strand}," + strandButtonFormat + ",}},#{?#{&&:#{>:#{session_windows},1},#{!=:#{@lyx_hidden},1}}," + windowButtonFormat + ",}}}"
+		"#{W:#{?#{@lyx_strands},#{P:#{?#{@strand}," + strandButtonFormat + ",}},#{?#{&&:#{@lyx_own},#{!=:#{@lyx_hidden},1}}," + ownWindowButtonFormat + ",#{?#{&&:#{>:#{session_windows},1},#{!=:#{@lyx_hidden},1}}," + windowButtonFormat + ",}}}}"
+
+	// unseenClearHookName is the session hook that fires when the client moves to another window.
+	unseenClearHookName = "session-window-changed"
+
+	// unseenClearHookCommand clears @lyx_unseen on the window the client moved to, which is the hook's context window.
+	unseenClearHookCommand = "set-option -w -u @lyx_unseen"
 
 	// sessionButtonFormat and currentSessionButtonFormat are one session button each, a session range.
 	// The current session shows its full name lit, every other session its name cut to 12 characters.

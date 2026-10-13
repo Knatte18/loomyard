@@ -148,7 +148,7 @@ func composeSeatPrompt(stencilsDir string, seat Seat, values map[string]string, 
 
 // seatSpec returns the shuttle spec that runs seat with prompt.
 // Only the chair is interactive; only an advisor keeps its pane, and an advisor holds its turn end quietly unless it is Required.
-// Every seat declares the sharing size, so seat agents that run side by side split the free rows evenly; the anchor stays empty, which shuttle turns into below-parent.
+// Every seat of a table declares the own-window anchor with the table's window group and seat count.
 // The seat's gate rides the start call, not the spec.
 func seatSpec(table Table, seat Seat, prompt string) shuttleengine.Spec {
 	isChair := seat.Name == RoleChair
@@ -167,8 +167,20 @@ func seatSpec(table Table, seat Seat, prompt string) shuttleengine.Spec {
 		Round:         table.Round,
 		Timeout:       table.Timeout,
 		Skills:        slices.Clone(seat.Skills),
-		Display:       render.Display{Size: render.Size{Kind: render.SizeSharing}},
+		Display:       render.Display{Anchor: render.AnchorOwnWindow, Window: tableWindow(table), WindowSize: len(table.Seats)},
 	}
+}
+
+// tableWindow returns the window group the seats of table's instance declare: the role prefix, followed by `-` and the round when the round is set, so two rounds of one table never name the same group.
+// A table of one seat returns "", which gives its seat a window to itself named by its role.
+func tableWindow(table Table) string {
+	if len(table.Seats) == 1 {
+		return ""
+	}
+	if table.Round == "" {
+		return table.RolePrefix
+	}
+	return table.RolePrefix + "-" + table.Round
 }
 
 // seatGate returns the gate seat runs under: the table's for the chair, the seat's own for an advisor.

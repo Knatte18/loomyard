@@ -157,6 +157,8 @@ const (
 	cleanupPerformed
 	// cleanupSkipped expects the strand kept and the run dir kept for diagnosis.
 	cleanupSkipped
+	// cleanupDiedCaptureKept expects the strand removed, the run dir kept and died-capture.txt holding the row's scripted capture.
+	cleanupDiedCaptureKept
 )
 
 // TestRun_Wait_Classification drives Run.Wait over the pane, events and file states that decide an
@@ -201,6 +203,7 @@ func TestRun_Wait_Classification(t *testing.T) {
 		events      string
 		output      bool
 		keepPane    bool
+		capture     string
 		anchor      render.Anchor
 		wantOutcome Outcome
 		// wantErr is the error Wait must wrap; wantErrIn a fragment it must name, wantIdentity that
@@ -296,6 +299,16 @@ func TestRun_Wait_Classification(t *testing.T) {
 		},
 		{name: "dead pane is died and keeps the strand", status: deadPane, wantOutcome: OutcomeDied, wantCleanup: cleanupSkipped},
 		{
+			name:   "a died own-window run keeps its capture and loses its strand",
+			status: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", OwnWindow: true, Present: true}}}}, startup: ready, capture: "last screen",
+			wantOutcome: OutcomeDied, wantCleanup: cleanupDiedCaptureKept,
+		},
+		{
+			name:   "a timed-out own-window run keeps its strand",
+			status: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", OwnWindow: true, Present: true, Live: true}}}}, startup: ready, timeout: heldTestTimeout,
+			wantOutcome: OutcomeTimeout, wantCleanup: cleanupSkipped,
+		},
+		{
 			name:        "strand absent from reed's table is a mechanism failure, not died",
 			status:      []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "someone-elses-strand", Live: true}}}},
 			wantOutcome: "", wantErr: errStrandNotTracked, wantErrIn: "strand-1", wantIdentity: true, wantCleanup: cleanupSkipped,
@@ -373,6 +386,9 @@ func TestRun_Wait_Classification(t *testing.T) {
 			}
 
 			reed := &fakeReed{StatusQueue: tt.status, StatusErr: tt.statusErr}
+			if tt.capture != "" {
+				reed.CaptureQueue = []string{tt.capture}
+			}
 			var engine Engine = &fakeEngine{StartupScript: tt.startup, ParseEventsErr: tt.parseEventsErr}
 			fc := newFakeClock(time.Now())
 			var runClock Clock = fc
@@ -423,6 +439,17 @@ func TestRun_Wait_Classification(t *testing.T) {
 				}
 				if _, err := os.Stat(runDir); !os.IsNotExist(err) {
 					t.Errorf("run dir still exists after cleanup, stat err = %v", err)
+				}
+			case cleanupDiedCaptureKept:
+				if len(reed.RemoveStrandCalls) != 1 || reed.RemoveStrandCalls[0].GUID != "strand-1" || reed.RemoveStrandCalls[0].Recursive {
+					t.Errorf("RemoveStrand calls = %+v; want the one removal of strand-1 (non-recursive)", reed.RemoveStrandCalls)
+				}
+				kept, err := os.ReadFile(filepath.Join(runDir, diedCaptureFileName))
+				if err != nil {
+					t.Fatalf("read %s: %v; want the run dir kept with the capture", diedCaptureFileName, err)
+				}
+				if string(kept) != tt.capture {
+					t.Errorf("%s = %q; want %q", diedCaptureFileName, kept, tt.capture)
 				}
 			case cleanupSkipped:
 				if len(reed.RemoveStrandCalls) != 0 {

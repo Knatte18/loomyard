@@ -63,6 +63,8 @@ func TestSessionFold(t *testing.T) {
 		steps       []step
 		wantState   SessionState
 		wantHistory []SessionState
+		// wantRunningTurn is the expected State().RunningTurn(); the zero value reads no running turn.
+		wantRunningTurn bool
 	}{
 		{
 			name:        "no signal at all is unknown, stamped with the reading",
@@ -127,16 +129,18 @@ func TestSessionFold(t *testing.T) {
 			wantHistory: []SessionState{state(SessionBusy, SessionCauseTurn, at(1)), state(SessionIdleFresh, SessionCauseSessionStart, at(2))},
 		},
 		{
-			name:        "a startup after an unmatched turn start stays busy",
-			steps:       []step{{[]SessionSignal{turnStart(1), sessionStart(2, SessionStartStartup)}, factsWith()}},
-			wantState:   state(SessionBusy, SessionCauseTurn, at(1)),
-			wantHistory: []SessionState{state(SessionBusy, SessionCauseTurn, at(1))},
+			name:            "a startup after an unmatched turn start stays busy",
+			steps:           []step{{[]SessionSignal{turnStart(1), sessionStart(2, SessionStartStartup)}, factsWith()}},
+			wantState:       state(SessionBusy, SessionCauseTurn, at(1)),
+			wantRunningTurn: true,
+			wantHistory:     []SessionState{state(SessionBusy, SessionCauseTurn, at(1))},
 		},
 		{
-			name:        "a compact start inside a running turn stays busy",
-			steps:       []step{{[]SessionSignal{turnStart(1), sessionStart(2, SessionStartCompact)}, factsWith()}},
-			wantState:   state(SessionBusy, SessionCauseTurn, at(1)),
-			wantHistory: []SessionState{state(SessionBusy, SessionCauseTurn, at(1))},
+			name:            "a compact start inside a running turn stays busy",
+			steps:           []step{{[]SessionSignal{turnStart(1), sessionStart(2, SessionStartCompact)}, factsWith()}},
+			wantState:       state(SessionBusy, SessionCauseTurn, at(1)),
+			wantRunningTurn: true,
+			wantHistory:     []SessionState{state(SessionBusy, SessionCauseTurn, at(1))},
 		},
 		{
 			name:        "a start with the empty source changes nothing",
@@ -163,16 +167,18 @@ func TestSessionFold(t *testing.T) {
 			wantHistory: []SessionState{state(SessionIdleDone, SessionCauseDone, at(1)), state(SessionUnknown, "clear", at(2))},
 		},
 		{
-			name:        "a turn start after a clear session end reads busy again",
-			steps:       []step{{[]SessionSignal{sessionEnd(1, "resume", false), turnStart(2)}, factsWith()}},
-			wantState:   state(SessionBusy, SessionCauseTurn, at(2)),
-			wantHistory: []SessionState{state(SessionUnknown, "resume", at(1)), state(SessionBusy, SessionCauseTurn, at(2))},
+			name:            "a turn start after a clear session end reads busy again",
+			steps:           []step{{[]SessionSignal{sessionEnd(1, "resume", false), turnStart(2)}, factsWith()}},
+			wantState:       state(SessionBusy, SessionCauseTurn, at(2)),
+			wantRunningTurn: true,
+			wantHistory:     []SessionState{state(SessionUnknown, "resume", at(1)), state(SessionBusy, SessionCauseTurn, at(2))},
 		},
 		{
-			name:        "a turn start is busy on the turn, and a second one records nothing",
-			steps:       []step{{[]SessionSignal{turnStart(1), turnStart(2)}, factsWith()}},
-			wantState:   state(SessionBusy, SessionCauseTurn, at(1)),
-			wantHistory: []SessionState{state(SessionBusy, SessionCauseTurn, at(1))},
+			name:            "a turn start is busy on the turn, and a second one records nothing",
+			steps:           []step{{[]SessionSignal{turnStart(1), turnStart(2)}, factsWith()}},
+			wantState:       state(SessionBusy, SessionCauseTurn, at(1)),
+			wantRunningTurn: true,
+			wantHistory:     []SessionState{state(SessionBusy, SessionCauseTurn, at(1))},
 		},
 		{
 			name:  "a turn end with outstanding tasks is busy on the background",
@@ -271,8 +277,9 @@ func TestSessionFold(t *testing.T) {
 			steps: []step{{[]SessionSignal{turnEnd(1), turnStart(2)}, factsWith(func(f *SessionFacts) {
 				f.APIError, f.APIErrorText = true, "API Error: 500"
 			})}},
-			wantState:   state(SessionBusy, SessionCauseTurn, at(2)),
-			wantHistory: []SessionState{state(SessionIdleStalled, SessionCauseNoOutput, at(1)), state(SessionBusy, SessionCauseTurn, at(2))},
+			wantState:       state(SessionBusy, SessionCauseTurn, at(2)),
+			wantRunningTurn: true,
+			wantHistory:     []SessionState{state(SessionIdleStalled, SessionCauseNoOutput, at(1)), state(SessionBusy, SessionCauseTurn, at(2))},
 		},
 		{
 			name:      "every turn end of one fold is judged with that fold's outputs, and the history keeps each change",
@@ -323,8 +330,9 @@ func TestSessionFold(t *testing.T) {
 				{[]SessionSignal{turnEnd(1), turnStart(2)}, factsWith()},
 				{nil, factsWith(outputs)},
 			},
-			wantState:   state(SessionBusy, SessionCauseTurn, at(2)),
-			wantHistory: []SessionState{state(SessionIdleStalled, SessionCauseNoOutput, at(1)), state(SessionBusy, SessionCauseTurn, at(2))},
+			wantState:       state(SessionBusy, SessionCauseTurn, at(2)),
+			wantRunningTurn: true,
+			wantHistory:     []SessionState{state(SessionIdleStalled, SessionCauseNoOutput, at(1)), state(SessionBusy, SessionCauseTurn, at(2))},
 		},
 		{
 			name: "a state from the reading keeps its first Since across folds, and a signal moves it on",
@@ -333,8 +341,9 @@ func TestSessionFold(t *testing.T) {
 				{nil, func() SessionFacts { f := factsWith(dead); f.ReadAt = at(200); return f }()},
 				{[]SessionSignal{turnStart(300)}, factsWith(func(f *SessionFacts) { f.ReadAt = at(300) })},
 			},
-			wantState:   state(SessionBusy, SessionCauseTurn, at(300)),
-			wantHistory: []SessionState{state(SessionDead, SessionCauseProcessGone, readAt), state(SessionBusy, SessionCauseTurn, at(300))},
+			wantState:       state(SessionBusy, SessionCauseTurn, at(300)),
+			wantRunningTurn: true,
+			wantHistory:     []SessionState{state(SessionDead, SessionCauseProcessGone, readAt), state(SessionBusy, SessionCauseTurn, at(300))},
 		},
 	}
 	for _, tt := range tests {
@@ -347,6 +356,9 @@ func TestSessionFold(t *testing.T) {
 			}
 			if got := fold.State(); !reflect.DeepEqual(got, tt.wantState) {
 				t.Errorf("State() = %+v; want %+v", got, tt.wantState)
+			}
+			if got := fold.State().RunningTurn(); got != tt.wantRunningTurn {
+				t.Errorf("State().RunningTurn() = %v; want %v", got, tt.wantRunningTurn)
 			}
 			if got := fold.History(); !reflect.DeepEqual(got, tt.wantHistory) {
 				t.Errorf("History() = %+v; want %+v", got, tt.wantHistory)

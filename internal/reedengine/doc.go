@@ -63,6 +63,11 @@
 // The Selvage pane carries the user option @lyx_console (consolePaneOption), set when it is split and re-asserted by every attach pre-flight.
 // The options are display only: the status bar and the key bindings read them, no Go decision does, and Selvage never gets @strand or @strand_color.
 // A strand's Segment is an opaque field its spawner names through AddSpec.Segment; reed reads it only to look up the segment's color, which the strand an add or replace returns and Status carry as Color.
+// An own window gets a status-bar button on line 1 in its segment's color, read from the window options @lyx_own and @strand_color, labelled with the window name and carrying its panes' wait marks.
+// The button is lit while the window is current, and otherwise that color on dark grey, underscored while the window carries @lyx_unseen.
+// Outside Windows, the geometry pins also pin the session hook `session-window-changed` with `set-option -w -u @lyx_unseen`, so selecting the window clears the mark; boot and every attach pre-flight run the pin.
+// On Windows no hook is pinned and the mark is never set.
+// A window carrying @lyx_hidden still gets no button, and no Go decision reads @strand_color or @lyx_unseen.
 //
 // The navigation bindings (bindings.go) are root-table bindings on the hub's reed server, issued by pinBindingsLocked at the end of the geometry pins, so boot and every attach pre-flight pin them and a server booted by an older lyx gets them at its next attach.
 // Alt+z zooms or unzooms a strand pane or Selvage in the strands' window, and does nothing in any other window;
@@ -280,21 +285,41 @@
 // Strand window: the strands live in one window of the session, and every op that enumerates, lays out or measures them addresses that window by its id ("@<n>"), never by the session's current window.
 // A second window in the session is therefore never read as the strands' window.
 // The one seam, windowtarget.go's TmuxCmd.strandWindowTarget, lists the session's own panes across all its windows (`list-panes -s -t '=<session>' -F "#{pane_id} #{window_id}"`).
-// It resolves the window of the recorded Selvage pane (alive, or a dead corpse), else of any present recorded strand pane, else the current-window target "=<session>:", which only the seam keeps.
+// It resolves the window of the recorded Selvage pane (alive, or a dead corpse), else of any present recorded strand pane placed in window 0, else the current-window target "=<session>:", which only the seam keeps.
 // A session reap (Down, and the engine-less ReapSession) ends every window, so it lists the panes of all of them (`list-panes -s`) and reads no reed state.
 // A recorded pane id counts as present only when that session-scoped listing carries it, since pane ids are server-wide and a stale id can name another session's pane.
 // With a present Selvage or strand pane a batten window, current or not, is never read as the strands' window and its pane is never reaped as untracked.
 // A session's first up has neither, so it falls back to the current window, and the Selvage pane created there defines the strand window from then on.
+// An own-window strand lives outside the strands' window: its pane is never read as that window, and its liveness is read through the session-wide listing (ownwindow.go's windowPane) instead.
+// Reconcile ends only a window carrying @lyx_own with no pane bound to a strand; a window without the marker is never ended.
 // The pane-generation read (generation.go) stays session-scoped and outside the seam: it reads session fields only, so it keeps the "=<session>:" form, which expands them, where the bare "=<session>" form expands every session field to empty (verified live, tmux 3.6).
 //
 // Detached windows: OpenWindow (window.go) opens a detached, named window in the worktree's reed session running a `lyx` command, for a caller that wants a long-running command to live in the session without a status-bar button.
-// One multiplexer invocation runs `new-window -d -P -F '#{window_id}' -t '=<session>:' -n <name> <command>` chained with `set-option -w -t '=<session>:=<name>' remain-on-exit off` and `set-option -w -t '=<session>:=<name>' @lyx_hidden 1`.
-// The window is detached and never selected, so it takes no focus, and the options are chained by exact name because one chained after a detached new-window without a target lands on the current window, the strands' window, whose remain-on-exit must stay on.
+// One multiplexer invocation runs `new-window -d -P -F '#{window_id}' -t '=<session>:' -n <temporary> <command>` chained with `set-option -w -t '=<session>:=<temporary>' remain-on-exit off`, `set-option -w -t '=<session>:=<temporary>' @lyx_hidden 1` and a final `rename-window -t '=<session>:=<temporary>' <name>`.
+// The window is detached and never selected, so it takes no focus.
+// The options are chained by exact name because one chained after a detached new-window without a target lands on the current window, the strands' window, whose remain-on-exit must stay on.
+// The name is a per-call temporary one no other window holds and the rename comes last, because an own window may share the requested name and the options would otherwise land on it.
 // @lyx_hidden is display only: the status bar skips a window carrying it, and no Go decision reads it.
-// The op reads remain-on-exit back from the new window by the printed id, and a window that does not read off (two concurrent calls sharing a name, where the chained option landed on the older window) is killed by that id with ErrWindowReadBack.
+// The op reads remain-on-exit back from the new window by the printed id, and a window that does not read off is killed by that id with ErrWindowReadBack.
 // A window of the same name whose pane is live is returned as existing and nothing is started; one whose pane is dead is killed and replaced.
+// A window carrying @lyx_own is skipped by that lookup, so OpenWindow never adopts, kills or replaces an own window of the same name.
 // The command line is composed in panebin.go from the pane-binary prelude, so `lyx` resolves to the spawning binary.
 // Bound: the op only chooses where a command runs; the window lives as long as the reed session, and the session's other windows keep remain-on-exit on.
+//
+// Own windows: an own-window strand gets a detached window named by its role, opened through the launch chokepoint (spawn.go's openOwnWindowLocked) by `new-window -d`, so it never takes focus.
+// The window carries @lyx_own, @strand_color and @lyx_unseen, each set by window id; the last is left unset on Windows.
+// Its pane runs the same launch tail as a window 0 strand.
+// Its dead pane stays until the strand is removed or relaunched; a relaunch kills the old pane once the new one exists, so a shared window never keeps a dead pane beside the relaunched one.
+// Resume reopens the strand detached.
+// UpdateStrand refuses a move into or out of the anchor, since the pane would sit where the new display does not expect it.
+// A strand declaring a window group (Display.Window, sized by Display.WindowSize) shares one window with its group while the declared size is at most window_share_max; every other own-window strand gets a window to itself.
+// The group's first strand decides, and ReedState.WindowGroups records the choice and the size until the group's last strand goes, so a later window_share_max edit never splits a group across shared and separate windows.
+// A strand declaring another size than the record's is refused with both sizes named.
+// A strand arriving once the group's recorded size is already held, a re-stepped seat added before its predecessor is removed, gets a window of its own and leaves the shared window as it is.
+// A pane joins the shared window by a detached split in the window_split direction, so an operator viewing the window keeps the active pane, and the window is then laid out evenly in that direction.
+// Removing an own-window strand moves a viewer on its window to the strands' window before the window ends, and never moves a viewer on another window.
+// A shared window a strand leaves is laid out again.
+// An invalid window_split or window_share_max never refuses a removal: the layout is skipped and the key is reported in Removed.ConfigWarning.
 //
 // Session targeting: every -t argument that names a SESSION is passed in
 // an exact-match form — "=<name>" for session targets (has-session,

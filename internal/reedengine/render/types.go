@@ -11,7 +11,7 @@
 // The package is deliberately split into two layers that must never merge.
 // Layout policy (policy.go, height.go, focus.go) decides which strand lands where and how tall —
 // this is where the closed Anchor vocabulary is interpreted and where the height math lives.
-// The vocabulary is top, below-parent and hidden, with own-window reserved.
+// The vocabulary is top, below-parent, own-window and hidden; own-window and hidden strands are never placed in the window this package lays out.
 // Layout mechanics (layout.go, checksum.go) turns an already-decided list of (pane, height)
 // placements into the tmux window_layout string and its checksum, with no opinion about placement
 // or sizing.
@@ -20,7 +20,7 @@
 package render
 
 // Anchor is the closed set of placement strategies a strand's Display may declare.
-// Render recognizes exactly these four values; own-window is reserved and refused.
+// Render recognizes exactly these four values.
 type Anchor string
 
 const (
@@ -29,10 +29,8 @@ const (
 	AnchorTop Anchor = "top"
 	// AnchorBelowParent places a strand in the vertically stacked region, ordered by insertion.
 	AnchorBelowParent Anchor = "below-parent"
-	// AnchorOwnWindow is declared in the vocabulary but deferred in v1: Rules rejects any strand
-	// carrying it with an error.
-	// It is reserved for a future release that gives a strand its own tmux window instead of sharing a
-	// pane in the stacked layout.
+	// AnchorOwnWindow gives a strand a tmux window of its own, or its group's shared window, outside window 0.
+	// Window 0's layout never places it.
 	AnchorOwnWindow Anchor = "own-window"
 	// AnchorHidden excludes a strand from the layout entirely.
 	// A hidden strand never owns a pane and is dropped before placement.
@@ -78,6 +76,12 @@ type Display struct {
 	// Size declares the strand's height rule.
 	// A strand that declares nothing is SizePositional and marshals no size key.
 	Size Size `json:"size,omitzero"`
+	// Window names the window group the spawner puts the strand in; empty for a strand that wants a window to itself.
+	// It is read only for an own-window strand, and reed decides from it and WindowSize whether the group shares one window.
+	Window string `json:"window,omitempty"`
+	// WindowSize is the number of strands the spawner puts in the Window group; 0 reads as 1.
+	// It is read only for an own-window strand.
+	WindowSize int `json:"windowSize,omitempty"`
 }
 
 // Strand is the layout-facing projection of an engine strand: only the fields Rules needs to place

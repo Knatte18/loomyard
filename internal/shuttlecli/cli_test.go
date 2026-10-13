@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/spf13/cobra"
 )
 
 // fakeClock is a shuttleengine.Clock whose Sleep advances it, so a runner's poll sleeps cost no wall-clock time.
@@ -49,7 +50,7 @@ func newFakeClockRunner(reed shuttleengine.ReedOps, engine shuttleengine.Engine,
 	return runner
 }
 
-// TestRunCLI_Run_FlagValidation drives runCmd directly rather than through RunCLI, so no parent
+// TestRunCLI_Run_FlagValidation drives runCmd, and openCmd for its OpenMissingRole and OpenInvalidModelSpec rows, directly rather than through RunCLI, so no parent
 // PersistentPreRunE runs and no abort is in play — this is the flag-shape check on its own terms,
 // which is what these cases are actually about. Its companion below covers what happens when a
 // pre-run abort and a flag error coincide.
@@ -58,10 +59,23 @@ func newFakeClockRunner(reed shuttleengine.ReedOps, engine shuttleengine.Engine,
 func TestRunCLI_Run_FlagValidation(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name    string
+		name string
+		// build constructs the command under test; nil means c.runCmd.
+		build   func(c *shuttleCLI) *cobra.Command
 		args    []string
 		wantErr string
 	}{
+		{
+			name:    "OpenMissingRole",
+			build:   (*shuttleCLI).openCmd,
+			wantErr: "--role is required",
+		},
+		{
+			name:    "OpenInvalidModelSpec",
+			build:   (*shuttleCLI).openCmd,
+			args:    []string{"--role", "explore", "--model", "opus[nope"},
+			wantErr: "--model",
+		},
 		{
 			name:    "MissingOutputFile",
 			args:    []string{"--prompt", "do the thing"},
@@ -85,7 +99,11 @@ func TestRunCLI_Run_FlagValidation(t *testing.T) {
 			// A nil runner is deliberate: every case here must be refused by the flag-shape checks
 			// before c.runner is ever dereferenced, and a nil runner is what proves it.
 			c := &shuttleCLI{}
-			cmd := c.runCmd()
+			build := tt.build
+			if build == nil {
+				build = (*shuttleCLI).runCmd
+			}
+			cmd := build(c)
 			var out bytes.Buffer
 			cmd.SetOut(&out)
 			cmd.SetErr(&out)
@@ -517,6 +535,90 @@ func TestSendCmd_AppendsMessageTail(t *testing.T) {
 			}
 			if len(reed.SendTextCalls) != 1 || reed.SendTextCalls[0].Text != tt.want {
 				t.Errorf("typed texts = %+v; want exactly one, %q", reed.SendTextCalls, tt.want)
+			}
+		})
+	}
+}
+
+// TestInterruptAndSendCmd_FailWithTheGuardsMessage drives interruptCmd and sendCmd over a started run whose pane shows no running turn or the rewind picker.
+// Each verb's error envelope carries the engine's message, and only the picker's one closing key is pressed.
+func TestInterruptAndSendCmd_FailWithTheGuardsMessage(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		pickerOpen bool
+		send       bool
+		wantError  string
+		wantKeys   []string
+	}{
+		{"interrupt on a pane with no running turn fails naming lyx shuttle send", false, false, "lyx shuttle send", nil},
+		{"interrupt on an open picker closes it once and fails", true, false, "rewind picker was open", []string{"Escape"}},
+		{"send on an open picker closes it once, fails and types nothing", true, true, "rewind picker was open", []string{"Escape"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			var pickerOpen bool
+			reed := &shuttlefake.Reed{
+				CapturePaneFn: func(string) (string, error) {
+					if pickerOpen {
+						return "PICKER", nil
+					}
+					return "idle", nil
+				},
+				SendKeyFn: func(_, key string) error {
+					if key == "Escape" {
+						pickerOpen = false
+					}
+					return nil
+				},
+			}
+			engine := &shuttlefake.Engine{
+				PrepareLaunch:       &shuttleengine.Launch{Cmd: "launch", ResumeCmd: "resume", SessionID: "session-1"},
+				InterruptSequenceFn: func() []shuttleengine.PaneInput { return []shuttleengine.PaneInput{{Key: "Escape"}} },
+				RewindPickerFn:      func(capture string) bool { return capture == "PICKER" },
+				RunningTurnFn:       func(string) bool { return false },
+			}
+			runner := newFakeClockRunner(reed, engine, root, root)
+			run, err := runner.Start(shuttleengine.Spec{Prompt: "do the thing", OutputFiles: []string{filepath.Join(root, "out.md")}})
+			if err != nil {
+				t.Fatalf("runner.Start: %v", err)
+			}
+			pickerOpen = tt.pickerOpen
+			reed.SendKeyCalls = nil
+
+			cli := &shuttleCLI{runner: runner}
+			cmd := cli.interruptCmd()
+			args := []string{run.StrandGUID()}
+			if tt.send {
+				cmd = cli.sendCmd()
+				args = append(args, "read the plan")
+			}
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			cmd.SetArgs(args)
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
+			}
+
+			envelope := parseSingleEnvelope(t, out.Bytes())
+			if ok, _ := envelope["ok"].(bool); ok {
+				t.Fatalf("envelope ok = true; want a refusal; output: %s", out.String())
+			}
+			if msg, _ := envelope["error"].(string); !strings.Contains(msg, tt.wantError) {
+				t.Errorf("error = %q; want it to contain %q", msg, tt.wantError)
+			}
+			var keys []string
+			for _, call := range reed.SendKeyCalls {
+				keys = append(keys, call.Key)
+			}
+			if strings.Join(keys, ",") != strings.Join(tt.wantKeys, ",") {
+				t.Errorf("keys pressed = %v; want %v", keys, tt.wantKeys)
+			}
+			if len(reed.SendTextCalls) != 0 || len(reed.PasteSubmitCalls) != 0 {
+				t.Errorf("typed texts %+v and pastes %+v; want none", reed.SendTextCalls, reed.PasteSubmitCalls)
 			}
 		})
 	}

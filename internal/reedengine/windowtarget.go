@@ -13,7 +13,7 @@ import (
 const sessionPaneWindowFormat = "#{pane_id} #{window_id}"
 
 // strandWindowTarget returns the target of the window holding session's strands, as a window id ("@<n>").
-// It resolves, in order, the window of the recorded Selvage pane (alive or a dead corpse), then the window of any recorded strand pane, and only with neither present the session's current window.
+// It resolves, in order, the window of the recorded Selvage pane (alive or a dead corpse), then the window of any recorded strand pane placed in window 0, and only with neither present the session's current window.
 // A recorded pane id counts as present only when the session's own listing carries it, because pane ids are server-wide and a stale id may name another session's pane.
 // A nil st or a state with no recorded pane ids resolves the current window without a round trip.
 // A failed listing is returned as an error.

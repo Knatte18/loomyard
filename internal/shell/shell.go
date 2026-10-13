@@ -39,6 +39,12 @@ type Shell interface {
 	// The separator is ";" rather than "&&", so a rejected earlier statement cannot suppress a
 	// later one, and empty parts are dropped so a trailing separator is never emitted.
 	Chain(parts ...string) string
+	// OrElse returns a line that runs second only when first fails.
+	// Each operand must be one pipeline with no statement separator, because ";" binds looser than "||" in both dialects.
+	OrElse(first, second string) string
+	// Exit returns the statement that ends the pane's shell.
+	// Typed into a launch script the pane's shell sources in its own scope, it ends the shell.
+	Exit() string
 	// Source returns a standalone statement that runs the statements in the file at path in the current shell's own scope,
 	// so exports and PATH changes land in the calling session.
 	Source(path string) string

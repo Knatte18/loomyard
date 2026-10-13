@@ -37,13 +37,20 @@ func TestResume(t *testing.T) {
 				t.Errorf("record = %+v; want the entry moved to resumed with a time", record)
 			}
 		}},
-		{"a dead, busy or draft-holding session gets no line and each is named with its reason", func(t *testing.T) {
-			p := newPair("p1", "dead", "busy", "draft", "idle-at-pause")
+		{"a dead strand, a held send and an open picker get no line, each named with its reason", func(t *testing.T) {
+			p := newPair("p1", "dead", "held", "draft", "picker", "idle-at-pause")
 			p.dead["g-dead"] = true
-			p.busy["g-busy"] = []bool{true}
-			p.sendErr["g-draft"] = fmt.Errorf("%w: the input box holds a draft", shuttleengine.ErrSessionBusy)
+			p.sendErr["g-held"] = &shuttleengine.SessionBusyError{
+				Reason: "a turn is running",
+				Err:    fmt.Errorf("%w: strand: a turn is running; retry once the session is idle. The pane's last lines:\ntail", shuttleengine.ErrSessionBusy),
+			}
+			p.sendErr["g-draft"] = &shuttleengine.SessionBusyError{
+				Reason: `the input box holds a draft: "x"`,
+				Err:    fmt.Errorf("%w: strand: the input box holds a draft", shuttleengine.ErrSessionBusy),
+			}
+			p.sendErr["g-picker"] = fmt.Errorf("%w: strand g-picker: one interrupt key closed it", shuttleengine.ErrRewindPickerOpen)
 			e := newEnv(t, p)
-			e.seedLive(hubEntry(e.clock.Now(), recorded("p1", "dead"), recorded("p1", "busy"), recorded("p1", "draft")))
+			e.seedLive(hubEntry(e.clock.Now(), recorded("p1", "dead"), recorded("p1", "held"), recorded("p1", "draft"), recorded("p1", "picker")))
 
 			report, err := e.resume("")
 
@@ -54,9 +61,25 @@ func TestResume(t *testing.T) {
 			for _, note := range report.NoLine {
 				reasons[note.Strand] = note.Reason
 			}
-			want := map[string]string{"dead": "the strand is not live", "busy": "the session reads busy", "draft": "the input box holds a draft"}
+			if reason := reasons["picker"]; !strings.HasPrefix(reason, "the send failed: ") || !strings.Contains(reason, "rewind picker was open") {
+				t.Errorf("picker reason = %q; want \"the send failed: \" and the picker's message", reason)
+			}
+			delete(reasons, "picker")
+			want := map[string]string{"dead": "the strand is not live", "held": "a turn is running", "draft": `the input box holds a draft: "x"`}
 			if !reflect.DeepEqual(reasons, want) || len(report.Lines) != 0 || len(p.sends) != 0 {
 				t.Errorf("no-line reasons %v, lines %v, sends %v; want %v and nothing sent, the idle-at-pause session included", reasons, report.Lines, p.sends, want)
+			}
+		}},
+		{"a recorded session that reads busy at resume still gets its line", func(t *testing.T) {
+			p := newPair("p1", "a")
+			p.busy["g-a"] = []bool{true}
+			e := newEnv(t, p)
+			e.seedLive(hubEntry(e.clock.Now(), recorded("p1", "a")))
+
+			report, err := e.resume("")
+
+			if err != nil || !reflect.DeepEqual(report.Lines, []string{"a"}) || !reflect.DeepEqual(p.sends, []string{"g-a"}) {
+				t.Errorf("report %+v, err %v, sends %v; want one line for a, the busy pre-check gone", report, err, p.sends)
 			}
 		}},
 		{"a session two entries cover is interrupted once, moves with no line when the first resumes, and gets its line with the last", func(t *testing.T) {

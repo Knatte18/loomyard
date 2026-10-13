@@ -5,6 +5,8 @@ package reedengine
 
 import (
 	"errors"
+	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -52,6 +54,9 @@ type fakeTmux struct {
 	captures  []bool
 	stdins    [][]byte
 	real      *TmuxCmd
+
+	// windowPanes, when set, answers the session-wide windowPaneFormat listing.
+	windowPanes *tmuxAnswer
 }
 
 // installFakeTmux installs a fresh fakeTmux on e's tmux seam.
@@ -104,6 +109,13 @@ func (f *fakeTmux) answerFormat(format, out string, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.formats[format] = tmuxAnswer{out, err}
+}
+
+// answerWindowPanes scripts the session-wide windowPaneFormat listing from now on, replacing the one derived from the plain list-panes script.
+func (f *fakeTmux) answerWindowPanes(out string, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.windowPanes = &tmuxAnswer{out, err}
 }
 
 // answerSession scripts the answers a session with live panes gives: list-panes, the generation probe and the live window-size query.
@@ -188,6 +200,40 @@ func (f *fakeTmux) StdinFor(verb string) []string {
 	return out
 }
 
+// SetHookCalls returns the argv of every set-hook call naming hook, in order.
+func (f *fakeTmux) SetHookCalls(hook string) [][]string {
+	var out [][]string
+	for _, c := range f.ArgvFor("set-hook") {
+		if containsArg(c, hook) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// unseenClearPinCount is how many unseen-clear hook pins one pinGeometryOptionsLocked run issues: one wherever set-hook exists, none on Windows.
+func unseenClearPinCount() int {
+	if runtime.GOOS == "windows" {
+		return 0
+	}
+	return 1
+}
+
+// assertUnseenClearHookPinned fails unless fake saw exactly the unseen-clear hook pins one pinGeometryOptionsLocked run issues, each on e's session with the hook's own command.
+func assertUnseenClearHookPinned(t *testing.T, e *Engine, fake *fakeTmux) {
+	t.Helper()
+	want := []string{"set-hook", "-t", exactSessionWindowTarget(e.SessionName()), unseenClearHookName, unseenClearHookCommand}
+	calls := fake.SetHookCalls(unseenClearHookName)
+	if len(calls) != unseenClearPinCount() {
+		t.Fatalf("session-window-changed set-hook calls = %v, want %d", calls, unseenClearPinCount())
+	}
+	for _, call := range calls {
+		if !slices.Equal(call, want) {
+			t.Errorf("session-window-changed set-hook argv = %v, want %v", call, want)
+		}
+	}
+}
+
 // Count reports how many calls ran verb.
 func (f *fakeTmux) Count(verb string) int {
 	return len(f.ArgvFor(verb))
@@ -205,8 +251,15 @@ func (f *fakeTmux) exec(capture bool, stdin []byte, args ...string) (string, err
 	ans, ok := f.verbs[verb]
 	if verb == sessionListVerb && !ok {
 		ans, ok = f.verbs["list-panes"], true
-		if args[len(args)-1] == sessionPaneWindowFormat {
+		switch args[len(args)-1] {
+		case sessionPaneWindowFormat:
 			ans = tmuxAnswer{out: sessionListingOf(ans.out)}
+		case windowPaneFormat:
+			if f.windowPanes != nil {
+				ans = *f.windowPanes
+			} else {
+				ans = tmuxAnswer{out: windowPaneListingOf(ans.out)}
+			}
 		}
 	}
 	if verb == "display-message" {
@@ -245,6 +298,23 @@ func sessionListingOf(windowListing string) string {
 		if fields := strings.Fields(line); len(fields) > 0 {
 			out += fields[0] + " " + fakeStrandWindow + "\n"
 		}
+	}
+	return out
+}
+
+// windowPaneListingOf renders each pane of a per-window list-panes answer as one windowPaneFormat line in window fakeStrandWindow, not own and with no group, keeping its dead flag, pid and title.
+func windowPaneListingOf(windowListing string) string {
+	out := ""
+	for _, line := range strings.Split(windowListing, "\n") {
+		fields := strings.SplitN(strings.TrimSpace(line), " ", 7)
+		if len(fields) < 6 {
+			continue
+		}
+		title := ""
+		if len(fields) == 7 {
+			title = " " + fields[6]
+		}
+		out += fakeStrandWindow + " 0 - " + fields[0] + " " + fields[1] + " " + fields[5] + title + "\n"
 	}
 	return out
 }
