@@ -216,6 +216,13 @@ func TestValidatePlanCmd_Overlay(t *testing.T) {
 			wantExit: 1,
 			wantOut:  []string{"--overlay and --require-approved are mutually exclusive", "way forward: run --overlay alone"},
 		},
+		{
+			name:     "--overlay with --lens-review is refused before stdin is read",
+			args:     []string{"--lens-review"},
+			stdin:    func(t *testing.T) io.Reader { return failingReader{} },
+			wantExit: 1,
+			wantOut:  []string{"--overlay and --lens-review are mutually exclusive", "way forward: run --overlay alone"},
+		},
 	}
 
 	for _, tc := range cases {
