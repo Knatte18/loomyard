@@ -1925,6 +1925,10 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		// activeQueue and activityErr script the fake reed's operator-activity answers.
 		activeQueue []bool
 		activityErr error
+		// activityErrQueue scripts the fake reed's operator-activity failures per query, FIFO with the last entry sticking; a nil entry answers from activeQueue.
+		activityErrQueue []error
+		// sends is how many sends the row makes through one run, one when zero, so the activity queries span several waits of one runner.
+		sends int
 		// frozen gives the run a clock that never advances, so only the poll count can end the wait.
 		frozen bool
 		// wantTypedBetween is the window the first typed key lands in; ignored when wantBusy is set.
@@ -1935,6 +1939,8 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		// wantDraft is whether the busy error names a draft in the input box, checked through SessionBusyError.Draft and IsDraftHold.
 		wantDraft bool
 		wantWarns int
+		// wantActivityWarns counts the WARN lines about an unreadable operator-activity query across the row's polls, and wantActivityRecoveries the INFO lines saying it reads again.
+		wantActivityWarns, wantActivityRecoveries int
 		// stray, when set, drives the row through a pane holding a lone stray character instead.
 		stray *strayRow
 	}{
@@ -1960,7 +1966,12 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		{name: "an active operator holds the write until it goes quiet", activeQueue: []bool{true, true, true, false}, wantTypedMin: time.Second, wantTypedMax: 3 * time.Second},
 		{name: "an operator active through the whole window fails busy naming the activity", activeQueue: []bool{true}, wantBusy: []string{"the operator typed in this pane within the last 5 s"}, wantReason: "the operator typed in this pane"},
 		{name: "an unreadable activity query still holds on a draft", activityErr: errors.New("list-clients failed"), events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the input box holds a draft", "a half-typed draft"}, wantDraft: true},
-		{name: "an unreadable activity query holds nothing over an empty box", activityErr: errors.New("list-clients failed"), events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: time.Millisecond, busyFrame: "IDLE\n❯ "},
+		{name: "an unreadable activity query holds nothing over an empty box", activityErr: errors.New("list-clients failed"), events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: time.Millisecond, busyFrame: "IDLE\n❯ ", wantActivityWarns: 1},
+		{
+			name:             "an activity query that reads again after failing logs its recovery",
+			activityErrQueue: []error{errors.New("list-clients failed"), errors.New("list-clients failed"), nil},
+			sends:            3, wantActivityWarns: 1, wantActivityRecoveries: 1,
+		},
 		{name: "turn end after the turn start releases at once", events: "START\nSTOP:done\n"},
 		{name: "api error turn end counts as a turn end", events: "START\nAPIERR\n"},
 		{name: "a hook turn end beside a pane needle types at once", events: "START\nSTOP:done\n", reading: true, idleAfter: time.Second, busyFrame: "working (esc to interrupt)\n❯ "},
@@ -1972,10 +1983,10 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 				checkStraySend(t, tt.stray)
 				return
 			}
-			buf := logcapture.Capture(t)
+			buf := logcapture.CaptureVerbose(t)
 			clock := newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))
 			start := clock.Now()
-			reed := &idleReed{fakeReed: &fakeReed{StatusQueue: liveStrandStatus(true), ActiveQueue: tt.activeQueue, ActivityErr: tt.activityErr}, clock: clock, busyFrame: tt.busyFrame}
+			reed := &idleReed{fakeReed: &fakeReed{StatusQueue: liveStrandStatus(true), ActiveQueue: tt.activeQueue, ActivityErr: tt.activityErr, ActivityErrQueue: tt.activityErrQueue}, clock: clock, busyFrame: tt.busyFrame}
 			if tt.idleAfter > 0 {
 				reed.idleAt = start.Add(tt.idleAfter)
 			}
@@ -2007,7 +2018,23 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 					runClock = &frozenClock{now: start}
 				}
 				run := newFixture(t, reed, engine, withConfig(cfg)).newRun(Spec{}, withRunEvents(tt.events), withRunClock(runClock, start.Add(time.Hour)))
-				err = run.Send("hello")
+				for i := range max(tt.sends, 1) {
+					// A distinct text per send, so each one's appearance in the pane is its own.
+					text := "hello"
+					if i > 0 {
+						text = fmt.Sprintf("hello again %d", i)
+					}
+					if err = run.Send(text); err != nil {
+						break
+					}
+				}
+			}
+
+			if got := countLevelLines(buf.String(), "WARN", "operator activity unreadable"); got != tt.wantActivityWarns {
+				t.Errorf("operator activity WARN lines = %d, want %d; log: %s", got, tt.wantActivityWarns, buf.String())
+			}
+			if got := countLevelLines(buf.String(), "INFO", "operator activity readable again"); got != tt.wantActivityRecoveries {
+				t.Errorf("operator activity recovery INFO lines = %d, want %d; log: %s", got, tt.wantActivityRecoveries, buf.String())
 			}
 
 			if tt.wantBusy != nil {

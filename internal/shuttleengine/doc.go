@@ -246,7 +246,9 @@
 // A ready reading lets the send type even when the pane still shows the running-turn needle.
 // The pre-write guard is the last step of every poll: once the rest of the reading passed, shuttle asks reed once whether an attached client was active in the pane within `operator_quiet_s`, and holds the write while one was.
 // So each poll is one fresh reading of readiness, box and activity immediately before the caller types.
-// An activity query that errors is logged at Warn and holds nothing, so a tmux that cannot list its clients stalls no run; the empty-box requirement still stands.
+// An activity query that errors holds nothing, so a tmux that cannot list its clients stalls no run; the empty-box requirement still stands.
+// The failure is logged at Warn once per episode per strand, at Debug while it repeats and at Info when the query reads again, and the runner shares one episode per strand across its sends and idle probes.
+// A polled probe of a wait that keeps failing, and a skipped unreadable file of the files-only readers, log the same way, and a held gate re-prompt logs Info when it first holds and Debug while it stays held.
 // Runner.SessionIdle applies the same hold after a ready reading, so the orch watcher's probe reports an active operator with its reason.
 // An unmatched turn start releases after the pane has read idle on every poll for turnStartIdleOverride, or at once when the engine reports that turn interrupted.
 // When the session state is unknown, the reading falls back to the pane, which must classify ready and idle, and for an engine that parses session signals no turn start may be left unmatched by a later turn end; the cause is logged at Debug.

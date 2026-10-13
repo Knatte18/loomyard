@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // waitRun describes one run directory under the run-directory root.
@@ -69,6 +72,40 @@ func TestReadAgentWaits(t *testing.T) {
 		if err != nil || got != nil {
 			t.Errorf("ReadAgentWaits = (%v, %v); want (nil, nil)", got, err)
 		}
+	})
+
+	// It captures the process-global logger at Debug, so it runs serially like the test.
+	t.Run("a run record and a wait marker that stay unreadable log once per episode", func(t *testing.T) {
+		buf := logcapture.CaptureVerbose(t)
+		logger.SetVerbosity(2)
+		root := t.TempDir()
+		writeWaitRun(t, root, "live", waitRun{events: startLine}, livePID)
+		markerPath := filepath.Join(root, "live", waitMarkerFileName)
+		if err := os.WriteFile(markerPath, []byte("kind: ["), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		brokenDir := filepath.Join(root, "torn")
+		if err := os.MkdirAll(brokenDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(brokenDir, runStateFileName), []byte("{"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		engine := &readEngine{fakeEngine: &fakeEngine{}}
+
+		for range 3 {
+			if _, err := ReadAgentWaits(Config{RunDir: root}, t.TempDir(), engine, now); err != nil {
+				t.Fatal(err)
+			}
+		}
+		writeWaitRun(t, root, "live", waitRun{events: startLine, marker: heldWaitLabel}, livePID)
+		writeWaitRun(t, root, "torn", waitRun{events: startLine}, livePID)
+		if _, err := ReadAgentWaits(Config{RunDir: root}, t.TempDir(), engine, now); err != nil {
+			t.Fatal(err)
+		}
+
+		requireFailureEpisode(t, buf.String(), "skipping an unreadable run record", 2, "run record readable again")
+		requireFailureEpisode(t, buf.String(), "skipping an unreadable wait marker", 2, "wait marker readable again")
 	})
 }
 

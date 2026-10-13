@@ -442,7 +442,8 @@ func (run *Run) gateRecheckDue() bool {
 }
 
 // probeExpiry calls the Expired probe of every entry that has one and is not off, in list order, and returns the name of the first entry whose probe reports expired.
-// A probe error logs a Warn naming the entry and counts as not expired, so the loop keeps polling under its deadline and liveness checks.
+// A probe error counts as not expired, so the loop keeps polling under its deadline and liveness checks;
+// it warns once per entry and episode, and an answer after it logs one Info.
 func (run *Run) probeExpiry() (string, bool) {
 	for _, entry := range run.gate {
 		if entry.Attempts <= 0 || entry.Expired == nil {
@@ -450,9 +451,10 @@ func (run *Run) probeExpiry() (string, bool) {
 		}
 		expired, err := entry.Expired()
 		if err != nil {
-			logger.Warn("shuttle: gate: expiry probe failed, treating the entry as not expired", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", entry.Name, "error", err)
+			run.failures.Fail("expiry:"+entry.Name, "shuttle: gate: expiry probe failed, treating the entry as not expired", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", entry.Name, "error", err)
 			continue
 		}
+		run.failures.Recover("expiry:"+entry.Name, "shuttle: gate: expiry probe answers again", "strandGUID", run.state.StrandGUID, "gate", entry.Name)
 		if expired {
 			return entry.Name, true
 		}
@@ -477,7 +479,7 @@ func gateEntryError(name, problem string) error {
 // A re-prompt send that fails with ErrSessionBusy or ErrSubmissionNotLanded leaves the entry's failure and sent counts unchanged, clears the memo and keeps the writer at the boundary with the re-prompt marked unsent, so a later tick re-sends it until the run deadline;
 // any other re-prompt send failure ends the loop as it always has.
 // A pending result sends its Send text when non-empty and keeps polling;
-// a failed pending send logs one Warn naming the entry, the error and the closure's way-forward, leaves the entry pending and the writer at the boundary, and never ends the loop.
+// a failed pending send warns once per entry and episode, naming the entry, the error and the closure's way-forward, logs Debug while it keeps failing and Info when it is delivered, leaves the entry pending and the writer at the boundary, and never ends the loop.
 // The memo is cleared after a pending result, so the next evaluation, and a finalize after it, read the closures afresh.
 func (run *Run) handleGatedBoundary() (Result, bool, error) {
 	run.lastGateEvalAt = run.clock.Now()
@@ -490,10 +492,12 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 		if run.gatePendingSend == "" {
 			return Result{}, false, nil
 		}
+		pendingKey := "pending:" + run.gate[run.gatePendingAt].Name
 		if serr := run.sendWithin(run.gatePendingSend); serr != nil {
-			logger.Warn("shuttle: gate: pending send failed, entry stays pending", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", run.gate[run.gatePendingAt].Name, "error", serr, "wayForward", run.gatePendingWayForward)
+			run.failures.Fail(pendingKey, "shuttle: gate: pending send failed, entry stays pending", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", run.gate[run.gatePendingAt].Name, "error", serr, "wayForward", run.gatePendingWayForward)
 			return Result{}, false, nil
 		}
+		run.failures.Recover(pendingKey, "shuttle: gate: pending send delivered again", "strandGUID", run.state.StrandGUID, "gate", run.gate[run.gatePendingAt].Name)
 		run.gateAtBoundary = false
 		return Result{}, false, nil
 	}
@@ -512,8 +516,13 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 		if errors.Is(serr, ErrSessionBusy) || errors.Is(serr, ErrSubmissionNotLanded) {
 			// No attempt was spent: keep the writer at the boundary and re-send on a later tick.
 			// The send cleared its own text where it could, but for an engine with the idle reading a box it left occupied fails that re-send busy, until the run deadline ends the loop.
+			// A held send is an ordinary retry iteration: Info when it first holds, Debug while it stays held.
+			logHeld := logger.Debug
+			if !run.unsentReprompt {
+				logHeld = logger.Info
+			}
 			run.unsentReprompt = true
-			logger.Warn("shuttle: gate: re-prompt not delivered, retrying on a later tick without spending an attempt", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", run.gate[failed].Name, "error", serr)
+			logHeld("shuttle: gate: re-prompt not delivered, retrying on a later tick without spending an attempt", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", run.gate[failed].Name, "error", serr)
 			run.gateVerdict = nil
 			return Result{}, false, nil
 		}
@@ -1146,11 +1155,12 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 
 	capture, err := run.runner.reed.CapturePane(run.state.StrandGUID)
 	if err != nil {
-		logger.Warn("shuttle: capture pane during startup probe (non-fatal, retrying)", "strandGUID", run.state.StrandGUID, "error", err)
+		run.failures.Fail("startup capture", "shuttle: capture pane during startup probe (non-fatal, retrying)", "strandGUID", run.state.StrandGUID, "error", err)
 		// A pane that cannot be captured has told us nothing about whether the provider came up,
 		// so it stays inside the startup window and expires with it — see classifyStartupWindow.
 		return run.classifyStartupWindow(startupDeadline), nil
 	}
+	run.failures.Recover("startup capture", "shuttle: startup probe capture works again", "strandGUID", run.state.StrandGUID)
 	// Recorded on every successful capture, not just a ready one: abandonStartup's not-ready teardown
 	// saves whatever the last capture showed as a diagnosis artifact, so a still-pending or
 	// still-gated pane's last screen is on disk exactly as a ready one's would be.
@@ -1199,8 +1209,9 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 			run.dismissed, run.dismissedAt = true, now
 		}
 		if err != nil {
-			logger.Warn("shuttle: dismiss trust prompt (non-fatal)", "strandGUID", run.state.StrandGUID, "error", err)
+			run.failures.Fail("startup dismiss", "shuttle: dismiss trust prompt (non-fatal)", "strandGUID", run.state.StrandGUID, "error", err)
 		} else if len(inputs) > 0 {
+			run.failures.Recover("startup dismiss", "shuttle: trust prompt dismissal sends again", "strandGUID", run.state.StrandGUID)
 			// Info, not Debug: a dismissal is a lifecycle event that happens at most once or twice
 			// per run, not a routine polling probe — and Wait's producers gain this line too.
 			logger.Info("shuttle: dismissed startup gate", "strandGUID", run.state.StrandGUID, "inputs", len(inputs))

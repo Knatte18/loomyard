@@ -65,6 +65,8 @@ type sendContext struct {
 	hold         *turnStartHold
 	startsNoTurn bool
 	landingStart SessionStartSource
+	// activityFailures is the runner's operator-activity failure episodes, shared by every send and probe of one runner.
+	activityFailures *logger.EpisodeSet
 }
 
 // newSendContext returns the context of a verified send into run's own pane.
@@ -78,6 +80,8 @@ func (run *Run) newSendContext() sendContext {
 		eventsPath: run.state.EventsPath,
 		cfg:        run.runner.cfg,
 		clock:      run.clock,
+
+		activityFailures: &run.runner.activityFailures,
 	}
 }
 
@@ -92,6 +96,8 @@ func (r *Runner) newSendContext(state RunState, runDir string) sendContext {
 		eventsPath: state.EventsPath,
 		cfg:        r.cfg,
 		clock:      r.clock,
+
+		activityFailures: &r.activityFailures,
 	}
 }
 
@@ -127,7 +133,7 @@ func awaitIdleSession(sc sendContext) error {
 		if err := closePickerBeforeSend(sc, true); err != nil {
 			return err
 		}
-		if hold := operatorActivityHold(sc.reed, sc.guid); hold != "" {
+		if hold := operatorActivityHold(sc.reed, sc.guid, sc.activityFailures); hold != "" {
 			return &SessionBusyError{Reason: hold, Err: fmt.Errorf("%w: strand %q: %s; retry once the operator is idle", ErrSessionBusy, sc.guid, hold)}
 		}
 		return nil
@@ -198,7 +204,7 @@ func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold, stra
 	}
 	switch {
 	case reading.ready:
-		return busyHold{reason: operatorActivityHold(sc.reed, sc.guid)}
+		return busyHold{reason: operatorActivityHold(sc.reed, sc.guid, sc.activityFailures)}
 	case !reading.unknown:
 		return busyHold{reason: reading.reason, draft: reading.draft != ""}
 	}
@@ -233,7 +239,7 @@ func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold, stra
 	case unmatched != "":
 		return withBoxQuote(unmatched, sc.engine, capture)
 	}
-	return busyHold{reason: operatorActivityHold(sc.reed, sc.guid)}
+	return busyHold{reason: operatorActivityHold(sc.reed, sc.guid, sc.activityFailures)}
 }
 
 // strayClear is the stray-character state of one send attempt's idle wait: the zero value has cleared nothing.
@@ -264,7 +270,7 @@ func clearStrayCharacter(sc sendContext, cycler SessionCycler, hold *turnStartHo
 	if !canClear || !canRead {
 		return busyHold{}, false
 	}
-	if activity := operatorActivityHold(sc.reed, sc.guid); activity != "" {
+	if activity := operatorActivityHold(sc.reed, sc.guid, sc.activityFailures); activity != "" {
 		return busyHold{reason: fmt.Sprintf("%s; the input box holds %q", activity, character), draft: true}, true
 	}
 	if err := playInputs(sc.reed, sc.guid, clearer.ClearInputSequence()); err != nil {
@@ -285,12 +291,20 @@ func withBoxQuote(reason string, engine Engine, capture string) busyHold {
 }
 
 // operatorActivityHold asks reed once whether an attached client was active in the strand's pane within the quiet window, and returns the reason a write is held for it, or "" when none.
-// A query error is logged at Warn and holds nothing, so a tmux that cannot list its clients stalls no run.
-func operatorActivityHold(reed ReedOps, guid string) string {
+// A query error holds nothing, so a tmux that cannot list its clients stalls no run;
+// it is logged through failures, keyed by the strand, as one Warn per episode with an Info when the query reads again, and as a Warn each time when failures is nil.
+func operatorActivityHold(reed ReedOps, guid string, failures *logger.EpisodeSet) string {
 	active, quiet, err := reed.OperatorActive(guid)
 	if err != nil {
-		logger.Warn("shuttle: operator activity unreadable, not holding the write", "strandGUID", guid, "error", err)
+		if failures == nil {
+			logger.Warn("shuttle: operator activity unreadable, not holding the write", "strandGUID", guid, "error", err)
+		} else {
+			failures.Fail(guid, "shuttle: operator activity unreadable, not holding the write", "strandGUID", guid, "error", err)
+		}
 		return ""
+	}
+	if failures != nil {
+		failures.Recover(guid, "shuttle: operator activity readable again", "strandGUID", guid)
 	}
 	if !active {
 		return ""
@@ -581,7 +595,7 @@ func confirmPasted(sc sendContext, paster TextPaster, reader InputBoxReader, tex
 // guardedEnter sends Enter into the strand's pane unless an operator was active there within the quiet window, asked immediately before the key.
 // sent is false for a held Enter, which is no error; the caller reads the box again.
 func guardedEnter(sc sendContext) (sent bool, err error) {
-	if operatorActivityHold(sc.reed, sc.guid) != "" {
+	if operatorActivityHold(sc.reed, sc.guid, sc.activityFailures) != "" {
 		return false, nil
 	}
 	if err := sc.reed.SendKey(sc.guid, "Enter"); err != nil {
