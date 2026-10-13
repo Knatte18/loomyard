@@ -262,7 +262,7 @@ func TestUpdateStrandLocked(t *testing.T) {
 		{"OwnWindowToBelowParentRejected", Strand{GUID: "g1", PaneID: "%1", Display: own}, "g1", visible, moveWayForward},
 		{"OverviewToOwnWindowRejected", Strand{GUID: "g1", PaneID: "%1", Display: overview}, "g1", render.Display{Anchor: render.AnchorOwnWindow}, moveWayForward},
 		{"OwnWindowToOverviewRejected", Strand{GUID: "g1", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}, "g1", overview, moveWayForward},
-		{"HiddenToOwnWindowRejected",Strand{GUID: "g1", Display: hidden, Cmd: "claude"}, "g1", own, moveWayForward},
+		{"HiddenToOwnWindowRejected", Strand{GUID: "g1", Display: hidden, Cmd: "claude"}, "g1", own, moveWayForward},
 		{"OwnWindowGroupChangeRejected", Strand{GUID: "g1", PaneID: "%1", Display: own}, "g1", render.Display{Anchor: render.AnchorOwnWindow, Window: "other", WindowSize: 2}, moveWayForward},
 		{"OwnWindowSizeChangeRejected", Strand{GUID: "g1", PaneID: "%1", Display: own}, "g1", render.Display{Anchor: render.AnchorOwnWindow, Window: "pair", WindowSize: 3}, moveWayForward},
 		{"HiddenToHiddenIsANoOpWithNoLaunch", Strand{GUID: "g1", Display: hidden, Cmd: "claude"}, "g1", render.Display{Anchor: render.AnchorHidden, Focus: true}, ""},

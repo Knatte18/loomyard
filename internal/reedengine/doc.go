@@ -318,7 +318,7 @@
 // Detached windows: OpenWindow (window.go) opens a detached, named window in the worktree's reed session running a `lyx` command, for a caller that wants a long-running command to live in the session without a status-bar button.
 // One multiplexer invocation runs `new-window -d -a -t <highest-index window> -P -F '#{window_id}' -n <temporary> <command>`, or in the plain form `new-window -d -t '=<session>:' -P -F '#{window_id}' -n <temporary> <command>` when no window is listed, chained with `set-option -w -t '=<session>:=<temporary>' remain-on-exit off`, `set-option -w -t '=<session>:=<temporary>' @lyx_hidden 1` and a final `rename-window -t '=<session>:=<temporary>' <name>`.
 // The window is detached and never selected, so it takes no focus.
-// The options are chained by exact name because one chained after a detached new-window without a target lands on the current window, the strands' window, whose remain-on-exit must stay on.
+// The options are chained by exact name because one chained after a detached new-window without a target lands on the current window, which can be any window since attach and the focus rules select agent and overview windows, and whose remain-on-exit must stay on.
 // The name is a per-call temporary one no other window holds and the rename comes last, because an own window may share the requested name and the options would otherwise land on it.
 // The status bar skips a window carrying @lyx_hidden, and window placement and the shell check read the flag to find the last non-hidden window; no focus rule reads it.
 // The op reads remain-on-exit back from the new window by the printed id, and a window that does not read off is killed by that id with ErrWindowReadBack.
@@ -327,8 +327,8 @@
 // The command line is composed in panebin.go from the pane-binary prelude, so `lyx` resolves to the spawning binary.
 // Bound: the op only chooses where a command runs; the window lives as long as the reed session, and the session's other windows keep remain-on-exit on.
 //
-// Own windows: an own-window strand gets a detached window named by its role, opened through the launch chokepoint (spawn.go's openOwnWindowLocked) by `new-window -d`, so it never takes focus.
-// The window carries @lyx_own, @strand_color and @lyx_unseen, each set by window id; the last is left unset on Windows.
+// Own windows: an own-window strand gets a detached window named by its role, opened through the launch chokepoint (spawn.go's openOwnWindowLocked) by `new-window -d`, and the window is then selected only under the focus rule below.
+// The window carries @lyx_own, @strand_color and @lyx_unseen, each set by window id; the last is left unset on Windows, and an overview window carries neither @strand_color nor @lyx_unseen, nor does a new agent window the focus rule selects.
 // Its pane runs the same launch tail as a window 0 strand.
 // Its dead pane stays until the strand is removed or relaunched; a relaunch kills the old pane once the new one exists, so a shared window never keeps a dead pane beside the relaunched one.
 // Resume reopens the strand detached.
@@ -338,9 +338,18 @@
 // A strand declaring another size than the record's is refused with both sizes named.
 // A strand arriving once the group's recorded size is already held, a re-stepped seat added before its predecessor is removed, gets a window of its own and leaves the shared window as it is.
 // A pane joins the shared window by a detached split in the window_split direction, so an operator viewing the window keeps the active pane, and the window is then laid out evenly in that direction.
-// Removing an own-window strand moves a viewer on its window to the strands' window before the window ends, and never moves a viewer on another window.
+// Removing an own-window strand moves a viewer on its window to the relevant window before the window ends, never the shell, and never moves a viewer on another window.
 // A shared window a strand leaves is laid out again.
 // An invalid window_split or window_share_max never refuses a removal: the layout is skipped and the key is reported in Removed.ConfigWarning.
+//
+// Focus rules: an agent window is a window holding a pane bound to an own-window strand; the overview, the shell and hidden windows are not agent windows.
+// An automatic window switch happens only at three points, each deciding from reed state, window ids and pane liveness alone, never from @lyx_unseen, @lyx_hidden or a wait mark, and none moves a viewer off the shell or a live agent window.
+// relevantWindow is the target of two of them: among the listed windows not about to end, the highest-index agent window holding a pane that is not dead, else the overview strand's window, else none.
+// Attach (attachWindowSelectionLocked, resolved by AttachArgv right after the shell check) appends `; select-window -t <relevant window>` to every argv it returns, and appends nothing when another client is attached or a listing fails.
+// A new agent window is selected by openOwnWindowLocked, for an own-window strand and never the overview, when newAgentWindowSelected holds: always for a Focus strand, otherwise only when the viewer is on the overview window or on an agent window whose every pane is dead; it then carries no @lyx_unseen.
+// A viewed window ending, by RemoveStrand, by ReplaceStrand and by reconcile ending an orphan own window (selectRelevantWindowIfCurrentLocked), moves a viewer on it to the relevant window among those left, never the shell, and with none left to tmux.
+// A viewer elsewhere is never moved, and a strand leaving a shared window that stays open ends no window and switches nothing.
+// An automatic switch races an operator's own window change by at most one switch.
 //
 // Overview anchor: the overview anchor places one strand per session, alone in a window of its own named overview that opens at the lowest index and never joins a group.
 // Everything that reads a window of its own, reconcile, presentPanes, the strands' window resolver and the relaunch's old-pane kill, treats an overview pane as an own-window one (isOwnWindow); only the placement, the name, the unseen mark, the one-per-session refusal and the focus rules ask isOverview.
@@ -844,8 +853,9 @@
 //   - The attach-time multi-client warning (attach.go's warnMismatchedClientsLocked): AttachArgv's
 //     pre-flight lists the session's attached clients and emits one logger.Warn per client whose
 //     size differs from the size this attach was told, naming that client and both sizes; zero
-//     differing clients produce zero lines. It never blocks, never changes the argv, and never
-//     reaches the JSON envelope. This is the primary deliverable for the cross-client trigger rather
+//     differing clients produce zero lines. It never blocks and never reaches the JSON envelope;
+//     it reports whether another client is attached, a failed client listing counting as one, and
+//     another attached client, or a failed listing, drops the attach window selection from the argv. This is the primary deliverable for the cross-client trigger rather
 //     than a consolation prize, because that trigger's dots are the uncovered subset and cannot be
 //     repainted away — the residual's real operator cost is bewilderment, and the warning turns a
 //     mysterious artifact into a logged, searchable fact at the moment the operator creates the

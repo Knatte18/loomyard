@@ -826,7 +826,7 @@ func sessionReapRoots(live []LivePane) []int {
 //
 // Before any kill, an own window whose every listed pane is being killed is about to end.
 // The session's current window is read once, and only when a window ends; endedCurrent reports that it was among the ending windows.
-// With selectOnEnd set, such a viewer is moved to the strands' window first; a viewer on any other window is never moved.
+// With selectOnEnd set, such a viewer is moved first to the relevant window among those left (the newest live agent, else the overview, never the shell), and with none left to tmux; a viewer on any other window is never moved, and a strand leaving a shared window that stays open ends no window and switches nothing.
 // leftWindows names the own windows that lose a pane but keep at least one, for the caller to lay out again.
 func (e *Engine) killStrandPanes(st *ReedState, paneIDs []string, selectOnEnd bool) (reapPIDs []int, leftWindows []string, endedCurrent bool) {
 	var killPaneIDs []string
@@ -847,7 +847,7 @@ func (e *Engine) killStrandPanes(st *ReedState, paneIDs []string, selectOnEnd bo
 			if len(endingWindows) > 0 {
 				endedCurrent = e.currentWindowIsAmongLocked(endingWindows)
 				if endedCurrent && selectOnEnd {
-					e.selectStrandsWindowLocked(st)
+					e.selectRelevantWindowLocked(st, endingWindows)
 				}
 			}
 		}

@@ -307,4 +307,169 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 		}
 		wantNames(want...)
 	})
+
+	unseen := func(window string) string {
+		t.Helper()
+		out, err := e.tmux.output("display-message", "-p", "-t", window, "#{@lyx_unseen}")
+		if err != nil {
+			t.Fatalf("read @lyx_unseen of %s: %v", window, err)
+		}
+		return strings.TrimSpace(out)
+	}
+	addFocused := func(name string, focus bool) Strand {
+		t.Helper()
+		s, err := e.AddStrand(AddSpec{NameOverride: name, Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOwnWindow, Focus: focus}})
+		if err != nil {
+			t.Fatalf("AddStrand(%s): %v", name, err)
+		}
+		return s
+	}
+
+	t.Run("ANewAgentWindowIsSelectedFromTheOverviewAndFromAnAllDeadAgentWindow", func(t *testing.T) {
+		selectWindow(windowOfPane(t, e, overview.PaneID))
+		fromOverview := addFocused("from-overview", false)
+		fromOverviewWindow := windowOfPane(t, e, fromOverview.PaneID)
+		if got := currentWindow(); got != fromOverviewWindow {
+			t.Errorf("current window = %s, want the new agent window %s selected from the overview", got, fromOverviewWindow)
+		}
+		if got := unseen(fromOverviewWindow); got != "" {
+			t.Errorf("selected agent window @lyx_unseen = %q, want it unset", got)
+		}
+
+		dying, err := e.AddStrand(AddSpec{NameOverride: "dying", Cmd: "exit", Display: ownDisplay})
+		if err != nil {
+			t.Fatalf("AddStrand(dying): %v", err)
+		}
+		waitUntil(t, 10*time.Second, "dying's pane never died", func() bool { return paneDead(dying.PaneID) })
+		selectWindow(windowOfPane(t, e, dying.PaneID))
+		fromDead := addFocused("from-dead", false)
+		if got, want := currentWindow(), windowOfPane(t, e, fromDead.PaneID); got != want {
+			t.Errorf("current window = %s, want the new agent window %s selected from an all-dead agent window", got, want)
+		}
+	})
+
+	t.Run("ANewAgentWindowKeepsAViewerOnALiveAgentOrTheShellAndCarriesUnseen", func(t *testing.T) {
+		live := currentWindow()
+		fromLive := addFocused("from-live", false)
+		if got := currentWindow(); got != live {
+			t.Errorf("current window = %s, want the viewer kept on the live agent window %s", got, live)
+		}
+		if got := unseen(windowOfPane(t, e, fromLive.PaneID)); got != "1" {
+			t.Errorf("unselected agent window @lyx_unseen = %q, want 1", got)
+		}
+
+		shellWindow := shellWindowID()
+		selectWindow(shellWindow)
+		fromShell := addFocused("from-shell", false)
+		if got := currentWindow(); got != shellWindow {
+			t.Errorf("current window = %s, want the viewer kept on the shell window %s", got, shellWindow)
+		}
+		if got := unseen(windowOfPane(t, e, fromShell.PaneID)); got != "1" {
+			t.Errorf("unselected agent window @lyx_unseen = %q, want 1", got)
+		}
+	})
+
+	t.Run("AFocusStrandIsSelectedFromTheShell", func(t *testing.T) {
+		selectWindow(shellWindowID())
+		focused := addFocused("focused", true)
+		if got, want := currentWindow(), windowOfPane(t, e, focused.PaneID); got != want {
+			t.Errorf("current window = %s, want the focus strand's window %s", got, want)
+		}
+	})
+
+	t.Run("ReplacingTheViewedAgentWhileAnOlderAgentIsLiveLeavesTheViewerOnTheOlderAgent", func(t *testing.T) {
+		older := addFocused("replace-older", false)
+		viewed := addFocused("replace-viewed", false)
+		selectWindow(windowOfPane(t, e, viewed.PaneID))
+
+		if _, err := e.ReplaceStrand(viewed.GUID, AddSpec{NameOverride: "replace-viewed", Cmd: "sleep 300", Display: ownDisplay}); err != nil {
+			t.Fatalf("ReplaceStrand: %v", err)
+		}
+
+		if got, want := currentWindow(), windowOfPane(t, e, older.PaneID); got != want {
+			t.Errorf("current window = %s, want the older live agent's window %s", got, want)
+		}
+	})
+
+	t.Run("ReconcileEndingAViewedOrphanOwnWindowSelectsTheNewestLiveAgent", func(t *testing.T) {
+		st, err := LoadState(e.stateDir())
+		if err != nil || st == nil {
+			t.Fatalf("LoadState = (%+v, %v)", st, err)
+		}
+		var newest sessionWindow
+		live := map[string]bool{}
+		for _, s := range st.Strands {
+			if s.Display.Anchor == render.AnchorOwnWindow && s.PaneID != "" && !paneDead(s.PaneID) {
+				live[windowOfPane(t, e, s.PaneID)] = true
+			}
+		}
+		for _, w := range windows() {
+			if live[w.ID] && w.Index > newest.Index {
+				newest = w
+			}
+		}
+		orphan := strings.TrimSpace(mustTmuxOutput(t, e, "new-window", "-d", "-P", "-F", "#{window_id}", "-t", exactSessionWindowTarget(e.SessionName())))
+		if err := e.tmux.run("set-option", "-w", "-t", orphan, ownWindowOption, "1"); err != nil {
+			t.Fatalf("mark the orphan window: %v", err)
+		}
+		selectWindow(orphan)
+
+		if _, err := e.AddStrand(AddSpec{NameOverride: "reconcile-trigger", Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}}); err != nil {
+			t.Fatalf("AddStrand(reconcile-trigger): %v", err)
+		}
+
+		if got := currentWindow(); got != newest.ID {
+			t.Errorf("current window = %s after reconcile ended the viewed orphan, want the newest live agent window %s", got, newest.ID)
+		}
+	})
+
+	t.Run("OneSeatLeavingAViewedSharedWindowOfTwoSwitchesNothing", func(t *testing.T) {
+		group := render.Display{Anchor: render.AnchorOwnWindow, Window: "duo", WindowSize: 2}
+		first, err := e.AddStrand(AddSpec{NameOverride: "duo-a", Cmd: "sleep 300", Display: group})
+		if err != nil {
+			t.Fatalf("AddStrand(duo-a): %v", err)
+		}
+		second, err := e.AddStrand(AddSpec{NameOverride: "duo-b", Cmd: "sleep 300", Display: group})
+		if err != nil {
+			t.Fatalf("AddStrand(duo-b): %v", err)
+		}
+		shared := windowOfPane(t, e, first.PaneID)
+		selectWindow(shared)
+
+		if _, err := e.RemoveStrand(second.GUID, false); err != nil {
+			t.Fatalf("RemoveStrand(duo-b): %v", err)
+		}
+
+		if got := currentWindow(); got != shared {
+			t.Errorf("current window = %s, want the viewer left on the shared window %s", got, shared)
+		}
+	})
+
+	t.Run("RemovingTheViewedAgentWithNoLiveAgentLeftSelectsTheOverview", func(t *testing.T) {
+		st, err := LoadState(e.stateDir())
+		if err != nil || st == nil {
+			t.Fatalf("LoadState = (%+v, %v)", st, err)
+		}
+		var agents []Strand
+		for _, s := range st.Strands {
+			if s.Display.Anchor == render.AnchorOwnWindow {
+				agents = append(agents, s)
+			}
+		}
+		last := agents[len(agents)-1]
+		for _, s := range agents[:len(agents)-1] {
+			if _, err := e.RemoveStrand(s.GUID, false); err != nil {
+				t.Fatalf("RemoveStrand(%s): %v", s.Name, err)
+			}
+		}
+		selectWindow(windowOfPane(t, e, last.PaneID))
+
+		if _, err := e.RemoveStrand(last.GUID, false); err != nil {
+			t.Fatalf("RemoveStrand(%s): %v", last.Name, err)
+		}
+
+		if got, want := currentWindow(), windowOfPane(t, e, overview.PaneID); got != want {
+			t.Errorf("current window = %s, want the overview window %s", got, want)
+		}
+	})
 }

@@ -304,7 +304,8 @@ func (e *Engine) newWindowLocked(placement []string, argv []string) (string, err
 }
 
 // openOwnWindowLocked opens a detached window for s named name and returns the id of its pane.
-// The window is created with -d, so the client's current window and active pane stay where they are, and nothing selects it.
+// The window is created with -d, so the client's current window and active pane stay where they are; an own-window strand's window is then selected only when newAgentWindowSelected holds for the window the session showed before it opened, and carries no @lyx_unseen then.
+// An overview window is never selected here.
 // It is placed behind every earlier agent window and before the shell window, and a relaunch keeps the place of the window its old pane was in.
 // It carries no command, so the pane is the default login shell like every strand pane.
 // An overview strand's window is named overviewWindowName and opens before the lowest-index window, hidden ones included, so it holds the lowest index; it carries the own marker but neither @strand_color nor @lyx_unseen.
@@ -329,9 +330,12 @@ func (e *Engine) openOwnWindowLocked(st *ReedState, s *Strand, name, group strin
 	}
 	overview := isOverview(s.Display)
 	placement := ownWindowInsertArgs(windows, shellWindow, previousWindow)
+	selectNew := false
 	if overview {
 		name = overviewWindowName
 		placement = overviewWindowInsertArgs(windows)
+	} else {
+		selectNew = e.newAgentWindowTakesViewerLocked(st, s.Display.Focus)
 	}
 	out, err := e.newWindowLocked(placement,
 		[]string{"-P", "-F", "#{pane_id} #{window_id}", "-n", name, "-c", e.geom.PaneCwd})
@@ -356,12 +360,17 @@ func (e *Engine) openOwnWindowLocked(st *ReedState, s *Strand, name, group strin
 				setOption("@strand_color", tmuxColor)
 			}
 		}
-		if runtime.GOOS != "windows" {
+		if runtime.GOOS != "windows" && !selectNew {
 			setOption(unseenWindowOption, "1")
 		}
 	}
 	if group != "" {
 		setOption(groupWindowOption, group)
+	}
+	if selectNew {
+		if err := e.tmux.run("select-window", "-t", windowID); err != nil {
+			logger.Warn("reed: could not select the new agent window", "strand", s.GUID, "window", windowID, "err", err)
+		}
 	}
 
 	logger.Info("reed: opened own window", "socket", e.Socket(), "session", e.SessionName(), "strand", s.GUID, "window", windowID, "pane", paneID)
