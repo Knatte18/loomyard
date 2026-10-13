@@ -57,17 +57,16 @@
 // Batches run in the recorded order.
 // Only a first init or a rebaseline replaces the record.
 //
-// # Fork-return contract: OK/FAILED, a head SHA, an informational deviation list
+// # Fork-return contract: OK/FAILED and a head SHA
 //
 // A fork's whole return contract is the minimal report shape report.go
 // implements (Report/ParseReport/WriteReport): `status: OK` or `status:
-// FAILED`, the `head_sha` the fork left the worktree at, and a `deviations`
-// list of paths the fork touched beyond its cards' own deviation union —
-// every path-shaped target entry across the batch's cards, plus the files
-// holding every symbol-shaped target entry, with `Uses:` excluded because it
-// is read rather than written.
-// The deviation list is ALWAYS informational, never a failure condition — a
-// fork returns FAILED on a failed card gate, card `**Verify:**` or batch gate, never on deviation alone and never on a slot-busy exit.
+// FAILED`, and the `head_sha` the fork left the worktree at.
+// An older fork's `deviations` key is accepted and ignored.
+// The digest's `deviations` list is the glyph scope guard's file list over the batch delta, the files changed outside the batch's own targets.
+// Record-batch and recover-batch fill it.
+// The list is ALWAYS informational, never a failure condition.
+// A fork returns FAILED on a failed card gate, card `**Verify:**` or batch gate, never on deviation alone and never on a slot-busy exit.
 // Plan-predicted file impact is frequently incomplete, so treating deviation as failure would make the system impractically brittle.
 // Within one fork's batch, each card lands as its own commit (BatchState.CardSHAs records the ordered per-card SHA trail — one element under the identity batcher, more once a grouping batchifier ships), and each card's own optional `verify:` runs and must pass before that card's commit.
 // After the last card the fork runs the batch gate once, over the batch's packages with `-tags integration`;
@@ -96,6 +95,7 @@
 // the card done-checks, one shared delta, handle binding, the informational
 // glyph scope guard, and drift detection with its exact-tier auto-repair,
 // plus the plan-staleness re-baseline each rewrite among them requires.
+// The guard's result lands in the batch digest's deviation list, never in the warnings.
 // A batch that reached done through a recovery is exactly as done as one
 // that reached it through a fork, and Master's own failure ladder treats a
 // terminal recovery digest as "move on to the next batch" — so a recovery

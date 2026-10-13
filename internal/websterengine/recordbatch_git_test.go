@@ -10,6 +10,7 @@ package websterengine_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -118,6 +119,9 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		if readErr != nil {
 			t.Fatalf("read card file: %v", readErr)
 		}
+		if len(result.Digest.Deviations) != 0 {
+			t.Errorf("Digest.Deviations = %v; want empty, since the change stays inside the target's package", result.Digest.Deviations)
+		}
 		if strings.Contains(string(data), "plan:internal/foo#Bar") {
 			t.Errorf("card file still carries the unbound handle: %s", data)
 		}
@@ -126,9 +130,9 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		}
 	})
 
-	// A symbol touched outside the completed batch's own target glyphs lands as an informational finding in
-	// RecordResult.Warnings, and the batch still terminates.
-	t.Run("scope guard findings land in the warnings", func(t *testing.T) {
+	// A symbol touched outside the completed batch's own target glyphs lands as its file in the digest's deviations.
+	// It never lands in RecordResult.Warnings, and the batch still terminates.
+	t.Run("scope guard findings land in the digest's deviations, not the warnings", func(t *testing.T) {
 		fx := s.restart(t, forkReturned())
 		// A symbol added outside the plan's own declared targets.
 		headSHA := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Surprise() {}\n", "01.2: add Surprise")
@@ -142,14 +146,13 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
 			t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
 		}
-		found := false
+		if want := []string{"internal/foo/impl.go"}; !slices.Equal(result.Digest.Deviations, want) {
+			t.Errorf("Digest.Deviations = %v; want %v", result.Digest.Deviations, want)
+		}
 		for _, w := range result.Warnings {
 			if strings.Contains(w, "scope-outside-plan") {
-				found = true
+				t.Errorf("RecordResult.Warnings = %v; want no scope-outside-plan warning", result.Warnings)
 			}
-		}
-		if !found {
-			t.Errorf("RecordResult.Warnings = %v; want a scope-outside-plan finding", result.Warnings)
 		}
 	})
 

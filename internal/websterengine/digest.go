@@ -32,15 +32,16 @@ type Digest struct {
 	Batch      string   `json:"batch"`
 	Status     string   `json:"status"` // DigestStatusRunning, Done, Stuck, Dead, or Failed
 	HeadSHA    string   `json:"head_sha,omitempty"`
-	Deviations []string `json:"deviations,omitempty"`  // Informational only, never affects Status
+	Deviations []string `json:"deviations,omitempty"`  // The scope guard's files changed outside the batch's targets; informational only, never affects Status
 	DeadReason string   `json:"dead_reason,omitempty"` // Set only when Status is Dead
 	Reasons    []string `json:"reasons,omitempty"`     // Set only when Status is Failed
 	ElapsedS   int      `json:"elapsed_s,omitempty"`   // Seconds since spawn, running snapshots only
 }
 
 // distill computes the terminal digest for a fork-return report:
-// OK → Done, FAILED → Stuck. HeadSHA and Deviations carry through.
+// OK → Done, FAILED → Stuck. HeadSHA carries through.
 // Batch is not set; the caller (Classify) assigns it.
+// Deviations is not set either: record-batch fills it from the scope guard.
 func distill(r *Report) Digest {
 	status := DigestStatusStuck
 	if r.Status == ReportStatusOK {
@@ -48,8 +49,7 @@ func distill(r *Report) Digest {
 	}
 
 	return Digest{
-		Status:     status,
-		HeadSHA:    r.HeadSHA,
-		Deviations: r.Deviations,
+		Status:  status,
+		HeadSHA: r.HeadSHA,
 	}
 }
