@@ -59,6 +59,8 @@ type circlingDeps struct {
 	record func(subdir string, decision shedadapters.CirclingDecision) (round int, cause shedadapters.EscalationCause, err error)
 	// latestRound returns the latest round of the Bouncer run directory named by subdir.
 	latestRound func(subdir string) (int, error)
+	// escalationPending reports whether the latest round of the Bouncer run directory named by subdir carries an escalation no decision has answered.
+	escalationPending func(subdir string) (bool, error)
 	// hardCap returns the row's resolved hard cap, 0 meaning none, and the way forward that raises it.
 	hardCap func(row string) (hardCap int, raise string, err error)
 }
@@ -98,7 +100,14 @@ func circlingVerb(out io.Writer, slug string, deps circlingDeps, decision shedad
 			return refuse("%s; %s", err, fmt.Sprintf(circlingWayHardCap, slug))
 		}
 		if hardCap > 0 && latest >= hardCap {
-			return refuse("round %d at %s is at or past its perch's hard cap %d, so no review round runs past it; way forward: run `lyx loom circling accept %s`, or raise the hard cap: %s, then run `lyx loom circling continue %s`", latest, st.CurrentProducer, hardCap, slug, raise, slug)
+			pending, err := deps.escalationPending(subdir)
+			if err != nil && !errors.Is(err, shedadapters.ErrEscalationMalformed) {
+				return refuse("%s; %s", err, circlingWayRetry)
+			}
+			// A round with no open escalation, or a malformed one, falls through to record, whose refusal names the right way forward.
+			if pending {
+				return refuse("round %d at %s is at or past its perch's hard cap %d, so no review round runs past it; way forward: run `lyx loom circling accept %s`, or raise the hard cap: %s, then run `lyx loom circling continue %s`", latest, st.CurrentProducer, hardCap, slug, raise, slug)
+			}
 		}
 	}
 
@@ -170,6 +179,10 @@ func (s *circlingState) preRun(cmd *cobra.Command, args []string) error {
 		},
 		latestRound: func(subdir string) (int, error) {
 			return shedadapters.LatestRound(filepath.Join(reviewsDir, subdir))
+		},
+		escalationPending: func(subdir string) (bool, error) {
+			_, _, pending, err := shedadapters.PendingEscalation(filepath.Join(reviewsDir, subdir))
+			return pending, err
 		},
 		hardCap: func(row string) (int, string, error) {
 			return perchHardCap(target, row)

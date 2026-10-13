@@ -29,8 +29,11 @@ type circlingFake struct {
 	// subdirErr, when set, makes the Bouncer lookup fail.
 	subdirErr error
 	// latest and latestErr are the Bouncer run directory's latest round; hardCap and raise are the row's resolved hard cap and the way forward that raises it, a zero hardCap meaning no cap.
-	latest     int
-	latestErr  error
+	latest    int
+	latestErr error
+	// pending is whether the latest round carries an escalation no decision has answered.
+	pending    bool
+	pendingErr error
 	hardCap    int
 	raise      string
 	hardCapErr error
@@ -52,8 +55,9 @@ func (f *circlingFake) deps() circlingDeps {
 			f.records = append(f.records, subdir+":"+string(d))
 			return f.round, f.cause, nil
 		},
-		latestRound: func(string) (int, error) { return f.latest, f.latestErr },
-		hardCap:     func(string) (int, string, error) { return f.hardCap, f.raise, f.hardCapErr },
+		latestRound:       func(string) (int, error) { return f.latest, f.latestErr },
+		escalationPending: func(string) (bool, error) { return f.pending, f.pendingErr },
+		hardCap:           func(string) (int, string, error) { return f.hardCap, f.raise, f.hardCapErr },
 	}
 }
 
@@ -121,12 +125,22 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 		{"second decision", "", circlingFake{status: awaitingAt(loomshed.NameDiscussionBouncer), found: true, recordErr: shedadapters.ErrCirclingDecided}, []string{`already recorded for the escalated round at Discussion-Bouncer; way forward: the decision for this round is recorded and stays; run "lyx loom resume"`}},
 		{
 			"continue at the hard cap", shedadapters.CirclingContinue,
-			circlingFake{status: atPlanBouncer, found: true, latest: 4, hardCap: 4, raise: loomRaise},
+			circlingFake{status: atPlanBouncer, found: true, latest: 4, hardCap: 4, pending: true, raise: loomRaise},
 			[]string{"at or past its perch's hard cap 4", "lyx loom circling accept task-a", loomRaise, "lyx loom circling continue task-a"},
 		},
 		{
+			"continue at the hard cap on a round that is not escalated", shedadapters.CirclingContinue,
+			circlingFake{status: atPlanBouncer, found: true, latest: 4, hardCap: 4, raise: loomRaise, recordErr: shedadapters.ErrNotEscalated},
+			[]string{"is not escalated"},
+		},
+		{
+			"continue at the hard cap on a round already decided", shedadapters.CirclingContinue,
+			circlingFake{status: atPlanBouncer, found: true, latest: 4, hardCap: 4, raise: loomRaise, recordErr: shedadapters.ErrCirclingDecided},
+			[]string{"already recorded for the escalated round"},
+		},
+		{
 			"continue whose hard cap comes from run_settings", shedadapters.CirclingContinue,
-			circlingFake{status: atPlanBouncer, found: true, latest: 5, hardCap: 4, raise: localRaise},
+			circlingFake{status: atPlanBouncer, found: true, latest: 5, hardCap: 4, pending: true, raise: localRaise},
 			[]string{"at or past its perch's hard cap 4", localRaise},
 		},
 		{
