@@ -104,6 +104,9 @@ func TestRecordCirclingDecision_WritesPendingFile(t *testing.T) {
 			dir := t.TempDir()
 			tt.layout(t, dir)
 
+			if latest, err := LatestRound(dir); err != nil || latest != tt.wantRound {
+				t.Fatalf("LatestRound() = (%d, %v); want (%d, nil)", latest, err, tt.wantRound)
+			}
 			round, cause, err := RecordCirclingDecision(dir, tt.decision)
 			if err != nil || round != tt.wantRound || cause != tt.wantCause {
 				t.Fatalf("RecordCirclingDecision(%q) = (%d, %q, %v); want (%d, %q, nil)", tt.decision, round, cause, err, tt.wantRound, tt.wantCause)

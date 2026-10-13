@@ -42,6 +42,12 @@ type circlingDecisionHeader struct {
 	Automatic bool   `yaml:"automatic"`
 }
 
+// LatestRound returns the run directory's latest round, 0 when it holds none.
+// It is the round RecordCirclingDecision records its decision for.
+func LatestRound(runDir string) (int, error) {
+	return ResolveRound(runDir, func(n int) string { return filepath.Base(roundReviewPath(runDir, n)) })
+}
+
 // RecordCirclingDecision records d as pending for the run directory's latest round and returns that round and its escalation cause.
 // It returns ErrNotEscalated unless that round carries an escalation record,
 // or, for a run directory an older binary wrote, a recorded CIRCLING verdict;
@@ -52,7 +58,7 @@ func RecordCirclingDecision(runDir string, d CirclingDecision) (int, EscalationC
 	if d != CirclingAccept && d != CirclingContinue {
 		return 0, "", fmt.Errorf("shedadapters: circling decision must be %q or %q, got %q", CirclingAccept, CirclingContinue, d)
 	}
-	round, err := ResolveRound(runDir, func(n int) string { return filepath.Base(roundReviewPath(runDir, n)) })
+	round, err := LatestRound(runDir)
 	if err != nil {
 		return 0, "", err
 	}
