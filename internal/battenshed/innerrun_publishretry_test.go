@@ -369,3 +369,48 @@ func TestInnerRun_PublishRetryContinuesFromTheMarkerAfterARestart(t *testing.T) 
 		h.wantMarkerState(publishRetryGotoDone)
 	})
 }
+
+// TestPublishRetrySpent asserts the exported read: an absent marker is not spent, a marker in any of the four states is, and a marker that does not decode is an error.
+func TestPublishRetrySpent(t *testing.T) {
+	t.Parallel()
+
+	const producer = "Publish-Row"
+	states := []string{publishRetryStarted, publishRetryGotoDone, publishRetryResumed, publishRetryCapped}
+	tests := []struct {
+		name    string
+		marker  string
+		want    bool
+		wantErr bool
+	}{
+		{name: "no marker"},
+		{name: "malformed marker", marker: "started", wantErr: true},
+	}
+	for _, state := range states {
+		tests = append(tests, struct {
+			name    string
+			marker  string
+			want    bool
+			wantErr bool
+		}{name: state + " marker", marker: state + " 2026-01-01T11:00:00Z " + retryTarget + "\n", want: true})
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			scratchDir := t.TempDir()
+			if tt.marker != "" {
+				if err := os.WriteFile(publishRetryFile(scratchDir, producer), []byte(tt.marker), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			got, err := PublishRetrySpent(scratchDir, producer)
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("PublishRetrySpent() error = %v; want error %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("PublishRetrySpent() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}

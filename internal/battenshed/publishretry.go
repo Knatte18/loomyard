@@ -78,7 +78,22 @@ func publishRetryFile(scratchDir, producer string) string {
 // readPublishRetryMarker decodes the marker, reporting found == false when it is absent.
 // A marker that does not decode is an error.
 func (p *innerRunProducer) readPublishRetryMarker() (publishRetryMarker, bool, error) {
-	raw, err := os.ReadFile(publishRetryFile(p.scratchDir, p.name))
+	return readPublishRetryMarkerFile(publishRetryFile(p.scratchDir, p.name))
+}
+
+// PublishRetrySpent reports whether batten's publish-retry marker for producer exists in scratchDir in any state:
+// a started, goto-done, resumed or capped retry each means batten took the run's one retry, so no one else retries it.
+// An absent marker is false, and a marker that does not decode is an error.
+// The read is only as current as batten's marker write, which batten makes before its goto.
+func PublishRetrySpent(scratchDir, producer string) (bool, error) {
+	_, found, err := readPublishRetryMarkerFile(publishRetryFile(scratchDir, producer))
+	return found, err
+}
+
+// readPublishRetryMarkerFile decodes the marker at path, reporting found == false when it is absent.
+// A marker that does not decode is an error.
+func readPublishRetryMarkerFile(path string) (publishRetryMarker, bool, error) {
+	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return publishRetryMarker{}, false, nil
 	}
@@ -108,12 +123,12 @@ func (p *innerRunProducer) writePublishRetryMarker(state string, started time.Ti
 	return nil
 }
 
-// recordMatchesHalt reports whether record belongs to the verify attempt that halted the child.
+// RecordMatchesHalt reports whether record belongs to the verify attempt that halted the child.
 // It needs a target and a write time, the child's HEAD as the record's head, and a halting entry that is the child's last, a Stuck of the record's row, which is one of rows.
 // A record naming no row, or another row than the halting entry's, never matches.
 // The write time must be strictly later than the entry before the halting one, when there is one, and at or before the halting entry, all compared as whole-second UTC.
 // A record from an earlier halt at the same HEAD fails the lower bound.
-func recordMatchesHalt(record ChildPublishFailure, head string, status shedengine.Status, rows []string) bool {
+func RecordMatchesHalt(record ChildPublishFailure, head string, status shedengine.Status, rows []string) bool {
 	if record.Target == "" || record.WrittenAt == "" || record.Head != head {
 		return false
 	}
@@ -179,7 +194,7 @@ func (p *innerRunProducer) publishRetryDecision(ctx context.Context, status shed
 			logger.Warn("battenshed: child HEAD unreadable; leaving the halt to the operator", "producer", p.name, "slug", p.slug, "error", err)
 			return publishRetry{}
 		}
-		if !recordMatchesHalt(record, head, status, p.deps.VerifyRows) {
+		if !RecordMatchesHalt(record, head, status, p.deps.VerifyRows) {
 			return publishRetry{}
 		}
 		return publishRetry{action: publishRetryGoto, target: record.Target, fresh: true}
