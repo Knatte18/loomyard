@@ -560,7 +560,11 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		if !strings.Contains(removed.ConfigWarning, "window_split") {
 			t.Errorf("ConfigWarning = %q, want it to name window_split", removed.ConfigWarning)
 		}
-		if _, err := e.tmux.output("display-message", "-p", "-t", second.PaneID, "#{pane_id}"); err == nil {
+		panes, err := e.tmux.output("list-panes", "-s", "-t", exactSessionTarget(e.SessionName()), "-F", "#{pane_id}")
+		if err != nil {
+			t.Fatalf("list panes: %v", err)
+		}
+		if slices.Contains(strings.Fields(panes), second.PaneID) {
 			t.Errorf("pane %s survived its strand's removal", second.PaneID)
 		}
 
