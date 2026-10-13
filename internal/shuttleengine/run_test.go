@@ -1332,14 +1332,17 @@ func (c *boxTestClock) Sleep(d time.Duration) {
 
 // clearableBoxEngine is inputBoxEngine plus the idle reading, session signals, a session prober and a scripted InputBoxClearer:
 // A capture is idle when it starts with "IDLE".
-// "START" is a turn start and "STOP:<message>" a turn end.
-// Every turn start reads interrupted when interrupted is set.
+// "START" is a turn start, "STOP:<message>" a turn end and "SESSIONSTART" or "SESSIONSTART:<source>" a session start with that source.
+// Every turn start reads interrupted when interrupted is set, and TurnStartProgress answers progress for any turn start.
 
 type clearableBoxEngine struct {
 	*inputBoxEngine
 
 	interrupted bool
+	progress    TurnProgress
 }
+
+func (e *clearableBoxEngine) TurnStartProgress(SessionSignal) TurnProgress { return e.progress }
 
 func (e *clearableBoxEngine) ProcessLiveness(string) Liveness { return LivenessUnproven }
 func (e *clearableBoxEngine) TurnStartInterrupt(SessionSignal) (time.Time, bool) {
@@ -1370,6 +1373,9 @@ func (e *clearableBoxEngine) ParseSessionSignals(data []byte) ([]SessionSignal, 
 			signals = append(signals, SessionSignal{Kind: SessionSignalTurnStart})
 		case strings.HasPrefix(trimmed, "STOP:"):
 			signals = append(signals, SessionSignal{Kind: SessionSignalTurnEnd})
+		case strings.HasPrefix(trimmed, "SESSIONSTART"):
+			source := SessionStartSource(strings.TrimPrefix(strings.TrimPrefix(trimmed, "SESSIONSTART"), ":"))
+			signals = append(signals, SessionSignal{Kind: SessionSignalSessionStart, Source: source})
 		}
 	}
 	return signals, len(data)
@@ -1380,6 +1386,7 @@ var (
 	_ SessionCycler       = (*clearableBoxEngine)(nil)
 	_ InputBoxClearer     = (*clearableBoxEngine)(nil)
 	_ SessionSignalParser = (*clearableBoxEngine)(nil)
+	_ TurnProgressReader  = (*clearableBoxEngine)(nil)
 )
 
 // enterHookReed is a fakeReed that runs onEnter after every Enter key.
@@ -1935,6 +1942,8 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		failCaptureAfter time.Duration
 		events           string
 		interrupted      bool
+		// progress is what the engine reads of any turn start.
+		progress TurnProgress
 		// reading gives the engine a live process, so the hook-derived readiness reading decides instead of the pane;
 		// reader also gives it an input-box reader, for a row that fails before anything is typed.
 		reading, reader bool
@@ -1980,6 +1989,12 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		{name: "api error turn end counts as a turn end", events: "START\nAPIERR\n"},
 		{name: "a hook turn end beside a pane needle types at once", events: "START\nSTOP:done\n", reading: true, idleAfter: time.Second, busyFrame: "working (esc to interrupt)\n❯ "},
 		{name: "unmatched turn start under an unknown reading is released by the idle override", events: "START\n", wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
+		{name: "an in-flight turn start holds an idle pane past the override", events: "START\n", reading: true, progress: TurnInFlight, wantBusy: []string{"a turn is running"}, wantReason: "a turn is running"},
+		{name: "an in-flight turn start under an unknown reading holds past the override", events: "START\n", progress: TurnInFlight, wantBusy: []string{"has no turn end"}},
+		{name: "a reported interrupt releases an in-flight turn start at once", events: "START\n", reading: true, interrupted: true, progress: TurnInFlight},
+		{name: "an over reading still releases by the idle override", events: "START\n", reading: true, progress: TurnOver, wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
+		{name: "a session start after an in-flight turn start releases by the idle override", events: "START\nSESSIONSTART:resume\n", reading: true, progress: TurnInFlight, wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
+		{name: "a session start after an in-flight turn start under an unknown reading releases by the idle override", events: "START\nSESSIONSTART:resume\n", progress: TurnInFlight, wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2007,6 +2022,7 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 			}
 			idle.StartupScript = []StartupState{StartupReady}
 			idle.interrupted = tt.interrupted
+			idle.progress = tt.progress
 			if tt.reading {
 				idle.liveness = LivenessAlive
 			}

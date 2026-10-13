@@ -251,6 +251,9 @@
 // An activity query that errors is logged at Warn and holds nothing, so a tmux that cannot list its clients stalls no run; the empty-box requirement still stands.
 // Runner.SessionIdle applies the same hold after a ready reading, so the orch watcher's probe reports an active operator with its reason.
 // An unmatched turn start releases after the pane has read idle on every poll for turnStartIdleOverride, or at once when the engine reports that turn interrupted.
+// An engine with TurnProgressReader that reads the unmatched turn in flight vetoes the idle-pane release, so the turn start keeps holding until a turn end, a reported interrupt or a later session start.
+// A session start after the turn start lifts the veto, since the session's context began anew.
+// Runner.SessionIdle reports busy while a turn reads in flight.
 // When the session state is unknown, the reading falls back to the pane, which must classify ready and idle, and for an engine that parses session signals no turn start may be left unmatched by a later turn end; the cause is logged at Debug.
 // A fallback hold whose box reads non-empty quotes the box.
 //

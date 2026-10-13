@@ -184,7 +184,9 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 		dead, unproven, interrupted, tooShort bool
 		interactive, outputsExist             bool
 		outstanding                           []BackgroundTask
-		probes                                []probe
+		// progress is what the engine reads of any turn start.
+		progress TurnProgress
+		probes   []probe
 		// wantLog is a substring the probes' log must hold.
 		wantLog string
 	}{
@@ -222,6 +224,14 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 			},
 			wantLog: "released an unmatched turn start",
 		},
+		{
+			name:     "an in-flight turn start stays held past the idle override",
+			progress: TurnInFlight,
+			probes: []probe{
+				{events: "START\n", capture: idleFrame, want: IdleProbe{Reason: "a turn is running"}, wantReason: "a turn is running"},
+				{advance: turnStartIdleOverride, capture: idleFrame, want: IdleProbe{Reason: "a turn is running"}, wantReason: "a turn is running"},
+			},
+		},
 		{name: "a session start after a turn end leaves it idle", probes: []probe{{events: turnEnded + "SESSIONSTART\n", capture: idleFrame, want: IdleProbe{Idle: true}}}},
 		{name: "idle-fresh with an empty box is ready", probes: []probe{{events: "SESSIONSTART:startup\n", capture: idleFrame, want: IdleProbe{Idle: true}}}},
 		{name: "idle-fresh with a draft is held with its reason", probes: []probe{{events: "SESSIONSTART:clear\n", capture: "IDLE\n❯ half a draft", want: IdleProbe{Reason: `the input box holds a draft: "half a draft"`}, wantReason: "draft"}}},
@@ -244,6 +254,7 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 				engine.liveness = LivenessUnproven
 			}
 			engine.interrupted = tt.interrupted
+			engine.progress = tt.progress
 			engine.outstanding = tt.outstanding
 			fx := newFixture(t, reed, engine, withStrand("strand-1"), withClock(clock))
 			runDir := filepath.Dir(fx.EventsPath)

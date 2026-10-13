@@ -734,6 +734,7 @@ var _ ReedOps = (*skillReed)(nil)
 // Every signal names session-1, and the read consumes through the last complete line.
 // ProcessLiveness answers liveness for any session id, and TurnStartInterrupt answers interrupted and interruptAt for any turn start.
 // TurnEndActivity marks a turn end as an API error when its line is apiErrorLine.
+// TurnStartProgress answers progress for any turn start.
 type sessionFakeEngine struct {
 	waitingEngine
 
@@ -741,6 +742,7 @@ type sessionFakeEngine struct {
 	interrupted  bool
 	interruptAt  time.Time
 	apiErrorLine string
+	progress     TurnProgress
 }
 
 func (e *sessionFakeEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
@@ -782,6 +784,8 @@ func (e *sessionFakeEngine) TurnStartInterrupt(SessionSignal) (time.Time, bool) 
 	return e.interruptAt, e.interrupted
 }
 
+func (e *sessionFakeEngine) TurnStartProgress(SessionSignal) TurnProgress { return e.progress }
+
 func (e *sessionFakeEngine) TurnEndActivity(turnEnd Event) TurnEndActivity {
 	if e.apiErrorLine == "" || string(turnEnd.Raw) != e.apiErrorLine {
 		return TurnEndActivity{}
@@ -793,6 +797,7 @@ var (
 	_ SessionSignalParser = (*sessionFakeEngine)(nil)
 	_ SessionProber       = (*sessionFakeEngine)(nil)
 	_ ActivityReader      = (*sessionFakeEngine)(nil)
+	_ TurnProgressReader  = (*sessionFakeEngine)(nil)
 )
 
 // openerFakeEngine is fakeEngine plus the SessionOpener capability: OpenLaunch records the spec it was given and returns the scripted launch, or the scripted error.

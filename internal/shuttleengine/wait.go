@@ -36,7 +36,7 @@
 // Both paths run through handleGatedBoundary, and the run deadline and liveness checks keep running throughout, never extended by the wait.
 // For an engine with the idle reading and session signals, a boundary is confirmed idle in fact before the gate sends:
 // a turn start left unmatched by a later turn end clears the boundary, the loop keeps polling and reads the pane every tick,
-// and the boundary is restored when the engine reports that turn interrupted or the pane has read idle for turnStartIdleOverride.
+// and the boundary is restored when the engine reports that turn interrupted, a session start follows it, or the pane has read idle for turnStartIdleOverride while the engine does not read that turn in flight.
 // Every gate send goes through sendWithin, so its idle wait and submit window end by the run deadline.
 // A re-prompt that fails busy or unlanded spends no attempt and is re-sent on a later tick, bounded by the run deadline.
 // A gated run off the boundary, mid-turn or attached with no boundary seen, also asks each entry's read-only Expired probe once per gateRecheckEvery;

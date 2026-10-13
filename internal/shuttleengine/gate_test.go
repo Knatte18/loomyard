@@ -706,12 +706,16 @@ func newGateRig(t *testing.T, cfg Config, events string) *gateRig {
 }
 
 // TestGate_WaitsForIdleWriter drives a gated Wait over a writer whose newest turn start no turn end has matched, as an AttachGated replay of a writer mid-turn would find it.
-// No gate send is typed until a turn end follows that turn start, the engine reports the turn interrupted, or the pane has read idle for turnStartIdleOverride;
-// the last two restore the boundary and evaluate the gate.
+// No gate send is typed until a turn end follows that turn start, the engine reports the turn interrupted, a session start follows it, or the pane has read idle for turnStartIdleOverride while the engine does not read the turn in flight;
+// all but the turn end restore the boundary and evaluate the gate.
 func TestGate_WaitsForIdleWriter(t *testing.T) {
 	tests := []struct {
 		name        string
 		interrupted bool
+		// progress is what the engine reads of any turn start.
+		progress TurnProgress
+		// events seeds the events file; empty is the bench incident shape, a turn end then an unmatched turn start.
+		events string
 		// turnEndAt, when positive, is when the writer's turn end lands.
 		turnEndAt time.Duration
 		// wantTypedMin and wantTypedMax bound the first typed re-prompt from the start.
@@ -720,13 +724,20 @@ func TestGate_WaitsForIdleWriter(t *testing.T) {
 		{name: "a turn end after the turn start releases the boundary", turnEndAt: 4 * time.Second, wantTypedMin: 4 * time.Second, wantTypedMax: 6 * time.Second},
 		{name: "an interrupt report restores the boundary at once", interrupted: true, wantTypedMax: 3 * time.Second},
 		{name: "ten seconds of idle pane restores the boundary", wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second},
+		{name: "an in-flight turn start holds the boundary past the override until its turn end", progress: TurnInFlight, turnEndAt: 14 * time.Second, wantTypedMin: 14 * time.Second, wantTypedMax: 16 * time.Second},
+		{name: "a session start after an in-flight turn start restores the boundary by the override", progress: TurnInFlight, events: "STOP:turn1\nSTART\nSESSIONSTART:resume\n", wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			rig := newGateRig(t, Config{}, "STOP:turn1\nSTART\n")
+			events := tt.events
+			if events == "" {
+				events = "STOP:turn1\nSTART\n"
+			}
+			rig := newGateRig(t, Config{}, events)
 			rig.engine.interrupted = tt.interrupted
+			rig.engine.progress = tt.progress
 			if tt.turnEndAt > 0 {
 				appended := false
 				rig.clock.onSleep = func(now time.Time) {

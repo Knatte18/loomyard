@@ -116,6 +116,7 @@ func windowPollCap(window, minInterval time.Duration) int {
 // An engine without the SessionCycler idle reading keeps requireReadyAgentPane alone, with no wait.
 // Otherwise every poll takes the session's readiness reading, which is built on the hook-derived session state;
 // when that state is unknown the poll falls back to the pane, which must classify ready and idle, and for an engine that parses session signals no turn start may be left unmatched by a later turn end, unless the pane has read idle for turnStartIdleOverride or the engine reports that turn interrupted.
+// An engine that reads the unmatched turn in flight keeps the send waiting past turnStartIdleOverride, until a turn end, a reported interrupt, a later session start or the send-ready window ends it.
 func awaitIdleSession(sc sendContext) error {
 	cycler, ok := sc.engine.(SessionCycler)
 	if !ok {
@@ -209,7 +210,7 @@ func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold, stra
 	}
 
 	var unmatched string
-	if turnStart, found := unmatchedTurnStart(sc.engine, sc.eventsPath); found && hold.holds(sc.engine, turnStart, paneIdle, sc.clock.Now()) {
+	if turnStart, restarted, found := unmatchedTurnStart(sc.engine, sc.eventsPath); found && hold.holds(sc.engine, turnStart, restarted, paneIdle, sc.clock.Now()) {
 		unmatched = fmt.Sprintf("a turn start at %s has no turn end", turnStart.At.Format(time.RFC3339))
 	}
 	if isCandidate && !stray.cleared && unmatched == "" {
@@ -290,28 +291,31 @@ func operatorActivityHold(reed ReedOps, guid string) string {
 }
 
 // unmatchedTurnStart returns the newest turn_start in the events file that no later turn_end or api_error_turn_end follows.
+// restarted is true when a session start of any source lies after that turn start: the session's context began anew, so the turn cannot still be running.
 // An engine without SessionSignalParser and an unreadable file read as none.
-func unmatchedTurnStart(engine Engine, eventsPath string) (SessionSignal, bool) {
+func unmatchedTurnStart(engine Engine, eventsPath string) (turnStart SessionSignal, restarted, found bool) {
 	parser, ok := engine.(SessionSignalParser)
 	if !ok {
-		return SessionSignal{}, false
+		return SessionSignal{}, false, false
 	}
 	data, err := os.ReadFile(eventsPath)
 	if err != nil {
-		return SessionSignal{}, false
+		return SessionSignal{}, false, false
 	}
 	signals, _ := parser.ParseSessionSignals(data)
-	var pending SessionSignal
-	found := false
 	for _, signal := range signals {
 		switch signal.Kind {
 		case SessionSignalTurnStart:
-			pending, found = signal, true
+			turnStart, restarted, found = signal, false, true
+		case SessionSignalSessionStart:
+			if found {
+				restarted = true
+			}
 		case SessionSignalTurnEnd, SessionSignalAPIErrorTurnEnd:
 			found = false
 		}
 	}
-	return pending, found
+	return turnStart, restarted, found
 }
 
 // turnStartHold decides, poll by poll, whether an unmatched turn start still holds a send against a pane that reads idle.
@@ -326,9 +330,11 @@ type turnStartHold struct {
 // holds reports whether turnStart, the unmatched turn start, still holds the send at now.
 // It releases once the engine's SessionProber reports that turn interrupted,
 // or once paneIdle has been true on every poll since turnStartIdleOverride ago, logging one Warn naming the signal.
-// A poll with a busy pane resets the idle timer.
+// While the engine's TurnProgressReader reads the turn in flight the hold stays whatever paneIdle says, unless restarted is true.
+// A session start after the turn start means the turn is gone.
+// A poll with a busy pane, or one that reads the turn in flight, resets the idle timer.
 // A turn start once released stays released for as long as it is the one asked about.
-func (h *turnStartHold) holds(engine Engine, turnStart SessionSignal, paneIdle bool, now time.Time) bool {
+func (h *turnStartHold) holds(engine Engine, turnStart SessionSignal, restarted, paneIdle bool, now time.Time) bool {
 	if !h.tracking || !sameSignal(h.signal, turnStart) {
 		h.signal, h.tracking, h.idleSince, h.released = turnStart, true, time.Time{}, false
 	}
@@ -340,6 +346,10 @@ func (h *turnStartHold) holds(engine Engine, turnStart SessionSignal, paneIdle b
 			h.released = true
 			return false
 		}
+	}
+	if reader, ok := engine.(TurnProgressReader); ok && !restarted && reader.TurnStartProgress(turnStart) == TurnInFlight {
+		h.idleSince = time.Time{}
+		return true
 	}
 	if !paneIdle {
 		h.idleSince = time.Time{}
@@ -760,7 +770,7 @@ func (run *Run) boundaryIdle() bool {
 	if _, ok := engine.(SessionCycler); !ok {
 		return true
 	}
-	turnStart, found := unmatchedTurnStart(engine, run.state.EventsPath)
+	turnStart, _, found := unmatchedTurnStart(engine, run.state.EventsPath)
 	if !found {
 		return true
 	}
@@ -779,14 +789,14 @@ func (run *Run) boundaryIdle() bool {
 func (run *Run) startHoldReleased() bool {
 	engine := run.runner.engine
 	cycler := engine.(SessionCycler)
-	turnStart, found := unmatchedTurnStart(engine, run.state.EventsPath)
+	turnStart, restarted, found := unmatchedTurnStart(engine, run.state.EventsPath)
 	if !found {
 		run.startCleared = false
 		return false
 	}
 	capture, err := run.runner.reed.CapturePane(run.state.StrandGUID)
 	paneIdle := err == nil && engine.Startup(capture) == StartupReady && cycler.IdleSession(capture)
-	if run.startHold.holds(engine, turnStart, paneIdle, run.clock.Now()) {
+	if run.startHold.holds(engine, turnStart, restarted, paneIdle, run.clock.Now()) {
 		return false
 	}
 	run.startCleared = false
