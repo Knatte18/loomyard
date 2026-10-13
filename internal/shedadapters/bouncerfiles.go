@@ -171,12 +171,14 @@ func readJudgment(runDir string, round int, parse func([]byte) (bouncerVerdict, 
 // ledgerEntry is one finding-identity record in a ledger file: a Key the judge uses to recognize
 // recurring findings, the Rounds it was seen in, and its Status.
 // Class and Severity label the finding the judge mapped to the key; both are empty on an unlabelled entry, which reads as non-gating.
+// Fix is the judge's fix kind: `mechanical`, `design-wrong`, or empty when the judge wrote none.
 type ledgerEntry struct {
 	Key      string
 	Rounds   []int
 	Status   string
 	Class    burlerengine.Class
 	Severity burlerengine.Severity
+	Fix      string
 }
 
 // ledgerFile is a parsed bouncer ledger file: the Round it pertains to, its Entries, and its prose
@@ -201,6 +203,7 @@ type ledgerEntryYAML struct {
 	Status   string `yaml:"status"`
 	Class    string `yaml:"class"`
 	Severity string `yaml:"severity"`
+	Fix      string `yaml:"fix"`
 }
 
 // parseLedger parses a bouncer ledger file into a ledgerFile.
@@ -208,6 +211,7 @@ type ledgerEntryYAML struct {
 // int; the (legally empty) ledger list's entries must each have a non-empty key, a non-empty
 // rounds list of positive ints, and a status of exactly "open" or "resolved".
 // An entry's optional class and severity, when present, must be burlerengine vocabulary.
+// An entry's optional fix is kept unvalidated: a missing or unknown value is legal.
 // parseLedger compares nothing against any previous ledger — carry-forward is stated in the judge
 // prompt and is deliberately not enforced here.
 func parseLedger(content []byte) (ledgerFile, error) {
@@ -256,6 +260,7 @@ func parseLedger(content []byte) (ledgerFile, error) {
 			Status:   raw.Status,
 			Class:    burlerengine.Class(raw.Class),
 			Severity: burlerengine.Severity(raw.Severity),
+			Fix:      raw.Fix,
 		})
 	}
 

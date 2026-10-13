@@ -407,6 +407,10 @@ var wordingClaims = []stencilClaims{
 		{mustNot: "Fixed findings never count as convergence", why: "the old unconditional bound is replaced by the round-2 rule"},
 		{must: "is no convergence signal", why: "the review's own top-level verdict does not converge the loop"},
 		{mustNot: "{{.artifacts}}", why: "the judge no longer reads the artifacts"},
+		{must: "`fix`", why: "D1: every open ledger entry carries a fix tag"},
+		{must: "`design-wrong`", why: "D1: the tag's design-wrong value means the fix needs a fresh review"},
+		{must: "`mechanical`", why: "D1: the tag's mechanical value means the fix can be accepted unreviewed"},
+		{must: "from the review's finding text alone", why: "D1: the judge tags from the finding text and never opens the artifacts or the fixer's diff"},
 	}, focusEntryClaims()...)},
 	{"bouncer-template-escalation.md", BouncerTemplateEscalation, joinClaims(
 		wantAll("the brief tells the fork to record design calls and the decision and to resume the run",
