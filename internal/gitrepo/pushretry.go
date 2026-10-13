@@ -68,8 +68,8 @@ func namesRef(name, ref string) bool {
 // A non-retryable error returns unchanged on its attempt; an exhausted retry returns an error wrapping ErrPushRetriesExhausted and the last push error.
 // A nil sleep sleeps the delay plus up to half of it as jitter.
 //
-// On the weft the refusal `! [remote rejected] main -> main (failed)` is a ref-update race:
-// the remote refuses a ref update that raced another update of the weft's `main` (board writes and other runs' record pushes), and the local ref is not stale.
+// On the records repository the refusal `! [remote rejected] main -> main (failed)` is a ref-update race:
+// the remote refuses a ref update that raced another update of that repository's `main` (board writes and other runs' record pushes), and the local ref is not stale.
 // The retry is the intended path for it, and the Warn each retry logs is the signal that surfaced the race.
 func PushWithRetry(push func() error, ref string, sleep func(time.Duration)) error {
 	if sleep == nil {
