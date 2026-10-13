@@ -19,14 +19,17 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/spf13/cobra"
 )
 
@@ -44,9 +47,11 @@ const peersNoBoardMessage = "loom: peers: this hub has no board, so no run is in
 
 // peerLine is one in-flight peer as `lyx loom peers` prints it.
 type peerLine struct {
-	Slug         string   `json:"slug"`
-	Title        string   `json:"title"`
-	Status       string   `json:"status"`
+	Slug   string `json:"slug"`
+	Title  string `json:"title"`
+	Status string `json:"status"`
+	// Row is the 1-based position of the status's producer in the loom recipe's rows, 0 when it names none.
+	Row          int      `json:"row"`
 	ParentBranch string   `json:"parent_branch"`
 	ChangedPaths []string `json:"changed_paths"`
 	// DecisionRecord and Plan report whether the peer holds that record.
@@ -68,6 +73,20 @@ type peersDeps struct {
 	parentCommits func() ([]string, error)
 	// readRecord returns one peer's record of the given kind, with false when the peer does not hold it.
 	readRecord func(slug, record string) (content string, found bool, err error)
+	// loomRows is the loom recipe's row names in file order.
+	loomRows []string
+}
+
+// recipeRow returns the 1-based position of status's producer among rows, and 0 when status is no run status or its producer names no row.
+func recipeRow(status *string, rows []string) int {
+	producer, ok := boardengine.RunStatusProducer(status)
+	if !ok {
+		return 0
+	}
+	if index := slices.Index(rows, producer); index >= 0 {
+		return index + 1
+	}
+	return 0
 }
 
 // runStatusTasks returns the tasks of tasks that hold a run status, in board order.
@@ -102,6 +121,7 @@ func peersVerb(out io.Writer, deps peersDeps) int {
 		}
 		line := deps.readPeer(task.Slug)
 		line.Slug, line.Title, line.Status = task.Slug, task.Title, *task.Status
+		line.Row = recipeRow(task.Status, deps.loomRows)
 		if line.ChangedPaths == nil {
 			line.ChangedPaths = []string{}
 		}
@@ -113,6 +133,14 @@ func peersVerb(out io.Writer, deps peersDeps) int {
 
 	fields := map[string]any{"peers": peers}
 	if caller != "" {
+		ownRow := 0
+		for _, task := range tasks {
+			if task.Slug == caller {
+				ownRow = recipeRow(task.Status, deps.loomRows)
+				break
+			}
+		}
+		fields["own_row"] = ownRow
 		commits, err := deps.parentCommits()
 		if err != nil {
 			return output.Err(out, fmt.Sprintf("loom: peers: read the parent's commits: %s; way forward: fix the pair's origin record or its parent branch, then re-run \"lyx loom peers\"", err))
@@ -206,8 +234,14 @@ func recordExists(path string) (bool, error) {
 }
 
 // hubPeersDeps fills peersDeps for the resolved location from the hub's board, its pairs' origin records, git history and run records.
+// The loom rows come from the recipe the running binary embeds; a parse failure there is a defect of the binary, so it panics.
 func hubPeersDeps(location *lyxcwd.Location) peersDeps {
+	loomRows, err := loomrecipe.RowNames(shedrun.RecipeLoom)
+	if err != nil {
+		panic(err)
+	}
 	return peersDeps{
+		loomRows: loomRows,
 		board: func() ([]boardengine.Task, bool, error) {
 			info, err := os.Stat(fabricengine.BoardDir(location.HubPath))
 			if errors.Is(err, fs.ErrNotExist) || (err == nil && !info.IsDir()) {
@@ -368,11 +402,13 @@ func (c *loomCLI) peersCmd() *cobra.Command {
 		Short: "list the other in-flight runs of this hub and the parent's landed commits",
 		Long: `peers lists every other run in flight in this hub: each board task holding
 a run status, whatever its state, except this worktree's own. Each peer line
-carries the slug, title, status, parent branch, the paths the peer changed
-since it forked, whether it holds a decision record and a plan, and what could
-not be read. From a task worktree the output also lists the commits on this
-worktree's parent branch since it forked, as short SHA and subject, newest
-first. It reads and writes nothing else, and refuses in a hub with no board.
+carries the slug, title, status, row (the 1-based position of its producer in
+the loom recipe, 0 when the recipe has no such row), parent branch, the paths
+the peer changed since it forked, whether it holds a decision record and a
+plan, and what could not be read. From a task worktree the output also gives
+own_row, this run's own position by the same rule, and lists the commits on
+this worktree's parent branch since it forked, as short SHA and subject,
+newest first. It reads and writes nothing else, and refuses in a hub with no board.
 
 Outside a lyx worktree, a bare call lists the verbs instead.
 

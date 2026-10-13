@@ -911,8 +911,11 @@ func TestRun_Wait_StartupWindow(t *testing.T) {
 		recordsSessionStarts bool
 		// wantLogs are the exact counts of log lines by level and text across the window's probes.
 		wantLogs []wantLogLines
+		// events, when set, is written to the run's events path and the run goes over a sessionFakeEngine that reads it.
+		events string
 	}{
 		{name: "ready pane without a session-start line on a recording launch", startupScript: []StartupState{StartupReady}, recordsSessionStarts: true, wantOutcome: OutcomeDied},
+		{name: "a session start then a turn start beside a still-booting pane on a recording launch", startupScript: []StartupState{StartupPending}, recordsSessionStarts: true, events: "SESSIONSTART:startup\nSTART\n", wantOutcome: OutcomeDied},
 		{name: "trust prompt that never clears", startupScript: []StartupState{StartupTrustPrompt}, wantOutcome: OutcomeDied},
 		{
 			name: "pane capture fails every probe", captureErr: errors.New("capture pane: no such pane"), wantOutcome: OutcomeDied,
@@ -956,7 +959,7 @@ func TestRun_Wait_StartupWindow(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			buf := logcapture.CaptureVerbose(t)
 			runDir := t.TempDir()
-			eventsPath := filepath.Join(runDir, "events.jsonl") // never created
+			eventsPath := filepath.Join(runDir, "events.jsonl")
 			outputFile := filepath.Join(runDir, "out.md")
 			if tt.output {
 				touchOutputFile(t, outputFile)
@@ -971,7 +974,16 @@ func TestRun_Wait_StartupWindow(t *testing.T) {
 				SendKeyErrQueue: tt.sendKeyErrQueue,
 			}
 			engine := &fakeEngine{StartupScript: tt.startupScript}
-			fx := newFixture(t, reed, engine, withConfig(shortStartupConfig))
+			var runEngine Engine = engine
+			if tt.events != "" {
+				session := &sessionFakeEngine{}
+				session.StartupScript = tt.startupScript
+				runEngine = session
+				if err := os.WriteFile(eventsPath, []byte(tt.events), 0o644); err != nil {
+					t.Fatalf("write events: %v", err)
+				}
+			}
+			fx := newFixture(t, reed, runEngine, withConfig(shortStartupConfig))
 			fc := newFakeClock(time.Now())
 			// state.Started is the zero value (false): a persisted run.json whose provider never
 			// reached StartupReady.

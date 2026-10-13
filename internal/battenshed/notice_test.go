@@ -51,6 +51,11 @@ type noticeHarness struct {
 	arbiterFound bool
 	arbiterErr   error
 
+	// driverLock is what the fake ChildDriverLockHeld seam reports; tackler and tacklerFound are what the fake TacklerInFlight seam reports.
+	driverLock   bool
+	tackler      ChildArbiter
+	tacklerFound bool
+
 	// runs, waitLive and activityErr are what the fake Activity seam reports; activityReads counts its calls.
 	runs          []AgentActivity
 	waitLive      bool
@@ -174,6 +179,10 @@ func (h *noticeHarness) producer() shedengine.ShedProducer {
 		MarkWatched: func(context.Context) (bool, error) { return h.watched, nil },
 		ArbiterInFlight: func(context.Context) (ChildArbiter, bool, error) {
 			return h.arbiter, h.arbiterFound, h.arbiterErr
+		},
+		ChildDriverLockHeld: func() (bool, error) { return h.driverLock, nil },
+		TacklerInFlight: func(context.Context) (ChildArbiter, bool, error) {
+			return h.tackler, h.tacklerFound, nil
 		},
 		NoticeQuiet: h.quiet,
 		Activity: func(context.Context) ([]AgentActivity, bool, error) {
@@ -374,6 +383,19 @@ func TestNotice_DeadDriverWhileRunning(t *testing.T) {
 	if strings.Contains(h.notified[0], "while the child is running") {
 		t.Fatalf("notified = %v; want the state to say the child is running, not the condition", h.notified)
 	}
+
+	t.Run("AHeldDriverLockSendsNoDriverDeadNotice", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		h.alive = false
+		h.driverLock = true
+		h.setStatus(shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Write"})
+		h.call(p)
+		h.call(p)
+		if len(h.notified) != 0 {
+			t.Fatalf("notified = %v; want none while the driver lock is held", h.notified)
+		}
+	})
 
 	t.Run("ACoveredChildSendsNoDriverDeadNotice", func(t *testing.T) {
 		h := newNoticeHarness(t)
@@ -932,7 +954,7 @@ func TestNotice_AwaitingLeavesTheRelayToTheDriver(t *testing.T) {
 	}
 }
 
-// TestNotice_LiveArbiterHoldsTheStateChange asserts the notice of a halted or awaiting child, which an ended driver would release at once, is held while a live arbiter marker is within its deadline plus the report wait.
+// TestNotice_LiveArbiterHoldsTheStateChange asserts the notice of a halted or awaiting child, which an ended driver would release at once, is held while a live arbiter or tackler marker is within its deadline plus the report wait.
 // It goes once that bound passes, and as today for a dead strand, a missing marker or an unreadable one.
 // It is never sent when the arbiter's resume moves the child back to running.
 func TestNotice_LiveArbiterHoldsTheStateChange(t *testing.T) {
@@ -953,6 +975,15 @@ func TestNotice_LiveArbiterHoldsTheStateChange(t *testing.T) {
 		}},
 		{name: "ALiveMarkerPastItsDeadlinePlusTheReportWaitSendsTheNotice", at: func(h *noticeHarness) {
 			liveFor(h, 0)
+			h.clock.advance(noticeReportWait)
+		}, wantNotice: true},
+		{name: "ALiveTacklerWithinItsDeadlineHolds", at: func(h *noticeHarness) {
+			h.tackler = ChildArbiter{Deadline: h.clock.Now().Add(30 * time.Minute), Alive: true}
+			h.tacklerFound = true
+		}},
+		{name: "ALiveTacklerPastItsDeadlinePlusTheReportWaitSendsTheNotice", at: func(h *noticeHarness) {
+			h.tackler = ChildArbiter{Deadline: h.clock.Now(), Alive: true}
+			h.tacklerFound = true
 			h.clock.advance(noticeReportWait)
 		}, wantNotice: true},
 		{name: "ADeadStrandHoldsNothing", at: func(h *noticeHarness) {

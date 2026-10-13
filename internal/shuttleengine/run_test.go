@@ -453,34 +453,56 @@ func TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted(t *testi
 }
 
 // TestRunner_Start_TypesTheSegmentColorAfterStartup pins the color step.
-// A colored strand gets the engine's color inputs after startup and before the skill-load message.
+// A colored strand gets the engine's color inputs after startup and after the skill load's first turn, which the launch line carries, and before the retry turn and the prompt.
 // No color, a caller that colors itself and an engine without a color command type nothing, and a failing color play still starts the run.
 func TestRunner_Start_TypesTheSegmentColorAfterStartup(t *testing.T) {
-	loaded := []SkillLoadReport{{Verified: true, Loaded: []string{"a"}}}
+	loaded := func(skills ...string) SkillLoadReport { return SkillLoadReport{Verified: true, Loaded: skills} }
 	tests := []struct {
-		name     string
+		name string
+		// skills and reports default to the skill a and its loaded report.
+		skills   []string
+		reports  []SkillLoadReport
 		color    segmentcolor.Color
 		byCaller bool
 		noInputs bool
 		colorErr error
 		// hookState starts the run over an engine reading hook state, whose events file holds only a SessionStart(startup) line beside a busy-looking pane.
 		hookState bool
+		// lateEnds maps a load turn to the number of Status calls before its turn end is appended.
+		lateEnds  map[int]int
 		wantTyped string
 	}{
-		{name: "ColoredStrandIsColoredBeforeTheSkillLoad", color: segmentcolor.Orange, wantTyped: "COLOR:orange|LOAD:a|do the task"},
-		{name: "NoColorTypesNone", wantTyped: "LOAD:a|do the task"},
-		{name: "ColorByCallerTypesNone", color: segmentcolor.Orange, byCaller: true, wantTyped: "LOAD:a|do the task"},
-		{name: "EngineWithoutAColorCommandTypesNone", color: segmentcolor.Orange, noInputs: true, wantTyped: "LOAD:a|do the task"},
-		{name: "FailingColorPlayStillStartsTheRun", color: segmentcolor.Orange, colorErr: errors.New("boom"), wantTyped: "COLOR:orange|LOAD:a|do the task"},
-		{name: "ASessionStartAloneColorsAPaneThePaneFallbackRefuses", color: segmentcolor.Orange, hookState: true, wantTyped: "COLOR:orange|LOAD:a|do the task"},
+		{name: "ColoredStrandIsColoredAfterTheSkillLoad", color: segmentcolor.Orange, wantTyped: "COLOR:orange|do the task"},
+		{name: "NoColorTypesNone", wantTyped: "do the task"},
+		{name: "ColorByCallerTypesNone", color: segmentcolor.Orange, byCaller: true, wantTyped: "do the task"},
+		{name: "EngineWithoutAColorCommandTypesNone", color: segmentcolor.Orange, noInputs: true, wantTyped: "do the task"},
+		{name: "FailingColorPlayStillStartsTheRun", color: segmentcolor.Orange, colorErr: errors.New("boom"), wantTyped: "COLOR:orange|do the task"},
+		{name: "TheHookStateIdleAfterTheLoadTurnColorsAPaneThePaneFallbackRefuses", color: segmentcolor.Orange, hookState: true, wantTyped: "COLOR:orange|do the task"},
+		{name: "TheColorWaitsForALateFirstTurnEnd", color: segmentcolor.Orange, lateEnds: map[int]int{0: 4}, wantTyped: "COLOR:orange|do the task"},
+		{
+			name:      "TheColorPrecedesTheRetryTurn",
+			skills:    []string{"a", "b"},
+			reports:   []SkillLoadReport{{Verified: true, Loaded: []string{"a"}, Missing: []string{"b"}}, loaded("b")},
+			color:     segmentcolor.Orange,
+			wantTyped: "COLOR:orange|LOAD:b|do the task",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			spec := Spec{Skills: []string{"a"}, ColorByCaller: tt.byCaller}
+			skills := tt.skills
+			if skills == nil {
+				skills = []string{"a"}
+			}
+			reports := tt.reports
+			if reports == nil {
+				reports = []SkillLoadReport{loaded("a")}
+			}
+			spec := Spec{Skills: skills, ColorByCaller: tt.byCaller}
 			strand := reedengine.Strand{GUID: "strand-1", Color: tt.color}
 
-			run, reed, _, err := skillStartFixtureWith(t, strand, spec, loaded, nil, nil, func(reed *skillReed, engine *skillFakeEngine) {
+			run, reed, _, err := skillStartFixtureWith(t, strand, spec, reports, nil, nil, func(reed *skillReed, engine *skillFakeEngine) {
 				reed.ColorErr = tt.colorErr
+				reed.LateEnds = tt.lateEnds
 				engine.NoColorInputs = tt.noInputs
 				engine.HookState = tt.hookState
 				if tt.hookState {
@@ -493,6 +515,9 @@ func TestRunner_Start_TypesTheSegmentColorAfterStartup(t *testing.T) {
 			}
 			if got := strings.Join(typedTexts(reed), "|"); got != tt.wantTyped {
 				t.Errorf("typed = %q; want %q", got, tt.wantTyped)
+			}
+			if strings.HasPrefix(tt.wantTyped, "COLOR:") && reed.EndsAtColor != 1 {
+				t.Errorf("load turn ends at the color = %d; want 1, the color following the first turn's end", reed.EndsAtColor)
 			}
 		})
 	}

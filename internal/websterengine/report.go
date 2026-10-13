@@ -3,10 +3,9 @@
 // and the strict parser that reads it back.
 // webster's flat card format carries no per-batch Scope, so there is nothing to
 // justify an out-of-scope entry against;
-// a fork simply reports whether it succeeded, the head SHA it left, and an informational list of
-// files it touched beyond the plan's prediction (see the deviation-list-is- informational Shared
-// Decision — ParseReport never fails on Deviations content, only on Status/HeadSHA shape
-// violations).
+// a fork simply reports whether it succeeded and the head SHA it left.
+// An older fork's deviations key is still accepted and never read;
+// ParseReport fails only on Status/HeadSHA shape violations.
 
 package websterengine
 
@@ -32,11 +31,9 @@ type Report struct {
 	Status string `yaml:"status"`
 	// HeadSHA is the commit SHA the fork left the worktree at.
 	HeadSHA string `yaml:"head_sha"`
-	// Deviations is the (possibly empty) list of worktree-relative paths
-	// the fork touched beyond the batch's declared file-ops union. It is
-	// always informational — see the deviation-list-is-informational
-	// Shared Decision — and never causes ParseReport to fail.
-	Deviations []string `yaml:"deviations"`
+	// Deviations is accepted and never read: an older fork's report carries the key,
+	// and the known-fields decoding must keep accepting it.
+	Deviations []string `yaml:"deviations,omitempty"`
 }
 
 // ReportFileName returns the per-batch report file's name, "NN-<slug>.yaml", webster's own naming.

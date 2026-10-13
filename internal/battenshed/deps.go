@@ -214,6 +214,30 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil ChildRunLockHeld resolves to a function reporting false in NewInnerRun.
 	ChildRunLockHeld func() (bool, error)
+	// ChildDriverLockHeld reports whether the child's Go driver lock is held, which means a Go driver is working between its steps even when no strand says so and the run lock is free.
+	// Call invokes it beside ChildRunLockHeld.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil ChildDriverLockHeld resolves to a function reporting false in NewInnerRun.
+	ChildDriverLockHeld func() (bool, error)
+	// TacklerInFlight reads the child's in-flight tackler marker as ArbiterInFlight reads the arbiter's: its deadline, and whether its strand is live.
+	// The state-changed notice is held while a live tackler may still settle the child's stop.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil TacklerInFlight resolves to reporting none in NewInnerRun.
+	TacklerInFlight func(ctx context.Context) (tackler ChildArbiter, found bool, err error)
+	// GoVerifyRetrySpent reports whether the child's settle records show its Go driver already spent a verify retry.
+	// The automatic Publish retry reads it so a run is never retried by both the Go driver and batten.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil GoVerifyRetrySpent resolves to a function reporting false in NewInnerRun.
+	GoVerifyRetrySpent func() (bool, error)
+	// ChildBuildChanged reads the label of the lyx on disk and whether it differs from the build the child's last step recorded.
+	// The halted arm calls it at most once per due interval, since it reads a binary; an error is warned about and skips that check.
+	// A nil ChildBuildChanged or ChildDirtyPaths switches the binary re-step off.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	ChildBuildChanged func() (build string, changed bool, err error)
+	// ChildDirtyPaths lists the task pair's uncommitted or untracked paths outside the run's records directories.
+	// A halted child is re-stepped on a new build only when it lists none; an error is warned about and skips that check.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	ChildDirtyPaths func() ([]string, error)
 	// ReviveStrands brings back the strands of the child's pair through reed resume, which relaunches the dead driver strand with its own session.
 	// Call invokes it at most once per halt episode per process, for a halted or awaiting child whose DriverStrand reports dead;
 	// it starts no run step and sends no resume line.
@@ -306,7 +330,7 @@ const (
 )
 
 // SeedChildDeps carries every told value and injected closure NewSeedChild needs, carrying no
-// paths of its own: reading the Board task's own type, reading prime's own seed driver, encoding
+// paths of its own: reading the Board task's own type, reading the child's driver, encoding
 // and writing the child's seed, and committing and pushing it. Every field is a seam a Tier 1 test
 // substitutes with a stub closure, per the seed-encoding-stays-behind-a-seam-in-battenshed Shared
 // Decision -- this type never imports internal/shedrun itself.
@@ -314,8 +338,8 @@ type SeedChildDeps struct {
 	// ReadBoardType returns the Board task's own "recipe" field, evaluated fresh on every Call -- never captured at wiring time -- so a recipe corrected after prime was seeded is still honoured.
 	// The empty string means "loom".
 	ReadBoardType func(ctx context.Context) (string, error)
-	// ChildDriver returns the driver read from prime's own seed params: the child always
-	// inherits prime's driver, never the Board's.
+	// ChildDriver returns the child's driver: the prime seed's typed child_driver, else the task's driver_kind.
+	// SeedChild calls it after the local overrides are written, so the task's driver_kind is read from the layer just written.
 	ChildDriver func() (string, error)
 	// ReadRunSettings returns the Board task's run settings, module name to that module's keys, evaluated fresh on every Call.
 	ReadRunSettings func(ctx context.Context) (map[string]any, error)

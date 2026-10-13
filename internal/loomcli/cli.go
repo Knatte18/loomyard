@@ -13,6 +13,7 @@ package loomcli
 
 import (
 	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -156,6 +157,11 @@ type loomCLI struct {
 	// rowFrictionStatus is the status the Friction-Reflect row's closure recorded in this process;
 	// empty when the row did not run here. loomPostRun reports it on RunDone.
 	rowFrictionStatus string
+	// spawnGoDriver is the seam through which a Go-driver spawn starts a detached `lyx loom drive` and returns its pid.
+	// It is spawnDetachedDrive over the receiver's location in production; the Test Tier Purity Invariant bars a real spawn from an untagged file, so a test substitutes a counting fake.
+	spawnGoDriver func() (int, error)
+	// spawnGoDriverFrom is spawnGoDriver for a caller that resolved the lyx executable path itself, as a driver handing over after a deploy replaced the file it runs from.
+	spawnGoDriverFrom func(executable string) (int, error)
 }
 
 // newLoomCLI is the only place production code may build a *loomCLI: it is what keeps
@@ -171,6 +177,14 @@ func newLoomCLI() *loomCLI {
 		spec:                  &shedverbs.Spec{},
 	}
 	c.parentDirtyPaths = c.parentDirtyPathsFromFabric
+	c.spawnGoDriverFrom = func(executable string) (int, error) { return spawnDetachedDrive(c.location, executable) }
+	c.spawnGoDriver = func() (int, error) {
+		executable, err := os.Executable()
+		if err != nil {
+			return 0, err
+		}
+		return c.spawnGoDriverFrom(executable)
+	}
 	return c
 }
 
@@ -272,13 +286,13 @@ func inReviewGroup(cmd *cobra.Command) bool {
 // resolved location, the two status-file paths, and a handful of cheap path accessors -- no module
 // config, no engine, no producer.
 //
-// The set is the two read-only status verbs (status, pause), the three standalone format self-checks (validate-discussion, validate-plan, validate-description) and the two lints (lint-comments, lint-pattern), which read only c.env's path fields and never a loaded config, and approve, which reads the status file, the fabric and GitHub but builds no producer and so needs no module config either, and commit-records, which commits through fabric and builds no producer, so a broken module config must not refuse it at the driver's last act, and the three plan card verbs (insert-card, remove-card, restore-renumber), which read only c.env.AnchorPath.
+// The set is the two read-only status verbs (status, pause), the three standalone format self-checks (validate-discussion, validate-plan, validate-description) and the two lints (lint-comments, lint-pattern), which read only c.env's path fields and never a loaded config, and approve, which reads the status file, the fabric and GitHub but builds no producer and so needs no module config either, and commit-records, which commits through fabric and builds no producer, so a broken module config must not refuse it at the driver's last act, and the three plan card verbs (insert-card, remove-card, restore-renumber), which read only c.env.AnchorPath, and fmt, which reads only c.env.WorktreeRoot and c.cwd, the cwd the pre-run read through lyxcwd.CwdFrom.
 // Crucible round sonnet5-xhigh-r8's F2 extended the set from the original two after finding the writer agents' own stencil-mandated pre-handoff self-check failed on an unrelated module's broken config, the identical hazard that got status/pause this lightweight path in the first place (see wireLightweight's own doc comment for that history).
 // Every other verb builds or drives producers and keeps the full wire(), including its early config refusal.
 // "step" is deliberately excluded from this set for that same reason: it drives a producer through shedengine.Shed's own Step, so it needs the full wire() and its early config refusal exactly as "start" and "run" do.
 func verbUsesLightweightWiring(name string) bool {
 	switch name {
-	case "status", "pause", "goto", "validate-discussion", "validate-plan", "validate-description", "lint-comments", "lint-pattern", "approve", "reject", "commit-records", "insert-card", "remove-card", "restore-renumber":
+	case "status", "pause", "goto", "validate-discussion", "validate-plan", "validate-description", "lint-comments", "lint-pattern", "fmt", "approve", "reject", "commit-records", "insert-card", "remove-card", "restore-renumber":
 		return true
 	default:
 		return false
@@ -475,7 +489,7 @@ Example:
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 	gotoVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.approveCmd(), c.rejectCmd(), c.commitRecordsCmd(), c.reviewCmd(), c.circlingCmd(), c.decisionCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd())
+	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.fmtCmd(), c.approveCmd(), c.rejectCmd(), c.commitRecordsCmd(), c.reviewCmd(), c.circlingCmd(), c.decisionCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd(), c.driveCmd())
 
 	return parent
 }

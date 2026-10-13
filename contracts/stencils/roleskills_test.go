@@ -1,5 +1,5 @@
 // roleskills_test.go pins PATTERN-role-skills-typed: a skill reaches a spawned session because the
-// spawning module names it on the launch spec and lyx types it, so no stencil asks an agent to load
+// spawning module names it on the launch spec and lyx delivers it, so no stencil asks an agent to load
 // a skill.
 // The scan reads each registered stencil's agent-facing body and flags an imperative load verb
 // followed by a `<plugin>:<skill>` token in the same sentence, or any mention of the `Skill` tool.
@@ -47,7 +47,7 @@ func skillLoadViolations(body string) []string {
 
 // TestStencils_NoSkillLoadInstructions fails for every registered stencil whose agent-facing body tells an agent to load a skill or names the Skill tool.
 //
-//testtiming:keep pins PATTERN-role-skills-typed's ban on a stencil telling an agent to load a skill or naming the Skill tool, a guard that fires which no other test asserts
+//testtiming:keep pins PATTERN-role-skills-typed's ban on a stencil telling an agent to load a skill that lyx delivers, or naming the Skill tool, a guard that fires which no other test asserts
 //lyx:guard
 func TestStencils_NoSkillLoadInstructions(t *testing.T) {
 	t.Parallel()
@@ -59,7 +59,7 @@ func TestStencils_NoSkillLoadInstructions(t *testing.T) {
 			t.Fatalf("Registry().Default(%q) = _, false; want true for a name Registry().Names() returned", name)
 		}
 		for _, violation := range skillLoadViolations(stencil.StripLeadingComment(string(def))) {
-			t.Errorf("stencil %q: %s; a skill is named on the launch spec and typed by lyx, never asked for in a stencil", name, violation)
+			t.Errorf("stencil %q: %s; a skill is named on the launch spec and delivered by lyx, never asked for in a stencil", name, violation)
 		}
 	}
 }

@@ -1,8 +1,10 @@
-// buildvcs_test.go covers the mapping from build settings onto an Identity, and its Clean and Label forms.
+// buildvcs_test.go covers the mapping from build settings onto an Identity, its Clean and Label forms, and OfFile's read of a binary on disk.
 
 package buildvcs
 
 import (
+	"os"
+	"path/filepath"
 	"runtime/debug"
 	"testing"
 	"time"
@@ -32,6 +34,25 @@ func TestIdentityOf(t *testing.T) {
 				t.Errorf("identityOf() = %+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestOfFile(t *testing.T) {
+	t.Parallel()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable() = _, %v; want nil", err)
+	}
+	if _, err := OfFile(executable); err != nil {
+		t.Errorf("OfFile(%q) = _, %v; want nil for the test binary", executable, err)
+	}
+
+	text := filepath.Join(t.TempDir(), "notes.txt")
+	if err := os.WriteFile(text, []byte("not a binary\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OfFile(text); err == nil {
+		t.Errorf("OfFile(%q) error = nil; want a refusal for a text file", text)
 	}
 }
 

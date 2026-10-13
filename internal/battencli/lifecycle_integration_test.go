@@ -28,7 +28,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -1263,7 +1262,7 @@ func stepPairDirNamesTheTaskWorktree(t *testing.T, h *hubforge.Hub) {
 }
 
 // stepMarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent drives the watched-marker seam over a real pair:
-// the marker holds batten's pid for a pair created from the prime while the prime's orch state records a strand,
+// the marker holds batten's pid, scratch directory and row name for a pair created from the prime while the prime's orch state records a strand,
 // and is removed when the strand is gone and when the pair's origin names another worktree.
 func stepMarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-watched"
@@ -1316,8 +1315,8 @@ func stepMarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent(t *t
 		}
 		raw, readErr := os.ReadFile(marker)
 		if step.wantPidIn {
-			if want := strconv.Itoa(os.Getpid()) + "\n"; readErr != nil || string(raw) != want {
-				t.Errorf("%s: marker = %q, %v; want batten's pid %q", step.name, raw, readErr, want)
+			if want := shedrun.BattenWatchedContent(os.Getpid(), BattenDir(h.Location, slug), battenrecipe.NameRunShed); readErr != nil || !bytes.Equal(raw, want) {
+				t.Errorf("%s: marker = %q, %v; want batten's pid, scratch directory and row %q", step.name, raw, readErr, want)
 			}
 		} else if !os.IsNotExist(readErr) {
 			t.Errorf("%s: marker read = %q, %v; want it absent", step.name, raw, readErr)

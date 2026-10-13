@@ -423,7 +423,7 @@ func (p *innerRunProducer) logSessionStatesAtNotice(runs []AgentActivity, condit
 // a report older than since never qualifies, and a notice that goes without one says `report none yet`.
 // An awaiting child that carries a parent notice, while this batten holds the watched marker, is left to its driver's own relay:
 // its notice goes when the driver strand has ended, or noticeReportWait passed with no report, or noticeRelayWait passed since the report with no decision record.
-// A live arbiter in flight holds the notice of a halted or awaiting child until its deadline plus noticeReportWait has passed.
+// A live arbiter or tackler in flight holds the notice of a halted or awaiting child until its deadline plus noticeReportWait has passed.
 func (p *innerRunProducer) stateChangeReady(ctx context.Context, w *childWait) (ready bool, clause string) {
 	status := w.status
 	now := p.deps.Now()
@@ -452,16 +452,25 @@ func (p *innerRunProducer) stateChangeReady(ctx context.Context, w *childWait) (
 	return qualifies || ended || waited, clause
 }
 
-// arbiterHolds reports whether a live arbiter is in flight within its deadline plus noticeReportWait.
+// arbiterHolds reports whether a live arbiter or a live tackler is in flight within its deadline plus noticeReportWait.
 // A read error warns once per episode and holds nothing.
 func (p *innerRunProducer) arbiterHolds(ctx context.Context, now time.Time) bool {
 	arbiter, found, err := p.deps.ArbiterInFlight(ctx)
 	if err != nil {
 		p.seamFailed(failArbiterMarker, err)
+	} else {
+		p.seamRecovered(failArbiterMarker)
+		if found && arbiter.Alive && now.Before(arbiter.Deadline.Add(noticeReportWait)) {
+			return true
+		}
+	}
+	tackler, found, err := p.deps.TacklerInFlight(ctx)
+	if err != nil {
+		p.seamFailed(failTacklerMarker, err)
 		return false
 	}
-	p.seamRecovered(failArbiterMarker)
-	return found && arbiter.Alive && now.Before(arbiter.Deadline.Add(noticeReportWait))
+	p.seamRecovered(failTacklerMarker)
+	return found && tackler.Alive && now.Before(tackler.Deadline.Add(noticeReportWait))
 }
 
 // stopReport reads the driver's stop report through deps.StopReport; an error warns once per episode and reads as none.

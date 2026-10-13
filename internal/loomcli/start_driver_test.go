@@ -627,7 +627,7 @@ func writeTestRunState(t *testing.T, c *loomCLI, st shedengine.State) {
 	}
 }
 
-// TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker asserts a live driver strand without a park marker, and without the retiring mark, is neither removed, replaced nor sent to:
+// TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker asserts a live driver strand without a park marker, and without the retiring mark, or a held driver lock with no strand at all, is neither removed, replaced nor sent to:
 // over a run with no status or a running run the call is a no-op that succeeds, and over a run handed back to the driver it refuses retryably until the driver parks.
 func TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker(t *testing.T) {
 	notParked := []string{"not parked yet", "lyx loom start"}
@@ -652,63 +652,134 @@ func TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker(t *testing.T) {
 		{name: "failed run refuses retryably", runState: shedengine.StateFailed, wantKind: shedrun.StartNotParkedKind, wantIn: notParked},
 		{name: "unreadable status file names the failure and the retry", statusUnreadable: true, wantIn: []string{state.ErrRead.Error(), `re-run "lyx loom start"`}},
 	}
+	// Each row runs once with a live driver strand, and once with the test holding the real driver lock and no strand at all.
+	for _, liveness := range []string{"live strand", "driver lock"} {
+		driverLock := liveness == "driver lock"
+		for _, tt := range tests {
+			t.Run(liveness+"/"+tt.name, func(t *testing.T) {
+				starter := &fakeDriverStarter{}
+				sender := &fakeDriverSender{}
+				probe := &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}
+				if driverLock {
+					probe.strandsFn = noStrands
+				}
+				c, lockPath, marker := newResumeBranchReceiver(t, starter, probe, sender)
+				if err := os.Remove(marker); err != nil {
+					t.Fatalf("remove marker: %v", err)
+				}
+				if driverLock {
+					driverLockPath := shedrun.DriverLock(c.location, c.runID)
+					if err := os.MkdirAll(filepath.Dir(driverLockPath), 0o755); err != nil {
+						t.Fatalf("mkdir driver lock dir: %v", err)
+					}
+					held, acquired, err := lock.TryAcquireWriteLock(driverLockPath)
+					if err != nil || !acquired {
+						t.Fatalf("test could not take the driver lock: acquired %t, %v", acquired, err)
+					}
+					t.Cleanup(func() { _ = held.Release() })
+				}
+				if tt.runState != "" {
+					c.frictionDir = t.TempDir()
+					writeTestRunState(t, c, tt.runState)
+				}
+				if tt.statusBody != "" {
+					writeTestRunStateRaw(t, c, tt.statusBody)
+				}
+				if tt.statusUnreadable {
+					if err := os.MkdirAll(c.shedPaths.StatusPath, 0o755); err != nil {
+						t.Fatal(err)
+					}
+				}
+
+				var out bytes.Buffer
+				bootstrapLock := acquireTestBootstrapLock(t, lockPath)
+				ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+
+				if len(sender.texts) != 0 || starter.called || probe.removeCalled {
+					t.Errorf("sent %d line(s), starter called = %v, strand removed = %v; want none", len(sender.texts), starter.called, probe.removeCalled)
+				}
+				if _, found := voucherOnDisk(t, c); found {
+					t.Error("the live-strand call wrote a handoff voucher")
+				}
+				if tt.wantIn == nil {
+					if !ok || out.Len() != 0 {
+						t.Errorf("runDriverSpawnAndWait() = %v, output %q; want true and no output", ok, out.String())
+					}
+					_ = bootstrapLock.Release()
+					return
+				}
+				if ok {
+					t.Fatal("runDriverSpawnAndWait() = true; want a refusal while the driver has not parked")
+				}
+				var envelope struct {
+					OK    bool   `json:"ok"`
+					Kind  string `json:"kind"`
+					Error string `json:"error"`
+				}
+				if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+					t.Fatalf("envelope %q: %v", out.String(), err)
+				}
+				if envelope.OK || envelope.Kind != tt.wantKind {
+					t.Errorf("envelope = %+v; want ok=false kind=%q", envelope, tt.wantKind)
+				}
+				for _, want := range tt.wantIn {
+					if !strings.Contains(envelope.Error, want) {
+						t.Errorf("error = %q; want substring %q", envelope.Error, want)
+					}
+				}
+				assertBootstrapLockReleased(t, lockPath)
+			})
+		}
+	}
+}
+
+// TestRunDriverSpawnAndWait_GoArm pins the go arm: with nothing alive it spawns the Go driver through the spawn seam once and succeeds when the driver takes its driver lock, and a spawn that fails refuses and releases the bootstrap lock.
+func TestRunDriverSpawnAndWait_GoArm(t *testing.T) {
+	tests := []struct {
+		name     string
+		spawnErr error
+		wantOK   bool
+	}{
+		{name: "nothing alive spawns once and succeeds on the driver lock", wantOK: true},
+		{name: "a failing spawn refuses and releases the bootstrap lock", spawnErr: errors.New("no such binary")},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			starter := &fakeDriverStarter{}
-			sender := &fakeDriverSender{}
-			probe := &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}
-			c, lockPath, marker := newResumeBranchReceiver(t, starter, probe, sender)
-			if err := os.Remove(marker); err != nil {
-				t.Fatalf("remove marker: %v", err)
-			}
-			if tt.runState != "" {
-				c.frictionDir = t.TempDir()
-				writeTestRunState(t, c, tt.runState)
-			}
-			if tt.statusBody != "" {
-				writeTestRunStateRaw(t, c, tt.statusBody)
-			}
-			if tt.statusUnreadable {
-				if err := os.MkdirAll(c.shedPaths.StatusPath, 0o755); err != nil {
-					t.Fatal(err)
+			c, lockPath := newTestSpawnAndWaitReceiver(t, &fakeDriverStarter{}, &fakeDriverPaneProbeFull{strandsFn: noStrands})
+			spawns := 0
+			c.spawnGoDriver = func() (int, error) {
+				spawns++
+				if tt.spawnErr != nil {
+					return 0, tt.spawnErr
 				}
+				driverLockPath := shedrun.DriverLock(c.location, c.runID)
+				if err := os.MkdirAll(filepath.Dir(driverLockPath), 0o755); err != nil {
+					t.Fatalf("mkdir driver lock dir: %v", err)
+				}
+				held, acquired, err := lock.TryAcquireWriteLock(driverLockPath)
+				if err != nil || !acquired {
+					t.Fatalf("the fake driver could not take the driver lock: acquired %t, %v", acquired, err)
+				}
+				t.Cleanup(func() { _ = held.Release() })
+				return os.Getpid(), nil
 			}
 
 			var out bytes.Buffer
 			bootstrapLock := acquireTestBootstrapLock(t, lockPath)
-			ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+			ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverGo, bootstrapLock, c.driverLockHeld)
 
-			if len(sender.texts) != 0 || starter.called || probe.removeCalled {
-				t.Errorf("sent %d line(s), starter called = %v, strand removed = %v; want none", len(sender.texts), starter.called, probe.removeCalled)
+			if spawns != 1 {
+				t.Errorf("spawnGoDriver called %d times; want 1", spawns)
 			}
-			if _, found := voucherOnDisk(t, c); found {
-				t.Error("the live-strand call wrote a handoff voucher")
+			if ok != tt.wantOK {
+				t.Fatalf("runDriverSpawnAndWait() = %v; want %v (output %q)", ok, tt.wantOK, out.String())
 			}
-			if tt.wantIn == nil {
-				if !ok || out.Len() != 0 {
-					t.Errorf("runDriverSpawnAndWait() = %v, output %q; want true and no output", ok, out.String())
-				}
+			if ok {
 				_ = bootstrapLock.Release()
 				return
 			}
-			if ok {
-				t.Fatal("runDriverSpawnAndWait() = true; want a refusal while the driver has not parked")
-			}
-			var envelope struct {
-				OK    bool   `json:"ok"`
-				Kind  string `json:"kind"`
-				Error string `json:"error"`
-			}
-			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
-				t.Fatalf("envelope %q: %v", out.String(), err)
-			}
-			if envelope.OK || envelope.Kind != tt.wantKind {
-				t.Errorf("envelope = %+v; want ok=false kind=%q", envelope, tt.wantKind)
-			}
-			for _, want := range tt.wantIn {
-				if !strings.Contains(envelope.Error, want) {
-					t.Errorf("error = %q; want substring %q", envelope.Error, want)
-				}
+			if !strings.Contains(out.String(), tt.spawnErr.Error()) {
+				t.Errorf("output = %q; want it to name the spawn failure %q", out.String(), tt.spawnErr)
 			}
 			assertBootstrapLockReleased(t, lockPath)
 		})

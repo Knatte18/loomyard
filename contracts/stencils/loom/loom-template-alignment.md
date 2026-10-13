@@ -31,13 +31,13 @@ At `parent-review`:
 
 - The brief `{{.brief_path}}`.
 - The decision record `{{.decision_record_path}}` and the support log `{{.support_log_path}}`.
-- The board: `lyx board list`, then `lyx board get` for this task and every entry that touches it.
+- The board: `lyx board list`, then `lyx board get '{"slug":"{{.slug}}"}'` for this task and the same payload with each slug for every entry that touches it.
 - The other runs in flight and the parent's landed commits: `lyx loom peers`, and `lyx loom peers show <slug> --record decision` or `--record plan` for a peer that looks close.
 
 At `pr-gate`:
 
 - The decision record `{{.decision_record_path}}`, the plan in `{{.plan_dir}}` and the diff of pull request {{.pr_number}} at `{{.head_sha}}` against `{{.parent_branch}}`.
-- The board: `lyx board list`, then `lyx board get` for this task and every entry that touches it.
+- The board: `lyx board list`, then `lyx board get '{"slug":"{{.slug}}"}'` for this task and the same payload with each slug for every entry that touches it.
 - The other runs in flight and the parent's landed commits: `lyx loom peers`, and `lyx loom peers show <slug> --record decision` or `--record plan` for a peer that looks close.
 
 Read-only git in `{{.worktree}}` is allowed.
@@ -55,22 +55,36 @@ At both points, also check overlap with every other run `lyx loom peers` lists a
 
 ## When to escalate
 
-Escalate on a substantive overlap:
+An overlap with a peer run or a landed parent commit does not escalate on its own.
+Escalate on an overlap only when the designs conflict:
 
-- a Go package or code file that this run and another run, or a landed parent commit, both change;
-- a decision that contradicts or duplicates one in a peer's record or board entry;
-- a change to the same PATTERN entry.
+- both runs change the same behaviour in different ways;
+- a decision recorded in one contradicts or duplicates one in the other;
+- both change the same PATTERN entry in different ways.
+
+A landed parent commit holds no decision record.
+Compare the commit's subject and diff against this run's decision record and diff, and escalate when the commit changes the same behaviour or the same PATTERN entry differently than this run's decisions do, or already makes one of this run's decisions.
+
+A text-only overlap, the same file or package changed at different places, is never a reason to escalate.
 
 Also escalate on a question that needs a decision the board and the records do not give.
 
 Every escalation fills `question`:
-for an overlap it names the peer and what overlaps, and for an open question it names the question and the record or entry that leaves it open.
+for a design conflict it names the peer and what conflicts, and for an open question it names the question and the record or entry that leaves it open.
 
 A shared bookkeeping file alone is not an overlap: `cmd/lyx/testdata/test-budget.yaml`, a module-table line in the overview doc and a new PATTERN index line are named in the report and do not escalate.
+
+## Landing order
+
+For every overlap, the run furthest along by its recipe row lands first, and the other takes its changes at Merge-In.
+Compare each peer's `row` from `lyx loom peers` with the list's `own_row`, the order the running binary's embedded recipe gives; the agent never reads a recipe file.
+Two runs on the same row are a tie, and a peer whose `row` is 0 is an unknown order.
+The verdict is unchanged by the order.
 
 ## Otherwise
 
 Approve, or reject on a scope deviation.
+The report records each overlapping peer or parent commit, what overlaps, and the landing order the rule gives, or the tie or unknown order.
 An approve at `pr-gate` lists under `superseded` the slugs of the board entries this run makes obsolete.
 
 ## What you write
@@ -78,7 +92,7 @@ An approve at `pr-gate` lists under `superseded` the slugs of the board entries 
 Write exactly two files, the report first and the verdict last.
 
 1. The report `{{.report_path}}`, in the format `{{.review_format_path}}` defines.
-   A report on an approve carries no finding.
+   A report on an approve carries no finding, and it records each overlapping peer or parent commit, what overlaps and the landing order, or the tie or unknown order.
 2. The verdict `{{.verdict_path}}`, as YAML with these keys:
    - `verdict`: `approve`, `reject` or `escalate`.
    - `reason`: why; required.

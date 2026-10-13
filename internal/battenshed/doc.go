@@ -37,8 +37,8 @@
 // A parked stop's notice waits for the driver's stop report, for the driver strand to end, or for three minutes after `since`, whichever comes first, and an older report never qualifies.
 // An awaiting child whose status carries a parent notice, while this batten holds the watched marker, is left to its driver's relay:
 // its notice goes when the driver strand has ended, or three minutes passed with no report, or ten minutes passed since the report with no decision record.
-// A live arbiter in flight holds the notice of a halted or awaiting child, so the orch is not told "report none yet" for a stop the arbiter may settle:
-// the hold ends when the arbiter's marker is gone, its strand is dead, or its deadline plus the report wait has passed, and the rules above decide again.
+// A live arbiter or tackler in flight holds the notice of a halted or awaiting child, so the orch is not told "report none yet" for a stop either may settle:
+// the hold ends when the marker is gone, its strand is dead, or its deadline plus the report wait has passed, and the rules above decide again.
 // When a resume moves the child back to running the episode ends and no notice goes; after a hand-on the marker is gone and the driver's stop report qualifies.
 // A done child sends no notice: a landing that succeeds needs nothing from the orch.
 // A resume the child refuses because its parked driver's pane holds a draft, an active operator or another busy reading (a spawn error wrapping ErrChildDriverBusy) is retried like a not-parked one, without a deadline, until the resume lands, the child leaves awaiting or batten is paused or stopped.
@@ -89,8 +89,9 @@
 // so a restarted batten brings a driverless child back up:
 // the confirmation marker holds the pid of the process that wrote it,
 // and a marker from another pid or in the old layout reads as unconfirmed.
-// A child with a live or retiring driver strand in its reed state, or a held run lock, is adopted instead, with the confirmation recorded for this process,
+// A child with a live or retiring driver strand in its reed state, a held run lock, or a held Go driver lock, is adopted instead, with the confirmation recorded for this process,
 // so a second driver is never stacked.
+// The driver lock is a liveness signal of its own: a Go driver holds it for life while the run lock is free between steps, so a running go child whose driver lock is held has a driver at work and sends no driver-dead notice, and one with neither lock and no strand is noticed as driver-dead.
 //
 // A child that halts (blocked, paused or failed) is a budget-exempt wait, not a failure of the Run-Shed row:
 // batten never spawns or resumes a halted child, bar one exception below, logs one Info line per halt episode, and keeps waiting with the child's state, error, current producer and the resume command ("lyx loom resume" in the task worktree) as its reason.
@@ -110,6 +111,17 @@
 // A goto refused as busy and a resume refused as not parked or as a busy pane are retried once per notice probe until the cap of thirty minutes after the start; any other goto refusal gives up at once.
 // A retry that gave up, or a second Publish halt after the retry ran, sends the usual blocked notice with words saying so, which tells the orch the failure needs judgement.
 // Any record that does not match, and any read error on the way to the decision, leaves the halt to the handling above.
+// The retry is split between two records: a Go driver's verify retry is counted in the child's settle records, and batten's in its marker.
+// With no marker, a blocked child at a verify row whose settle records show a Go verify retry counts as spent, so a run is never retried by both.
+//
+// A halted go child is also re-stepped once per halt and per lyx build (innerrun_binaryrestep.go), so a fix deployed after a Go driver handed back lands without a parent turn.
+// The child is re-stepped, through the same Spawn seam as every bootstrap, only when it is blocked or failed, its reed state holds no driver strand, neither its run lock nor its driver lock is held, and the Call's publish retry takes no action;
+// the lyx on disk must differ from the build the child's last step recorded, and the task pair must have no uncommitted or untracked path outside the run's records.
+// The `<row>-binary-restep` marker holds the halt's stop key and the build label, and is written only after the spawn returns success, so the re-step happens once per halt and build and survives a batten restart.
+// A spawn refused as not parked or as a busy pane, and a dirty tree, write no marker and are tried again at the next due check; the spawns are capped at five per halt and build.
+// Reading the build and the dirty paths costs a process, so the check runs once per interval:
+// it starts at the notice probe, doubles up to thirty minutes while the halt and the build stay the same, and returns to the probe on a change.
+// A pause covering the slug holds the re-step like every halted-arm action, a standalone go-driven run with no batten has no such watch, and a nil build or dirty-path seam switches the re-step off.
 //
 // With deps.ParentLock wired, the wait also looks after the parent lock of the child's run on every probe check (innerrun_parentlock.go).
 // A lock record handed to this batten at PR-Gate is kept while the child awaits there, until that awaiting has lasted the idle bound with no decision to resume on, and while the child runs after a resume, so the resumed loop takes it back; in any other state the record is released.

@@ -150,6 +150,7 @@ func TestStartup_TrustPromptThenReady(t *testing.T) {
 }
 
 // TestStartup_NeedsSessionStartLine covers the startup criterion of a launch that records session starts: a ready pane starts the run only once the events file also holds a session-start line.
+// A session start followed by a turn start starts the run whatever the pane shows, and a turn start before the session start, or on a launch that does not record, does not.
 // A missing line and an unreadable events file each time the start out naming themselves and the events path, a gate on screen is dismissed whatever the file holds, and a launch that does not declare the recording starts on the pane alone.
 func TestStartup_NeedsSessionStartLine(t *testing.T) {
 	tests := []struct {
@@ -178,8 +179,12 @@ func TestStartup_NeedsSessionStartLine(t *testing.T) {
 		},
 		{name: "a session-start line and a ready pane start the run", records: true, script: []StartupState{StartupReady}, events: "SESSIONSTART:startup\n", wantStarted: true},
 		{name: "a gate on screen is dismissed beside a session-start line, then the ready pane starts the run", records: true, script: []StartupState{StartupTrustPrompt, StartupReady}, events: "SESSIONSTART:startup\n", wantStarted: true, wantEnter: true},
-		{name: "a session-start line of an earlier launch with a pane not yet ready is not started", records: true, script: []StartupState{StartupPending}, events: "SESSIONSTART:startup\n", wantNoErr: "session-start line"},
+		{name: "a session-start line of an earlier launch with a pane not yet ready is not started", records: true, script: []StartupState{StartupPending}, events: "SESSIONSTART:startup\n", wantErr: `outcome "died"`, wantNoErr: "session-start line"},
 		{name: "a launch that does not record session starts starts on the pane alone", script: []StartupState{StartupReady}, wantStarted: true},
+		{name: "a session start then a turn start start the run while every capture is blank", records: true, script: []StartupState{StartupPending}, events: "SESSIONSTART:startup\nSTART\n", wantStarted: true},
+		{name: "a trust gate beside a session start and no turn start is dismissed and not ready", records: true, script: []StartupState{StartupTrustPrompt}, events: "SESSIONSTART:startup\n", wantEnter: true, wantErr: `outcome "died"`},
+		{name: "a turn start before any session start does not start the run", records: true, script: []StartupState{StartupPending}, events: "START\nSESSIONSTART:startup\n", wantErr: `outcome "died"`},
+		{name: "a launch that does not record session starts ignores a turn start", script: []StartupState{StartupPending}, events: "SESSIONSTART:startup\nSTART\n", wantErr: `outcome "died"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1193,7 +1198,7 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 			name:       "every skill loads in one turn before the prompt",
 			spec:       Spec{Skills: []string{"a", "b"}},
 			reports:    []SkillLoadReport{loaded("a", "b")},
-			wantTyped:  "LOAD:a,b|do the task",
+			wantTyped:  "do the task",
 			wantOffset: true,
 			elapsed:    zero,
 		},
@@ -1201,7 +1206,7 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 			name:      "a line appended after the last load turn end lies before the prompt offset",
 			spec:      Spec{Skills: []string{"a"}},
 			reports:   []SkillLoadReport{loaded("a")},
-			wantTyped: "LOAD:a|do the task",
+			wantTyped: "do the task",
 			afterClassify: func(t *testing.T, eventsPath string) {
 				f, err := os.OpenFile(eventsPath, os.O_APPEND|os.O_WRONLY, 0o644)
 				if err != nil {
@@ -1219,7 +1224,7 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 			name:       "unknown skill is skipped at once with no retry",
 			spec:       Spec{Skills: []string{"ghost", "b"}},
 			reports:    []SkillLoadReport{{Verified: true, Loaded: []string{"b"}, Unknown: []string{"ghost"}}},
-			wantTyped:  "LOAD:ghost,b|do the task",
+			wantTyped:  "do the task",
 			wantSkips:  1,
 			wantLogs:   []string{"skill=ghost", "cause=unknown"},
 			wantOffset: true,
@@ -1229,7 +1234,7 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 			name:       "missing skill is retried once, naming only it",
 			spec:       Spec{Skills: []string{"a", "b"}},
 			reports:    []SkillLoadReport{{Verified: true, Loaded: []string{"a"}, Missing: []string{"b"}}, loaded("b")},
-			wantTyped:  "LOAD:a,b|LOAD:b|do the task",
+			wantTyped:  "LOAD:b|do the task",
 			wantOffset: true,
 			elapsed:    zero,
 		},
@@ -1237,7 +1242,7 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 			name:       "skill still missing after the retry is skipped",
 			spec:       Spec{Skills: []string{"a", "b"}},
 			reports:    []SkillLoadReport{{Verified: true, Loaded: []string{"a"}, Missing: []string{"b"}}, {Verified: true, Missing: []string{"b"}}},
-			wantTyped:  "LOAD:a,b|LOAD:b|do the task",
+			wantTyped:  "LOAD:b|do the task",
 			wantSkips:  1,
 			wantLogs:   []string{"skill=b", "cause=\"not loaded\""},
 			wantOffset: true,
@@ -1247,7 +1252,7 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 			name:       "unverified first turn confirms with no retry",
 			spec:       Spec{Skills: []string{"a", "b"}},
 			reports:    []SkillLoadReport{{}},
-			wantTyped:  "LOAD:a,b|do the task",
+			wantTyped:  "do the task",
 			wantLogs:   []string{"skill load unverified"},
 			wantOffset: true,
 			elapsed:    zero,
@@ -1256,7 +1261,7 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 			name:       "unverified retry confirms with no further turn",
 			spec:       Spec{Skills: []string{"a", "b"}},
 			reports:    []SkillLoadReport{{Verified: true, Loaded: []string{"a"}, Missing: []string{"b"}}, {}},
-			wantTyped:  "LOAD:a,b|LOAD:b|do the task",
+			wantTyped:  "LOAD:b|do the task",
 			wantLogs:   []string{"skill load unverified"},
 			wantOffset: true,
 			elapsed:    zero,
@@ -1265,16 +1270,16 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 			name:      "first turn that never ends is skipped at the timeout with no retry",
 			spec:      Spec{Skills: []string{"slow", "b"}, SkillLoadTimeout: 50 * time.Millisecond},
 			hangs:     []int{0},
-			wantTyped: "LOAD:slow,b|do the task",
+			wantTyped: "do the task",
 			wantSkips: 2,
 			wantLogs:  []string{"cause=timeout"},
 			elapsed:   atLeastTimeout,
 		},
 		{
-			name:       "a session start alone sends the load into a pane the pane fallback refuses",
+			name:       "the hook state's idle reading after the load turn sends the prompt into a pane the pane fallback refuses",
 			spec:       Spec{Skills: []string{"a"}},
 			reports:    []SkillLoadReport{loaded("a")},
-			wantTyped:  "LOAD:a|do the task",
+			wantTyped:  "do the task",
 			wantOffset: true,
 			elapsed:    zero,
 			hookState:  true,
@@ -1283,7 +1288,7 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 			name:      "pane that dies during a load turn is a died startup",
 			spec:      Spec{Skills: []string{"a", "b"}},
 			dies:      []int{0},
-			wantTyped: "LOAD:a,b",
+			wantTyped: "",
 			wantDied:  true,
 			elapsed:   zero,
 		},
@@ -1305,6 +1310,13 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 				// The provider was ready before the pane died, so the recorded ready screen is no diagnosis.
 				if len(tt.dies) > 0 && strings.Contains(err.Error(), "The pane's last lines:") {
 					t.Errorf("Start() error = %v; want no pane tail after a ready start", err)
+				}
+				// The death is loadSkillTurn's after a ready startup, not the startup probe's.
+				if len(tt.dies) > 0 {
+					record, _, rerr := loadRunState(filepath.Dir(reed.EventsPath()))
+					if rerr != nil || !record.Started {
+						t.Errorf("run record Started = %v (err %v); want true", record.Started, rerr)
+					}
 				}
 			} else if err != nil {
 				t.Fatalf("Start() error = %v", err)
@@ -1451,9 +1463,12 @@ func (r *brokenRunRecordReed) SendText(guid, text string, submit bool) error {
 func TestStartup_SendFailuresTearDown(t *testing.T) {
 	t.Parallel()
 	const prompt = "do the task"
+	skillMissing := []SkillLoadReport{{Verified: true, Missing: []string{"a"}}}
 	tests := []struct {
 		name  string
 		skill bool
+		// reports scripts each load turn's classification; the skill-load rows name the skill missing, so the retry turn is the typed one.
+		reports []SkillLoadReport
 		// idle is what the idle reading answers.
 		idle bool
 		// box is what the input box holds throughout.
@@ -1473,12 +1488,12 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 		// wantOneTail asserts the pane's last lines appear once in the error: the cause carries them and the teardown adds none.
 		wantOneTail bool
 	}{
-		{name: "a skill-load send that stays busy", skill: true, idle: false, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantOneTail: true},
+		{name: "a skill-load send that stays busy", skill: true, reports: skillMissing, idle: false, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantOneTail: true},
 		{name: "a prompt delivery that does not land", idle: true, box: prompt, wantIs: []error{ErrNotStarted, ErrSubmissionNotLanded}, wantDiedRecord: true},
-		{name: "a skill load held past the send window by an active operator", skill: true, idle: true, active: []bool{true}, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
+		{name: "a skill load held past the send window by an active operator", skill: true, reports: skillMissing, idle: true, active: []bool{true}, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
 		{name: "a prompt delivery held past the send window by an active operator", idle: true, active: []bool{true}, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
 		{name: "a prompt delivery that finds a foreign box", idle: true, box: "somebody else's draft", paste: true, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
-		{name: "a prompt-offset persist that fails", skill: true, idle: true, breakRecord: true, wantIs: []error{ErrNotStarted}},
+		{name: "a prompt-offset persist that fails", skill: true, reports: skillMissing, idle: true, breakRecord: true, wantIs: []error{ErrNotStarted}},
 		{name: "an unlanded prompt followed by a turn start landed late", idle: true, box: prompt, startOnWindowClose: true, wantStarted: true},
 	}
 	for _, tt := range tests {
@@ -1492,7 +1507,7 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 						StartupScript: []StartupState{StartupReady},
 					},
 					Timeout: time.Minute,
-					Reports: []SkillLoadReport{{Verified: true, Loaded: []string{"a"}}},
+					Reports: tt.reports,
 				},
 				idle: tt.idle,
 				box:  tt.box,

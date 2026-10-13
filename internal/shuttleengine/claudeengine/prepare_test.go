@@ -288,8 +288,9 @@ func TestPrepare_ResumeSessionID(t *testing.T) {
 	}
 }
 
-// TestPrepare_SkillsDeferPromptPointer proves a spec naming skills leaves the prompt pointer off the launch line and returns it as PromptLine,
-// and a spec without skills keeps the pointer on the line with an empty PromptLine, for a fresh and a resumed launch.
+// TestPrepare_SkillsDeferPromptPointer proves, for a fresh and a resumed launch, that a spec naming skills carries the skill-load message on the launch line and returns the prompt pointer as PromptLine.
+// A spec without skills keeps the pointer on the line with an empty PromptLine.
+// A skill-load message over the launch limit fails before any prompt file is written.
 func TestPrepare_SkillsDeferPromptPointer(t *testing.T) {
 	const id = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
 	for _, resume := range []bool{false, true} {
@@ -308,6 +309,9 @@ func TestPrepare_SkillsDeferPromptPointer(t *testing.T) {
 				if strings.Contains(launch.Cmd, "Read ") {
 					t.Errorf("resume=%v: Launch.Cmd = %q; want no prompt pointer", resume, launch.Cmd)
 				}
+				if !strings.Contains(launch.Cmd, New().SkillLoadMessage(skills)) {
+					t.Errorf("resume=%v: Launch.Cmd = %q; want the skill-load message", resume, launch.Cmd)
+				}
 				if launch.PromptLine != pointer {
 					t.Errorf("resume=%v: PromptLine = %q; want %q", resume, launch.PromptLine, pointer)
 				}
@@ -323,6 +327,16 @@ func TestPrepare_SkillsDeferPromptPointer(t *testing.T) {
 				t.Errorf("resume=%v, skills=%v: prompt.md not written: %v", resume, skills, err)
 			}
 		}
+	}
+
+	runDir := t.TempDir()
+	longSkill := strings.Repeat("s", maxLaunchPromptBytes)
+	_, err := New().Prepare(runDir, shuttleengine.Spec{Prompt: "do the thing", Skills: []string{longSkill}}, templateConfig(t))
+	if err == nil || !strings.Contains(err.Error(), "skill-load message is") || !strings.Contains(err.Error(), "launch limit") {
+		t.Errorf("Prepare(over-limit skill-load message) error = %v; want one naming the message length and the launch limit", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(runDir, "prompt.md")); statErr == nil {
+		t.Error("prompt.md written for an over-limit skill-load message; want no artifact")
 	}
 }
 

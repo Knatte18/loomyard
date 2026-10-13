@@ -68,6 +68,8 @@ type quietState struct {
 	driver string
 	// loop is true when the pair's loop lock is held, so a detached step loop is live or starting.
 	loop bool
+	// goDriver is true when the Go driver's lock is held, so a detached Go driver is live between its steps.
+	goDriver bool
 }
 
 // Teardown runs the pair-teardown sequence.
@@ -261,6 +263,8 @@ func (t *Teardown) busyError(slug string, st quietState) error {
 		blocker = fmt.Sprintf("driver strand %q is live", st.driver)
 	case st.loop:
 		blocker = "the loop is live"
+	case st.goDriver:
+		blocker = "the Go driver is live"
 	}
 	attach := fmt.Sprintf("lyx reed attach, run from %s", t.taskAnchor(slug))
 	wayForward := "retry once the driver has written its report, or end it with `lyx reed down` in the pair"
@@ -362,7 +366,7 @@ func (t *Teardown) reedEngine(task *lyxcwd.Location) (*reedengine.Engine, error)
 	return reedengine.New(cfg, geom), nil
 }
 
-// probeQuiet answers whether the present task worktree's driver is quiet: the run lock and the loop lock are free, and the driver strand is absent, dead, retiring or parked.
+// probeQuiet answers whether the present task worktree's driver is quiet: the run lock, the loop lock and the Go-driver lock are free, and the driver strand is absent, dead, retiring or parked.
 func (t *Teardown) probeQuiet(slug string) (quietState, error) {
 	task, err := t.taskLocation(slug)
 	if err != nil {
@@ -374,6 +378,11 @@ func (t *Teardown) probeQuiet(slug string) (quietState, error) {
 		return quietState{}, err
 	}
 	loopFree, err := runLockFree(shedrun.LoopLock(task, shedrun.SelfRunID))
+	if err != nil {
+		return quietState{}, err
+	}
+
+	driverLockFree, err := runLockFree(shedrun.DriverLock(task, shedrun.SelfRunID))
 	if err != nil {
 		return quietState{}, err
 	}
@@ -395,7 +404,7 @@ func (t *Teardown) probeQuiet(slug string) (quietState, error) {
 			}
 		}
 	}
-	return quietState{quiet: lockFree && loopFree && driver == "", driver: driver, loop: !loopFree}, nil
+	return quietState{quiet: lockFree && loopFree && driverLockFree && driver == "", driver: driver, loop: !loopFree, goDriver: !driverLockFree}, nil
 }
 
 // killPairLoop kills the present task worktree's loop and its in-flight step tree.

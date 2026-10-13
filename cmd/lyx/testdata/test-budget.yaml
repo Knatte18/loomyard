@@ -8,14 +8,14 @@ contracts/stencils: 16
 internal/agentname: 8
 internal/alignment: 7
 internal/batcher: 9
-internal/battencli: 77
+internal/battencli: 79
 internal/battenrecipe: 9
-internal/battenshed: 111
+internal/battenshed: 113
 internal/boardcli: 13
 internal/boardengine: 78
 internal/boardengine/boardtest: 3
 internal/buildinfo: 2
-internal/buildvcs: 2
+internal/buildvcs: 3
 internal/burlercli: 19
 internal/burlerengine: 32
 internal/cleanupcli: 4
@@ -32,7 +32,7 @@ internal/dotgit: 3
 internal/editdirective: 2
 internal/envsource: 3
 internal/fabriccli: 21
-internal/fabricengine: 645
+internal/fabricengine: 646
 internal/fabricvocab: 1
 internal/friction: 6
 internal/frictionengine: 15
@@ -58,8 +58,8 @@ internal/landingshed: 86
 internal/lock: 4
 internal/logger: 37
 internal/loggerconfig: 3
-internal/loomcli: 223
-internal/loomengine: 53
+internal/loomcli: 237
+internal/loomengine: 57
 internal/loomrecipe: 54
 internal/loomshed: 76
 internal/lyxcwd: 23
@@ -69,7 +69,7 @@ internal/modelspec: 11
 internal/orchcli: 28
 internal/orchengine: 140
 internal/output: 4
-internal/pairteardown: 7
+internal/pairteardown: 8
 internal/pausecli: 4
 internal/pauseengine: 4
 internal/pauserecord: 14
@@ -77,7 +77,7 @@ internal/parentdirective: 4
 internal/parentlock: 16
 internal/parentreview: 54
 internal/pattern: 8
-internal/planglyph: 86
+internal/planglyph: 87
 internal/planparser: 93
 internal/preflight: 7
 internal/preflightshed: 8
@@ -98,7 +98,7 @@ internal/shedcheck: 3
 internal/shedcli: 17
 internal/shedengine: 141
 internal/shedrecipe: 103
-internal/shedrun: 23
+internal/shedrun: 24
 internal/shedtransient: 2
 internal/shedverbs: 84
 internal/shell: 14

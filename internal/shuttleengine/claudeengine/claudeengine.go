@@ -85,7 +85,7 @@ func validateSessionID(id string) error {
 
 // Prepare writes prompt.md, settings.json and the Bash env file bash-env.sh into runDir and returns the Launch command strings.
 // The launch line carries a pointer to prompt.md rather than the prompt, so a prompt of any size launches.
-// A spec that names skills leaves the pointer off the launch line and returns it as Launch.PromptLine, for the skills to load first.
+// A spec that names skills carries the skill-load message on the launch line instead and returns the pointer as Launch.PromptLine, for shuttle to send after the skills load.
 // It validates spec.Effort, spec.Model, spec.PermissionMode, spec.ResumeSessionID and the prompt-cache TTL config before writing any artifacts.
 func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	// Reject unrealizable effort before any artifact is written (claude ignores bad efforts at launch).
@@ -138,6 +138,16 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 			len(pointer), maxLaunchPromptBytes, promptPath,
 		)
 	}
+	skillLoadMessage := ""
+	if len(spec.Skills) > 0 {
+		skillLoadMessage = c.SkillLoadMessage(spec.Skills)
+		if len(skillLoadMessage) > maxLaunchPromptBytes {
+			return shuttleengine.Launch{}, fmt.Errorf(
+				"skill-load message is %d bytes, over the %d-byte launch limit: the pane launch carries it as one command-line argument and Windows caps a process command line at 32,767 characters — name fewer or shorter skills than %v",
+				len(skillLoadMessage), maxLaunchPromptBytes, spec.Skills,
+			)
+		}
+	}
 	if err := os.WriteFile(promptPath, []byte(spec.Prompt), 0o644); err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("write prompt: %w", err)
 	}
@@ -175,10 +185,10 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	notice := buildDenyNotice(spec.Interactive, cfg, spec.ForkSubagents, spec.AllowAgentTool)
 	// sh selects pane-shell mechanics per OS (pwsh on Windows, posix elsewhere).
 	sh := shell.ForGOOS()
-	// A spec that names skills starts on an empty input box, and the pointer goes out after the skills as Launch.PromptLine.
+	// A spec that names skills launches with the load message as its first turn, and the pointer goes out after the skills as Launch.PromptLine.
 	launchArg, promptLine := pointer, ""
 	if len(spec.Skills) > 0 {
-		launchArg, promptLine = "", pointer
+		launchArg, promptLine = skillLoadMessage, pointer
 	}
 	return shuttleengine.Launch{
 		Cmd:        buildLaunchCmd(sh, bin, launchArg, settingsPath, sessionID, resolvedModel, spec.Effort, notice, envFilePath, promptCacheTTL, resume, skipPermissions, spec.ForkSubagents),

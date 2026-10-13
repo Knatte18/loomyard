@@ -3,9 +3,10 @@
 //
 // Pane.Run polls until its context ends.
 // Each poll it reports the frame's line count through Pane.Report when it differs from the count last reported successfully, so reed can size the strand to its content, and redraws only when the text or the terminal size changed.
-// A redraw homes the cursor, writes each line followed by an erase to the end of its row, and erases below, so the pane never scrolls; each line is cut to the terminal's columns so none wraps.
+// A redraw homes the cursor and erases the screen and the history before the frame, so no line of an earlier, longer or wider frame survives on screen or in the scrollback tmux pulls back onto a growing pane; each line is cut to the terminal's columns so none wraps.
 // A frame taller than the terminal prints the rows its own Fit returns, the last a summary line naming how many are not shown.
 // The wait between polls starts at one second, doubles while nothing changes up to an eight-second ceiling and returns to one second on a redraw, as PATTERN-daemon-wakeups requires.
+// A terminal resize ends the wait at once where the platform signals one, through the channel NotifyResize returns, so the next poll redraws for the new size; a resize is an event and never a timer, so the idle wake rate is unchanged.
 // ReportFromEnv builds the report func from the strand name reed exported to the pane and its own TMUX_PANE, so reed's name and pane checks bound a report to the strand that runs the pane.
 // TerminalSize reads the terminal's own size, so a summary line is right before reed has applied a reported count.
 //

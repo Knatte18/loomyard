@@ -1879,6 +1879,9 @@ func TestRecordBatch_ScopeGuardDegradesOnDeltaUnavailable(t *testing.T) {
 	if !found {
 		t.Errorf("RecordResult.Warnings = %v; want the guard-could-not-run notice", result.Warnings)
 	}
+	if len(result.Digest.Deviations) != 0 {
+		t.Errorf("Digest.Deviations = %v; want empty beside the could-not-run notice", result.Digest.Deviations)
+	}
 }
 
 // TestRecordBatch_NilStateIsRefusedNotPanicked is R6-21's regression test for the record-batch half.
@@ -2019,6 +2022,9 @@ func TestRecordBatch_ParentMovedHead(t *testing.T) {
 					if strings.Contains(w, "FromParent") || strings.Contains(w, "scope-outside-plan") {
 						t.Errorf("warning %q names the parent side's symbol", w)
 					}
+				}
+				if len(result.Digest.Deviations) != 0 {
+					t.Errorf("Digest.Deviations = %v; want empty, since the guard skipped the parent side", result.Digest.Deviations)
 				}
 				if want := []deltaRange{{from: fx.StartSHA, to: fx.HeadSHA}}; !slices.Equal(fx.Index.deltaRanges, want) {
 					t.Errorf("delta ranges asked = %v; want %v", fx.Index.deltaRanges, want)

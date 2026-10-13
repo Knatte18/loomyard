@@ -630,9 +630,9 @@ func TestInnerRun_SpawnsUntilASpawnIsConfirmed(t *testing.T) {
 }
 
 // TestInnerRun_AdoptsARunningChildWithADriver pins the running arm over an unconfirmed spawn:
-// a live or retiring driver strand, or a held child run lock, means a driver is at work,
+// a live or retiring driver strand, a held child run lock, or a held child driver lock, means a driver is at work,
 // so the child is adopted (the confirmation recorded for this process, nothing spawned);
-// no strand or a dead one with a free lock spawns;
+// no strand or a dead one with both locks free spawns;
 // a seam error is a hard error that spawns nothing.
 func TestInnerRun_AdoptsARunningChildWithADriver(t *testing.T) {
 	t.Parallel()
@@ -640,18 +640,20 @@ func TestInnerRun_AdoptsARunningChildWithADriver(t *testing.T) {
 	running := statusResult{status: shedengine.Status{State: shedengine.StateRunning}, found: true}
 	seamErr := errors.New("reed state unreadable")
 	tests := []struct {
-		name       string
-		strand     ChildDriverStrand
-		strandErr  error
-		lockHeld   bool
-		lockErr    error
-		wantSpawns int
-		wantAdopt  bool
-		wantErr    error
+		name           string
+		strand         ChildDriverStrand
+		strandErr      error
+		lockHeld       bool
+		lockErr        error
+		driverLockHeld bool
+		wantSpawns     int
+		wantAdopt      bool
+		wantErr        error
 	}{
 		{name: "LiveStrandIsAdopted", strand: ChildDriverLive, wantAdopt: true},
 		{name: "RetiringStrandIsAdopted", strand: ChildDriverRetiring, wantAdopt: true},
 		{name: "HeldRunLockIsAdopted", strand: ChildDriverNone, lockHeld: true, wantAdopt: true},
+		{name: "HeldDriverLockIsAdopted", strand: ChildDriverNone, driverLockHeld: true, wantAdopt: true},
 		{name: "NoStrandWithAFreeLockSpawns", strand: ChildDriverNone, wantSpawns: 1},
 		{name: "DeadStrandWithAFreeLockSpawns", strand: ChildDriverDead, wantSpawns: 1},
 		{name: "StrandReadErrorIsAHardError", strandErr: seamErr, wantErr: seamErr},
@@ -667,6 +669,7 @@ func TestInnerRun_AdoptsARunningChildWithADriver(t *testing.T) {
 			_, spawnCalls, deps := newInnerRunDeps(t, nil, nil, []statusResult{running}, &fakeClock{})
 			deps.DriverStrand = func(context.Context) (ChildDriverStrand, error) { return tt.strand, tt.strandErr }
 			deps.ChildRunLockHeld = func() (bool, error) { return tt.lockHeld, tt.lockErr }
+			deps.ChildDriverLockHeld = func() (bool, error) { return tt.driverLockHeld, nil }
 
 			_, _, err := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace).Call(context.Background())
 

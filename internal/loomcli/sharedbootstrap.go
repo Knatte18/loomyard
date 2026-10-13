@@ -62,13 +62,10 @@ const (
 // and a nil error. On failure it returns two empty strings, the stage that failed, and the error
 // unwrapped.
 //
-// The effective driver is read from any already-recorded seed -- never chosen by this function and
-// never taken from a flag, since this command declares no driver flag of its own -- falling back to
-// shedrun.DriverLLM only when no seed exists yet; an operator who wants the go driver pre-seeds it
-// with "lyx shed seed self --recipe loom --driver go". Without this read-through, a run already seeded for
-// the llm driver would be refused here: WriteSeed rejects a disagreeing existing seed, and this step
-// used to hard-code the go driver into every write, making the llm arm unreachable regardless of what
-// a run was seeded as.
+// The effective driver is read from any already-recorded seed, never taken from a flag, since this command declares no driver flag of its own.
+// It falls back to the driver_kind the loaded config resolves to (llm by default) only when no seed exists yet;
+// an operator who wants a driver on one run pre-seeds it with "lyx shed seed self --recipe loom --driver go".
+// Without this read-through, a run already seeded for the llm driver would be refused here, because WriteSeed rejects a disagreeing existing seed.
 func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, string, bootstrapStage, error) {
 	// Step 1: resolve the recorded parent branch, writing the provenance record only for a legacy
 	// worktree created before it existed.
@@ -103,7 +100,7 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 	if err != nil {
 		return "", "", bootstrapStageSeed, err
 	}
-	driver := resolveSeedDriver(existingSeed, seedFound)
+	driver := resolveSeedDriver(existingSeed, seedFound, loomengine.ResolveDriverKind(c.cfg))
 	if err := shedrun.WriteSeed(c.location, shedrun.SelfRunID, loomSeedFor(resolveSeedRecipe(existingSeed, seedFound), parent, driver)); err != nil {
 		if errors.Is(err, shedrun.ErrDisagreeingSeed) {
 			err = disagreeingSeedRefusal(shedrun.SeedFile(c.location, shedrun.SelfRunID), existingSeed, parent)
@@ -169,17 +166,14 @@ func disagreeingSeedRefusal(seedPath string, existing shedrun.Seed, parent strin
 		shedrun.ErrDisagreeingSeed, seedPath, existing.Recipe, existing.Driver, existing.Params, parent, seedPath, existing.Recipe, existing.Driver, parent)
 }
 
-// resolveSeedDriver reads the effective driver seedAndCommitBootstrap's step 1b must write: the
-// already-recorded seed's own Driver when one exists, falling back to shedrun.DriverLLM only when no
-// seed has been written yet -- loom has a bootstrap verb, so an unseeded run takes the llm driver,
-// the same default "lyx shed seed" gives a recipe with one. It is a pure function, factored out so a Tier 1 test can pin the three
-// cases -- unseeded, already-go, already-llm -- with no real fabric behind it.
+// resolveSeedDriver reads the effective driver seedAndCommitBootstrap's step 1b must write.
+// It is the already-recorded seed's own Driver when one exists, and kind -- the driver_kind the loaded config resolves to, llm by default -- only when no seed has been written yet.
+// It is a pure function, factored out so a Tier 1 test can pin its cases with no real fabric behind it.
 //
-// This is the read, not a choice: the driver is never chosen here, only preserved. Choosing a
-// different driver mid-run is not this function's job and has no call site that would ask it to.
-func resolveSeedDriver(existing shedrun.Seed, found bool) string {
+// A recorded driver always wins over kind: editing the config after seeding has no effect on that run.
+func resolveSeedDriver(existing shedrun.Seed, found bool, kind string) string {
 	if !found {
-		return shedrun.DriverLLM
+		return kind
 	}
 	return existing.Driver
 }

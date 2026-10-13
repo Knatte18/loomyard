@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -93,12 +94,14 @@ type arbiterFixture struct {
 	escalationBrief  string
 	escalationOpen   bool
 	circlingPending  bool
-	publishTarget    string
+	verifyRecord     *battenshed.ChildPublishFailure
+	head             string
 	settings         loomengine.ArbiterSettings
 	fake             *arbiterFake
 	envelopePath     string
 	removeEnvelope   bool
 	reportPath       string
+	caseBriefPath    string
 	interruptPolicy  map[string]string
 	producerRowNames []string
 }
@@ -128,6 +131,16 @@ func newArbiterFixture(t *testing.T, producer string, state shedengine.State) *a
 	return f
 }
 
+// haltAtVerifyRow stops the run at row with a Stuck entry at 11:30 after an entry at 11:00, and leaves a verify record naming a target at HEAD, written at writtenAt.
+func (f *arbiterFixture) haltAtVerifyRow(row, writtenAt string) {
+	f.head = "head-1"
+	f.status.History = []shedengine.HistoryEntry{
+		{Producer: "Plan-Bouncer", Outcome: shedengine.Done, At: "2026-10-12T11:00:00Z"},
+		{Producer: row, Outcome: shedengine.Stuck, At: "2026-10-12T11:30:00Z"},
+	}
+	f.verifyRecord = &battenshed.ChildPublishFailure{Row: row, Head: f.head, Target: "Webster-Burler-Review", WrittenAt: writtenAt}
+}
+
 func (f *arbiterFixture) arbiterDir() string { return filepath.Join(f.root, "arbiter") }
 func (f *arbiterFixture) markerPath() string { return filepath.Join(f.root, "scratch", "arbiter.json") }
 func (f *arbiterFixture) attemptDir(n int) string {
@@ -155,8 +168,14 @@ func (f *arbiterFixture) deps() arbiterDeps {
 			return f.escalationBrief, f.escalationOpen, nil
 		},
 		PendingCirclingDecision: func(string) (bool, error) { return f.circlingPending, nil },
-		PublishFailureTarget:    func() (string, error) { return f.publishTarget, nil },
-		InterruptPolicy:         func(producer string) string { return f.interruptPolicy[producer] },
+		VerifyRecord: func() (battenshed.ChildPublishFailure, bool, error) {
+			if f.verifyRecord == nil {
+				return battenshed.ChildPublishFailure{}, false, nil
+			}
+			return *f.verifyRecord, true, nil
+		},
+		Head:            func() (string, error) { return f.head, nil },
+		InterruptPolicy: func(producer string) string { return f.interruptPolicy[producer] },
 		Prompt: arbiterPromptInput{
 			Slug:               "operator-surface-task",
 			Worktree:           f.root,
@@ -179,7 +198,7 @@ func (f *arbiterFixture) run() (int, map[string]any) {
 		}
 	}
 	var out bytes.Buffer
-	code := arbiterVerb(&out, f.deps(), arbiterInput{RunID: arbiterTestRun, EnvelopePath: f.envelopePath, ReportPath: f.reportPath})
+	code := arbiterVerb(&out, f.deps(), arbiterInput{RunID: arbiterTestRun, EnvelopePath: f.envelopePath, ReportPath: f.reportPath, CaseBriefPath: f.caseBriefPath})
 	var fields map[string]any
 	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &fields); err != nil {
 		f.t.Fatalf("arbiterVerb output %q is not one JSON object: %v", out.String(), err)
@@ -245,6 +264,12 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 		{name: "transient failure that failed twice", producer: "Plan-Write", state: shedengine.StateFailed, envelope: `{"kind":"busy","transient":"network"}`},
 		{name: "blocked stop", producer: "Plan-Write", state: shedengine.StateBlocked},
 		{
+			name: "blocked stop carrying a tackler case brief", producer: "Plan-Write", state: shedengine.StateBlocked,
+			setup: func(f *arbiterFixture) {
+				f.caseBriefPath = filepath.Join(f.root, "tackler", "attempt-1", "case-brief.md")
+			},
+		},
+		{
 			name: "Publish halt naming no target", producer: loomshed.NamePublish, state: shedengine.StateBlocked,
 		},
 		{
@@ -265,8 +290,25 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 		},
 		{
 			name: "Publish halt naming a target refused", producer: loomshed.NamePublish, state: shedengine.StateBlocked,
-			setup:       func(f *arbiterFixture) { f.publishTarget = "Webster-Burler-Review" },
-			wantRefusal: "Publish halt that names a target", wantNoSpawn: true,
+			setup:       func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NamePublish, "2026-10-12T11:15:00Z") },
+			wantRefusal: "verify halt whose failure record names a target", wantNoSpawn: true,
+		},
+		{
+			name: "Merge-In verify halt naming a target refused", producer: loomshed.NameMergeIn, state: shedengine.StateBlocked,
+			setup:       func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NameMergeIn, "2026-10-12T11:15:00Z") },
+			wantRefusal: "verify halt whose failure record names a target", wantNoSpawn: true,
+		},
+		{
+			name: "Merge-In stop of another cause with an earlier verify's record stays eligible", producer: loomshed.NameMergeIn, state: shedengine.StateBlocked,
+			setup: func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NameMergeIn, "2026-10-12T11:00:00Z") },
+		},
+		{
+			name: "Publish stop of another cause with an earlier verify's record is eligible", producer: loomshed.NamePublish, state: shedengine.StateBlocked,
+			setup: func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NamePublish, "2026-10-12T11:00:00Z") },
+		},
+		{
+			name: "blocked stop at another row with a record naming a target stays eligible", producer: "Plan-Write", state: shedengine.StateBlocked,
+			setup: func(f *arbiterFixture) { f.haltAtVerifyRow("Plan-Write", "2026-10-12T11:15:00Z") },
 		},
 		{name: "awaiting with a parent notice but no escalation refused", producer: "PR-Gate", state: shedengine.StateAwaiting, wantRefusal: "no pending review escalation", wantNoSpawn: true},
 		{name: "paused refused", producer: "Plan-Write", state: shedengine.StatePaused, wantRefusal: "a paused run is not a halted stop", wantNoSpawn: true},
@@ -370,9 +412,15 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 			if !tt.wantBrief && !strings.Contains(spec.Prompt, "escalation brief `none`") {
 				t.Errorf("prompt reads a brief at a stop with no escalation; want none")
 			}
+			if f.caseBriefPath != "" && !strings.Contains(spec.Prompt, f.caseBriefPath) {
+				t.Errorf("prompt lacks the case brief %q", f.caseBriefPath)
+			}
+			if f.caseBriefPath == "" && !strings.Contains(spec.Prompt, "case brief `none`") {
+				t.Errorf("prompt reads a case brief at a stop given none; want none")
+			}
 			wantAttempt := loomengine.ArbiterAttempt{
 				Number: 1, StopKey: loomengine.StopKeyOf(f.status), SpawnedAt: f.now, Deadline: f.now.Add(30 * time.Minute),
-				StrandGUID: "guid-1", EnvelopePath: f.envelopePath, ReportPath: f.reportPath, Dir: f.attemptDir(1),
+				StrandGUID: "guid-1", EnvelopePath: f.envelopePath, ReportPath: f.reportPath, CaseBriefPath: f.caseBriefPath, Dir: f.attemptDir(1),
 			}
 			if !reflect.DeepEqual(captured.attempt, wantAttempt) {
 				t.Errorf("attempt.json = %+v; want %+v", captured.attempt, wantAttempt)
