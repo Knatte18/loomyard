@@ -273,6 +273,14 @@ func glyphRepoPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget, 
 	}}
 }
 
+// writeLensReview writes content as the plan directory's lens review file under anchorPath.
+func writeLensReview(t *testing.T, anchorPath, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(planparser.PlanDir(anchorPath), planparser.LensReviewFileName), []byte(content), 0o644); err != nil {
+		t.Fatalf("write lens review: %v", err)
+	}
+}
+
 // planParityCase is one fixture for TestGateParity_PlanGate: build populates anchorPath and
 // worktreeRoot as needed and returns the single *loomCLI both the gate closure and the verb read
 // their paths from, so both halves run over the exact same on-disk fixture. wantGate and wantCLI
@@ -285,10 +293,13 @@ type planParityCase struct {
 	wantCLI  parityVerdict
 	// wantFinding, when set, is a substring both the gate's findings and the verb's envelope must carry.
 	wantFinding string
+	// lensReview builds the gate with NewLensReviewPlanGate and runs the verb with --lens-review.
+	lensReview bool
 }
 
-// TestGateParity_PlanGate drives NewPlanGate and the validate-plan verb, flag-absent mode only, over
-// the same fixture set and asserts the two mapped verdicts agree. The mode cross-product this test
+// TestGateParity_PlanGate drives NewPlanGate and the validate-plan verb, flag-absent mode.
+// It also drives NewLensReviewPlanGate and the verb's --lens-review mode.
+// Each pair runs over the same fixture set and the two mapped verdicts must agree. The mode cross-product this test
 // used to drive is gone: both plan gate sites (Plan-Write's own gate and Plan-Burler-Fix's own gate) run
 // planglyph.ValidateFormat and neither has a --require-approved counterpart -- that flag's own
 // guarantee now rests entirely on the approve seam failing loudly if it is ever wired nil (see
@@ -463,6 +474,38 @@ func TestGateParity_PlanGate(t *testing.T) {
 			wantGate: verdictError,
 			wantCLI:  verdictError,
 		},
+		{
+			name:       "LensReviewMissing",
+			lensReview: true,
+			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+				return planFixture(t, anchorPath, worktreeRoot, true)
+			},
+			wantGate:    verdictStuck,
+			wantCLI:     verdictStuck,
+			wantFinding: "lens-review-missing",
+		},
+		{
+			name:       "LensReviewRecorded",
+			lensReview: true,
+			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+				c := planFixture(t, anchorPath, worktreeRoot, true)
+				writeLensReview(t, anchorPath, "The lens review.\n")
+				return c
+			},
+			wantGate: verdictDone,
+			wantCLI:  verdictDone,
+		},
+		{
+			// LensReviewEmptyIgnoredWithoutTheFlag pins that validate-plan without the flag and NewPlanGate ignore the file.
+			name: "LensReviewEmptyIgnoredWithoutTheFlag",
+			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+				c := planFixture(t, anchorPath, worktreeRoot, true)
+				writeLensReview(t, anchorPath, "")
+				return c
+			},
+			wantGate: verdictDone,
+			wantCLI:  verdictDone,
+		},
 	}
 
 	for _, tc := range cases {
@@ -471,12 +514,18 @@ func TestGateParity_PlanGate(t *testing.T) {
 			worktreeRoot := t.TempDir()
 			c := tc.build(t, anchorPath, worktreeRoot)
 
-			gate := loomshed.NewPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()))
+			newGate := loomshed.NewPlanGate
+			var args []string
+			if tc.lensReview {
+				newGate = loomshed.NewLensReviewPlanGate
+				args = []string{"--lens-review"}
+			}
+			gate := newGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()))
 			result, err := gate()
 			pv := producerVerdict(result, err)
 
 			var out bytes.Buffer
-			exitCode := clihelp.Execute(c.validatePlanCmd(), &out, nil)
+			exitCode := clihelp.Execute(c.validatePlanCmd(), &out, args)
 			cv := cliVerdict(envelope.Decode(t, out.String()))
 
 			if tc.wantGate == tc.wantCLI {

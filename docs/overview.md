@@ -230,7 +230,7 @@ github.com/Knatte18/loomyard/
 ├── internal/fabricengine/        the fabric domain kernel
 ├── internal/gatecli/             the gate CLI command (`lyx gate test`, the slotted route for an agent's go test)
 ├── internal/helpcli/             the help CLI command (`lyx help [<command>...]`, `lyx help index`)
-├── internal/shortcutcli/         the top-level operator shortcuts (`lyx attach`, `lyx prime`) from one embedded file
+├── internal/shortcutcli/         the top-level operator shortcuts (`lyx a`, `lyx attach`, `lyx prime`) from one embedded file
 ├── internal/idecli/              the ide CLI command
 ├── internal/ideengine/           the ide domain kernel
 ├── internal/pairteardown/        the one sequence that ends a pair: quiet wait, refusal probe, reed session end, then fabric removal
@@ -393,7 +393,7 @@ User-facing modules each get one `lyx <module>` namespace:
 - **planglyph** — the sole owner of every `quarry.Repo` call (`Open`, `Resolve`, `DeltaGit`) and of the package-level `quarry.Name`, plus the resolve-backed validation pass layered on top of `planparser`'s pure checks: `planglyph.ValidateFormat`/`Validate` call `planparser.ValidateFormat`/`Validate` and append only resolve findings, composing rather than reimplementing (`internal/planglyph`). ✅ Implemented.
 - **planindex** — the cgo-free seam over `planglyph`: the plan gates' finding types, `ErrQuarryUnavailable` and the `Index` and `Delta` interfaces a package receives instead of importing the package that links tree-sitter (`internal/planindex`). ✅ Implemented.
 - **help** — cobra's help command, replaced: `lyx help [<command>...]` prints a command's help and refuses a word that names no subcommand, and `lyx help index [--audience <audience>]` prints a generated one-line-per-command index of the running binary, filtered by the `audience` annotation every invocable command carries (`internal/helpcli`; the renderer is `clihelp.RenderIndex`). ✅ Implemented. See the `internal/helpcli` package documentation.
-- **shortcuts** — `lyx attach` (`lyx reed attach`) and `lyx prime` (`lyx orch start`, then `lyx reed attach`) are top-level operator shortcuts declared in `internal/shortcutcli/shortcuts.yaml`, embedded in the binary and added only by a commit to that file; global verbosity flags reach every expanded command and other words the last; they are not modules. See the `internal/shortcutcli` package documentation.
+- **shortcuts** — `lyx attach` and `lyx a` (both `lyx reed attach`) and `lyx prime` (`lyx orch start`, then `lyx reed attach`) are top-level operator shortcuts declared in `internal/shortcutcli/shortcuts.yaml`, embedded in the binary and added only by a commit to that file; global verbosity flags reach every expanded command and other words the last; they are not modules. See the `internal/shortcutcli` package documentation.
 - **cleanup** — the routine cleanups of the hub prime's leftover state, as one verb (`internal/cleanupcli`; `lyx cleanup [--apply]`, prime only).
   Without `--apply` it is a dry run that lists, per segment, what `--apply` would remove.
   The segments run in order and each calls its owner's own cleanup in-process: `lyx batten cleanup`, `lyx board prune`, `lyx orch cleanup`, the prime's `.scratch/` children older than 14 days that no open board entry cites, logger's trace retention sweep, and the temp root's sweep of dead owners' run directories.
@@ -459,8 +459,9 @@ User-facing modules each get one `lyx <module>` namespace:
   `validate-discussion` runs the same checks Discussion-Write's and Discussion-Burler-Fix's own gates run, standalone, exiting 0 on a clean gate and 1 otherwise, with findings in the failure envelope so a writer agent can self-check before handing off.
   `decision add [<slug>] --by parent|operator --title <t> --decision <d> --rationale <r>` appends one design call made after the Discussion to the decision record under an `Added after Discussion` heading, re-runs the discussion check (restoring the record on a finding) and commits the record.
   It is refused while Discussion-Write is running, refuses a named session other than the run's recorded parent (the operator's own unnamed shell always passes) and resumes nothing.
-  `validate-plan` runs the same checks Plan-Write's and Plan-Burler-Fix's own gates run, standalone, with the same exit-code and findings-envelope contract, over the current worktree's plan instead of its discussion.
+  `validate-plan` runs the same checks a non-twill Plan-Write run's and Plan-Burler-Fix's own gates run, standalone, with the same exit-code and findings-envelope contract, over the current worktree's plan instead of its discussion.
   `validate-plan --rework` runs the check `PR-Rework`'s own gate runs: the format-only checks over the whole new plan, plus a check that its `first_card` equals the card number the session was told.
+  `validate-plan --lens-review` runs the check a twill-spawned Plan-Write run's own gate runs: the flag-less checks plus a check that the plan directory's `lens-review.md` holds a recorded lens review.
   `validate-plan --overlay` runs the flag-less checks over the plan with proposed contents of its existing plan files, read from stdin as one JSON object, laid over it in memory, so a fix is checked before any file is edited and no plan file is written.
   `validate-description` runs the same checks the `Describe` row's `description` gate runs over `_lyx/landing/summary.md`, standalone, with the same exit-code and findings-envelope contract.
   `lint-comments [--base <commit>]` runs `internal/commentlint` over the worktree: the fixed-column-wrapped breaks the working tree, or the range from `--base` to HEAD, creates in `//` comment blocks.
@@ -517,6 +518,8 @@ User-facing modules each get one `lyx <module>` namespace:
   The row keeps its name, gates and routing whichever producer runs.
   The Planner producer, the same way (`contracts/stencils/loom/loom-template-plan.md`), composed by `internal/loomengine`'s `prompt.go` + `plan.go`.
   `plan_producer: twill` selects the single plan writer that forks itself once per lens of the `twill-plan` fan in `burler.yaml` after its exploration, writes and self-checks the plan, marks it ready, takes the forks' findings in, records them in `lens-review.md` and rejects a `BLOCKING` or `MEDIUM` finding only with a cited code read.
+  It runs `validate-plan --lens-review` as its last self-check, and its gate refuses Done until `lens-review.md` holds the lens review.
+  The row keeps its name, `gates` key and routing while a twill-spawned run's plan gate also requires the lens review.
   See the `internal/loomengine` and `internal/loomcli` package documentation.
 - **shed** — the generic outer phase-FSM `loom` and the eventual `Hardener` are each built on: a Go engine that walks one flat, ordered producer list, honoring resume, crash-recovery, and pause uniformly at producer granularity, with no predefined slots (`internal/shedengine`).
   The shipped engine adapters — `SingleLLMProducer` over `shuttle`, the `Webster` adapter, the Burler review row and fix row producers, `MultiLLMProducer` over `seatengine`, and the Bouncer (the generic review-gate producer rather than a wrapper over an engine) — live in one package, `internal/shedadapters`, alongside their shared context and archive helpers.

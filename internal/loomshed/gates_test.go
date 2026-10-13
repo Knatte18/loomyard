@@ -216,6 +216,48 @@ func TestNewPlanGate(t *testing.T) {
 		}
 	})
 
+	t.Run("LensReviewGateRequiresARecordedLensReview", func(t *testing.T) {
+		for _, tt := range []struct {
+			name       string
+			write      bool
+			content    string
+			wantPassed bool
+		}{
+			{name: "no lens review file"},
+			{name: "empty file", write: true},
+			{name: "whitespace-only file", write: true, content: " \n\t\n"},
+			{name: "one line of text", write: true, content: "The lens review.\n", wantPassed: true},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				anchorPath := t.TempDir()
+				seedPlanFormatFixture(t, anchorPath, false)
+				lensReviewPath := filepath.Join(planparser.PlanDir(anchorPath), planparser.LensReviewFileName)
+				if tt.write {
+					if err := os.WriteFile(lensReviewPath, []byte(tt.content), 0o644); err != nil {
+						t.Fatalf("write lens review: %v", err)
+					}
+				}
+
+				gate := NewLensReviewPlanGate(anchorPath, t.TempDir(), "", planglyph.NewIndex(fabricengine.NewReferenceRule()))
+				result, err := gate()
+				if err != nil {
+					t.Fatalf("gate() error = %v; want nil", err)
+				}
+				if result.Passed != tt.wantPassed {
+					t.Fatalf("gate() Passed = %v; want %v (findings %q)", result.Passed, tt.wantPassed, result.Findings)
+				}
+				if tt.wantPassed {
+					return
+				}
+				for _, want := range []string{"lens-review-missing", lensReviewPath} {
+					if !strings.Contains(result.Findings, want) {
+						t.Errorf("gate() Findings = %q; want it to contain %q", result.Findings, want)
+					}
+				}
+			})
+		}
+	})
+
 	t.Run("FindingsSurfaceAsAFailedGateAndAWarnLine", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		worktreeRoot := t.TempDir()

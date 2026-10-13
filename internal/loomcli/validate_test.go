@@ -297,16 +297,30 @@ func TestValidatePlanCmd_QuarryUnavailableNamesQuarry(t *testing.T) {
 	envelope.RequireErr(t, out.String(), "quarry")
 }
 
-// TestValidatePlanCmd_ReworkAndRequireApprovedAreExclusive asserts the two mode flags together are refused with an error envelope rather than one silently winning.
-func TestValidatePlanCmd_ReworkAndRequireApprovedAreExclusive(t *testing.T) {
+// TestValidatePlanCmd_ModeFlagsAreExclusive asserts the mode flags that cannot combine are refused with an error envelope rather than one silently winning.
+func TestValidatePlanCmd_ModeFlagsAreExclusive(t *testing.T) {
 	c := planFixture(t, t.TempDir(), t.TempDir(), true)
 
-	var out bytes.Buffer
-	exitCode := clihelp.Execute(c.validatePlanCmd(), &out, []string{"--rework", "--require-approved"})
-	if exitCode != 1 {
-		t.Fatalf("exit code = %d; want 1 (output: %q)", exitCode, out.String())
+	for _, tt := range []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{"ReworkWithRequireApproved", []string{"--rework", "--require-approved"}, []string{"mutually exclusive"}},
+		{"LensReviewWithRework", []string{"--lens-review", "--rework"}, []string{"--lens-review and --rework are mutually exclusive", "way forward: run --lens-review alone"}},
+		{"LensReviewWithRequireApproved", []string{"--lens-review", "--require-approved"}, []string{"--lens-review and --require-approved are mutually exclusive", "way forward: run --lens-review alone"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			exitCode := clihelp.Execute(c.validatePlanCmd(), &out, tt.args)
+			if exitCode != 1 {
+				t.Fatalf("exit code = %d; want 1 (output: %q)", exitCode, out.String())
+			}
+			for _, want := range tt.want {
+				envelope.RequireErr(t, out.String(), want)
+			}
+		})
 	}
-	envelope.RequireErr(t, out.String(), "mutually exclusive")
 }
 
 // TestValidatePlanCmd_ReworkReportsGateFindingsForFirstCardMismatch asserts the --rework verb reports the same findings as PR-Rework's gate when first_card differs from the told number.

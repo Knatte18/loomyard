@@ -1,6 +1,6 @@
-// gates.go implements this package's three gate closures: NewDiscussionGate, NewPlanGate and NewReworkPlanGate.
+// gates.go implements this package's four gate closures: NewDiscussionGate, NewPlanGate, NewLensReviewPlanGate and NewReworkPlanGate.
 // Each is the gate half of the Gate Self-Check Parity Invariant -- each calls the identical package
-// function its CLI self-check verb does (discussionparser.Validate, ValidatePlan and
+// function its CLI self-check verb does (discussionparser.Validate, ValidatePlan, ValidatePlanLensReview and
 // ValidateReworkPlan, respectively), so the operator's own self-check verb and the automated gate can never disagree
 // about what "valid" means.
 
@@ -195,6 +195,44 @@ func ValidatePlan(plan *planparser.Plan, anchorPath, worktreeRoot string, index 
 
 // doneCardEditedCheck names the finding ValidatePlan appends for an edited done card.
 const doneCardEditedCheck = "done-card-edited"
+
+// NewLensReviewPlanGate returns the plan gate closure a twill-spawned Plan-Write run evaluates in place of NewPlanGate's, chosen by shuttle from the run's recorded fork authorization.
+// It parses the plan under anchorPath and checks it with ValidatePlanLensReview over index.
+//
+// Parse failures, the blocking-versus-informational split and the logging follow the plan gate's contract.
+// It only adds a refusal over NewPlanGate's set: a writer that never records the lens review spends the gate's existing re-prompt budget.
+func NewLensReviewPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.Index) shuttleengine.Gate {
+	return planGate("Plan-Gate", anchorPath, scratchDir, func(plan *planparser.Plan) ([]planindex.Finding, error) {
+		return ValidatePlanLensReview(plan, anchorPath, worktreeRoot, index)
+	})
+}
+
+// ValidatePlanLensReview is the check set of a twill Plan-Write run's gate: ValidatePlan's set, plus one blocking lens-review-missing finding when the plan directory's lens review file is absent or holds only whitespace.
+// An error from ValidatePlan is returned unchanged.
+// The file is checked for presence only and never parsed; its content and timing are not checked.
+// Any read error but not-exist is a returned error, never a finding.
+func ValidatePlanLensReview(plan *planparser.Plan, anchorPath, worktreeRoot string, index planindex.Index) ([]planindex.Finding, error) {
+	findings, err := ValidatePlan(plan, anchorPath, worktreeRoot, index)
+	if err != nil {
+		return nil, err
+	}
+	lensReviewPath := filepath.Join(plan.Dir, planparser.LensReviewFileName)
+	content, err := os.ReadFile(lensReviewPath)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+	if err != nil || strings.TrimSpace(string(content)) == "" {
+		findings = append(findings, planindex.Finding{
+			Check:    lensReviewMissingCheck,
+			Detail:   fmt.Sprintf("no lens review is recorded at %s: record it there as the lens review directive describes", lensReviewPath),
+			Severity: planindex.SeverityBlocking,
+		})
+	}
+	return findings, nil
+}
+
+// lensReviewMissingCheck names the finding ValidatePlanLensReview appends for an absent or empty lens review.
+const lensReviewMissingCheck = "lens-review-missing"
 
 // NewReworkPlanGate returns the PR-Rework row's gate closure: a shuttleengine.Gate that parses the plan under anchorPath and checks it with ValidateReworkPlan over index.
 // The whole new plan is held to the plan-format checks plus the told first_card.

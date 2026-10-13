@@ -253,6 +253,9 @@
 // A polled probe of a wait that keeps failing, and a skipped unreadable file of the files-only readers, log the same way, and a held gate re-prompt logs Info when it first holds and Debug while it stays held.
 // Runner.SessionIdle applies the same hold after a ready reading, so the orch watcher's probe reports an active operator with its reason.
 // An unmatched turn start releases after the pane has read idle on every poll for turnStartIdleOverride, or at once when the engine reports that turn interrupted.
+// An engine with TurnProgressReader that reads the unmatched turn in flight vetoes the idle-pane release, so the turn start keeps holding until a turn end, a reported interrupt or a later session start.
+// A session start after the turn start lifts the veto, since the session's context began anew.
+// Runner.SessionIdle reports busy while a turn reads in flight.
 // When the session state is unknown, the reading falls back to the pane, which must classify ready and idle, and for an engine that parses session signals no turn start may be left unmatched by a later turn end; the cause is logged at Debug.
 // A fallback hold whose box reads non-empty quotes the box.
 //
@@ -310,6 +313,7 @@
 // Neither carries provider command text.
 //
 // A gated run's GateSpec entries answer passed, failed or pending (GateResult.Pending, PassOnCap or MayHold entries only).
+// An entry that sets GateEntry.Forked evaluates that closure in place of Gate for a run whose record carries fork authorization, copied from Spec.ForkSubagents at spawn; the record, not a later Call's Spec, also decides the fork audit.
 // A failing result flagged GateResult.Terminal finalizes the run at once with no re-prompt, and its findings text rides GateOutcome.Reason.
 // A failed entry with budget remaining is re-prompted with one default line naming the findings file, unless the entry sets GateEntry.Reprompt, whose rendered line is sent instead.
 // Every send validates its text, so a renderer returning several lines, or an empty or whitespace-only line, fails the send and ends the loop with the attempts spent so far.
