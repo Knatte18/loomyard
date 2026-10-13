@@ -27,11 +27,12 @@
 // A loom driver strand reed marked retiring is never adopted: start removes it and spawns a fresh driver.
 //
 // start returns once the driver's readiness signal confirms it is up, and for a parked loom driver once delivery of the resume line is verified.
-// For the Go driver the signal is the run lock being taken;
+// For the Go driver, `lyx loom drive`, the signal is the driver lock being taken, since the verb takes it first and holds it for life while the run lock is free between steps;
 // for a loom driver it is the provider TUI coming up ready within shuttle's `startup_timeout_s`, with any one-time startup gate its provider requires dismissed along the way.
 // A readiness refusal removes the driver strand, so the next start spawns a fresh one.
 // The signal is checked only for a driver this invocation spawns, so a strand left live because shuttle got no liveness answer from reed, or could not remove the strand, is returned over by a later start without re-checking.
 //
+// A held driver lock with no live strand reads as a live Go driver: a run halted at a hand-back is refused with the kind `driver_not_parked` while its Go driver is still settling, and a running run is left working.
 // The detached Go driver writes its stdout and stderr to the driver log in the ephemeral tree, never to start's own output;
 // a loom driver strand writes no such log, since its pane holds its output.
 // A loom driver strand launches from the driver stencil, read from the stencils directory at start time.
@@ -52,12 +53,14 @@
 //   - awaiting at a Bouncer row with no decision: refused, naming the circling verbs and then resume.
 //   - awaiting at a Bouncer row with an unreadable decision: refused naming the file, to fix it or delete it and record the decision again.
 //   - awaiting at any other row: refused, naming `lyx loom approve` or `lyx loom reject`, after which a batten run watching the child resumes it, or `lyx batten run <slug>` from the prime when none does.
-//   - running: a no-op success when the driver is live or holds the run lock, and refused as a halted run otherwise.
-//   - halted with the run lock held, or with a live driver and no park marker: refused with the kind `driver_not_parked`, to retry shortly.
+//   - running: a no-op success when the driver is live or holds the run lock or the driver lock, and refused as a halted run otherwise.
+//   - halted with the run lock or the driver lock held, or with a live driver and no park marker: refused with the kind `driver_not_parked`, to retry shortly; a held driver lock means the Go driver is still settling the stop.
 //   - halted with a live driver and a park marker: resumed, refused with `merge_in_progress` over an unfinished merge under start's Publish and Finalize exception, and with `driver_busy` when the driver's pane would not take the resume line.
-//   - halted with no live driver: refused over an unfinished merge with `merge_in_progress`, otherwise naming `lyx batten run <slug>` from the prime and then resume for a dead strand, and `lyx loom start` for a retiring strand or none.
+//   - halted with no live driver and a seed recording the Go driver: refused over an unfinished merge with `merge_in_progress`, otherwise a Go driver is spawned, which re-steps the run, and the success envelope names its pid.
+//   - halted with no live driver otherwise: refused over an unfinished merge with `merge_in_progress`, otherwise naming `lyx batten run <slug>` from the prime and then resume for a dead strand, and `lyx loom start` for a retiring strand or none.
 //
-// The driver strand is read from reed's directory, which still lists a session that died with the machine, never from the run's seed.
+// The driver strand is read from reed's directory, which still lists a session that died with the machine, never from the run's seed;
+// the seed is read only to tell a go-seeded run that has no driver, which gets a Go driver.
 // A resume line that cannot be delivered is refused, naming `lyx loom status` and a re-run of resume.
 //
 // # Plan card verbs

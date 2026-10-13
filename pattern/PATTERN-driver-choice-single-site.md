@@ -1,7 +1,7 @@
 # PATTERN-driver-choice-single-site
 
-A *recorded* seed driver value is read in exactly one place per recipe, that recipe's own bootstrap verb.
-The branch on it selects the run's driving surface — which driver spawns and whether the session carries the loom status strand — and nothing else.
+A *recorded* seed driver value is read only in a recipe's bootstrap verbs: loom's `start` and `resume`, and `lyx loom drive`'s own package.
+Each branch on it selects the run's driving surface — which driver spawns and whether the session carries the loom status strand — and nothing else.
 
 - No producer, no generic verb and no engine reads the recorded value, and no code path gates *behaviour* on it.
 - One carve-out, and only this shape: a CLI verb may compare a driver value the operator **just typed** against the addressed run's recorded one and refuse on the envelope when they disagree (`internal/battencli`'s `refuseAdoptedSeed`).

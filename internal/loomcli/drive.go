@@ -797,6 +797,7 @@ func (d *goDriver) handBackStop(stop driveStop, decision driveDecision, cause er
 	}
 	h := driveHandBack{WatchedVerifyLine: decision.WatchedVerifyLine}
 	if cause != nil {
+		logger.Warn("loom: drive: the driver could not act at the stop; handing back", "run", d.deps.RunID, "error", cause)
 		h.Rules = []string{"the driver could not act: " + cause.Error()}
 	}
 	if decision.Action == driveActionRelayHandBack {
@@ -828,6 +829,12 @@ func (d *goDriver) handBack(stop driveStop, h driveHandBack) error {
 	reportPath := d.deps.NewReportPath()
 	park := d.deps.Park
 	park.ReportPath = reportPath
+
+	if stop.Error != "" {
+		logger.Warn("loom: drive: handing the run back", "run", d.deps.RunID, "state", stop.key().State, "producer", stop.CurrentProducer, "error", stop.Error, "report", reportPath)
+	} else {
+		logger.Info("loom: drive: handing the run back", "run", d.deps.RunID, "state", stop.key().State, "producer", stop.CurrentProducer, "report", reportPath)
+	}
 
 	h.RunID = d.deps.RunID
 	h.ReportPath = reportPath

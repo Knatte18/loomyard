@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -261,17 +260,14 @@ func (c *loomCLI) vouchForSpawnedResume() {
 	recordHandoffVoucher(loomengine.LoomHandoffVoucher(c.location), loomengine.LoomHandoffVoucherLock(c.location), len(st.History), st.State)
 }
 
-// runDriverSpawnAndWait performs steps 5 and 6 of the bootstrap: it probes the run lock and the
-// driver strand table once, decides via mustSpawnDriver whether a spawn is needed, and -- when one
-// is -- branches on driver into the go arm's detached spawn and run-lock handshake (both
-// byte-for-byte unchanged from before this extraction, aside from taking lockHeld as a parameter
-// rather than building it locally) or the llm arm's strand launch, whose StartDriver already blocks
-// through the provider's readiness gates before returning.
+// runDriverSpawnAndWait performs steps 5 and 6 of the bootstrap.
+// It probes the run lock, the driver lock and the driver strand table once, and decides via mustSpawnDriver whether a spawn is needed.
+// When one is, it branches on driver into the go arm's detached `lyx loom drive` spawn and driver-lock handshake, or the llm arm's strand launch, whose StartDriver already blocks through the provider's readiness gates before returning.
 //
 // Before any spawn it removes a stale park marker (shedrun.ParkMarker).
 // When no spawn is needed and the driver strand is live with the marker present, the driver is parked,
 // so it spawns nothing and resumes that driver through resumeParkedDriver instead.
-// A live strand with no marker over a run halted at a hand-back is refused with the shedrun.StartNotParkedKind kind, since that driver has not parked yet;
+// A live strand with no marker, or a held driver lock with no live strand, over a run halted at a hand-back is refused with the shedrun.StartNotParkedKind kind, since that driver has not parked yet or its Go driver is still settling;
 // over a running run it is a no-op, since the driver is working.
 //
 // On the spawn path only, after the stale-marker removal and right before either arm spawns, it writes the handoff voucher for the status file as it stands, when Tier 2 is on, so the driver's first entry observation does not read this deliberate resume as a crash.
@@ -285,7 +281,7 @@ func (c *loomCLI) vouchForSpawnedResume() {
 // An unfinished merge is refused with the shedrun.StartMergeInProgressKind kind;
 // a live strand with no marker is never probed, so a working driver is attached to as before.
 //
-// lockHeld is the go arm's handshake seam, built by the caller over the real run lock in production;
+// lockHeld is the go arm's handshake seam, built by the caller over the real driver lock in production;
 // a test substitutes a counting fake to prove the handshake is never consulted on an llm-seeded
 // bootstrap -- the assertion this batch's own scope note names.
 //
@@ -304,6 +300,12 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		_ = probe.Release()
 	}
 	runLockHeld := !runLockFree
+	driverLockHeld, err := c.driverLockHeld()
+	if err != nil {
+		_ = bootstrapLock.Release()
+		clihelp.SetExit(ctx, output.Err(out, rerunMessage(err, retryStart)))
+		return false
+	}
 
 	// The strand table is read once here, through the driverPaneProbe.Strands() seam, and the one
 	// slice feeds both consumers: the widened spawn predicate below, and, on the llm arm, the
@@ -325,7 +327,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		}
 		driverAction, driverGUID = driverStrandNone, ""
 	}
-	mustSpawn := mustSpawnDriver(runLockHeld, driverAction == driverStrandLive)
+	mustSpawn := mustSpawnDriver(runLockHeld, driverLockHeld, driverAction == driverStrandLive)
 
 	// The resume branch reads only strand liveness and the park marker, never the seed's driver value a second time (Driver Choice Single-Site Invariant).
 	// A spawn first removes a stale marker;
@@ -356,7 +358,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 			}
 		}
 		c.vouchForSpawnedResume()
-	} else if driverAction == driverStrandLive {
+	} else if driverAction == driverStrandLive || driverLockHeld {
 		if parkedLive {
 			if _, err := c.resumeParkedDriver(driverGUID, retryStart); err != nil {
 				_ = bootstrapLock.Release()
@@ -393,44 +395,16 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 			return false
 		}
 	} else if mustSpawn {
-		exe, err := os.Executable()
+		// The seam reaps the child in the background.
+		// A driver that finishes before this bootstrap invocation does, as a precondition failure on a fresh task does within milliseconds, then never sits as a zombie.
+		// proc.IsAlive would read a zombie as alive, and the handshake below would spin its whole deadline.
+		pid, err := c.spawnGoDriver()
 		if err != nil {
 			_ = bootstrapLock.Release()
 			clihelp.SetExit(ctx, output.Err(out, err.Error()))
 			return false
 		}
-		driverLogPath := loomengine.LoomDriverLog(c.location)
-		logFile, err := os.OpenFile(driverLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-		if err != nil {
-			_ = bootstrapLock.Release()
-			clihelp.SetExit(ctx, output.Err(out, err.Error()))
-			return false
-		}
-		runCmd := exec.Command(exe, "loom", "run")
-		runCmd.Stdout = logFile
-		runCmd.Stderr = logFile
-		proc.Detach(runCmd)
-		if err := runCmd.Start(); err != nil {
-			_ = logFile.Close()
-			_ = bootstrapLock.Release()
-			clihelp.SetExit(ctx, output.Err(out, err.Error()))
-			return false
-		}
-		logger.Info("loom: spawned detached driver", "pid", runCmd.Process.Pid, "log", driverLogPath)
-		childPID = runCmd.Process.Pid
-		// The log file handle is safe to close here: the child inherited its own
-		// duplicated descriptor at Start, so this process's copy is no longer needed.
-		_ = logFile.Close()
-		// Reap the child as soon as it exits, in the background: this process is still the
-		// driver's direct parent (Detach's Setsid only puts it in a new session; the child
-		// is re-parented away only once THIS process itself exits), so a driver that
-		// finishes before this bootstrap invocation does -- the common case, since a fresh
-		// task's Preflight and Loom-Preflight gates run in milliseconds and a precondition
-		// failure there halts the whole run just as fast -- would otherwise sit as a zombie. A zombie's pid still
-		// answers kill(pid, 0) as "alive", which is exactly the probe proc.IsAlive uses, so
-		// leaving this unreaped would make the handshake below spin its entire deadline and
-		// falsely refuse a bootstrap whose driver actually completed cleanly.
-		go func() { _ = runCmd.Wait() }()
+		childPID = pid
 	}
 
 	// Step 6, go arm: still holding the bootstrap lock, wait for the driver to take the run
@@ -463,7 +437,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		driverLogPath := loomengine.LoomDriverLog(c.location)
 		if dispositionForHandshake(result) == handshakeRefuse {
 			_ = bootstrapLock.Release()
-			clihelp.SetExit(ctx, output.Err(out, "loom: driver did not take the run lock; see "+driverLogPath+" for why the driver exited; way forward: lyx loom start"))
+			clihelp.SetExit(ctx, output.Err(out, "loom: driver did not take its driver lock; see "+driverLogPath+" for why the driver exited; way forward: lyx loom start"))
 			return false
 		}
 		if result == awaitRunLockChildDied {
@@ -597,22 +571,10 @@ Example:
 			c.spawnWatchdog(c.location.HubPath, c.reed.TmuxPath(), c.reed.ShellPath(), c.suppressWatchdogSpawn)
 
 			// Steps 5 and 6: probe the run lock and the driver strand table, decide whether a spawn
-			// is needed, and run the arm-specific launch and wait. lockHeld is the go arm's
-			// handshake seam, built here over the real run lock -- see runDriverSpawnAndWait's own
-			// doc comment for why it is a parameter rather than built inside that function.
-			runLockPath := c.shedPaths.LockPath
-			lockHeld := func() (bool, error) {
-				fl, acquired, err := lock.TryAcquireWriteLock(runLockPath)
-				if err != nil {
-					return false, err
-				}
-				if acquired {
-					_ = fl.Release()
-					return false, nil
-				}
-				return true, nil
-			}
-			if !c.runDriverSpawnAndWait(ctx, out, driver, bootstrapLock, lockHeld) {
+			// is needed, and run the arm-specific launch and wait.
+			// The go arm's handshake seam is the real driver lock, which `lyx loom drive` takes first and holds for life.
+			// See runDriverSpawnAndWait's own doc comment for why it is a parameter rather than built inside that function.
+			if !c.runDriverSpawnAndWait(ctx, out, driver, bootstrapLock, c.driverLockHeld) {
 				return nil
 			}
 

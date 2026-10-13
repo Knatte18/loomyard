@@ -51,7 +51,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-tolerant-records` — Go-written JSON records: never refuse an unknown key; rewrite via `internal/state`. (test) — [background](pattern/PATTERN-tolerant-records.md)
 - `PATTERN-transient-stop` — Marking a failure transient: the `internal/shedengine` mark, set only at a producer or step-bootstrap boundary. — [background](pattern/PATTERN-transient-stop.md)
 - `PATTERN-failure-stop-visible` — An `--until-stop` failure as sole lock holder: status is non-running before the waiter returns. (test) — [background](pattern/PATTERN-failure-stop-visible.md)
-- `PATTERN-driver-choice-single-site` — Reading a seed driver: once per recipe, in its bootstrap verb, for the surface only. (test) — [background](pattern/PATTERN-driver-choice-single-site.md)
+- `PATTERN-driver-choice-single-site` — Reading a seed driver: once per recipe, in its bootstrap verbs (`start`/`resume`), for the surface only. (test) — [background](pattern/PATTERN-driver-choice-single-site.md)
 - `PATTERN-treadle-runner-seam` — Importing into `internal/treadleengine`: never `burlerengine` or an `internal/*cli` package, and only its allowlist, not `lyxcwd`.
 - `PATTERN-plan-generation` — Archiving a plan: `_lyx/plan/`'s top-level files hold exactly one generation, and a retired one lives under `round-<N>/prior-generation/`. — [background](pattern/PATTERN-plan-generation.md)
 - `PATTERN-ref-shape-registry` — Classifying a plan ref or `plan:` handle: `internal/planparser` alone declares and decides. (test) — [background](pattern/PATTERN-ref-shape-registry.md)
