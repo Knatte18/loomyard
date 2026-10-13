@@ -39,6 +39,10 @@ type Engine struct {
 	skipRevival bool
 	// warnOut receives the operator-facing warning for a tmux config that failed to source; it is the booting command's stderr.
 	warnOut io.Writer
+	// activityFailures guards the repeating operator-activity read failure of the session name repair, which runs on every watchdog tick while a name drifts.
+	activityFailures logger.Episode
+	// nameRepairFailures guards the session name repair's pane capture and rename typing failures, one episode per strand and step.
+	nameRepairFailures logger.EpisodeSet
 }
 
 // New builds an Engine for the given Config and Geometry.

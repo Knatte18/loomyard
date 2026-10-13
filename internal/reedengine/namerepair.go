@@ -166,24 +166,29 @@ func (e *Engine) repairSessionName(namer SessionNamer, s Strand) bool {
 	}
 	capture, err := e.tmux.output("capture-pane", "-p", "-t", s.PaneID)
 	if err != nil {
-		logger.Warn("reed: could not capture pane for session name repair", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "err", err)
+		e.nameRepairFailures.Fail("capture:"+s.GUID, "reed: could not capture pane for session name repair", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "err", err)
 		return false
 	}
+	e.nameRepairFailures.Recover("capture:"+s.GUID, "reed: session name repair captures the pane again", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID)
 	if !namer.SessionIdle(capture) {
 		logger.Debug("reed: session busy, deferring session name repair", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID)
 		return false
 	}
 	active, quiet, err := e.operatorActiveLocked(s.PaneID)
 	if err != nil {
-		logger.Warn("reed: operator activity unreadable, not holding the session rename", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "err", err)
-	} else if active {
-		logger.Debug("reed: operator active, deferring session name repair", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "quiet", quiet)
-		return false
+		e.activityFailures.Fail("reed: operator activity unreadable, not holding the session rename", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "err", err)
+	} else {
+		e.activityFailures.Recover("reed: operator activity readable again for session name repair", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID)
+		if active {
+			logger.Debug("reed: operator active, deferring session name repair", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "quiet", quiet)
+			return false
+		}
 	}
 	if err := e.pasteSubmitLocked(s.PaneID, namer.RenameText(s.Name), true); err != nil {
-		logger.Warn("reed: could not type the session rename", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "err", err)
+		e.nameRepairFailures.Fail("rename:"+s.GUID, "reed: could not type the session rename", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "err", err)
 		return false
 	}
+	e.nameRepairFailures.Recover("rename:"+s.GUID, "reed: session rename types again", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID)
 	logger.Info("reed: repaired session name", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "name", s.Name)
 	return true
 }
