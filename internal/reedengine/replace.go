@@ -35,6 +35,10 @@ func moveStrandTo(strands []Strand, guid string, idx int) []Strand {
 // the removed strand's index, launches its pane, and reconciles and re-applies the layout once.
 // The old pane is killed before the new one launches because launching reconciles away any untracked
 // pane, which would otherwise kill it without the reap.
+// An overview replacement that ends the window the operator is viewing selects the new overview window once the launch succeeded;
+// any other replacement moves such a viewer to the strands' window as RemoveStrand does.
+// A replacement whose old strand shared a window that stays open ends no window and switches nothing.
+// The overview anchor admits one strand per session: replacing the overview strand itself is never refused, and replacing another strand with an overview strand is refused only while a third strand holds the overview.
 func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 	var result Strand
 	err := e.withOpLock(func() error {
@@ -60,7 +64,8 @@ func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 				return err
 			}
 
-			reapPIDs, leftWindows := e.killStrandPanes(st, paneIDs)
+			replacingWithOverview := isOverview(spec.Display)
+			reapPIDs, leftWindows, endedCurrent := e.killStrandPanes(st, paneIDs, !replacingWithOverview)
 			if warning := e.relayoutSharedWindowsLocked(leftWindows); warning != "" {
 				logger.Warn("reed: replace skipped the shared-window layout", "socket", e.Socket(), "session", e.SessionName(), "cause", warning)
 			}
@@ -86,6 +91,9 @@ func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 			if addErr == nil {
 				logger.Info("reed: replacement strand launched", "socket", e.Socket(), "session", e.SessionName(),
 					"guid", strand.GUID, "name", strand.Name)
+				if endedCurrent && replacingWithOverview {
+					e.selectStrandWindowLocked(strand.PaneID)
+				}
 			}
 
 			// The old pane is already killed: repair the layout and reap even when the add failed, so

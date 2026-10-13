@@ -86,8 +86,8 @@ func TestDriverSpec(t *testing.T) {
 		}
 	})
 	t.Run("Display_Anchor", func(t *testing.T) {
-		if got.Display.Anchor != render.AnchorBelowParent {
-			t.Errorf("driverSpec().Display.Anchor = %q; want %q -- the driver's pane must never be hidden", got.Display.Anchor, render.AnchorBelowParent)
+		if got.Display.Anchor != render.AnchorOwnWindow {
+			t.Errorf("driverSpec().Display.Anchor = %q; want %q -- the driver's pane gets a window of its own and is never hidden", got.Display.Anchor, render.AnchorOwnWindow)
 		}
 	})
 	t.Run("Display_Focus", func(t *testing.T) {

@@ -40,10 +40,12 @@ func newReapplyTestEngine(t *testing.T) (*Engine, *ReedState) {
 //   - with display-message erroring, BoxIsLive is false whether or not the fallback box happens to equal lastApplied, and select-layout is still issued;
 //   - probeHook: true runs exactly one show-options even when the apply guards skip, probeHook: false asks nothing and reports HookKnown false;
 //   - a zoomed strand window is unzoomed before the layout is planned and zoomed again after it;
+//   - a live box equal to lastApplied or to lastFailed skips with no zoom toggle at all, even on a zoomed window;
+//   - a failed apply returns its error with the live box it tried;
 //
 // and in every scenario reed.json is left byte-identical.
 //
-//testtiming:keep pins reapplyLayout's outcome per scenario: both session-survival guards issuing no select-layout, a differing box applying without moving focus, an equal live box skipping, a degraded box never counting as live, the hook probe running once even when the guards skip, and reed.json left byte-identical; its covering tests run this code without asserting it
+//testtiming:keep pins reapplyLayout's outcome per scenario: both session-survival guards issuing no select-layout, a differing box applying without moving focus, an equal live box skipping, an equal or failed box skipping the zoom bracket, a failed apply reporting its live box, a degraded box never counting as live, the hook probe running once even when the guards skip, and reed.json left byte-identical; its covering tests run this code without asserting it
 func TestReapplyLayout(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -52,8 +54,12 @@ func TestReapplyLayout(t *testing.T) {
 		box              string
 		boxErr           error
 		lastApplied      func(e *Engine) render.Box
+		lastFailed       render.Box
 		probeHook        bool
 		zoomed           bool
+		selectLayoutErr  error
+		wantErr          bool
+		wantBox          render.Box
 		wantApplied      bool
 		wantBoxIsLive    bool
 		wantHookKnown    bool
@@ -116,6 +122,33 @@ func TestReapplyLayout(t *testing.T) {
 			wantSelectLayout: true,
 		},
 		{
+			name:          "EqualBoxOnAZoomedWindowTogglesNoZoom",
+			live:          []LivePane{{ID: "%1"}, {ID: "%2"}},
+			box:           "100 21",
+			lastApplied:   func(*Engine) render.Box { return render.Box{X: 0, Y: 0, W: 100, H: 21} },
+			zoomed:        true,
+			wantBoxIsLive: true,
+		},
+		{
+			name:          "BoxEqualToTheLastFailedBoxSkipsOnAZoomedWindow",
+			live:          []LivePane{{ID: "%1"}, {ID: "%2"}},
+			box:           "80 24",
+			lastApplied:   func(*Engine) render.Box { return render.Box{X: 0, Y: 0, W: 100, H: 21} },
+			lastFailed:    render.Box{X: 0, Y: 0, W: 80, H: 24},
+			zoomed:        true,
+			wantBoxIsLive: true,
+		},
+		{
+			name:             "AFailedApplyReportsItsLiveBox",
+			live:             []LivePane{{ID: "%1"}, {ID: "%2"}},
+			box:              "80 24",
+			selectLayoutErr:  errors.New("boom"),
+			wantErr:          true,
+			wantBox:          render.Box{X: 0, Y: 0, W: 80, H: 24},
+			wantBoxIsLive:    true,
+			wantSelectLayout: true,
+		},
+		{
 			// The probe must run even when the apply guard skips.
 			name:            "ProbeRunsOnceEvenWhenTheApplyGuardSkips",
 			live:            []LivePane{{ID: "%1"}},
@@ -142,6 +175,9 @@ func TestReapplyLayout(t *testing.T) {
 			fake := installFakeTmux(t, e)
 			fake.answerSession(tt.live, tt.box, tt.boxErr)
 			fake.mustNotCall("select-pane")
+			if tt.selectLayoutErr != nil {
+				fake.answer("select-layout", "", tt.selectLayoutErr)
+			}
 			if tt.zoomed {
 				fake.answerFormat(zoomStateFormat, "1 %2", nil)
 			}
@@ -155,13 +191,16 @@ func TestReapplyLayout(t *testing.T) {
 				t.Fatalf("ReadFile before: %v", err)
 			}
 
-			got, err := e.reapplyLayout(lastApplied, tt.probeHook)
-			if err != nil {
-				t.Fatalf("reapplyLayout() error = %v, want nil", err)
+			got, err := e.reapplyLayout(lastApplied, tt.lastFailed, tt.probeHook)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("reapplyLayout() error = %v, want error %v", err, tt.wantErr)
 			}
 
 			if got.Applied != tt.wantApplied || got.BoxIsLive != tt.wantBoxIsLive {
 				t.Errorf("reapplyLayout() = %+v, want Applied %v and BoxIsLive %v", got, tt.wantApplied, tt.wantBoxIsLive)
+			}
+			if tt.wantBox != (render.Box{}) && got.Box != tt.wantBox {
+				t.Errorf("reapplyLayout() Box = %+v, want %+v", got.Box, tt.wantBox)
 			}
 			if got.HookKnown != tt.wantHookKnown || got.HookInstalled {
 				t.Errorf("reapplyLayout() hook = (%v, %v), want (false, %v)", got.HookInstalled, got.HookKnown, tt.wantHookKnown)
@@ -170,8 +209,12 @@ func TestReapplyLayout(t *testing.T) {
 				t.Errorf("select-layout issued = %v, want %v: %v", issued, tt.wantSelectLayout, fake.Sequence())
 			}
 			if tt.zoomed {
-				if seq := fake.Sequence("resize-pane", "select-layout"); !slices.Equal(seq, []string{"resize-pane", "select-layout", "resize-pane"}) {
-					t.Errorf("zoom bracket order = %v, want unzoom, select-layout, re-zoom", seq)
+				want := []string{"resize-pane", "select-layout", "resize-pane"}
+				if !tt.wantSelectLayout {
+					want = nil
+				}
+				if seq := fake.Sequence("resize-pane", "select-layout"); !slices.Equal(seq, want) {
+					t.Errorf("zoom bracket order = %v, want %v", seq, want)
 				}
 			}
 			if count := fake.Count("show-options"); count != tt.wantShowOptions {
@@ -208,7 +251,7 @@ func TestReapplyLayout_Deferral(t *testing.T) {
 	fake := installFakeTmux(t, e)
 	fake.answerSession([]LivePane{{ID: "%1"}, {ID: "%2"}}, "100 21", nil)
 
-	got, err := e.reapplyLayout(render.Box{}, true)
+	got, err := e.reapplyLayout(render.Box{}, render.Box{}, true)
 	if err != nil {
 		t.Fatalf("reapplyLayout() error = %v, want nil", err)
 	}
@@ -261,7 +304,7 @@ func TestReapplyLayout_HookProbeExactMatchOnly(t *testing.T) {
 			fake.answerSession([]LivePane{{ID: "%1"}, {ID: "%2"}}, "100 21", nil)
 			fake.answer("show-options", tt.answer, tt.err)
 
-			got, err := e.reapplyLayout(render.Box{X: 0, Y: 0, W: 100, H: 21}, true)
+			got, err := e.reapplyLayout(render.Box{X: 0, Y: 0, W: 100, H: 21}, render.Box{}, true)
 			if err != nil {
 				t.Fatalf("reapplyLayout() error = %v, want nil", err)
 			}

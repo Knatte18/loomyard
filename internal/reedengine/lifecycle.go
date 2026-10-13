@@ -74,7 +74,7 @@ type StrandStatus struct {
 	// Present reports that the strand's binding names a present pane, alive or dead.
 	// Shuttle's stop path decides on it whether a dead strand still has a pane to remove.
 	Present bool
-	// OwnWindow reports that the strand is anchored own-window.
+	// OwnWindow reports that the strand lives in a window of its own, own-window or overview.
 	// Shuttle's stop path decides on it whether the strand's window goes with it.
 	OwnWindow bool
 	// Retiring mirrors Strand.Retiring.

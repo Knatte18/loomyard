@@ -21,7 +21,7 @@ type ReapplyResult struct {
 	Deferred bool
 	// Applied is true only when select-layout was actually issued.
 	Applied bool
-	// Box is the box the layout was planned against. Meaningful only when BoxIsLive.
+	// Box is the box queried this call, which the layout was planned against when Applied. Meaningful only when BoxIsLive.
 	Box render.Box
 	// BoxIsLive reports whether Box was a real observation rather than
 	// liveBoxLocked's configured fallback, or no query at all.
@@ -100,7 +100,7 @@ func (e *Engine) hookInstalledLocked(windowTarget string) (installed bool, known
 
 // reapplyLayout is the watchdog's single re-apply op: it tries the (non-blocking) op lock, and, if
 // acquired, loads state, lists live panes, optionally probes the window-resized hook, and re-applies
-// the layout with the focus half suppressed and a box-equality guard against lastApplied.
+// the layout with the focus half suppressed, unless the live box equals lastApplied or lastFailed.
 //
 // probeHook is what keeps the design's "signal-driven mode never re-probes" rule literally true.
 // Without it the show-options round trip would fire on EVERY re-apply in both modes, so a signal-mode
@@ -114,46 +114,63 @@ func (e *Engine) hookInstalledLocked(windowTarget string) (installed bool, known
 // apply guards skip (fewer than two panes, or no strand owning a present pane) still decides the
 // mode — otherwise a watcher on such a session could never promote out of poll mode.
 //
-// reapplyLayout persists nothing: it never calls SaveState and never writes reed.json. It inherits
-// applyLayoutLockedOpts's two session-survival guards rather than re-deriving them — which matters
-// more here than anywhere else, since the watcher fires unattended with no operator watching the
-// envelope — and it owns the box-equality guard itself so the comparison happens under the same lock
-// as the query that produced the box.
+// reapplyLayout persists nothing: it never calls SaveState and never writes reed.json.
+// It applies applyLayoutLockedOpts's two session-survival guards itself, before anything else changes the window.
+// That matters more here than anywhere else, since the watcher fires unattended with no operator watching the envelope.
+// It owns the box-equality guard, so the comparison happens under the same lock as the query that produced the box.
 //
-// The whole re-apply runs inside keepZoomLocked, so the pane list the layout is planned from is read on the unzoomed window and a zoomed strand stays zoomed.
+// The live box is recorded in the result, live or not.
+// A live box equal to lastApplied or to lastFailed, the box an earlier watcher apply failed at, returns with Applied false before the zoom bracket is entered.
+// So a re-apply that changes nothing never toggles zoom on a zoomed window.
+// Only an apply that will run enters keepZoomLocked, which re-lists the panes on the unzoomed window the layout is planned from.
+// A failed apply returns its error with the result still carrying the live box it tried.
+// The skip suppresses only a re-apply whose box an earlier watcher apply already answered, applied or failed, and never a strand op's apply.
 //
-// reapplyLayout is never exported, never acquires a second lock, and never queries geometry outside
-// applyLayoutLockedOpts.
-func (e *Engine) reapplyLayout(lastApplied render.Box, probeHook bool) (ReapplyResult, error) {
+// reapplyLayout is never exported and never acquires a second lock.
+func (e *Engine) reapplyLayout(lastApplied, lastFailed render.Box, probeHook bool) (ReapplyResult, error) {
 	var result ReapplyResult
 	acquired, err := e.withTryOpLock(func() error {
+		if err := e.requireSessionLocked(); err != nil {
+			return err
+		}
+		st, err := e.loadOrInitStateLocked()
+		if err != nil {
+			return err
+		}
+		windowTarget, err := e.strandWindowTargetFor(st)
+		if err != nil {
+			return fmt.Errorf("list panes: %w", err)
+		}
+		live, err := e.tmux.listPanes(windowTarget)
+		if err != nil {
+			return fmt.Errorf("list panes: %w", err)
+		}
+
+		if probeHook {
+			installed, known := e.hookInstalledLocked(windowTarget)
+			result.HookInstalled = installed
+			result.HookKnown = known
+		}
+
+		if len(live) < 2 || !anyPlacedStrand(st.Strands, liveIDSet(live)) {
+			return nil
+		}
+		result.Box, result.BoxIsLive = e.liveBoxLocked(windowTarget)
+		if result.BoxIsLive && (result.Box == lastApplied || result.Box == lastFailed) {
+			return nil
+		}
+
 		return e.keepZoomLocked(func() error {
-			if err := e.requireSessionLocked(); err != nil {
-				return err
-			}
-			st, err := e.loadOrInitStateLocked()
-			if err != nil {
-				return err
-			}
-			windowTarget, err := e.strandWindowTargetFor(st)
+			unzoomed, err := e.tmux.listPanes(windowTarget)
 			if err != nil {
 				return fmt.Errorf("list panes: %w", err)
 			}
-			live, err := e.tmux.listPanes(windowTarget)
-			if err != nil {
-				return fmt.Errorf("list panes: %w", err)
+			applyRes, err := e.applyLayoutLockedOpts(st, unzoomed, applyOpts{SkipFocus: true})
+			if applyRes.Applied {
+				result.Applied = true
+				result.Box = applyRes.Box
+				result.BoxIsLive = applyRes.BoxIsLive
 			}
-
-			if probeHook {
-				installed, known := e.hookInstalledLocked(windowTarget)
-				result.HookInstalled = installed
-				result.HookKnown = known
-			}
-
-			applyRes, err := e.applyLayoutLockedOpts(st, live, applyOpts{SkipFocus: true, SkipWhenBoxEquals: &lastApplied})
-			result.Applied = applyRes.Applied
-			result.Box = applyRes.Box
-			result.BoxIsLive = applyRes.BoxIsLive
 			return err
 		})
 	})

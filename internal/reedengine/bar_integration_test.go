@@ -88,18 +88,24 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 		t.Fatalf("select-window: %v", err)
 	}
 
-	viewLit := "range=user|view list=focus bg=white fg=black bold]"
-	viewUnlit := "range=user|view bg=colour236 fg=white]"
+	shellLit := "range=user|shell list=focus bg=white fg=black bold] shell "
+	shellUnlit := "range=user|shell bg=colour236 fg=white] shell "
 	alphaLit := "range=pane|" + f.alpha.PaneID + " list=focus bg=colour208 fg=black bold] alpha "
 	alphaUnlit := "range=pane|" + f.alpha.PaneID + " bg=colour236 fg=colour208] alpha "
 	betaUnlit := "range=pane|" + f.beta.PaneID + " bg=colour236 fg=cyan] beta "
 
-	// The strand window is current and unzoomed: VIEW is lit and both strands are unlit buttons, in pane order, with no Selvage button.
+	// The strand window is current and unzoomed: the shell button is lit and both strands are unlit buttons, in pane order, with no Selvage button.
 	line := f.expand(t, "#{T:status-format[0]}")
-	for _, want := range []string{viewLit, alphaUnlit, betaUnlit, "range=window|", " extra "} {
+	for _, want := range []string{shellLit, alphaUnlit, betaUnlit, "range=window|", " extra "} {
 		if !strings.Contains(line, want) {
 			t.Errorf("line 1 with the strand window current = %q, want it to contain %q", line, want)
 		}
+	}
+	if strings.Contains(line, " VIEW ") {
+		t.Errorf("line 1 = %q, want no VIEW button", line)
+	}
+	if strings.Index(line, " extra ") > strings.Index(line, shellLit) {
+		t.Errorf("line 1 = %q, want the shell button after the extra window's button, the last visible window", line)
 	}
 	if strings.Index(line, alphaUnlit) > strings.Index(line, betaUnlit) {
 		t.Errorf("line 1 = %q, want alpha's button before beta's (pane order)", line)
@@ -114,7 +120,7 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 		t.Errorf("line 1 = %q, want no button for the window carrying @lyx_hidden", line)
 	}
 
-	// Zooming alpha unlights VIEW and lights exactly alpha's button.
+	// Zooming alpha unlights the shell button and lights exactly alpha's button.
 	if err := e.tmux.run("select-pane", "-t", f.alpha.PaneID); err != nil {
 		t.Fatalf("select-pane: %v", err)
 	}
@@ -122,7 +128,7 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 		t.Fatalf("resize-pane -Z: %v", err)
 	}
 	line = f.expand(t, "#{T:status-format[0]}")
-	for _, want := range []string{viewUnlit, alphaLit, betaUnlit} {
+	for _, want := range []string{shellUnlit, alphaLit, betaUnlit} {
 		if !strings.Contains(line, want) {
 			t.Errorf("line 1 with alpha zoomed = %q, want it to contain %q", line, want)
 		}
@@ -131,12 +137,12 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 		t.Fatalf("unzoom: %v", err)
 	}
 
-	// From the second window the strand buttons are still there, VIEW is unlit and the window's own button is lit.
+	// From the second window the strand buttons are still there, the shell button is unlit and the window's own button is lit.
 	if err := e.tmux.run("select-window", "-t", f.otherWindow); err != nil {
 		t.Fatalf("select-window extra: %v", err)
 	}
 	line = f.expand(t, "#{T:status-format[0]}")
-	for _, want := range []string{viewUnlit, alphaUnlit, betaUnlit, "range=window|1 list=focus bg=white fg=black bold] extra "} {
+	for _, want := range []string{shellUnlit, alphaUnlit, betaUnlit, "range=window|1 list=focus bg=white fg=black bold] extra "} {
 		if !strings.Contains(line, want) {
 			t.Errorf("line 1 from the second window = %q, want it to contain %q", line, want)
 		}
@@ -172,6 +178,9 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 	if strings.Contains(line, " hidden ") {
 		t.Errorf("line 1 with an own window = %q, want still no button for the window carrying @lyx_hidden", line)
 	}
+	if strings.Index(line, "range=user|shell") < strings.Index(line, scoutUnseen) || strings.Index(line, "range=user|shell") < strings.Index(line, " extra ") {
+		t.Errorf("line 1 with an own window = %q, want the shell button after every own-window button and the extra window's, the last visible window", line)
+	}
 
 	if err := e.SetWaitMark(scout.GUID, "verify loom", time.Now().Add(-3*time.Minute)); err != nil {
 		t.Fatalf("SetWaitMark(scout): %v", err)
@@ -198,6 +207,21 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 	}
 	if line = f.expand(t, "#{T:status-format[0]}"); !strings.Contains(line, scoutUnlit) || strings.Contains(line, scoutUnseen) {
 		t.Errorf("line 1 after selecting the strands' window again = %q, want the own window's button unlit without underscore", line)
+	}
+
+	// The overview window's button is the first on line 1, in the plain unlit window style.
+	status, err := e.AddStrand(AddSpec{NameOverride: "status", Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOverview}})
+	if err != nil {
+		t.Fatalf("AddStrand(status): %v", err)
+	}
+	overviewIndex := strings.TrimSpace(mustTmuxOutput(t, e, "display-message", "-p", "-t", status.PaneID, "#{window_index}"))
+	overviewButton := "range=window|" + overviewIndex + " bg=colour236 fg=white] overview"
+	line = f.expand(t, "#{T:status-format[0]}")
+	if first := strings.Index(line, "range="); first < 0 || !strings.HasPrefix(line[first:], overviewButton[:strings.Index(overviewButton, "]")]) {
+		t.Errorf("line 1 with an overview strand = %q, want its first button to be %q", line, overviewButton)
+	}
+	if !strings.Contains(line, overviewButton) {
+		t.Errorf("line 1 with an overview strand = %q, want the plain unlit window button %q", line, overviewButton)
 	}
 }
 

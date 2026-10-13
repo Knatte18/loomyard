@@ -11,7 +11,7 @@
 // The package is deliberately split into two layers that must never merge.
 // Layout policy (policy.go, height.go, focus.go) decides which strand lands where and how tall —
 // this is where the closed Anchor vocabulary is interpreted and where the height math lives.
-// The vocabulary is top, below-parent, own-window and hidden; own-window and hidden strands are never placed in the window this package lays out.
+// The vocabulary is top, below-parent, own-window, overview and hidden; own-window, overview and hidden strands are never placed in the window this package lays out.
 // Layout mechanics (layout.go, checksum.go) turns an already-decided list of (pane, height)
 // placements into the tmux window_layout string and its checksum, with no opinion about placement
 // or sizing.
@@ -20,7 +20,7 @@
 package render
 
 // Anchor is the closed set of placement strategies a strand's Display may declare.
-// Render recognizes exactly these four values.
+// Render recognizes exactly these five values.
 type Anchor string
 
 const (
@@ -32,6 +32,9 @@ const (
 	// AnchorOwnWindow gives a strand a tmux window of its own, or its group's shared window, outside window 0.
 	// Window 0's layout never places it.
 	AnchorOwnWindow Anchor = "own-window"
+	// AnchorOverview gives the session's one overview strand a window of its own that is always the session's first window.
+	// Window 0's layout never places it.
+	AnchorOverview Anchor = "overview"
 	// AnchorHidden excludes a strand from the layout entirely.
 	// A hidden strand never owns a pane and is dropped before placement.
 	AnchorHidden Anchor = "hidden"

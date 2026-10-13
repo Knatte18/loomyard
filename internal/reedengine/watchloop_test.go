@@ -10,10 +10,12 @@ package reedengine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -77,8 +79,10 @@ func watchDefaultTimingMatchesTheSixConstants(t *testing.T) {
 
 // watchPollWakeChangedPerOutcome pins pollWakeChanged's rule per re-apply outcome:
 // a change returns the poll wait to the base, anything else doubles it.
+// A live box counts as a change only when it differs from both lastApplied and lastFailed.
 func watchPollWakeChangedPerOutcome(t *testing.T) {
 	last := render.Box{W: 100, H: 21}
+	failed := render.Box{W: 90, H: 25}
 	other := render.Box{W: 120, H: 30}
 	tests := []struct {
 		name string
@@ -91,12 +95,13 @@ func watchPollWakeChangedPerOutcome(t *testing.T) {
 		{"ChangedLiveBox", ReapplyResult{Box: other, BoxIsLive: true}, nil, true},
 		{"FailedReapply", ReapplyResult{Applied: true, Box: other, BoxIsLive: true}, errors.New("boom"), false},
 		{"UnchangedLiveBox", ReapplyResult{Box: last, BoxIsLive: true}, nil, false},
+		{"LiveBoxEqualToTheLastFailedBox", ReapplyResult{Box: failed, BoxIsLive: true}, nil, false},
 		{"DegradedBoxNothingApplied", ReapplyResult{Box: other}, nil, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := pollWakeChanged(tt.res, tt.err, last); got != tt.want {
-				t.Errorf("pollWakeChanged(%+v, %v, %+v) = %v, want %v", tt.res, tt.err, last, got, tt.want)
+			if got := pollWakeChanged(tt.res, tt.err, last, failed); got != tt.want {
+				t.Errorf("pollWakeChanged(%+v, %v, %+v, %+v) = %v, want %v", tt.res, tt.err, last, failed, got, tt.want)
 			}
 		})
 	}
@@ -556,8 +561,9 @@ func TestWatchLoop_PollModeByDefault(t *testing.T) {
 
 	// The backed-off schedule fits about six ticks in the window and a fixed cadence about forty,
 	// so the bound fails a regression to a fixed cadence while scheduling latency only lowers the count.
+	// An applying re-apply lists the panes twice, once for its guards and once inside the zoom bracket, and a skipped one lists them once; the bound allows the larger.
 	const (
-		listPanesPerReapply = 1
+		listPanesPerReapply = 2
 		backedOffTickBound  = 12
 	)
 	before := fake.Count("list-panes")
@@ -568,6 +574,7 @@ func TestWatchLoop_PollModeByDefault(t *testing.T) {
 }
 
 // waitForPromotion runs the loop already promoted to signal mode against fake's current show-options answer (which must already report reed's own command), by waiting for the list-panes call count to stop growing across two consecutive observation windows — the observable proxy for "no more per-cycle reapplyLayout calls", since promotion is otherwise an internal mode flag.
+// The promoting call lists the panes twice when it applies and once when it skips, so the count it waits for is at least one and not an exact figure.
 func waitForPromotion(t *testing.T, fake *fakeTmux) int {
 	t.Helper()
 	if !eventually(t, 200*time.Millisecond, func() bool { return fake.Count("list-panes") >= 1 }) {
@@ -719,9 +726,9 @@ func TestWatchLoop_TakeEffectBoundary(t *testing.T) {
 	}
 }
 
-// TestWatchLoop_FailuresNeverKillTheLoop pins that with select-layout scripted to fail every time,
-// the loop is still running and still responsive after an exhausted streak: a fresh signal file
-// still produces a fresh select-layout attempt.
+// TestWatchLoop_FailuresNeverKillTheLoop pins that with select-layout scripted to fail every time, the first failed attempt at a box is the only one.
+// The retry streak at that box adds no further select-layout, and neither does a fresh signal while the box is still the failed one.
+// The loop is still running and responsive: a fresh signal after the box answer changes produces a fresh select-layout attempt.
 func TestWatchLoop_FailuresNeverKillTheLoop(t *testing.T) {
 	e, fake := newWatchLoopTestEngine(t, "on")
 	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
@@ -742,37 +749,50 @@ func TestWatchLoop_FailuresNeverKillTheLoop(t *testing.T) {
 	}
 	feed.send()
 
-	// timing.MaxAttempts failing attempts, each escalating by timing.BaseDelay<<(n-1), plus generous
-	// scheduling slack.
-	wait := timing.Quiet
-	for i := 0; i < timing.MaxAttempts; i++ {
-		wait += timing.BaseDelay << i
+	want := baseline + 1
+	if !eventually(t, timing.Quiet+200*time.Millisecond, func() bool { return fake.Count("select-layout") >= want }) {
+		t.Fatalf("select-layout attempts = %d, want %d (the first failed attempt)", fake.Count("select-layout"), want)
 	}
-	wait += 50 * time.Millisecond
 
-	want := baseline + timing.MaxAttempts
-	if !eventually(t, wait, func() bool { return fake.Count("select-layout") >= want }) {
-		t.Fatalf("select-layout attempts = %d, want %d (the exhausted streak)", fake.Count("select-layout"), want)
+	// The span a retry streak of timing.MaxAttempts attempts would take, each escalating by timing.BaseDelay<<(n-1), plus generous scheduling slack.
+	// None of it adds an attempt at the failed box.
+	streak := timing.Quiet
+	for i := 0; i < timing.MaxAttempts; i++ {
+		streak += timing.BaseDelay << i
 	}
-	exhausted := fake.Count("select-layout")
+	streak += 50 * time.Millisecond
 
 	select {
 	case err := <-done:
-		t.Fatalf("watchLoop returned %v after an exhausted retry streak, want it to keep running", err)
-	case <-time.After(30 * time.Millisecond):
+		t.Fatalf("watchLoop returned %v after a failed attempt, want it to keep running", err)
+	case <-time.After(streak):
 	}
-	if got := fake.Count("select-layout"); got != exhausted {
-		t.Errorf("select-layout attempts = %d after the streak exhausted, want unchanged at %d (no attempts beyond the cap)", got, exhausted)
+	if got := fake.Count("select-layout"); got != want {
+		t.Errorf("select-layout attempts = %d after the retry streak, want unchanged at %d (no retry at the failed box)", got, want)
 	}
 
-	// A fresh signal is a fresh event: it must still produce a fresh attempt, cap or no cap.
-	fake.answer("select-layout", "", nil)
+	// A fresh signal with the box still the failed one adds no attempt either.
+	if err := os.WriteFile(e.resizeSignalPath(), nil, 0o644); err != nil {
+		t.Fatalf("WriteFile same-box signal: %v", err)
+	}
+	feed.send()
+	select {
+	case err := <-done:
+		t.Fatalf("watchLoop returned %v after a same-box signal, want it to keep running", err)
+	case <-time.After(timing.Quiet + 50*time.Millisecond):
+	}
+	if got := fake.Count("select-layout"); got != want {
+		t.Errorf("select-layout attempts = %d after a same-box signal, want unchanged at %d", got, want)
+	}
+
+	// A fresh signal once the box changed is a fresh event: it must still produce a fresh attempt.
+	fake.answer("display-message", "141 50", nil)
 	if err := os.WriteFile(e.resizeSignalPath(), nil, 0o644); err != nil {
 		t.Fatalf("WriteFile fresh signal: %v", err)
 	}
 	feed.send()
-	if !eventually(t, 200*time.Millisecond, func() bool { return fake.Count("select-layout") > exhausted }) {
-		t.Errorf("select-layout attempts = %d, want more than %d after a fresh signal", fake.Count("select-layout"), exhausted)
+	if !eventually(t, 200*time.Millisecond, func() bool { return fake.Count("select-layout") > want }) {
+		t.Errorf("select-layout attempts = %d, want more than %d after a signal at a changed box", fake.Count("select-layout"), want)
 	}
 }
 
@@ -962,6 +982,17 @@ func TestWatchLoop_NonSentinelFailureDoesNotGoDormant(t *testing.T) {
 	e, fake := newWatchLoopTestEngine(t, "on")
 	fake.answer("show-options", "", nil)
 	fake.answer("select-layout", "", errors.New("select-layout boom"))
+	// Every window size query answers a new box, so no poll lands on the failed box and skips: each one is a fresh apply attempt.
+	var queries atomic.Int32
+	fake.answerFunc("display-message", func(args []string) (string, error) {
+		switch args[len(args)-1] {
+		case "#{window_width} #{window_height}":
+			return fmt.Sprintf("%d 21", 100+queries.Add(1)), nil
+		case paneGenerationFormat:
+			return "$0|1|1000", nil
+		}
+		return "100 21", nil
+	})
 
 	startWatchLoop(t, e, watchdogTestTiming(), newFeedWatch().open)
 
@@ -988,7 +1019,6 @@ func TestWatchLoop_NonSentinelFailureDoesNotGoDormant(t *testing.T) {
 		t.Errorf("recovery line carries no failed_ticks; log:\n%s", buf.String())
 	}
 
-	fake.answer("display-message", "150 55", nil)
 	fake.answer("select-layout", "", errors.New("select-layout boom"))
 	if !eventually(t, 300*time.Millisecond, func() bool { return countLogLines(buf.String(), "WARN", failed) == 2 }) {
 		t.Fatalf("no second WARN after the recovery; log:\n%s", buf.String())

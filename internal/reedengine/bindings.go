@@ -1,4 +1,5 @@
 // bindings.go declares the server-wide key and mouse bindings of reed's navigation: the five Alt keys and the left click on the status bar.
+// Alt+Up and Alt+Down step across windows in index order, and a left click on the shell button returns to the strands' window.
 // The builder is pure; pinBindingsLocked issues its argvs, each non-fatal, from the geometry pin path that boot and the attach pre-flight both run.
 
 package reedengine
@@ -17,11 +18,8 @@ const (
 	// A batten window carries no @lyx_strands, so Alt+z does nothing there.
 	zoomBindingCondition = "#{&&:#{@lyx_strands},#{||:#{@strand},#{||:#{" + consolePaneOption + "},#{window_zoomed_flag}}}}"
 
-	// stepStopCondition is true on a pane the cycle stops at: a strand pane or the pane marked as the console.
-	stepStopCondition = "#{||:#{@strand},#{" + consolePaneOption + "}}"
-
-	// stepBindingCondition is true in a window reed marked as the strands' window.
-	stepBindingCondition = "#{@lyx_strands}"
+	// hiddenWindowCondition is true in a window a step landed on that carries @lyx_hidden.
+	hiddenWindowCondition = "#{@lyx_hidden}"
 
 	// viewWindowID expands, at click time, to the id of the window carrying @lyx_strands, and to nothing when no window does.
 	viewWindowID = "#{W:#{?#{@lyx_strands},#{window_id},}}"
@@ -30,22 +28,15 @@ const (
 	// It is expanded by run-shell -C at click time.
 	selectStrandsWindowCommand = "run-shell -C \"#{?" + viewWindowID + ",select-window -t " + viewWindowID + ",}\""
 
-	// viewClickCommand selects the strands' window and unzooms it when zoomed.
+	// shellClickCommand selects the strands' window, the shell window, and unzooms it when zoomed.
 	// The zoom flag it hands the nested if-shell is escaped once, its closing brace as `#}` because a bare `}` ends the enclosing conditional early.
-	viewClickCommand = "run-shell -C \"#{?" + viewWindowID + ",select-window -t " + viewWindowID +
+	shellClickCommand = "run-shell -C \"#{?" + viewWindowID + ",select-window -t " + viewWindowID +
 		" ; if-shell -F -t " + viewWindowID + " '##{window_zoomed_flag#}' 'resize-pane -Z -t " + viewWindowID + "',}\""
 
 	// paneClickCommand selects the clicked pane in its window and zooms it, keeping the zoom on when it already is.
 	// tmux resolves a pane range's `=` target only inside the client's current window, so the strands' window, the only one that carries pane ranges, is selected first.
 	paneClickCommand = selectStrandsWindowCommand + " ; select-pane -Z -t= ; if-shell -F -t= '#{window_zoomed_flag}' '' 'resize-pane -Z -t='"
 )
-
-// stepCommand returns the tmux command that steps to the previous pane of the window (target `:.-`) or the next (`:.+`), both wrapping and keeping the zoom.
-// The cycle runs over every strand pane and the console pane in physical order, the console last, so when a step lands on a pane carrying neither @strand nor the console marker one more step the same way passes it.
-func stepCommand(target string) string {
-	step := "select-pane -Z -t " + target
-	return step + " ; if-shell -F -t : \"" + stepStopCondition + "\" \"\" \"" + step + "\""
-}
 
 // statusClickBranch is one status range type of the left-click dispatch and the tmux command run for it.
 type statusClickBranch struct {
@@ -55,7 +46,7 @@ type statusClickBranch struct {
 
 // statusClickBranches lists the left-click dispatch on `#{mouse_status_range}`, in order.
 var statusClickBranches = []statusClickBranch{
-	{"view", viewClickCommand},
+	{"shell", shellClickCommand},
 	{"pane", paneClickCommand},
 	{"window", "select-window -t="},
 	{"session", "switch-client -t="},
@@ -64,12 +55,14 @@ var statusClickBranches = []statusClickBranch{
 // bindingArgvs returns the `bind-key -n` argvs of the Alt keys and the status click, each in the root table.
 // switchPrev and switchNext are the shell lines run-shell runs for M-Left and M-Right;
 // an empty one leaves its key unbound.
-// The status click is dispatched by chained if-shell commands, joined by tmux's escaped `\;` separator argument, since only one range type matches a click.
+// M-Down and M-Up step to the next and previous window with tmux's own wrap, in every window, and the step then goes on if it landed on a window carrying @lyx_hidden.
+// Hidden windows sit after the shell window, so one conditional step reaches a visible window: forward onto the session's first window, the overview, and back onto the strands' window, the shell.
+// The status click and each step are dispatched by chained commands, joined by tmux's escaped `\;` separator argument, since only one range type matches a click.
 func bindingArgvs(switchPrev, switchNext string) [][]string {
 	argvs := [][]string{
 		{"bind-key", "-n", "M-z", "if-shell", "-F", zoomBindingCondition, "resize-pane -Z"},
-		{"bind-key", "-n", "M-Up", "if-shell", "-F", stepBindingCondition, stepCommand(":.-")},
-		{"bind-key", "-n", "M-Down", "if-shell", "-F", stepBindingCondition, stepCommand(":.+")},
+		{"bind-key", "-n", "M-Up", "previous-window", `\;`, "if-shell", "-F", "-t", ":", hiddenWindowCondition, selectStrandsWindowCommand},
+		{"bind-key", "-n", "M-Down", "next-window", `\;`, "if-shell", "-F", "-t", ":", hiddenWindowCondition, "select-window -t :^"},
 	}
 	if switchPrev != "" {
 		argvs = append(argvs, []string{"bind-key", "-n", "M-Left", "run-shell", "-b", switchPrev})

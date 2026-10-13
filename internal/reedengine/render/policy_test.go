@@ -40,6 +40,13 @@ func TestPartitionByAnchor(t *testing.T) {
 			want: nil,
 		},
 		{
+			name: "OverviewNotPlaced",
+			strands: []Strand{
+				{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorOverview}},
+			},
+			want: nil,
+		},
+		{
 			name: "TopStrandInsertedAfterABelowParentStrandIsPlacedFirstAndHiddenContentIsDropped",
 			strands: []Strand{
 				{GUID: "below", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},

@@ -204,11 +204,12 @@ func (e *Engine) Watch(ctx context.Context) error {
 // A deferral counts as a change because another op is changing the session.
 // A failed re-apply does not, so a broken tmux costs at most one round trip a minute.
 // A degraded box is no observation, so it counts only when a layout was applied.
-func pollWakeChanged(res ReapplyResult, err error, lastApplied render.Box) bool {
+// A live box counts only when it differs from both lastApplied and lastFailed, so a poll-mode watcher sitting on a failed box backs off instead of waking at the base cadence.
+func pollWakeChanged(res ReapplyResult, err error, lastApplied, lastFailed render.Box) bool {
 	if err != nil {
 		return false
 	}
-	return res.Deferred || res.Applied || (res.BoxIsLive && res.Box != lastApplied)
+	return res.Deferred || res.Applied || (res.BoxIsLive && res.Box != lastApplied && res.Box != lastFailed)
 }
 
 // consumeResizeSignal removes the signal file when it exists and records the signal on state at now, reporting whether a signal was found.
@@ -267,6 +268,9 @@ func (e *Engine) watchLoop(ctx context.Context, t watchTiming, open FileWatchOpe
 	// a live box always has positive W/H, so it can never equal the zero box, and the first re-apply
 	// therefore always runs.
 	var lastApplied render.Box
+	// lastFailed is the live box an earlier apply failed at, the zero box until one does.
+	// Neither the retry streak nor a fresh signal re-applies at it; a box that applies moves past it, and a strand op applies through its own path.
+	var lastFailed render.Box
 
 	// events is nil until promotion opens the watcher, and a nil channel never fires.
 	var events <-chan fswatch.Event
@@ -348,8 +352,8 @@ func (e *Engine) watchLoop(ctx context.Context, t watchTiming, open FileWatchOpe
 		// Signal mode passes false because it never re-probes: the probeHook argument is what
 		// makes that rule literally true rather than merely suppressing the mode transition
 		// while still paying the show-options round trip on every resize.
-		res, applyErr := e.reapplyLayout(lastApplied, false)
-		switchMode(e.handleWatchOutcome(mode, state, t, res, applyErr, &lastApplied, &dormantFrom))
+		res, applyErr := e.reapplyLayout(lastApplied, lastFailed, false)
+		switchMode(e.handleWatchOutcome(mode, state, t, res, applyErr, &lastApplied, &lastFailed, &dormantFrom))
 		if mode == watchModeSignal && state.pending {
 			// A failed apply is retried after its escalating delay and a deferred one after the base delay.
 			retry.arm(max(state.readyAt.Sub(time.Now()), t.BaseDelay))
@@ -382,17 +386,17 @@ func (e *Engine) watchLoop(ctx context.Context, t watchTiming, open FileWatchOpe
 				// A watcher whose signal file could not be watched has nothing to promote to, so it probes no more.
 				// Poll mode uses neither the debouncer nor the retry streak:
 				// the cycle interval is its own cadence, and this is the fallback platform's only self-heal, so a per-event cap that could stop it permanently must not apply here.
-				res, applyErr = e.reapplyLayout(lastApplied, !promotionBlocked)
+				res, applyErr = e.reapplyLayout(lastApplied, lastFailed, !promotionBlocked)
 			case watchModeDormant:
 				// A dormant tick asks for no probe, and it does not use the debouncer or the retry
 				// streak — dormancy is not a resize-event failure mode, it is a wait for the told
 				// worktree root to come back.
-				res, applyErr = e.reapplyLayout(lastApplied, false)
+				res, applyErr = e.reapplyLayout(lastApplied, lastFailed, false)
 			}
 
-			changed := pollWakeChanged(res, applyErr, lastApplied)
+			changed := pollWakeChanged(res, applyErr, lastApplied, lastFailed)
 			tickMode := mode
-			switchMode(e.handleWatchOutcome(mode, state, t, res, applyErr, &lastApplied, &dormantFrom))
+			switchMode(e.handleWatchOutcome(mode, state, t, res, applyErr, &lastApplied, &lastFailed, &dormantFrom))
 			// A mode switch has already armed the wake from the new mode's base.
 			if mode == tickMode {
 				switch mode {
@@ -413,7 +417,11 @@ func (e *Engine) watchLoop(ctx context.Context, t watchTiming, open FileWatchOpe
 // dormantFrom is the loop's own memory of which mode a dormant watcher should resume as; this
 // function is the sole reader and sole writer of it, across both the sentinel branch (which
 // writes it) and the recovery branch (which reads it).
-func (e *Engine) handleWatchOutcome(mode watchMode, state *watchState, t watchTiming, res ReapplyResult, err error, lastApplied *render.Box, dormantFrom *watchMode) watchMode {
+//
+// A failed re-apply records its live box in lastFailed, so the same box is not retried until another box applies.
+// A result with Applied set records its live box in lastApplied and clears lastFailed.
+// A live result with nothing applied records its box in lastApplied only when it differs from lastFailed, and never clears lastFailed.
+func (e *Engine) handleWatchOutcome(mode watchMode, state *watchState, t watchTiming, res ReapplyResult, err error, lastApplied, lastFailed *render.Box, dormantFrom *watchMode) watchMode {
 	if errors.Is(err, errWorktreeRootGone) {
 		// A watcher not already dormant is entering dormancy for the first time this outage: log
 		// once and remember the mode it should resume as. A watcher already dormant has nothing new
@@ -445,6 +453,9 @@ func (e *Engine) handleWatchOutcome(mode watchMode, state *watchState, t watchTi
 			}
 		}
 		// Do not update lastApplied, and do not change the mode.
+		if res.BoxIsLive {
+			*lastFailed = res.Box
+		}
 		return mode
 	}
 
@@ -462,7 +473,10 @@ func (e *Engine) handleWatchOutcome(mode watchMode, state *watchState, t watchTi
 	if mode == watchModeSignal {
 		state.Succeeded()
 	}
-	if res.BoxIsLive {
+	if res.Applied {
+		*lastFailed = render.Box{}
+	}
+	if res.BoxIsLive && (res.Applied || res.Box != *lastFailed) {
 		*lastApplied = res.Box
 	}
 	// A degraded query is not an observation, so a fallback box must cause neither a spurious

@@ -1,4 +1,4 @@
-// overview_test.go pins the runs overview: renderOverview and fitOverview over built runs, and the source that reads a prime's runs from disk.
+// overview_test.go pins the runs overview: renderOverview over built runs, and the source that reads a prime's runs from disk.
 
 package battencli
 
@@ -48,9 +48,6 @@ func TestRenderOverview(t *testing.T) {
 		name string
 		runs []overviewRun
 		want []string
-		// fitRows, when positive, passes want through fitOverview with this many rows and compares wantFit instead.
-		fitRows int
-		wantFit []string
 	}{
 		{
 			name: "two runs are ordered by start with their six fields, oldest first",
@@ -201,43 +198,16 @@ func TestRenderOverview(t *testing.T) {
 			name: "no runs renders the one line",
 			want: []string{"no runs in flight"},
 		},
-		{
-			name:    "three lines into two rows keep the oldest line and count the rest",
-			runs:    threeStartedRuns(),
-			want:    []string{"a  running  Plan  3m  3m  s", "b  running  Plan  2m  2m  s", "c  running  Plan  1m  1m  s"},
-			fitRows: 2,
-			wantFit: []string{"a  running  Plan  3m  3m  s", "… 2 more runs not shown"},
-		},
-		{
-			name:    "lines that fit come back unchanged",
-			runs:    threeStartedRuns(),
-			want:    []string{"a  running  Plan  3m  3m  s", "b  running  Plan  2m  2m  s", "c  running  Plan  1m  1m  s"},
-			fitRows: 3,
-			wantFit: []string{"a  running  Plan  3m  3m  s", "b  running  Plan  2m  2m  s", "c  running  Plan  1m  1m  s"},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := renderOverview(tt.runs, overviewNow)
 			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Fatalf("renderOverview mismatch (-want +got):\n%s", diff)
-			}
-			if tt.fitRows > 0 {
-				if diff := cmp.Diff(tt.wantFit, fitOverview(got, tt.fitRows)); diff != "" {
-					t.Errorf("fitOverview(%d) mismatch (-want +got):\n%s", tt.fitRows, diff)
-				}
+				t.Errorf("renderOverview mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
-}
-
-// threeStartedRuns is three running runs, a the oldest and c the newest.
-func threeStartedRuns() []overviewRun {
-	run := func(slug string, started int) overviewRun {
-		return overviewRun{Slug: slug, StartedAt: minutesAgo(started), PairExists: true, Session: "s", Batten: foundStatus(shedengine.StateRunning, "Plan")}
-	}
-	return []overviewRun{run("c", 1), run("a", 3), run("b", 2)}
 }
 
 // writeOverviewFile writes data at path with the given modification time, creating its directory.

@@ -42,6 +42,7 @@ const windowListFormat = "#{window_id} #{pane_id} #{pane_dead} #{?#{@lyx_own},1,
 
 // OpenWindow opens a detached window named name in this worktree's reed session and runs `lyx` with lyxArgs in it.
 // The window is never selected, so it takes no focus, it carries @lyx_hidden, so the status bar gives it no button, and it closes when its command exits.
+// It opens after the highest-index window, so every hidden window sits behind the shell window, which is first renamed and moved into place when the session predates the window order.
 //
 // A window of that exact name whose pane is live is returned as existing and nothing is started;
 // one whose pane is dead is killed and replaced.
@@ -74,15 +75,25 @@ func (e *Engine) OpenWindow(name string, lyxArgs []string) (WindowResult, error)
 			}
 		}
 
+		st, err := LoadState(e.stateDir())
+		if err != nil {
+			logger.Debug("reed: could not load the state to check the shell window", "socket", e.Socket(), "session", session, "err", err)
+			st = nil
+		}
+		e.ensureShellWindowLocked(st)
+		windows, err := e.tmux.listSessionWindows(session)
+		if err != nil {
+			logger.Debug("reed: could not list the session's windows to place the new window", "socket", e.Socket(), "session", session, "err", err)
+		}
+
 		command := composeWindowCommand(shell.ForGOOS(), lyxArgs)
-		sessionWindows := exactSessionWindowTarget(session)
 		// No other window holds the temporary name, so the chained options cannot land on a same-named window.
 		temporaryName := fmt.Sprintf("%s%d-%d", temporaryWindowNamePrefix, os.Getpid(), temporaryWindowCounter.Add(1))
-		temporaryTarget := sessionWindows + "=" + temporaryName
-		out, err := e.tmux.output("new-window", "-d", "-P", "-F", "#{window_id}", "-t", sessionWindows, "-n", temporaryName, command,
+		temporaryTarget := exactSessionWindowTarget(session) + "=" + temporaryName
+		out, err := e.newWindowLocked(hiddenWindowInsertArgs(windows), []string{"-P", "-F", "#{window_id}", "-n", temporaryName, command,
 			";", "set-option", "-w", "-t", temporaryTarget, "remain-on-exit", "off",
 			";", "set-option", "-w", "-t", temporaryTarget, "@lyx_hidden", "1",
-			";", "rename-window", "-t", temporaryTarget, name)
+			";", "rename-window", "-t", temporaryTarget, name})
 		if err != nil {
 			return fmt.Errorf("%w: %w", ErrNewWindowFailed, err)
 		}

@@ -42,8 +42,8 @@ var driverSkills = []string{}
 // panes loom's producers spawn while it runs are its siblings.
 // Segment is the coordinator, because the driver is the session that drives the whole run.
 //
-// Display.Anchor is below-parent and must never be hidden: the driver is the session an operator
-// attaches to watch, and a hidden pane would make a run that may last hours legible only through its
+// Display.Anchor is own-window and must never be hidden: the driver is an agent window of its own, after the overview and before the shell,
+// and it is the session an operator attaches to watch, so a hidden pane would make a run that may last hours legible only through its
 // log file. Display.Focus is false because the flag is persisted on the strand and re-evaluated on
 // every subsequent add, so a true value would re-capture focus on every agent pane the run spawns
 // afterwards.
@@ -69,7 +69,7 @@ func driverSpec(prompt string, reportPath string, settings loomengine.DriverSett
 		Round:         "",
 		Parent:        "",
 		Display: render.Display{
-			Anchor: render.AnchorBelowParent,
+			Anchor: render.AnchorOwnWindow,
 			Focus:  false,
 		},
 	}

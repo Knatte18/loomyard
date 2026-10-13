@@ -27,13 +27,12 @@ import (
 )
 
 const (
-	overviewNoRuns         = "no runs in flight"
-	overviewStarting       = "starting"
-	overviewStatusBroken   = "status unreadable"
-	overviewRunsBroken     = "runs unreadable"
-	overviewUnknown        = "-"
-	overviewColumnGap      = "  "
-	overviewMoreRunsFormat = "… %d more runs not shown"
+	overviewNoRuns       = "no runs in flight"
+	overviewStarting     = "starting"
+	overviewStatusBroken = "status unreadable"
+	overviewRunsBroken   = "runs unreadable"
+	overviewUnknown      = "-"
+	overviewColumnGap    = "  "
 	// overviewPausedFormat is the state cell of a run a live pause covers, filled with the minutes since the pause began.
 	overviewPausedFormat = "paused %s"
 	// overviewCellCount is the cells after the slug: state, stage, time in stage, age and session.
@@ -206,17 +205,6 @@ func padRight(s string, width int) string {
 	return s
 }
 
-// fitOverview returns at most rows lines: the oldest runs' lines that leave room for a closing line counting the runs left out.
-// Lines that already fit come back unchanged.
-func fitOverview(lines []string, rows int) []string {
-	if len(lines) <= rows {
-		return lines
-	}
-	kept := max(rows-1, 0)
-	fitted := append([]string(nil), lines[:kept]...)
-	return append(fitted, fmt.Sprintf(overviewMoreRunsFormat, len(lines)-kept))
-}
-
 // overviewSource reads the prime's batten runs for the overview pane, keeping what the polls can reuse.
 // It is not safe for concurrent use.
 type overviewSource struct {
@@ -288,11 +276,7 @@ func (s *overviewSource) frame() statuspane.Frame {
 			runs = append(runs, run)
 		}
 	}
-	lines := renderOverview(runs, s.now())
-	return statuspane.Frame{
-		Lines: lines,
-		Fit:   func(rows int) []string { return fitOverview(lines, rows) },
-	}
+	return statuspane.Frame{Lines: renderOverview(runs, s.now())}
 }
 
 // poll builds the overviewRun of slug; false when its seed names another recipe.
@@ -353,7 +337,7 @@ func cacheFor(caches map[string]*statuspane.StatusCache, slug string) *statuspan
 }
 
 // overviewCmd builds the hidden `overview` subcommand: the pane process of the prime's runs strand.
-// It reads the run records and status files only; its one write is the content-rows report, which reed confines to the strand that runs it.
+// It reads the run records and status files only.
 func (c *battenCLI) overviewCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "overview",
@@ -362,8 +346,8 @@ func (c *battenCLI) overviewCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		Long: `overview draws one line per batten run in flight -- its state, stage, time in
 the stage, age and reed session -- redrawing in place until it is signalled.
-The prime's runs strand runs it, and it reports its line count to reed so the
-strand is sized to it. It reads files only, and runs from the prime only.`,
+The prime's runs strand runs it, and every line is drawn uncut. It reads
+files only, and runs from the prime only.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -386,28 +370,16 @@ strand is sized to it. It reads files only, and runs from the prime only.`,
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
-			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return nil
-			}
-			reedGeom, err := hubgeom.ReedGeometry(location)
-			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return nil
-			}
 			pauseGeom, err := hubgeom.PauseGeometry(location)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			engine := reedengine.New(reedCfg, reedGeom)
 
 			source := newOverviewSource(location, pauseGeom.RecordPath, time.Now)
 			pane := statuspane.Pane{
 				Out:     out,
 				Size:    statuspane.TerminalSize(os.Stdout),
-				Report:  statuspane.ReportFromEnv(os.Getenv, engine.SetContentRows),
 				Resized: statuspane.NotifyResize(ctx),
 			}
 			pane.Run(ctx, source.frame)

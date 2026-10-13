@@ -10,7 +10,7 @@
 // `lyx orch` runs from the hub's prime worktree only; every verb refuses elsewhere.
 //
 //   - start: the idempotent bootstrap.
-//     It first ensures the prime's `runs` strand, the top content strand running `lyx batten overview`, so on a fresh session the overview sits directly above the orchestrator; a failure there only warns.
+//     It first ensures the prime's `runs` strand, the session's overview window running `lyx batten overview`, so on a fresh session the overview is the first window and the orchestrator has a window of its own; a failure there only warns.
 //     It leaves one live orchestrator strand and one watcher bound to it, then reports on the envelope.
 //     It never attaches or switches a tmux client;
 //     `lyx reed attach` is the only way into the session.
@@ -20,7 +20,7 @@
 //   - distill: the same for a compact cycle: a note, then `/compact`, whatever `cycle_mode` says.
 //     Both verbs report `requested` and `watcher_live`, and with no watcher live they withdraw the marker again, so no later watcher acts on a request made while none ran.
 //   - stop: removes the orchestrator strand; the watcher notices and exits on its own.
-//     The `runs` strand stays, and with the orchestrator gone it takes every row of the stack above Selvage.
+//     The `runs` strand stays as the overview window.
 //   - watch: the hidden daemon verb `start` spawns detached; it is not an operator verb.
 //   - resume-context: the hidden verb the orch run's session-start hook runs after every compaction; it prints the resume pointer as the provider's additional-context JSON and writes the delivery mark.
 //

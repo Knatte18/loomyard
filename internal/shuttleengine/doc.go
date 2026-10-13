@@ -53,7 +53,7 @@
 // A run ends only as done (every output file present at a turn end, or at the deadline or a pane's death), died, timeout or a mechanism failure.
 // A died run whose strand is own-window keeps its last pane capture in `died-capture.txt` in the run directory and loses its strand;
 // a timed-out run keeps its strand, since its agent may still be live.
-// A run's strand lands in a window of its own unless its spec names an anchor; the orch and the loom driver name below-parent and stay in window 0.
+// A run's strand lands in a window of its own unless its spec names an anchor.
 // A turn end that precedes the start prompt's own turn start is not a task turn end:
 // Wait logs it at Warn as `turn end before the prompt's turn start; not held` and neither holds nor notifies it.
 // The hold guard arms when the events file holds a turn start before `promptOffset`, which proves the provider writes turn starts for typed turns.

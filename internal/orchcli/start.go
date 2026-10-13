@@ -76,7 +76,7 @@ func (c *orchCLI) orchSpec(prompt string, now time.Time) shuttleengine.Spec {
 		NameOverride:   orchStrandName,
 		Segment:        segmentcolor.Coordinator,
 		ColorByCaller:  true,
-		Display:        render.Display{Anchor: render.AnchorBelowParent, Focus: true},
+		Display:        render.Display{Anchor: render.AnchorOwnWindow, Focus: true},
 
 		Skills:           orchSkills,
 		SkillLoadTimeout: c.cfg.HandoffTimeout(),
@@ -128,7 +128,7 @@ func (c *orchCLI) startCmd() *cobra.Command {
 		Short:       "launch the orchestrator session and its watcher",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `start first ensures the runs strand, the overview of the batten runs in
-flight, above the orchestrator; a failure there only warns. start is
+flight, in the session's overview window; a failure there only warns. start is
 idempotent. With a live orchestrator strand and a live watcher it changes
 nothing and reports them. With a live strand and no watcher it spawns the watcher.
 With a dead or absent strand it removes the corpse, launches a fresh session and

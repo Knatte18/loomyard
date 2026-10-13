@@ -669,41 +669,12 @@ func TestStatusStrandAddSpec(t *testing.T) {
 		if got.IfAbsent {
 			t.Error("IfAbsent = true; want false")
 		}
-		wantDisplay := render.Display{
-			Anchor: render.AnchorTop,
-			Size:   render.Size{Kind: render.SizeContent, ShareNum: 1, ShareDen: 8, MinRows: 3},
-		}
+		wantDisplay := render.Display{Anchor: render.AnchorOverview}
 		if got.Display != wantDisplay {
 			t.Errorf("Display = %+v; want %+v", got.Display, wantDisplay)
 		}
 		if got.Display.Focus {
 			t.Error("Display.Focus = true; want false")
-		}
-	})
-
-	// The spec ties to render's layout: the status strand is pinned at its content height above a driver strand, and alone.
-	t.Run("pinned by render", func(t *testing.T) {
-		status := render.Strand{GUID: "s", Display: statusStrandAddSpec("x").Display, PaneID: "%1", Live: true, ContentRows: 5}
-		driver := render.Strand{
-			GUID:    "d",
-			Display: driverSpec("p", "r", loomengine.DriverSettings{}).Display,
-			PaneID:  "%2",
-			Live:    true,
-		}
-		box := render.Box{W: 200, H: 50}
-		params := render.Params{CollapsedRows: 2, MinFullRows: 3}
-
-		pins := render.FixedHeightPins([]render.Strand{status, driver}, box, params)
-		want := []render.Pin{{PaneID: "%1", Height: status.ContentRows}}
-		if diff := cmp.Diff(want, pins); diff != "" {
-			t.Errorf("pins mismatch (-want +got):\n%s", diff)
-		}
-
-		// Alone it is the bottom-most cell, so render pins it at the whole stack region.
-		pins = render.FixedHeightPins([]render.Strand{status}, box, params)
-		wantAlone := []render.Pin{{PaneID: "%1", Height: box.H}}
-		if diff := cmp.Diff(wantAlone, pins); diff != "" {
-			t.Errorf("lone status strand pins mismatch (-want +got):\n%s", diff)
 		}
 	})
 }

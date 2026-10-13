@@ -67,15 +67,17 @@
 // The button is lit while the window is current, and otherwise that color on dark grey, underscored while the window carries @lyx_unseen.
 // Outside Windows, the geometry pins also pin the session hook `session-window-changed` with `set-option -w -u @lyx_unseen`, so selecting the window clears the mark; boot and every attach pre-flight run the pin.
 // On Windows no hook is pinned and the mark is never set.
+// The shell button is a range=user|shell button labelled shell, lit while the strands' window is active and not zoomed; line 1 follows window index order, so the overview's button is first, the agents' follow in start order and the shell button comes last.
+// An overview window's button is an own-window button with no @strand_color, which renders as the plain window-button style.
 // A window carrying @lyx_hidden still gets no button, and no Go decision reads @strand_color or @lyx_unseen.
 //
 // The navigation bindings (bindings.go) are root-table bindings on the hub's reed server, issued by pinBindingsLocked at the end of the geometry pins, so boot and every attach pre-flight pin them and a server booted by an older lyx gets them at its next attach.
 // Alt+z zooms or unzooms a strand pane or Selvage in the strands' window, and does nothing in any other window;
-// Alt+Up and Alt+Down step to the previous or next pane of the strands' window that is a strand pane or Selvage, in physical order with Selvage last, wrapping and keeping the zoom, so a zoomed step onto Selvage shows it full screen;
+// Alt+Up and Alt+Down step to the previous or next window in index order, in every window and wrapping with tmux's own window wrap: a step that lands on a window carrying @lyx_hidden goes on, forward to the session's first window, the overview, and back to the strands' window, the shell, which is one conditional step since hidden windows sit after the shell (on psmux, where the order is best-effort, a step may land on a hidden window);
 // Alt+Left and Alt+Right run `lyx reed switch --prev|--next` in the background through run-shell, naming the absolute path of the `lyx` that pinned them (panebin.go's composeSwitchCommand), never PATH's;
-// and a left click on the status bar dispatches on its range: VIEW selects and unzooms the strands' window, a strand button selects that pane and zooms it (never toggling the zoom off), a window button selects that window, and a session button switches the client to that session.
+// and a left click on the status bar dispatches on its range: the shell button, which heads the strands' window's pane buttons, selects and unzooms the strands' window, a strand button selects that pane and zooms it (never toggling the zoom off), a window button selects that window, and a session button switches the client to that session.
 // Bound: these five keys and the left status click are taken from every pane on the server, so a program in a pane, Claude Code included, never receives them; no other key or mouse binding is changed, and tmux's right-click menus keep their defaults.
-// The VIEW and strand-button branches find the strands' window through the @lyx_strands marker, expanded at click time to a tmux-issued window id (`@<n>`), never a config value or free text.
+// The shell and strand-button branches find the strands' window through the @lyx_strands marker, expanded at click time to a tmux-issued window id (`@<n>`), never a config value or free text.
 // tmux resolves a pane range's `=` target only inside the client's current window, so the strand-button branch selects the strands' window first.
 // Every binding is non-fatal: a failed `bind-key` is logged and the rest are still issued, and an unresolvable executable, socket path or tmux path logs a named warning and leaves only Alt+Left and Alt+Right unbound.
 // The capability probe checks bind-key, run-shell, if-shell and switch-client as optional verbs after the required set: a missing one logs one warning naming it and never fails the probe, so a psmux without them still boots.
@@ -84,6 +86,8 @@
 // tmux clears a window's zoom on resize-pane -y, select-layout, split-window, select-pane without -Z and kill-pane of another pane, so every step that changes panes runs inside keepZoomLocked, under the op lock.
 // It reads the strands' window's `#{window_zoomed_flag} #{pane_id}` through the stored-state window seam; for a zoomed window it unzooms the active pane with `resize-pane -Z`, runs the step, and zooms the same pane again, also when the step failed.
 // The call sites are Up, EnsureSession, Resume, AddStrand and AddStrandUnless, UpdateStrand, SetContentRows, RemoveStrand, ReplaceStrand, the watchdog's reapplyLayout and AttachArgv's pre-flight, so every pane list a layout or a pin is planned from is read on the unzoomed window.
+// The watchdog's reapplyLayout enters the bracket only for an apply it will run: a live box equal to the last applied box or to the last failed box returns before it, so a re-apply that changes nothing never toggles zoom.
+// The watch loop records the live box of a failed re-apply as the last failed box and skips it until another box applies; a strand op's own apply is never suppressed.
 // An op that refuses a bad config value or an unformable name does so before the bracket's first read.
 // Bound: a step re-zooms only a window that was zoomed when it started, and only the pane that was zoomed; a pane gone by then leaves the window in the overview.
 // No session, a failed read, an unparseable answer and a failed unzoom all mean "run plain", logged and never fatal.
@@ -95,7 +99,8 @@
 // It refuses rows < 1 before taking any lock, then, under the op lock and the zoom bracket, an unknown name, a strand that is not content-sized and a strand whose recorded pane is not paneID, each naming the strand and the reason.
 // A count equal to the recorded one touches neither reed.json nor tmux; otherwise it persists the count and re-applies the layout with applyOpts{SkipFocus, InstallPins}, so the operator's cursor never moves and the window-resized hook array is rebuilt from the new pins.
 // It changes nothing but that strand's ContentRows and the layout and pins derived from it.
-// Bound: a hand-run or replaced pane process reports from a pane the strand does not hold and is refused, so it can resize no strand; the pane process retries at its next poll after any refusal, which is how a report made before AddStrand has recorded the pane succeeds once it has.
+// Neither overview pane reports a count, so the operation stays for an explicit content-sized caller.
+// Bound: a hand-run or replaced pane process reports from a pane the strand does not hold and is refused, so it can resize no strand.
 //
 // A restarted server's sessions come back in spawn order (revive.go).
 // The teller tells Geometry.SpawnOrder, a lazy list of ReviveEntry for the hub's worktrees in spawn order, nil in standalone mode; reedengine sorts nothing and reads no loom or fabric record.
@@ -302,20 +307,31 @@
 // Reconcile ends only a window carrying @lyx_own with no pane bound to a strand; a window without the marker is never ended.
 // The pane-generation read (generation.go) stays session-scoped and outside the seam: it reads session fields only, so it keeps the "=<session>:" form, which expands them, where the bare "=<session>" form expands every session field to empty (verified live, tmux 3.6).
 //
+// Window order (windoworder.go): a session's windows read, in index order, the overview window, the agents' own windows in start order, then the window named shell, then the hidden windows.
+// Every window is created through newWindowLocked (spawn.go) as `new-window -d` plus placement arguments, listed from `list-windows` in index order under the op lock:
+// an own window opens `-a -t <previous window>` for a relaunch, which keeps its window's place and ends the old one behind it, else `-b -t <shell window>`, else `-a -t <highest-index non-hidden window>`;
+// the overview window opens `-b -t <lowest-index window>`, hidden windows included; a hidden window opens `-a -t <highest-index window>`; with nothing to place against the plain form `-t '=<session>:'` is used.
+// A placed new-window the multiplexer refuses on Windows (psmux) logs at Debug and is retried once in the plain form, so the order is best-effort there and nothing fails.
+// The shell window is the window of the recorded console pane (Selvage), named shell with automatic-rename off, which is how a fresh boot names its one window.
+// A session booted by an older lyx is brought into that order by ensureShellWindowLocked, which runs wherever a window opens, once the boot marks the strands' window and at the head of every attach pre-flight, also when no client size is known:
+// it renames the shell window when its name is wrong and moves it behind the last non-hidden window, and only that window; strands already placed stay where they are, so Resume relaunches an in-flight below-parent strand in the shell window.
+// It does nothing, logged at Debug, when no console pane is recorded or the window listing does not carry its window, and a check never fails its caller.
+// A failed rename or move warns once per failure episode, which the session option @lyx_shell_check_failed keeps open, logs at Debug while the episode stays open and always on Windows, and an Info line closes the episode when a later check succeeds.
+//
 // Detached windows: OpenWindow (window.go) opens a detached, named window in the worktree's reed session running a `lyx` command, for a caller that wants a long-running command to live in the session without a status-bar button.
-// One multiplexer invocation runs `new-window -d -P -F '#{window_id}' -t '=<session>:' -n <temporary> <command>` chained with `set-option -w -t '=<session>:=<temporary>' remain-on-exit off`, `set-option -w -t '=<session>:=<temporary>' @lyx_hidden 1` and a final `rename-window -t '=<session>:=<temporary>' <name>`.
+// One multiplexer invocation runs `new-window -d -a -t <highest-index window> -P -F '#{window_id}' -n <temporary> <command>`, or in the plain form `new-window -d -t '=<session>:' -P -F '#{window_id}' -n <temporary> <command>` when no window is listed, chained with `set-option -w -t '=<session>:=<temporary>' remain-on-exit off`, `set-option -w -t '=<session>:=<temporary>' @lyx_hidden 1` and a final `rename-window -t '=<session>:=<temporary>' <name>`.
 // The window is detached and never selected, so it takes no focus.
-// The options are chained by exact name because one chained after a detached new-window without a target lands on the current window, the strands' window, whose remain-on-exit must stay on.
+// The options are chained by exact name because one chained after a detached new-window without a target lands on the current window, which can be any window since attach and the focus rules select agent and overview windows, and whose remain-on-exit must stay on.
 // The name is a per-call temporary one no other window holds and the rename comes last, because an own window may share the requested name and the options would otherwise land on it.
-// @lyx_hidden is display only: the status bar skips a window carrying it, and no Go decision reads it.
+// The status bar skips a window carrying @lyx_hidden, and window placement and the shell check read the flag to find the last non-hidden window; no focus rule reads it.
 // The op reads remain-on-exit back from the new window by the printed id, and a window that does not read off is killed by that id with ErrWindowReadBack.
 // A window of the same name whose pane is live is returned as existing and nothing is started; one whose pane is dead is killed and replaced.
 // A window carrying @lyx_own is skipped by that lookup, so OpenWindow never adopts, kills or replaces an own window of the same name.
 // The command line is composed in panebin.go from the pane-binary prelude, so `lyx` resolves to the spawning binary.
 // Bound: the op only chooses where a command runs; the window lives as long as the reed session, and the session's other windows keep remain-on-exit on.
 //
-// Own windows: an own-window strand gets a detached window named by its role, opened through the launch chokepoint (spawn.go's openOwnWindowLocked) by `new-window -d`, so it never takes focus.
-// The window carries @lyx_own, @strand_color and @lyx_unseen, each set by window id; the last is left unset on Windows.
+// Own windows: an own-window strand gets a detached window named by its role, opened through the launch chokepoint (spawn.go's openOwnWindowLocked) by `new-window -d`, and the window is then selected only under the focus rule below.
+// The window carries @lyx_own, @strand_color and @lyx_unseen, each set by window id; the last is left unset on Windows, and an overview window carries neither @strand_color nor @lyx_unseen, nor does a new agent window the focus rule selects.
 // Its pane runs the same launch tail as a window 0 strand.
 // Its dead pane stays until the strand is removed or relaunched; a relaunch kills the old pane once the new one exists, so a shared window never keeps a dead pane beside the relaunched one.
 // Resume reopens the strand detached.
@@ -325,9 +341,26 @@
 // A strand declaring another size than the record's is refused with both sizes named.
 // A strand arriving once the group's recorded size is already held, a re-stepped seat added before its predecessor is removed, gets a window of its own and leaves the shared window as it is.
 // A pane joins the shared window by a detached split in the window_split direction, so an operator viewing the window keeps the active pane, and the window is then laid out evenly in that direction.
-// Removing an own-window strand moves a viewer on its window to the strands' window before the window ends, and never moves a viewer on another window.
+// Removing an own-window strand moves a viewer on its window to the relevant window before the window ends, never the shell, and never moves a viewer on another window.
 // A shared window a strand leaves is laid out again.
 // An invalid window_split or window_share_max never refuses a removal: the layout is skipped and the key is reported in Removed.ConfigWarning.
+//
+// Focus rules: an agent window is a window holding a pane bound to an own-window strand; the overview, the shell and hidden windows are not agent windows.
+// An automatic window switch happens only at three points, each deciding from reed state, window ids and pane liveness alone, never from @lyx_unseen, @lyx_hidden or a wait mark, and none moves a viewer off the shell or a live agent window.
+// relevantWindow is the target of two of them: among the listed windows not about to end, the highest-index agent window holding a pane that is not dead, else the overview strand's window, else none.
+// Attach (attachWindowSelectionLocked, resolved by AttachArgv right after the shell check) appends `; select-window -t <relevant window>` to every argv it returns, and appends nothing when another client is attached or a listing fails.
+// A new agent window is selected by openOwnWindowLocked, for an own-window strand and never the overview, when newAgentWindowSelected holds: always for a Focus strand, otherwise only when the viewer is on the overview window or on an agent window whose every pane is dead; it then carries no @lyx_unseen.
+// A viewed window ending, by RemoveStrand, by ReplaceStrand and by reconcile ending an orphan own window (selectRelevantWindowIfCurrentLocked), moves a viewer on it to the relevant window among those left, never the shell, and with none left to tmux.
+// A viewer elsewhere is never moved, and a strand leaving a shared window that stays open ends no window and switches nothing.
+// An automatic switch races an operator's own window change by at most one switch.
+//
+// Overview anchor: the overview anchor places one strand per session, alone in a window of its own named overview that opens at the lowest index and never joins a group.
+// Everything that reads a window of its own, reconcile, presentPanes, the strands' window resolver and the relaunch's old-pane kill, treats an overview pane as an own-window one (isOwnWindow); only the placement, the name, the unseen mark, the one-per-session refusal and the focus rules ask isOverview.
+// The window carries @lyx_own like an own window and sets neither @lyx_unseen nor @strand_color, so its button takes the plain window-button style.
+// An overview display takes no window group, and UpdateStrand refuses a move between the overview and own-window anchors.
+// AddStrand refuses a second overview strand while another strand, live or dormant, holds the anchor, naming that strand and lyx reed remove.
+// ReplaceStrand removes the old strand before its add, so replacing the overview strand itself is never refused; replacing another strand with an overview strand is refused only while a third strand holds the anchor.
+// A replacement overview strand that ends the window the operator is viewing selects its own new window once the launch succeeded; a replacement whose old strand shared a window that stays open ends no window and switches nothing.
 //
 // Session targeting: every -t argument that names a SESSION is passed in
 // an exact-match form — "=<name>" for session targets (has-session,
@@ -823,8 +856,9 @@
 //   - The attach-time multi-client warning (attach.go's warnMismatchedClientsLocked): AttachArgv's
 //     pre-flight lists the session's attached clients and emits one logger.Warn per client whose
 //     size differs from the size this attach was told, naming that client and both sizes; zero
-//     differing clients produce zero lines. It never blocks, never changes the argv, and never
-//     reaches the JSON envelope. This is the primary deliverable for the cross-client trigger rather
+//     differing clients produce zero lines. It never blocks and never reaches the JSON envelope;
+//     it reports whether another client is attached, a failed client listing counting as one, and
+//     another attached client, or a failed listing, drops the attach window selection from the argv. This is the primary deliverable for the cross-client trigger rather
 //     than a consolation prize, because that trigger's dots are the uncovered subset and cannot be
 //     repainted away — the residual's real operator cost is bewilderment, and the warning turns a
 //     mysterious artifact into a logged, searchable fact at the moment the operator creates the
@@ -859,7 +893,7 @@
 //     the layout (exit 1, "have 3 panes but need 2") and destroys nothing;
 //     when the count still matches but membership shifted, cells apply
 //     positionally, so a strand ends up mis-sized rather than lost.
-//   - The geometry option pins (windowsize.go): pinGeometryOptionsLocked pins the two-line status bar and the strand pane-border title, whose format strings bar.go declares: "status-format[0]" (the VIEW, strand and window buttons) and "status-format[1]" (the session buttons and the time), both with -g since tmux's status formats are one array; "status-style" (-g) with the dark grey statusBarStyle, so the gaps between the buttons are not tmux's default green; "status" "2" and "status-position" "bottom" on the session; and, window-targeted with -w on the strand window only, "pane-border-status" "top" and "pane-border-format", so a batten window gets no border title — plus "window-size" "latest" (-w).
+//   - The geometry option pins (windowsize.go): pinGeometryOptionsLocked pins the two-line status bar and the strand pane-border title, whose format strings bar.go declares: "status-format[0]" (the strand, window and shell buttons) and "status-format[1]" (the session buttons and the time), both with -g since tmux's status formats are one array; "status-style" (-g) with the dark grey statusBarStyle, so the gaps between the buttons are not tmux's default green; "status" "2" and "status-position" "bottom" on the session; and, window-targeted with -w on the strand window only, "pane-border-status" "top" and "pane-border-format", so a batten window gets no border title — plus "window-size" "latest" (-w).
 //     The window-targeted pins are targeted at the strand window (-t <strand window>, per the Strand window and Session targeting grammar above), both at boot and again in AttachArgv's pre-flight.
 //     The bar reads strands only through the @strand and @strand_color pane options and the @lyx_strands window option, never through the current window.
 //     Their EFFECTIVE values are read

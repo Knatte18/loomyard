@@ -153,9 +153,6 @@ type applyOpts struct {
 	// InstallPins makes a SkipFocus apply still install the window-resized hook array, because a changed content height changes the pins the hook replays.
 	// Without SkipFocus the array is always installed.
 	InstallPins bool
-	// SkipWhenBoxEquals, when non-nil, suppresses select-layout entirely if the
-	// resolved live box is an observation and equals *SkipWhenBoxEquals.
-	SkipWhenBoxEquals *render.Box
 }
 
 // applyResult reports what one applyLayoutLockedOpts call did.
@@ -181,7 +178,7 @@ type applyResult struct {
 // the session's entire pane set (see anyPlacedStrand) — with nothing of
 // reed's to lay out, there is nothing worth destroying foreign panes over.
 // Right after select-layout, on the focusing path and the SkipFocus one alike, it issues the fixed-height pins as resize-pane calls (adjusted for a title row at window row 0), so the heights hold from the apply and not only after the next resize.
-// Only the focusing path installs the window-resized hook array, and no apply signals the watchdog.
+// Only the focusing path, or a SkipFocus apply with InstallPins, installs the window-resized hook array, and no apply signals the watchdog.
 // Both guards return a zero applyResult (Applied: false, BoxIsLive: false)
 // and nil, before any box query.
 //
@@ -193,11 +190,6 @@ type applyResult struct {
 // paths this function skips. This also makes this call site agree with
 // AttachArgv's ordering (batch 2), which evaluates the same two guards before
 // it plans.
-//
-// Immediately after the box query, when opts.SkipWhenBoxEquals is non-nil and the queried box was a
-// real observation and equals *opts.SkipWhenBoxEquals, this returns without issuing select-layout or
-// select-pane at all — the box-is-live conjunct is load-bearing: a degraded query is not an
-// observation, so a fallback box must never satisfy the guard.
 //
 // select-layout with a layout string whose dimensions disagree with the live
 // window exits 0 and silently rescales the layout proportionally, so every
@@ -224,9 +216,6 @@ func (e *Engine) applyLayoutLockedOpts(st *ReedState, live []LivePane, opts appl
 		return applyResult{}, fmt.Errorf("resolve strand window: %w", err)
 	}
 	box, boxIsLive := e.liveBoxLocked(windowTarget)
-	if opts.SkipWhenBoxEquals != nil && boxIsLive && box == *opts.SkipWhenBoxEquals {
-		return applyResult{Applied: false, Box: box, BoxIsLive: true}, nil
-	}
 
 	titleRow := e.readBorderTitleRowLocked(windowTarget)
 	layout, focus, err := e.planLayout(st, live, box, titleRow)
