@@ -94,8 +94,10 @@ type goDriverDeps struct {
 	DirtyPaths func() ([]string, error)
 	// ReleaseLock releases the driver lock.
 	ReleaseLock func() error
-	// SpawnSuccessor starts a detached driver of the on-disk build.
-	SpawnSuccessor func() error
+	// Executable is the on-disk lyx path resolved when the driver was wired, before any deploy replaced it.
+	Executable string
+	// SpawnSuccessor starts a detached driver of the on-disk build from the lyx at executable.
+	SpawnSuccessor func(executable string) error
 	// Now is the clock.
 	Now func() time.Time
 }
@@ -286,7 +288,7 @@ func (d *goDriver) handOver(ctx context.Context, stop driveStop) error {
 	if err := d.deps.ReleaseLock(); err != nil {
 		return fmt.Errorf("loom: drive: release the driver lock for the hand-over: %w", err)
 	}
-	if err := d.deps.SpawnSuccessor(); err != nil {
+	if err := d.deps.SpawnSuccessor(d.deps.Executable); err != nil {
 		logger.Warn("loom: drive: spawning the successor driver failed; the run stays parked", "run", d.deps.RunID, "build", build, "error", err)
 		return nil
 	}

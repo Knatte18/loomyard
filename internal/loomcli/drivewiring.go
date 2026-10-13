@@ -217,8 +217,9 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (goDriverDeps, error) {
 		},
 		DirtyPaths:  func() ([]string, error) { return dirtyPathsOutsideRecords(location, c.runID) },
 		ReleaseLock: release,
-		SpawnSuccessor: func() error {
-			_, err := c.spawnGoDriver()
+		Executable:  executable,
+		SpawnSuccessor: func(executable string) error {
+			_, err := c.spawnGoDriverFrom(executable)
 			return err
 		},
 		Now: time.Now,
@@ -353,13 +354,9 @@ func newestAttemptsFor(tacklerDir, arbiterDir string, key loomengine.ArbiterStop
 	return tackler, arbiter, tacklerApplied, nil
 }
 
-// spawnDetachedDrive starts `lyx loom drive` for the task worktree l as a detached process, its output appended to the driver log, and returns its pid.
+// spawnDetachedDrive starts `lyx loom drive` from the lyx at exe for the task worktree l as a detached process, its output appended to the driver log, and returns its pid.
 // The child is reaped in the background, so a driver that exits at once never reads alive as a zombie.
-func spawnDetachedDrive(l *lyxcwd.Location) (int, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return 0, err
-	}
+func spawnDetachedDrive(l *lyxcwd.Location, exe string) (int, error) {
 	logPath := loomengine.LoomDriverLog(l)
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		return 0, err

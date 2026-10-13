@@ -66,6 +66,9 @@ func verifyHaltStatus() shedengine.Status {
 }
 
 // TestGoDriver_Settle drives the loop over scripted envelopes and statuses and pins, per row, the seams it calls in order, the settle records it appends and what a hand-back leaves on disk.
+// wiredExecutable is the lyx path the settle tests resolve at wiring time; a hand-over must spawn its successor from it.
+const wiredExecutable = "/wired/bin/lyx"
+
 func TestGoDriver_Settle(t *testing.T) {
 	t.Parallel()
 
@@ -378,7 +381,7 @@ func TestGoDriver_Settle(t *testing.T) {
 		{
 			name:  "a changed build on a clean tree records the hand-over, parks, notifies before releasing the lock, spawns and exits",
 			steps: []func(*testing.T) []byte{blocked}, buildChanged: true, orchRecorded: true,
-			wantCalls: []string{"step", "release", "spawn"}, wantOrder: []string{"notify", "release", "spawn"},
+			wantCalls: []string{"step", "release", "spawn:" + wiredExecutable}, wantOrder: []string{"notify", "release", "spawn"},
 			wantActions: []string{loomengine.SettleHandOver}, wantSettlers: []string{loomengine.SettlerGoRule}, wantBuild: "newbuild1234",
 			wantReports: 1, wantParked: true, wantNotifies: 1,
 		},
@@ -397,7 +400,7 @@ func TestGoDriver_Settle(t *testing.T) {
 		},
 		{
 			name: "a failing successor spawn leaves the report and the park marker on disk", steps: []func(*testing.T) []byte{blocked}, buildChanged: true, spawnErr: errors.New("no such binary"),
-			wantCalls: []string{"step", "release", "spawn"}, wantActions: []string{loomengine.SettleHandOver}, wantBuild: "newbuild1234", wantReports: 1, wantParked: true,
+			wantCalls: []string{"step", "release", "spawn:" + wiredExecutable}, wantActions: []string{loomengine.SettleHandOver}, wantBuild: "newbuild1234", wantReports: 1, wantParked: true,
 		},
 		{
 			name: "an awaiting stop is not binary-eligible and takes its usual hand-back", steps: []func(*testing.T) []byte{awaiting("")}, buildChanged: true,
@@ -405,7 +408,7 @@ func TestGoDriver_Settle(t *testing.T) {
 		},
 		{
 			name: "a pause covering the slug holds the hand-over until the hold returns", steps: []func(*testing.T) []byte{blocked}, buildChanged: true, pauseCovered: []bool{true},
-			wantCalls: []string{"step", "hold", "release", "spawn"}, wantActions: []string{loomengine.SettleHandOver}, wantBuild: "newbuild1234", wantReports: 1, wantParked: true,
+			wantCalls: []string{"step", "hold", "release", "spawn:" + wiredExecutable}, wantActions: []string{loomengine.SettleHandOver}, wantBuild: "newbuild1234", wantReports: 1, wantParked: true,
 		},
 		{
 			name: "interrupted under reinvoke re-steps and writes restep records", steps: []func(*testing.T) []byte{interrupted, interrupted, done},
@@ -467,7 +470,8 @@ func TestGoDriver_Settle(t *testing.T) {
 			}
 
 			deps := goDriverDeps{
-				RunID: "run-1",
+				RunID:      "run-1",
+				Executable: wiredExecutable,
 				Step: func(ctx context.Context, attempt string) ([]byte, error) {
 					if stepsTaken >= len(tt.steps) {
 						t.Fatalf("Step called %d times; the row scripts %d", stepsTaken+1, len(tt.steps))
@@ -595,8 +599,8 @@ func TestGoDriver_Settle(t *testing.T) {
 					order = append(order, "release")
 					return nil
 				},
-				SpawnSuccessor: func() error {
-					calls = append(calls, "spawn")
+				SpawnSuccessor: func(executable string) error {
+					calls = append(calls, "spawn:"+executable)
 					order = append(order, "spawn")
 					return tt.spawnErr
 				},
