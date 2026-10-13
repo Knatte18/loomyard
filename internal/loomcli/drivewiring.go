@@ -306,7 +306,7 @@ func worktreeSnapshot(location *lyxcwd.Location) (loomengine.WorktreeSnapshot, e
 }
 
 // dirtyPathsOutsideRecords lists the pair's uncommitted or untracked paths outside the run's own records directories.
-// Both sides join onto the warp worktree, since the records side reaches it through the `_lyx` junction.
+// Both sides join onto the task worktree, since the records side reaches it through the `_lyx` junction.
 func dirtyPathsOutsideRecords(location *lyxcwd.Location, runID string) ([]string, error) {
 	fab, err := fabricengine.Open(location)
 	if err != nil {

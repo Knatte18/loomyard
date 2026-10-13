@@ -655,7 +655,7 @@ func readTacklerAsArbiterMarker(path string) (loomengine.ArbiterMarker, bool, er
 }
 
 // dirtyPathsOutsideRunRecords lists the task pair's uncommitted or untracked paths outside the run's own records directories.
-// Both sides join onto the warp worktree, since the records side reaches it through the `_lyx` junction.
+// Both sides join onto the task worktree, since the records side reaches it through the `_lyx` junction.
 func dirtyPathsOutsideRunRecords(taskLocation *lyxcwd.Location) ([]string, error) {
 	fab, err := fabricengine.Open(taskLocation)
 	if err != nil {
