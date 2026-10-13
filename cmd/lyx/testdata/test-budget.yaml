@@ -8,14 +8,14 @@ contracts/stencils: 16
 internal/agentname: 8
 internal/alignment: 7
 internal/batcher: 9
-internal/battencli: 77
+internal/battencli: 79
 internal/battenrecipe: 9
-internal/battenshed: 110
+internal/battenshed: 111
 internal/boardcli: 13
 internal/boardengine: 78
 internal/boardengine/boardtest: 3
 internal/buildinfo: 2
-internal/buildvcs: 2
+internal/buildvcs: 3
 internal/burlercli: 19
 internal/burlerengine: 32
 internal/cleanupcli: 4
@@ -58,8 +58,8 @@ internal/landingshed: 85
 internal/lock: 4
 internal/logger: 35
 internal/loggerconfig: 3
-internal/loomcli: 222
-internal/loomengine: 53
+internal/loomcli: 235
+internal/loomengine: 57
 internal/loomrecipe: 54
 internal/loomshed: 76
 internal/lyxcwd: 23
@@ -98,7 +98,7 @@ internal/shedcheck: 3
 internal/shedcli: 17
 internal/shedengine: 141
 internal/shedrecipe: 103
-internal/shedrun: 23
+internal/shedrun: 24
 internal/shedtransient: 2
 internal/shedverbs: 83
 internal/shell: 14

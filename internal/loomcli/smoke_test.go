@@ -9,7 +9,7 @@
 // REAL BUILT cmd/lyx binary as a genuine subprocess, never RunCLI in-process, because
 // "lyx loom start" spawns its detached driver via os.Executable(), which resolves to whatever binary
 // is currently running -- an in-process RunCLI call would resolve that to the test binary itself, not
-// a binary "loom run" knows how to dispatch.
+// a binary "loom drive" knows how to dispatch.
 //
 // This suite is the regression home for the two bugs this task's own design rounds found before any
 // code existed: the cleanliness-ordering blocker (loom's own seed dirtying the records worktree and failing
@@ -28,6 +28,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -85,15 +86,50 @@ func registerBootstrapTeardown(t *testing.T, loc *lyxcwd.Location, worktree stri
 	// Registered before the first boot, so reed's boot finds the kit's hermetic server on the hub's key; the kill and socket-file removal run after the teardown below.
 	tmuxkit.KillOnCleanup(t, tmuxBinaryPath(t), reedGeom.SocketKey)
 	t.Cleanup(func() {
-		for _, pid := range findDriverPIDs(worktree) {
-			_ = proc.KillPID(pid)
-		}
+		killGoDriver(worktree)
 		for _, pid := range findWatchdogPIDs(loc.HubPath) {
 			_ = proc.KillPID(pid)
 		}
 		eng := probeReedEngine(t, loc)
 		_, _ = eng.Down()
 	})
+}
+
+// killGoDriver kills the Go driver of worktree first, so it steps no more, and then the loop and step processes it spawned, which outlive it.
+func killGoDriver(worktree string) {
+	for _, pid := range findDriverPIDs(worktree) {
+		_ = proc.KillPID(pid)
+	}
+	for _, pid := range findStepPIDs(worktree) {
+		_ = proc.KillPID(pid)
+	}
+}
+
+// findStepPIDs returns the pids of every live process whose current working directory is worktree and whose argv contains an adjacent "loom" followed by "step" pair:
+// the detached loop and the step child the Go driver's --until-stop waiter spawns.
+// Linux only; returns nil on any other GOOS.
+func findStepPIDs(worktree string) []int {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	var pids []int
+	for _, pid := range tmuxkit.Pids() {
+		cwd, ok := tmuxkit.ProcCwd(pid)
+		if !ok || cwd != worktree {
+			continue
+		}
+		argv, ok := tmuxkit.ProcArgv(pid)
+		if !ok {
+			continue
+		}
+		for i := 0; i+1 < len(argv); i++ {
+			if argv[i] == "loom" && argv[i+1] == "step" {
+				pids = append(pids, pid)
+				break
+			}
+		}
+	}
+	return pids
 }
 
 // probeReedEngine builds a standalone *reedengine.Engine against loc, independent of any loomCLI
@@ -111,25 +147,39 @@ func probeReedEngine(t *testing.T, loc *lyxcwd.Location) *reedengine.Engine {
 	return reedengine.New(reedCfg, reedGeom)
 }
 
-// waitRunLockFree polls until loc's run lock is observably free -- released by a driver that has run
-// to completion on its own, or by one this test already killed -- or fails the test after timeout.
+// waitRunLockFree polls until loc's run lock and driver lock are both observably free, or fails the test after timeout.
+// A lock is released by a driver that has run to completion on its own, or by one this test already killed.
 func waitRunLockFree(t *testing.T, loc *lyxcwd.Location, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for {
-		fl, free, err := lock.TryAcquireWriteLock(shedrun.RunLock(loc, shedrun.SelfRunID))
-		if err != nil {
-			t.Fatalf("probe run lock: %v", err)
-		}
-		if free {
-			_ = fl.Release()
+		runFree := lockFree(t, shedrun.RunLock(loc, shedrun.SelfRunID))
+		driverFree := lockFree(t, shedrun.DriverLock(loc, shedrun.SelfRunID))
+		if runFree && driverFree {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("run lock still held after %s", timeout)
+			t.Fatalf("run lock free = %v and driver lock free = %v after %s", runFree, driverFree, timeout)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+// lockFree reports whether the lock at path is free, probing it without keeping it.
+// A lock whose directory does not exist yet has never been taken, so it reads free.
+func lockFree(t *testing.T, path string) bool {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create the lock directory for %s: %v", path, err)
+	}
+	fl, free, err := lock.TryAcquireWriteLock(path)
+	if err != nil {
+		t.Fatalf("probe lock %s: %v", path, err)
+	}
+	if free {
+		_ = fl.Release()
+	}
+	return free
 }
 
 // waitForCurrentProducer polls loc's status file until it records want as the current producer with
@@ -283,9 +333,7 @@ func TestSmokeRunStandalone(t *testing.T) {
 		// failure that made this explicit.
 		waitForCurrentProducer(t, loc, "Discussion-Write", 30*time.Second)
 
-		for _, pid := range findDriverPIDs(worktree) {
-			_ = proc.KillPID(pid)
-		}
+		killGoDriver(worktree)
 		waitRunLockFree(t, loc, 20*time.Second)
 
 		before, foundBefore, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
@@ -414,9 +462,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 
 	killDriversAndClearLog := func(t *testing.T) {
 		t.Helper()
-		for _, pid := range findDriverPIDs(worktree) {
-			_ = proc.KillPID(pid)
-		}
+		killGoDriver(worktree)
 		waitRunLockFree(t, loc, 20*time.Second)
 		if err := os.Remove(loomengine.LoomDriverLog(loc)); err != nil && !os.IsNotExist(err) {
 			t.Fatalf("clear driver log: %v", err)
@@ -495,8 +541,8 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		}
 
 		logContent, _ := os.ReadFile(loomengine.LoomDriverLog(loc))
-		if strings.Contains(strings.ToLower(string(logContent)), "already running") {
-			t.Errorf("driver log names an already-running refusal: %s", logContent)
+		if lowered := strings.ToLower(string(logContent)); strings.Contains(lowered, "already running") || strings.Contains(lowered, "already drives") {
+			t.Errorf("driver log names an already-running or already-driven refusal: %s", logContent)
 		}
 	})
 

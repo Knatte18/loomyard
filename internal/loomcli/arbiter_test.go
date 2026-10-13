@@ -99,6 +99,7 @@ type arbiterFixture struct {
 	envelopePath     string
 	removeEnvelope   bool
 	reportPath       string
+	caseBriefPath    string
 	interruptPolicy  map[string]string
 	producerRowNames []string
 }
@@ -179,7 +180,7 @@ func (f *arbiterFixture) run() (int, map[string]any) {
 		}
 	}
 	var out bytes.Buffer
-	code := arbiterVerb(&out, f.deps(), arbiterInput{RunID: arbiterTestRun, EnvelopePath: f.envelopePath, ReportPath: f.reportPath})
+	code := arbiterVerb(&out, f.deps(), arbiterInput{RunID: arbiterTestRun, EnvelopePath: f.envelopePath, ReportPath: f.reportPath, CaseBriefPath: f.caseBriefPath})
 	var fields map[string]any
 	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &fields); err != nil {
 		f.t.Fatalf("arbiterVerb output %q is not one JSON object: %v", out.String(), err)
@@ -244,6 +245,12 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 		},
 		{name: "transient failure that failed twice", producer: "Plan-Write", state: shedengine.StateFailed, envelope: `{"kind":"busy","transient":"network"}`},
 		{name: "blocked stop", producer: "Plan-Write", state: shedengine.StateBlocked},
+		{
+			name: "blocked stop carrying a tackler case brief", producer: "Plan-Write", state: shedengine.StateBlocked,
+			setup: func(f *arbiterFixture) {
+				f.caseBriefPath = filepath.Join(f.root, "tackler", "attempt-1", "case-brief.md")
+			},
+		},
 		{
 			name: "Publish halt naming no target", producer: loomshed.NamePublish, state: shedengine.StateBlocked,
 		},
@@ -370,9 +377,15 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 			if !tt.wantBrief && !strings.Contains(spec.Prompt, "escalation brief `none`") {
 				t.Errorf("prompt reads a brief at a stop with no escalation; want none")
 			}
+			if f.caseBriefPath != "" && !strings.Contains(spec.Prompt, f.caseBriefPath) {
+				t.Errorf("prompt lacks the case brief %q", f.caseBriefPath)
+			}
+			if f.caseBriefPath == "" && !strings.Contains(spec.Prompt, "case brief `none`") {
+				t.Errorf("prompt reads a case brief at a stop given none; want none")
+			}
 			wantAttempt := loomengine.ArbiterAttempt{
 				Number: 1, StopKey: loomengine.StopKeyOf(f.status), SpawnedAt: f.now, Deadline: f.now.Add(30 * time.Minute),
-				StrandGUID: "guid-1", EnvelopePath: f.envelopePath, ReportPath: f.reportPath, Dir: f.attemptDir(1),
+				StrandGUID: "guid-1", EnvelopePath: f.envelopePath, ReportPath: f.reportPath, CaseBriefPath: f.caseBriefPath, Dir: f.attemptDir(1),
 			}
 			if !reflect.DeepEqual(captured.attempt, wantAttempt) {
 				t.Errorf("attempt.json = %+v; want %+v", captured.attempt, wantAttempt)

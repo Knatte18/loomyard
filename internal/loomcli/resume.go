@@ -1,6 +1,6 @@
-// resume.go implements the `resume` loom verb: wake a halted run's live, parked driver with the resume line, and refuse everything else with a way forward.
+// resume.go implements the `resume` loom verb: wake a halted run's live, parked driver with the resume line, spawn a Go driver for a halted go-seeded run that has none, and refuse everything else with a way forward.
 // A run awaiting at a review segment's Bouncer row with a pending circling decision takes the halted path, since its driver's step re-calls the Bouncer, which acts on the decision.
-// It spawns no driver, adds no strand, never brings reed up and never switches a tmux client.
+// It spawns no LLM driver, adds no strand, never brings reed up and never switches a tmux client.
 
 package loomcli
 
@@ -85,9 +85,14 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 		return
 	}
 	driverLive := driverFound && driver.Live && !driver.Retiring
+	driverLockHeld, err := c.driverLockHeld()
+	if err != nil {
+		refuse(resumeRefusal{message: err.Error()})
+		return
+	}
 
 	if status.State == shedengine.StateRunning {
-		if driverLive || runLockHeld {
+		if driverLive || runLockHeld || driverLockHeld {
 			succeed(map[string]any{"run_id": runID, "state": string(status.State), "message": "the run is already running"})
 			return
 		}
@@ -97,11 +102,34 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 			kind:    shedrun.StartNotParkedKind,
 		})
 		return
+	} else if driverLockHeld {
+		refuse(resumeRefusal{
+			message: `loom resume: the run's Go driver still holds its driver lock and is settling the stop; run "` + retryResume + `" again in a few seconds`,
+			kind:    shedrun.StartNotParkedKind,
+		})
+		return
 	}
 
 	if !driverLive {
 		if !c.refuseOverUnfinishedMerge(ctx, out, bootstrapLock, retryResume, status.CurrentProducer) {
 			return
+		}
+		if status.State != shedengine.StateRunning {
+			seed, seedFound, err := shedrun.ReadSeed(c.location, c.runID)
+			if err != nil {
+				refuse(resumeRefusal{message: err.Error()})
+				return
+			}
+			if seedFound && seed.Driver == shedrun.DriverGo {
+				c.vouchForSpawnedResume()
+				pid, err := c.spawnGoDriver()
+				if err != nil {
+					refuse(resumeRefusal{message: err.Error()})
+					return
+				}
+				succeed(map[string]any{"run_id": runID, "state": string(status.State), "message": "a Go driver was spawned", "pid": pid})
+				return
+			}
 		}
 		refuse(resumeRefusal{message: noLiveDriverMessage(driver, driverFound)})
 		return
@@ -167,6 +195,23 @@ func (c *loomCLI) runLockHeld() (bool, error) {
 	return !free, nil
 }
 
+// driverLockHeld reports whether a Go driver holds the run's driver lock, probing it without keeping it.
+// The lock's directory is created first, as runLockHeld does.
+func (c *loomCLI) driverLockHeld() (bool, error) {
+	lockPath := shedrun.DriverLock(c.location, c.runID)
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		return false, err
+	}
+	probe, free, err := lock.TryAcquireWriteLock(lockPath)
+	if err != nil {
+		return false, err
+	}
+	if free {
+		_ = probe.Release()
+	}
+	return !free, nil
+}
+
 // noLiveDriverMessage is the refusal for a run with no driver to wake, its way forward told apart by what reed's directory holds for the driver strand.
 func noLiveDriverMessage(driver reedengine.DirectoryRow, driverFound bool) string {
 	const head = "loom resume: the run has no live driver to wake, and resume starts none; "
@@ -188,8 +233,9 @@ func (c *loomCLI) resumeCmd() *cobra.Command {
 		Short:       "wake this task's parked loom driver after a halt, without starting anything",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `resume wakes a halted run's live, parked driver by typing the resume line into
-its pane and removing the park marker. It never spawns a driver, adds or
-attaches a strand, brings reed up or switches a tmux client.
+its pane and removing the park marker. It never spawns an LLM driver, adds or
+attaches a strand, brings reed up or switches a tmux client. For a halted
+go-seeded run with no driver at all it spawns a Go driver, which re-steps the run.
 
 Reach for it in the task worktree after "lyx loom circling accept" or
 "lyx loom circling continue", or whenever a run halted at a hand-back should
@@ -201,9 +247,9 @@ Each refusal names its way forward: "lyx loom start" when no run or no usable
 driver strand exists, the circling verbs at a review segment awaiting a
 decision, "lyx loom approve" or "lyx loom reject" at any other awaiting row,
 and a retry shortly for the kind "driver_not_parked", while the driver
-finishes its post-run work. An unfinished merge in the worktree is refused
-with the kind "merge_in_progress". While a pause covers this task it refuses
-and names "lyx resume".
+finishes its post-run work or a Go driver is still settling the stop. An
+unfinished merge in the worktree is refused with the kind "merge_in_progress".
+While a pause covers this task it refuses and names "lyx resume".
 
 Example:
   lyx loom resume`,

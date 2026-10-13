@@ -69,6 +69,8 @@ type ArbiterAttempt struct {
 	StrandGUID   string         `json:"strand_guid"`
 	EnvelopePath string         `json:"envelope_path"`
 	ReportPath   string         `json:"report_path"`
+	// CaseBriefPath is the tackler's case brief the attempt was given, so a re-run names the same brief; omitted when there was none.
+	CaseBriefPath string `json:"case_brief_path,omitempty"`
 
 	// Dir is the attempt's directory, filled by the readers and never serialized.
 	Dir string `json:"-"`

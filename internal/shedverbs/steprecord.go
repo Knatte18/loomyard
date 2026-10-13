@@ -130,6 +130,14 @@ func RunningStepPID(stepsDir string) (int, bool) {
 	return pid, pid != 0
 }
 
+// LastStepBuildChanged reports whether the last step recorded in stepsDir ran on a known build other than against.
+// It is false when stepsDir holds no step record, and for a record that carries no build identity.
+// A caller passes the identity of the lyx on disk, so any difference counts, a rollback included.
+func LastStepBuildChanged(stepsDir string, against buildvcs.Identity) bool {
+	last := lastStepOf(stepsDir, against)
+	return last != nil && last.BinaryChanged
+}
+
 // lastStepOf reads dir for the most recent in-flight record and reports it, or nil when dir is
 // empty, unreadable or holds none.
 // running is the build identity of the calling lyx, compared with the chosen record's recorded one to set binary_changed.

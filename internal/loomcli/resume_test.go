@@ -170,7 +170,14 @@ func TestResumeVerb(t *testing.T) {
 		lookupErr error
 		directory fakeDriverDirectory
 		runLock   bool
-		marker    bool
+		// driverLock makes the test hold the real driver lock, as a settling Go driver does.
+		driverLock bool
+		// seedDriver is the driver the run's seed records;
+		// empty writes no seed.
+		seedDriver string
+		// wantSpawns is how many times the Go-driver spawn seam is reached.
+		wantSpawns int
+		marker     bool
 		// covered records a live pause entry covering the run before the verb runs.
 		covered bool
 		// noScratch points the lock paths at a directory that does not exist after the status file is written, as on a pair re-created from its branch.
@@ -217,6 +224,12 @@ func TestResumeVerb(t *testing.T) {
 		{name: "dead driver strand names batten then resume, or start", runState: shedengine.StateBlocked, directory: deadDriver, wantIn: []string{"dead", "lyx batten run <slug>", `"lyx loom resume" again`, `"lyx loom start"`}},
 		{name: "retiring driver strand names start", runState: shedengine.StateBlocked, directory: retiringDriver, marker: true, wantIn: []string{"retiring", `"lyx loom start"`}},
 		{name: "no driver strand names start", runState: shedengine.StateBlocked, directory: noDriver, wantIn: []string{"no driver strand", `"lyx loom start"`}},
+		{name: "a held driver lock over a blocked run is refused as not parked", runState: shedengine.StateBlocked, directory: noDriver, driverLock: true, wantKind: shedrun.StartNotParkedKind, wantIn: []string{"Go driver", "settling", `"lyx loom resume" again`}},
+		{name: "a held driver lock over a running run is the already-running success", runState: shedengine.StateRunning, directory: noDriver, driverLock: true, wantOK: true, wantIn: []string{"already running"}},
+		{name: "a go-seeded blocked run with no strand spawns a Go driver once", runState: shedengine.StateBlocked, directory: noDriver, seedDriver: shedrun.DriverGo, wantOK: true, wantSpawns: 1, wantIn: []string{"a Go driver was spawned"}},
+		{name: "a go-seeded run under an unfinished merge is refused with no spawn", runState: shedengine.StateBlocked, directory: noDriver, seedDriver: shedrun.DriverGo, merge: mergeParked, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{"lyx fabric merge"}},
+		{name: "an llm-seeded blocked run with no strand keeps the no-driver-strand refusal", runState: shedengine.StateBlocked, directory: noDriver, seedDriver: shedrun.DriverLLM, wantIn: []string{"no driver strand", `"lyx loom start"`}},
+		{name: "a go-seeded running run with no driver keeps the no-live-driver refusal", runState: shedengine.StateRunning, directory: noDriver, seedDriver: shedrun.DriverGo, wantIn: []string{"no live driver", `"lyx loom start"`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -224,6 +237,27 @@ func TestResumeVerb(t *testing.T) {
 			c, starter, probe := newResumeVerbReceiver(t, sender, tt.directory)
 			c.midMerge = func(*lyxcwd.Location) (fabricengine.MidMergeState, error) { return tt.merge, nil }
 			c.recordedParentBranch = parentBranchSeam(nil)
+			spawns := 0
+			c.spawnGoDriver = func() (int, error) {
+				spawns++
+				return 4242, nil
+			}
+			if tt.seedDriver != "" {
+				if err := shedrun.WriteSeed(c.location, c.runID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: tt.seedDriver}); err != nil {
+					t.Fatalf("write seed: %v", err)
+				}
+			}
+			if tt.driverLock {
+				driverLockPath := shedrun.DriverLock(c.location, c.runID)
+				if err := os.MkdirAll(filepath.Dir(driverLockPath), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				held, acquired, err := lock.TryAcquireWriteLock(driverLockPath)
+				if err != nil || !acquired {
+					t.Fatalf("test could not take the driver lock: acquired %t, %v", acquired, err)
+				}
+				t.Cleanup(func() { _ = held.Release() })
+			}
 			if tt.producer != "" {
 				if err := state.WriteJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, shedengine.Status{State: tt.runState, CurrentProducer: tt.producer}); err != nil {
 					t.Fatalf("write status: %v", err)
@@ -277,6 +311,9 @@ func TestResumeVerb(t *testing.T) {
 			}
 			if starter.called || probe.removeCalled {
 				t.Errorf("the verb spawned (%v) or removed (%v) a strand", starter.called, probe.removeCalled)
+			}
+			if spawns != tt.wantSpawns {
+				t.Errorf("Go driver spawns = %d; want %d", spawns, tt.wantSpawns)
 			}
 			if sent := len(sender.texts) > 0; sent != (tt.wantSent || tt.sendErr != nil) {
 				t.Errorf("resume line typed = %v, want %v", sent, tt.wantSent)

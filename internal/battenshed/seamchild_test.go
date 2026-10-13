@@ -46,6 +46,7 @@ func newSeedChildDeps(boardType string, boardErr error, driver string, driverErr
 			return boardType, boardErr
 		},
 		ChildDriver: func() (string, error) {
+			calls.events = append(calls.events, "driver")
 			return driver, driverErr
 		},
 		WriteSeed: func(ctx context.Context, recipe, drv string) error {
@@ -342,16 +343,16 @@ func TestSeedChild_RunSettings(t *testing.T) {
 		wantReasonIn []string
 	}{
 		{
-			name:        "NamedModulesWrittenAndOthersRemovedBeforeTheSeed",
+			name:        "NamedModulesWrittenAndOthersRemovedThenTheDriverIsReadBeforeTheSeed",
 			settings:    map[string]any{"loom": map[string]any{"a": 1}, "darn": map[string]any{"b": 2}},
 			wantOutcome: shedengine.Done,
-			wantEvents:  []string{"write darn", "write loom", "remove", "seed"},
+			wantEvents:  []string{"write darn", "write loom", "remove", "driver", "seed"},
 			wantKeep:    []string{"darn", "loom"},
 		},
 		{
 			name:        "AbsentSettingsRemoveEveryLocalFile",
 			wantOutcome: shedengine.Done,
-			wantEvents:  []string{"remove", "seed"},
+			wantEvents:  []string{"remove", "driver", "seed"},
 			wantKeep:    []string{},
 		},
 		{

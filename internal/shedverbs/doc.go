@@ -35,6 +35,9 @@
 // busy is another holder of the run, or of the run lock at the failed write, which writes nothing.
 // A transient error gets one immediate re-step, reported as restep.
 //
+// RunUntilStop and RunGoto are the exported entries an in-process driver calls: the same bodies the step --until-stop and goto verbs run after their flags are parsed.
+// LastStepBuildChanged reads whether the last step ran on a known build other than the one passed, which an in-process driver judges against the lyx on disk.
+//
 // The final envelope is the stop step's short envelope plus a loop object whose keys are closed:
 // steps, first_producer, stop, detail, status_moved, restep (only when a re-step ran), current_producer, history_length, state, interrupt_policy, trace_copy and stderr_path.
 // detail is the stop's error or reason and the WARN and ERROR lines and last lines of the stop step's trace, capped by lines and bytes.
