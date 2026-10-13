@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
 // zoomStateNow reads the strands' window's zoom flag and active pane from outside the pty.
