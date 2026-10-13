@@ -20,13 +20,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -50,6 +50,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
@@ -614,22 +615,27 @@ func readSessionStatesByStrand(cfg shuttleengine.Config, anchor string, engine s
 	return states
 }
 
-// markBattenWatched writes the batten-watched marker of the task worktree's run, holding this process's pid, while noticesReachDriversParent holds, and removes it otherwise.
-// The write is atomic, so the driver's render never reads a torn pid, and an absent marker is fine to remove.
+// markBattenWatched writes the batten-watched marker of the task worktree's run while noticesReachDriversParent holds, and removes it otherwise.
+// The marker holds this process's pid and names the batten scratch directory and the Run-Shed row's name, so a Go driver can read batten's publish-retry marker after this batten has died.
 // It reports whether the marker is held.
-func markBattenWatched(prime, taskLocation *lyxcwd.Location) (bool, error) {
-	marker := shedrun.BattenWatchedMarker(taskLocation, shedrun.SelfRunID)
+func markBattenWatched(prime, taskLocation *lyxcwd.Location, scratchDir, producer string) (bool, error) {
 	watched, err := noticesReachDriversParent(prime, taskLocation)
 	if err != nil {
 		return false, err
 	}
+	return syncWatchedMarker(shedrun.BattenWatchedMarker(taskLocation, shedrun.SelfRunID), watched, shedrun.BattenWatchedContent(os.Getpid(), scratchDir, producer))
+}
+
+// syncWatchedMarker makes the marker at path match watched: absent when not watched, and holding content when watched.
+// A marker already holding content is not rewritten, an absent marker is fine to remove, and a write is atomic so a driver's render never reads a torn marker.
+// It reports whether the marker is held.
+func syncWatchedMarker(marker string, watched bool, content []byte) (bool, error) {
 	if !watched {
 		if err := os.Remove(marker); err != nil && !os.IsNotExist(err) {
 			return false, err
 		}
 		return false, nil
 	}
-	content := []byte(strconv.Itoa(os.Getpid()) + "\n")
 	if existing, err := os.ReadFile(marker); err == nil && bytes.Equal(existing, content) {
 		return true, nil
 	}
@@ -637,6 +643,33 @@ func markBattenWatched(prime, taskLocation *lyxcwd.Location) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// readTacklerAsArbiterMarker reads the tackler marker at path as the arbiter marker of the same attempt, strand and deadline, so one reader serves both in-flight seams.
+func readTacklerAsArbiterMarker(path string) (loomengine.ArbiterMarker, bool, error) {
+	marker, found, err := loomengine.ReadTacklerMarker(path)
+	if err != nil || !found {
+		return loomengine.ArbiterMarker{}, false, err
+	}
+	return loomengine.ArbiterMarker{Attempt: marker.Attempt, StrandGUID: marker.StrandGUID, Deadline: marker.Deadline}, true, nil
+}
+
+// dirtyPathsOutsideRunRecords lists the task pair's uncommitted or untracked paths outside the run's own records directories.
+// Both sides join onto the warp worktree, since the records side reaches it through the `_lyx` junction.
+func dirtyPathsOutsideRunRecords(taskLocation *lyxcwd.Location) ([]string, error) {
+	fab, err := fabricengine.Open(taskLocation)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := fab.Status()
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		paths = append(paths, filepath.Join(taskLocation.WorktreePath(), filepath.FromSlash(entry.Path)))
+	}
+	return loomengine.PathsOutsideRunRecords(taskLocation, shedrun.SelfRunID, paths), nil
 }
 
 // openTerminal returns the Run-Shed seam that opens a terminal window titled slug, attached to the task worktree's reed session, or nil when the run was not asked to open one.
@@ -700,7 +733,24 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		if err != nil {
 			return false, err
 		}
-		return markBattenWatched(location, taskLocation)
+		return markBattenWatched(location, taskLocation, BattenDir(location, slug), battenrecipe.NameRunShed)
+	}
+
+	// readReedDirectory reads the task worktree's reed directory, for the seams that tell a marker's strand live.
+	readReedDirectory := func() ([]reedengine.DirectoryRow, error) {
+		taskLocation, err := locateTask()
+		if err != nil {
+			return nil, err
+		}
+		reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
+		if err != nil {
+			return nil, err
+		}
+		reedGeom, err := hubgeom.ReedGeometry(taskLocation)
+		if err != nil {
+			return nil, err
+		}
+		return reedengine.New(reedCfg, reedGeom).Directory()
 	}
 
 	env := shedrecipe.Env{
@@ -938,21 +988,23 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 						}
 						return loomengine.ReadArbiterMarker(shedrun.ArbiterMarker(taskLocation, shedrun.SelfRunID))
 					},
-					func() ([]reedengine.DirectoryRow, error) {
+					readReedDirectory)
+			},
+			// TacklerInFlight reads the task worktree's in-flight tackler marker as the arbiter's is read: against the same reed directory, so a live row carrying the tackler's strand reads alive.
+			TacklerInFlight: func(ctx context.Context) (battenshed.ChildArbiter, bool, error) {
+				present, err := taskWorktreePresent(location, slug)
+				if err != nil {
+					return battenshed.ChildArbiter{}, false, err
+				}
+				return arbiterInFlightFrom(present,
+					func() (loomengine.ArbiterMarker, bool, error) {
 						taskLocation, err := locateTask()
 						if err != nil {
-							return nil, err
+							return loomengine.ArbiterMarker{}, false, err
 						}
-						reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
-						if err != nil {
-							return nil, err
-						}
-						reedGeom, err := hubgeom.ReedGeometry(taskLocation)
-						if err != nil {
-							return nil, err
-						}
-						return reedengine.New(reedCfg, reedGeom).Directory()
-					})
+						return readTacklerAsArbiterMarker(shedrun.TacklerMarker(taskLocation, shedrun.SelfRunID))
+					},
+					readReedDirectory)
 			},
 			// ReviveStrands ends the pair's dead arbiter strands, then resumes the task worktree's reed session, which relaunches the dead driver strand and every other non-live strand of the pair.
 			// A dead arbiter is stopped rather than relaunched: its attempt reads as hand-on.
@@ -1003,6 +1055,50 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return false, err
 				}
 				return runLockHeld(shedrun.RunLock(taskLocation, shedrun.SelfRunID))
+			},
+			// ChildDriverLockHeld probes the Go driver's lock, which the driver holds for life while the run lock is free between its steps.
+			ChildDriverLockHeld: func() (bool, error) {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return false, err
+				}
+				return runLockHeld(shedrun.DriverLock(taskLocation, shedrun.SelfRunID))
+			},
+			// GoVerifyRetrySpent reads whether the child's settle records show its Go driver already spent a verify retry.
+			GoVerifyRetrySpent: func() (bool, error) {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return false, err
+				}
+				records, err := loomengine.ReadSettleRecords(shedrun.SettleRecordsFile(loomengine.LoomFrictionDir(taskLocation)))
+				if err != nil {
+					return false, err
+				}
+				return loomengine.GoVerifyRetrySpent(records), nil
+			},
+			// ChildBuildChanged reads the lyx on disk, which a deploy replaces under this running batten, and compares it with the build the child's last step recorded.
+			ChildBuildChanged: func() (string, bool, error) {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return "", false, err
+				}
+				exe, err := os.Executable()
+				if err != nil {
+					return "", false, err
+				}
+				onDisk, err := buildvcs.OfFile(exe)
+				if err != nil {
+					return "", false, err
+				}
+				return onDisk.Label(), shedverbs.LastStepBuildChanged(shedrun.StepsDir(taskLocation, shedrun.SelfRunID), onDisk), nil
+			},
+			// ChildDirtyPaths lists the task pair's uncommitted or untracked paths outside the run's records directories.
+			ChildDirtyPaths: func() ([]string, error) {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return nil, err
+				}
+				return dirtyPathsOutsideRunRecords(taskLocation)
 			},
 			// ResolveStatus also creates the child's ephemeral status-lock directory, since its
 			// caller reads through that lock next and nothing else on the Run-Shed path creates
