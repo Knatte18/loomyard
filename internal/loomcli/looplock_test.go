@@ -5,14 +5,18 @@ package loomcli
 import (
 	"errors"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 const lockedBranch = "main"
@@ -82,6 +86,109 @@ func TestLoopLockExit(t *testing.T) {
 			gotOwner, gotFound := lockOwnerOf(t, store)
 			if gotFound != tt.wantFound || gotOwner != tt.wantOwner {
 				t.Errorf("record after exit = %+v, found %v; want %+v, found %v", gotOwner, gotFound, tt.wantOwner, tt.wantFound)
+			}
+		})
+	}
+}
+
+// countLogLines counts the lines of log at level that contain text.
+func countLogLines(log, level, text string) int {
+	count := 0
+	for _, line := range strings.Split(log, "\n") {
+		if strings.Contains(line, "level="+level) && strings.Contains(line, text) {
+			count++
+		}
+	}
+	return count
+}
+
+// TestIdleReleaseLogLevels asserts the wake hook logs a repeating list or agent read failure once at Warn, Debug while it lasts and Info at recovery, and logs a release at Info.
+// It is serial: it captures the process-global logger.
+func TestIdleReleaseLogLevels(t *testing.T) {
+	const bound = 10 * time.Minute
+	waiting := []parentlock.AgentState{{Name: "writer", Waiting: true}}
+	type logLine struct {
+		level, text string
+		want        int
+	}
+
+	tests := []struct {
+		name string
+		// brokenListWakes is how many leading wakes find the store's directory unreadable.
+		brokenListWakes int
+		// failingAgentReads is how many leading agent reads fail.
+		failingAgentReads int
+		wakeAt            []time.Duration
+		wantLines         []logLine
+		wantHeld          bool
+	}{
+		{
+			name: "a list failure warns once and logs its recovery", brokenListWakes: 3,
+			wakeAt: []time.Duration{0, 0, 0, 0}, wantHeld: true,
+			wantLines: []logLine{
+				{"WARN", "could not list the parent lock records", 1},
+				{"DEBUG", "could not list the parent lock records", 2},
+				{"INFO", "the parent lock records list again", 1},
+			},
+		},
+		{
+			name: "an agent read failure warns once and logs its recovery", failingAgentReads: 3,
+			wakeAt: []time.Duration{0, 0, 0, 0}, wantHeld: true,
+			wantLines: []logLine{
+				{"WARN", "could not read the agents' states", 1},
+				{"DEBUG", "could not read the agents' states", 2},
+				{"INFO", "read again for the parent lock's idle rule", 1},
+			},
+		},
+		{
+			name:   "a release past the bound logs at Info",
+			wakeAt: []time.Duration{0, bound},
+			wantLines: []logLine{
+				{"INFO", "released the parent lock after every agent waited past the idle bound", 1},
+				{"WARN", "", 0},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := logcapture.CaptureVerbose(t)
+			logger.SetVerbosity(2)
+			store := lockedStore(t, loopOwner)
+			goodDir := store.Dir
+			brokenDir := filepath.Join(t.TempDir(), "not-a-directory")
+			if err := os.WriteFile(brokenDir, nil, 0o644); err != nil {
+				t.Fatalf("WriteFile() error = %v", err)
+			}
+			var now time.Duration
+			var agentReads int
+			wake := idleReleaseOn(store, func() parentlock.Owner { return loopOwner },
+				func() ([]parentlock.AgentState, error) {
+					agentReads++
+					if agentReads <= tt.failingAgentReads {
+						return nil, errors.New("unreadable")
+					}
+					return waiting, nil
+				},
+				bound, func() time.Duration { return now },
+				func() bool { return false })
+
+			for i, at := range tt.wakeAt {
+				now = at
+				store.Dir = goodDir
+				if i < tt.brokenListWakes {
+					store.Dir = brokenDir
+				}
+				wake()
+			}
+
+			for _, line := range tt.wantLines {
+				if got := countLogLines(buf.String(), line.level, line.text); got != line.want {
+					t.Errorf("%s lines containing %q = %d; want %d\n%s", line.level, line.text, got, line.want, buf.String())
+				}
+			}
+			store.Dir = goodDir
+			if _, found := lockOwnerOf(t, store); found != tt.wantHeld {
+				t.Errorf("record found after the wakes = %v; want %v", found, tt.wantHeld)
 			}
 		})
 	}
