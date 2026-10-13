@@ -727,6 +727,12 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 	// Every seam below that reads the task worktree locates it through this one locator, so git runs only until the first resolution succeeds.
 	locateTask := taskWorktreeLocator(location, slug)
 
+	// The on-disk lyx path is resolved once, here: after a deploy replaces the file under this running batten, os.Executable reads a path that no longer names it.
+	executable, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("batten: resolve the lyx executable: %w", err)
+	}
+
 	// One closure keeps the marker for both rows that ask: Seed-Child once the seed is committed, and Run-Shed through the whole watch.
 	markWatched := func(ctx context.Context) (bool, error) {
 		taskLocation, err := locateTask()
@@ -1082,11 +1088,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return "", false, err
 				}
-				exe, err := os.Executable()
-				if err != nil {
-					return "", false, err
-				}
-				onDisk, err := buildvcs.OfFile(exe)
+				onDisk, err := buildvcs.OfFile(executable)
 				if err != nil {
 					return "", false, err
 				}
