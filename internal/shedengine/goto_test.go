@@ -411,14 +411,15 @@ func TestRelaunch(t *testing.T) {
 	tests := []struct {
 		name string
 		// seed is the status written before the call; nil leaves the status file absent.
-		seed       *Status
-		holdLock   bool
-		target     string
-		admitErr   error
-		wantErr    string
-		wantBusy   bool
-		wantAdmits int
-		check      func(t *testing.T, got Status)
+		seed          *Status
+		holdLock      bool
+		target        string
+		admitErr      error
+		admitInEffect bool
+		wantErr       string
+		wantBusy      bool
+		wantAdmits    int
+		check         func(t *testing.T, got Status)
 	}{
 		{name: "run lock held", seed: seedWith(StateBlocked, "B"), holdLock: true, target: "A", wantBusy: true, wantErr: `"lyx shed pause --after <current_producer>"`},
 		{name: "status file absent", target: "A", wantErr: "way forward: told clause"},
@@ -441,6 +442,7 @@ func TestRelaunch(t *testing.T) {
 			},
 		},
 		{name: "no target writes the status unchanged", seed: seedWith(StateBlocked, "B"), wantAdmits: 1},
+		{name: "target in effect writes the status unchanged", seed: seedWith(StateBlocked, "B"), target: "A", admitInEffect: true, wantAdmits: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -470,7 +472,7 @@ func TestRelaunch(t *testing.T) {
 				Producers:               shed.Producers,
 				MissingStatusWayForward: "way forward: told clause",
 				Target:                  tt.target,
-				Admit:                   func(Status) error { admits++; return tt.admitErr },
+				Admit:                   func(Status) (bool, error) { admits++; return tt.admitInEffect, tt.admitErr },
 			})
 			if admits != tt.wantAdmits {
 				t.Errorf("Admit called %d times; want %d", admits, tt.wantAdmits)

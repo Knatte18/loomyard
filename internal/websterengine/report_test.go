@@ -9,7 +9,6 @@ package websterengine
 import (
 	"os"
 	"path/filepath"
-	"slices"
 	"testing"
 )
 
@@ -65,9 +64,6 @@ func TestReport_RoundTrip(t *testing.T) {
 			}
 			if got.HeadSHA != tt.want.HeadSHA {
 				t.Errorf("HeadSHA = %q; want %q", got.HeadSHA, tt.want.HeadSHA)
-			}
-			if !slices.Equal(got.Deviations, tt.want.Deviations) {
-				t.Errorf("Deviations = %v; want %v", got.Deviations, tt.want.Deviations)
 			}
 		})
 	}

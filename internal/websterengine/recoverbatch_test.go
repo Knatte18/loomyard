@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
+	"github.com/Knatte18/quarry/quarry"
 )
 
 // recoverFakeClock is a package-local, scriptable clock double: Now starts
@@ -56,6 +57,8 @@ type recoverFixture struct {
 	Git        *fakeGit
 	Worktree   string
 	ReportsDir string
+	// Index is the fake index behind Deps.Geom.Index, nil over a real repository.
+	Index *fakeIndex
 	// Head returns the worktree's current HEAD commit.
 	Head func(t *testing.T) string
 }
@@ -75,7 +78,7 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git) *recoverFixture {
 	t.Helper()
 
-	_, index := indexOver(git)
+	fakeIdx, index := indexOver(git)
 
 	plan := &planparser.Plan{}
 	batches := []batcher.Batch{
@@ -134,7 +137,7 @@ func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git)
 		},
 	}
 
-	return &recoverFixture{Deps: deps, Reed: reed, Engine: engine, Worktree: worktree, ReportsDir: reportsDir}
+	return &recoverFixture{Deps: deps, Reed: reed, Engine: engine, Worktree: worktree, ReportsDir: reportsDir, Index: fakeIdx}
 }
 
 // writeRecoverReport seeds fx's reportsDir with a batch-report YAML file for
@@ -495,6 +498,30 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 				}
 				if _, statErr := os.Stat(a.runDir); !os.IsNotExist(statErr) {
 					t.Errorf("stat(%s) = %v; want the done run dir removed", a.runDir, statErr)
+				}
+			},
+		},
+		{
+			name: "a landed report records the guard's deviations in the persisted digest",
+			config: func(fx *recoverFixture) {
+				fx.Index.delta.Created = []quarry.Symbol{
+					{ID: "other#C", File: "other/b.go"},
+					{ID: "other#B", File: "other/b.go"},
+					{ID: "other#A", File: "other/a.go"},
+				}
+			},
+			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
+				return secondCall{head: seedReportAtHead(t, fx)}
+			},
+			check: func(t *testing.T, fx *recoverFixture, a attempt) {
+				want := []string{"other/a.go", "other/b.go"}
+				if got := fx.Deps.State.Batches[1].Digest.Deviations; !slices.Equal(got, want) {
+					t.Errorf("persisted Digest.Deviations = %v; want %v, deduplicated and sorted", got, want)
+				}
+				for _, w := range a.second.Warnings {
+					if strings.Contains(w, "scope-outside-plan") {
+						t.Errorf("Warnings = %v; want no scope-outside-plan warning", a.second.Warnings)
+					}
 				}
 			},
 		},

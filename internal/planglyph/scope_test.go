@@ -4,6 +4,7 @@
 package planglyph
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -31,6 +32,53 @@ func TestScopeGuard_SymbolOutsideTargetsOneInformationalFinding(t *testing.T) {
 	got := ScopeGuard(cards, delta)
 	if len(got) != 1 || got[0].Check != "scope-outside-plan" || got[0].Severity != SeverityInformational {
 		t.Fatalf("ScopeGuard(outside) = %+v; want exactly one informational scope-outside-plan finding", got)
+	}
+	if got[0].File != "sub/b.go" {
+		t.Errorf("ScopeGuard(outside)[0].File = %q; want %q", got[0].File, "sub/b.go")
+	}
+}
+
+// TestScopeGuard_FileLevelCoverage covers the file-level pass: a changed file the delta gives no symbols for is reported unless a card target's file or package directory covers it.
+// A file carrying an out-of-target symbol is reported by that symbol's finding alone.
+func TestScopeGuard_FileLevelCoverage(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		targets []string
+		created []quarry.Symbol
+		path    string
+		want    []string
+	}{
+		{name: "import-only change in a target's package", targets: []string{"sub#Foo"}, path: "sub/a.go"},
+		{name: "import-only change in a subdirectory of a target's package", targets: []string{"sub#Foo"}, path: "sub/inner/a.go", want: []string{"sub/inner/a.go"}},
+		{name: "external test file of an external test package target", targets: []string{"sub_test#TestFoo"}, path: "sub/a_test.go"},
+		{name: "file equal to a file target", targets: []string{"docs/notes.md"}, path: "docs/notes.md"},
+		{name: "other file beside a file target", targets: []string{"docs/notes.md"}, path: "docs/other.md", want: []string{"docs/other.md"}},
+		{name: "non-Go file in a package target's directory", targets: []string{"sub#"}, path: "sub/README.md"},
+		{name: "file in another package", targets: []string{"sub#Foo"}, path: "other/x.go", want: []string{"other/x.go"}},
+		{name: "plan handle covers its package", targets: []string{"plan:sub#Bar"}, path: "sub/new.go"},
+		{
+			name:    "file with an out-of-target symbol gets only the symbol finding",
+			targets: []string{"other#Z"},
+			created: []quarry.Symbol{{ID: "sub#Bar", File: "sub/b.go"}},
+			path:    "sub/b.go",
+			want:    []string{"sub/b.go"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cards := []planparser.Card{{Number: 1, Slug: "one", Targets: tc.targets}}
+			delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{
+				Created: tc.created,
+				Files:   []quarry.DeltaFile{{Path: tc.path, Disposition: quarry.DispositionError}},
+			}}
+
+			var got []string
+			for _, f := range ScopeGuard(cards, delta) {
+				got = append(got, f.File)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("ScopeGuard files = %v; want %v", got, tc.want)
+			}
+		})
 	}
 }
 

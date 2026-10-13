@@ -1,15 +1,13 @@
 // classify_test.go covers Classify's pinned decision order: a present Report short-circuits to
-// terminal regardless of every other field, with its head SHA and deviations carried through and a
-// large deviation list never changing the mapped status (the deviation list is informational),
-// and absent a report the dead-reason precedence runs TurnEnded -> timeout -> strand-died ->
-// running, in that order.
+// terminal regardless of every other field, with its head SHA carried through.
+// A report's deviations are ignored: they never change the mapped status or fill the digest's list.
+// Absent a report, the dead-reason precedence runs TurnEnded -> timeout -> strand-died -> running, in that order.
 // Tier 1: no git, inputs constructed directly.
 
 package websterengine
 
 import (
 	"fmt"
-	"slices"
 	"testing"
 	"time"
 )
@@ -33,14 +31,14 @@ func TestClassify(t *testing.T) {
 		wantElapsedS int
 	}{
 		{
-			name:         "a report's deviations carry through and never change an OK status",
+			name:         "a report's deviations are ignored and never change an OK status",
 			in:           ClassifyInputs{BatchNumber: 1, BatchSlug: "x", Report: &Report{Status: ReportStatusOK, HeadSHA: "abc", Deviations: many}},
 			wantTerminal: true,
 			wantStatus:   DigestStatusDone,
 			wantHeadSHA:  "abc",
 		},
 		{
-			name:         "a report's deviations never change a FAILED status",
+			name:         "a report's deviations are ignored and never change a FAILED status",
 			in:           ClassifyInputs{BatchNumber: 1, BatchSlug: "x", Report: &Report{Status: ReportStatusFailed, HeadSHA: "def", Deviations: many}},
 			wantTerminal: true,
 			wantStatus:   DigestStatusStuck,
@@ -159,8 +157,8 @@ func TestClassify(t *testing.T) {
 			if tt.wantElapsedS != 0 && got.ElapsedS != tt.wantElapsedS {
 				t.Errorf("Classify().ElapsedS = %d; want %d", got.ElapsedS, tt.wantElapsedS)
 			}
-			if tt.in.Report != nil && !slices.Equal(got.Deviations, tt.in.Report.Deviations) {
-				t.Errorf("Classify().Deviations has %d entries; want the report's %d, in order", len(got.Deviations), len(tt.in.Report.Deviations))
+			if len(got.Deviations) != 0 {
+				t.Errorf("Classify().Deviations = %v; want empty, since record-batch fills it from the scope guard", got.Deviations)
 			}
 		})
 	}

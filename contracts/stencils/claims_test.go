@@ -187,6 +187,8 @@ var wordingClaims = []stencilClaims{
 		wantAll("D7: the review rule follows the escalation's cause, and the tags' meaning is pointed at, never restated",
 			"`hard-cap`", "`circling`", "`budget`", "below the hard cap", "judge stencil"),
 		wantNone("D7: the old fixed rule cannot return", "after round 3"),
+		wantAll("the arbiter reads the board entry by its JSON payload", "`lyx board get '{\"slug\":\"{{.slug}}\"}'`"),
+		wantNone("the bare-slug board form cannot return", "lyx board get {{.slug}}"),
 		wantNone("the arbiter moves and resumes nothing itself and messages no session",
 			"lyx loom goto", "lyx loom resume", "lyx loom approve", "lyx loom reject", "lyx loom review", "SendMessage"),
 	)},
@@ -199,6 +201,10 @@ var wordingClaims = []stencilClaims{
 	{"loom-template-alignment.md", LoomTemplateAlignment, joinClaims(
 		wantAll("the agent reads the peers and the board, writes its two files, escalates with a question, lists superseded entries and names the bookkeeping file that does not escalate",
 			"lyx loom peers", "lyx board list", "{{.verdict_path}}", "{{.report_path}}", "escalate", "question", "superseded", "test-budget.yaml"),
+		wantAll("the agent reads the board entry by its JSON payload and settles landing order itself, escalating only a design conflict",
+			"`lyx board get '{\"slug\":\"{{.slug}}\"}'`", "`row`", "`own_row`", "lands first", "design conflict", "text-only overlap", "never reads a recipe file", "tie", "unknown order", "subject and diff", "already makes one of this run's decisions"),
+		wantNone("the overlap-escalates rule cannot return",
+			"Escalate on a substantive overlap", "a Go package or code file that this run and another run"),
 		wantNone("the agent moves nothing, writes no board entry and messages no session",
 			"SendMessage", "lyx loom approve", "lyx loom reject", "lyx loom review", "lyx loom decision", "lyx loom goto", "lyx loom resume", "lyx board upsert"),
 	)},
@@ -448,7 +454,8 @@ var wordingClaims = []stencilClaims{
 	)},
 	{"webster-body-implementer.md", WebsterBodyImplementer, joinClaims(
 		[]claim{{must: "{{.specs_dir}}", why: "a normative citation names the deployed specs through the marker, so a bare path cannot creep back"}},
-		wantAll("the report carries the minimal fork-return contract's keys", "status:", "head_sha:", "deviations:"),
+		wantAll("the report carries the minimal fork-return contract's keys", "status:", "head_sha:"),
+		wantNone("the implementer asks for no deviation list, which the scope guard alone produces", "deviations:", "deviation union"),
 		wantAll("the fork is told the fresh-read rule and to commit per card",
 			"## The FRESH-READ rule", "Commit the card to the repo", "One commit per card is the norm"),
 		wantAll("the per-card read and the FRESH-READ rule are filled through markers, so a fork without a pack reads the pack-off fragments and one with a pack reads the pack-on ones",
@@ -601,6 +608,8 @@ var wordingClaims = []stencilClaims{
 			"never run the plan-level verify", "NEVER run any `lyx webster` command"),
 	)},
 	{"webster-template-master.md", WebsterTemplateMaster, joinClaims(
+		wantAll("Master reads the deviation list from the digest, with the guard as its source", "scope guard", "the digest's list"),
+		wantNone("the summary narrative no longer reads fork-reported deviations", "any reported deviations from the plan's declared file-ops", "`status`/`head_sha`/`deviations`"),
 		inSection(websterDoneCheckSection, joinClaims(
 			wantNone("postBatchChecks records a deleted-symbol reference as a later-card warning, never a batch_failed done-check",
 				"a symbol this batch deleted that the remaining plan still references"),

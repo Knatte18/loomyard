@@ -308,7 +308,7 @@ func digestSummaryLine(d *Digest) string {
 
 	line := fmt.Sprintf("%s: %s head_sha=%s", d.Batch, d.Status, d.HeadSHA)
 	if len(d.Deviations) > 0 {
-		line += fmt.Sprintf(" deviations=%s", strings.Join(d.Deviations, ","))
+		line += fmt.Sprintf(" scope-guard deviations=%s", strings.Join(d.Deviations, ","))
 	}
 	return line
 }

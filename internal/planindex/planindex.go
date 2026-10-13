@@ -27,12 +27,14 @@ const (
 
 // Finding is the plan gates' own finding type: the same Check, Card and Detail fields planparser.ValidationError carries, plus a Severity every converted planparser finding is stamped with.
 // Ref is the raw plan ref a per-ref finding reports, empty for a finding that is not about one ref.
+// File is the worktree-relative file a finding concerns, empty for a finding about no file.
 type Finding struct {
 	Check    string
 	Card     string
 	Detail   string
 	Severity Severity
 	Ref      string
+	File     string
 }
 
 // Error implements the error interface, formatted as "check[/card]: detail", exactly as planparser.ValidationError.Error does, plus its own Severity — so a caller rendering a mixed []Finding set can distinguish an informational create-new-unit from a blocking glyph-not-found in the one string that record exists.
