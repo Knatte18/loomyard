@@ -146,17 +146,20 @@ func TestGatePending_FailedSendWarnsAndStaysPending(t *testing.T) {
 
 //testtiming:keep pins that mid-turn ticks never re-evaluate the gate and that a deadline finalize reads Final rather than Gate, leaving the entry waiting
 func TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal(t *testing.T) {
-	var gateCalls, finalCalls int
+	var gateCalls, forkedCalls, finalCalls int
 	gate := scriptedPending(&gateCalls, GateResult{Pending: true, Send: pendingSendText})
+	forked := scriptedPending(&forkedCalls, GateResult{Pending: true, Send: pendingSendText})
 	final := scriptedPending(&finalCalls, GateResult{Pending: true})
 	idle := func(f *pendingFixture) {
-		if gateCalls != 1 {
-			t.Errorf("gate re-evaluated mid-turn: %d calls", gateCalls)
+		if forkedCalls != 1 {
+			t.Errorf("gate re-evaluated mid-turn: %d calls", forkedCalls)
 		}
 	}
 	pastDeadline := func(f *pendingFixture) { f.fc.Sleep(2 * time.Hour) }
-	f := newPendingFixture(t, GateSpec{{Name: "parent-review", Gate: gate, Final: final, Attempts: 3, PassOnCap: true}}, sendCaptures(pendingSendText),
+	f := newPendingFixture(t, GateSpec{{Name: "parent-review", Gate: gate, Forked: forked, Final: final, Attempts: 3, PassOnCap: true}}, sendCaptures(pendingSendText),
 		idle, idle, idle, pastDeadline)
+	// A fork-authorized run reads Forked in place of Gate, and Final still takes precedence over Forked at finalize.
+	f.run.state.ForkSubagents = true
 
 	result, err := f.run.Wait()
 	if err != nil {
@@ -165,8 +168,8 @@ func TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal(t *testing.T)
 	if result.Outcome != OutcomeDone {
 		t.Fatalf("Outcome = %q, want done (the files exist)", result.Outcome)
 	}
-	if gateCalls != 1 || finalCalls != 1 {
-		t.Errorf("gate/final calls = %d/%d, want 1/1 (finalize reads Final, never Gate)", gateCalls, finalCalls)
+	if gateCalls != 0 || forkedCalls != 1 || finalCalls != 1 {
+		t.Errorf("gate/forked/final calls = %d/%d/%d, want 0/1/1 (finalize reads Final, never Gate or Forked)", gateCalls, forkedCalls, finalCalls)
 	}
 	wantStates(t, result.Gate, GateEntryWaiting)
 	if !result.Gate.Passed {
