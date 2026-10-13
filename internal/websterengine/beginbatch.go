@@ -424,7 +424,7 @@ func buildKickstartPack(deps BeginDeps, index planindex.Index, batch batcher.Bat
 	return pack
 }
 
-// BeginBatch drives one begin-batch call to completion, immediately before Master forks batchNumber's implementer: the fingerprint gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself.
+// BeginBatch drives one begin-batch call to completion, immediately before Master forks batchNumber's implementer: the fingerprint gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself, preceded by the kick-start pack file's beside it when the batch has a pack.
 // The caller holds the state-mutation lease across this whole call and is responsible for
 // persisting deps.State via SaveState once BeginBatch returns successfully — BeginBatch itself
 // never calls SaveState and never touches fabric.
@@ -558,8 +558,16 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	notePath := friction.NotePath(deps.FrictionDir, batchName)
 	cardGates := renderCardGates(deps.Plan, batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Geom.WorktreeRoot)
 	batchGate := renderBatchGate(deps.Plan, batch.Cards, deps.Geom.WorktreeRoot)
+	promptPath, err := filepath.Abs(filepath.Join(deps.Geom.PromptsDir, batchName+".md"))
+	if err != nil {
+		return nil, fmt.Errorf("webster: resolve prompt path: %w", err)
+	}
+	packPath, err := filepath.Abs(filepath.Join(deps.Geom.PromptsDir, batchName+"-pack.md"))
+	if err != nil {
+		return nil, fmt.Errorf("webster: resolve pack path: %w", err)
+	}
 	pack := buildKickstartPack(deps, index, batch, number)
-	prompt, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, pack)
+	prompt, packFile, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, packPath, pack)
 	if err != nil {
 		return nil, err
 	}
@@ -567,13 +575,15 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	if err := os.MkdirAll(deps.Geom.PromptsDir, 0o755); err != nil {
 		return nil, fmt.Errorf("webster: create prompts dir %s: %w", deps.Geom.PromptsDir, err)
 	}
-	promptPath, err := filepath.Abs(filepath.Join(deps.Geom.PromptsDir, batchName+".md"))
-	if err != nil {
-		return nil, fmt.Errorf("webster: resolve prompt path: %w", err)
-	}
-	// The prompt file is a re-renderable artifact, never a durable record —
+	// The prompt and pack files are re-renderable artifacts, never durable records —
 	// overwriting an existing one (a re-run begin-batch for the same batch)
 	// is expected, not an error.
+	// The pack file is written first, so the prompt never names a file that is not there yet.
+	if packFile != nil {
+		if err := os.WriteFile(packPath, packFile, 0o644); err != nil {
+			return nil, fmt.Errorf("webster: write kick-start pack %s: %w", packPath, err)
+		}
+	}
 	if err := os.WriteFile(promptPath, prompt, 0o644); err != nil {
 		return nil, fmt.Errorf("webster: write fork prompt %s: %w", promptPath, err)
 	}

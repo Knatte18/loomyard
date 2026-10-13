@@ -341,8 +341,28 @@ func assertCardPointerIsRelative(t *testing.T, got, sourcePath string) {
 // renderFork renders the fork prompt for batch with the shared placeholder paths; root is both the
 // anchor root and the prompt worktree root, and the plan directory is derived under it.
 func renderFork(batch batcher.Batch, root, stencilsDir, specsDir, prevDigest string, selfFixCap int, notePath string, pack []planindex.CardPack) (string, error) {
-	got, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, prevDigest, "/reports/01-alpha.yaml", filepath.Join(root, "_lyx", "plan"), root, stencilsDir, specsDir, testOutcomePath, testSummaryPath, selfFixCap, notePath, pack)
-	return string(got), err
+	prompt, _, err := renderForkWithPack(batch, root, stencilsDir, specsDir, prevDigest, selfFixCap, notePath, pack)
+	return prompt, err
+}
+
+// testPackPath is the pack file path the fork prompts under test are rendered with.
+const testPackPath = "/prompts/01-alpha-pack.md"
+
+// renderForkWithPack is renderFork returning the pack file content too, rendered for testPackPath.
+func renderForkWithPack(batch batcher.Batch, root, stencilsDir, specsDir, prevDigest string, selfFixCap int, notePath string, pack []planindex.CardPack) (prompt, packFile string, err error) {
+	gotPrompt, gotPack, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, prevDigest, "/reports/01-alpha.yaml", filepath.Join(root, "_lyx", "plan"), root, stencilsDir, specsDir, testOutcomePath, testSummaryPath, selfFixCap, notePath, testPackPath, pack)
+	return string(gotPrompt), string(gotPack), err
+}
+
+// renderForkPromptAndPack renders the fork prompt with pack and returns the prompt followed by the pack file, so one check reads both in order.
+// It fails t when the prompt does not end with the line sending the fork to the pack file.
+func renderForkPromptAndPack(t *testing.T, batch batcher.Batch, root, stencilsDir, specsDir string, pack []planindex.CardPack) (string, error) {
+	t.Helper()
+	prompt, packFile, err := renderForkWithPack(batch, root, stencilsDir, specsDir, "", 2, "", pack)
+	if err == nil && !strings.HasSuffix(prompt, "\n\n## Start here\n\nNow read `"+testPackPath+"` and do what it says.\n") {
+		t.Errorf("fork prompt with a pack does not end with the pack read line; its end is %q", prompt[max(0, len(prompt)-200):])
+	}
+	return prompt + packFile, err
 }
 
 // renderRecovery renders the recovery prompt for batch with the shared placeholder paths; the plan
@@ -802,7 +822,10 @@ func TestRenderPrompts(t *testing.T) {
 		{"fork with a nil pack locates by quarry and renders the pre-pack bytes", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
 			specsDir := newTestSpecsDir(t)
-			text, err := renderFork(alpha, root, stencilsDir, specsDir, "", 2, "", nil)
+			text, packFile, err := renderForkWithPack(alpha, root, stencilsDir, specsDir, "", 2, "", nil)
+			if packFile != "" {
+				t.Errorf("nil-pack fork rendered a pack file %q; want none", packFile)
+			}
 
 			_, prePackDir := testLayout(t)
 			writePrePackBody(t, prePackDir)
@@ -812,7 +835,7 @@ func TestRenderPrompts(t *testing.T) {
 			}
 			return promptCheck{text: text, err: err,
 				contains:    []string{"Locate them with one `lyx quarry resolve <glyph>...` call", "A `plan:` handle names a member the card creates and does not resolve yet.", prePackStepOne, prePackFreshRead},
-				notContains: []string{"## Kick-start pack", "The kick-start pack below lists"}}
+				notContains: []string{"## Kick-start pack", "The kick-start pack file lists", "## Start here", testPackPath}}
 		}},
 		{"fork with a resolved multipart pack lists each declaration and locates by the pack", func(t *testing.T) promptCheck {
 			beta := cardWithSourcePath(2, "beta", "add the second flag")
@@ -831,10 +854,10 @@ func TestRenderPrompts(t *testing.T) {
 			pack := []planindex.CardPack{{Card: alpha.Cards[0], Pack: barBaz}, {Card: beta, Pack: baz}}
 			root, stencilsDir := testLayout(t)
 			specsDir := newTestSpecsDir(t)
-			text, err := renderFork(batcher.Batch{Cards: []planparser.Card{alpha.Cards[0], beta}}, root, stencilsDir, specsDir, "", 2, "", pack)
+			text, err := renderForkPromptAndPack(t, batcher.Batch{Cards: []planparser.Card{alpha.Cards[0], beta}}, root, stencilsDir, specsDir, pack)
 			return promptCheck{text: text, err: err,
 				contains: []string{
-					"   The kick-start pack below lists, under each card's path, where each member glyph on that card is, and your first turn read every listed span.\n",
+					"   The kick-start pack file lists, under each card's path, where each member glyph on that card is, and your first turn read every listed span.\n",
 					"`" + specsDir + "/loom/loom-plan-spec.md`",
 					"that no listed span covers",
 					"describes the tree before any edit, so after an edit locate code by its text",
@@ -845,10 +868,11 @@ func TestRenderPrompts(t *testing.T) {
 					"step 1 read the card's listed spans", "find the member by its glyph's member name", "read that file whole", "is that card's fresh read"},
 				inOrder: []string{
 					"## The FRESH-READ rule",
-					"set out by the kick-start pack, the last section of this prompt",
+					"set out by the kick-start pack file the last line of this prompt names",
 					"- `_lyx/plan/01-alpha.md`",
 					"- `_lyx/plan/02-beta.md`",
 					"## Your final action: the minimal batch-report",
+					"## Start here",
 					"## Kick-start pack\n\nRead all of this in one turn, in parallel, before any edit",
 					"### `_lyx/plan/01-alpha.md`",
 					"- `internal/foo#Bar`",
@@ -869,7 +893,7 @@ func TestRenderPrompts(t *testing.T) {
 				},
 			}}}
 			root, stencilsDir := testLayout(t)
-			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", pack)
+			text, err := renderForkPromptAndPack(t, alpha, root, stencilsDir, newTestSpecsDir(t), pack)
 			return promptCheck{text: text, err: err,
 				notContains: []string{"\nnone\n"},
 				inOrder: []string{
@@ -885,7 +909,7 @@ func TestRenderPrompts(t *testing.T) {
 				Unresolved: []planindex.PackUnresolved{{Ref: "internal/foo#Gone", Reason: "no such member"}},
 			}}}
 			root, stencilsDir := testLayout(t)
-			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", pack)
+			text, err := renderForkPromptAndPack(t, alpha, root, stencilsDir, newTestSpecsDir(t), pack)
 			return promptCheck{text: text, err: err,
 				contains: []string{"Read all of this in one turn, in parallel, before any edit"},
 				inOrder: []string{
@@ -897,15 +921,15 @@ func TestRenderPrompts(t *testing.T) {
 		}},
 		{"fork with a card naming no member glyph renders the empty line", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
-			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", []planindex.CardPack{{Card: alpha.Cards[0]}})
+			text, err := renderForkPromptAndPack(t, alpha, root, stencilsDir, newTestSpecsDir(t), []planindex.CardPack{{Card: alpha.Cards[0]}})
 			return promptCheck{text: text, err: err,
-				contains:    []string{"The kick-start pack below lists, under each card's path, where each member glyph on that card is", "Read all of this in one turn, in parallel, before any edit", "## Kick-start pack", "no member glyphs on this card"},
+				contains:    []string{"The kick-start pack file lists, under each card's path, where each member glyph on that card is", "Read all of this in one turn, in parallel, before any edit", "## Kick-start pack", "no member glyphs on this card"},
 				notContains: []string{"#### Unresolved"}}
 		}},
 		{"fork with a card of only plan: handles renders the empty line and lists the handle", func(t *testing.T) promptCheck {
 			pack := []planindex.CardPack{{Card: alpha.Cards[0], Pack: planindex.Pack{Unresolved: []planindex.PackUnresolved{{Ref: "plan:internal/foo#New", Reason: "a member this batch creates"}}}}}
 			root, stencilsDir := testLayout(t)
-			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", pack)
+			text, err := renderForkPromptAndPack(t, alpha, root, stencilsDir, newTestSpecsDir(t), pack)
 			return promptCheck{text: text, err: err,
 				inOrder: []string{"no member glyphs on this card", "#### Unresolved", "- `plan:internal/foo#New` — a member this batch creates"}}
 		}},
@@ -922,7 +946,7 @@ func TestRenderPrompts(t *testing.T) {
 			}
 			return promptCheck{text: text, err: err,
 				contains:    []string{"Locate them with one `lyx quarry resolve <glyph>...` call", prePackStepOne, prePackFreshRead},
-				notContains: []string{"## Kick-start pack", "The kick-start pack below lists"}}
+				notContains: []string{"## Kick-start pack", "The kick-start pack file lists", "## Start here"}}
 		}},
 		{"master never fills worktree_root", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)

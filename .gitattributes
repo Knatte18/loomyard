@@ -22,6 +22,7 @@ contracts/stencils/webster/webster-fragment-card-read-pack.md text eol=lf
 contracts/stencils/webster/webster-fragment-fresh-read-plain.md text eol=lf
 contracts/stencils/webster/webster-fragment-fresh-read-pack.md text eol=lf
 contracts/stencils/webster/webster-fragment-pack-section.md text eol=lf
+contracts/stencils/webster/webster-fragment-pack-read.md text eol=lf
 contracts/stencils/webster/webster-fragment-pack-card.md text eol=lf
 contracts/stencils/webster/webster-fragment-pack-unresolved.md text eol=lf
 contracts/stencils/webster/webster-fragment-pack-empty.md text eol=lf
