@@ -432,8 +432,8 @@ var wordingClaims = []stencilClaims{
 			"lyx loom circling accept {{.slug}}", "lyx loom circling continue {{.slug}}", "recorded as unconverged"),
 	)},
 	{"bouncer-fragment-decide-capped.md", BouncerFragmentDecideCapped, joinClaims(
-		wantAll("the capped decide step offers accept alone and says the segment can only be accepted or handed on",
-			"lyx loom circling accept {{.slug}}", "accepted or handed on"),
+		wantAll("the capped decide step offers accept alone and says the segment can only be accepted",
+			"lyx loom circling accept {{.slug}}", "can only be accepted:"),
 		wantNone("a round at or past the hard cap is never continued", "lyx loom circling continue"),
 	)},
 	{"bouncer-template-parent-notice.md", BouncerTemplateParentNotice, joinClaims(

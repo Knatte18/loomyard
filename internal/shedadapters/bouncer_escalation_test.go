@@ -156,7 +156,7 @@ func TestBouncer_Escalation_AwaitsWithTheRecordAndLeavesItUntouched(t *testing.T
 				t.Errorf("escalation brief = %q, err = %v; want a rendered brief naming round 2", brief, err)
 			}
 			if atCap {
-				if !strings.Contains(string(brief), "accepted or handed on") || strings.Contains(string(brief), "lyx loom circling continue") {
+				if !strings.Contains(string(brief), "can only be accepted:") || strings.Contains(string(brief), "lyx loom circling continue") {
 					t.Errorf("escalation brief = %q; want the accept-only offer", brief)
 				}
 			} else if !strings.Contains(string(brief), "lyx loom circling continue my-task") {
