@@ -25,6 +25,18 @@ const driveReportsDirName = "drive-reports"
 // arbiterDirName is the segment under a run's directory that holds its arbiter attempts.
 const arbiterDirName = "arbiter"
 
+// tacklerDirName is the segment under a run's directory that holds its tackler attempts.
+const tacklerDirName = "tackler"
+
+// tacklerMarkerFileName is the filename of the tackler in-flight marker, whose path TacklerMarker returns.
+const tacklerMarkerFileName = "tackler-inflight.json"
+
+// driverLockFileName is the filename of the Go-driver lock, whose path DriverLock returns.
+const driverLockFileName = "driver.lock"
+
+// settleRecordsFileName is the filename of the Go driver's settle records, whose path SettleRecordsFile returns.
+const settleRecordsFileName = "go-settle.jsonl"
+
 // alignmentDirName is the segment under a run's directory that holds its alignment attempts, one directory per point.
 const alignmentDirName = "alignment"
 
@@ -197,6 +209,40 @@ func AlignmentRel(l *lyxcwd.Location, runID string) string {
 // ArbiterMarker returns the path to the ephemeral arbiter in-flight marker, arbiterMarkerFileName under ScratchDir(l, runID).
 func ArbiterMarker(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), arbiterMarkerFileName)
+}
+
+// DriverLock returns the path to the ephemeral Go-driver lock, driverLockFileName under ScratchDir(l, runID).
+// It is distinct from the run lock and the status lock, so a live Go driver is observable without holding either.
+func DriverLock(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), driverLockFileName)
+}
+
+// TacklerDir returns the path to the durable directory holding every tackler attempt of a run:
+// RunDir(l, runID) joined with tacklerDirName.
+func TacklerDir(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(RunDir(l, runID), tacklerDirName)
+}
+
+// TacklerRel returns the worktree-anchor-relative form of TacklerDir's path: the join of lyxdirs.LyxDirName, shedDirName, the run's directory segment under l, and tacklerDirName.
+// It exists so a caller building a fabric commit pathspec never has to name a segment shedrun owns.
+func TacklerRel(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(lyxdirs.LyxDirName, shedDirName, runSegment(l, runID), tacklerDirName)
+}
+
+// TacklerAttemptDir returns the path to one tackler attempt's durable directory, attempt-<N> under TacklerDir(l, runID), where attempt is the attempt's 1-based number.
+func TacklerAttemptDir(l *lyxcwd.Location, runID string, attempt int) string {
+	return filepath.Join(TacklerDir(l, runID), "attempt-"+strconv.Itoa(attempt))
+}
+
+// TacklerMarker returns the path to the ephemeral tackler in-flight marker, tacklerMarkerFileName under ScratchDir(l, runID).
+func TacklerMarker(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), tacklerMarkerFileName)
+}
+
+// SettleRecordsFile returns the path to the Go driver's settle records, settleRecordsFileName in the told friction directory frictionDir.
+// The name is not markdown, so the friction note scan never archives it and the caps counted from it survive a reflection.
+func SettleRecordsFile(frictionDir string) string {
+	return filepath.Join(frictionDir, settleRecordsFileName)
 }
 
 // RunsRootRel returns the worktree-anchor-relative path of the run-records root: the join of lyxdirs.LyxDirName and shedDirName, the directory every run's RunDir sits under.

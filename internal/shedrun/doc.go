@@ -29,6 +29,12 @@
 // ArbiterMarker is the ephemeral in-flight marker under ScratchDir.
 // AlignmentDir is the durable directory of a run's alignment attempts at one point, and AlignmentRel the anchor-relative form of the directory holding every point's.
 //
+// The Go driver and its tackler have paths here too.
+// DriverLock is the ephemeral Go-driver lock under ScratchDir, distinct from the run lock and the status lock.
+// TacklerDir is the durable directory of a run's tackler attempts, TacklerRel its anchor-relative form and TacklerAttemptDir one attempt's directory (attempt-<N>, 1-based).
+// TacklerMarker is the ephemeral in-flight marker under ScratchDir.
+// SettleRecordsFile is the Go driver's settle-record file in a told friction directory, a non-markdown name so a reflection never archives it.
+//
 // RunsRootRel names the anchor-relative run-records root, because fabricengine's Add drops everything under it from a freshly forked pair.
 // RunsRoot and ScratchRoot are its absolute durable and ephemeral forms, the directories every run directory and scratch directory sit under.
 // RunDirRel is a run directory's anchor-relative form, the pathspec of a records commit that deletes the whole directory.
