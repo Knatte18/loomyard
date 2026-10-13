@@ -65,6 +65,18 @@ func writeParkMarker(markerPath, reportPath string) error {
 	return os.WriteFile(markerPath, []byte(reportPath), 0o644)
 }
 
+// commitAndPark commits the run's records over d, then writes the park marker at markerPath holding reportPath, whatever the commit's outcome.
+// The session parks whatever the commit's outcome, so the marker is written on every path;
+// a failed write is the one thing that would stall the run, so it fails the call.
+// It returns the exit code and prints the envelope to out.
+func commitAndPark(out io.Writer, d commitStatusDeps, markerPath, reportPath string) int {
+	code := commitRecordsVerb(out, d)
+	if err := writeParkMarker(markerPath, reportPath); err != nil {
+		code = output.Err(out, "loom: commit-records: write park marker "+markerPath+": "+err.Error()+"; way forward: transient, re-run lyx loom commit-records --park "+reportPath)
+	}
+	return code
+}
+
 // commitRecordsCmd builds the `commit-records` subcommand.
 func (c *loomCLI) commitRecordsCmd() *cobra.Command {
 	var park string
@@ -91,14 +103,12 @@ Example:
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			code := commitRecordsVerb(cmd.OutOrStdout(), loomCommitStatusDeps(c.location, c.runID))
+			deps := loomCommitStatusDeps(c.location, c.runID)
+			var code int
 			if park != "" {
-				// The session parks whatever the commit's outcome, so the marker is written on every path;
-				// a failed write is the one thing that would stall the run, so it fails the verb.
-				marker := shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
-				if err := writeParkMarker(marker, park); err != nil {
-					code = output.Err(cmd.OutOrStdout(), "loom: commit-records: write park marker "+marker+": "+err.Error()+"; way forward: transient, re-run lyx loom commit-records --park "+park)
-				}
+				code = commitAndPark(cmd.OutOrStdout(), deps, shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID)), park)
+			} else {
+				code = commitRecordsVerb(cmd.OutOrStdout(), deps)
 			}
 			clihelp.SetExit(cmd.Context(), code)
 			return nil

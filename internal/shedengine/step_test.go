@@ -192,6 +192,31 @@ func TestStep_PauseRequested(t *testing.T) {
 	if producer.calls != 0 {
 		t.Errorf("producer.calls = %d; want 0", producer.calls)
 	}
+	if res.Reason != "pause requested" {
+		t.Errorf("Reason = %q; want %q", res.Reason, "pause requested")
+	}
+
+	// A context cancelled before Step, with no pause request, takes the same branch with its own reason.
+	cancelledShed, cancelledStatusPath, _, cancelledStatusLockPath := newTestShed(t)
+	cancelledProducer := fixedOutcomeProducer(Done, "")
+	cancelledShed.Producers = []ProducerDef{{Name: "A", Producer: cancelledProducer}}
+	seedStatus(t, cancelledStatusPath, cancelledStatusLockPath, commonSeed("A"))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	res, err = cancelledShed.Step(ctx)
+	if err != nil {
+		t.Fatalf("Step(cancelled) = _, %v; want nil error", err)
+	}
+	if res.State != StatePaused {
+		t.Errorf("cancelled State = %q; want %q", res.State, StatePaused)
+	}
+	if res.Reason != "cancelled" {
+		t.Errorf("cancelled Reason = %q; want %q", res.Reason, "cancelled")
+	}
+	if cancelledProducer.calls != 0 {
+		t.Errorf("cancelled producer.calls = %d; want 0", cancelledProducer.calls)
+	}
 }
 
 func TestStep_CancelledContextWithProducerError(t *testing.T) {
@@ -218,6 +243,9 @@ func TestStep_CancelledContextWithProducerError(t *testing.T) {
 	}
 	if res.State != StatePaused {
 		t.Errorf("State = %q; want %q", res.State, StatePaused)
+	}
+	if res.Reason != "cancelled" {
+		t.Errorf("Reason = %q; want %q", res.Reason, "cancelled")
 	}
 	if len(res.History) != 0 {
 		t.Errorf("len(History) = %d; want 0 -- unchanged", len(res.History))

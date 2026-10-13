@@ -62,11 +62,13 @@ const driverStrandDisplayName = loomengine.LoomDriverStrandName
 // each step and releases it between them -- so a bootstrap consulting the lock alone would spawn a
 // second driver into a worktree that already has one.
 //
-// The run lock is only ever probed non-blockingly and released immediately by the caller -- never
-// held by the probe itself -- because holding it here would make this predicate indistinguishable
-// from the very driver it is checking for.
-func mustSpawnDriver(runLockHeld bool, driverStrandLive bool) bool {
-	return !runLockHeld && !driverStrandLive
+// The driver lock is the Go driver's liveness between steps.
+// The driver holds it for its whole life while the run lock is free whenever it is not inside a step, so a settling Go driver is told apart from a dead one by the driver lock alone.
+//
+// The run lock and the driver lock are only ever probed non-blockingly and released immediately by the caller, never held by the probe itself.
+// Holding either here would make this predicate indistinguishable from the very driver it is checking for.
+func mustSpawnDriver(runLockHeld, driverLockHeld, driverStrandLive bool) bool {
+	return !runLockHeld && !driverLockHeld && !driverStrandLive
 }
 
 // startEnvelopeFields builds the success envelope `lyx loom start` prints: the run's driver, slug, resolved run id and status file.
@@ -84,7 +86,7 @@ func startEnvelopeFields(driver, slug, runID, statusFile string) map[string]any 
 type awaitRunLockResult int
 
 const (
-	// awaitRunLockReady means the run lock was observed held: a driver has taken it and is running.
+	// awaitRunLockReady means the lock the handshake waits on was observed held: a driver has taken it and is running.
 	awaitRunLockReady awaitRunLockResult = iota
 	// awaitRunLockChildDied means the spawned child process is no longer alive, before the lock was
 	// ever observed held.
@@ -97,7 +99,8 @@ const (
 	awaitRunLockDeadline
 )
 
-// awaitRunLock polls at most attempts times for the just-spawned driver to take the run lock.
+// awaitRunLock polls at most attempts times for the just-spawned driver to take the lock lockHeld reads.
+// The go arm's handshake waits for the driver lock, which `lyx loom drive` takes first and holds for life, and the post-run work is that verb's.
 //
 // Each iteration consults the three seams in a fixed order — lockHeld, then alive, then halted —
 // and only then calls wait and loops again.
@@ -148,6 +151,7 @@ const (
 )
 
 // dispositionForHandshake maps an awaitRunLockResult onto what the bootstrap should do next.
+// The handshake is the go arm's wait for the spawned `lyx loom drive` to take its driver lock, and the post-run bookkeeping the arms below name is that verb's.
 //
 // awaitRunLockChildDied proceeds, and that is the whole point of this function existing rather than
 // the verb testing `result != awaitRunLockReady` inline. A child that is already gone before the

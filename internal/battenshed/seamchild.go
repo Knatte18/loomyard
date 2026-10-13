@@ -1,6 +1,5 @@
-// seamchild.go implements NewSeedChild, the producer that seeds the task worktree's own inner
-// shed run with a recipe derived from the Board task's own type and a driver inherited from
-// prime's own seed.
+// seamchild.go implements NewSeedChild, the producer that seeds the task worktree's own inner shed run.
+// The recipe derives from the Board task's own type, and the driver is the prime seed's typed child_driver, else the task's driver_kind.
 
 package battenshed
 
@@ -19,7 +18,7 @@ import (
 const defaultChildRecipe = "loom"
 
 // seedChildProducer writes, commits and pushes the child worktree's own seed file, deriving its
-// recipe from the Board task's own type and its driver from prime's own seed.
+// recipe from the Board task's own type and its driver from the prime seed's typed child_driver, else the task's driver_kind.
 type seedChildProducer struct {
 	name       string
 	slug       string
@@ -29,8 +28,7 @@ type seedChildProducer struct {
 
 var _ shedengine.ShedProducer = (*seedChildProducer)(nil)
 
-// NewSeedChild returns a shedengine.ShedProducer that reads the Board task's own type and prime's
-// own seed driver, then writes, commits and pushes the child worktree's own seed.
+// NewSeedChild returns a shedengine.ShedProducer that reads the Board task's own type and the child's driver, which is the prime seed's typed child_driver, else the task's driver_kind, then writes, commits and pushes the child worktree's own seed.
 //
 // name is told rather than hardcoded because a second producer list may name this row
 // independently. slug is used only as a log field and in stuck-reason text -- never compared,
@@ -51,7 +49,7 @@ func NewSeedChild(name, slug string, deps SeedChildDeps, scratchDir string) shed
 //
 // It reads the Board task's own type fresh at Call time -- never a value captured at wiring time,
 // so a type corrected after prime was seeded is still honoured -- defaulting an empty value to
-// defaultChildRecipe. It then reads the driver, writes the task worktree's local config overrides from the Board task's run settings, then writes, commits and pushes the seed, in that order.
+// defaultChildRecipe. It then writes the task worktree's local config overrides from the Board task's run settings, reads the driver after them so a driver_kind in those settings is seen, then writes, commits and pushes the seed, in that order.
 //
 // Verdicts: Done on a successful write-and-commit; Stuck on an unreadable Board, run settings that do not validate, a refused recipe
 // (a deps.WriteSeed error wrapping ErrUnknownRecipe, ErrUnsupportedChildRecipe, or
@@ -82,14 +80,6 @@ func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		recipe = defaultChildRecipe
 	}
 
-	driver, err := p.deps.ChildDriver()
-	if err != nil {
-		if cerr := cancelErr(ctx, p.name); cerr != nil {
-			return "", shedengine.OutputPointer{}, cerr
-		}
-		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: read child driver: %w", p.name, err)
-	}
-
 	if reason, err := p.writeRunSettings(ctx); err != nil || reason != "" {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
@@ -99,6 +89,14 @@ func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		}
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
+	}
+
+	driver, err := p.deps.ChildDriver()
+	if err != nil {
+		if cerr := cancelErr(ctx, p.name); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: read child driver: %w", p.name, err)
 	}
 
 	if err := p.deps.WriteSeed(ctx, recipe, driver); err != nil {

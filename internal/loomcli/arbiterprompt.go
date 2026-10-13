@@ -25,7 +25,7 @@ const arbiterAbsentPath = "none"
 var arbiterSkills = []string{}
 
 // arbiterPromptInput carries what the arbiter stencil's markers are filled from.
-// ReportPath and BriefPath may be empty; every other field is required.
+// ReportPath, BriefPath and CaseBriefPath may be empty; every other field is required.
 type arbiterPromptInput struct {
 	RunID              string
 	Slug               string
@@ -33,6 +33,7 @@ type arbiterPromptInput struct {
 	EnvelopePath       string
 	ReportPath         string
 	BriefPath          string
+	CaseBriefPath      string
 	DecisionRecordPath string
 	SupportLogPath     string
 	VerdictPath        string
@@ -41,7 +42,7 @@ type arbiterPromptInput struct {
 // arbiterPrompt composes the arbiter session's launch prompt.
 // The arbiter stencil is read from stencilsDir through stencilstore.Read and filled with in, parentdirective.Directive(stencilsDir, "", false) and editdirective.Directive(stencilsDir).
 // The no-parent directive is rendered because the verdict file is the arbiter's only channel.
-// An empty report or brief path is filled as the literal "none".
+// An empty report, brief or case brief path is filled as the literal "none".
 // It returns the read or fill error wrapped with the stencil's name.
 func arbiterPrompt(stencilsDir string, in arbiterPromptInput) (string, error) {
 	directive, err := parentdirective.Directive(stencilsDir, "", false)
@@ -63,6 +64,7 @@ func arbiterPrompt(stencilsDir string, in arbiterPromptInput) (string, error) {
 		"envelope_path":            in.EnvelopePath,
 		"report_path":              pathOrNone(in.ReportPath),
 		"brief_path":               pathOrNone(in.BriefPath),
+		"case_brief_path":          pathOrNone(in.CaseBriefPath),
 		"decision_record_path":     in.DecisionRecordPath,
 		"support_log_path":         in.SupportLogPath,
 		"verdict_path":             in.VerdictPath,

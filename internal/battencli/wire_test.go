@@ -9,9 +9,11 @@
 package battencli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -184,6 +186,11 @@ func TestArbiterInFlightFrom(t *testing.T) {
 		t.Error("directory read although there is no marker to check")
 		return nil, nil
 	}
+	tacklerPath := filepath.Join(t.TempDir(), "tackler-marker.json")
+	if err := loomengine.WriteTacklerMarker(tacklerPath, loomengine.TacklerMarker{Attempt: 1, StrandGUID: "guid-1", Deadline: deadline}); err != nil {
+		t.Fatalf("WriteTacklerMarker: %v", err)
+	}
+	tacklerMark := func() (loomengine.ArbiterMarker, bool, error) { return readTacklerAsArbiterMarker(tacklerPath) }
 	tests := []struct {
 		name      string
 		present   bool
@@ -203,6 +210,8 @@ func TestArbiterInFlightFrom(t *testing.T) {
 		{"LiveStrandRow", true, marker(held, true, nil), rows(reedengine.DirectoryRow{Name: "ly:task:arbiter", GUID: "guid-1", Live: true}), battenshed.ChildArbiter{Deadline: deadline, Alive: true}, true, nil},
 		{"DeadStrandRow", true, marker(held, true, nil), rows(reedengine.DirectoryRow{Name: "ly:task:arbiter", GUID: "guid-1"}), battenshed.ChildArbiter{Deadline: deadline}, true, nil},
 		{"StrandRowMissing", true, marker(held, true, nil), rows(reedengine.DirectoryRow{Name: "ly:task:arbiter", GUID: "guid-2", Live: true}), battenshed.ChildArbiter{Deadline: deadline}, true, nil},
+		{"TacklerMarkerWithItsLiveStrandRow", true, tacklerMark, rows(reedengine.DirectoryRow{Name: "ly:task:tackler", GUID: "guid-1", Live: true}), battenshed.ChildArbiter{Deadline: deadline, Alive: true}, true, nil},
+		{"TacklerMarkerWithoutItsStrandRow", true, tacklerMark, rows(), battenshed.ChildArbiter{Deadline: deadline}, true, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -214,6 +223,43 @@ func TestArbiterInFlightFrom(t *testing.T) {
 				t.Errorf("arbiterInFlightFrom() = %+v, %v; want %+v, %v", got, found, tt.want, tt.wantFound)
 			}
 		})
+	}
+}
+
+// TestSyncWatchedMarker covers syncWatchedMarker over a temp directory.
+// Watched writes the given content byte for byte, identical content leaves the file's modification time, and unwatched removes the marker, an absent one included.
+func TestSyncWatchedMarker(t *testing.T) {
+	t.Parallel()
+
+	marker := filepath.Join(t.TempDir(), "batten-watched")
+	content := shedrun.BattenWatchedContent(4242, "/scratch/batten/slug", "Run-Shed")
+
+	held, err := syncWatchedMarker(marker, true, content)
+	if err != nil || !held {
+		t.Fatalf("syncWatchedMarker(watched) = %v, %v; want held", held, err)
+	}
+	if raw, err := os.ReadFile(marker); err != nil || !bytes.Equal(raw, content) {
+		t.Fatalf("marker = %q, %v; want %q byte for byte", raw, err, content)
+	}
+
+	past := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(marker, past, past); err != nil {
+		t.Fatal(err)
+	}
+	if held, err := syncWatchedMarker(marker, true, content); err != nil || !held {
+		t.Fatalf("syncWatchedMarker(identical content) = %v, %v; want held", held, err)
+	}
+	if info, err := os.Stat(marker); err != nil || !info.ModTime().Equal(past) {
+		t.Errorf("marker stat = %v, %v; want the modification time left at %v", info, err, past)
+	}
+
+	for _, step := range []string{"removes the marker", "succeeds over an absent marker"} {
+		if held, err := syncWatchedMarker(marker, false, content); err != nil || held {
+			t.Fatalf("syncWatchedMarker(unwatched) %s = %v, %v; want not held", step, held, err)
+		}
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Errorf("marker stat after unwatched %s = %v; want it absent", step, err)
+		}
 	}
 }
 
@@ -294,11 +340,50 @@ func TestRunLockHeld(t *testing.T) {
 	}
 }
 
-// TestWire_ChildDriverDelegatesToChildDriverOf asserts the wired SeedChild.ChildDriver closure
-// reads exactly the value childDriverOf(seed) (arm.go) would compute over the same seed, for both
-// an explicit child_driver param and an absent one -- the property F2 (crucible round
-// sonnet-xhigh-r3) exists to guarantee structurally: refuseAdoptedSeed's own comparison and the
-// value Seed-Child actually writes now share one defaulting implementation, so they cannot drift.
+// TestChildDriverFrom asserts the child driver Seed-Child writes: a recorded child_driver wins over resolveKind, a seed recording none and no seed at all each take resolveKind's value, and a resolveKind error is returned.
+func TestChildDriverFrom(t *testing.T) {
+	t.Parallel()
+
+	kind := func(value string) func() (string, error) {
+		return func() (string, error) { return value, nil }
+	}
+	resolveErr := errors.New("loom config unreadable")
+	failing := func() (string, error) { return "", resolveErr }
+	recordedLLM := shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo, Params: map[string]string{"child_driver": shedrun.DriverLLM}}
+	recordsNone := shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}
+
+	tests := []struct {
+		name        string
+		seed        shedrun.Seed
+		found       bool
+		resolveKind func() (string, error)
+		want        string
+		wantErr     error
+	}{
+		{"RecordedParamWinsOverKind", recordedLLM, true, kind(shedrun.DriverGo), shedrun.DriverLLM, nil},
+		{"SeedRecordingNoneTakesKindGo", recordsNone, true, kind(shedrun.DriverGo), shedrun.DriverGo, nil},
+		{"SeedRecordingNoneTakesKindLLM", recordsNone, true, kind(shedrun.DriverLLM), shedrun.DriverLLM, nil},
+		{"NoSeedTakesKindGo", shedrun.Seed{}, false, kind(shedrun.DriverGo), shedrun.DriverGo, nil},
+		{"NoSeedTakesKindLLM", shedrun.Seed{}, false, kind(shedrun.DriverLLM), shedrun.DriverLLM, nil},
+		{"ResolveKindErrorIsReturned", recordsNone, true, failing, "", resolveErr},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := childDriverFrom(tt.seed, tt.found, tt.resolveKind)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("childDriverFrom() error = %v; want %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("childDriverFrom() = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestWire_ChildDriverDelegatesToChildDriverOf asserts the wired SeedChild.ChildDriver closure returns the child_driver param the prime seed records, the same value childDriverOf reads over that seed.
+// That keeps refuseAdoptedSeed's comparison and the value Seed-Child writes from drifting.
 func TestWire_ChildDriverDelegatesToChildDriverOf(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -306,7 +391,6 @@ func TestWire_ChildDriverDelegatesToChildDriverOf(t *testing.T) {
 		want   string
 	}{
 		{"ExplicitLLM", map[string]string{"child_driver": shedrun.DriverLLM}, shedrun.DriverLLM},
-		{"AbsentParamDefaultsToGo", nil, shedrun.DriverGo},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -332,7 +416,7 @@ func TestWire_ChildDriverDelegatesToChildDriverOf(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("ChildDriver() = %q; want %q", got, tt.want)
 			}
-			if want := childDriverOf(seed); got != want {
+			if want, _ := childDriverOf(seed); got != want {
 				t.Errorf("ChildDriver() = %q; want it to equal childDriverOf(seed) = %q", got, want)
 			}
 		})

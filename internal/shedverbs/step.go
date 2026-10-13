@@ -6,6 +6,7 @@ package shedverbs
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"strings"
@@ -264,6 +265,41 @@ func progressOf(routing shedengine.Routing, current string) *shedengine.Progress
 	return &p
 }
 
+// refuseArbiterAttempt prints the bootstrap refusal of a --arbiter-attempt flag on out, carrying the attempt it names, and returns the exit code.
+func refuseArbiterAttempt(out io.Writer, attempt, msg string) int {
+	logger.Warn("shed: step refused", "kind", KindBootstrap, "error", msg)
+	return output.ErrFields(out, msg, map[string]any{"kind": KindBootstrap, "trace_file": logger.TraceFile(), "arbiter_attempt": attempt})
+}
+
+// refuseUnarmedLoop prints the bootstrap refusal of --until-stop on a recipe that arms no loop on out, and returns the exit code.
+func refuseUnarmedLoop(out io.Writer) int {
+	msg := "shedverbs: this recipe arms no loop; way forward: run the step without --" + UntilStopFlag
+	logger.Warn("shed: step refused", "kind", KindBootstrap, "error", msg)
+	return output.ErrFields(out, msg, map[string]any{"kind": KindBootstrap, "trace_file": logger.TraceFile()})
+}
+
+// RunUntilStop is the body of `step --until-stop` after its flags are parsed, the entry an in-process driver calls and the cobra verb runs.
+// It refuses a recipe that arms no loop; for a non-empty attempt it consumes the arbiter attempt through Hooks.ConsumeAttempt before anything is read or spawned, refusing a nil hook, a busy run and a hook error with the attempt on the envelope; and then waits on the loop.
+// It prints the one envelope on out and returns the exit code.
+func RunUntilStop(ctx context.Context, spec *Spec, argv []string, attempt string, out io.Writer) int {
+	if spec.Loop.EnvelopePath == "" {
+		return refuseUnarmedLoop(out)
+	}
+	if attempt != "" {
+		if spec.Hooks.ConsumeAttempt == nil {
+			return refuseArbiterAttempt(out, attempt, "shedverbs: this recipe consumes no arbiter attempt; way forward: run the step with --"+UntilStopFlag+" alone")
+		}
+		if err := spec.Hooks.ConsumeAttempt(ctx, attempt); err != nil {
+			if errors.Is(err, shedengine.ErrShedBusy) {
+				logger.Warn("shed: step refused", "kind", spec.StepBusyKind, "error", err.Error())
+				return output.ErrFields(out, err.Error(), map[string]any{"kind": spec.StepBusyKind, "trace_file": logger.TraceFile(), "arbiter_attempt": attempt})
+			}
+			return refuseArbiterAttempt(out, attempt, err.Error())
+		}
+	}
+	return runUntilStop(ctx, spec, argv, out)
+}
+
 // stepCmd builds the generic `step` subcommand: the single-producer primitive an external
 // supervisor drives. This body owns nothing above shed.Step -- any run-lock probe, bootstrap, or
 // status-strand work a module needs belongs entirely to its own PreStep hook.
@@ -281,12 +317,8 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 
 			attempt, _ := cmd.Flags().GetString(ArbiterAttemptFlag)
 			untilStop, _ := cmd.Flags().GetBool(UntilStopFlag)
-			refuseAttempt := func(msg string) {
-				logger.Warn("shed: step refused", "kind", KindBootstrap, "error", msg)
-				clihelp.SetExit(ctx, output.ErrFields(cmd.OutOrStdout(), msg, map[string]any{"kind": KindBootstrap, "trace_file": logger.TraceFile(), "arbiter_attempt": attempt}))
-			}
 			if attempt != "" && !untilStop {
-				refuseAttempt("shedverbs: --" + ArbiterAttemptFlag + " is consumed by the loop's waiter; way forward: run the step with --" + UntilStopFlag + " --" + ArbiterAttemptFlag + " " + attempt)
+				clihelp.SetExit(ctx, refuseArbiterAttempt(cmd.OutOrStdout(), attempt, "shedverbs: --"+ArbiterAttemptFlag+" is consumed by the loop's waiter; way forward: run the step with --"+UntilStopFlag+" --"+ArbiterAttemptFlag+" "+attempt))
 				return nil
 			}
 
@@ -294,9 +326,7 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			// The invocation carrying the flag therefore keeps no record of its own, and last_step only ever names a child's step.
 			if untilStop {
 				if spec.Loop.EnvelopePath == "" {
-					msg := "shedverbs: this recipe arms no loop; way forward: run the step without --" + UntilStopFlag
-					logger.Warn("shed: step refused", "kind", KindBootstrap, "error", msg)
-					clihelp.SetExit(ctx, output.ErrFields(cmd.OutOrStdout(), msg, map[string]any{"kind": KindBootstrap, "trace_file": logger.TraceFile()}))
+					clihelp.SetExit(ctx, refuseUnarmedLoop(cmd.OutOrStdout()))
 					return nil
 				}
 				argv := childArgv(cmd, args)
@@ -308,22 +338,7 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 					clihelp.SetExit(ctx, runLoop(ctx, spec, loopID, argv, cmd.OutOrStdout()))
 					return nil
 				}
-				if attempt != "" {
-					if spec.Hooks.ConsumeAttempt == nil {
-						refuseAttempt("shedverbs: this recipe consumes no arbiter attempt; way forward: run the step with --" + UntilStopFlag + " alone")
-						return nil
-					}
-					if err := spec.Hooks.ConsumeAttempt(ctx, attempt); err != nil {
-						if errors.Is(err, shedengine.ErrShedBusy) {
-							logger.Warn("shed: step refused", "kind", spec.StepBusyKind, "error", err.Error())
-							clihelp.SetExit(ctx, output.ErrFields(cmd.OutOrStdout(), err.Error(), map[string]any{"kind": spec.StepBusyKind, "trace_file": logger.TraceFile(), "arbiter_attempt": attempt}))
-							return nil
-						}
-						refuseAttempt(err.Error())
-						return nil
-					}
-				}
-				clihelp.SetExit(ctx, runUntilStop(ctx, spec, argv, cmd.OutOrStdout()))
+				clihelp.SetExit(ctx, RunUntilStop(ctx, spec, argv, attempt, cmd.OutOrStdout()))
 				return nil
 			}
 

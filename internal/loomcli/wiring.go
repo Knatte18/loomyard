@@ -71,8 +71,9 @@ type commitStatusDeps struct {
 	SetBoardStatus func(status string) error
 }
 
-// statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID), plus each of loomengine.LoomReviewsDirRel(), loomengine.LoomDurableDirRel(), shedrun.DriveReportsRel(location, runID), shedrun.ArbiterRel(location, runID) and shedrun.AlignmentRel(location, runID) when its directory holds at least one non-directory entry anywhere beneath it.
+// statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID), plus each of loomengine.LoomReviewsDirRel(), loomengine.LoomDurableDirRel(), shedrun.DriveReportsRel(location, runID), shedrun.ArbiterRel(location, runID), shedrun.TacklerRel(location, runID) and shedrun.AlignmentRel(location, runID) when its directory holds at least one non-directory entry anywhere beneath it.
 // The arbiter directory carries each attempt's record, prompt, verdict and envelope, so they are committed with the run records.
+// The tackler directory, staged under the same rule, carries each tackler attempt's record, prompt, verdict and envelope.
 // The alignment directory, staged under the same rule, carries each alignment agent attempt's record, prompt, verdict and report.
 // The loom durable directory is staged whole rather than its friction directory alone:
 // staging the parent carries the friction directory and every timestamped archive sibling in one entry,
@@ -106,6 +107,9 @@ func statusCommitPathspec(location *lyxcwd.Location, runID string) []string {
 	}
 	if holdsFile(shedrun.ArbiterDir(location, runID)) {
 		paths = append(paths, shedrun.ArbiterRel(location, runID))
+	}
+	if holdsFile(shedrun.TacklerDir(location, runID)) {
+		paths = append(paths, shedrun.TacklerRel(location, runID))
 	}
 	if holdsFile(shedrun.AlignmentDir(location, runID, "")) {
 		paths = append(paths, shedrun.AlignmentRel(location, runID))

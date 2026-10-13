@@ -137,6 +137,7 @@ func TestStatusCommitPathspec(t *testing.T) {
 		wantLoom    bool
 		wantDrive   bool
 		wantArbiter bool
+		wantTackler bool
 		wantAligned bool
 	}{
 		{
@@ -160,6 +161,21 @@ func TestStatusCommitPathspec(t *testing.T) {
 				writeFile(t, filepath.Join(shedrun.ArbiterAttemptDir(loc, shedrun.SelfRunID, 1), "attempt.json"), "{}\n")
 			},
 			wantArbiter: true,
+		},
+		{
+			name: "tackler directory holding only an empty attempt directory",
+			setup: func(t *testing.T, loc *lyxcwd.Location) {
+				if err := os.MkdirAll(shedrun.TacklerAttemptDir(loc, shedrun.SelfRunID, 1), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "tackler attempt file",
+			setup: func(t *testing.T, loc *lyxcwd.Location) {
+				writeFile(t, filepath.Join(shedrun.TacklerAttemptDir(loc, shedrun.SelfRunID, 1), "attempt.json"), "{}\n")
+			},
+			wantTackler: true,
 		},
 		{name: "nothing on disk", setup: func(t *testing.T, loc *lyxcwd.Location) {}},
 		{
@@ -269,6 +285,9 @@ func TestStatusCommitPathspec(t *testing.T) {
 			}
 			if tt.wantArbiter {
 				want = append(want, shedrun.ArbiterRel(location, shedrun.SelfRunID))
+			}
+			if tt.wantTackler {
+				want = append(want, shedrun.TacklerRel(location, shedrun.SelfRunID))
 			}
 			if tt.wantAligned {
 				want = append(want, shedrun.AlignmentRel(location, shedrun.SelfRunID))

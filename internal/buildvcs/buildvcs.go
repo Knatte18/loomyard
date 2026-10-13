@@ -3,6 +3,8 @@
 package buildvcs
 
 import (
+	"debug/buildinfo"
+	"fmt"
 	"runtime/debug"
 	"time"
 )
@@ -47,6 +49,16 @@ func Running() Identity {
 		return Identity{}
 	}
 	return identityOf(info.Settings)
+}
+
+// OfFile reads the VCS stamp of the Go binary at path.
+// A file that is not a Go binary returns the read error.
+func OfFile(path string) (Identity, error) {
+	info, err := buildinfo.ReadFile(path)
+	if err != nil {
+		return Identity{}, fmt.Errorf("buildvcs: read build info of %q: %w", path, err)
+	}
+	return identityOf(info.Settings), nil
 }
 
 // identityOf maps the vcs.revision, vcs.modified and vcs.time build settings onto an Identity and ignores every other key.

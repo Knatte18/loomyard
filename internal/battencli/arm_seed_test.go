@@ -46,12 +46,12 @@ func TestArmSeed_RunAndStepSeedBeforeWire(t *testing.T) {
 					t.Errorf("seed.Params carries %q; the run-id is the slug and nothing reads a copy", "slug")
 				}
 				// Unset flags: batten's own driver defaults to go, since batten has no bootstrap verb,
-				// while the loom child's defaults to llm.
+				// while the loom child's driver is recorded only when typed.
 				if seed.Driver != shedrun.DriverGo {
 					t.Errorf("seed.Driver = %q; want the default %q", seed.Driver, shedrun.DriverGo)
 				}
-				if got := seed.Params["child_driver"]; got != shedrun.DriverLLM {
-					t.Errorf("seed.Params[child_driver] = %q; want the default %q", got, shedrun.DriverLLM)
+				if got, present := seed.Params["child_driver"]; present {
+					t.Errorf("seed.Params[child_driver] = %q; want no param for an unset flag", got)
 				}
 			})
 		}
@@ -239,11 +239,15 @@ func TestRefuseAdoptedSeed(t *testing.T) {
 			wantSubstr:      `already seeded with child driver "llm"`,
 		},
 		{
-			name:            "an_absent_child_driver_param_compares_as_go",
+			name:            "a_typed_child_driver_over_a_seed_recording_none_is_refused_with_both_ways_forward",
 			seed:            battenSeedNoChildParam,
 			childDriverFlag: shedrun.DriverLLM,
 			childDriverSet:  true,
-			wantSubstr:      `already seeded with child driver "go"`,
+			wantSubstr:      "delete the run's seed to re-seed it with the flag, or drop the flag to take the task's driver_kind",
+		},
+		{
+			name: "an_untyped_child_driver_passes_a_seed_recording_none",
+			seed: battenSeedNoChildParam,
 		},
 		{
 			name:            "a_typed_child_driver_that_agrees_is_accepted",

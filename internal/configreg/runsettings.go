@@ -66,6 +66,11 @@ func PrepareRunSettings(settings map[string]any) (map[string][]byte, error) {
 		if err := configengine.ValidateLocal(module.Spec(), document); err != nil {
 			return nil, &RunSettingsError{Module: name, Cause: err}
 		}
+		if module.CheckValues != nil {
+			if err := module.CheckValues(document); err != nil {
+				return nil, &RunSettingsError{Module: name, Cause: err}
+			}
+		}
 		documents[name] = document
 	}
 	return documents, nil

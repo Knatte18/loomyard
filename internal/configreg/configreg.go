@@ -55,6 +55,9 @@ type Module struct {
 	// Migrate, when non-nil, rewrites a present config file's bytes before reconcile compares them to the template.
 	// It returns the rewritten bytes and one human-readable line per rewrite, and changes only the keys its module declares retired or raises a key to its module's floor.
 	Migrate func(existing []byte) ([]byte, []string, error)
+	// CheckValues, when non-nil, checks the values of a local-layer document after its keys pass configengine.ValidateLocal.
+	// It checks only the keys its module names, and returns an error marked configengine.ErrInvalid that names the key.
+	CheckValues func(document []byte) error
 	// Spec returns the module's own layered-load spec: its name, template, open maps, hub-wide flag and per-key classification.
 	Spec func() configengine.Spec
 	// LocalKeys are the keys of a hub-wide module a local override may set, derived from Spec.
@@ -91,7 +94,7 @@ func Modules() []Module {
 		{Name: "gate", Template: gateslot.ConfigTemplate, HubWide: true, Spec: gateslot.ConfigSpec},
 		{Name: "landing", Template: landingshed.ConfigTemplate, HubWide: true, SeedsFromPrime: true, Spec: landingshed.ConfigSpec},
 		{Name: "logger", Template: loggerconfig.ConfigTemplate, Spec: loggerconfig.ConfigSpec},
-		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps(), Migrate: loomengine.MigrateConfig, Spec: loomengine.ConfigSpec},
+		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps(), Migrate: loomengine.MigrateConfig, CheckValues: loomengine.ValidateLocalValues, Spec: loomengine.ConfigSpec},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true, Spec: modelspec.ConfigSpec},
 		{Name: "orch", Template: orchengine.ConfigTemplate, Migrate: orchengine.MigrateConfig, Spec: orchengine.ConfigSpec},
 		{Name: "reed", Template: reedengine.ConfigTemplate, Spec: reedengine.ConfigSpec},

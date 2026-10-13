@@ -31,25 +31,27 @@ import (
 // lock only inside each "lyx shed step" and releases it between steps, so the lock reads free while
 // the driver strand is live -- the bootstrap must not mistake that gap for "no driver running".
 //
-//testtiming:keep pins the spawn predicate over both the run lock and the live driver strand, including the two mixed rows a lock-only predicate fails; its covering tests run the predicate without asserting its table
+//testtiming:keep pins the spawn predicate over the run lock, the driver lock and the live driver strand, including the mixed rows a lock-only predicate fails; its covering tests run the predicate without asserting its table
 func TestMustSpawnDriver(t *testing.T) {
 	tests := []struct {
 		name             string
 		runLockHeld      bool
+		driverLockHeld   bool
 		driverStrandLive bool
 		wantSpawn        bool
 	}{
-		{"LockFree_NoStrand_Spawn", false, false, true},
-		{"LockHeld_LiveStrand_NoSpawn", true, true, false},
-		{"LockHeld_NoStrand_NoSpawn", true, false, false},
-		{"LockFree_LiveStrand_NoSpawn", false, true, false},
+		{"AllFree_Spawn", false, false, false, true},
+		{"LockHeld_LiveStrand_NoSpawn", true, false, true, false},
+		{"LockHeld_NoStrand_NoSpawn", true, false, false, false},
+		{"LockFree_LiveStrand_NoSpawn", false, false, true, false},
+		{"DriverLockHeld_NoStrand_NoSpawn", false, true, false, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := mustSpawnDriver(tt.runLockHeld, tt.driverStrandLive)
+			got := mustSpawnDriver(tt.runLockHeld, tt.driverLockHeld, tt.driverStrandLive)
 			if got != tt.wantSpawn {
-				t.Errorf("mustSpawnDriver(%v, %v) = %v; want %v", tt.runLockHeld, tt.driverStrandLive, got, tt.wantSpawn)
+				t.Errorf("mustSpawnDriver(%v, %v, %v) = %v; want %v", tt.runLockHeld, tt.driverLockHeld, tt.driverStrandLive, got, tt.wantSpawn)
 			}
 		})
 	}

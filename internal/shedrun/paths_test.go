@@ -78,6 +78,18 @@ func TestPathConstructors(t *testing.T) {
 			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "alignment", "pr-gate") }},
 		{"ArbiterMarker", func(l *lyxcwd.Location) string { return ArbiterMarker(l, "self") },
 			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "arbiter-inflight.json") }},
+		{"DriverLock", func(l *lyxcwd.Location) string { return DriverLock(l, "self") },
+			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "driver.lock") }},
+		{"TacklerDir", func(l *lyxcwd.Location) string { return TacklerDir(l, "self") },
+			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "tackler") }},
+		{"TacklerRel", func(l *lyxcwd.Location) string { return TacklerRel(l, "self") },
+			func(l *lyxcwd.Location) string { return filepath.Join("_lyx", "shed", worktreeName, "tackler") }},
+		{"TacklerAttemptDir", func(l *lyxcwd.Location) string { return TacklerAttemptDir(l, "self", 2) },
+			func(l *lyxcwd.Location) string { return filepath.Join(TacklerDir(l, "self"), "attempt-2") }},
+		{"TacklerMarker", func(l *lyxcwd.Location) string { return TacklerMarker(l, "self") },
+			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "tackler-inflight.json") }},
+		{"SettleRecordsFile", func(l *lyxcwd.Location) string { return SettleRecordsFile(filepath.Join(l.AnchorPath(), "friction")) },
+			func(l *lyxcwd.Location) string { return filepath.Join(l.AnchorPath(), "friction", "go-settle.jsonl") }},
 		{"PrimeRunLock", PrimeRunLock,
 			func(l *lyxcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lyx", "shed", "run.lock") }},
 		{"LandLock", LandLock,
@@ -99,6 +111,40 @@ func TestPathConstructors(t *testing.T) {
 				t.Errorf("%s = %q; want %q", tt.name, got, want)
 			}
 		})
+	}
+}
+
+// TestBattenWatchedContent pins the batten-watched marker's format: a pid alone is one line, a pid with a scratch directory and a row round-trips, and a first line that is no positive pid fails to parse.
+func TestBattenWatchedContent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		pid         int
+		scratchDir  string
+		producer    string
+		wantContent string
+	}{
+		{name: "pid alone", pid: 4242, wantContent: "4242\n"},
+		{name: "pid with scratch directory and row", pid: 4242, scratchDir: "/hub/.lyx/batten", producer: "Run-Shed", wantContent: "4242\n/hub/.lyx/batten\nRun-Shed\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			content := BattenWatchedContent(tt.pid, tt.scratchDir, tt.producer)
+			if string(content) != tt.wantContent {
+				t.Fatalf("BattenWatchedContent() = %q; want %q", content, tt.wantContent)
+			}
+			pid, scratchDir, producer, err := ParseBattenWatched(content)
+			if err != nil || pid != tt.pid || scratchDir != tt.scratchDir || producer != tt.producer {
+				t.Errorf("ParseBattenWatched() = %d, %q, %q, %v; want %d, %q, %q, nil", pid, scratchDir, producer, err, tt.pid, tt.scratchDir, tt.producer)
+			}
+		})
+	}
+	for _, bad := range []string{"", "not a pid\n", "0\n", "-3\n/dir\nrow\n"} {
+		if _, _, _, err := ParseBattenWatched([]byte(bad)); err == nil {
+			t.Errorf("ParseBattenWatched(%q) error = nil; want a refusal", bad)
+		}
 	}
 }
 

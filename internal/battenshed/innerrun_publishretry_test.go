@@ -39,6 +39,8 @@ type retryHarness struct {
 	recordErr error
 	head      string
 	headErr   error
+	// goRetrySpent is what the fake GoVerifyRetrySpent seam reports.
+	goRetrySpent bool
 	// gotoErrs and spawnErrs are consumed one per call; a call past the end succeeds, except that an exhausted list ending in an error repeats it.
 	gotoErrs    []error
 	spawnErrs   []error
@@ -80,6 +82,7 @@ func newRetryHarness(t *testing.T) *retryHarness {
 		return *h.record, true, h.recordErr
 	}
 	deps.ChildHead = func() (string, error) { return h.head, h.headErr }
+	deps.GoVerifyRetrySpent = func() (bool, error) { return h.goRetrySpent, nil }
 	deps.Goto = func(_ context.Context, target string) error {
 		h.gotoTargets = append(h.gotoTargets, target)
 		return nextErr(&h.gotoErrs)
@@ -219,7 +222,10 @@ func TestInnerRun_PublishRetryDeclinesRecordsThatDoNotMatchTheHalt(t *testing.T)
 		configure  func(h *retryHarness)
 		wantGoto   bool
 		wantWarned string
+		// wantRetryRan is true when the blocked notice says an automatic retry already ran.
+		wantRetryRan bool
 	}{
+		{name: "GoDriverRetryAlreadySpent", configure: func(h *retryHarness) { h.goRetrySpent = true }, wantRetryRan: true},
 		{name: "NoRecord", configure: func(h *retryHarness) { h.record = nil }},
 		{name: "AnotherHead", configure: func(h *retryHarness) { h.record.Head = "other" }},
 		{name: "FromAnEarlierHalt", configure: func(h *retryHarness) { h.record.WrittenAt = "2026-01-01T10:00:00Z" }},
@@ -256,8 +262,8 @@ func TestInnerRun_PublishRetryDeclinesRecordsThatDoNotMatchTheHalt(t *testing.T)
 				t.Errorf("publish-retry marker = %q; want none", h.marker())
 			}
 			h.wantOneNotice("blocked at " + retryPublishRow)
-			if strings.Contains(h.notices[0], "already ran") {
-				t.Errorf("notice = %q; want no claim that a retry ran", h.notices[0])
+			if ran := strings.Contains(h.notices[0], "already ran"); ran != tt.wantRetryRan {
+				t.Errorf("notice = %q; want a claim that a retry ran = %v", h.notices[0], tt.wantRetryRan)
 			}
 			if tt.wantWarned != "" && !strings.Contains(logs.String(), tt.wantWarned) {
 				t.Errorf("log = %q; want a Warn naming %q", logs.String(), tt.wantWarned)
@@ -368,4 +374,49 @@ func TestInnerRun_PublishRetryContinuesFromTheMarkerAfterARestart(t *testing.T) 
 		h.wantGotos(1)
 		h.wantMarkerState(publishRetryGotoDone)
 	})
+}
+
+// TestPublishRetrySpent asserts the exported read: an absent marker is not spent, a marker in any of the four states is, and a marker that does not decode is an error.
+func TestPublishRetrySpent(t *testing.T) {
+	t.Parallel()
+
+	const producer = "Publish-Row"
+	states := []string{publishRetryStarted, publishRetryGotoDone, publishRetryResumed, publishRetryCapped}
+	tests := []struct {
+		name    string
+		marker  string
+		want    bool
+		wantErr bool
+	}{
+		{name: "no marker"},
+		{name: "malformed marker", marker: "started", wantErr: true},
+	}
+	for _, state := range states {
+		tests = append(tests, struct {
+			name    string
+			marker  string
+			want    bool
+			wantErr bool
+		}{name: state + " marker", marker: state + " 2026-01-01T11:00:00Z " + retryTarget + "\n", want: true})
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			scratchDir := t.TempDir()
+			if tt.marker != "" {
+				if err := os.WriteFile(publishRetryFile(scratchDir, producer), []byte(tt.marker), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			got, err := PublishRetrySpent(scratchDir, producer)
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("PublishRetrySpent() error = %v; want error %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("PublishRetrySpent() = %v; want %v", got, tt.want)
+			}
+		})
+	}
 }

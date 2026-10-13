@@ -2,7 +2,7 @@
      It is filled via internal/stencil.Fill (internal/loomcli's arbiterPrompt) and typed into the arbiter session as its entire instruction set.
      Every marker below is a top-level {{.X}} substitution and every one is required non-empty:
      {{.run_id}} is the run whose stop is judged, {{.slug}} the task it belongs to, {{.worktree}} the directory every command runs in,
-     {{.envelope_path}} the stop envelope, {{.report_path}} the driver's stop or fork report and {{.brief_path}} the review escalation brief (each the literal `none` when absent),
+     {{.envelope_path}} the stop envelope, {{.report_path}} the driver's stop or fork report, {{.brief_path}} the review escalation brief and {{.case_brief_path}} the tackler's case brief (each the literal `none` when absent),
      {{.decision_record_path}} and {{.support_log_path}} the task's decision record and support log,
      {{.verdict_path}} the one file the arbiter writes,
      {{.parent_directive}} the no-parent variant of the shared parent directive rendered by internal/parentdirective,
@@ -27,11 +27,15 @@ You start cold: everything you know comes from the files below.
 - The stop envelope `{{.envelope_path}}`.
 - The driver's stop or fork report `{{.report_path}}`.
 - The review escalation brief `{{.brief_path}}` and the review rounds it names.
+- The tackler's case brief `{{.case_brief_path}}`.
 - The task's board entry, from `lyx board get {{.slug}}`.
 - The decision record `{{.decision_record_path}}` and the support log `{{.support_log_path}}`, when they exist.
 - Any read-only `lyx` command or file in `{{.worktree}}`.
 
 A path reading `none` is absent.
+
+The case brief is a cheaper agent's reading of the stop, not authority.
+Check every fact you rely on against its pointer yourself, and never take its hypothesis as given.
 
 ## What you may change
 

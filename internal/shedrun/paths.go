@@ -6,9 +6,11 @@ package shedrun
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"path"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -25,6 +27,18 @@ const driveReportsDirName = "drive-reports"
 // arbiterDirName is the segment under a run's directory that holds its arbiter attempts.
 const arbiterDirName = "arbiter"
 
+// tacklerDirName is the segment under a run's directory that holds its tackler attempts.
+const tacklerDirName = "tackler"
+
+// tacklerMarkerFileName is the filename of the tackler in-flight marker, whose path TacklerMarker returns.
+const tacklerMarkerFileName = "tackler-inflight.json"
+
+// driverLockFileName is the filename of the Go-driver lock, whose path DriverLock returns.
+const driverLockFileName = "driver.lock"
+
+// settleRecordsFileName is the filename of the Go driver's settle records, whose path SettleRecordsFile returns.
+const settleRecordsFileName = "go-settle.jsonl"
+
 // alignmentDirName is the segment under a run's directory that holds its alignment attempts, one directory per point.
 const alignmentDirName = "alignment"
 
@@ -39,9 +53,36 @@ const arbiterMarkerFileName = "arbiter-inflight.json"
 const ParkMarkerFileName = "driver-parked"
 
 // BattenWatchedFileName is the filename of the batten-watched marker, whose path BattenWatchedMarker returns.
-// The file holds the pid, in decimal on one line, of the live batten process watching the run.
+// The file holds the pid, in decimal, of the live batten process watching the run on its first line, then, when known, the prime's batten scratch directory and the Run-Shed row's name on the next two lines.
 // A batten writes it while it watches and removes it when it stops; a driver launched fresh renders its parent-notification rule from whether the pid in it is live.
 const BattenWatchedFileName = "batten-watched"
+
+// BattenWatchedContent renders the batten-watched marker's content: pid in decimal on the first line, then, when either is non-empty, scratchDir and producer on the next two lines.
+func BattenWatchedContent(pid int, scratchDir, producer string) []byte {
+	content := strconv.Itoa(pid) + "\n"
+	if scratchDir != "" || producer != "" {
+		content += scratchDir + "\n" + producer + "\n"
+	}
+	return []byte(content)
+}
+
+// ParseBattenWatched reads a batten-watched marker's content: the first line is the pid, and the next two lines, when present, are the scratch directory and the row's name.
+// A one-line marker parses with an empty scratch directory and producer.
+// A marker whose first line is not a positive pid is an error.
+func ParseBattenWatched(data []byte) (pid int, scratchDir, producer string, err error) {
+	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+	pid, err = strconv.Atoi(strings.TrimSpace(lines[0]))
+	if err != nil || pid <= 0 {
+		return 0, "", "", fmt.Errorf("shedrun: batten-watched marker: the first line %q is not a positive pid", lines[0])
+	}
+	if len(lines) > 1 {
+		scratchDir = lines[1]
+	}
+	if len(lines) > 2 {
+		producer = lines[2]
+	}
+	return pid, scratchDir, producer, nil
+}
 
 // StartNotParkedKind is the envelope "kind" of the `lyx loom start` refusal for a live driver whose run has halted at a hand-back but whose park marker is not written yet.
 // That refusal is retryable: the driver is still writing its stop report and committing its records, and parks within seconds.
@@ -197,6 +238,40 @@ func AlignmentRel(l *lyxcwd.Location, runID string) string {
 // ArbiterMarker returns the path to the ephemeral arbiter in-flight marker, arbiterMarkerFileName under ScratchDir(l, runID).
 func ArbiterMarker(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), arbiterMarkerFileName)
+}
+
+// DriverLock returns the path to the ephemeral Go-driver lock, driverLockFileName under ScratchDir(l, runID).
+// It is distinct from the run lock and the status lock, so a live Go driver is observable without holding either.
+func DriverLock(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), driverLockFileName)
+}
+
+// TacklerDir returns the path to the durable directory holding every tackler attempt of a run:
+// RunDir(l, runID) joined with tacklerDirName.
+func TacklerDir(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(RunDir(l, runID), tacklerDirName)
+}
+
+// TacklerRel returns the worktree-anchor-relative form of TacklerDir's path: the join of lyxdirs.LyxDirName, shedDirName, the run's directory segment under l, and tacklerDirName.
+// It exists so a caller building a fabric commit pathspec never has to name a segment shedrun owns.
+func TacklerRel(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(lyxdirs.LyxDirName, shedDirName, runSegment(l, runID), tacklerDirName)
+}
+
+// TacklerAttemptDir returns the path to one tackler attempt's durable directory, attempt-<N> under TacklerDir(l, runID), where attempt is the attempt's 1-based number.
+func TacklerAttemptDir(l *lyxcwd.Location, runID string, attempt int) string {
+	return filepath.Join(TacklerDir(l, runID), "attempt-"+strconv.Itoa(attempt))
+}
+
+// TacklerMarker returns the path to the ephemeral tackler in-flight marker, tacklerMarkerFileName under ScratchDir(l, runID).
+func TacklerMarker(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), tacklerMarkerFileName)
+}
+
+// SettleRecordsFile returns the path to the Go driver's settle records, settleRecordsFileName in the told friction directory frictionDir.
+// The name is not markdown, so the friction note scan never archives it and the caps counted from it survive a reflection.
+func SettleRecordsFile(frictionDir string) string {
+	return filepath.Join(frictionDir, settleRecordsFileName)
 }
 
 // RunsRootRel returns the worktree-anchor-relative path of the run-records root: the join of lyxdirs.LyxDirName and shedDirName, the directory every run's RunDir sits under.

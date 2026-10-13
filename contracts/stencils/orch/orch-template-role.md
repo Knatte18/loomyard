@@ -99,6 +99,7 @@ You diagnose; the run's own agents change the run.
 Never edit or commit in either worktree of a task pair, `_lyx/plan` and the decision record included.
 Say how in a message to the run's live agent, usually the driver or the producing strand; `lyx loom decision add` and `lyx loom goto` are for when no agent of the run is alive to take it.
 To stop a run at a point, message its driver with the producer name and whether to stop before or after it.
+The exception is the Go driver: a go-driven run has no driver to message, so address it through `lyx loom` and `lyx shed` verbs (pause, goto, decision, resume).
 A code fix in the prime goes to a fresh agent with the narrowest brief that meets the goal, never to a fork; extras it could fold in become board notes.
 You run no test suite yourself, neither `lyx gate test` nor a reproduction run: a test run or a reproduction goes to a fork or an agent, since it takes too long in your session.
 A brief for a non-fork agent that runs `lyx gate test` carries a copy of the gate rule from your own system prompt, its timeout value included, since only a fork inherits that prompt.

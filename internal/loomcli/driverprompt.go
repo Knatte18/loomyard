@@ -7,11 +7,11 @@ package loomcli
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
@@ -86,7 +86,7 @@ func driverPrompt(stencilsDir, parentName, runID, reportPath string, watched boo
 	return string(filled), nil
 }
 
-// driverWatched reports whether a live batten watches the run: markerPath names a file holding a pid in decimal on one line, and isAlive confirms that pid.
+// driverWatched reports whether a live batten watches the run: markerPath names a file whose first line holds a pid in decimal, and isAlive confirms that pid.
 // An absent or unreadable marker, one that does not parse as a pid and one whose pid is dead are all unwatched,
 // so the marker a batten left behind when it died never silences a fresh driver.
 func driverWatched(markerPath string, isAlive func(pid int) bool) bool {
@@ -96,15 +96,32 @@ func driverWatched(markerPath string, isAlive func(pid int) bool) bool {
 
 // liveBattenPID returns the pid the batten-watched marker at markerPath names and true when isAlive confirms it, and false in every case driverWatched reads as unwatched.
 func liveBattenPID(markerPath string, isAlive func(pid int) bool) (int, bool) {
+	watch, alive := readBattenWatch(markerPath, isAlive)
+	if !alive {
+		return 0, false
+	}
+	return watch.PID, true
+}
+
+// battenWatch is a batten-watched marker's reading: the batten's pid and, when it recorded them, the prime's batten scratch directory and the Run-Shed row's name.
+type battenWatch struct {
+	PID        int
+	ScratchDir string
+	Producer   string
+}
+
+// readBattenWatch parses the marker at markerPath and returns what it holds whenever it parses, with the bool true only when isAlive confirms its pid.
+// An unwatched driver thus still learns the prime a dead batten named; an absent, unreadable or unparseable marker returns the zero battenWatch.
+func readBattenWatch(markerPath string, isAlive func(pid int) bool) (battenWatch, bool) {
 	data, err := os.ReadFile(markerPath)
 	if err != nil {
-		return 0, false
+		return battenWatch{}, false
 	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil || pid <= 0 || !isAlive(pid) {
-		return 0, false
+	pid, scratchDir, producer, err := shedrun.ParseBattenWatched(data)
+	if err != nil {
+		return battenWatch{}, false
 	}
-	return pid, true
+	return battenWatch{PID: pid, ScratchDir: scratchDir, Producer: producer}, isAlive(pid)
 }
 
 // driverRecordsCommand commits the run records; driverTeardownCommand runs it first, and driverParkCommand extends it.

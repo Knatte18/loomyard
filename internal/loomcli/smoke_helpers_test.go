@@ -177,6 +177,14 @@ func seedGoDriverRun(t *testing.T, loc *lyxcwd.Location) {
 	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, seed); err != nil {
 		t.Fatalf("WriteSeed(go driver): %v", err)
 	}
+	// Turns the tackler and the arbiter off, so a go-driven halt such as a failing Preflight hands back with no agent spawned and a tmux-tier smoke run reaches no LLM.
+	localPath := configengine.LocalFile(loc.AnchorPath(), "loom")
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+		t.Fatalf("create the loom local layer directory: %v", err)
+	}
+	if err := os.WriteFile(localPath, []byte("tackler_max_spawns: 0\narbiter_max_spawns: 0\n"), 0o644); err != nil {
+		t.Fatalf("write the loom local layer: %v", err)
+	}
 }
 
 // seedAndCommitStatus seeds loc's status file directly through the production Seed function and
@@ -314,9 +322,9 @@ func findWatchdogPIDs(hubPath string) []int {
 	return pids
 }
 
-// findDriverPIDs returns the pids of every live process whose current working directory is worktree and whose argv contains an adjacent "loom" followed by "run" pair.
-// It finds the detached "lyx loom run" process a bootstrap spawned, since it inherits its parent's cwd and its own argv is fixed.
-// A lone "run" argv element is not a sufficient discriminator: "run" is also a verb on shuttle, burler, and webster, so it would over-match any such process sharing the worktree cwd.
+// findDriverPIDs returns the pids of every live process whose current working directory is worktree and whose argv contains an adjacent "loom" followed by "drive" pair.
+// It finds the detached "lyx loom drive" process a bootstrap spawned, since it runs in the worktree and its own argv is fixed.
+// A lone "drive" argv element is not a sufficient discriminator, so the adjacent "loom" is required.
 // Linux only; returns nil on any other GOOS.
 // A process whose parent also matches is dropped: between fork and exec the driver's own child, such as a git call, still carries the driver's argv and cwd, and is not a second driver.
 func findDriverPIDs(worktree string) []int {
@@ -334,7 +342,7 @@ func findDriverPIDs(worktree string) []int {
 			continue
 		}
 		for i := 0; i+1 < len(argv); i++ {
-			if argv[i] == "loom" && argv[i+1] == "run" {
+			if argv[i] == "loom" && argv[i+1] == "drive" {
 				// A parent that cannot be read answers 0, which no matching process has as its pid.
 				parents[pid], _ = tmuxkit.ProcPPID(pid)
 				break

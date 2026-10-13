@@ -121,31 +121,28 @@ func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestResolveSeedDriver covers resolveSeedDriver's read-through: an unseeded worktree defaults to the
-// llm driver, an already-go seed is preserved, and -- the case this card exists for -- an
-// already-llm seed is preserved rather than overwritten with the go driver. That last row is what
-// fails against the shipped version, which hard-coded the go driver into every write regardless of
-// what a run was already seeded as.
+// TestResolveSeedDriver covers resolveSeedDriver: an unseeded worktree takes the resolved driver_kind, and a recorded seed's driver wins over it.
 func TestResolveSeedDriver(t *testing.T) {
 	tests := []struct {
 		name     string
 		existing shedrun.Seed
 		found    bool
+		kind     string
 		want     string
 	}{
-		{"Unseeded_DefaultsToLLM", shedrun.Seed{}, false, shedrun.DriverLLM},
-		{"AlreadySeededGo_Preserved", shedrun.Seed{Driver: shedrun.DriverGo}, true, shedrun.DriverGo},
-		{"AlreadySeededLLM_Preserved", shedrun.Seed{Driver: shedrun.DriverLLM}, true, shedrun.DriverLLM},
+		{"Unseeded_DefaultsToLLM", shedrun.Seed{}, false, shedrun.DriverLLM, shedrun.DriverLLM},
+		{"AlreadySeededGo_Preserved", shedrun.Seed{Driver: shedrun.DriverGo}, true, shedrun.DriverLLM, shedrun.DriverGo},
+		{"AlreadySeededLLM_Preserved", shedrun.Seed{Driver: shedrun.DriverLLM}, true, shedrun.DriverGo, shedrun.DriverLLM},
+		{"UnseededGoKind_TakesGo", shedrun.Seed{}, false, shedrun.DriverGo, shedrun.DriverGo},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := resolveSeedDriver(tt.existing, tt.found)
+			got := resolveSeedDriver(tt.existing, tt.found, tt.kind)
 			if got != tt.want {
-				t.Errorf("resolveSeedDriver(%+v, %v) = %q; want %q", tt.existing, tt.found, got, tt.want)
+				t.Errorf("resolveSeedDriver(%+v, %v, %q) = %q; want %q", tt.existing, tt.found, tt.kind, got, tt.want)
 			}
-			// The signature takes only the existing seed and whether it was found -- no flag, no config --
-			// so a recorded driver survives this step's write: the seed built from the result carries it.
+			// A recorded driver survives this step's write: the seed built from the result carries it.
 			if seed := loomSeedFor(shedrun.RecipeLoom, "main", got); seed.Driver != tt.want {
 				t.Errorf("loomSeedFor(%q, %q).Driver = %q; want %q", "main", got, seed.Driver, tt.want)
 			}

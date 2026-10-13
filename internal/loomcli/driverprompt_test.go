@@ -152,6 +152,7 @@ func TestDriverWatched(t *testing.T) {
 		want    bool
 	}{
 		{"live pid", ptr("4242\n"), true},
+		{"live pid with a scratch directory and a row name", ptr("4242\n/hub/.lyx/batten\nRun-Shed\n"), true},
 		{"dead pid", ptr("4243\n"), false},
 		{"garbage", ptr("not a pid\n"), false},
 		{"absent marker", nil, false},
