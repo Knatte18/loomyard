@@ -69,7 +69,7 @@ internal/modelspec: 11
 internal/orchcli: 28
 internal/orchengine: 139
 internal/output: 4
-internal/pairteardown: 6
+internal/pairteardown: 7
 internal/pausecli: 4
 internal/pauseengine: 4
 internal/pauserecord: 14
