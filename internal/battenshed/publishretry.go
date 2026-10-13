@@ -181,6 +181,14 @@ func (p *innerRunProducer) publishRetryDecision(ctx context.Context, status shed
 		if !blockedAtVerifyRow {
 			return publishRetry{}
 		}
+		goSpent, err := p.deps.GoVerifyRetrySpent()
+		if err != nil {
+			logger.Warn("battenshed: Go verify-retry records unreadable; leaving the halt to the usual handling", "producer", p.name, "slug", p.slug, "error", err)
+			return publishRetry{}
+		}
+		if goSpent {
+			return publishRetry{spent: true}
+		}
 		record, recorded, err := p.deps.PublishFailure()
 		if err != nil {
 			logger.Warn("battenshed: Publish failure record unreadable; leaving the halt to the operator", "producer", p.name, "slug", p.slug, "error", err)

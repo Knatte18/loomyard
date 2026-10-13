@@ -184,7 +184,8 @@ var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 // A nil deps.Sleep resolves to waitOrCancel, and a nil deps.Now to time.Now, once here rather than on every Call, so a test's no-op sleep and fixed clock are the only values ever substituted.
 // A nil deps.Notify resolves to a no-op and switches the notice step off.
 // A nil deps.OrchStrandRecorded resolves to reporting a strand recorded, and a nil deps.StopReport to reporting no stop report.
-// A nil deps.DriverStrand resolves to reporting no driver strand, a nil deps.ChildRunLockHeld to reporting no held lock and a nil deps.ReviveStrands to a revive that fails as not wired.
+// A nil deps.DriverStrand resolves to reporting no driver strand, a nil deps.ChildRunLockHeld or deps.ChildDriverLockHeld to reporting no held lock and a nil deps.ReviveStrands to a revive that fails as not wired.
+// A nil deps.TacklerInFlight resolves to reporting no tackler, and a nil deps.GoVerifyRetrySpent to reporting no Go verify retry spent.
 // A nil deps.PauseRequested resolves to never paused, and a nil deps.Pause to never covered by a pause record.
 // An empty deps.VerifyRows, or a nil deps.PublishFailure, deps.ChildHead or deps.Goto, switches the automatic verify retry off.
 // A nil deps.MarkWatched resolves to reporting not held, a nil deps.Activity to reporting no live run and no live wait, and a nil deps.ArbiterInFlight to reporting no arbiter.
@@ -237,6 +238,15 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	}
 	if deps.ChildRunLockHeld == nil {
 		deps.ChildRunLockHeld = func() (bool, error) { return false, nil }
+	}
+	if deps.ChildDriverLockHeld == nil {
+		deps.ChildDriverLockHeld = func() (bool, error) { return false, nil }
+	}
+	if deps.TacklerInFlight == nil {
+		deps.TacklerInFlight = func(context.Context) (ChildArbiter, bool, error) { return ChildArbiter{}, false, nil }
+	}
+	if deps.GoVerifyRetrySpent == nil {
+		deps.GoVerifyRetrySpent = func() (bool, error) { return false, nil }
 	}
 	if deps.ReviveStrands == nil {
 		deps.ReviveStrands = func(context.Context) error { return errors.New("no strand revive wired") }
@@ -442,9 +452,10 @@ func statusModTime(path string) time.Time {
 	return info.ModTime()
 }
 
-// driverAtWork reports whether the child already has a driver at work: a live or retiring driver strand, or a held child run lock.
+// driverAtWork reports whether the child already has a driver at work: a live or retiring driver strand, a held child run lock, or a held Go driver lock.
 // A retiring strand counts as live, since someone already asked to remove it and `lyx loom start` replaces it.
-// A read error from either seam is returned as a hard error,
+// A held driver lock is a Go driver settling between steps, when the run lock is free.
+// A read error from any seam is returned as a hard error,
 // and the next Call retries.
 func (p *innerRunProducer) driverAtWork(ctx context.Context) (bool, error) {
 	strand, err := p.deps.DriverStrand(ctx)
@@ -461,7 +472,14 @@ func (p *innerRunProducer) driverAtWork(ctx context.Context) (bool, error) {
 		}
 		return false, fmt.Errorf("battenshed: %s: read child run lock: %w", p.name, err)
 	}
-	return strand == ChildDriverLive || strand == ChildDriverRetiring || held, nil
+	driverLockHeld, err := p.deps.ChildDriverLockHeld()
+	if err != nil {
+		if cerr := cancelErr(ctx, p.name); cerr != nil {
+			return false, cerr
+		}
+		return false, fmt.Errorf("battenshed: %s: read child driver lock: %w", p.name, err)
+	}
+	return strand == ChildDriverLive || strand == ChildDriverRetiring || held || driverLockHeld, nil
 }
 
 // reviewWaitNote returns the child's reviewer-wait note, or empty when there is none or ReviewWait is nil.
@@ -964,8 +982,9 @@ func (p *innerRunProducer) doneStep(ctx context.Context, w *childWait) *waitEnd 
 	return nil
 }
 
-// driverAlive reports whether the child's driver strand is live, reading deps.DriverAlive at most once per probe and reusing the answer on the checks between.
-// known is false when the read failed, which is warned about once per read; the done arm then treats the driver as live and the notice step skips what needs the answer.
+// driverAlive reports whether the child has a live driver: a live driver strand, or a held child driver lock or run lock, reading them at most once per probe and reusing the answer on the checks between.
+// known is false when the strand read failed, which is warned about once per read; the done arm then treats the driver as live and the notice step skips what needs the answer.
+// A lock read error reads as alive with one Warn, as a failed strand read does.
 func (p *innerRunProducer) driverAlive(ctx context.Context, w *childWait) (alive, known bool) {
 	if w.aliveStale {
 		w.aliveStale = false
@@ -974,8 +993,35 @@ func (p *innerRunProducer) driverAlive(ctx context.Context, w *childWait) (alive
 		if err != nil && ctx.Err() == nil {
 			logger.Warn("battenshed: driver liveness read failed; treating the driver as live", "producer", p.name, "slug", p.slug, "error", err)
 		}
+		if !w.alive && w.aliveKnown {
+			w.alive = p.driverLocksHeld(ctx)
+		}
 	}
 	return w.alive, w.aliveKnown
+}
+
+// driverLocksHeld reports whether the child's driver lock or run lock is held.
+// A read error is warned about and reads as held, since a lock that cannot be read must not make a working driver look dead.
+func (p *innerRunProducer) driverLocksHeld(ctx context.Context) bool {
+	for _, lock := range []struct {
+		name string
+		held func() (bool, error)
+	}{
+		{"driver", p.deps.ChildDriverLockHeld},
+		{"run", p.deps.ChildRunLockHeld},
+	} {
+		held, err := lock.held()
+		if err != nil {
+			if ctx.Err() == nil {
+				logger.Warn("battenshed: child lock read failed; treating the driver as live", "producer", p.name, "slug", p.slug, "lock", lock.name, "error", err)
+			}
+			return true
+		}
+		if held {
+			return true
+		}
+	}
+	return false
 }
 
 // openTerminalOnce opens the operator's terminal window through deps.OpenTerminal unless the once-marker already exists.

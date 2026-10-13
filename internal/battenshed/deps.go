@@ -214,6 +214,21 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil ChildRunLockHeld resolves to a function reporting false in NewInnerRun.
 	ChildRunLockHeld func() (bool, error)
+	// ChildDriverLockHeld reports whether the child's Go driver lock is held, which means a Go driver is working between its steps even when no strand says so and the run lock is free.
+	// Call invokes it beside ChildRunLockHeld.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil ChildDriverLockHeld resolves to a function reporting false in NewInnerRun.
+	ChildDriverLockHeld func() (bool, error)
+	// TacklerInFlight reads the child's in-flight tackler marker as ArbiterInFlight reads the arbiter's: its deadline, and whether its strand is live.
+	// The state-changed notice is held while a live tackler may still settle the child's stop.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil TacklerInFlight resolves to reporting none in NewInnerRun.
+	TacklerInFlight func(ctx context.Context) (tackler ChildArbiter, found bool, err error)
+	// GoVerifyRetrySpent reports whether the child's settle records show its Go driver already spent a verify retry.
+	// The automatic Publish retry reads it so a run is never retried by both the Go driver and batten.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil GoVerifyRetrySpent resolves to a function reporting false in NewInnerRun.
+	GoVerifyRetrySpent func() (bool, error)
 	// ReviveStrands brings back the strands of the child's pair through reed resume, which relaunches the dead driver strand with its own session.
 	// Call invokes it at most once per halt episode per process, for a halted or awaiting child whose DriverStrand reports dead;
 	// it starts no run step and sends no resume line.
