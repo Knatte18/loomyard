@@ -189,9 +189,9 @@
 // An agent in one pair uses them to compare its run with the others without forming another worktree's path itself.
 //
 // The peer set is every board task whose status is a run status, whatever the run's state, with the caller's own slug left out.
-// Each peer line carries `slug`, `title`, `status`, `parent_branch`, `changed_paths` (the committed paths between the peer's merge base with its parent branch and its head), `decision_record` and `plan` (whether the peer holds them) and `unreadable`.
+// Each peer line carries `slug`, `title`, `status`, `row` (the 1-based position of the status's producer in the loom recipe the binary embeds, 0 when it names no row), `parent_branch`, `changed_paths` (the committed paths between the peer's merge base with its parent branch and its head), `decision_record` and `plan` (whether the peer holds them) and `unreadable`.
 // A peer whose pair, origin record, branch or records cannot be read is listed with that reason in `unreadable`, never dropped and never an error.
-// From a task pair the list also carries `parent_commits`, the commits on the pair's parent branch since the pair forked, as short SHA and subject, newest first; the prime has none.
+// From a task pair the list also carries `own_row`, the caller's own position by the same rule, 0 when the caller has no board task, and `parent_commits`, the commits on the pair's parent branch since the pair forked, as short SHA and subject, newest first; the prime has none.
 // Both verbs refuse in a hub with no board, and `show` refuses an unknown slug, a task holding no run status, the caller's own slug, an unknown record name and a record the peer lacks, each naming its way forward.
 //
 // The verbs write nothing and read only the board, the peers' two records and git history through `internal/fabricengine`.

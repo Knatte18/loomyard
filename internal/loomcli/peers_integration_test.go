@@ -7,6 +7,7 @@
 package loomcli
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"slices"
@@ -19,7 +20,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // TestHubPeersDeps_OverRealHub asserts four behaviors of the real closures.
@@ -111,6 +115,31 @@ func TestHubPeersDeps_OverRealHub(t *testing.T) {
 		line := deps.readPeer("no-origin")
 		if len(line.Unreadable) != 1 || !strings.HasPrefix(line.Unreadable[0], "branch: ") {
 			t.Errorf("unreadable = %v; want one entry naming the branch", line.Unreadable)
+		}
+	})
+
+	t.Run("peers reports the embedded loom recipe's row for each peer and the caller", func(t *testing.T) {
+		rows, err := loomrecipe.RowNames(shedrun.RecipeLoom)
+		if err != nil {
+			t.Fatalf("loomrecipe.RowNames(loom) error = %v; want nil", err)
+		}
+		want := float64(slices.Index(rows, "Plan-Write") + 1)
+		if want == 0 {
+			t.Fatal("loom recipe has no Plan-Write row")
+		}
+		var out bytes.Buffer
+		if code := peersVerb(&out, deps); code != 0 {
+			t.Fatalf("peersVerb exit = %d, out %s; want 0", code, out.String())
+		}
+		raw := envelope.RequireOK(t, out.String()).Raw
+		if raw["own_row"] != want {
+			t.Errorf("own_row = %v; want %v", raw["own_row"], want)
+		}
+		for _, peer := range raw["peers"].([]any) {
+			line := peer.(map[string]any)
+			if line["slug"] == "peer" && line["row"] != want {
+				t.Errorf("peer row = %v; want %v", line["row"], want)
+			}
 		}
 	})
 
