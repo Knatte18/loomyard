@@ -169,20 +169,7 @@ func renderReadRules(stencilsDir string, packOn bool) (cardRead, freshRead strin
 	return cardRead, freshRead, nil
 }
 
-// renderPackRead returns the text filled into the body's kickstart_pack marker for a fork with a pack: the read line naming packPath, under its own heading.
-func renderPackRead(stencilsDir, packPath string) (string, error) {
-	raw, err := stencilstore.Read(stencilsDir, "webster-fragment-pack-read")
-	if err != nil {
-		return "", err
-	}
-	filled, err := stencil.Fill(raw, map[string]string{"pack_path": packPath})
-	if err != nil {
-		return "", fmt.Errorf("fill the pack read line: %w", err)
-	}
-	return strings.TrimRight(string(filled), "\r\n"), nil
-}
-
-// renderPackSection renders the kick-start pack file's content from stencilsDir:
+// renderPackSection renders the kick-start pack section from stencilsDir:
 // the one-turn read instruction, then one subsection per card of pack, in slice order and joined by a blank line, each under the card's pointer path in planDirDisplay (see renderCardPack).
 func renderPackSection(stencilsDir string, pack []planindex.CardPack, planDirDisplay string) (string, error) {
 	raw, err := stencilstore.Read(stencilsDir, "webster-fragment-pack-section")
@@ -306,11 +293,11 @@ func cardPointerPath(c planparser.Card, planDirDisplay string) string {
 // batchGate is the caller-rendered batch package list and gate (renderBatchGate), filled into the body's required batch_gate marker.
 // outcomePath and summaryPath are Merriam's two contract files, filled into the fork prefix's outcome_path and summary_path markers so the fork is told never to write them.
 // pack is the batch's kick-start pack, one entry per card, or nil to render the prompt without one.
-// A non-nil pack swaps in the pack-on fragments and ends the prompt with a line sending the fork to packPath.
-// It also returns packFile, the content the caller writes to packPath: the one-turn read instruction and a subsection per card.
-// A nil pack renders the pack-off fragments, leaves the prompt's end empty and returns a nil packFile.
+// A non-nil pack swaps in the pack-on fragments and ends the prompt, after the batch-report section, with the pack section:
+// the one-turn read instruction and a subsection per card.
+// A nil pack renders the pack-off fragments and leaves the prompt's end empty.
 // The plan is not a parameter, per the fork-context-hygiene rule.
-func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir, outcomePath, summaryPath string, selfFixCap int, notePath, packPath string, pack []planindex.CardPack) (prompt, packFile []byte, err error) {
+func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir, outcomePath, summaryPath string, selfFixCap int, notePath string, pack []planindex.CardPack) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -319,25 +306,20 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 	planDirDisplay := masterPlanDirDisplay(promptWorktreeRoot, planDir)
 	locate, err := renderLocate(stencilsDir, specsDir, pack != nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("webster: render fork locate step: %w", err)
+		return nil, fmt.Errorf("webster: render fork locate step: %w", err)
 	}
 	cardRead, freshRead, err := renderReadRules(stencilsDir, pack != nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("webster: render fork read rules: %w", err)
+		return nil, fmt.Errorf("webster: render fork read rules: %w", err)
 	}
-	var packRead string
+	var packSection string
 	if pack != nil {
 		section, err := renderPackSection(stencilsDir, pack, planDirDisplay)
 		if err != nil {
-			return nil, nil, fmt.Errorf("webster: render kick-start pack: %w", err)
+			return nil, fmt.Errorf("webster: render kick-start pack: %w", err)
 		}
-		packFile = []byte(section + "\n")
-		line, err := renderPackRead(stencilsDir, packPath)
-		if err != nil {
-			return nil, nil, fmt.Errorf("webster: render kick-start pack read line: %w", err)
-		}
-		// The marker ends the body's last line, so the read line brings its own blank-line separation and an empty fill leaves no byte.
-		packRead = "\n\n" + line
+		// The marker ends the body's last line, so the section brings its own blank-line separation and an empty fill leaves no byte.
+		packSection = "\n\n" + section
 	}
 
 	directive, err := friction.Directive(notePath, stencilsDir, friction.RoleImplementer)
@@ -360,19 +342,19 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 		"locate":            locate,
 		"card_read":         cardRead,
 		"fresh_read":        freshRead,
-		"kickstart_pack":    packRead,
+		"kickstart_pack":    packSection,
 		friction.MarkerName: directive,
 	}
 	template, err := composeForkTemplate(stencilsDir)
 	if err != nil {
-		return nil, nil, fmt.Errorf("webster: read fork template: %w", err)
+		return nil, fmt.Errorf("webster: read fork template: %w", err)
 	}
 	friction.WarnIfMarkerAbsent(template, "webster-prefix-fork", directive)
-	prompt, err = stencil.FillOptional(template, values, []string{"kickstart_pack", friction.MarkerName})
+	prompt, err := stencil.FillOptional(template, values, []string{"kickstart_pack", friction.MarkerName})
 	if err != nil {
-		return nil, nil, fmt.Errorf("webster: fill fork template: %w", err)
+		return nil, fmt.Errorf("webster: fill fork template: %w", err)
 	}
-	return prompt, packFile, nil
+	return prompt, nil
 }
 
 // RenderRecoveryPrompt fills RecoveryTemplate for one batch's cold-start recovery strand, read from

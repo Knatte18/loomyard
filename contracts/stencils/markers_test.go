@@ -35,7 +35,6 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"webster-fragment-fresh-read-plain", WebsterFragmentFreshReadPlain, nil},
 		{"webster-fragment-fresh-read-pack", WebsterFragmentFreshReadPack, nil},
 		{"webster-fragment-pack-section", WebsterFragmentPackSection, []string{"pack_cards"}},
-		{"webster-fragment-pack-read", WebsterFragmentPackRead, []string{"pack_path"}},
 		{"webster-fragment-pack-card", WebsterFragmentPackCard, []string{"card_path", "pack_entries", "pack_unresolved"}},
 		{"webster-fragment-pack-unresolved", WebsterFragmentPackUnresolved, []string{"pack_unresolved"}},
 		{"webster-fragment-pack-empty", WebsterFragmentPackEmpty, nil},

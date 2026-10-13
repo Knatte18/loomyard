@@ -143,21 +143,20 @@
 // A plan whose language opts out of glyphs builds no pack, and neither does a batch none of whose cards has a resolved or unresolved entry;
 // either way the prompt renders as with the switch off.
 //
-// The pack reaches the fork alone, through a pack file begin-batch writes beside the fork prompt file, named after the batch with a `-pack` suffix:
-// the begin-batch envelope, its advisories and Master's context carry none of it,
+// The pack reaches the fork prompt file alone: the begin-batch envelope, its advisories and Master's context carry none of it,
 // and the recovery prompt never takes one.
-// The pack file opens with the one-turn read instruction: read every card file and every listed span in one turn, in parallel, then the target and `Uses:` files no span covers and the located unresolved glyphs' files, all before any edit.
-// Then it holds one subsection per card.
-// Each subsection sits under the card's pointer path, the same spelling as its bullet in the prompt's card list, and lists the card's entries, or `none` when none of its member glyphs resolved, or says the card names no member glyph.
-// A card's unresolved list follows its entries only when the card has unresolved refs.
-// The fork prompt's last line, after the batch-report section, sends the fork to the pack file, since the end of a prompt is what an agent acts on first;
+// The pack is the prompt's last section, after the batch-report section, since the end of a prompt is what an agent acts on first;
 // the batch-report section still names the report as the fork's last action.
-// Without a pack no pack file is written and the prompt ends with the batch-report section.
+// The section opens with the one-turn read instruction: read every card file and every listed span in one turn, in parallel, then the target and `Uses:` files no span covers and the located unresolved glyphs' files, all before any edit.
+// Then it holds one subsection per card.
+// Each subsection sits under the card's pointer path, the same spelling as its bullet in the card list, and lists the card's entries, or `none` when none of its member glyphs resolved, or says the card names no member glyph.
+// A card's unresolved list follows its entries only when the card has unresolved refs.
+// Without a pack the prompt ends with the batch-report section.
 //
 // The locate step, step 1 of the implementer body and its FRESH-READ rule are markers, locate, card_read and fresh_read, filled per mode by renderLocate and renderReadRules.
 // Without a pack the fragments carry the text as it stood before, so a fork without a pack and every recovery prompt render the bytes they did before the pack existed.
 // With a pack the locate step says the fork's first turn read the listed spans, says every line number obtained before the first edit holds before any edit only, and keeps the quarry or grep path for an unresolved member glyph;
-// FRESH-READ points at the pack file for what is read before any edit,
+// FRESH-READ points at the pack section for what is read before any edit,
 // and step 1 only names the card file as the card's instruction.
 // That bounds the fork's reading: it is no longer told to re-read whole a file that holds a listed span, so an edit outside a listed span in such a file is read only when the fork chooses to.
 // What can now get through is anything read before the first edit and changed since by an earlier card's edit or a self-fix.
