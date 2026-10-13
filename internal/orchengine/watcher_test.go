@@ -1,6 +1,7 @@
 package orchengine
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"os"
@@ -31,6 +32,7 @@ type fakeSession struct {
 	idleSeq    []bool // Consumed before idle.
 	tooShort   bool   // Reported with every probe that is not idle.
 	reason     string // Reported with every probe that is not idle.
+	draft      bool   // Reported as IdleProbe.Draft with every probe that is not idle.
 	sendErrs   []error
 	clearErr   error // Returned by every ClearSession while set.
 	clearErrs  []error
@@ -49,6 +51,7 @@ type fakeSession struct {
 	sessionState    shuttleengine.SessionState // Answered by SessionState while stateErr is nil.
 	sessionStateErr error                      // Returned by every SessionState while set.
 	sessionStartAt  time.Time                  // Answered by SessionState as the newest session-start time.
+	sessionSinces   []time.Time                // Consumed one per SessionState call into the answered state's Since, the last one sticking, while it is not empty.
 
 	// interruptErrs is consumed in order by Interrupt, which answers nil once it is drained.
 	interruptErrs []error
@@ -60,7 +63,14 @@ func (f *fakeSession) SessionState(string) (shuttleengine.RunSessionState, error
 	if f.sessionStateErr != nil {
 		return shuttleengine.RunSessionState{}, f.sessionStateErr
 	}
-	return shuttleengine.RunSessionState{State: f.sessionState, SessionStartAt: f.sessionStartAt}, nil
+	state := f.sessionState
+	if len(f.sessionSinces) > 0 {
+		state.Since = f.sessionSinces[0]
+		if len(f.sessionSinces) > 1 {
+			f.sessionSinces = f.sessionSinces[1:]
+		}
+	}
+	return shuttleengine.RunSessionState{State: state, SessionStartAt: f.sessionStartAt}, nil
 }
 
 func (f *fakeSession) LoadSkills(_ string, skills []string) error {
@@ -108,7 +118,7 @@ func (f *fakeSession) SessionIdle(string) (shuttleengine.IdleProbe, error) {
 	}
 	probe := shuttleengine.IdleProbe{Idle: idle}
 	if !idle {
-		probe.TooShort, probe.Reason = f.tooShort, f.reason
+		probe.TooShort, probe.Reason, probe.Draft = f.tooShort, f.reason, f.draft
 	}
 	return probe, nil
 }
@@ -2310,26 +2320,33 @@ func TestWatcher_RestartMidColorStepTypesItOnceWhenIdle(t *testing.T) {
 }
 
 // TestWatcher_LogsDisagreementBetweenIdleProbeAndSessionState drives notice deliveries, whose idle probe is the one door every probe goes through.
-// Each row logs its Warn count once per disagreement, and the same ticks with the state unreadable change neither the saved State, the session calls nor the queue.
+// Each row counts its Info lines, one per disagreement episode, and the same ticks with the state unreadable change neither the saved State, the session calls nor the queue.
 // The log is captured process-wide, so the test does not run in parallel.
 func TestWatcher_LogsDisagreementBetweenIdleProbeAndSessionState(t *testing.T) {
+	t0 := time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC)
 	tests := []struct {
 		name     string
 		idleSeq  []bool
 		tooShort bool
 		state    shuttleengine.SessionStateName
+		// cause is the scripted state's cause, turn when empty.
+		cause string
+		// sinces are consumed one per tick into the scripted state's Since, the last one sticking.
+		sinces   []time.Time
 		notices  int
 		wantWarn int
 	}{
-		{name: "an idle probe beside busy warns once across two ticks", idleSeq: []bool{true, true}, state: shuttleengine.SessionBusy, notices: 2, wantWarn: 1},
-		{name: "a not-idle probe beside asking warns once across two ticks", idleSeq: []bool{false, false}, state: shuttleengine.SessionAsking, notices: 2, wantWarn: 1},
-		{name: "a not-idle probe beside idle-done warns", idleSeq: []bool{false}, state: shuttleengine.SessionIdleDone, notices: 1, wantWarn: 1},
-		{name: "a not-idle probe beside idle-stalled warns", idleSeq: []bool{false}, state: shuttleengine.SessionIdleStalled, notices: 1, wantWarn: 1},
-		{name: "a not-idle probe beside idle-fresh warns", idleSeq: []bool{false}, state: shuttleengine.SessionIdleFresh, notices: 1, wantWarn: 1},
+		{name: "an idle probe beside busy logs once across two ticks", idleSeq: []bool{true, true}, state: shuttleengine.SessionBusy, notices: 2, wantWarn: 1},
+		{name: "a not-idle probe beside asking agrees", idleSeq: []bool{false, false}, state: shuttleengine.SessionAsking, notices: 2},
+		{name: "a not-idle probe beside idle-done logs", idleSeq: []bool{false}, state: shuttleengine.SessionIdleDone, notices: 1, wantWarn: 1},
+		{name: "a not-idle probe beside idle-stalled logs", idleSeq: []bool{false}, state: shuttleengine.SessionIdleStalled, notices: 1, wantWarn: 1},
+		{name: "a not-idle probe beside idle-fresh logs", idleSeq: []bool{false}, state: shuttleengine.SessionIdleFresh, notices: 1, wantWarn: 1},
 		{name: "an idle probe beside idle-done agrees", idleSeq: []bool{true}, state: shuttleengine.SessionIdleDone, notices: 1},
+		{name: "an idle probe beside busy on background work agrees", idleSeq: []bool{true}, state: shuttleengine.SessionBusy, cause: shuttleengine.SessionCauseBackground, notices: 1},
 		{name: "a not-idle probe beside busy agrees", idleSeq: []bool{false}, state: shuttleengine.SessionBusy, notices: 1},
 		{name: "a too-short pane is not compared", idleSeq: []bool{false}, tooShort: true, state: shuttleengine.SessionIdleStalled, notices: 1},
-		{name: "a disagreement warns again after an agreement between", idleSeq: []bool{true, false, true}, state: shuttleengine.SessionBusy, notices: 3, wantWarn: 2},
+		{name: "a disagreement with the same since logs once across an agreement between", idleSeq: []bool{true, false, true}, state: shuttleengine.SessionBusy, notices: 3, wantWarn: 1},
+		{name: "a disagreement with a new since logs again", idleSeq: []bool{true, true, true}, state: shuttleengine.SessionBusy, sinces: []time.Time{t0, t0, t0.Add(time.Minute)}, notices: 3, wantWarn: 2},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2345,27 +2362,117 @@ func TestWatcher_LogsDisagreementBetweenIdleProbeAndSessionState(t *testing.T) {
 				// The start color takes the first idle probe, so it is typed before the probe sequence is scripted.
 				e.tick()
 				e.s.idleSeq, e.s.tooShort = slices.Clone(tt.idleSeq), tt.tooShort
-				e.s.sessionState, e.s.sessionStateErr = shuttleengine.SessionState{Name: tt.state, Cause: "turn"}, stateErr
+				e.s.sessionSinces = slices.Clone(tt.sinces)
+				e.s.sessionState, e.s.sessionStateErr = shuttleengine.SessionState{Name: tt.state, Cause: cmp.Or(tt.cause, "turn")}, stateErr
 				for i := range tt.notices {
 					e.queue("notice " + string(rune('a'+i)))
 				}
 				for range len(tt.idleSeq) {
 					e.tick()
 				}
-				return outcome{e.state(), e.s.calls, e.noticeLines(), strings.Count(buf.String(), "orch: session state disagrees with the idle probe")}
+				var infoLines int
+				for _, line := range strings.Split(buf.String(), "\n") {
+					if strings.Contains(line, "orch: session state disagrees with the idle probe") {
+						if !strings.Contains(line, "level=INFO") {
+							t.Errorf("disagreement line %q is not at Info", line)
+						}
+						infoLines++
+					}
+				}
+				return outcome{e.state(), e.s.calls, e.noticeLines(), infoLines}
 			}
 
 			read := drive(nil)
 			unreadable := drive(errBoom)
 			if read.warned != tt.wantWarn {
-				t.Errorf("disagreement warnings = %d, want %d", read.warned, tt.wantWarn)
+				t.Errorf("disagreement lines = %d, want %d", read.warned, tt.wantWarn)
 			}
 			if unreadable.warned != 0 {
-				t.Errorf("an unreadable state warned %d times, want none", unreadable.warned)
+				t.Errorf("an unreadable state logged %d disagreement lines, want none", unreadable.warned)
 			}
 			if !reflect.DeepEqual(read.state, unreadable.state) || !slices.Equal(read.calls, unreadable.calls) || !slices.Equal(read.queue, unreadable.queue) {
 				t.Errorf("an unreadable state changed the outcome: state %+v vs %+v, calls %q vs %q, queue %q vs %q",
 					read.state, unreadable.state, read.calls, unreadable.calls, read.queue, unreadable.queue)
+			}
+		})
+	}
+}
+
+// TestWatcher_DraftHoldLogsOnceWithoutTheDraftText drives a notice over three ticks whose operator draft grows by one character each, by each route a draft reaches the watcher.
+// Each row asserts the hold logs once, no log line holds the draft, and State.Stuck is the constant draft reason.
+// The log is captured process-wide, so the test does not run in parallel.
+func TestWatcher_DraftHoldLogsOnceWithoutTheDraftText(t *testing.T) {
+	drafts := []string{"zqa", "zqab", "zqabc"}
+	// quoting returns a shuttle-style hold error for draft built by wrap.
+	heldBy := func(wrap func(draft string) error) []error {
+		var errs []error
+		for _, draft := range drafts {
+			errs = append(errs, wrap(draft))
+		}
+		return errs
+	}
+	tests := []struct {
+		name string
+		// arrange scripts the session for the three ticks.
+		arrange  func(s *fakeSession)
+		wantHeld string
+	}{
+		{
+			name: "the probe route",
+			arrange: func(s *fakeSession) {
+				s.idleSeq = []bool{false, false, false}
+				s.draft = true
+			},
+			wantHeld: "orch: injection held",
+		},
+		{
+			name: "the send route held by the idle wait",
+			arrange: func(s *fakeSession) {
+				s.sendErrs = heldBy(func(draft string) error {
+					return &shuttleengine.SessionBusyError{Reason: "the input box holds a draft: " + draft, Draft: true, Err: fmt.Errorf("%w: the input box holds a draft: %q", shuttleengine.ErrSessionBusy, draft)}
+				})
+			},
+			wantHeld: "orch: injection held by the session",
+		},
+		{
+			name: "the send route refused over foreign box text",
+			arrange: func(s *fakeSession) {
+				s.sendErrs = heldBy(func(draft string) error { return fmt.Errorf("%w: %q", shuttleengine.ErrForeignBoxText, draft) })
+			},
+			wantHeld: "orch: injection held by the session",
+		},
+		{
+			name: "the send route whose text merged with a draft",
+			arrange: func(s *fakeSession) {
+				s.sendErrs = heldBy(func(draft string) error {
+					return fmt.Errorf("%w: the input box holds %q", shuttleengine.ErrSentTextInDraft, draft)
+				})
+			},
+			wantHeld: "orch: injection held by the session",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := logcapture.CaptureVerbose(t)
+			e := newWatchEnv(t)
+			// The start color takes the first idle probe, so it is typed before the draft is scripted.
+			e.tick()
+			e.queue("notice")
+			tt.arrange(e.s)
+			// The probe route's reason quotes the draft, as shuttle's does.
+			for _, draft := range drafts {
+				e.s.reason = "the input box holds a draft: " + draft
+				e.tick()
+			}
+
+			if got := strings.Count(buf.String(), `msg="`+tt.wantHeld+`"`); got != 1 {
+				t.Errorf("%q lines = %d, want 1; logs: %s", tt.wantHeld, got, buf.String())
+			}
+			if strings.Contains(buf.String(), drafts[0]) {
+				t.Errorf("a log line holds the draft text: %s", buf.String())
+			}
+			if st := e.state(); st.Stuck != draftHoldReason {
+				t.Errorf("State.Stuck = %q, want %q", st.Stuck, draftHoldReason)
 			}
 		})
 	}

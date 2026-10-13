@@ -25,8 +25,15 @@
 //     With the task worktree gone it is reedengine.EndSessionByName, so no path under the gone worktree is recreated.
 //     The loop lock is released after it; a failure before the session end puts the pid file back first, or removes the mark when there was no record.
 //
-// RemovePair then calls Topology.Remove.
+// RemovePair then archives the pair's logs and calls Topology.Remove.
 // It repeats the probe's checks, so a refusal raised only by Remove means the pair changed between probe and removal, and the session is already ended.
+//
+// # Log archive
+//
+// Before the removal, and so after the session end and the run-lock wait, RemovePair copies the pair's trace logs and its `verify-<n>.log` files into the hub's log archive, `fabricengine.LogArchiveDir`.
+// Each teardown writes one timestamped entry under the pair's slug, with `trace` and `verify` subdirectories, and writes nothing when the pair holds neither.
+// The archive copies and never moves, and it never fails or delays the teardown: a failure logs a Warn and the removal goes on.
+// Each teardown first prunes the archive, removing every entry older than 30 days and each slug directory that leaves empty; a path that does not parse as an archive entry is left alone.
 //
 // # Board claim
 //

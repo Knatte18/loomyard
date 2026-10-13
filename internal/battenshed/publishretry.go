@@ -183,9 +183,10 @@ func (p *innerRunProducer) publishRetryDecision(ctx context.Context, status shed
 		}
 		goSpent, err := p.deps.GoVerifyRetrySpent()
 		if err != nil {
-			logger.Warn("battenshed: Go verify-retry records unreadable; leaving the halt to the usual handling", "producer", p.name, "slug", p.slug, "error", err)
+			p.seamFailed(failGoVerifyRetryRecords, err)
 			return publishRetry{}
 		}
+		p.seamRecovered(failGoVerifyRetryRecords)
 		if goSpent {
 			return publishRetry{spent: true}
 		}
@@ -237,7 +238,7 @@ func (p *innerRunProducer) publishRetryStep(ctx context.Context, w *childWait) *
 		return p.capPublishRetry(w, r)
 	}
 	if now.Before(w.publishRetryAt) {
-		p.report(w, w.publishRetryReason)
+		p.report(w, w.publishRetryReason, w.publishRetryKey)
 		return nil
 	}
 	if r.action == publishRetryGoto {
@@ -246,9 +247,9 @@ func (p *innerRunProducer) publishRetryStep(ctx context.Context, w *childWait) *
 	return p.publishRetryResume(ctx, w, r)
 }
 
-// publishRetryGoto sends the child to the retry's target.
+// publishRetryGoto sends the child to the retry's target, logging the attempt at Info the first time and at Debug on each retry after a refusal.
 func (p *innerRunProducer) publishRetryGoto(ctx context.Context, w *childWait, r publishRetry) *waitEnd {
-	logger.Info("battenshed: sending the child to the failed Publish's target", "producer", p.name, "slug", p.slug, "target", r.target)
+	logAttempt(w.publishRefusal == "", "battenshed: sending the child to the failed Publish's target", "producer", p.name, "slug", p.slug, "target", r.target)
 	err := p.deps.Goto(ctx, r.target)
 	if err != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
@@ -259,8 +260,9 @@ func (p *innerRunProducer) publishRetryGoto(ctx context.Context, w *childWait, r
 			return p.capPublishRetry(w, r)
 		}
 		w.publishRetryAt = p.deps.Now().Add(p.noticeProbe)
-		w.publishRetryReason = fmt.Sprintf("the automatic Publish verify retry waits to send the child to %s: its run lock is held; retrying (%s)", r.target, w.publishRefusal)
-		p.report(w, w.publishRetryReason)
+		w.publishRetryKey = fmt.Sprintf("the automatic Publish verify retry waits to send the child to %s: its run lock is held; retrying", r.target)
+		w.publishRetryReason = fmt.Sprintf("%s (%s)", w.publishRetryKey, w.publishRefusal)
+		p.report(w, w.publishRetryReason, w.publishRetryKey)
 		return nil
 	}
 	if err := p.writePublishRetryMarker(publishRetryGotoDone, r.started, r.target); err != nil {
@@ -269,11 +271,12 @@ func (p *innerRunProducer) publishRetryGoto(ctx context.Context, w *childWait, r
 	return p.exemptEnd(fmt.Sprintf("automatic Publish verify retry: sent the child to %s", r.target))
 }
 
-// publishRetryResume resumes the child paused at the retry's target through its bootstrap.
+// publishRetryResume resumes the child paused at the retry's target through its bootstrap, logging the attempt at Info the first time and at Debug on each retry after a refusal.
 func (p *innerRunProducer) publishRetryResume(ctx context.Context, w *childWait, r publishRetry) *waitEnd {
-	logger.Info("battenshed: resuming the child at the failed Publish's target", "producer", p.name, "slug", p.slug, "target", r.target)
+	first := w.publishRefusal == ""
+	logAttempt(first, "battenshed: resuming the child at the failed Publish's target", "producer", p.name, "slug", p.slug, "target", r.target)
 	err := p.deps.Spawn(ctx)
-	logger.Info("battenshed: inner shed run wait complete", "producer", p.name, "slug", p.slug)
+	logAttempt(first, "battenshed: inner shed run wait complete", "producer", p.name, "slug", p.slug)
 	if err != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return hardEnd(cerr)
@@ -284,11 +287,12 @@ func (p *innerRunProducer) publishRetryResume(ctx context.Context, w *childWait,
 		}
 		w.publishRefusal = oneLine(err.Error(), noticeErrorMax)
 		w.publishRetryAt = p.deps.Now().Add(p.noticeProbe)
-		w.publishRetryReason = fmt.Sprintf("the automatic Publish verify retry waits to resume the child at %s; retrying (%s)", r.target, w.publishRefusal)
+		w.publishRetryKey = fmt.Sprintf("the automatic Publish verify retry waits to resume the child at %s; retrying", r.target)
+		w.publishRetryReason = fmt.Sprintf("%s (%s)", w.publishRetryKey, w.publishRefusal)
 		if busy {
 			p.noticeDriverBusy(ctx, w, err)
 		}
-		p.report(w, w.publishRetryReason)
+		p.report(w, w.publishRetryReason, w.publishRetryKey)
 		return nil
 	}
 	p.driverBusyNoticed = false

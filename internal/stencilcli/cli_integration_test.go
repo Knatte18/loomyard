@@ -495,7 +495,7 @@ func stepDriftWarningNeverBlocksExitCode(t *testing.T, h *hubforge.Hub, worktree
 
 	var buf bytes.Buffer
 	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 	if _, code, raw := runCLI(t, worktree, "sync"); code != 0 {
 		t.Fatalf("stencil sync = %d; want 0 even though the board copy has drifted from the worktree source. output: %s", code, raw)

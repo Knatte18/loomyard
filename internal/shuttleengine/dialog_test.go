@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // dialogReed is a fakeReed whose pane capture is whatever the test's script last set, or an error while failCapture is set.
@@ -48,8 +50,8 @@ const (
 	dialogTick = 5 * time.Second
 )
 
+// TestWait_DialogNotice captures the process-global logger in every row, so neither it nor its rows run in parallel.
 func TestWait_DialogNotice(t *testing.T) {
-	t.Parallel()
 	const strandName = "lyx:slug:driver"
 	shell := []BackgroundTask{{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999", Signal: SignalTranscript}}
 	// steps[k] runs after the (k+1)th sleep, so at (k+1)*dialogTick on the run clock, just before that tick's wait-loop pass.
@@ -78,6 +80,8 @@ func TestWait_DialogNotice(t *testing.T) {
 		// wantFinal is the DialogNotifiedOffset the record holds when Wait returns.
 		wantFinal int64
 		wantHold  int
+		// wantCaptureEpisode asserts the failing capture warned once and logged its recovery once.
+		wantCaptureEpisode bool
 	}{
 		{
 			name: "an ask with no input box notifies once at the bound, with the offset persisted before the call", events: "ASK\n", strand: strandName,
@@ -137,7 +141,7 @@ func TestWait_DialogNotice(t *testing.T) {
 		{
 			name: "a failed capture sends nothing on that tick and the notice follows on a later tick that reads no box", events: "ASK\n", failCapture: true,
 			steps:  map[int]func(*dialogEnv){12: func(env *dialogEnv) { env.reed.failCapture = false }},
-			wantAt: []time.Duration{65 * time.Second}, wantPersisted: []int64{4}, wantFinal: 4,
+			wantAt: []time.Duration{65 * time.Second}, wantPersisted: []int64{4}, wantFinal: 4, wantCaptureEpisode: true,
 		},
 		{name: "an engine that reads no input box sends nothing", events: "ASK\n", noReader: true},
 		{name: "a pane too short to draw the box sends nothing", events: "ASK\n", tooShort: true},
@@ -157,7 +161,7 @@ func TestWait_DialogNotice(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			buf := logcapture.CaptureVerbose(t)
 			var engine Engine
 			if tt.noReader {
 				engine = &sessionFakeEngine{waitingEngine: waitingEngine{outstanding: tt.outstand}}
@@ -237,6 +241,14 @@ func TestWait_DialogNotice(t *testing.T) {
 			}
 			if final.DialogNotifiedOffset != tt.wantFinal {
 				t.Errorf("final DialogNotifiedOffset = %d, want %d", final.DialogNotifiedOffset, tt.wantFinal)
+			}
+			if tt.wantCaptureEpisode {
+				if got := countLevelLines(buf.String(), "WARN", "capture pane for the dialog watch failed"); got != 1 {
+					t.Errorf("capture failure WARN lines = %d, want 1; log: %s", got, buf.String())
+				}
+				if got := countLevelLines(buf.String(), "INFO", "capture pane for the dialog watch works again"); got != 1 {
+					t.Errorf("capture recovery INFO lines = %d, want 1; log: %s", got, buf.String())
+				}
 			}
 		})
 	}

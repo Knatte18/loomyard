@@ -15,6 +15,7 @@ package reedcli
 
 import (
 	"io"
+	"os"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -57,6 +58,10 @@ type reedCLI struct {
 	// watchdogTiming, when non-nil, replaces watchdogDefaultTiming() in watchdogCmd's loop so a test can shorten how long it waits on the daemon.
 	// Production never sets it.
 	watchdogTiming *watchdogTiming
+
+	// watchdogExeStat and respawnWatchdog are test seams for watchdogCmd's replaced-binary retirement; nil means a stat of this process's own binary and reedengine.SpawnWatchdog.
+	watchdogExeStat func() (os.FileInfo, error)
+	respawnWatchdog func(hubPath, tmuxPath, shellPath string, suppress bool)
 }
 
 // strandOps is the slice of *reedengine.Engine the remove and status verbs call.

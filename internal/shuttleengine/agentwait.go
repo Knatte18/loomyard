@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // AgentWait is one live run's waiting and busy reading.
@@ -27,7 +25,7 @@ type AgentWait struct {
 // A run is Waiting when its own wait marker is live and is the held turn end, or when its session state is asking or idle-stalled.
 // A run is Busy when its session state is busy and it is not waiting; every other state is neither.
 // The session state is the fold ReadSessionStates reads, at now.
-// A directory that is not a run directory, a run with no record, a run that is not live and an unreadable record are skipped, and an unreadable record is logged.
+// A directory that is not a run directory, a run with no record, a run that is not live and an unreadable record are skipped, and an unreadable record is logged once per episode.
 // An absent root returns no readings and no error.
 func ReadAgentWaits(cfg Config, anchorPath string, engine Engine, now time.Time) ([]AgentWait, error) {
 	root := runDirRoot(cfg, anchorPath)
@@ -46,9 +44,10 @@ func ReadAgentWaits(cfg Config, anchorPath string, engine Engine, now time.Time)
 		runDir := filepath.Join(root, entry.Name())
 		rs, found, err := loadRunState(runDir)
 		if err != nil {
-			logger.Warn("shuttle: skipping an unreadable run record", "runDir", runDir, "cause", err)
+			unreadableFiles.Fail(runDir, "shuttle: skipping an unreadable run record", "runDir", runDir, "cause", err)
 			continue
 		}
+		unreadableFiles.Recover(runDir, "shuttle: run record readable again", "runDir", runDir)
 		if !found || !runIsLive(rs) {
 			continue
 		}
@@ -69,6 +68,7 @@ func heldMarkerLive(runDir string) bool {
 	path := filepath.Join(runDir, waitMarkerFileName)
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
+		unreadableFiles.Recover(path, "shuttle: wait marker readable again", "path", path)
 		return false
 	}
 	var marker WaitMarker
@@ -76,8 +76,9 @@ func heldMarkerLive(runDir string) bool {
 		err = yaml.Unmarshal(data, &marker)
 	}
 	if err != nil {
-		logger.Warn("shuttle: skipping an unreadable wait marker", "path", path, "cause", err)
+		unreadableFiles.Fail(path, "shuttle: skipping an unreadable wait marker", "path", path, "cause", err)
 		return false
 	}
+	unreadableFiles.Recover(path, "shuttle: wait marker readable again", "path", path)
 	return marker.Held() && isAlive(marker.PID)
 }

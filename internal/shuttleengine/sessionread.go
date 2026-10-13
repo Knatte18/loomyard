@@ -7,8 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // SessionCauseUnsupported is the cause of an unknown state read from an engine that cannot parse session signals.
@@ -30,7 +28,7 @@ type RunSessionState struct {
 
 // ReadSessionStates returns the session state of every run under the run-directory root of anchorPath whose record reads running.
 // The process waiting on a run need not be alive, so a run whose Wait died still shows.
-// A directory that is not a run directory, a run with no record and an undecodable record are skipped, and an undecodable record is logged.
+// A directory that is not a run directory, a run with no record and an undecodable record are skipped, and an undecodable record is logged once per episode.
 // now is the reading's time.
 // An absent root returns no readings and no error.
 func ReadSessionStates(cfg Config, anchorPath string, engine Engine, now time.Time) ([]RunSessionState, error) {
@@ -50,9 +48,10 @@ func ReadSessionStates(cfg Config, anchorPath string, engine Engine, now time.Ti
 		runDir := filepath.Join(root, entry.Name())
 		rs, found, err := loadRunState(runDir)
 		if err != nil {
-			logger.Warn("shuttle: skipping an unreadable run record", "runDir", runDir, "cause", err)
+			unreadableFiles.Fail(runDir, "shuttle: skipping an unreadable run record", "runDir", runDir, "cause", err)
 			continue
 		}
+		unreadableFiles.Recover(runDir, "shuttle: run record readable again", "runDir", runDir)
 		if !found || rs.Outcome != runOutcomeRunning {
 			continue
 		}

@@ -757,7 +757,7 @@ func TestEngine_HandoffLifecycle_InvalidHandoffFallback(t *testing.T) {
 	// operator would never recognize.
 	var logBuf bytes.Buffer
 	logger.SetOutput(&logBuf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 	runDir := filepath.Join(t.TempDir(), "run")
 
@@ -822,7 +822,7 @@ func TestEngine_HandoffLifecycle_InvalidHandoffFallback(t *testing.T) {
 func TestEngine_JudgeSkippedRoundReadsNoHandoffFiles(t *testing.T) {
 	var logBuf bytes.Buffer
 	logger.SetOutput(&logBuf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 	runDir := filepath.Join(t.TempDir(), "run")
 	gateDir := t.TempDir()
@@ -913,7 +913,7 @@ func TestEngine_JudgeSkippedRoundReadsNoHandoffFiles(t *testing.T) {
 func TestEngine_RecordedHandoffCorruptedMidBlockWarnsUnderCallerName(t *testing.T) {
 	var logBuf bytes.Buffer
 	logger.SetOutput(&logBuf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 	runDir := filepath.Join(t.TempDir(), "run")
 

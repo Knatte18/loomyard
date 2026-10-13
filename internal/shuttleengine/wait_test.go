@@ -858,6 +858,12 @@ func TestRun_Wait_HeldTurnEnd(t *testing.T) {
 	}
 }
 
+// wantLogLines is the exact number of captured log lines at level that contain text.
+type wantLogLines struct {
+	level, text string
+	count       int
+}
+
 // TestRun_Wait_StartupWindow drives Wait over a live pane that never reaches StartupReady, with the
 // run deadline (10 minutes) an order of magnitude beyond the startup deadline (1 second), so a run
 // that only ever classifies OutcomeTimeout is the pre-fix behaviour and one that classifies
@@ -892,23 +898,54 @@ func TestRun_Wait_StartupWindow(t *testing.T) {
 		startupScript []StartupState
 		captureErr    error
 		captureQueue  []string
-		output        bool
-		wantOutcome   Outcome
+		// captureErrQueue scripts the capture failures per probe, FIFO with the last entry sticking; a nil entry answers from captureQueue.
+		captureErrQueue []error
+		// sendKeyErr fails every key the dismissal sends, and sendKeyErrQueue scripts them per key, FIFO with the last entry sticking.
+		sendKeyErr      error
+		sendKeyErrQueue []error
+		output          bool
+		wantOutcome     Outcome
 		// wantTrustDismissed asserts an Enter was sent and the engine saw gateCapture.
 		wantTrustDismissed bool
 		// recordsSessionStarts marks the record as one whose launch recorded session starts, so a ready pane needs a session-start line the never-created events file lacks.
 		recordsSessionStarts bool
+		// wantLogs are the exact counts of log lines by level and text across the window's probes.
+		wantLogs []wantLogLines
 		// events, when set, is written to the run's events path and the run goes over a sessionFakeEngine that reads it.
 		events string
 	}{
 		{name: "ready pane without a session-start line on a recording launch", startupScript: []StartupState{StartupReady}, recordsSessionStarts: true, wantOutcome: OutcomeDied},
 		{name: "a session start then a turn start beside a still-booting pane on a recording launch", startupScript: []StartupState{StartupPending}, recordsSessionStarts: true, events: "SESSIONSTART:startup\nSTART\n", wantOutcome: OutcomeDied},
 		{name: "trust prompt that never clears", startupScript: []StartupState{StartupTrustPrompt}, wantOutcome: OutcomeDied},
-		{name: "pane capture fails every probe", captureErr: errors.New("capture pane: no such pane"), wantOutcome: OutcomeDied},
+		{
+			name: "pane capture fails every probe", captureErr: errors.New("capture pane: no such pane"), wantOutcome: OutcomeDied,
+			wantLogs: []wantLogLines{{"WARN", "capture pane during startup probe", 1}},
+		},
 		{name: "still booting", startupScript: []StartupState{StartupPending}, wantOutcome: OutcomeDied},
 		{name: "trust prompt that never clears with output files", startupScript: []StartupState{StartupTrustPrompt}, output: true, wantOutcome: OutcomeDone},
-		{name: "pane capture fails every probe with output files", captureErr: errors.New("capture pane: no such pane"), output: true, wantOutcome: OutcomeDone},
+		{
+			name: "pane capture fails every probe with output files", captureErr: errors.New("capture pane: no such pane"), output: true, wantOutcome: OutcomeDone,
+			wantLogs: []wantLogLines{{"WARN", "capture pane during startup probe", 1}},
+		},
 		{name: "still booting with output files", startupScript: []StartupState{StartupPending}, output: true, wantOutcome: OutcomeDone},
+		{
+			name:          "pane capture fails on the first probes then works",
+			startupScript: []StartupState{StartupPending}, captureErrQueue: []error{errors.New("capture pane: no such pane"), errors.New("capture pane: no such pane"), nil},
+			wantOutcome: OutcomeDied,
+			wantLogs:    []wantLogLines{{"WARN", "capture pane during startup probe", 1}, {"INFO", "startup probe capture works again", 1}},
+		},
+		{
+			name:          "trust dismissal fails every probe",
+			startupScript: []StartupState{StartupTrustPrompt}, captureQueue: []string{gateCapture}, sendKeyErr: errors.New("send keys: no such pane"),
+			wantOutcome: OutcomeDied,
+			wantLogs:    []wantLogLines{{"WARN", "dismiss trust prompt", 1}},
+		},
+		{
+			name:          "trust dismissal fails on the first probes then sends",
+			startupScript: []StartupState{StartupTrustPrompt}, captureQueue: []string{gateCapture}, sendKeyErrQueue: []error{errors.New("send keys: no such pane"), errors.New("send keys: no such pane"), nil},
+			wantOutcome: OutcomeDied,
+			wantLogs:    []wantLogLines{{"WARN", "dismiss trust prompt", 1}, {"INFO", "trust prompt dismissal sends again", 1}},
+		},
 		{
 			// The first probe sees the trust prompt (dismissed with Enter); every probe after that
 			// sees a still-booting pane, so the run never becomes ready and fast-fails once the
@@ -920,6 +957,7 @@ func TestRun_Wait_StartupWindow(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			buf := logcapture.CaptureVerbose(t)
 			runDir := t.TempDir()
 			eventsPath := filepath.Join(runDir, "events.jsonl")
 			outputFile := filepath.Join(runDir, "out.md")
@@ -928,9 +966,12 @@ func TestRun_Wait_StartupWindow(t *testing.T) {
 			}
 
 			reed := &fakeReed{
-				StatusQueue:  []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
-				CaptureErr:   tt.captureErr,
-				CaptureQueue: tt.captureQueue,
+				StatusQueue:     []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
+				CaptureErr:      tt.captureErr,
+				CaptureQueue:    tt.captureQueue,
+				CaptureErrQueue: tt.captureErrQueue,
+				SendKeyErr:      tt.sendKeyErr,
+				SendKeyErrQueue: tt.sendKeyErrQueue,
 			}
 			engine := &fakeEngine{StartupScript: tt.startupScript}
 			var runEngine Engine = engine
@@ -963,6 +1004,11 @@ func TestRun_Wait_StartupWindow(t *testing.T) {
 			// window did not bind.
 			if elapsed := fc.Now().Sub(run.deadline.Add(-10 * time.Minute)); elapsed > time.Minute {
 				t.Errorf("virtual time elapsed = %s; want well under a minute (the 1s startup window), not the 10m run window", elapsed)
+			}
+			for _, want := range tt.wantLogs {
+				if got := countLevelLines(buf.String(), want.level, want.text); got != want.count {
+					t.Errorf("%s lines of %q = %d, want %d; log: %s", want.level, want.text, got, want.count, buf.String())
+				}
 			}
 
 			if !tt.wantTrustDismissed {

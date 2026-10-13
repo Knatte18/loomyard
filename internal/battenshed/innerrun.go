@@ -171,6 +171,8 @@ type innerRunProducer struct {
 	noticeQuiet time.Duration
 	// retryOn is true when the automatic Publish verify retry is wired: a Publish row name and all three of its seams.
 	retryOn bool
+	// failures guards each polled seam's failure by its message, across Calls: Warn at the first, Debug while it repeats, Info at recovery.
+	failures logger.EpisodeSet
 	// restepOn is true when the binary re-step is wired: both its build and dirty-path seams.
 	restepOn bool
 	// restep is the binary re-step's interval and last reading, across Calls.
@@ -178,6 +180,52 @@ type innerRunProducer struct {
 }
 
 var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
+
+// seamFailed counts one failure of the seam named by msg, with the producer and slug fields, extra, then err.
+func (p *innerRunProducer) seamFailed(msg string, err error, extra ...any) {
+	args := append([]any{"producer", p.name, "slug", p.slug}, extra...)
+	p.failures.Fail(msg, msg, append(args, "error", err)...)
+}
+
+// seamRecovered ends the failure episode of the seam named by msg; it does nothing outside an episode.
+func (p *innerRunProducer) seamRecovered(msg string) {
+	p.failures.Recover(msg, "battenshed: a repeated failure recovered", "failure", msg, "producer", p.name, "slug", p.slug)
+}
+
+// The failure messages of the guarded seams, each the key of its episode.
+const (
+	failLockRecordUnreadable  = "battenshed: parent lock record unreadable; leaving it alone"
+	failAgentStatesUnreadable = "battenshed: the child's agent states are unreadable; keeping its parent lock"
+	failLockRelease           = "battenshed: could not release the child's parent lock"
+	failStaleBaseDecision     = "battenshed: decision unreadable for the stale-base check; not resuming"
+	failParentMoved           = "battenshed: could not tell whether the parent moved; not resuming"
+	failReviewWaitNote        = "battenshed: reviewer wait note unavailable"
+	failDriverStrandRead      = "battenshed: could not read the child's driver strand; skipping the revive"
+	failDriverLiveness        = "battenshed: driver liveness read failed; treating the driver as live"
+	failChildLockRead         = "battenshed: child lock read failed; treating the driver as live"
+	failPairDirectory         = "battenshed: notice skipped; pair directory unresolved"
+	failAgentActivity         = "battenshed: agent activity read failed; no activity notice"
+	failArbiterMarker         = "battenshed: arbiter marker unreadable; holding nothing"
+	failTacklerMarker         = "battenshed: tackler marker unreadable; holding nothing"
+	failStopReport            = "battenshed: stop report unreadable; reading it as none"
+	failNoticeDecision        = "battenshed: decision unreadable for the notice step; reading it as decided"
+	failOrchStateUnreadable   = "battenshed: notice held back; the orch state is unreadable"
+	failRestepDriverStrand    = "battenshed: binary re-step check skipped; could not read the child's driver strand"
+	failRestepLocks           = "battenshed: binary re-step check skipped; could not read the child's locks"
+	failRestepBuild           = "battenshed: binary re-step check skipped; could not read the on-disk build"
+	failRestepDirtyPaths      = "battenshed: binary re-step check skipped; could not read the task pair's uncommitted paths"
+	failRestepMarker          = "battenshed: binary re-step marker unreadable; reading it as absent"
+	failGoVerifyRetryRecords  = "battenshed: Go verify-retry records unreadable; leaving the halt to the usual handling"
+)
+
+// logAttempt logs msg at Info for a first attempt and at Debug for each retry after a refusal.
+func logAttempt(first bool, msg string, args ...any) {
+	if first {
+		logger.Info(msg, args...)
+		return
+	}
+	logger.Debug(msg, args...)
+}
 
 // NewInnerRun returns a shedengine.ShedProducer that resolves the task worktree's status path and spawns the inner shed run via deps.Spawn the first time Call finds no status file.
 // It then waits on the child inside the call, checking every pollInterval through deps.Sleep.
@@ -306,7 +354,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 //   - awaiting with a decision already acted on and the child's history length unchanged since that resume does not spawn, and reports that the resume was delivered and the child's driver has not re-stepped yet;
 //   - awaiting with a decision already acted on and the child's history longer (or an old-layout marker) does not spawn, and reports the recovery of deciding again;
 //   - done records the first-sight time in the done-seen marker and returns Done once the driver strand is gone or driverExitGrace has elapsed since first sight, and otherwise reports the wait for the driver to finish its stop report;
-//   - blocked, paused or failed never spawns or resumes the child, except for the one automatic Publish verify retry (publishretry.go), Warns once per halt episode, revives a dead driver strand once per episode (reviveDeadDriver), and reports the child's State, Error and CurrentProducer and the resume command;
+//   - blocked, paused or failed never spawns or resumes the child, except for the one automatic Publish verify retry (publishretry.go), logs one Info line per halt episode, revives a dead driver strand once per episode (reviveDeadDriver), and reports the child's State, Error and CurrentProducer and the resume command;
 //     a resumed child is then read as running again;
 //   - any other value is a hard error naming the unrecognised state.
 //
@@ -489,16 +537,17 @@ func (p *innerRunProducer) driverAtWork(ctx context.Context) (bool, error) {
 }
 
 // reviewWaitNote returns the child's reviewer-wait note, or empty when there is none or ReviewWait is nil.
-// A ReviewWait error logs one Warn and reads as no note, since the note never fails the row.
+// A ReviewWait error warns once per episode and reads as no note, since the note never fails the row.
 func (p *innerRunProducer) reviewWaitNote() string {
 	if p.deps.ReviewWait == nil {
 		return ""
 	}
 	note, err := p.deps.ReviewWait()
 	if err != nil {
-		logger.Warn("battenshed: reviewer wait note unavailable", "producer", p.name, "slug", p.slug, "error", err)
+		p.seamFailed(failReviewWaitNote, err)
 		return ""
 	}
+	p.seamRecovered(failReviewWaitNote)
 	return note
 }
 
@@ -515,8 +564,9 @@ type childWait struct {
 	// and probeDue is true on the checks that do it.
 	lastProbe time.Time
 	probeDue  bool
-	// reason is the wait reason last written through reportStuck.
-	reason string
+	// reason is the wait reason last written to the reason file, and reasonKeys the keys reasons were logged under in this Call.
+	reason     string
+	reasonKeys map[string]bool
 	// pauseWarned is the pause-flag read error last warned about, so a persistent one warns once.
 	pauseWarned string
 	// pause is the newest reading of the pause record's coverage of the slug, and coverageWarned the read error last warned about.
@@ -542,14 +592,18 @@ type childWait struct {
 	resumeRetryAt   time.Time
 	notParkedLogged bool
 	// busyLogged is whether a refusal for a busy driver pane was logged already, and busyReason the report of the last such refusal, empty while the last refusal was not a busy one.
+	// busyKey is busyReason without its spawn-error tail, which carries the driver pane's draft text.
 	busyLogged bool
 	busyReason string
+	busyKey    string
 
 	// retry is the halted arm's decision about the automatic Publish verify retry, made once per Call.
 	retry publishRetry
 	// publishRetryAt is when the retry may try its goto or resume again after a refusal, and publishRetryReason the report of that refusal.
+	// publishRetryKey is publishRetryReason without its refusal tail.
 	publishRetryAt     time.Time
 	publishRetryReason string
+	publishRetryKey    string
 	// publishRefusal is the last refusal the retry saw, cut to one line.
 	publishRefusal string
 
@@ -579,18 +633,46 @@ func hardEnd(err error) *waitEnd {
 }
 
 // exemptEnd ends the wait with a budget-exempt Stuck whose Path and Reason both carry text, so each cause is its own history entry and equal entries never fold across causes.
+// It logs at Info, since its callers end the wait on a state change, a requested pause or a Publish-retry action.
 func (p *innerRunProducer) exemptEnd(text string) *waitEnd {
+	reportWait(p.name, text, p.scratchDir, "slug", p.slug)
+	return stuckWaitEnd(text)
+}
+
+// failedEnd is exemptEnd for a wait that ends because a read of the child failed, so the same verdict logs at Warn.
+func (p *innerRunProducer) failedEnd(text string) *waitEnd {
 	reportStuck(p.name, text, p.scratchDir, "slug", p.slug)
+	return stuckWaitEnd(text)
+}
+
+// stuckWaitEnd is the budget-exempt Stuck verdict whose Path and Reason both carry text.
+func stuckWaitEnd(text string) *waitEnd {
 	return &waitEnd{outcome: shedengine.Stuck, pointer: shedengine.OutputPointer{Path: text, Reason: text, BudgetExempt: true}}
 }
 
-// report writes reason through reportStuck when it differs from the last one written, so `lyx batten status` shows what the child is waited on for.
-func (p *innerRunProducer) report(w *childWait, reason string) {
+// report writes reason to the reason file when it differs from the last one written, so `lyx batten status` shows what the child is waited on for.
+// It logs the reason at Info only the first time key is seen in the Call, so a reason whose text only counts up logs once per state of the child.
+// A Call ends when the child's state changes, and the halted arm alternates its Publish-retry reason with its own, so a set of keys, not the last key, keeps both from logging on every check.
+// key is the reason with its counters, countdowns and error tails left out.
+func (p *innerRunProducer) report(w *childWait, reason, key string) {
 	if reason == w.reason {
 		return
 	}
 	w.reason = reason
-	reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
+	if w.reasonKeys[key] {
+		writeStuckReason(p.name, reason, p.scratchDir)
+		return
+	}
+	if w.reasonKeys == nil {
+		w.reasonKeys = map[string]bool{}
+	}
+	w.reasonKeys[key] = true
+	reportWait(p.name, reason, p.scratchDir, "slug", p.slug)
+}
+
+// reportState is report for a reason that carries no counter, countdown or error tail, so the reason is its own key.
+func (p *innerRunProducer) reportState(w *childWait, reason string) {
+	p.report(w, reason, reason)
 }
 
 // results unpacks a wait end into the values Call returns.
@@ -657,7 +739,7 @@ func (p *innerRunProducer) check(ctx context.Context, w *childWait, step armStep
 func (p *innerRunProducer) checkChild(ctx context.Context, w *childWait) *waitEnd {
 	info, err := os.Stat(w.statusPath)
 	if err != nil {
-		return p.exemptEnd(fmt.Sprintf("the child's status file %s cannot be read: %v", w.statusPath, err))
+		return p.failedEnd(fmt.Sprintf("the child's status file %s cannot be read: %v", w.statusPath, err))
 	}
 	if info.ModTime().Equal(w.baseline) && !w.probeDue {
 		return nil
@@ -670,7 +752,7 @@ func (p *innerRunProducer) checkChild(ctx context.Context, w *childWait) *waitEn
 		return hardEnd(fmt.Errorf("battenshed: %s: read status: %w", p.name, err))
 	}
 	if !found {
-		return p.exemptEnd(fmt.Sprintf("the child's status file %s is gone", w.statusPath))
+		return p.failedEnd(fmt.Sprintf("the child's status file %s is gone", w.statusPath))
 	}
 	w.baseline = info.ModTime()
 	w.status = status
@@ -715,11 +797,11 @@ func (p *innerRunProducer) runningStep(ctx context.Context, w *childWait) *waitE
 	if w.reviewNote != "" {
 		reason = fmt.Sprintf("inner shed run waiting: %s; checking it every %s", w.reviewNote, p.pollInterval)
 	}
-	p.report(w, reason)
+	p.reportState(w, reason)
 	return nil
 }
 
-// haltedStep is the halted arm for a blocked, paused or failed child: it Warns once per halt episode, revives a dead driver strand once per episode, and reports the resume command the operator runs.
+// haltedStep is the halted arm for a blocked, paused or failed child: it logs one Info line per halt episode, revives a dead driver strand once per episode, and reports the resume command the operator runs.
 // It never spawns or resumes the child, except for the one automatic retry of a first Publish verify failure (publishRetryStep) and the one re-step of a driverless go child on a new lyx build (binaryRestep).
 // The child is waited on until its state changes.
 func (p *innerRunProducer) haltedStep(ctx context.Context, w *childWait) *waitEnd {
@@ -735,13 +817,13 @@ func (p *innerRunProducer) haltedStep(ctx context.Context, w *childWait) *waitEn
 	if end := p.binaryRestep(ctx, w); end != nil {
 		return end
 	}
-	p.report(w, haltedWaitReason(w.status, w.revival.startFallback))
+	p.reportState(w, haltedWaitReason(w.status, w.revival.startFallback))
 	return nil
 }
 
-// warnHaltEpisode Warns once per halt episode.
-// An episode ends when the child is seen out of a halted state, which removes the halt-warned marker, or when the child's history length differs from the length the marker recorded at the last Warn:
-// a re-halt after an observed resume Warns again even at the same history length, since a hard producer error or a mid-call pause appends no history entry, and the checks within one episode stay quiet.
+// warnHaltEpisode logs one Info line per halt episode.
+// An episode ends when the child is seen out of a halted state, which removes the halt-warned marker, or when the child's history length differs from the length the marker recorded at the last line:
+// a re-halt after an observed resume logs again even at the same history length, since a hard producer error or a mid-call pause appends no history entry, and the checks within one episode stay quiet.
 // A marker read or write failure is a hard error, as the other markers' are.
 func (p *innerRunProducer) warnHaltEpisode(status shedengine.Status) error {
 	markerPath := haltWarnedFile(p.scratchDir, p.name)
@@ -754,7 +836,7 @@ func (p *innerRunProducer) warnHaltEpisode(status shedengine.Status) error {
 	if err == nil && parseErr == nil && recorded == historyLen {
 		return nil
 	}
-	logger.Warn("battenshed: inner shed run halted; waiting for the operator to resume it", "producer", p.name, "slug", p.slug, "state", status.State, "error", status.Error, "current_producer", status.CurrentProducer)
+	logger.Info("battenshed: inner shed run halted; waiting for the operator to resume it", "producer", p.name, "slug", p.slug, "state", status.State, "error", status.Error, "current_producer", status.CurrentProducer)
 	if err := os.MkdirAll(p.scratchDir, 0o755); err != nil {
 		return fmt.Errorf("battenshed: %s: create scratch directory for halt-warned marker: %w", p.name, err)
 	}
@@ -782,13 +864,14 @@ type driverRevival struct {
 // The attempt is recorded in the revived marker with this process's pid;
 // a marker naming another pid belongs to an earlier process, whose episode this one retries once.
 // It changes no run state and removes no park marker,
-// and every failure, a strand read included, is warned about and never fails the row.
+// and every failure is warned about and never fails the row, a repeating strand read once per episode.
 func (p *innerRunProducer) reviveDeadDriver(ctx context.Context) driverRevival {
 	strand, err := p.deps.DriverStrand(ctx)
 	if err != nil {
-		logger.Warn("battenshed: could not read the child's driver strand; skipping the revive", "producer", p.name, "slug", p.slug, "error", err)
+		p.seamFailed(failDriverStrandRead, err)
 		return driverRevival{}
 	}
+	p.seamRecovered(failDriverStrandRead)
 	switch strand {
 	case ChildDriverNone:
 		return driverRevival{startFallback: true}
@@ -845,7 +928,7 @@ func (p *innerRunProducer) awaitingStep(ctx context.Context, w *childWait) *wait
 		return hardEnd(fmt.Errorf("battenshed: %s: read decision: %w", p.name, err))
 	}
 	if !found {
-		p.report(w, fmt.Sprintf("inner shed run is awaiting a human hand-off (%s); %s", w.status.Error, awaitingHandOff))
+		p.reportState(w, fmt.Sprintf("inner shed run is awaiting a human hand-off (%s); %s", w.status.Error, awaitingHandOff))
 		return nil
 	}
 
@@ -859,10 +942,10 @@ func (p *innerRunProducer) awaitingStep(ctx context.Context, w *childWait) *wait
 		actedIdentity, actedLen, hasLen := parseDecisionActed(string(acted))
 		if actedIdentity == identity {
 			if hasLen && len(w.status.History) == actedLen {
-				p.report(w, fmt.Sprintf("the %s at %s was acted on and the resume was delivered, but the child's driver has not re-stepped yet; if this persists, inspect a live driver in its pane, or run \"lyx loom start\" in the task worktree if the driver has ended", decision.Kind, decision.At))
+				p.reportState(w, fmt.Sprintf("the %s at %s was acted on and the resume was delivered, but the child's driver has not re-stepped yet; if this persists, inspect a live driver in its pane, or run \"lyx loom start\" in the task worktree if the driver has ended", decision.Kind, decision.At))
 				return nil
 			}
-			p.report(w, fmt.Sprintf("the %s at %s was already acted on and the child is awaiting again; decide again: %s", decision.Kind, decision.At, awaitingHandOff))
+			p.reportState(w, fmt.Sprintf("the %s at %s was already acted on and the child is awaiting again; decide again: %s", decision.Kind, decision.At, awaitingHandOff))
 			return nil
 		}
 	}
@@ -877,7 +960,7 @@ func (p *innerRunProducer) awaitingStep(ctx context.Context, w *childWait) *wait
 	if err := os.WriteFile(markerPath, []byte(decisionActedContent(identity, len(w.status.History))), 0o644); err != nil {
 		return hardEnd(fmt.Errorf("battenshed: %s: write decision-acted marker: %w", p.name, err))
 	}
-	p.report(w, fmt.Sprintf("the %s at %s was acted on: the child was resumed; watching it", decision.Kind, decision.At))
+	p.reportState(w, fmt.Sprintf("the %s at %s was acted on: the child was resumed; watching it", decision.Kind, decision.At))
 	return nil
 }
 
@@ -889,16 +972,17 @@ func (p *innerRunProducer) resumeAwaitingChild(ctx context.Context, w *childWait
 	notParkedReason := fmt.Sprintf("%s is not acted on yet: the child's driver has not parked; retrying the resume", subject)
 	if now := p.deps.Now(); now.Before(w.resumeRetryAt) {
 		if w.busyReason != "" {
-			p.report(w, w.busyReason)
+			p.report(w, w.busyReason, w.busyKey)
 			return false, nil
 		}
-		p.report(w, notParkedReason)
+		p.reportState(w, notParkedReason)
 		return false, nil
 	}
 
-	logger.Info("battenshed: resuming awaiting inner shed run", "producer", p.name, "slug", p.slug, "subject", subject)
+	first := !w.notParkedLogged && !w.busyLogged
+	logAttempt(first, "battenshed: resuming awaiting inner shed run", "producer", p.name, "slug", p.slug, "subject", subject)
 	spawnErr := p.deps.Spawn(ctx)
-	logger.Info("battenshed: inner shed run wait complete", "producer", p.name, "slug", p.slug)
+	logAttempt(first, "battenshed: inner shed run wait complete", "producer", p.name, "slug", p.slug)
 	if spawnErr != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return false, hardEnd(cerr)
@@ -906,30 +990,31 @@ func (p *innerRunProducer) resumeAwaitingChild(ctx context.Context, w *childWait
 		if errors.Is(spawnErr, ErrChildNotParked) {
 			// The child's driver is between its stop and its park, so the resume stays unacted and is retried at most once per noticeProbe.
 			w.resumeRetryAt = p.deps.Now().Add(p.noticeProbe)
-			w.busyReason = ""
+			w.busyReason, w.busyKey = "", ""
 			if !w.notParkedLogged {
 				w.notParkedLogged = true
 				logger.Info("battenshed: child driver has not parked yet; retrying the resume until it does", "producer", p.name, "slug", p.slug, "error", spawnErr)
 			}
-			p.report(w, notParkedReason)
+			p.reportState(w, notParkedReason)
 			return false, nil
 		}
 		if errors.Is(spawnErr, ErrChildDriverBusy) {
 			// A draft or an active operator in the parked driver's pane only delays the resume: it stays unacted and is retried at most once per noticeProbe.
 			w.resumeRetryAt = p.deps.Now().Add(p.noticeProbe)
-			w.busyReason = fmt.Sprintf("%s is not acted on yet: the child's driver pane holds a draft or the operator is typing in it; clear the draft in the driver's pane and batten resumes it (%s)", subject, oneLine(spawnErr.Error(), noticeErrorMax))
+			w.busyKey = fmt.Sprintf("%s is not acted on yet: the child's driver pane holds a draft or the operator is typing in it; clear the draft in the driver's pane and batten resumes it", subject)
+			w.busyReason = fmt.Sprintf("%s (%s)", w.busyKey, oneLine(spawnErr.Error(), noticeErrorMax))
 			if !w.busyLogged {
 				w.busyLogged = true
 				logger.Info("battenshed: child driver pane is busy; retrying the resume until it is clear", "producer", p.name, "slug", p.slug, "error", spawnErr)
 			}
 			p.noticeDriverBusy(ctx, w, spawnErr)
-			p.report(w, w.busyReason)
+			p.report(w, w.busyReason, w.busyKey)
 			return false, nil
 		}
 		return false, hardEnd(fmt.Errorf("battenshed: %s: resume awaiting inner shed run (resuming this run retries the spawn): %w", p.name, spawnErr))
 	}
 	p.driverBusyNoticed = false
-	w.busyReason = ""
+	w.busyReason, w.busyKey = "", ""
 	recordSpawnConfirmed(p.name, p.slug, p.scratchDir, SpawnConfirmedFile(p.scratchDir, p.name))
 	p.openTerminalOnce(ctx)
 	return true, nil
@@ -986,21 +1071,25 @@ func (p *innerRunProducer) doneStep(ctx context.Context, w *childWait) *waitEnd 
 		return finish()
 	}
 	if w.probeDue {
-		p.report(w, fmt.Sprintf("inner shed run is done; waiting for its driver to finish its stop report (%s of %s grace elapsed)", elapsed.Round(time.Second), p.driverExitGrace))
+		p.report(w, fmt.Sprintf("inner shed run is done; waiting for its driver to finish its stop report (%s of %s grace elapsed)", elapsed.Round(time.Second), p.driverExitGrace),
+			"inner shed run is done; waiting for its driver to finish its stop report")
 	}
 	return nil
 }
 
 // driverAlive reports whether the child has a live driver: a live driver strand, or a held child driver lock or run lock, reading them at most once per probe and reusing the answer on the checks between.
-// known is false when the strand read failed, which is warned about once per read; the done arm then treats the driver as live and the notice step skips what needs the answer.
-// A lock read error reads as alive with one Warn, as a failed strand read does.
+// known is false when the strand read failed; the done arm then treats the driver as live and the notice step skips what needs the answer.
+// A lock read error reads as alive.
+// A failed strand or lock read warns once per episode.
 func (p *innerRunProducer) driverAlive(ctx context.Context, w *childWait) (alive, known bool) {
 	if w.aliveStale {
 		w.aliveStale = false
 		a, err := p.deps.DriverAlive(ctx)
 		w.alive, w.aliveKnown = a, err == nil
-		if err != nil && ctx.Err() == nil {
-			logger.Warn("battenshed: driver liveness read failed; treating the driver as live", "producer", p.name, "slug", p.slug, "error", err)
+		if err == nil {
+			p.seamRecovered(failDriverLiveness)
+		} else if ctx.Err() == nil {
+			p.seamFailed(failDriverLiveness, err)
 		}
 		if !w.alive && w.aliveKnown {
 			w.alive = p.driverLocksHeld(ctx)
@@ -1010,7 +1099,7 @@ func (p *innerRunProducer) driverAlive(ctx context.Context, w *childWait) (alive
 }
 
 // driverLocksHeld reports whether the child's driver lock or run lock is held.
-// A read error is warned about and reads as held, since a lock that cannot be read must not make a working driver look dead.
+// A read error warns once per episode and reads as held, since a lock that cannot be read must not make a working driver look dead.
 func (p *innerRunProducer) driverLocksHeld(ctx context.Context) bool {
 	for _, lock := range []struct {
 		name string
@@ -1022,7 +1111,7 @@ func (p *innerRunProducer) driverLocksHeld(ctx context.Context) bool {
 		held, err := lock.held()
 		if err != nil {
 			if ctx.Err() == nil {
-				logger.Warn("battenshed: child lock read failed; treating the driver as live", "producer", p.name, "slug", p.slug, "lock", lock.name, "error", err)
+				p.seamFailed(failChildLockRead, err, "lock", lock.name)
 			}
 			return true
 		}
@@ -1030,6 +1119,7 @@ func (p *innerRunProducer) driverLocksHeld(ctx context.Context) bool {
 			return true
 		}
 	}
+	p.seamRecovered(failChildLockRead)
 	return false
 }
 

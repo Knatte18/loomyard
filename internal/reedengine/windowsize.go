@@ -43,7 +43,7 @@ func parseWindowSize(out string) (w, h int, ok bool) {
 
 // liveBoxLocked queries the live tmux window size for this engine's session and returns it as a
 // render.Box anchored at the origin, plus whether that box was a real observation.
-// On a round-trip error or a malformed answer, it logs via logger.Warn and falls back to the
+// On a round-trip error or a malformed answer, it logs once per episode and falls back to the
 // configured e.cfg.Width/e.cfg.Height — exactly today's pre-live-query value — so a degraded query
 // never blocks a caller; the second return value is false on both fallback paths and true only when
 // the parse succeeded.
@@ -55,14 +55,15 @@ func parseWindowSize(out string) (w, h int, ok bool) {
 func (e *Engine) liveBoxLocked(windowTarget string) (render.Box, bool) {
 	out, err := e.tmux.output("display-message", "-p", "-t", windowTarget, "#{window_width} #{window_height}")
 	if err != nil {
-		logger.Warn("reed: failed to query live window size, falling back to configured box", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		e.calleeFailures.Fail("live box", "reed: failed to query live window size, falling back to configured box", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		return render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}, false
 	}
 	w, h, ok := parseWindowSize(out)
 	if !ok {
-		logger.Warn("reed: malformed live window size answer, falling back to configured box", "socket", e.Socket(), "session", e.SessionName(), "answer", out)
+		e.calleeFailures.Fail("live box", "reed: malformed live window size answer, falling back to configured box", "socket", e.Socket(), "session", e.SessionName(), "answer", out)
 		return render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}, false
 	}
+	e.calleeFailures.Recover("live box", "reed: live window size query answers again", "socket", e.Socket(), "session", e.SessionName())
 	return render.Box{X: 0, Y: 0, W: w, H: h}, true
 }
 
@@ -259,9 +260,10 @@ func (e *Engine) readWindowSizeLatestLocked(windowTarget string) bool {
 func (e *Engine) readBorderTitleRowLocked(windowTarget string) bool {
 	out, err := e.tmux.output("display-message", "-p", "-t", windowTarget, "#{pane-border-status}")
 	if err != nil {
-		logger.Warn("reed: failed to read back pane-border-status, assuming no title row", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		e.calleeFailures.Fail("border title", "reed: failed to read back pane-border-status, assuming no title row", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		return false
 	}
+	e.calleeFailures.Recover("border title", "reed: pane-border-status reads back again", "socket", e.Socket(), "session", e.SessionName())
 	return strings.TrimSpace(out) == "top"
 }
 
@@ -296,13 +298,15 @@ func (e *Engine) contentPinsLocked(st *ReedState, live []LivePane, box render.Bo
 }
 
 // runResizePinsLocked issues one `resize-pane -t <pane> -y <height>` per pin, so a layout just applied holds its heights before any resize fires the hook.
-// Each failure is logged via logger.Warn and ignored, like the hook install; the hook's signal entry is never run from here.
+// Each failure is logged once per episode per pane and ignored, like the hook install; the hook's signal entry is never run from here.
 // Assumes the op lock is already held.
 func (e *Engine) runResizePinsLocked(pins []render.Pin) {
 	for _, pin := range pins {
 		if err := e.tmux.run("resize-pane", "-t", pin.PaneID, "-y", strconv.Itoa(pin.Height)); err != nil {
-			logger.Warn("reed: failed to pin a pane height after the layout apply", "socket", e.Socket(), "session", e.SessionName(), "pane", pin.PaneID, "height", pin.Height, "err", err)
+			e.calleeFailures.Fail("pin:"+pin.PaneID, "reed: failed to pin a pane height after the layout apply", "socket", e.Socket(), "session", e.SessionName(), "pane", pin.PaneID, "height", pin.Height, "err", err)
+			continue
 		}
+		e.calleeFailures.Recover("pin:"+pin.PaneID, "reed: pane height pin works again", "socket", e.Socket(), "session", e.SessionName(), "pane", pin.PaneID)
 	}
 }
 

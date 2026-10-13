@@ -5,7 +5,6 @@
 package logcapture
 
 import (
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -40,13 +39,13 @@ func (b *Buffer) Reset() {
 	b.sb.Reset()
 }
 
-// Capture points logger output at a fresh Buffer and restores os.Stderr and the default verbosity in t.Cleanup.
+// Capture points logger output at a fresh Buffer and restores the logger's default output and the default verbosity in t.Cleanup.
 func Capture(t testing.TB) *Buffer {
 	t.Helper()
 	buf := &Buffer{}
 	logger.SetOutput(buf)
 	t.Cleanup(func() {
-		logger.SetOutput(os.Stderr)
+		logger.SetOutput(logger.DefaultOutput())
 		logger.SetVerbosity(0)
 	})
 	return buf

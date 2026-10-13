@@ -278,7 +278,7 @@ func TestWatchdogDaemon(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
 		go func() {
-			done <- runWatchdogLoop(ctx, h.Path, tmuxPath, primeEng.ShellPath(), timing, reedengine.OpenFileWatch)
+			done <- runWatchdogLoop(ctx, h.Path, tmuxPath, primeEng.ShellPath(), timing, reedengine.OpenFileWatch, nil)
 		}()
 		defer func() {
 			cancel()
@@ -328,7 +328,7 @@ func TestWatchdogDaemon(t *testing.T) {
 		eng2 = bootWatchdogEngine(t, pair)
 		scenario.Cleanup(func() { _, _ = eng2.Down() })
 		go func() {
-			loopDone <- runWatchdogLoop(loopCtx, h.Path, tmuxPath, eng1.ShellPath(), compressedWatchdogTiming(), reedengine.OpenFileWatch)
+			loopDone <- runWatchdogLoop(loopCtx, h.Path, tmuxPath, eng1.ShellPath(), compressedWatchdogTiming(), reedengine.OpenFileWatch, nil)
 		}()
 
 		// Both sessions must be discovered within a couple of discovery cycles.

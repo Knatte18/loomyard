@@ -229,10 +229,18 @@
 // OperatorActive is the operator-activity query: it lists the session's attached clients with their active pane and last-activity epoch second, and answers whether any client is on the strand's pane with activity within the quiet window, plus that window.
 // The window is the reed.yaml key `operator_quiet_s` (seconds, default 5; a zero or negative value takes the default, as does a materialized reed.yaml lacking the key until `lyx config reconcile` writes it).
 // No attached client, or clients on other panes only, answer not active, and a failed listing is returned as the error for the caller to decide on.
+// The hub watchdog daemon retires and respawns itself when the `lyx` binary it started from is replaced (reedcli's watchdog verb owns the check and calls SpawnWatchdog for the successor), and a daemon started before that check existed is ended once by hand after the deploy.
 // The hub watchdog daemon runs a name-repair tick (namerepair.go) beside its resize loop: it resets a drifted pane title itself and repairs a drifted provider session name through the SessionNamer seam, which the provider package implements and cliwire fills.
 // The session-name repair types the rename only into an idle pane with no active operator, and does it with one paste-submit under the op lock it already holds; an active operator defers the repair to the next tick, and an unreadable client list does not hold it.
 // The name-repair tick backs off: its wait starts at ten seconds, doubles through NextWakeCadence up to a minute across passes that repair nothing, and returns to ten seconds after a pass that repaired a title or a session name.
 // NextWakeCadence is the one backoff rule the daemon's loops share.
+// A failure that can repeat on every tick of the watch loop or the name-repair tick logs once per episode through logger.Episode: Warn at the first failure, Debug while it goes on, Info at recovery with the count of failed ticks.
+// The watch loop holds one episode for the re-apply per session, living as long as its watcher, so a failing re-apply warns once however many ticks fail and a session that ends mid-episode owes no recovery line; a deferral is neither a failure nor a recovery.
+// The name-repair half guards the session-name repair's operator-activity read, pane capture and rename typing the same way, per strand where it names one.
+// The tmux reads and writes the two loops reach through their callees share one engine-wide episode set, one episode per read: the live window size query, the pane-border-status readback, the three zoom steps, each pane height pin, the live pane generation read and each pane title repair.
+// One-shot callers of the same helpers share those episodes, so a failure inside a watch-tick episode logs at Debug and a success ends the episode with the Info line.
+// The name-repair loop holds its own episode for a pass that fails as a whole.
+// The two in-memory pane-binding clears of a state load are no failure and have no episode: a state load never saves, so the same clear repeats on every tick, and it warns once per recorded and live generation pair or cleared strand set and logs at Debug while it repeats.
 // The discover signal is the hub-level file named DiscoverSignalFileName, at the path Geometry.DiscoverSignalPath tells.
 // A cold session boot touches it, right after the new session exists and on the boot path alone, so every path that boots a session raises it and an attach to a live session touches nothing; a failed touch is logged at Warn and never fails the boot.
 // The daemon's discovery loop wakes on it; standalone mode tells no path and touches nothing.

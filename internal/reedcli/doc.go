@@ -8,6 +8,12 @@
 //
 // Each watched session's engine drives the daemon's told tmux binary, whatever that worktree's config names.
 //
+// On each cycle the daemon stats the `lyx` binary it started from, and when that file has been replaced or rewritten it retires: it ends its watched sessions, releases the hub lock, spawns a successor detached and exits 0.
+// So a deploy never leaves an old daemon laying out sessions with stale render code.
+// A failed stat counts as unchanged, so a binary missing mid-build retires nothing, and a deploy that rewrites the file in several steps can chain retirements, one per observed change.
+// A daemon started before this check existed carries none and is ended once by hand after the deploy; the next `reed up`, `attach` or `resume` spawns a successor that has it.
+// A spawn that loses the lock race exits 0 and logs at Debug, so at the default verbosity it writes no trace file.
+//
 // The daemon logs to the durable sink in the hub logs directory, and Debug lines reach it at Debug verbosity.
 // A Debug trace comes from running `lyx reed watchdog -vv` in the foreground, or from `lyx reed up`, `attach` or `resume` run with `LYX_LOG_LEVEL=debug` while no daemon runs for the hub.
 package reedcli

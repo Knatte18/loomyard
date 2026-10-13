@@ -46,10 +46,14 @@ type AgentActivity struct {
 	APIErrorText string
 }
 
+// unreadableFiles keeps one failure episode per file the files-only readers skip, keyed by the path their log line names.
+// It is package-level because the readers are free functions that loops in several processes poll: a file that stays unreadable warns once, and readers that skip the same path share its episode.
+var unreadableFiles logger.EpisodeSet
+
 // ReadAgentActivity returns one reading per live run under the run-directory root of anchorPath.
 // A run is live when its record reads running and the pid of the process that waits on it is alive.
 // A directory that is not a run directory, a run with no record, an undecodable record and a run that is not live are skipped,
-// and an undecodable record is logged so one torn file cannot hide another run.
+// and an undecodable record is logged once per episode so one torn file cannot hide another run.
 // A run's events past its prompt offset are parsed through engine, and the newest turn end among them is handed to engine's ActivityReader;
 // a run with no turn end yet, or an engine without the capability, is judged by its events file alone.
 // An absent root returns no readings and no error.
@@ -71,9 +75,10 @@ func ReadAgentActivity(cfg Config, anchorPath string, engine Engine) ([]AgentAct
 		runDir := filepath.Join(root, entry.Name())
 		rs, found, err := loadRunState(runDir)
 		if err != nil {
-			logger.Warn("shuttle: skipping an unreadable run record", "runDir", runDir, "cause", err)
+			unreadableFiles.Fail(runDir, "shuttle: skipping an unreadable run record", "runDir", runDir, "cause", err)
 			continue
 		}
+		unreadableFiles.Recover(runDir, "shuttle: run record readable again", "runDir", runDir)
 		if !found || !runIsLive(rs) {
 			continue
 		}
@@ -165,9 +170,10 @@ func newestTurnEnd(rs RunState, engine Engine) *Event {
 	}
 	events, err := engine.ParseEvents(data)
 	if err != nil {
-		logger.Warn("shuttle: could not parse a run's events for its activity", "eventsPath", rs.EventsPath, "cause", err)
+		unreadableFiles.Fail(rs.EventsPath, "shuttle: could not parse a run's events for its activity", "eventsPath", rs.EventsPath, "cause", err)
 		return nil
 	}
+	unreadableFiles.Recover(rs.EventsPath, "shuttle: run events parse again", "eventsPath", rs.EventsPath)
 	for i := len(events) - 1; i >= 0; i-- {
 		if events[i].Kind == EventStop || events[i].Kind == EventWaiting {
 			return &events[i]

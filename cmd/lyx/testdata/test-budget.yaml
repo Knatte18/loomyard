@@ -10,7 +10,7 @@ internal/alignment: 7
 internal/batcher: 9
 internal/battencli: 79
 internal/battenrecipe: 9
-internal/battenshed: 111
+internal/battenshed: 113
 internal/boardcli: 13
 internal/boardengine: 78
 internal/boardengine/boardtest: 3
@@ -54,11 +54,11 @@ internal/hubreconcile: 18
 internal/idecli: 2
 internal/ideengine: 4
 internal/impactset: 5
-internal/landingshed: 85
+internal/landingshed: 86
 internal/lock: 4
-internal/logger: 35
+internal/logger: 37
 internal/loggerconfig: 3
-internal/loomcli: 236
+internal/loomcli: 237
 internal/loomengine: 57
 internal/loomrecipe: 54
 internal/loomshed: 76
@@ -67,9 +67,9 @@ internal/lyxtemp: 7
 internal/mergeresolve: 17
 internal/modelspec: 11
 internal/orchcli: 28
-internal/orchengine: 139
+internal/orchengine: 140
 internal/output: 4
-internal/pairteardown: 7
+internal/pairteardown: 8
 internal/pausecli: 4
 internal/pauseengine: 4
 internal/pauserecord: 14
@@ -83,8 +83,8 @@ internal/preflight: 7
 internal/preflightshed: 8
 internal/proc: 18
 internal/quarrycli: 7
-internal/reedcli: 38
-internal/reedengine: 261
+internal/reedcli: 40
+internal/reedengine: 262
 internal/reedengine/render: 12
 internal/reportcli: 3
 internal/reportengine: 8
@@ -100,7 +100,7 @@ internal/shedengine: 141
 internal/shedrecipe: 103
 internal/shedrun: 24
 internal/shedtransient: 2
-internal/shedverbs: 83
+internal/shedverbs: 84
 internal/shell: 14
 internal/shortcutcli: 2
 internal/shuttlecli: 26

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
@@ -135,6 +136,9 @@ func TestRepairNames_PaneTitle(t *testing.T) {
 // TestRepairNames_SessionName pins that a drifted session name is renamed by one paste-submit of the namer's rename text.
 // The rename goes into an idle pane with no active operator, logged, after exactly one drift query for the strand's session.
 // A busy pane, an active operator or an absent drift types nothing, and an unreadable client list does not hold the rename.
+// A row with failedRuns runs the repair that many times on one engine before heal, then once after it.
+// It pins that the failure logs one Warn and one Debug per further run, and the heal one Info.
+// It captures the process-global logger at Debug, so it stays serial.
 func TestRepairNames_SessionName(t *testing.T) {
 	activeClient := "%1 " + strconv.FormatInt(time.Now().Unix(), 10) + "\n"
 	tests := []struct {
@@ -146,6 +150,14 @@ func TestRepairNames_SessionName(t *testing.T) {
 		// ownWindow anchors the strand own-window and lists its pane only in windowPanes, the session-wide listing.
 		ownWindow   bool
 		windowPanes string
+		// failedRuns is how many repairs run on one engine before heal; zero makes the row a single repair.
+		failedRuns int
+		// fail scripts the fake tmux to fail before the first repair; heal scripts it healthy again before the last.
+		fail, heal func(f *fakeTmux)
+		// failedRenames is whether each repair run before heal still renames.
+		failedRenames bool
+		// failMsg is the failure line every run before heal logs, and healMsg the recovery line the repair after heal logs.
+		failMsg, healMsg string
 	}{
 		{name: "RenamedOnIdlePane", namer: fakeNamer{drift: true, idle: true}, wantRename: true},
 		{
@@ -158,11 +170,42 @@ func TestRepairNames_SessionName(t *testing.T) {
 		{name: "BusyPaneTypesNothing", namer: fakeNamer{drift: true, idle: false}},
 		{name: "NoDriftTypesNothing", namer: fakeNamer{drift: false, idle: true}},
 		{name: "ActiveOperatorTypesNothing", namer: fakeNamer{drift: true, idle: true}, clients: activeClient},
-		{name: "UnreadableClientListStillRenames", namer: fakeNamer{drift: true, idle: true}, clientsErr: errors.New("list-clients failed"), wantRename: true},
+		{
+			name:          "UnreadableClientListStillRenames",
+			namer:         fakeNamer{drift: true, idle: true},
+			clientsErr:    errors.New("list-clients failed"),
+			wantRename:    true,
+			failedRuns:    2,
+			failedRenames: true,
+			heal:          func(f *fakeTmux) { f.answer("list-clients", "", nil) },
+			failMsg:       "operator activity unreadable",
+			healMsg:       "operator activity readable again for session name repair",
+		},
+		{
+			name:       "FailedCaptureLogsOncePerEpisode",
+			namer:      fakeNamer{drift: true, idle: true},
+			wantRename: true,
+			failedRuns: 3,
+			fail:       func(f *fakeTmux) { f.answer("capture-pane", "", errors.New("capture failed")) },
+			heal:       func(f *fakeTmux) { f.answer("capture-pane", "idle screen", nil) },
+			failMsg:    "could not capture pane for session name repair",
+			healMsg:    "session name repair captures the pane again",
+		},
+		{
+			name:       "FailedRenameLogsOncePerEpisode",
+			namer:      fakeNamer{drift: true, idle: true},
+			wantRename: true,
+			failedRuns: 3,
+			fail:       func(f *fakeTmux) { f.answer("load-buffer", "", errors.New("paste failed")) },
+			heal:       func(f *fakeTmux) { f.answer("load-buffer", "", nil) },
+			failMsg:    "could not type the session rename",
+			healMsg:    "session rename types again",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logs := logcapture.CaptureVerbose(t)
+			logger.SetVerbosity(2)
 			strand := repairStrand("g1", "tc:s:worker", "%1", "sess-1")
 			if tt.ownWindow {
 				strand.Display.Anchor = render.AnchorOwnWindow
@@ -175,14 +218,29 @@ func TestRepairNames_SessionName(t *testing.T) {
 				fake.answerWindowPanes(tt.windowPanes, nil)
 			}
 			fake.answer("list-clients", tt.clients, tt.clientsErr)
+			if tt.fail != nil {
+				tt.fail(fake)
+			}
 			namer := tt.namer
 
-			repaired, err := e.repairNames(&namer)
-			if err != nil {
-				t.Fatalf("repairNames: %v", err)
-			}
-			if repaired != tt.wantRename {
-				t.Errorf("repairNames repaired = %v, want %v", repaired, tt.wantRename)
+			runs := 1 + tt.failedRuns
+			repairedRuns := 0
+			for run := 0; run < runs; run++ {
+				healed := run == tt.failedRuns
+				if healed && tt.heal != nil {
+					tt.heal(fake)
+				}
+				want := tt.wantRename && (healed || tt.failedRenames)
+				repaired, err := e.repairNames(&namer)
+				if err != nil {
+					t.Fatalf("repairNames run %d: %v", run, err)
+				}
+				if repaired != want {
+					t.Errorf("repairNames run %d repaired = %v, want %v", run, repaired, want)
+				}
+				if repaired {
+					repairedRuns++
+				}
 			}
 
 			pastes := fake.ArgvFor("load-buffer")
@@ -193,11 +251,21 @@ func TestRepairNames_SessionName(t *testing.T) {
 				return
 			}
 			wantQuery := [3]string{"sess-1", e.geom.PaneCwd, "tc:s:worker"}
-			if len(namer.queries) != 1 || namer.queries[0] != wantQuery {
-				t.Errorf("drift queries = %v, want [%v]", namer.queries, wantQuery)
+			if len(namer.queries) != runs {
+				t.Errorf("drift queries = %v, want %d of [%v]", namer.queries, runs, wantQuery)
 			}
-			if len(pastes) != 1 {
-				t.Fatalf("load-buffer calls = %v, want exactly one paste-submit invocation", pastes)
+			for _, query := range namer.queries {
+				if query != wantQuery {
+					t.Errorf("drift query = %v, want %v", query, wantQuery)
+				}
+			}
+			// A failed capture never reaches the paste, so only the healed run pastes.
+			wantPastes := runs
+			if strings.Contains(tt.failMsg, "capture") {
+				wantPastes = 1
+			}
+			if len(pastes) != wantPastes {
+				t.Fatalf("load-buffer calls = %v, want %d paste-submit invocations", pastes, wantPastes)
 			}
 			argv := pastes[0]
 			if !containsArg(argv, "paste-buffer") || !containsArg(argv, "-p") || !containsArg(argv, "-d") {
@@ -206,14 +274,33 @@ func TestRepairNames_SessionName(t *testing.T) {
 			if argv[len(argv)-1] != "Enter" || !containsArg(argv, "send-keys") {
 				t.Errorf("paste-submit argv = %v, want it to end in send-keys Enter", argv)
 			}
-			if got := fake.StdinFor("load-buffer"); !reflect.DeepEqual(got, []string{"/rename tc:s:worker"}) {
-				t.Errorf("load-buffer stdin = %q, want the rename text", got)
+			wantStdin := make([]string, wantPastes)
+			for i := range wantStdin {
+				wantStdin[i] = "/rename tc:s:worker"
+			}
+			if got := fake.StdinFor("load-buffer"); !reflect.DeepEqual(got, wantStdin) {
+				t.Errorf("load-buffer stdin = %q, want the rename text %d times", got, wantPastes)
 			}
 			if keys := fake.ArgvFor("send-keys"); len(keys) != 0 {
 				t.Errorf("separate send-keys calls = %v, want none, the whole write is one invocation", keys)
 			}
-			if !strings.Contains(logs.String(), "reed: repaired session name") {
-				t.Errorf("log = %q, want the session repair line", logs.String())
+			if got := countLogLines(logs.String(), "INFO", "reed: repaired session name"); got != repairedRuns {
+				t.Errorf("session repair INFO lines = %d, want %d; log:\n%s", got, repairedRuns, logs.String())
+			}
+			if tt.failedRuns == 0 {
+				return
+			}
+			if got := countLogLines(logs.String(), "WARN", tt.failMsg); got != 1 {
+				t.Errorf("failure WARN lines = %d, want exactly 1; log:\n%s", got, logs.String())
+			}
+			if got := countLogLines(logs.String(), "DEBUG", tt.failMsg); got != tt.failedRuns-1 {
+				t.Errorf("failure DEBUG lines = %d, want %d; log:\n%s", got, tt.failedRuns-1, logs.String())
+			}
+			if got := countLogLines(logs.String(), "DEBUG", "failed_ticks="); got < tt.failedRuns-1 {
+				t.Errorf("failure DEBUG lines carrying failed_ticks = %d, want at least %d; log:\n%s", got, tt.failedRuns-1, logs.String())
+			}
+			if got := countLogLines(logs.String(), "INFO", tt.healMsg); got != 1 {
+				t.Errorf("recovery INFO lines = %d, want exactly 1; log:\n%s", got, logs.String())
 			}
 		})
 	}

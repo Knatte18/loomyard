@@ -1070,7 +1070,7 @@ func TestNotice_DeliveryIsRecordedOnlyWhenQueuedAndRetriedWithinItsCaps(t *testi
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
 			logger.SetOutput(&buf)
-			t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+			t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 			h := ready(t)
 			h.notifyQueued, h.notifyErr = tt.queue, tt.err
@@ -1098,7 +1098,7 @@ func TestNotice_DeliveryIsRecordedOnlyWhenQueuedAndRetriedWithinItsCaps(t *testi
 	t.Run("NoStrandMakesNoNotifyCallAndWarnsOncePerEpisode", func(t *testing.T) {
 		var buf bytes.Buffer
 		logger.SetOutput(&buf)
-		t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+		t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 		h := ready(t)
 		h.strand = false
@@ -1139,6 +1139,7 @@ func TestNotice_DeliveryIsRecordedOnlyWhenQueuedAndRetriedWithinItsCaps(t *testi
 // TestNotice_LogsEachRunsSessionStateAtAQuietOrAPIErrorFinding drives a quiet and an API-error finding over two live runs,
 // and again with the runs' session state fields empty:
 // both runs log the finding's condition with the run's state, cause and since, a run with no finding logs none, and the notices sent are the same either way.
+// The lines log at Debug, so the capture raises the verbosity to Debug.
 // The log is captured process-wide, so the test does not run in parallel.
 func TestNotice_LogsEachRunsSessionStateAtAQuietOrAPIErrorFinding(t *testing.T) {
 	tests := []struct {
@@ -1155,6 +1156,7 @@ func TestNotice_LogsEachRunsSessionStateAtAQuietOrAPIErrorFinding(t *testing.T) 
 		t.Run(tt.name, func(t *testing.T) {
 			drive := func(withState bool) (notified []string, log string) {
 				buf := logcapture.CaptureVerbose(t)
+				logger.SetVerbosity(2)
 				h := newNoticeHarness(t)
 				p := h.producer()
 				runs := []AgentActivity{
@@ -1193,6 +1195,11 @@ func TestNotice_LogsEachRunsSessionStateAtAQuietOrAPIErrorFinding(t *testing.T) 
 			}
 			if got, want := strings.Count(withoutStateLog, "session state at notice"), strings.Count(withStateLog, "session state at notice"); got != want || got == 0 {
 				t.Errorf("session state lines without the state fields = %d, with = %d, want equal and nonzero", got, want)
+			}
+			for _, line := range strings.Split(withStateLog, "\n") {
+				if strings.Contains(line, "level=INFO") && strings.Contains(line, "session state at notice") {
+					t.Errorf("session state logged at INFO, want Debug: %s", line)
+				}
 			}
 		})
 	}

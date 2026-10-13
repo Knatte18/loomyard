@@ -82,6 +82,7 @@ func watchIdle(ctx context.Context, w idleWatch) (WatchdogKill, bool) {
 	var delay time.Duration
 	var sleeps pauserecord.SleepWatch
 	pauseReadFailed := false
+	var activityFailures logger.Episode
 	for {
 		if w.Wake != nil {
 			w.Wake()
@@ -91,7 +92,7 @@ func watchIdle(ctx context.Context, w idleWatch) (WatchdogKill, bool) {
 			files = w.TraceFiles()
 		}
 		changed := false
-		if seen, found := newestActivity(files, w.Activity); found && seen.After(newest) {
+		if seen, found := newestActivity(files, w.Activity, &activityFailures); found && seen.After(newest) {
 			newest, changed = seen, true
 		}
 		now := w.Now()
@@ -130,7 +131,8 @@ func watchIdle(ctx context.Context, w idleWatch) (WatchdogKill, bool) {
 
 // newestActivity returns the newest of the modification times of traceFiles and the agent reading, and false when neither answers.
 // It stats only the paths it is told.
-func newestActivity(traceFiles []string, agent func() (time.Time, bool, error)) (time.Time, bool) {
+// An agent read error is logged through failures, owned by the caller for the length of its loop: a Warn at the first failure, Debug while it repeats and an Info when the agent answers again.
+func newestActivity(traceFiles []string, agent func() (time.Time, bool, error), failures *logger.Episode) (time.Time, bool) {
 	var newest time.Time
 	found := false
 	for _, file := range traceFiles {
@@ -145,9 +147,12 @@ func newestActivity(traceFiles []string, agent func() (time.Time, bool, error)) 
 	if agent != nil {
 		at, answered, err := agent()
 		if err != nil {
-			logger.Warn("shed: the watchdog could not read the run's agent activity", "error", err.Error())
-		} else if answered && (!found || at.After(newest)) {
-			newest, found = at, true
+			failures.Fail("shed: the watchdog could not read the run's agent activity", "error", err.Error())
+		} else {
+			failures.Recover("shed: the watchdog reads the run's agent activity again")
+			if answered && (!found || at.After(newest)) {
+				newest, found = at, true
+			}
 		}
 	}
 	return newest, found

@@ -89,7 +89,7 @@ func TestTmuxConfBootGuard(t *testing.T) {
 		t.Helper()
 		var logBuf, warnBuf bytes.Buffer
 		logger.SetOutput(&logBuf)
-		t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+		t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 		e := newTestEngine(t)
 		e.warnOut = &warnBuf
 		fake := installFakeTmux(t, e)

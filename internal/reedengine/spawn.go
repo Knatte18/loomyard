@@ -360,8 +360,15 @@ func (e *Engine) loadOrInitStateLocked() (*ReedState, error) {
 	// way into select-layout, where tmux answers the contradiction by destroying panes — see
 	// clearConflictingPaneBindings for both observed shapes.
 	if cleared := clearConflictingPaneBindings(st); len(cleared) > 0 {
-		logger.Warn("reed: cleared strand pane bindings that named a pane another owner already claims",
+		// The clear is in memory only, so a repeat of the same cleared set logs at Debug.
+		logClear := logger.Debug
+		if e.stateLoadNotices.conflictClearIsNew(cleared) {
+			logClear = logger.Warn
+		}
+		logClear("reed: cleared strand pane bindings that named a pane another owner already claims",
 			"socket", e.Socket(), "session", e.SessionName(), "strands", cleared)
+	} else {
+		e.stateLoadNotices.forgetConflictClear()
 	}
 	return st, nil
 }

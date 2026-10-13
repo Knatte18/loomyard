@@ -148,7 +148,7 @@ func TestInnerRun_WaitEndsOnlyOnAnEvent(t *testing.T) {
 	t.Run("APauseFlagReadErrorIsWarnedOnceAndReadsAsNotPaused", func(t *testing.T) {
 		var buf bytes.Buffer
 		logger.SetOutput(&buf)
-		t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+		t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 		clock, child, deps, build := newWait(t, time.Hour)
 		deps.PauseRequested = func() (bool, error) { return false, errors.New("status lock busy") }
@@ -210,7 +210,7 @@ func TestInnerRun_RecordsWhetherItHoldsTheWatchedMarker(t *testing.T) {
 	t.Run("AnErrorReadsAsNotHeldWithOneWarnPerChangeOfAnswer", func(t *testing.T) {
 		var buf bytes.Buffer
 		logger.SetOutput(&buf)
-		t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+		t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 		asks := 0
 		_, p := build(t, 0, func(context.Context) (bool, error) {

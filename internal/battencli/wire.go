@@ -798,8 +798,8 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			}
 
 			top := fabricengine.NewTopology(cfg)
-			res, err := top.Add(location, slug, fabricengine.AddOptions{})
-			logger.Info("battencli: create worktree", "slug", slug, "mutations", res.Mutated())
+			_, err = top.Add(location, slug, fabricengine.AddOptions{})
+			logger.Info("battencli: create worktree", "slug", slug)
 			if err != nil {
 				return createRefusal(err)
 			}
@@ -1139,9 +1139,9 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				var childOutput bytes.Buffer
 				cmd.Stdout = &childOutput
 				cmd.Stderr = &childOutput
-				logger.Info("battencli: spawning loom session", "slug", slug, "dir", cmd.Dir)
+				logger.Debug("battencli: spawning loom session", "slug", slug, "dir", cmd.Dir)
 				runErr := cmd.Run()
-				logger.Info("battencli: loom session wait complete", "slug", slug, "dir", cmd.Dir)
+				logger.Debug("battencli: loom session wait complete", "slug", slug, "dir", cmd.Dir)
 				return childSpawnError(runErr, childOutput.String())
 			},
 			ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {

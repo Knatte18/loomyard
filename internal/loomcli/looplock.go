@@ -75,12 +75,11 @@ func builtOnFirstCall(build func() func()) func() {
 }
 
 // ownedLockBranches returns the branches whose lock record names the process self() names, by run and by process.
-// A failed list is logged and reads as owning none.
-func ownedLockBranches(locks *parentlock.Store, self parentlock.Owner) []string {
+// A failed list returns its error and no branches, for the caller to log at its own cadence.
+func ownedLockBranches(locks *parentlock.Store, self parentlock.Owner) ([]string, error) {
 	entries, err := locks.List()
 	if err != nil {
-		logger.Warn("loomcli: could not list the parent lock records", "cause", err)
-		return nil
+		return nil, err
 	}
 	var branches []string
 	for _, entry := range entries {
@@ -88,7 +87,7 @@ func ownedLockBranches(locks *parentlock.Store, self parentlock.Owner) []string 
 			branches = append(branches, entry.Record.Branch)
 		}
 	}
-	return branches
+	return branches, nil
 }
 
 // loopLockExit returns the loop's exit hook: it settles every parent lock record this loop owns, by run and by process, once the stop is final.
@@ -98,7 +97,11 @@ func ownedLockBranches(locks *parentlock.Store, self parentlock.Owner) []string 
 func loopLockExit(locks *parentlock.Store, self func() parentlock.Owner, batten func() (int, bool)) func(stop shedverbs.LoopStop, st shedengine.Status) {
 	return func(stop shedverbs.LoopStop, st shedengine.Status) {
 		owner := self()
-		branches := ownedLockBranches(locks, owner)
+		branches, err := ownedLockBranches(locks, owner)
+		if err != nil {
+			logger.Warn("loomcli: could not list the parent lock records", "cause", err)
+			return
+		}
 		if len(branches) == 0 {
 			return
 		}
@@ -129,6 +132,7 @@ func loopLockExit(locks *parentlock.Store, self func() parentlock.Owner, batten 
 // The release frees the lock only; the run keeps running, and its next lock-taking row reacquires.
 // The watch starts counting when the loop first owns a record, so a wait before the lock was taken does not count.
 // A failed agent read counts as not waiting and releases nothing.
+// A list or agent read failure that repeats on every wake logs a Warn at its first wake, Debug while it lasts and an Info at recovery.
 // While covered reports true, a pause holds the run: the record is kept and the watch restarts, so the bound is measured afresh after the resume.
 func loopIdleRelease(locks *parentlock.Store, self func() parentlock.Owner, agents func() ([]parentlock.AgentState, error), bound time.Duration, covered func() bool) func() {
 	return idleReleaseOn(locks, self, agents, bound, pauserecord.MonotonicAwake(), covered)
@@ -137,20 +141,28 @@ func loopIdleRelease(locks *parentlock.Store, self func() parentlock.Owner, agen
 // idleReleaseOn is loopIdleRelease over an awake clock, which must not advance while the host is suspended.
 func idleReleaseOn(locks *parentlock.Store, self func() parentlock.Owner, agents func() ([]parentlock.AgentState, error), bound time.Duration, awake func() time.Duration, covered func() bool) func() {
 	watch := &parentlock.IdleWatch{Bound: bound}
+	var listFailures, agentFailures logger.Episode
 	return func() {
 		if covered() {
 			watch = &parentlock.IdleWatch{Bound: bound}
 			return
 		}
 		owner := self()
-		branches := ownedLockBranches(locks, owner)
+		branches, listErr := ownedLockBranches(locks, owner)
+		if listErr != nil {
+			listFailures.Fail("loomcli: could not list the parent lock records", "cause", listErr)
+		} else {
+			listFailures.Recover("loomcli: the parent lock records list again")
+		}
 		if len(branches) == 0 {
 			watch = &parentlock.IdleWatch{Bound: bound}
 			return
 		}
 		states, err := agents()
 		if err != nil {
-			logger.Warn("loomcli: could not read the agents' states for the parent lock's idle rule", "cause", err)
+			agentFailures.Fail("loomcli: could not read the agents' states for the parent lock's idle rule", "cause", err)
+		} else {
+			agentFailures.Recover("loomcli: the agents' states read again for the parent lock's idle rule")
 		}
 		if !watch.Observe(states, err == nil, awake()) {
 			return
@@ -162,7 +174,7 @@ func idleReleaseOn(locks *parentlock.Store, self func() parentlock.Owner, agents
 				continue
 			}
 			if released {
-				logger.Warn("loomcli: released the parent lock after every agent waited past the idle bound", "branch", branch, "bound", bound.String())
+				logger.Info("loomcli: released the parent lock after every agent waited past the idle bound", "branch", branch, "bound", bound.String())
 			}
 		}
 		watch = &parentlock.IdleWatch{Bound: bound}

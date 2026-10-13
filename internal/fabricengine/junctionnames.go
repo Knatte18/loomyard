@@ -176,6 +176,14 @@ func HubLogsDir(hub string) string {
 	return filepath.Join(HubScratchDir(hub), "logs")
 }
 
+// LogArchiveDir returns the hub-level directory where a torn-down pair's logs are archived and pruned:
+// <hub>/_board/.lyx/log-archive.
+// The pair teardown's copy and its prune both resolve the root through it.
+// It is never tracked, so it lives beside HubLogsDir under HubScratchDir.
+func LogArchiveDir(hub string) string {
+	return filepath.Join(HubScratchDir(hub), "log-archive")
+}
+
 // HubPath returns the absolute path to the hub container directory for the given repo name inside
 // parent.
 func HubPath(parent, name string) string {

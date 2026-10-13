@@ -39,6 +39,14 @@ type Engine struct {
 	skipRevival bool
 	// warnOut receives the operator-facing warning for a tmux config that failed to source; it is the booting command's stderr.
 	warnOut io.Writer
+	// activityFailures guards the repeating operator-activity read failure of the session name repair, which runs on every watchdog tick while a name drifts.
+	activityFailures logger.Episode
+	// nameRepairFailures guards the session name repair's pane capture and rename typing failures, one episode per strand and step.
+	nameRepairFailures logger.EpisodeSet
+	// calleeFailures guards the tmux reads and writes the watch tick and the name-repair loop reach through their callees, one episode per read; both loops' goroutines share it.
+	calleeFailures logger.EpisodeSet
+	// stateLoadNotices remembers the last binding clear a state load logged, since a clear is never saved and so repeats on every load.
+	stateLoadNotices stateLoadNotices
 }
 
 // New builds an Engine for the given Config and Geometry.

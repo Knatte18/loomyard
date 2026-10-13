@@ -1,5 +1,5 @@
 // sessionread_test.go covers ReadSessionStates over run directories written by the test, with an engine double that parses session signals and answers the prober and the transcript reading.
-// The reader consults no process-global seam, so these tests run in parallel.
+// TestReadSessionStates captures the process-global logger, so it does not run in parallel.
 
 package shuttleengine
 
@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // readEngine is a fakeEngine that parses session signals from lines of the form START@<time> or END@<time>, each optionally followed by |<session id>,
@@ -71,8 +74,6 @@ type readRun struct {
 }
 
 func TestReadSessionStates(t *testing.T) {
-	t.Parallel()
-
 	now := time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC)
 	start := time.Date(2026, 10, 8, 7, 0, 0, 0, time.UTC)
 	end := start.Add(5 * time.Minute)
@@ -157,7 +158,6 @@ func TestReadSessionStates(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			root := t.TempDir()
 			for name, run := range tt.runs {
 				writeReadRun(t, root, name, run)
@@ -198,11 +198,36 @@ func TestReadSessionStates(t *testing.T) {
 	}
 
 	t.Run("an absent root returns none", func(t *testing.T) {
-		t.Parallel()
 		got, err := ReadSessionStates(Config{RunDir: filepath.Join(t.TempDir(), "missing")}, t.TempDir(), &fakeEngine{}, now)
 		if err != nil || got != nil {
 			t.Errorf("ReadSessionStates = (%v, %v); want (nil, nil)", got, err)
 		}
+	})
+
+	t.Run("an undecodable run record logs once per episode", func(t *testing.T) {
+		buf := logcapture.CaptureVerbose(t)
+		logger.SetVerbosity(2)
+		root := t.TempDir()
+		runDir := filepath.Join(root, "run-a")
+		if err := os.MkdirAll(runDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(runDir, runStateFileName), []byte("{"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		engine := &readEngine{fakeEngine: &fakeEngine{}}
+
+		for range 3 {
+			if _, err := ReadSessionStates(Config{RunDir: root}, t.TempDir(), engine, now); err != nil {
+				t.Fatal(err)
+			}
+		}
+		writeReadRun(t, root, "run-a", finished)
+		if _, err := ReadSessionStates(Config{RunDir: root}, t.TempDir(), engine, now); err != nil {
+			t.Fatal(err)
+		}
+
+		requireFailureEpisode(t, buf.String(), "skipping an unreadable run record", 2, "run record readable again")
 	})
 }
 

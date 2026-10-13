@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -441,7 +442,11 @@ func dispatchReap(wg *sync.WaitGroup, done chan<- string, hub, tmuxPath, shellPa
 // watchLoop reads cfg.Watchdog exactly once at start, so a flipped watchdog: value only takes
 // effect once the entry leaves (this departure teardown) and re-enters (enterSession, on the next
 // appearance) — there is no other re-read path.
-func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timing watchdogTiming, open reedengine.FileWatchOpener) error {
+//
+// replaced is called once on each timer tick, before the session listing, and a true answer returns errWatchdogBinaryReplaced through the deferred teardown above.
+// A nil replaced is never called.
+// It adds no wakeup of its own and never runs on a discover-signal wake.
+func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timing watchdogTiming, open reedengine.FileWatchOpener, replaced func() bool) error {
 	logger.Info("reed: watchdog daemon starting", "hub", hub)
 	if shellPath == "" {
 		logger.Warn("reed: watchdog daemon starting with no shell path; the reap will kill pane root pids without their descendants on Windows", "hub", hub)
@@ -502,6 +507,10 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timin
 				timer.Reset(wake.next(now))
 			}
 			continue
+		}
+
+		if replaced != nil && replaced() {
+			return errWatchdogBinaryReplaced
 		}
 
 		live, err := reedengine.ListSessions(tmuxPath, reedengine.ServerName(hub))
@@ -576,6 +585,48 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timin
 			delete(known, name)
 			logger.Debug("reed: watchdog session departed", "hub", hub, "session", name)
 		}
+	}
+}
+
+// errWatchdogBinaryReplaced is what runWatchdogLoop returns when its replaced check answers true, so the verb retires the daemon and respawns it.
+var errWatchdogBinaryReplaced = errors.New("reed: the watchdog's binary was replaced")
+
+// exeReplaced reports whether the binary now at the daemon's path is no longer the one it started from.
+// A nil start (no baseline) or a non-nil statErr answers false, so a binary missing mid-build never retires the daemon.
+// Otherwise a now that is not the same file as start, or whose modification time differs from start's, answers true.
+func exeReplaced(start, now os.FileInfo, statErr error) bool {
+	if start == nil || statErr != nil {
+		return false
+	}
+	return !os.SameFile(start, now) || !now.ModTime().Equal(start.ModTime())
+}
+
+// exeWatch stats once through stat to record the daemon's baseline binary and returns the check the discovery loop calls on each timer tick.
+// A failed stat, at startup or in the check, logs at Debug and counts as unchanged.
+func exeWatch(stat func() (os.FileInfo, error)) func() bool {
+	baseline, err := stat()
+	if err != nil {
+		logger.Debug("reed: could not stat the watchdog's binary at startup; it will not retire on a replaced binary", "err", err)
+		baseline = nil
+	}
+	return func() bool {
+		now, err := stat()
+		if err != nil {
+			logger.Debug("reed: could not stat the watchdog's binary; treating it as unchanged", "err", err)
+		}
+		return exeReplaced(baseline, now, err)
+	}
+}
+
+// ownExecutableStat returns a stat of the path this process started from, resolved once now.
+// The path is not re-resolved per stat: on Linux a replaced binary's /proc/self/exe link names a deleted file, so re-resolving would stat a path that no longer exists.
+func ownExecutableStat() func() (os.FileInfo, error) {
+	path, pathErr := os.Executable()
+	return func() (os.FileInfo, error) {
+		if pathErr != nil {
+			return nil, pathErr
+		}
+		return os.Stat(path)
 	}
 }
 
@@ -661,6 +712,12 @@ is a real diagnosis path: its diagnostics land in the hub's durable log
 directory, and the foreground run honours -v, -vv, LYX_LOG_LEVEL and
 LYX_LOG_FILE like every other verb.
 
+The daemon retires and respawns itself when the lyx binary it was started
+from is replaced, checked on each discovery tick, so a deploy never leaves it
+laying out sessions with stale render code. A daemon started before this check
+existed carries none and is ended once by hand after the deploy; the next
+reed up, attach or resume spawns a successor that has it.
+
 A detached daemon's stderr reaches nothing, so its Debug trace reaches only
 the durable log directory. Two routes give a Debug trace of the daemon: run
 it in the foreground with -vv, whose Debug lines then go to stderr or to the
@@ -702,7 +759,8 @@ Example:
 			if !acquired {
 				// Contention: another daemon already holds the lock. This costs one short-lived
 				// process and nothing else.
-				logger.Info("reed: watchdog lock already held, exiting", "hub", hubPath, "lock", lockPath)
+				// It logs at Debug so a lost race at the default level writes nothing and creates no trace file.
+				logger.Debug("reed: watchdog lock already held, exiting", "hub", hubPath, "lock", lockPath)
 				return nil
 			}
 			defer fl.Release()
@@ -711,7 +769,24 @@ Example:
 			if c.watchdogTiming != nil {
 				timing = *c.watchdogTiming
 			}
-			if err := runWatchdogLoop(cmd.Context(), hubPath, tmuxPath, shellPath, timing, reedengine.OpenFileWatch); err != nil {
+			exeStat := c.watchdogExeStat
+			if exeStat == nil {
+				exeStat = ownExecutableStat()
+			}
+			err = runWatchdogLoop(cmd.Context(), hubPath, tmuxPath, shellPath, timing, reedengine.OpenFileWatch, exeWatch(exeStat))
+			if errors.Is(err, errWatchdogBinaryReplaced) {
+				// The successor's lock race is lost while this process still holds the lock, so release it first;
+				// the deferred release that follows is a no-op on an unlocked flock.
+				fl.Release()
+				respawn := c.respawnWatchdog
+				if respawn == nil {
+					respawn = reedengine.SpawnWatchdog
+				}
+				respawn(hubPath, tmuxPath, shellPath, testing.Testing())
+				logger.Info("reed: watchdog retired; its binary was replaced and a successor was spawned", "hub", hubPath)
+				return nil
+			}
+			if err != nil {
 				logger.Warn("reed: watchdog daemon's loop returned", "hub", hubPath, "err", err)
 			}
 			return nil

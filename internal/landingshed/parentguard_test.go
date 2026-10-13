@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 var (
@@ -280,4 +282,52 @@ func TestParentGuard_Moved(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestParentGuard_PauseReadFailureLogsOncePerEpisode asserts a pause-flag read that fails on every poll logs one Warn, Debug while it repeats and one Info at the next good read, and reads as not paused throughout.
+// It is serial: it captures the process-global logger.
+func TestParentGuard_PauseReadFailureLogsOncePerEpisode(t *testing.T) {
+	buf := logcapture.CaptureVerbose(t)
+	logger.SetVerbosity(2)
+	g, _, _ := newGuardFixture(t)
+	reads := 0
+	g.lock.PauseRequested = func() (bool, error) {
+		reads++
+		if reads <= 3 {
+			return false, errors.New("unreadable")
+		}
+		return false, nil
+	}
+	var failures logger.Episode
+
+	for i := 0; i < 4; i++ {
+		if g.pauseRequested(&failures) {
+			t.Errorf("pauseRequested() call %d = true; want false", i+1)
+		}
+	}
+
+	const failure = "could not read the pause flag during the parent lock wait"
+	for _, want := range []struct {
+		level, text string
+		count       int
+	}{
+		{"WARN", failure, 1},
+		{"DEBUG", failure, 2},
+		{"INFO", "the pause flag reads again during the parent lock wait", 1},
+	} {
+		if got := countLogLines(buf.String(), want.level, want.text); got != want.count {
+			t.Errorf("%s lines containing %q = %d; want %d\n%s", want.level, want.text, got, want.count, buf.String())
+		}
+	}
+}
+
+// countLogLines counts the lines of log at level that contain text.
+func countLogLines(log, level, text string) int {
+	count := 0
+	for _, line := range strings.Split(log, "\n") {
+		if strings.Contains(line, "level="+level) && strings.Contains(line, text) {
+			count++
+		}
+	}
+	return count
 }

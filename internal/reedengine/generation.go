@@ -13,7 +13,9 @@ package reedengine
 import (
 	"fmt"
 	"runtime"
+	"slices"
 	"strings"
+	"sync"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -130,15 +132,17 @@ func (e *Engine) paneGenerationLocked(sessionName string) (PaneGeneration, error
 func (e *Engine) adoptPaneGenerationLocked(st *ReedState) error {
 	live, err := e.paneGenerationLocked(e.SessionName())
 	if err != nil {
-		logger.Warn("reed: could not read the live pane generation, leaving persisted pane bindings as they are",
+		e.calleeFailures.Fail("pane generation", "reed: could not read the live pane generation, leaving persisted pane bindings as they are",
 			"socket", e.Socket(), "session", e.SessionName(), "err", err)
 		return nil
 	}
+	e.calleeFailures.Recover("pane generation", "reed: live pane generation reads again", "socket", e.Socket(), "session", e.SessionName())
 
 	recorded := st.PaneGeneration
 	if !recorded.Recorded() || recorded.SameIncarnation(live) {
 		// SameIncarnation deliberately ignores SessionName, so an in-place tmux rename-session
 		// refreshes the stamp here instead of being mistaken for a different generation.
+		e.stateLoadNotices.forgetGenerationClear()
 		st.PaneGeneration = live
 		return nil
 	}
@@ -147,7 +151,13 @@ func (e *Engine) adoptPaneGenerationLocked(st *ReedState) error {
 		return err
 	}
 
-	logger.Warn("reed: persisted pane bindings were minted against a different tmux session incarnation, clearing them",
+	// The clear is made in memory only, so every later load of the same file clears it again;
+	// only the first load of a recorded and live pair warns.
+	logClear := logger.Debug
+	if e.stateLoadNotices.generationClearIsNew(recorded, live) {
+		logClear = logger.Warn
+	}
+	logClear("reed: persisted pane bindings were minted against a different tmux session incarnation, clearing them",
 		"socket", e.Socket(), "session", e.SessionName(),
 		"recordedSession", recorded.SessionName, "recordedTmuxSession", recorded.TmuxSessionID, "recordedServerPID", recorded.ServerPID,
 		"liveTmuxSession", live.TmuxSessionID, "liveServerPID", live.ServerPID)
@@ -282,4 +292,54 @@ func (e *Engine) refuseLiveForeignSessionLocked(recorded PaneGeneration) error {
 			"Continuing would launch a second copy of every strand and leave %q running unreachably. "+
 			"Tear the old session down with \"%s -L %s kill-session -t '=%s'\" (or attach to it first to rescue its work), then re-run this command",
 		recorded.SessionName, e.Socket(), e.SessionName(), recorded.SessionName, e.TmuxPath(), e.Socket(), recorded.SessionName)
+}
+
+// stateLoadNotices remembers the last pane-binding clear a state load logged at Warn.
+// A state load clears in memory and never saves, so the next load of the same file clears and would log the same line again;
+// the first clear of a pair or set warns, a repeat of it logs at Debug, and a load that finds nothing to clear forgets the record.
+// Both the watch and name-repair goroutines load state, so a mutex guards it.
+type stateLoadNotices struct {
+	mu sync.Mutex
+
+	generationLogged bool
+	generationPair   [2]PaneGeneration
+
+	conflictLogged bool
+	conflictSet    string
+}
+
+// generationClearIsNew reports whether the clear for the pair of recorded and live generation differs from the last one logged, and records it as the last.
+func (n *stateLoadNotices) generationClearIsNew(recorded, live PaneGeneration) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	pair := [2]PaneGeneration{recorded, live}
+	isNew := !n.generationLogged || n.generationPair != pair
+	n.generationLogged = true
+	n.generationPair = pair
+	return isNew
+}
+
+// forgetGenerationClear drops the recorded generation pair, so a later mismatch warns again.
+func (n *stateLoadNotices) forgetGenerationClear() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.generationLogged = false
+}
+
+// conflictClearIsNew reports whether the cleared strand GUIDs differ from the last set logged, and records them as the last.
+func (n *stateLoadNotices) conflictClearIsNew(cleared []string) bool {
+	set := strings.Join(slices.Sorted(slices.Values(cleared)), ",")
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	isNew := !n.conflictLogged || n.conflictSet != set
+	n.conflictLogged = true
+	n.conflictSet = set
+	return isNew
+}
+
+// forgetConflictClear drops the recorded cleared set, so a later conflict warns again.
+func (n *stateLoadNotices) forgetConflictClear() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.conflictLogged = false
 }

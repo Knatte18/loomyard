@@ -19,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fswatch"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -934,13 +935,30 @@ func TestWatchLoop_RecoversFromDormancyToItsPriorMode(t *testing.T) {
 	waitForPromotion(t, fake)
 }
 
+// countLogLines counts the captured lines at level that carry msg.
+func countLogLines(output, level, msg string) int {
+	count := 0
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, "level="+level) && strings.Contains(line, msg) {
+			count++
+		}
+	}
+	return count
+}
+
 // TestWatchLoop_NonSentinelFailureDoesNotGoDormant pins the narrowing itself: a re-apply failure
 // that is NOT errWorktreeRootGone must not drop the loop into dormancy, so the loop keeps
 // re-applying at its backed-off poll cadence.
+// It also pins the failure episode.
+// The first failure logs at Warn and the repeats at Debug.
+// The first success after them logs one Info recovery with the failed-tick count.
+// A failure after that recovery warns again.
+// It captures the process-global logger at Debug, so it stays serial.
 //
 //testtiming:keep pins a re-apply failure other than errWorktreeRootGone leaving the loop at its poll cadence with no dormancy warning; its covering tests run this code without asserting it
 func TestWatchLoop_NonSentinelFailureDoesNotGoDormant(t *testing.T) {
 	buf := logcapture.CaptureVerbose(t)
+	logger.SetVerbosity(2)
 	e, fake := newWatchLoopTestEngine(t, "on")
 	fake.answer("show-options", "", nil)
 	fake.answer("select-layout", "", errors.New("select-layout boom"))
@@ -952,6 +970,28 @@ func TestWatchLoop_NonSentinelFailureDoesNotGoDormant(t *testing.T) {
 	}
 	if strings.Contains(buf.String(), "told worktree root is gone") {
 		t.Errorf("dormancy warning logged for a non-sentinel failure, want only the sentinel to trigger dormancy:\n%s", buf.String())
+	}
+
+	const failed = "reed: resize re-apply failed"
+	if !eventually(t, 300*time.Millisecond, func() bool { return countLogLines(buf.String(), "DEBUG", failed) >= 1 }) {
+		t.Fatalf("no repeat of the failure at level=DEBUG; log:\n%s", buf.String())
+	}
+	if got := countLogLines(buf.String(), "WARN", failed); got != 1 {
+		t.Errorf("failure WARN lines = %d, want exactly 1 for the episode; log:\n%s", got, buf.String())
+	}
+
+	fake.answer("select-layout", "", nil)
+	if !eventually(t, 300*time.Millisecond, func() bool { return countLogLines(buf.String(), "INFO", "reed: resize re-apply recovered") == 1 }) {
+		t.Fatalf("no single INFO recovery line; log:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "failed_ticks=") {
+		t.Errorf("recovery line carries no failed_ticks; log:\n%s", buf.String())
+	}
+
+	fake.answer("display-message", "150 55", nil)
+	fake.answer("select-layout", "", errors.New("select-layout boom"))
+	if !eventually(t, 300*time.Millisecond, func() bool { return countLogLines(buf.String(), "WARN", failed) == 2 }) {
+		t.Fatalf("no second WARN after the recovery; log:\n%s", buf.String())
 	}
 }
 

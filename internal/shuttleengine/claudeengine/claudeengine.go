@@ -28,6 +28,7 @@ const defaultSubmitRedrawSettleMS = 300
 // Claude implements shuttleengine.Engine for the Claude Code CLI.
 // Its methods are pure functions of their arguments, its settle fields and its clock, fixed at construction,
 // so a Claude is safe to share across concurrent runs.
+// The one piece of shared mutable state is nameReads, which remembers the session ids whose name-read failure was already warned about.
 type Claude struct {
 	// now is the clock the activity reading takes the time of a fork's pending tool call from.
 	now func() time.Time
@@ -37,16 +38,18 @@ type Claude struct {
 	submitSettleMS int
 	// submitRedrawSettleMS is the wait after an Enter before the input box is read, so Claude Code has redrawn it.
 	submitRedrawSettleMS int
+	// nameReads is a pointer so a copy of the struct shares one set; nil warns on every failure.
+	nameReads *nameReadWarnings
 }
 
 // New returns a Claude engine with the default submit settle.
 func New() *Claude {
-	return &Claude{now: time.Now, submitSettleMS: defaultSubmitSettleMS, submitRedrawSettleMS: defaultSubmitRedrawSettleMS}
+	return &Claude{now: time.Now, submitSettleMS: defaultSubmitSettleMS, submitRedrawSettleMS: defaultSubmitRedrawSettleMS, nameReads: &nameReadWarnings{}}
 }
 
 // NewFromConfig returns a Claude engine whose submit settle is cfg.SubmitSettleMS and whose redraw settle is cfg.SubmitRedrawSettleMS.
 func NewFromConfig(cfg shuttleengine.Config) *Claude {
-	return &Claude{now: time.Now, submitSettleMS: cfg.SubmitSettleMS, submitRedrawSettleMS: cfg.SubmitRedrawSettleMS}
+	return &Claude{now: time.Now, submitSettleMS: cfg.SubmitSettleMS, submitRedrawSettleMS: cfg.SubmitRedrawSettleMS, nameReads: &nameReadWarnings{}}
 }
 
 // Compile-time proof that Claude satisfies the provider seam.

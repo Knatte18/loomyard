@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -157,11 +158,22 @@ func TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped(t 
 // while strand data loads verbatim from an existing persisted file and the Socket/Session identity diagnostic is re-stamped
 // from the engine's told geometry on every load — a renamed worktree carries its .lyx state along,
 // but its session name changes with the directory, and a diagnostic recording an identity reed no longer drives is worse than none.
+// A binding clear is made in memory and never saved, so repeated loads of one file clear again: the first logs at Warn and the repeats at Debug.
+// It captures the process-global logger at Debug, so it stays serial.
 func TestLoadOrInitStateLocked(t *testing.T) {
+	type wantLog struct {
+		level, text string
+		count       int
+	}
 	tests := []struct {
 		name        string
 		persisted   *ReedState
 		wantStrands []string
+		// generations, when set, scripts the fake tmux through answerGenerations.
+		generations map[string]string
+		// loads is how many times one engine loads the unchanged file; zero means one.
+		loads    int
+		wantLogs []wantLog
 	}{
 		{name: "AbsentFileInitializesFromEngineIdentity"},
 		{
@@ -173,19 +185,60 @@ func TestLoadOrInitStateLocked(t *testing.T) {
 			},
 			wantStrands: []string{"g1"},
 		},
+		{
+			name: "a stale generation stamp warns once while the clear stays unsaved",
+			persisted: &ReedState{
+				PaneGeneration: PaneGeneration{SessionName: "worktree", TmuxSessionID: "$0", ServerPID: "100", Created: "1787000000"},
+				Strands:        []Strand{{GUID: "g1", PaneID: "%1"}},
+			},
+			wantStrands: []string{"g1"},
+			generations: map[string]string{"worktree": "$4|900|1787043918"},
+			loads:       3,
+			wantLogs: []wantLog{
+				{"WARN", "minted against a different tmux session incarnation", 1},
+				{"DEBUG", "minted against a different tmux session incarnation", 2},
+			},
+		},
+		{
+			name: "conflicting bindings warn once while the repair stays unsaved",
+			persisted: &ReedState{
+				Strands: []Strand{{GUID: "g1", PaneID: "%1"}, {GUID: "g2", PaneID: "%1"}},
+			},
+			wantStrands: []string{"g1", "g2"},
+			generations: map[string]string{"worktree": "$4|900|1787043918"},
+			loads:       3,
+			wantLogs: []wantLog{
+				{"WARN", "cleared strand pane bindings", 1},
+				{"DEBUG", "cleared strand pane bindings", 2},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			logs := logcapture.CaptureVerbose(t)
+			logger.SetVerbosity(2)
 			e := newTestEngine(t)
+			if tt.generations != nil {
+				answerGenerations(installFakeTmux(t, e), tt.generations)
+			}
 			if tt.persisted != nil {
 				if err := SaveState(e.stateDir(), tt.persisted); err != nil {
 					t.Fatalf("SaveState: %v", err)
 				}
 			}
 
-			st, err := e.loadOrInitStateLocked()
-			if err != nil {
-				t.Fatalf("loadOrInitStateLocked: %v", err)
+			var st *ReedState
+			for load := 0; load < max(tt.loads, 1); load++ {
+				var err error
+				st, err = e.loadOrInitStateLocked()
+				if err != nil {
+					t.Fatalf("loadOrInitStateLocked: %v", err)
+				}
+			}
+			for _, want := range tt.wantLogs {
+				if got := countLogLines(logs.String(), want.level, want.text); got != want.count {
+					t.Errorf("level=%s lines carrying %q = %d, want %d; log:\n%s", want.level, want.text, got, want.count, logs.String())
+				}
 			}
 
 			if st == nil {

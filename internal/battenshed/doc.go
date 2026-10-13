@@ -94,7 +94,9 @@
 // The driver lock is a liveness signal of its own: a Go driver holds it for life while the run lock is free between steps, so a running go child whose driver lock is held has a driver at work and sends no driver-dead notice, and one with neither lock and no strand is noticed as driver-dead.
 //
 // A child that halts (blocked, paused or failed) is a budget-exempt wait, not a failure of the Run-Shed row:
-// batten never spawns or resumes a halted child, bar one exception below, logs one Warn per halt episode, and keeps waiting with the child's state, error, current producer and the resume command ("lyx loom resume" in the task worktree) as its reason.
+// batten never spawns or resumes a halted child, bar one exception below, logs one Info line per halt episode, and keeps waiting with the child's state, error, current producer and the resume command ("lyx loom resume" in the task worktree) as its reason.
+// A stuck verdict takes its log level from its cause: a failed producer step logs `producer stuck` at Warn, and an ordinary wait or move logs it at Info.
+// A wait on the child logs at Info once per state of the child, so a reason that only counts up, such as the driver-exit grace or a retry's refusal tail, logs once while the reason file always holds the newest text.
 // A halted or awaiting child whose reed state holds a dead driver strand has its pair's strands revived through reed resume, once per halt episode per batten process;
 // the run stays halted and nothing is resumed,
 // so the operator's "lyx loom resume" wakes the revived driver.
@@ -124,7 +126,8 @@
 // With deps.ParentLock wired, the wait also looks after the parent lock of the child's run on every probe check (innerrun_parentlock.go).
 // A lock record handed to this batten at PR-Gate is kept while the child awaits there, until that awaiting has lasted the idle bound with no decision to resume on, and while the child runs after a resume, so the resumed loop takes it back; in any other state the record is released.
 // A record owned by another process is released once every agent of that owner has waited for the idle bound with none busy, a watch that restarts whenever the owner changes; a failed agent read releases nothing.
-// Every release logs one Warn, and batten releases only a record naming its own child's run.
+// Every release logs one Info, and batten releases only a record naming its own child's run.
+// A polled seam that keeps failing, this lock step's included, warns at the first failure, logs Debug while it repeats and logs one Info when it recovers, and a retried spawn or goto logs Info on its first attempt and Debug on each retry.
 // A child awaiting at PR-Gate with no decision pending whose parent branch moved upstream is resumed through the same spawn as a decided one, so the gate's next call reroutes it to Merge-In under the lock, and its awaiting notice is suppressed.
 // The moved-parent read may fetch, so it runs only for a child awaiting at the gate row, at most once per probe.
 //
@@ -145,13 +148,13 @@
 // it checks the prime, where a child whose parent branch is not the prime's branch skips the pull and deploy and a prime with uncommitted tracked paths is waited on for ten minutes;
 // it pulls the prime under the prime lock and releases that lock at once, since batten never pushes the prime;
 // outside the prime lock it runs the landing config's hub-wide `deploy` command in the prime, for a parent branch in `require_pr_to_base` only, with a thirty-minute timeout and its output in the row's deploy log;
-// it writes the ready snapshot before pruning the board, so the tasks the prune made ready are named exactly once across a restart; and it queues one notice naming them.
+// it writes the ready snapshot before pruning the board, so the tasks the prune made ready are named exactly once across a restart; and it queues one landing notice per batten run, naming the tasks the prune made ready when there are any.
 // The two locks differ in what they hold: the land lock serialises whole landings, the prime lock only the pull.
 // A failed step is Stuck naming it, with one failure notice per episode.
 // A pause seen during the land-lock or dirty-prime wait halts the row blocked with no notice, rather than paused, since the row has no on_stuck route to yield through;
 // shed's blocked persist leaves the pause flag set, so the way back is `lyx batten goto <slug> --to Land`, which clears it, then `lyx batten run <slug>`.
 //
-// The rows after Run-Shed send the orch a failure notice through a row notifier (rownotice.go): Worktree-Teardown on every failure it returns, and the Land row on the same terms.
+// The rows after Run-Shed send the orch a failure notice through a row notifier (rownotice.go): Worktree-Teardown on every failure it returns, and the Land row on the same terms; the Land row also sends its landing notice there, on success.
 // A notice goes once per failure episode, an episode being one entry of the row from its predecessor's Done or from a halt at that row, told apart by the length of batten's own status history;
 // the row's `<row>-row-notice` marker keeps the length of the last noticed failure, so a re-entry that appended nothing sends nothing, and a batten that died inside the row never repeats a queued notice.
 // A notice is tried at most three times, thirty seconds apart, and dropped with a Warn after that, leaving the failed row halted and visible in `lyx batten status`.

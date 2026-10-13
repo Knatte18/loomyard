@@ -46,8 +46,8 @@ func childGoto(ctx context.Context, taskLocation *lyxcwd.Location, slug, target 
 	var childOutput bytes.Buffer
 	cmd.Stdout = &childOutput
 	cmd.Stderr = &childOutput
-	logger.Info("battencli: sending the loom run to its Publish failure target", "slug", slug, "dir", cmd.Dir, "target", target)
+	logger.Debug("battencli: sending the loom run to its Publish failure target", "slug", slug, "dir", cmd.Dir, "target", target)
 	runErr := cmd.Run()
-	logger.Info("battencli: loom goto wait complete", "slug", slug, "dir", cmd.Dir, "target", target)
+	logger.Debug("battencli: loom goto wait complete", "slug", slug, "dir", cmd.Dir, "target", target)
 	return childSpawnError(runErr, childOutput.String())
 }

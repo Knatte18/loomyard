@@ -41,6 +41,8 @@ type retryHarness struct {
 	headErr   error
 	// goRetrySpent is what the fake GoVerifyRetrySpent seam reports.
 	goRetrySpent bool
+	// goRetryErrs is what the seam returns as its error, consumed like gotoErrs.
+	goRetryErrs []error
 	// gotoErrs and spawnErrs are consumed one per call; a call past the end succeeds, except that an exhausted list ending in an error repeats it.
 	gotoErrs    []error
 	spawnErrs   []error
@@ -82,7 +84,7 @@ func newRetryHarness(t *testing.T) *retryHarness {
 		return *h.record, true, h.recordErr
 	}
 	deps.ChildHead = func() (string, error) { return h.head, h.headErr }
-	deps.GoVerifyRetrySpent = func() (bool, error) { return h.goRetrySpent, nil }
+	deps.GoVerifyRetrySpent = func() (bool, error) { return h.goRetrySpent, nextErr(&h.goRetryErrs) }
 	deps.Goto = func(_ context.Context, target string) error {
 		h.gotoTargets = append(h.gotoTargets, target)
 		return nextErr(&h.gotoErrs)

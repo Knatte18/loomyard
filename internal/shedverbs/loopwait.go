@@ -189,12 +189,14 @@ type loopSnapshot struct {
 // takeSnapshot looks at the loop lock and the pid file first, then the envelope file and the followed loop's delivered record, and the waiter's own spawn last.
 // That order is what makes a loop that finished between two looks show up as a delivered envelope and never as a gone one:
 // a loop writes its envelope before it removes its pid file and releases its lock.
-func takeSnapshot(loop LoopSpec, follow loopFollow) loopSnapshot {
+// A pid file read error is logged through failures, owned by the caller for the length of its wait: a Warn at the first failure, Debug while it repeats and an Info when it reads again.
+func takeSnapshot(loop LoopSpec, follow loopFollow, failures *logger.Episode) loopSnapshot {
 	snap := loopSnapshot{lockFree: loopLockFree(loop.LockPath)}
 	record, found, err := ReadLoopPIDRecord(loop.PIDPath)
 	if err != nil {
-		logger.Warn("shed: the waiter could not read the loop pid file", "error", err.Error())
+		failures.Fail("shed: the waiter could not read the loop pid file", "error", err.Error())
 	} else {
+		failures.Recover("shed: the waiter reads the loop pid file again")
 		snap.record, snap.hasRecord = record, found
 	}
 	snap.envelope, snap.hasEnvelope = readLoopEnvelopeFile(loop.EnvelopePath)
@@ -227,8 +229,9 @@ func waitLoopEnvelope(ctx context.Context, spec *Spec, follow *loopFollow) (loop
 
 	delay := waitPollFloor
 	previous := ""
+	var pidFileFailures logger.Episode
 	for {
-		snap := takeSnapshot(loop, *follow)
+		snap := takeSnapshot(loop, *follow, &pidFileFailures)
 		if result, done := judgeSnapshot(follow, snap); done {
 			return result, nil
 		}

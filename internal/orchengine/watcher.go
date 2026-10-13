@@ -105,7 +105,7 @@ type Watcher struct {
 	seen phaseEvents // What the current non-idle phase has read so far.
 
 	// idleDisagreement is the pair last logged as a disagreement between the idle probe and the session state, valid while hasIdleDisagreement.
-	// It is memory only, and binding to another strand clears it.
+	// It is memory only, and binding to another strand clears it; a probe that agrees leaves it as it is.
 	idleDisagreement    idleStatePair
 	hasIdleDisagreement bool
 
@@ -133,13 +133,17 @@ type Watcher struct {
 	pauseFirstEsc map[int64]time.Time
 	// pauseReadError is the text of the record read error last logged, empty while the record reads.
 	pauseReadError string
+	// netOpsFailures is the failure episode of the pause's network operation marker reads, which repeat on every tick of a pause's grace.
+	netOpsFailures logger.Episode
 }
 
-// idleStatePair is one idle probe answer beside the session state it disagreed with.
+// idleStatePair is one idle probe answer beside the session state it disagreed with, and when that state began.
+// Together they are the key of a disagreement episode.
 type idleStatePair struct {
 	idle  bool
 	state shuttleengine.SessionStateName
 	cause string
+	since time.Time
 }
 
 // phaseEvents records what the current non-idle phase has observed, which the cursor has moved past and a later tick must still know.
@@ -451,7 +455,7 @@ func (w *Watcher) markStuck(st State, reason string) error {
 
 // heldTyping folds the error of a typed step into whether shuttle held the write.
 // A nil error and one that does not wrap shuttleengine.ErrSessionBusy answer held false, and the caller returns the error as it did before.
-// A held write typed nothing: it is logged at Info once per change of reason, and the caller returns nil leaving its phase as it is, so the next tick retypes the same text and the tick counts no error.
+// A held write typed nothing: it is logged at Info once per change of reason, a draft hold under the constant draftHoldReason so the operator's typing never changes it, and the caller returns nil leaving its phase as it is, so the next tick retypes the same text and the tick counts no error.
 // In the idle phase the reason is also recorded in st.Stuck with StuckBySend and saved, unless a Stuck that no hold and no send wrote is already there.
 func (w *Watcher) heldTyping(st *State, step string, err error) (held bool, saveErr error) {
 	if err == nil {
@@ -462,6 +466,9 @@ func (w *Watcher) heldTyping(st *State, step string, err error) (held bool, save
 		return false, nil
 	}
 	reason, _, _ := strings.Cut(err.Error(), "\n")
+	if shuttleengine.IsDraftHold(err) {
+		reason = draftHoldReason
+	}
 	if reason != w.lastSendHeld {
 		logger.Info("orch: injection held by the session", "strandGUID", st.Strand, "step", step, "reason", reason)
 	}
@@ -488,9 +495,14 @@ const paneTooShortReason = "orch pane too short for the idle probe; resize or us
 // paneNotIdleReason is the hold reason of a probe that is not idle and gives no reason of its own: the pane probe decided.
 const paneNotIdleReason = "the pane does not show an empty input box with no turn in progress"
 
-// heldReason returns why probe holds an injection: its own reason, else the pane-too-short text, else the pane fallback.
+// draftHoldReason is the reason recorded for a hold by text in the session's input box, in place of the reason shuttle names, which quotes the operator's draft.
+const draftHoldReason = "the input box holds a draft"
+
+// heldReason returns why probe holds an injection: the draft constant for a draft hold, else its own reason, else the pane-too-short text, else the pane fallback.
 func heldReason(probe shuttleengine.IdleProbe) string {
 	switch {
+	case probe.Draft:
+		return draftHoldReason
 	case probe.Reason != "":
 		return probe.Reason
 	case probe.TooShort:
@@ -583,7 +595,9 @@ func reloadStepName(step int) string {
 	return "pointer"
 }
 
-// logIdleStateDisagreement warns once when probe reads idle beside the state busy, or not idle beside idle-done, idle-stalled, idle-fresh or asking, and again only after either side changes.
+// logIdleStateDisagreement logs at Info, once per episode, when probe reads idle beside the state busy, or not idle beside idle-done, idle-stalled or idle-fresh.
+// An idle probe beside busy on background work agrees, as does a probe that is not idle beside asking.
+// An episode is the idle answer, state, cause and the state's since; the line logs only when that differs from the last pair logged, and an agreeing probe forgets nothing.
 // It also logs the hook's session-start event once per new time.
 // A probe that reports the pane too short is not compared.
 // A state that cannot be read is logged at Debug, and nothing the watcher decides depends on the state.
@@ -603,20 +617,19 @@ func (w *Watcher) logIdleStateDisagreement(strand string, probe shuttleengine.Id
 	state := reading.State
 	var disagrees bool
 	if probe.Idle {
-		disagrees = state.Name == shuttleengine.SessionBusy
+		disagrees = state.Name == shuttleengine.SessionBusy && state.Cause != shuttleengine.SessionCauseBackground
 	} else {
-		disagrees = state.Name == shuttleengine.SessionIdleDone || state.Name == shuttleengine.SessionIdleStalled || state.Name == shuttleengine.SessionIdleFresh || state.Name == shuttleengine.SessionAsking
+		disagrees = state.Name == shuttleengine.SessionIdleDone || state.Name == shuttleengine.SessionIdleStalled || state.Name == shuttleengine.SessionIdleFresh
 	}
 	if !disagrees {
-		w.hasIdleDisagreement = false
 		return
 	}
-	pair := idleStatePair{idle: probe.Idle, state: state.Name, cause: state.Cause}
+	pair := idleStatePair{idle: probe.Idle, state: state.Name, cause: state.Cause, since: state.Since}
 	if w.hasIdleDisagreement && w.idleDisagreement == pair {
 		return
 	}
 	w.idleDisagreement, w.hasIdleDisagreement = pair, true
-	logger.Warn("orch: session state disagrees with the idle probe", "strandGUID", strand, "idle", probe.Idle, "state", string(state.Name), "cause", state.Cause, "since", state.Since)
+	logger.Info("orch: session state disagrees with the idle probe", "strandGUID", strand, "idle", probe.Idle, "state", string(state.Name), "cause", state.Cause, "since", state.Since)
 }
 
 // storeReading records reading in st, taken through turnEnd; an unknown reading is stored as zero tokens.
