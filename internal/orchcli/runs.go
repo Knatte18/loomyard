@@ -1,4 +1,4 @@
-// runs.go ensures the prime's `runs` strand: the top content strand running `lyx batten overview`, which `start` brings up before the orchestrator strand.
+// runs.go ensures the prime's `runs` strand: the session's overview window, running `lyx batten overview`, which `start` brings up before the orchestrator strand.
 
 package orchcli
 
@@ -19,27 +19,12 @@ const runsStrandName = "runs"
 // runsSidecarFile is the filename, under the orch directory, of the sidecar recording the runs strand's guid and the lyx build that launched it.
 const runsSidecarFile = "runs-strand.json"
 
-// The runs strand's size: a content strand sized to its overview, at most a third of the free height and never under runsStrandMinRows.
-const (
-	runsStrandShareNum = 1
-	runsStrandShareDen = 3
-	runsStrandMinRows  = 3
-)
-
-// runsStrandAddSpec builds the runs strand's reedengine.AddSpec for the given pane command: a top-anchored content strand with no segment and no color.
+// runsStrandAddSpec builds the runs strand's reedengine.AddSpec for the given pane command: the session's overview window, with no size, no segment and no color.
 func runsStrandAddSpec(cmd string) reedengine.AddSpec {
 	return reedengine.AddSpec{
 		NameOverride: runsStrandName,
 		Cmd:          cmd,
-		Display: render.Display{
-			Anchor: render.AnchorTop,
-			Size: render.Size{
-				Kind:     render.SizeContent,
-				ShareNum: runsStrandShareNum,
-				ShareDen: runsStrandShareDen,
-				MinRows:  runsStrandMinRows,
-			},
-		},
+		Display:      render.Display{Anchor: render.AnchorOverview},
 	}
 }
 

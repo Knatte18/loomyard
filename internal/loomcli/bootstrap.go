@@ -22,28 +22,13 @@ import (
 // so the bootstrap's re-entrant call finds the pane it created on an earlier invocation instead of having its add refused.
 const statusStrandDisplayName = "loom-status"
 
-// The status strand's size: a content strand sized to its checklist, at most an eighth of the free height and never under statusStrandMinRows.
-const (
-	statusStrandShareNum = 1
-	statusStrandShareDen = 8
-	statusStrandMinRows  = 3
-)
-
-// statusStrandAddSpec builds the status strand's reedengine.AddSpec for the given pane command: a top-anchored content strand, sized by the line count its checklist pane reports.
+// statusStrandAddSpec builds the status strand's reedengine.AddSpec for the given pane command: the session's overview window, with no size and no segment, so its window button takes the plain style.
 // IfAbsent stays false because ensureStatusStrand does its own keep/replace/add dance.
 func statusStrandAddSpec(cmd string) reedengine.AddSpec {
 	return reedengine.AddSpec{
 		NameOverride: statusStrandDisplayName,
 		Cmd:          cmd,
-		Display: render.Display{
-			Anchor: render.AnchorTop,
-			Size: render.Size{
-				Kind:     render.SizeContent,
-				ShareNum: statusStrandShareNum,
-				ShareDen: statusStrandShareDen,
-				MinRows:  statusStrandMinRows,
-			},
-		},
+		Display:      render.Display{Anchor: render.AnchorOverview},
 	}
 }
 
