@@ -83,7 +83,7 @@ internal/preflight: 7
 internal/preflightshed: 8
 internal/proc: 18
 internal/quarrycli: 7
-internal/reedcli: 38
+internal/reedcli: 40
 internal/reedengine: 262
 internal/reedengine/render: 12
 internal/reportcli: 3
