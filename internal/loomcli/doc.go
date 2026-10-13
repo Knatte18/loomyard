@@ -115,6 +115,58 @@
 // `lyx shed step <run-id> --until-stop --arbiter-attempt <N>` performs the verdict's goto under the run and status locks, once per attempt.
 // A pair's session end ends a live arbiter strand with the pair's other strands.
 //
+// The Go driver calls this same path in-process, so eligibility, `arbiter_max_spawns`, the attempts, the applied mark and the deadlines are shared;
+// it passes the tackler's case brief, which the arbiter's prompt asks it to check against the facts.
+//
+// # Go driver
+//
+// `lyx loom drive` is the hidden role verb that drives a go-seeded run, spawned by `lyx loom start`, by `lyx loom resume` for a halted go run and by a hand-over.
+// It takes the run's driver lock without blocking and holds it for its whole life, so a settling driver reads as live while the run lock is free between steps, and a second driver refuses at once.
+// On start it removes the park marker and the resume report.
+//
+// The loop steps the run through the shared `--until-stop` body, saves each stop envelope under the run's drive-reports directory and decides the stop by a closed rule table over the envelope's fields and the facts it reads from disk, never over a row name or the reason text.
+// The table settles a done run, a busy exit, a re-step of an interrupted step under the `reinvoke` policy up to a cap of two per stop key, and the one verify goto to the Publish failure record's target;
+// it asks the tackler at a stop no rule settles, the arbiter at an awaiting stop with a pending escalation, after a tackler `escalate` and when an applied tackler `resume` returns to the same stop, and hands over at a binary-eligible stop whose last step ran another build than the `lyx` on disk.
+// Everything else hands back.
+// Every action appends a settle record to the friction directory, so the repair cap, the one verify retry and the one hand-over per stop key and build are counted from disk and a restarted driver keeps every cap.
+//
+// Before it acts on a stop the driver re-reads the status.
+// A running status or a run lock another process holds ends the driver with a `running-exit` record;
+// a status at another stop key is a moved run, which an orch goto sends to a re-step and anything else decides afresh, and which is never parked and gets no friction note.
+// While a pause covers the slug the driver holds in the pause wait before any re-step, goto, agent spawn or hand-over.
+//
+// A hand-back leaves a Go-authored stop report, commits the run records and writes the park marker through the code `lyx loom commit-records --park` runs, and queues the parent messages the LLM driver's notify rules send.
+// A watching batten announces the run, so only the parent notice, a question, a friction-failed done and a watched verify halt are sent; an unwatched run also gets one line naming the run-id and the report.
+// A paused stop that carries no reason also writes a `go-driver-paused` friction note.
+// A done run commits its records, and one that finished with `friction: failed` also gets a report and a notice without being parked.
+//
+// A hand-over runs only at a binary-eligible stop, once per stop key and build, over a clean tree outside the run's records and never under a pause.
+// It records the hand-over, leaves the stop report and the park marker, releases the driver lock and spawns a fresh `lyx loom drive` of the on-disk build, which re-steps.
+//
+// A driver restarted over a halted run finds an agent attempt that no later hand-back closed and lets the agent's own call reuse it, so no second agent is spawned.
+//
+// # Tackler
+//
+// The tackler is the cold agent the Go driver asks at a stop no rule settles.
+// Each call is an attempt under the run's tackler directory in `attempt-<N>`, and `attempt.json` is written before the spawn, so the attempt counts against `tackler_max_spawns` whatever happens next; 0 turns the tackler off.
+// The record holds the stop key, the pause conditions, a snapshot of the task worktree, the spawn time, the deadline and the envelope and report paths.
+// The directory also holds `prompt.md`, the agent's `verdict.yaml`, an escalate's `case-brief.md`, the call's validated `envelope.json` and, once a re-launch consumed a `resume`, the `applied` mark.
+// While a tackler may be live an ephemeral marker names the attempt, its strand and its deadline.
+//
+// The tackler's verdict is `resume`, `hand-back` or `escalate`.
+// A `resume` names a goto only to the run's current row or to the row the halting entry was routed from, and a blocked stop needs one;
+// a `hand-back` needs a question for the run's parent, and an `escalate` needs a non-empty case brief.
+// A verdict that is missing, unparseable, unsound or late reads as a hand-back whose cause is `missing`, `unparseable`, `precondition`, `timeout`, `died`, `question` or `case-brief`.
+// A deadline that ran out while the hub's pause covered the run moves out by the paused time instead.
+//
+// A re-run for a stop key an attempt already judged spawns nothing: it returns that attempt's verdict or waits on its live tackler, unless a hand-back record for the key closed it.
+// An applied `resume` whose stop key is unchanged goes to the arbiter.
+// The driver consumes a `resume` through the shed's re-launch, which refuses under the status lock unless the run is still where the tackler found it, and marks the attempt applied in the same hold.
+//
+// Tampering is the spawn snapshot of the worktree and a fresh one differing, read only after the stop key proved unchanged:
+// a tackler that changed the code worktree hands back with cause `tampered`, and a run an orch moved meanwhile discards the verdict and acts on the fresh state instead.
+// A pair's session end ends a live tackler strand with the pair's other strands, since it is an interactive strand in the pair's reed session.
+//
 // # Peers
 //
 // `lyx loom peers` lists the other runs in flight in the hub, and `lyx loom peers show <slug> --record decision|plan` prints one peer's decision record or its plan's `00-overview.md` under a `content` key.

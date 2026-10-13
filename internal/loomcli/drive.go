@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,12 +18,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/buildvcs"
+	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
@@ -283,6 +292,91 @@ func (d *goDriver) handOver(ctx context.Context, stop driveStop) error {
 	}
 	logger.Info("loom: drive: handed the run over to a fresh driver", "run", d.deps.RunID, "build", build)
 	return nil
+}
+
+// driveRefusal is the refusal of a second Go driver for a run one already drives.
+const driveRefusal = "loom: drive: a Go driver already drives this run; way forward: transient, `lyx loom status` shows the run, and the live driver settles it"
+
+// driveVerb runs the Go driver under its driver lock.
+// It takes the lock without blocking and refuses at once when another driver holds it, so a second Go driver never stacks.
+// With the lock held it removes each stale file, ignoring an absent one, and calls run, handing it the release that lets a hand-over free the lock early.
+// The lock is released exactly once, whether run released it early or not.
+func driveVerb(out io.Writer, lockPath string, stale []string, run func(release func() error) error) int {
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		return output.Err(out, "loom: drive: create the driver lock directory: "+err.Error()+"; way forward: transient, re-run lyx loom drive or lyx loom start")
+	}
+	held, acquired, err := lock.TryAcquireWriteLock(lockPath)
+	if err != nil {
+		return output.Err(out, "loom: drive: take the driver lock: "+err.Error()+"; way forward: transient, re-run lyx loom drive or lyx loom start")
+	}
+	if !acquired {
+		return output.Err(out, driveRefusal)
+	}
+	released := false
+	release := func() error {
+		if released {
+			return nil
+		}
+		released = true
+		return held.Release()
+	}
+
+	for _, path := range stale {
+		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			_ = release()
+			return output.Err(out, "loom: drive: remove the stale file "+path+": "+err.Error()+"; way forward: transient, re-run lyx loom drive or lyx loom start")
+		}
+	}
+
+	runErr := run(release)
+	releaseErr := release()
+	switch {
+	case runErr != nil:
+		return output.Err(out, runErr.Error())
+	case releaseErr != nil:
+		return output.Err(out, "loom: drive: release the driver lock: "+releaseErr.Error())
+	}
+	return output.Ok(out, map[string]any{"drove": true})
+}
+
+// driveCmd builds the hidden `drive` subcommand.
+func (c *loomCLI) driveCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "drive",
+		Hidden:      true,
+		Short:       "drive this worktree's go-seeded loom run, settling its stops by rule (spawned by lyx loom start)",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
+		Long: `drive is the Go driver of a go-seeded loom run, spawned by lyx loom start, by
+lyx loom resume and by a hand-over from a driver of an older build. It steps the
+run through the --until-stop loop, settles each stop by a closed rule table, asks
+a cold tackler agent about a stop no rule settles, and hands everything it cannot
+settle back to the run's parent in a stop report.
+
+It holds the run's driver lock for its whole life, so a second driver refuses at
+once. It removes the park marker and the resume report on start.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			ctx := cmd.Context()
+			stale := []string{shedrun.ParkMarker(c.location, c.runID), shedrun.ResumeReport(c.location, c.runID)}
+			clihelp.SetExit(ctx, driveVerb(cmd.OutOrStdout(), shedrun.DriverLock(c.location, c.runID), stale, func(release func() error) error {
+				deps, err := c.goDriverDepsFor(release)
+				if err != nil {
+					return err
+				}
+				return (&goDriver{deps: deps}).run(ctx)
+			}))
+			return nil
+		},
+	}
+}
+
+// driveEnvelopePath composes the path of one saved stop envelope, drive-envelope-<compact-timestamp>-<4-hex>.json beside the run's drive reports.
+func driveEnvelopePath(l *lyxcwd.Location, runID string, now func() time.Time, rand func() string) string {
+	filename := fmt.Sprintf("drive-envelope-%s-%s.json", now().Format(driverReportTimestampLayout), rand())
+	return filepath.Join(shedrun.DriveReportsDir(l, runID), filename)
 }
 
 // takePendingAttempt returns the arbiter attempt the next step consumes, and clears it.

@@ -868,6 +868,29 @@ func TestConfigTemplate_ContainsEveryConfigYAMLTag(t *testing.T) {
 	}
 }
 
+// TestPathsOutsideRunRecords pins that PathsOutsideRunRecords drops every path under the run directory, the loom durable directory and the reviews directory, and keeps a code path and a path that only shares a records directory's name as a prefix.
+func TestPathsOutsideRunRecords(t *testing.T) {
+	t.Parallel()
+
+	l := &lyxcwd.Location{HubPath: filepath.Join("home", "user", "repo-LYXHUB"), WorktreeName: "repo", AnchorRel: "."}
+	runID := shedrun.SelfRunID
+	runDir := shedrun.RunDir(l, runID)
+	codePath := filepath.Join(l.AnchorPath(), "internal", "x.go")
+	prefixOnly := LoomDurableDir(l) + "-extra"
+
+	got := PathsOutsideRunRecords(l, runID, []string{
+		filepath.Join(runDir, "status.json"),
+		filepath.Join(LoomDurableDir(l), "friction", "note.md"),
+		filepath.Join(LoomReviewsDir(l), "round.yaml"),
+		codePath,
+		prefixOnly,
+	})
+
+	if want := []string{codePath, prefixOnly}; !reflect.DeepEqual(got, want) {
+		t.Errorf("PathsOutsideRunRecords() = %q; want %q", got, want)
+	}
+}
+
 // containsConfigKey reports whether text contains a "<key>:" line-start token, the shape every one
 // of this template's keys takes.
 func containsConfigKey(text, key string) bool {

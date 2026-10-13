@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/buildvcs"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -675,6 +676,84 @@ func TestGoDriver_Settle(t *testing.T) {
 			}
 			if notified != tt.wantNotifies {
 				t.Errorf("Notify reached %d times; want %d", notified, tt.wantNotifies)
+			}
+		})
+	}
+}
+
+// TestDriveVerb pins the driver lock around the Go driver: a held lock refuses at once with the way forward and touches nothing, a free lock clears the stale files and runs once, and a run that released the lock early for a hand-over leaves it free with no double release.
+func TestDriveVerb(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		holdLock     bool
+		releaseEarly bool
+		wantCode     int
+		wantRuns     int
+		// wantStale is true when the stale files must still exist afterwards.
+		wantStale bool
+		wantText  string
+	}{
+		{name: "a held lock refuses with the way forward, never runs and leaves the stale files", holdLock: true, wantCode: 1, wantRuns: 0, wantStale: true, wantText: "way forward"},
+		{name: "a free lock removes the stale files, runs once and leaves the lock free", wantCode: 0, wantRuns: 1},
+		{name: "a run that released early for a hand-over leaves the lock free with no double release", releaseEarly: true, wantCode: 0, wantRuns: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			lockPath := filepath.Join(root, "scratch", "driver.lock")
+			stale := []string{filepath.Join(root, "driver-parked"), filepath.Join(root, "resume-report")}
+			for _, path := range stale {
+				if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+					t.Fatalf("seed stale file: %v", err)
+				}
+			}
+			if tt.holdLock {
+				if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+					t.Fatalf("create lock directory: %v", err)
+				}
+				held, acquired, err := lock.TryAcquireWriteLock(lockPath)
+				if err != nil || !acquired {
+					t.Fatalf("test could not take the driver lock: acquired %t, %v", acquired, err)
+				}
+				t.Cleanup(func() { _ = held.Release() })
+			}
+
+			runs := 0
+			var out strings.Builder
+			code := driveVerb(&out, lockPath, stale, func(release func() error) error {
+				runs++
+				if tt.releaseEarly {
+					if err := release(); err != nil {
+						t.Errorf("early release = %v; want nil", err)
+					}
+				}
+				return nil
+			})
+
+			if code != tt.wantCode {
+				t.Errorf("driveVerb() = %d; want %d (%s)", code, tt.wantCode, out.String())
+			}
+			if runs != tt.wantRuns {
+				t.Errorf("run called %d times; want %d", runs, tt.wantRuns)
+			}
+			if tt.wantText != "" && !strings.Contains(out.String(), tt.wantText) {
+				t.Errorf("output = %q; want it to hold %q", out.String(), tt.wantText)
+			}
+			for _, path := range stale {
+				_, err := os.Stat(path)
+				if exists := err == nil; exists != tt.wantStale {
+					t.Errorf("stale file %s exists = %t; want %t", path, exists, tt.wantStale)
+				}
+			}
+			if !tt.holdLock {
+				probe, acquired, err := lock.TryAcquireWriteLock(lockPath)
+				if err != nil || !acquired {
+					t.Fatalf("driver lock is still held after the verb: acquired %t, %v", acquired, err)
+				}
+				_ = probe.Release()
 			}
 		})
 	}

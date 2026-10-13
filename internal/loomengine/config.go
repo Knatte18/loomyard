@@ -321,6 +321,27 @@ func LoomDurableDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LoomDurableDirRel())
 }
 
+// PathsOutsideRunRecords returns the absolute paths that lie outside the run's own records directories, in their input order.
+// The records directories are the run's directory, the loom durable directory and the reviews directory: the ones the status commit stages.
+// A path under one of them is run state a hand-over leaves to the next driver; a path that only shares a directory's name as a prefix is outside it.
+func PathsOutsideRunRecords(l *lyxcwd.Location, runID string, paths []string) []string {
+	records := []string{shedrun.RunDir(l, runID), LoomDurableDir(l), LoomReviewsDir(l)}
+	var outside []string
+	for _, path := range paths {
+		inside := false
+		for _, dir := range records {
+			if path == dir || strings.HasPrefix(path, dir+string(filepath.Separator)) {
+				inside = true
+				break
+			}
+		}
+		if !inside {
+			outside = append(outside, path)
+		}
+	}
+	return outside
+}
+
 // LoomFrictionDir returns the path to the Tier 2 friction leaf's directory for this worktree: the per-agent friction notes an unsupervised run's producers append to.
 // The notes are run records, so they live under the durable tree and are committed with the run.
 // It is built on LoomDurableDir rather than re-joining l.AnchorPath() and the durable literal a second time.

@@ -156,6 +156,9 @@ type loomCLI struct {
 	// rowFrictionStatus is the status the Friction-Reflect row's closure recorded in this process;
 	// empty when the row did not run here. loomPostRun reports it on RunDone.
 	rowFrictionStatus string
+	// spawnGoDriver is the seam through which a Go-driver spawn starts a detached `lyx loom drive` and returns its pid.
+	// It is spawnDetachedDrive over the receiver's location in production; the Test Tier Purity Invariant bars a real spawn from an untagged file, so a test substitutes a counting fake.
+	spawnGoDriver func() (int, error)
 }
 
 // newLoomCLI is the only place production code may build a *loomCLI: it is what keeps
@@ -171,6 +174,7 @@ func newLoomCLI() *loomCLI {
 		spec:                  &shedverbs.Spec{},
 	}
 	c.parentDirtyPaths = c.parentDirtyPathsFromFabric
+	c.spawnGoDriver = func() (int, error) { return spawnDetachedDrive(c.location) }
 	return c
 }
 
@@ -475,7 +479,7 @@ Example:
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 	gotoVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.approveCmd(), c.rejectCmd(), c.commitRecordsCmd(), c.reviewCmd(), c.circlingCmd(), c.decisionCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd())
+	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.approveCmd(), c.rejectCmd(), c.commitRecordsCmd(), c.reviewCmd(), c.circlingCmd(), c.decisionCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd(), c.driveCmd())
 
 	return parent
 }
