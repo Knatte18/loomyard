@@ -85,10 +85,10 @@ reed so the strand is sized to it. It reads files only.`,
 			engine := reedengine.New(reedCfg, reedGeom)
 
 			pane := statuspane.Pane{
-				Out:    out,
-				Size:   statuspane.TerminalSize(os.Stdout),
-				Report: statuspane.ReportFromEnv(os.Getenv, engine.SetContentRows),
-				Sleep:  time.Sleep,
+				Out:     out,
+				Size:    statuspane.TerminalSize(os.Stdout),
+				Report:  statuspane.ReportFromEnv(os.Getenv, engine.SetContentRows),
+				Resized: statuspane.NotifyResize(cmd.Context()),
 			}
 			pane.Run(cmd.Context(), c.checklistPoll(location))
 			return nil
