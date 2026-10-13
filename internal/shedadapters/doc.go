@@ -84,9 +84,17 @@
 //     and both prompts carry the parent directive that parentdirective.Directive renders from BouncerConfig.ParentName, in its non-interactive form;
 //     an empty ParentName renders the no-parent variant.
 //     The escalation brief and the parent notice are read by the parent, not by a spawned role, and carry no directive.
-//     Escalation: a CONTINUE or CIRCLING round escalates to the run's parent instead of halting for a human, for one of two causes.
-//     Cause budget holds whenever the BouncerConfig.Bounces seam reports count >= budget, the comparison Shed applies, even over a CIRCLING verdict;
-//     cause circling holds for a guarded CIRCLING below the budget.
+//     Escalation: a CONTINUE or CIRCLING round escalates to the run's parent instead of halting for a human, for one of three causes.
+//     Soft-cap rule: the soft cap is reached when the BouncerConfig.Bounces seam reports count >= budget, the comparison Shed applies.
+//     The rule's window opens on the soft cap by that count or on the hard cap by the round number, whichever comes first, so a round past a goto that reset the count is still settled by the rule.
+//     A round in the window with no decision file is settled in five steps:
+//     a review that does not parse, or a ledger that cannot be read, escalates with cause budget;
+//     a ledger with no design-wrong entry (open, BLOCKING or MEDIUM, and not tagged `mechanical` by the judge, so a missing or unknown tag counts) records an automatic accept;
+//     a round at or past the hard cap escalates with cause hard-cap;
+//     a CIRCLING verdict, or a design-wrong key open in this round and in the previous round when the previous round's decision is a recorded continue, escalates with cause circling, and an unreadable previous decision or ledger escalates with cause budget;
+//     otherwise an automatic continue is recorded (cause budget, `automatic: true`) and the round returns a budget-exempt Stuck.
+//     A CIRCLING verdict below the window escalates with cause circling.
+//     The rule reads only files in the run directory, so a harvest and a replay settle alike.
 //     The Bouncer renders the bouncer-template-escalation brief and the bouncer-template-parent-notice line,
 //     writes them with the Go-owned cause frontmatter as round-<N>-escalation.md and round-<N>-parent-notice.md,
 //     and returns Awaiting with the ledger path, a Reason naming the segment, round, cause, brief and the `lyx loom circling` verbs with the `lyx loom resume` resume,
@@ -95,14 +103,19 @@
 //     A re-call over an existing record rewrites nothing and returns the same Awaiting.
 //     A CONTINUE with no spent budget, and one whose Bounces seam is unwired, unknown or errored, returns Stuck and takes Shed's generic bounce-budget block.
 //     A recorded decision is acted on first, whatever the budget:
-//     a continue maps to Stuck, marked BudgetExempt exactly when the escalation's cause is budget, so a continue after a budget escalation spends no budget;
-//     a pending accept settles its record and maps to Done after Approve and Commit, for either cause.
+//     a continue below the hard cap maps to Stuck, marked BudgetExempt when the decision's cause is budget or the budget is reached, so a continue past the soft cap spends no budget whoever recorded it;
+//     a pending accept settles its record and maps to Done after Approve and Commit, for any cause.
+//     Hard cap: BouncerConfig.HardCap is the perch's hard cap as a round number in the segment's current generation, 0 meaning none.
+//     A continue recorded at or past it is moved aside (the escalation record, its parent notice and then the decision file, each to a timestamped sibling no reader opens)
+//     and the round re-escalates with cause `hard-cap`, the third cause beside budget and circling.
+//     An escalation at or past the hard cap, whatever its cause, carries the accept-only Reason and the bouncer-fragment-decide-capped decide step; below it the Reason and the bouncer-fragment-decide-open step offer accept and continue.
 //     PendingCirclingDecision and PendingEscalation read a run directory's latest round: the first reports a decision file not yet settled, the second a Bouncer-written escalation, with its round and brief path, that no decision file answers.
-//     Auto-accept: a Bouncer told BouncerConfig.AutoAccept settles a spent budget as an accept instead of escalating.
-//     It fires for the budget cause alone, also over a CIRCLING verdict, and only on a harvest, the judge having written the verdict in this call, over a round with no decision and no escalation record.
+//     Auto-accept: a Bouncer told BouncerConfig.AutoAccept settles a spent budget as an accept instead of running the soft-cap rule.
+//     It fires at the soft cap alone, also over a CIRCLING verdict, and only on a harvest, the judge having written the verdict in this call, over a round with no decision and no escalation record.
+//     A replay and a round BlockingEscalates sends to the rule (an open BLOCKING entry, or an unreadable ledger) go to the rule instead.
 //     It records the round's decision file as an accept with cause budget and `automatic: true`, then takes the path a recorded parent accept takes (carry-over, settled record, Approve, Commit, Done),
 //     writing no escalation record and no parent notice; settling the record keeps its `automatic` value, which a parent's accept never sets.
-//     A replay of an earlier round's CONTINUE, a CIRCLING below the budget, an already escalated round, a recorded decision and an unknown or errored Bounces seam behave as with the flag false, which is the default.
+//     A CIRCLING below the budget, an already escalated round, a recorded decision and an unknown or errored Bounces seam behave as with the flag false, which is the default.
 //     Carry-over: a Bouncer told a CarryOver seam, with the Segment its entry is filed under and the AnchorPath its paths are relative to, calls it on every Done that settles a judged round.
 //     The seam is called with discussionparser.CarryOverConverged before Approve on a CONVERGED settle,
 //     and with CarryOverAccepted before the settle write of a pending accept, so a failed write leaves the accept pending and its re-call retries.

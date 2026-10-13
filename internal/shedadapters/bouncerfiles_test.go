@@ -280,6 +280,7 @@ func TestParseLedger_ClassAndSeverity(t *testing.T) {
 		entry        string
 		wantClass    burlerengine.Class
 		wantSeverity burlerengine.Severity
+		wantFix      string
 		wantErr      string
 	}{
 		{
@@ -291,6 +292,20 @@ func TestParseLedger_ClassAndSeverity(t *testing.T) {
 		{
 			name:  "neither parses with both empty",
 			entry: "",
+		},
+		{
+			name:         "mechanical fix tag carried",
+			entry:        "    class: design\n    severity: MEDIUM\n    fix: mechanical\n",
+			wantClass:    burlerengine.ClassDesign,
+			wantSeverity: burlerengine.SeverityMedium,
+			wantFix:      "mechanical",
+		},
+		{
+			name:         "unknown fix tag parses and is kept",
+			entry:        "    class: design\n    severity: MEDIUM\n    fix: sideways\n",
+			wantClass:    burlerengine.ClassDesign,
+			wantSeverity: burlerengine.SeverityMedium,
+			wantFix:      "sideways",
 		},
 		{
 			name:    "class outside vocabulary names the key",
@@ -316,8 +331,8 @@ func TestParseLedger_ClassAndSeverity(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got := lf.Entries[0]; got.Class != tt.wantClass || got.Severity != tt.wantSeverity {
-				t.Fatalf("entry class/severity = %q/%q, want %q/%q", got.Class, got.Severity, tt.wantClass, tt.wantSeverity)
+			if got := lf.Entries[0]; got.Class != tt.wantClass || got.Severity != tt.wantSeverity || got.Fix != tt.wantFix {
+				t.Fatalf("entry class/severity/fix = %q/%q/%q, want %q/%q/%q", got.Class, got.Severity, got.Fix, tt.wantClass, tt.wantSeverity, tt.wantFix)
 			}
 		})
 	}

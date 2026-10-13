@@ -28,6 +28,11 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"loom": "review_max_bounces: 2\n"},
 		},
 		{
+			name:     "a soft and a hard review cap are both settable through run_settings",
+			settings: map[string]any{"loom": map[string]any{"review_max_bounces": float64(2), "review_hard_max_bounces": float64(3)}},
+			wantDocs: map[string]string{"loom": "review_hard_max_bounces: 3\nreview_max_bounces: 2\n"},
+		},
+		{
 			name:     "below-floor step_idle_timeout_min is raised by loom's Migrate",
 			settings: map[string]any{"loom": map[string]any{"step_idle_timeout_min": float64(0)}},
 			wantDocs: map[string]string{"loom": "step_idle_timeout_min: 1\n"},

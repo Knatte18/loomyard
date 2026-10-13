@@ -331,6 +331,31 @@ func blockBouncerJudge(env shedrecipe.Env) {
 	}
 }
 
+// designWrongBouncerJudge makes every bouncer-judge round of env's loom shuttle write a CONTINUE verdict over a ledger holding one open design-wrong entry,
+// so the soft-cap rule continues a spent budget and escalates at the hard cap.
+func designWrongBouncerJudge(env shedrecipe.Env) {
+	shuttle := env.Shuttle.(*shedfake.Shuttle)
+	dispatch := shuttle.RunFn
+	shuttle.RunFn = func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
+		if spec.Role != "bouncer-judge" {
+			return dispatch(spec)
+		}
+		result, err := writeBouncerJudge(spec, "CONTINUE")
+		if err != nil {
+			return result, err
+		}
+		round, err := strconv.Atoi(spec.Round)
+		if err != nil {
+			return shuttleengine.Result{}, fmt.Errorf("loom shuttle: bouncer-judge spec.Round %q: %w", spec.Round, err)
+		}
+		ledgerContent := fmt.Sprintf("---\nround: %d\nledger:\n  - key: design-gap\n    status: open\n    rounds: [%d]\n    class: design\n    severity: MEDIUM\n    fix: design-wrong\n---\n", round, round)
+		if err := os.WriteFile(spec.OutputFiles[1], []byte(ledgerContent), 0o644); err != nil {
+			return shuttleengine.Result{}, fmt.Errorf("loom shuttle: write bouncer ledger %s: %w", spec.OutputFiles[1], err)
+		}
+		return result, nil
+	}
+}
+
 // countRole reports how many of shuttle's Run calls carried spec.Role == role.
 func countRole(shuttle *shedfake.Shuttle, role string) int {
 	count := 0
