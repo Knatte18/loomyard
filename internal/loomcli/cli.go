@@ -13,6 +13,7 @@ package loomcli
 
 import (
 	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -156,6 +157,11 @@ type loomCLI struct {
 	// rowFrictionStatus is the status the Friction-Reflect row's closure recorded in this process;
 	// empty when the row did not run here. loomPostRun reports it on RunDone.
 	rowFrictionStatus string
+	// spawnGoDriver is the seam through which a Go-driver spawn starts a detached `lyx loom drive` and returns its pid.
+	// It is spawnDetachedDrive over the receiver's location in production; the Test Tier Purity Invariant bars a real spawn from an untagged file, so a test substitutes a counting fake.
+	spawnGoDriver func() (int, error)
+	// spawnGoDriverFrom is spawnGoDriver for a caller that resolved the lyx executable path itself, as a driver handing over after a deploy replaced the file it runs from.
+	spawnGoDriverFrom func(executable string) (int, error)
 }
 
 // newLoomCLI is the only place production code may build a *loomCLI: it is what keeps
@@ -171,6 +177,14 @@ func newLoomCLI() *loomCLI {
 		spec:                  &shedverbs.Spec{},
 	}
 	c.parentDirtyPaths = c.parentDirtyPathsFromFabric
+	c.spawnGoDriverFrom = func(executable string) (int, error) { return spawnDetachedDrive(c.location, executable) }
+	c.spawnGoDriver = func() (int, error) {
+		executable, err := os.Executable()
+		if err != nil {
+			return 0, err
+		}
+		return c.spawnGoDriverFrom(executable)
+	}
 	return c
 }
 
@@ -475,7 +489,7 @@ Example:
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 	gotoVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.fmtCmd(), c.approveCmd(), c.rejectCmd(), c.commitRecordsCmd(), c.reviewCmd(), c.circlingCmd(), c.decisionCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd())
+	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.fmtCmd(), c.approveCmd(), c.rejectCmd(), c.commitRecordsCmd(), c.reviewCmd(), c.circlingCmd(), c.decisionCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd(), c.driveCmd())
 
 	return parent
 }

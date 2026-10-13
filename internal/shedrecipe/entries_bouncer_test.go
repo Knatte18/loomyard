@@ -1132,11 +1132,13 @@ func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 	tests := []struct {
 		name        string
 		extra       Config
+		hardCap     int
 		wantOutcome shedengine.Outcome
 		wantSegment segmentcolor.Segment
 	}{
 		{name: "absent keys auto-accept in the review color", wantOutcome: shedengine.Done, wantSegment: segmentcolor.Review},
-		{name: "blocking_escalates escalates", extra: Config{"blocking_escalates": true}, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review},
+		{name: "blocking_escalates sends the open BLOCKING entry to the rule, which continues", extra: Config{"blocking_escalates": true}, wantOutcome: shedengine.Stuck, wantSegment: segmentcolor.Review},
+		{name: "a hard cap of 1 offers only accept", extra: Config{"blocking_escalates": true}, hardCap: 1, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review},
 		{name: "color_segment colors the judge", extra: Config{"color_segment": "merge"}, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Merge},
 	}
 	for _, tt := range tests {
@@ -1156,6 +1158,9 @@ func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 				},
 			}
 			env.RowAutoAccept = map[string]bool{"review-bounce": true}
+			if tt.hardCap != 0 {
+				env.RowHardMaxBounces = map[string]int{"review-bounce": tt.hardCap}
+			}
 			env.SegmentBounces = func(string) (int, int, bool, error) { return 1, 1, true, nil }
 			writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
 			cfg := minimalBouncerConfig(t, env)
@@ -1168,9 +1173,14 @@ func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 			if err != nil {
 				t.Fatalf("bouncerEntry() error = %v; want nil", err)
 			}
-			outcome, _, err := producer.Call(context.Background())
+			outcome, ptr, err := producer.Call(context.Background())
 			if err != nil || outcome != tt.wantOutcome {
 				t.Fatalf("Call() = %q, %v; want %q, nil", outcome, err, tt.wantOutcome)
+			}
+			if tt.hardCap != 0 {
+				if !strings.Contains(ptr.Reason, "lyx loom circling accept") || strings.Contains(ptr.Reason, "lyx loom circling continue") {
+					t.Errorf("Reason = %q; want the accept verb alone at the hard cap", ptr.Reason)
+				}
 			}
 			if len(segments) != 1 || segments[0] != tt.wantSegment {
 				t.Errorf("judge spawn segments = %v; want [%s]", segments, tt.wantSegment)

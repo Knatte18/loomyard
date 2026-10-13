@@ -63,6 +63,11 @@ var LoomTemplateRework []byte
 //go:embed loom/loom-template-arbiter.md
 var LoomTemplateArbiter []byte
 
+// LoomTemplateTackler is the loom tackler's shipped-default opening prompt: the cold session that settles one stop the Go driver's rules could not, or escalates it to the arbiter.
+//
+//go:embed loom/loom-template-tackler.md
+var LoomTemplateTackler []byte
+
 // LoomTemplateAlignment is the alignment agent's shipped-default opening prompt: the cold session that settles one parent review or PR-Gate, or escalates it to the run's parent.
 //
 //go:embed loom/loom-template-alignment.md
@@ -166,6 +171,16 @@ var BouncerTemplateJudge []byte
 //
 //go:embed bouncer/bouncer-template-escalation.md
 var BouncerTemplateEscalation []byte
+
+// BouncerFragmentDecideOpen is the Bouncer's shipped-default decide step of the escalation brief for a round below its perch's hard cap, filled into the brief's decide_options marker.
+//
+//go:embed bouncer/bouncer-fragment-decide-open.md
+var BouncerFragmentDecideOpen []byte
+
+// BouncerFragmentDecideCapped is the Bouncer's shipped-default decide step of the escalation brief for a round at or past its perch's hard cap, filled into the brief's decide_options marker.
+//
+//go:embed bouncer/bouncer-fragment-decide-capped.md
+var BouncerFragmentDecideCapped []byte
 
 // BouncerTemplateParentNotice is the Bouncer's shipped-default one-line parent notice, which
 // points the parent at the escalation brief.
@@ -441,6 +456,7 @@ var entries = []registryEntry{
 	{"loom-template-plan", &LoomTemplatePlan},
 	{"loom-template-rework", &LoomTemplateRework},
 	{"loom-template-arbiter", &LoomTemplateArbiter},
+	{"loom-template-tackler", &LoomTemplateTackler},
 	{"loom-template-alignment", &LoomTemplateAlignment},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
@@ -461,6 +477,8 @@ var entries = []registryEntry{
 	{"bouncer-template-seed", &BouncerTemplateSeed},
 	{"bouncer-template-judge", &BouncerTemplateJudge},
 	{"bouncer-template-escalation", &BouncerTemplateEscalation},
+	{"bouncer-fragment-decide-open", &BouncerFragmentDecideOpen},
+	{"bouncer-fragment-decide-capped", &BouncerFragmentDecideCapped},
 	{"bouncer-template-parent-notice", &BouncerTemplateParentNotice},
 	{"treadle-template-judge-circling", &TreadleTemplateJudgeCircling},
 	{"treadle-template-judge-milestone", &TreadleTemplateJudgeMilestone},
@@ -518,6 +536,7 @@ var entries = []registryEntry{
 var roleOpeningStencils = map[string][]string{
 	"driver":              {"shed-template-driver"},
 	"arbiter":             {"loom-template-arbiter"},
+	"tackler":             {"loom-template-tackler"},
 	"alignment":           {"loom-template-alignment"},
 	"discussion":          {"loom-template-discussion"},
 	"discussion-chair":    {"loom-template-discussion-chair"},

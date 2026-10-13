@@ -113,12 +113,17 @@ func templateConfig() Config {
 		Arbiter:                  "opus[high]",
 		ArbiterTimeoutMin:        30,
 		ArbiterMaxSpawns:         3,
+		DriverKind:               "llm",
+		Tackler:                  "haiku",
+		TacklerTimeoutMin:        10,
+		TacklerMaxSpawns:         4,
 		Alignment:                "opus[high]",
 		AlignmentTimeoutMin:      20,
 		SkipAlignment:            false,
 		AlignmentPRApprove:       true,
 		ReviewCirclingCheckpoint: 3,
 		ReviewMaxBounces:         3,
+		ReviewHardMaxBounces:     4,
 		DiscussionMaxBounces:     0,
 		PlanMaxBounces:           0,
 		WebsterMaxBounces:        0,
@@ -126,13 +131,14 @@ func templateConfig() Config {
 		PlanAutoAccept:           false,
 		WebsterAutoAccept:        false,
 		MergeMaxBounces:          1,
+		MergeHardMaxBounces:      0,
 		MergeAutoAccept:          true,
 		SkipMergeReview:          false,
 	}
 }
 
 // TestLoadConfig_Loads verifies each loom.yaml shape that must load, against the whole Config it yields:
-// the template's own values, an unparseable burler.yaml beside empty fan keys (never read), a retired key ignored, explicit overrides, present-but-empty and null friction and driver values (Tier 2 off, "defer to the provider default"), keys absent from an already-seeded file at their template defaults, zero timeouts (shuttleengine.Spec treats zero as "defer to shuttle's run_timeout_min", so the negative guard must not sweep them up), and a checkpoint above the budget (a run that never rules CIRCLING and reaches the budget escalation instead).
+// the template's own values, an unparseable burler.yaml beside empty fan keys (never read), a retired key ignored, explicit overrides, present-but-empty and null friction and driver values (Tier 2 off, "defer to the provider default"), keys absent from an already-seeded file at their template defaults, zero timeouts (shuttleengine.Spec treats zero as "defer to shuttle's run_timeout_min", so the negative guard must not sweep them up), and a checkpoint above the budget (a run that never rules CIRCLING and reaches the soft-cap rule instead).
 func TestLoadConfig_Loads(t *testing.T) {
 	t.Parallel()
 	// legacyContents is a file seeded before the friction, driver, judge, parent-review and review-budget keys existed.
@@ -298,6 +304,13 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.Arbiter, c.ArbiterTimeoutMin, c.ArbiterMaxSpawns = "", 0, 0 },
 		},
 		{
+			name:   "driver_kind go and explicit tackler keys",
+			values: map[string]string{"driver_kind": "go", "tackler": "sonnet[low]", "tackler_timeout_min": "5", "tackler_max_spawns": "0"},
+			mutate: func(c *Config) {
+				c.DriverKind, c.Tackler, c.TacklerTimeoutMin, c.TacklerMaxSpawns = "go", "sonnet[low]", 5, 0
+			},
+		},
+		{
 			name:   "explicit parent_review_wait_min",
 			values: map[string]string{"parent_review_wait_min": "5", "alignment_timeout_min": "4"},
 			mutate: func(c *Config) { c.ParentReviewWaitMin, c.AlignmentTimeoutMin = 5, 4 },
@@ -321,8 +334,18 @@ review_timeout_min: 240
 		},
 		{
 			name:   "explicit review checkpoint and budget",
-			values: map[string]string{"review_circling_checkpoint": "2", "review_max_bounces": "7"},
-			mutate: func(c *Config) { c.ReviewCirclingCheckpoint, c.ReviewMaxBounces = 2, 7 },
+			values: map[string]string{"review_circling_checkpoint": "2", "review_max_bounces": "7", "review_hard_max_bounces": "7"},
+			mutate: func(c *Config) { c.ReviewCirclingCheckpoint, c.ReviewMaxBounces, c.ReviewHardMaxBounces = 2, 7, 7 },
+		},
+		{
+			name:   "explicit hard caps",
+			values: map[string]string{"review_hard_max_bounces": "5", "plan_hard_max_bounces": "6"},
+			mutate: func(c *Config) { c.ReviewHardMaxBounces, c.PlanHardMaxBounces = 5, 6 },
+		},
+		{
+			name:   "a hard cap equal to the soft cap loads",
+			values: map[string]string{"review_max_bounces": "3", "review_hard_max_bounces": "3"},
+			mutate: func(c *Config) { c.ReviewMaxBounces, c.ReviewHardMaxBounces = 3, 3 },
 		},
 		{
 			name: "explicit per-perch budgets and auto-accept flags",
@@ -423,6 +446,12 @@ review_timeout_min: 240
 				board:    "review: [\"opus[medium]\"]\n",
 				worktree: "review: [\"sonnet[low]\", \"sonnet[high]\"]\n",
 				mutate:   func(c *Config) { c.Review = ModelSpecList{"sonnet[low]", "sonnet[high]"} },
+			},
+			{
+				name:   "a local driver_kind go is open to the local layer",
+				board:  "driver_kind: llm\n",
+				local:  "driver_kind: go\n",
+				mutate: func(c *Config) { c.DriverKind = "go" },
 			},
 			{
 				name:   "a local alignment_timeout_min is open to the local layer",
@@ -567,6 +596,10 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed driver spec", "driver", `"opus[effort"`, nil, ""},
 		{"malformed arbiter spec", "arbiter", `"opus[effort"`, nil, ""},
 		{"malformed alignment spec", "alignment", `"opus[effort"`, nil, ""},
+		{"unknown driver_kind", "driver_kind", "fast", []string{"llm or go"}, ""},
+		{"malformed tackler spec", "tackler", `"not a spec["`, nil, ""},
+		{"negative tackler_timeout_min", "tackler_timeout_min", "-1", []string{"must not be negative", "0 for the 10 minute default"}, ""},
+		{"negative tackler_max_spawns", "tackler_max_spawns", "-1", []string{"must not be negative", "0 to turn the tackler off"}, ""},
 		{"negative alignment_timeout_min", "alignment_timeout_min", "-1", []string{"must not be negative", "set it to 0 for the 20 minute default, or to a positive integer below parent_review_wait_min"}, ""},
 		{"alignment_timeout_min equal to parent_review_wait_min", "alignment_timeout_min", "60", []string{"parent_review_wait_min", "60", "set alignment_timeout_min below parent_review_wait_min"}, ""},
 		{"negative arbiter_timeout_min", "arbiter_timeout_min", "-1", []string{"must not be negative", "0 for the 30 minute default"}, ""},
@@ -581,6 +614,13 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"negative plan_max_bounces", "plan_max_bounces", "-1", []string{"must not be negative", "set it to 0 to take review_max_bounces"}, ""},
 		{"negative webster_max_bounces", "webster_max_bounces", "-1", []string{"must not be negative", "set it to 0 to take review_max_bounces"}, ""},
 		{"negative merge_max_bounces", "merge_max_bounces", "-1", []string{"must not be negative", "set it to 0 to take review_max_bounces"}, ""},
+		{"zero review_hard_max_bounces", "review_hard_max_bounces", "0", []string{"must be at least 1", "lyx config loom --set review_hard_max_bounces=<n>", `lyx loom resume`}, ""},
+		{"negative discussion_hard_max_bounces", "discussion_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set discussion_hard_max_bounces=<n>", `lyx loom resume`}, ""},
+		{"negative plan_hard_max_bounces", "plan_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set plan_hard_max_bounces=<n>", `lyx loom resume`}, ""},
+		{"negative webster_hard_max_bounces", "webster_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set webster_hard_max_bounces=<n>", `lyx loom resume`}, ""},
+		{"negative merge_hard_max_bounces", "merge_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set merge_hard_max_bounces=<n>", `lyx loom resume`}, ""},
+		{"review_max_bounces above the default hard cap", "review_max_bounces", "5", []string{"review_hard_max_bounces", "lyx config loom --set review_hard_max_bounces=<n>", "in the task worktree", `lyx loom resume`}, ""},
+		{"webster_max_bounces above the default hard cap", "webster_max_bounces", "5", []string{"review_hard_max_bounces", "webster_max_bounces"}, ""},
 		{"negative discussion timeout", "discussion_timeout_min", "-1", []string{"must not be negative"}, ""},
 		{"negative plan timeout", "plan_timeout_min", "-1", []string{"must not be negative"}, ""},
 		{"negative review timeout", "review_timeout_min", "-1", []string{"must not be negative"}, ""},
@@ -691,6 +731,55 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		writeLoomConfigWithKey(t, dir, "discussion_advisors", "[]")
 		if _, err := LoadConfig(configengine.Dirs{Anchor: dir}, "loom"); err != nil {
 			t.Errorf("LoadConfig() with no advisors and a malformed models.yaml = %v; want nil", err)
+		}
+	})
+
+	t.Run("a hard cap below the soft cap names the route of the layer each key comes from", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name     string
+			worktree string
+			local    string
+			wantIn   []string
+		}{
+			{
+				name:   "a local soft cap over the board default's hard cap",
+				local:  "review_max_bounces: 5\n",
+				wantIn: []string{"lyx config loom --layer local --set review_max_bounces=<n>", "lyx board upsert", "lyx config loom --layer default --set review_hard_max_bounces=<n>", "prime"},
+			},
+			{
+				name:     "a worktree hard cap under the board default's soft cap",
+				worktree: "review_hard_max_bounces: 2\n",
+				wantIn:   []string{"lyx config loom --set review_hard_max_bounces=<n>", "in the task worktree"},
+			},
+			{
+				name:   "a local hard cap of zero",
+				local:  "review_hard_max_bounces: 0\n",
+				wantIn: []string{"must be at least 1", "lyx config loom --layer local --set review_hard_max_bounces=<n>", "lyx board upsert", `lyx loom resume`},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				board, anchor := t.TempDir(), t.TempDir()
+				seedLoomConfig(t, board, loomTemplateWith(t, "review_max_bounces: 3"))
+				if tt.worktree != "" {
+					seedLoomConfig(t, anchor, tt.worktree)
+				}
+				if tt.local != "" {
+					writeLocalLoomConfig(t, anchor, tt.local)
+				}
+
+				_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom")
+				if err == nil {
+					t.Fatal("LoadConfig() error = nil; want a refusal naming the route of the layer each key comes from")
+				}
+				for _, want := range tt.wantIn {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+					}
+				}
+			})
 		}
 	})
 
@@ -844,6 +933,29 @@ func TestConfigTemplate_ContainsEveryConfigYAMLTag(t *testing.T) {
 		if !containsConfigKey(text, tag) {
 			t.Errorf("ConfigTemplate() does not contain key %q for field %q", tag, typ.Field(i).Name)
 		}
+	}
+}
+
+// TestPathsOutsideRunRecords pins that PathsOutsideRunRecords drops every path under the run directory, the loom durable directory and the reviews directory, and keeps a code path and a path that only shares a records directory's name as a prefix.
+func TestPathsOutsideRunRecords(t *testing.T) {
+	t.Parallel()
+
+	l := &lyxcwd.Location{HubPath: filepath.Join("home", "user", "repo-LYXHUB"), WorktreeName: "repo", AnchorRel: "."}
+	runID := shedrun.SelfRunID
+	runDir := shedrun.RunDir(l, runID)
+	codePath := filepath.Join(l.AnchorPath(), "internal", "x.go")
+	prefixOnly := LoomDurableDir(l) + "-extra"
+
+	got := PathsOutsideRunRecords(l, runID, []string{
+		filepath.Join(runDir, "status.json"),
+		filepath.Join(LoomDurableDir(l), "friction", "note.md"),
+		filepath.Join(LoomReviewsDir(l), "round.yaml"),
+		codePath,
+		prefixOnly,
+	})
+
+	if want := []string{codePath, prefixOnly}; !reflect.DeepEqual(got, want) {
+		t.Errorf("PathsOutsideRunRecords() = %q; want %q", got, want)
 	}
 }
 

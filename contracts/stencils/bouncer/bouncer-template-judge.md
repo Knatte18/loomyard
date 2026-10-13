@@ -103,6 +103,7 @@ ledger:
     status: open
     class: design
     severity: MEDIUM
+    fix: design-wrong
   - key: another-finding-identity
     rounds: [2]
     status: resolved
@@ -117,6 +118,11 @@ Frontmatter rules, all strict:
 - Every `status: open` entry also carries `class` and `severity`, copied from the latest review's finding that you map to that key (after any relabel you name in the rationale).
   A `status: resolved` entry may omit them.
   `class` is one of `design`, `scope`, `decision`, `consistency`; `severity` is one of `BLOCKING`, `MEDIUM`, `LOW`, `NIT`.
+- Every `status: open` entry also carries `fix`, `design-wrong` or `mechanical`, in every round.
+  `design-wrong` means the finding says the design itself was wrong, so its fix changes a decision, an approach, a contract or an interface, and that new text needs a fresh review.
+  `mechanical` means a local correction whose result the finding text already fixes, so the fix can be accepted unreviewed.
+  Choose it from the review's finding text alone: never open the artifacts or the fixer's diff.
+  A `status: resolved` entry may omit it.
 - REQUIRED — lossless carry-forward rule: every entry present in the previous ledger reappears in
   this ledger, as either `status: open` (still applies) or `status: resolved` (no longer applies),
   never silently dropped.

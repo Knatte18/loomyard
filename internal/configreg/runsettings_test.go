@@ -28,6 +28,11 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"loom": "review_max_bounces: 2\n"},
 		},
 		{
+			name:     "a soft and a hard review cap are both settable through run_settings",
+			settings: map[string]any{"loom": map[string]any{"review_max_bounces": float64(2), "review_hard_max_bounces": float64(3)}},
+			wantDocs: map[string]string{"loom": "review_hard_max_bounces: 3\nreview_max_bounces: 2\n"},
+		},
+		{
 			name:     "below-floor step_idle_timeout_min is raised by loom's Migrate",
 			settings: map[string]any{"loom": map[string]any{"step_idle_timeout_min": float64(0)}},
 			wantDocs: map[string]string{"loom": "step_idle_timeout_min: 1\n"},
@@ -107,6 +112,25 @@ func TestPrepareRunSettings(t *testing.T) {
 			name:     "alignment_timeout_min is open to run settings",
 			settings: map[string]any{"loom": map[string]any{"alignment_timeout_min": float64(10)}},
 			wantDocs: map[string]string{"loom": "alignment_timeout_min: 10\n"},
+		},
+		{
+			name:        "driver_kind outside llm and go is refused by loom's CheckValues",
+			settings:    map[string]any{"loom": map[string]any{"driver_kind": "fast"}},
+			wantRefusal: "driver_kind",
+			wantModule:  "loom",
+			wantInvalid: true,
+		},
+		{
+			name:     "driver_kind go is open to run settings",
+			settings: map[string]any{"loom": map[string]any{"driver_kind": "go"}},
+			wantDocs: map[string]string{"loom": "driver_kind: go\n"},
+		},
+		{
+			name:        "negative tackler_max_spawns is refused by loom's CheckValues",
+			settings:    map[string]any{"loom": map[string]any{"tackler_max_spawns": float64(-1)}},
+			wantRefusal: "tackler_max_spawns",
+			wantModule:  "loom",
+			wantInvalid: true,
 		},
 	}
 	for _, tt := range tests {

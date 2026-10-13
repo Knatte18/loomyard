@@ -69,6 +69,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if c.env.DarnReviewMaxBounces != 1 || c.darnCfg == nil {
 			t.Errorf("c.env.DarnReviewMaxBounces = %d, c.darnCfg nil = %v; want the template's 1 and the loaded config", c.env.DarnReviewMaxBounces, c.darnCfg == nil)
 		}
+		if got := c.env.RowHardMaxBounces[loomshed.NameDarnBouncer]; got != 4 {
+			t.Errorf("c.env.RowHardMaxBounces[%q] = %d; want the template's 4", loomshed.NameDarnBouncer, got)
+		}
 		if command, err := c.env.VerifyCommand(); err != nil || command != "go test ./..." {
 			t.Errorf("c.env.VerifyCommand() = %q, %v; want %q, nil", command, err, "go test ./...")
 		}

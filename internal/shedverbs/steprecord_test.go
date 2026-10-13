@@ -333,6 +333,15 @@ func TestLastStepOf_BuildIdentity(t *testing.T) {
 	if other == nil || other.VCSRevision != "abc" || !other.BinaryChanged {
 		t.Errorf("different identity: last step = %+v; want binary_changed true", other)
 	}
+	if LastStepBuildChanged(dir, built) {
+		t.Error("LastStepBuildChanged(recorded identity) = true; want false")
+	}
+	if !LastStepBuildChanged(dir, buildvcs.Identity{Revision: "def"}) {
+		t.Error("LastStepBuildChanged(different known identity) = false; want true")
+	}
+	if LastStepBuildChanged(t.TempDir(), built) {
+		t.Error("LastStepBuildChanged(empty directory) = true; want false")
+	}
 
 	legacy := filepath.Join(t.TempDir(), "steps")
 	if err := os.MkdirAll(legacy, 0o755); err != nil {
@@ -345,6 +354,9 @@ func TestLastStepOf_BuildIdentity(t *testing.T) {
 	old := lastStepOf(legacy, built)
 	if old == nil || old.VCSRevision != "" || old.BinaryChanged {
 		t.Errorf("legacy record: last step = %+v; want unknown identity, binary_changed false", old)
+	}
+	if LastStepBuildChanged(legacy, buildvcs.Identity{Revision: "def"}) {
+		t.Error("LastStepBuildChanged(legacy record) = true; want false")
 	}
 }
 

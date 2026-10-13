@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
 
-// TestArbiterPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives, the literal none for an absent report and brief, and no unfilled marker.
+// TestArbiterPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives, the literal none for an absent report, brief and case brief, and no unfilled marker.
 func TestArbiterPrompt(t *testing.T) {
 	t.Parallel()
 
@@ -22,6 +22,7 @@ func TestArbiterPrompt(t *testing.T) {
 		EnvelopePath:       "/hub/wt/.lyx/envelope.json",
 		ReportPath:         "/hub/wt/.lyx/report.md",
 		BriefPath:          "/hub/wt/.lyx/brief.md",
+		CaseBriefPath:      "/hub/wt/.lyx/tackler/attempt-1/case-brief.md",
 		DecisionRecordPath: "/hub/wt/_lyx/discussion/decision-record.md",
 		SupportLogPath:     "/hub/wt/_lyx/discussion/support-log.md",
 		VerdictPath:        "/hub/wt/.lyx/arbiter/attempt-1/verdict.yaml",
@@ -35,13 +36,13 @@ func TestArbiterPrompt(t *testing.T) {
 		{
 			name: "every marker value",
 			in:   in,
-			want: []string{in.RunID, in.Slug, in.Worktree, in.EnvelopePath, in.ReportPath, in.BriefPath, in.DecisionRecordPath, in.SupportLogPath, in.VerdictPath},
+			want: []string{in.RunID, in.Slug, in.Worktree, in.EnvelopePath, in.ReportPath, in.BriefPath, in.CaseBriefPath, in.DecisionRecordPath, in.SupportLogPath, in.VerdictPath},
 		},
 		{
-			name: "absent report and brief read none",
+			name: "absent report, brief and case brief read none",
 			in:   arbiterPromptInput{RunID: in.RunID, Slug: in.Slug, Worktree: in.Worktree, EnvelopePath: in.EnvelopePath, DecisionRecordPath: in.DecisionRecordPath, SupportLogPath: in.SupportLogPath, VerdictPath: in.VerdictPath},
 			want: []string{"`none`"},
-			none: 2,
+			none: 3,
 		},
 	}
 	for _, tc := range cases {
@@ -58,7 +59,7 @@ func TestArbiterPrompt(t *testing.T) {
 				}
 			}
 			if tc.none > 0 {
-				for _, line := range []string{"driver's stop or fork report `none`", "escalation brief `none`"} {
+				for _, line := range []string{"driver's stop or fork report `none`", "escalation brief `none`", "case brief `none`"} {
 					if !strings.Contains(got, line) {
 						t.Errorf("arbiterPrompt() does not carry %q", line)
 					}

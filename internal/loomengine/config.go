@@ -1,15 +1,17 @@
 // config.go — configuration for the loom module.
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1, rejects a discussion_max_bounces, plan_max_bounces, webster_max_bounces or merge_max_bounces below 0, validates every entry of fan_review, and resolves each non-empty discussion_fan and plan_fan through burlerengine.ResolveFan,
+// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint, review_max_bounces or review_hard_max_bounces below 1, rejects a discussion_max_bounces, plan_max_bounces, webster_max_bounces, merge_max_bounces or any per-perch hard cap below 0, rejects a perch whose resolved hard cap is below its resolved budget, validates every entry of fan_review, and resolves each non-empty discussion_fan and plan_fan through burlerengine.ResolveFan,
 // so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
 // step_idle_timeout_min is the minutes a --until-stop step may show no activity before the loop kills it; a value below 1 is raised to 1 with one Warn and never refused.
 // discussion_fan and plan_fan each name a fan from burler.yaml and turn the lens fan on for Discussion-Review and Plan-Review; empty, the default, runs that segment solo.
 // fan_review is the reviewer model-spec list of a fanned segment, and the forks' model too, since forks run on the reviewer session's model.
 // There is no webster_fan key: Webster-Review always runs solo.
 // discussion_max_bounces, plan_max_bounces and webster_max_bounces set one perch's bounce budget, and 0 takes review_max_bounces;
-// discussion_auto_accept, plan_auto_accept and webster_auto_accept make that perch settle a spent budget as accepted instead of escalating to the parent.
-// merge_max_bounces and merge_auto_accept do the same for the Merge-Review perch, which the Bouncer escalates instead of accepting while its ledger holds an open BLOCKING finding;
+// review_hard_max_bounces is the round number at or past which no perch continues a round, refused below 1, and discussion_hard_max_bounces, plan_hard_max_bounces, webster_hard_max_bounces and merge_hard_max_bounces set one perch's own, where 0 takes review_hard_max_bounces and a negative value is refused;
+// a perch whose resolved hard cap is below its resolved budget is refused too, and every one of these refusals names the command that changes the key in the layer its value comes from.
+// discussion_auto_accept, plan_auto_accept and webster_auto_accept make that perch accept a harvested round at a spent budget instead of running the soft-cap rule.
+// merge_max_bounces, merge_hard_max_bounces and merge_auto_accept do the same for the Merge-Review perch, which sends a round whose ledger holds an open BLOCKING finding to the soft-cap rule instead of accepting it;
 // skip_merge_review skips only that review, and Merge-In, the parent lock and the reroute on a moved parent still run.
 // discussion_producer selects the Discussion-Write row's producer and must be single, seats or twill.
 // plan_producer selects the Plan-Write row's producer, single or twill, and an empty value reads as single.
@@ -18,6 +20,8 @@
 // seed, discussion_judge, plan_judge, webster_judge, discussion_seed, plan_seed, webster_seed and rework are role model-specs validated only when non-empty, an empty value meaning the fallback:
 // a per-segment judge takes judge, a per-segment seed takes seed, seed takes that segment's resolved judge, and rework takes plan.
 // arbiter is a role model-spec validated only when non-empty, an empty value taking opus[high]; arbiter_timeout_min and arbiter_max_spawns are refused when negative, and a zero arbiter_max_spawns turns the arbiter off.
+// driver_kind is the driver a task's loom run is seeded with when nothing typed one, llm or go, an empty value reading as llm; tackler is a role model-spec validated only when non-empty, an empty value taking haiku;
+// tackler_timeout_min and tackler_max_spawns are refused when negative, a zero tackler_timeout_min taking 10 and a zero tackler_max_spawns turning the tackler off.
 // alignment, alignment_timeout_min, skip_alignment and alignment_pr_approve configure the alignment agent at parent review and PR-Gate:
 // alignment is a role model-spec validated only when non-empty, an empty value taking opus[high];
 // alignment_timeout_min is refused when negative, a zero taking 20, and a resolved value at or above parent_review_wait_min is refused too.
@@ -41,6 +45,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
@@ -318,6 +323,27 @@ func LoomDurableDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LoomDurableDirRel())
 }
 
+// PathsOutsideRunRecords returns the absolute paths that lie outside the run's own records directories, in their input order.
+// The records directories are the run's directory, the loom durable directory and the reviews directory: the ones the status commit stages.
+// A path under one of them is run state a hand-over leaves to the next driver; a path that only shares a directory's name as a prefix is outside it.
+func PathsOutsideRunRecords(l *lyxcwd.Location, runID string, paths []string) []string {
+	records := []string{shedrun.RunDir(l, runID), LoomDurableDir(l), LoomReviewsDir(l)}
+	var outside []string
+	for _, path := range paths {
+		inside := false
+		for _, dir := range records {
+			if path == dir || strings.HasPrefix(path, dir+string(filepath.Separator)) {
+				inside = true
+				break
+			}
+		}
+		if !inside {
+			outside = append(outside, path)
+		}
+	}
+	return outside
+}
+
 // LoomFrictionDir returns the path to the Tier 2 friction leaf's directory for this worktree: the per-agent friction notes an unsupervised run's producers append to.
 // The notes are run records, so they live under the durable tree and are committed with the run.
 // It is built on LoomDurableDir rather than re-joining l.AnchorPath() and the durable literal a second time.
@@ -442,6 +468,13 @@ type Config struct {
 	ArbiterTimeoutMin int    `yaml:"arbiter_timeout_min"`
 	ArbiterMaxSpawns  int    `yaml:"arbiter_max_spawns"`
 
+	// The driver a task's loom run is seeded with when nothing typed one, and the tackler's model-spec, timeout and spawn budget.
+	// An empty DriverKind reads as llm; an empty Tackler takes haiku, a zero TacklerTimeoutMin takes 10 minutes, and a zero TacklerMaxSpawns turns the tackler off.
+	DriverKind        string `yaml:"driver_kind"`
+	Tackler           string `yaml:"tackler"`
+	TacklerTimeoutMin int    `yaml:"tackler_timeout_min"`
+	TacklerMaxSpawns  int    `yaml:"tackler_max_spawns"`
+
 	// The alignment agent's model-spec, timeout and switches.
 	// An empty Alignment takes opus[high] and a zero AlignmentTimeoutMin takes 20 minutes, kept below ParentReviewWaitMin.
 	// SkipAlignment true sends parent review and PR-Gate to the run's parent without the agent.
@@ -453,21 +486,27 @@ type Config struct {
 
 	ReviewCirclingCheckpoint int `yaml:"review_circling_checkpoint"`
 	ReviewMaxBounces         int `yaml:"review_max_bounces"`
+	ReviewHardMaxBounces     int `yaml:"review_hard_max_bounces"`
 
-	// Each perch's bounce budget and auto-accept flag.
-	// A budget of 0 takes ReviewMaxBounces; a flag true makes the perch's spent budget settle the round as accepted instead of escalating to the parent.
-	DiscussionMaxBounces int  `yaml:"discussion_max_bounces"`
-	PlanMaxBounces       int  `yaml:"plan_max_bounces"`
-	WebsterMaxBounces    int  `yaml:"webster_max_bounces"`
-	DiscussionAutoAccept bool `yaml:"discussion_auto_accept"`
-	PlanAutoAccept       bool `yaml:"plan_auto_accept"`
-	WebsterAutoAccept    bool `yaml:"webster_auto_accept"`
+	// Each perch's bounce budget, hard cap and auto-accept flag.
+	// A budget of 0 takes ReviewMaxBounces and a hard cap of 0 takes ReviewHardMaxBounces;
+	// a flag true makes the perch accept a harvested round at a spent budget instead of running the soft-cap rule.
+	DiscussionMaxBounces     int  `yaml:"discussion_max_bounces"`
+	PlanMaxBounces           int  `yaml:"plan_max_bounces"`
+	WebsterMaxBounces        int  `yaml:"webster_max_bounces"`
+	DiscussionHardMaxBounces int  `yaml:"discussion_hard_max_bounces"`
+	PlanHardMaxBounces       int  `yaml:"plan_hard_max_bounces"`
+	WebsterHardMaxBounces    int  `yaml:"webster_hard_max_bounces"`
+	DiscussionAutoAccept     bool `yaml:"discussion_auto_accept"`
+	PlanAutoAccept           bool `yaml:"plan_auto_accept"`
+	WebsterAutoAccept        bool `yaml:"webster_auto_accept"`
 
-	// The Merge-Review perch's budget and auto-accept flag, and the switch that skips only the review.
-	// A budget of 0 takes ReviewMaxBounces.
-	MergeMaxBounces int  `yaml:"merge_max_bounces"`
-	MergeAutoAccept bool `yaml:"merge_auto_accept"`
-	SkipMergeReview bool `yaml:"skip_merge_review"`
+	// The Merge-Review perch's budget, hard cap and auto-accept flag, and the switch that skips only the review.
+	// A budget of 0 takes ReviewMaxBounces and a hard cap of 0 takes ReviewHardMaxBounces.
+	MergeMaxBounces     int  `yaml:"merge_max_bounces"`
+	MergeHardMaxBounces int  `yaml:"merge_hard_max_bounces"`
+	MergeAutoAccept     bool `yaml:"merge_auto_accept"`
+	SkipMergeReview     bool `yaml:"skip_merge_review"`
 }
 
 // ModelSpecList is a model-spec key's value: one model-spec for every round, or a list of model-specs, one per round, whose last entry serves every later round.
@@ -525,58 +564,67 @@ func ConfigSpec() configengine.Spec {
 		Template: []byte(ConfigTemplate()),
 		OpenMaps: ConfigOpenMaps(),
 		Categories: map[string]configengine.Category{
-			"discussion":                 none,
-			"discussion_timeout_min":     none,
-			"discussion_interactive":     none,
-			"discussion_producer":        guard,
-			"discussion_advisors":        none,
-			"plan":                       none,
-			"plan_timeout_min":           none,
-			"plan_producer":              guard,
-			"review":                     none,
-			"fix":                        none,
-			"discussion_review":          none,
-			"discussion_fix":             none,
-			"plan_review":                none,
-			"plan_fix":                   none,
-			"webster_review":             none,
-			"webster_fix":                none,
-			"discussion_fan":             guard,
-			"plan_fan":                   guard,
-			"fan_review":                 none,
-			"judge":                      none,
-			"seed":                       none,
-			"discussion_judge":           none,
-			"plan_judge":                 none,
-			"webster_judge":              none,
-			"discussion_seed":            none,
-			"plan_seed":                  none,
-			"webster_seed":               none,
-			"rework":                     none,
-			"review_timeout_min":         none,
-			"friction":                   none,
-			"friction_timeout_min":       none,
-			"driver":                     none,
-			"arbiter":                    none,
-			"arbiter_timeout_min":        none,
-			"arbiter_max_spawns":         none,
-			"alignment":                  guard,
-			"alignment_timeout_min":      none,
-			"skip_alignment":             guard,
-			"alignment_pr_approve":       guard,
-			"parent_review_wait_min":     guard,
-			"step_idle_timeout_min":      none,
-			"review_circling_checkpoint": none,
-			"review_max_bounces":         none,
-			"discussion_max_bounces":     none,
-			"plan_max_bounces":           none,
-			"webster_max_bounces":        none,
-			"discussion_auto_accept":     guard,
-			"plan_auto_accept":           guard,
-			"webster_auto_accept":        guard,
-			"merge_max_bounces":          none,
-			"merge_auto_accept":          guard,
-			"skip_merge_review":          guard,
+			"discussion":                  none,
+			"discussion_timeout_min":      none,
+			"discussion_interactive":      none,
+			"discussion_producer":         guard,
+			"discussion_advisors":         none,
+			"plan":                        none,
+			"plan_timeout_min":            none,
+			"plan_producer":               guard,
+			"review":                      none,
+			"fix":                         none,
+			"discussion_review":           none,
+			"discussion_fix":              none,
+			"plan_review":                 none,
+			"plan_fix":                    none,
+			"webster_review":              none,
+			"webster_fix":                 none,
+			"discussion_fan":              guard,
+			"plan_fan":                    guard,
+			"fan_review":                  none,
+			"judge":                       none,
+			"seed":                        none,
+			"discussion_judge":            none,
+			"plan_judge":                  none,
+			"webster_judge":               none,
+			"discussion_seed":             none,
+			"plan_seed":                   none,
+			"webster_seed":                none,
+			"rework":                      none,
+			"review_timeout_min":          none,
+			"friction":                    none,
+			"friction_timeout_min":        none,
+			"driver":                      none,
+			"arbiter":                     none,
+			"arbiter_timeout_min":         none,
+			"arbiter_max_spawns":          none,
+			"driver_kind":                 none,
+			"tackler":                     none,
+			"tackler_timeout_min":         none,
+			"tackler_max_spawns":          none,
+			"alignment":                   guard,
+			"alignment_timeout_min":       none,
+			"skip_alignment":              guard,
+			"alignment_pr_approve":        guard,
+			"parent_review_wait_min":      guard,
+			"step_idle_timeout_min":       none,
+			"review_circling_checkpoint":  none,
+			"review_max_bounces":          none,
+			"review_hard_max_bounces":     none,
+			"discussion_max_bounces":      none,
+			"plan_max_bounces":            none,
+			"webster_max_bounces":         none,
+			"discussion_hard_max_bounces": none,
+			"plan_hard_max_bounces":       none,
+			"webster_hard_max_bounces":    none,
+			"discussion_auto_accept":      guard,
+			"plan_auto_accept":            guard,
+			"webster_auto_accept":         guard,
+			"merge_max_bounces":           none,
+			"merge_hard_max_bounces":      none,
+			"merge_auto_accept":           guard,
+			"skip_merge_review":           guard,
 		},
 	}
 }
@@ -697,6 +745,63 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 		return rewritten, nil, nil
 	}
 	return rewritten, []string{line}, nil
+}
+
+// validateDriverKind refuses a driver_kind other than empty, llm or go, through shedrun.ValidateDriver so the vocabulary stays shedrun's.
+func validateDriverKind(driverKind string) error {
+	if driverKind == "" {
+		return nil
+	}
+	if err := shedrun.ValidateDriver(driverKind); err != nil {
+		return fmt.Errorf("loom config key %q: %w; set driver_kind to llm or go in loom.yaml or the task's run_settings", "driver_kind", err)
+	}
+	return nil
+}
+
+// validateTacklerKnobs refuses a negative tackler_timeout_min or tackler_max_spawns; zero is a meaning on both.
+func validateTacklerKnobs(timeoutMin, maxSpawns int) error {
+	for _, knob := range []struct {
+		key   string
+		value int
+		zero  string
+	}{
+		{"tackler_timeout_min", timeoutMin, "0 for the 10 minute default"},
+		{"tackler_max_spawns", maxSpawns, "0 to turn the tackler off"},
+	} {
+		if knob.value < 0 {
+			return fmt.Errorf("loom config key %q: must not be negative, got %d; set it to %s, or to a positive integer, in loom.yaml or the task's run_settings", knob.key, knob.value, knob.zero)
+		}
+	}
+	return nil
+}
+
+// ValidateLocalValues checks the values of the driver_kind, tackler_timeout_min and tackler_max_spawns keys a local-layer document sets, and leaves every other key to LoadConfig.
+// A refusal is marked configengine.ErrInvalid and names the key.
+func ValidateLocalValues(document []byte) error {
+	var set struct {
+		DriverKind        *string `yaml:"driver_kind"`
+		TacklerTimeoutMin *int    `yaml:"tackler_timeout_min"`
+		TacklerMaxSpawns  *int    `yaml:"tackler_max_spawns"`
+	}
+	if err := yaml.Unmarshal(document, &set); err != nil {
+		return configengine.MarkInvalid(fmt.Errorf("unmarshal loom local values: %w", err))
+	}
+	if set.DriverKind != nil {
+		if err := validateDriverKind(*set.DriverKind); err != nil {
+			return configengine.MarkInvalid(err)
+		}
+	}
+	var timeoutMin, maxSpawns int
+	if set.TacklerTimeoutMin != nil {
+		timeoutMin = *set.TacklerTimeoutMin
+	}
+	if set.TacklerMaxSpawns != nil {
+		maxSpawns = *set.TacklerMaxSpawns
+	}
+	if err := validateTacklerKnobs(timeoutMin, maxSpawns); err != nil {
+		return configengine.MarkInvalid(err)
+	}
+	return nil
 }
 
 // LoadConfig loads and unmarshals configuration for the loom module strictly through the layer stack under dirs.
@@ -846,6 +951,21 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 	}
 
+	if err := validateDriverKind(cfg.DriverKind); err != nil {
+		return Config{}, err
+	}
+
+	// tackler is validated only when non-empty: an empty value takes ResolveTackler's default.
+	if cfg.Tackler != "" {
+		if _, err := modelspec.Parse(cfg.Tackler); err != nil {
+			return Config{}, fmt.Errorf("loom config key %q: %w; set it to a model-spec the registry defines, or to empty to take haiku", "tackler", err)
+		}
+	}
+
+	if err := validateTacklerKnobs(cfg.TacklerTimeoutMin, cfg.TacklerMaxSpawns); err != nil {
+		return Config{}, err
+	}
+
 	// The four timeouts are checked here for the same reason the four model-specs above are: a
 	// value that can only be a mistake should fail at load time rather than hours into a run when
 	// the producer it governs first spawns. A negative minute count flows into
@@ -891,7 +1011,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		cfg.StepIdleTimeoutMin = stepIdleTimeoutFloorMin
 	}
 
-	// A checkpoint above the budget is accepted: such a run never rules CIRCLING and reaches the budget escalation instead.
+	// A checkpoint above the budget is accepted: such a run never rules CIRCLING and reaches the soft-cap rule instead.
 	for _, knob := range []struct {
 		key   string
 		value int
@@ -917,6 +1037,51 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		if knob.value < 0 {
 			return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; set it to 0 to take review_max_bounces, or to a positive integer, in loom.yaml", knob.key, knob.value)
 		}
+	}
+
+	// A hard cap below 1 has no way to hold, so it is refused with the route of the layer its value comes from.
+	if cfg.ReviewHardMaxBounces < 1 {
+		route, err := CapRoute(dirs, "review_hard_max_bounces")
+		if err != nil {
+			return Config{}, err
+		}
+		return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; way forward: %s, then run \"lyx loom resume\"", "review_hard_max_bounces", cfg.ReviewHardMaxBounces, route)
+	}
+
+	// A per-perch hard cap of 0 takes review_hard_max_bounces, so only a negative value is refused here.
+	for _, knob := range []struct {
+		key   string
+		value int
+	}{
+		{"discussion_hard_max_bounces", cfg.DiscussionHardMaxBounces},
+		{"plan_hard_max_bounces", cfg.PlanHardMaxBounces},
+		{"webster_hard_max_bounces", cfg.WebsterHardMaxBounces},
+		{"merge_hard_max_bounces", cfg.MergeHardMaxBounces},
+	} {
+		if knob.value < 0 {
+			route, err := CapRoute(dirs, knob.key)
+			if err != nil {
+				return Config{}, err
+			}
+			return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; set it to 0 to take review_hard_max_bounces, or to a positive integer; way forward: %s, then run \"lyx loom resume\"", knob.key, knob.value, route)
+		}
+	}
+
+	// Equal caps load: a round at the budget is already at the hard cap.
+	for _, perch := range []Perch{PerchDiscussion, PerchPlan, PerchWebster, PerchMerge} {
+		caps := cfg.Caps(perch)
+		if caps.Hard >= caps.Soft {
+			continue
+		}
+		hardRoute, err := CapRoute(dirs, caps.HardKey)
+		if err != nil {
+			return Config{}, err
+		}
+		softRoute, err := CapRoute(dirs, caps.SoftKey)
+		if err != nil {
+			return Config{}, err
+		}
+		return Config{}, fmt.Errorf("loom config key %q: resolved hard cap %d is below %q's resolved soft cap %d; way forward: raise the hard cap: %s, or lower the soft cap: %s, then run \"lyx loom resume\"", caps.HardKey, caps.Hard, caps.SoftKey, caps.Soft, hardRoute, softRoute)
 	}
 
 	switch cfg.DiscussionProducer {

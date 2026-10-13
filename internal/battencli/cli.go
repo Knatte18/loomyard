@@ -82,15 +82,15 @@ type battenCLI struct {
 	// resolves that to shedrun.DriverGo.
 	driverFlag string
 	// childDriverFlag is driverFlag's sibling for --child-driver, the value armSeed writes into the
-	// auto-seeded seed's params.child_driver. Empty means "unset"; battenChildDriver (arm.go)
-	// resolves that to shedrun.DriverLLM.
+	// auto-seeded seed's params.child_driver, and only when childDriverFlagSet. Empty means "unset":
+	// the child then takes the task's driver_kind.
 	childDriverFlag string
 	// driverFlagSet records whether the operator typed --driver, rather than cobra filling the
 	// field with its StringVar default.
 	// The value alone cannot carry that distinction, since the default is itself a legal driver
 	// name, and refuseAdoptedSeed (arm.go) needs it to tell an operator's intent from a default.
 	driverFlagSet bool
-	// childDriverFlagSet is driverFlagSet's sibling for --child-driver.
+	// childDriverFlagSet is driverFlagSet's sibling for --child-driver; armSeed records child_driver only when it is set.
 	childDriverFlagSet bool
 	// windowFlag carries "run"'s own --window value.
 	windowFlag bool
@@ -289,7 +289,7 @@ Example:
 	// "llm" -- the child's own recipe capability is checked when that child's seed is written, not
 	// here.
 	runVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
-	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", shedrun.DriverLLM, "the driver the task worktree's own inner run uses")
+	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the task's driver_kind")
 	runVerb.Flags().BoolVar(&c.windowFlag, "window", false, "start the same run in its own tmux window of the prime's reed session and return at once, and open a terminal window attached to the task worktree once the run reaches it")
 	runVerb.Flags().BoolVar(&c.openTerminalFlag, openTerminalFlagName, false, "open a terminal window attached to the task worktree once the task's run spawns; --window passes it")
 	_ = runVerb.Flags().MarkHidden(openTerminalFlagName)
@@ -301,7 +301,7 @@ Example:
 		return c.runInWindow(cmd)
 	}
 	stepVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
-	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", shedrun.DriverLLM, "the driver the task worktree's own inner run uses")
+	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the task's driver_kind")
 
 	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, lockCommand(), c.cleanupCmd(), c.overviewCmd())
 

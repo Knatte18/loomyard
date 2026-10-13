@@ -87,6 +87,16 @@ func TestRecordCirclingDecision_WritesPendingFile(t *testing.T) {
 			wantRound: 1,
 			wantCause: EscalationCircling,
 		},
+		{
+			name:     "accept over a hard-cap escalation record",
+			decision: CirclingAccept,
+			layout: func(t *testing.T, dir string) {
+				layoutCirclingRun(t, dir, 1, "CONTINUE")
+				writeEscalationRecord(t, dir, EscalationHardCap)
+			},
+			wantRound: 1,
+			wantCause: EscalationHardCap,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -94,6 +104,9 @@ func TestRecordCirclingDecision_WritesPendingFile(t *testing.T) {
 			dir := t.TempDir()
 			tt.layout(t, dir)
 
+			if latest, err := LatestRound(dir); err != nil || latest != tt.wantRound {
+				t.Fatalf("LatestRound() = (%d, %v); want (%d, nil)", latest, err, tt.wantRound)
+			}
 			round, cause, err := RecordCirclingDecision(dir, tt.decision)
 			if err != nil || round != tt.wantRound || cause != tt.wantCause {
 				t.Fatalf("RecordCirclingDecision(%q) = (%d, %q, %v); want (%d, %q, nil)", tt.decision, round, cause, err, tt.wantRound, tt.wantCause)
@@ -185,6 +198,13 @@ func TestReadCirclingDecision(t *testing.T) {
 			wantExists:   true,
 			wantDecision: CirclingAccept,
 			wantCause:    EscalationCircling,
+		},
+		{
+			name:         "a hard-cap cause is legal",
+			content:      "---\nround: 1\ndecision: accept\ncause: hard-cap\nsettled: false\n---\n",
+			wantExists:   true,
+			wantDecision: CirclingAccept,
+			wantCause:    EscalationHardCap,
 		},
 		{name: "round disagrees with filename", content: "---\nround: 2\ndecision: accept\nsettled: false\n---\n", wantExists: true, wantErr: true},
 		{name: "unknown decision", content: "---\nround: 1\ndecision: maybe\nsettled: false\n---\n", wantExists: true, wantErr: true},

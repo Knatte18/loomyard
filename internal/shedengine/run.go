@@ -94,7 +94,8 @@ type StepResult struct {
 	Next string
 	// State is the State this step persisted alongside Next.
 	State State
-	// Reason is populated alongside StateBlocked and StateAwaiting, and alongside StatePaused when a pause_before or pause_after condition fired.
+	// Reason is populated alongside StateBlocked and StateAwaiting, and alongside every StatePaused:
+	// the condition reason when a pause_before or pause_after condition fired, "pause requested" for a pause request, and "cancelled" for a cancelled context.
 	Reason string
 	// ParentNotice is the producer's one-line notice for the run's parent, populated only alongside StateAwaiting.
 	ParentNotice string
@@ -235,7 +236,11 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		if pauseErr := s.persistTransient(st.CurrentProducer, StatePaused, "", st.History, true, false, "", "", ""); pauseErr != nil {
 			return StepResult{}, pauseErr
 		}
-		return StepResult{Next: st.CurrentProducer, State: StatePaused, History: st.History}, nil
+		reason := reasonPauseRequested
+		if ctx.Err() != nil {
+			reason = reasonCancelled
+		}
+		return StepResult{Next: st.CurrentProducer, State: StatePaused, Reason: reason, History: st.History}, nil
 	}
 
 	// Step 3b, the resume write. A run resumed from paused, blocked, failed, or awaiting reaches
@@ -318,7 +323,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		if err := s.persistTransient(st.CurrentProducer, StatePaused, "", st.History, true, false, "", "", ""); err != nil {
 			return StepResult{}, err
 		}
-		return StepResult{Producer: def.Name, Next: st.CurrentProducer, State: StatePaused, History: st.History}, nil
+		return StepResult{Producer: def.Name, Next: st.CurrentProducer, State: StatePaused, Reason: reasonCancelled, History: st.History}, nil
 
 	case callErr != nil:
 		// Non-nil error with a healthy context: an engine-level failure, never a producer
@@ -693,6 +698,13 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 func (s *Shed) persist(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause bool, routedTo string) error {
 	return s.persistTransient(nextCurrentProducer, nextState, nextError, nextHistory, consumePause, false, routedTo, "", "")
 }
+
+// The two reasons of a paused stop no pause condition fired: an operator's pause request, and a cancelled context.
+// They are never condition reasons, so a reader that classifies condition stops by prefix does not see them as one.
+const (
+	reasonPauseRequested = "pause requested"
+	reasonCancelled      = "cancelled"
+)
 
 // conditionReason returns the reason of a fired pause condition: "paused before <target>, as requested" or "paused after <target>, as requested".
 func conditionReason(when, target string) string {

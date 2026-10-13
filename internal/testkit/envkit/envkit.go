@@ -78,6 +78,11 @@ var nilLegal = map[string]bool{
 	"InnerRun.OpenTerminal":                            true,
 	"InnerRun.Notify":                                  true,
 	"InnerRun.PairDir":                                 true,
+	"InnerRun.ChildDriverLockHeld":                     true,
+	"InnerRun.TacklerInFlight":                         true,
+	"InnerRun.GoVerifyRetrySpent":                      true,
+	"InnerRun.ChildBuildChanged":                       true,
+	"InnerRun.ChildDirtyPaths":                         true,
 	"InnerRun.NoticeLog.Now":                           true,
 	"Land.Notices.NoticeLog.Now":                       true,
 	"Teardown.Notices.NoticeLog.Now":                   true,
@@ -95,6 +100,7 @@ var nilLegal = map[string]bool{
 	"RowBouncerModels":                                 true,
 	"RowMaxBounces":                                    true,
 	"RowAutoAccept":                                    true,
+	"RowHardMaxBounces":                                true,
 }
 
 // noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.

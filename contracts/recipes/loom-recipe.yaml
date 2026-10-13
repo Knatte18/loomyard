@@ -465,6 +465,7 @@ producers:
       # skip_seam: merge-overlap skips the judge when the merge record shows the parent gained
       # nothing the task touches; a missing record or a seam error falls back to a real review.
       skip_seam: merge-overlap
+      # A BLOCKING finding sends a spent budget to the soft-cap rule even where loom.yaml auto-accepts the round.
       blocking_escalates: true
       # No commit_seam key, for the reason Webster-Bouncer gives: Merge-Burler-Fix runs fix-scope:
       # source and commits each fix itself.

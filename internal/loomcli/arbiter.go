@@ -63,6 +63,8 @@ type arbiterInput struct {
 	EnvelopePath string
 	// ReportPath is the driver's stop or fork report; empty when there is none.
 	ReportPath string
+	// CaseBriefPath is the tackler's case brief; empty when the stop reached the arbiter without one.
+	CaseBriefPath string
 }
 
 // arbiterDeps is every seam and fixed value the verb reads.
@@ -256,15 +258,16 @@ func (c *arbiterCall) settleFresh(attempts []loomengine.ArbiterAttempt) (loomeng
 	dir := c.deps.AttemptDir(number)
 	now := c.deps.Now()
 	attempt := loomengine.ArbiterAttempt{
-		Number:       number,
-		StopKey:      c.key,
-		PauseBefore:  c.status.PauseBefore,
-		PauseAfter:   c.status.PauseAfter,
-		SpawnedAt:    now,
-		Deadline:     now.Add(settings.Timeout),
-		EnvelopePath: c.in.EnvelopePath,
-		ReportPath:   c.in.ReportPath,
-		Dir:          dir,
+		Number:        number,
+		StopKey:       c.key,
+		PauseBefore:   c.status.PauseBefore,
+		PauseAfter:    c.status.PauseAfter,
+		SpawnedAt:     now,
+		Deadline:      now.Add(settings.Timeout),
+		EnvelopePath:  c.in.EnvelopePath,
+		ReportPath:    c.in.ReportPath,
+		CaseBriefPath: c.in.CaseBriefPath,
+		Dir:           dir,
 	}
 	if err := loomengine.WriteArbiterAttempt(dir, attempt); err != nil {
 		return loomengine.ArbiterEnvelope{}, err
@@ -275,6 +278,7 @@ func (c *arbiterCall) settleFresh(attempts []loomengine.ArbiterAttempt) (loomeng
 	promptInput.EnvelopePath = c.in.EnvelopePath
 	promptInput.ReportPath = c.in.ReportPath
 	promptInput.BriefPath = briefPath
+	promptInput.CaseBriefPath = c.in.CaseBriefPath
 	promptInput.VerdictPath = loomengine.ArbiterVerdictPath(dir)
 	prompt, err := arbiterPrompt(c.deps.StencilsDir, promptInput)
 	if err != nil {

@@ -2,7 +2,7 @@
      It is filled via internal/stencil.Fill (internal/loomcli's arbiterPrompt) and typed into the arbiter session as its entire instruction set.
      Every marker below is a top-level {{.X}} substitution and every one is required non-empty:
      {{.run_id}} is the run whose stop is judged, {{.slug}} the task it belongs to, {{.worktree}} the directory every command runs in,
-     {{.envelope_path}} the stop envelope, {{.report_path}} the driver's stop or fork report and {{.brief_path}} the review escalation brief (each the literal `none` when absent),
+     {{.envelope_path}} the stop envelope, {{.report_path}} the driver's stop or fork report, {{.brief_path}} the review escalation brief and {{.case_brief_path}} the tackler's case brief (each the literal `none` when absent),
      {{.decision_record_path}} and {{.support_log_path}} the task's decision record and support log,
      {{.verdict_path}} the one file the arbiter writes,
      {{.parent_directive}} the no-parent variant of the shared parent directive rendered by internal/parentdirective,
@@ -27,11 +27,15 @@ You start cold: everything you know comes from the files below.
 - The stop envelope `{{.envelope_path}}`.
 - The driver's stop or fork report `{{.report_path}}`.
 - The review escalation brief `{{.brief_path}}` and the review rounds it names.
+- The tackler's case brief `{{.case_brief_path}}`.
 - The task's board entry, from `lyx board get {{.slug}}`.
 - The decision record `{{.decision_record_path}}` and the support log `{{.support_log_path}}`, when they exist.
 - Any read-only `lyx` command or file in `{{.worktree}}`.
 
 A path reading `none` is absent.
+
+The case brief is a cheaper agent's reading of the stop, not authority.
+Check every fact you rely on against its pointer yourself, and never take its hypothesis as given.
 
 ## What you may change
 
@@ -56,7 +60,11 @@ The driver's re-launch performs the move after its own check.
 
 Hand on when the call needs an operator decision that neither the board entry nor the decision record and support log record, when it widens the task's scope, or on any doubt.
 
-- At a review escalation the rule is fixed: accept unless a finding makes the design wrong, and hand on a blocker that remains after round 3.
+- At a review escalation the rule follows the cause the review escalation brief names.
+  What a ledger entry's `design-wrong` and `mechanical` tags mean is the judge stencil's, which the brief names.
+  - `hard-cap`: read the open design-wrong findings against the code; accept when a finding is wrong or the fix in place answers it, otherwise hand on.
+  - `circling`: accept when the returned finding is wrong; continue when the fix is converging and the round is below the hard cap; otherwise hand on.
+  - `budget`: settle from the review, ledger and verdict files as for `circling`, or hand on.
 - At an error stop you have no repair verbs.
   You may judge a plain re-launch safe, name a goto target, or hand on.
 - A `resume` at a review escalation needs its circling decision recorded first.

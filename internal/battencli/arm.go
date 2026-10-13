@@ -109,16 +109,6 @@ func battenDriver(flagVal string) string {
 	return flagVal
 }
 
-// battenChildDriver is battenDriver's sibling for --child-driver, defaulting an empty flagVal to
-// shedrun.DriverLLM instead: the child is always a loom run, whose bootstrap verb boots a loom driver
-// session, and an llm-driven run is how runs are meant to be driven.
-func battenChildDriver(flagVal string) string {
-	if flagVal == "" {
-		return shedrun.DriverLLM
-	}
-	return flagVal
-}
-
 // refuseAdoptedSeed refuses a seed that already exists at runID but does not describe the run the
 // operator asked batten to drive.
 // A found seed is authoritative and is never overwritten here, but authoritative is not the same as
@@ -128,6 +118,8 @@ func battenChildDriver(flagVal string) string {
 // is typed.
 // A driver the operator typed cannot take effect on a seeded run, so it is refused rather than
 // dropped; one left at its cobra default carries no intent to contradict and is ignored.
+// A typed --child-driver is refused against a seed recording a different child driver and against a seed recording none;
+// an untyped one passes a seed that records none, since the child then takes the task's driver_kind.
 func refuseAdoptedSeed(seed shedrun.Seed, runID string, driverFlag string, driverSet bool, childDriverFlag string, childDriverSet bool) error {
 	if seed.Recipe != shedrun.RecipeBatten {
 		return fmt.Errorf(
@@ -141,24 +133,41 @@ func refuseAdoptedSeed(seed shedrun.Seed, runID string, driverFlag string, drive
 			runID, seed.Driver, driverFlag,
 		)
 	}
-	if recorded := childDriverOf(seed); childDriverSet && childDriverFlag != recorded {
-		return fmt.Errorf(
-			"battencli: run %q is already seeded with child driver %q; --child-driver %q cannot change a seeded run's recorded child driver",
-			runID, recorded, childDriverFlag,
-		)
+	if childDriverSet {
+		recorded, has := childDriverOf(seed)
+		if !has {
+			return fmt.Errorf(
+				"battencli: run %q is already seeded with no child driver; --child-driver %q cannot be recorded on a seeded run -- delete the run's seed to re-seed it with the flag, or drop the flag to take the task's driver_kind",
+				runID, childDriverFlag,
+			)
+		}
+		if childDriverFlag != recorded {
+			return fmt.Errorf(
+				"battencli: run %q is already seeded with child driver %q; --child-driver %q cannot change a seeded run's recorded child driver",
+				runID, recorded, childDriverFlag,
+			)
+		}
 	}
 	return nil
 }
 
-// childDriverOf returns the child driver seed records, defaulting an absent or empty
-// params.child_driver to shedrun.DriverGo. wire.go's own SeedChild.ChildDriver closure calls this
-// directly rather than re-implementing the same default, so a refusal here and the value
-// Seed-Child actually writes can never read the same seed's child driver differently.
-func childDriverOf(seed shedrun.Seed) string {
+// childDriverOf returns the child driver seed records and whether it records one; an absent or empty params.child_driver records none.
+// refuseAdoptedSeed and childDriverFrom both read the seed through it, so a refusal and the driver Seed-Child writes can never read the same seed differently.
+func childDriverOf(seed shedrun.Seed) (driver string, recorded bool) {
 	if driver, ok := seed.Params["child_driver"]; ok && driver != "" {
-		return driver
+		return driver, true
 	}
-	return shedrun.DriverGo
+	return "", false
+}
+
+// childDriverFrom returns the child driver Seed-Child writes: the prime seed's recorded child_driver when it records one, otherwise resolveKind's result, whose error is returned.
+func childDriverFrom(seed shedrun.Seed, found bool, resolveKind func() (string, error)) (string, error) {
+	if found {
+		if driver, recorded := childDriverOf(seed); recorded {
+			return driver, nil
+		}
+	}
+	return resolveKind()
 }
 
 // armSeed gates batten's auto-seed: it reads the seed at runID, refuses a found seed that disagrees
@@ -171,7 +180,7 @@ func childDriverOf(seed shedrun.Seed) string {
 // loomcli against prime -- the wrong recipe against the wrong worktree. The child worktree's own
 // recipe is chosen later, by battenshed's Seed-Child producer, from the Board task's type.
 //
-// The auto-seeded driver and child_driver come from c.driverFlag/c.childDriverFlag -- "run"'s and
+// The auto-seeded driver comes from c.driverFlag, and child_driver from c.childDriverFlag only when it was typed -- "run"'s and
 // "step"'s own --driver/--child-driver flags -- but the two are validated differently, because they
 // answer different questions. Batten's own driver flag names the process the operator typed, and
 // batten has no bootstrap verb, so an "llm" value there is refused outright by
@@ -229,18 +238,17 @@ func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error
 	if err := refuseBattenOwnDriverLLM(driver); err != nil {
 		return err
 	}
-	childDriver := battenChildDriver(c.childDriverFlag)
-	if err := shedrun.ValidateDriver(childDriver); err != nil {
-		return err
-	}
 
+	// The run-id is the slug; no param repeats it.
+	// child_driver is recorded only when the operator typed it; Seed-Child resolves the rest from the task's driver_kind.
+	var params map[string]string
+	if c.childDriverFlagSet {
+		params = map[string]string{"child_driver": c.childDriverFlag}
+	}
 	return shedrun.WriteSeed(location, runID, shedrun.Seed{
 		Recipe: shedrun.RecipeBatten,
 		Driver: driver,
-		// The run-id is the slug; no param repeats it.
-		Params: map[string]string{
-			"child_driver": childDriver,
-		},
+		Params: params,
 	})
 }
 
