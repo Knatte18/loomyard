@@ -53,6 +53,8 @@ type Values struct {
 	SelfCheckStep string
 	// SelfCheckCommand is the command the writer runs as the self-check.
 	SelfCheckCommand string
+	// FinalSelfCheckCommand is the command the writer runs as the final self-check, after the lens review is recorded.
+	FinalSelfCheckCommand string
 	// DispositionPlace names where the writer records the lens review.
 	DispositionPlace string
 }
@@ -62,17 +64,18 @@ type Values struct {
 // Every error names the stencil.
 func Directive(stencilsDir string, v Values) (string, error) {
 	values := map[string]string{
-		"reviewed_files":     v.ReviewedFiles,
-		"spawn_point":        v.SpawnPoint,
-		"rejection_rule":     v.RejectionRule,
-		"severity_rule":      v.SeverityRule,
-		"ready_marker":       v.ReadyMarker,
-		"rubric_path":        v.RubricPath,
-		"lens_list":          bulletList(v.Lenses, func(l Lens) string { return l.Name + ": " + strings.Join(strings.Fields(l.Text), " ") }),
-		"format_step":        v.FormatStep,
-		"self_check_step":    v.SelfCheckStep,
-		"self_check_command": v.SelfCheckCommand,
-		"disposition_place":  v.DispositionPlace,
+		"reviewed_files":           v.ReviewedFiles,
+		"spawn_point":              v.SpawnPoint,
+		"rejection_rule":           v.RejectionRule,
+		"severity_rule":            v.SeverityRule,
+		"ready_marker":             v.ReadyMarker,
+		"rubric_path":              v.RubricPath,
+		"lens_list":                bulletList(v.Lenses, func(l Lens) string { return l.Name + ": " + strings.Join(strings.Fields(l.Text), " ") }),
+		"format_step":              v.FormatStep,
+		"self_check_step":          v.SelfCheckStep,
+		"self_check_command":       v.SelfCheckCommand,
+		"final_self_check_command": v.FinalSelfCheckCommand,
+		"disposition_place":        v.DispositionPlace,
 	}
 	return render(stencilsDir, directiveStencil, values)
 }
