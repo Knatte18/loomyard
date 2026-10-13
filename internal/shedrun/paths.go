@@ -6,9 +6,11 @@ package shedrun
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"path"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -51,9 +53,36 @@ const arbiterMarkerFileName = "arbiter-inflight.json"
 const ParkMarkerFileName = "driver-parked"
 
 // BattenWatchedFileName is the filename of the batten-watched marker, whose path BattenWatchedMarker returns.
-// The file holds the pid, in decimal on one line, of the live batten process watching the run.
+// The file holds the pid, in decimal, of the live batten process watching the run on its first line, then, when known, the prime's batten scratch directory and the Run-Shed row's name on the next two lines.
 // A batten writes it while it watches and removes it when it stops; a driver launched fresh renders its parent-notification rule from whether the pid in it is live.
 const BattenWatchedFileName = "batten-watched"
+
+// BattenWatchedContent renders the batten-watched marker's content: pid in decimal on the first line, then, when either is non-empty, scratchDir and producer on the next two lines.
+func BattenWatchedContent(pid int, scratchDir, producer string) []byte {
+	content := strconv.Itoa(pid) + "\n"
+	if scratchDir != "" || producer != "" {
+		content += scratchDir + "\n" + producer + "\n"
+	}
+	return []byte(content)
+}
+
+// ParseBattenWatched reads a batten-watched marker's content: the first line is the pid, and the next two lines, when present, are the scratch directory and the row's name.
+// A one-line marker parses with an empty scratch directory and producer.
+// A marker whose first line is not a positive pid is an error.
+func ParseBattenWatched(data []byte) (pid int, scratchDir, producer string, err error) {
+	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+	pid, err = strconv.Atoi(strings.TrimSpace(lines[0]))
+	if err != nil || pid <= 0 {
+		return 0, "", "", fmt.Errorf("shedrun: batten-watched marker: the first line %q is not a positive pid", lines[0])
+	}
+	if len(lines) > 1 {
+		scratchDir = lines[1]
+	}
+	if len(lines) > 2 {
+		producer = lines[2]
+	}
+	return pid, scratchDir, producer, nil
+}
 
 // StartNotParkedKind is the envelope "kind" of the `lyx loom start` refusal for a live driver whose run has halted at a hand-back but whose park marker is not written yet.
 // That refusal is retryable: the driver is still writing its stop report and committing its records, and parks within seconds.

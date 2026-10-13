@@ -35,6 +35,10 @@
 // TacklerMarker is the ephemeral in-flight marker under ScratchDir.
 // SettleRecordsFile is the Go driver's settle-record file in a told friction directory, a non-markdown name so a reflection never archives it.
 //
+// The batten-watched marker's format is declared here too.
+// BattenWatchedContent renders the pid on the first line and, when known, the prime's batten scratch directory and the Run-Shed row's name on the next two.
+// ParseBattenWatched reads it back, and a one-line marker parses with an empty scratch directory and row.
+//
 // RunsRootRel names the anchor-relative run-records root, because fabricengine's Add drops everything under it from a freshly forked pair.
 // RunsRoot and ScratchRoot are its absolute durable and ephemeral forms, the directories every run directory and scratch directory sit under.
 // RunDirRel is a run directory's anchor-relative form, the pathspec of a records commit that deletes the whole directory.
