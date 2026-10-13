@@ -1146,9 +1146,9 @@ func TestRun_Wait_StartedRun_SkipsStartupProbe(t *testing.T) {
 	}
 }
 
-// TestRun_Wait_ForkAudit proves finalize's AuditForks wiring: a fork-mode spec's done
+// TestRun_Wait_ForkAudit proves finalize's AuditForks wiring: a fork-authorized run record's done
 // classification calls engine.AuditForks(sessionID, the runner's paneCwd) and attaches its result to
-// Result.ForkAudit, while a non-fork spec's done classification never calls AuditForks at all and
+// Result.ForkAudit, while a record without authorization never calls AuditForks at all and
 // leaves Result.ForkAudit nil. The audit gets the runner's paneCwd rather than its anchorPath; the
 // two are the same value in the hub shape, so a detached runner whose pane runs at the worktree
 // root while its anchor sits outside it (standalone geometry) is what tells them apart.
@@ -1183,9 +1183,9 @@ func TestRun_Wait_ForkAudit(t *testing.T) {
 				fx.Runner.paneCwd = t.TempDir()
 			}
 			fc := newFakeClock(time.Now())
-			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, ForkSubagents: tt.forkSubagents},
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
 				withRunDir(runDir),
-				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath, ForkSubagents: tt.forkSubagents}),
 				withRunClock(fc, fc.Now().Add(time.Minute)))
 
 			result, err := run.Wait()
@@ -1224,7 +1224,7 @@ func TestRun_Wait_ForkAudit(t *testing.T) {
 
 // TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome is R2-F2's regression guard.
 //
-// A fork-mode run that satisfies the file contract has reached OutcomeDone before AuditForks is ever
+// A fork-authorized run that satisfies the file contract has reached OutcomeDone before AuditForks is ever
 // called, so an audit failure is a failure of the AUDIT, not of the run. finalize used to hand back
 // run.identity() here — a Result with an empty Outcome — which is the shape Wait reserves for a
 // mechanism failure that reached no classification at all. Because this branch also skips cleanup,
@@ -1248,9 +1248,9 @@ func TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome(t *testing.T) {
 	}
 	fx := newFixture(t, reed, engine, withConfig(fastConfig))
 	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, ForkSubagents: true},
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
 		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath, ForkSubagents: true}),
 		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()

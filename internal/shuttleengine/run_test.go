@@ -199,7 +199,7 @@ func TestRunner_StartGated_CarriesNoDoneWhen(t *testing.T) {
 // StartupReady on the very first tick.
 // The steps share that run and read what it left behind.
 //
-//testtiming:keep pins Start's exact AddSpec wiring, its single ready probe, the persisted Started and running Outcome, and RunDir naming the created directory
+//testtiming:keep pins Start's exact AddSpec wiring, its single ready probe, the persisted Started, running Outcome and fork authorization, and RunDir naming the created directory
 func TestRunner_Start_HappyPath(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", ResumeCmd: "resume-cmd", SessionID: "session-1"}}
@@ -215,6 +215,8 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 		Segment:     segmentcolor.Review,
 		Parent:      "parent-guid",
 		Display:     render.Display{Anchor: render.AnchorBelowParent},
+
+		ForkSubagents: true,
 	}
 
 	run, err := runner.Start(spec)
@@ -299,6 +301,9 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 		}
 		if rs.PID != os.Getpid() {
 			t.Errorf("RunState.PID = %d, want the starting process's pid %d", rs.PID, os.Getpid())
+		}
+		if !rs.ForkSubagents {
+			t.Error("RunState.ForkSubagents = false, want the spawning Spec's authorization recorded")
 		}
 	})
 

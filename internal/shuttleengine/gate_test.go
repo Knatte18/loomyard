@@ -518,19 +518,26 @@ func TestGate_DeadlineExpiresBetweenAttempts(t *testing.T) {
 // TestAttach_GateThreading covers a resumed run's gate: AttachGated gates it exactly as a fresh
 // RunGated run is gated, and the plain Attach entry point never carries a gate.
 //
-//testtiming:keep pins that AttachGated gates a resumed run exactly as a fresh one is gated, and that plain Attach leaves Result.Gate nil
+//testtiming:keep pins that AttachGated gates a resumed run exactly as a fresh one is gated, that plain Attach leaves Result.Gate nil, and that the recorded fork authorization, not the attaching spec, chooses the gate closure and the fork audit
 func TestAttach_GateThreading(t *testing.T) {
 	tests := []struct {
 		name  string
 		gated bool
+		// recordedFork seeds the run record's fork authorization; specFork sets the attaching Spec's.
+		recordedFork, specFork bool
+		// wantForked is whether the Forked closure, not Gate, is the one called.
+		wantForked bool
 	}{
 		{name: "AttachGated threads the gate through reconstruct and wait", gated: true},
 		{name: "Attach leaves Result.Gate nil", gated: false},
+		{name: "AttachGated of a fork-authorized record runs Forked and the fork audit, though the attaching spec does not authorize forks", gated: true, recordedFork: true, specFork: false, wantForked: true},
+		{name: "AttachGated of a record without fork authorization runs Gate and no fork audit, though the attaching spec authorizes forks", gated: true, recordedFork: false, specFork: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
-			fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+			engine := &fakeEngine{}
+			fx := newFixture(t, reed, engine, withConfig(fastConfig), withSeparateRunDir())
 			runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 			seedPresentReedState(t, dotLyxDir)
 
@@ -538,16 +545,21 @@ func TestAttach_GateThreading(t *testing.T) {
 			runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{
 				strandGUID: "strand-1", sessionID: "session-1",
 				outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true,
+				forkSubagents: tt.recordedFork,
 			})
 			touchOutputFile(t, outputFile)
 			if err := os.WriteFile(filepath.Join(runDir, eventsFileName), []byte("STOP:done\n"), 0o644); err != nil {
 				t.Fatalf("seed events: %v", err)
 			}
 
-			spec := Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute}
-			gateCalls := 0
+			spec := Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, ForkSubagents: tt.specFork}
+			gateCalls, forkedCalls := 0, 0
 			gate := func() (GateResult, error) {
 				gateCalls++
+				return GateResult{Passed: true}, nil
+			}
+			forked := func() (GateResult, error) {
+				forkedCalls++
 				return GateResult{Passed: true}, nil
 			}
 
@@ -557,7 +569,7 @@ func TestAttach_GateThreading(t *testing.T) {
 				err    error
 			)
 			if tt.gated {
-				result, found, err = runner.AttachGated(spec, GateSpec{{Gate: gate, Attempts: 3}})
+				result, found, err = runner.AttachGated(spec, GateSpec{{Gate: gate, Forked: forked, Attempts: 3}})
 			} else {
 				result, found, err = runner.Attach(spec)
 			}
@@ -576,8 +588,19 @@ func TestAttach_GateThreading(t *testing.T) {
 			if result.Gate == nil || !result.Gate.Passed {
 				t.Errorf("Gate = %+v; want a passed verdict, proving a resumed run is gated exactly as a fresh one is", result.Gate)
 			}
-			if gateCalls != 1 {
-				t.Errorf("gate closure invoked %d times; want 1", gateCalls)
+			wantGate, wantForkedCalls := 1, 0
+			if tt.wantForked {
+				wantGate, wantForkedCalls = 0, 1
+			}
+			if gateCalls != wantGate || forkedCalls != wantForkedCalls {
+				t.Errorf("Gate invoked %d times and Forked %d times; want %d and %d", gateCalls, forkedCalls, wantGate, wantForkedCalls)
+			}
+			wantAudits := 0
+			if tt.recordedFork {
+				wantAudits = 1
+			}
+			if len(engine.AuditForksCalls) != wantAudits || (result.ForkAudit != nil) != tt.recordedFork {
+				t.Errorf("AuditForksCalls = %v and ForkAudit = %+v; want %d audit calls and an audit only for a fork-authorized record", engine.AuditForksCalls, result.ForkAudit, wantAudits)
 			}
 		})
 	}

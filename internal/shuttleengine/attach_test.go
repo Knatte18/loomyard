@@ -59,6 +59,8 @@ type seedAttachRunOpts struct {
 	// pre-Started-field binary wrote also decodes to — the fixture default matches the production
 	// default.
 	started bool
+	// forkSubagents seeds RunState.ForkSubagents; the key is written only when true, so a seed without it is the older record's shape.
+	forkSubagents bool
 }
 
 // seedAttachRun writes a run.json fixture at <root>/<id>/run.json built from a plain map rather than
@@ -83,6 +85,9 @@ func seedAttachRun(t *testing.T, root, id string, opts seedAttachRunOpts) string
 	}
 	if opts.includeOutcome {
 		fields["outcome"] = opts.outcome
+	}
+	if opts.forkSubagents {
+		fields["forkSubagents"] = true
 	}
 	data, err := json.MarshalIndent(fields, "", "  ")
 	if err != nil {

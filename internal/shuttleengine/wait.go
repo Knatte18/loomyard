@@ -1445,6 +1445,8 @@ func (run *Run) identity() Result {
 // A Terminal failing result is recorded on run.gateTerminal, and its Findings text is carried on GateOutcome.Reason.
 // The method never changes a count — only Wait's re-prompt branch does — so a finalize evaluating afresh after a lost session or a deadline cannot change one.
 //
+// An entry's closure is Gate, replaced by Forked when the run's record carries fork authorization, and by Final at a final evaluation.
+//
 // A non-nil error from a closure is returned verbatim, stores no memo and changes no count, per the "a gate error is never not passed" decision:
 // a gate that could not run has found no defect, it is an infrastructure fault, not a GateResult{Passed: false}.
 //
@@ -1492,6 +1494,9 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 			line.State = GateEntryLetThrough
 		default:
 			closure := entry.Gate
+			if entry.Forked != nil && run.state.ForkSubagents {
+				closure = entry.Forked
+			}
 			if final && entry.Final != nil {
 				closure = entry.Final
 			}
@@ -1624,7 +1629,7 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 		result.Usage = reader.SessionUsage(run.state.SessionID, run.runner.paneCwd)
 	}
 
-	if outcome == OutcomeDone && run.spec.ForkSubagents {
+	if outcome == OutcomeDone && run.state.ForkSubagents {
 		audit, err := run.runner.engine.AuditForks(run.state.SessionID, run.runner.paneCwd)
 		if err != nil {
 			// The run itself SUCCEEDED and nothing has been cleaned up yet, so the caller gets the
