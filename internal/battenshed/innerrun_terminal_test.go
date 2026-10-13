@@ -153,7 +153,7 @@ func TestInnerRun_TerminalOpenErrorIsWarnedNotEscalated(t *testing.T) {
 	if outcome != wantOutcome || ptr.Reason != wantPtr.Reason || ptr.BudgetExempt != wantPtr.BudgetExempt {
 		t.Errorf("Call() = %v %+v; want the success case's %v %+v", outcome, ptr, wantOutcome, wantPtr)
 	}
-	// The running arm's own stuck warning appears in both runs, so the failed open must add exactly one warning line to the success case's.
+	// The running arm's own stuck line is Info now, so the failed open's Warn is the only one either run adds.
 	successWarns, failWarns := warnLines(successLogs), warnLines(logs)
 	var errWarns []string
 	for _, line := range failWarns {

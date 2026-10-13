@@ -1,4 +1,4 @@
-// innerrun_halted_test.go covers the inner-run watch's halted arm: a blocked, paused or failed child is a budget-exempt wait that never spawns or resumes it, Warns once per halt episode and revives a dead driver strand once per episode.
+// innerrun_halted_test.go covers the inner-run watch's halted arm: a blocked, paused or failed child is a budget-exempt wait that never spawns or resumes it, logs one Info line per halt episode and revives a dead driver strand once per episode.
 // The tests that capture log output replace the process-global logger output,
 // so they do not run in parallel.
 
@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 func haltedStatus(state shedengine.State, historyLen int) statusResult {
@@ -56,13 +57,11 @@ func TestInnerRun_HaltedStatesWaitExemptWithoutSpawning(t *testing.T) {
 	}
 }
 
-// TestInnerRun_HaltWarnsOncePerEpisode asserts the checks of one wait at one unchanged status Warn once, and that a longer history in the same state, written while the wait runs, starts a new episode.
+// TestInnerRun_HaltWarnsOncePerEpisode asserts the checks of one wait at one unchanged status log one Info line, and that a longer history in the same state, written while the wait runs, starts a new episode.
 func TestInnerRun_HaltWarnsOncePerEpisode(t *testing.T) {
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
+	buf := logcapture.CaptureVerbose(t)
 
-	const warnText = "inner shed run halted"
+	const warnText = "level=INFO msg=\"battenshed: inner shed run halted"
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	statuses := []statusResult{haltedStatus(shedengine.StatePaused, 3), haltedStatus(shedengine.StatePaused, 5)}
@@ -81,10 +80,10 @@ func TestInnerRun_HaltWarnsOncePerEpisode(t *testing.T) {
 		t.Fatalf("Call() error = %v", err)
 	}
 	if warnsBeforeRegrowth != 1 {
-		t.Fatalf("Warn count over three checks at one history length = %d; want 1\nlog: %s", warnsBeforeRegrowth, buf.String())
+		t.Fatalf("INFO count over three checks at one history length = %d; want 1\nlog: %s", warnsBeforeRegrowth, buf.String())
 	}
 	if got := strings.Count(buf.String(), warnText); got != 2 {
-		t.Errorf("Warn count after the history grew = %d; want 2", got)
+		t.Errorf("INFO count after the history grew = %d; want 2", got)
 	}
 	raw, err := os.ReadFile(haltWarnedFile(scratchDir, "innerrun"))
 	if err != nil {
@@ -96,9 +95,7 @@ func TestInnerRun_HaltWarnsOncePerEpisode(t *testing.T) {
 }
 
 func TestInnerRun_ReHaltAfterObservedResumeWarnsAgainAtTheSameHistoryLength(t *testing.T) {
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
+	buf := logcapture.CaptureVerbose(t)
 
 	// A failed child resumed and failing again on the same producer appends no history entry, so both halts read length 4.
 	failed := haltedStatus(shedengine.StateFailed, 4).status
@@ -131,8 +128,8 @@ func TestInnerRun_ReHaltAfterObservedResumeWarnsAgainAtTheSameHistoryLength(t *t
 			t.Fatalf("Call() %d error = %v", i, err)
 		}
 	}
-	if got := strings.Count(buf.String(), "inner shed run halted"); got != 2 {
-		t.Errorf("Warn count across two halt episodes at one history length = %d; want 2\nlog: %s", got, buf.String())
+	if got := strings.Count(buf.String(), "level=INFO msg=\"battenshed: inner shed run halted"); got != 2 {
+		t.Errorf("INFO count across two halt episodes at one history length = %d; want 2\nlog: %s", got, buf.String())
 	}
 }
 

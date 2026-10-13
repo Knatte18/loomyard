@@ -406,11 +406,11 @@ func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (notic
 	return noticeFinding{}, stamp
 }
 
-// logSessionStatesAtNotice logs at Info the session state of every run in runs beside the condition a finding returned for them, so each notice can be checked against the state.
+// logSessionStatesAtNotice logs at Debug the session state of every run in runs beside the condition a finding returned for them, so each notice can be checked against the state.
 // It is shadow logging: no notice, stamp or finding depends on the state fields.
 func (p *innerRunProducer) logSessionStatesAtNotice(runs []AgentActivity, condition string) {
 	for _, run := range runs {
-		logger.Info("battenshed: session state at notice", "producer", run.Producer, "slug", p.slug, "condition", condition, "state", run.SessionState, "cause", run.SessionCause, "since", run.SessionSince)
+		logger.Debug("battenshed: session state at notice", "producer", run.Producer, "slug", p.slug, "condition", condition, "state", run.SessionState, "cause", run.SessionCause, "since", run.SessionSince)
 	}
 }
 

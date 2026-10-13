@@ -93,7 +93,9 @@
 // so a second driver is never stacked.
 //
 // A child that halts (blocked, paused or failed) is a budget-exempt wait, not a failure of the Run-Shed row:
-// batten never spawns or resumes a halted child, bar one exception below, logs one Warn per halt episode, and keeps waiting with the child's state, error, current producer and the resume command ("lyx loom resume" in the task worktree) as its reason.
+// batten never spawns or resumes a halted child, bar one exception below, logs one Info line per halt episode, and keeps waiting with the child's state, error, current producer and the resume command ("lyx loom resume" in the task worktree) as its reason.
+// A stuck verdict takes its log level from its cause: a failed producer step logs `producer stuck` at Warn, and an ordinary wait or move logs it at Info.
+// A wait on the child logs at Info once per state of the child, so a reason that only counts up, such as the driver-exit grace or a retry's refusal tail, logs once while the reason file always holds the newest text.
 // A halted or awaiting child whose reed state holds a dead driver strand has its pair's strands revived through reed resume, once per halt episode per batten process;
 // the run stays halted and nothing is resumed,
 // so the operator's "lyx loom resume" wakes the revived driver.

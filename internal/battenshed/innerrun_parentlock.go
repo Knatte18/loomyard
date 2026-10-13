@@ -182,6 +182,6 @@ func (p *innerRunProducer) staleBaseResume(ctx context.Context, w *childWait) *w
 		return end
 	}
 	w.staleResumed = true
-	p.report(w, fmt.Sprintf("the parent moved while the child awaited at %s: the child was resumed to merge it in; watching it", p.deps.ParentLock.GateRow))
+	p.reportState(w, fmt.Sprintf("the parent moved while the child awaited at %s: the child was resumed to merge it in; watching it", p.deps.ParentLock.GateRow))
 	return nil
 }

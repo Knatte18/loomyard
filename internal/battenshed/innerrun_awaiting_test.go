@@ -3,7 +3,6 @@
 package battenshed
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -14,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
@@ -474,14 +473,15 @@ func TestInnerRun_DoneLivenessErrorIsTreatedAsLive(t *testing.T) {
 }
 
 // TestInnerRun_DoneFinishesPastGraceWithLiveDriverAndWarns asserts a live driver is waited on for the exit grace and no longer, that its strand is read no more than once per notice probe, and that finishing past the grace warns.
+// The done arm's reason takes a new text as the grace counts up, and logs once for the whole wait.
+// It captures the process-global logger at Info, so it is not parallel.
 func TestInnerRun_DoneFinishesPastGraceWithLiveDriverAndWarns(t *testing.T) {
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
+	buf := logcapture.CaptureVerbose(t)
 
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	_, _, deps := newInnerRunDeps(t, nil, nil, doneStatus(), clock)
+	clock.watchReason(scratchDir)
 	clock.pauseAtSleep = 0
 	const probe = time.Minute
 	deps.NoticeProbe = probe
@@ -498,6 +498,19 @@ func TestInnerRun_DoneFinishesPastGraceWithLiveDriverAndWarns(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "myslug") || !strings.Contains(buf.String(), "exit grace") {
 		t.Errorf("log = %q; want a warning naming the slug and the grace", buf.String())
+	}
+	if texts := slices.Compact(slices.Sorted(slices.Values(clock.reasons))); len(texts) < 2 {
+		t.Errorf("distinct done-arm reasons = %q; want the text to change as the grace counts up", texts)
+	}
+	if got := strings.Count(buf.String(), "inner shed run is done; waiting for its driver"); got != 1 {
+		t.Errorf("done-arm reason log lines = %d; want 1 for the whole wait\nlog: %s", got, buf.String())
+	}
+	raw, err := os.ReadFile(StuckReasonFile(scratchDir, "innerrun"))
+	if err != nil {
+		t.Fatalf("reason file: %v", err)
+	}
+	if got := strings.TrimSuffix(string(raw), "\n"); got != clock.lastReason() {
+		t.Errorf("reason file = %q; want the last recorded text %q", got, clock.lastReason())
 	}
 }
 

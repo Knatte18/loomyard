@@ -214,7 +214,7 @@ func (p *innerRunProducer) publishRetryStep(ctx context.Context, w *childWait) *
 		return p.capPublishRetry(w, r)
 	}
 	if now.Before(w.publishRetryAt) {
-		p.report(w, w.publishRetryReason)
+		p.report(w, w.publishRetryReason, w.publishRetryKey)
 		return nil
 	}
 	if r.action == publishRetryGoto {
@@ -236,8 +236,9 @@ func (p *innerRunProducer) publishRetryGoto(ctx context.Context, w *childWait, r
 			return p.capPublishRetry(w, r)
 		}
 		w.publishRetryAt = p.deps.Now().Add(p.noticeProbe)
-		w.publishRetryReason = fmt.Sprintf("the automatic Publish verify retry waits to send the child to %s: its run lock is held; retrying (%s)", r.target, w.publishRefusal)
-		p.report(w, w.publishRetryReason)
+		w.publishRetryKey = fmt.Sprintf("the automatic Publish verify retry waits to send the child to %s: its run lock is held; retrying", r.target)
+		w.publishRetryReason = fmt.Sprintf("%s (%s)", w.publishRetryKey, w.publishRefusal)
+		p.report(w, w.publishRetryReason, w.publishRetryKey)
 		return nil
 	}
 	if err := p.writePublishRetryMarker(publishRetryGotoDone, r.started, r.target); err != nil {
@@ -261,11 +262,12 @@ func (p *innerRunProducer) publishRetryResume(ctx context.Context, w *childWait,
 		}
 		w.publishRefusal = oneLine(err.Error(), noticeErrorMax)
 		w.publishRetryAt = p.deps.Now().Add(p.noticeProbe)
-		w.publishRetryReason = fmt.Sprintf("the automatic Publish verify retry waits to resume the child at %s; retrying (%s)", r.target, w.publishRefusal)
+		w.publishRetryKey = fmt.Sprintf("the automatic Publish verify retry waits to resume the child at %s; retrying", r.target)
+		w.publishRetryReason = fmt.Sprintf("%s (%s)", w.publishRetryKey, w.publishRefusal)
 		if busy {
 			p.noticeDriverBusy(ctx, w, err)
 		}
-		p.report(w, w.publishRetryReason)
+		p.report(w, w.publishRetryReason, w.publishRetryKey)
 		return nil
 	}
 	p.driverBusyNoticed = false

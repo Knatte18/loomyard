@@ -5,7 +5,6 @@
 package battenshed
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -16,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -423,6 +421,7 @@ func TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) 
 
 // TestInnerRun_RunningArmReviewWaitNote pins the running arm's reason with a reviewer note, without one, when ReviewWait fails, and that a changed note rewrites the reason once.
 // The wait reads the note on every probe check, and the reason is written at entry and only when it changes.
+// It captures the process-global logger at Info, where each reason is its own key and so logs once per write.
 func TestInnerRun_RunningArmReviewWaitNote(t *testing.T) {
 	plain := "inner shed run still running; checking it every 5s"
 	hub := "inner shed run waiting: parent review: waiting on the hub; checking it every 5s"
@@ -450,9 +449,7 @@ func TestInnerRun_RunningArmReviewWaitNote(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var buf bytes.Buffer
-			logger.SetOutput(&buf)
-			t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
+			buf := logcapture.CaptureVerbose(t)
 
 			scratchDir := t.TempDir()
 			clock := &fakeClock{}

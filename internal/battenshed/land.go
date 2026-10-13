@@ -135,9 +135,11 @@ func (p *landProducer) stuck(ctx context.Context, step, reason string, notify bo
 	if cerr := cancelErr(ctx, p.name); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
 	}
-	reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 	if notify {
+		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 		p.notifier.failed(ctx, step, reason)
+	} else {
+		reportWait(p.name, reason, p.scratchDir, "slug", p.slug)
 	}
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 }
