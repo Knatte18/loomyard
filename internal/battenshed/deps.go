@@ -229,6 +229,15 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil GoVerifyRetrySpent resolves to a function reporting false in NewInnerRun.
 	GoVerifyRetrySpent func() (bool, error)
+	// ChildBuildChanged reads the label of the lyx on disk and whether it differs from the build the child's last step recorded.
+	// The halted arm calls it at most once per due interval, since it reads a binary; an error is warned about and skips that check.
+	// A nil ChildBuildChanged or ChildDirtyPaths switches the binary re-step off.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	ChildBuildChanged func() (build string, changed bool, err error)
+	// ChildDirtyPaths lists the task pair's uncommitted or untracked paths outside the run's records directories.
+	// A halted child is re-stepped on a new build only when it lists none; an error is warned about and skips that check.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	ChildDirtyPaths func() ([]string, error)
 	// ReviveStrands brings back the strands of the child's pair through reed resume, which relaunches the dead driver strand with its own session.
 	// Call invokes it at most once per halt episode per process, for a halted or awaiting child whose DriverStrand reports dead;
 	// it starts no run step and sends no resume line.

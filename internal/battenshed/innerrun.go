@@ -171,6 +171,10 @@ type innerRunProducer struct {
 	noticeQuiet time.Duration
 	// retryOn is true when the automatic Publish verify retry is wired: a Publish row name and all three of its seams.
 	retryOn bool
+	// restepOn is true when the binary re-step is wired: both its build and dirty-path seams.
+	restepOn bool
+	// restep is the binary re-step's interval and last reading, across Calls.
+	restep restepWatch
 }
 
 var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
@@ -186,6 +190,7 @@ var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 // A nil deps.OrchStrandRecorded resolves to reporting a strand recorded, and a nil deps.StopReport to reporting no stop report.
 // A nil deps.DriverStrand resolves to reporting no driver strand, a nil deps.ChildRunLockHeld or deps.ChildDriverLockHeld to reporting no held lock and a nil deps.ReviveStrands to a revive that fails as not wired.
 // A nil deps.TacklerInFlight resolves to reporting no tackler, and a nil deps.GoVerifyRetrySpent to reporting no Go verify retry spent.
+// A nil deps.ChildBuildChanged or deps.ChildDirtyPaths switches the binary re-step off.
 // A nil deps.PauseRequested resolves to never paused, and a nil deps.Pause to never covered by a pause record.
 // An empty deps.VerifyRows, or a nil deps.PublishFailure, deps.ChildHead or deps.Goto, switches the automatic verify retry off.
 // A nil deps.MarkWatched resolves to reporting not held, a nil deps.Activity to reporting no live run and no live wait, and a nil deps.ArbiterInFlight to reporting no arbiter.
@@ -263,6 +268,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 		notices:         notices,
 		noticeQuiet:     deps.NoticeQuiet,
 		retryOn:         len(deps.VerifyRows) > 0 && deps.PublishFailure != nil && deps.ChildHead != nil && deps.Goto != nil,
+		restepOn:        deps.ChildBuildChanged != nil && deps.ChildDirtyPaths != nil,
 	}
 }
 
@@ -714,7 +720,7 @@ func (p *innerRunProducer) runningStep(ctx context.Context, w *childWait) *waitE
 }
 
 // haltedStep is the halted arm for a blocked, paused or failed child: it Warns once per halt episode, revives a dead driver strand once per episode, and reports the resume command the operator runs.
-// It never spawns or resumes the child, except for the one automatic retry of a first Publish verify failure (publishRetryStep).
+// It never spawns or resumes the child, except for the one automatic retry of a first Publish verify failure (publishRetryStep) and the one re-step of a driverless go child on a new lyx build (binaryRestep).
 // The child is waited on until its state changes.
 func (p *innerRunProducer) haltedStep(ctx context.Context, w *childWait) *waitEnd {
 	if err := p.warnHaltEpisode(w.status); err != nil {
@@ -725,6 +731,9 @@ func (p *innerRunProducer) haltedStep(ctx context.Context, w *childWait) *waitEn
 	}
 	if w.probeDue {
 		w.revival = p.reviveDeadDriver(ctx)
+	}
+	if end := p.binaryRestep(ctx, w); end != nil {
+		return end
 	}
 	p.report(w, haltedWaitReason(w.status, w.revival.startFallback))
 	return nil

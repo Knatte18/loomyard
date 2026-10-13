@@ -8,7 +8,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -335,4 +337,202 @@ func TestInnerRun_ARunningChildEndsTheReviveEpisode(t *testing.T) {
 	if _, err := os.Stat(revivedFile(scratchDir, "innerrun")); !os.IsNotExist(err) {
 		t.Errorf("revived marker after the running Call: stat err %v; want it removed", err)
 	}
+}
+
+// restepHarness holds the fake child, the fake seams of the binary re-step and what they recorded.
+type restepHarness struct {
+	t          *testing.T
+	scratchDir string
+	clock      *fakeClock
+	status     shedengine.Status
+
+	strand      ChildDriverStrand
+	runLock     bool
+	driverLock  bool
+	build       string
+	changed     bool
+	dirty       []string
+	retryTaking bool
+	// spawnErrs is consumed one per spawn; a spawn past the end succeeds.
+	spawnErrs []error
+	spawns    int
+	// buildReads is when each read of the build seam happened, as an offset from the clock's start.
+	buildReads []time.Duration
+	started    time.Time
+	probe      time.Duration
+	poll       time.Duration
+}
+
+// newRestepHarness builds a harness over a driverless child blocked at a row, with a changed build and a clean tree.
+func newRestepHarness(t *testing.T) *restepHarness {
+	t.Helper()
+	h := &restepHarness{
+		t:          t,
+		scratchDir: t.TempDir(),
+		clock:      &fakeClock{},
+		strand:     ChildDriverNone,
+		build:      "build-1",
+		changed:    true,
+		probe:      2 * time.Second,
+		poll:       time.Second,
+	}
+	h.started = h.clock.Now()
+	h.status = haltedStatus(shedengine.StateBlocked, 2).status
+	return h
+}
+
+// producer builds a fresh producer over the harness's scratch directory, so a second one models a batten restart.
+func (h *restepHarness) producer() shedengine.ShedProducer {
+	_, _, deps := newInnerRunDeps(h.t, nil, nil, []statusResult{{found: true}}, h.clock)
+	deps.NoticeProbe = h.probe
+	deps.ReadStatus = func(string, string) (shedengine.Status, bool, error) { return h.status, true, nil }
+	deps.Spawn = func(context.Context) error {
+		h.spawns++
+		if len(h.spawnErrs) == 0 {
+			return nil
+		}
+		err := h.spawnErrs[0]
+		h.spawnErrs = h.spawnErrs[1:]
+		return err
+	}
+	deps.DriverStrand = func(context.Context) (ChildDriverStrand, error) { return h.strand, nil }
+	deps.ChildRunLockHeld = func() (bool, error) { return h.runLock, nil }
+	deps.ChildDriverLockHeld = func() (bool, error) { return h.driverLock, nil }
+	deps.ChildBuildChanged = func() (string, bool, error) {
+		h.buildReads = append(h.buildReads, h.clock.Now().Sub(h.started))
+		return h.build, h.changed, nil
+	}
+	deps.ChildDirtyPaths = func() ([]string, error) { return h.dirty, nil }
+	if h.retryTaking {
+		deps.VerifyRows = []string{h.status.CurrentProducer}
+		deps.PublishFailure = func() (ChildPublishFailure, bool, error) { return ChildPublishFailure{}, false, nil }
+		deps.ChildHead = func() (string, error) { return "head", nil }
+		deps.Goto = func(context.Context, string) error { return nil }
+		content := "started " + h.clock.Now().UTC().Format(time.RFC3339) + " target-row\n"
+		if err := os.WriteFile(publishRetryFile(h.scratchDir, "innerrun"), []byte(content), 0o644); err != nil {
+			h.t.Fatal(err)
+		}
+	}
+	return NewInnerRun("innerrun", "myslug", deps, h.poll, h.scratchDir, testGrace)
+}
+
+// call makes one Call that ends after checks checks, when the child reads as running, and leaves the child halted again afterwards.
+func (h *restepHarness) call(p shedengine.ShedProducer, checks int) {
+	h.t.Helper()
+	halted := h.status
+	end := h.clock.sleepCalls + checks
+	h.clock.pauseAtSleep = 0
+	h.clock.onSleep = func(call int) {
+		if call == end {
+			h.status = shedengine.Status{State: shedengine.StateRunning}
+			h.clock.bumpStatus()
+		}
+	}
+	outcome, _, err := p.Call(context.Background())
+	if err != nil || outcome != shedengine.Stuck {
+		h.t.Fatalf("Call() = %v, %v; want the Stuck of the child leaving its halt", outcome, err)
+	}
+	h.status = halted
+}
+
+// marker is the binary re-step marker's content, empty when there is none.
+func (h *restepHarness) marker() string {
+	raw, err := os.ReadFile(binaryRestepFile(h.scratchDir, "innerrun"))
+	if err != nil {
+		return ""
+	}
+	return string(raw)
+}
+
+// TestInnerRun_BinaryChangeRestepsADriverlessGoChild asserts a halted child with no driver strand, no held lock, a clean tree and a changed build is re-stepped once per halt and build.
+// The marker survives a restart, a newer build re-steps again, a refused spawn writes no marker and is retried, and every other condition spawns nothing.
+// The check backs off from the notice probe up to the ceiling while nothing changes.
+func TestInnerRun_BinaryChangeRestepsADriverlessGoChild(t *testing.T) {
+	t.Parallel()
+
+	t.Run("OnceAndSurvivesARestart", func(t *testing.T) {
+		t.Parallel()
+		h := newRestepHarness(t)
+
+		h.call(h.producer(), 6)
+		if h.spawns != 1 {
+			t.Fatalf("spawns = %d; want 1 across the due checks of one episode", h.spawns)
+		}
+		if got, want := h.marker(), restepStopKey(h.status)+"\nbuild-1\n"; got != want {
+			t.Errorf("marker = %q; want %q", got, want)
+		}
+
+		h.call(h.producer(), 6)
+		if h.spawns != 1 {
+			t.Errorf("spawns = %d after a fresh producer over the same scratch directory; want still 1", h.spawns)
+		}
+
+		h.build = "build-2"
+		h.call(h.producer(), 6)
+		if h.spawns != 2 {
+			t.Errorf("spawns = %d after a newer build; want 2", h.spawns)
+		}
+	})
+
+	t.Run("ARefusedSpawnWritesNoMarkerAndIsRetried", func(t *testing.T) {
+		t.Parallel()
+		h := newRestepHarness(t)
+		h.spawnErrs = []error{fmt.Errorf("%w: not parked", ErrChildNotParked)}
+
+		h.call(h.producer(), 2)
+		if h.spawns != 1 || h.marker() != "" {
+			t.Fatalf("after a refused spawn: spawns = %d, marker = %q; want 1 and none", h.spawns, h.marker())
+		}
+		h.call(h.producer(), 6)
+		if h.spawns != 2 || h.marker() == "" {
+			t.Errorf("after the retry: spawns = %d, marker = %q; want 2 and a marker", h.spawns, h.marker())
+		}
+	})
+
+	tests := []struct {
+		name       string
+		configure  func(h *restepHarness)
+		wantSpawns int
+	}{
+		{name: "FailedChildQualifies", configure: func(h *restepHarness) { h.status.State = shedengine.StateFailed }, wantSpawns: 1},
+		{name: "PausedChildDoesNot", configure: func(h *restepHarness) { h.status.State = shedengine.StatePaused }},
+		{name: "DeadDriverStrandDoesNot", configure: func(h *restepHarness) { h.strand = ChildDriverDead }},
+		{name: "LiveDriverStrandDoesNot", configure: func(h *restepHarness) { h.strand = ChildDriverLive }},
+		{name: "HeldRunLockDoesNot", configure: func(h *restepHarness) { h.runLock = true }},
+		{name: "HeldDriverLockDoesNot", configure: func(h *restepHarness) { h.driverLock = true }},
+		{name: "PublishRetryTakingTheHaltDoesNot", configure: func(h *restepHarness) { h.retryTaking = true }},
+		{name: "DirtyTreeDoesNot", configure: func(h *restepHarness) { h.dirty = []string{"src/a.go"} }},
+		{name: "NewUntrackedFileDoesNot", configure: func(h *restepHarness) { h.dirty = []string{"notes.txt"} }},
+		{name: "UnchangedBuildDoesNot", configure: func(h *restepHarness) { h.changed = false }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := newRestepHarness(t)
+			tt.configure(h)
+
+			h.call(h.producer(), 6)
+
+			if h.spawns != tt.wantSpawns {
+				t.Errorf("spawns = %d; want %d", h.spawns, tt.wantSpawns)
+			}
+		})
+	}
+
+	t.Run("TheCheckBacksOffFromTheProbeUpToTheCeiling", func(t *testing.T) {
+		t.Parallel()
+		h := newRestepHarness(t)
+		h.changed = false
+		h.probe, h.poll = time.Minute, time.Minute
+
+		h.call(h.producer(), 62)
+
+		want := []time.Duration{0, 1, 3, 7, 15, 31, 61}
+		for i := range want {
+			want[i] *= time.Minute
+		}
+		if !slices.Equal(h.buildReads, want) {
+			t.Errorf("build reads at %v; want %v: the probe, then twice it, up to the ceiling", h.buildReads, want)
+		}
+	})
 }

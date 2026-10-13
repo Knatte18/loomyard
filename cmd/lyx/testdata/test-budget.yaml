@@ -10,7 +10,7 @@ internal/alignment: 7
 internal/batcher: 9
 internal/battencli: 78
 internal/battenrecipe: 9
-internal/battenshed: 110
+internal/battenshed: 111
 internal/boardcli: 13
 internal/boardengine: 78
 internal/boardengine/boardtest: 3

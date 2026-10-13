@@ -112,6 +112,15 @@
 // The retry is split between two records: a Go driver's verify retry is counted in the child's settle records, and batten's in its marker.
 // With no marker, a blocked child at a verify row whose settle records show a Go verify retry counts as spent, so a run is never retried by both.
 //
+// A halted go child is also re-stepped once per halt and per lyx build (innerrun_binaryrestep.go), so a fix deployed after a Go driver handed back lands without a parent turn.
+// The child is re-stepped, through the same Spawn seam as every bootstrap, only when it is blocked or failed, its reed state holds no driver strand, neither its run lock nor its driver lock is held, and the Call's publish retry takes no action;
+// the lyx on disk must differ from the build the child's last step recorded, and the task pair must have no uncommitted or untracked path outside the run's records.
+// The `<row>-binary-restep` marker holds the halt's stop key and the build label, and is written only after the spawn returns success, so the re-step happens once per halt and build and survives a batten restart.
+// A spawn refused as not parked or as a busy pane, and a dirty tree, write no marker and are tried again at the next due check; the spawns are capped at five per halt and build.
+// Reading the build and the dirty paths costs a process, so the check runs once per interval:
+// it starts at the notice probe, doubles up to thirty minutes while the halt and the build stay the same, and returns to the probe on a change.
+// A pause covering the slug holds the re-step like every halted-arm action, a standalone go-driven run with no batten has no such watch, and a nil build or dirty-path seam switches the re-step off.
+//
 // With deps.ParentLock wired, the wait also looks after the parent lock of the child's run on every probe check (innerrun_parentlock.go).
 // A lock record handed to this batten at PR-Gate is kept while the child awaits there, until that awaiting has lasted the idle bound with no decision to resume on, and while the child runs after a resume, so the resumed loop takes it back; in any other state the record is released.
 // A record owned by another process is released once every agent of that owner has waited for the idle bound with none busy, a watch that restarts whenever the owner changes; a failed agent read releases nothing.
