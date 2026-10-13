@@ -41,6 +41,8 @@ type driveStop struct {
 
 	Raw        []byte
 	FromStatus bool
+	// Restep is set by the loop on a stop whose run an orch goto moved, so the loop re-steps instead of deciding.
+	Restep bool
 }
 
 // parseDriveStop decodes the envelope shedverbs.RunUntilStop prints.
