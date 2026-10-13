@@ -113,6 +113,10 @@ func templateConfig() Config {
 		Arbiter:                  "opus[high]",
 		ArbiterTimeoutMin:        30,
 		ArbiterMaxSpawns:         3,
+		DriverKind:               "llm",
+		Tackler:                  "haiku",
+		TacklerTimeoutMin:        10,
+		TacklerMaxSpawns:         4,
 		Alignment:                "opus[high]",
 		AlignmentTimeoutMin:      20,
 		SkipAlignment:            false,
@@ -298,6 +302,13 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.Arbiter, c.ArbiterTimeoutMin, c.ArbiterMaxSpawns = "", 0, 0 },
 		},
 		{
+			name:   "driver_kind go and explicit tackler keys",
+			values: map[string]string{"driver_kind": "go", "tackler": "sonnet[low]", "tackler_timeout_min": "5", "tackler_max_spawns": "0"},
+			mutate: func(c *Config) {
+				c.DriverKind, c.Tackler, c.TacklerTimeoutMin, c.TacklerMaxSpawns = "go", "sonnet[low]", 5, 0
+			},
+		},
+		{
 			name:   "explicit parent_review_wait_min",
 			values: map[string]string{"parent_review_wait_min": "5", "alignment_timeout_min": "4"},
 			mutate: func(c *Config) { c.ParentReviewWaitMin, c.AlignmentTimeoutMin = 5, 4 },
@@ -423,6 +434,12 @@ review_timeout_min: 240
 				board:    "review: [\"opus[medium]\"]\n",
 				worktree: "review: [\"sonnet[low]\", \"sonnet[high]\"]\n",
 				mutate:   func(c *Config) { c.Review = ModelSpecList{"sonnet[low]", "sonnet[high]"} },
+			},
+			{
+				name:   "a local driver_kind go is open to the local layer",
+				board:  "driver_kind: llm\n",
+				local:  "driver_kind: go\n",
+				mutate: func(c *Config) { c.DriverKind = "go" },
 			},
 			{
 				name:   "a local alignment_timeout_min is open to the local layer",
@@ -567,6 +584,10 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed driver spec", "driver", `"opus[effort"`, nil, ""},
 		{"malformed arbiter spec", "arbiter", `"opus[effort"`, nil, ""},
 		{"malformed alignment spec", "alignment", `"opus[effort"`, nil, ""},
+		{"unknown driver_kind", "driver_kind", "fast", []string{"llm or go"}, ""},
+		{"malformed tackler spec", "tackler", `"not a spec["`, nil, ""},
+		{"negative tackler_timeout_min", "tackler_timeout_min", "-1", []string{"must not be negative", "0 for the 10 minute default"}, ""},
+		{"negative tackler_max_spawns", "tackler_max_spawns", "-1", []string{"must not be negative", "0 to turn the tackler off"}, ""},
 		{"negative alignment_timeout_min", "alignment_timeout_min", "-1", []string{"must not be negative", "set it to 0 for the 20 minute default, or to a positive integer below parent_review_wait_min"}, ""},
 		{"alignment_timeout_min equal to parent_review_wait_min", "alignment_timeout_min", "60", []string{"parent_review_wait_min", "60", "set alignment_timeout_min below parent_review_wait_min"}, ""},
 		{"negative arbiter_timeout_min", "arbiter_timeout_min", "-1", []string{"must not be negative", "0 for the 30 minute default"}, ""},

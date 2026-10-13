@@ -108,6 +108,25 @@ func TestPrepareRunSettings(t *testing.T) {
 			settings: map[string]any{"loom": map[string]any{"alignment_timeout_min": float64(10)}},
 			wantDocs: map[string]string{"loom": "alignment_timeout_min: 10\n"},
 		},
+		{
+			name:        "driver_kind outside llm and go is refused by loom's CheckValues",
+			settings:    map[string]any{"loom": map[string]any{"driver_kind": "fast"}},
+			wantRefusal: "driver_kind",
+			wantModule:  "loom",
+			wantInvalid: true,
+		},
+		{
+			name:     "driver_kind go is open to run settings",
+			settings: map[string]any{"loom": map[string]any{"driver_kind": "go"}},
+			wantDocs: map[string]string{"loom": "driver_kind: go\n"},
+		},
+		{
+			name:        "negative tackler_max_spawns is refused by loom's CheckValues",
+			settings:    map[string]any{"loom": map[string]any{"tackler_max_spawns": float64(-1)}},
+			wantRefusal: "tackler_max_spawns",
+			wantModule:  "loom",
+			wantInvalid: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

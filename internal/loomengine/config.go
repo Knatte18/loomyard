@@ -18,6 +18,8 @@
 // seed, discussion_judge, plan_judge, webster_judge, discussion_seed, plan_seed, webster_seed and rework are role model-specs validated only when non-empty, an empty value meaning the fallback:
 // a per-segment judge takes judge, a per-segment seed takes seed, seed takes that segment's resolved judge, and rework takes plan.
 // arbiter is a role model-spec validated only when non-empty, an empty value taking opus[high]; arbiter_timeout_min and arbiter_max_spawns are refused when negative, and a zero arbiter_max_spawns turns the arbiter off.
+// driver_kind is the driver a task's loom run is seeded with when nothing typed one, llm or go, an empty value reading as llm; tackler is a role model-spec validated only when non-empty, an empty value taking haiku;
+// tackler_timeout_min and tackler_max_spawns are refused when negative, a zero tackler_timeout_min taking 10 and a zero tackler_max_spawns turning the tackler off.
 // alignment, alignment_timeout_min, skip_alignment and alignment_pr_approve configure the alignment agent at parent review and PR-Gate:
 // alignment is a role model-spec validated only when non-empty, an empty value taking opus[high];
 // alignment_timeout_min is refused when negative, a zero taking 20, and a resolved value at or above parent_review_wait_min is refused too.
@@ -41,6 +43,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
@@ -442,6 +445,13 @@ type Config struct {
 	ArbiterTimeoutMin int    `yaml:"arbiter_timeout_min"`
 	ArbiterMaxSpawns  int    `yaml:"arbiter_max_spawns"`
 
+	// The driver a task's loom run is seeded with when nothing typed one, and the tackler's model-spec, timeout and spawn budget.
+	// An empty DriverKind reads as llm; an empty Tackler takes haiku, a zero TacklerTimeoutMin takes 10 minutes, and a zero TacklerMaxSpawns turns the tackler off.
+	DriverKind        string `yaml:"driver_kind"`
+	Tackler           string `yaml:"tackler"`
+	TacklerTimeoutMin int    `yaml:"tackler_timeout_min"`
+	TacklerMaxSpawns  int    `yaml:"tackler_max_spawns"`
+
 	// The alignment agent's model-spec, timeout and switches.
 	// An empty Alignment takes opus[high] and a zero AlignmentTimeoutMin takes 20 minutes, kept below ParentReviewWaitMin.
 	// SkipAlignment true sends parent review and PR-Gate to the run's parent without the agent.
@@ -560,6 +570,10 @@ func ConfigSpec() configengine.Spec {
 			"arbiter":                    none,
 			"arbiter_timeout_min":        none,
 			"arbiter_max_spawns":         none,
+			"driver_kind":                none,
+			"tackler":                    none,
+			"tackler_timeout_min":        none,
+			"tackler_max_spawns":         none,
 			"alignment":                  guard,
 			"alignment_timeout_min":      none,
 			"skip_alignment":             guard,
@@ -697,6 +711,63 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 		return rewritten, nil, nil
 	}
 	return rewritten, []string{line}, nil
+}
+
+// validateDriverKind refuses a driver_kind other than empty, llm or go, through shedrun.ValidateDriver so the vocabulary stays shedrun's.
+func validateDriverKind(driverKind string) error {
+	if driverKind == "" {
+		return nil
+	}
+	if err := shedrun.ValidateDriver(driverKind); err != nil {
+		return fmt.Errorf("loom config key %q: %w; set driver_kind to llm or go in loom.yaml or the task's run_settings", "driver_kind", err)
+	}
+	return nil
+}
+
+// validateTacklerKnobs refuses a negative tackler_timeout_min or tackler_max_spawns; zero is a meaning on both.
+func validateTacklerKnobs(timeoutMin, maxSpawns int) error {
+	for _, knob := range []struct {
+		key   string
+		value int
+		zero  string
+	}{
+		{"tackler_timeout_min", timeoutMin, "0 for the 10 minute default"},
+		{"tackler_max_spawns", maxSpawns, "0 to turn the tackler off"},
+	} {
+		if knob.value < 0 {
+			return fmt.Errorf("loom config key %q: must not be negative, got %d; set it to %s, or to a positive integer, in loom.yaml or the task's run_settings", knob.key, knob.value, knob.zero)
+		}
+	}
+	return nil
+}
+
+// ValidateLocalValues checks the values of the driver_kind, tackler_timeout_min and tackler_max_spawns keys a local-layer document sets, and leaves every other key to LoadConfig.
+// A refusal is marked configengine.ErrInvalid and names the key.
+func ValidateLocalValues(document []byte) error {
+	var set struct {
+		DriverKind        *string `yaml:"driver_kind"`
+		TacklerTimeoutMin *int    `yaml:"tackler_timeout_min"`
+		TacklerMaxSpawns  *int    `yaml:"tackler_max_spawns"`
+	}
+	if err := yaml.Unmarshal(document, &set); err != nil {
+		return configengine.MarkInvalid(fmt.Errorf("unmarshal loom local values: %w", err))
+	}
+	if set.DriverKind != nil {
+		if err := validateDriverKind(*set.DriverKind); err != nil {
+			return configengine.MarkInvalid(err)
+		}
+	}
+	var timeoutMin, maxSpawns int
+	if set.TacklerTimeoutMin != nil {
+		timeoutMin = *set.TacklerTimeoutMin
+	}
+	if set.TacklerMaxSpawns != nil {
+		maxSpawns = *set.TacklerMaxSpawns
+	}
+	if err := validateTacklerKnobs(timeoutMin, maxSpawns); err != nil {
+		return configengine.MarkInvalid(err)
+	}
+	return nil
 }
 
 // LoadConfig loads and unmarshals configuration for the loom module strictly through the layer stack under dirs.
@@ -844,6 +915,21 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		if knob.value < 0 {
 			return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; set it to %s, or to a positive integer, in loom.yaml", knob.key, knob.value, knob.zero)
 		}
+	}
+
+	if err := validateDriverKind(cfg.DriverKind); err != nil {
+		return Config{}, err
+	}
+
+	// tackler is validated only when non-empty: an empty value takes ResolveTackler's default.
+	if cfg.Tackler != "" {
+		if _, err := modelspec.Parse(cfg.Tackler); err != nil {
+			return Config{}, fmt.Errorf("loom config key %q: %w; set it to a model-spec the registry defines, or to empty to take haiku", "tackler", err)
+		}
+	}
+
+	if err := validateTacklerKnobs(cfg.TacklerTimeoutMin, cfg.TacklerMaxSpawns); err != nil {
+		return Config{}, err
 	}
 
 	// The four timeouts are checked here for the same reason the four model-specs above are: a
