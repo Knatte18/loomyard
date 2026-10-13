@@ -6,7 +6,9 @@ package reedengine
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
+	"sync/atomic"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -16,7 +18,7 @@ import (
 var ErrNewWindowFailed = errors.New("reed: could not open the window")
 
 // ErrWindowReadBack is the sentinel OpenWindow wraps when the new window does not read remain-on-exit off.
-// That happens when two concurrent calls share a name and the chained option landed on the older window; the new window is killed.
+// The chained option targets a name no other window holds, so this signals a multiplexer that did not apply it; the new window is killed.
 var ErrWindowReadBack = errors.New("reed: the opened window did not read remain-on-exit off")
 
 // WindowResult reports the window OpenWindow answers for.
@@ -28,6 +30,12 @@ type WindowResult struct {
 	// Existing reports that a window of that name with a live pane was already open and nothing was started.
 	Existing bool `json:"existing"`
 }
+
+// temporaryWindowNamePrefix starts the name a new window holds between its creation and its rename to the requested name.
+const temporaryWindowNamePrefix = "lyx-opening-"
+
+// temporaryWindowCounter makes each OpenWindow call's temporary window name distinct within the process.
+var temporaryWindowCounter atomic.Uint64
 
 // windowListFormat is the session-wide listing format OpenWindow finds a named window with: window id, pane id, pane dead flag, the own-window flag, then the window name.
 const windowListFormat = "#{window_id} #{pane_id} #{pane_dead} #{?#{@lyx_own},1,0} #{window_name}"
@@ -68,10 +76,13 @@ func (e *Engine) OpenWindow(name string, lyxArgs []string) (WindowResult, error)
 
 		command := composeWindowCommand(shell.ForGOOS(), lyxArgs)
 		sessionWindows := exactSessionWindowTarget(session)
-		namedTarget := sessionWindows + "=" + name
-		out, err := e.tmux.output("new-window", "-d", "-P", "-F", "#{window_id}", "-t", sessionWindows, "-n", name, command,
-			";", "set-option", "-w", "-t", namedTarget, "remain-on-exit", "off",
-			";", "set-option", "-w", "-t", namedTarget, "@lyx_hidden", "1")
+		// No other window holds the temporary name, so the chained options cannot land on a same-named window.
+		temporaryName := fmt.Sprintf("%s%d-%d", temporaryWindowNamePrefix, os.Getpid(), temporaryWindowCounter.Add(1))
+		temporaryTarget := sessionWindows + "=" + temporaryName
+		out, err := e.tmux.output("new-window", "-d", "-P", "-F", "#{window_id}", "-t", sessionWindows, "-n", temporaryName, command,
+			";", "set-option", "-w", "-t", temporaryTarget, "remain-on-exit", "off",
+			";", "set-option", "-w", "-t", temporaryTarget, "@lyx_hidden", "1",
+			";", "rename-window", "-t", temporaryTarget, name)
 		if err != nil {
 			return fmt.Errorf("%w: %w", ErrNewWindowFailed, err)
 		}

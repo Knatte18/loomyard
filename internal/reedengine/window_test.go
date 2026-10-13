@@ -140,9 +140,15 @@ func TestOpenWindow(t *testing.T) {
 			if tt.wantNewCalls == 0 || len(newCalls) == 0 {
 				return
 			}
-			wantArgv := []string{"new-window", "-d", "-P", "-F", "#{window_id}", "-t", exactSessionWindowTarget(e.SessionName()), "-n", name, wantCommand,
-				";", "set-option", "-w", "-t", exactSessionWindowTarget(e.SessionName()) + "=" + name, "remain-on-exit", "off",
-				";", "set-option", "-w", "-t", exactSessionWindowTarget(e.SessionName()) + "=" + name, "@lyx_hidden", "1"}
+			if len(newCalls[0]) <= 8 || !strings.HasPrefix(newCalls[0][8], temporaryWindowNamePrefix) {
+				t.Fatalf("new-window argv = %v, want a temporary window name after -n", newCalls[0])
+			}
+			temporaryName := newCalls[0][8]
+			temporaryTarget := exactSessionWindowTarget(e.SessionName()) + "=" + temporaryName
+			wantArgv := []string{"new-window", "-d", "-P", "-F", "#{window_id}", "-t", exactSessionWindowTarget(e.SessionName()), "-n", temporaryName, wantCommand,
+				";", "set-option", "-w", "-t", temporaryTarget, "remain-on-exit", "off",
+				";", "set-option", "-w", "-t", temporaryTarget, "@lyx_hidden", "1",
+				";", "rename-window", "-t", temporaryTarget, name}
 			if !slices.Equal(newCalls[0], wantArgv) {
 				t.Errorf("new-window argv = %v, want %v", newCalls[0], wantArgv)
 			}
