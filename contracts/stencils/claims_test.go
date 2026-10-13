@@ -744,6 +744,7 @@ var wordingClaims = []stencilClaims{
 			{must: "marks the board task done, pushes main and closes the PR", why: "Finalize marks the task done, pushes and closes the PR"},
 			{must: "Read the driver's drive reports from the prime's own copies only when the run had trouble", section: "## After landing", why: "after landing the drive reports are read from the prime, and only for a troubled run"},
 			{must: "batten sends the first verify failure of a run, at Merge-In (the plan verify) or Publish (`publish_verify`), back to the failure record's target and resumes it itself", section: "## The run loop", why: "batten's own retry of the first Merge-In or Publish verify failure is the one exception to a halted child waiting for the orch"},
+			{must: "a go-driven run has no driver to message", section: "## Fixing a run", why: "a run on the Go driver has no live receiver for run messages, so the orch reaches it through durable verbs"},
 			{must: "A notice naming newly ready tasks goes to After landing", section: "## The run loop", why: "a ready notice is the cue to start tasks, not a stop"},
 			{must: "neither is investigated as a stop", section: "## Investigating a stop", why: "a parent-review request and a ready notice are not stops"},
 			{mustNot: "land and clean up", section: "## Acting without asking", why: "batten's Land and Worktree-Teardown rows land and clean up, so the orch does neither"},
