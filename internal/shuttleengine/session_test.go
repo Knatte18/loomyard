@@ -199,7 +199,7 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 		{name: "a dead process is held", dead: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: IdleProbe{Reason: "the session's process is gone"}, wantReason: "process is gone"}}},
 		{name: "an unknown reading falls back to an idle pane", unproven: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: IdleProbe{Idle: true}}}},
 		{name: "an unknown reading falls back to a busy pane, too short or not", unproven: true, tooShort: true, probes: []probe{{events: turnEnded, capture: needleFrame, want: IdleProbe{TooShort: true}}}},
-		{name: "a draft in the box is held with its reason", probes: []probe{{events: turnEnded, capture: "IDLE\n❯ half a draft", want: IdleProbe{Reason: `the input box holds a draft: "half a draft"`}, wantReason: "draft"}}},
+		{name: "a draft in the box is held with its reason", probes: []probe{{events: turnEnded, capture: "IDLE\n❯ half a draft", want: IdleProbe{Reason: `the input box holds a draft: "half a draft"`, Draft: true}, wantReason: "draft"}}},
 		{name: "a pane too short is held and reported too short", tooShort: true, probes: []probe{{events: turnEnded, capture: "IDLE", want: IdleProbe{TooShort: true, Reason: readinessReasonPaneTooShort}, wantReason: "too short"}}},
 		{
 			name:    "a hook turn end beside a pane needle reads idle and logs the disagreement",
@@ -234,7 +234,7 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 		},
 		{name: "a session start after a turn end leaves it idle", probes: []probe{{events: turnEnded + "SESSIONSTART\n", capture: idleFrame, want: IdleProbe{Idle: true}}}},
 		{name: "idle-fresh with an empty box is ready", probes: []probe{{events: "SESSIONSTART:startup\n", capture: idleFrame, want: IdleProbe{Idle: true}}}},
-		{name: "idle-fresh with a draft is held with its reason", probes: []probe{{events: "SESSIONSTART:clear\n", capture: "IDLE\n❯ half a draft", want: IdleProbe{Reason: `the input box holds a draft: "half a draft"`}, wantReason: "draft"}}},
+		{name: "idle-fresh with a draft is held with its reason", probes: []probe{{events: "SESSIONSTART:clear\n", capture: "IDLE\n❯ half a draft", want: IdleProbe{Reason: `the input box holds a draft: "half a draft"`, Draft: true}, wantReason: "draft"}}},
 		{name: "idle-fresh with a pane too short is held and reported too short", tooShort: true, probes: []probe{{events: "SESSIONSTART:startup\n", capture: "IDLE", want: IdleProbe{TooShort: true, Reason: readinessReasonPaneTooShort}, wantReason: "too short"}}},
 		{name: "idle-fresh with no readable box is held", probes: []probe{{events: "SESSIONSTART:resume\n", capture: "no box here", want: IdleProbe{Reason: readinessReasonNoInputBox}, wantReason: "no input box"}}},
 	}

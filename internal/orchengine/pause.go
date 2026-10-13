@@ -173,13 +173,14 @@ func (w *Watcher) pauseProbeIdle(st State) (bool, error) {
 }
 
 // orchNetworkOperationInFlight reports whether a network operation marker names the orch's strand.
-// A marker list that cannot be read counts as none, with one Warn.
+// A marker list that cannot be read counts as none, warning once per episode, and logs Info when it reads again.
 func (w *Watcher) orchNetworkOperationInFlight() bool {
 	ops, err := pauserecord.ListNetOps(w.pause.RecordPath, w.pause.Alive)
 	if err != nil {
-		logger.Warn("orch: the pause's network operation markers cannot be read", "error", err)
+		w.netOpsFailures.Fail("orch: the pause's network operation markers cannot be read", "error", err)
 		return false
 	}
+	w.netOpsFailures.Recover("orch: the pause's network operation markers are readable again")
 	for _, op := range ops {
 		if name, err := agentname.Parse(op.Strand); err == nil && name.Role == agentname.RoleOrch && name.Slug == "" {
 			return true

@@ -25,9 +25,10 @@ import (
 // HubScratchDir's value is byte-identical for a subpath-anchored hub, because it takes a bare hub
 // string and must never pick up AnchorRel, the board's `_lyx`/`.lyx` trees being flat;
 // and HubLogsDir(hub) equals filepath.Join(HubScratchDir(hub), "logs") — the derivation HubLogsDir's
-// own doc comment states.
+// own doc comment states;
+// and LogArchiveDir(hub) equals filepath.Join(HubScratchDir(hub), "log-archive"), the archive root beside the logs directory.
 //
-//testtiming:keep HubScratchDir being board-anchored, a sibling of the stencils _lyx tree, ignoring AnchorRel, and HubLogsDir deriving from it; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep HubScratchDir being board-anchored, a sibling of the stencils _lyx tree, ignoring AnchorRel, and HubLogsDir and LogArchiveDir deriving from it; coverage of its blocks by other tests does not show an assertion of this
 func TestHubScratchAndLogsDir(t *testing.T) {
 	t.Parallel()
 
@@ -53,6 +54,12 @@ func TestHubScratchAndLogsDir(t *testing.T) {
 	wantLogs := filepath.Join(got, "logs")
 	if gotLogs != wantLogs {
 		t.Errorf("HubLogsDir(%q) = %q; want %q", hub, gotLogs, wantLogs)
+	}
+
+	gotArchive := fabricengine.LogArchiveDir(hub)
+	wantArchive := filepath.Join(got, "log-archive")
+	if gotArchive != wantArchive {
+		t.Errorf("LogArchiveDir(%q) = %q; want %q", hub, gotArchive, wantArchive)
 	}
 }
 

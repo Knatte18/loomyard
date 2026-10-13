@@ -16,6 +16,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // appendEventsLine appends line (with a trailing newline) to path, standing in for the agent's next
@@ -810,10 +811,12 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 		wantEndAtLeast time.Duration
 		// wantNoEvalAfterStart pins that the gate was not evaluated after the writer's new turn, bar the deadline's final evaluation.
 		wantNoEvalAfterStart bool
+		// wantHeldInfo asserts the held re-prompt logged one INFO line and no WARN one.
+		wantHeldInfo bool
 	}{
 		{
 			name: "a busy re-prompt is re-sent once the pane idles", cfg: Config{SendReadyTimeoutS: 1},
-			busyFor: 5 * time.Second, wantSends: 1, wantAttempts: 1, wantTypedMin: 5 * time.Second,
+			busyFor: 5 * time.Second, wantSends: 1, wantAttempts: 1, wantTypedMin: 5 * time.Second, wantHeldInfo: true,
 		},
 		{
 			name: "an unlanded re-prompt is re-sent into the box its failed send cleared", cfg: Config{SubmitConfirmTimeoutS: 1},
@@ -826,7 +829,7 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 		{
 			// Each busy send waits out its 1 s idle window and a 1 s tick follows, so the retries run until the 30 s deadline ends the loop.
 			name: "a re-prompt that stays undelivered is retried until the run deadline", cfg: Config{SendReadyTimeoutS: 1},
-			busyFor: never, wantSends: 0, wantAttempts: 0, wantEndAtLeast: 30 * time.Second,
+			busyFor: never, wantSends: 0, wantAttempts: 0, wantEndAtLeast: 30 * time.Second, wantHeldInfo: true,
 		},
 		{
 			name: "a re-prompt with little time left ends its idle wait by the run deadline", cfg: Config{SendReadyTimeoutS: 60},
@@ -839,7 +842,7 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			buf := logcapture.CaptureVerbose(t)
 
 			rig := newGateRig(t, tt.cfg, "STOP:turn1\n")
 			rig.reed.busyUntil = rig.start.Add(tt.busyFor)
@@ -887,6 +890,12 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 			}
 			if tt.wantNoEvalAfterStart && rig.gateCalls != callsAtStart+1 {
 				t.Errorf("gate evaluated %d times, want %d: the calls up to the new turn plus the deadline's final evaluation", rig.gateCalls, callsAtStart+1)
+			}
+			if tt.wantHeldInfo {
+				const held = "re-prompt not delivered"
+				if info, warn := countLevelLines(buf.String(), "INFO", held), countLevelLines(buf.String(), "WARN", held); info != 1 || warn != 0 {
+					t.Errorf("held re-prompt lines: INFO %d, WARN %d; want 1 and 0; log: %s", info, warn, buf.String())
+				}
 			}
 		})
 	}

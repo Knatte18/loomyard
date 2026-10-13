@@ -62,6 +62,8 @@ type Runner struct {
 	holdsMu sync.Mutex
 	// holds keeps one turn-start hold per strand guid, so a caller probing the same strand tick after tick keeps one hold across them.
 	holds map[string]*turnStartHold
+	// activityFailures keeps one operator-activity failure episode per strand guid, shared by every send and idle probe of the runner.
+	activityFailures logger.EpisodeSet
 }
 
 // holdFor returns the turn-start hold the runner keeps for the strand guid, creating it on first use.
@@ -410,6 +412,9 @@ type Run struct {
 
 	// resumeWarning is the non-empty warning SessionResumer.CheckResume returned when it could not confirm the session was resumable, empty otherwise.
 	resumeWarning string
+
+	// failures keeps one failure episode per polled probe of the run's wait, keyed by the probe, so a probe failing on every tick warns once.
+	failures logger.EpisodeSet
 }
 
 // The run directory's fixed artifact file names. Every Engine.Prepare

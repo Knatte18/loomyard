@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 	"unicode"
 
@@ -55,6 +56,9 @@ type fakeReed struct {
 
 	SendKeyCalls []struct{ GUID, Key string }
 	SendKeyErr   error
+	// SendKeyErrQueue is consumed FIFO by SendKey, last entry sticking like CaptureErrQueue.
+	// A non-nil entry fails that call and a nil entry succeeds; SendKeyErr keeps failing every call while the queue is empty.
+	SendKeyErrQueue []error
 
 	// WaitMarkCalls records every SetWaitMark call, kept out of CallLog so the tests that pin the exact call sequence stay as they are.
 	WaitMarkCalls []waitMarkCall
@@ -71,6 +75,43 @@ type fakeReed struct {
 	// OperatorActive stays out of CallLog, like SetWaitMark.
 	ActiveQueue []bool
 	ActivityErr error
+	// ActivityErrQueue is consumed FIFO by OperatorActive, last entry sticking like CaptureErrQueue.
+	// A non-nil entry fails that call and a nil entry answers from ActiveQueue; ActivityErr keeps failing every call.
+	ActivityErrQueue []error
+}
+
+// countLevelLines counts the lines of a captured log at level (WARN, INFO or DEBUG) that contain text.
+func countLevelLines(log, level, text string) int {
+	count := 0
+	for _, line := range strings.Split(log, "\n") {
+		if strings.Contains(line, "level="+level) && strings.Contains(line, text) {
+			count++
+		}
+	}
+	return count
+}
+
+// requireFailureEpisode requires log to hold exactly one WARN line of failure, debugLines DEBUG lines of it each stamped with failed_ticks=, and exactly one INFO line of recovery.
+func requireFailureEpisode(t *testing.T, log, failure string, debugLines int, recovery string) {
+	t.Helper()
+	if got := countLevelLines(log, "WARN", failure); got != 1 {
+		t.Errorf("WARN lines of %q = %d, want 1; log: %s", failure, got, log)
+	}
+	if got := countLevelLines(log, "DEBUG", failure); got != debugLines {
+		t.Errorf("DEBUG lines of %q = %d, want %d; log: %s", failure, got, debugLines, log)
+	}
+	stamped := 0
+	for _, line := range strings.Split(log, "\n") {
+		if strings.Contains(line, "level=DEBUG") && strings.Contains(line, failure) && strings.Contains(line, "failed_ticks=") {
+			stamped++
+		}
+	}
+	if stamped != debugLines {
+		t.Errorf("DEBUG lines of %q stamped with failed_ticks= = %d, want %d; log: %s", failure, stamped, debugLines, log)
+	}
+	if got := countLevelLines(log, "INFO", recovery); got != 1 {
+		t.Errorf("INFO lines of %q = %d, want 1; log: %s", recovery, got, log)
+	}
 }
 
 // waitMarkCall is one recorded SetWaitMark call;
@@ -136,6 +177,13 @@ func (m *fakeReed) SendKey(guid, key string) error {
 	defer m.mu.Unlock()
 	m.CallLog = append(m.CallLog, "SendKey:"+key)
 	m.SendKeyCalls = append(m.SendKeyCalls, struct{ GUID, Key string }{guid, key})
+	if len(m.SendKeyErrQueue) > 0 {
+		scripted := m.SendKeyErrQueue[0]
+		if len(m.SendKeyErrQueue) > 1 {
+			m.SendKeyErrQueue = m.SendKeyErrQueue[1:]
+		}
+		return scripted
+	}
 	return m.SendKeyErr
 }
 
@@ -157,6 +205,15 @@ func (m *fakeReed) OperatorActive(string) (bool, time.Duration, error) {
 	const quiet = 5 * time.Second
 	if m.ActivityErr != nil {
 		return false, quiet, m.ActivityErr
+	}
+	if len(m.ActivityErrQueue) > 0 {
+		scripted := m.ActivityErrQueue[0]
+		if len(m.ActivityErrQueue) > 1 {
+			m.ActivityErrQueue = m.ActivityErrQueue[1:]
+		}
+		if scripted != nil {
+			return false, quiet, scripted
+		}
 	}
 	if len(m.ActiveQueue) == 0 {
 		return false, quiet, nil

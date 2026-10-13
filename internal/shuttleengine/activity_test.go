@@ -11,6 +11,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // activityEngine is a fakeEngine that also reads transcript activity from a table keyed by the turn end's message.
@@ -199,6 +202,23 @@ func TestReadAgentActivity(t *testing.T) {
 		if err != nil || got != nil {
 			t.Errorf("ReadAgentActivity = (%v, %v); want (nil, nil)", got, err)
 		}
+	})
+
+	// It captures the process-global logger at Debug, so it runs serially like the test.
+	t.Run("events that fail to parse log once per episode", func(t *testing.T) {
+		buf := logcapture.CaptureVerbose(t)
+		logger.SetVerbosity(2)
+		root := t.TempDir()
+		writeActivityRun(t, root, "run-a", live, created, eventsWritten)
+		engine := &fakeEngine{ParseEventsFailCount: 3}
+
+		for range 4 {
+			if _, err := ReadAgentActivity(Config{RunDir: root}, t.TempDir(), engine); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		requireFailureEpisode(t, buf.String(), "could not parse a run's events", 2, "run events parse again")
 	})
 }
 

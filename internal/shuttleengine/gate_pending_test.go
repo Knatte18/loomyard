@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
@@ -113,14 +114,26 @@ func TestGatePending_HoldsSendsOnceAndPasses(t *testing.T) {
 	}
 }
 
+// TestGatePending_FailedSendWarnsAndStaysPending asserts a pending send that fails on two evaluations warns once, logs Debug while it stays failing and logs one Info when it is delivered.
+// The failing evaluations leave the entry pending at the boundary, so the next tick evaluates again.
 func TestGatePending_FailedSendWarnsAndStaysPending(t *testing.T) {
 	buf := logcapture.CaptureVerbose(t)
+	logger.SetVerbosity(2)
 	var calls int
-	gate := scriptedPending(&calls,
-		GateResult{Pending: true, Send: pendingSendText, SendFailedWayForward: "tell the parent by hand"},
-		GateResult{Passed: true},
-	)
-	f := newPendingFixture(t, GateSpec{{Name: "parent-review", Gate: gate, Attempts: 3, PassOnCap: true}}, sendCaptures(pendingSendText))
+	pending := GateResult{Pending: true, Send: pendingSendText, SendFailedWayForward: "tell the parent by hand"}
+	gate := scriptedPending(&calls, pending, pending, pending, pending, GateResult{Passed: true})
+	// The send heals once two pending sends have failed.
+	healAfterTwoFailures := func(f *pendingFixture) {
+		if len(f.reed.SendTextCalls) >= 2 {
+			f.reed.SendTextErr = nil
+		}
+	}
+	steps := make([]func(*pendingFixture), 40)
+	for i := range steps {
+		steps[i] = healAfterTwoFailures
+	}
+	captures := []string{"idle pane", "idle pane", "idle pane", "idle pane", "idle pane", "idle pane", pendingSendText}
+	f := newPendingFixture(t, GateSpec{{Name: "parent-review", Gate: gate, Attempts: 3, PassOnCap: true}}, captures, steps...)
 	f.reed.SendTextErr = errors.New("pane gone")
 
 	result, err := f.run.Wait()
@@ -130,14 +143,23 @@ func TestGatePending_FailedSendWarnsAndStaysPending(t *testing.T) {
 	if result.Outcome != OutcomeDone {
 		t.Fatalf("Outcome = %q, want done", result.Outcome)
 	}
-	if calls != 2 {
-		t.Errorf("gate ran %d times, want 2 (the writer stays at the boundary, so the next tick re-evaluates)", calls)
+	if calls != 4 {
+		t.Errorf("gate ran %d times, want 4 (two failed sends and the delivered one each re-evaluate at the boundary, then the run settles)", calls)
 	}
 	logged := buf.String()
 	for _, want := range []string{"parent-review", "pane gone", "tell the parent by hand"} {
 		if !strings.Contains(logged, want) {
 			t.Errorf("Warn output lacks %q: %s", want, logged)
 		}
+	}
+	if got := countLevelLines(logged, "WARN", "pending send failed"); got != 1 {
+		t.Errorf("pending send WARN lines = %d, want 1; log: %s", got, logged)
+	}
+	if got := countLevelLines(logged, "DEBUG", "pending send failed"); got < 1 {
+		t.Errorf("pending send DEBUG lines = %d, want at least 1; log: %s", got, logged)
+	}
+	if got := countLevelLines(logged, "INFO", "pending send delivered again"); got != 1 {
+		t.Errorf("pending send recovery INFO lines = %d, want 1; log: %s", got, logged)
 	}
 	if result.Gate.Attempts != 0 || f.run.gateFails[0] != 0 {
 		t.Errorf("a failed pending send changed a count: attempts %d, fails %d", result.Gate.Attempts, f.run.gateFails[0])
@@ -352,10 +374,12 @@ func TestGatePending_ExpiryProbeEndsMidTurnWait(t *testing.T) {
 		// turnsTrueAtTick is the tick after whose sleep the probe answers true; 0 means it never does and the deadline ends the run.
 		turnsTrueAtTick int
 		probeErr        error
-		wantProbed      bool
-		wantStates      []GateEntryState
-		wantPassed      bool
-		wantFinalCalls  int
+		// probeErrCalls bounds how many first probe calls return probeErr; zero means every call does.
+		probeErrCalls  int
+		wantProbed     bool
+		wantStates     []GateEntryState
+		wantPassed     bool
+		wantFinalCalls int
 	}{
 		{name: "pending send moved the writer off the boundary", turnsTrueAtTick: 12, wantProbed: true,
 			wantStates: []GateEntryState{GateEntryPassed, GateEntryPassed}, wantPassed: true, wantFinalCalls: 1},
@@ -367,7 +391,7 @@ func TestGatePending_ExpiryProbeEndsMidTurnWait(t *testing.T) {
 			wantStates: []GateEntryState{GateEntryPassed, GateEntryPassed}, wantPassed: true, wantFinalCalls: 1},
 		{name: "writer pending at the idle boundary is never probed", bareHold: true,
 			wantStates: []GateEntryState{GateEntryPassed, GateEntryPassed}, wantPassed: true, wantFinalCalls: 1},
-		{name: "probe error warns and keeps polling", probeErr: errors.New("probe broke"), wantProbed: true,
+		{name: "probe error warns and keeps polling", probeErr: errors.New("probe broke"), probeErrCalls: 2, wantProbed: true,
 			wantStates: []GateEntryState{GateEntryPassed, GateEntryPassed}, wantPassed: true, wantFinalCalls: 1},
 	}
 	for _, tt := range tests {
@@ -397,7 +421,7 @@ func TestGatePending_ExpiryProbeEndsMidTurnWait(t *testing.T) {
 			}
 			probe := func() (bool, error) {
 				probeCalls++
-				if tt.probeErr != nil {
+				if tt.probeErr != nil && (tt.probeErrCalls == 0 || probeCalls <= tt.probeErrCalls) {
 					return false, tt.probeErr
 				}
 				return expired, nil
@@ -454,6 +478,12 @@ func TestGatePending_ExpiryProbeEndsMidTurnWait(t *testing.T) {
 					if !strings.Contains(logged.String(), want) {
 						t.Errorf("Warn output lacks %q: %s", want, logged.String())
 					}
+				}
+				if got := countLevelLines(logged.String(), "WARN", "expiry probe failed"); got != 1 {
+					t.Errorf("expiry probe WARN lines = %d, want 1 across the re-checks; log: %s", got, logged.String())
+				}
+				if got := countLevelLines(logged.String(), "INFO", "expiry probe answers again"); got != 1 {
+					t.Errorf("expiry probe recovery INFO lines = %d, want 1; log: %s", got, logged.String())
 				}
 			}
 		})

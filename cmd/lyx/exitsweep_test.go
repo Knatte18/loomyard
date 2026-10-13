@@ -29,7 +29,7 @@ func redirectSink(t *testing.T) (dir string, warnings *bytes.Buffer) {
 	logger.SetDurableSinkDir(dir)
 	t.Cleanup(func() {
 		logger.SetDurableSinkDir("")
-		logger.SetOutput(os.Stderr)
+		logger.SetOutput(logger.DefaultOutput())
 	})
 	return dir, warnings
 }

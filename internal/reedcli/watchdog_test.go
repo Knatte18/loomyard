@@ -5,6 +5,8 @@
 package reedcli
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"io/fs"
 	"maps"
@@ -13,8 +15,13 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 //testtiming:keep pins the appeared and departed sets for the empty, populated, partial-overlap and unchanged listings, which the live daemon scenario reaches for two at most
@@ -524,5 +531,206 @@ func TestConsumeDiscoverSignal(t *testing.T) {
 	}
 	if consumed, err := consumeDiscoverSignal(unremovable); err == nil || consumed {
 		t.Errorf("consumeDiscoverSignal(non-empty dir) = %v, %v; want false and an error", consumed, err)
+	}
+}
+
+// TestExeReplaced pins the comparison over real files: only a baseline whose file is replaced or rewritten answers true,
+// and a missing baseline or a failed stat never does.
+func TestExeReplaced(t *testing.T) {
+	t.Parallel()
+	statOf := func(t *testing.T, path string) os.FileInfo {
+		t.Helper()
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		return info
+	}
+	tests := []struct {
+		name string
+		// outcome returns the start, now and statErr the comparison is called with, over files it creates under dir.
+		outcome func(t *testing.T, dir string) (start, now os.FileInfo, statErr error)
+		want    bool
+	}{
+		{
+			name: "the same unchanged file",
+			outcome: func(t *testing.T, dir string) (os.FileInfo, os.FileInfo, error) {
+				path := filepath.Join(dir, "lyx")
+				if err := os.WriteFile(path, []byte("a"), 0o755); err != nil {
+					t.Fatalf("write: %v", err)
+				}
+				return statOf(t, path), statOf(t, path), nil
+			},
+			want: false,
+		},
+		{
+			name: "a stat error",
+			outcome: func(t *testing.T, dir string) (os.FileInfo, os.FileInfo, error) {
+				path := filepath.Join(dir, "lyx")
+				if err := os.WriteFile(path, []byte("a"), 0o755); err != nil {
+					t.Fatalf("write: %v", err)
+				}
+				return statOf(t, path), nil, errors.New("binary missing mid-build")
+			},
+			want: false,
+		},
+		{
+			name: "a nil baseline",
+			outcome: func(t *testing.T, dir string) (os.FileInfo, os.FileInfo, error) {
+				path := filepath.Join(dir, "lyx")
+				if err := os.WriteFile(path, []byte("a"), 0o755); err != nil {
+					t.Fatalf("write: %v", err)
+				}
+				return nil, statOf(t, path), nil
+			},
+			want: false,
+		},
+		{
+			name: "a different file",
+			outcome: func(t *testing.T, dir string) (os.FileInfo, os.FileInfo, error) {
+				first, second := filepath.Join(dir, "first"), filepath.Join(dir, "second")
+				for _, path := range []string{first, second} {
+					if err := os.WriteFile(path, []byte("a"), 0o755); err != nil {
+						t.Fatalf("write: %v", err)
+					}
+				}
+				return statOf(t, first), statOf(t, second), nil
+			},
+			want: true,
+		},
+		{
+			name: "the same file with its modification time moved",
+			outcome: func(t *testing.T, dir string) (os.FileInfo, os.FileInfo, error) {
+				path := filepath.Join(dir, "lyx")
+				if err := os.WriteFile(path, []byte("a"), 0o755); err != nil {
+					t.Fatalf("write: %v", err)
+				}
+				start := statOf(t, path)
+				later := start.ModTime().Add(time.Hour)
+				if err := os.Chtimes(path, later, later); err != nil {
+					t.Fatalf("chtimes: %v", err)
+				}
+				return start, statOf(t, path), nil
+			},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			start, now, statErr := tt.outcome(t, t.TempDir())
+			if got := exeReplaced(start, now, statErr); got != tt.want {
+				t.Errorf("exeReplaced = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping drives watchdogCmd against a temp hub for the two ways it returns without running a loop to its end.
+// Losing the lock race returns nil, respawns nothing and writes no trace file at the default verbosity.
+// A replaced binary releases the lock before it respawns, passes the hub, tmux and shell values and suppress true under go test, and logs the retirement.
+// It points the process-global durable log sink at the hub's logs directory, so it is not parallel.
+func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
+	const tmuxPath, shellPath = "/fixed/tmux", "/fixed/shell"
+	type respawnCall struct {
+		hub, tmux, shell string
+		suppress         bool
+		lockWasFree      bool
+	}
+	tests := []struct {
+		name         string
+		holdLock     bool
+		replacedExe  bool
+		wantRespawns int
+		wantTrace    string
+	}{
+		{name: "lock already held", holdLock: true},
+		{name: "binary replaced", replacedExe: true, wantRespawns: 1, wantTrace: "reed: watchdog retired"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hub := t.TempDir()
+			t.Cleanup(func() {
+				logger.SetDurableSinkDir("")
+				logger.SetVerbosity(0)
+			})
+			scratch := fabricengine.HubScratchDir(hub)
+			if err := os.MkdirAll(scratch, 0o755); err != nil {
+				t.Fatalf("mkdir scratch: %v", err)
+			}
+			lockPath := filepath.Join(scratch, watchdogLockFileName)
+			if tt.holdLock {
+				held, acquired, err := lock.TryAcquireWriteLock(lockPath)
+				if err != nil || !acquired {
+					t.Fatalf("hold the watchdog lock: acquired=%v err=%v", acquired, err)
+				}
+				t.Cleanup(func() { held.Release() })
+			}
+
+			firstBinary, secondBinary := filepath.Join(hub, "first"), filepath.Join(hub, "second")
+			for _, path := range []string{firstBinary, secondBinary} {
+				if err := os.WriteFile(path, []byte("a"), 0o755); err != nil {
+					t.Fatalf("write binary: %v", err)
+				}
+			}
+			stats := 0
+			var respawns []respawnCall
+			timing := watchdogTiming{DiscoveryCycle: time.Millisecond, DiscoveryCeiling: time.Millisecond, IdleCycles: watchdogHubIdleCycles, OrphanGoneCycles: watchdogOrphanGoneCycles}
+			c := &reedCLI{
+				watchdogTiming: &timing,
+				watchdogExeStat: func() (os.FileInfo, error) {
+					stats++
+					if stats == 1 || !tt.replacedExe {
+						return os.Stat(firstBinary)
+					}
+					return os.Stat(secondBinary)
+				},
+				respawnWatchdog: func(hubPath, tmux, shell string, suppress bool) {
+					probe, acquired, err := lock.TryAcquireWriteLock(lockPath)
+					if err == nil && acquired {
+						probe.Release()
+					}
+					respawns = append(respawns, respawnCall{hub: hubPath, tmux: tmux, shell: shell, suppress: suppress, lockWasFree: err == nil && acquired})
+				},
+			}
+			cmd := c.watchdogCmd()
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetArgs([]string{"--hub-path", hub, "--tmux", tmuxPath, "--shell", shellPath})
+
+			if err := cmd.ExecuteContext(context.Background()); err != nil {
+				t.Fatalf("watchdogCmd returned %v, want nil", err)
+			}
+
+			if len(respawns) != tt.wantRespawns {
+				t.Fatalf("respawn calls = %d, want %d", len(respawns), tt.wantRespawns)
+			}
+			if tt.wantRespawns > 0 {
+				want := respawnCall{hub: hub, tmux: tmuxPath, shell: shellPath, suppress: true, lockWasFree: true}
+				if respawns[0] != want {
+					t.Errorf("respawn call = %+v, want %+v", respawns[0], want)
+				}
+			}
+			var trace strings.Builder
+			entries, err := os.ReadDir(fabricengine.HubLogsDir(hub))
+			if err != nil && !errors.Is(err, fs.ErrNotExist) {
+				t.Fatalf("read the hub logs directory: %v", err)
+			}
+			for _, entry := range entries {
+				body, err := os.ReadFile(filepath.Join(fabricengine.HubLogsDir(hub), entry.Name()))
+				if err != nil {
+					t.Fatalf("read trace file: %v", err)
+				}
+				trace.Write(body)
+			}
+			if tt.wantTrace == "" {
+				if len(entries) != 0 {
+					t.Errorf("hub logs directory holds %d files, want none at the default verbosity", len(entries))
+				}
+				return
+			}
+			if !strings.Contains(trace.String(), tt.wantTrace) {
+				t.Errorf("trace = %q, want it to hold %q", trace.String(), tt.wantTrace)
+			}
+		})
 	}
 }

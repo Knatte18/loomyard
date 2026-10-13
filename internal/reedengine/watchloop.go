@@ -61,6 +61,9 @@ type watchState struct {
 	pending  bool
 	readyAt  time.Time
 	attempts int
+
+	// resizeFailures is the session's re-apply failure episode, shared by poll and signal mode and living as long as the watcher.
+	resizeFailures logger.Episode
 }
 
 // newWatchState builds a fresh watchState from t, with no pending signal and no failure streak.
@@ -434,7 +437,7 @@ func (e *Engine) handleWatchOutcome(mode watchMode, state *watchState, t watchTi
 	}
 
 	if err != nil {
-		logger.Warn("reed: resize re-apply failed", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		state.resizeFailures.Fail("reed: resize re-apply failed", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		if mode == watchModeSignal {
 			if abandoned := state.Failed(time.Now()); abandoned {
 				logger.Warn("reed: abandoning this resize event after max attempts, watcher remains running and responsive to the next signal",
@@ -455,6 +458,7 @@ func (e *Engine) handleWatchOutcome(mode watchMode, state *watchState, t watchTi
 	}
 
 	// A real, non-deferred call.
+	state.resizeFailures.Recover("reed: resize re-apply recovered", "socket", e.Socket(), "session", e.SessionName())
 	if mode == watchModeSignal {
 		state.Succeeded()
 	}

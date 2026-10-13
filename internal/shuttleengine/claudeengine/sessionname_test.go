@@ -1,13 +1,13 @@
 package claudeengine
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // writeSessionTranscript writes lines as session sid's transcript under a temp HOME and returns the workdir it belongs to.
@@ -57,40 +57,73 @@ func TestSessionNameDrift(t *testing.T) {
 	}
 }
 
-func TestSessionNameDrift_MissingTranscriptReportsNoneAndLogs(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
-
-	if New().SessionNameDrift("absent", filepath.Join(t.TempDir(), "work"), "tst:worker") {
-		t.Error("a missing transcript reported drift")
+// countNameReadLines counts the captured could-not-read lines at level.
+func countNameReadLines(output, level string) int {
+	count := 0
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, "level="+level) && strings.Contains(line, "claudeengine: could not read the session name") {
+			count++
+		}
 	}
-	if !strings.Contains(buf.String(), "claudeengine: could not read the session name") {
-		t.Errorf("log %q lacks the could-not-read line", buf.String())
-	}
+	return count
 }
 
-func TestSessionNameDrift_UnreadableTranscriptReportsNoneAndLogs(t *testing.T) {
-	workdir := writeSessionTranscript(t, "sid", titleLine("x"))
+// replaceTranscriptWithDirectory makes session sid's transcript read fail with something other than not-exist.
+func replaceTranscriptWithDirectory(t *testing.T, workdir, sid string) {
+	t.Helper()
 	dir, _ := claudeProjectDirFor(workdir)
-	path := filepath.Join(dir, "sid.jsonl")
-	// A directory in place of the file makes the read fail with something other than not-exist.
+	path := filepath.Join(dir, sid+".jsonl")
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Mkdir(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+}
 
-	if New().SessionNameDrift("sid", workdir, "tst:worker") {
-		t.Error("an unreadable transcript reported drift")
+// The tests below capture the process-global logger at Debug, so neither is parallel.
+func TestSessionNameDrift_MissingTranscriptReportsNoneAndLogs(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	buf := logcapture.Capture(t)
+	logger.SetVerbosity(2)
+
+	if New().SessionNameDrift("absent", filepath.Join(t.TempDir(), "work"), "tst:worker") {
+		t.Error("a missing transcript reported drift")
 	}
-	if !strings.Contains(buf.String(), "claudeengine: could not read the session name") {
-		t.Errorf("log %q lacks the could-not-read line", buf.String())
+	if got := countNameReadLines(buf.String(), "DEBUG"); got != 1 {
+		t.Errorf("could-not-read lines at level=DEBUG = %d, want 1; log:\n%s", got, buf.String())
+	}
+	if got := countNameReadLines(buf.String(), "WARN"); got != 0 {
+		t.Errorf("could-not-read lines at level=WARN = %d, want none for a transcript that does not exist yet; log:\n%s", got, buf.String())
+	}
+}
+
+func TestSessionNameDrift_UnreadableTranscriptReportsNoneAndLogs(t *testing.T) {
+	workdir := writeSessionTranscript(t, "sid", titleLine("x"))
+	replaceTranscriptWithDirectory(t, workdir, "sid")
+	buf := logcapture.Capture(t)
+	logger.SetVerbosity(2)
+
+	claude := New()
+	for range 2 {
+		if claude.SessionNameDrift("sid", workdir, "tst:worker") {
+			t.Error("an unreadable transcript reported drift")
+		}
+	}
+	if got := countNameReadLines(buf.String(), "WARN"); got != 1 {
+		t.Errorf("could-not-read lines at level=WARN after two reads of one session = %d, want 1; log:\n%s", got, buf.String())
+	}
+	if got := countNameReadLines(buf.String(), "DEBUG"); got != 1 {
+		t.Errorf("could-not-read lines at level=DEBUG after two reads of one session = %d, want the repeat at 1; log:\n%s", got, buf.String())
+	}
+
+	workdir2 := writeSessionTranscript(t, "sid2", titleLine("x"))
+	replaceTranscriptWithDirectory(t, workdir2, "sid2")
+	if claude.SessionNameDrift("sid2", workdir2, "tst:worker") {
+		t.Error("a second unreadable transcript reported drift")
+	}
+	if got := countNameReadLines(buf.String(), "WARN"); got != 2 {
+		t.Errorf("could-not-read lines at level=WARN after a second session = %d, want 2; log:\n%s", got, buf.String())
 	}
 }
 

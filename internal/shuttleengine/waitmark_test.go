@@ -10,6 +10,9 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // writeWaitMarkerFile writes body as the wait marker of the run directory named name under root.
@@ -112,6 +115,26 @@ func TestReadWaitMarker(t *testing.T) {
 			}
 		})
 	}
+
+	// It captures the process-global logger at Debug, so it runs serially like the test.
+	t.Run("a marker that stays undecodable logs once per episode", func(t *testing.T) {
+		buf := logcapture.CaptureVerbose(t)
+		logger.SetVerbosity(2)
+		root := t.TempDir()
+		writeWaitMarkerFile(t, root, "run-a", "kind: [unterminated")
+
+		for range 3 {
+			if _, err := ReadWaitMarkers(Config{RunDir: root}, t.TempDir()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		writeWaitMarkerFile(t, root, "run-a", heldBody)
+		if _, err := ReadWaitMarkers(Config{RunDir: root}, t.TempDir()); err != nil {
+			t.Fatal(err)
+		}
+
+		requireFailureEpisode(t, buf.String(), "skipping an unreadable wait marker", 2, "wait marker readable again")
+	})
 }
 
 func TestReadWaitMarker_AbsentRunDirectoryRootReadsAsNone(t *testing.T) {

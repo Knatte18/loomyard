@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // flakySession fails StrandAlive per a script, then defers to the embedded fake.
@@ -260,7 +262,10 @@ func TestRun_StopsAtErrorCap(t *testing.T) {
 	}
 }
 
+// TestRun_SuccessfulTickResetsErrorCount asserts a successful tick resets the consecutive-failure count, so the cap is reached only by one unbroken run of failures.
+// It captures the log at Info and asserts each run of failures warns once, with one Info between the two runs saying a tick succeeded again.
 func TestRun_SuccessfulTickResetsErrorCount(t *testing.T) {
+	buf := logcapture.CaptureVerbose(t)
 	e := newWatchEnv(t)
 	fs := &flakySession{fakeSession: e.s}
 	for i := 0; i < maxConsecutiveTickErrors-1; i++ {
@@ -279,4 +284,18 @@ func TestRun_SuccessfulTickResetsErrorCount(t *testing.T) {
 	if fs.calls != want {
 		t.Errorf("ticks = %d, want %d", fs.calls, want)
 	}
+	if warns, recoveries := countOrchLines(buf.String(), "WARN", "watcher tick failed"), countOrchLines(buf.String(), "INFO", "watcher tick succeeded again"); warns != 2 || recoveries != 1 {
+		t.Errorf("tick failure WARN lines = %d and recovery INFO lines = %d; want 2 and 1, one Warn per run of failures; logs: %s", warns, recoveries, buf.String())
+	}
+}
+
+// countOrchLines counts the lines of a captured log at level that contain text.
+func countOrchLines(log, level, text string) int {
+	count := 0
+	for _, line := range strings.Split(log, "\n") {
+		if strings.Contains(line, "level="+level) && strings.Contains(line, text) {
+			count++
+		}
+	}
+	return count
 }

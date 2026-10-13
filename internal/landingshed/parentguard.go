@@ -60,6 +60,7 @@ func (g parentGuard) ensure(ctx context.Context, producer string) (string, error
 	label := "parent lock " + g.parentBranch
 	var waiting bool
 	var holderSlug string
+	var pauseFailures logger.Episode
 	waiter := parentlock.Waiter{
 		OnWait: func(holder parentlock.Record) {
 			waiting = true
@@ -69,7 +70,7 @@ func (g parentGuard) ensure(ctx context.Context, producer string) (string, error
 			}
 			g.markWait(label, time.Now())
 		},
-		Paused: g.pauseRequested,
+		Paused: func() bool { return g.pauseRequested(&pauseFailures) },
 		Sleep:  g.sleep,
 	}
 	_, err = g.lock.Store.Acquire(ctx, g.parentBranch, owner, waiter)
@@ -159,16 +160,18 @@ func (g parentGuard) moved(producer string) (string, error) {
 	return fmt.Sprintf("parent branch %q moved since Merge-In merged %s (local %s, upstream %s); rerouting to Merge-In", g.parentBranch, rec.MergedTip, tips.Local, tips.Upstream), nil
 }
 
-// pauseRequested reads the told pause seam, which reports a `--after` naming the waiting row; a read error counts as not paused and logs one Warn.
-func (g parentGuard) pauseRequested() bool {
+// pauseRequested reads the told pause seam, which reports a `--after` naming the waiting row; a read error counts as not paused.
+// The wait polls it, so failures is the episode of its read errors: a Warn at the first, Debug while it repeats and an Info at the next good read.
+func (g parentGuard) pauseRequested(failures *logger.Episode) bool {
 	if g.lock.PauseRequested == nil {
 		return false
 	}
 	paused, err := g.lock.PauseRequested()
 	if err != nil {
-		logger.Warn("landingshed: could not read the pause flag during the parent lock wait", "cause", err)
+		failures.Fail("landingshed: could not read the pause flag during the parent lock wait", "cause", err)
 		return false
 	}
+	failures.Recover("landingshed: the pause flag reads again during the parent lock wait")
 	return paused
 }
 

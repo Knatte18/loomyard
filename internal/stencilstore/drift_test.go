@@ -168,7 +168,7 @@ func TestWarnPortBackDrift_EmitsOneLineListingTheDriftedStencils(t *testing.T) {
 	logger.SetOutput(&buf)
 	logger.SetVerbosity(1)
 	t.Cleanup(func() {
-		logger.SetOutput(os.Stderr)
+		logger.SetOutput(logger.DefaultOutput())
 		logger.SetVerbosity(0)
 	})
 
