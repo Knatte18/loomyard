@@ -64,6 +64,7 @@ func (f *fakeSubstrates) teardown() *Teardown {
 			f.calls = append(f.calls, "end")
 			return f.endErr == nil, "", f.endErr
 		},
+		archive: func(string) { f.calls = append(f.calls, "archive") },
 		remove: func(Request) (fabricengine.RemoveResult, error) {
 			f.calls = append(f.calls, "remove")
 			return fabricengine.RemoveResult{}, f.removeErr
@@ -207,7 +208,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			run:       true,
 			quiets:    []quietState{{quiet: true}},
 			request:   Request{Slug: "slug"},
-			wantCalls: sessionEnd + ",landed,remove,readClaim",
+			wantCalls: sessionEnd + ",landed,archive,remove,readClaim",
 		},
 		{
 			name:       "DoneEntryIsKept",
@@ -216,7 +217,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:    Request{Slug: "slug"},
 			claim:      text("done"),
 			claimFound: true,
-			wantCalls:  sessionEnd + ",landed,remove,readClaim",
+			wantCalls:  sessionEnd + ",landed,archive,remove,readClaim",
 		},
 		{
 			name:       "EntryWithoutTheRunFormIsKept",
@@ -225,7 +226,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:    Request{Slug: "slug"},
 			claim:      text("wip"),
 			claimFound: true,
-			wantCalls:  sessionEnd + ",landed,remove,readClaim",
+			wantCalls:  sessionEnd + ",landed,archive,remove,readClaim",
 		},
 		{
 			name:       "LandedFromTheRequestMarksDoneWithoutReadingTheChild",
@@ -234,7 +235,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:    Request{Slug: "slug", Landed: true},
 			claim:      runClaim,
 			claimFound: true,
-			wantCalls:  sessionEnd + ",remove,readClaim,write=done",
+			wantCalls:  sessionEnd + ",archive,remove,readClaim,write=done",
 		},
 		{
 			name:        "LandedFromTheChildReadMarksDone",
@@ -244,7 +245,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			childLanded: true,
 			claim:       runClaim,
 			claimFound:  true,
-			wantCalls:   sessionEnd + ",landed,remove,readClaim,write=done",
+			wantCalls:   sessionEnd + ",landed,archive,remove,readClaim,write=done",
 		},
 		{
 			name:       "UnseededRunIsCleared",
@@ -253,7 +254,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:    Request{Slug: "slug"},
 			claim:      runClaim,
 			claimFound: true,
-			wantCalls:  sessionEnd + ",landed,remove,readClaim,battenRun,write=clear",
+			wantCalls:  sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=clear",
 		},
 		{
 			name:         "PausedBattenRunIsCleared",
@@ -264,7 +265,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			battenState:  "paused",
 			claim:        runClaim,
 			claimFound:   true,
-			wantCalls:    sessionEnd + ",landed,remove,readClaim,battenRun,write=clear",
+			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=clear",
 		},
 		{
 			name:         "BlockedBattenRunIsCleared",
@@ -275,7 +276,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			battenState:  "blocked",
 			claim:        runClaim,
 			claimFound:   true,
-			wantCalls:    sessionEnd + ",landed,remove,readClaim,battenRun,write=clear",
+			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=clear",
 		},
 		{
 			name:         "FailedBattenRunIsCleared",
@@ -286,7 +287,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			battenState:  "failed",
 			claim:        runClaim,
 			claimFound:   true,
-			wantCalls:    sessionEnd + ",landed,remove,readClaim,battenRun,write=clear",
+			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=clear",
 		},
 		{
 			name:         "AwaitingBattenRunIsCleared",
@@ -297,7 +298,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			battenState:  "awaiting",
 			claim:        runClaim,
 			claimFound:   true,
-			wantCalls:    sessionEnd + ",landed,remove,readClaim,battenRun,write=clear",
+			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=clear",
 		},
 		{
 			name:         "DoneBattenRunMarksDone",
@@ -308,7 +309,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			battenState:  "done",
 			claim:        runClaim,
 			claimFound:   true,
-			wantCalls:    sessionEnd + ",landed,remove,readClaim,battenRun,write=done",
+			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=done",
 		},
 		{
 			name:         "RunningBattenRunIsHeldWithNoWrite",
@@ -319,7 +320,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			battenState:  "running",
 			claim:        runClaim,
 			claimFound:   true,
-			wantCalls:    sessionEnd + ",landed,remove,readClaim,battenRun",
+			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun",
 		},
 		{
 			name:         "ClaimReadFailureWritesNothing",
@@ -327,7 +328,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			quiets:       []quietState{{quiet: true}},
 			request:      Request{Slug: "slug"},
 			claimReadErr: errors.New("board unreadable"),
-			wantCalls:    sessionEnd + ",landed,remove,readClaim",
+			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim",
 		},
 		{
 			name:        "GoneTaskWorktreeOverAnUnseededRunClearsWithoutReadingLanded",
@@ -337,7 +338,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:     Request{Slug: "slug", RefuseWhenBusy: true},
 			claim:       runClaim,
 			claimFound:  true,
-			wantCalls:   "refusal,remove,readClaim,battenRun,write=clear",
+			wantCalls:   "refusal,archive,remove,readClaim,battenRun,write=clear",
 			wantSawGone: true,
 		},
 		{
@@ -349,7 +350,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			claim:        runClaim,
 			claimFound:   true,
 			wantAnyError: true,
-			wantCalls:    sessionEnd + ",landed,remove",
+			wantCalls:    sessionEnd + ",landed,archive,remove",
 		},
 		{
 			name:            "HeldLoopLockReadsAsBusyAndNamesTheLoop",

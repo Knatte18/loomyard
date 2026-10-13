@@ -81,7 +81,9 @@ type Teardown struct {
 	refusal    func(slug string, force bool) error
 	endSession func(slug string, gone bool) (ended bool, abandoned string, err error)
 	remove     func(req Request) (fabricengine.RemoveResult, error)
-	sleep      func(ctx context.Context, d time.Duration) error
+	// archive copies the pair's trace and verify logs into the hub's log archive; it never fails the teardown.
+	archive func(slug string)
+	sleep   func(ctx context.Context, d time.Duration) error
 
 	// landed reports whether the present task worktree's run finished a Finalize.
 	landed func(slug string) (bool, error)
@@ -117,6 +119,7 @@ func New(prime *lyxcwd.Location) (*Teardown, error) {
 		return top.RemoveRefusal(prime, slug, force)
 	}
 	t.endSession = t.endReedSession
+	t.archive = t.archivePairLogs
 	t.killLoop = t.killPairLoop
 	t.seizeLoop = t.holdPairLoopLock
 	t.awaitRunLock = t.awaitPairRunLock
@@ -180,8 +183,9 @@ func (t *Teardown) EndSession(ctx context.Context, req Request) (SessionResult, 
 	return res, nil
 }
 
-// RemovePair removes the pair, then settles the pair's board claim.
+// RemovePair archives the pair's logs, removes the pair, then settles the pair's board claim.
 // It runs only after EndSession succeeded for the same request: Run and batten's one-row producer are its only sequencers.
+// The archive copies and never fails the teardown, so the removal follows it whatever it did.
 //
 // Whether the pair's work landed is req.Landed, or else read before the removal from the task worktree's status file, since the file goes with the worktree;
 // a task worktree already gone is not landed, and its claim falls to the batten-state rule.
@@ -204,6 +208,7 @@ func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
 		}
 	}
 
+	t.archive(req.Slug)
 	res, err := t.remove(req)
 	if err != nil {
 		return res, err
