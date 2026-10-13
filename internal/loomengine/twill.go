@@ -62,17 +62,18 @@ func planTwillDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencil
 	}
 	anchorPath := layout.AnchorPath()
 	return twilldirective.Directive(stencilsDir, twilldirective.Values{
-		ReviewedFiles:    "`" + planparser.PlanOverview(anchorPath) + "` and every card file its Card Index names",
-		SpawnPoint:       planTwillSpawnPoint,
-		RejectionRule:    planTwillRejectionRule,
-		SeverityRule:     planTwillSeverityRule,
-		ReadyMarker:      PlanReadyMarker(layout),
-		RubricPath:       stencilstore.Path(stencilsDir, "loom-rubric-plan-review"),
-		Lenses:           lenses,
-		FormatStep:       "Step 3 and Step 4",
-		SelfCheckStep:    "Step 5",
-		SelfCheckCommand: "lyx loom validate-plan",
-		DispositionPlace: "`" + filepath.Join(planparser.PlanDir(anchorPath), planparser.LensReviewFileName) + "`",
+		ReviewedFiles:         "`" + planparser.PlanOverview(anchorPath) + "` and every card file its Card Index names",
+		SpawnPoint:            planTwillSpawnPoint,
+		RejectionRule:         planTwillRejectionRule,
+		SeverityRule:          planTwillSeverityRule,
+		ReadyMarker:           PlanReadyMarker(layout),
+		RubricPath:            stencilstore.Path(stencilsDir, "loom-rubric-plan-review"),
+		Lenses:                lenses,
+		FormatStep:            "Step 3 and Step 4",
+		SelfCheckStep:         "Step 5",
+		SelfCheckCommand:      "lyx loom validate-plan",
+		FinalSelfCheckCommand: "lyx loom validate-plan --lens-review",
+		DispositionPlace:      "`" + filepath.Join(planparser.PlanDir(anchorPath), planparser.LensReviewFileName) + "`",
 	})
 }
 
@@ -87,17 +88,18 @@ func twillBlocks(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir st
 
 	readyMarker := DiscussionReadyMarker(layout)
 	directive, err := twilldirective.Directive(stencilsDir, twilldirective.Values{
-		ReviewedFiles:    "`" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "`",
-		SpawnPoint:       "When the design is settled and before you write any output file, run this procedure once:",
-		RejectionRule:    "Fix the record, or reject the finding with a one-line reason.",
-		SeverityRule:     "a severity (`BLOCKING`, `MEDIUM` or `LOW`)",
-		ReadyMarker:      readyMarker,
-		RubricPath:       stencilstore.Path(stencilsDir, "loom-rubric-discussion-review"),
-		Lenses:           lenses,
-		FormatStep:       "Step 5",
-		SelfCheckStep:    "Step 6",
-		SelfCheckCommand: "lyx loom validate-discussion",
-		DispositionPlace: "the last turn of the support log's `## Interview` section",
+		ReviewedFiles:         "`" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "`",
+		SpawnPoint:            "When the design is settled and before you write any output file, run this procedure once:",
+		RejectionRule:         "Fix the record, or reject the finding with a one-line reason.",
+		SeverityRule:          "a severity (`BLOCKING`, `MEDIUM` or `LOW`)",
+		ReadyMarker:           readyMarker,
+		RubricPath:            stencilstore.Path(stencilsDir, "loom-rubric-discussion-review"),
+		Lenses:                lenses,
+		FormatStep:            "Step 5",
+		SelfCheckStep:         "Step 6",
+		SelfCheckCommand:      "lyx loom validate-discussion",
+		FinalSelfCheckCommand: "lyx loom validate-discussion",
+		DispositionPlace:      "the last turn of the support log's `## Interview` section",
 	})
 	if err != nil {
 		return "", "", err

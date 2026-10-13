@@ -88,3 +88,24 @@ type SessionProber interface {
 	// It reads the provider's transcript, and any failure to read it reads as not interrupted.
 	TurnStartInterrupt(turnStart SessionSignal) (at time.Time, interrupted bool)
 }
+
+// TurnProgress is what an engine reads of a turn start's turn: still running, finished, or not told.
+type TurnProgress int
+
+// Readings a TurnProgress can carry.
+const (
+	// TurnProgressUnknown: the engine cannot tell; the zero value.
+	TurnProgressUnknown TurnProgress = iota
+	// TurnInFlight: the turn is still running.
+	TurnInFlight
+	// TurnOver: the turn has finished.
+	TurnOver
+)
+
+// TurnProgressReader is an optional capability beside Engine: whether the turn a turn start began is still running.
+// An Engine without it leaves every turn start unknown, which keeps the idle-pane override as before.
+type TurnProgressReader interface {
+	// TurnStartProgress reports whether the turn that turnStart began is in flight, over, or unknown to the engine.
+	// Any failure to read reads unknown.
+	TurnStartProgress(turnStart SessionSignal) TurnProgress
+}

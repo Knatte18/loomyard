@@ -458,8 +458,9 @@ User-facing modules each get one `lyx <module>` namespace:
   `validate-discussion` runs the same checks Discussion-Write's and Discussion-Burler-Fix's own gates run, standalone, exiting 0 on a clean gate and 1 otherwise, with findings in the failure envelope so a writer agent can self-check before handing off.
   `decision add [<slug>] --by parent|operator --title <t> --decision <d> --rationale <r>` appends one design call made after the Discussion to the decision record under an `Added after Discussion` heading, re-runs the discussion check (restoring the record on a finding) and commits the record.
   It is refused while Discussion-Write is running, refuses a named session other than the run's recorded parent (the operator's own unnamed shell always passes) and resumes nothing.
-  `validate-plan` runs the same checks Plan-Write's and Plan-Burler-Fix's own gates run, standalone, with the same exit-code and findings-envelope contract, over the current worktree's plan instead of its discussion.
+  `validate-plan` runs the same checks a non-twill Plan-Write run's and Plan-Burler-Fix's own gates run, standalone, with the same exit-code and findings-envelope contract, over the current worktree's plan instead of its discussion.
   `validate-plan --rework` runs the check `PR-Rework`'s own gate runs: the format-only checks over the whole new plan, plus a check that its `first_card` equals the card number the session was told.
+  `validate-plan --lens-review` runs the check a twill-spawned Plan-Write run's own gate runs: the flag-less checks plus a check that the plan directory's `lens-review.md` holds a recorded lens review.
   `validate-plan --overlay` runs the flag-less checks over the plan with proposed contents of its existing plan files, read from stdin as one JSON object, laid over it in memory, so a fix is checked before any file is edited and no plan file is written.
   `validate-description` runs the same checks the `Describe` row's `description` gate runs over `_lyx/landing/summary.md`, standalone, with the same exit-code and findings-envelope contract.
   `lint-comments [--base <commit>]` runs `internal/commentlint` over the worktree: the fixed-column-wrapped breaks the working tree, or the range from `--base` to HEAD, creates in `//` comment blocks.
@@ -516,6 +517,8 @@ User-facing modules each get one `lyx <module>` namespace:
   The row keeps its name, gates and routing whichever producer runs.
   The Planner producer, the same way (`contracts/stencils/loom/loom-template-plan.md`), composed by `internal/loomengine`'s `prompt.go` + `plan.go`.
   `plan_producer: twill` selects the single plan writer that forks itself once per lens of the `twill-plan` fan in `burler.yaml` after its exploration, writes and self-checks the plan, marks it ready, takes the forks' findings in, records them in `lens-review.md` and rejects a `BLOCKING` or `MEDIUM` finding only with a cited code read.
+  It runs `validate-plan --lens-review` as its last self-check, and its gate refuses Done until `lens-review.md` holds the lens review.
+  The row keeps its name, `gates` key and routing while a twill-spawned run's plan gate also requires the lens review.
   See the `internal/loomengine` and `internal/loomcli` package documentation.
 - **shed** — the generic outer phase-FSM `loom` and the eventual `Hardener` are each built on: a Go engine that walks one flat, ordered producer list, honoring resume, crash-recovery, and pause uniformly at producer granularity, with no predefined slots (`internal/shedengine`).
   The shipped engine adapters — `SingleLLMProducer` over `shuttle`, the `Webster` adapter, the Burler review row and fix row producers, `MultiLLMProducer` over `seatengine`, and the Bouncer (the generic review-gate producer rather than a wrapper over an engine) — live in one package, `internal/shedadapters`, alongside their shared context and archive helpers.

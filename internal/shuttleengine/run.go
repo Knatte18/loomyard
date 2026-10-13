@@ -252,12 +252,10 @@ type Result struct {
 	StrandGUID           string
 	LastAssistantMessage string
 	RunDir               string
-	// ForkAudit is populated only when the Spec that started this run set
-	// ForkSubagents, the run classified OutcomeDone, and the audit itself
-	// succeeded; nil otherwise. A nil ForkAudit therefore always reads as "not
-	// audited" and never as "audited, found nothing" — including on the one
-	// path where Outcome is OutcomeDone and the returned error is non-nil,
-	// which is a done run whose audit could not be read (see finalize).
+	// ForkAudit is populated only when the run's record carries fork authorization, the run classified OutcomeDone, and the audit itself succeeded; nil otherwise.
+	// The Spec that started this Call does not decide it.
+	// A nil ForkAudit therefore always reads as "not audited" and never as "audited, found nothing".
+	// That includes the one path where Outcome is OutcomeDone and the returned error is non-nil, a done run whose audit could not be read (see finalize).
 	ForkAudit *ForkAudit
 	// Gate is a 1:1 report of this run's gate, populated only for a run started via RunGated/AttachGated
 	// whose gate closure actually ran. Nil means "this run had no gate" — never "the gate passed": a
@@ -575,6 +573,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		RecordsSessionStarts: launch.RecordsSessionStarts,
 		PromptLine:           launch.PromptLine,
 		Step:                 r.step,
+		ForkSubagents:        spec.ForkSubagents,
 	}
 	if err := saveRunState(runDir, state); err != nil {
 		// The strand registered and its pane is already launching, but

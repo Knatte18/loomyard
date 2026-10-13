@@ -1,5 +1,5 @@
-// prober_test.go covers Claude's SessionProber: process liveness over a temp session registry with injected liveness and start-time probes,
-// and the interrupt marker over temp transcripts named by a turn start's payload.
+// prober_test.go covers Claude's SessionProber: process liveness over a temp session registry with injected liveness and start-time probes, and the interrupt marker over temp transcripts named by a turn start's payload.
+// It also covers the turn progress reader over the testdata/turnprogress fixtures.
 
 package claudeengine
 
@@ -167,6 +167,61 @@ func TestTurnStartInterrupt(t *testing.T) {
 			at, interrupted := (&Claude{}).TurnStartInterrupt(shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalTurnStart, Raw: raw})
 			if interrupted != tt.wantFound || !at.Equal(tt.wantAt) {
 				t.Fatalf("TurnStartInterrupt = (%v, %v), want (%v, %v)", at, interrupted, tt.wantAt, tt.wantFound)
+			}
+		})
+	}
+}
+
+func TestTurnStartProgress(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// fixture is the file name under testdata/turnprogress, without its extension.
+		fixture string
+		noPath  bool
+		missing bool
+		want    shuttleengine.TurnProgress
+	}{
+		{name: "a prompt is in flight", fixture: "prompt", want: shuttleengine.TurnInFlight},
+		{name: "a task notification after a turn duration is in flight", fixture: "task-notification", want: shuttleengine.TurnInFlight},
+		{name: "a tool result is in flight", fixture: "tool-result", want: shuttleengine.TurnInFlight},
+		{name: "a tool use is in flight", fixture: "tool-use", want: shuttleengine.TurnInFlight},
+		{name: "an end turn is over", fixture: "end-turn", want: shuttleengine.TurnOver},
+		{name: "the interrupt marker is unknown", fixture: "interrupt", want: shuttleengine.TurnProgressUnknown},
+		{name: "a thinking line ahead of its tool use is in flight", fixture: "thinking-tool-use", want: shuttleengine.TurnInFlight},
+		{name: "a thinking line closing the turn is over", fixture: "thinking-end-turn", want: shuttleengine.TurnOver},
+		{name: "an API error entry is over", fixture: "api-error", want: shuttleengine.TurnOver},
+		{name: "a null stop reason is unknown", fixture: "null-stop-reason", want: shuttleengine.TurnProgressUnknown},
+		{name: "a max tokens stop reason is unknown", fixture: "max-tokens", want: shuttleengine.TurnProgressUnknown},
+		{name: "sidechain, other types and a malformed last line are skipped", fixture: "trailing-skipped", want: shuttleengine.TurnOver},
+		{name: "an unterminated last line is not read", fixture: "no-trailing-newline", want: shuttleengine.TurnOver},
+		{name: "a missing transcript_path is unknown", noPath: true, want: shuttleengine.TurnProgressUnknown},
+		{name: "an unreadable transcript is unknown", missing: true, want: shuttleengine.TurnProgressUnknown},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			payload := map[string]any{"hook_event_name": "UserPromptSubmit"}
+			switch {
+			case tt.noPath:
+			case tt.missing:
+				payload["transcript_path"] = filepath.Join(t.TempDir(), "absent.jsonl")
+			default:
+				path, err := filepath.Abs(filepath.Join("testdata", "turnprogress", tt.fixture+".jsonl"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				payload["transcript_path"] = path
+			}
+			raw, err := json.Marshal(payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := (&Claude{}).TurnStartProgress(shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalTurnStart, Raw: raw})
+			if got != tt.want {
+				t.Fatalf("TurnStartProgress = %v, want %v", got, tt.want)
 			}
 		})
 	}
