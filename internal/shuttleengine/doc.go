@@ -215,7 +215,7 @@
 // an engine without the capability leaves Usage unknown, and nothing about the outcome changes.
 //
 // Segment color: Spec.Segment names the loom segment the spawning module gives its role, and Runner.start forwards it to reed, which resolves the segment's palette color on the strand it returns.
-// After startup confirms the provider ready and before the skill load, start plays Engine.ColorSequence for that color into the strand's pane;
+// After startup confirms the provider ready, and for a spec that names skills after the first load turn, which the launch line carries, start plays Engine.ColorSequence for that color into the strand's pane;
 // an engine without a color command, a strand without a color and a spec with ColorByCaller type nothing.
 // The command goes out through the guarded send path, like every other write: a paste-path engine pastes it once and the empty box confirms it, so the next step never finds it still sitting in the box.
 // A held or failed color is logged and never fails the launch, since the color is display only.
@@ -229,10 +229,12 @@
 //
 // Skill loading: Spec.Skills names provider-neutral skills that shuttle loads into a fresh session, all in one turn, before the prompt.
 // It needs the optional SkillLoader capability, and a spec that names skills on an engine without it is refused before any run directory exists.
-// An engine that realizes skills leaves the prompt pointer off its launch line and returns it as Launch.PromptLine;
-// once the provider is ready, shuttle sends the engine's one load message for the whole list through the verified send path and polls until the first turn end reaches the events file or Spec.SkillLoadTimeout passes (zero means the engine's DefaultSkillLoadTimeout).
+// An engine that realizes skills carries its one load message for the whole list on the launch line, so the first load turn is the session's first turn and is never typed, and returns the prompt pointer as Launch.PromptLine;
+// once the provider is ready, shuttle polls until the first turn end reaches the events file or Spec.SkillLoadTimeout passes (zero means the engine's DefaultSkillLoadTimeout), measured from the end of the startup probe.
+// The launch-carried message skips the verified send's landing check; a turn end in the events file proves it landed, and a turn that never starts or ends is bounded by the timeout.
+// The color follows the first turn, then any retry turn, then the prompt.
 // The engine classifies that turn end into a SkillLoadReport: each unknown skill is skipped at once with a logged warning,
-// and the missing ones are asked for once more in a second load turn naming only them,
+// and the missing ones are asked for once more in a second, typed load turn naming only them,
 // whose still-missing skills are skipped with a logged warning.
 // A turn whose evidence the engine could not read is confirmed unverified with one logged warning and no retry,
 // and a turn that never ends skips its skills at the timeout with no retry.
