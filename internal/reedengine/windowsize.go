@@ -183,7 +183,7 @@ func (e *Engine) pinGeometryOptionsLocked(target, shellPath string) {
 
 	// psmux lacks set-hook, so on Windows no hook is pinned and openOwnWindowLocked never sets @lyx_unseen.
 	if runtime.GOOS != "windows" {
-		if err := e.tmux.run("set-hook", "-t", exactSessionTarget(e.SessionName()), unseenClearHookName, unseenClearHookCommand); err != nil {
+		if err := e.tmux.run("set-hook", "-t", exactSessionWindowTarget(e.SessionName()), unseenClearHookName, unseenClearHookCommand); err != nil {
 			logger.Warn("reed: failed to pin the unseen-clear hook", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		}
 	}

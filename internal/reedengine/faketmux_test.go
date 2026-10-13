@@ -222,7 +222,7 @@ func unseenClearPinCount() int {
 // assertUnseenClearHookPinned fails unless fake saw exactly the unseen-clear hook pins one pinGeometryOptionsLocked run issues, each on e's session with the hook's own command.
 func assertUnseenClearHookPinned(t *testing.T, e *Engine, fake *fakeTmux) {
 	t.Helper()
-	want := []string{"set-hook", "-t", exactSessionTarget(e.SessionName()), unseenClearHookName, unseenClearHookCommand}
+	want := []string{"set-hook", "-t", exactSessionWindowTarget(e.SessionName()), unseenClearHookName, unseenClearHookCommand}
 	calls := fake.SetHookCalls(unseenClearHookName)
 	if len(calls) != unseenClearPinCount() {
 		t.Fatalf("session-window-changed set-hook calls = %v, want %d", calls, unseenClearPinCount())
