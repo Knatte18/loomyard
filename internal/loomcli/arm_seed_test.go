@@ -52,6 +52,7 @@ func TestResolveRunID(t *testing.T) {
 		{name: "reject's review file is not a run-id", verb: "reject", args: []string{"review.md"}, wantRunID: shedrun.SelfRunID},
 		{name: "insert-card's position is not a run-id", verb: "insert-card", args: []string{"3", "slug"}, wantRunID: shedrun.SelfRunID},
 		{name: "remove-card's position is not a run-id", verb: "remove-card", args: []string{"3"}, wantRunID: shedrun.SelfRunID},
+		{name: "fmt's file arguments are not a run-id", verb: "fmt", args: []string{"internal/x/y.go"}, wantRunID: shedrun.SelfRunID},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

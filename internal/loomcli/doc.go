@@ -79,6 +79,15 @@
 // The three verbs read only the resolved anchor, so they join the lightweight wiring and are not held up by an unrelated module's config.
 // `renumberRefusal` words every refusal with its way forward; the rows are in `contracts/specs/refusal-spec.md`.
 //
+// # Format verb
+//
+// `lyx loom fmt <file>...` rewrites each named `.go` file in place to its `go/format` form, in-process with no `gofmt` binary, so an agent whose edit directive forbids every rewriting tool can fix the formatting `cmd/lyx/gofmt_test.go` fails.
+// It reads only the worktree root and the caller's cwd, so it joins the lightweight wiring, and its arguments are files, never a run-id.
+// `planGoFormat` checks and formats every file before any write: a path that does not exist, lies outside the worktree (a symlink resolving outside it included), does not end in `.go`, cannot be read or does not parse refuses the whole call and writes nothing.
+// The success envelope's `changed` lists the files rewritten as named; a file already formatted is left untouched and unreported.
+// A write that fails stops the call, naming `written` and `failed`.
+// The rows are in `contracts/specs/refusal-spec.md`.
+//
 // # Validate plan overlay
 //
 // `lyx loom validate-plan --overlay` checks the plan with proposed plan file contents laid over it, in memory, so a fix can be checked before any file is edited.
