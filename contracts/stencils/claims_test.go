@@ -454,7 +454,8 @@ var wordingClaims = []stencilClaims{
 	)},
 	{"webster-body-implementer.md", WebsterBodyImplementer, joinClaims(
 		[]claim{{must: "{{.specs_dir}}", why: "a normative citation names the deployed specs through the marker, so a bare path cannot creep back"}},
-		wantAll("the report carries the minimal fork-return contract's keys", "status:", "head_sha:", "deviations:"),
+		wantAll("the report carries the minimal fork-return contract's keys", "status:", "head_sha:"),
+		wantNone("the implementer asks for no deviation list, which the scope guard alone produces", "deviations:", "deviation union"),
 		wantAll("the fork is told the fresh-read rule and to commit per card",
 			"## The FRESH-READ rule", "Commit the card to the repo", "One commit per card is the norm"),
 		wantAll("the per-card read and the FRESH-READ rule are filled through markers, so a fork without a pack reads the pack-off fragments and one with a pack reads the pack-on ones",
@@ -607,6 +608,8 @@ var wordingClaims = []stencilClaims{
 			"never run the plan-level verify", "NEVER run any `lyx webster` command"),
 	)},
 	{"webster-template-master.md", WebsterTemplateMaster, joinClaims(
+		wantAll("Master reads the deviation list from the digest, with the guard as its source", "scope guard", "the digest's list"),
+		wantNone("the summary narrative no longer reads fork-reported deviations", "any reported deviations from the plan's declared file-ops", "`status`/`head_sha`/`deviations`"),
 		inSection(websterDoneCheckSection, joinClaims(
 			wantNone("postBatchChecks records a deleted-symbol reference as a later-card warning, never a batch_failed done-check",
 				"a symbol this batch deleted that the remaining plan still references"),
