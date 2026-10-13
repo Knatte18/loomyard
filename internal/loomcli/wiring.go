@@ -840,7 +840,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ReviewMaxBounces:         loomCfg.ReviewMaxBounces,
 		RowMaxBounces:            perchMaxBounces(loomCfg),
 		RowAutoAccept:            perchAutoAccept(loomCfg),
-		DiscussionSeats:          loomCfg.DiscussionProducer == loomengine.DiscussionProducerSeats,
+		RowHardMaxBounces:        perchHardMaxBounces(loomCfg),
+		DiscussionSeats:         loomCfg.DiscussionProducer == loomengine.DiscussionProducerSeats,
 		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
 
 		ReviewModels:  reviewSettings.Models,
@@ -945,6 +946,23 @@ func perchMaxBounces(cfg loomengine.Config) map[string]int {
 		loomshed.NameWebsterBouncer:    cfg.WebsterMaxBounces,
 		loomshed.NameMergeBouncer:      cfg.MergeMaxBounces,
 	}
+}
+
+// loomPerches maps each loom Bouncer row's name to the review perch it belongs to.
+var loomPerches = map[string]loomengine.Perch{
+	loomshed.NameDiscussionBouncer: loomengine.PerchDiscussion,
+	loomshed.NamePlanBouncer:       loomengine.PerchPlan,
+	loomshed.NameWebsterBouncer:    loomengine.PerchWebster,
+	loomshed.NameMergeBouncer:      loomengine.PerchMerge,
+}
+
+// perchHardMaxBounces maps each loom Bouncer row's name to its perch's resolved hard cap, which is at least 1 once loom.yaml has loaded.
+func perchHardMaxBounces(cfg loomengine.Config) map[string]int {
+	hardCaps := make(map[string]int, len(loomPerches))
+	for row, perch := range loomPerches {
+		hardCaps[row] = cfg.Caps(perch).Hard
+	}
+	return hardCaps
 }
 
 // perchAutoAccept maps loom.yaml's per-perch auto-accept keys onto the Discussion, Plan, Webster and Merge Bouncer rows' names.
