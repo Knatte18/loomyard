@@ -136,6 +136,9 @@ started. The detached remover is a no-op for a guid already gone, answering
 ok with an empty "removed" list; a positional <guid> typed by an operator
 still errors on an unknown guid.
 
+A remove under an invalid window_split or window_share_max still removes,
+skips the even layout of a shared window and adds a "warning" naming the key.
+
 Example:
   lyx reed remove 3fae21ac9b1d4c0e --recursive
   lyx reed remove --name driver --detach`,
@@ -200,9 +203,11 @@ Example:
 				list[i] = map[string]any{"guid": s.GUID, "name": s.Name}
 			}
 
-			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
-				"removed": list,
-			}))
+			result := map[string]any{"removed": list}
+			if removed.ConfigWarning != "" {
+				result["warning"] = removed.ConfigWarning
+			}
+			clihelp.SetExit(cmd.Context(), output.Ok(out, result))
 			return nil
 		},
 	}

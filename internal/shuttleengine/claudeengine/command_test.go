@@ -341,6 +341,82 @@ func TestBuildLaunchCmd(t *testing.T) {
 	}
 }
 
+// TestOpenLaunch pins the open launch: the fresh line with the name reference and optional model flags, the resume line that falls back to the fresh one, and the refusals made before a session id is minted.
+func TestOpenLaunch(t *testing.T) {
+	t.Parallel()
+	sh := shell.ForGOOS()
+	nameRef := "--name " + sh.EnvRef("LYX_STRAND_NAME")
+	tests := []struct {
+		name    string
+		spec    shuttleengine.OpenSpec
+		wantErr string
+		check   func(t *testing.T, launch shuttleengine.Launch)
+	}{
+		{
+			name: "fresh line",
+			spec: shuttleengine.OpenSpec{Role: "explore", Model: "opus", Effort: "high"},
+			check: func(t *testing.T, launch shuttleengine.Launch) {
+				for _, want := range []string{"--session-id " + sh.Quote(launch.SessionID), nameRef, "--model " + sh.Quote("opus"), "--effort " + sh.Quote("high")} {
+					if !strings.Contains(launch.Cmd, want) {
+						t.Errorf("Cmd = %q; want it to hold %q", launch.Cmd, want)
+					}
+				}
+				if !strings.HasPrefix(launch.Cmd, sh.Invoke("claude")) {
+					t.Errorf("Cmd = %q; want it to start with the invoked binary", launch.Cmd)
+				}
+				for _, banned := range []string{"--settings", "--dangerously-skip-permissions", "Read "} {
+					if strings.Contains(launch.Cmd, banned) {
+						t.Errorf("Cmd = %q; want no %q", launch.Cmd, banned)
+					}
+				}
+			},
+		},
+		{
+			name: "resume falls back to a fresh start",
+			spec: shuttleengine.OpenSpec{Role: "explore", Model: "opus"},
+			check: func(t *testing.T, launch shuttleengine.Launch) {
+				resumeLine := strings.Replace(launch.Cmd, "--session-id", "--resume", 1)
+				if want := sh.OrElse(resumeLine, launch.Cmd); launch.ResumeCmd != want {
+					t.Errorf("ResumeCmd = %q; want %q", launch.ResumeCmd, want)
+				}
+			},
+		},
+		{
+			name: "no model or effort adds neither flag",
+			spec: shuttleengine.OpenSpec{Role: "explore"},
+			check: func(t *testing.T, launch shuttleengine.Launch) {
+				if strings.Contains(launch.Cmd, "--model") || strings.Contains(launch.Cmd, "--effort") {
+					t.Errorf("Cmd = %q; want neither --model nor --effort", launch.Cmd)
+				}
+			},
+		},
+		{name: "an invalid effort is refused", spec: shuttleengine.OpenSpec{Role: "explore", Effort: "turbo"}, wantErr: "invalid effort"},
+		{name: "a version without a model is refused", spec: shuttleengine.OpenSpec{Role: "explore", Version: "4.5"}, wantErr: "no model"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			launch, err := New().OpenLaunch(tt.spec, shuttleengine.Config{})
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("OpenLaunch() error = %v; want it to contain %q", err, tt.wantErr)
+				}
+				if launch.SessionID != "" {
+					t.Errorf("SessionID = %q; want none from a refused open", launch.SessionID)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("OpenLaunch() error = %v", err)
+			}
+			if strings.ContainsAny(launch.Cmd+launch.ResumeCmd, "\r\n") {
+				t.Errorf("launch = %+v; want single-line commands", launch)
+			}
+			tt.check(t, launch)
+		})
+	}
+}
+
 // TestValidateEffort covers validateEffort's full input space: the empty string (defers to claude's default), every exact-lowercase valid value, and both an unrecognized value and a wrong-case valid value (case sensitivity is load-bearing — claude only warns-and-ignores an unrecognized value rather than failing, so a silently-accepted "High" would defeat the whole hard-error guarantee).
 //
 //testtiming:keep pins the accepted effort values and the wrong-case rejection, which its covering tests do not assert row by row

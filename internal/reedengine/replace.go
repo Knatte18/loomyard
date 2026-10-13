@@ -41,6 +41,9 @@ func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 		if _, err := e.validateNaming(spec); err != nil {
 			return err
 		}
+		if err := validateWindowConfig(e.cfg); err != nil {
+			return err
+		}
 		return e.keepZoomLocked(func() error {
 			if err := e.requireSessionLocked(); err != nil {
 				return err
@@ -57,7 +60,10 @@ func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 				return err
 			}
 
-			reapPIDs := e.killStrandPanes(paneIDs)
+			reapPIDs, leftWindows := e.killStrandPanes(st, paneIDs)
+			if warning := e.relayoutSharedWindowsLocked(leftWindows); warning != "" {
+				logger.Warn("reed: replace skipped the shared-window layout", "socket", e.Socket(), "session", e.SessionName(), "cause", warning)
+			}
 			logger.Info("reed: replacing strand", "socket", e.Socket(), "session", e.SessionName(),
 				"guid", guid, "removed", removed.Strands)
 
@@ -67,6 +73,7 @@ func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 			strand, addErr := e.addStrandLocked(st, spec)
 			if addErr != nil {
 				st.Strands = st.Strands[:beforeAdd]
+				pruneWindowGroups(st)
 			}
 			postAddSaveFailed := false
 			if addErr == nil {

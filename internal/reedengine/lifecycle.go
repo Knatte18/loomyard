@@ -71,6 +71,12 @@ type StrandStatus struct {
 	Name   string
 	PaneID string
 	Live   bool
+	// Present reports that the strand's binding names a present pane, alive or dead.
+	// Shuttle's stop path decides on it whether a dead strand still has a pane to remove.
+	Present bool
+	// OwnWindow reports that the strand is anchored own-window.
+	// Shuttle's stop path decides on it whether the strand's window goes with it.
+	OwnWindow bool
 	// Retiring mirrors Strand.Retiring.
 	Retiring bool
 	// Color is the palette color the strand's segment resolves to, empty when it has none.
@@ -223,6 +229,7 @@ func dropStrands(st *ReedState, drop []Strand) int {
 		}
 	}
 	st.Strands = kept
+	pruneWindowGroups(st)
 	return len(drop)
 }
 
@@ -264,7 +271,7 @@ func (e *Engine) sessionSubstrateLocked() (up bool, usable bool, err error) {
 }
 
 // validateBootConfig refuses a boot-time config value that is wrong on its own, before any tmux round trip.
-// It validates debug_log, mouse, watchdog and the segment colors, and returns the tmux global flags debug_log selects and the mouse option value.
+// It validates debug_log, mouse, watchdog, the segment colors, window_share_max and window_split, and returns the tmux global flags debug_log selects and the mouse option value.
 // The boot path calls it, and so does an op that reads the strands' window's zoom before booting, so a pure config error surfaces ahead of that read.
 func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err error) {
 	// Validate debug_log before anything else touches tmux: a misconfigured
@@ -294,6 +301,9 @@ func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err err
 	// A segment color outside the palette is a pure config error too.
 	// This is the only refusal; every other reader goes through segmentColor and degrades to no color.
 	if err = validateSegmentColors(e.cfg.SegmentColors); err != nil {
+		return nil, "", err
+	}
+	if err = validateWindowConfig(e.cfg); err != nil {
 		return nil, "", err
 	}
 	return debugArgs, mouse, nil
@@ -788,23 +798,24 @@ func (e *Engine) Resume() (ResumeResult, error) {
 		}
 		e.markResolvedStrandWindowLocked(st)
 
-		live, err := e.listStrandPanes(st)
+		live, windows, err := e.listStrandAndWindowPanes(st)
 		if err != nil {
 			return fmt.Errorf("list panes: %w", err)
 		}
-		killed, err := e.reconcileLocked(st, live)
+		killed, err := e.reconcileLocked(st, live, windows)
 		if err != nil {
 			return fmt.Errorf("reconcile: %w", err)
 		}
 		if len(killed) > 0 {
-			live, err = e.listStrandPanes(st)
+			live, windows, err = e.listStrandAndWindowPanes(st)
 			if err != nil {
 				return fmt.Errorf("list panes after reconcile: %w", err)
 			}
 		}
 		// aliveIDSet, not liveIDSet: a strand bound to a dead-but-present pane
 		// (e.g. the kept sole dead pane) is not live and must be relaunched.
-		toLaunch, toDrop, toHold := planResumeLaunches(st.Strands, aliveIDSet(live), pathExists, e.pairPaused())
+		// The present set carries the own-window panes, so a live one is never relaunched beside itself.
+		toLaunch, toDrop, toHold := planResumeLaunches(st.Strands, aliveIDSet(presentPanes(st.Strands, live, windows)), pathExists, e.pairPaused())
 
 		// A finished strand has no live pane,
 		// so dropping it kills nothing.
@@ -1290,16 +1301,18 @@ func (e *Engine) Status() (StatusResult, error) {
 			return err
 		}
 
-		live, err := e.listStrandPanes(st)
+		live, windows, err := e.listStrandAndWindowPanes(st)
 		if err != nil {
 			return fmt.Errorf("list panes: %w", err)
 		}
+		present := presentPanes(st.Strands, live, windows)
 
 		// aliveIDSet, not liveIDSet: report a strand bound to a
 		// dead-but-present pane as not live — the operator asks status whether
 		// the strand's process is running, not whether tmux still lists a
 		// (dead) pane for it.
-		aliveIDs := aliveIDSet(live)
+		aliveIDs := aliveIDSet(present)
+		presentIDs := liveIDSet(present)
 		// This loop iterates st.Strands only — Selvage is deliberately
 		// never reported as a strand here (it is not one; see
 		// ReedState.SelvagePaneID). Status still succeeds (the session is
@@ -1307,7 +1320,7 @@ func (e *Engine) Status() (StatusResult, error) {
 		// must not "fix" a missing Selvage row by appending one here.
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
-			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, Live: aliveIDs[s.PaneID], Retiring: s.Retiring, Color: e.withColor(s).Color, LyxBin: s.LyxBin}
+			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Retiring: s.Retiring, Color: e.withColor(s).Color, LyxBin: s.LyxBin}
 		}
 
 		result = StatusResult{Session: session, Socket: e.Socket(), Strands: strands}

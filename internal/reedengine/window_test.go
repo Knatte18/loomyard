@@ -38,14 +38,23 @@ func TestOpenWindow(t *testing.T) {
 		{
 			name: "ALiveWindowOfThatNameIsReportedAndNothingStarts",
 			script: func(f *fakeTmux) {
-				f.answer(sessionListVerb, "@0 %1 0 tmux\n@4 %9 0 "+name+"\n", nil)
+				f.answer(sessionListVerb, "@0 %1 0 0 tmux\n@4 %9 0 0 "+name+"\n", nil)
 			},
 			want: WindowResult{WindowID: "@4", Name: name, Existing: true},
 		},
 		{
+			name: "ALiveOwnWindowOfThatNameIsNeitherReturnedNorKilledAndANewWindowOpens",
+			script: func(f *fakeTmux) {
+				f.answer(sessionListVerb, "@4 %9 0 1 "+name+"\n", nil)
+				f.answer("new-window", "@8\n", nil)
+			},
+			want:         WindowResult{WindowID: "@8", Name: name},
+			wantNewCalls: 1,
+		},
+		{
 			name: "ADeadWindowOfThatNameIsKilledAndReplaced",
 			script: func(f *fakeTmux) {
-				f.answer(sessionListVerb, "@4 %9 1 "+name+"\n", nil)
+				f.answer(sessionListVerb, "@4 %9 1 0 "+name+"\n", nil)
 				f.answer("new-window", "@8\n", nil)
 			},
 			want:         WindowResult{WindowID: "@8", Name: name},
@@ -131,9 +140,15 @@ func TestOpenWindow(t *testing.T) {
 			if tt.wantNewCalls == 0 || len(newCalls) == 0 {
 				return
 			}
-			wantArgv := []string{"new-window", "-d", "-P", "-F", "#{window_id}", "-t", exactSessionWindowTarget(e.SessionName()), "-n", name, wantCommand,
-				";", "set-option", "-w", "-t", exactSessionWindowTarget(e.SessionName()) + "=" + name, "remain-on-exit", "off",
-				";", "set-option", "-w", "-t", exactSessionWindowTarget(e.SessionName()) + "=" + name, "@lyx_hidden", "1"}
+			if len(newCalls[0]) <= 8 || !strings.HasPrefix(newCalls[0][8], temporaryWindowNamePrefix) {
+				t.Fatalf("new-window argv = %v, want a temporary window name after -n", newCalls[0])
+			}
+			temporaryName := newCalls[0][8]
+			temporaryTarget := exactSessionWindowTarget(e.SessionName()) + "=" + temporaryName
+			wantArgv := []string{"new-window", "-d", "-P", "-F", "#{window_id}", "-t", exactSessionWindowTarget(e.SessionName()), "-n", temporaryName, wantCommand,
+				";", "set-option", "-w", "-t", temporaryTarget, "remain-on-exit", "off",
+				";", "set-option", "-w", "-t", temporaryTarget, "@lyx_hidden", "1",
+				";", "rename-window", "-t", temporaryTarget, name}
 			if !slices.Equal(newCalls[0], wantArgv) {
 				t.Errorf("new-window argv = %v, want %v", newCalls[0], wantArgv)
 			}

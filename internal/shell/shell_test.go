@@ -293,3 +293,32 @@ func TestForGOOS(t *testing.T) {
 		t.Errorf("ForGOOS().Quote(%q) = %q; want either the pwsh or posix form", "it's", got)
 	}
 }
+
+// TestShell_OrElse pins that both dialects join with "||" and that the result chains as one statement.
+func TestShell_OrElse(t *testing.T) {
+	t.Parallel()
+	for name, sh := range map[string]Shell{"posix": Posix(), "pwsh": Pwsh()} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if got := sh.OrElse("a", "b"); got != "a || b" {
+				t.Errorf("OrElse(a, b) = %q; want %q", got, "a || b")
+			}
+			if got := sh.Chain(sh.OrElse("a", "b"), "c"); got != "a || b; c" {
+				t.Errorf("Chain(OrElse(a, b), c) = %q; want %q", got, "a || b; c")
+			}
+		})
+	}
+}
+
+// TestShell_Exit pins that both dialects end the shell with `exit`.
+func TestShell_Exit(t *testing.T) {
+	t.Parallel()
+	for name, sh := range map[string]Shell{"posix": Posix(), "pwsh": Pwsh()} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if got := sh.Exit(); got != "exit" {
+				t.Errorf("Exit() = %q; want %q", got, "exit")
+			}
+		})
+	}
+}

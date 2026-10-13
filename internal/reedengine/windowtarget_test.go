@@ -44,6 +44,20 @@ func TestStrandWindowTarget(t *testing.T) {
 			wantLists: 1,
 		},
 		{
+			name:      "OwnWindowStrandPaneIsNotTheStrandsWindow",
+			state:     &ReedState{Strands: []Strand{ownWindowTestStrand("o", "%2")}},
+			listing:   "%2 @5\n",
+			want:      current,
+			wantLists: 0,
+		},
+		{
+			name:      "SelvageWindowWinsOverAnOwnWindowStrand",
+			state:     &ReedState{SelvagePaneID: "%1", Strands: []Strand{ownWindowTestStrand("o", "%2")}},
+			listing:   "%2 @5\n%1 @4\n",
+			want:      "@4",
+			wantLists: 1,
+		},
+		{
 			name:      "NothingRecordedIsTheCurrentWindowWithoutARoundTrip",
 			state:     &ReedState{Strands: []Strand{{PaneID: ""}}},
 			want:      current,

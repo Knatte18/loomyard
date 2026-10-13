@@ -76,7 +76,7 @@ func (c *orchCLI) orchSpec(prompt string, now time.Time) shuttleengine.Spec {
 		NameOverride:   orchStrandName,
 		Segment:        segmentcolor.Coordinator,
 		ColorByCaller:  true,
-		Display:        render.Display{Focus: true},
+		Display:        render.Display{Anchor: render.AnchorBelowParent, Focus: true},
 
 		Skills:           orchSkills,
 		SkillLoadTimeout: c.cfg.HandoffTimeout(),

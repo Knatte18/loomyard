@@ -191,6 +191,26 @@ type SessionResumer interface {
 	CheckResume(sessionID, workdir string) (warning string, err error)
 }
 
+// OpenSpec describes one named session that runs with no prompt: the caller's strand role, the resolved model choice and the segment its window is colored by.
+type OpenSpec struct {
+	// Role is the strand role, from the caller's flag.
+	Role string
+	// Model, Effort and Version are the resolved model choice, each empty for the provider default.
+	Model   string
+	Effort  string
+	Version string
+	// Segment is the loom segment the session's window is colored by.
+	Segment segmentcolor.Segment
+}
+
+// SessionOpener is an optional capability beside Engine: the provider's way of opening a named interactive session with no prompt.
+// OpenLaunch returns the launch and resume lines and the session id of a session that runs with no prompt, no run directory and no run artifacts.
+// The session runs under the caller's own worktree settings, takes no turn, and is opened by Runner.Open.
+// It is separate from Engine for the same reason SessionCycler is: most implementers and test fakes never open a session.
+type SessionOpener interface {
+	OpenLaunch(spec OpenSpec, cfg Config) (Launch, error)
+}
+
 // SkillLoader is an optional capability beside Engine: the provider's way of loading a list of named skills into a live session in one submitted turn, and of checking that turn afterwards.
 // Runner.start requires it of an Engine whenever a spec names skills,
 // and the orch watcher's per-tick reload uses it through Runner.LoadSkills and Runner.ClassifySkillLoad.

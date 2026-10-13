@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
 // runOutcomeStopped is the RunState.Outcome of a run lyx stopped before it finished.
@@ -27,7 +28,7 @@ func (run *Run) saveState() error {
 	return saveRunState(run.runDir, run.state)
 }
 
-// Stop ends the run's strand and records the stop.
+// Stop removes the run's strand, when it is live or an own-window strand with a dead pane, and records the stop.
 // A record already terminal keeps its outcome, and a record still reading running whose output files all exist keeps running; any other record reads stopped.
 // The record is written before the strand is removed, so a failed write returns its error with the strand untouched, and a failed removal leaves the terminal record over a live strand.
 // A Wait on this handle that sees the strand go finalizes with the stop mark, so it records stopped unless the run's files show it done.
@@ -44,10 +45,10 @@ func (run *Run) Stop() error {
 		}
 	}
 	run.recordMu.Unlock()
-	return removeStrandIfLive(run.runner.reed, run.state.StrandGUID)
+	return removeStrandIfPresent(run.runner.reed, run.state.StrandGUID)
 }
 
-// StopStrand ends the strand guid names and records the stop, without needing an in-process Run handle.
+// StopStrand removes the strand guid names, when it is live or an own-window strand with a dead pane, and records the stop, without needing an in-process Run handle.
 // A guid with no run record is stopped by removing its strand alone.
 // A Wait in another process may overwrite the stopped record with its own terminal outcome, and either answer is terminal.
 func (r *Runner) StopStrand(guid string) error {
@@ -56,12 +57,12 @@ func (r *Runner) StopStrand(guid string) error {
 	}
 	_, runDir, err := FindRun(r.cfg, r.anchorPath, guid)
 	if err != nil {
-		return removeStrandIfLive(r.reed, guid)
+		return removeStrandIfPresent(r.reed, guid)
 	}
 	return r.stopRecorded(runDir, guid)
 }
 
-// stopRecorded writes the stop into the record at runDir, then removes the strand guid names.
+// stopRecorded writes the stop into the record at runDir, then removes the strand guid names when it is live or an own-window strand with a dead pane.
 // A record already terminal keeps its outcome, and one still reading running whose output files all exist keeps running.
 // A failed read or write returns its error with the strand untouched.
 func (r *Runner) stopRecorded(runDir, guid string) error {
@@ -77,21 +78,27 @@ func (r *Runner) stopRecorded(runDir, guid string) error {
 			}
 		}
 	}
-	return removeStrandIfLive(r.reed, guid)
+	return removeStrandIfPresent(r.reed, guid)
 }
 
-// removeStrandIfLive removes guid's strand when reed reports it live, logging the removal because it kills a real agent process.
-// A probe that could not answer has not shown the strand dead, so it returns an error rather than guessing.
-func removeStrandIfLive(reed ReedOps, guid string) error {
+// strandRemovable reports whether a stop removes strand: a live strand, or an own-window strand whose pane is present but dead.
+// A window 0 strand with a dead pane is not removable, since reconcile kills its pane at the next reed op.
+func strandRemovable(strand reedengine.StrandStatus) bool {
+	return strand.Live || (strand.OwnWindow && strand.Present)
+}
+
+// removeStrandIfPresent removes guid's strand when reed tracks it and it is removable, logging the removal because it may kill a real agent process.
+// A probe that could not answer has not shown the strand gone, so it returns an error rather than guessing.
+func removeStrandIfPresent(reed ReedOps, guid string) error {
 	status, err := reed.Status()
 	if err != nil {
 		return fmt.Errorf("shuttle: stop strand %s: probe reed before removing it: %w", guid, err)
 	}
 	strand, tracked := strandStatusByGUID(status.Strands, guid)
-	if !tracked || !strand.Live {
+	if !tracked || !strandRemovable(strand) {
 		return nil
 	}
-	logger.Warn("shuttle: stopping a live strand", "strandGUID", guid)
+	logger.Warn("shuttle: stopping a strand", "strandGUID", guid, "live", strand.Live)
 	if _, err := reed.RemoveStrand(guid, false); err != nil {
 		return fmt.Errorf("shuttle: stop strand %s: remove it: %w", guid, err)
 	}

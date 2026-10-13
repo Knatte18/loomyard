@@ -124,7 +124,9 @@ func (e *Engine) fixedHeightPins(st *ReedState, live []LivePane, box render.Box,
 // anyPlacedStrand reports whether at least one strand would be placed by
 // render.Rules against the given present-pane set: a non-hidden strand whose
 // PaneID names a pane still present in the window (matching
-// partitionByAnchor's filter). applyLayoutLocked uses this to refuse to apply
+// partitionByAnchor's filter).
+// An own-window strand is never placed in this window, so it never counts.
+// applyLayoutLocked uses this to refuse to apply
 // a layout that enumerates ZERO panes: tmux accepts an empty-cell layout
 // string (exit 0) and answers it by destroying every pane in the session,
 // leaving a zero-pane zombie session no later add can host a strand in
@@ -132,7 +134,7 @@ func (e *Engine) fixedHeightPins(st *ReedState, live []LivePane, box render.Box,
 // wiped them all and wedged the session).
 func anyPlacedStrand(strands []Strand, presentIDs map[string]bool) bool {
 	for _, s := range strands {
-		if s.Display.Anchor != render.AnchorHidden && s.PaneID != "" && presentIDs[s.PaneID] {
+		if s.Display.Anchor != render.AnchorHidden && !isOwnWindow(s.Display) && s.PaneID != "" && presentIDs[s.PaneID] {
 			return true
 		}
 	}

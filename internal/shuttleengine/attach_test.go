@@ -212,12 +212,16 @@ func TestAttach_OutcomeDisposition(t *testing.T) {
 			if !tt.wantFound && !isZeroResult(result) {
 				t.Errorf("result = %+v; want zero Result when not found", result)
 			}
+			// The empty anchor defaults to own-window, yet attaching to a window 0 strand never moves or refuses it.
+			if len(reed.AddStrandCalls) != 0 {
+				t.Errorf("AddStrand calls = %v; want none, since attach never relaunches a strand", reed.AddStrandCalls)
+			}
 		})
 	}
 }
 
 // TestAttach_RemovesSupersededStrands covers the removal on Attach's not-found answer:
-// only the live strand of a respawn-eligible candidate of the same output-file set is removed,
+// only the live or dead own-window strand of a respawn-eligible candidate of the same output-file set is removed,
 // an attach or a failed removal never answers not found,
 // and AttachIfLive removes nothing.
 func TestAttach_RemovesSupersededStrands(t *testing.T) {
@@ -243,6 +247,7 @@ func TestAttach_RemovesSupersededStrands(t *testing.T) {
 		{name: "terminal_candidate_on_a_live_strand_is_removed", outcome: "done", strands: []reedengine.StrandStatus{live("strand-1")}, wantRemoved: []string{"strand-1"}, wantRecorded: "done"},
 		{name: "unrecognized_outcome_candidate_is_recorded_stopped_then_removed", outcome: "some-future-value", outputMissing: true, strands: []reedengine.StrandStatus{live("strand-1")}, wantRemoved: []string{"strand-1"}, wantRecorded: runOutcomeStopped},
 		{name: "dead_pane_candidate_removes_nothing", outcome: "died", strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: false}}},
+		{name: "dead_own_window_candidate_is_removed", outcome: "died", strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", OwnWindow: true, Present: true}}, wantRemoved: []string{"strand-1"}, wantRecorded: "died"},
 		{name: "untracked_candidate_removes_nothing", outcome: "timeout"},
 		{name: "other_output_set_strand_survives", outcome: "done", strands: []reedengine.StrandStatus{live("strand-1"), live("strand-other")}, otherOutputs: true, wantRemoved: []string{"strand-1"}},
 		{name: "attachable_candidate_is_attached_not_removed", outcome: runOutcomeRunning, strands: []reedengine.StrandStatus{live("strand-1")}, wantFound: true},
@@ -1093,11 +1098,11 @@ func TestAttach_StartedSeededTrue(t *testing.T) {
 // Attach's own dispositioning read sees a live pane (so the candidate is attachable) and Wait's
 // first liveness tick sees the binding cleared. With output files present a hidden-anchor spec
 // still classifies OutcomeDone, proving the inherited checkLivenessTick branches are reached. With
-// the output file never created and an empty Anchor, Attach defaults it to AnchorBelowParent on the
+// the output file never created and an empty Anchor, Attach defaults it to AnchorOwnWindow on the
 // reconstructed Run, so Wait surfaces errStrandPaneBindingCleared rather than the empty Anchor
 // taking the hidden-strand carve-out and classifying OutcomeDied.
 //
-//testtiming:keep pins that an attached run keeps liveness coverage after a cleared binding: done with files present, and errStrandPaneBindingCleared once an empty Anchor is defaulted
+//testtiming:keep pins that an attached run keeps liveness coverage after a cleared binding: done with files present, and errStrandPaneBindingCleared once an empty Anchor is defaulted to own-window
 func TestAttach_StrandLaterLosesPaneBinding(t *testing.T) {
 	tests := []struct {
 		name         string

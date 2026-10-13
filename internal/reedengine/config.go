@@ -32,6 +32,12 @@ type Config struct {
 	// OperatorQuietS is the seconds since an attached client's last activity on a strand's pane within which lyx types nothing into that pane.
 	OperatorQuietS int `yaml:"operator_quiet_s"`
 
+	// WindowShareMax is the largest declared group size whose strands share one window; a larger group gives each strand a window of its own.
+	WindowShareMax int `yaml:"window_share_max"`
+
+	// WindowSplit is the direction a shared window splits in: "width" or "height".
+	WindowSplit string `yaml:"window_split"`
+
 	TmuxConf string `yaml:"tmux_conf"`
 
 	Selvage SelvageConfig `yaml:"selvage"`
@@ -62,11 +68,37 @@ func ConfigSpec() configengine.Spec {
 			"mouse":            configengine.CategoryCrossPair,
 			"watchdog":         configengine.CategoryNone,
 			"operator_quiet_s": configengine.CategoryNone,
+			"window_share_max": configengine.CategoryNone,
+			"window_split":     configengine.CategoryNone,
 			"tmux_conf":        configengine.CategorySourcedFile,
 			"selvage":          configengine.CategoryNone,
 			"segment_colors":   configengine.CategoryNone,
 		},
 	}
+}
+
+// windowSplitLayout maps a window_split value to the tmux split flag and layout a shared window uses.
+// The empty string reads as "width", the template default, so a Config built in code without the key keeps working.
+func windowSplitLayout(raw string) (splitFlag, layout string, err error) {
+	switch raw {
+	case "", "width":
+		return "-h", "even-horizontal", nil
+	case "height":
+		return "-v", "even-vertical", nil
+	}
+	return "", "", fmt.Errorf("invalid window_split value %q: want \"width\" or \"height\"", raw)
+}
+
+// validateWindowConfig refuses a window_split other than "width" or "height" and a negative window_share_max.
+// Each message names its key.
+func validateWindowConfig(cfg Config) error {
+	if _, _, err := windowSplitLayout(cfg.WindowSplit); err != nil {
+		return err
+	}
+	if cfg.WindowShareMax < 0 {
+		return fmt.Errorf("invalid window_share_max value %d: want an integer of at least 0", cfg.WindowShareMax)
+	}
+	return nil
 }
 
 // LoadConfig loads and unmarshals configuration for the reed module through the layer stack under dirs.

@@ -68,17 +68,13 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			// The anchor vocabulary is closed to below-parent/hidden in v1;
-			// own-window is declared but deferred, so reject it here with a
-			// specific message rather than letting a confusing render-layer
-			// error surface later.
+			// The CLI vocabulary is below-parent, hidden and own-window.
+			// Top is an engine-only anchor, so it is rejected here with a specific message.
+			// That keeps a confusing render-layer error from surfacing later.
 			switch render.Anchor(anchor) {
-			case render.AnchorBelowParent, render.AnchorHidden:
-			case render.AnchorOwnWindow:
-				clihelp.SetExit(cmd.Context(), output.Err(out, "--anchor own-window is deferred, not supported in v1"))
-				return nil
+			case render.AnchorBelowParent, render.AnchorHidden, render.AnchorOwnWindow:
 			default:
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("invalid --anchor %q; want below-parent|hidden", anchor)))
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("invalid --anchor %q; want below-parent|hidden|own-window", anchor)))
 				return nil
 			}
 
@@ -125,7 +121,7 @@ Example:
 	cmd.Flags().StringVar(&name, "name", "", "explicit role segment or full name, never renumbered; refused when another strand holds it")
 	cmd.Flags().StringVar(&resumeCmd, "resume-cmd", "", `command "lyx reed resume" replays instead of --cmd`)
 	cmd.Flags().StringVar(&parent, "parent", "", "parent strand's guid")
-	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorBelowParent), "placement: below-parent|hidden")
+	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorBelowParent), "placement: below-parent|hidden|own-window")
 	cmd.Flags().BoolVar(&focus, "focus", false, "give this strand tmux input focus")
 	cmd.Flags().BoolVar(&ifAbsent, "if-absent", false, "make a repeated add idempotent by matching --name against this worktree's strands")
 	cmd.Flags().StringVar(&unlessName, "unless-name", "", "skip the add while this worktree's state holds a strand, live or dormant, matching this role segment or full name; checked before --if-absent, never touches that strand")

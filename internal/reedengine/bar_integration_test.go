@@ -155,6 +155,50 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 	if line = f.expand(t, "#{T:status-format[0]}"); strings.Contains(line, "⏳") {
 		t.Errorf("line 1 after the mark was cleared = %q, want no wait text", line)
 	}
+
+	// An own window gets a button in its segment's color, underscored until the operator first selects it.
+	scout, err := e.AddStrand(AddSpec{NameOverride: "scout", Segment: "review", Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOwnWindow}})
+	if err != nil {
+		t.Fatalf("AddStrand(scout): %v", err)
+	}
+	scoutWindow := strings.TrimSpace(mustTmuxOutput(t, e, "display-message", "-p", "-t", scout.PaneID, "#{window_id}"))
+	scoutIndex := strings.TrimSpace(mustTmuxOutput(t, e, "display-message", "-p", "-t", scout.PaneID, "#{window_index}"))
+	scoutUnseen := "range=window|" + scoutIndex + " bg=colour236 fg=colour208 underscore] scout"
+	scoutUnlit := "range=window|" + scoutIndex + " bg=colour236 fg=colour208] scout"
+	scoutLit := "range=window|" + scoutIndex + " list=focus bg=colour208 fg=black bold] scout"
+	if line = f.expand(t, "#{T:status-format[0]}"); !strings.Contains(line, scoutUnseen) {
+		t.Errorf("line 1 with a new own window = %q, want it to contain the unseen button %q", line, scoutUnseen)
+	}
+	if strings.Contains(line, " hidden ") {
+		t.Errorf("line 1 with an own window = %q, want still no button for the window carrying @lyx_hidden", line)
+	}
+
+	if err := e.SetWaitMark(scout.GUID, "verify loom", time.Now().Add(-3*time.Minute)); err != nil {
+		t.Fatalf("SetWaitMark(scout): %v", err)
+	}
+	if line = f.expand(t, "#{T:status-format[0]}"); !regexp.MustCompile(`scout ⏳verify loom [23]m `).MatchString(line) {
+		t.Errorf("line 1 with a mark on the own window's strand = %q, want its button to carry the label and a two-to-three minute count", line)
+	}
+	if err := e.SetWaitMark(scout.GUID, "", time.Time{}); err != nil {
+		t.Fatalf("SetWaitMark(scout, clear): %v", err)
+	}
+
+	if err := e.tmux.run("select-window", "-t", scoutWindow); err != nil {
+		t.Fatalf("select-window scout: %v", err)
+	}
+	if line = f.expand(t, "#{T:status-format[0]}"); !strings.Contains(line, scoutLit) {
+		t.Errorf("line 1 with the own window selected = %q, want it to contain the lit button %q", line, scoutLit)
+	}
+	if unseen := strings.TrimSpace(mustTmuxOutput(t, e, "display-message", "-p", "-t", scoutWindow, "#{@lyx_unseen}")); unseen != "" {
+		t.Errorf("own window @lyx_unseen = %q after it was selected, want it cleared", unseen)
+	}
+
+	if err := e.tmux.run("select-window", "-t", f.strandWindow); err != nil {
+		t.Fatalf("select-window strands: %v", err)
+	}
+	if line = f.expand(t, "#{T:status-format[0]}"); !strings.Contains(line, scoutUnlit) || strings.Contains(line, scoutUnseen) {
+		t.Errorf("line 1 after selecting the strands' window again = %q, want the own window's button unlit without underscore", line)
+	}
 }
 
 func TestBar_LineTwoListsSessionsInIDOrderAndTheBorderNamesStrands(t *testing.T) {

@@ -52,20 +52,33 @@ type AddSpec struct {
 // subtree.
 type Removed struct {
 	Strands []struct{ GUID, Name string }
+	// ConfigWarning names the invalid window config key a removal skipped the shared-window layout for, empty normally.
+	ConfigWarning string
 }
 
 // validateDisplay rejects an invalid Display at the op boundary,
 // before any pane is launched or state persisted.
-// The anchor must be below-parent, hidden or top, and render must accept the whole display.
+// The anchor must be below-parent, hidden, top or own-window, and render must accept the whole display.
 func validateDisplay(display render.Display) error {
 	switch display.Anchor {
-	case render.AnchorBelowParent, render.AnchorHidden, render.AnchorTop:
+	case render.AnchorBelowParent, render.AnchorHidden, render.AnchorTop, render.AnchorOwnWindow:
 		return render.ValidateDisplay(display)
-	case render.AnchorOwnWindow:
-		return fmt.Errorf("anchor %q is deferred, not supported in v1", render.AnchorOwnWindow)
 	default:
-		return fmt.Errorf("invalid anchor %q; want below-parent|hidden|top", display.Anchor)
+		return fmt.Errorf("invalid anchor %q; want below-parent|hidden|top|own-window", display.Anchor)
 	}
+}
+
+// refuseWindowMove refuses an update that moves a strand into or out of the own-window anchor, or changes an own-window strand's window group.
+// A strand's pane lives in window 0 or in a window of its own from launch on, so such a move would strand the pane where the new display does not expect it.
+// The error names the way forward: remove the strand and add it again.
+func refuseWindowMove(name string, current, next render.Display) error {
+	if isOwnWindow(current) != isOwnWindow(next) {
+		return fmt.Errorf("strand %q cannot move between own-window and another anchor; way forward: lyx reed remove --name %s, then add it again with the new anchor", name, name)
+	}
+	if isOwnWindow(current) && (current.Window != next.Window || current.WindowSize != next.WindowSize) {
+		return fmt.Errorf("strand %q cannot change its window group; way forward: lyx reed remove --name %s, then add it again with the new group", name, name)
+	}
+	return nil
 }
 
 // validateIfAbsent rejects spec at the op boundary, before any state is loaded, when IfAbsent is set
@@ -371,6 +384,10 @@ func (e *Engine) updateStrandLocked(st *ReedState, guid string, display render.D
 	}
 	strand := &st.Strands[idx]
 
+	if err := refuseWindowMove(strand.Name, strand.Display, display); err != nil {
+		return Strand{}, err
+	}
+
 	wasHidden := strand.Display.Anchor == render.AnchorHidden
 	if !wasHidden && display.Anchor == render.AnchorHidden {
 		return Strand{}, fmt.Errorf("cannot hide a live strand in v1")
@@ -419,6 +436,7 @@ func (e *Engine) removeStrandLocked(st *ReedState, guid string, recursive bool) 
 		remaining = append(remaining, s)
 	}
 	st.Strands = remaining
+	pruneWindowGroups(st)
 	removeLaunchScripts(shell.ForGOOS(), e.stateDir(), toRemove)
 
 	return removed, paneIDs, nil
@@ -484,6 +502,9 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 		if err != nil {
 			return err
 		}
+		if err := validateWindowConfig(e.cfg); err != nil {
+			return err
+		}
 		unlessFull := ""
 		if unlessName != "" {
 			if unlessFull, err = e.validateNaming(AddSpec{NameOverride: unlessName}); err != nil {
@@ -517,12 +538,12 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 			}
 
 			if spec.IfAbsent {
-				live, err := e.listStrandPanes(st)
+				live, windows, err := e.listStrandAndWindowPanes(st)
 				if err != nil {
 					return fmt.Errorf("list panes: %w", err)
 				}
 				// aliveIDSet, not liveIDSet: see classifyIfAbsent's own doc comment for why.
-				decision, idx := classifyIfAbsent(st.Strands, explicitName, aliveIDSet(live))
+				decision, idx := classifyIfAbsent(st.Strands, explicitName, aliveIDSet(presentPanes(st.Strands, live, windows)))
 				switch decision {
 				case ifAbsentNoOpAlive, ifAbsentNoOpHidden:
 					// Neither no-op branch mutates anything: no SaveState, no reconcile/apply, and
@@ -764,6 +785,8 @@ func sessionReapRoots(live []LivePane) []int {
 // session, so a stale or copied reed.json can never make this remove destroy a sibling
 // worktree's pane on the shared per-hub server (paneIDsInSession, R5 review finding
 // R5-F4). It is free: this call site already had to list panes for the reap snapshot.
+// The listing spans every window of the session, so an own-window strand's pane is killed too,
+// and its window ends with its last pane.
 // A failed enumeration kills nothing rather than falling back to the unchecked list —
 // list-panes exits non-zero precisely when the session is gone, in which case the panes
 // are gone with it and there is nothing this remove still needs to destroy.
@@ -786,23 +809,33 @@ func sessionReapRoots(live []LivePane) []int {
 // confirmed gone (the tmux case); on psmux the reconcile tail simply
 // re-enumerates and re-applies — a strand's pane is now always a
 // fresh split, so a corpse is never reused.
-func (e *Engine) killStrandPanes(paneIDs []string) []int {
-	var reapPIDs []int
+//
+// Before any kill, an own window whose every listed pane is being killed is about to end.
+// selectStrandsWindowIfCurrentLocked then moves a viewer on it to the strands' window first, and a viewer on any other window is never moved.
+// leftWindows names the own windows that lose a pane but keep at least one, for the caller to lay out again.
+func (e *Engine) killStrandPanes(st *ReedState, paneIDs []string) (reapPIDs []int, leftWindows []string) {
 	var killPaneIDs []string
 	if len(paneIDs) > 0 {
-		live, err := e.listStoredStrandPanes()
+		windows, err := e.tmux.listWindowPanes(e.SessionName())
 		if err != nil {
 			logger.Warn("reed: could not enumerate panes before removing a strand, killing none",
 				"socket", e.Socket(), "session", e.SessionName(), "err", err)
 		} else {
+			live := make([]LivePane, len(windows))
+			for i, w := range windows {
+				live[i] = w.livePane()
+			}
 			killPaneIDs = paneIDsInSession(paneIDs, live)
 			reapPIDs = e.descendantClosurePIDs(alivePanePIDs(killPaneIDs, live))
+			var endingWindows []string
+			endingWindows, leftWindows = ownWindowsLosingPanes(windows, killPaneIDs)
+			e.selectStrandsWindowIfCurrentLocked(st, endingWindows)
 		}
 	}
 	for _, id := range killPaneIDs {
 		_ = e.tmux.run("kill-pane", "-t", id)
 	}
-	return reapPIDs
+	return reapPIDs, leftWindows
 }
 
 // MarkRetiring sets or clears guid's Retiring flag under the op lock and persists the state.
@@ -856,7 +889,8 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 			return err
 		}
 
-		reapPIDs := e.killStrandPanes(paneIDs)
+		reapPIDs, leftWindows := e.killStrandPanes(st, paneIDs)
+		removed.ConfigWarning = e.relayoutSharedWindowsLocked(leftWindows)
 
 		// Reap after the layout repair, so the surviving panes re-tile
 		// immediately and only the return is gated on the async pane teardown

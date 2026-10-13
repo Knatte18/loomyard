@@ -143,8 +143,18 @@ func TestRepairNames_SessionName(t *testing.T) {
 		clients    string
 		clientsErr error
 		wantRename bool
+		// ownWindow anchors the strand own-window and lists its pane only in windowPanes, the session-wide listing.
+		ownWindow   bool
+		windowPanes string
 	}{
 		{name: "RenamedOnIdlePane", namer: fakeNamer{drift: true, idle: true}, wantRename: true},
+		{
+			name:        "OwnWindowStrandRenamedFromTheSessionListing",
+			namer:       fakeNamer{drift: true, idle: true},
+			wantRename:  true,
+			ownWindow:   true,
+			windowPanes: "@3 1 - %1 0 4321 tc:s:worker\n",
+		},
 		{name: "BusyPaneTypesNothing", namer: fakeNamer{drift: true, idle: false}},
 		{name: "NoDriftTypesNothing", namer: fakeNamer{drift: false, idle: true}},
 		{name: "ActiveOperatorTypesNothing", namer: fakeNamer{drift: true, idle: true}, clients: activeClient},
@@ -153,9 +163,17 @@ func TestRepairNames_SessionName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logs := logcapture.CaptureVerbose(t)
+			strand := repairStrand("g1", "tc:s:worker", "%1", "sess-1")
+			if tt.ownWindow {
+				strand.Display.Anchor = render.AnchorOwnWindow
+			}
 			e, fake := newRepairTestEngine(t,
-				[]Strand{repairStrand("g1", "tc:s:worker", "%1", "sess-1")},
+				[]Strand{strand},
 				[]LivePane{{ID: "%1", Title: "tc:s:worker"}})
+			if tt.ownWindow {
+				fake.answer("list-panes", "", nil)
+				fake.answerWindowPanes(tt.windowPanes, nil)
+			}
 			fake.answer("list-clients", tt.clients, tt.clientsErr)
 			namer := tt.namer
 

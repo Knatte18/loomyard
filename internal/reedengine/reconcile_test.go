@@ -12,19 +12,27 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
+
+// ownWindowTestStrand returns a strand anchored own-window and bound to paneID.
+func ownWindowTestStrand(guid, paneID string) Strand {
+	return Strand{GUID: guid, PaneID: paneID, Display: render.Display{Anchor: render.AnchorOwnWindow}}
+}
 
 func TestPlanReconcile(t *testing.T) {
 	tests := []struct {
 		name                     string
 		strands                  []Strand
 		live                     []LivePane
+		windows                  []windowPane
 		selvagePaneID            string
 		wantCleared              []string
 		wantDeadPanesToKill      []string
 		wantUntrackedPanesToKill []string
 		wantSolePane             string
+		wantOwnWindowsToEnd      []string
 	}{
 		{
 			name:        "GoneStrandClearedRecordKept",
@@ -227,12 +235,56 @@ func TestPlanReconcile(t *testing.T) {
 			wantCleared:         []string{"g1"},
 			wantDeadPanesToKill: []string{"%1"},
 		},
+		{
+			name:        "OwnWindowStrandPresentAliveKeepsBinding",
+			strands:     []Strand{ownWindowTestStrand("o", "%5")},
+			windows:     []windowPane{{WindowID: "@3", Own: true, PaneID: "%5"}},
+			wantCleared: nil,
+		},
+		{
+			name:        "OwnWindowStrandPresentDeadKeepsBindingAndIsNeverKilled",
+			strands:     []Strand{{GUID: "g1", PaneID: "%1"}, ownWindowTestStrand("o", "%5")},
+			live:        []LivePane{{ID: "%1", Dead: false}},
+			windows:     []windowPane{{WindowID: "@0", PaneID: "%1"}, {WindowID: "@3", Own: true, PaneID: "%5", Dead: true}},
+			wantCleared: nil,
+		},
+		{
+			name:        "OwnWindowStrandAbsentIsCleared",
+			strands:     []Strand{ownWindowTestStrand("o", "%5")},
+			wantCleared: []string{"o"},
+		},
+		{
+			name:                "AliveOwnWindowPaneDoesNotSatisfyTheSurvivalRule",
+			strands:             []Strand{{GUID: "g1", PaneID: "%1"}, {GUID: "g2", PaneID: "%2"}, ownWindowTestStrand("o", "%5")},
+			live:                []LivePane{{ID: "%1", Dead: true}, {ID: "%2", Dead: true}},
+			windows:             []windowPane{{WindowID: "@3", Own: true, PaneID: "%5"}},
+			wantCleared:         []string{"g2"},
+			wantDeadPanesToKill: []string{"%2"},
+			wantSolePane:        "%1",
+		},
+		{
+			name:                "OwnWindowWithNoBoundPaneIsEnded",
+			windows:             []windowPane{{WindowID: "@4", Own: true, PaneID: "%8"}},
+			wantOwnWindowsToEnd: []string{"@4"},
+		},
+		{
+			name:    "WindowWithoutTheMarkerIsNeverEnded",
+			windows: []windowPane{{WindowID: "@4", PaneID: "%8"}},
+		},
+		{
+			name:    "OwnWindowHoldingABoundPaneIsKept",
+			strands: []Strand{ownWindowTestStrand("o", "%5")},
+			windows: []windowPane{{WindowID: "@3", Own: true, PaneID: "%5"}, {WindowID: "@3", Own: true, PaneID: "%6"}},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			policy := newReapPolicy(&ReedState{SelvagePaneID: tt.selvagePaneID}, tt.live)
-			gotPlan := planReconcile(tt.strands, tt.live, policy)
+			gotPlan := planReconcile(tt.strands, tt.live, tt.windows, policy)
+			if !slices.Equal(gotPlan.ownWindowsToEnd, tt.wantOwnWindowsToEnd) {
+				t.Errorf("planReconcile() ownWindowsToEnd = %v, want %v", gotPlan.ownWindowsToEnd, tt.wantOwnWindowsToEnd)
+			}
 			if !slices.Equal(gotPlan.clearedGUIDs, tt.wantCleared) {
 				t.Errorf("planReconcile() clearedGUIDs = %v, want %v", gotPlan.clearedGUIDs, tt.wantCleared)
 			}
@@ -273,7 +325,7 @@ func TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux(t *te
 	}}
 	live := []LivePane{{ID: "%1", Dead: false}}
 
-	killed, err := e.reconcileLocked(st, live)
+	killed, err := e.reconcileLocked(st, live, nil)
 	if err != nil {
 		t.Fatalf("reconcileLocked: %v", err)
 	}
@@ -301,7 +353,7 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 		st := &ReedState{SelvagePaneID: "%selvage"}
 		live := []LivePane{{ID: "%selvage", Dead: false}, {ID: "%orphan1", Dead: false}, {ID: "%orphan2", Dead: false}}
 
-		killed, err := e.reconcileLocked(st, live)
+		killed, err := e.reconcileLocked(st, live, nil)
 		if err != nil {
 			t.Fatalf("reconcileLocked: %v", err)
 		}
@@ -322,7 +374,7 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 		buf := logcapture.CaptureVerbose(t)
 
 		st := &ReedState{}
-		killed, err := e.reconcileLocked(st, nil)
+		killed, err := e.reconcileLocked(st, nil, nil)
 		if err != nil {
 			t.Fatalf("reconcileLocked: %v", err)
 		}
@@ -348,7 +400,7 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 		st := &ReedState{SelvagePaneID: "%selvage"}
 		live := []LivePane{{ID: "%selvage", Dead: false}, {ID: "%orphan1", Dead: false}, {ID: "%orphan2", Dead: false}}
 
-		killed, err := e.reconcileLocked(st, live)
+		killed, err := e.reconcileLocked(st, live, nil)
 		if err == nil {
 			t.Fatal("reconcileLocked() err = nil, want the kill-pane failure to propagate")
 		}

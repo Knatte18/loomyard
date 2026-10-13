@@ -150,9 +150,19 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 	if chairSpec.ForkSubagents || !advisorSpec.ForkSubagents || chairSpec.Round != "r7" || advisorSpec.Round != "r7" {
 		t.Errorf("spec ForkSubagents/Round = chair %v/%q, advisor %v/%q, want the seat's flag and the table's round", chairSpec.ForkSubagents, chairSpec.Round, advisorSpec.ForkSubagents, advisorSpec.Round)
 	}
-	wantDisplay := render.Display{Size: render.Size{Kind: render.SizeSharing}}
+	wantDisplay := render.Display{Anchor: render.AnchorOwnWindow, Window: "multi-r7", WindowSize: 3}
 	if chairSpec.Display != wantDisplay || advisorSpec.Display != wantDisplay {
-		t.Errorf("spec Display = chair %+v, advisor %+v; want the sharing size and no anchor on both", chairSpec.Display, advisorSpec.Display)
+		t.Errorf("spec Display = chair %+v, advisor %+v; want %+v on both", chairSpec.Display, advisorSpec.Display, wantDisplay)
+	}
+	noRound := table
+	noRound.Round = ""
+	if got := seatSpec(noRound, noRound.Seats[0], "").Display.Window; got != "multi" {
+		t.Errorf("window group with the round cleared = %q, want the bare role prefix", got)
+	}
+	oneSeat := table
+	oneSeat.Seats = table.Seats[:1]
+	if got := seatSpec(oneSeat, oneSeat.Seats[0], "").Display; got.Window != "" || got.WindowSize != 1 {
+		t.Errorf("one-seat table Display = %+v, want an empty window group and size 1", got)
 	}
 	requiredSpec := seatSpec(table, Seat{Name: AdvisorName(1), Required: true}, "")
 	if requiredSpec.QuietHold || !requiredSpec.KeepPane {

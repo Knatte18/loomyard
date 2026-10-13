@@ -421,6 +421,7 @@ func (e *Engine) splitPaneBelowLocked(target string, preSplitLive []LivePane, la
 }
 
 // recordedPaneIDs lists the pane ids st records, Selvage first, then the strands in order.
+// An own-window strand's pane is skipped, since it is not placed in the strands' window.
 func recordedPaneIDs(st *ReedState) []string {
 	if st == nil {
 		return nil
@@ -430,7 +431,7 @@ func recordedPaneIDs(st *ReedState) []string {
 		ids = append(ids, st.SelvagePaneID)
 	}
 	for _, s := range st.Strands {
-		if s.PaneID != "" {
+		if s.PaneID != "" && !isOwnWindow(s.Display) {
 			ids = append(ids, s.PaneID)
 		}
 	}

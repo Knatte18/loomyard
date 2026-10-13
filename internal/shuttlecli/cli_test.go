@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/spf13/cobra"
 )
 
 // fakeClock is a shuttleengine.Clock whose Sleep advances it, so a runner's poll sleeps cost no wall-clock time.
@@ -49,7 +50,7 @@ func newFakeClockRunner(reed shuttleengine.ReedOps, engine shuttleengine.Engine,
 	return runner
 }
 
-// TestRunCLI_Run_FlagValidation drives runCmd directly rather than through RunCLI, so no parent
+// TestRunCLI_Run_FlagValidation drives runCmd, and openCmd for its OpenMissingRole and OpenInvalidModelSpec rows, directly rather than through RunCLI, so no parent
 // PersistentPreRunE runs and no abort is in play — this is the flag-shape check on its own terms,
 // which is what these cases are actually about. Its companion below covers what happens when a
 // pre-run abort and a flag error coincide.
@@ -58,10 +59,23 @@ func newFakeClockRunner(reed shuttleengine.ReedOps, engine shuttleengine.Engine,
 func TestRunCLI_Run_FlagValidation(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name    string
+		name string
+		// build constructs the command under test; nil means c.runCmd.
+		build   func(c *shuttleCLI) *cobra.Command
 		args    []string
 		wantErr string
 	}{
+		{
+			name:    "OpenMissingRole",
+			build:   (*shuttleCLI).openCmd,
+			wantErr: "--role is required",
+		},
+		{
+			name:    "OpenInvalidModelSpec",
+			build:   (*shuttleCLI).openCmd,
+			args:    []string{"--role", "explore", "--model", "opus[nope"},
+			wantErr: "--model",
+		},
 		{
 			name:    "MissingOutputFile",
 			args:    []string{"--prompt", "do the thing"},
@@ -85,7 +99,11 @@ func TestRunCLI_Run_FlagValidation(t *testing.T) {
 			// A nil runner is deliberate: every case here must be refused by the flag-shape checks
 			// before c.runner is ever dereferenced, and a nil runner is what proves it.
 			c := &shuttleCLI{}
-			cmd := c.runCmd()
+			build := tt.build
+			if build == nil {
+				build = (*shuttleCLI).runCmd
+			}
+			cmd := build(c)
 			var out bytes.Buffer
 			cmd.SetOut(&out)
 			cmd.SetErr(&out)

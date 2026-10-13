@@ -43,11 +43,11 @@ func (e *Engine) Directory() ([]DirectoryRow, error) {
 		if err != nil {
 			return err
 		}
-		live, err := e.listStrandPanes(st)
+		live, windows, err := e.listStrandAndWindowPanes(st)
 		if err != nil {
 			return fmt.Errorf("list panes: %w", err)
 		}
-		rows = directoryRows(st.Strands, live)
+		rows = directoryRows(st.Strands, presentPanes(st.Strands, live, windows))
 		return nil
 	})
 	return rows, err

@@ -73,11 +73,11 @@ func (e *Engine) resolvePaneInThisSessionLocked(st *ReedState, guid string) (str
 		return "", err
 	}
 
-	live, err := e.listStrandPanes(st)
+	live, windows, err := e.listStrandAndWindowPanes(st)
 	if err != nil {
 		return "", fmt.Errorf("list panes: %w", err)
 	}
-	if !liveIDSet(live)[paneID] {
+	if !liveIDSet(presentPanes(st.Strands, live, windows))[paneID] {
 		return "", fmt.Errorf(
 			"strand %q is bound to pane %s, which is not a pane of this worktree's session %q — reed state is stale (pane ids are shared across every worktree on this hub's tmux server); run \"lyx reed resume\" to rebind it",
 			guid, paneID, e.SessionName())

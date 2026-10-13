@@ -93,11 +93,11 @@ func TestSpec_Validate(t *testing.T) {
 			wantErrIn: "must not be negative",
 		},
 		{
-			name: "anchor defaults to below parent",
+			name: "anchor defaults to own-window",
 			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}},
 			check: func(t *testing.T, s *Spec) {
-				if s.Display.Anchor != render.AnchorBelowParent {
-					t.Errorf("Display.Anchor = %q, want %q", s.Display.Anchor, render.AnchorBelowParent)
+				if s.Display.Anchor != render.AnchorOwnWindow {
+					t.Errorf("Display.Anchor = %q, want %q", s.Display.Anchor, render.AnchorOwnWindow)
 				}
 			},
 		},

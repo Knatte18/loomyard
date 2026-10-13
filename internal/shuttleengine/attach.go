@@ -198,16 +198,16 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, 
 	return r.reconstruct(chosen, normalized, gate), true, nil
 }
 
-// removeSupersededStrands removes the strand of each candidate that reed tracks as live,
+// removeSupersededStrands removes the strand of each candidate that reed tracks as live or as an own-window strand with a dead pane,
 // so the fresh run the caller starts next does not run beside the session it supersedes.
-// A candidate whose strand is untracked or dead has nothing to remove.
+// A candidate whose strand is untracked or a dead window 0 strand has nothing to remove.
 func (r *Runner) removeSupersededStrands(candidates []attachCandidate, strands []reedengine.StrandStatus) error {
 	for _, c := range candidates {
 		strand, tracked := strandStatusByGUID(strands, c.state.StrandGUID)
-		if !tracked || !strand.Live {
+		if !tracked || !strandRemovable(strand) {
 			continue
 		}
-		logger.Warn("shuttle: attach: removing the live strand of a superseded run before a fresh run", "runDir", c.runDir, "strandGUID", c.state.StrandGUID)
+		logger.Warn("shuttle: attach: removing the strand of a superseded run before a fresh run", "runDir", c.runDir, "strandGUID", c.state.StrandGUID)
 		if err := r.stopRecorded(c.runDir, c.state.StrandGUID); err != nil {
 			return fmt.Errorf("shuttle: attach: could not remove the superseded strand %s of run %s: %w; way forward: run \"lyx reed remove %s\", then re-step the row", c.state.StrandGUID, c.runDir, err, c.state.StrandGUID)
 		}
@@ -366,8 +366,11 @@ func normalizeAttachSpec(spec Spec, worktreeRoot string, cfg Config) (Spec, erro
 	// carve-out and classify OutcomeDied instead of surfacing errStrandPaneBindingCleared. This
 	// normalization matters to the attached RUN's own liveness checks, not to matching — see
 	// attach-reconstructs-the-run-explicitly.
+	// It defaults to own-window as Spec.validate does, so run and attach agree.
+	// Attach never relaunches or moves a strand.
+	// Own-window and below-parent are both non-hidden and classify a cleared binding alike, so attaching to a strand an older binary recorded in window 0 leaves it where it is.
 	if spec.Display.Anchor == "" {
-		spec.Display.Anchor = render.AnchorBelowParent
+		spec.Display.Anchor = render.AnchorOwnWindow
 	}
 
 	return spec, nil
