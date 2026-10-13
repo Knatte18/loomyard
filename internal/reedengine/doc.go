@@ -84,6 +84,8 @@
 // tmux clears a window's zoom on resize-pane -y, select-layout, split-window, select-pane without -Z and kill-pane of another pane, so every step that changes panes runs inside keepZoomLocked, under the op lock.
 // It reads the strands' window's `#{window_zoomed_flag} #{pane_id}` through the stored-state window seam; for a zoomed window it unzooms the active pane with `resize-pane -Z`, runs the step, and zooms the same pane again, also when the step failed.
 // The call sites are Up, EnsureSession, Resume, AddStrand and AddStrandUnless, UpdateStrand, SetContentRows, RemoveStrand, ReplaceStrand, the watchdog's reapplyLayout and AttachArgv's pre-flight, so every pane list a layout or a pin is planned from is read on the unzoomed window.
+// The watchdog's reapplyLayout enters the bracket only for an apply it will run: a live box equal to the last applied box or to the last failed box returns before it, so a re-apply that changes nothing never toggles zoom.
+// The watch loop records the live box of a failed re-apply as the last failed box and skips it until another box applies; a strand op's own apply is never suppressed.
 // An op that refuses a bad config value or an unformable name does so before the bracket's first read.
 // Bound: a step re-zooms only a window that was zoomed when it started, and only the pane that was zoomed; a pane gone by then leaves the window in the overview.
 // No session, a failed read, an unparseable answer and a failed unzoom all mean "run plain", logged and never fatal.
