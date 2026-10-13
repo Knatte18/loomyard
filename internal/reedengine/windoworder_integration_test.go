@@ -1,7 +1,7 @@
 //go:build tmux
 
 // windoworder_integration_test.go proves the window order against a real tmux.
-// The session's windows hold the agents in start order, then the window named shell, then the hidden windows; a relaunch keeps its window's place, and a session booted by an older lyx is brought into that order.
+// The session's windows hold the overview first, the agents in start order, then the window named shell, then the hidden windows; a relaunch keeps its window's place, and a session booted by an older lyx is brought into that order.
 // One cold session serves every step.
 
 package reedengine
@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -181,5 +182,129 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 			return
 		}
 		t.Fatalf("Status carries no strand %s after Resume", base.GUID)
+	})
+
+	overviewDisplay := render.Display{Anchor: render.AnchorOverview}
+	currentWindow := func() string {
+		t.Helper()
+		out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{window_id}")
+		if err != nil {
+			t.Fatalf("read the current window: %v", err)
+		}
+		return strings.TrimSpace(out)
+	}
+	shellWindowID := func() string {
+		t.Helper()
+		st, err := LoadState(e.stateDir())
+		if err != nil || st == nil || st.SelvagePaneID == "" {
+			t.Fatalf("LoadState = (%+v, %v), want a persisted SelvagePaneID", st, err)
+		}
+		return windowOfPane(t, e, st.SelvagePaneID)
+	}
+	selectWindow := func(window string) {
+		t.Helper()
+		if err := e.tmux.run("select-window", "-t", window); err != nil {
+			t.Fatalf("select-window %s: %v", window, err)
+		}
+	}
+	agentNames := func() []string {
+		t.Helper()
+		var out []string
+		for _, w := range windows() {
+			if w.Name != overviewWindowName && w.Name != shellWindowName && !w.Hidden {
+				out = append(out, w.Name)
+			}
+		}
+		return out
+	}
+
+	var overview Strand
+	t.Run("AnOverviewAddedAfterAgentWindowsHoldsTheLowestIndexAndCarriesNoMarks", func(t *testing.T) {
+		agents := agentNames()
+		var err error
+		overview, err = e.AddStrand(AddSpec{NameOverride: "status", Cmd: "sleep 300", Display: overviewDisplay})
+		if err != nil {
+			t.Fatalf("AddStrand(overview): %v", err)
+		}
+		listed := windows()
+		if listed[0].Name != overviewWindowName {
+			t.Fatalf("first window is %q, want %q", listed[0].Name, overviewWindowName)
+		}
+		if got := agentNames(); !slices.Equal(got, agents) {
+			t.Errorf("agent windows = %v, want %v unchanged and in start order", got, agents)
+		}
+		marks, err := e.tmux.output("display-message", "-p", "-t", windowOfPane(t, e, overview.PaneID), "[#{@lyx_own}][#{@lyx_unseen}][#{@strand_color}]")
+		if err != nil {
+			t.Fatalf("read the overview window marks: %v", err)
+		}
+		if got := strings.TrimSpace(marks); got != "[1][][]" {
+			t.Errorf("overview window marks = %q, want the own marker alone", got)
+		}
+	})
+
+	t.Run("ReplacingATopStrandWithAnOverviewOpensItFirstAndLeavesTheShellWindowSelected", func(t *testing.T) {
+		if _, err := e.RemoveStrand(overview.GUID, false); err != nil {
+			t.Fatalf("RemoveStrand(overview): %v", err)
+		}
+		top, err := e.AddStrand(AddSpec{NameOverride: "status", Cmd: "sleep 300", Display: render.Display{
+			Anchor: render.AnchorTop,
+			Size:   render.Size{Kind: render.SizeContent, ShareNum: 1, ShareDen: 8, MinRows: 3},
+		}})
+		if err != nil {
+			t.Fatalf("AddStrand(top): %v", err)
+		}
+		shellWindow := shellWindowID()
+		if got := windowOfPane(t, e, top.PaneID); got != shellWindow {
+			t.Fatalf("top strand is in window %s, want the shell window %s", got, shellWindow)
+		}
+		selectWindow(shellWindow)
+
+		overview, err = e.ReplaceStrand(top.GUID, AddSpec{NameOverride: "status", Cmd: "sleep 300", Display: overviewDisplay})
+		if err != nil {
+			t.Fatalf("ReplaceStrand(top -> overview): %v", err)
+		}
+		if first := windows()[0]; first.Name != overviewWindowName {
+			t.Errorf("first window is %q, want %q", first.Name, overviewWindowName)
+		}
+		panes, err := e.tmux.listWindowPanes(e.SessionName())
+		if err != nil {
+			t.Fatalf("list panes: %v", err)
+		}
+		for _, p := range panes {
+			if p.PaneID == top.PaneID {
+				t.Errorf("the replaced top pane %s is still listed", top.PaneID)
+			}
+		}
+		if got := currentWindow(); got != shellWindow {
+			t.Errorf("current window = %s, want the shell window %s", got, shellWindow)
+		}
+	})
+
+	t.Run("ReplacingTheViewedOverviewSelectsTheNewOverviewWindow", func(t *testing.T) {
+		selectWindow(windowOfPane(t, e, overview.PaneID))
+		var err error
+		overview, err = e.ReplaceStrand(overview.GUID, AddSpec{NameOverride: "status", Cmd: "sleep 300", Display: overviewDisplay})
+		if err != nil {
+			t.Fatalf("ReplaceStrand(overview): %v", err)
+		}
+		if got, want := currentWindow(), windowOfPane(t, e, overview.PaneID); got != want {
+			t.Errorf("current window = %s, want the new overview window %s", got, want)
+		}
+	})
+
+	t.Run("ReplacingTheOverviewKeepsOverviewAgentsInStartOrderThenShell", func(t *testing.T) {
+		agents := agentNames()
+		var err error
+		overview, err = e.ReplaceStrand(overview.GUID, AddSpec{NameOverride: "status", Cmd: "sleep 300", Display: overviewDisplay})
+		if err != nil {
+			t.Fatalf("ReplaceStrand(overview): %v", err)
+		}
+		want := append(append([]string{overviewWindowName}, agents...), shellWindowName)
+		for _, w := range windows() {
+			if w.Hidden {
+				want = append(want, w.Name)
+			}
+		}
+		wantNames(want...)
 	})
 }

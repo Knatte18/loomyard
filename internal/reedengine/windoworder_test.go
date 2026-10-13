@@ -22,8 +22,20 @@ func TestWindowOrder(t *testing.T) {
 		listing  string
 		shell    string
 		previous string
+		// overview selects overviewWindowInsertArgs, which reads the listing alone.
+		overview bool
 		want     []string
 	}{
+		{
+			name:     "the overview goes before the lowest window, hidden ones included",
+			listing:  "@4 3 0 0 explore\n@7 1 1 0 batten:one\n@2 5 0 0 shell\n",
+			overview: true,
+			want:     []string{"-b", "-t", "@7"},
+		},
+		{
+			name:     "the overview with no window gives the plain form",
+			overview: true,
+		},
 		{
 			name:    "no shell window goes after the highest non-hidden window",
 			listing: "@0 0 0 0 explore\n@3 2 0 0 review\n@5 4 1 0 batten:one\n@1 1 0 0 plan\n",
@@ -47,7 +59,14 @@ func TestWindowOrder(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := ownWindowInsertArgs(parseSessionWindows(tt.listing), tt.shell, tt.previous)
+			windows := parseSessionWindows(tt.listing)
+			if tt.overview {
+				if got := overviewWindowInsertArgs(windows); !slices.Equal(got, tt.want) {
+					t.Errorf("overviewWindowInsertArgs() = %v, want %v", got, tt.want)
+				}
+				return
+			}
+			got := ownWindowInsertArgs(windows, tt.shell, tt.previous)
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("ownWindowInsertArgs() = %v, want %v", got, tt.want)
 			}

@@ -1,4 +1,4 @@
-// windoworder.go fixes the order of a session's windows: agent windows in start order, then the window named shell, then the hidden windows.
+// windoworder.go fixes the order of a session's windows: the overview window, agent windows in start order, then the window named shell, then the hidden windows.
 // It lists the session's windows, computes where a new window goes and repairs a session booted by an older lyx.
 
 package reedengine
@@ -14,6 +14,9 @@ import (
 
 // shellWindowName is the name of the window that holds the operator console pane.
 const shellWindowName = "shell"
+
+// overviewWindowName is the name of the window that holds the overview strand.
+const overviewWindowName = "overview"
 
 // shellCheckFailedOption is the session option that records an open episode of failures to repair the shell window.
 const shellCheckFailedOption = "@lyx_shell_check_failed"
@@ -115,6 +118,22 @@ func ownWindowInsertArgs(windows []sessionWindow, shellWindow, previousWindow st
 		return []string{"-a", "-t", last.ID}
 	}
 	return nil
+}
+
+// overviewWindowInsertArgs returns the placement arguments for the overview window: before the lowest-index window, hidden ones included, so the overview holds the lowest index.
+// With no window listed it returns nothing, which opens the plain form.
+func overviewWindowInsertArgs(windows []sessionWindow) []string {
+	var lowest sessionWindow
+	found := false
+	for _, w := range windows {
+		if !found || w.Index < lowest.Index {
+			lowest, found = w, true
+		}
+	}
+	if !found {
+		return nil
+	}
+	return []string{"-b", "-t", lowest.ID}
 }
 
 // hiddenWindowInsertArgs returns the placement arguments for a new hidden window: after the highest-index window, hidden ones included.

@@ -304,10 +304,10 @@
 // Reconcile ends only a window carrying @lyx_own with no pane bound to a strand; a window without the marker is never ended.
 // The pane-generation read (generation.go) stays session-scoped and outside the seam: it reads session fields only, so it keeps the "=<session>:" form, which expands them, where the bare "=<session>" form expands every session field to empty (verified live, tmux 3.6).
 //
-// Window order (windoworder.go): a session's windows read, in index order, the agents' own windows in start order, then the window named shell, then the hidden windows.
+// Window order (windoworder.go): a session's windows read, in index order, the overview window, the agents' own windows in start order, then the window named shell, then the hidden windows.
 // Every window is created through newWindowLocked (spawn.go) as `new-window -d` plus placement arguments, listed from `list-windows` in index order under the op lock:
 // an own window opens `-a -t <previous window>` for a relaunch, which keeps its window's place and ends the old one behind it, else `-b -t <shell window>`, else `-a -t <highest-index non-hidden window>`;
-// a hidden window opens `-a -t <highest-index window>`; with nothing to place against the plain form `-t '=<session>:'` is used.
+// the overview window opens `-b -t <lowest-index window>`, hidden windows included; a hidden window opens `-a -t <highest-index window>`; with nothing to place against the plain form `-t '=<session>:'` is used.
 // A placed new-window the multiplexer refuses on Windows (psmux) logs at Debug and is retried once in the plain form, so the order is best-effort there and nothing fails.
 // The shell window is the window of the recorded console pane (Selvage), named shell with automatic-rename off, which is how a fresh boot names its one window.
 // A session booted by an older lyx is brought into that order by ensureShellWindowLocked, which runs wherever a window opens, once the boot marks the strands' window and at the head of every attach pre-flight, also when no client size is known:
@@ -341,6 +341,14 @@
 // Removing an own-window strand moves a viewer on its window to the strands' window before the window ends, and never moves a viewer on another window.
 // A shared window a strand leaves is laid out again.
 // An invalid window_split or window_share_max never refuses a removal: the layout is skipped and the key is reported in Removed.ConfigWarning.
+//
+// Overview anchor: the overview anchor places one strand per session, alone in a window of its own named overview that opens at the lowest index and never joins a group.
+// Everything that reads a window of its own, reconcile, presentPanes, the strands' window resolver and the relaunch's old-pane kill, treats an overview pane as an own-window one (isOwnWindow); only the placement, the name, the unseen mark, the one-per-session refusal and the focus rules ask isOverview.
+// The window carries @lyx_own like an own window and sets neither @lyx_unseen nor @strand_color, so its button takes the plain window-button style.
+// An overview display takes no window group, and UpdateStrand refuses a move between the overview and own-window anchors.
+// AddStrand refuses a second overview strand while another strand, live or dormant, holds the anchor, naming that strand and lyx reed remove.
+// ReplaceStrand removes the old strand before its add, so replacing the overview strand itself is never refused; replacing another strand with an overview strand is refused only while a third strand holds the anchor.
+// A replacement overview strand that ends the window the operator is viewing selects its own new window once the launch succeeded; a replacement whose old strand shared a window that stays open ends no window and switches nothing.
 //
 // Session targeting: every -t argument that names a SESSION is passed in
 // an exact-match form — "=<name>" for session targets (has-session,

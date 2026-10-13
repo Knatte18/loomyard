@@ -6,6 +6,7 @@ package reedengine
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -86,9 +87,14 @@ func (p TmuxCmd) listWindowPanes(session string) ([]windowPane, error) {
 // unseenWindowOption is the display-only window option marking an own window the operator has not selected since it opened.
 const unseenWindowOption = "@lyx_unseen"
 
-// isOwnWindow reports whether d places a strand outside window 0.
+// isOwnWindow reports whether d places a strand in a window of its own, outside window 0: the own-window anchor or the overview anchor.
 func isOwnWindow(d render.Display) bool {
-	return d.Anchor == render.AnchorOwnWindow
+	return d.Anchor == render.AnchorOwnWindow || isOverview(d)
+}
+
+// isOverview reports whether d places a strand in the session's overview window.
+func isOverview(d render.Display) bool {
+	return d.Anchor == render.AnchorOverview
 }
 
 // WindowGroup is the record of one window group.
@@ -272,24 +278,50 @@ func (e *Engine) selectStrandsWindowIfCurrentLocked(st *ReedState, ending []stri
 	if len(ending) == 0 {
 		return
 	}
+	if e.currentWindowIsAmongLocked(ending) {
+		e.selectStrandsWindowLocked(st)
+	}
+}
+
+// currentWindowIsAmongLocked reports whether the session's current window is one of windows.
+// A failed read of the current window is logged and reports false.
+func (e *Engine) currentWindowIsAmongLocked(windows []string) bool {
 	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{window_id}")
 	if err != nil {
 		logger.Warn("reed: could not read the current window, a viewer may be left on a window that ends", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-		return
+		return false
 	}
 	current := strings.TrimSpace(out)
-	for _, id := range ending {
-		if id != current {
-			continue
-		}
-		target, err := e.strandWindowTargetFor(st)
-		if err != nil {
-			logger.Warn("reed: could not resolve the strands' window, a viewer may be left on a window that ends", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-			return
-		}
-		if err := e.tmux.run("select-window", "-t", target); err != nil {
-			logger.Warn("reed: could not select the strands' window", "socket", e.Socket(), "session", e.SessionName(), "window", target, "err", err)
-		}
+	return slices.Contains(windows, current)
+}
+
+// selectStrandWindowLocked selects the window that holds paneID.
+// A failed lookup or select is logged and never fails the step.
+func (e *Engine) selectStrandWindowLocked(paneID string) {
+	windowByPane, err := e.tmux.listSessionPaneWindows(e.SessionName())
+	if err != nil {
+		logger.Warn("reed: could not list the session's panes to select the new window", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		return
+	}
+	window, ok := windowByPane[paneID]
+	if !ok {
+		logger.Warn("reed: the new strand's pane is not listed, leaving the viewer where it is", "socket", e.Socket(), "session", e.SessionName(), "pane", paneID)
+		return
+	}
+	if err := e.tmux.run("select-window", "-t", window); err != nil {
+		logger.Warn("reed: could not select the new window", "socket", e.Socket(), "session", e.SessionName(), "window", window, "err", err)
+	}
+}
+
+// selectStrandsWindowLocked selects the strands' window.
+// Every failure is logged and never fails the step.
+func (e *Engine) selectStrandsWindowLocked(st *ReedState) {
+	target, err := e.strandWindowTargetFor(st)
+	if err != nil {
+		logger.Warn("reed: could not resolve the strands' window, a viewer may be left on a window that ends", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		return
+	}
+	if err := e.tmux.run("select-window", "-t", target); err != nil {
+		logger.Warn("reed: could not select the strands' window", "socket", e.Socket(), "session", e.SessionName(), "window", target, "err", err)
 	}
 }
