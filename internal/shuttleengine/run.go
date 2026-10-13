@@ -608,22 +608,35 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	if err != nil {
 		return nil, result, err
 	}
-	if strand.Color != "" && !spec.ColorByCaller {
-		// The color is display only, like the pane title, so a failed play never fails the launch.
-		if err := typeColor(run.newSendContext(), strand.Color); err != nil {
-			logger.Warn("shuttle: could not type the segment color", "strandGUID", strand.GUID, "color", strand.Color, "error", err)
-		}
+	var color segmentcolor.Color
+	if !spec.ColorByCaller {
+		color = strand.Color
 	}
-	if launch.PromptLine != "" {
-		if result, err := run.loadSkillsThenPrompt(launch.PromptLine); err != nil {
-			return nil, result, err
-		}
+	if launch.PromptLine == "" {
+		run.typeStartupColor(color)
+		return run, Result{}, nil
+	}
+	if result, err := run.loadSkillsThenPrompt(launch.PromptLine, color); err != nil {
+		return nil, result, err
 	}
 	return run, Result{}, nil
 }
 
-// loadSkillsThenPrompt is start's skill-loading step, run once the provider is ready and only for a launch that deferred its prompt:
-// it loads spec.Skills in one turn, retries the skills the model did not load once, then delivers promptLine through the verified send path.
+// typeStartupColor types color into the run's pane, doing nothing for an empty color.
+// The color is display only, like the pane title, so a failed play is logged and never fails the launch.
+func (run *Run) typeStartupColor(color segmentcolor.Color) {
+	if color == "" {
+		return
+	}
+	if err := typeColor(run.newSendContext(), color); err != nil {
+		logger.Warn("shuttle: could not type the segment color", "strandGUID", run.state.StrandGUID, "color", color, "error", err)
+	}
+}
+
+// loadSkillsThenPrompt is start's skill-loading step, run once the provider is ready and only for a launch that deferred its prompt.
+// The launch line carries the first load turn of spec.Skills, so it awaits that turn and types nothing for it.
+// It then types color when non-empty, retries the skills the model did not load once with a typed load message, and delivers promptLine through the verified send path.
+// A spec with no skills types the color and then the prompt.
 // A skill the provider does not know, one still missing after the retry and one whose turn timed out are skipped with a logged warning,
 // and an unreadable turn is confirmed unverified.
 // None of these fails or hangs the launch.
@@ -636,8 +649,10 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 // Start then returns the run.
 // Residual: a prompt consumed between that signal read and the strand removal is killed with its agent;
 // if it wrote an output file, the re-step's Spec.validate refuses on that file.
-func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
-	if len(run.spec.Skills) > 0 {
+func (run *Run) loadSkillsThenPrompt(promptLine string, color segmentcolor.Color) (Result, error) {
+	if len(run.spec.Skills) == 0 {
+		run.typeStartupColor(color)
+	} else {
 		loader, err := run.runner.skillLoader()
 		if err != nil {
 			return run.abandonStartup(OutcomeDied, err)
@@ -647,8 +662,11 @@ func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 			timeout = loader.DefaultSkillLoadTimeout()
 		}
 		missing, died, err := run.settleLoadTurn(loader, run.spec.Skills, timeout, false)
-		if err == nil && !died && len(missing) > 0 {
-			_, died, err = run.settleLoadTurn(loader, missing, timeout, true)
+		if err == nil && !died {
+			run.typeStartupColor(color)
+			if len(missing) > 0 {
+				_, died, err = run.settleLoadTurn(loader, missing, timeout, true)
+			}
 		}
 		if err != nil {
 			return run.abandonStartup(OutcomeDied, err)
@@ -715,11 +733,12 @@ func (run *Run) DeliverPendingPrompt() (bool, error) {
 // settleLoadTurn runs one load turn for skills and logs a skipped warning for every skill it leaves unloaded.
 // It returns the skills a first turn found missing,
 // which the caller retries once.
-// After the retry (final), still-missing skills are skipped with cause "not loaded" and none is returned.
+// The first turn is the one the launch line carried, so it is only awaited; the retry (final) is the only typed turn.
+// After the retry, still-missing skills are skipped with cause "not loaded" and none is returned.
 // died is true when the strand's pane is no longer live.
 func (run *Run) settleLoadTurn(loader SkillLoader, skills []string, timeout time.Duration, final bool) (missing []string, died bool, err error) {
 	guid := run.state.StrandGUID
-	turnEnd, ended, died, err := run.loadSkillTurn(loader, skills, timeout)
+	turnEnd, ended, died, err := run.loadSkillTurn(loader, skills, timeout, final)
 	if err != nil || died {
 		return nil, died, err
 	}
@@ -746,15 +765,19 @@ func (run *Run) settleLoadTurn(loader SkillLoader, skills []string, timeout time
 	return nil, false, nil
 }
 
-// loadSkillTurn is one load turn: it sends the engine's load message for skills through the verified send path, then polls the events file until the first turn end past the run's offset, which it returns, the pane dies, or timeout passes.
+// loadSkillTurn is one load turn: when typed, it sends the engine's load message for skills through the verified send path; otherwise the launch line already carried the message.
+// It then polls the events file until the first turn end past the run's offset, which it returns, the pane dies, or timeout passes.
+// timeout is measured from the call's entry.
 // ended is false on a timeout,
 // and died is true when the strand's pane is no longer live.
 // The run's offset moves past every event read.
-func (run *Run) loadSkillTurn(loader SkillLoader, skills []string, timeout time.Duration) (turnEnd Event, ended, died bool, err error) {
+func (run *Run) loadSkillTurn(loader SkillLoader, skills []string, timeout time.Duration, typed bool) (turnEnd Event, ended, died bool, err error) {
 	reed := run.runner.reed
 	guid := run.state.StrandGUID
-	if err := sendVerified(run.newSendContext(), loader.SkillLoadMessage(skills)); err != nil {
-		return Event{}, false, false, fmt.Errorf("shuttle: load skills %v: %w", skills, err)
+	if typed {
+		if err := sendVerified(run.newSendContext(), loader.SkillLoadMessage(skills)); err != nil {
+			return Event{}, false, false, fmt.Errorf("shuttle: load skills %v: %w", skills, err)
+		}
 	}
 	deadline := run.clock.Now().Add(timeout)
 	interval := pollInterval(run.runner.cfg)

@@ -72,6 +72,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -1277,6 +1278,56 @@ func removePath(rec *Mutations, req pathRequest) error {
 	}
 	rec.Append(KindPathRemoved, req.target, detail)
 	return nil
+}
+
+// leftoverRemoveAttempts bounds removeWorktreeLeftover: the first removal and two retries.
+const leftoverRemoveAttempts = 3
+
+// leftoverSeam holds the removal and the sleep behind removeWorktreeLeftover.
+// A nil field means production: removeContainedPath over the whole subtree, and time.Sleep.
+type leftoverSeam struct {
+	remove func(container, target string) (removed, wasDir bool, err error)
+	sleep  func(delay time.Duration)
+}
+
+// removeWorktreeLeftover finishes the removal of a task worktree directory that `git worktree remove` deregistered but left on disk.
+// Its caller's git run is its ownership proof: that run passed the gate's registered-linked-worktree and dirtiness checks on this same target and had already accepted discarding it, so no check runs here, and containment is kept by the removal's os.Root under container.
+// A removal that fails with a late writer's error (a refilled directory, or on Windows a file its writer still holds open) is retried after one second and then two, three attempts in all; any other failure is returned at once.
+// A removal appends KindPathRemoved for target, as removePath does.
+func removeWorktreeLeftover(rec *Mutations, container, target string, seam leftoverSeam) error {
+	remove := seam.remove
+	if remove == nil {
+		remove = func(container, target string) (bool, bool, error) {
+			return removeContainedPath(container, target, true)
+		}
+	}
+	sleep := seam.sleep
+	if sleep == nil {
+		sleep = time.Sleep
+	}
+
+	var err error
+	for attempt := 0; attempt < leftoverRemoveAttempts; attempt++ {
+		if attempt > 0 {
+			sleep(time.Duration(attempt) * time.Second)
+		}
+		var removed, wasDir bool
+		removed, wasDir, err = remove(container, target)
+		if err == nil {
+			if removed {
+				detail := "single"
+				if wasDir {
+					detail = "recursive"
+				}
+				rec.Append(KindPathRemoved, target, detail)
+			}
+			return nil
+		}
+		if !isLateWriterError(err) {
+			break
+		}
+	}
+	return fmt.Errorf("remove %s: %w", target, err)
 }
 
 // removeGitWorktree is the executor for the git worktree remove primitive: it runs the pipeline,

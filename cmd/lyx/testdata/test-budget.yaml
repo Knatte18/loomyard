@@ -32,7 +32,7 @@ internal/dotgit: 3
 internal/editdirective: 2
 internal/envsource: 3
 internal/fabriccli: 21
-internal/fabricengine: 645
+internal/fabricengine: 646
 internal/fabricvocab: 1
 internal/friction: 6
 internal/frictionengine: 15
@@ -58,7 +58,7 @@ internal/landingshed: 85
 internal/lock: 4
 internal/logger: 35
 internal/loggerconfig: 3
-internal/loomcli: 235
+internal/loomcli: 236
 internal/loomengine: 57
 internal/loomrecipe: 54
 internal/loomshed: 76
@@ -69,7 +69,7 @@ internal/modelspec: 11
 internal/orchcli: 28
 internal/orchengine: 139
 internal/output: 4
-internal/pairteardown: 6
+internal/pairteardown: 7
 internal/pausecli: 4
 internal/pauseengine: 4
 internal/pauserecord: 14

@@ -370,7 +370,7 @@ func (run *Run) Wait() (Result, error) {
 		run.logSessionState("", tick%livenessEvery == 0)
 
 		if tick%livenessEvery == 0 {
-			livenessOutcome, err := run.checkLivenessTick(&started, startupDeadline)
+			livenessOutcome, err := run.checkLivenessTick(&started, startupDeadline, false)
 			if err != nil {
 				statusFailures++
 				if statusFailures >= maxStatusRetries {
@@ -628,7 +628,7 @@ func (run *Run) awaitStartup() (Result, error) {
 	run.sessionLiveness = sessionLivenessState{}
 	statusFailures := 0
 	for tick := 0; tick < maxTicks; tick++ {
-		outcome, err := run.checkLivenessTick(&started, startupDeadline)
+		outcome, err := run.checkLivenessTick(&started, startupDeadline, true)
 		if err != nil {
 			statusFailures++
 			if statusFailures >= maxStatusRetries {
@@ -1105,7 +1105,11 @@ func allOutputFilesExist(files []string) bool {
 // For a record with RecordsSessionStarts, a ready pane marks the run started only once the events file also holds a session-start line.
 // Until then the tick stays not started, records the reason on the run for abandonStartup and answers as a still-booting pane does; gate detection and dismissal run as for any run.
 // Bound: a session-start line an earlier launch of the same run left satisfies the line half, and the pane half still gates it.
-func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Outcome, error) {
+//
+// With eventsProof set, a record with RecordsSessionStarts is also started once the events file holds a session start followed by a turn start, checked before the pane capture;
+// a false answer falls through to the capture path, so a recognized gate is still dismissed.
+// Only start's probe sets it: its events file is created fresh for the launch, so only this launch's hooks satisfy it, while Wait's probe of a not-yet-started run may read an earlier incarnation's lines.
+func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time, eventsProof bool) (Outcome, error) {
 	status, err := run.runner.reed.Status()
 	if err != nil {
 		return "", fmt.Errorf("reed status: %w", err)
@@ -1144,6 +1148,12 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 		return "", nil
 	}
 
+	if eventsProof && run.state.RecordsSessionStarts && turnStartedAfterSessionStart(run.runner.engine, run.state.EventsPath) {
+		*started = true
+		run.markStarted()
+		return "", nil
+	}
+
 	capture, err := run.runner.reed.CapturePane(run.state.StrandGUID)
 	if err != nil {
 		logger.Warn("shuttle: capture pane during startup probe (non-fatal, retrying)", "strandGUID", run.state.StrandGUID, "error", err)
@@ -1173,19 +1183,7 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 			}
 		}
 		*started = true
-		// Persisted immediately, not left for finalize: this is the one fact a killed driver must
-		// not lose, since it is what tells a LATER Attach apart a genuinely booted, mid-turn pane
-		// from one whose launch already failed (see Wait's own doc comment on started). Best-effort,
-		// like every other mid-run persistence in this package (finalize's Outcome write) — a save
-		// failure here costs a future re-attach one extra startup probe, never this run's own
-		// correctness.
-		run.recordMu.Lock()
-		run.state.Started = true
-		err := run.saveState()
-		run.recordMu.Unlock()
-		if err != nil {
-			logger.Warn("shuttle: persist run started failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "error", err)
-		}
+		run.markStarted()
 		return "", nil
 	case StartupTrustPrompt:
 		now := run.clock.Now()
@@ -1209,6 +1207,22 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 	// StartupPending and a trust prompt that has not yet cleared are both "still not ready", and
 	// share the one deadline that governs the whole startup window.
 	return run.classifyStartupWindow(startupDeadline), nil
+}
+
+// markStarted persists that the provider is past its startup gates.
+// It is persisted immediately, not left for finalize: this is the one fact a killed driver must
+// not lose, since it is what tells a LATER Attach apart a genuinely booted, mid-turn pane
+// from one whose launch already failed (see Wait's own doc comment on started).
+// Best-effort, like every other mid-run persistence in this package (finalize's Outcome write):
+// a save failure costs a future re-attach one extra startup probe, never this run's own correctness.
+func (run *Run) markStarted() {
+	run.recordMu.Lock()
+	run.state.Started = true
+	err := run.saveState()
+	run.recordMu.Unlock()
+	if err != nil {
+		logger.Warn("shuttle: persist run started failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "error", err)
+	}
 }
 
 // sessionLivenessState is what sessionGone keeps across the liveness ticks of one wait.
@@ -1295,6 +1309,33 @@ func sessionStartRecorded(engine Engine, eventsPath string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// turnStartedAfterSessionStart reports whether the events file holds a turn-start signal after a session-start signal, in file order, read from the file's start.
+// An absent or unreadable file and an engine without SessionSignalParser read false.
+// It reads signals through the engine's parser, never by a provider's hook names.
+func turnStartedAfterSessionStart(engine Engine, eventsPath string) bool {
+	parser, ok := engine.(SessionSignalParser)
+	if !ok {
+		return false
+	}
+	data, err := os.ReadFile(eventsPath)
+	if err != nil {
+		return false
+	}
+	signals, _ := parser.ParseSessionSignals(data)
+	sessionStarted := false
+	for _, signal := range signals {
+		switch signal.Kind {
+		case SessionSignalSessionStart:
+			sessionStarted = true
+		case SessionSignalTurnStart:
+			if sessionStarted {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // classifyStartupWindow reports the run's outcome once startupDeadline has passed on a run whose

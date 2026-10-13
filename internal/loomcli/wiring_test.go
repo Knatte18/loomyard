@@ -753,6 +753,7 @@ func TestVerbUsesLightweightWiring(t *testing.T) {
 		{"ValidatePlan", "validate-plan", true},
 		{"LintComments", "lint-comments", true},
 		{"LintPattern", "lint-pattern", true},
+		{"Fmt", "fmt", true},
 		{"InsertCard", "insert-card", true},
 		{"RemoveCard", "remove-card", true},
 		{"RestoreRenumber", "restore-renumber", true},
