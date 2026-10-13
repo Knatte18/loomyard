@@ -185,3 +185,107 @@ Fixing without the reasoning:
 - Grading is one grader session's reading; Round 2's grades came from another session.
 - The orch approved no parent review in these runs (Plan-Write paused before Plan-Review) and its cost is excluded.
 - Torn down: all four pairs with `lyx fabric remove` (finished on the second call each), all four `twb-ftq-*` notes; no worktree, branch or tmux session of them is left.
+
+# Round 3: fork0 stays alive
+
+2026-10-13, the operator's next arm from the board note (section "Next arm to bench: fork0 stays alive and revises").
+fork0 writes the plan and stays alive to judge the lens findings and revise the plan with its own reasoning, while the lens forks stay blind to that reasoning.
+
+## Arm
+
+- **alive**: the master explores, then spawns fork0 and waits on `lyx shuttle await` for fork0's ready marker.
+  fork0 writes the plan, runs `validate-plan` until it passes, creates the findings directory and writes the ready marker.
+  The master then reads the plan files (so the lens forks inherit them) and spawns the same four lens forks, then ends its turn; it never reads a finding and changes no plan file.
+  Each lens fork writes its report with one Write call to `.lyx/twill-plan/findings/lens-<name>.md` and returns only that file's path.
+  fork0 runs the scratch merge script `alive/merge.sh` in a loop: it waits up to 240 s for all four lens files, concatenates them into `findings.md` and prints `ready: true`, or prints `ready: false` for fork0 to re-run it in a turn that does nothing else.
+  fork0 then judges every finding under the same cited-rejection rule, revises, writes `lens-review.md`, runs `validate-plan` until it passes, and ends; the master's last turn only ends.
+- Everything else is the fork0 arm's: reference, base, records, lenses, fork boilerplate (bar the report going to a file), the prototype route and the pair setup.
+  The directive is `directive-alive.md` beside the wrapper `ftr/wrap-twill.sh` in the session scratchpad; the merge script uses only shell builtins, `cat` and `mv`.
+
+## Method
+
+- Pairs `twb-ftr-1` and `twb-ftr-2`, set up exactly as `twb-ftq-*` (base `c00b2e524`, records `8f5c017a`, `plan: opus[medium]`, `plan_producer: single`, the same status edits and pause), run in parallel from 16:52 local.
+- Binary: prod `lyx` installed 16:44 local, after the Round 2 runs.
+- Same scripts as above, plus `alive/f0.sh`: fork0's messages from its first merge call on, with each message's cache write and read, to show whether its cache stayed warm across the wait.
+- Lens findings are counted from the lens files (severity per finding heading), not from a final message.
+- Grading: one fresh grader session graded all six plans (`a-1`, `a-2`, `f-1`, `f-2`, `r-1`, `r-2`) against J1-J9, so the grades compare; it re-graded the four earlier plans, and a few of their cells differ from the earlier grader's.
+- Evidence: `.scratch/twill-fork-timing-plan/alive/ftr-{1,2}/` (transcripts, final plan, `findings/`, `lens-review.md`, traces), plus `alive/merge.sh` and `alive/f0.sh`.
+
+## Results
+
+Both runs ended on a passing `validate-plan` with a lens review written by fork0; the master read no finding and wrote no plan file.
+
+| Run | Master | fork0 | Lens forks | Total | Writer time | fork0 merge calls | fork0 cache write on waking | `validate-plan` (fail / pass) | Lens B / M / total | Fixed / rejected |
+|---|---|---|---|---|---|---|---|---|---|---|
+| r-1 | $2.00 | $1.70 | $1.25 | $4.94 | 10m59s | 1 | 313 tokens (read 184k) | fork0 1 / 3 | 2 / 2 / 16 | 15 / 0 |
+| r-2 | $2.04 | $2.36 | $1.40 | $5.80 | 11m56s | 1 | 312 tokens (read 205k) | fork0 1 / 3 | 0 / 5 / 22 | 18 / 2 |
+
+| Arm | Mean master or writer | Mean fork0 | Mean lens forks | Mean total | Lens B / M per run | Key R / P (one grader) |
+|---|---|---|---|---|---|---|
+| after | $3.67 | | $0.94 | $4.60 | 0 / 2, 0 / 4 | 1 / 3, 1 / 3 |
+| fork0 | $2.39 | $1.07 | $0.94 | $4.40 | 1 / 5, 0 / 6 | 1 / 3, 3 / 4 |
+| alive | $2.02 | $2.03 | $1.33 | $5.37 | 2 / 2, 0 / 5 | 2 / 3, 2 / 2 |
+
+- **fork0's cache stayed warm:** each merge call returned `ready: true` after about two minutes, inside one call, and fork0's next message wrote 313 and 312 tokens against 184k and 205k read.
+  The 240 s cap was never reached.
+- **The master's cache stayed warm too:** it awaited fork0's marker in two `lyx shuttle await` calls per run, and its turns after the lens spawn (woken by each lens fork's one-line return) wrote under 610 tokens each, its final turn included.
+  The lens forks' returns cost the master about $0.03 a wake.
+- **fork0's revise phase** cost about $0.56 and $0.78 (from waking to its end), against the fork0 arm's masters, who did the same work on top of their exploration context.
+- **Lens forks cost more** ($1.25, $1.40 against $0.87-$1.01): their inherited context was larger (163k and 171k against 133k and 153k, since these masters explored longer before the spawn: fork0's context at spawn was 149k and 156k against 120k and 139k), and writing the report as a file adds output and a cache write (10-12k write per fork against 5-8k).
+  That is spread, not arm: nothing in the arm makes the inherited context larger.
+- **Writer time** is level with both earlier arms (11-12 minutes).
+- **Mechanics held:** every lens fork made exactly one Write to its own file and nothing else; fork0 never read a single lens file; neither run hit the merge cap or a relaunch.
+
+## Grading
+
+One grader session, all six plans; R repeated, P partly, A avoided, n/a another route.
+
+| Key | a-1 | a-2 | f-1 | f-2 | r-1 | r-2 |
+|---|---|---|---|---|---|---|
+| J1 repeated seed rows | P | A | A | R | R (keeps the `{"recipe":"loom"}` default row a test-economy finding suggested, which `TestReadSeed_AbsentDriverDefaultsToGo` already reaches) | P (`parent`, unknown key, absent driver repeat) |
+| J2 parse abort, seed-less status | P | P | P | P | P (`started_at` has no abort path) | A (`at`, `last_at`, `started_at` and a seed-less status, each a named row) |
+| J3 "All runs" sum vs union | A | A | A | A | A | A |
+| J4 shedrun constructor claim | P | P | P | P | P (`doc.go`, new pair only) | R (the "every constructor" claim stays, `paths.go` untouched) |
+| J5 run-id error wrapping | A | A | A | P | P (slug and tag, "since no file path exists") | P (declared unreachable, file part undefined) |
+| J6 cwd parent vs worktree parent | R | R | R | R | R | R |
+| J7 missing-commit skip row | n/a | P | n/a | R | n/a | n/a |
+| J8 `orch_test.go` unlisted | A | A | A | A | A | A |
+| J9 bare `weft` in tests | A | A | P | P | A | A |
+| **R / P** | **1 / 3** | **1 / 3** | **1 / 3** | **3 / 4** | **2 / 3** | **2 / 2** |
+
+Sums of R + P: after 8, alive 9, fork0 11.
+
+New defects outside the key in the alive plans:
+
+- r-1: `run` calls `filepath.Abs`, the raw cwd query a-2 also shipped; no r-1 lens flagged it.
+- r-1: an unparseable `started_at` has no abort path, which breaks Decision 9.
+- r-1 and r-2: the `seed.go` header comment stays stale; r-1's fix of a forced-edits finding about it dropped the edit instead of retargeting it.
+- r-1 and r-2 add a one-method `FileAtRevision` interface that `PlanHistory` covers, as a-1, a-2 and f-1 do; only f-2 reuses `PlanHistory`.
+
+fork0's judgment of the findings:
+
+- r-1 rejected nothing; r-2 rejected two, and the grader judged both rejections right (one cites `main.go:180-187` against "abort pinned only at `readArchivedRun`", the other keeps an archived-status test out of the calibration test, whose header scopes it to calibration parity).
+- r-1 followed a wrong test-economy suggestion into J1's R, the same failure f-2's master had.
+- r-1 dropped the file from Decision 9's run-id error ("no file path exists"), the same J5 miss f-2's master made; r-2 declared the refusal unreachable, with sound reasoning, but left the wrapping undefined.
+- r-2's merged J2 fix made it the only plan of the six with J2 at A.
+
+## Verdict
+
+- Cost: the alive arm is the dearest, $5.37 against $4.40 (fork0) and $4.60 (after) per plan.
+  Of the gap, about $0.40 is lens-fork spread from larger inherited contexts, not the arm; the rest is fork0's revise phase ($0.56-$0.78), which the fork0 arm's master did more cheaply on its own warm context.
+  Keeping fork0 alive costs nothing in cache: the merge loop kept fork0 warm (about 300 tokens written on waking), and the master stayed warm through its awaits and lens-fork wakes.
+- Quality: level with the other arms on the key (alive 9 R + P, after 8, fork0 11, two runs each).
+  The fix that the fork0 arm was thought to lack, fixing with the writer's own reasoning, did not show: r-1 repeated both of f-2's lens-review misses (a wrong test-economy finding followed into J1, and the file dropped from Decision 9's error), and fork0's rejections were few and right in both arms.
+  The misses look like lens errors and plan judgment, not lost intent.
+- Lens findings: about as many BLOCKING and MEDIUM as the fork0 arm (2 / 2 and 0 / 5 against 1 / 5 and 0 / 6), so the blind lens forks stay as sharp; r-1's lenses missed the `filepath.Abs` call f-1's caught.
+- The mechanism works as a prototype (file-per-lens, a mechanical merge, a warm wait), but two runs show no quality gain to pay $0.75-1.00 a plan for.
+  On this evidence, spawn-after with the writer fixing (the after arm) stays the cheapest arm with level quality, and neither fork0 variant earns building.
+
+## Deviations, Round 3
+
+- The same prototype route and single reference as Rounds 1-2 of this bench.
+- The master read the plan files after the ready marker so the lens forks inherit them, as the fork0 arm did; the brief left this implicit.
+- The master's last turns are woken by each lens fork's one-line return; it was told to take no action on them.
+- The grader re-graded the four earlier plans in the same session, so one cell here differs from the earlier table (f-2 J9 P where it was A, making f-2 3 / 4); the sums compare within this table only.
+- The orch is excluded from all costs; the grader session is not counted in the runs' cost.
+- Torn down: `twb-ftr-1` and `twb-ftr-2` with `lyx fabric remove` (finished on the second call each) and both board notes; no worktree, branch or tmux session of them is left.
