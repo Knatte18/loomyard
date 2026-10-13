@@ -1,5 +1,5 @@
-// checklist.go implements the hidden `checklist` loom verb, the pane process of the pair's loom-status strand, and renderChecklist, the pure frame it draws:
-// the run's state line, with what the run waits on, over one line per recipe row with its box, the time spent in it and its visit count.
+// checklist.go implements the hidden `checklist` loom verb, the pane process of the pair's loom-status strand, and renderChecklist, the pure frame it draws, top to bottom:
+// one detail block per visited row listing its visits, one line per recipe row with its box, the time spent in it and its visit count, the run's state line, and the wait line carrying what the run waits on in full.
 
 package loomcli
 
@@ -7,18 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"sort"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -26,35 +23,51 @@ import (
 )
 
 const (
-	checklistLabel          = "loom"
-	checklistRecipeBroken   = "recipe unreadable"
-	checklistNotInRecipe    = "(not in recipe)"
-	checklistBoxDone        = "[x]"
-	checklistBoxRunning     = "[>]"
-	checklistBoxFailed      = "[!]"
-	checklistBoxHalted      = "[-]"
-	checklistBoxNotReached  = "[ ]"
-	checklistMoreRowsFormat = "… %d more rows not shown"
+	checklistLabel         = "loom"
+	checklistRecipeBroken  = "recipe unreadable"
+	checklistNotInRecipe   = "(not in recipe)"
+	checklistBoxDone       = "[x]"
+	checklistBoxRunning    = "[>]"
+	checklistBoxFailed     = "[!]"
+	checklistBoxHalted     = "[-]"
+	checklistBoxNotReached = "[ ]"
+	checklistWaitNothing   = "waiting on nothing"
+	checklistOpenOutcome   = "running"
+	checklistUnknownStart  = "--:--"
 )
 
-// checklistVisits is the time and visit count the history gives one row.
+// checklistVisit is one visit of a row, read from one status history entry or from the current producer's open visit.
+type checklistVisit struct {
+	start        time.Time
+	startKnown   bool
+	spent        time.Duration
+	outcome      string
+	output       string
+	gateAttempts *int
+	folds        int
+}
+
+// checklistVisits is the time, visit count and visit log the history gives one row.
 type checklistVisits struct {
 	spent  time.Duration
 	visits int
+	log    []checklistVisit
 }
 
 // checklistCmd builds the hidden `checklist` subcommand: the loom-status strand's pane process.
-// It reads files only; its one write is the content-rows report, which reed confines to the strand that runs it.
+// It reads files only.
 func (c *loomCLI) checklistCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "checklist",
 		Short:       "draw this worktree's gate checklist in a pane (run by the loom-status strand)",
 		Hidden:      true,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
-		Long: `checklist draws the run's state line and one line per recipe row with its
-box, the time spent in it and its visit count, redrawing in place until it is
-signalled. The loom-status strand runs it, and it reports its line count to
-reed so the strand is sized to it. It reads files only.`,
+		Long: `checklist draws the run's frame, redrawing in place until it is signalled:
+a detail block per visited row, one line per recipe row with its box, the time
+spent in it and its visit count, the state line, and last the wait line with
+the full reason the run waits. Every line is drawn uncut, so a short terminal
+scrolls the detail away and keeps the row list and the wait line in view. The
+loom-status strand runs it. It reads files only.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -72,22 +85,9 @@ reed so the strand is sized to it. It reads files only.`,
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
-			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-				return nil
-			}
-			reedGeom, err := hubgeom.ReedGeometry(location)
-			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-				return nil
-			}
-			engine := reedengine.New(reedCfg, reedGeom)
-
 			pane := statuspane.Pane{
 				Out:     out,
 				Size:    statuspane.TerminalSize(os.Stdout),
-				Report:  statuspane.ReportFromEnv(os.Getenv, engine.SetContentRows),
 				Resized: statuspane.NotifyResize(cmd.Context()),
 			}
 			pane.Run(cmd.Context(), c.checklistPoll(location))
@@ -136,27 +136,25 @@ func (c *loomCLI) checklistPoll(location *lyxcwd.Location) func() statuspane.Fra
 	}
 }
 
-// renderChecklist returns the checklist frame: the state line, then one line per row of the recipe in recipe order, then one per history-only row.
-// A non-empty waitNote is appended to the state line as " | waiting <note>".
-// With rowsErr set the only line after the state line is checklistRecipeBroken.
+// renderChecklist returns the checklist frame, top to bottom:
+// one checklistDetailLines block per visited row, recipe rows first in recipe order and history-only rows after;
+// one line per row of the recipe in recipe order, then one per history-only row, or the single line checklistRecipeBroken with rowsErr set;
+// the state line, without the wait the wait line carries; and the wait line.
 // startedAt is the run's seed time, where its first visit starts; an empty or unparsable value starts it at the first entry's own time.
 func renderChecklist(rows []string, rowsErr error, poll statuspane.StatusPoll, waitNote, startedAt string, now time.Time) statuspane.Frame {
 	stateLine := shedverbs.UnavailableLine(checklistLabel)
 	if poll.Found {
-		stateLine = shedverbs.RenderStatusLine(checklistLabel, poll.Status)
-		if waitNote != "" {
-			stateLine += " | waiting " + waitNote
-		}
+		quiet := poll.Status
+		quiet.Activity.Wait = ""
+		stateLine = shedverbs.RenderStatusLine(checklistLabel, quiet)
 	}
-	if rowsErr != nil {
-		return statuspane.Frame{Lines: []string{stateLine, checklistRecipeBroken}}
-	}
+	waitLine := checklistWaitLine(poll, waitNote)
 
 	var status shedengine.Status
 	if poll.Found {
 		status = poll.Status
 	}
-	visits, visitedOrder, lastVisited := checklistVisitsOf(status, startedAt, now)
+	visits, visitedOrder := checklistVisitsOf(status, startedAt, now)
 
 	inRecipe := make(map[string]bool, len(rows))
 	for _, name := range rows {
@@ -169,16 +167,18 @@ func renderChecklist(rows []string, rowsErr error, poll statuspane.StatusPoll, w
 		}
 	}
 
-	rowLines := make([]string, 0, len(ordered))
-	runningRow, lastVisitedRow := -1, 0
-	for i, name := range ordered {
+	var lines []string
+	for _, name := range ordered {
+		lines = append(lines, checklistDetailLines(name, visits[name])...)
+	}
+
+	if rowsErr != nil {
+		lines = append(lines, checklistRecipeBroken, stateLine, waitLine)
+		return statuspane.Frame{Lines: lines}
+	}
+
+	for _, name := range ordered {
 		box := checklistBox(name, visits[name], status)
-		if box == checklistBoxRunning {
-			runningRow = i
-		}
-		if name == lastVisited {
-			lastVisitedRow = i
-		}
 		line := box + " " + name
 		if v := visits[name]; v.visits > 0 {
 			line += " " + statuspane.FormatMinutes(v.spent)
@@ -189,36 +189,85 @@ func renderChecklist(rows []string, rowsErr error, poll statuspane.StatusPoll, w
 		if !inRecipe[name] {
 			line += " " + checklistNotInRecipe
 		}
-		rowLines = append(rowLines, line)
+		lines = append(lines, line)
 	}
-
-	anchor := lastVisitedRow
-	if runningRow >= 0 {
-		anchor = runningRow
-	}
-	lines := append([]string{stateLine}, rowLines...)
-	return statuspane.Frame{
-		Lines: lines,
-		Fit: func(fitRows int) []string {
-			return fitChecklist(stateLine, rowLines, anchor, fitRows)
-		},
-	}
+	return statuspane.Frame{Lines: append(lines, stateLine, waitLine)}
 }
 
-// checklistVisitsOf sums the status history into per-row time and visit counts, in the order the rows were first visited, and names the row of the last visit.
+// checklistDetailLines renders one row's detail block: the row name, then one indented line per visit of v.
+// A visit line reads "<start> <spent> <outcome>", then " x<n>" for a folded entry, " <output>" when it has one and " gate attempts <n>" when gated.
+// A row with no visit has no block.
+func checklistDetailLines(name string, v checklistVisits) []string {
+	if len(v.log) == 0 {
+		return nil
+	}
+	lines := []string{name}
+	for _, visit := range v.log {
+		start := checklistUnknownStart
+		if visit.startKnown {
+			start = visit.start.UTC().Format("15:04")
+		}
+		line := fmt.Sprintf("  %s %s %s", start, statuspane.FormatMinutes(visit.spent), visit.outcome)
+		if visit.folds > 1 {
+			line += fmt.Sprintf(" x%d", visit.folds)
+		}
+		if visit.output != "" {
+			line += " " + visit.output
+		}
+		if visit.gateAttempts != nil {
+			line += fmt.Sprintf(" gate attempts %d", *visit.gateAttempts)
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// checklistWaitLine is the frame's last line: the full reason the run waits, as `lyx loom status` gives it.
+// A running run with a waitNote waits on it; an awaiting run has handed off to its parent; a blocked or failed run waits on its activity's wait.
+// Every other case, an unreadable status included, waits on nothing.
+func checklistWaitLine(poll statuspane.StatusPoll, waitNote string) string {
+	if !poll.Found {
+		return checklistWaitNothing
+	}
+	status := poll.Status
+	switch status.State {
+	case shedengine.StateRunning:
+		if waitNote != "" {
+			return "waiting " + waitNote
+		}
+	case shedengine.StateAwaiting:
+		var line strings.Builder
+		line.WriteString("waiting on the parent: escalation from " + status.CurrentProducer)
+		if status.ParentNotice != "" {
+			line.WriteString(": " + status.ParentNotice)
+		}
+		if status.Activity.Wait != "" {
+			line.WriteString(" | " + status.Activity.Wait)
+		}
+		return line.String()
+	case shedengine.StateBlocked, shedengine.StateFailed:
+		if status.Activity.Wait != "" {
+			return "wait " + status.Activity.Wait
+		}
+	}
+	return checklistWaitNothing
+}
+
+// checklistVisitsOf sums the status history into per-row time, visit counts and visit logs, and lists the rows in the order they were first visited.
 // A visit lasts from the previous entry's end to its own end; a goto entry is no visit and starts the next one at its own time.
 // While the run is not done, the current producer's open visit runs from the last entry's end to now.
-func checklistVisitsOf(status shedengine.Status, startedAt string, now time.Time) (visits map[string]checklistVisits, order []string, lastVisited string) {
+func checklistVisitsOf(status shedengine.Status, startedAt string, now time.Time) (visits map[string]checklistVisits, order []string) {
 	visits = map[string]checklistVisits{}
-	visit := func(name string, spent time.Duration, count int) {
+	visit := func(name string, count int, entry checklistVisit) {
 		v, seen := visits[name]
 		if !seen {
 			order = append(order, name)
 		}
-		v.spent += max(spent, 0)
+		entry.spent = max(entry.spent, 0)
+		v.spent += entry.spent
 		v.visits += count
+		v.log = append(v.log, entry)
 		visits[name] = v
-		lastVisited = name
 	}
 
 	prevEnd, prevKnown := parseChecklistTime(startedAt)
@@ -243,7 +292,15 @@ func checklistVisitsOf(status shedengine.Status, startedAt string, now time.Time
 		if prevKnown && endKnown {
 			spent = end.Sub(prevEnd)
 		}
-		visit(entry.Producer, spent, 1+entry.Repeats)
+		visit(entry.Producer, 1+entry.Repeats, checklistVisit{
+			start:        prevEnd,
+			startKnown:   prevKnown,
+			spent:        spent,
+			outcome:      string(entry.Outcome),
+			output:       entry.Output,
+			gateAttempts: entry.GateAttempts,
+			folds:        1 + entry.Repeats,
+		})
 		if endKnown {
 			prevEnd, prevKnown = end, true
 		}
@@ -254,9 +311,15 @@ func checklistVisitsOf(status shedengine.Status, startedAt string, now time.Time
 		if prevKnown {
 			spent = now.Sub(prevEnd)
 		}
-		visit(status.CurrentProducer, spent, 1)
+		visit(status.CurrentProducer, 1, checklistVisit{
+			start:      prevEnd,
+			startKnown: prevKnown,
+			spent:      spent,
+			outcome:    checklistOpenOutcome,
+			folds:      1,
+		})
 	}
-	return visits, order, lastVisited
+	return visits, order
 }
 
 // parseChecklistTime parses an RFC 3339 time and reports whether value held one.
@@ -281,45 +344,4 @@ func checklistBox(name string, v checklistVisits, status shedengine.Status) stri
 		return checklistBoxDone
 	}
 	return checklistBoxNotReached
-}
-
-// fitChecklist returns at most rows lines: the state line, the rows nearest the anchor row in their own order, and a closing line counting the rows left out.
-// A tie in distance keeps the later row.
-func fitChecklist(stateLine string, rowLines []string, anchor, rows int) []string {
-	lines := append([]string{stateLine}, rowLines...)
-	if rows >= len(lines) {
-		return lines
-	}
-	switch {
-	case rows <= 1:
-		return lines[:1]
-	case rows == 2:
-		return []string{stateLine, rowLines[anchor]}
-	}
-
-	byDistance := make([]int, len(rowLines))
-	for i := range byDistance {
-		byDistance[i] = i
-	}
-	distance := func(i int) int {
-		if i < anchor {
-			return anchor - i
-		}
-		return i - anchor
-	}
-	sort.SliceStable(byDistance, func(a, b int) bool {
-		da, db := distance(byDistance[a]), distance(byDistance[b])
-		if da != db {
-			return da < db
-		}
-		return byDistance[a] > byDistance[b]
-	})
-
-	kept := byDistance[:rows-2]
-	sort.Ints(kept)
-	fitted := []string{stateLine}
-	for _, i := range kept {
-		fitted = append(fitted, rowLines[i])
-	}
-	return append(fitted, fmt.Sprintf(checklistMoreRowsFormat, len(rowLines)-len(kept)))
 }

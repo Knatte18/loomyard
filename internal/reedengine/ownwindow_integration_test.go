@@ -495,7 +495,8 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		return s
 	}
 
-	t.Run("RemoveMovesAViewerOnTheEndingWindowToWindowZero", func(t *testing.T) {
+	t.Run("RemoveMovesAViewerOnTheEndingWindowToTheNewestLiveAgent", func(t *testing.T) {
+		older := addOwn("older")
 		viewed := addOwn("viewed")
 		if err := e.tmux.run("select-window", "-t", windowOfPane(t, e, viewed.PaneID)); err != nil {
 			t.Fatalf("select-window: %v", err)
@@ -505,8 +506,12 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 			t.Fatalf("RemoveStrand: %v", err)
 		}
 
-		if got, want := currentWindow(), strandWindow(); got != want {
-			t.Errorf("current window = %q after removing the viewed strand, want the strands' window %q", got, want)
+		want := windowOfPane(t, e, older.PaneID)
+		if got := currentWindow(); got != want {
+			t.Errorf("current window = %q after removing the viewed strand, want the older live agent's window %q and never the strands' window %q", got, want, strandWindow())
+		}
+		if _, err := e.RemoveStrand(older.GUID, false); err != nil {
+			t.Fatalf("RemoveStrand(older): %v", err)
 		}
 	})
 

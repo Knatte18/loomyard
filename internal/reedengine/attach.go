@@ -27,6 +27,13 @@ import (
 // warn-and-degrade tail at the bottom of AttachArgv has one place to log from.
 var errAttachChainSuppressed = errors.New("attach chain suppressed")
 
+// errAttachNothingToLayOut names the normal state in which the strands' window has fewer than two panes or no placed strand, so there is no layout to chain.
+// It is returned for the same single log tail as errAttachChainSuppressed, but logged at Debug.
+var errAttachNothingToLayOut = errors.New("nothing to lay out")
+
+// errNoClientSize is what AttachArgv's pre-flight returns, after logging, once the shell window check has run for a client of unknown size.
+var errNoClientSize = errors.New("no client terminal size available")
+
 // bareAttachArgv returns the five-element tmux argv both internal/reedcli and internal/loomcli build
 // today for an in-place attach: "-L", socket, "attach-session", "-t", the exact session target.
 // A fresh slice is returned on every call — never a shared package-level slice — since a caller may
@@ -76,9 +83,15 @@ func chainedAttachArgv(socket, session, windowTarget, layout string, pins []rend
 // step that is not a precondition at all: it gates nothing and can never suppress the chain, so it
 // belongs in this sentence only as the pre-flight's complete inventory, not as another degrade path.
 //
-// cols and rows are the attaching client's own terminal size, in columns and rows; a non-positive
-// value means no client size is known, and AttachArgv returns the bare argv immediately without
-// taking the lock.
+// cols and rows are the attaching client's own terminal size, in columns and rows.
+// A non-positive value means no client size is known, and AttachArgv returns the bare argv once the pre-flight has required the session, loaded the state and checked the shell window, the one step it runs ahead of every layout guard.
+// Taking the lock, reading the session or loading the state are the failures that skip that check.
+//
+// Right after that check, and ahead of every layout guard, it resolves the attach's window selection: a trailing `; select-window -t <relevant window>`, the newest live agent window, else the overview, never the shell.
+// The selection is appended to every argv it returns, the chained one after its zoom restore and the bare one of every degrade path past the state read, and also when no client size is known.
+// A second attach never moves a viewer: the selection is dropped when another client is attached, when the client listing fails, or when no window is relevant.
+// Failing to take the lock, read the session or the state, or list the clients drops it too, each logged at Warn.
+// A race with the operator's own window change costs at most one switch.
 //
 // The pre-flight also refreshes the session's window-resized resize-pin hook, computed against the
 // same told box the chained layout is, and the chain carries the same pins after its select-layout. This is what corrects a later client resize, and — on a
@@ -89,24 +102,41 @@ func chainedAttachArgv(socket, session, windowTarget, layout string, pins []rend
 func (e *Engine) AttachArgv(cols, rows int) []string {
 	bare := bareAttachArgv(e.Socket(), e.SessionName())
 
-	if cols <= 0 || rows <= 0 {
-		logger.Warn("reed: no client terminal size available, attaching without a chained layout", "socket", e.Socket(), "session", e.SessionName(), "cols", cols, "rows", rows)
-		return bare
+	// With no client size there is no layout to chain, so the pre-flight needs no zoom bracket.
+	sizeKnown := cols > 0 && rows > 0
+	withLock := e.withOpLockKeepingZoom
+	if !sizeKnown {
+		withLock = e.withOpLock
 	}
 
-	var chained []string
-	err := e.withOpLockKeepingZoom(func() error {
+	var chained, selection []string
+	err := withLock(func() error {
 		if err := e.requireSessionLocked(); err != nil {
 			return err
 		}
 
-		e.warnMismatchedClientsLocked(cols, rows)
+		anotherClient := e.warnMismatchedClientsLocked(cols, rows)
 
 		// Read-only with respect to reed.json: this builder never calls SaveState.
 		st, err := e.loadOrInitStateLocked()
 		if err != nil {
 			return err
 		}
+
+		// A session booted by an older lyx gets its shell window named and placed at the next attach.
+		// This runs before every guard that suppresses the chain, and also when no client size is known.
+		e.ensureShellWindowLocked(st)
+
+		// The window the attaching client lands on is resolved ahead of every layout guard, so every argv past this point carries it.
+		// A second attach never moves a viewer, so another attached client drops it.
+		if !anotherClient {
+			selection = e.attachWindowSelectionLocked(st)
+		}
+		if !sizeKnown {
+			logger.Warn("reed: no client terminal size available, attaching without a chained layout", "socket", e.Socket(), "session", e.SessionName(), "cols", cols, "rows", rows)
+			return errNoClientSize
+		}
+
 		windowTarget, err := e.strandWindowTargetFor(st)
 		if err != nil {
 			return err
@@ -159,11 +189,9 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 		// a layout string enumerating zero panes is accepted by tmux (exit 0) and answered by destroying
 		// every pane in the session, and an attach that wipes the session it is attaching to would be a
 		// far worse bug than the one being fixed.
-		if len(live) < 2 {
-			return errAttachChainSuppressed
-		}
-		if !anyPlacedStrand(st.Strands, liveIDSet(live)) {
-			return errAttachChainSuppressed
+		// Selvage alone in the strands' window is the normal state, so these two skips are not worth a Warn.
+		if len(live) < 2 || !anyPlacedStrand(st.Strands, liveIDSet(live)) {
+			return errAttachNothingToLayOut
 		}
 
 		// Floor reserved at rows-1 so the box height is never non-positive: an oversized #{status}
@@ -192,15 +220,19 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 		return nil
 	})
 	if err != nil {
-		if errors.Is(err, errAttachChainSuppressed) {
+		switch {
+		case errors.Is(err, errNoClientSize):
+		case errors.Is(err, errAttachNothingToLayOut):
+			logger.Debug("reed: the strands' window has nothing to lay out, attaching without a chained layout", "socket", e.Socket(), "session", e.SessionName())
+		case errors.Is(err, errAttachChainSuppressed):
 			logger.Warn("reed: attach chain suppressed, attaching without a chained layout", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-		} else {
+		default:
 			logger.Warn("reed: attach pre-flight failed, attaching without a chained layout", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		}
-		return bare
+		return append(bare, selection...)
 	}
 
-	return chained
+	return append(chained, selection...)
 }
 
 // attachedClient is one line of a `list-clients -F '#{client_name} #{client_width}
@@ -241,33 +273,31 @@ func parseClientList(out string) []attachedClient {
 	return clients
 }
 
-// warnMismatchedClientsLocked lists this session's currently attached clients and logs one
-// logger.Warn per client whose size differs from cols/rows, the size this attach was told. It
-// returns nothing and never blocks the chain: this is the uncovered subset of the resize-dot-fill
-// root-cause model (see the discussion's root-cause-model decision) — tmux is correctly painting
-// real estate no other client's window can cover, and the warning's whole job is to name the
-// specific other terminal an operator should go look at, not to repair anything.
+// warnMismatchedClientsLocked lists this session's currently attached clients and logs one logger.Warn per client whose size differs from cols/rows, the size this attach was told.
+// With no client size known it warns about no mismatch.
+// It reports whether another client is attached, a failed listing counting as one, which is what drops the attach window selection from the argv.
+// It never blocks the chain: this is the uncovered subset of the resize-dot-fill root-cause model (see the discussion's root-cause-model decision).
+// Tmux is correctly painting real estate no other client's window can cover, and the warning's whole job is to name the specific other terminal an operator should go look at, not to repair anything.
 //
-// It is called deliberately ahead of every in-closure degrade return in AttachArgv — before
-// pinGeometryOptionsLocked and everything after it — so the warning still fires on an attach whose
-// chain is later suppressed. That is precisely the attach an operator is most likely to be confused
-// by: a bare (unchained) attach gives no other hint that a second client is holding the window at a
-// different size.
+// It is called deliberately ahead of every in-closure degrade return in AttachArgv, before the state read and everything after it, so the warning still fires on an attach whose chain is later suppressed.
+// That is precisely the attach an operator is most likely to be confused by: a bare (unchained) attach gives no other hint that a second client is holding the window at a different size.
 //
-// A round-trip error is logged via logger.Warn, naming the socket, the session, and the error, and
-// warnMismatchedClientsLocked returns without emitting any per-client line — exactly the
-// Shared Decision geometry-tmux-failures-are-non-fatal-everywhere already governs the rest of this
-// package's tmux calls. It never returns an error and never introduces a degrade path.
-func (e *Engine) warnMismatchedClientsLocked(cols, rows int) {
+// A round-trip error is logged via logger.Warn, naming the socket, the session, and the error, and warnMismatchedClientsLocked emits no per-client line.
+// That is exactly the Shared Decision geometry-tmux-failures-are-non-fatal-everywhere that already governs the rest of this package's tmux calls.
+// It never returns an error and never introduces a degrade path.
+func (e *Engine) warnMismatchedClientsLocked(cols, rows int) (anotherClient bool) {
 	out, err := e.tmux.output("list-clients", "-t", exactSessionTarget(e.SessionName()), "-F", "#{client_name} #{client_width} #{client_height}")
 	if err != nil {
 		logger.Warn("reed: failed to list attached clients, skipping the multi-client size check", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-		return
+		return true
 	}
-	for _, client := range parseClientList(out) {
-		if client.Width == cols && client.Height == rows {
+	sizeKnown := cols > 0 && rows > 0
+	clients := parseClientList(out)
+	for _, client := range clients {
+		if !sizeKnown || (client.Width == cols && client.Height == rows) {
 			continue
 		}
 		logger.Warn("reed: another client is attached at a different size; tmux must pick one window size, so the mismatched client shows tmux padding until it is resized or detached", "socket", e.Socket(), "session", e.SessionName(), "client", client.Name, "clientWidth", client.Width, "clientHeight", client.Height, "toldCols", cols, "toldRows", rows)
 	}
+	return len(clients) > 0
 }

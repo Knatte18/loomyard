@@ -396,6 +396,95 @@ func assertChainedArgv(t *testing.T, e *Engine, cols, rows int, got []string) {
 	}
 }
 
+// relevantWindowFixture returns the state and the scripted window listings of a session with the shell window @0, the overview @3 at index 0 and two agent windows, alpha @1 and beta @2 in start order.
+// alphaDead and betaDead mark that agent's pane dead.
+// The strands also hold the window 0 strand of goodAttachStrands.
+func relevantWindowFixture(alphaDead, betaDead bool) (strands []Strand, windows, panes string) {
+	flag := func(dead bool) string {
+		if dead {
+			return "1"
+		}
+		return "0"
+	}
+	own := render.Display{Anchor: render.AnchorOwnWindow}
+	strands = append(goodAttachStrands(),
+		Strand{GUID: "alpha", Name: "alpha", PaneID: "%10", Display: own},
+		Strand{GUID: "beta", Name: "beta", PaneID: "%11", Display: own},
+		Strand{GUID: "status", Name: "status", PaneID: "%12", Display: render.Display{Anchor: render.AnchorOverview}},
+	)
+	windows = "@3 0 0 0 overview\n@1 1 0 0 alpha\n@2 2 0 0 beta\n@0 3 0 0 shell\n"
+	panes = "@0 0 - %1 0 4321 a\n" +
+		"@1 1 - %10 " + flag(alphaDead) + " 5001 alpha\n" +
+		"@2 1 - %11 " + flag(betaDead) + " 5002 beta\n" +
+		"@3 1 - %12 0 5003 status\n"
+	return strands, windows, panes
+}
+
+// TestAttachArgv_SelectsTheRelevantWindow pins the window selection AttachArgv appends to every argv it returns:
+// `; select-window -t <window>` for the newest live agent window, else the overview, else nothing.
+// A second attach never moves a viewer, so another attached client drops it.
+func TestAttachArgv_SelectsTheRelevantWindow(t *testing.T) {
+	const cols, rows = 80, 24
+	tests := []struct {
+		name       string
+		alphaDead  bool
+		betaDead   bool
+		noOwn      bool
+		clients    string
+		cols, rows int
+		script     func(f *fakeTmux)
+		wantChain  bool
+		wantWindow string
+	}{
+		{name: "NewestLiveAgent", cols: cols, rows: rows, wantChain: true, wantWindow: "@2"},
+		{name: "NewestAgentDeadFallsBackToTheOlderLiveAgent", betaDead: true, cols: cols, rows: rows, wantChain: true, wantWindow: "@1"},
+		{name: "NoLiveAgentFallsBackToTheOverview", alphaDead: true, betaDead: true, cols: cols, rows: rows, wantChain: true, wantWindow: "@3"},
+		{name: "NeitherAgentNorOverviewAppendsNothing", noOwn: true, cols: cols, rows: rows, wantChain: true},
+		{name: "AnotherClientAppendsNothing", clients: "tty0 80 24", cols: cols, rows: rows, wantChain: true},
+		{name: "UnknownClientSizeGivesTheBareArgvPlusTheSelection", wantWindow: "@2"},
+		{
+			name: "OnlySelvageInTheStrandsWindowGivesTheBareArgvPlusTheSelection", cols: cols, rows: rows, wantWindow: "@2",
+			script: func(f *fakeTmux) { f.answer("list-panes", oneAttachListPane, nil) },
+		},
+		{
+			name: "WindowSizeOtherThanLatestGivesTheBareArgvPlusTheSelection", cols: cols, rows: rows, wantWindow: "@2",
+			script: func(f *fakeTmux) { f.answerFormat("#{window-size}", "manual", nil) },
+		},
+		{
+			name: "UnrecognizedStatusGivesTheBareArgvPlusTheSelection", cols: cols, rows: rows, wantWindow: "@2",
+			script: func(f *fakeTmux) { f.answerFormat("#{status}", "bogus", nil) },
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			strands, windows, panes := relevantWindowFixture(tt.alphaDead, tt.betaDead)
+			if tt.noOwn {
+				strands, windows, panes = goodAttachStrands(), "@0 0 0 0 shell\n", "@0 0 - %1 0 4321 a\n"
+			}
+			e, fake := newAttachTestEngine(t, strands)
+			fake.answer("list-windows", windows, nil)
+			fake.answerWindowPanes(panes, nil)
+			fake.answer("list-clients", tt.clients, nil)
+			if tt.script != nil {
+				tt.script(fake)
+			}
+
+			got := e.AttachArgv(tt.cols, tt.rows)
+
+			want := wantBareAttachArgv(e)
+			if tt.wantChain {
+				want = wantChainedAttachArgv(t, e, tt.cols, tt.rows)
+			}
+			if tt.wantWindow != "" {
+				want = append(want, ";", "select-window", "-t", tt.wantWindow)
+			}
+			if !slices.Equal(got, want) {
+				t.Errorf("AttachArgv(%d, %d) = %v, want %v", tt.cols, tt.rows, got, want)
+			}
+		})
+	}
+}
+
 // TestAttachArgv_MultiClientWarning covers warnMismatchedClientsLocked's cardinality: exactly one
 // logger.Warn line per client whose listed size differs from the size this attach was told, none for
 // a matching client, and — in every case — an argv byte-identical to what the same script produces
@@ -457,8 +546,11 @@ func TestAttachArgv_MultiClientWarning(t *testing.T) {
 		}
 	})
 
-	t.Run("ListClientsError_WarnsAndDoesNotChangeBehaviour", func(t *testing.T) {
-		e, fake := newAttachTestEngine(t, goodAttachStrands())
+	t.Run("ListClientsError_WarnsAndAppendsNoSelection", func(t *testing.T) {
+		strands, windows, panes := relevantWindowFixture(false, false)
+		e, fake := newAttachTestEngine(t, strands)
+		fake.answer("list-windows", windows, nil)
+		fake.answerWindowPanes(panes, nil)
 		fake.answer("list-clients", "", errors.New("boom"))
 		buf := logcapture.CaptureVerbose(t)
 

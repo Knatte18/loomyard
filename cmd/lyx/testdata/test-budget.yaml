@@ -84,12 +84,13 @@ internal/preflightshed: 8
 internal/proc: 18
 internal/quarrycli: 7
 internal/reedcli: 40
-internal/reedengine: 262
+internal/reedengine: 265
 internal/reedengine/render: 12
 internal/reportcli: 3
 internal/reportengine: 8
 internal/seatengine: 17
 internal/segmentcolor: 4
+internal/selfexec: 2
 internal/selfreportcli: 3
 internal/selfreportengine: 12
 internal/shedadapters: 155

@@ -105,6 +105,48 @@ func TestAddStrandLocked(t *testing.T) {
 		})
 	}
 
+	t.Run("SecondOverviewUnderAnotherNameRefused", func(t *testing.T) {
+		e := newTestEngine(t)
+		overview := render.Display{Anchor: render.AnchorOverview}
+		seeded := &ReedState{Strands: []Strand{{GUID: "keeper-guid", Name: "keeper", Display: overview}}}
+
+		_, err := e.addStrandLocked(seeded, AddSpec{Cmd: "x", NameOverride: "second", Display: overview})
+		if err == nil {
+			t.Fatal("addStrandLocked = nil error, want the second overview refused")
+		}
+		for _, want := range []string{"keeper", "lyx reed remove"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error = %q, want it to contain %q", err, want)
+			}
+		}
+		if len(seeded.Strands) != 1 {
+			t.Errorf("st.Strands = %+v, want no record registered on a rejected add", seeded.Strands)
+		}
+	})
+
+	t.Run("OverviewDisplayValidation", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			display render.Display
+			wantErr string
+		}{
+			{"SizeIgnored", render.Display{Anchor: render.AnchorOverview, Size: render.Size{Kind: render.SizeContent, ShareNum: 1, ShareDen: 8, MinRows: 3}}, ""},
+			{"WindowGroupRefused", render.Display{Anchor: render.AnchorOverview, Window: "table"}, "takes no window group"},
+			{"WindowSizeRefused", render.Display{Anchor: render.AnchorOverview, WindowSize: 2}, "takes no window group"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				err := validateDisplay(tt.display)
+				switch {
+				case tt.wantErr == "" && err != nil:
+					t.Errorf("validateDisplay = %v, want nil", err)
+				case tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)):
+					t.Errorf("validateDisplay = %v, want an error containing %q", err, tt.wantErr)
+				}
+			})
+		}
+	})
+
 	t.Run("OwnWindowEmptyNewWindowAnswerIsRefused", func(t *testing.T) {
 		e := newTestEngine(t)
 		fake := installFakeTmux(t, e)
@@ -203,6 +245,7 @@ func TestUpdateStrandLocked(t *testing.T) {
 	visible := render.Display{Anchor: render.AnchorBelowParent}
 	hidden := render.Display{Anchor: render.AnchorHidden}
 	own := render.Display{Anchor: render.AnchorOwnWindow, Window: "pair", WindowSize: 2}
+	overview := render.Display{Anchor: render.AnchorOverview}
 	const moveWayForward = "way forward: lyx reed remove"
 	tests := []struct {
 		name    string
@@ -217,6 +260,8 @@ func TestUpdateStrandLocked(t *testing.T) {
 		{"UnknownGuidRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "does-not-exist", render.Display{}, "invalid anchor"},
 		{"BelowParentToOwnWindowRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", own, moveWayForward},
 		{"OwnWindowToBelowParentRejected", Strand{GUID: "g1", PaneID: "%1", Display: own}, "g1", visible, moveWayForward},
+		{"OverviewToOwnWindowRejected", Strand{GUID: "g1", PaneID: "%1", Display: overview}, "g1", render.Display{Anchor: render.AnchorOwnWindow}, moveWayForward},
+		{"OwnWindowToOverviewRejected", Strand{GUID: "g1", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}, "g1", overview, moveWayForward},
 		{"HiddenToOwnWindowRejected", Strand{GUID: "g1", Display: hidden, Cmd: "claude"}, "g1", own, moveWayForward},
 		{"OwnWindowGroupChangeRejected", Strand{GUID: "g1", PaneID: "%1", Display: own}, "g1", render.Display{Anchor: render.AnchorOwnWindow, Window: "other", WindowSize: 2}, moveWayForward},
 		{"OwnWindowSizeChangeRejected", Strand{GUID: "g1", PaneID: "%1", Display: own}, "g1", render.Display{Anchor: render.AnchorOwnWindow, Window: "pair", WindowSize: 3}, moveWayForward},

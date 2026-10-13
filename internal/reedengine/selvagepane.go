@@ -420,6 +420,17 @@ func (e *Engine) splitPaneBelowLocked(target string, preSplitLive []LivePane, la
 	return paneID, nil
 }
 
+// shellWindowOf returns the id of the window holding the recorded console pane, alive or a dead corpse, read from windowByPane, a session-wide pane-to-window listing.
+// It reports false when st records no console pane or the listing does not carry it.
+// It never falls back to another window: a session resolved only through a top or below-parent strand, or the current window, has no shell window.
+func shellWindowOf(st *ReedState, windowByPane map[string]string) (string, bool) {
+	if st == nil || st.SelvagePaneID == "" {
+		return "", false
+	}
+	windowID, ok := windowByPane[st.SelvagePaneID]
+	return windowID, ok
+}
+
 // recordedPaneIDs lists the pane ids st records, Selvage first, then the strands in order.
 // An own-window strand's pane is skipped, since it is not placed in the strands' window.
 func recordedPaneIDs(st *ReedState) []string {

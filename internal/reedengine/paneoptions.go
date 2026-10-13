@@ -60,8 +60,8 @@ func (e *Engine) markStrandWindowLocked(windowTarget string) {
 	}
 }
 
-// markResolvedStrandWindowLocked marks the strand window once Selvage exists and the window resolves.
-// An unresolved window is logged and skips the mark only.
+// markResolvedStrandWindowLocked marks the strand window once Selvage exists and the window resolves, then checks the shell window, which is how a fresh boot names its one window shell.
+// An unresolved window is logged and skips the mark and the check.
 func (e *Engine) markResolvedStrandWindowLocked(st *ReedState) {
 	windowTarget, err := e.strandWindowTargetFor(st)
 	if err != nil {
@@ -69,6 +69,7 @@ func (e *Engine) markResolvedStrandWindowLocked(st *ReedState) {
 		return
 	}
 	e.markStrandWindowLocked(windowTarget)
+	e.ensureShellWindowLocked(st)
 }
 
 // withColor returns s with Color filled from its segment's configured color.

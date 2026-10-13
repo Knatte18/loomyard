@@ -36,6 +36,11 @@ It never resolves a working directory, and `Derive` creates nothing on disk.
 
 Imports only the standard library.
 
+## `internal/selfexec`
+
+Imports only the standard library and `internal/logger`.
+`internal/logger` is admitted because the helper logs its stat, exec and replace outcomes.
+
 ## `internal/pattern`
 
 Imports only the standard library, `lyxdirs`, `stencilstore` and `stencil`.

@@ -17,7 +17,7 @@
 // Runs are ordered by the seed's start time and then slug, those with no readable start last.
 // The pane polls each second and backs off while nothing changes, which holds because every time renders in whole minutes.
 // A status file unreadable on two polls in a row shows the slug and `status unreadable`; one failed poll keeps the line of the previous status.
-// It only reads the run records and the status files, without their locks, so it never blocks or slows a run; its one write is the content-rows report, which reed confines to the runs strand.
+// It only reads the run records and the status files, without their locks, so it never blocks or slows a run.
 //
 // "lyx batten run <slug> --window" runs the same status check as a plain run and refuses a done slug before opening anything.
 //
