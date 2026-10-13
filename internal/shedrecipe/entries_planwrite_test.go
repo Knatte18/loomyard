@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
@@ -326,6 +327,43 @@ func TestPlanWriteEntry_GateConfig(t *testing.T) {
 		}
 		if !strings.Contains(result.Findings, "plan overview not found") {
 			t.Errorf("gateSpec[0].Gate() Findings = %q; want it to name the missing plan overview, proving the plan validator ran", result.Findings)
+		}
+	})
+
+	t.Run("PlanWriteSetsForkedOnItsPlanEntry", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.PlanIndex = noFindingsPlanIndex{}
+		plankit.Write(t, planparser.PlanDir(env.AnchorPath), plankit.Plan{
+			Approved: true,
+			Language: "none",
+			Framing:  "Framing.",
+			Cards: []plankit.Card{{
+				Number:  1,
+				Slug:    "first-card",
+				Summary: "placeholder",
+				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/x/new.go"}}},
+				Intent:  "placeholder.",
+			}},
+		})
+
+		gateSpec, err := planWriteGateSpec(gatesCfg("plan", 3), env)
+		if err != nil {
+			t.Fatalf("planWriteGateSpec() error = %v; want nil", err)
+		}
+		if len(gateSpec) != 1 || gateSpec[0].Gate == nil || gateSpec[0].Forked == nil {
+			t.Fatalf("planWriteGateSpec() = %+v; want one entry carrying Gate and Forked", gateSpec)
+		}
+
+		result, err := gateSpec[0].Gate()
+		if err != nil || !result.Passed {
+			t.Fatalf("Gate() = %+v, %v; want a pass for a plan the plain plan gate accepts", result, err)
+		}
+		result, err = gateSpec[0].Forked()
+		if err != nil {
+			t.Fatalf("Forked() error = %v; want nil", err)
+		}
+		if result.Passed || !strings.Contains(result.Findings, "lens-review-missing") {
+			t.Errorf("Forked() = %+v; want a failure naming lens-review-missing, proving the lens-review closure", result)
 		}
 	})
 }
