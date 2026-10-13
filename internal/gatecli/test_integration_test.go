@@ -73,6 +73,8 @@ type standInRecord struct {
 }
 
 func runGateHelper() int {
+	// The helper stands for `lyx`'s main, whose logs reach the real stderr; under go test the logger defaults to discarding them.
+	logger.SetOutput(os.Stderr)
 	logger.SetVerbosity(1)
 	// The go binary the gate spawns is this same binary, in the stand-in role.
 	os.Setenv(helperEnv, helperRoleStandIn)
