@@ -277,14 +277,27 @@ func TestInnerRun_HaltedRevivesADeadDriverOncePerEpisode(t *testing.T) {
 	}
 }
 
-// TestInnerRun_StrandReadErrorSkipsTheReviveWithAWarn asserts a DriverStrand read error is warned about and never fails the row or revives.
+// TestInnerRun_StrandReadErrorSkipsTheReviveWithAWarn asserts a DriverStrand read error is warned about once per episode and never fails the row or revives.
+// The strand read fails on the first three probes and then answers live, so the halted arm's revive is skipped three times and never needed.
 func TestInnerRun_StrandReadErrorSkipsTheReviveWithAWarn(t *testing.T) {
 	var buf bytes.Buffer
 	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
+	logger.SetVerbosity(2)
+	t.Cleanup(func() {
+		logger.SetOutput(logger.DefaultOutput())
+		logger.SetVerbosity(0)
+	})
 
-	_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{haltedStatus(shedengine.StatePaused, 2)}, &fakeClock{})
+	clock := &fakeClock{}
+	_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{haltedStatus(shedengine.StatePaused, 2)}, clock)
+	deps.NoticeProbe = 0
+	clock.pauseAtSleep = 4
+	strandReads := 0
 	deps.DriverStrand = func(context.Context) (ChildDriverStrand, error) {
+		strandReads++
+		if strandReads > 3 {
+			return ChildDriverLive, nil
+		}
 		return ChildDriverNone, errors.New("directory unreadable")
 	}
 	deps.ReviveStrands = func(context.Context) error {
@@ -297,9 +310,7 @@ func TestInnerRun_StrandReadErrorSkipsTheReviveWithAWarn(t *testing.T) {
 	if err != nil || outcome != shedengine.Stuck || !ptr.BudgetExempt {
 		t.Fatalf("Call() = %v %+v %v; want an exempt Stuck", outcome, ptr, err)
 	}
-	if !strings.Contains(buf.String(), "could not read the child's driver strand") {
-		t.Errorf("log lacks the strand-read warn: %s", buf.String())
-	}
+	assertRepeatedFailureEpisode(t, buf.String(), "could not read the child's driver strand")
 }
 
 // TestInnerRun_ARunningChildEndsTheReviveEpisode asserts the revived marker is removed once the child is seen running,

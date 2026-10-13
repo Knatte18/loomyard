@@ -223,9 +223,9 @@ func (p *innerRunProducer) publishRetryStep(ctx context.Context, w *childWait) *
 	return p.publishRetryResume(ctx, w, r)
 }
 
-// publishRetryGoto sends the child to the retry's target.
+// publishRetryGoto sends the child to the retry's target, logging the attempt at Info the first time and at Debug on each retry after a refusal.
 func (p *innerRunProducer) publishRetryGoto(ctx context.Context, w *childWait, r publishRetry) *waitEnd {
-	logger.Info("battenshed: sending the child to the failed Publish's target", "producer", p.name, "slug", p.slug, "target", r.target)
+	logAttempt(w.publishRefusal == "", "battenshed: sending the child to the failed Publish's target", "producer", p.name, "slug", p.slug, "target", r.target)
 	err := p.deps.Goto(ctx, r.target)
 	if err != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
@@ -247,11 +247,12 @@ func (p *innerRunProducer) publishRetryGoto(ctx context.Context, w *childWait, r
 	return p.exemptEnd(fmt.Sprintf("automatic Publish verify retry: sent the child to %s", r.target))
 }
 
-// publishRetryResume resumes the child paused at the retry's target through its bootstrap.
+// publishRetryResume resumes the child paused at the retry's target through its bootstrap, logging the attempt at Info the first time and at Debug on each retry after a refusal.
 func (p *innerRunProducer) publishRetryResume(ctx context.Context, w *childWait, r publishRetry) *waitEnd {
-	logger.Info("battenshed: resuming the child at the failed Publish's target", "producer", p.name, "slug", p.slug, "target", r.target)
+	first := w.publishRefusal == ""
+	logAttempt(first, "battenshed: resuming the child at the failed Publish's target", "producer", p.name, "slug", p.slug, "target", r.target)
 	err := p.deps.Spawn(ctx)
-	logger.Info("battenshed: inner shed run wait complete", "producer", p.name, "slug", p.slug)
+	logAttempt(first, "battenshed: inner shed run wait complete", "producer", p.name, "slug", p.slug)
 	if err != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return hardEnd(cerr)

@@ -171,9 +171,49 @@ type innerRunProducer struct {
 	noticeQuiet time.Duration
 	// retryOn is true when the automatic Publish verify retry is wired: a Publish row name and all three of its seams.
 	retryOn bool
+	// failures guards each polled seam's failure by its message, across Calls: Warn at the first, Debug while it repeats, Info at recovery.
+	failures logger.EpisodeSet
 }
 
 var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
+
+// seamFailed counts one failure of the seam named by msg, with the producer and slug fields, extra, then err.
+func (p *innerRunProducer) seamFailed(msg string, err error, extra ...any) {
+	args := append([]any{"producer", p.name, "slug", p.slug}, extra...)
+	p.failures.Fail(msg, msg, append(args, "error", err)...)
+}
+
+// seamRecovered ends the failure episode of the seam named by msg; it does nothing outside an episode.
+func (p *innerRunProducer) seamRecovered(msg string) {
+	p.failures.Recover(msg, "battenshed: a repeated failure recovered", "failure", msg, "producer", p.name, "slug", p.slug)
+}
+
+// The failure messages of the guarded seams, each the key of its episode.
+const (
+	failLockRecordUnreadable  = "battenshed: parent lock record unreadable; leaving it alone"
+	failAgentStatesUnreadable = "battenshed: the child's agent states are unreadable; keeping its parent lock"
+	failLockRelease           = "battenshed: could not release the child's parent lock"
+	failStaleBaseDecision     = "battenshed: decision unreadable for the stale-base check; not resuming"
+	failParentMoved           = "battenshed: could not tell whether the parent moved; not resuming"
+	failReviewWaitNote        = "battenshed: reviewer wait note unavailable"
+	failDriverStrandRead      = "battenshed: could not read the child's driver strand; skipping the revive"
+	failDriverLiveness        = "battenshed: driver liveness read failed; treating the driver as live"
+	failPairDirectory         = "battenshed: notice skipped; pair directory unresolved"
+	failAgentActivity         = "battenshed: agent activity read failed; no activity notice"
+	failArbiterMarker         = "battenshed: arbiter marker unreadable; holding nothing"
+	failStopReport            = "battenshed: stop report unreadable; reading it as none"
+	failNoticeDecision        = "battenshed: decision unreadable for the notice step; reading it as decided"
+	failOrchStateUnreadable   = "battenshed: notice held back; the orch state is unreadable"
+)
+
+// logAttempt logs msg at Info for a first attempt and at Debug for each retry after a refusal.
+func logAttempt(first bool, msg string, args ...any) {
+	if first {
+		logger.Info(msg, args...)
+		return
+	}
+	logger.Debug(msg, args...)
+}
 
 // NewInnerRun returns a shedengine.ShedProducer that resolves the task worktree's status path and spawns the inner shed run via deps.Spawn the first time Call finds no status file.
 // It then waits on the child inside the call, checking every pollInterval through deps.Sleep.
@@ -465,16 +505,17 @@ func (p *innerRunProducer) driverAtWork(ctx context.Context) (bool, error) {
 }
 
 // reviewWaitNote returns the child's reviewer-wait note, or empty when there is none or ReviewWait is nil.
-// A ReviewWait error logs one Warn and reads as no note, since the note never fails the row.
+// A ReviewWait error warns once per episode and reads as no note, since the note never fails the row.
 func (p *innerRunProducer) reviewWaitNote() string {
 	if p.deps.ReviewWait == nil {
 		return ""
 	}
 	note, err := p.deps.ReviewWait()
 	if err != nil {
-		logger.Warn("battenshed: reviewer wait note unavailable", "producer", p.name, "slug", p.slug, "error", err)
+		p.seamFailed(failReviewWaitNote, err)
 		return ""
 	}
+	p.seamRecovered(failReviewWaitNote)
 	return note
 }
 
@@ -788,13 +829,14 @@ type driverRevival struct {
 // The attempt is recorded in the revived marker with this process's pid;
 // a marker naming another pid belongs to an earlier process, whose episode this one retries once.
 // It changes no run state and removes no park marker,
-// and every failure, a strand read included, is warned about and never fails the row.
+// and every failure is warned about and never fails the row, a repeating strand read once per episode.
 func (p *innerRunProducer) reviveDeadDriver(ctx context.Context) driverRevival {
 	strand, err := p.deps.DriverStrand(ctx)
 	if err != nil {
-		logger.Warn("battenshed: could not read the child's driver strand; skipping the revive", "producer", p.name, "slug", p.slug, "error", err)
+		p.seamFailed(failDriverStrandRead, err)
 		return driverRevival{}
 	}
+	p.seamRecovered(failDriverStrandRead)
 	switch strand {
 	case ChildDriverNone:
 		return driverRevival{startFallback: true}
@@ -902,9 +944,10 @@ func (p *innerRunProducer) resumeAwaitingChild(ctx context.Context, w *childWait
 		return false, nil
 	}
 
-	logger.Info("battenshed: resuming awaiting inner shed run", "producer", p.name, "slug", p.slug, "subject", subject)
+	first := !w.notParkedLogged && !w.busyLogged
+	logAttempt(first, "battenshed: resuming awaiting inner shed run", "producer", p.name, "slug", p.slug, "subject", subject)
 	spawnErr := p.deps.Spawn(ctx)
-	logger.Info("battenshed: inner shed run wait complete", "producer", p.name, "slug", p.slug)
+	logAttempt(first, "battenshed: inner shed run wait complete", "producer", p.name, "slug", p.slug)
 	if spawnErr != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return false, hardEnd(cerr)
@@ -1000,14 +1043,16 @@ func (p *innerRunProducer) doneStep(ctx context.Context, w *childWait) *waitEnd 
 }
 
 // driverAlive reports whether the child's driver strand is live, reading deps.DriverAlive at most once per probe and reusing the answer on the checks between.
-// known is false when the read failed, which is warned about once per read; the done arm then treats the driver as live and the notice step skips what needs the answer.
+// known is false when the read failed, which warns once per episode; the done arm then treats the driver as live and the notice step skips what needs the answer.
 func (p *innerRunProducer) driverAlive(ctx context.Context, w *childWait) (alive, known bool) {
 	if w.aliveStale {
 		w.aliveStale = false
 		a, err := p.deps.DriverAlive(ctx)
 		w.alive, w.aliveKnown = a, err == nil
-		if err != nil && ctx.Err() == nil {
-			logger.Warn("battenshed: driver liveness read failed; treating the driver as live", "producer", p.name, "slug", p.slug, "error", err)
+		if err == nil {
+			p.seamRecovered(failDriverLiveness)
+		} else if ctx.Err() == nil {
+			p.seamFailed(failDriverLiveness, err)
 		}
 	}
 	return w.alive, w.aliveKnown

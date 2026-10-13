@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -421,7 +422,7 @@ func TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) 
 
 // TestInnerRun_RunningArmReviewWaitNote pins the running arm's reason with a reviewer note, without one, when ReviewWait fails, and that a changed note rewrites the reason once.
 // The wait reads the note on every probe check, and the reason is written at entry and only when it changes.
-// It captures the process-global logger at Info, where each reason is its own key and so logs once per write.
+// It captures the process-global logger at Debug, where each reason is its own key and so logs once per write, and a failing ReviewWait warns once and logs its recovery.
 func TestInnerRun_RunningArmReviewWaitNote(t *testing.T) {
 	plain := "inner shed run still running; checking it every 5s"
 	hub := "inner shed run waiting: parent review: waiting on the hub; checking it every 5s"
@@ -433,6 +434,17 @@ func TestInnerRun_RunningArmReviewWaitNote(t *testing.T) {
 			return notes[i], nil
 		}
 	}
+	// failsTwice fails its first two reads and answers an empty note after.
+	failsTwice := func() func() (string, error) {
+		calls := 0
+		return func() (string, error) {
+			calls++
+			if calls <= 2 {
+				return "", errors.New("boom")
+			}
+			return "", nil
+		}
+	}
 	tests := []struct {
 		name       string
 		reviewWait func() (string, error)
@@ -440,16 +452,19 @@ func TestInnerRun_RunningArmReviewWaitNote(t *testing.T) {
 		wantReasons []string
 		// wantWrites counts reason writes: the entry, each change, and the pause that ends the wait.
 		wantWrites int
+		// wantEpisode is true when the row's ReviewWait fails and then heals: one Warn, a Debug after it and one recovery Info.
+		wantEpisode bool
 	}{
-		{"note replaces plain reason", func() (string, error) { return "parent review: waiting on the hub", nil }, []string{hub, hub, hub}, 2},
-		{"empty note keeps plain reason", func() (string, error) { return "", nil }, []string{plain, plain, plain}, 2},
-		{"nil ReviewWait keeps plain reason", nil, []string{plain, plain, plain}, 2},
-		{"failing ReviewWait falls back to plain reason", func() (string, error) { return "", errors.New("boom") }, []string{plain, plain, plain}, 2},
-		{"a changed note rewrites the reason once", script("", "", "parent review: waiting on the hub"), []string{plain, hub, hub}, 3},
+		{"note replaces plain reason", func() (string, error) { return "parent review: waiting on the hub", nil }, []string{hub, hub, hub}, 2, false},
+		{"empty note keeps plain reason", func() (string, error) { return "", nil }, []string{plain, plain, plain}, 2, false},
+		{"nil ReviewWait keeps plain reason", nil, []string{plain, plain, plain}, 2, false},
+		{"failing ReviewWait falls back to plain reason", failsTwice(), []string{plain, plain, plain}, 2, true},
+		{"a changed note rewrites the reason once", script("", "", "parent review: waiting on the hub"), []string{plain, hub, hub}, 3, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			buf := logcapture.CaptureVerbose(t)
+			logger.SetVerbosity(2)
 
 			scratchDir := t.TempDir()
 			clock := &fakeClock{}
@@ -465,6 +480,9 @@ func TestInnerRun_RunningArmReviewWaitNote(t *testing.T) {
 			}
 			if got := strings.Count(buf.String(), "producer stuck"); got != tt.wantWrites {
 				t.Errorf("reason writes = %d; want %d", got, tt.wantWrites)
+			}
+			if tt.wantEpisode {
+				assertRepeatedFailureEpisode(t, buf.String(), "reviewer wait note unavailable")
 			}
 		})
 	}

@@ -114,7 +114,8 @@
 // With deps.ParentLock wired, the wait also looks after the parent lock of the child's run on every probe check (innerrun_parentlock.go).
 // A lock record handed to this batten at PR-Gate is kept while the child awaits there, until that awaiting has lasted the idle bound with no decision to resume on, and while the child runs after a resume, so the resumed loop takes it back; in any other state the record is released.
 // A record owned by another process is released once every agent of that owner has waited for the idle bound with none busy, a watch that restarts whenever the owner changes; a failed agent read releases nothing.
-// Every release logs one Warn, and batten releases only a record naming its own child's run.
+// Every release logs one Info, and batten releases only a record naming its own child's run.
+// A polled seam that keeps failing, this lock step's included, warns at the first failure, logs Debug while it repeats and logs one Info when it recovers, and a retried spawn or goto logs Info on its first attempt and Debug on each retry.
 // A child awaiting at PR-Gate with no decision pending whose parent branch moved upstream is resumed through the same spawn as a decided one, so the gate's next call reroutes it to Merge-In under the lock, and its awaiting notice is suppressed.
 // The moved-parent read may fetch, so it runs only for a child awaiting at the gate row, at most once per probe.
 //
