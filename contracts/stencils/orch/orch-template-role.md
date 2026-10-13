@@ -31,7 +31,7 @@ This list holds every `lyx` command you may use, and `lyx <command> --help` give
    Both leave the batten run paused, so resume it with `lyx batten run <slug>`, which starts or resumes the lifecycle run.
 4. Keep no polling shell and start no Monitor for a run.
    A line starting with `[batten notice]` is the wake-up.
-   A notice naming newly ready tasks goes to After landing, and every other `[batten notice]` is handled as under Investigating a stop.
+   Every `landed` notice goes to After landing, and every other `[batten notice]` is handled as under Investigating a stop.
 5. A ready PR is "awaiting", never "blocked".
    Runs that can run in parallel do, and only a task whose packages overlap a running task waits, through its board `depends_on`.
 
@@ -70,7 +70,7 @@ Its stop report then carries the arbiter's verdict path and question: read the v
 ## Investigating a stop
 
 A stop is a `[batten notice]`, a halted run, or a message or escalation from a driver, webster or review loop.
-A parent-review request follows Parent-review, and a `[batten notice]` naming newly ready tasks follows After landing; neither is investigated as a stop.
+A parent-review request follows Parent-review, and a `landed` notice follows After landing; neither is investigated as a stop.
 First read what the stop itself shows: `lyx batten status <slug>` for a notice or a halted run, the message for a message.
 When what it shows names the action (run loop item 2, Escalations from a child), take it yourself without a fork.
 Otherwise, when the `error` field is empty or names no action, or the cause sits in a report, a pane or a log, the stop goes to a one-shot fork.
@@ -124,10 +124,14 @@ It syncs the task branch with main, squashes it onto main, marks the board task 
 
 ## After landing
 
-A landing needs nothing from you: batten's Land row pulls the prime, runs the hub's landing `deploy` command and prunes the board, and then Worktree-Teardown removes the pair.
+A landing needs nothing more from you than these steps: batten's Land row pulls the prime, runs the hub's landing `deploy` command and prunes the board, and then Worktree-Teardown removes the pair.
 A `[batten notice]` naming a Land or Worktree-Teardown failure is a stop, handled under Investigating a stop.
-A notice naming newly ready tasks is the cue to start them with `lyx batten run <slug> --window`.
-While the hub's landing `deploy` key is empty, run `update-plugins.sh` by hand on a ready notice, or at your next wake after any landing, since an agent approval lands with no orch turn.
+- A `[batten notice]` reading `<slug>: landed` means the task landed: count it as no longer running, run `lyx board intake`, start each task the notice names after `newly ready:` with `lyx batten run <slug> --window`, and, while the hub's landing `deploy` key is empty, run `update-plugins.sh` by hand.
+- At every wake, any task you count as running whose board entry is `done` or gone from the board, or whose pair is gone, is treated as landed and no longer running, since its notice may have been dropped.
+- For such a task, read its `<slug>: landed; newly ready:` line in the hub notice log (`.lyx/notices.log` in the prime) and start each task it names that the board still shows ready and that has not started.
+  Any other ready task waits for the operator's approval, as the board policy requires, so the fallback never starts a task the operator has not released.
+- Only while the landing `deploy` key is empty, at every wake, and only for landings into a `require_pr_to_base` branch: compare `origin/prod`, which `update-plugins.sh` moves to the commit it deploys, with `origin/main`, and run `update-plugins.sh` when `origin/main` holds a commit `origin/prod` lacks.
+
 A hub config edit you make carries its own fabric commit whenever you make one; it is no landing step.
 Read the driver's drive reports from the prime's own copies only when the run had trouble: a halt, a block, a failed or repaired step, or a hub intervention.
 Never read the run's friction notes: its Friction-Reflect files them as issues, and intake takes those onto the board.
