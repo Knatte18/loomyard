@@ -187,6 +187,12 @@ var wordingClaims = []stencilClaims{
 		wantNone("the arbiter moves and resumes nothing itself and messages no session",
 			"lyx loom goto", "lyx loom resume", "lyx loom approve", "lyx loom reject", "lyx loom review", "SendMessage"),
 	)},
+	{"loom-template-tackler.md", LoomTemplateTackler, joinClaims(
+		wantAll("the verdict file, the escalate case brief, the three verdict words and the marked hypothesis reach the agent",
+			"{{.verdict_path}}", "{{.case_brief_path}}", "hand-back", "escalate", "resume", "hypothesis"),
+		wantNone("the tackler moves and resumes nothing itself and messages no session",
+			"SendMessage", "lyx loom goto", "lyx loom resume", "lyx loom approve", "lyx loom reject", "lyx shed goto"),
+	)},
 	{"loom-template-alignment.md", LoomTemplateAlignment, joinClaims(
 		wantAll("the agent reads the peers and the board, writes its two files, escalates with a question, lists superseded entries and names the bookkeeping file that does not escalate",
 			"lyx loom peers", "lyx board list", "{{.verdict_path}}", "{{.report_path}}", "escalate", "question", "superseded", "test-budget.yaml"),
