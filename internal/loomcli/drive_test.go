@@ -5,10 +5,12 @@ package loomcli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -94,6 +96,35 @@ func TestGoDriver_Settle(t *testing.T) {
 	verifyHalt := func(t *testing.T) []byte {
 		return driveEnvelopeJSON(t, map[string]any{"ok": true, "state": "blocked"}, map[string]any{"state": "blocked", "current_producer": loomshed.NamePublish, "history_length": 2})
 	}
+	transientFailure := func(t *testing.T) []byte {
+		return driveEnvelopeJSON(t, map[string]any{"ok": false, "kind": "producer", "transient": "api", "error": "the API timed out"},
+			map[string]any{"state": "failed", "current_producer": "Build", "history_length": 2})
+	}
+	unseededFailure := func(t *testing.T) []byte {
+		return driveEnvelopeJSON(t, map[string]any{"ok": false, "kind": "unseeded", "error": "no seed"},
+			map[string]any{"state": "failed", "current_producer": "Build", "history_length": 2})
+	}
+	blockedLater := func(t *testing.T) []byte {
+		return driveEnvelopeJSON(t, map[string]any{"ok": true, "state": "blocked"}, map[string]any{"state": "blocked", "current_producer": "Build", "history_length": 3})
+	}
+	blockedKey := loomengine.ArbiterStopKey{CurrentProducer: "Build", HistoryLength: 2, State: "blocked"}
+	blockedStatus := shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Build", History: []shedengine.HistoryEntry{
+		{Producer: "Plan", Outcome: shedengine.Done, At: driveTestEpoch.Format(time.RFC3339)},
+		{Producer: "Build", Outcome: shedengine.Stuck, At: driveTestEpoch.Add(time.Second).Format(time.RFC3339)},
+	}}
+	awaitingStatus := shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: "Review", History: blockedStatus.History}
+	tacklerOutcome := func(verdict string, attempt int) loomengine.TacklerEnvelope {
+		dir := fmt.Sprintf("tackler/%d", attempt)
+		return loomengine.TacklerEnvelope{Verdict: verdict, Reason: "because", Question: "what now?", Attempt: attempt, AttemptDir: dir, VerdictPath: dir + "/verdict.yaml", CaseBriefPath: dir + "/case-brief.md"}
+	}
+	arbiterOutcome := func(verdict string, attempt int) loomengine.ArbiterEnvelope {
+		dir := fmt.Sprintf("arbiter/%d", attempt)
+		return loomengine.ArbiterEnvelope{Verdict: verdict, Reason: "because", Question: "which way?", Attempt: attempt, AttemptDir: dir, VerdictPath: dir + "/verdict.yaml"}
+	}
+	repairSeed := func(key loomengine.ArbiterStopKey) []loomengine.SettleRecord {
+		record := loomengine.SettleRecord{StopKey: key, Settler: loomengine.SettlerGoRule, Action: loomengine.SettleRestep}
+		return []loomengine.SettleRecord{record, record}
+	}
 	verifyRecord := battenshed.ChildPublishFailure{Row: loomshed.NamePublish, Head: "abc", Target: "Build", WrittenAt: driveTestEpoch.Add(5 * time.Second).Format(time.RFC3339)}
 	staleRecord := verifyRecord
 	staleRecord.WrittenAt = driveTestEpoch.Add(-time.Hour).Format(time.RFC3339)
@@ -112,6 +143,10 @@ func TestGoDriver_Settle(t *testing.T) {
 		steps []func(t *testing.T) []byte
 		// statuses, when set, is the status the run shows after each step; otherwise the status the step's envelope describes.
 		statuses []shedengine.Status
+		// statusSeq, when set, is what the nth status read after the first step returns, the last entry repeating.
+		statusSeq []shedengine.Status
+		// initialStatus is what the status read before the first step returns; without it the run has no status file.
+		initialStatus *shedengine.Status
 		// settleSeed holds the settle records an earlier process left.
 		settleSeed   []loomengine.SettleRecord
 		runLockHeld  bool
@@ -123,13 +158,30 @@ func TestGoDriver_Settle(t *testing.T) {
 		pauseCovered []bool
 		orchRecorded bool
 
-		wantCalls     []string
-		wantActions   []string
+		// The agent seams: what Tackler and Arbiter return, and what ConsumeTackler refuses with.
+		tacklerReturns loomengine.TacklerEnvelope
+		tacklerErr     error
+		arbiterReturns loomengine.ArbiterEnvelope
+		arbiterErr     error
+		consumeErr     error
+		// currentSnap and attemptSnap are the worktree snapshot now and the one the tackler attempt recorded at spawn.
+		currentSnap, attemptSnap loomengine.WorktreeSnapshot
+		// open names the attempts OpenAttempts lists for openKey; restartAttempt also writes the attempt record and stop envelope the tackler directory holds.
+		openKey        *loomengine.ArbiterStopKey
+		openTackler    string
+		openArbiter    string
+		openApplied    bool
+		restartAttempt bool
+
+		wantCalls    []string
+		wantActions  []string
+		wantSettlers []string
+		// wantReportHas maps a stop report's number, from 1, to substrings it holds.
+		wantReportHas map[int][]string
 		wantReports   int
 		wantParked    bool
 		wantNotifies  int
 		wantHandBack  bool
-		wantStepCalls int
 	}{
 		{name: "done commits and exits with no park", steps: []func(*testing.T) []byte{done}, wantCalls: []string{"step", "commit-records"}},
 		{
@@ -157,7 +209,7 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantCalls: []string{"step"}, wantActions: []string{loomengine.SettleHandBack}, wantReports: 1, wantParked: true, wantNotifies: 1, wantHandBack: true,
 		},
 		{
-			name: "unwatched verify halt with a matching record goes to its target once, and a second such halt parks",
+			name:  "unwatched verify halt with a matching record goes to its target once, and a second such halt parks",
 			steps: []func(*testing.T) []byte{verifyHalt, verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus(), verifyHaltStatus()}, record: &verifyRecord,
 			wantCalls:   []string{"step", "goto:Build", "step"},
 			wantActions: []string{loomengine.SettleVerifyRetry, loomengine.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true,
@@ -179,9 +231,138 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantCalls:  []string{"step"}, wantActions: []string{loomengine.SettleVerifyRetry, loomengine.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true,
 		},
 		{
-			name: "a stale failure record from an earlier halt drives no goto", steps: []func(*testing.T) []byte{verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus()},
-			record:    &staleRecord,
-			wantCalls: []string{"step"}, wantActions: []string{loomengine.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true,
+			name: "a stale failure record from an earlier halt drives no goto and reaches the tackler", steps: []func(*testing.T) []byte{verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus()},
+			record: &staleRecord, tacklerReturns: tacklerOutcome(loomengine.TacklerVerdictHandBack, 1),
+			wantCalls:   []string{"step", "tackler"},
+			wantActions: []string{loomengine.SettleSpawn, loomengine.SettleHandBack}, wantSettlers: []string{loomengine.SettlerTackler, loomengine.SettlerParent},
+			wantReports: 2, wantParked: true, wantHandBack: true, wantReportHas: map[int][]string{2: {"what now?", "tackler attempt 1: verdict hand-back"}},
+		},
+		{
+			name:  "a transient stop calls the tackler once, and its resume is consumed then re-stepped",
+			steps: []func(*testing.T) []byte{transientFailure, done}, tacklerReturns: tacklerOutcome(loomengine.TacklerVerdictResume, 1),
+			wantCalls:   []string{"step", "tackler", "consume:tackler/1", "step", "commit-records"},
+			wantActions: []string{loomengine.SettleSpawn, loomengine.SettleRestep}, wantSettlers: []string{loomengine.SettlerTackler, loomengine.SettlerTackler}, wantReports: 1,
+		},
+		{
+			name:  "a third reinvoke failure reaches the tackler, and a hand-back parks with its question",
+			steps: []func(*testing.T) []byte{interrupted}, settleSeed: repairSeed(loomengine.ArbiterStopKey{CurrentProducer: "Build", HistoryLength: 2, State: "running"}),
+			tacklerReturns: tacklerOutcome(loomengine.TacklerVerdictHandBack, 1),
+			wantCalls:      []string{"step", "tackler"},
+			wantActions:    []string{loomengine.SettleRestep, loomengine.SettleRestep, loomengine.SettleSpawn, loomengine.SettleHandBack},
+			wantSettlers:   []string{loomengine.SettlerGoRule, loomengine.SettlerGoRule, loomengine.SettlerTackler, loomengine.SettlerParent},
+			wantReports:    2, wantParked: true, wantHandBack: true, wantReportHas: map[int][]string{2: {"what now?"}},
+		},
+		{
+			name:  "a tackler escalate calls the arbiter with the case brief, and the arbiter's resume steps with its attempt number",
+			steps: []func(*testing.T) []byte{transientFailure, done}, tacklerReturns: tacklerOutcome(loomengine.TacklerVerdictEscalate, 1), arbiterReturns: arbiterOutcome(loomengine.ArbiterVerdictResume, 1),
+			wantCalls:    []string{"step", "tackler", "arbiter:tackler/1/case-brief.md", "step:1", "commit-records"},
+			wantActions:  []string{loomengine.SettleSpawn, loomengine.SettleSpawn, loomengine.SettleRestep},
+			wantSettlers: []string{loomengine.SettlerTackler, loomengine.SettlerArbiter, loomengine.SettlerArbiter}, wantReports: 2,
+		},
+		{
+			name:  "an escalate at an unseeded error hands back when the arbiter refuses it as not eligible",
+			steps: []func(*testing.T) []byte{unseededFailure}, tacklerReturns: tacklerOutcome(loomengine.TacklerVerdictEscalate, 1), arbiterErr: errors.New("arbiter: the stop is not eligible"),
+			wantCalls:    []string{"step", "tackler", "arbiter:tackler/1/case-brief.md"},
+			wantActions:  []string{loomengine.SettleSpawn, loomengine.SettleHandBack},
+			wantSettlers: []string{loomengine.SettlerTackler, loomengine.SettlerParent}, wantReports: 3, wantParked: true, wantHandBack: true,
+			wantReportHas: map[int][]string{3: {"the arbiter refused the stop: arbiter: the stop is not eligible"}},
+		},
+		{
+			name:  "tackler_max_spawns 0 hands back with no agent started and no spawn record",
+			steps: []func(*testing.T) []byte{transientFailure}, tacklerErr: fmt.Errorf("%w: tackler_max_spawns: 0 turns the tackler off", errTacklerUnavailable),
+			wantCalls: []string{"step", "tackler"}, wantActions: []string{loomengine.SettleHandBack}, wantReports: 2, wantParked: true, wantHandBack: true,
+			wantReportHas: map[int][]string{2: {"tackler_max_spawns: 0"}},
+		},
+		{
+			name:  "an arbiter off refusal at an awaiting stop with a notice still relays it",
+			steps: []func(*testing.T) []byte{awaiting("review is ready")}, escalation: true, orchRecorded: true, arbiterErr: errors.New("arbiter: arbiter_max_spawns: 0 turns the arbiter off"),
+			wantCalls: []string{"step", "arbiter:"}, wantActions: []string{loomengine.SettleHandBack}, wantReports: 2, wantParked: true, wantNotifies: 1, wantHandBack: true,
+		},
+		{
+			name:  "a resume whose consume is refused as moved is acted on as a new stop",
+			steps: []func(*testing.T) []byte{transientFailure, done}, tacklerReturns: tacklerOutcome(loomengine.TacklerVerdictResume, 1), consumeErr: errors.New("the run moved since the tackler spawned"),
+			statusSeq:   []shedengine.Status{driveStatusFor(t, transientFailure(t)), driveStatusFor(t, transientFailure(t)), gotoMoved},
+			wantCalls:   []string{"step", "tackler", "consume:tackler/1", "step", "commit-records"},
+			wantActions: []string{loomengine.SettleSpawn, loomengine.SettleMoved}, wantSettlers: []string{loomengine.SettlerTackler, loomengine.SettlerGoRule}, wantReports: 1,
+		},
+		{
+			name:  "an orch goto during the tackler wait discards the verdict, notes the change and re-steps",
+			steps: []func(*testing.T) []byte{transientFailure, done}, tacklerReturns: tacklerOutcome(loomengine.TacklerVerdictResume, 1),
+			statusSeq:   []shedengine.Status{driveStatusFor(t, transientFailure(t)), gotoMoved},
+			wantCalls:   []string{"step", "tackler", "step", "commit-records"},
+			wantActions: []string{loomengine.SettleSpawn, loomengine.SettleMoved}, wantSettlers: []string{loomengine.SettlerTackler, loomengine.SettlerGoRule}, wantReports: 1,
+			wantReportHas: map[int][]string{1: {"The run moved while the tackler worked"}},
+		},
+		{
+			name:  "a changed worktree with the stop key unchanged hands back as tampered",
+			steps: []func(*testing.T) []byte{transientFailure}, tacklerReturns: tacklerOutcome(loomengine.TacklerVerdictResume, 1),
+			currentSnap: loomengine.WorktreeSnapshot{Head: "b"}, attemptSnap: loomengine.WorktreeSnapshot{Head: "a"},
+			wantCalls:   []string{"step", "tackler"},
+			wantActions: []string{loomengine.SettleSpawn, loomengine.SettleHandBack}, wantSettlers: []string{loomengine.SettlerTackler, loomengine.SettlerParent},
+			wantReports: 2, wantParked: true, wantHandBack: true, wantReportHas: map[int][]string{2: {"cause tampered"}},
+		},
+		{
+			name:  "a stop key returning after an applied tackler resume goes to the arbiter",
+			steps: []func(*testing.T) []byte{blocked}, openKey: &blockedKey, openTackler: "tackler/1", openApplied: true, arbiterReturns: arbiterOutcome(loomengine.ArbiterVerdictHandOn, 1),
+			wantCalls:   []string{"step", "arbiter:"},
+			wantActions: []string{loomengine.SettleSpawn, loomengine.SettleHandBack}, wantSettlers: []string{loomengine.SettlerArbiter, loomengine.SettlerParent},
+			wantReports: 2, wantParked: true, wantHandBack: true, wantReportHas: map[int][]string{2: {"which way?"}},
+		},
+		{
+			name:  "a status moved to an awaiting stop with a pending escalation calls the arbiter with a readable envelope",
+			steps: []func(*testing.T) []byte{blocked}, statusSeq: []shedengine.Status{awaitingStatus}, escalation: true, arbiterReturns: arbiterOutcome(loomengine.ArbiterVerdictHandOn, 1),
+			wantCalls:   []string{"step", "arbiter:"},
+			wantActions: []string{loomengine.SettleMoved, loomengine.SettleSpawn, loomengine.SettleHandBack}, wantSettlers: []string{loomengine.SettlerGoRule, loomengine.SettlerArbiter, loomengine.SettlerParent},
+			wantReports: 2, wantParked: true, wantHandBack: true,
+		},
+		{
+			name:  "an awaiting stop with a pending escalation calls the arbiter, and a hand-on parks with the notice relayed",
+			steps: []func(*testing.T) []byte{awaiting("review is ready")}, escalation: true, orchRecorded: true, arbiterReturns: arbiterOutcome(loomengine.ArbiterVerdictHandOn, 1),
+			wantCalls:   []string{"step", "arbiter:"},
+			wantActions: []string{loomengine.SettleSpawn, loomengine.SettleHandBack}, wantSettlers: []string{loomengine.SettlerArbiter, loomengine.SettlerParent},
+			wantReports: 2, wantParked: true, wantNotifies: 2, wantHandBack: true,
+		},
+		{
+			name:  "a halted run with an open tackler attempt calls the tackler before any step and writes no spawn record for it",
+			steps: []func(*testing.T) []byte{}, initialStatus: &blockedStatus, restartAttempt: true, openKey: &blockedKey, openTackler: "tackler/1",
+			tacklerReturns: func() loomengine.TacklerEnvelope {
+				envelope := tacklerOutcome(loomengine.TacklerVerdictHandBack, 1)
+				envelope.AttemptDir = "reuse"
+				return envelope
+			}(),
+			wantCalls: []string{"tackler"}, wantActions: []string{loomengine.SettleHandBack}, wantSettlers: []string{loomengine.SettlerParent}, wantReports: 2, wantParked: true, wantHandBack: true,
+		},
+		{
+			name:  "a halted run with an open applied tackler attempt goes to the arbiter, never consumes it, and writes no spawn record for a reused arbiter attempt",
+			steps: []func(*testing.T) []byte{}, initialStatus: &blockedStatus, restartAttempt: true, openKey: &blockedKey, openTackler: "tackler/1", openArbiter: "arbiter/1", openApplied: true,
+			arbiterReturns: arbiterOutcome(loomengine.ArbiterVerdictHandOn, 1),
+			wantCalls:      []string{"arbiter:"}, wantActions: []string{loomengine.SettleHandBack}, wantSettlers: []string{loomengine.SettlerParent}, wantReports: 2, wantParked: true, wantHandBack: true,
+		},
+		{
+			name:  "an attempt a later hand-back closed steps first, and the tackler judges only the next stop",
+			steps: []func(*testing.T) []byte{blockedLater}, initialStatus: &blockedStatus, restartAttempt: true, openKey: &blockedKey, openTackler: "tackler/1",
+			settleSeed: []loomengine.SettleRecord{
+				{StopKey: blockedKey, Settler: loomengine.SettlerTackler, Action: loomengine.SettleSpawn, At: driveTestEpoch},
+				{StopKey: blockedKey, Settler: loomengine.SettlerParent, Action: loomengine.SettleHandBack, At: driveTestEpoch.Add(time.Minute)},
+			},
+			tacklerReturns: tacklerOutcome(loomengine.TacklerVerdictHandBack, 2),
+			wantCalls:      []string{"step", "tackler"},
+			wantActions:    []string{loomengine.SettleSpawn, loomengine.SettleHandBack, loomengine.SettleSpawn, loomengine.SettleHandBack},
+			wantSettlers:   []string{loomengine.SettlerTackler, loomengine.SettlerParent, loomengine.SettlerTackler, loomengine.SettlerParent}, wantReports: 2, wantParked: true, wantHandBack: true,
+		},
+		{
+			name: "a pause covering the slug starts no tackler until the hold returns", steps: []func(*testing.T) []byte{transientFailure},
+			pauseCovered: []bool{true}, tacklerReturns: tacklerOutcome(loomengine.TacklerVerdictHandBack, 1),
+			wantCalls:   []string{"step", "hold", "tackler"},
+			wantActions: []string{loomengine.SettleSpawn, loomengine.SettleHandBack}, wantSettlers: []string{loomengine.SettlerTackler, loomengine.SettlerParent},
+			wantReports: 2, wantParked: true, wantHandBack: true,
+		},
+		{
+			name: "a pause covering the slug starts no arbiter until the hold returns", steps: []func(*testing.T) []byte{awaiting("")}, escalation: true,
+			pauseCovered: []bool{true}, arbiterReturns: arbiterOutcome(loomengine.ArbiterVerdictHandOn, 1),
+			wantCalls:   []string{"step", "hold", "arbiter:"},
+			wantActions: []string{loomengine.SettleSpawn, loomengine.SettleHandBack}, wantSettlers: []string{loomengine.SettlerArbiter, loomengine.SettlerParent},
+			wantReports: 2, wantParked: true, wantHandBack: true,
 		},
 		{
 			name: "interrupted under reinvoke re-steps and writes restep records", steps: []func(*testing.T) []byte{interrupted, interrupted, done},
@@ -225,8 +406,22 @@ func TestGoDriver_Settle(t *testing.T) {
 			var calls []string
 			var notified int
 			stepsTaken := 0
+			statusReads := 0
 			pauseAnswers := slices.Clone(tt.pauseCovered)
 			reports := 0
+
+			openTackler := tt.openTackler
+			if tt.restartAttempt {
+				openTackler = filepath.Join(root, "tackler", "1")
+				envelopePath := filepath.Join(root, "restart-envelope.json")
+				if err := os.WriteFile(envelopePath, blocked(t), 0o644); err != nil {
+					t.Fatalf("write the open attempt's stop envelope: %v", err)
+				}
+				attempt := loomengine.TacklerAttempt{Number: 1, StopKey: blockedKey, EnvelopePath: envelopePath}
+				if err := loomengine.WriteTacklerAttempt(openTackler, attempt); err != nil {
+					t.Fatalf("write the open attempt: %v", err)
+				}
+			}
 
 			deps := goDriverDeps{
 				RunID: "run-1",
@@ -234,7 +429,11 @@ func TestGoDriver_Settle(t *testing.T) {
 					if stepsTaken >= len(tt.steps) {
 						t.Fatalf("Step called %d times; the row scripts %d", stepsTaken+1, len(tt.steps))
 					}
-					calls = append(calls, "step")
+					label := "step"
+					if attempt != "" {
+						label += ":" + attempt
+					}
+					calls = append(calls, label)
 					raw := tt.steps[stepsTaken](t)
 					stepsTaken++
 					return raw, nil
@@ -244,6 +443,16 @@ func TestGoDriver_Settle(t *testing.T) {
 					return nil
 				},
 				ReadStatus: func() (shedengine.Status, bool, error) {
+					if stepsTaken == 0 {
+						if tt.initialStatus == nil {
+							return shedengine.Status{}, false, nil
+						}
+						return *tt.initialStatus, true, nil
+					}
+					if len(tt.statusSeq) > 0 {
+						statusReads++
+						return tt.statusSeq[min(statusReads, len(tt.statusSeq))-1], true, nil
+					}
 					if len(tt.statuses) > 0 {
 						return tt.statuses[min(stepsTaken, len(tt.statuses))-1], true, nil
 					}
@@ -304,6 +513,33 @@ func TestGoDriver_Settle(t *testing.T) {
 					calls = append(calls, "note")
 					return nil
 				},
+				Tackler: func(stop driveStop, reportPath string) (loomengine.TacklerEnvelope, error) {
+					calls = append(calls, "tackler")
+					envelope := tt.tacklerReturns
+					if envelope.AttemptDir == "reuse" {
+						envelope.AttemptDir = openTackler
+					}
+					return envelope, tt.tacklerErr
+				},
+				ConsumeTackler: func(attemptDir string) error {
+					calls = append(calls, "consume:"+attemptDir)
+					return tt.consumeErr
+				},
+				Arbiter: func(envelopePath, reportPath, caseBriefPath string) (loomengine.ArbiterEnvelope, error) {
+					calls = append(calls, "arbiter:"+caseBriefPath)
+					if _, err := os.ReadFile(envelopePath); err != nil {
+						t.Errorf("the arbiter was handed an unreadable stop envelope: %v", err)
+					}
+					return tt.arbiterReturns, tt.arbiterErr
+				},
+				Snapshot:        func() (loomengine.WorktreeSnapshot, error) { return tt.currentSnap, nil },
+				AttemptSnapshot: func(string) (loomengine.WorktreeSnapshot, error) { return tt.attemptSnap, nil },
+				OpenAttempts: func(key loomengine.ArbiterStopKey) (string, string, bool, error) {
+					if tt.openKey == nil || key != *tt.openKey {
+						return "", "", false, nil
+					}
+					return openTackler, tt.openArbiter, tt.openApplied, nil
+				},
 				Now: func() time.Time { return driveTestEpoch },
 			}
 
@@ -324,6 +560,27 @@ func TestGoDriver_Settle(t *testing.T) {
 			}
 			if !slices.Equal(gotActions, tt.wantActions) {
 				t.Errorf("settle actions = %q; want %q", gotActions, tt.wantActions)
+			}
+			if tt.wantSettlers != nil {
+				var gotSettlers []string
+				for _, record := range records {
+					gotSettlers = append(gotSettlers, record.Settler)
+				}
+				if !slices.Equal(gotSettlers, tt.wantSettlers) {
+					t.Errorf("settle settlers = %q; want %q", gotSettlers, tt.wantSettlers)
+				}
+			}
+			for number, substrings := range tt.wantReportHas {
+				report, err := os.ReadFile(filepath.Join(root, "drive-reports", fmt.Sprintf("report-%d.md", number)))
+				if err != nil {
+					t.Errorf("stop report %d: %v", number, err)
+					continue
+				}
+				for _, substring := range substrings {
+					if !strings.Contains(string(report), substring) {
+						t.Errorf("stop report %d = %q; want it to hold %q", number, report, substring)
+					}
+				}
 			}
 			if tt.wantHandBack {
 				last := records[len(records)-1]

@@ -7,8 +7,12 @@ package loomcli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
@@ -16,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
 // goDriverDeps is the Go driver's whole surface to the world.
@@ -58,36 +63,66 @@ type goDriverDeps struct {
 	CommitRecords func() error
 	// WriteFrictionNote writes the friction note of a paused stop that carries no reason.
 	WriteFrictionNote func(stop driveStop) error
+	// Tackler spawns the tackler for stop, or returns the verdict of an earlier attempt, writing its report at reportPath.
+	Tackler func(stop driveStop, reportPath string) (loomengine.TacklerEnvelope, error)
+	// ConsumeTackler applies the resume of the tackler attempt in attemptDir to the run.
+	ConsumeTackler func(attemptDir string) error
+	// Arbiter spawns the arbiter for the stop envelope at envelopePath, or returns the verdict of an earlier attempt.
+	Arbiter func(envelopePath, reportPath, caseBriefPath string) (loomengine.ArbiterEnvelope, error)
+	// Snapshot reads the worktree state a tackler must leave as it found it.
+	Snapshot func() (loomengine.WorktreeSnapshot, error)
+	// OpenAttempts names the newest tackler and arbiter attempt directories recorded for key, empty when there is none, and whether the tackler attempt was applied.
+	OpenAttempts func(key loomengine.ArbiterStopKey) (tackler, arbiter string, tacklerApplied bool, err error)
+	// AttemptSnapshot reads the worktree snapshot the tackler attempt in tacklerDir recorded at spawn.
+	AttemptSnapshot func(tacklerDir string) (loomengine.WorktreeSnapshot, error)
 	// Now is the clock.
 	Now func() time.Time
 }
 
 // goDriver settles one run's stops over its seams.
+// rules and attempts are what the stop report quotes for the stop in hand, and pendingAttempt is the arbiter attempt the next step consumes.
 type goDriver struct {
-	deps goDriverDeps
+	deps           goDriverDeps
+	rules          []string
+	attempts       []driveAttemptNote
+	pendingAttempt string
 }
 
 // run steps the run and settles each stop until the run is done, another holder has it or a hand-back ends the driver.
 // A failure the driver cannot act on is handed back; only a failed hand-back or a cancelled context is returned.
 func (d *goDriver) run(ctx context.Context) error {
+	stop, resumed, err := d.resumeOpenAttempt(ctx)
+	if err != nil {
+		return d.handBackFailure(err)
+	}
 	attempt := ""
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		raw, err := d.deps.Step(ctx, attempt)
-		if err != nil {
-			return d.handBackFailure(fmt.Errorf("the step failed to run: %w", err))
+		if !resumed {
+			raw, err := d.deps.Step(ctx, attempt)
+			if err != nil {
+				return d.handBackFailure(fmt.Errorf("the step failed to run: %w", err))
+			}
+			stop, err = parseDriveStop(raw)
+			if err != nil {
+				return d.handBackFailure(err)
+			}
+			path, err := d.deps.SaveEnvelope(raw)
+			if err != nil {
+				return d.handBackFailure(fmt.Errorf("saving the stop envelope: %w", err))
+			}
+			stop.EnvelopePath = path
+			if attempt != "" && stop.Kind != shedverbs.KindBusy && arbiterAttemptRefused(raw) {
+				d.rules = append(d.rules, "the step refused the arbiter's attempt")
+				return d.handBackAs(stop, driveHandBack{}, "the step refused the arbiter attempt")
+			}
 		}
-		stop, err := parseDriveStop(raw)
-		if err != nil {
-			return d.handBackFailure(err)
+		if attempt == "" {
+			d.rules, d.attempts = nil, nil
 		}
-		path, err := d.deps.SaveEnvelope(raw)
-		if err != nil {
-			return d.handBackFailure(fmt.Errorf("saving the stop envelope: %w", err))
-		}
-		stop.EnvelopePath = path
+		resumed = false
 
 		next, exit, err := d.settleStop(ctx, stop)
 		if err != nil || exit {
@@ -95,6 +130,14 @@ func (d *goDriver) run(ctx context.Context) error {
 		}
 		attempt = next
 	}
+}
+
+// arbiterAttemptRefused reports whether the step envelope refused the arbiter attempt it was handed.
+func arbiterAttemptRefused(envelope []byte) bool {
+	var decoded struct {
+		ArbiterAttempt string `json:"arbiter_attempt"`
+	}
+	return json.Unmarshal(envelope, &decoded) == nil && decoded.ArbiterAttempt != ""
 }
 
 // settleStop decides stop and carries the decision out.
@@ -106,9 +149,10 @@ func (d *goDriver) settleStop(ctx context.Context, stop driveStop) (attempt stri
 			return "", true, d.handBackStop(stop, driveDecision{Rule: "the driver could not read the facts of the stop"}, err)
 		}
 		decision := decideDrive(stop, facts)
+		d.rules = append(d.rules, decision.Rule)
 		switch decision.Action {
 		case driveActionDone:
-			return "", true, d.finishDone(stop, decision)
+			return "", true, d.finishDone(stop)
 		case driveActionBusyExit:
 			d.settle(stop, loomengine.SettlerGoRule, loomengine.SettleBusyExit, decision.Rule, "")
 			logger.Info("loom: drive: another holder has the run; exiting", "run", d.deps.RunID, "holder", stop.Error)
@@ -127,7 +171,7 @@ func (d *goDriver) settleStop(ctx context.Context, stop driveStop) (attempt stri
 			return "", true, nil
 		}
 		if next.Restep {
-			return "", false, nil
+			return d.takePendingAttempt(), false, nil
 		}
 		if next.key() != stop.key() {
 			stop = next
@@ -138,6 +182,21 @@ func (d *goDriver) settleStop(ctx context.Context, stop driveStop) (attempt stri
 		case driveActionRestep:
 			d.settle(stop, loomengine.SettlerGoRule, loomengine.SettleRestep, decision.Rule, "")
 			return "", false, nil
+		case driveActionTackler, driveActionArbiter:
+			var moved driveStop
+			if decision.Action == driveActionTackler {
+				moved, exit, err = d.tackle(ctx, stop)
+			} else {
+				moved, exit, err = d.arbitrate(ctx, stop, "")
+			}
+			switch {
+			case err != nil || exit:
+				return "", true, err
+			case moved.Restep:
+				return d.takePendingAttempt(), false, nil
+			}
+			stop = moved
+			continue
 		case driveActionVerifyGoto:
 			d.settle(stop, loomengine.SettlerGoRule, loomengine.SettleVerifyRetry, decision.Rule, facts.VerifyTarget)
 			if err := d.deps.Goto(ctx, facts.VerifyTarget); err != nil {
@@ -164,6 +223,259 @@ func (d *goDriver) settleStop(ctx context.Context, stop driveStop) (attempt stri
 	}
 }
 
+// takePendingAttempt returns the arbiter attempt the next step consumes, and clears it.
+func (d *goDriver) takePendingAttempt() string {
+	attempt := d.pendingAttempt
+	d.pendingAttempt = ""
+	return attempt
+}
+
+// tackle asks a cold tackler to judge stop and acts on its verdict, holding any pause first.
+// The stop report so far is written for the tackler to read, and a fresh attempt leaves a spawn record.
+// A verdict is acted on only when the run is where the tackler found it: a moved run discards the verdict and the fresh state is acted on as a new stop, and a worktree the tackler changed hands back as tampered.
+// It returns the stop to go on with, marked Restep when the run is to be stepped, or exit true when the driver is finished.
+func (d *goDriver) tackle(ctx context.Context, stop driveStop) (next driveStop, exit bool, err error) {
+	if err := d.holdPause(ctx); err != nil {
+		return driveStop{}, true, err
+	}
+	reportPath, err := d.startReport(stop)
+	if err != nil {
+		return driveStop{}, true, d.handBackAs(stop, driveHandBack{Rules: []string{err.Error()}}, "the stop report could not be written")
+	}
+	before, _, _, err := d.deps.OpenAttempts(stop.key())
+	if err != nil {
+		return driveStop{}, true, d.handBackAs(stop, driveHandBack{Rules: []string{"listing the stop's attempts: " + err.Error()}}, "the stop's attempts could not be listed")
+	}
+
+	envelope, err := d.deps.Tackler(stop, reportPath)
+	switch {
+	case errors.Is(err, errTacklerResumeReturned):
+		return d.arbitrate(ctx, stop, "")
+	case err != nil:
+		return driveStop{}, true, d.handBackAs(stop, driveHandBack{Rules: []string{"the tackler could not judge the stop: " + err.Error()}}, "the tackler was unavailable or refused the stop")
+	}
+	if envelope.AttemptDir != before {
+		d.settle(stop, loomengine.SettlerTackler, loomengine.SettleSpawn, "tackler spawned", fmt.Sprintf("attempt-%d", envelope.Attempt))
+	}
+	note := driveAttemptNote{Role: loomengine.TacklerRole, Number: envelope.Attempt, Verdict: envelope.Verdict, Cause: envelope.Cause, VerdictPath: envelope.VerdictPath}
+	d.attempts = append(d.attempts, note)
+
+	if moved, movedExit, err := d.recheckAfterVerdict(stop, reportPath, "tackler"); err != nil || movedExit || moved.key() != stop.key() || moved.Restep {
+		if err != nil {
+			return driveStop{}, true, d.handBackAs(stop, driveHandBack{Rules: []string{"the driver could not act: " + err.Error()}}, "the run could not be rechecked")
+		}
+		return moved, movedExit, nil
+	}
+
+	tampered, err := d.worktreeChangedBy(envelope.AttemptDir)
+	if err != nil {
+		return driveStop{}, true, d.handBackAs(stop, driveHandBack{Rules: []string{"comparing the worktree with the tackler's snapshot: " + err.Error()}}, "the tackler's worktree check could not run")
+	}
+	if tampered {
+		d.attempts[len(d.attempts)-1].Cause = "tampered"
+		h := driveHandBack{
+			Rules:    []string{"the worktree differs from the snapshot taken when the tackler spawned: its verdict is not acted on"},
+			Question: "The tackler left the worktree changed, so its verdict was not acted on; decide this stop yourself and report the choice in the stop report.",
+		}
+		return driveStop{}, true, d.handBackAs(stop, h, "the tackler changed the worktree")
+	}
+
+	switch envelope.Verdict {
+	case loomengine.TacklerVerdictResume:
+		if err := d.deps.ConsumeTackler(envelope.AttemptDir); err != nil {
+			logger.Warn("loom: drive: the tackler's resume was refused", "run", d.deps.RunID, "error", err)
+			moved, movedExit, recheckErr := d.recheck(stop)
+			switch {
+			case recheckErr != nil:
+				return driveStop{}, true, d.handBackAs(stop, driveHandBack{Rules: []string{"the driver could not act: " + recheckErr.Error()}}, "the run could not be rechecked")
+			case movedExit:
+				return driveStop{}, true, nil
+			case moved.Restep || moved.key() != stop.key():
+				return moved, false, nil
+			}
+			return driveStop{}, true, d.handBackAs(stop, driveHandBack{Rules: []string{"the tackler's resume was refused: " + err.Error()}}, "the tackler's resume was refused")
+		}
+		d.settle(stop, loomengine.SettlerTackler, loomengine.SettleRestep, "tackler resume", envelope.Goto)
+		stop.Restep = true
+		return stop, false, nil
+	case loomengine.TacklerVerdictEscalate:
+		return d.arbitrate(ctx, stop, envelope.CaseBriefPath)
+	}
+	h := driveHandBack{Question: envelope.Question, Rules: []string{"the tackler handed the stop back: " + envelope.Reason}}
+	return driveStop{}, true, d.handBackAs(stop, h, "the tackler handed the stop back")
+}
+
+// arbitrate asks the arbiter to judge stop, through the same call `lyx loom arbiter` runs, and acts on its verdict, holding any pause first.
+// A resume leaves the attempt the next step consumes; a refusal or a hand-on hands back, and at an awaiting stop relays its parent notice.
+// The moved-run and spawn-record rules are the tackler's.
+func (d *goDriver) arbitrate(ctx context.Context, stop driveStop, caseBriefPath string) (next driveStop, exit bool, err error) {
+	if err := d.holdPause(ctx); err != nil {
+		return driveStop{}, true, err
+	}
+	relay := ""
+	if stop.key().State == string(shedengine.StateAwaiting) {
+		relay = stop.ParentNotice
+	}
+	reportPath, err := d.startReport(stop)
+	if err != nil {
+		return driveStop{}, true, d.handBackAs(stop, driveHandBack{Relay: relay, Rules: []string{err.Error()}}, "the stop report could not be written")
+	}
+	_, before, _, err := d.deps.OpenAttempts(stop.key())
+	if err != nil {
+		return driveStop{}, true, d.handBackAs(stop, driveHandBack{Relay: relay, Rules: []string{"listing the stop's attempts: " + err.Error()}}, "the stop's attempts could not be listed")
+	}
+
+	envelope, err := d.deps.Arbiter(stop.EnvelopePath, reportPath, caseBriefPath)
+	if err != nil {
+		return driveStop{}, true, d.handBackAs(stop, driveHandBack{Relay: relay, Rules: []string{"the arbiter refused the stop: " + err.Error()}}, "the arbiter refused the stop")
+	}
+	if envelope.AttemptDir != before {
+		d.settle(stop, loomengine.SettlerArbiter, loomengine.SettleSpawn, "arbiter spawned", fmt.Sprintf("attempt-%d", envelope.Attempt))
+	}
+	d.attempts = append(d.attempts, driveAttemptNote{Role: loomengine.ArbiterRole, Number: envelope.Attempt, Verdict: envelope.Verdict, Cause: envelope.Cause, VerdictPath: envelope.VerdictPath})
+
+	if moved, movedExit, err := d.recheckAfterVerdict(stop, reportPath, "arbiter"); err != nil || movedExit || moved.key() != stop.key() || moved.Restep {
+		if err != nil {
+			return driveStop{}, true, d.handBackAs(stop, driveHandBack{Relay: relay, Rules: []string{"the driver could not act: " + err.Error()}}, "the run could not be rechecked")
+		}
+		return moved, movedExit, nil
+	}
+
+	if envelope.Verdict == loomengine.ArbiterVerdictResume {
+		d.settle(stop, loomengine.SettlerArbiter, loomengine.SettleRestep, "arbiter resume", envelope.Goto)
+		d.pendingAttempt = strconv.Itoa(envelope.Attempt)
+		stop.Restep = true
+		return stop, false, nil
+	}
+	h := driveHandBack{Question: envelope.Question, Relay: relay, Rules: []string{"the arbiter handed the stop on: " + envelope.Reason}}
+	return driveStop{}, true, d.handBackAs(stop, h, "the arbiter handed the stop on")
+}
+
+// recheckAfterVerdict re-reads the run after an agent's verdict, and when the run moved while the agent worked, notes the discarded verdict in the stop report at reportPath.
+// It returns the stop itself for an unmoved run.
+func (d *goDriver) recheckAfterVerdict(stop driveStop, reportPath, agent string) (next driveStop, exit bool, err error) {
+	next, exit, err = d.recheck(stop)
+	if err != nil || exit {
+		return driveStop{}, exit, err
+	}
+	if next.Restep || next.key() != stop.key() {
+		line := fmt.Sprintf("\n- The run moved while the %s worked, from stop key %+v to %+v; its verdict was discarded and the new state is acted on.\n", agent, stop.key(), next.key())
+		if err := appendToFile(reportPath, line); err != nil {
+			logger.Warn("loom: drive: noting the moved run in the stop report failed", "run", d.deps.RunID, "error", err)
+		}
+	}
+	return next, false, nil
+}
+
+// worktreeChangedBy reports whether the worktree differs from the snapshot the tackler attempt in attemptDir recorded at spawn.
+func (d *goDriver) worktreeChangedBy(attemptDir string) (bool, error) {
+	spawned, err := d.deps.AttemptSnapshot(attemptDir)
+	if err != nil {
+		return false, err
+	}
+	current, err := d.deps.Snapshot()
+	if err != nil {
+		return false, err
+	}
+	return !spawned.Equal(current), nil
+}
+
+// startReport writes the stop report so far at a fresh path, for an agent to read, and returns the path.
+func (d *goDriver) startReport(stop driveStop) (string, error) {
+	path := d.deps.NewReportPath()
+	report := d.reportFor(stop, driveHandBack{Rules: slices.Clone(d.rules), Attempts: slices.Clone(d.attempts)}, path)
+	report.At = d.deps.Now()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", fmt.Errorf("create the stop report directory: %w", err)
+	}
+	if err := os.WriteFile(path, []byte(report.render()), 0o644); err != nil {
+		return "", fmt.Errorf("write the stop report %s: %w", path, err)
+	}
+	return path, nil
+}
+
+// appendToFile appends text to the file at path.
+func appendToFile(path, text string) error {
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := file.WriteString(text); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
+}
+
+// resumeOpenAttempt finds, once before the first step, the stop a halted run left with an agent attempt still open, so a restarted driver reuses the attempt instead of spawning a second agent.
+// An attempt is open when the settle records hold no hand-back for its stop key later than its spawn: a stop the parent took and then resumed finds its attempt closed, and the driver steps.
+// It returns the stop rebuilt from the envelope the attempt recorded; the rule table then sends it to the tackler or the arbiter, whose own call reuses the attempt.
+func (d *goDriver) resumeOpenAttempt(ctx context.Context) (stop driveStop, found bool, err error) {
+	status, statusFound, err := d.deps.ReadStatus()
+	if err != nil {
+		return driveStop{}, false, fmt.Errorf("reading the status before the first step: %w", err)
+	}
+	if !statusFound || status.State == shedengine.StateRunning || status.State == shedengine.StateDone {
+		return driveStop{}, false, nil
+	}
+	key := loomengine.StopKeyOf(status)
+	tacklerDir, arbiterDir, _, err := d.deps.OpenAttempts(key)
+	if err != nil {
+		return driveStop{}, false, fmt.Errorf("listing the stop's attempts: %w", err)
+	}
+	if tacklerDir == "" && arbiterDir == "" {
+		return driveStop{}, false, nil
+	}
+	records, err := loomengine.ReadSettleRecords(d.deps.SettlePath)
+	if err != nil {
+		return driveStop{}, false, err
+	}
+	if attemptClosed(records, key) {
+		return driveStop{}, false, nil
+	}
+
+	envelopePath := ""
+	if tacklerDir != "" {
+		if attempt, err := loomengine.ReadTacklerAttempt(tacklerDir); err == nil {
+			envelopePath = attempt.EnvelopePath
+		}
+	}
+	if envelopePath == "" && arbiterDir != "" {
+		if attempt, err := loomengine.ReadArbiterAttempt(arbiterDir); err == nil {
+			envelopePath = attempt.EnvelopePath
+		}
+	}
+	raw, err := os.ReadFile(envelopePath)
+	if err != nil {
+		logger.Warn("loom: drive: the open attempt's stop envelope is unreadable; stepping instead", "run", d.deps.RunID, "path", envelopePath, "error", err)
+		return driveStop{}, false, nil
+	}
+	stop, err = parseDriveStop(raw)
+	if err != nil || stop.key() != key {
+		logger.Warn("loom: drive: the open attempt's stop envelope is not the run's stop; stepping instead", "run", d.deps.RunID, "path", envelopePath, "error", err)
+		return driveStop{}, false, nil
+	}
+	stop.EnvelopePath = envelopePath
+	return stop, true, nil
+}
+
+// attemptClosed reports whether the settle records hold a hand-back for key later than the key's latest spawn.
+// A key with no spawn record counts any hand-back as later.
+func attemptClosed(records []loomengine.SettleRecord, key loomengine.ArbiterStopKey) bool {
+	var spawned time.Time
+	for _, record := range records {
+		if record.StopKey == key && record.Action == loomengine.SettleSpawn && record.At.After(spawned) {
+			spawned = record.At
+		}
+	}
+	for _, record := range records {
+		if record.StopKey == key && record.Action == loomengine.SettleHandBack && record.At.After(spawned) {
+			return true
+		}
+	}
+	return false
+}
+
 // facts reads the disk facts decideDrive needs for stop.
 func (d *goDriver) facts(stop driveStop) (driveFacts, error) {
 	var facts driveFacts
@@ -181,6 +493,11 @@ func (d *goDriver) facts(stop driveStop) (driveFacts, error) {
 		return driveFacts{}, err
 	}
 	facts.RepairCount = repairCount(records, key)
+	_, _, applied, err := d.deps.OpenAttempts(key)
+	if err != nil {
+		return driveFacts{}, fmt.Errorf("listing the stop's attempts: %w", err)
+	}
+	facts.ResumeReturned = applied
 	watch, alive := d.deps.Watch()
 	facts.Watched = alive
 
@@ -294,14 +611,14 @@ func (d *goDriver) settle(stop driveStop, settler, action, outcome, target strin
 }
 
 // finishDone commits the run's records, and hands a run that finished with friction: failed to the parent without parking it.
-func (d *goDriver) finishDone(stop driveStop, decision driveDecision) error {
+func (d *goDriver) finishDone(stop driveStop) error {
 	if err := d.deps.CommitRecords(); err != nil {
 		return fmt.Errorf("loom: drive: commit the run's records: %w", err)
 	}
 	if stop.Friction != "failed" {
 		return nil
 	}
-	return d.handBack(stop, driveHandBack{Rules: []string{decision.Rule}, DoneFrictionFailed: true})
+	return d.handBack(stop, driveHandBack{DoneFrictionFailed: true})
 }
 
 // handBackStop hands the run back at stop on the decision's rule, after the friction note a paused stop without a reason asks for.
@@ -312,15 +629,19 @@ func (d *goDriver) handBackStop(stop driveStop, decision driveDecision, cause er
 			logger.Warn("loom: drive: writing the friction note failed", "run", d.deps.RunID, "error", err)
 		}
 	}
-	rules := []string{decision.Rule}
+	h := driveHandBack{WatchedVerifyLine: decision.WatchedVerifyLine}
 	if cause != nil {
-		rules = append(rules, "the driver could not act: "+cause.Error())
+		h.Rules = []string{"the driver could not act: " + cause.Error()}
 	}
-	d.settle(stop, loomengine.SettlerParent, loomengine.SettleHandBack, decision.Rule, "")
-	h := driveHandBack{Rules: rules, WatchedVerifyLine: decision.WatchedVerifyLine}
 	if decision.Action == driveActionRelayHandBack {
 		h.Relay = stop.ParentNotice
 	}
+	return d.handBackAs(stop, h, decision.Rule)
+}
+
+// handBackAs records the hand-back in the settle records, with outcome as its reason, and leaves the stop report, the park marker and the parent's notices.
+func (d *goDriver) handBackAs(stop driveStop, h driveHandBack, outcome string) error {
+	d.settle(stop, loomengine.SettlerParent, loomengine.SettleHandBack, outcome, "")
 	return d.handBack(stop, h)
 }
 
@@ -330,10 +651,13 @@ func (d *goDriver) handBackFailure(cause error) error {
 	if status, found, err := d.deps.ReadStatus(); err == nil && found {
 		stop = stopFromStatus(status)
 	}
-	return d.handBackStop(stop, driveDecision{Action: driveActionHandBack, Rule: "a failure the driver cannot act on: hand back"}, cause)
+	rule := "a failure the driver cannot act on: hand back"
+	d.rules = append(d.rules, rule)
+	return d.handBackStop(stop, driveDecision{Action: driveActionHandBack, Rule: rule}, cause)
 }
 
 // handBack builds the stop report for stop and h, and leaves the report, the park marker and the parent's notices through handBackRun.
+// The report quotes the rules applied and the agents' attempts at the stop so far, then h's own.
 func (d *goDriver) handBack(stop driveStop, h driveHandBack) error {
 	reportPath := d.deps.NewReportPath()
 	park := d.deps.Park
@@ -342,6 +666,14 @@ func (d *goDriver) handBack(stop driveStop, h driveHandBack) error {
 	h.RunID = d.deps.RunID
 	h.ReportPath = reportPath
 	h.Stop = stop
+	h.Rules = append(slices.Clone(d.rules), h.Rules...)
+	h.Attempts = append(slices.Clone(d.attempts), h.Attempts...)
+	_, watched := d.deps.Watch()
+	return handBackRun(park, h, d.reportFor(stop, h, reportPath), watched)
+}
+
+// reportFor builds the stop report of a hand-back at stop that is to be written at reportPath.
+func (d *goDriver) reportFor(stop driveStop, h driveHandBack, reportPath string) driveReport {
 	reason := stop.Reason
 	if reason == "" {
 		reason = stop.Error
@@ -349,7 +681,7 @@ func (d *goDriver) handBack(stop driveStop, h driveHandBack) error {
 	if reason == "" {
 		reason = stop.key().State
 	}
-	report := driveReport{
+	return driveReport{
 		RunID:         d.deps.RunID,
 		HistoryLength: stop.HistoryLength,
 		Progress:      fmt.Sprintf("%s at %s", stop.key().State, stop.CurrentProducer),
@@ -360,6 +692,4 @@ func (d *goDriver) handBack(stop driveStop, h driveHandBack) error {
 		FrictionDir:   filepath.Dir(d.deps.SettlePath),
 		RepairDir:     filepath.Dir(reportPath),
 	}
-	_, watched := d.deps.Watch()
-	return handBackRun(park, h, report, watched)
 }
