@@ -558,10 +558,6 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	notePath := friction.NotePath(deps.FrictionDir, batchName)
 	cardGates := renderCardGates(deps.Plan, batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Geom.WorktreeRoot)
 	batchGate := renderBatchGate(deps.Plan, batch.Cards, deps.Geom.WorktreeRoot)
-	promptPath, err := filepath.Abs(filepath.Join(deps.Geom.PromptsDir, batchName+".md"))
-	if err != nil {
-		return nil, fmt.Errorf("webster: resolve prompt path: %w", err)
-	}
 	pack := buildKickstartPack(deps, index, batch, number)
 	prompt, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, pack)
 	if err != nil {
@@ -570,6 +566,10 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 
 	if err := os.MkdirAll(deps.Geom.PromptsDir, 0o755); err != nil {
 		return nil, fmt.Errorf("webster: create prompts dir %s: %w", deps.Geom.PromptsDir, err)
+	}
+	promptPath, err := filepath.Abs(filepath.Join(deps.Geom.PromptsDir, batchName+".md"))
+	if err != nil {
+		return nil, fmt.Errorf("webster: resolve prompt path: %w", err)
 	}
 	// The prompt file is a re-renderable artifact, never a durable record —
 	// overwriting an existing one (a re-run begin-batch for the same batch)
