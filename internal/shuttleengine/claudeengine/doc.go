@@ -124,6 +124,11 @@
 // The prober also reads the interrupt marker.
 // The newest main-chain entry of the transcript a turn start's `transcript_path` names is the user's `[Request interrupted by user` entry, and its own timestamp is the interrupt's time.
 // Any later main-chain entry, a missing path or an unreadable transcript reads as no interrupt.
+// The prober also reads a turn's progress from the same transcript (TurnProgressReader).
+// The newest main-chain user or assistant entry decides: a user entry other than the interrupt marker reads in flight, and the marker reads unknown.
+// An assistant entry is read by its message's stop reason, not by its last content block: `tool_use` reads in flight, `end_turn` and `stop_sequence` read over, and an absent, null or other reason reads unknown.
+// A last line without its newline is still being written and is not read.
+// A missing path, an unreadable transcript and a transcript with no such entry read unknown.
 //
 // The engine takes text as one bracketed paste (TextPaster): shuttle pastes a send through reed's paste-submit and, with `PasteSubmits` true, the Enter follows the paste end in the same tmux invocation.
 // `PasteSubmits` is true on the assumption that an Enter right after a bracketed paste's end submits it in Claude Code; a live check pins it, and if it fails the one constant flips and shuttle sends the first Enter itself, guarded.

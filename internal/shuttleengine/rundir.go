@@ -140,6 +140,9 @@ type RunState struct {
 	// RecordsSessionStarts is the launch's declaration that it writes a session-start line, copied from the launch.
 	// Startup then needs that line beside the ready pane; a record an older binary wrote decodes false and keeps pane-only startup.
 	RecordsSessionStarts bool `json:"recordsSessionStarts,omitempty"`
+	// ForkSubagents is the spawning Spec's ForkSubagents, copied at spawn.
+	// A record an older binary wrote decodes false and reads as not authorized.
+	ForkSubagents bool `json:"forkSubagents,omitempty"`
 }
 
 // createRunDir mints a fresh run id, creates <root>/<runID>, and returns

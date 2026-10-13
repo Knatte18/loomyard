@@ -14,6 +14,7 @@
 //
 // Its plan gates resolve plan refs through a told planindex.Index, so the package links no tree-sitter grammar.
 // The plan gate and `lyx loom validate-plan` share ValidatePlan, which reads webster's run record under the anchor and tells the index the cards of every batch it holds done.
+// A twill Plan-Write run's gate and `lyx loom validate-plan --lens-review` share ValidatePlanLensReview, which adds the presence check on `lens-review.md`.
 // Those cards are history, not targets: a run moved back to the plan review after Webster executed batches has their work in the tree, so their tree-dependent checks are skipped.
 // Every other card, and every card of a plan with no run record, is checked against the tree.
 // A done card is also frozen: ValidatePlan appends a blocking `done-card-edited` finding for each one whose file no longer hashes to what its batch recorded at begin, naming the follow-up card as the way forward.

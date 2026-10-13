@@ -1,7 +1,7 @@
 <!-- This is the twill directive: the host-neutral block that has a writer review its own finished record through lenses, one fork per lens, before it ends.
      internal/twilldirective renders it, and the spawning module hands that renderer every host value, so this block names no file, step, verb or section of any one host.
      It declares these required markers:
-     {{.reviewed_files}}, {{.ready_marker}}, {{.rubric_path}}, {{.lens_list}}, {{.format_step}}, {{.self_check_step}}, {{.self_check_command}}, {{.disposition_place}}, {{.spawn_point}}, {{.rejection_rule}} and {{.severity_rule}}. -->
+     {{.reviewed_files}}, {{.ready_marker}}, {{.rubric_path}}, {{.lens_list}}, {{.format_step}}, {{.self_check_step}}, {{.self_check_command}}, {{.final_self_check_command}}, {{.disposition_place}}, {{.spawn_point}}, {{.rejection_rule}} and {{.severity_rule}}. -->
 
 ## Lens review by forks
 
@@ -18,7 +18,7 @@
    {{.rejection_rule}}
 7. Record the lens review at `{{.disposition_place}}`: one line per finding, with its lens and whether it was fixed or rejected and why.
    Name a fork that returned no report.
-8. Run `{{.self_check_command}}` again until it passes, then end your turn.
+8. Run `{{.final_self_check_command}}` again until it passes, then end your turn.
 
 One fork pass per writer spawn.
 A gate re-prompt, a parent-review reject or a later turn of the same session never spawns forks again.

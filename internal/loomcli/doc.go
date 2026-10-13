@@ -94,6 +94,11 @@
 // A write that fails stops the call, naming `written` and `failed`.
 // The rows are in `contracts/specs/refusal-spec.md`.
 //
+// # Validate plan lens review
+//
+// `lyx loom validate-plan --lens-review` runs the flag-less check set plus the check that the plan directory's `lens-review.md` holds a recorded lens review, the check set of a twill Plan-Write run's own gate.
+// It runs alone: combined with `--rework`, `--require-approved` or `--overlay` it is refused before the plan is parsed.
+//
 // # Validate plan overlay
 //
 // `lyx loom validate-plan --overlay` checks the plan with proposed plan file contents laid over it, in memory, so a fix can be checked before any file is edited.

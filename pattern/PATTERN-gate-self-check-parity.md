@@ -5,7 +5,8 @@ A mechanical gate's **closure** and its CLI self-check verb call the same packag
 ## Pairs
 
 - Discussion-Write's and Discussion-Burler-Fix's gates and `validate-discussion`: `discussionparser.Validate`.
-- Plan-Write's and Plan-Burler-Fix's gates and `validate-plan`: `planindex.Index.ValidateFormat`, implemented by `planglyph`.
+- Plan-Burler-Fix's gate, a Plan-Write run's gate whose record carries no fork authorization and `validate-plan`: `loomshed.ValidatePlan` (`planindex.Index.ValidateFormat`, implemented by `planglyph`, plus the done-card checks).
+- A twill-spawned Plan-Write run's gate and `validate-plan --lens-review`: `loomshed.ValidatePlanLensReview`, which adds the presence of `lens-review.md`, the run's recorded fork authorization selecting it.
 - PR-Rework's gate and `validate-plan --rework`: `loomshed.ValidateReworkPlan`, which checks the whole new plan plus the told `first_card`.
 - `validate-plan --overlay`, a self-check mode no gate runs: it calls the flag-less mode's function, `loomshed.ValidatePlan`, over a plan parsed through a `planparser.Overlay`.
 - Describe's gate and `validate-description`: `summaryparser.ValidateDescription`.

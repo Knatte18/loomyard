@@ -133,17 +133,17 @@ func planFindingsHaveBlocking(findings []planglyph.Finding) bool {
 }
 
 // validatePlanCmd builds the `validate-plan` subcommand: the standalone form of the checks
-// Plan-Write's, Plan-Burler-Fix's and PR-Rework's own gates run, plus the plan-unapproved approval
+// Plan-Write's, a twill Plan-Write run's, Plan-Burler-Fix's and PR-Rework's own gates run, plus the plan-unapproved approval
 // check no gate runs at all, callable by the writer agent before handoff.
 func (c *loomCLI) validatePlanCmd() *cobra.Command {
-	var requireApproved, rework, overlay bool
+	var requireApproved, rework, overlay, lensReview bool
 
 	cmd := &cobra.Command{
 		Use:         "validate-plan",
-		Short:       "run the checks Plan-Write's, Plan-Burler-Fix's or PR-Rework's own gate runs standalone against the current plan",
+		Short:       "run the checks Plan-Write's, a twill Plan-Write run's, Plan-Burler-Fix's or PR-Rework's own gate runs standalone against the current plan",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `validate-plan parses the current worktree's plan and checks it in one of
-four modes, reporting the result as one JSON envelope that carries
+five modes, reporting the result as one JSON envelope that carries
 informational findings under their own key even on success. It takes no
 arguments.
 
@@ -158,6 +158,10 @@ equals the card number the rework session was told. The default and --rework
 modes include the card-fabric-reference and fabric-vocabulary-name checks;
 --require-approved leaves both out.
 
+--lens-review: the no-flag checks plus the check that the plan directory's
+lens-review.md holds a recorded lens review, the check set of a twill
+Plan-Write run's own gate. The no-flag mode ignores that file.
+
 --overlay: the no-flag checks over the plan with proposed contents laid over
 its files, in memory; nothing is written. Pipe one JSON object on stdin, keys
 the file names and values their full content. A name is 00-overview.md or a
@@ -166,12 +170,13 @@ still goes through insert-card and remove-card. Handles are canonicalized in
 memory, and {} checks the plan as it is. It validates target-list,
 verify-command and card-text changes, never a proposed code change.
 
-The three flags are mutually exclusive.
+The four flags are mutually exclusive.
 
 Example:
   lyx loom validate-plan
   lyx loom validate-plan --require-approved
   lyx loom validate-plan --rework
+  lyx loom validate-plan --lens-review
   lyx loom validate-plan --overlay <<'EOF'
   {"01-slug.md": "<full card file text>"}
   EOF`,
@@ -187,9 +192,20 @@ Example:
 				return nil
 			}
 
-			if overlay && (requireApproved || rework) {
+			if lensReview && (requireApproved || rework) {
 				flag := "--rework"
-				if requireApproved {
+				if !rework {
+					flag = "--require-approved"
+				}
+				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-plan: --lens-review and "+flag+" are mutually exclusive; way forward: run --lens-review alone, which runs the flag-less check set plus the lens-review check"))
+				return nil
+			}
+
+			if overlay && (requireApproved || rework || lensReview) {
+				flag := "--rework"
+				if lensReview {
+					flag = "--lens-review"
+				} else if requireApproved {
 					flag = "--require-approved"
 				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-plan: --overlay and "+flag+" are mutually exclusive; way forward: run --overlay alone, which runs the flag-less check set"))
@@ -220,6 +236,8 @@ Example:
 				findings, err = c.env.PlanIndex.Validate(plan, c.env.WorktreeRoot)
 			case rework:
 				findings, err = loomshed.ValidateReworkPlan(plan, c.env.WorktreeRoot, c.env.PlanIndex, c.env.Rework.ReadCommitted)
+			case lensReview:
+				findings, err = loomshed.ValidatePlanLensReview(plan, c.env.AnchorPath, c.env.WorktreeRoot, c.env.PlanIndex)
 			default:
 				findings, err = loomshed.ValidatePlan(plan, c.env.AnchorPath, c.env.WorktreeRoot, c.env.PlanIndex)
 			}
@@ -261,6 +279,7 @@ Example:
 
 	cmd.Flags().BoolVar(&requireApproved, "require-approved", false, "also run the plan-unapproved approval check, the one check no gate runs -- this flag is the sole way to reach it standalone")
 	cmd.Flags().BoolVar(&rework, "rework", false, "check the whole new plan and its first_card against the told number, as PR-Rework's own gate does")
+	cmd.Flags().BoolVar(&lensReview, "lens-review", false, "run the flag-less check set plus the check that the plan directory's lens-review.md holds a recorded lens review, as a twill Plan-Write run's own gate does")
 	cmd.Flags().BoolVar(&overlay, "overlay", false, "run the no-flag check set over the plan with the proposed plan file contents on stdin (one JSON object, file name to full content) laid over it, in memory, writing nothing")
 
 	return cmd

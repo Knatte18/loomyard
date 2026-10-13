@@ -356,6 +356,7 @@ var wordingClaims = []stencilClaims{
 		{must: "{{.format_step}}", why: "the host names the step that writes the files"},
 		{must: "{{.self_check_step}}", why: "the host names the step that runs the self-check"},
 		{must: "{{.self_check_command}}", why: "the host names the self-check command"},
+		{must: "{{.final_self_check_command}}", why: "the host names the final self-check command"},
 		{must: "{{.disposition_place}}", why: "the host names where the lens review is recorded"},
 		{must: "{{.reviewed_files}}", why: "the host names the files a fork reviews"},
 		{must: "{{.spawn_point}}", why: "the host names when the writer runs the procedure"},

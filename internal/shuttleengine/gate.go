@@ -47,6 +47,9 @@ type GateEntry struct {
 	Name string
 	// Gate is the validator this entry consults.
 	Gate Gate
+	// Forked, when non-nil, is the closure evaluated in place of Gate for a run whose record carries fork authorization.
+	// Final keeps precedence over it at a final evaluation.
+	Forked Gate
 	// Final, when non-nil, is the closure finalize evaluates in place of Gate, so a pending-capable entry is read at the final verdict without its opening and consuming transitions.
 	// Only a PassOnCap or MayHold entry may set it: a non-nil Final on any other entry is a returned gate error at evaluation, so Final can never let a must-pass entry through.
 	Final Gate

@@ -9,6 +9,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // planWriteEntry is the Constructor for the "PlanWrite" registry row: it validates Env.PlanSpec, Env.CommitPlan, Env.PreparePlanSpawn, Env.Shuttle, Env.AnchorPath, Env.StencilsDir and Env.Rework.ArchiveWebster, resolves the row's "gates" Config key through resolveGateSpec, then builds a gated SingleLLMProducer whose fresh-spawn preparation runs Env.PreparePlanSpawn and then loomshed.NewPlanDirRotator, behind loomshed.NewPlanWrite's post-Done commit decorator.
@@ -29,9 +30,10 @@ import (
 //
 // The row carries exactly one Config key, "gates", per the Config Strictness Invariant.
 // It carries a "gates" key even though this entry's own dedicated constructor could imply the validator, so that one key means one thing at every gated site and a reader of the recipe can see which validator guards each row without opening Go;
-// this entry therefore never hard-codes a validator choice of its own.
+// the key still names the validator.
+// The entry adds only the lens-review closure that shuttle evaluates in place of the "plan" closure for a run whose record carries fork authorization, which PlanSpec sets exactly under plan_producer: twill.
 func planWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	gate, err := resolveGateSpec("PlanWrite", cfg, env)
+	gate, err := planWriteGateSpec(cfg, env)
 	if err != nil {
 		return nil, err
 	}
@@ -73,4 +75,20 @@ func planWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 	}
 	inner := shedadapters.NewSingleLLMProducerGated(name, env.PlanSpec, env.Shuttle, env.Now, prepare, gate)
 	return loomshed.NewPlanWrite(name, inner, env.CommitPlan), nil
+}
+
+// planWriteGateSpec resolves the PlanWrite row's "gates" key through resolveGateSpec, then sets Forked on every resolved entry named "plan" to loomshed.NewLensReviewPlanGate over the same roots and index.
+// Forked is consulted only for a fork-authorized run of this row, and the closure runs the plan gate's own set plus one presence check.
+// The "plan" entry's resolution has already required the roots and the index, so the closure is built over checked values.
+func planWriteGateSpec(cfg Config, env Env) (shuttleengine.GateSpec, error) {
+	spec, err := resolveGateSpec("PlanWrite", cfg, env)
+	if err != nil {
+		return nil, err
+	}
+	for i := range spec {
+		if spec[i].Name == "plan" {
+			spec[i].Forked = loomshed.NewLensReviewPlanGate(env.AnchorPath, env.WorktreeRoot, env.RunScratchDir, env.PlanIndex)
+		}
+	}
+	return spec, nil
 }

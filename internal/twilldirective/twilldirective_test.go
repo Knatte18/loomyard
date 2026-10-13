@@ -12,17 +12,18 @@ import (
 // filledValues returns a Values with every field set.
 func filledValues() Values {
 	return Values{
-		ReviewedFiles:    "`/abs/one.md` and `/abs/two.md`",
-		SpawnPoint:       "SPAWN-POINT-SENTENCE",
-		RejectionRule:    "REJECTION-RULE-SENTENCE",
-		SeverityRule:     "SEVERITY-RULE-PHRASE",
-		ReadyMarker:      "/abs/.ready/marker",
-		RubricPath:       "/abs/rubric.md",
-		Lenses:           []Lens{{Name: "alpha", Text: "Look at A.\nThen at B.\n"}, {Name: "beta", Text: "Look at C."}},
-		FormatStep:       "STEP-FORMAT",
-		SelfCheckStep:    "STEP-CHECK",
-		SelfCheckCommand: "lyx check --now",
-		DispositionPlace: "the PLACE section",
+		ReviewedFiles:         "`/abs/one.md` and `/abs/two.md`",
+		SpawnPoint:            "SPAWN-POINT-SENTENCE",
+		RejectionRule:         "REJECTION-RULE-SENTENCE",
+		SeverityRule:          "SEVERITY-RULE-PHRASE",
+		ReadyMarker:           "/abs/.ready/marker",
+		RubricPath:            "/abs/rubric.md",
+		Lenses:                []Lens{{Name: "alpha", Text: "Look at A.\nThen at B.\n"}, {Name: "beta", Text: "Look at C."}},
+		FormatStep:            "STEP-FORMAT",
+		SelfCheckStep:         "STEP-CHECK",
+		SelfCheckCommand:      "lyx check --now",
+		FinalSelfCheckCommand: "lyx check --final",
+		DispositionPlace:      "the PLACE section",
 	}
 }
 
@@ -44,8 +45,8 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 		"/abs/rubric.md",
 		"- alpha: Look at A. Then at B.\n- beta: Look at C.",
 		"STEP-FORMAT",
-		"STEP-CHECK",
-		"lyx check --now",
+		"run `lyx check --now` per `STEP-CHECK` until it passes",
+		"8. Run `lyx check --final` again",
 		"the PLACE section",
 	} {
 		if !strings.Contains(got, want) {
@@ -76,6 +77,7 @@ func TestDirective_MissingValueNamesTheMarker(t *testing.T) {
 		{"SpawnPoint", func(v *Values) { v.SpawnPoint = "" }, "spawn_point"},
 		{"RejectionRule", func(v *Values) { v.RejectionRule = "" }, "rejection_rule"},
 		{"SeverityRule", func(v *Values) { v.SeverityRule = "" }, "severity_rule"},
+		{"FinalSelfCheckCommand", func(v *Values) { v.FinalSelfCheckCommand = "" }, "final_self_check_command"},
 		{"Lenses", func(v *Values) { v.Lenses = nil }, "lens_list"},
 	}
 	for _, tt := range tests {

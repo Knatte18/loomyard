@@ -98,7 +98,8 @@ func judgeReadiness(state SessionState, unmatched bool, box boxReading) readines
 // sessionReadiness reads the readiness of the strand sc names from capture, its pane just captured.
 // It folds the run's session state at the context's clock; an unknown state settles nothing, so the reading is unknown without a look at the box.
 // Otherwise it decides through hold whether an unmatched turn start still holds, and reads the box.
-// A turn start whose hold released, by a later turn end, a reported interrupt or the pane reading idle for turnStartIdleOverride, no longer counts as a running turn.
+// A turn start whose hold released, by a later turn end, a reported interrupt, a later session start or the pane reading idle for turnStartIdleOverride, no longer counts as a running turn;
+// a turn start the engine reads in flight is not released by the idle pane.
 func sessionReadiness(sc sendContext, cycler SessionCycler, hold *turnStartHold, capture string) readiness {
 	now := sc.clock.Now()
 	state := readRunSessionState(sc.state, sc.engine, now).State
@@ -107,9 +108,9 @@ func sessionReadiness(sc sendContext, cycler SessionCycler, hold *turnStartHold,
 	}
 
 	unmatched := false
-	if turnStart, found := unmatchedTurnStart(sc.engine, sc.eventsPath); found {
+	if turnStart, restarted, found := unmatchedTurnStart(sc.engine, sc.eventsPath); found {
 		paneIdle := sc.engine.Startup(capture) == StartupReady && cycler.IdleSession(capture)
-		unmatched = hold.holds(sc.engine, turnStart, paneIdle, now)
+		unmatched = hold.holds(sc.engine, turnStart, restarted, paneIdle, now)
 		if !unmatched && state.Name == SessionBusy && state.Cause == SessionCauseTurn {
 			state = SessionState{Name: SessionIdleStalled, Cause: sessionCauseReleasedTurn, Since: state.Since}
 		}

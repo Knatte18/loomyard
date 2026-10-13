@@ -59,6 +59,7 @@ type Spec struct {
 	// hook shape — whatever its provider needs) or hard-error if it cannot.
 	// ForkSubagents is engine vocabulary, exactly like Effort/Version above —
 	// validate does not inspect this field at all.
+	// The run records it at spawn, and the record, not a later Call's Spec, decides the fork audit and a gate entry's Forked closure.
 	ForkSubagents bool
 	// AllowAgentTool, when true, lets this one run use the Agent tool for every subagent type:
 	// the engine installs no Agent deny and announces none, whatever the shuttle config's claude_deny_agent_tool says.

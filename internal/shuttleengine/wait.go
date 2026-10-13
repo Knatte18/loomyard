@@ -36,7 +36,7 @@
 // Both paths run through handleGatedBoundary, and the run deadline and liveness checks keep running throughout, never extended by the wait.
 // For an engine with the idle reading and session signals, a boundary is confirmed idle in fact before the gate sends:
 // a turn start left unmatched by a later turn end clears the boundary, the loop keeps polling and reads the pane every tick,
-// and the boundary is restored when the engine reports that turn interrupted or the pane has read idle for turnStartIdleOverride.
+// and the boundary is restored when the engine reports that turn interrupted, a session start follows it, or the pane has read idle for turnStartIdleOverride while the engine does not read that turn in flight.
 // Every gate send goes through sendWithin, so its idle wait and submit window end by the run deadline.
 // A re-prompt that fails busy or unlanded spends no attempt and is re-sent on a later tick, bounded by the run deadline.
 // A gated run off the boundary, mid-turn or attached with no boundary seen, also asks each entry's read-only Expired probe once per gateRecheckEvery;
@@ -1456,6 +1456,8 @@ func (run *Run) identity() Result {
 // A Terminal failing result is recorded on run.gateTerminal, and its Findings text is carried on GateOutcome.Reason.
 // The method never changes a count — only Wait's re-prompt branch does — so a finalize evaluating afresh after a lost session or a deadline cannot change one.
 //
+// An entry's closure is Gate, replaced by Forked when the run's record carries fork authorization, and by Final at a final evaluation.
+//
 // A non-nil error from a closure is returned verbatim, stores no memo and changes no count, per the "a gate error is never not passed" decision:
 // a gate that could not run has found no defect, it is an infrastructure fault, not a GateResult{Passed: false}.
 //
@@ -1503,6 +1505,9 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 			line.State = GateEntryLetThrough
 		default:
 			closure := entry.Gate
+			if entry.Forked != nil && run.state.ForkSubagents {
+				closure = entry.Forked
+			}
 			if final && entry.Final != nil {
 				closure = entry.Final
 			}
@@ -1635,7 +1640,7 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 		result.Usage = reader.SessionUsage(run.state.SessionID, run.runner.paneCwd)
 	}
 
-	if outcome == OutcomeDone && run.spec.ForkSubagents {
+	if outcome == OutcomeDone && run.state.ForkSubagents {
 		audit, err := run.runner.engine.AuditForks(run.state.SessionID, run.runner.paneCwd)
 		if err != nil {
 			// The run itself SUCCEEDED and nothing has been cleaned up yet, so the caller gets the
