@@ -27,6 +27,9 @@ import (
 // warn-and-degrade tail at the bottom of AttachArgv has one place to log from.
 var errAttachChainSuppressed = errors.New("attach chain suppressed")
 
+// errNoClientSize is what AttachArgv's pre-flight returns, after logging, once the shell window check has run for a client of unknown size.
+var errNoClientSize = errors.New("no client terminal size available")
+
 // bareAttachArgv returns the five-element tmux argv both internal/reedcli and internal/loomcli build
 // today for an in-place attach: "-L", socket, "attach-session", "-t", the exact session target.
 // A fresh slice is returned on every call — never a shared package-level slice — since a caller may
@@ -76,9 +79,9 @@ func chainedAttachArgv(socket, session, windowTarget, layout string, pins []rend
 // step that is not a precondition at all: it gates nothing and can never suppress the chain, so it
 // belongs in this sentence only as the pre-flight's complete inventory, not as another degrade path.
 //
-// cols and rows are the attaching client's own terminal size, in columns and rows; a non-positive
-// value means no client size is known, and AttachArgv returns the bare argv immediately without
-// taking the lock.
+// cols and rows are the attaching client's own terminal size, in columns and rows.
+// A non-positive value means no client size is known, and AttachArgv returns the bare argv once the pre-flight has required the session, loaded the state and checked the shell window, the one step it runs ahead of every layout guard.
+// Taking the lock, reading the session or loading the state are the failures that skip that check.
 //
 // The pre-flight also refreshes the session's window-resized resize-pin hook, computed against the
 // same told box the chained layout is, and the chain carries the same pins after its select-layout. This is what corrects a later client resize, and — on a
@@ -89,24 +92,37 @@ func chainedAttachArgv(socket, session, windowTarget, layout string, pins []rend
 func (e *Engine) AttachArgv(cols, rows int) []string {
 	bare := bareAttachArgv(e.Socket(), e.SessionName())
 
-	if cols <= 0 || rows <= 0 {
-		logger.Warn("reed: no client terminal size available, attaching without a chained layout", "socket", e.Socket(), "session", e.SessionName(), "cols", cols, "rows", rows)
-		return bare
+	// With no client size there is no layout to chain, so the pre-flight needs no zoom bracket.
+	sizeKnown := cols > 0 && rows > 0
+	withLock := e.withOpLockKeepingZoom
+	if !sizeKnown {
+		withLock = e.withOpLock
 	}
 
 	var chained []string
-	err := e.withOpLockKeepingZoom(func() error {
+	err := withLock(func() error {
 		if err := e.requireSessionLocked(); err != nil {
 			return err
 		}
 
-		e.warnMismatchedClientsLocked(cols, rows)
+		if sizeKnown {
+			e.warnMismatchedClientsLocked(cols, rows)
+		}
 
 		// Read-only with respect to reed.json: this builder never calls SaveState.
 		st, err := e.loadOrInitStateLocked()
 		if err != nil {
 			return err
 		}
+
+		// A session booted by an older lyx gets its shell window named and placed at the next attach.
+		// This runs before every guard that suppresses the chain, and also when no client size is known.
+		e.ensureShellWindowLocked(st)
+		if !sizeKnown {
+			logger.Warn("reed: no client terminal size available, attaching without a chained layout", "socket", e.Socket(), "session", e.SessionName(), "cols", cols, "rows", rows)
+			return errNoClientSize
+		}
+
 		windowTarget, err := e.strandWindowTargetFor(st)
 		if err != nil {
 			return err
@@ -192,6 +208,9 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, errNoClientSize) {
+			return bare
+		}
 		if errors.Is(err, errAttachChainSuppressed) {
 			logger.Warn("reed: attach chain suppressed, attaching without a chained layout", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		} else {

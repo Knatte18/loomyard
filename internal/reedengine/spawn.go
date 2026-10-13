@@ -218,7 +218,7 @@ func (e *Engine) splitWindowZeroPaneLocked(st *ReedState, live []LivePane, s *St
 func (e *Engine) createOwnWindowPaneLocked(st *ReedState, s *Strand) (string, error) {
 	group := s.Display.Window
 	if group == "" {
-		return e.openOwnWindowLocked(s, strandLabel(s.Name), "")
+		return e.openOwnWindowLocked(st, s, strandLabel(s.Name), "")
 	}
 
 	// Listed here, after any head reconcile that ended an own window, so the plan and the join read the current windows.
@@ -237,7 +237,7 @@ func (e *Engine) createOwnWindowPaneLocked(st *ReedState, s *Strand) (string, er
 	st.WindowGroups[group] = record
 
 	if placement == placeApart {
-		return e.openOwnWindowLocked(s, strandLabel(s.Name), "")
+		return e.openOwnWindowLocked(st, s, strandLabel(s.Name), "")
 	}
 
 	splitFlag, layout, err := windowSplitLayout(e.cfg.WindowSplit)
@@ -248,7 +248,7 @@ func (e *Engine) createOwnWindowPaneLocked(st *ReedState, s *Strand) (string, er
 	if placement == placeJoinShared {
 		paneID, err = e.joinGroupWindowLocked(groupWindow, windows, splitFlag)
 	} else {
-		paneID, err = e.openOwnWindowLocked(s, group, group)
+		paneID, err = e.openOwnWindowLocked(st, s, group, group)
 	}
 	if err != nil {
 		return "", err
@@ -284,14 +284,50 @@ func (e *Engine) joinGroupWindowLocked(groupWindow string, windows []windowPane,
 	return paneID, nil
 }
 
+// newWindowLocked creates a detached window and returns new-window's output.
+// The command is new-window -d, then the placement arguments, then argv, which carries no -t of its own.
+// With an empty placement it adds -t on the exact session target, so every new-window carries exactly one -t.
+// A placed new-window the multiplexer refuses on Windows logs at Debug and is retried once in the plain form, so the order is best-effort there; on every other platform the error is returned.
+// It is the one place a window is created.
+func (e *Engine) newWindowLocked(placement []string, argv []string) (string, error) {
+	plain := append([]string{"new-window", "-d", "-t", exactSessionWindowTarget(e.SessionName())}, argv...)
+	if len(placement) == 0 {
+		return e.tmux.output(plain...)
+	}
+	placed := append(append([]string{"new-window", "-d"}, placement...), argv...)
+	out, err := e.tmux.output(placed...)
+	if err != nil && runtime.GOOS == "windows" {
+		logger.Debug("reed: the multiplexer refused a placed new-window, opening it in the plain form", "socket", e.Socket(), "session", e.SessionName(), "placement", placement, "err", err)
+		return e.tmux.output(plain...)
+	}
+	return out, err
+}
+
 // openOwnWindowLocked opens a detached window for s named name and returns the id of its pane.
 // The window is created with -d, so the client's current window and active pane stay where they are, and nothing selects it.
+// It is placed behind every earlier agent window and before the shell window, and a relaunch keeps the place of the window its old pane was in.
 // It carries no command, so the pane is the default login shell like every strand pane.
 // A non-empty group is recorded on the window, which is how a group's shared window is found later.
 // A window option that fails to set is logged and never fails the open; a window missing the own marker is only never ended by reconcile.
-func (e *Engine) openOwnWindowLocked(s *Strand, name, group string) (string, error) {
-	out, err := e.tmux.output("new-window", "-d", "-P", "-F", "#{pane_id} #{window_id}",
-		"-t", exactSessionWindowTarget(e.SessionName()), "-n", name, "-c", e.geom.PaneCwd)
+func (e *Engine) openOwnWindowLocked(st *ReedState, s *Strand, name, group string) (string, error) {
+	e.ensureShellWindowLocked(st)
+	var shellWindow, previousWindow string
+	windowByPane, err := e.tmux.listSessionPaneWindows(e.SessionName())
+	if err != nil {
+		logger.Debug("reed: could not list the session's panes to place the new window", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+	} else {
+		shellWindow, _ = shellWindowOf(st, windowByPane)
+		previousWindow = windowByPane[s.PaneID]
+	}
+	windows, err := e.tmux.listSessionWindows(e.SessionName())
+	if err != nil {
+		logger.Debug("reed: could not list the session's windows to place the new window", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+	}
+	if _, listed := findSessionWindow(windows, shellWindow); !listed {
+		logger.Debug("reed: no shell window is listed, placing the new window after the last visible one", "socket", e.Socket(), "session", e.SessionName())
+	}
+	out, err := e.newWindowLocked(ownWindowInsertArgs(windows, shellWindow, previousWindow),
+		[]string{"-P", "-F", "#{pane_id} #{window_id}", "-n", name, "-c", e.geom.PaneCwd})
 	if err != nil {
 		return "", fmt.Errorf("new window: %w", err)
 	}

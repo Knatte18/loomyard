@@ -304,12 +304,23 @@
 // Reconcile ends only a window carrying @lyx_own with no pane bound to a strand; a window without the marker is never ended.
 // The pane-generation read (generation.go) stays session-scoped and outside the seam: it reads session fields only, so it keeps the "=<session>:" form, which expands them, where the bare "=<session>" form expands every session field to empty (verified live, tmux 3.6).
 //
+// Window order (windoworder.go): a session's windows read, in index order, the agents' own windows in start order, then the window named shell, then the hidden windows.
+// Every window is created through newWindowLocked (spawn.go) as `new-window -d` plus placement arguments, listed from `list-windows` in index order under the op lock:
+// an own window opens `-a -t <previous window>` for a relaunch, which keeps its window's place and ends the old one behind it, else `-b -t <shell window>`, else `-a -t <highest-index non-hidden window>`;
+// a hidden window opens `-a -t <highest-index window>`; with nothing to place against the plain form `-t '=<session>:'` is used.
+// A placed new-window the multiplexer refuses on Windows (psmux) logs at Debug and is retried once in the plain form, so the order is best-effort there and nothing fails.
+// The shell window is the window of the recorded console pane (Selvage), named shell with automatic-rename off, which is how a fresh boot names its one window.
+// A session booted by an older lyx is brought into that order by ensureShellWindowLocked, which runs wherever a window opens, once the boot marks the strands' window and at the head of every attach pre-flight, also when no client size is known:
+// it renames the shell window when its name is wrong and moves it behind the last non-hidden window, and only that window; strands already placed stay where they are, so Resume relaunches an in-flight below-parent strand in the shell window.
+// It does nothing, logged at Debug, when no console pane is recorded or the window listing does not carry its window, and a check never fails its caller.
+// A failed rename or move warns once per failure episode, which the session option @lyx_shell_check_failed keeps open, logs at Debug while the episode stays open and always on Windows, and an Info line closes the episode when a later check succeeds.
+//
 // Detached windows: OpenWindow (window.go) opens a detached, named window in the worktree's reed session running a `lyx` command, for a caller that wants a long-running command to live in the session without a status-bar button.
-// One multiplexer invocation runs `new-window -d -P -F '#{window_id}' -t '=<session>:' -n <temporary> <command>` chained with `set-option -w -t '=<session>:=<temporary>' remain-on-exit off`, `set-option -w -t '=<session>:=<temporary>' @lyx_hidden 1` and a final `rename-window -t '=<session>:=<temporary>' <name>`.
+// One multiplexer invocation runs `new-window -d -a -t <highest-index window> -P -F '#{window_id}' -n <temporary> <command>`, or in the plain form `new-window -d -t '=<session>:' -P -F '#{window_id}' -n <temporary> <command>` when no window is listed, chained with `set-option -w -t '=<session>:=<temporary>' remain-on-exit off`, `set-option -w -t '=<session>:=<temporary>' @lyx_hidden 1` and a final `rename-window -t '=<session>:=<temporary>' <name>`.
 // The window is detached and never selected, so it takes no focus.
 // The options are chained by exact name because one chained after a detached new-window without a target lands on the current window, the strands' window, whose remain-on-exit must stay on.
 // The name is a per-call temporary one no other window holds and the rename comes last, because an own window may share the requested name and the options would otherwise land on it.
-// @lyx_hidden is display only: the status bar skips a window carrying it, and no Go decision reads it.
+// The status bar skips a window carrying @lyx_hidden, and window placement and the shell check read the flag to find the last non-hidden window; no focus rule reads it.
 // The op reads remain-on-exit back from the new window by the printed id, and a window that does not read off is killed by that id with ErrWindowReadBack.
 // A window of the same name whose pane is live is returned as existing and nothing is started; one whose pane is dead is killed and replaced.
 // A window carrying @lyx_own is skipped by that lookup, so OpenWindow never adopts, kills or replaces an own window of the same name.

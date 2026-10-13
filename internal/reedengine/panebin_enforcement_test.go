@@ -47,11 +47,7 @@ var paneCreationAllowlist = []scankit.Entry{
 var windowCreationAllowlist = []scankit.Entry{
 	{
 		Key: "internal/reedengine/spawn.go",
-		Why: "the launch chokepoint's own-window branch: the window's pane then runs the same prelude-composing tail as every strand pane",
-	},
-	{
-		Key: "internal/reedengine/window.go",
-		Why: "the one detached-window op: it runs a `lyx` command composed by composeWindowCommand, which carries the pane-binary prelude",
+		Why: "the one window-creation helper, newWindowLocked: own windows open through it with a bare shell pane that then runs the same prelude-composing tail as every strand pane, and OpenWindow opens its `lyx` command through it, composed by composeWindowCommand, which carries the pane-binary prelude",
 	},
 	{
 		Key: "internal/reedengine/probe.go",

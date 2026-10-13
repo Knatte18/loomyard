@@ -21,19 +21,31 @@ func TestOpenWindow(t *testing.T) {
 	args := []string{"batten", "run", "my slug"}
 
 	tests := []struct {
-		name         string
-		script       func(f *fakeTmux)
-		wantErr      error
-		wantCapErr   bool
-		want         WindowResult
-		wantNewCalls int
-		wantKilled   []string
+		name   string
+		script func(f *fakeTmux)
+		// wantPlacement is what follows new-window -d; nil means the plain form, -t on the exact session target.
+		wantPlacement []string
+		wantErr       error
+		wantCapErr    bool
+		want          WindowResult
+		wantNewCalls  int
+		wantKilled    []string
 	}{
 		{
 			name:         "OpensADetachedWindow",
 			script:       func(f *fakeTmux) { f.answer("new-window", "@7\n", nil) },
 			want:         WindowResult{WindowID: "@7", Name: name},
 			wantNewCalls: 1,
+		},
+		{
+			name: "AHiddenWindowOpensAfterTheHighestWindow",
+			script: func(f *fakeTmux) {
+				f.answer("list-windows", "@0 0 0 0 shell\n@5 3 1 0 batten:old\n@2 1 0 0 explore\n", nil)
+				f.answer("new-window", "@7\n", nil)
+			},
+			wantPlacement: []string{"-a", "-t", "@5"},
+			want:          WindowResult{WindowID: "@7", Name: name},
+			wantNewCalls:  1,
 		},
 		{
 			name: "ALiveWindowOfThatNameIsReportedAndNothingStarts",
@@ -140,17 +152,26 @@ func TestOpenWindow(t *testing.T) {
 			if tt.wantNewCalls == 0 || len(newCalls) == 0 {
 				return
 			}
-			if len(newCalls[0]) <= 8 || !strings.HasPrefix(newCalls[0][8], temporaryWindowNamePrefix) {
+			nameFlag := slices.Index(newCalls[0], "-n")
+			if nameFlag < 0 || nameFlag+1 >= len(newCalls[0]) || !strings.HasPrefix(newCalls[0][nameFlag+1], temporaryWindowNamePrefix) {
 				t.Fatalf("new-window argv = %v, want a temporary window name after -n", newCalls[0])
 			}
-			temporaryName := newCalls[0][8]
+			temporaryName := newCalls[0][nameFlag+1]
 			temporaryTarget := exactSessionWindowTarget(e.SessionName()) + "=" + temporaryName
-			wantArgv := []string{"new-window", "-d", "-P", "-F", "#{window_id}", "-t", exactSessionWindowTarget(e.SessionName()), "-n", temporaryName, wantCommand,
+			placement := tt.wantPlacement
+			if placement == nil {
+				placement = []string{"-t", exactSessionWindowTarget(e.SessionName())}
+			}
+			wantArgv := append(append([]string{"new-window", "-d"}, placement...),
+				"-P", "-F", "#{window_id}", "-n", temporaryName, wantCommand,
 				";", "set-option", "-w", "-t", temporaryTarget, "remain-on-exit", "off",
 				";", "set-option", "-w", "-t", temporaryTarget, "@lyx_hidden", "1",
-				";", "rename-window", "-t", temporaryTarget, name}
+				";", "rename-window", "-t", temporaryTarget, name)
 			if !slices.Equal(newCalls[0], wantArgv) {
 				t.Errorf("new-window argv = %v, want %v", newCalls[0], wantArgv)
+			}
+			if got := slices.Index(newCalls[0], ";"); strings.Count(strings.Join(newCalls[0][:got], " "), " -t ") != 1 {
+				t.Errorf("new-window command %v, want exactly one -t", newCalls[0][:got])
 			}
 		})
 	}
