@@ -193,7 +193,7 @@ func TestComposePrompt_FocusDirective(t *testing.T) {
 		}
 		var buf bytes.Buffer
 		logger.SetOutput(&buf)
-		t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+		t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 		composeReview(t, dir, &p, "")
 		return buf.String()
 	}
@@ -550,7 +550,7 @@ func TestWarnIfFocusMarkerAbsent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
 			logger.SetOutput(&buf)
-			t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+			t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 			warnIfFocusMarkerAbsent([]byte(tt.template), stencilName, tt.block)
 

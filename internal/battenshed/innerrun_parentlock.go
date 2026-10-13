@@ -27,7 +27,7 @@ type lockWatch struct {
 // A record handed to this batten (its owner pid is SelfPID) is kept while the child awaits at the gate row and is released once that awaiting has lasted IdleBound with no decision to resume on.
 // It is kept while the child runs, so the resumed loop takes it back, and released when the child is in any other state.
 // A record owned by another process is released once its owner's agents have all waited for IdleBound with none busy; the watch restarts whenever the owner changes, and a failed agent read releases nothing.
-// Every release logs one Warn, and every failure of a seam is a Warn that changes nothing.
+// Every release logs one Info, and a failure of a seam warns once per episode and changes nothing.
 // While a pause covers the slug it releases nothing.
 func (p *innerRunProducer) lockStep(ctx context.Context, w *childWait) {
 	lock := p.deps.ParentLock
@@ -41,9 +41,10 @@ func (p *innerRunProducer) lockStep(ctx context.Context, w *childWait) {
 	}
 	record, found, err := lock.Read()
 	if err != nil {
-		logger.Warn("battenshed: parent lock record unreadable; leaving it alone", "producer", p.name, "slug", p.slug, "error", err)
+		p.seamFailed(failLockRecordUnreadable, err)
 		return
 	}
+	p.seamRecovered(failLockRecordUnreadable)
 	if !found {
 		w.lock = lockWatch{}
 		return
@@ -96,23 +97,26 @@ func (p *innerRunProducer) loopLockStep(w *childWait, record parentlock.Record) 
 	}
 	states, err := lock.Agents()
 	if err != nil {
-		logger.Warn("battenshed: the child's agent states are unreadable; keeping its parent lock", "producer", p.name, "slug", p.slug, "error", err)
+		p.seamFailed(failAgentStatesUnreadable, err)
+	} else {
+		p.seamRecovered(failAgentStatesUnreadable)
 	}
 	if w.lock.idle.Observe(states, err == nil, p.deps.Awake()) {
 		p.releaseLock(w, record, fmt.Sprintf("every agent of the lock owner waited for %s with none busy", lock.IdleBound))
 	}
 }
 
-// releaseLock releases record through deps.ParentLock and logs one Warn when it did.
+// releaseLock releases record through deps.ParentLock and logs one Info when it did.
 func (p *innerRunProducer) releaseLock(w *childWait, record parentlock.Record, why string) {
 	released, err := p.deps.ParentLock.Release(record)
 	if err != nil {
-		logger.Warn("battenshed: could not release the child's parent lock", "producer", p.name, "slug", p.slug, "branch", record.Branch, "error", err)
+		p.seamFailed(failLockRelease, err, "branch", record.Branch)
 		return
 	}
+	p.seamRecovered(failLockRelease)
 	w.lock = lockWatch{}
 	if released {
-		logger.Warn("battenshed: released the child's parent lock", "producer", p.name, "slug", p.slug, "branch", record.Branch, "reason", why)
+		logger.Info("battenshed: released the child's parent lock", "producer", p.name, "slug", p.slug, "branch", record.Branch, "reason", why)
 	}
 }
 
@@ -138,7 +142,7 @@ func (p *innerRunProducer) resumePending(w *childWait) (bool, error) {
 }
 
 // parentMovedUnderGate reports whether the child awaits at the gate row with no decision pending and its parent has moved.
-// deps.ParentMoved is read at most once per probe and the answer reused on the checks between; a read error is warned about and reads as not moved.
+// deps.ParentMoved is read at most once per probe and the answer reused on the checks between; a read error warns once per episode and reads as not moved.
 // It stays true once the stale-base resume landed, until the child leaves awaiting.
 func (p *innerRunProducer) parentMovedUnderGate(w *childWait) bool {
 	lock := p.deps.ParentLock
@@ -155,17 +159,19 @@ func (p *innerRunProducer) parentMovedUnderGate(w *childWait) bool {
 	w.baseMoved = false
 	pending, err := p.resumePending(w)
 	if err != nil {
-		logger.Warn("battenshed: decision unreadable for the stale-base check; not resuming", "producer", p.name, "slug", p.slug, "error", err)
+		p.seamFailed(failStaleBaseDecision, err)
 		return false
 	}
+	p.seamRecovered(failStaleBaseDecision)
 	if pending {
 		return false
 	}
 	moved, err := lock.ParentMoved()
 	if err != nil {
-		logger.Warn("battenshed: could not tell whether the parent moved; not resuming", "producer", p.name, "slug", p.slug, "error", err)
+		p.seamFailed(failParentMoved, err)
 		return false
 	}
+	p.seamRecovered(failParentMoved)
 	w.baseMoved = moved
 	return moved
 }
@@ -182,6 +188,6 @@ func (p *innerRunProducer) staleBaseResume(ctx context.Context, w *childWait) *w
 		return end
 	}
 	w.staleResumed = true
-	p.report(w, fmt.Sprintf("the parent moved while the child awaited at %s: the child was resumed to merge it in; watching it", p.deps.ParentLock.GateRow))
+	p.reportState(w, fmt.Sprintf("the parent moved while the child awaited at %s: the child was resumed to merge it in; watching it", p.deps.ParentLock.GateRow))
 	return nil
 }

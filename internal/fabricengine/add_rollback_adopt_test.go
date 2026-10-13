@@ -239,7 +239,7 @@ func TestAddRollback_RefusedWarpBranchDeletionLogsWarn(t *testing.T) {
 
 	var buf bytes.Buffer
 	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{}); err == nil {
 		t.Fatalf("Add should have failed (weft push declined)")

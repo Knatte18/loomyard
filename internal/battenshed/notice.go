@@ -280,9 +280,10 @@ func (p *innerRunProducer) noticeStep(ctx context.Context, w *childWait) {
 	}
 	pairDir, err := p.deps.PairDir()
 	if err != nil {
-		logger.Warn("battenshed: notice skipped; pair directory unresolved", "producer", p.name, "slug", p.slug, "error", err)
+		p.seamFailed(failPairDirectory, err)
 		return
 	}
+	p.seamRecovered(failPairDirectory)
 	line := renderNotice(noticeLine{slug: p.slug, condition: conditionText(finding, status), status: status, since: p.episode.since, report: report, pairDir: pairDir})
 	if p.deliver(ctx, key, condition, line) {
 		kept = append(kept, key)
@@ -300,9 +301,10 @@ func (p *innerRunProducer) noticeDriverBusy(ctx context.Context, w *childWait, c
 	}
 	pairDir, err := p.deps.PairDir()
 	if err != nil {
-		logger.Warn("battenshed: notice skipped; pair directory unresolved", "producer", p.name, "slug", p.slug, "error", err)
+		p.seamFailed(failPairDirectory, err)
 		return
 	}
+	p.seamRecovered(failPairDirectory)
 	condition := haltText(w.status) + "; " + noticeDriverBusyCondition + " (" + oneLine(cause.Error(), noticeErrorMax) + ")"
 	line := renderNotice(noticeLine{slug: p.slug, condition: condition, status: w.status, since: p.episode.since, pairDir: pairDir})
 	key := noticeKey(noticeDriverBusyCondition, w.status.State, p.episode.since.UnixNano())
@@ -344,14 +346,16 @@ func (p *innerRunProducer) noticeCondition(ctx context.Context, w *childWait) (n
 }
 
 // agentActivity reads deps.Activity at most once per probe and reuses the answer on the checks between.
-// ok is false when the read failed, which is warned about once per read.
+// ok is false when the read failed, which warns once per episode.
 func (p *innerRunProducer) agentActivity(ctx context.Context, w *childWait) (reading agentReading, ok bool) {
 	if w.activityStale {
 		w.activityStale = false
 		runs, waitLive, err := p.deps.Activity(ctx)
 		w.activity, w.activityOK = agentReading{runs: runs, waitLive: waitLive}, err == nil
-		if err != nil && ctx.Err() == nil {
-			logger.Warn("battenshed: agent activity read failed; no activity notice", "producer", p.name, "slug", p.slug, "error", err)
+		if err == nil {
+			p.seamRecovered(failAgentActivity)
+		} else if ctx.Err() == nil {
+			p.seamFailed(failAgentActivity, err)
 		}
 	}
 	return w.activity, w.activityOK
@@ -406,11 +410,11 @@ func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (notic
 	return noticeFinding{}, stamp
 }
 
-// logSessionStatesAtNotice logs at Info the session state of every run in runs beside the condition a finding returned for them, so each notice can be checked against the state.
+// logSessionStatesAtNotice logs at Debug the session state of every run in runs beside the condition a finding returned for them, so each notice can be checked against the state.
 // It is shadow logging: no notice, stamp or finding depends on the state fields.
 func (p *innerRunProducer) logSessionStatesAtNotice(runs []AgentActivity, condition string) {
 	for _, run := range runs {
-		logger.Info("battenshed: session state at notice", "producer", run.Producer, "slug", p.slug, "condition", condition, "state", run.SessionState, "cause", run.SessionCause, "since", run.SessionSince)
+		logger.Debug("battenshed: session state at notice", "producer", run.Producer, "slug", p.slug, "condition", condition, "state", run.SessionState, "cause", run.SessionCause, "since", run.SessionSince)
 	}
 }
 
@@ -449,43 +453,49 @@ func (p *innerRunProducer) stateChangeReady(ctx context.Context, w *childWait) (
 }
 
 // arbiterHolds reports whether a live arbiter or a live tackler is in flight within its deadline plus noticeReportWait.
-// A read error is a Warn and holds nothing.
+// A read error warns once per episode and holds nothing.
 func (p *innerRunProducer) arbiterHolds(ctx context.Context, now time.Time) bool {
 	arbiter, found, err := p.deps.ArbiterInFlight(ctx)
 	if err != nil {
-		logger.Warn("battenshed: arbiter marker unreadable; holding nothing", "producer", p.name, "slug", p.slug, "error", err)
-	} else if found && arbiter.Alive && now.Before(arbiter.Deadline.Add(noticeReportWait)) {
-		return true
+		p.seamFailed(failArbiterMarker, err)
+	} else {
+		p.seamRecovered(failArbiterMarker)
+		if found && arbiter.Alive && now.Before(arbiter.Deadline.Add(noticeReportWait)) {
+			return true
+		}
 	}
 	tackler, found, err := p.deps.TacklerInFlight(ctx)
 	if err != nil {
-		logger.Warn("battenshed: tackler marker unreadable; holding nothing", "producer", p.name, "slug", p.slug, "error", err)
+		p.seamFailed(failTacklerMarker, err)
 		return false
 	}
+	p.seamRecovered(failTacklerMarker)
 	return found && tackler.Alive && now.Before(tackler.Deadline.Add(noticeReportWait))
 }
 
-// stopReport reads the driver's stop report through deps.StopReport; an error is a Warn and reads as none.
+// stopReport reads the driver's stop report through deps.StopReport; an error warns once per episode and reads as none.
 func (p *innerRunProducer) stopReport() (path string, at time.Time, found bool) {
 	if p.deps.StopReport == nil {
 		return "", time.Time{}, false
 	}
 	path, at, found, err := p.deps.StopReport()
 	if err != nil {
-		logger.Warn("battenshed: stop report unreadable; reading it as none", "producer", p.name, "slug", p.slug, "error", err)
+		p.seamFailed(failStopReport, err)
 		return "", time.Time{}, false
 	}
+	p.seamRecovered(failStopReport)
 	return path, at, found
 }
 
 // undecided reports whether the awaiting child has no decision record yet.
-// A read error is a Warn and reads as decided, so the notice waits rather than going on a guess.
+// A read error warns once per episode and reads as decided, so the notice waits rather than going on a guess.
 func (p *innerRunProducer) undecided() bool {
 	_, found, err := p.deps.ReadDecision()
 	if err != nil {
-		logger.Warn("battenshed: decision unreadable for the notice step; reading it as decided", "producer", p.name, "slug", p.slug, "error", err)
+		p.seamFailed(failNoticeDecision, err)
 		return false
 	}
+	p.seamRecovered(failNoticeDecision)
 	return !found
 }
 
@@ -509,9 +519,10 @@ func (p *innerRunProducer) deliver(ctx context.Context, key, condition, line str
 
 	recorded, err := p.deps.OrchStrandRecorded()
 	if err != nil {
-		logger.Warn("battenshed: notice held back; the orch state is unreadable", "producer", p.name, "slug", p.slug, "condition", condition, "error", err)
+		p.seamFailed(failOrchStateUnreadable, err, "condition", condition)
 		return false
 	}
+	p.seamRecovered(failOrchStateUnreadable)
 	if !recorded {
 		if !d.strandWarned {
 			d.strandWarned = true

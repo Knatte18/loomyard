@@ -70,9 +70,8 @@ func ReadWaitMarker(cfg Config, anchorPath string) (WaitMarker, bool, error) {
 }
 
 // ReadWaitMarkers returns every wait marker with a live pid among the run directories under the run-directory root, in directory order.
-// A marker whose pid is dead reads as absent and the scan goes on,
-// and an unreadable or undecodable marker is skipped with a logged warning,
-// so one torn file cannot hide another run's wait.
+// A marker whose pid is dead reads as absent and the scan goes on.
+// An unreadable or undecodable marker is skipped with a warning logged once per episode, so one torn file cannot hide another run's wait.
 func ReadWaitMarkers(cfg Config, anchorPath string) ([]WaitMarker, error) {
 	root := runDirRoot(cfg, anchorPath)
 	entries, err := os.ReadDir(root)
@@ -90,6 +89,7 @@ func ReadWaitMarkers(cfg Config, anchorPath string) ([]WaitMarker, error) {
 		path := filepath.Join(root, entry.Name(), waitMarkerFileName)
 		data, err := os.ReadFile(path)
 		if os.IsNotExist(err) {
+			unreadableFiles.Recover(path, "shuttle: wait marker readable again", "path", path)
 			continue
 		}
 		var marker WaitMarker
@@ -97,9 +97,10 @@ func ReadWaitMarkers(cfg Config, anchorPath string) ([]WaitMarker, error) {
 			err = yaml.Unmarshal(data, &marker)
 		}
 		if err != nil {
-			logger.Warn("shuttle: skipping an unreadable wait marker", "path", path, "cause", err)
+			unreadableFiles.Fail(path, "shuttle: skipping an unreadable wait marker", "path", path, "cause", err)
 			continue
 		}
+		unreadableFiles.Recover(path, "shuttle: wait marker readable again", "path", path)
 		if isAlive(marker.PID) {
 			markers = append(markers, marker)
 		}

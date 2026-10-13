@@ -37,7 +37,7 @@ func pauseHoldReason(entry pauserecord.Entry) string {
 // So no resume spawn, stale-base resume, Publish retry or driver revive happens under a pause.
 func (p *innerRunProducer) runArm(ctx context.Context, w *childWait, step armStep) *waitEnd {
 	if w.pause.Covered {
-		p.report(w, pauseHoldReason(w.pause.Entry))
+		p.reportState(w, pauseHoldReason(w.pause.Entry))
 		return nil
 	}
 	return step(ctx, w)
@@ -48,7 +48,7 @@ func (p *innerRunProducer) runArm(ctx context.Context, w *childWait, step armSte
 func (p *innerRunProducer) holdSpawnWhileCovered(ctx context.Context) *waitEnd {
 	w := &childWait{}
 	for p.coverage(w).Covered {
-		p.report(w, pauseHoldReason(w.pause.Entry))
+		p.reportState(w, pauseHoldReason(w.pause.Entry))
 		p.deps.Sleep(ctx, p.pollInterval)
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return hardEnd(cerr)

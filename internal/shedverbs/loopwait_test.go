@@ -12,6 +12,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -20,9 +21,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // waitWorld is a loop fixture armed for the waiter: spawning starts the detached half in a goroutine, and waiting records its sleeps.
@@ -790,4 +793,79 @@ func TestUntilStop_LoserWaitsOnWinner(t *testing.T) {
 		}
 		w.assertNotFailed()
 	})
+}
+
+// TestLoopReadFailuresLogOncePerEpisode asserts a read the loop watchdog or the waiter repeats on every wake warns at its first failure, logs Debug while it keeps failing and logs one Info when it reads again.
+// It captures the process-global logger at Debug, so it does not run in parallel.
+func TestLoopReadFailuresLogOncePerEpisode(t *testing.T) {
+	tests := []struct {
+		name     string
+		failure  string
+		recovery string
+		// arrange prepares the files of a row and returns the function that heals the read.
+		arrange func(t *testing.T) (call func(failures *logger.Episode), heal func())
+	}{
+		{
+			name:     "the watchdog's agent activity read",
+			failure:  "the watchdog could not read the run's agent activity",
+			recovery: "the watchdog reads the run's agent activity again",
+			arrange: func(t *testing.T) (func(*logger.Episode), func()) {
+				failing := true
+				agent := func() (time.Time, bool, error) {
+					if failing {
+						return time.Time{}, false, errors.New("agent activity unreadable")
+					}
+					return time.Time{}, false, nil
+				}
+				return func(failures *logger.Episode) { newestActivity(nil, agent, failures) }, func() { failing = false }
+			},
+		},
+		{
+			name:     "the waiter's loop pid file read",
+			failure:  "the waiter could not read the loop pid file",
+			recovery: "the waiter reads the loop pid file again",
+			arrange: func(t *testing.T) (func(*logger.Episode), func()) {
+				dir := t.TempDir()
+				loop := LoopSpec{LockPath: filepath.Join(dir, "loop.lock"), EnvelopePath: filepath.Join(dir, "envelope.json"), PIDPath: filepath.Join(dir, "loop.pid")}
+				if err := os.Mkdir(loop.PIDPath, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				return func(failures *logger.Episode) { takeSnapshot(loop, loopFollow{}, failures) }, func() {
+					if err := os.Remove(loop.PIDPath); err != nil {
+						t.Fatal(err)
+					}
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := logcapture.CaptureVerbose(t)
+			logger.SetVerbosity(2)
+			call, heal := tt.arrange(t)
+			var failures logger.Episode
+
+			for range 3 {
+				call(&failures)
+			}
+			heal()
+			call(&failures)
+
+			log := buf.String()
+			warns, debugs, infos := 0, 0, 0
+			for _, line := range strings.Split(log, "\n") {
+				switch {
+				case strings.Contains(line, "level=WARN") && strings.Contains(line, tt.failure):
+					warns++
+				case strings.Contains(line, "level=DEBUG") && strings.Contains(line, tt.failure):
+					debugs++
+				case strings.Contains(line, "level=INFO") && strings.Contains(line, tt.recovery):
+					infos++
+				}
+			}
+			if warns != 1 || debugs != 2 || infos != 1 {
+				t.Errorf("WARN/DEBUG/INFO lines = %d/%d/%d, want 1/2/1; log: %s", warns, debugs, infos, log)
+			}
+		})
+	}
 }

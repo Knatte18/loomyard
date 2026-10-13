@@ -321,6 +321,8 @@ type IdleProbe struct {
 	TooShort bool
 	// Reason says why the session is held when Idle is false and the hook-derived readiness reading decided; empty when Idle is true or the pane probe decided.
 	Reason string
+	// Draft is true when Idle is false because the input box holds text, the hold the readiness reading names as a draft; always false when Idle is true.
+	Draft bool
 }
 
 // SessionCycler is an optional capability beside Engine: the provider operations a caller needs to cycle a live session's context (read its usage, probe whether it is idle, clear it, compact it).

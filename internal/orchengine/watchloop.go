@@ -127,6 +127,7 @@ func (w *Watcher) dropQueueWithoutStrand() error {
 
 // Run holds the watch lock and calls Tick every PollInterval until Tick reports done, ctx is cancelled, or the cap on consecutive tick errors is reached.
 // It returns ErrWatcherRunning when another watcher holds the lock through every retry.
+// A run of failing ticks warns at its first failure and logs the rest at Debug, then logs one Info at the next tick that succeeds.
 func (w *Watcher) Run(ctx context.Context, sleep func(time.Duration)) error {
 	if err := os.MkdirAll(w.paths.Dir, 0o755); err != nil {
 		return fmt.Errorf("orch: create %s: %w", w.paths.Dir, err)
@@ -158,6 +159,7 @@ func (w *Watcher) Run(ctx context.Context, sleep func(time.Duration)) error {
 	}()
 
 	failures := 0
+	var tickFailures logger.Episode
 	for {
 		if ctx.Err() != nil {
 			return w.recordExit("stopped by signal")
@@ -166,7 +168,7 @@ func (w *Watcher) Run(ctx context.Context, sleep func(time.Duration)) error {
 		switch {
 		case err != nil:
 			failures++
-			logger.Warn("orch: watcher tick failed", "error", err, "consecutive", failures)
+			tickFailures.Fail("orch: watcher tick failed", "error", err, "consecutive", failures)
 			if failures >= maxConsecutiveTickErrors {
 				if recErr := w.recordExit(fmt.Sprintf("tick failed %d times in a row: %v", failures, err)); recErr != nil {
 					logger.Warn("orch: record watcher exit failed", "error", recErr)
@@ -177,6 +179,7 @@ func (w *Watcher) Run(ctx context.Context, sleep func(time.Duration)) error {
 			return nil
 		default:
 			failures = 0
+			tickFailures.Recover("orch: watcher tick succeeded again")
 		}
 		sleep(w.cfg.PollInterval())
 	}

@@ -130,7 +130,7 @@ func TestRecordDelivered(t *testing.T) {
 	}
 	var buf strings.Builder
 	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 	for _, reason := range []string{"", "no such agent"} {
 		if err := settled.RecordDelivered(reason); !errors.Is(err, ErrVerdictRecorded) {
 			t.Fatalf("RecordDelivered(%q) after a verdict = %v; want ErrVerdictRecorded", reason, err)

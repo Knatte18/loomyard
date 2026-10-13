@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // readyAnswer is one answer of the fake ReadyTasks seam.
@@ -44,6 +45,8 @@ type landFixture struct {
 	primeLockBusy       int
 	historyLen          int
 	onSleep             func()
+	// orchUnrecorded makes the orch read as having no strand recorded to receive a notice.
+	orchUnrecorded bool
 
 	calls            []string
 	notices          []string
@@ -135,8 +138,9 @@ func (f *landFixture) deps() LandDeps {
 				f.notices = append(f.notices, line)
 				return true, nil
 			},
-			BattenHistoryLen: func() (int, error) { return f.historyLen, nil },
-			Sleep:            func(context.Context, time.Duration) {},
+			BattenHistoryLen:   func() (int, error) { return f.historyLen, nil },
+			OrchStrandRecorded: func() (bool, error) { return !f.orchUnrecorded, nil },
+			Sleep:              func(context.Context, time.Duration) {},
 		},
 	}
 }
@@ -163,7 +167,8 @@ func (f *landFixture) producer() shedengine.ShedProducer {
 }
 
 // TestLand_Dispositions asserts which of the pull, the deploy and the prune the row runs for each landing.
-// A parent that is the prime's branch pulls, deploys once and prunes with no notice.
+// A parent that is the prime's branch pulls, deploys once and prunes.
+// Every landing queues one landed notice.
 // Another parent skips the pull and the deploy without reading the prime's tree, a parent outside the deploy list pulls only, and an empty deploy command runs nothing.
 func TestLand_Dispositions(t *testing.T) {
 	t.Parallel()
@@ -192,8 +197,8 @@ func TestLand_Dispositions(t *testing.T) {
 			if !slices.Equal(f.calls, tt.wantCalls) {
 				t.Errorf("calls = %v; want %v", f.calls, tt.wantCalls)
 			}
-			if len(f.notices) != 0 {
-				t.Errorf("notices = %v; want none", f.notices)
+			if want := []string{"[batten notice] myslug: landed"}; !slices.Equal(f.notices, want) {
+				t.Errorf("notices = %q; want %q", f.notices, want)
 			}
 		})
 	}
@@ -413,28 +418,32 @@ func TestLand_LandLockWait(t *testing.T) {
 	})
 }
 
-// TestLand_ReadyNotice asserts the ready notice names exactly the tasks the landing made ready:
-// one notice for a landing that readies a dependant, none when nothing is readied, one on a restart after the prune with the snapshot present, none repeated on a re-entry after it was queued, and never a task already in the snapshot.
+// TestLand_ReadyNotice asserts the landing notice names exactly the tasks the landing made ready:
+// one notice for a landing that readies a dependant, a bare landed notice when nothing is readied, one on a restart after the prune with the snapshot present, none repeated on a re-entry after it was queued, and never a task already in the snapshot.
+// With no orch strand recorded nothing is queued and one Warn names the slug.
+// It is serial: it captures the process-global logger.
 func TestLand_ReadyNotice(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
-		name       string
-		snapshot   string
-		ready      []readyAnswer
-		wantNotice string
+		name           string
+		snapshot       string
+		ready          []readyAnswer
+		orchUnrecorded bool
+		wantNotice     string
+		wantHeldWarns  int
 	}{
 		{name: "ReadiesADependant", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a", "b"}}}, wantNotice: "[batten notice] myslug: landed; newly ready: b"},
-		{name: "ReadiesNothing", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a"}}}},
+		{name: "ReadiesNothing", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a"}}}, wantNotice: "[batten notice] myslug: landed"},
 		{name: "RestartAfterPruneWithSnapshot", snapshot: "a\n", ready: []readyAnswer{{slugs: []string{"a", "c"}}}, wantNotice: "[batten notice] myslug: landed; newly ready: c"},
 		{name: "TaskAlreadyInSnapshotIsNotNamed", ready: []readyAnswer{{slugs: []string{"a", "b"}}, {slugs: []string{"c", "b", "a"}}}, wantNotice: "[batten notice] myslug: landed; newly ready: c"},
+		{name: "NoOrchStrandWarnsAndQueuesNothing", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a", "b"}}}, orchUnrecorded: true, wantHeldWarns: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			buf := logcapture.CaptureVerbose(t)
 
 			f := newLandFixture(t)
 			f.ready = tt.ready
+			f.orchUnrecorded = tt.orchUnrecorded
 			if tt.snapshot != "" {
 				if err := os.WriteFile(f.scratchDir+"/Land"+readySnapshotFileSuffix, []byte(tt.snapshot), 0o644); err != nil {
 					t.Fatal(err)
@@ -451,6 +460,13 @@ func TestLand_ReadyNotice(t *testing.T) {
 			}
 			if !slices.Equal(f.notices, want) {
 				t.Fatalf("notices = %q; want %q", f.notices, want)
+			}
+			const held = "row notice held back; no orch strand is recorded"
+			if got := countLogLines(buf.String(), "WARN", held); got != tt.wantHeldWarns {
+				t.Errorf("WARN lines %q = %d; want %d\n%s", held, got, tt.wantHeldWarns, buf.String())
+			}
+			if tt.wantHeldWarns > 0 && !strings.Contains(buf.String(), "slug=myslug") {
+				t.Errorf("held-back Warn does not name the slug\n%s", buf.String())
 			}
 
 			if outcome, _, err := producer.Call(context.Background()); err != nil || outcome != shedengine.Done {

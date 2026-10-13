@@ -37,7 +37,7 @@ func dialogNotice(strandName string) string {
 
 // watchDialog advances the dialog latch one tick and notifies the parent once when the latch has stood for permissionNoticeBound with no input box on the pane.
 // It does nothing for an interactive run, a runner with no notifier, or an engine that cannot parse session signals or read an input box.
-// A failed capture or a pane too short to draw the box changes nothing and is retried on a later tick.
+// A failed capture, which warns once per episode, or a pane too short to draw the box changes nothing and is retried on a later tick.
 // While a pause covers the run the latch stands but no notice is sent.
 // It never types into the pane and never changes the run's outcome.
 func (run *Run) watchDialog() {
@@ -55,9 +55,10 @@ func (run *Run) watchDialog() {
 	}
 	capture, err := run.runner.reed.CapturePane(run.state.StrandGUID)
 	if err != nil {
-		logger.Warn("shuttle: capture pane for the dialog watch failed, retrying on a later tick", "strandGUID", run.state.StrandGUID, "error", err)
+		run.failures.Fail("dialog capture", "shuttle: capture pane for the dialog watch failed, retrying on a later tick", "strandGUID", run.state.StrandGUID, "error", err)
 		return
 	}
+	run.failures.Recover("dialog capture", "shuttle: capture pane for the dialog watch works again", "strandGUID", run.state.StrandGUID)
 	box := readBox(run.runner.engine, capture)
 	switch {
 	case box.tooShort:

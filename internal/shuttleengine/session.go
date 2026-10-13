@@ -157,14 +157,14 @@ func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 			if !cycler.IdleSession(capture) {
 				logger.Debug("shuttle: readiness reads ready beside a pane that does not show idle", "strandGUID", guid, "paneTail", paneTail(r.reed, guid))
 			}
-			if hold := operatorActivityHold(r.reed, guid); hold != "" {
+			if hold := operatorActivityHold(r.reed, guid, &r.activityFailures); hold != "" {
 				logger.Debug("shuttle: session idle probe held", "strandGUID", guid, "reason", hold)
 				return IdleProbe{Reason: hold}, nil
 			}
 			return IdleProbe{Idle: true}, nil
 		case !reading.unknown:
 			logger.Debug("shuttle: session idle probe held", "strandGUID", guid, "reason", reading.reason)
-			return IdleProbe{Reason: reading.reason, TooShort: reading.reason == readinessReasonPaneTooShort}, nil
+			return IdleProbe{Reason: reading.reason, Draft: reading.draft != "", TooShort: reading.reason == readinessReasonPaneTooShort}, nil
 		}
 		logger.Debug("shuttle: session readiness unknown, reading the pane", "strandGUID", guid, "cause", reading.cause)
 	}
