@@ -42,7 +42,7 @@ const (
 // mustUseLLMDriverArm reports whether the run takes the llm arm, from the run's recorded driver.
 // It selects step 5's spawn: the llm arm's strand launch rather than the go arm's detached spawn.
 //
-// An unseeded run is seeded with the llm driver (resolveSeedDriver), while a seed file with no driver
+// An unseeded run is seeded with the driver its driver_kind resolves to, llm by default (resolveSeedDriver), while a seed file with no driver
 // value still reads as the go driver, so this is a two-value switch -- any value other than
 // shedrun.DriverLLM, empty included, selects the go arm.
 func mustUseLLMDriverArm(driver string) bool {
