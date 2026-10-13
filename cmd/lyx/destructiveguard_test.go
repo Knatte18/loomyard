@@ -128,6 +128,7 @@ var destructiveGuardRecordingExecutors = []struct {
 }{
 	{"removePath", "func removePath(rec *Mutations, "},
 	{"removeGitWorktree", "func removeGitWorktree(rec *Mutations, "},
+	{"removeWorktreeLeftover", "func removeWorktreeLeftover(rec *Mutations, "},
 	{"removeLink", "func removeLink(rec *Mutations, "},
 	{"repointLink", "func repointLink(rec *Mutations, "},
 	{"deleteBranch", "func deleteBranch(rec *Mutations, "},

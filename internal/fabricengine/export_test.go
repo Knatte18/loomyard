@@ -65,7 +65,10 @@ var MatchParentBranchForTest = matchParentBranch
 // directly against an arbitrary target, rather than through Topology.Remove — whose own top-level
 // dirty check (remove.go) refuses an untracked warp worktree before removeWarpWorktreeDir's own
 // git-refusal-triggered fallback is ever reached.
-var RemoveWarpWorktreeDirForTest = removeWarpWorktreeDir
+// It passes the zero leftover seam, which is production.
+func RemoveWarpWorktreeDirForTest(rec *Mutations, l *lyxcwd.Location, target string, force bool) error {
+	return removeWarpWorktreeDir(rec, l, target, force, leftoverSeam{})
+}
 
 // TeardownHubForTest re-exports teardownHub for package fabricengine_test integration tests that
 // need to drive it directly rather than through a full CloneHub run, whose hub path is always
@@ -599,6 +602,13 @@ func CleanupRemoteWarpWithHookForTest(t *Topology, l *lyxcwd.Location, apply boo
 // It sets the seam on the one Topology, so parallel tests inject per instance.
 func SetPushSeamForTest(t *Topology, run func(args []string, cwd string) (string, error), sleep func(delay time.Duration)) {
 	t.push = pushSeam{run: run, sleep: sleep}
+}
+
+// SetLeftoverSeamForTest makes t's Remove finish a directory git deregistered but left through remove and wait through sleep instead of the contained removal and a real sleep.
+// A nil argument keeps the production behaviour for that part.
+// It sets the seam on the one Topology, so parallel tests inject per instance.
+func SetLeftoverSeamForTest(t *Topology, remove func(container, target string) (removed, wasDir bool, err error), sleep func(delay time.Duration)) {
+	t.leftover = leftoverSeam{remove: remove, sleep: sleep}
 }
 
 // DropSeedCommitsForTest re-exports dropSeedCommits for package fabricengine_test integration tests that drive the board seed-commit drop's gate directly.
