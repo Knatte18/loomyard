@@ -1,7 +1,8 @@
 // Package alignment is the alignment agent's records, prompt and launch spec: the cold session that settles loom's parent review and PR-Gate in the run's place, or escalates to the run's parent.
 //
 // The agent reads the board, the other in-flight runs' records through `lyx loom peers` and the parent's landed commits.
-// It approves, or rejects on a scope deviation, unless it finds a substantive overlap with another run or a question it cannot settle, which it escalates.
+// It approves, or rejects on a scope deviation, unless it finds a design conflict with another run or a question it cannot settle, which it escalates.
+// An overlap that is no design conflict is not escalated: the agent records its landing order, the run furthest along by its recipe row landing first.
 // Go applies the verdict through the stores the existing review and approval verbs write, and every failure falls back to the path that existed before the agent.
 //
 // # Points

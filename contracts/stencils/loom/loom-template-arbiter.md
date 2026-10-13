@@ -28,7 +28,7 @@ You start cold: everything you know comes from the files below.
 - The driver's stop or fork report `{{.report_path}}`.
 - The review escalation brief `{{.brief_path}}` and the review rounds it names.
 - The tackler's case brief `{{.case_brief_path}}`.
-- The task's board entry, from `lyx board get {{.slug}}`.
+- The task's board entry, from `lyx board get '{"slug":"{{.slug}}"}'`.
 - The decision record `{{.decision_record_path}}` and the support log `{{.support_log_path}}`, when they exist.
 - Any read-only `lyx` command or file in `{{.worktree}}`.
 
