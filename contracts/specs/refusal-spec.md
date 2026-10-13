@@ -211,6 +211,7 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 | seat not stopped | a `MultiLLM` row cannot stop a seat's strand: a misnamed seat at start, a started advisor when the step ends or fails to start its chair, or a chair whose wait errored | transient | run "lyx reed remove <guid>", then re-step the row |
 | llm driver without bootstrap | `--driver llm` on a recipe with no bootstrap verb | correctness halt | re-run with `--driver go` |
 | Seed-Child: run settings invalid | batten's Seed-Child finds the board task's `run_settings` no longer validate, such as a key a later binary retired or closed to the local layer, or one written to `board.json` by hand; no seed or local file is written and the message names the module and the key | correctness halt | correct the task's `run_settings` with `lyx board upsert`, then `lyx batten run <slug>` |
+| batten run: typed --child-driver over a seed recording none | `lyx batten run` or `lyx batten step` is given `--child-driver` for a run whose seed records no `child_driver`, so the flag cannot take effect | correctness halt | delete the run's seed to re-seed it with the flag, or drop the flag to take the task's `driver_kind` |
 | wiring guards | nil deps, an invalid producer list, empty paths | wiring guard | none per row; grouped |
 | raw I/O | `stat`, `mkdir`, `read` or `write` of a status, seed, lock or loop file fails, or the loop process cannot be started | transient | re-run the refused verb; nothing is mutated |
 
@@ -431,7 +432,7 @@ Its JSON error envelope carries the way forward in the message; a covered slug's
 
 ## Out of scope
 
-Landing, batten, orch, fabric, burler and board refusals are not in this table, except the batten lock rows above, and the verify-gate, dirty-tree, conflict-session, superseded-strand, hub-wide config write and Seed-Child run settings rows above;
+Landing, batten, orch, fabric, burler and board refusals are not in this table, except the batten lock rows above, and the verify-gate, dirty-tree, conflict-session, superseded-strand, hub-wide config write, Seed-Child run settings and batten typed child-driver rows above;
 a later audit adds each as its own section.
 Burler's own round errors stay out too, as the strict review parse and the cluster audit already do:
 a changed review and a failed write of the acceptance record each name the file concerned in their message and land no row.

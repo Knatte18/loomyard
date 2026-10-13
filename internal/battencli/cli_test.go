@@ -98,21 +98,23 @@ func TestArmSeed_DriverFlagMatrix(t *testing.T) {
 		name            string
 		driverFlag      string
 		childDriverFlag string
+		childUntyped    bool
 		wantErr         bool
 		wantSubstr      string
 	}{
-		{"BothGo", shedrun.DriverGo, shedrun.DriverGo, false, ""},
-		{"ChildDriverLLMAccepted", shedrun.DriverGo, shedrun.DriverLLM, false, ""},
+		{"BothGo", shedrun.DriverGo, shedrun.DriverGo, false, false, ""},
+		{"ChildDriverLLMAccepted", shedrun.DriverGo, shedrun.DriverLLM, false, false, ""},
+		{"ChildDriverUntypedWritesNoParam", shedrun.DriverGo, "", true, false, ""},
 		// Batten has no bootstrap verb, so the driver it seeds itself with IS the process the operator typed and there is no spawn seam to branch on a seed's driver: the refusal names the missing bootstrap verb.
-		{"OwnDriverLLMRefused", shedrun.DriverLLM, shedrun.DriverGo, true, "no bootstrap verb"},
-		{"BothLLMRefusedByOwnDriver", shedrun.DriverLLM, shedrun.DriverLLM, true, "no bootstrap verb"},
-		{"OwnDriverUnknownRefused", "rust", shedrun.DriverGo, true, ""},
-		{"ChildDriverUnknownRefused", shedrun.DriverGo, "rust", true, ""},
+		{"OwnDriverLLMRefused", shedrun.DriverLLM, shedrun.DriverGo, false, true, "no bootstrap verb"},
+		{"BothLLMRefusedByOwnDriver", shedrun.DriverLLM, shedrun.DriverLLM, false, true, "no bootstrap verb"},
+		{"OwnDriverUnknownRefused", "rust", shedrun.DriverGo, false, true, ""},
+		{"ChildDriverUnknownRefused", shedrun.DriverGo, "rust", false, true, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
-			c := &battenCLI{driverFlag: tt.driverFlag, childDriverFlag: tt.childDriverFlag}
+			c := &battenCLI{driverFlag: tt.driverFlag, childDriverFlag: tt.childDriverFlag, childDriverFlagSet: !tt.childUntyped}
 
 			err := c.armSeed(loc, "some-slug", "run")
 			if (err != nil) != tt.wantErr {
@@ -132,8 +134,15 @@ func TestArmSeed_DriverFlagMatrix(t *testing.T) {
 			if readErr != nil || !found {
 				t.Fatalf("ReadSeed after armSeed = (found=%v, err=%v); want (true, nil)", found, readErr)
 			}
-			if seed.Params["child_driver"] != tt.childDriverFlag {
-				t.Errorf("seed.Params[\"child_driver\"] = %q; want %q", seed.Params["child_driver"], tt.childDriverFlag)
+			got, present := seed.Params["child_driver"]
+			if tt.childUntyped {
+				if present {
+					t.Errorf("seed.Params[\"child_driver\"] = %q; want no param for an untyped flag", got)
+				}
+				return
+			}
+			if got != tt.childDriverFlag {
+				t.Errorf("seed.Params[\"child_driver\"] = %q; want %q", got, tt.childDriverFlag)
 			}
 		})
 	}

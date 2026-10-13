@@ -294,11 +294,50 @@ func TestRunLockHeld(t *testing.T) {
 	}
 }
 
-// TestWire_ChildDriverDelegatesToChildDriverOf asserts the wired SeedChild.ChildDriver closure
-// reads exactly the value childDriverOf(seed) (arm.go) would compute over the same seed, for both
-// an explicit child_driver param and an absent one -- the property F2 (crucible round
-// sonnet-xhigh-r3) exists to guarantee structurally: refuseAdoptedSeed's own comparison and the
-// value Seed-Child actually writes now share one defaulting implementation, so they cannot drift.
+// TestChildDriverFrom asserts the child driver Seed-Child writes: a recorded child_driver wins over resolveKind, a seed recording none and no seed at all each take resolveKind's value, and a resolveKind error is returned.
+func TestChildDriverFrom(t *testing.T) {
+	t.Parallel()
+
+	kind := func(value string) func() (string, error) {
+		return func() (string, error) { return value, nil }
+	}
+	resolveErr := errors.New("loom config unreadable")
+	failing := func() (string, error) { return "", resolveErr }
+	recordedLLM := shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo, Params: map[string]string{"child_driver": shedrun.DriverLLM}}
+	recordsNone := shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}
+
+	tests := []struct {
+		name        string
+		seed        shedrun.Seed
+		found       bool
+		resolveKind func() (string, error)
+		want        string
+		wantErr     error
+	}{
+		{"RecordedParamWinsOverKind", recordedLLM, true, kind(shedrun.DriverGo), shedrun.DriverLLM, nil},
+		{"SeedRecordingNoneTakesKindGo", recordsNone, true, kind(shedrun.DriverGo), shedrun.DriverGo, nil},
+		{"SeedRecordingNoneTakesKindLLM", recordsNone, true, kind(shedrun.DriverLLM), shedrun.DriverLLM, nil},
+		{"NoSeedTakesKindGo", shedrun.Seed{}, false, kind(shedrun.DriverGo), shedrun.DriverGo, nil},
+		{"NoSeedTakesKindLLM", shedrun.Seed{}, false, kind(shedrun.DriverLLM), shedrun.DriverLLM, nil},
+		{"ResolveKindErrorIsReturned", recordsNone, true, failing, "", resolveErr},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := childDriverFrom(tt.seed, tt.found, tt.resolveKind)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("childDriverFrom() error = %v; want %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("childDriverFrom() = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestWire_ChildDriverDelegatesToChildDriverOf asserts the wired SeedChild.ChildDriver closure returns the child_driver param the prime seed records, the same value childDriverOf reads over that seed.
+// That keeps refuseAdoptedSeed's comparison and the value Seed-Child writes from drifting.
 func TestWire_ChildDriverDelegatesToChildDriverOf(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -306,7 +345,6 @@ func TestWire_ChildDriverDelegatesToChildDriverOf(t *testing.T) {
 		want   string
 	}{
 		{"ExplicitLLM", map[string]string{"child_driver": shedrun.DriverLLM}, shedrun.DriverLLM},
-		{"AbsentParamDefaultsToGo", nil, shedrun.DriverGo},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -332,7 +370,7 @@ func TestWire_ChildDriverDelegatesToChildDriverOf(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("ChildDriver() = %q; want %q", got, tt.want)
 			}
-			if want := childDriverOf(seed); got != want {
+			if want, _ := childDriverOf(seed); got != want {
 				t.Errorf("ChildDriver() = %q; want it to equal childDriverOf(seed) = %q", got, want)
 			}
 		})

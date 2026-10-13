@@ -306,7 +306,7 @@ const (
 )
 
 // SeedChildDeps carries every told value and injected closure NewSeedChild needs, carrying no
-// paths of its own: reading the Board task's own type, reading prime's own seed driver, encoding
+// paths of its own: reading the Board task's own type, reading the child's driver, encoding
 // and writing the child's seed, and committing and pushing it. Every field is a seam a Tier 1 test
 // substitutes with a stub closure, per the seed-encoding-stays-behind-a-seam-in-battenshed Shared
 // Decision -- this type never imports internal/shedrun itself.
@@ -314,8 +314,8 @@ type SeedChildDeps struct {
 	// ReadBoardType returns the Board task's own "recipe" field, evaluated fresh on every Call -- never captured at wiring time -- so a recipe corrected after prime was seeded is still honoured.
 	// The empty string means "loom".
 	ReadBoardType func(ctx context.Context) (string, error)
-	// ChildDriver returns the driver read from prime's own seed params: the child always
-	// inherits prime's driver, never the Board's.
+	// ChildDriver returns the child's driver: the prime seed's typed child_driver, else the task's driver_kind.
+	// SeedChild calls it after the local overrides are written, so the task's driver_kind is read from the layer just written.
 	ChildDriver func() (string, error)
 	// ReadRunSettings returns the Board task's run settings, module name to that module's keys, evaluated fresh on every Call.
 	ReadRunSettings func(ctx context.Context) (map[string]any, error)

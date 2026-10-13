@@ -14,7 +14,7 @@ Each branch on it selects the run's driving surface — which driver spawns and 
 
 - The shed CLI's `seed` command.
 - Batten's own flag validation in `internal/battencli/arm.go`.
-- Batten's child-driver param reader in `internal/battencli/wire.go`.
+- Batten's child-driver reader in `internal/battencli/wire.go`, which reads the typed `child_driver` param, else the task's `driver_kind`.
 - Loom's own seed writer in `internal/loomcli/sharedbootstrap.go`, which also reads `driver_kind` for an unseeded run, only at seeding and never in a producer, a generic verb or an engine.
 
 The last two are constant consumers, not readers: batten's reads a `child_driver` *param* and loom's *writes* the field.
