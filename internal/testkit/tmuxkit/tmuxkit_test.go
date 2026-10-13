@@ -159,31 +159,25 @@ func TestRemoveDeadSocket(t *testing.T) {
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
 
-	listen := func(name string) (string, *net.UnixListener) {
-		path := filepath.Join(dir, name)
-		l, err := net.Listen("unix", path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		ul := l.(*net.UnixListener)
-		ul.SetUnlinkOnClose(false)
-		t.Cleanup(func() { ul.Close() })
-		return path, ul
+	live := filepath.Join(dir, "live")
+	l, err := net.Listen("unix", live)
+	if err != nil {
+		t.Fatal(err)
 	}
-	live, _ := listen("live")
-	dead, deadListener := listen("dead")
-	// Closing the listener leaves the socket file behind, as a killed tmux server does.
-	deadListener.Close()
+	liveListener := l.(*net.UnixListener)
+	liveListener.SetUnlinkOnClose(false)
+	t.Cleanup(func() { liveListener.Close() })
+	// A stale socket file is what a killed tmux server leaves behind.
+	dead := filepath.Join(dir, "dead")
+	BindStaleSocket(t, dead)
 	plain := filepath.Join(dir, "plain")
 	if err := os.WriteFile(plain, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	for _, path := range []string{live, plain, filepath.Join(dir, "absent")} {
+	for _, path := range []string{live, dead, plain, filepath.Join(dir, "absent")} {
 		removeDeadSocket(path, 0)
 	}
-	// A parallel test's fork holds a copy of the closed listener until its exec, so the dead socket gets the wait a killed server gets.
-	removeDeadSocket(dead, deadSocketWait)
 	if _, err := os.Lstat(live); err != nil {
 		t.Errorf("a socket that accepts connections was removed: %v", err)
 	}

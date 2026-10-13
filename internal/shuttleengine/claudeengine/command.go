@@ -193,7 +193,7 @@ const envFileContent = "exec </dev/null\n"
 // A fresh session is named with --session-id;
 // when resume is true the line takes over the existing session sessionID names with --resume instead,
 // and everything else on the line is identical, so the run's own settings file routes the adopted session's hooks.
-// It passes pointer as the first message when non-empty, and none otherwise (a launch that loads skills first sends the pointer afterwards),
+// It passes pointer as the first message when non-empty, and none otherwise (a launch that loads skills passes the skill-load message there and sends the prompt pointer afterwards),
 // quotes all interpolated values, and appends --effort/--model only when non-empty.
 // When notice is non-empty it rides the line as --append-system-prompt,
 // so the session is told which tools are denied;

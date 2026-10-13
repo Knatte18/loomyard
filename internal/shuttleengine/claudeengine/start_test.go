@@ -67,9 +67,14 @@ func TestStart_LoneEOLMarkBoxTakesStartupSends(t *testing.T) {
 	for _, call := range reed.PasteSubmitCalls {
 		pasted[call.Text] = true
 	}
-	for _, sent := range []string{"/color blue", claude.SkillLoadMessage(spec.Skills)} {
+	// No turn end reaches the events file, so the launch-carried load turn times out on the virtual clock.
+	// The color and the prompt then go out without a typed load message.
+	for _, sent := range []string{"/color blue", "Read the prompt."} {
 		if !pasted[sent] {
 			t.Errorf("the pane never received %q; pastes: %v", sent, reed.PasteSubmitCalls)
 		}
+	}
+	if loadMessage := claude.SkillLoadMessage(spec.Skills); pasted[loadMessage] {
+		t.Errorf("the pane received the load message %q; the launch line carries it", loadMessage)
 	}
 }

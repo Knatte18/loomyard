@@ -477,6 +477,7 @@
 // worktree carrying state it will not discard — and treating every one of those refusals as licence
 // to delete the directory turned an ordinary typo into the loss of a whole git clone, gitdir
 // included, reported as success.
+// A directory git deregistered but left on disk, as when a late writer refilled it while git deleted it, is finished through the contained removal `removeWorktreeLeftover`, which retries a late-writer failure (a not-empty directory, or on Windows a file its writer still holds open) after one second and then two, three attempts in all, and returns any other failure at once.
 // The hub's prime worktree is refused by name before any teardown begins, since it is the warp
 // repository rather than a pair.
 // After its refusals — the no-force dirtiness checks and their status probes among them — and before its first mutation, `Remove` archives the pair's weft tip:
@@ -723,6 +724,7 @@
 // # The destruction chokepoint
 //
 // `destroy.go` is the one file in this package permitted to perform a destructive primitive — `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, deleting a branch on a remote (`git push <remote> --delete`), moving a task branch on a remote (a leased force push), a warp checkout's `ResetHard`, and the board checkout's seed-commit drop — and every one of them runs its shared four-check pipeline first.
+// The one exception is `removeWorktreeLeftover`: it keeps containment through `os.Root`, and takes ownership and dirtiness from the gated `git worktree remove` its caller just ran on the same target.
 // See `PATTERN-fabric-destruction-chokepoint` for the rules;
 // this section is the rationale the invariant deliberately omits.
 //

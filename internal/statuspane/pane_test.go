@@ -1,4 +1,4 @@
-// pane_test.go pins the pane loop's redraw, fit, cut, report and back-off behavior against fake size and sleep seams, ReportFromEnv's gating, and FormatMinutes' format boundaries.
+// pane_test.go pins the pane loop's redraw, fit, cut, report, back-off and resize behavior against fake size and wait seams, ReportFromEnv's gating, and FormatMinutes' format boundaries.
 
 package statuspane
 
@@ -18,20 +18,13 @@ type paneStep struct {
 	cols    int
 	rows    int
 	sizeErr bool
+	// resize makes the wait after this step's poll end only through Resized.
+	resize bool
 }
 
-// rendered is the bytes one redraw of lines writes.
+// rendered is the bytes one redraw of lines writes: cursor home, erase screen, erase history, then the lines.
 func rendered(lines ...string) string {
-	var b strings.Builder
-	b.WriteString(cursorHome)
-	for i, line := range lines {
-		b.WriteString(line + eraseToLineEnd)
-		if i < len(lines)-1 {
-			b.WriteString("\n")
-		}
-	}
-	b.WriteString(eraseBelowCursor)
-	return b.String()
+	return "\x1b[H\x1b[2J\x1b[3J" + strings.Join(lines, "\n")
 }
 
 func frameOf(lines ...string) Frame { return Frame{Lines: lines} }
@@ -95,6 +88,17 @@ func TestPane_RunAndReportFromEnv(t *testing.T) {
 			wantLast:    rendered("a"),
 		},
 		{
+			name: "ResizeRedrawsWithoutWaitingOutTheBackOff",
+			steps: append(same(3, frameOf("a", "b")),
+				paneStep{frame: frameOf("a", "b"), cols: cols, rows: rows, resize: true},
+				paneStep{frame: frameOf("a", "b"), cols: cols + 20, rows: rows},
+			),
+			wantRedraws: 2,
+			wantWaits:   []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, time.Second},
+			wantReports: []int{2},
+			wantLast:    rendered("a", "b"),
+		},
+		{
 			name:        "LineWiderThanTheColumnsIsCut",
 			steps:       []paneStep{{frame: frameOf("abcdefghij"), cols: 4, rows: rows}},
 			wantRedraws: 1,
@@ -132,7 +136,8 @@ func TestPane_RunAndReportFromEnv(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx, cancel := context.WithCancel(context.Background())
+			// The timeout bounds a loop that ignores Resized, which fails on its redraw count instead of hanging the test binary.
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			var (
 				out     bytes.Buffer
@@ -140,6 +145,7 @@ func TestPane_RunAndReportFromEnv(t *testing.T) {
 				waits   []time.Duration
 				reports []int
 			)
+			resized := make(chan struct{}, 1)
 			pane := Pane{
 				Out: &out,
 				Size: func() (int, int, error) {
@@ -149,12 +155,20 @@ func TestPane_RunAndReportFromEnv(t *testing.T) {
 					}
 					return step.cols, step.rows, nil
 				},
-				Sleep: func(d time.Duration) {
+				After: func(d time.Duration) <-chan time.Time {
 					waits = append(waits, d)
 					if polls == len(tt.steps) {
 						cancel()
 					}
+					if tt.steps[polls-1].resize {
+						resized <- struct{}{}
+						return make(chan time.Time)
+					}
+					fired := make(chan time.Time, 1)
+					fired <- time.Time{}
+					return fired
 				},
+				Resized: resized,
 			}
 			if !tt.noReport {
 				pane.Report = func(rows int) error {

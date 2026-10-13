@@ -40,8 +40,8 @@ type Launch struct {
 	Cmd       string
 	ResumeCmd string
 	SessionID string
-	// PromptLine, when set, means the engine left the prompt pointer off Cmd:
-	// shuttle delivers this text as a turn once the spec's skills are loaded.
+	// PromptLine, when set, means the engine left the prompt pointer off Cmd and carried the skill-load message there as the first turn:
+	// shuttle awaits that turn, types the color, and then delivers this text as a turn once the spec's skills are loaded.
 	PromptLine string
 	// RecordsSessionStarts declares that the launch writes a session-start line into the run's events file when the provider's session begins, so startup waits for that line beside the ready pane.
 	RecordsSessionStarts bool
@@ -212,8 +212,8 @@ type SessionOpener interface {
 }
 
 // SkillLoader is an optional capability beside Engine: the provider's way of loading a list of named skills into a live session in one submitted turn, and of checking that turn afterwards.
-// Runner.start requires it of an Engine whenever a spec names skills,
-// and the orch watcher's per-tick reload uses it through Runner.LoadSkills and Runner.ClassifySkillLoad.
+// Runner.start requires it of an Engine whenever a spec names skills, and the engine carries SkillLoadMessage on the launch line as the session's first turn;
+// the orch watcher's per-tick reload uses it through Runner.LoadSkills and Runner.ClassifySkillLoad.
 // It is separate from Engine for the same reason SessionCycler is: most implementers and test fakes never load a skill.
 type SkillLoader interface {
 	// SkillLoadMessage returns the one line that asks the model to load every skill of skills in a single turn.

@@ -24,10 +24,10 @@ const (
 )
 
 const (
-	hideCursor       = "\x1b[?25l"
-	cursorHome       = "\x1b[H"
-	eraseToLineEnd   = "\x1b[K"
-	eraseBelowCursor = "\x1b[J"
+	hideCursor   = "\x1b[?25l"
+	cursorHome   = "\x1b[H"
+	eraseScreen  = "\x1b[2J"
+	eraseHistory = "\x1b[3J"
 )
 
 // tmuxPaneEnv is the environment variable tmux exports to a pane's process with the pane's id.
@@ -50,19 +50,22 @@ type Pane struct {
 	Size func() (cols, rows int, err error)
 	// Report tells reed the pane's content line count; nil reports nothing.
 	Report func(rows int) error
-	// Sleep waits between polls; nil waits with time.Sleep.
-	Sleep func(time.Duration)
+	// After returns a channel that fires once the wait between polls has passed; nil waits with time.After.
+	After func(time.Duration) <-chan time.Time
+	// Resized receives a value per terminal resize and ends the wait between polls at once; nil means no resize signal.
+	Resized <-chan struct{}
 }
 
 // Run polls until ctx ends and redraws the pane in place whenever its text or size changes.
 // Each poll it reports the line count to Report when it differs from the count last reported successfully; a failed report is logged at Debug and retried at the next poll.
 // A frame taller than the terminal prints Fit's rows, a failed Size keeps every line, and each line is cut to the terminal's columns so none wraps.
 // The wait between polls starts at one second, doubles while a poll changes nothing up to an eight-second ceiling, and returns to one second on a redraw.
+// A value on Resized ends the wait at once, so the next poll redraws for the new size without waiting out the back-off.
 // It reads and writes nothing but its seams.
 func (p Pane) Run(ctx context.Context, poll func() Frame) {
-	sleep := p.Sleep
-	if sleep == nil {
-		sleep = time.Sleep
+	after := p.After
+	if after == nil {
+		after = time.After
 	}
 
 	fmt.Fprint(p.Out, hideCursor)
@@ -100,7 +103,11 @@ func (p Pane) Run(ctx context.Context, poll func() Frame) {
 			drawn, lastText, lastCols, lastRows = true, text, cols, rows
 			wait = initialWait
 		}
-		sleep(wait)
+		select {
+		case <-ctx.Done():
+		case <-after(wait):
+		case <-p.Resized:
+		}
 	}
 }
 
@@ -126,19 +133,10 @@ func fitLines(frame Frame, rows, cols int) []string {
 	return cut
 }
 
-// redraw writes lines over the pane from its home position: each line is followed by an erase to the end of its row, a newline separates lines but does not follow the last, and everything below is erased.
+// redraw writes lines over the pane from its home position after erasing the screen and the scrollback, so no line of an earlier, longer or wider frame survives on screen or in the history.
+// A newline separates lines but does not follow the last.
 func (p Pane) redraw(lines []string) {
-	var b strings.Builder
-	b.WriteString(cursorHome)
-	for i, line := range lines {
-		b.WriteString(line)
-		b.WriteString(eraseToLineEnd)
-		if i < len(lines)-1 {
-			b.WriteString("\n")
-		}
-	}
-	b.WriteString(eraseBelowCursor)
-	fmt.Fprint(p.Out, b.String())
+	fmt.Fprint(p.Out, cursorHome+eraseScreen+eraseHistory+strings.Join(lines, "\n"))
 }
 
 // TerminalSize returns a size seam reading the columns and rows of the terminal on f.

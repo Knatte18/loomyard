@@ -405,10 +405,10 @@ strand is sized to it. It reads files only, and runs from the prime only.`,
 
 			source := newOverviewSource(location, pauseGeom.RecordPath, time.Now)
 			pane := statuspane.Pane{
-				Out:    out,
-				Size:   statuspane.TerminalSize(os.Stdout),
-				Report: statuspane.ReportFromEnv(os.Getenv, engine.SetContentRows),
-				Sleep:  time.Sleep,
+				Out:     out,
+				Size:    statuspane.TerminalSize(os.Stdout),
+				Report:  statuspane.ReportFromEnv(os.Getenv, engine.SetContentRows),
+				Resized: statuspane.NotifyResize(ctx),
 			}
 			pane.Run(ctx, source.frame)
 			return nil

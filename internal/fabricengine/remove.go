@@ -218,7 +218,7 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 				linksRemoved = len(ownedNames)
 			}
 		}
-		if err := removeWarpWorktreeDir(rec, l, target, force); err != nil {
+		if err := removeWarpWorktreeDir(rec, l, target, force, t.leftover); err != nil {
 			return RemoveResult{}, err
 		}
 		if !pathPresent(target) {
@@ -725,7 +725,9 @@ func refusePrimeSlug(l *lyxcwd.Location, slug string) error {
 // The fallback is itself gated because it fires on ANY nonzero exit from `git worktree remove`, and
 // `git worktree remove` without `--force` refuses on untracked files — an ungated fallback would
 // therefore delete exactly the untracked files git had just declined to discard.
-func removeWarpWorktreeDir(rec *Mutations, l *lyxcwd.Location, target string, force bool) error {
+//
+// When git exits nonzero having deleted the registration and the directory is still on disk, the directory is finished through removeWorktreeLeftover, with leftover as its seam.
+func removeWarpWorktreeDir(rec *Mutations, l *lyxcwd.Location, target string, force bool, leftover leftoverSeam) error {
 	req := pathRequest{
 		what:      "remove warp worktree",
 		container: l.HubPath,
@@ -760,9 +762,18 @@ func removeWarpWorktreeDir(rec *Mutations, l *lyxcwd.Location, target string, fo
 	}
 
 	if !isRegisteredLinkedWorktree(l, target) {
-		return fmt.Errorf(
-			"git refused to remove worktree %s (git exit %d): %s; it is not a linked worktree of this repo, so fabric will not delete the directory itself",
-			target, gitErr.ExitCode, strings.TrimSpace(gitErr.Stderr))
+		if !pathPresent(target) {
+			return fmt.Errorf(
+				"git refused to remove worktree %s (git exit %d): %s; it is not a linked worktree of this repo, so fabric will not delete the directory itself",
+				target, gitErr.ExitCode, strings.TrimSpace(gitErr.Stderr))
+		}
+		// git deleted the registration and failed on the directory: its run is the ownership proof.
+		if leftoverErr := removeWorktreeLeftover(rec, l.HubPath, target, leftover); leftoverErr != nil {
+			return fmt.Errorf(
+				"git refused to remove worktree %s (git exit %d): %s; it is not a linked worktree of this repo and finishing its removal failed: %w",
+				target, gitErr.ExitCode, strings.TrimSpace(gitErr.Stderr), leftoverErr)
+		}
+		return nil
 	}
 
 	// force must travel from the primary request into the fallback, and its absence here was a real

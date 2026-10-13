@@ -77,7 +77,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-pane-text-injection` — Typing text into an agent pane: only reed's guarded paste-submit. — [background](pattern/PATTERN-pane-text-injection.md)
 - `PATTERN-guarded-interrupt` — Sending an agent pane the interrupt key: only shuttle's two pane guards; `Runner.Inject` refuses it. — [background](pattern/PATTERN-guarded-interrupt.md)
 - `PATTERN-pane-binary-resolution` — Creating a strand pane or detached `lyx` window in reed: resolve `lyx` via `panebin.go` only. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
-- `PATTERN-role-skills-typed` — Loading a skill into a spawned session: the spawning module names it on the launch spec and lyx types it; no stencil asks an agent to load a skill. (test)
+- `PATTERN-role-skills-typed` — Loading a spawned session's skill: its spawner names it on the launch spec and lyx delivers it, on the launch line or typed; no stencil asks for one. (test)
 - `PATTERN-parent-directive` — Writing a spawned role's top-level stencil: it renders the parent directive; no stencil tells an agent to ask the operator. (test) — [background](pattern/PATTERN-parent-directive.md)
 - `PATTERN-edit-directive` — Writing a spawned role's opening stencil: it renders the edit directive through `internal/editdirective`; the orch stencils are exempt. (test) — [background](pattern/PATTERN-edit-directive.md)
 - `PATTERN-spawn-color` — Coloring a spawned session: its spawning module names a segment on the launch spec, and no stencil asks an agent to set a color. — [background](pattern/PATTERN-spawn-color.md)

@@ -510,6 +510,18 @@ func (e *skillFakeEngine) SkillLoadMessage(skills []string) string {
 	return "LOAD:" + strings.Join(skills, ",")
 }
 
+// Prepare delegates to fakeEngine.Prepare and, for a spec with skills, carries the load message on the launch line, as the Claude engine does.
+func (e *skillFakeEngine) Prepare(runDir string, spec Spec, cfg Config) (Launch, error) {
+	launch, err := e.fakeEngine.Prepare(runDir, spec, cfg)
+	if err != nil {
+		return launch, err
+	}
+	if len(spec.Skills) > 0 {
+		launch.Cmd = e.SkillLoadMessage(spec.Skills)
+	}
+	return launch, nil
+}
+
 func (e *skillFakeEngine) ClassifySkillLoad(_ Event, _ []string) SkillLoadReport {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -529,8 +541,8 @@ func (e *skillFakeEngine) DefaultSkillLoadTimeout() time.Duration { return e.Tim
 var _ SkillLoader = (*skillFakeEngine)(nil)
 
 // hookStateSkillEngine is a skillFakeEngine that also reads hook state: the session signal parser, a live prober and the SessionCycler idle reading.
-// A capture is idle when it starts with "IDLE" or holds a typed skill load, whose turn the skill reed ends at once;
-// so a pane the test leaves busy is one the pane fallback refuses until the first load, which only the hook state gets past.
+// A capture is idle when it starts with "IDLE" or holds a skill load, carried on the launch line or typed, whose turn the skill reed ends at once.
+// A pane the test leaves busy is one the pane fallback refuses until that load turn ends, and the hook fold reading idle from the launch-carried turn's end lets the color and retry sends through it before the prompt offset moves past that end.
 type hookStateSkillEngine struct {
 	*skillFakeEngine
 
@@ -566,24 +578,56 @@ var (
 	_ SkillLoader         = (*hookStateSkillEngine)(nil)
 )
 
-// skillReed is a fakeReed whose pane capture echoes every text typed into it,
+// skillReed is a fakeReed whose pane capture echoes the load message the launch line carried, as the pane does, and every text typed into it,
 // so a verified send finds its text.
-// It plays a scripted reaction to each "LOAD:<list>" typed, counting load turns from zero:
-// a turn in Hangs never ends, one in Dies kills the strand's pane,
-// and any other appends a turn end to the run's events file.
+// It plays a scripted reaction to each "LOAD:<list>" load turn, counting turns from zero:
+// a typed one arrives through SendText and the launch-carried first one through AddStrand's Cmd.
+// A turn in Hangs never ends.
+// One in Dies kills the strand's pane at the second Status call after the turn is played.
+// One in LateEnds ends after that many Status calls.
+// Any other appends a turn end to the run's events file at once.
 type skillReed struct {
 	*fakeReed
 
 	EventsPath func() string
 	Hangs      map[int]bool
 	Dies       map[int]bool
+	// LateEnds maps a turn to the number of Status calls before its turn end is appended.
+	LateEnds map[int]int
 	// ColorErr, when set, fails every "COLOR:<name>" typed, after the call is recorded.
 	ColorErr error
 	// Screen, when set, is the first line of every capture, ahead of the sent texts.
 	Screen string
+	// EndsAtColor is the number of load turn ends appended when the first "COLOR:<name>" was typed.
+	EndsAtColor int
 
-	loads int
-	dead  bool
+	loads    int
+	ends     int
+	colored  bool
+	dead     bool
+	deathIn  int
+	lateEnds []lateTurnEnd
+	launched []string
+}
+
+// lateTurnEnd is a turn end waiting for statusLeft more Status calls before it is appended.
+type lateTurnEnd struct {
+	line       string
+	statusLeft int
+}
+
+func (r *skillReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
+	strand, err := r.fakeReed.AddStrand(spec)
+	if err != nil {
+		return strand, err
+	}
+	if list, ok := strings.CutPrefix(spec.Cmd, "LOAD:"); ok {
+		r.launched = append(r.launched, spec.Cmd)
+		if err := r.playLoad(list); err != nil {
+			return reedengine.Strand{}, err
+		}
+	}
+	return strand, nil
 }
 
 func (r *skillReed) SendText(guid, text string, submit bool) error {
@@ -591,31 +635,70 @@ func (r *skillReed) SendText(guid, text string, submit bool) error {
 		return err
 	}
 	if strings.HasPrefix(text, "COLOR:") {
+		if !r.colored {
+			r.colored = true
+			r.EndsAtColor = r.ends
+		}
 		return r.ColorErr
 	}
 	list, ok := strings.CutPrefix(text, "LOAD:")
 	if !ok {
 		return nil
 	}
+	return r.playLoad(list)
+}
+
+// playLoad is the reaction to one load turn for list, typed or carried on the launch line.
+// A turn in Dies arms the pane's death for the second Status call after it, so a launch-carried turn dies inside the load poll and not in the startup probe's single ready tick.
+func (r *skillReed) playLoad(list string) error {
 	turn := r.loads
 	r.loads++
 	if r.Dies[turn] {
-		r.dead = true
+		r.deathIn = 2
 		return nil
 	}
 	if r.Hangs[turn] {
 		return nil
 	}
+	line := "STOP:loaded " + list
+	if wait, late := r.LateEnds[turn]; late {
+		r.lateEnds = append(r.lateEnds, lateTurnEnd{line: line, statusLeft: wait})
+		return nil
+	}
+	return r.appendTurnEnd(line)
+}
+
+func (r *skillReed) appendTurnEnd(line string) error {
 	f, err := os.OpenFile(r.EventsPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	_, err = f.WriteString("STOP:loaded " + list + "\n")
-	return err
+	// A real turn's hooks write its start before its end, which the hook fold needs to read the pane idle afterwards.
+	if _, err := f.WriteString("START\n" + line + "\n"); err != nil {
+		return err
+	}
+	r.ends++
+	return nil
 }
 
 func (r *skillReed) Status() (reedengine.StatusResult, error) {
+	if r.deathIn > 0 {
+		r.deathIn--
+		r.dead = r.deathIn == 0
+	}
+	pending := r.lateEnds[:0]
+	for _, late := range r.lateEnds {
+		late.statusLeft--
+		if late.statusLeft > 0 {
+			pending = append(pending, late)
+			continue
+		}
+		if err := r.appendTurnEnd(late.line); err != nil {
+			return reedengine.StatusResult{}, err
+		}
+	}
+	r.lateEnds = pending
 	status, err := r.fakeReed.Status()
 	if err != nil || !r.dead {
 		return status, err
@@ -634,6 +717,9 @@ func (r *skillReed) CapturePane(guid string) (string, error) {
 	var b strings.Builder
 	if r.Screen != "" {
 		b.WriteString(r.Screen + "\n")
+	}
+	for _, text := range r.launched {
+		b.WriteString(text + "\n")
 	}
 	for _, call := range r.fakeReed.SendTextCalls {
 		b.WriteString(call.Text + "\n")

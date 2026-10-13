@@ -17,6 +17,7 @@
 // A reed watchdog daemon is killed without failing the package, because it idles out on its own schedule after the test that spawned it.
 // Before the sweep it also fails the package for a socket it finds: any socket in a test binary built without the `tmux` and `llm` tags, and in one built with either only a socket whose key no test registered.
 // Pids, ProcArgv, ProcCwd, ProcExe, ProcPPID, ProcState, ProcComm and IsWatchdog are the read-only `/proc` probes behind that scan, exported for tests that look for processes themselves.
+// BindStaleSocket leaves a socket file that refuses every stream connection, for tests of the code that removes dead sockets.
 //
 // It is the second kit exempt from the Testkit Invariant's `os/exec` ban, after lyxbin.
 // The exemption is bounded to running the `tmux` binary against sockets under the kit's own directory or its own fixture keys, to starting servers under the kit's own config, and to the `/proc` scan and the kill of a leftover it finds.

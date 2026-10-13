@@ -15,7 +15,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
@@ -68,9 +70,19 @@ func TestRemove_RefusesForeignWorktreeWithoutDeletingIt(t *testing.T) {
 	gitkit.CommitFile(t, foreign, "content-marker", "keep me\n", "seed marker")
 
 	topology := h.Topology
+	var removeCalls, sleepCalls int
+	fabricengine.SetLeftoverSeamForTest(topology,
+		func(container, target string) (bool, bool, error) {
+			removeCalls++
+			return false, false, nil
+		},
+		func(time.Duration) { sleepCalls++ })
 	_, err := topology.Remove(l, slug, false, false)
 	if err == nil {
 		t.Fatalf("Remove(%q) = nil error; want a refusal naming git's own reason", slug)
+	}
+	if removeCalls != 0 || sleepCalls != 0 {
+		t.Errorf("leftover seam ran remove %d and sleep %d times; want neither, since the gate refused before git ran", removeCalls, sleepCalls)
 	}
 	if !strings.Contains(err.Error(), "not a linked worktree of this repo") {
 		t.Errorf("Remove(%q) error = %v; want it to say fabric will not delete a directory git declined to remove", slug, err)

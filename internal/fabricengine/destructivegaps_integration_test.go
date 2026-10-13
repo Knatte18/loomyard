@@ -16,12 +16,17 @@
 package fabricengine_test
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
@@ -283,6 +288,171 @@ func TestRemoveWarpWorktreeDir_FallbackHonoursForce(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRemoveWarpWorktreeDir_LeftoverRetry drives Topology.Remove over a pair whose task worktree `git worktree remove` deregisters and fails to delete, and asserts the late-writer retry of the directory it leaves.
+// Off Windows, git is made to fail by a read-only subdirectory holding a file committed on the pair's branch, so the pair stays clean (a directory's mode is not tracked) and passes Remove's dirty checks.
+// On Windows, a committed file held open by its writer makes git's delete fail, and the first contained removal fails with a sharing violation.
+func TestRemoveWarpWorktreeDir_LeftoverRetry(t *testing.T) {
+	t.Parallel()
+
+	const lockedDirName = "locked"
+	type outcome struct {
+		res         fabricengine.RemoveResult
+		err         error
+		target      string
+		removeCalls int
+		sleepCalls  int
+	}
+	// setup returns the seam's remove and sleep for one row, given the read-only directory's path; a nil remove or sleep keeps production.
+	tests := []struct {
+		name  string
+		slug  string
+		setup func(lockedDir string, o *outcome) (remove func(container, target string) (bool, bool, error), sleep func(time.Duration))
+		check func(t *testing.T, slug string, o outcome)
+	}{
+		{
+			name: "a leftover whose first removal reports not-empty is removed on a retry",
+			slug: "leftover-retried",
+			setup: func(lockedDir string, o *outcome) (func(string, string) (bool, bool, error), func(time.Duration)) {
+				return func(container, path string) (bool, bool, error) {
+						o.removeCalls++
+						if o.removeCalls == 1 {
+							return false, false, &os.PathError{Op: "unlinkat", Path: path, Err: syscall.ENOTEMPTY}
+						}
+						if err := os.Chmod(lockedDir, 0o755); err != nil {
+							return false, false, err
+						}
+						return true, true, os.RemoveAll(path)
+					},
+					func(time.Duration) { o.sleepCalls++ }
+			},
+			check: func(t *testing.T, slug string, o outcome) {
+				if o.err != nil {
+					t.Fatalf("Remove error = %v; want the leftover finished on the retry", o.err)
+				}
+				if _, statErr := os.Lstat(o.target); !os.IsNotExist(statErr) {
+					t.Errorf("target %s still on disk after Remove (stat error = %v)", o.target, statErr)
+				}
+				want := fabricengine.Mutation{Kind: fabricengine.KindPathRemoved, Target: slug, Detail: "recursive"}
+				if !slices.Contains(o.res.Mutations.Entries(), want) {
+					t.Errorf("mutation record = %+v; want it to hold %+v", o.res.Mutations.Entries(), want)
+				}
+				if o.removeCalls != 2 || o.sleepCalls != 1 {
+					t.Errorf("remove ran %d and sleep %d times; want 2 and 1", o.removeCalls, o.sleepCalls)
+				}
+			},
+		},
+		{
+			name: "a leftover still not empty after the last attempt is returned",
+			slug: "leftover-exhausted",
+			setup: func(lockedDir string, o *outcome) (func(string, string) (bool, bool, error), func(time.Duration)) {
+				return func(container, path string) (bool, bool, error) {
+						o.removeCalls++
+						return false, false, &os.PathError{Op: "unlinkat", Path: path, Err: syscall.ENOTEMPTY}
+					},
+					func(time.Duration) { o.sleepCalls++ }
+			},
+			check: func(t *testing.T, slug string, o outcome) {
+				if !errors.Is(o.err, syscall.ENOTEMPTY) {
+					t.Fatalf("Remove error = %v; want it to wrap ENOTEMPTY", o.err)
+				}
+				if !strings.Contains(o.err.Error(), o.target) || !strings.Contains(o.err.Error(), "not a linked worktree") {
+					t.Errorf("Remove error = %v; want it to name %s as not a linked worktree", o.err, o.target)
+				}
+				if o.removeCalls != 3 || o.sleepCalls != 2 {
+					t.Errorf("remove ran %d and sleep %d times; want 3 and 2", o.removeCalls, o.sleepCalls)
+				}
+				if _, statErr := os.Lstat(o.target); statErr != nil {
+					t.Errorf("target %s is gone after a failed finish (stat error = %v); want it on disk", o.target, statErr)
+				}
+			},
+		},
+		{
+			name: "another removal failure is not retried",
+			slug: "leftover-other-failure",
+			setup: func(lockedDir string, o *outcome) (func(string, string) (bool, bool, error), func(time.Duration)) {
+				return func(container, path string) (bool, bool, error) {
+						o.removeCalls++
+						return false, false, &os.PathError{Op: "unlinkat", Path: path, Err: fs.ErrPermission}
+					},
+					func(time.Duration) { o.sleepCalls++ }
+			},
+			check: func(t *testing.T, slug string, o outcome) {
+				if !errors.Is(o.err, fs.ErrPermission) {
+					t.Fatalf("Remove error = %v; want it to wrap the permission error", o.err)
+				}
+				if o.removeCalls != 1 || o.sleepCalls != 0 {
+					t.Errorf("remove ran %d and sleep %d times; want 1 and 0", o.removeCalls, o.sleepCalls)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+				t.Skip("a read-only directory stops git's delete only for a non-root user off Windows")
+			}
+
+			slug := tt.slug
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			l := h.Location
+			hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
+			target := fabricengine.WorktreePath(l, slug)
+			gitkit.CommitFile(t, target, lockedDirName+"/held.txt", "committed\n", "add a file under the directory made read-only")
+			lockedDir := filepath.Join(target, lockedDirName)
+			if err := os.Chmod(lockedDir, 0o555); err != nil {
+				t.Fatalf("make %s read-only: %v", lockedDir, err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(lockedDir, 0o755) })
+
+			o := outcome{target: target}
+			remove, sleep := tt.setup(lockedDir, &o)
+			fabricengine.SetLeftoverSeamForTest(h.Topology, remove, sleep)
+			o.res, o.err = h.Topology.Remove(l, slug, false, false)
+
+			tt.check(t, slug, o)
+		})
+	}
+
+	t.Run("a file held open by its writer is removed once the writer closes it", func(t *testing.T) {
+		t.Parallel()
+		if runtime.GOOS != "windows" {
+			t.Skip("a file held open stops a delete only on Windows")
+		}
+
+		const slug = "leftover-held-open"
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		l := h.Location
+		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
+		target := fabricengine.WorktreePath(l, slug)
+		gitkit.CommitFile(t, target, "held.txt", "committed\n", "add a file its writer holds open")
+		held, err := os.Open(filepath.Join(target, "held.txt"))
+		if err != nil {
+			t.Fatalf("open held file: %v", err)
+		}
+		t.Cleanup(func() { _ = held.Close() })
+
+		sleepCalls := 0
+		fabricengine.SetLeftoverSeamForTest(h.Topology, nil, func(time.Duration) {
+			sleepCalls++
+			_ = held.Close()
+		})
+		res, err := h.Topology.Remove(l, slug, false, false)
+
+		if err != nil {
+			t.Fatalf("Remove error = %v; want the leftover finished once the writer closed the file", err)
+		}
+		want := fabricengine.Mutation{Kind: fabricengine.KindPathRemoved, Target: slug, Detail: "recursive"}
+		if !slices.Contains(res.Mutations.Entries(), want) {
+			t.Errorf("mutation record = %+v; want it to hold %+v", res.Mutations.Entries(), want)
+		}
+		if sleepCalls != 1 {
+			t.Errorf("sleep ran %d times; want 1", sleepCalls)
+		}
+	})
 }
 
 // TestOwnership_RegisteredLinkedWorktreeKind covers the git-touching predicate behind

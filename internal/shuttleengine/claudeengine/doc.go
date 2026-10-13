@@ -140,7 +140,8 @@
 // InterruptSettle is 2 seconds, assuming Claude Code's double-Esc window is shorter, so two keys lyx sends never read as a double Esc.
 //
 // Beside the clear sequence (`/clear`) and the compact sequence (`/compact`), the engine realizes skill loading, in skillload.go.
-// A spec that names skills starts on an empty input box: the launch line carries no prompt pointer, and the pointer comes back as Launch.PromptLine for shuttle to send after the skills.
+// A spec that names skills carries the skill-load message on the launch line, so the session's first turn is the load;
+// the prompt pointer comes back as Launch.PromptLine for shuttle to send after the skills.
 //
 // The engine realizes a whole skill list as one typed message with no leading slash, SkillLoadMessage, that asks the model to load each skill through the Skill tool in one turn, in list order.
 // ClassifySkillLoad checks that turn from the transcript a Stop payload names, read backwards from its end:

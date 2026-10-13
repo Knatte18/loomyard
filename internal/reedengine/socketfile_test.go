@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // listenUnixSocket listens on the socket path dir/key and removes the file on close.
@@ -21,19 +22,6 @@ func listenUnixSocket(t *testing.T, dir, key string) *net.UnixListener {
 		t.Fatalf("listen: %v", err)
 	}
 	return l
-}
-
-// bindStaleUnixSocket leaves a socket file at dir/key that refuses every stream connection.
-// It binds a datagram socket, which never listens, so a child forked by a parallel test that inherits the fd before its exec cannot make the path answer a `Dial` as a closed listener's inherited copy would.
-func bindStaleUnixSocket(t *testing.T, dir, key string) {
-	t.Helper()
-	conn, err := net.ListenUnixgram("unixgram", &net.UnixAddr{Name: filepath.Join(dir, key), Net: "unixgram"})
-	if err != nil {
-		t.Fatalf("bind: %v", err)
-	}
-	if err := conn.Close(); err != nil {
-		t.Fatalf("close: %v", err)
-	}
 }
 
 // TestBootSocketPath pins the socket path rules the boot refusal rests on: the limit per GOOS, the pure length check, and the base's symlinks being resolved before measuring.
@@ -100,8 +88,10 @@ func TestRemoveSocketFileOnceGone(t *testing.T) {
 		wantExists bool
 	}{
 		{
-			name:       "stale socket is removed",
-			setup:      bindStaleUnixSocket,
+			name: "stale socket is removed",
+			setup: func(t *testing.T, dir, key string) {
+				tmuxkit.BindStaleSocket(t, filepath.Join(dir, key))
+			},
 			wantExists: false,
 		},
 		{
@@ -146,8 +136,10 @@ func TestRemoveStaleSocket(t *testing.T) {
 		wantExists bool
 	}{
 		{
-			name:       "stale socket is removed",
-			setup:      bindStaleUnixSocket,
+			name: "stale socket is removed",
+			setup: func(t *testing.T, dir, key string) {
+				tmuxkit.BindStaleSocket(t, filepath.Join(dir, key))
+			},
 			wantExists: false,
 		},
 		{
