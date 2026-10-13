@@ -32,7 +32,7 @@ func parseZoomState(out string) (paneID string, zoomed bool) {
 // For a zoomed window the zoomed pane is unzoomed, fn runs, and the same pane is zoomed again, also when fn returned an error,
 // but only when that pane is still in the window's listing; a pane fn removed leaves the window in the overview.
 // A failed unzoom leaves the window as it was, so fn runs and nothing is re-zoomed.
-// Every tmux failure here is non-fatal and logged; fn's error is returned unchanged.
+// Every tmux failure here is non-fatal and logged once per episode; fn's error is returned unchanged.
 // Assumes the op lock is already held.
 func (e *Engine) keepZoomLocked(fn func() error) error {
 	window, err := e.storedStrandWindowTarget()
@@ -51,23 +51,27 @@ func (e *Engine) keepZoomLocked(fn func() error) error {
 	}
 
 	if err := e.tmux.run("resize-pane", "-Z", "-t", paneID); err != nil {
-		logger.Warn("reed: failed to unzoom the strands' window before a step, running it without a re-zoom", "socket", e.Socket(), "session", e.SessionName(), "window", window, "pane", paneID, "err", err)
+		e.calleeFailures.Fail("unzoom", "reed: failed to unzoom the strands' window before a step, running it without a re-zoom", "socket", e.Socket(), "session", e.SessionName(), "window", window, "pane", paneID, "err", err)
 		return fn()
 	}
+	e.calleeFailures.Recover("unzoom", "reed: unzooms the strands' window again", "socket", e.Socket(), "session", e.SessionName(), "window", window, "pane", paneID)
 	stepErr := fn()
 
 	panes, err := e.tmux.listPanes(window)
 	if err != nil {
-		logger.Warn("reed: failed to list the strands' window after a step, leaving it unzoomed", "socket", e.Socket(), "session", e.SessionName(), "window", window, "pane", paneID, "err", err)
+		e.calleeFailures.Fail("zoom listing", "reed: failed to list the strands' window after a step, leaving it unzoomed", "socket", e.Socket(), "session", e.SessionName(), "window", window, "pane", paneID, "err", err)
 		return stepErr
 	}
+	e.calleeFailures.Recover("zoom listing", "reed: lists the strands' window after a step again", "socket", e.Socket(), "session", e.SessionName(), "window", window, "pane", paneID)
 	if !slices.ContainsFunc(panes, func(pane LivePane) bool { return pane.ID == paneID }) {
 		logger.Debug("reed: the zoomed pane is gone after a step, leaving the window in the overview", "socket", e.Socket(), "session", e.SessionName(), "window", window, "pane", paneID)
 		return stepErr
 	}
 	if err := e.tmux.run("resize-pane", "-Z", "-t", paneID); err != nil {
-		logger.Warn("reed: failed to re-zoom the strands' window after a step", "socket", e.Socket(), "session", e.SessionName(), "window", window, "pane", paneID, "err", err)
+		e.calleeFailures.Fail("re-zoom", "reed: failed to re-zoom the strands' window after a step", "socket", e.Socket(), "session", e.SessionName(), "window", window, "pane", paneID, "err", err)
+		return stepErr
 	}
+	e.calleeFailures.Recover("re-zoom", "reed: re-zooms the strands' window again", "socket", e.Socket(), "session", e.SessionName(), "window", window, "pane", paneID)
 	return stepErr
 }
 

@@ -91,6 +91,7 @@ func (e *Engine) WatchNames(ctx context.Context, namer SessionNamer) error {
 // watchNames is WatchNames over an injected timing.
 func (e *Engine) watchNames(ctx context.Context, namer SessionNamer, t nameRepairTiming) error {
 	wait := t.Base
+	var passFailures logger.Episode
 	for {
 		select {
 		case <-ctx.Done():
@@ -99,7 +100,9 @@ func (e *Engine) watchNames(ctx context.Context, namer SessionNamer, t nameRepai
 		}
 		repaired, err := e.repairNames(namer)
 		if err != nil {
-			logger.Warn("reed: name repair pass failed", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+			passFailures.Fail("reed: name repair pass failed", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		} else {
+			passFailures.Recover("reed: name repair pass works again", "socket", e.Socket(), "session", e.SessionName())
 		}
 		wait = NextWakeCadence(wait, t.Base, t.Ceiling, repaired)
 	}
@@ -128,9 +131,10 @@ func (e *Engine) repairNames(namer SessionNamer) (repaired bool, err error) {
 
 		for _, r := range planTitleRepairs(st.Strands, live) {
 			if err := e.tmux.run("select-pane", "-t", r.PaneID, "-T", r.Name); err != nil {
-				logger.Warn("reed: could not repair pane title", "socket", e.Socket(), "session", e.SessionName(), "guid", r.GUID, "err", err)
+				e.calleeFailures.Fail("title:"+r.GUID, "reed: could not repair pane title", "socket", e.Socket(), "session", e.SessionName(), "guid", r.GUID, "err", err)
 				continue
 			}
+			e.calleeFailures.Recover("title:"+r.GUID, "reed: pane title repair works again", "socket", e.Socket(), "session", e.SessionName(), "guid", r.GUID)
 			logger.Info("reed: repaired pane title", "socket", e.Socket(), "session", e.SessionName(), "guid", r.GUID, "old", r.OldTitle, "name", r.Name)
 			repaired = true
 		}

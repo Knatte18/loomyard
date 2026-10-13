@@ -236,6 +236,10 @@
 // A failure that can repeat on every tick of the watch loop or the name-repair tick logs once per episode through logger.Episode: Warn at the first failure, Debug while it goes on, Info at recovery with the count of failed ticks.
 // The watch loop holds one episode for the re-apply per session, living as long as its watcher, so a failing re-apply warns once however many ticks fail and a session that ends mid-episode owes no recovery line; a deferral is neither a failure nor a recovery.
 // The name-repair half guards the session-name repair's operator-activity read, pane capture and rename typing the same way, per strand where it names one.
+// The tmux reads and writes the two loops reach through their callees share one engine-wide episode set, one episode per read: the live window size query, the pane-border-status readback, the three zoom steps, each pane height pin, the live pane generation read and each pane title repair.
+// One-shot callers of the same helpers share those episodes, so a failure inside a watch-tick episode logs at Debug and a success ends the episode with the Info line.
+// The name-repair loop holds its own episode for a pass that fails as a whole.
+// The two in-memory pane-binding clears of a state load are no failure and have no episode: a state load never saves, so the same clear repeats on every tick, and it warns once per recorded and live generation pair or cleared strand set and logs at Debug while it repeats.
 // The discover signal is the hub-level file named DiscoverSignalFileName, at the path Geometry.DiscoverSignalPath tells.
 // A cold session boot touches it, right after the new session exists and on the boot path alone, so every path that boots a session raises it and an attach to a live session touches nothing; a failed touch is logged at Warn and never fails the boot.
 // The daemon's discovery loop wakes on it; standalone mode tells no path and touches nothing.
