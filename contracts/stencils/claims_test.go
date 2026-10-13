@@ -183,7 +183,7 @@ var wordingClaims = []stencilClaims{
 	}},
 	{"loom-template-arbiter.md", LoomTemplateArbiter, joinClaims(
 		wantAll("the arbiter's closed change list, its author tag, its verdict file and its fixed escalation rule reach the agent",
-			"lyx loom circling accept", "lyx loom circling continue", "--by arbiter", "{{.verdict_path}}", "hand-on", "after round 3"),
+			"lyx loom circling accept", "lyx loom circling continue", "--by arbiter", "{{.verdict_path}}", "{{.case_brief_path}}", "hand-on", "after round 3", "never take its hypothesis as given"),
 		wantNone("the arbiter moves and resumes nothing itself and messages no session",
 			"lyx loom goto", "lyx loom resume", "lyx loom approve", "lyx loom reject", "lyx loom review", "SendMessage"),
 	)},
