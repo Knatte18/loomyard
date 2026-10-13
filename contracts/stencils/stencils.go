@@ -262,10 +262,15 @@ var WebsterFragmentFreshReadPlain []byte
 //go:embed webster/webster-fragment-fresh-read-pack.md
 var WebsterFragmentFreshReadPack []byte
 
-// WebsterFragmentPackSection is webster's shipped-default kick-start pack section, filled into the shared implementer-job body's kickstart_pack marker and holding one subsection per card.
+// WebsterFragmentPackSection is webster's shipped-default kick-start pack file: the fork's one-turn read instruction followed by one subsection per card.
 //
 //go:embed webster/webster-fragment-pack-section.md
 var WebsterFragmentPackSection []byte
+
+// WebsterFragmentPackRead is webster's shipped-default pack read line, filled into the shared implementer-job body's kickstart_pack marker so the fork prompt ends by sending the fork to its kick-start pack file.
+//
+//go:embed webster/webster-fragment-pack-read.md
+var WebsterFragmentPackRead []byte
 
 // WebsterFragmentPackCard is webster's shipped-default per-card subsection of the kick-start pack, one of which is filled into the pack section's pack_cards marker for each card of the batch.
 //
@@ -495,6 +500,7 @@ var entries = []registryEntry{
 	{"webster-fragment-fresh-read-plain", &WebsterFragmentFreshReadPlain},
 	{"webster-fragment-fresh-read-pack", &WebsterFragmentFreshReadPack},
 	{"webster-fragment-pack-section", &WebsterFragmentPackSection},
+	{"webster-fragment-pack-read", &WebsterFragmentPackRead},
 	{"webster-fragment-pack-card", &WebsterFragmentPackCard},
 	{"webster-fragment-pack-unresolved", &WebsterFragmentPackUnresolved},
 	{"webster-fragment-pack-empty", &WebsterFragmentPackEmpty},
