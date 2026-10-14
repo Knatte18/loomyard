@@ -189,7 +189,8 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 	t.Cleanup(pauserecord.InstallGate(pauserecord.Gate{Geometry: sentinel}))
 
 	InstallNetworkGate(lyxcwd.WithCwd(t.Context(), t.TempDir()))
-	pauserecord.Network("probe")()
+	_, probeDone := pauserecord.Network("probe")
+	probeDone()
 	pauserecord.Network("left-in-flight")
 	if ops, err := pauserecord.ListNetOps(sentinel.RecordPath, allAlive); err != nil || len(ops) != 1 || ops[0].Op != "left-in-flight" {
 		t.Fatalf("operations under the sentinel gate = %+v, %v; want the one left in flight, since nothing was installed outside a hub", ops, err)

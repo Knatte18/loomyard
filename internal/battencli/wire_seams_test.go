@@ -158,7 +158,8 @@ func TestWire_PointsTheNetworkGateAtItsSlug(t *testing.T) {
 	}))
 
 	wiredPrime(t)
-	pauserecord.Network("git fetch")()
+	_, done := pauserecord.Network("git fetch")
+	done()
 
 	if !slept {
 		t.Error("a network call after wire did not wait; want the gate pointed at the wired slug's entry")

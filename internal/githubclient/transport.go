@@ -36,7 +36,8 @@ func (rt *authRT) base() http.RoundTripper {
 //
 // It first waits while a pause covers the process; the hold is outside the replay, so a replay is not held twice.
 func (rt *authRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	defer pauserecord.Network("github")()
+	_, done := pauserecord.Network("github")
+	defer done()
 
 	tok, source, err := resolveToken()
 	if err != nil {
