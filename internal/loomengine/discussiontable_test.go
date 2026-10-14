@@ -96,7 +96,7 @@ func TestDiscussionTable(t *testing.T) {
 				stencilsDir := newTestStencilsDir(t)
 				cfg := discussionTableConfig(advisors, interactive)
 
-				table, err := DiscussionTable(layout, stencilsDir, discussionTableSpecsDir,cfg, reg, discussionTableSlug)
+				table, err := DiscussionTable(layout, stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug)
 				if err != nil {
 					t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 				}
@@ -206,7 +206,7 @@ func TestDiscussionTable(t *testing.T) {
 				cfg := discussionTableConfig(1, false)
 				cfg.Friction = tt.friction
 
-				table, err := DiscussionTable(layout, stencilsDir, discussionTableSpecsDir,cfg, reg, discussionTableSlug)
+				table, err := DiscussionTable(layout, stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug)
 				if err != nil {
 					t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 				}
@@ -228,7 +228,7 @@ func TestDiscussionTable(t *testing.T) {
 			t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
 		}
 
-		table, err := DiscussionTable(layout, stencilsDir, discussionTableSpecsDir,discussionTableConfig(1, false), reg, discussionTableSlug)
+		table, err := DiscussionTable(layout, stencilsDir, discussionTableSpecsDir, discussionTableConfig(1, false), reg, discussionTableSlug)
 		if err != nil {
 			t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 		}
@@ -254,7 +254,7 @@ func TestDiscussionTable(t *testing.T) {
 			t.Fatalf("WriteFile(chair stencil) = %v; want nil", err)
 		}
 
-		table, err := DiscussionTable(layout, stencilsDir, discussionTableSpecsDir,discussionTableConfig(1, false), reg, discussionTableSlug)
+		table, err := DiscussionTable(layout, stencilsDir, discussionTableSpecsDir, discussionTableConfig(1, false), reg, discussionTableSlug)
 		if err != nil {
 			t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 		}
@@ -300,7 +300,7 @@ func TestDiscussionTable_Refuses(t *testing.T) {
 				tt.mutate(&cfg)
 			}
 
-			_, err := DiscussionTable(layout, stencilsDir, discussionTableSpecsDir,cfg, reg, tt.slug)
+			_, err := DiscussionTable(layout, stencilsDir, discussionTableSpecsDir, cfg, reg, tt.slug)
 			if err == nil {
 				t.Fatalf("DiscussionTable(slug=%q) = _, nil; want a refusal", tt.slug)
 			}

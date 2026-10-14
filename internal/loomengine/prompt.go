@@ -26,7 +26,7 @@ import (
 // parentDirective is the caller-rendered parent directive and renders as nothing when empty.
 // twillDirective and twillWriteScope are the caller-rendered twill blocks and render as nothing when empty;
 // a non-empty one is set off with a newline on each side, so it sits in a paragraph of its own.
-func composePrompt(stencilsDir, specsDir, slug,decisionRecordPath, supportLogPath, patternDirective, frictionDirective, parentDirective, twillDirective, twillWriteScope string, autonomous bool) ([]byte, error) {
+func composePrompt(stencilsDir, specsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, parentDirective, twillDirective, twillWriteScope string, autonomous bool) ([]byte, error) {
 	template, err := stencilstore.Read(stencilsDir, "loom-template-discussion")
 	if err != nil {
 		return nil, err
