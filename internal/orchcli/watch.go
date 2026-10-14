@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/spf13/cobra"
 )
 
@@ -58,6 +59,7 @@ A second watcher finding the first alive reports already_running and exits.`,
 				return nil
 			}
 			watcher.WatchPause(orchengine.PauseWatch{RecordPath: pauseGeometry.RecordPath, Alive: parentlock.ProcessAlive})
+			watcher.WatchBinary(selfexec.New().Check)
 			runErr := watcher.Run(ctx, time.Sleep)
 
 			if errors.Is(runErr, orchengine.ErrWatcherRunning) {

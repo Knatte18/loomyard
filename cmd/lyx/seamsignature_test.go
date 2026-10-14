@@ -17,13 +17,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/idecli"
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/orchcli"
-	"github.com/Knatte18/loomyard/internal/pausecli"
 	"github.com/Knatte18/loomyard/internal/quarrycli"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reportcli"
 	"github.com/Knatte18/loomyard/internal/selfreportcli"
 	"github.com/Knatte18/loomyard/internal/shuttlecli"
 	"github.com/Knatte18/loomyard/internal/stencilcli"
+	"github.com/Knatte18/loomyard/internal/tendercli"
 	"github.com/Knatte18/loomyard/internal/webstercli"
 )
 
@@ -39,7 +39,7 @@ var _ = []func(io.Writer, []string) int{
 	idecli.RunCLI,
 	loomcli.RunCLI,
 	orchcli.RunCLI,
-	pausecli.RunCLI,
+	tendercli.RunCLI,
 	quarrycli.RunCLI,
 	reedcli.RunCLI,
 	reportcli.RunCLI,
@@ -65,7 +65,7 @@ var _ = []func(string, io.Writer, []string) int{
 	idecli.RunCLIIn,
 	loomcli.RunCLIIn,
 	orchcli.RunCLIIn,
-	pausecli.RunCLIIn,
+	tendercli.RunCLIIn,
 	quarrycli.RunCLIIn,
 	reedcli.RunCLIIn,
 	reportcli.RunCLIIn,

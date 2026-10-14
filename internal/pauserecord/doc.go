@@ -24,7 +24,8 @@
 //
 // Network is the process gate that holds network calls: the CLI root installs a Gate once per process, and a call waits at entry while a pause covers the process, then writes a marker under `NetDir` that its returned function removes.
 // ListNetOps lists the markers of live processes, which are the operations in flight.
-// With no gate installed, as in every test binary, Network does nothing.
+// It also returns the time it held the call, zero unless the wait slept, so a caller can move its own deadline later by that time; Network keeps its context-free signature and takes only the operation name.
+// With no gate installed, as in every test binary, Network does nothing and reports zero.
 // The gate only waits and marks; it fails no call.
 //
 // The package imports the standard library and `internal/state` only.

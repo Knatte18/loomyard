@@ -123,6 +123,40 @@ func executablePath(pid int) string {
 	return first
 }
 
+// ListProcesses returns every process in /proc with its start time, exe link, cwd link and command line.
+// A process that ends between the /proc listing and its reads, or whose links the caller may not read, is skipped; an unreadable /proc is an error.
+func ListProcesses() ([]Process, error) {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil, fmt.Errorf("proc: list /proc: %w", err)
+	}
+
+	var processes []Process
+	for _, entry := range entries {
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil {
+			continue
+		}
+		startTime, ok := StartTime(pid)
+		if !ok {
+			continue
+		}
+		base := "/proc/" + strconv.Itoa(pid)
+		exe, exeErr := os.Readlink(base + "/exe")
+		cwd, cwdErr := os.Readlink(base + "/cwd")
+		cmdline, cmdlineErr := os.ReadFile(base + "/cmdline")
+		if exeErr != nil || cwdErr != nil || cmdlineErr != nil {
+			continue
+		}
+		var argv []string
+		if len(cmdline) > 0 {
+			argv = strings.Split(strings.TrimSuffix(string(cmdline), "\x00"), "\x00")
+		}
+		processes = append(processes, Process{PID: pid, StartTime: startTime, Exe: exe, Cwd: cwd, Argv: argv})
+	}
+	return processes, nil
+}
+
 // IsAncestor reports whether pid is a parent, grandparent or further ancestor of the calling process.
 // The process itself, pid 0 and a pid that is not alive are never ancestors.
 func IsAncestor(pid int) bool {

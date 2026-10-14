@@ -57,6 +57,11 @@ func TreeCPU(root int) ([]ProcessCPU, error) {
 	return nil, errors.ErrUnsupported
 }
 
+// ListProcesses reports errors.ErrUnsupported on Windows, where the process links it reads do not exist.
+func ListProcesses() ([]Process, error) {
+	return nil, errors.ErrUnsupported
+}
+
 // IsAncestor is always false on Windows, where the ancestry walk is not implemented.
 func IsAncestor(pid int) bool {
 	return false

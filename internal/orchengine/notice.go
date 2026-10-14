@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 const (
@@ -24,16 +25,45 @@ const (
 	maxNotices = 50
 
 	noticeSuffix = ".notice"
-	noticeTmpTag = ".tmp-"
+	// conditionedNoticeSuffix ends the name of a notice that carries a condition.
+	conditionedNoticeSuffix = ".cnotice"
+	// noticeConditionTag precedes the condition, "<state>+<cause>", in a conditioned notice's name.
+	noticeConditionTag = ".when-"
+	noticeTmpTag       = ".tmp-"
 )
 
+// NoticeCondition names the session state a conditioned notice is delivered under.
+type NoticeCondition struct {
+	State shuttleengine.SessionStateName
+	Cause string
+}
+
 // noticeName returns the file name for a notice queued at now: UTC time to the nanosecond, then a random suffix.
-func noticeName(now time.Time) (string, error) {
+// A non-nil when adds the condition tag and ends the name in conditionedNoticeSuffix.
+func noticeName(now time.Time, when *NoticeCondition) (string, error) {
 	var b [4]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return "", fmt.Errorf("orch: notice name: %w", err)
 	}
-	return now.UTC().Format("20060102T150405.000000000Z") + "-" + hex.EncodeToString(b[:]) + noticeSuffix, nil
+	name := now.UTC().Format("20060102T150405.000000000Z") + "-" + hex.EncodeToString(b[:])
+	if when == nil {
+		return name + noticeSuffix, nil
+	}
+	return name + noticeConditionTag + string(when.State) + "+" + when.Cause + conditionedNoticeSuffix, nil
+}
+
+// noticeConditionOf returns the condition tagged in a notice file name, nil for a name with none.
+func noticeConditionOf(name string) *NoticeCondition {
+	stem, ok := strings.CutSuffix(name, conditionedNoticeSuffix)
+	if !ok {
+		return nil
+	}
+	_, tag, found := strings.Cut(stem, noticeConditionTag)
+	if !found {
+		return nil
+	}
+	state, cause, _ := strings.Cut(tag, "+")
+	return &NoticeCondition{State: shuttleengine.SessionStateName(state), Cause: cause}
 }
 
 // QueueNotice queues line for delivery into the orch session, reporting whether it was queued.
@@ -41,6 +71,18 @@ func noticeName(now time.Time) (string, error) {
 // With no strand recorded in the orch state the notice is logged and not queued.
 // After writing, the oldest notices beyond the cap are removed and each drop is logged.
 func QueueNotice(p Paths, line string, now time.Time) (queued bool, err error) {
+	return queueNotice(p, line, nil, now)
+}
+
+// QueueConditionalNotice queues line for delivery into the orch session only while the session reads when, reporting whether it was queued.
+// It refuses and logs as QueueNotice does, and queues nothing, returning false with a nil error, when a notice with the same line and the same condition is already queued.
+// Two calls racing may each queue one.
+func QueueConditionalNotice(p Paths, line string, when NoticeCondition, now time.Time) (queued bool, err error) {
+	return queueNotice(p, line, &when, now)
+}
+
+// queueNotice is the shared body of QueueNotice and QueueConditionalNotice; a non-nil when queues a conditioned notice and skips a duplicate of it.
+func queueNotice(p Paths, line string, when *NoticeCondition, now time.Time) (queued bool, err error) {
 	if strings.ContainsAny(line, "\r\n") {
 		return false, errors.New("orch: a notice is one line; it must not contain a newline")
 	}
@@ -55,10 +97,21 @@ func QueueNotice(p Paths, line string, now time.Time) (queued bool, err error) {
 		logger.Info("orch: no orch strand recorded; notice logged and not queued", "notice", line)
 		return false, nil
 	}
+	if when != nil {
+		queuedNotices, err := ListNotices(p)
+		if err != nil {
+			return false, err
+		}
+		for _, notice := range queuedNotices {
+			if notice.Line == line && notice.Condition != nil && *notice.Condition == *when {
+				return false, nil
+			}
+		}
+	}
 	if err := os.MkdirAll(p.NoticesDir, 0o755); err != nil {
 		return false, fmt.Errorf("orch: create notices dir: %w", err)
 	}
-	name, err := noticeName(now)
+	name, err := noticeName(now, when)
 	if err != nil {
 		return false, err
 	}
@@ -86,6 +139,8 @@ func QueueNotice(p Paths, line string, now time.Time) (queued bool, err error) {
 type Notice struct {
 	Path string // Absolute path of the notice file.
 	Line string // The notice text.
+	// Condition is the session state the notice is delivered under, nil for an unconditioned notice.
+	Condition *NoticeCondition
 }
 
 // ListNotices returns the queued notices, oldest first; an absent queue is empty.
@@ -105,12 +160,13 @@ func ListNotices(p Paths) ([]Notice, error) {
 		if err != nil {
 			return nil, fmt.Errorf("orch: read notice: %w", err)
 		}
-		out = append(out, Notice{Path: path, Line: string(data)})
+		out = append(out, Notice{Path: path, Line: string(data), Condition: noticeConditionOf(name)})
 	}
 	return out, nil
 }
 
-// noticeNames returns the queued notice file names, oldest first.
+// noticeNames returns the queued notice file names of both suffixes, oldest first.
+// Every name starts with its arrival time, so one sort keeps the two kinds in arrival order.
 func noticeNames(p Paths) ([]string, error) {
 	entries, err := os.ReadDir(p.NoticesDir)
 	if errors.Is(err, os.ErrNotExist) {
@@ -121,7 +177,7 @@ func noticeNames(p Paths) ([]string, error) {
 	}
 	var names []string
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), noticeSuffix) {
+		if !e.IsDir() && (strings.HasSuffix(e.Name(), noticeSuffix) || strings.HasSuffix(e.Name(), conditionedNoticeSuffix)) {
 			names = append(names, e.Name())
 		}
 	}

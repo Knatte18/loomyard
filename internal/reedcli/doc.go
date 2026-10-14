@@ -6,6 +6,9 @@
 // When the signal file cannot be watched the loop logs that once and keeps its backed-off cadence.
 // Idle exit and orphan reap each count three consecutive cycles, so at the backed-off cadence they take up to three minutes.
 //
+// `attach` execs tmux over the lyx process on Unix, so no lyx process outlives the handover, and keeps a child process on Windows.
+// Nothing runs after it in the process, so a shortcut that runs `reed attach` runs it as its last argv.
+//
 // Each watched session's engine drives the daemon's told tmux binary, whatever that worktree's config names.
 //
 // On each cycle the daemon stats the `lyx` binary it started from, and when that file has been replaced or rewritten it retires: it ends its watched sessions, releases the hub lock, spawns a successor detached and exits 0.
