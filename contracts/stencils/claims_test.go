@@ -827,6 +827,11 @@ var wordingClaims = []stencilClaims{
 		[]claim{
 			{must: "creates the task pair, drives the task's run inside it, loom or darn as the board entry's `recipe` says, and tears the pair down", why: "the batten run owns the pair's creation and teardown, and drives whichever recipe the entry names"},
 			{must: "a reject re-spawns the darn writer with the findings", why: "a darn run's PR-Gate reject goes back to the darn writer"},
+			{must: "PR-Gate reaches you as an alignment escalation, as in loom", section: "## The run loop", why: "a darn run's PR-Gate reaches the orch only as an alignment escalation"},
+			{mustNot: "PR-Gate is the operator's review point", why: "a darn run's PR-Gate is no longer the operator's review point"},
+			{must: "even while an agent of the run is alive", section: "## Fixing a run", why: "a scope correction on a run with a decision record goes through decision add whatever the agents' state"},
+			{mustNot: "or any darn run", section: "## The board", why: "a darn run has a decision record once Darn-Write commits it, so the verb no longer refuses on every darn run"},
+			{must: "the decision goes by message to the Darn-Write session", section: "## The board", why: "a darn run's decision before its record is committed goes to the Darn-Write session"},
 			{must: "`lyx batten run <slug> --window`", why: "a run is started in its own window of the orch's reed session"},
 			{mustNot: "setsid nohup", why: "the window, not a detached shell process, keeps a started run alive and listed"},
 			{must: "Batten reads the decision and resumes the child itself", why: "batten resumes the child after a PR-Gate decision"},
