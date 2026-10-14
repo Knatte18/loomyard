@@ -229,6 +229,10 @@ func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *t
 	if want := []string{pair + " " + slug}; !slices.Equal(opened, want) {
 		t.Errorf("terminal windows opened = %q; want %q", opened, want)
 	}
+	// The create row spawns the new pair's push once, and the re-entered row on the complete pair spawns none.
+	if got := pairPushCounts.count(pair); got != 1 {
+		t.Errorf("pair pushes spawned for %s = %d; want 1", pair, got)
+	}
 	if data, err := os.ReadFile(configengine.ConfigFile(pair, "batcher")); err != nil || strings.Contains(string(data), "master_base") {
 		t.Errorf("new pair's batcher.yaml still carries the retired key (err %v)", err)
 	}
