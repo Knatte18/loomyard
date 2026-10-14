@@ -277,10 +277,12 @@ Example:
 func statusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "status",
-		Short:       "print the live pause entries, the network operations in flight and the parent locks held",
+		Short:       "print the live pause entries, the network operations in flight, the parent locks held, every live session and the processes running a replaced binary",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `status prints the live pause entries, the network operations in flight and the
-parent locks held, and changes nothing. Any caller may run it.
+parent locks held, then every live session in the hub with its state, cause and
+whether an entry covers it, and the lyx processes running a replaced binary.
+It changes nothing. Any caller may run it.
 
 Example:
   lyx tender status`,
