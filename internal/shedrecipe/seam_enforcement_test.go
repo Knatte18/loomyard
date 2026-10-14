@@ -7,10 +7,8 @@
 // anything else that would drag geometry resolution in, with no list maintenance beyond a genuine
 // new dependency.
 //
-// This is the largest allowlist in the repo, and that is expected: this package is the wiring layer
-// that has to reach types from four producer-hosting packages at once (internal/shedengine,
-// internal/preflightshed, internal/landingshed, internal/loomshed) plus the seam and stencil
-// packages those producers' constructors take.
+// This is the largest allowlist in the repo, and that is expected:
+// this package is the wiring layer that has to reach types from four producer-hosting packages at once (internal/shedengine, internal/preflightshed, internal/landingshed, internal/loomshed) plus the seam packages those producers' constructors take.
 //
 // Several allowlisted packages themselves import internal/lyxcwd, and that is legal: the
 // Told-Geometry Invariant's membership predicate is about a direct production import, and
@@ -47,8 +45,6 @@ var shedrecipeAllowedImports = []string{
 	// internal/configengine is imported for the told Dirs type the batcher-backed rows load through; it resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/configengine",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
-	"github.com/Knatte18/loomyard/internal/stencilstore",
-	"github.com/Knatte18/loomyard/internal/stencil",
 }
 
 // shedrecipeDeniedLyxcwdImport is the exact import path the Shed Recipe Registry Invariant excludes

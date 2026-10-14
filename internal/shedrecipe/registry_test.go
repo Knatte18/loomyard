@@ -103,7 +103,6 @@ func TestNames(t *testing.T) {
 			"Preflight",
 			"Publish",
 			"SeedChild",
-			"SingleLLM",
 			"Stub",
 			"Webster",
 			"WorktreeCreate",

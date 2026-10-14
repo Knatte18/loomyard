@@ -661,8 +661,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{websterengine.DirRel(), planparser.PlanDirRel()}, fmt.Sprintf("loom: webster run record for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
-		// Shuttle is runner, already built above: *shuttleengine.Runner already satisfies
-		// shedadapters.Shuttle, and row 3 (Discussion-Write) reads it now.
+		// Shuttle is runner, already built above, which already satisfies shedadapters.Shuttle.
+		// Bouncer and the Burler probes read it, no writer row does.
 		Shuttle: runner,
 		// Seats runs the MultiLLM rows' seats over the same runner.
 		Seats: seatengine.New(seatengine.RunnerShuttle(runner), seatengine.Geometry{

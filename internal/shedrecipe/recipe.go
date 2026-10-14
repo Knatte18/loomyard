@@ -45,13 +45,11 @@ type Config map[string]any
 type Env struct {
 	// Cwd is the caller's told working directory, read by Preflight.
 	Cwd string
-	// AnchorPath is the told anchor path, read by Batchifier, Webster, Bouncer, SingleLLM's
-	// anchor_path token, and by the gate resolver's "plan" gate.
+	// AnchorPath is the told anchor path, read by Batchifier, Webster, Bouncer and the gate resolver's "plan" gate.
 	AnchorPath string
 	// ConfigDirs is the told geometry of a layered config load, read by Batchifier, LoomPreflight and Webster, which load batcher through it.
 	ConfigDirs configengine.Dirs
-	// WorktreeRoot is the told worktree root, read by SingleLLM's output_files and by the gate
-	// resolver's "plan" and "verify" gates.
+	// WorktreeRoot is the told worktree root, read by the gate resolver's "plan" and "verify" gates.
 	WorktreeRoot string
 	// RunScratchDir is the told ephemeral shed scratch directory of the run, read by the gate resolver's "plan" and "rework-plan" gates, which record their informational findings in a file under it.
 	// Empty keeps those findings inline in the log.
@@ -78,7 +76,7 @@ type Env struct {
 	StatusPath string
 	// StatusLockPath is the told status lock file path, read by LoomPreflight.
 	StatusLockPath string
-	// StencilsDir is the told stencils directory, read by SingleLLM and Bouncer.
+	// StencilsDir is the told stencils directory, read by Bouncer.
 	StencilsDir string
 	// SpecsDir is the told deployed-specs directory, read by the Bouncer and BurlerReview entries.
 	// It is a run-wide root, which is exactly the class Env carries, so it belongs here rather
@@ -133,7 +131,7 @@ type Env struct {
 	RowBouncerModels map[string]shedadapters.BouncerModels
 
 	// Shuttle is the injected shedadapters.Shuttle seam, an already-constructed engine (or a
-	// factory over one).
+	// factory over one), read by the Bouncer row and the Burler rows' attach probes.
 	Shuttle shedadapters.Shuttle
 	// Burler is the injected shedadapters.BurlerHalfRunner seam.
 	Burler shedadapters.BurlerHalfRunner

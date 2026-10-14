@@ -24,7 +24,7 @@ The question the discussion worked through was whether the *other* rows (the loo
 
 - **`Name`** — the row's identifier, same as today (`shedengine.ProducerDef.Name`).
 - **`Engine`** — a name looked up in a registry mapping engine-name strings to `ShedProducer`-constructing functions. **Restricted to names already implementing `shedengine.ShedProducer`** — deliberately not "any Go module": every row today, shared adapter or loom-specific type alike, already satisfies the interface (the Shed Producer-Seam Invariant requires it to sit in a `ProducerDef` at all), so this restriction costs nothing and keeps the recipe-builder simple (registry lookup + fixed-signature constructor call, no reflection, no handling of arbitrary shapes).
-- **`Config`** — the row's static, portable configuration (e.g. which rubric stencil, which prompt template). **Never contains absolute paths.** This is what lets one `Engine` (e.g. `SingleLLMProducer`) serve many rows — the row-to-row difference lives entirely in `Config`.
+- **`Config`** — the row's static, portable configuration (e.g. which rubric stencil, which prompt template). **Never contains absolute paths.** This is what lets one `Engine` (e.g. `MultiLLMProducer`) serve many rows — the row-to-row difference lives entirely in `Config`.
 - **`OnDone` / `OnStuck`** — same routing semantics as today's `ProducerDef` fields, unchanged.
 - **`OnReroute`** — the one row a Stuck verdict that asks for a reroute goes to; empty means the row cannot reroute.
   Its target may sit in another segment, and `shedengine`'s validation refuses one naming no row in the list or the row itself.

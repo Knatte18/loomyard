@@ -734,7 +734,7 @@ func (b *Bouncer) rejudge(ctx context.Context, round int, verdict bouncerVerdict
 // An escalation spawns nothing, and a re-call over the same on-disk state returns the same Awaiting.
 //
 // All three returns survive cancellation:
-// a genuinely parsed verdict is the one exception cancelErr never applies to, exactly as SingleLLMProducer treats a shuttle OutcomeDone.
+// a genuinely parsed verdict is the one exception cancelErr never applies to, exactly as MultiLLMProducer treats a done chair.
 // That rule says a parsed verdict is never retracted because the context was cancelled, not that the branch performs no side effects,
 // so the approved branch's approve and commit attempts are made even under an already-cancelled context.
 func (b *Bouncer) settle(ctx context.Context, round int, spawned bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -1177,7 +1177,7 @@ func (b *Bouncer) rubricNotes() RubricNotes {
 // output, which shuttle's own spec validation then rejects, so continuing would spend the segment's
 // budget on a spawn that cannot start.
 //
-// The probe runs before the archive, exactly as SingleLLMProducer.Call's does: archiving renames the
+// The probe runs before the archive, as every spawning adapter's does: archiving renames the
 // very file a live seed agent is about to write, and shuttle's Wait polls for bare existence at that
 // path, so archiving first would make an attached seed unable to ever classify done.
 func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
@@ -1365,8 +1365,8 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		Skills:      bouncerJudgeSkills,
 	}
 
-	// Probe for a still-live judge run before archiving anything, exactly as
-	// SingleLLMProducer.Call does. A driver crash mid-judge leaves current_producer naming this row,
+	// Probe for a still-live judge run before archiving anything, as every spawning adapter does.
+	// A driver crash mid-judge leaves current_producer naming this row,
 	// so the next Call lands here with a live agent still writing these three files; respawning over
 	// it produces two judges racing to write one verdict, and archiving first would additionally
 	// rename those files out from under the surviving one.

@@ -1,6 +1,5 @@
 // spec.go implements buildConflictSpec, the unexported builder that turns one conflict-resolution
-// attempt's told values into a shuttleengine.Spec ready for the Shuttle seam, following
-// loomengine.DiscussionSpec's own resolution shape.
+// attempt's told values into a shuttleengine.Spec ready for the Shuttle seam.
 
 package mergeresolve
 
@@ -36,7 +35,7 @@ const reportNamePrefix = "conflict-resolution-r"
 // numbers the session (1 for the first try, 2 for the retry), and paths are the worktree-relative
 // conflicted paths the session is told to resolve.
 //
-// It follows loomengine.DiscussionSpec's exact resolution shape: modelspec.Parse(deps.ConflictSpec),
+// It resolves the model as modelspec.Parse(deps.ConflictSpec),
 // then deps.Registry.Resolve(spec), then Model/Effort/Version off the resolved value. The prompt is
 // read from the told stencils directory via stencilstore.Read and filled with stencil.Fill — never
 // composed from a Go string literal, per the Stencil Ownership Invariant.

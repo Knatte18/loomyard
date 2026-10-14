@@ -34,7 +34,6 @@ var registry = map[string]Constructor{
 	"PlanWrite":        planWriteEntry,
 	"Stub":             stubEntry,
 	"Webster":          websterEntry,
-	"SingleLLM":        singleLLMEntry,
 	"MultiLLM":         multiLLMEntry,
 	"Bouncer":          bouncerEntry,
 	"BurlerReview":     burlerReviewEntry,

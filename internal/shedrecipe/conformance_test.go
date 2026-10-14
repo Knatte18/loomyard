@@ -56,13 +56,6 @@ func minimalEntries() map[string]minimalEntry {
 		"PlanWrite": {newTestEnv, emptyConfig},
 		"Stub":      {newTestEnv, emptyConfig},
 		"Webster":   {newTestEnv, emptyConfig},
-		"SingleLLM": {
-			env: func(t *testing.T) Env {
-				env, _ := validSingleLLMEnv(t)
-				return env
-			},
-			cfg: func(*testing.T, Env) Config { return validSingleLLMConfig("singlellm-valid") },
-		},
 		"Bouncer": {
 			env: newTestEnv,
 			cfg: minimalBouncerConfig,
