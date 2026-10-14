@@ -66,7 +66,7 @@ var intentionallyNil = map[string]string{
 	"CommitDiscussion":            "loom-only seam, batten has no discussion segment",
 	"DescribeSpec":                "loom-only seam, batten has no describe segment",
 	"CommitDescription":           "loom-only seam, batten has no describe segment",
-	"PlanSpec":                    "loom-only seam, batten has no plan segment",
+	"PlanTable":                   "loom-only seam, batten has no plan segment",
 	"CommitPlan":                  "loom-only seam, batten has no plan segment",
 	"ApprovePlan":                 "loom-only seam, batten has no plan segment",
 	"SkipPlanReview":              "loom-only seam, batten has no plan segment",

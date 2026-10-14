@@ -53,12 +53,10 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
 
-	// leadOf returns the discussion lead's skills and prompt for a run that is interactive or not.
-	leadOf := func(interactive bool, parent string) ([]string, string, error) {
+	// leadOfTable returns the lead's skills and prompt of the table build makes over a seeded stencils directory, composed under a geometry naming parent.
+	leadOfTable := func(build func(stencilsDir string) (seatengine.Table, error), parent string) ([]string, string, error) {
 		stencilsDir := newTestStencilsDir(t)
-		discussionCfg := cfg
-		discussionCfg.DiscussionInteractive = interactive
-		table, err := DiscussionTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, discussionCfg, reg, "add-json-flag")
+		table, err := build(stencilsDir)
 		if err != nil {
 			return nil, "", err
 		}
@@ -75,14 +73,23 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 		}
 		return table.Chair().Skills, prompts[""], nil
 	}
+	// leadOf returns the discussion lead's skills and prompt for a run that is interactive or not.
+	leadOf := func(interactive bool, parent string) ([]string, string, error) {
+		discussionCfg := cfg
+		discussionCfg.DiscussionInteractive = interactive
+		return leadOfTable(func(stencilsDir string) (seatengine.Table, error) {
+			return DiscussionTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, discussionCfg, reg, "add-json-flag")
+		}, parent)
+	}
 
 	const operatorBan = "A question to the operator in your pane is never the way forward."
 	build := map[string]func(parent string) ([]string, string, error){
 		"discussion-interactive": func(parent string) ([]string, string, error) { return leadOf(true, parent) },
 		"discussion-autonomous":  func(parent string) ([]string, string, error) { return leadOf(false, parent) },
 		"plan": func(parent string) ([]string, string, error) {
-			spec, err := PlanSpec(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, newTestStencilsDir(t), newTestSpecsDir(t), parent, cfg, reg)
-			return spec.Skills, spec.Prompt, err
+			return leadOfTable(func(stencilsDir string) (seatengine.Table, error) {
+				return PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg)
+			}, parent)
 		},
 		"rework": func(parent string) ([]string, string, error) {
 			spec, err := ReworkSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), parent, cfg, reg, 4, "prior")

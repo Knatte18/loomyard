@@ -52,7 +52,7 @@ func twillLenses(dirs configengine.Dirs, fan, row string) ([]twilldirective.Lens
 	return lenses, nil
 }
 
-// planTwillDirective returns the twill directive for the Plan-Write prompt, filled with the plan host's values and the lenses of the twillPlanFan fan, resolved through burler.yaml's layer stack under dirs.
+// planTwillDirective returns the twill directive for the Plan-Write lead's prompt, filled with the plan host's values and the lenses of the twillPlanFan fan, resolved through burler.yaml's layer stack under dirs.
 // The forks review the overview and every card file its Card Index names, and the writer records the lens review in the plan directory's lens review file.
 func planTwillDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir string) (string, error) {
 	lenses, err := twillLenses(dirs, twillPlanFan, "Plan-Write")

@@ -1,20 +1,10 @@
-// prompt_test.go — untagged Tier-1 unit tests for the friction directive in the plan prompt.
-// Assertions are stable substrings on load-bearing tokens, not full golden-file equality, so the
-// template's prose can evolve without breaking this test.
-// It also declares newTestStencilsDir, the package-local test helper every loomengine test uses to
-// seed a hermetic stencils directory from the shipped stencils package defaults.
+// prompt_test.go — declares newTestStencilsDir and newMinimalStencilsDir, the package-local test helpers every loomengine test uses to seed a hermetic stencils directory from the shipped stencils package defaults.
 
 package loomengine
 
 import (
-	"bytes"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
-	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
@@ -39,84 +29,4 @@ func newMinimalStencilsDir(t *testing.T) string {
 		"friction-directive-interview",
 	)
 	return dir
-}
-
-// TestCompose_FrictionDirective verifies, for the plan composer, that a real friction directive resolved via friction.NotePath/friction.Directive exactly as the spec builders resolve one lands its resolved absolute note path verbatim in the prompt (the property that catches a composer wiring the wrong path); that an empty directive (Tier 2 off) over a stencilsDir carrying no friction-directive stencil still renders with no friction content (the composer reads no friction stencil of its own); and that a seeded template whose bytes carry no {{.friction_directive}} literal still composes while Tier 2 is enabled -- the operator-edited-stencil and dev-build case, since internal/stencilstore/reconcile.go never refreshes a StateEdited stencil, so it must degrade to a warning rather than a failed run.
-func TestCompose_FrictionDirective(t *testing.T) {
-	t.Parallel()
-	const decisionRecordPath = "/hub/repo/_lyx/discussion/decision-record.md"
-	composers := []struct {
-		name         string
-		producerRow  string
-		role         friction.Role
-		templateFile string
-		templateBody []byte
-		compose      func(t *testing.T, stencilsDir, frictionDirective string) (string, error)
-	}{
-		{
-			name:         "plan",
-			producerRow:  "Plan-Write",
-			role:         friction.RoleImplementer,
-			templateFile: "loom-template-plan.md",
-			templateBody: stencils.LoomTemplatePlan,
-			compose: func(t *testing.T, stencilsDir, frictionDirective string) (string, error) {
-				got, err := composePlanPrompt(stencilsDir, newTestSpecsDir(t), decisionRecordPath, "/hub/repo/_lyx/plan", "/hub/repo/_lyx/plan/00-overview.md", "", frictionDirective, "", "")
-				return string(got), err
-			},
-		},
-	}
-	for _, c := range composers {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-
-			t.Run("enabled", func(t *testing.T) {
-				t.Parallel()
-				stencilsDir := newTestStencilsDir(t)
-				notePath := friction.NotePath(filepath.Join(t.TempDir(), "friction"), c.producerRow)
-				if notePath == "" {
-					t.Fatalf("friction.NotePath(frictionDir, %q) = \"\"; want a resolved path", c.producerRow)
-				}
-				directive, err := friction.Directive(notePath, stencilsDir, c.role)
-				if err != nil {
-					t.Fatalf("friction.Directive(...) = _, %v; want nil error", err)
-				}
-
-				got, err := c.compose(t, stencilsDir, directive)
-				if err != nil {
-					t.Fatalf("compose(..., directive) = _, %v; want nil error", err)
-				}
-				if !strings.Contains(got, notePath) {
-					t.Errorf("compose(...) output does not contain the resolved friction note path %q verbatim", notePath)
-				}
-			})
-
-			t.Run("disabled", func(t *testing.T) {
-				t.Parallel()
-				got, err := c.compose(t, newMinimalStencilsDir(t), "")
-				if err != nil {
-					t.Fatalf("compose(..., frictionDirective=\"\") = _, %v; want nil error", err)
-				}
-				if strings.Contains(got, "{{") {
-					t.Errorf("compose(..., frictionDirective=\"\") output contains an unrendered marker token:\n%s", got)
-				}
-				if strings.Contains(got, "Friction note") {
-					t.Error("compose(..., frictionDirective=\"\") output contains friction directive content; want none when Tier 2 is off")
-				}
-			})
-
-			t.Run("marker-free template", func(t *testing.T) {
-				t.Parallel()
-				stencilsDir := newTestStencilsDir(t)
-				markerFree := bytes.ReplaceAll(c.templateBody, []byte("{{.friction_directive}}"), nil)
-				templatePath := filepath.Join(stencilsDir, "loom", c.templateFile)
-				if err := os.WriteFile(templatePath, markerFree, 0o644); err != nil {
-					t.Fatalf("WriteFile(%q) = %v; want nil", templatePath, err)
-				}
-
-				if _, err := c.compose(t, stencilsDir, "some friction directive text"); err != nil {
-					t.Fatalf("compose(..., frictionDirective=<non-empty>) with a marker-free template = _, %v; want nil error", err)
-				}
-			})
-		})
-	}
 }

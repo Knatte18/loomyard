@@ -741,12 +741,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.LandingDirRel()}, fmt.Sprintf("loom: change description for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
-		// PlanSpec is evaluated per Call, not resolved here, so the stencil is read at call time --
-		// what the Stencil Ownership Invariant requires. PlanSpec
-		// takes no autonomous argument: the Plan producer is autonomous by design and hard-codes
-		// Interactive: false internally.
-		PlanSpec: func() (shuttleengine.Spec, error) {
-			return loomengine.PlanSpec(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, c.parentName, loomCfg, registry)
+		// PlanTable is evaluated per Call, not resolved here, so the stencil is read at call time -- what the Stencil Ownership Invariant requires.
+		// It takes no autonomous argument: the Plan producer is autonomous by design and its table is never interactive.
+		PlanTable: func() (seatengine.Table, error) {
+			return loomengine.PlanTable(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry)
 		},
 		// CommitPlan mirrors CommitDiscussion above: it keeps the working tree clean for the rows
 		// that follow, makes the artifact durable across a crash or a resume, and sweeps the
@@ -809,7 +807,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		Rework: reworkDeps,
 		// StencilsDir, SpecsDir, RunRoot, Burler, and Now are filled for both review segments.
 		// That is the Discussion-Bouncer and Discussion-Burler-* rows and the Plan-Bouncer and Plan-Burler-* rows alike.
-		// StencilsDir and SpecsDir are websterGeom.StencilsDir and websterGeom.SpecsDir, the same values the DiscussionTable and PlanSpec closures above already capture directly.
+		// StencilsDir and SpecsDir are websterGeom.StencilsDir and websterGeom.SpecsDir, the same values the DiscussionTable and PlanTable closures above already capture directly.
 		// So each is one value read from one place, not a second copy that could drift from theirs.
 		// Now is filled explicitly with time.Now rather than left nil, even though nil defaults to time.Now inside the underlying constructors.
 		// The Bouncer's archive-filename collision suffix is the one place a test wants to inject a clock.

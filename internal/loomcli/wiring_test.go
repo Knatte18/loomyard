@@ -374,42 +374,56 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("plan spec evaluates to the expected shape", func(t *testing.T) {
-		spec, err := c.env.PlanSpec()
+	t.Run("plan table evaluates to the expected shape", func(t *testing.T) {
+		table, err := c.env.PlanTable()
 		if err != nil {
-			t.Fatalf("c.env.PlanSpec() = %v; want nil", err)
+			t.Fatalf("c.env.PlanTable() = %v; want nil", err)
 		}
 
-		if spec.Interactive {
-			t.Error("spec.Interactive = true; want false (autonomous by design)")
+		if table.Interactive {
+			t.Error("table.Interactive = true; want false (autonomous by design)")
 		}
-		if spec.Role != "plan" {
-			t.Errorf("spec.Role = %q; want %q", spec.Role, "plan")
+		lead := table.Chair()
+		if role := seatengine.SeatRole(table.RolePrefix, lead.Name); role != "plan" {
+			t.Errorf("lead role = %q; want %q", role, "plan")
 		}
-		if want := []string{"scribe:prose", "scribe:testing"}; !reflect.DeepEqual(spec.Skills, want) {
-			t.Errorf("spec.Skills = %v; want %v", spec.Skills, want)
+		if len(table.Seats) != 1 {
+			t.Errorf("table has %d seats; want the lead alone under the template's single producer", len(table.Seats))
 		}
-		if !strings.Contains(spec.Prompt, "## Your parent") {
-			t.Error("spec.Prompt carries no parent directive; want one")
+		if want := []string{"scribe:prose", "scribe:testing"}; !reflect.DeepEqual(lead.Skills, want) {
+			t.Errorf("lead.Skills = %v; want %v", lead.Skills, want)
 		}
 		wantTimeout := time.Duration(c.cfg.PlanTimeoutMin) * time.Minute
-		if spec.Timeout != wantTimeout {
-			t.Errorf("spec.Timeout = %s; want %s", spec.Timeout, wantTimeout)
+		if table.Timeout != wantTimeout {
+			t.Errorf("table.Timeout = %s; want %s", table.Timeout, wantTimeout)
 		}
-		if spec.Model == "" {
-			t.Error("spec.Model = \"\"; want non-empty")
+		if lead.Model == "" {
+			t.Error("lead.Model = \"\"; want non-empty")
 		}
 
 		wantOutputs := []string{planparser.PlanOverview(loc.AnchorPath())}
-		if !reflect.DeepEqual(spec.OutputFiles, wantOutputs) {
-			t.Errorf("spec.OutputFiles = %v; want %v", spec.OutputFiles, wantOutputs)
+		if !reflect.DeepEqual(lead.Outputs, wantOutputs) {
+			t.Errorf("lead.Outputs = %v; want %v", lead.Outputs, wantOutputs)
 		}
 
-		if spec.Prompt == "" {
-			t.Error("spec.Prompt = \"\"; want non-empty")
+		// The fixture hub records no shortname, so the wired parent is empty; the geometry tells a parent and shortname instead.
+		prompts, err := seatengine.Prompts(seatengine.Geometry{
+			WorktreeRoot: loc.WorktreePath(),
+			AnchorPath:   loc.AnchorPath(),
+			StencilsDir:  fabricengine.StencilsDir(loc.HubPath),
+			ParentName:   "hub:orch",
+			Shortname:    "hub",
+			Slug:         "pair",
+		}, table)
+		if err != nil {
+			t.Fatalf("seatengine.Prompts() = %v; want nil", err)
 		}
-		if strings.Contains(spec.Prompt, "{{") {
-			t.Errorf("spec.Prompt contains an unrendered {{ marker: %q", spec.Prompt)
+		prompt := prompts[""]
+		if !strings.Contains(prompt, "## Your parent") {
+			t.Error("lead prompt carries no parent directive; want one")
+		}
+		if strings.Contains(prompt, "{{") {
+			t.Errorf("lead prompt contains an unrendered {{ marker: %q", prompt)
 		}
 	})
 

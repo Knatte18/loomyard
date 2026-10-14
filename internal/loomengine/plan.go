@@ -40,6 +40,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -162,5 +163,73 @@ func PlanSpec(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, spec
 		Skills:        planSkills,
 		Timeout:       time.Duration(cfg.PlanTimeoutMin) * time.Minute,
 		ForkSubagents: twill,
+	}, nil
+}
+
+// planStencil is the stencil that opens the Plan-Write lead seat.
+const planStencil = "loom-template-plan"
+
+// PlanTable builds the seatengine.Table of one Plan-Write run: a lead that writes the plan directory's cards and, last, its overview.
+// Under plan_producer twill the lead alone is authorized to spawn fork subagents and carries the twill lens review directive, whose twill-plan fan is resolved through burler.yaml under dirs; otherwise the prompt keeps its bytes.
+// specsDir is told, never derived: this package is bound by the Told-Geometry Invariant.
+// The seat's opening stencil is read at call time from stencilsDir, and the seat engine renders the parent and edit directives from its geometry.
+// The table carries no gate; the producer entry sets it.
+// A PATTERN directive that cannot be rendered fails the table; a friction directive that cannot be rendered is left empty, the failure logged.
+func PlanTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
+	model, effort, version, err := resolveModelChoice(cfg.Plan, reg)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("loom: PlanTable: plan role model-spec: %w", err)
+	}
+
+	patternDirective, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleImplementer)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("loom: PlanTable: %w", err)
+	}
+
+	var frictionDir string
+	if cfg.Friction != "" {
+		frictionDir = LoomFrictionDir(layout)
+	}
+	frictionDirective, err := friction.Directive(friction.NotePath(frictionDir, "Plan-Write"), stencilsDir, friction.RoleImplementer)
+	if err != nil {
+		// A friction directive is optional bookkeeping, so a stencil read failure here must never fail the Plan-Write spawn.
+		logger.Warn("loom: friction directive failed, continuing without one", "role", "plan-write", "stencil", planStencil, "error", err)
+		frictionDirective = ""
+	}
+
+	twill := cfg.PlanProducer == PlanProducerTwill
+	var leadValues map[string]string
+	if twill {
+		twillDirective, err := planTwillDirective(layout, dirs, stencilsDir)
+		if err != nil {
+			return seatengine.Table{}, fmt.Errorf("loom: PlanTable: %w", err)
+		}
+		leadValues = map[string]string{twilldirective.MarkerName: setOffParagraph(twillDirective)}
+	}
+
+	overviewPath := planparser.PlanOverview(layout.AnchorPath())
+	return seatengine.Table{
+		RolePrefix: planRole,
+		Segment:    segmentcolor.Plan,
+		Timeout:    time.Duration(cfg.PlanTimeoutMin) * time.Minute,
+		Values: map[string]string{
+			"decision_record_path": DiscussionDecisionRecord(layout),
+			"plan_dir":             planparser.PlanDir(layout.AnchorPath()),
+			"overview_path":        overviewPath,
+			"specs_dir":            specsDir,
+			"pattern_directive":    patternDirective,
+			friction.MarkerName:    frictionDirective,
+		},
+		Optional: []string{"pattern_directive", friction.MarkerName, twilldirective.MarkerName},
+		Seats: []seatengine.Seat{{
+			Stencil:       planStencil,
+			Model:         model,
+			Effort:        effort,
+			Version:       version,
+			Outputs:       []string{overviewPath},
+			Skills:        planSkills,
+			Values:        leadValues,
+			ForkSubagents: twill,
+		}},
 	}, nil
 }

@@ -424,10 +424,10 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 // The fake seat runner writing both output files on every Run is what keeps Discussion-Write's own gate passing here:
 // shedadapters.archiveStaleOutputs renames the fixture's own pre-written files away on every Call, so without the fake rewriting them the clean sequence run would find both files absent.
 //
-// Row 6 (Plan-Write) is likewise a real shedadapters.SingleLLMProducer behind loomshed's rotate-and-commit decorator.
-// The same loom shuttle serves this row too: its planDir is the same _lyx/plan expression seedPlanFixture already builds,
-// env.PlanSpec is a closure returning a Spec naming Role: "plan" and OutputFiles holding the single overview path.
-// The shuttle's "plan"-role branch rewrites the whole plan directory (see newLoomShuttle's own doc comment for why) rather than only the overview,
+// Row 6 (Plan-Write) is likewise a real shedadapters.MultiLLMProducer behind loomshed's rotate-and-commit decorator.
+// The same newLoomSeats serves this row too, with a planDir that is the same _lyx/plan expression seedPlanFixture already builds.
+// env.PlanTable is a closure returning a one-lead table with role prefix "plan" and the single overview path as its output.
+// The seat runner's "plan"-role branch rewrites the whole plan directory (see newLoomShuttle's own doc comment for why) rather than only the overview,
 // so Plan-Write's own gate still finds a complete, unapproved, zero-findings plan after the decorator's rotation archived the seeded one away -- the real Plan-Write producer can never write it approved, and neither does this fake.
 // env.ApprovePlan is a closure running the real planparser.SetApproved over the same plan directory, wired to Plan-Bouncer's approve_seam key -- the flag is only ever set once the review segment's approved settle fires.
 func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, paths shedbuild.ShedPaths) {
@@ -518,12 +518,14 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 			Role:        "describe",
 		}, nil
 	}
-	env.PlanSpec = func() (shuttleengine.Spec, error) {
-		return shuttleengine.Spec{
-			Prompt:      "plan prompt",
-			OutputFiles: []string{filepath.Join(planDir, "00-overview.md")},
-			Interactive: false,
-			Role:        "plan",
+	env.PlanTable = func() (seatengine.Table, error) {
+		return seatengine.Table{
+			RolePrefix: "plan",
+			Segment:    segmentcolor.Plan,
+			Seats: []seatengine.Seat{{
+				Stencil: "loom-template-plan",
+				Outputs: []string{filepath.Join(planDir, "00-overview.md")},
+			}},
 		}, nil
 	}
 	// ApprovePlan is a closure running the real planparser.SetApproved over this fixture's own

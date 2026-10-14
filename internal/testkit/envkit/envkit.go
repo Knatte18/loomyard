@@ -255,10 +255,19 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				}},
 			}, nil
 		},
-		CommitDiscussion:   func() error { return nil },
-		DescribeSpec:       specOver("test describe prompt", "description.md"),
-		CommitDescription:  func() error { return nil },
-		PlanSpec:           specOver("test plan prompt", "plan-output.md"),
+		CommitDiscussion:  func() error { return nil },
+		DescribeSpec:      specOver("test describe prompt", "description.md"),
+		CommitDescription: func() error { return nil },
+		PlanTable: func() (seatengine.Table, error) {
+			return seatengine.Table{
+				RolePrefix: "plan",
+				Segment:    segmentcolor.Plan,
+				Seats: []seatengine.Seat{{
+					Stencil: "loom-template-plan",
+					Outputs: []string{filepath.Join(dir, "plan-output.md")},
+				}},
+			}, nil
+		},
 		CommitPlan:         func() error { return nil },
 		ApprovePlan:        func() error { return nil },
 		SkipPlanReview:     func() (bool, error) { return false, nil },
