@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/statuspane"
 )
@@ -24,14 +25,28 @@ func minuteMark(minutes int) string {
 	return checklistClock.Add(time.Duration(minutes) * time.Minute).Format(time.RFC3339)
 }
 
+// recipeRows is a recipe of plain rows with the given names.
+func recipeRows(names ...string) []loomrecipe.RecipeRow {
+	rows := make([]loomrecipe.RecipeRow, 0, len(names))
+	for _, name := range names {
+		rows = append(rows, loomrecipe.RecipeRow{Name: name})
+	}
+	return rows
+}
+
 // doneEntry is a Done history entry of producer at the given minute.
 func doneEntry(producer string, atMinute int) shedengine.HistoryEntry {
 	return shedengine.HistoryEntry{Producer: producer, Outcome: shedengine.Done, At: minuteMark(atMinute)}
 }
 
-// stuckEntry is a Stuck history entry of producer at the given minute.
-func stuckEntry(producer string, atMinute int) shedengine.HistoryEntry {
-	return shedengine.HistoryEntry{Producer: producer, Outcome: shedengine.Stuck, At: minuteMark(atMinute)}
+// stuckEntry is a Stuck history entry of producer at the given minute, bounced to routedTo or, with "", a halt.
+func stuckEntry(producer string, atMinute int, routedTo string) shedengine.HistoryEntry {
+	return shedengine.HistoryEntry{Producer: producer, Outcome: shedengine.Stuck, At: minuteMark(atMinute), RoutedTo: routedTo}
+}
+
+// awaitingEntry is an Awaiting history entry of producer at the given minute.
+func awaitingEntry(producer string, atMinute int) shedengine.HistoryEntry {
+	return shedengine.HistoryEntry{Producer: producer, Outcome: shedengine.Awaiting, At: minuteMark(atMinute)}
 }
 
 // gotoEntry is the goto history entry that moved the run onto producer at the given minute.
@@ -61,8 +76,8 @@ func withActivityWait(poll statuspane.StatusPoll, wait string) statuspane.Status
 func TestRenderChecklist(t *testing.T) {
 	t.Parallel()
 
-	recipe := []string{"Plan", "Review", "Build"}
-	repeatedReview := stuckEntry("Review", 6)
+	recipe := recipeRows("Plan", "Review", "Build")
+	repeatedReview := stuckEntry("Review", 6, "")
 	repeatedReview.LastAt = minuteMark(30)
 	repeatedReview.Repeats = 1
 
@@ -70,7 +85,7 @@ func TestRenderChecklist(t *testing.T) {
 	gatedBuild.Output = "out/build.md"
 	gatedAttempts := 2
 	gatedBuild.GateAttempts = &gatedAttempts
-	foldedBuild := stuckEntry("Build", 8)
+	foldedBuild := stuckEntry("Build", 8, "")
 	foldedBuild.LastAt = minuteMark(20)
 	foldedBuild.Repeats = 2
 
@@ -81,7 +96,7 @@ func TestRenderChecklist(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		rows    []string
+		rows    []loomrecipe.RecipeRow
 		rowsErr error
 		poll    statuspane.StatusPoll
 		wait    string
@@ -95,8 +110,9 @@ func TestRenderChecklist(t *testing.T) {
 			wait:   "Review: waiting for the parent lock on main held by other 1m",
 			nowMin: 12,
 			want: []string{
-				"Plan", "  10:00 5m done", "Review", "  10:05 7m running",
-				"[x] Plan 5m", "[>] Review 7m", "[ ] Build",
+				"[x] Plan 5m", "  10:00 5m done",
+				"[>] Review 7m", "  10:05 7m running",
+				"[ ] Build",
 				"loom running | now working",
 				"waiting Review: waiting for the parent lock on main held by other 1m",
 			},
@@ -107,8 +123,23 @@ func TestRenderChecklist(t *testing.T) {
 			poll:   checklistStatus(shedengine.StateRunning, "Review", doneEntry("Plan", 5)),
 			nowMin: 12,
 			want: []string{
-				"Plan", "  10:00 5m done", "Review", "  10:05 7m running",
-				"[x] Plan 5m", "[>] Review 7m", "[ ] Build",
+				"[x] Plan 5m", "  10:00 5m done",
+				"[>] Review 7m", "  10:05 7m running",
+				"[ ] Build",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a frame part-way through a run draws each row once with its visit lines under it",
+			rows: recipeRows("Plan", "Review", "Build", "Publish"),
+			poll: checklistStatus(shedengine.StateRunning, "Build",
+				doneEntry("Plan", 5), doneEntry("Review", 10)),
+			nowMin: 12,
+			want: []string{
+				"[x] Plan 5m", "  10:00 5m done",
+				"[x] Review 5m", "  10:05 5m done",
+				"[>] Build 2m", "  10:10 2m running",
+				"[ ] Publish",
 				"loom running | now working", "waiting on nothing",
 			},
 		},
@@ -116,12 +147,12 @@ func TestRenderChecklist(t *testing.T) {
 			name: "a row reviewed twice sums its time over both visits and shows x2",
 			rows: recipe,
 			poll: checklistStatus(shedengine.StateRunning, "Review",
-				doneEntry("Plan", 5), stuckEntry("Review", 8), doneEntry("Plan", 15)),
+				doneEntry("Plan", 5), stuckEntry("Review", 8, ""), doneEntry("Plan", 15)),
 			nowMin: 20,
 			want: []string{
-				"Plan", "  10:00 5m done", "  10:08 7m done",
-				"Review", "  10:05 3m stuck", "  10:15 5m running",
-				"[x] Plan 12m x2", "[>] Review 8m x2", "[ ] Build",
+				"[x] Plan 12m x2", "  10:00 5m done", "  10:08 7m done",
+				"[>] Review 8m x2", "  10:05 3m stuck", "  10:15 5m running",
+				"[ ] Build",
 				"loom running | now working", "waiting on nothing",
 			},
 		},
@@ -132,9 +163,9 @@ func TestRenderChecklist(t *testing.T) {
 				doneEntry("Plan", 5), repeatedReview, gotoEntry("Plan", 40), doneEntry("Plan", 45)),
 			nowMin: 60,
 			want: []string{
-				"Plan", "  10:00 5m done", "  10:40 5m done",
-				"Review", "  10:05 25m stuck x2",
-				"[x] Plan 10m x2", "[x] Review 25m x2", "[ ] Build",
+				"[x] Plan 10m x2", "  10:00 5m done", "  10:40 5m done",
+				"[x] Review 25m x2", "  10:05 25m stuck x2",
+				"[ ] Build",
 				"loom done | now working", "waiting on nothing",
 			},
 		},
@@ -144,8 +175,9 @@ func TestRenderChecklist(t *testing.T) {
 			poll:   checklistStatus(shedengine.StateRunning, "Build", doneEntry("Plan", 5), doneEntry("Review", 60)),
 			nowMin: 63,
 			want: []string{
-				"Plan", "  10:00 5m done", "Review", "  10:05 55m done", "Build", "  11:00 3m running",
-				"[x] Plan 5m", "[x] Review 55m", "[>] Build 3m",
+				"[x] Plan 5m", "  10:00 5m done",
+				"[x] Review 55m", "  10:05 55m done",
+				"[>] Build 3m", "  11:00 3m running",
 				"loom running | now working", "waiting on nothing",
 			},
 		},
@@ -153,12 +185,38 @@ func TestRenderChecklist(t *testing.T) {
 			name: "a row reached by goto after a halt counts only the time since the goto",
 			rows: recipe,
 			poll: checklistStatus(shedengine.StateRunning, "Plan",
-				doneEntry("Plan", 5), stuckEntry("Review", 10), gotoEntry("Plan", 120)),
+				doneEntry("Plan", 5), stuckEntry("Review", 10, ""), gotoEntry("Plan", 120)),
 			nowMin: 124,
 			want: []string{
-				"Plan", "  10:00 5m done", "  12:00 4m running", "Review", "  10:05 5m stuck",
-				"[>] Plan 9m x2", "[x] Review 5m", "[ ] Build",
+				"[>] Plan 9m x2", "  10:00 5m done", "  12:00 4m running",
+				"[x] Review 5m", "  10:05 5m stuck",
+				"[ ] Build",
 				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a stuck entry that records its routing reads bounced and a halted one reads stuck",
+			rows: recipe,
+			poll: checklistStatus(shedengine.StateRunning, "Review",
+				stuckEntry("Review", 5, "Build"), stuckEntry("Review", 8, "")),
+			nowMin: 10,
+			want: []string{
+				"[ ] Plan",
+				"[>] Review 10m x3", "  10:00 5m bounced", "  10:05 3m stuck", "  10:08 2m running",
+				"[ ] Build",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name:   "an awaiting entry reads escalated",
+			rows:   recipe,
+			poll:   checklistStatus(shedengine.StateAwaiting, "Review", awaitingEntry("Review", 5)),
+			nowMin: 6,
+			want: []string{
+				"[ ] Plan",
+				"[-] Review 6m x2", "  10:00 5m escalated", "  10:05 1m running",
+				"[ ] Build",
+				"loom awaiting | now working", "waiting on the parent: escalation from Review",
 			},
 		},
 		{
@@ -167,8 +225,9 @@ func TestRenderChecklist(t *testing.T) {
 			poll:   checklistStatus(shedengine.StateBlocked, "Review", doneEntry("Plan", 5)),
 			nowMin: 35,
 			want: []string{
-				"Plan", "  10:00 5m done", "Review", "  10:05 30m running",
-				"[x] Plan 5m", "[-] Review 30m", "[ ] Build",
+				"[x] Plan 5m", "  10:00 5m done",
+				"[-] Review 30m", "  10:05 30m running",
+				"[ ] Build",
 				"loom blocked | now working", "waiting on nothing",
 			},
 		},
@@ -178,8 +237,9 @@ func TestRenderChecklist(t *testing.T) {
 			poll:   withActivityWait(checklistStatus(shedengine.StateBlocked, "Review"), longReason),
 			nowMin: 1,
 			want: []string{
-				"Review", "  10:00 1m running",
-				"[ ] Plan", "[-] Review 1m", "[ ] Build",
+				"[ ] Plan",
+				"[-] Review 1m", "  10:00 1m running",
+				"[ ] Build",
 				"loom blocked | now working", "wait " + longReason,
 			},
 		},
@@ -189,19 +249,19 @@ func TestRenderChecklist(t *testing.T) {
 			poll:   checklistStatus(shedengine.StateAwaiting, "Review", doneEntry("Plan", 5)),
 			nowMin: 6,
 			want: []string{
-				"Plan", "  10:00 5m done", "Review", "  10:05 1m running",
-				"[x] Plan 5m", "[-] Review 1m", "[ ] Build",
+				"[x] Plan 5m", "  10:00 5m done",
+				"[-] Review 1m", "  10:05 1m running",
+				"[ ] Build",
 				"loom awaiting | now working", "waiting on the parent: escalation from Review",
 			},
 		},
 		{
 			name:   "an awaiting run's wait line names the escalation to the parent",
-			rows:   []string{"Plan-Bouncer"},
+			rows:   recipeRows("Plan-Bouncer"),
 			poll:   awaitingPlanBouncer,
 			nowMin: 2,
 			want: []string{
-				"Plan-Bouncer", "  10:00 2m running",
-				"[-] Plan-Bouncer 2m",
+				"[-] Plan-Bouncer 2m", "  10:00 2m running",
 				"loom awaiting | now working",
 				"waiting on the parent: escalation from Plan-Bouncer: the plan needs a decision | waiting for the parent",
 			},
@@ -212,44 +272,49 @@ func TestRenderChecklist(t *testing.T) {
 			poll:   checklistStatus(shedengine.StateFailed, "Review", doneEntry("Plan", 5)),
 			nowMin: 9,
 			want: []string{
-				"Plan", "  10:00 5m done", "Review", "  10:05 4m running",
-				"[x] Plan 5m", "[!] Review 4m", "[ ] Build",
+				"[x] Plan 5m", "  10:00 5m done",
+				"[!] Review 4m", "  10:05 4m running",
+				"[ ] Build",
 				"loom failed | now working", "waiting on nothing",
 			},
 		},
 		{
-			name: "a visited row's detail lists each visit with its start, time, outcome, output and gate attempts",
-			rows: []string{"Build"},
+			name: "a visited row's lines show each visit with its start, time, outcome, output and gate attempts",
+			rows: recipeRows("Build"),
 			poll: checklistStatus(shedengine.StateRunning, "Build", gatedBuild, foldedBuild),
 			// The folded entry spans minutes 8 to 20; the open visit starts where it ended.
 			nowMin: 25,
 			want: []string{
-				"Build",
+				"[>] Build 25m x5",
 				"  10:00 5m done out/build.md gate attempts 2",
 				"  10:05 15m stuck x3",
 				"  10:20 5m running",
-				"[>] Build 25m x5",
 				"loom running | now working", "waiting on nothing",
 			},
 		},
 		{
-			name:   "a history-only row's detail follows the recipe rows' details",
+			name:   "a history-only row follows the recipe rows, marked, with its visit line",
 			rows:   recipe,
 			poll:   checklistStatus(shedengine.StateRunning, "Plan", doneEntry("Retired", 5)),
 			nowMin: 7,
 			want: []string{
-				"Plan", "  10:05 2m running", "Retired", "  10:00 5m done",
-				"[>] Plan 2m", "[ ] Review", "[ ] Build", "[x] Retired 5m (not in recipe)",
+				"[>] Plan 2m", "  10:05 2m running",
+				"[ ] Review",
+				"[ ] Build",
+				"[x] Retired 5m (not in recipe)", "  10:00 5m done",
 				"loom running | now working", "waiting on nothing",
 			},
 		},
 		{
-			name:    "an unreadable recipe shows recipe unreadable above the state and wait lines",
+			name:    "an unreadable recipe shows recipe unreadable, then every visit in history order naming its row",
 			rowsErr: errors.New("no seed is recorded"),
-			poll:    checklistStatus(shedengine.StateRunning, "Plan"),
+			poll: checklistStatus(shedengine.StateRunning, "Plan",
+				doneEntry("Plan", 5), stuckEntry("Review", 8, "Plan")),
+			nowMin: 10,
 			want: []string{
-				"Plan", "  10:00 0m running",
-				"recipe unreadable", "loom running | now working", "waiting on nothing",
+				"recipe unreadable",
+				"  10:00 5m Plan done", "  10:05 3m Review bounced", "  10:08 2m Plan running",
+				"loom running | now working", "waiting on nothing",
 			},
 		},
 		{
@@ -265,7 +330,7 @@ func TestRenderChecklist(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			now := checklistClock.Add(time.Duration(tt.nowMin) * time.Minute)
-			got := renderChecklist(tt.rows, tt.rowsErr, tt.poll, tt.wait, minuteMark(0), now)
+			got := renderChecklist(checklistInput{rows: tt.rows, rowsErr: tt.rowsErr, poll: tt.poll, waitNote: tt.wait, startedAt: minuteMark(0)}, now)
 			if diff := cmp.Diff(tt.want, got.Lines); diff != "" {
 				t.Errorf("renderChecklist lines mismatch (-want +got):\n%s", diff)
 			}
