@@ -54,7 +54,7 @@
 //   - MultiLLMProducer: the chair's result maps exactly as SingleLLMProducer's single run does:
 //     shuttleengine.OutcomeDone maps to Done with the chair's first output as the pointer's path,
 //     a done chair whose gate failed maps to Stuck with that pointer and the gate's attempts and reason,
-//     and OutcomeDied and OutcomeTimeout are engine-level errors, wrapping shuttleengine.ErrNotStarted when the chair's provider never came up.
+//     and OutcomeDied and OutcomeTimeout are engine-level errors, wrapping shuttleengine.ErrNotStarted when the chair's provider never came up and carrying the start error's text when shuttle reported one.
 //     The advisors' results are logged and never judged, since an advisor's death weakens nothing the chair decided.
 //     Before archiving anything Call probes the table's seats through its SeatRunner: a live chair is resumed and its result mapped,
 //     and otherwise the probe has stopped every live advisor, so Call archives every seat's stale outputs and runs the table fresh.
@@ -263,6 +263,7 @@
 // The review row and the fix row each probe their half through their runner (see below).
 // MultiLLMProducer probes its table's seats through its SeatRunner: with the chair live it resumes the table, and otherwise the probe has already stopped every live advisor, so the archive that follows runs beside no live seat.
 // A MultiLLMProducer built with a fresh-spawn preparation runs it on the fresh path only, after the probe and before the archive; its error fails the call with nothing archived and no seat started.
+// The preparation returns a prompt amendment beside its error, which the producer sets on a copy of the table as its Amendment so the seat engine appends it to the lead's prompt; the resume path neither runs the preparation nor amends.
 // WebsterProducer inherits websterengine's own entry-time reclaim, which stops a leftover Master rather than attaching to it.
 //
 // "Every mode" is meant literally, and was not always true. The re-bounce -- an already-seeded

@@ -134,13 +134,13 @@ func TestMultiLLMProducer_ProbesBeforeArchiving(t *testing.T) {
 		runner := &shedfake.SeatRunner{Results: []seatengine.Result{{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, ChairOutputs: table.Chair().Outputs}}}
 		var probesWhenPrepared int
 		var staleWhenPrepared []bool
-		prepare := func() error {
+		prepare := func() (string, error) {
 			probesWhenPrepared = runner.ProbeCalls
 			for _, path := range paths {
 				_, err := os.Stat(path)
 				staleWhenPrepared = append(staleWhenPrepared, err == nil)
 			}
-			return nil
+			return "", nil
 		}
 		producer := NewMultiLLMProducerSourced("multi", func() (seatengine.Table, error) { return table, nil }, runner, multiLLMFixedNow, prepare)
 
@@ -167,15 +167,36 @@ func TestMultiLLMProducer_ProbesBeforeArchiving(t *testing.T) {
 			ResumeResults: []seatengine.Result{{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, ChairOutputs: table.Chair().Outputs}},
 		}
 		prepared := false
-		producer := NewMultiLLMProducerSourced("multi", func() (seatengine.Table, error) { return table, nil }, runner, multiLLMFixedNow, func() error {
+		producer := NewMultiLLMProducerSourced("multi", func() (seatengine.Table, error) { return table, nil }, runner, multiLLMFixedNow, func() (string, error) {
 			prepared = true
-			return nil
+			return "amendment", nil
 		})
 
 		shedfake.RequireOutcome(t, producer, shedengine.Done)
 
 		if prepared || runner.ResumeCalls != 1 {
 			t.Errorf("preparation ran = %v, resume calls = %d, want it unrun on a resume", prepared, runner.ResumeCalls)
+		}
+		if len(runner.GotResumeTables) != 1 || runner.GotResumeTables[0].Amendment != "" {
+			t.Errorf("resumed tables = %+v, want one carrying no amendment", runner.GotResumeTables)
+		}
+	})
+
+	t.Run("the preparation's amendment rides the run's table on a copy and not the probe's or the source's", func(t *testing.T) {
+		t.Parallel()
+		table := multiLLMTable(t.TempDir(), 1)
+		runner := &shedfake.SeatRunner{Results: []seatengine.Result{{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, ChairOutputs: table.Chair().Outputs}}}
+		producer := NewMultiLLMProducerSourced("multi", func() (seatengine.Table, error) { return table, nil }, runner, multiLLMFixedNow, func() (string, error) {
+			return "\nFresh start.\n", nil
+		})
+
+		shedfake.RequireOutcome(t, producer, shedengine.Done)
+
+		if len(runner.GotTables) != 1 || runner.GotTables[0].Amendment != "\nFresh start.\n" {
+			t.Errorf("run tables = %+v, want one carrying the preparation's amendment", runner.GotTables)
+		}
+		if len(runner.GotProbeTables) != 1 || runner.GotProbeTables[0].Amendment != "" || table.Amendment != "" {
+			t.Errorf("probed table amendment = %+v and source table amendment = %q, want both empty", runner.GotProbeTables, table.Amendment)
 		}
 	})
 }
@@ -243,6 +264,7 @@ func TestMultiLLMProducer_MapsTheChairResultAsSingleLLMDoes(t *testing.T) {
 		{name: "died", result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}},
 		{name: "timeout", result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}},
 		{name: "a provider that never came up", result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, NotStarted: true}},
+		{name: "a provider that never came up and reported why", result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, NotStarted: true, StartError: "no pane: tmux is gone"}},
 		{name: "an unrecognized outcome", result: shuttleengine.Result{Outcome: "vanished"}},
 	}
 	for _, tt := range tests {
@@ -268,6 +290,9 @@ func TestMultiLLMProducer_MapsTheChairResultAsSingleLLMDoes(t *testing.T) {
 			if (gotErr == nil) != (wantErr == nil) || errors.Is(gotErr, shuttleengine.ErrNotStarted) != errors.Is(wantErr, shuttleengine.ErrNotStarted) {
 				t.Errorf("multi Call() error = %v, want the shape of SingleLLMProducer's %v", gotErr, wantErr)
 			}
+			if tt.result.StartError != "" && (!errors.Is(gotErr, shuttleengine.ErrNotStarted) || !strings.Contains(gotErr.Error(), tt.result.StartError)) {
+				t.Errorf("multi Call() error = %v, want it to wrap ErrNotStarted and hold the start error %q", gotErr, tt.result.StartError)
+			}
 		})
 	}
 }
@@ -289,7 +314,7 @@ func TestMultiLLMProducer_ErrorExits(t *testing.T) {
 			return NewMultiLLMProducerSourced("multi", func() (seatengine.Table, error) { return seatengine.Table{}, boom }, runner, multiLLMFixedNow, nil)
 		}, wantIs: boom},
 		{name: "a preparation error", runner: func() *shedfake.SeatRunner { return &shedfake.SeatRunner{} }, build: func(table seatengine.Table, runner *shedfake.SeatRunner) *MultiLLMProducer {
-			return NewMultiLLMProducerSourced("multi", func() (seatengine.Table, error) { return table, nil }, runner, multiLLMFixedNow, func() error { return boom })
+			return NewMultiLLMProducerSourced("multi", func() (seatengine.Table, error) { return table, nil }, runner, multiLLMFixedNow, func() (string, error) { return "", boom })
 		}, wantIs: boom, wantProbe: 1},
 		{name: "a probe error", runner: func() *shedfake.SeatRunner { return &shedfake.SeatRunner{ProbeErrs: []error{boom}} }, wantIs: boom, wantProbe: 1},
 		{name: "a probe that cannot stop a seat", runner: func() *shedfake.SeatRunner { return &shedfake.SeatRunner{ProbeErrs: []error{stuck}} }, wantIs: stuck, wantProbe: 1},

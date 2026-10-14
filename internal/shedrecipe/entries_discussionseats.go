@@ -37,13 +37,13 @@ func discussionSeatsEntry(name string, cfg Config, env Env) (shedengine.ShedProd
 	if err := requireSeam("DiscussionSeats", "Seats", env.Seats); err != nil {
 		return nil, err
 	}
-	var prepare func() error
+	var prepare func() (string, error)
 	for _, ge := range gate {
 		if ge.Name == "parent-review" && ge.Attempts > 0 {
 			store := env.ParentReview.Store
-			prepare = func() error {
+			prepare = func() (string, error) {
 				_, err := store.PrepareRound()
-				return err
+				return "", err
 			}
 			break
 		}
