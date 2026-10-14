@@ -296,6 +296,21 @@ func TestSetValues_Refusals(t *testing.T) {
 			openMaps: []string{"plan_review"},
 			want:     []string{"plan_review", "flow list of scalars"},
 		},
+		{
+			name:     "text after the closing bracket for a scalar-or-list key",
+			template: roundListTemplate,
+			pair:     KV{Key: "plan_review", Value: `["a"] trailing`},
+			openMaps: []string{"plan_review"},
+			want:     []string{"plan_review", "flow list of scalars"},
+		},
+		{
+			name:     "scalar at a mapping open map whose file value is a list",
+			template: openMapSetTemplate,
+			existing: "labels:\n  - a\n",
+			pair:     KV{Key: "labels", Value: "x"},
+			openMaps: []string{"labels"},
+			want:     []string{"labels"},
+		},
 	}
 
 	for _, tt := range tests {

@@ -156,6 +156,7 @@ func SetSparse(template, existing []byte, pairs []KV, openMaps ...string) (SetRe
 	if err := yaml.Unmarshal(template, &templateNode); err != nil {
 		return SetResult{}, err
 	}
+	scalarOrListPaths := scalarOrListOpenMapPaths(&templateNode, openMaps)
 	existingDoc, existingRoot, err := parseMappingRoot(existing, "existing")
 	if err != nil {
 		return SetResult{}, err
@@ -194,7 +195,7 @@ func SetSparse(template, existing []byte, pairs []KV, openMaps ...string) (SetRe
 				return SetResult{}, err
 			}
 		}
-		if isScalarOrListOpenMap(&templateNode, pair.Key, openMaps) {
+		if slices.Contains(scalarOrListPaths, pair.Key) {
 			value, err := scalarOrListNode(pair)
 			if err != nil {
 				return SetResult{}, err
