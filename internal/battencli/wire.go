@@ -34,6 +34,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
+	"github.com/Knatte18/loomyard/internal/ideengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -47,6 +48,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -676,29 +678,64 @@ func dirtyPathsOutsideRunRecords(taskLocation *lyxcwd.Location) ([]string, error
 	return loomengine.PathsOutsideRunRecords(taskLocation, shedrun.SelfRunID, paths), nil
 }
 
-// openTerminal returns the seam that opens a terminal window titled slug, attached to the task worktree's reed session, or nil when the run was not asked to open one.
-func (c *battenCLI) openTerminal(slug string, locateTask func() (*lyxcwd.Location, error)) func(context.Context) error {
-	if !c.openTerminalFlag {
-		return nil
-	}
-	return func(context.Context) error {
+// switchedActions returns the seams of the Open-Window, Seed-IDE and Open-IDE rows.
+// Each row reads its flag from the task worktree's batten.yaml when it runs, so the task's run settings, which Seed-Child writes into that worktree's local layer, decide it;
+// --open-terminal turns Open-Window's flag on whatever the file says.
+// The window runs executable's `lyx reed attach` and is titled slug.
+func (c *battenCLI) switchedActions(location *lyxcwd.Location, slug, executable string, locateTask func() (*lyxcwd.Location, error)) (openWindow, seedIDE, openIDE shedadapters.SwitchedAction) {
+	readFlags := func() (battenshed.Config, error) {
 		taskLocation, err := locateTask()
 		if err != nil {
-			return err
+			return battenshed.Config{}, err
 		}
-		if c.terminalOpener != nil {
-			return c.terminalOpener(taskLocation.AnchorPath(), slug)
-		}
-		launcher, err := termwindow.Resolve()
+		cfg, err := battenshed.LoadConfig(fabricengine.ConfigDirs(taskLocation))
 		if err != nil {
-			return err
+			return battenshed.Config{}, fmt.Errorf("battencli: read the task worktree's batten.yaml: %w; correct it, then `lyx batten run %s`", err, slug)
 		}
-		exe, err := os.Executable()
-		if err != nil {
-			return err
-		}
-		return launcher.OpenAttach(taskLocation.AnchorPath(), slug, exe)
+		return cfg, nil
 	}
+	openTerminal := c.terminalOpener
+	if openTerminal == nil {
+		openTerminal = func(dir, title string) error {
+			launcher, err := termwindow.Resolve()
+			if err != nil {
+				return err
+			}
+			return launcher.OpenAttach(dir, title, executable)
+		}
+	}
+
+	openWindow = shedadapters.SwitchedAction{
+		Enabled: func() (bool, error) {
+			if c.openTerminalFlag {
+				return true, nil
+			}
+			cfg, err := readFlags()
+			return cfg.OpenWindow, err
+		},
+		Act: func(context.Context) error {
+			taskLocation, err := locateTask()
+			if err != nil {
+				return err
+			}
+			return openTerminal(taskLocation.AnchorPath(), slug)
+		},
+	}
+	seedIDE = shedadapters.SwitchedAction{
+		Enabled: func() (bool, error) {
+			cfg, err := readFlags()
+			return cfg.SeedIDE, err
+		},
+		Act: func(context.Context) error { return ideengine.SeedTask(location, slug) },
+	}
+	openIDE = shedadapters.SwitchedAction{
+		Enabled: func() (bool, error) {
+			cfg, err := readFlags()
+			return cfg.OpenIDE, err
+		},
+		Act: func(context.Context) error { return ideengine.OpenTask(location, slug) },
+	}
+	return openWindow, seedIDE, openIDE
 }
 
 // wire builds and stores the shedrecipe.Env and shedbuild.ShedPaths the run and status verbs
@@ -766,15 +803,6 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		return reedengine.New(reedCfg, reedGeom).Directory()
 	}
 
-	// The terminal window opens once per run under Run-Shed's once-marker: from the create row as soon as the pair exists, else from Run-Shed after its spawn.
-	openTerminal := c.openTerminal(slug, locateTask)
-	openTerminalOnceCreated := func(ctx context.Context) {
-		if openTerminal == nil {
-			return
-		}
-		battenshed.OpenTerminalOnce(ctx, BattenDir(location, slug), battenrecipe.NameRunShed, slug, openTerminal)
-	}
-
 	env := shedrecipe.Env{
 		Slug:       slug,
 		ScratchDir: BattenDir(location, slug),
@@ -801,11 +829,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			}
 			if complete {
 				logger.Info("battencli: create worktree skipped, the task worktree is already present", "slug", slug)
-				if err := reconcileTaskPair(location, slug); err != nil {
-					return err
-				}
-				openTerminalOnceCreated(ctx)
-				return nil
+				return reconcileTaskPair(location, slug)
 			}
 			if present {
 				// A worktree exists but Add never finished it -- see taskWorktreeComplete's own doc
@@ -833,7 +857,6 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			} else if err := spawnPairPush(taskLocation); err != nil {
 				logger.Warn("battencli: spawn the new pair's push failed; its next push carries the branches", "slug", slug, "error", err)
 			}
-			openTerminalOnceCreated(ctx)
 			return nil
 		},
 		// Both teardown halves go through the pair-teardown composite and are idempotent against their shared post-condition, "the pair is gone".
@@ -1186,7 +1209,6 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 				return state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
 			},
-			OpenTerminal: openTerminal,
 		},
 		SeedChild: battenshed.SeedChildDeps{
 			// ReadBoardType opens the Board fresh on every Call, over fabricengine.BoardDir(location.HubPath), and returns the task's own Recipe field -- never a value captured at wiring time, so a recipe corrected after prime was seeded is still honoured.
@@ -1332,6 +1354,8 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 		},
 	}
+
+	env.OpenWindow, env.SeedIDE, env.OpenIDE = c.switchedActions(location, slug, executable, locateTask)
 
 	c.env = env
 	c.shedPaths = shedbuild.ShedPaths{

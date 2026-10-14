@@ -76,7 +76,6 @@ var nilLegal = map[string]bool{
 	"InnerRun.Now":                                     true,
 	"InnerRun.Awake":                                   true,
 	"InnerRun.Pause":                                   true,
-	"InnerRun.OpenTerminal":                            true,
 	"InnerRun.Notify":                                  true,
 	"InnerRun.PairDir":                                 true,
 	"InnerRun.ChildDriverLockHeld":                     true,
@@ -387,6 +386,17 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			PushSeed:             func(context.Context) error { return nil },
 			MarkWatched:          func(context.Context) (bool, error) { return false, nil },
 		},
+		OpenWindow: offSwitch(),
+		SeedIDE:    offSwitch(),
+		OpenIDE:    offSwitch(),
+	}
+}
+
+// offSwitch returns a switched seam pair whose flag is off and whose action does nothing.
+func offSwitch() shedadapters.SwitchedAction {
+	return shedadapters.SwitchedAction{
+		Enabled: func() (bool, error) { return false, nil },
+		Act:     func(context.Context) error { return nil },
 	}
 }
 

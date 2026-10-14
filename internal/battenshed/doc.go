@@ -2,6 +2,7 @@
 // seeding its own inner run, running that run inside it to a terminal state, landing it into the prime, and tearing it down.
 // Any producer list may name them by reference, the same way internal/landingshed frames its own
 // two producers.
+// It also declares batten's config module, batten.yaml (config.go).
 //
 // Told-geometry tier: this package takes every absolute path it operates on from its caller and
 // has no direct production import of internal/lyxcwd, per PATTERN-told-geometry.
@@ -60,10 +61,12 @@
 //
 // A batten run starts with "lyx batten run <slug>" in a terminal, or with "--window" in its own tmux window of the orch's reed session, which returns at once.
 // The tmux window lives as long as the reed session, and a second batten for the slug is refused by the run's own lock inside the window, in batten's own log.
-// "--window" also asks the run to open the operator's terminal window, once per run, gated by the InnerRun row's once-marker in its scratch directory.
-// The WorktreeCreate seam opens it through OpenTerminalOnce as soon as the pair is created, before the seed and the child's spawn;
-// the InnerRun row's OpenTerminal seam, after the child's first successful spawn, opens it only for a run whose marker is still absent, such as one resumed past WorktreeCreate with "--window".
-// Batten resets the marker when it seeds a fresh batten status, so a resume keeps it and a re-spawned child opens no second window.
+//
+// Between Seed-Child and Run-Shed, three switched rows run shedadapters' switched producer: Open-Window opens the operator's terminal window attached to the pair's reed session, Seed-IDE writes the pair's VS Code colour and .vscode/ config, and Open-IDE opens VS Code on the pair.
+// Each runs its action only when its batten.yaml flag is on, open_window, seed_ide and open_ide in turn, of which only open_ide is off by default, and is Done either way, a failed action only warning.
+// The flags are read from the pair's own config stack when the row runs, after Seed-Child has written the task's run settings into the pair's local layer, so a task's run_settings sets them per task.
+// "--window" passes the hidden "--open-terminal", which turns Open-Window on for that run whatever batten.yaml says.
+// A run resumed past Open-Window opens no window.
 //
 // The InnerRun row waits on its child inside its call rather than returning once per poll.
 // Every poll_interval_s it stats the child's status file, and decodes it when its modification time differs from the last decode or notice_probe_s has passed.

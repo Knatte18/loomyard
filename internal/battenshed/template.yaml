@@ -1,0 +1,3 @@
+open_window: true  # the Open-Window row opens a terminal window attached to the task worktree's reed session; `lyx batten run <slug> --window` turns it on for that run
+seed_ide: true  # the Seed-IDE row writes the task worktree's VS Code title-bar colour and .vscode/ config, as `lyx ide spawn` does, without the user's key bindings
+open_ide: false  # the Open-IDE row opens VS Code on the task worktree

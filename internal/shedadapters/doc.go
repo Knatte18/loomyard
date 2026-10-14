@@ -333,6 +333,13 @@
 // A review that changed after acceptance archives the same three and ends with the same way forward.
 // Any other failure archives the fixer report alone, keeping the accepted review and its record so a resume re-spawns the fixer without re-running the reviewer.
 //
+// # The switched producer
+//
+// SwitchedProducer wraps no engine: it is one told action behind one told flag, built under the OpenWindow, SeedIDE and OpenIDE registry engines, for operator conveniences a run must never halt over.
+// A flag that is off is Done without acting, a flag that is on acts once and is Done even when the action fails, with a warning, and a flag that cannot be read is an error.
+// The recipe's owner supplies both seams, so the flag lives in that owner's config and the producer knows no key name.
+// Bound: a failed action is skipped silently but for its warning, and the next row runs as if it had succeeded.
+//
 // # Limitations
 //
 // Neither SingleLLMProducer nor WebsterProducer installs a mid-run cancellation bridge, so a cancel

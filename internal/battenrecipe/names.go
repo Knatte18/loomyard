@@ -24,6 +24,12 @@ const (
 	// Worktree-Create and Run-Shed, since Run-Shed's own inner shed run cannot start until its
 	// seed exists.
 	NameSeedChild = "Seed-Child"
+	// NameOpenWindow is the row that opens the run's terminal window on the task worktree when batten.yaml's open_window is on.
+	NameOpenWindow = "Open-Window"
+	// NameSeedIDE is the row that writes the task worktree's VS Code config when batten.yaml's seed_ide is on.
+	NameSeedIDE = "Seed-IDE"
+	// NameOpenIDE is the row that opens VS Code on the task worktree when batten.yaml's open_ide is on.
+	NameOpenIDE = "Open-IDE"
 	// NameRunShed is the row that runs the inner shed run inside the task worktree. The constant's
 	// name may follow a neutralization of the producer it identifies, but its value is durable:
 	// shedengine persists CurrentProducer -- this row name -- into the status file, so a rename of

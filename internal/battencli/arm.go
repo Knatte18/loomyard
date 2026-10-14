@@ -536,10 +536,6 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 	// the entry row, before the Shed ever reads it. The mutate closure is idempotent against a
 	// concurrently-seeded file: it leaves an already-present status untouched rather than
 	// overwriting it.
-	// The terminal-opened marker is cleared first so the fresh run opens its window again.
-	if err := battenshed.ClearTerminalOpened(c.env.ScratchDir, battenrecipe.NameRunShed); err != nil {
-		return err
-	}
 	if err := battenshed.ClearRunMarkers(c.env.ScratchDir); err != nil {
 		return err
 	}
@@ -620,9 +616,6 @@ func (c *battenCLI) battenPreStepUnmarked(ctx context.Context) (string, error) {
 		return "", nil
 	}
 
-	if err := battenshed.ClearTerminalOpened(c.env.ScratchDir, battenrecipe.NameRunShed); err != nil {
-		return shedverbs.KindUnseeded, err
-	}
 	if err := battenshed.ClearRunMarkers(c.env.ScratchDir); err != nil {
 		return shedverbs.KindUnseeded, err
 	}

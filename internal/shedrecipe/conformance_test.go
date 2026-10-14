@@ -89,6 +89,9 @@ func minimalEntries() map[string]minimalEntry {
 		"Land":             {newTestEnv, emptyConfig},
 		"SeedChild":        {newTestEnvWithSeedChild, emptyConfig},
 		"WorktreeTeardown": {newTestEnv, emptyConfig},
+		"OpenWindow":       {newTestEnvWithSwitches, emptyConfig},
+		"SeedIDE":          {newTestEnvWithSwitches, emptyConfig},
+		"OpenIDE":          {newTestEnvWithSwitches, emptyConfig},
 	}
 }
 

@@ -108,15 +108,33 @@ func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	}
 }
 
-// checkTaskSlugOpensBareFolder asserts a task spawn launches its bare folder and writes no workspace file.
+// checkTaskSlugOpensBareFolder asserts a task spawn launches its bare folder and writes no workspace file,
+// and that SeedTask leaves the keybindings.json alone where Spawn seeds it.
 func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	resetPrimeEditorState(t, h)
 	l := h.Location
 	launched := recordLauncher(t)
 	hubforge.AddPair(t, h, slug)
+	keybindingsPath, err := KeybindingsPath()
+	if err != nil {
+		t.Fatalf("KeybindingsPath: %v", err)
+	}
+	if err := os.RemoveAll(keybindingsPath); err != nil {
+		t.Fatalf("remove keybindings: %v", err)
+	}
+
+	if err := SeedTask(l, slug); err != nil {
+		t.Fatalf("SeedTask: %v", err)
+	}
+	if _, err := os.Stat(keybindingsPath); !os.IsNotExist(err) {
+		t.Errorf("keybindings.json exists after SeedTask (stat err = %v)", err)
+	}
 
 	if _, err := Spawn(l, slug); err != nil {
 		t.Fatalf("Spawn: %v", err)
+	}
+	if _, err := os.Stat(keybindingsPath); err != nil {
+		t.Errorf("keybindings.json missing after Spawn: %v", err)
 	}
 
 	want := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel)
