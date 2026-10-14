@@ -24,6 +24,9 @@ const (
 // GuardScanError is a failure of the guard scan that sits in the content of a test file: a file that does not parse, a marker not directly above a top-level test, or a marker in a file no `integration`-tier run compiles.
 // The author of the change can fix each one, unlike a failure to read a directory or git.
 type GuardScanError struct {
+	// File is the worktree-relative, slash-separated path of the test file the error sits in.
+	File string
+
 	message string
 }
 
@@ -35,9 +38,10 @@ func IsGuardScanError(err error) bool {
 	return errors.As(err, &scanErr)
 }
 
-// findGuardTests returns, per package directory, the sorted names of the tests marked `//lyx:guard` in its `_test.go` files.
+// FindGuardTests returns, per package directory, the sorted names of the tests marked `//lyx:guard` in its `_test.go` files.
+// The caller passes the package directories, worktree-relative and slash-separated.
 // A marker not directly above a top-level `func Test…` line, or in a file no `integration`-tier run compiles, is an error naming the file and line.
-func findGuardTests(worktree string, dirs []string) (map[string][]string, error) {
+func FindGuardTests(worktree string, dirs []string) (map[string][]string, error) {
 	guards := map[string][]string{}
 	for _, dir := range dirs {
 		entries, err := os.ReadDir(filepath.Join(worktree, filepath.FromSlash(dir)))
@@ -68,7 +72,7 @@ func guardNamesInFile(path, rel string) ([]string, error) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 	if err != nil {
-		return nil, &GuardScanError{message: fmt.Sprintf("impactset: parse %s: %v", rel, err)}
+		return nil, &GuardScanError{File: rel, message: fmt.Sprintf("impactset: parse %s: %v", rel, err)}
 	}
 
 	var names []string
@@ -99,11 +103,11 @@ func guardNamesInFile(path, rel string) ([]string, error) {
 			if comment.Text != guardMarker || placed[comment] {
 				continue
 			}
-			return nil, &GuardScanError{message: fmt.Sprintf("impactset: %s:%d: %s is not directly above a top-level func Test line", rel, fset.Position(comment.Pos()).Line, guardMarker)}
+			return nil, &GuardScanError{File: rel, message: fmt.Sprintf("impactset: %s:%d: %s is not directly above a top-level func Test line", rel, fset.Position(comment.Pos()).Line, guardMarker)}
 		}
 	}
 	if len(names) > 0 && !compiledUnderIntegration(file) {
-		return nil, &GuardScanError{message: fmt.Sprintf("impactset: %s:%d: %s marks a guard test in a file no integration-tier run compiles", rel, firstMarkerLine, guardMarker)}
+		return nil, &GuardScanError{File: rel, message: fmt.Sprintf("impactset: %s:%d: %s marks a guard test in a file no integration-tier run compiles", rel, firstMarkerLine, guardMarker)}
 	}
 	return names, nil
 }

@@ -104,7 +104,7 @@ func TestDiscussionTable(t *testing.T) {
 				if table.RolePrefix != discussionRole || table.Segment != segmentcolor.Discussion || table.Timeout != 480*time.Minute || table.Interactive != interactive {
 					t.Errorf("table prefix/segment/timeout/interactive = %q/%q/%s/%v; want %q/%q/480m0s/%v", table.RolePrefix, table.Segment, table.Timeout, table.Interactive, discussionRole, segmentcolor.Discussion, interactive)
 				}
-				if want := []string{"pattern_directive", "friction_directive", "twill_directive", "twill_write_scope"}; !slices.Equal(table.Optional, want) {
+				if want := []string{"pattern_directive", "friction_directive", "twill_directive"}; !slices.Equal(table.Optional, want) {
 					t.Errorf("table.Optional = %v; want %v", table.Optional, want)
 				}
 				if len(table.Seats) != 1+advisors {

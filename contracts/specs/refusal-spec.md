@@ -157,6 +157,7 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 | Webster row: auto-rebaseline transient | the Webster row's rebaseline on entry cannot read the changed plan files, compute Merriam's base, restamp the baseline or save the restamped state | transient | transient, re-step the row |
 | Merriam start base unreadable | a verb forming the batch partition cannot read a present `CLAUDE.md` or `CLAUDE.local.md`, the Master stencil, the PATTERN directive or `00-overview.md` to compute Merriam's start base | transient | the message names the file and the cause, and the verb adds the way forward: transient, re-run the verb, or the run's re-entry step for `lyx webster run` |
 | recover-batch: uncommitted paths unreadable | `recover-batch` cannot list the worktree's uncommitted paths for the recovery prompt, or cannot audit the run's sessions or resolve their written paths to tell which of them the run wrote | transient | transient, re-run `lyx webster recover-batch NN` |
+| guard walk unreadable | `begin-batch` or `recover-batch` cannot read a path while walking the worktree for `//lyx:guard` tests | transient | re-run the same verb once the path the message names reads |
 | gate slot: gate.yaml absent or invalid | the verify gate, `lyx webster verify` or the card-verify rerun cannot acquire a gate slot because the hub's `gate.yaml` is absent, does not parse or holds a value below 1, or a negative `busy_quit_sec`; the rerun reports it as a failing card line | correctness halt | run "lyx fabric reconcile" for an absent file, or fix the file with "lyx config gate" from the prime, then re-run the verb (re-step the Webster row); a session lyx refuses the verb from reports status: FAILED and the orch runs it |
 | strand spawn: no shortname | a strand spawn on a hub whose `.lyx-shortname` records no shortname | correctness halt | `lyx fabric shortname <shortname>` records it, then retry; a session lyx refuses the verb from reports status: FAILED and the orch runs it |
 | strand spawn: worktree name not a slug | a strand spawn in a worktree whose name does not fit the name grammar | correctness halt | `lyx fabric add <slug>` creates the task under a slug that fits; a session lyx refuses the verb from reports status: FAILED and the orch runs it |
@@ -429,7 +430,7 @@ Their JSON error envelopes carry the way forward in the message, and a read or w
 
 ## pause
 
-A refusal here comes from a live pause entry covering the refused slug, or from the input rules of `lyx pause` and `lyx resume`.
+A refusal here comes from a live pause entry covering the refused slug, or from the input rules of `lyx pause`, `lyx resume` and `lyx tender revive`.
 Its JSON error envelope carries the way forward in the message; a covered slug's, through `pauserecord.CoveredError`.
 
 | Refusal | Trigger | Class | Way forward |
@@ -440,7 +441,8 @@ Its JSON error envelope carries the way forward in the message; a covered slug's
 | batten run under a pause | `lyx batten run` names a slug a live pause entry covers, with or without `--window` | transient | run "lyx resume <slug>", or "lyx resume" for a hub-wide pause, then re-run "lyx batten run <slug>" |
 | pause: unknown slug | `lyx pause` names a slug with no pair in the hub | correctness halt | name one of the hub's pairs, which the refusal lists |
 | pause: grace out of range | `lyx pause --grace` is outside 0 to 60 seconds | correctness halt | pass a `--grace` within 0 to 60 |
-| pause or resume: agent outside its own pair | an agent runs `lyx pause` or `lyx resume` hub-wide, or naming a slug other than its own pair's | correctness halt | ask your parent session, which runs "lyx pause" or "lyx resume" for you |
+| revive: unknown slug | `lyx tender revive` names a slug with no pair in the hub | correctness halt | name one of the hub's pairs, which the refusal lists |
+| pause, resume or revive: agent outside its own pair | an agent runs `lyx pause`, `lyx resume` or `lyx tender revive` hub-wide, or naming a slug other than its own pair's | correctness halt | ask your parent session, which runs "lyx pause", "lyx resume" or "lyx tender revive" for you |
 | resume <slug> under a hub-wide pause | `lyx resume <slug>` names a slug with no pause of its own that a live hub pause covers | transient | run "lyx resume" to lift the hub pause |
 
 ## Out of scope

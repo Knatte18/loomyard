@@ -43,7 +43,7 @@ internal/fsx: 4
 internal/gatecli: 4
 internal/gateslot: 12
 internal/gitexec: 7
-internal/githubclient: 12
+internal/githubclient: 13
 internal/gitkit: 10
 internal/gitrepo: 45
 internal/gitrepo/internal/gitoracle: 1
@@ -67,18 +67,16 @@ internal/lyxtemp: 7
 internal/mergeresolve: 17
 internal/modelspec: 11
 internal/orchcli: 28
-internal/orchengine: 140
+internal/orchengine: 143
 internal/output: 4
 internal/pairteardown: 8
-internal/pausecli: 4
-internal/pauseengine: 4
 internal/pauserecord: 14
 internal/parentdirective: 4
 internal/parentlock: 16
 internal/parentreview: 54
 internal/pattern: 8
 internal/planglyph: 87
-internal/planparser: 93
+internal/planparser: 94
 internal/preflight: 7
 internal/preflightshed: 8
 internal/proc: 18
@@ -105,7 +103,7 @@ internal/shedverbs: 84
 internal/shell: 14
 internal/shortcutcli: 2
 internal/shuttlecli: 26
-internal/shuttleengine: 171
+internal/shuttleengine: 172
 internal/shuttleengine/claudeengine: 111
 internal/standalonegeom: 7
 internal/standalonestate: 6
@@ -116,6 +114,8 @@ internal/stencil: 4
 internal/stencilcli: 1
 internal/stencilstore: 18
 internal/summaryparser: 8
+internal/tendercli: 4
+internal/tenderengine: 5
 internal/termwindow: 3
 internal/testkit: 2
 internal/testkit/envelope: 6

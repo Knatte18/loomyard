@@ -24,9 +24,9 @@ import (
 // frictionDirective is the caller-resolved Tier 2 note directive for this run --
 // an empty string means Tier 2 is off or the read failed, and renders as nothing.
 // parentDirective is the caller-rendered parent directive and renders as nothing when empty.
-// twillDirective and twillWriteScope are the caller-rendered twill blocks and render as nothing when empty;
+// twillDirective is the caller-rendered twill directive and renders as nothing when empty;
 // a non-empty one is set off with a newline on each side, so it sits in a paragraph of its own.
-func composePrompt(stencilsDir, specsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, parentDirective, twillDirective, twillWriteScope string, autonomous bool) ([]byte, error) {
+func composePrompt(stencilsDir, specsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, parentDirective, twillDirective string, autonomous bool) ([]byte, error) {
 	template, err := stencilstore.Read(stencilsDir, "loom-template-discussion")
 	if err != nil {
 		return nil, err
@@ -50,11 +50,10 @@ func composePrompt(stencilsDir, specsDir, slug, decisionRecordPath, supportLogPa
 		parentdirective.MarkerName: parentDirective,
 		editdirective.MarkerName:   editDirective,
 
-		twilldirective.MarkerName:           setOffParagraph(twillDirective),
-		twilldirective.WriteScopeMarkerName: setOffParagraph(twillWriteScope),
+		twilldirective.MarkerName: setOffParagraph(twillDirective),
 	}
 
-	optional := []string{"pattern_directive", friction.MarkerName, parentdirective.MarkerName, twilldirective.MarkerName, twilldirective.WriteScopeMarkerName}
+	optional := []string{"pattern_directive", friction.MarkerName, parentdirective.MarkerName, twilldirective.MarkerName}
 	rendered, err := stencil.FillOptional(template, values, optional)
 	if err != nil {
 		return nil, fmt.Errorf("loom: compose discussion prompt: %w", err)

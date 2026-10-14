@@ -158,7 +158,7 @@ func writeBurlerYAML(t *testing.T, layout *lyxcwd.Location, content string) {
 	}
 }
 
-// TestDiscussionSpec_Twill verifies the twill producer's rendered prompt: the template fan's lenses in order, the ready marker, the rubric path, the await command, the fork instruction, the host's self-check and step names and the write-scope sentence, with the directive between the mode rules and Step 5, and that a burler.yaml redefining the fan replaces the lenses.
+// TestDiscussionSpec_Twill verifies the twill producer's rendered prompt: the template fan's lenses in order, the rubric path, the fork instruction, the host's spawn point, self-check and step names and no ready-marker wait, with the directive between the mode rules and Step 5, and that a burler.yaml redefining the fan replaces the lenses.
 func TestDiscussionSpec_Twill(t *testing.T) {
 	t.Parallel()
 	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
@@ -226,16 +226,13 @@ func TestDiscussionSpec_Twill(t *testing.T) {
 			}
 
 			for _, want := range []string{
-				DiscussionReadyMarker(layout),
 				stencilstore.Path(stencilsDir, "loom-rubric-discussion-review"),
-				"lyx shuttle await",
 				`subagent_type: "fork"`,
-				"run `lyx loom validate-discussion` per `Step 6` until it passes",
-				"8. Run `lyx loom validate-discussion` again until it passes",
-				"Step 5",
-				"and you create its parent directory too",
-				"read `" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "` and review them",
-				"When the design is settled and before you write any output file, run this procedure once:",
+				"runs `lyx loom validate-discussion` per `Step 6` until it passes",
+				"6. Run `lyx loom validate-discussion` again until it passes",
+				"per `Step 5`",
+				"The writer wrote `" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "` and passed its self-check before spawning you.",
+				"Once you have written both output files per Step 5 and `lyx loom validate-discussion` passes per Step 6, run this procedure once, before you end your turn:",
 				"Fix the record, or reject the finding with a one-line reason.",
 				"each with a severity (`BLOCKING`, `MEDIUM` or `LOW`), the section or decision it concerns",
 			} {
@@ -243,9 +240,12 @@ func TestDiscussionSpec_Twill(t *testing.T) {
 					t.Errorf("DiscussionSpec(twill).Prompt lacks %q", want)
 				}
 			}
+			if strings.Contains(prompt, "lyx shuttle await") {
+				t.Error("DiscussionSpec(twill).Prompt carries a ready-marker wait; want the forks to wait on nothing")
+			}
 
 			modeRulesAt := strings.Index(prompt, "This session is running autonomously")
-			directiveAt := strings.Index(prompt, "lyx shuttle await")
+			directiveAt := strings.Index(prompt, "## Lens review by forks")
 			stepFiveAt := strings.Index(prompt, "## Step 5")
 			if modeRulesAt < 0 || directiveAt < modeRulesAt || stepFiveAt < directiveAt {
 				t.Errorf("mode rules at %d, directive at %d, Step 5 at %d; want the directive between the mode rules and Step 5", modeRulesAt, directiveAt, stepFiveAt)

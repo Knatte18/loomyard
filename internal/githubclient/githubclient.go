@@ -17,6 +17,7 @@ import (
 
 // clientTimeout bounds the whole HTTP round trip via request context, covering
 // both original attempt and 401 replay.
+// authRT applies it after the pause hold ends, so a hold does not use it up.
 const clientTimeout = 30 * time.Second
 
 // New returns an authenticated *github.Client against the real GitHub API, with credentials
@@ -34,8 +35,7 @@ func NewWithBaseURL(baseURL string, httpClient *http.Client) (*github.Client, er
 	}
 
 	client := github.NewClient(&http.Client{
-		Timeout:   clientTimeout,
-		Transport: &authRT{transport: inner},
+		Transport: &authRT{transport: inner, timeout: clientTimeout},
 	})
 
 	if baseURL == "" {

@@ -16,8 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// maxCommandLength is the longest command Derive returns; a longer one falls back to the full plan verify.
-const maxCommandLength = 8000
+// MaxCommandLength is the longest command Derive returns; a longer one falls back to the full plan verify.
+const MaxCommandLength = 8000
 
 // vetTags are the tags the vet step runs under, one `go vet` per tag over the set.
 var vetTags = []string{"integration", "tmux", "llm"}
@@ -64,7 +64,7 @@ func Derive(worktree, base string) (Derivation, error) {
 	for _, p := range pkgs {
 		dirs = append(dirs, p.Dir)
 	}
-	guards, err := findGuardTests(worktree, dirs)
+	guards, err := FindGuardTests(worktree, dirs)
 	if err != nil {
 		return Derivation{}, err
 	}
@@ -156,8 +156,8 @@ func commandFor(graph moduleGraph, changedPaths []string, guards map[string][]st
 
 	set := graph.impactedSet(changed)
 	command = buildCommand(graph, set, guards)
-	if len(command) > maxCommandLength {
-		return "", nil, fmt.Sprintf("the derived command is %d characters, over the %d limit", len(command), maxCommandLength)
+	if len(command) > MaxCommandLength {
+		return "", nil, fmt.Sprintf("the derived command is %d characters, over the %d limit", len(command), MaxCommandLength)
 	}
 	if len(set) > 0 {
 		packages = packageArgs(graph.packageDirs(set))

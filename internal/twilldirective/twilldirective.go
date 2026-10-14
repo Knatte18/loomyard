@@ -1,4 +1,4 @@
-// twilldirective.go implements Directive and WriteScope, the renderers a spawning module calls to read the two twill stencils from a told directory and fill them with its host values.
+// twilldirective.go implements Directive, the renderer a spawning module calls to read the twill directive stencil from a told directory and fill it with its host values.
 // See doc.go for the package-level rationale.
 
 package twilldirective
@@ -11,19 +11,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-const (
-	// MarkerName is the template marker a host carries for the rendered lens review directive.
-	MarkerName = "twill_directive"
-	// WriteScopeMarkerName is the template marker a host carries for the rendered write-scope paragraph.
-	WriteScopeMarkerName = "twill_write_scope"
-)
+// MarkerName is the template marker a host carries for the rendered lens review directive.
+const MarkerName = "twill_directive"
 
-const (
-	// directiveStencil names the stencil Directive reads.
-	directiveStencil = "twill-directive"
-	// writeScopeStencil names the stencil WriteScope reads.
-	writeScopeStencil = "twill-write-scope"
-)
+// directiveStencil names the stencil Directive reads.
+const directiveStencil = "twill-directive"
 
 // Lens is one review lens: its name and the prose its fork is given.
 type Lens struct {
@@ -33,7 +25,7 @@ type Lens struct {
 
 // Values are the host-specific values Directive fills into the directive stencil's markers.
 type Values struct {
-	// ReviewedFiles is the phrase naming the files each fork reviews, rendered verbatim after "read" with the host's own backticks.
+	// ReviewedFiles is the phrase naming the files each fork reviews, rendered verbatim with the host's own backticks.
 	ReviewedFiles string
 	// SpawnPoint is the sentence that opens the procedure and says when the writer runs it, rendered verbatim.
 	SpawnPoint string
@@ -41,8 +33,6 @@ type Values struct {
 	RejectionRule string
 	// SeverityRule is the phrase that tells each fork how to grade a finding, rendered verbatim after "each with".
 	SeverityRule string
-	// ReadyMarker is the file the writer creates once the self-check passes and the forks wait for.
-	ReadyMarker string
 	// RubricPath is the rubric the writer reads before spawning.
 	RubricPath string
 	// Lenses are the lenses to spawn, one fork each.
@@ -68,7 +58,6 @@ func Directive(stencilsDir string, v Values) (string, error) {
 		"spawn_point":              v.SpawnPoint,
 		"rejection_rule":           v.RejectionRule,
 		"severity_rule":            v.SeverityRule,
-		"ready_marker":             v.ReadyMarker,
 		"rubric_path":              v.RubricPath,
 		"lens_list":                bulletList(v.Lenses, func(l Lens) string { return l.Name + ": " + strings.Join(strings.Fields(l.Text), " ") }),
 		"format_step":              v.FormatStep,
@@ -77,24 +66,13 @@ func Directive(stencilsDir string, v Values) (string, error) {
 		"final_self_check_command": v.FinalSelfCheckCommand,
 		"disposition_place":        v.DispositionPlace,
 	}
-	return render(stencilsDir, directiveStencil, values)
-}
-
-// WriteScope returns the write-scope paragraph read from stencilsDir, filled with readyMarker, without its leading banner and trailing newlines.
-// An empty readyMarker fails the fill with an error naming the marker; every error names the stencil.
-func WriteScope(stencilsDir, readyMarker string) (string, error) {
-	return render(stencilsDir, writeScopeStencil, map[string]string{"ready_marker": readyMarker})
-}
-
-// render reads the named stencil from stencilsDir and fills it with values, every marker required.
-func render(stencilsDir, name string, values map[string]string) (string, error) {
-	content, err := stencilstore.Read(stencilsDir, name)
+	content, err := stencilstore.Read(stencilsDir, directiveStencil)
 	if err != nil {
-		return "", fmt.Errorf("twilldirective: read stencil %s: %w", name, err)
+		return "", fmt.Errorf("twilldirective: read stencil %s: %w", directiveStencil, err)
 	}
 	filled, err := stencil.Fill(content, values)
 	if err != nil {
-		return "", fmt.Errorf("twilldirective: fill stencil %s: %w", name, err)
+		return "", fmt.Errorf("twilldirective: fill stencil %s: %w", directiveStencil, err)
 	}
 	return strings.TrimRight(string(filled), "\r\n"), nil
 }

@@ -1,6 +1,6 @@
 // doc.go carries the package-level doc comment for internal/selfexec.
 
-// Package selfexec is the self-re-exec helper a long-lived pane process calls when its binary has been replaced on disk.
+// Package selfexec is the self-re-exec helper a long-lived process calls when its binary has been replaced on disk.
 // It is a leaf over the standard library and internal/logger.
 //
 // New resolves the process's executable path once and records that path with the file's identity: device, inode, size and modification time.
@@ -16,7 +16,7 @@
 // Under go test the exec seam returns an error instead of exec'ing, so a test binary is never replaced.
 // On Windows there is no exec: the identity stat fails, every Check reads as unchanged and the process keeps running.
 //
-// Callers are long-lived pane processes; each calls Check from its own poll and the package adds no wake of its own (PATTERN-daemon-wakeups).
+// Callers are long-lived processes, the pane processes and the orch watcher daemon; each calls Check from its own poll and the package adds no wake of its own (PATTERN-daemon-wakeups).
 //
 // Leaf rule: production code imports the standard library and internal/logger only, enforced by leaf_enforcement_test.go.
 // See PATTERN-leaf-packages.
