@@ -1358,6 +1358,18 @@ func stepStopReport_ReadsTheParkMarkersContentAndTime(t *testing.T, h *hubforge.
 	if err != nil {
 		t.Fatalf("resolve child location: %v", err)
 	}
+	// The Go driver's start report is written before its tackler or arbiter runs; it is no park marker, so it cannot end the eligible-stop hold.
+	reportsDir := shedrun.DriveReportsDir(childLocation, shedrun.SelfRunID)
+	if err := os.MkdirAll(reportsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(reportsDir, "drive-1.md"), []byte("start report\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if path, _, found, err := c.env.InnerRun.StopReport(); err != nil || found {
+		t.Fatalf("StopReport() = %q, found=%v, %v with only a drive report on disk; want none", path, found, err)
+	}
+
 	marker := shedrun.ParkMarker(childLocation, shedrun.SelfRunID)
 	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
 		t.Fatal(err)

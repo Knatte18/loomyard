@@ -51,6 +51,10 @@ type noticeHarness struct {
 	arbiterFound bool
 	arbiterErr   error
 
+	// arbiterStop and arbiterStopErr are what the fake ArbiterStop seam reports; the zero reading is not eligible.
+	arbiterStop    ChildArbiterStop
+	arbiterStopErr error
+
 	// driverLock is what the fake ChildDriverLockHeld seam reports; tackler and tacklerFound are what the fake TacklerInFlight seam reports.
 	driverLock   bool
 	tackler      ChildArbiter
@@ -179,6 +183,9 @@ func (h *noticeHarness) producer() shedengine.ShedProducer {
 		MarkWatched: func(context.Context) (bool, error) { return h.watched, nil },
 		ArbiterInFlight: func(context.Context) (ChildArbiter, bool, error) {
 			return h.arbiter, h.arbiterFound, h.arbiterErr
+		},
+		ArbiterStop: func(context.Context, shedengine.Status) (ChildArbiterStop, error) {
+			return h.arbiterStop, h.arbiterStopErr
 		},
 		ChildDriverLockHeld: func() (bool, error) { return h.driverLock, nil },
 		TacklerInFlight: func(context.Context) (ChildArbiter, bool, error) {

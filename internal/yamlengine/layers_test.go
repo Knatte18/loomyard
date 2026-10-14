@@ -87,7 +87,7 @@ func TestStrip(t *testing.T) {
 	}
 }
 
-const sparseTemplate = "name: tmpl\nport: 80\nnested:\n    deep: 1\nlabels: {}\nlist: [a]\nrounds: \"\"\n"
+const sparseTemplate = "name: tmpl\nport: 80\nnested:\n    deep: 1\nlabels: {}\nlist: [a]\nplan_max_bounces: ~\nrounds: \"\"\n"
 
 // TestSetSparse pins that SetSparse writes only the set keys: into empty bytes, beside an existing key, through intermediate mappings, as an open-map entry and as a flow list, with a template tag kept and an unknown or misshapen request refused.
 func TestSetSparse(t *testing.T) {
@@ -100,7 +100,11 @@ func TestSetSparse(t *testing.T) {
 		want        string
 		wantUnknown []string
 		wantErr     bool
+		wantInts    map[string]*int
 	}{
+		{name: "an integer set on a null template leaf takes the int tag", pairs: []KV{{Key: "plan_max_bounces", Value: "2"}}, want: "plan_max_bounces: 2\n", wantInts: map[string]*int{"plan_max_bounces": intPointer(2)}},
+		{name: "a spelled null set over an integer takes the null tag", existing: "plan_max_bounces: 2\n", pairs: []KV{{Key: "plan_max_bounces", Value: "~"}}, want: "plan_max_bounces: ~\n", wantInts: map[string]*int{"plan_max_bounces": nil}},
+		{name: "a spelled null set on an int template leaf takes the null tag", pairs: []KV{{Key: "port", Value: "null"}}, want: "port: null\n"},
 		{name: "set into empty bytes writes only that key", pairs: []KV{{Key: "name", Value: "x"}}, want: "name: x\n"},
 		{name: "set into a comment-only file", existing: "# c\n", pairs: []KV{{Key: "name", Value: "x"}}, want: "name: x\n"},
 		{name: "set beside an existing key", existing: "port: 90\n", pairs: []KV{{Key: "name", Value: "x"}}, want: "port: 90\nname: x\n"},
@@ -153,6 +157,7 @@ func TestSetSparse(t *testing.T) {
 			if string(got.Merged) != tc.want {
 				t.Errorf("Merged = %q, want %q", got.Merged, tc.want)
 			}
+			assertDecodesAsInts(t, got.Merged, tc.wantInts)
 		})
 	}
 }

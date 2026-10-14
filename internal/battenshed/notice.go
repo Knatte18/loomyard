@@ -228,8 +228,10 @@ type noticeEpisode struct {
 	state shedengine.State
 	// since is the status file's modification time at the first sight of the child in this state.
 	// A rewrite of the file in the same state does not move it; only a batten start reads it from the file.
-	since      time.Time
-	deliveries map[string]*noticeDelivery
+	since time.Time
+	// arbiterOffAt is the first time this process saw the arbiter off while the stop was eligible in this episode; zero until then.
+	arbiterOffAt time.Time
+	deliveries   map[string]*noticeDelivery
 }
 
 // observeState records a sight of the child in state, with the status file's modification time at that sight.
@@ -424,6 +426,8 @@ func (p *innerRunProducer) logSessionStatesAtNotice(runs []AgentActivity, condit
 // An awaiting child that carries a parent notice, while this batten holds the watched marker, is left to its driver's own relay:
 // its notice goes when the driver strand has ended, or noticeReportWait passed with no report, or noticeRelayWait passed since the report with no decision record.
 // A live arbiter or tackler in flight holds the notice of a halted or awaiting child until its deadline plus noticeReportWait has passed.
+// After that, the eligible-stop hold holds the notice of an arbiter-eligible blocked or awaiting child until the arbiter has handed on or the hold's backstop passes.
+// Once neither holds, noticeReportWait is measured from the later of the episode's since and the eligible-stop hold's end, so a long hold does not leave the wait already spent.
 func (p *innerRunProducer) stateChangeReady(ctx context.Context, w *childWait) (ready bool, clause string) {
 	status := w.status
 	now := p.deps.Now()
@@ -433,9 +437,13 @@ func (p *innerRunProducer) stateChangeReady(ctx context.Context, w *childWait) (
 	if p.arbiterHolds(ctx, now) {
 		return false, clause
 	}
+	holding, holdEnd := p.eligibleStopHold(ctx, w, now, at, found)
+	if holding {
+		return false, clause
+	}
 	alive, known := p.driverAlive(ctx, w)
 	ended := known && !alive
-	waited := now.Sub(p.episode.since) >= noticeReportWait
+	waited := now.Sub(laterOf(p.episode.since, holdEnd)) >= noticeReportWait
 
 	if status.State == shedengine.StateAwaiting && status.ParentNotice != "" && p.watched {
 		switch {

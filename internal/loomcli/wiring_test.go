@@ -419,13 +419,10 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	// loom.yaml's skip_merge_review is off in the template, and the routing projection's flag follows the wired Env's.
+	// The template's merge_max_bounces is 1, so the Merge-Bouncer has no budget entry of 0.
 	t.Run("merge review stays on by default", func(t *testing.T) {
-		if c.env.MergeReviewOff {
-			t.Error("c.env.MergeReviewOff = true; want false under the template")
-		}
-		if _, _, off, err := c.reviewBudget(); err != nil || off {
-			t.Errorf("reviewBudget() skip flag = %v, %v; want false, nil", off, err)
+		if budget, ok := c.env.RowMaxBounces[loomshed.NameMergeBouncer]; ok && budget == 0 {
+			t.Error("c.env.RowMaxBounces[Merge-Bouncer] = 0; want no zero entry under the template")
 		}
 	})
 
@@ -462,7 +459,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Fatalf("WriteJSON(status) = %v; want nil", err)
 		}
 
-		routing, err := loomrecipe.Routing(c.cfg.ReviewMaxBounces, c.env.RowMaxBounces, false)
+		routing, err := loomrecipe.Routing(c.cfg.ReviewMaxBounces, c.env.RowMaxBounces)
 		if err != nil {
 			t.Fatalf("loomrecipe.Routing(%d) = %v; want nil", c.cfg.ReviewMaxBounces, err)
 		}
@@ -877,7 +874,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	loc := hubLocation(t, "pair", ".")
 	seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{
 		"plan_review": "opus[effort=low]", "plan_judge": "opus[effort=high]", "seed": "haiku[effort=low]", "webster_seed": "opus[effort=low]",
-		"plan_max_bounces": "2", "webster_max_bounces": "1", "webster_auto_accept": "true", "skip_merge_review": "true",
+		"plan_max_bounces": "2", "webster_max_bounces": "1", "webster_auto_accept": "true", "merge_max_bounces": "0",
 		"plan_hard_max_bounces": "5",
 	})
 
@@ -886,13 +883,11 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
-	// The Merge-Bouncer row keeps the template's merge_max_bounces and merge_auto_accept.
-	wantRowMaxBounces := map[string]int{loomshed.NameDiscussionBouncer: 0, loomshed.NamePlanBouncer: 2, loomshed.NameWebsterBouncer: 1, loomshed.NameMergeBouncer: 1}
+	// The Discussion-Bouncer row has no entry since its key is null, and merge_max_bounces: 0 gives the Merge-Bouncer row an entry of 0.
+	// The Merge-Bouncer row keeps the template's merge_auto_accept.
+	wantRowMaxBounces := map[string]int{loomshed.NamePlanBouncer: 2, loomshed.NameWebsterBouncer: 1, loomshed.NameMergeBouncer: 0}
 	if !reflect.DeepEqual(c.env.RowMaxBounces, wantRowMaxBounces) {
 		t.Errorf("RowMaxBounces = %v; want %v", c.env.RowMaxBounces, wantRowMaxBounces)
-	}
-	if _, _, off, err := c.reviewBudget(); err != nil || !off || !c.env.MergeReviewOff {
-		t.Errorf("skip_merge_review reached reviewBudget() = %v, %v and Env.MergeReviewOff = %v; want true, nil and true", off, err, c.env.MergeReviewOff)
 	}
 	wantRowAutoAccept := map[string]bool{loomshed.NameDiscussionBouncer: false, loomshed.NamePlanBouncer: false, loomshed.NameWebsterBouncer: true, loomshed.NameMergeBouncer: true}
 	if !reflect.DeepEqual(c.env.RowAutoAccept, wantRowAutoAccept) {
@@ -999,19 +994,19 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 
 // TestWire_MergeReviewSeams verifies the merge review seams read the run's merge record.
 // The skip seam answers false with no record and the record's skip decision once one exists.
-// The approve seam records the merged tip as reviewed, the note renders the record, and skip_merge_review reaches the Env.
+// The approve seam records the merged tip as reviewed, the note renders the record, and merge_max_bounces: 0 reaches the Env.
 func TestWire_MergeReviewSeams(t *testing.T) {
 	t.Parallel()
 
 	loc := hubLocation(t, "pair", ".")
-	seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"skip_merge_review": "true"})
+	seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"merge_max_bounces": "0"})
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
-	if !c.env.MergeReviewOff {
-		t.Error("c.env.MergeReviewOff = false; want true from skip_merge_review")
+	if budget, ok := c.env.RowMaxBounces[loomshed.NameMergeBouncer]; !ok || budget != 0 {
+		t.Errorf("c.env.RowMaxBounces[Merge-Bouncer] = %d, %v; want 0 from merge_max_bounces: 0", budget, ok)
 	}
 	if skip, err := c.env.SkipMergeReview(); err != nil || skip {
 		t.Errorf("SkipMergeReview() with no record = %v, %v; want false, nil", skip, err)

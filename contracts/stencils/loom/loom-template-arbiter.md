@@ -64,7 +64,6 @@ Hand on when the call needs an operator decision that neither the board entry no
   What a ledger entry's `design-wrong` and `mechanical` tags mean is the judge stencil's, which the brief names.
   - `hard-cap`: read the open design-wrong findings against the code; accept when a finding is wrong or the fix in place answers it, otherwise hand on.
   - `circling`: accept when the returned finding is wrong; continue when the fix is converging and the round is below the hard cap; otherwise hand on.
-  - `budget`: settle from the review, ledger and verdict files as for `circling`, or hand on.
 - At an error stop you have no repair verbs.
   You may judge a plain re-launch safe, name a goto target, or hand on.
 - A `resume` at a review escalation needs its circling decision recorded first.

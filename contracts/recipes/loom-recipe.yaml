@@ -74,8 +74,8 @@
 #
 # The Bouncer, review and fix rows of those segments declare no max_bounces: their budget is the
 # perch's own loom.yaml key (discussion_max_bounces, plan_max_bounces, webster_max_bounces or merge_max_bounces),
-# falling back to review_max_bounces where that is 0, applied by internal/loomrecipe. PR-Gate keeps
-# its literal max_bounces.
+# an absent per-perch budget takes review_max_bounces, and a perch at 0 keeps its route while its
+# Bouncer settles at once, applied by internal/loomrecipe. PR-Gate keeps its literal max_bounces.
 
 version: 1
 entry: Preflight
@@ -444,7 +444,7 @@ producers:
     on_done: Merge-Bouncer
 
   # The Merge-Review perch reviews how the task's code interacts with what the parent gained in the
-  # merge-in. loom.yaml's skip_merge_review routes Merge-In's Done past it to Publish, and the
+  # merge-in. A merge budget of 0 keeps this route and the Bouncer settles at once, and the
   # Bouncer's skip_seam skips the judge for a merge that gained nothing the task touches. A BLOCKING
   # finding escalates past an exhausted budget even where loom.yaml auto-accepts the round.
   - name: Merge-Bouncer

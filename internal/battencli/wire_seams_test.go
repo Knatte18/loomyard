@@ -284,6 +284,9 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	if runs, _, err := c.env.InnerRun.Activity(context.Background()); err == nil || runs != nil || !strings.Contains(err.Error(), "a-slug") {
 		t.Errorf("Activity() runs=%v, error=%v; want the absent-worktree refusal naming the slug", runs, err)
 	}
+	if reading, err := c.env.InnerRun.ArbiterStop(context.Background(), shedengine.Status{}); err == nil || reading.Eligible || !strings.Contains(err.Error(), "a-slug") {
+		t.Errorf("ArbiterStop() eligible=%v, error=%v; want the absent-worktree refusal naming the slug", reading.Eligible, err)
+	}
 
 	// The terminal window seam exists only on a run asked for one, and locates the task worktree before any launcher runs.
 	if c.env.InnerRun.OpenTerminal != nil {

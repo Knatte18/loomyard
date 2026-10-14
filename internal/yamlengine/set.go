@@ -51,6 +51,7 @@ type SetResult struct {
 // replaces its list whole; a value that is not a YAML list is an error.
 // Otherwise every pair is applied to the working tree (later pairs for a repeated key win) and the
 // mutated tree is marshalled into SetResult.Merged.
+// A scalar leaf outside a scalar-or-list open-map path keeps its tag, except that a value spelling a null (`~`, `null`, `Null`, `NULL`), or a leaf holding a null, gives the scalar the tag its own text resolves to.
 //
 // Each openMaps entry is a dotted key path whose value is an open map:
 // any key P.<name> is known,
@@ -147,7 +148,11 @@ func SetValues(template, existing []byte, pairs []KV, openMaps ...string) (SetRe
 			}
 			continue
 		}
-		templateLeaves[pair.Key].Value = pair.Value
+		leaf := templateLeaves[pair.Key]
+		if tag := scalarSetTag(leaf.Tag, pair.Value); tag != leaf.Tag {
+			leaf.Tag, leaf.Style = tag, 0
+		}
+		leaf.Value = pair.Value
 	}
 
 	merged, err := yaml.Marshal(&templateNode)
@@ -156,6 +161,24 @@ func SetValues(template, existing []byte, pairs []KV, openMaps ...string) (SetRe
 	}
 
 	return SetResult{Merged: merged, Known: known, Preserved: preserved}, nil
+}
+
+// scalarSetTag returns the tag a scalar leaf holding value is written under when a set lands on a leaf tagged leafTag.
+// A value that spells a null (`~`, `null`, `Null`, `NULL`) or a leaf tagged `!!null` takes the tag its own text resolves to, so a set to or over a null leaf reads back as written.
+// Every other set keeps leafTag, and an empty value is not a spelled null.
+func scalarSetTag(leafTag, value string) string {
+	switch value {
+	case "~", "null", "Null", "NULL":
+		return "!!null"
+	}
+	if leafTag != "!!null" || value == "" {
+		return leafTag
+	}
+	var parsed yaml.Node
+	if err := yaml.Unmarshal([]byte(value), &parsed); err != nil || len(parsed.Content) != 1 || parsed.Content[0].Kind != yaml.ScalarNode {
+		return "!!str"
+	}
+	return parsed.Content[0].ShortTag()
 }
 
 // splitOpenMapKey splits key into a declared open-map path and the entry name under it.

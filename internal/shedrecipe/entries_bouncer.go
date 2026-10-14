@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// bouncerEntry is the Constructor for the "Bouncer" registry row: it validates cfg and env, joins and creates the run directory a segment's Bouncer, BurlerReview and BurlerFix rows share, resolves artifact_paths against env.AnchorPath, takes the row's seed and judge models from env.RowBouncerModels, resolves the optional commit_seam key to one of env.CommitPlan or env.CommitDiscussion, resolves the optional approve_seam key to env.ApprovePlan or env.ApproveMergeReview, resolves the optional skip_seam key to env.SkipPlanReview or env.SkipMergeReview, reads the optional boolean blocking_escalates key (default false) and the optional color_segment key, reads the optional carry_over key, the segment name that selects env.CarryOver, reads the optional boolean cluster_excludes key (default false) telling the judge whether its partner BurlerReview row has a cluster fan, and returns shedadapters.NewBouncer(cfg).
+// bouncerEntry is the Constructor for the "Bouncer" registry row: it validates cfg and env, joins and creates the run directory a segment's Bouncer, BurlerReview and BurlerFix rows share, resolves artifact_paths against env.AnchorPath, takes the row's seed and judge models from env.RowBouncerModels, resolves the optional commit_seam key to one of env.CommitPlan or env.CommitDiscussion, resolves the optional approve_seam key to env.ApprovePlan or env.ApproveMergeReview, resolves the optional skip_seam key to env.SkipPlanReview or env.SkipMergeReview, reads the optional boolean zero_rounds key (default false; true makes the Bouncer settle approved at once over any skip_seam, and the recipe declares it on no row because loomrecipe stamps it), reads the optional boolean blocking_escalates key (default false) and the optional color_segment key, reads the optional carry_over key, the segment name that selects env.CarryOver, reads the optional boolean cluster_excludes key (default false) telling the judge whether its partner BurlerReview row has a cluster fan, and returns shedadapters.NewBouncer(cfg).
 func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -50,6 +50,10 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	if err != nil {
 		return nil, err
 	}
+	zeroRounds, err := configBool(cfg, "zero_rounds", false)
+	if err != nil {
+		return nil, err
+	}
 	colorSegment, err := colorSegmentKey("Bouncer", cfg)
 	if err != nil {
 		return nil, err
@@ -60,7 +64,7 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	// recipe-authorable, so a "report_name" entry in cfg is rejected here as unrecognised rather
 	// than silently ignored.
 	// The same holds for "model", "effort" and "version": a Bouncer pass's model comes from env.RowBouncerModels alone.
-	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "commit_seam", "approve_seam", "skip_seam", "carry_over", "cluster_excludes", "blocking_escalates", "color_segment"); err != nil {
+	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "commit_seam", "approve_seam", "skip_seam", "carry_over", "cluster_excludes", "blocking_escalates", "zero_rounds", "color_segment"); err != nil {
 		return nil, err
 	}
 	models, ok := env.RowBouncerModels[name]
@@ -136,6 +140,10 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		skip = env.SkipMergeReview
 	default:
 		return nil, fmt.Errorf("shedrecipe: Bouncer: config key %q must be %q or %q, got %q", "skip_seam", "rework-exempt", "merge-overlap", skipSeam)
+	}
+	// A zero-round Bouncer skips over any named skip seam, so it settles approved through its approve and commit seams with no review.
+	if zeroRounds {
+		skip = func() (bool, error) { return true, nil }
 	}
 
 	// carry_over carries the segment name the Bouncer files its carry-over entry under and selects env.CarryOver, mirroring skip_seam:

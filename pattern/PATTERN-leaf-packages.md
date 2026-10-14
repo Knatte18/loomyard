@@ -22,6 +22,11 @@ Imports only the standard library.
 
 Imports only the standard library, `configengine` and `gopkg.in/yaml.v3`.
 
+## `internal/reviewbudget`
+
+Imports only the standard library and `configengine`.
+It declares the review budget key family loom and darn config build on, and imports neither engine.
+
 ## `internal/buildinfo`
 
 Imports nothing at all, not even the standard library.

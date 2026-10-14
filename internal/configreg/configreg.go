@@ -53,7 +53,7 @@ type Module struct {
 	// A hub's first reconcile seeds an absent hub file from the prime's copy, like a module with open maps.
 	SeedsFromPrime bool
 	// Migrate, when non-nil, rewrites a present config file's bytes before reconcile compares them to the template.
-	// It returns the rewritten bytes and one human-readable line per rewrite, and changes only the keys its module declares retired or raises a key to its module's floor.
+	// It returns the rewritten bytes and one human-readable line per rewrite, and changes only the keys its module declares retired, rewrites a key's retired meaning into its replacement, or raises a key to its module's floor.
 	Migrate func(existing []byte) ([]byte, []string, error)
 	// CheckValues, when non-nil, checks the values of a local-layer document after its keys pass configengine.ValidateLocal.
 	// It checks only the keys its module names, and returns an error marked configengine.ErrInvalid that names the key.
@@ -89,7 +89,7 @@ func Modules() []Module {
 		{Name: "batcher", Template: batcher.ConfigTemplate, OpenMaps: batcher.ConfigOpenMaps(), Migrate: batcher.MigrateConfig, Spec: batcher.ConfigSpec},
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, Spec: boardengine.ConfigSpec},
 		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true, Spec: burlerengine.ConfigSpec},
-		{Name: "darn", Template: darnengine.ConfigTemplate, HubWide: true, Spec: darnengine.ConfigSpec},
+		{Name: "darn", Template: darnengine.ConfigTemplate, HubWide: true, CheckValues: darnengine.ValidateLocalValues, Spec: darnengine.ConfigSpec},
 		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true, Spec: fabricengine.ConfigSpec},
 		{Name: "gate", Template: gateslot.ConfigTemplate, HubWide: true, Spec: gateslot.ConfigSpec},
 		{Name: "landing", Template: landingshed.ConfigTemplate, HubWide: true, SeedsFromPrime: true, Spec: landingshed.ConfigSpec},

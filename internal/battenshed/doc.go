@@ -39,6 +39,12 @@
 // its notice goes when the driver strand has ended, or three minutes passed with no report, or ten minutes passed since the report with no decision record.
 // A live arbiter or tackler in flight holds the notice of a halted or awaiting child, so the orch is not told "report none yet" for a stop either may settle:
 // the hold ends when the marker is gone, its strand is dead, or its deadline plus the report wait has passed, and the rules above decide again.
+// The eligible-stop hold holds the notice of a blocked or awaiting child whose stop the arbiter may settle, read through the ArbiterStop seam, until the arbiter has handed on or no arbiter will settle it:
+// it ends at the applied mark of the stop's attempt, at the moment the arbiter was seen off, at a park marker written after the stop (unless the Go driver handed the run over at the stop), at the attempt's hand-on, or at the backstop, the later of the stop plus one spawn's timeout plus the report wait and the attempt's deadline plus the report wait.
+// A stop with the arbiter off or no spawns left and no attempt is never held, and error stops keep the marker hold alone.
+// The report wait is then counted from the later of the stop and the hold's end.
+// The start comes from the status file and every end from a record, so a batten restart neither resets the start nor loses the end;
+// after the arbiter was switched off, a restarted batten takes its own first observation.
 // When a resume moves the child back to running the episode ends and no notice goes; after a hand-on the marker is gone and the driver's stop report qualifies.
 // A done child sends no notice: a landing that succeeds needs nothing from the orch.
 // A resume the child refuses because its parked driver's pane holds a draft, an active operator or another busy reading (a spawn error wrapping ErrChildDriverBusy) is retried like a not-parked one, without a deadline, until the resume lands, the child leaves awaiting or batten is paused or stopped.

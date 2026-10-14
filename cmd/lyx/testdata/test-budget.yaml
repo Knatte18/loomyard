@@ -7,10 +7,11 @@ contracts/specs: 3
 contracts/stencils: 16
 internal/agentname: 8
 internal/alignment: 7
+internal/arbiterstop: 2
 internal/batcher: 9
 internal/battencli: 79
 internal/battenrecipe: 9
-internal/battenshed: 113
+internal/battenshed: 114
 internal/boardcli: 13
 internal/boardengine: 78
 internal/boardengine/boardtest: 3
@@ -61,7 +62,7 @@ internal/lock: 4
 internal/logger: 37
 internal/loggerconfig: 3
 internal/loomcli: 237
-internal/loomengine: 57
+internal/loomengine: 58
 internal/loomrecipe: 54
 internal/loomshed: 76
 internal/lyxcwd: 23
@@ -88,6 +89,7 @@ internal/reedengine: 266
 internal/reedengine/render: 12
 internal/reportcli: 3
 internal/reportengine: 8
+internal/reviewbudget: 3
 internal/seatengine: 17
 internal/segmentcolor: 4
 internal/selfexec: 2

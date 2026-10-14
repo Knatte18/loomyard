@@ -50,7 +50,7 @@ type goDriverDeps struct {
 	SaveEnvelope func(raw []byte) (string, error)
 	// SettlePath is the settle-records file in the friction directory.
 	SettlePath string
-	// EscalationPending reports whether the awaiting Bouncer row producer awaits a decision on its escalation.
+	// EscalationPending reports whether the arbiter verb would admit the awaiting stop at producer: a Bouncer row whose latest round awaits a decision on a hard-cap or circling escalation, not mere pendency.
 	EscalationPending func(producer string) (bool, error)
 	// VerifyRecord reads the Publish failure record; found is false when there is none.
 	VerifyRecord func() (record battenshed.ChildPublishFailure, found bool, err error)

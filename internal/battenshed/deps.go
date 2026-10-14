@@ -99,6 +99,30 @@ type ChildArbiter struct {
 	Alive bool
 }
 
+// ChildArbiterStop is the reading of the facts batten's eligible-stop hold decides on at a halted stop of the child.
+// It carries the arbiter rule's answer as a bool and holds no copy of the rule.
+type ChildArbiterStop struct {
+	// Eligible reports whether the arbiter verb would admit the stop.
+	// It is read from the arbiter eligibility rule over the status file, the escalation record and the verify record.
+	Eligible bool
+	// On reports whether the child's arbiter_max_spawns is above 0, read from the child's loom config.
+	On bool
+	// Timeout is one arbiter spawn's resolved timeout, read from the child's loom config.
+	Timeout time.Duration
+	// SpawnsLeft reports whether the run's attempt records in its arbiter directory are fewer than arbiter_max_spawns.
+	SpawnsLeft bool
+	// Attempt reports whether an attempt exists at the stop's key; the fields below describe the newest such attempt.
+	Attempt bool
+	// AttemptDeadline is the attempt's deadline, read from its attempt record.
+	AttemptDeadline time.Time
+	// HandOnAt is the write time of the attempt's envelope when that envelope carries verdict hand-on, and zero otherwise.
+	HandOnAt time.Time
+	// AppliedAt is the write time of the attempt's applied mark, and zero when the mark is absent.
+	AppliedAt time.Time
+	// HandOverAt is the time of the newest settle record at the stop's key when that record's action is hand-over, and zero otherwise.
+	HandOverAt time.Time
+}
+
 // InnerRunDeps carries every told value and injected closure NewInnerRun needs: spawning the
 // inner shed run, resolving and reading its persisted status, and the sleep seam a test replaces
 // to keep the poll interval out of real time.
@@ -191,6 +215,11 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil ArbiterInFlight resolves to reporting none in NewInnerRun.
 	ArbiterInFlight func(ctx context.Context) (arbiter ChildArbiter, found bool, err error)
+	// ArbiterStop reads the facts the eligible-stop hold decides on for the child's halted stop status.
+	// The state-changed notice of a blocked or awaiting child is held while the arbiter may still settle the stop.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil ArbiterStop resolves to a reading that is not eligible in NewInnerRun.
+	ArbiterStop func(ctx context.Context, status shedengine.Status) (ChildArbiterStop, error)
 	// NoticeQuiet is how long a running child's agents may all stay idle, with its driver strand alive and no wait marker live, before the row sends a quiet notice.
 	// Zero disables the quiet notice.
 	NoticeQuiet time.Duration
