@@ -16,6 +16,7 @@ import (
 
 // shortcutProblems returns one problem per defect of shortcuts against root.
 // A name must not equal a root command outside the shortcut group nor repeat, and an argv must be non-empty and resolve, through root.Find, to an invocable command that is not the root and not a shortcut.
+// An argv that resolves to `reed attach` must be the shortcut's last, since the attach replaces the process on Unix and nothing runs after it.
 func shortcutProblems(root *cobra.Command, shortcuts []shortcutcli.Shortcut) []string {
 	var problems []string
 	seen := map[string]bool{}
@@ -30,7 +31,7 @@ func shortcutProblems(root *cobra.Command, shortcuts []shortcutcli.Shortcut) []s
 		}
 		seen[shortcut.Name] = true
 
-		for _, argv := range shortcut.Argvs {
+		for position, argv := range shortcut.Argvs {
 			if len(argv) == 0 {
 				problems = append(problems, fmt.Sprintf("shortcut %q has an empty argv", shortcut.Name))
 				continue
@@ -45,6 +46,9 @@ func shortcutProblems(root *cobra.Command, shortcuts []shortcutcli.Shortcut) []s
 				problems = append(problems, fmt.Sprintf("shortcut %q argv %v resolves to %q, which is not an invocable command", shortcut.Name, argv, target.CommandPath()))
 			case target.GroupID == shortcutcli.GroupID:
 				problems = append(problems, fmt.Sprintf("shortcut %q argv %v resolves to the shortcut %q", shortcut.Name, argv, target.CommandPath()))
+			}
+			if err == nil && target.CommandPath() == "lyx reed attach" && position < len(shortcut.Argvs)-1 {
+				problems = append(problems, fmt.Sprintf("shortcut %q runs %v after reed attach, which never returns", shortcut.Name, shortcut.Argvs[position+1:]))
 			}
 		}
 	}
@@ -90,6 +94,7 @@ func TestShortcuts_FileAndRootListing(t *testing.T) {
 		{"an unknown command", []shortcutcli.Shortcut{{Name: "go-to", Argvs: [][]string{{"nosuch", "verb"}}}}, "does not resolve"},
 		{"a flag alone", []shortcutcli.Shortcut{{Name: "go-to", Argvs: [][]string{{"--verbose"}}}}, "resolves to the root"},
 		{"another shortcut", []shortcutcli.Shortcut{{Name: "go-to", Argvs: [][]string{{"prime"}}}}, "resolves to the shortcut"},
+		{"an argv after reed attach", []shortcutcli.Shortcut{{Name: "go-to", Argvs: [][]string{{"reed", "attach"}, {"orch", "start"}}}}, "after reed attach, which never returns"},
 	}
 	for _, tt := range synthetic {
 		t.Run(tt.name, func(t *testing.T) {
@@ -116,6 +121,8 @@ func TestShortcuts_FileAndRootListing(t *testing.T) {
 	for _, line := range []string{
 		"- `prime [<args>...]`: shortcut: lyx orch start, then lyx reed attach",
 		"- `attach [<args>...]`: shortcut: lyx reed attach",
+		"- `pause [<args>...]`: shortcut: lyx tender pause",
+		"- `resume [<args>...]`: shortcut: lyx tender resume",
 	} {
 		if !strings.Contains(index.String(), line) {
 			t.Errorf("the operator index lacks the line %q:\n%s", line, index.String())

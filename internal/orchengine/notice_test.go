@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 func noticePaths(t *testing.T, strand string) Paths {
@@ -135,5 +138,45 @@ func TestRemoveAndDropNotices(t *testing.T) {
 	}
 	if rest, err := ListNotices(p); err != nil || len(rest) != 0 {
 		t.Errorf("queue = %v, %v, want empty", rest, err)
+	}
+}
+
+func TestQueueConditionalNotice(t *testing.T) {
+	t.Parallel()
+
+	p := noticePaths(t, "s1")
+	stalled := NoticeCondition{State: shuttleengine.SessionIdleStalled, Cause: shuttleengine.SessionCauseAPIError}
+	busy := NoticeCondition{State: shuttleengine.SessionBusy, Cause: shuttleengine.SessionCauseTurn}
+
+	if queued, err := QueueConditionalNotice(p, "carry on", stalled, noticeEpoch); err != nil || !queued {
+		t.Fatalf("QueueConditionalNotice = %v, %v, want queued", queued, err)
+	}
+	got, err := ListNotices(p)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("queue = %v, %v, want the one notice", got, err)
+	}
+	if got[0].Line != "carry on" || got[0].Condition == nil || *got[0].Condition != stalled {
+		t.Errorf("notice = %+v, want line %q under %+v", got[0], "carry on", stalled)
+	}
+	if strings.HasSuffix(got[0].Path, noticeSuffix) {
+		t.Errorf("notice file %q ends in %q, want a name an older watcher does not list", got[0].Path, noticeSuffix)
+	}
+
+	if queued, err := QueueConditionalNotice(p, "carry on", stalled, noticeEpoch.Add(time.Second)); err != nil || queued {
+		t.Fatalf("second QueueConditionalNotice = %v, %v, want a duplicate skipped", queued, err)
+	}
+	if got, _ := ListNotices(p); len(got) != 1 {
+		t.Fatalf("queue holds %d notices after the duplicate, want 1", len(got))
+	}
+
+	if queued, err := QueueNotice(p, "carry on", noticeEpoch.Add(2*time.Second)); err != nil || !queued {
+		t.Fatalf("QueueNotice = %v, %v, want the unconditioned line queued beside it", queued, err)
+	}
+	if queued, err := QueueConditionalNotice(p, "carry on", busy, noticeEpoch.Add(3*time.Second)); err != nil || !queued {
+		t.Fatalf("QueueConditionalNotice under another condition = %v, %v, want queued", queued, err)
+	}
+	got, _ = ListNotices(p)
+	if len(got) != 3 || got[1].Condition != nil || got[2].Condition == nil || *got[2].Condition != busy {
+		t.Errorf("queue = %+v, want the conditioned, the unconditioned and the other conditioned notice in arrival order", got)
 	}
 }

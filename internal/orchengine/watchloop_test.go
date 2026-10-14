@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
@@ -298,4 +299,96 @@ func countOrchLines(log, level, text string) int {
 		}
 	}
 	return count
+}
+
+// TestRun_ChecksTheBinaryOnlyAtARestartSafeTick drives Run with a check that counts its calls, standing in for the re-exec, since a test binary never execs.
+// The third poll sleep ends the strand, so a row that checks every tick counts three calls.
+func TestRun_ChecksTheBinaryOnlyAtARestartSafeTick(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// arrange sets the env up before Run.
+		arrange func(e *watchEnv)
+		// wantChecks is how many times the check ran.
+		wantChecks int
+		// wantRunErr is whether Run ends on the tick error cap instead of the strand going.
+		wantRunErr bool
+	}{
+		{name: "an idle phase with no pause record checks every tick", arrange: func(e *watchEnv) {}, wantChecks: 3},
+		{name: "a phase that is not idle never checks", arrange: func(e *watchEnv) { e.injectHandoff() }},
+		{
+			name: "a live hub entry the watcher handled never checks",
+			arrange: func(e *watchEnv) {
+				e.pauseHub("", pauseGrace)
+			},
+		},
+		{
+			name: "a live hub entry the watcher has not handled never checks",
+			arrange: func(e *watchEnv) {
+				e.s.idle = false
+				e.pauseHub("", pauseGrace)
+			},
+		},
+		{
+			name: "a live slug entry alone checks",
+			arrange: func(e *watchEnv) {
+				_, err := pauserecord.Update(e.pausePath, e.clock.now, func(r *pauserecord.Record) error {
+					r.Live = append(r.Live, pauserecord.Entry{Scope: "a", PausedAt: e.clock.now})
+					return nil
+				})
+				if err != nil {
+					e.t.Fatal(err)
+				}
+			},
+			wantChecks: 3,
+		},
+		{
+			name: "an unreadable pause record never checks",
+			arrange: func(e *watchEnv) {
+				if err := os.MkdirAll(e.pausePath, 0o755); err != nil {
+					e.t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "a state file that turns unreadable after the tick's last save never checks",
+			arrange: func(e *watchEnv) {
+				e.queue("hello")
+				e.s.onSend = func() {
+					if err := os.Remove(e.paths.StatePath); err != nil {
+						e.t.Error(err)
+					}
+					if err := os.Mkdir(e.paths.StatePath, 0o755); err != nil {
+						e.t.Error(err)
+					}
+				}
+			},
+			wantRunErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			tt.arrange(e)
+			checks := 0
+			e.w.WatchBinary(func() { checks++ })
+			polls := 0
+			sleep := func(time.Duration) {
+				polls++
+				if polls == 3 {
+					e.s.alive = false
+				}
+			}
+
+			err := e.w.Run(context.Background(), sleep)
+			if (err != nil) != tt.wantRunErr {
+				t.Fatalf("Run = %v, want an error = %v", err, tt.wantRunErr)
+			}
+			if checks != tt.wantChecks {
+				t.Errorf("checks = %d, want %d", checks, tt.wantChecks)
+			}
+		})
+	}
 }

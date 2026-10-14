@@ -3,6 +3,8 @@ package proc
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 )
@@ -82,6 +84,37 @@ func TestProcessTreeReads(t *testing.T) {
 	}
 	if _, found := find(childTree, os.Getpid()); found {
 		t.Errorf("TreeCPU(child pid) = %+v; want it not to hold the test process", childTree)
+	}
+
+	listed, err := ListProcesses()
+	if err != nil {
+		t.Fatalf("ListProcesses: %v", err)
+	}
+	findListed := func(pid int) (Process, bool) {
+		for _, process := range listed {
+			if process.PID == pid {
+				return process, true
+			}
+		}
+		return Process{}, false
+	}
+	wantStart, ok := StartTime(childPID)
+	if !ok {
+		t.Fatalf("StartTime(child pid) unreadable")
+	}
+	workingDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd: %v", err)
+	}
+	if workingDir, err = filepath.EvalSymlinks(workingDir); err != nil {
+		t.Fatalf("EvalSymlinks(working directory): %v", err)
+	}
+	sleeper, found := findListed(childPID)
+	if !found || sleeper.StartTime != wantStart || filepath.Base(sleeper.Exe) != "sleep" || sleeper.Cwd != workingDir || !slices.Equal(sleeper.Argv, []string{"sleep", "30"}) {
+		t.Errorf("ListProcesses child = %+v, found %v; want start time %q, an Exe based sleep, Cwd %q and Argv [sleep 30]", sleeper, found, wantStart, workingDir)
+	}
+	if selfListed, found := findListed(os.Getpid()); !found || selfListed.Exe != executable {
+		t.Errorf("ListProcesses test process = %+v, found %v; want Exe %q", selfListed, found, executable)
 	}
 
 	tests := []struct {

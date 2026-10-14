@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
 const (
@@ -125,9 +126,36 @@ func (w *Watcher) dropQueueWithoutStrand() error {
 	return DropNotices(w.paths)
 }
 
+// WatchBinary tells the watcher the function that re-execs the process onto a replaced binary, which Run calls at a restart-safe tick; a watcher never told one never calls it.
+// check does not return when it execs.
+func (w *Watcher) WatchBinary(check func()) {
+	w.binaryCheck = check
+}
+
+// restartSafe reports whether the process can be replaced now without losing anything in flight.
+// It re-reads the state from disk and is true only when the phase is idle, so no cycle step is in flight and the persisted cycle state carries over.
+// It also needs the told pause record to read with no live hub entry, so no in-memory pause handling is live to be lost.
+// A watcher never told a pause record reads no entry, and a state or record read error is not safe.
+func (w *Watcher) restartSafe() bool {
+	st, err := LoadState(w.paths)
+	if err != nil || (st.Phase != PhaseIdle && st.Phase != "") {
+		return false
+	}
+	if w.pause == nil {
+		return true
+	}
+	record, err := pauserecord.Read(w.pause.RecordPath)
+	if err != nil {
+		return false
+	}
+	_, live := record.Covering("")
+	return !live
+}
+
 // Run holds the watch lock and calls Tick every PollInterval until Tick reports done, ctx is cancelled, or the cap on consecutive tick errors is reached.
 // It returns ErrWatcherRunning when another watcher holds the lock through every retry.
 // A run of failing ticks warns at its first failure and logs the rest at Debug, then logs one Info at the next tick that succeeds.
+// After a tick that succeeded and returned not done, and before the poll sleep, it calls the function WatchBinary was told when restartSafe reports true, so the check adds no wake of its own.
 func (w *Watcher) Run(ctx context.Context, sleep func(time.Duration)) error {
 	if err := os.MkdirAll(w.paths.Dir, 0o755); err != nil {
 		return fmt.Errorf("orch: create %s: %w", w.paths.Dir, err)
@@ -180,6 +208,9 @@ func (w *Watcher) Run(ctx context.Context, sleep func(time.Duration)) error {
 		default:
 			failures = 0
 			tickFailures.Recover("orch: watcher tick succeeded again")
+			if w.binaryCheck != nil && w.restartSafe() {
+				w.binaryCheck()
+			}
 		}
 		sleep(w.cfg.PollInterval())
 	}

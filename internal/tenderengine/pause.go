@@ -1,6 +1,6 @@
 // pause.go implements the pause sequence: the entry, the grace, the interrupts and the report.
 
-package pauseengine
+package tenderengine
 
 import (
 	"errors"
@@ -22,9 +22,9 @@ const (
 
 var (
 	// errEntryGone means the pause's entry is no longer live.
-	errEntryGone = errors.New("pauseengine: the pause entry is no longer live")
+	errEntryGone = errors.New("tenderengine: the pause entry is no longer live")
 	// errOwnedElsewhere means another live entry already owns the session.
-	errOwnedElsewhere = errors.New("pauseengine: another live pause entry owns the session")
+	errOwnedElsewhere = errors.New("tenderengine: another live pause entry owns the session")
 )
 
 // PauseRequest asks for a pause.

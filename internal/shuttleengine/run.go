@@ -1283,7 +1283,24 @@ func deliveredBelowBaseline(current, baseline paneNeedleScan) bool {
 	return current.linesBelow+sendVerifyPositionMarginLines <= baseline.linesBelow
 }
 
-// sendVerified plays engine.ComposeSend(text) and verifies delivery by polling the pane for evidence
+// sendVerified waits for an idle session, then types text and verifies delivery.
+// A busy session fails the send with ErrSessionBusy before anything is typed.
+// On the paste path a retry of a text whose pending-send record shows it went out types nothing.
+func sendVerified(sc sendContext, text string) error {
+	if err := awaitIdleSession(sc); err != nil {
+		return err
+	}
+	if _, ok := sc.engine.(TextPaster); ok {
+		if _, readsBox := sc.engine.(InputBoxReader); readsBox {
+			if _, cycles := sc.engine.(SessionCycler); cycles && retryLanded(sc, text) {
+				return nil
+			}
+		}
+	}
+	return typeVerified(sc, text)
+}
+
+// typeVerified plays engine.ComposeSend(text) and verifies delivery by polling the pane for evidence
 // that a copy of the sent text which was NOT there before now is.
 //
 // Two independent pieces of evidence answer that, because CapturePane returns the pane's visible
@@ -1322,18 +1339,12 @@ func deliveredBelowBaseline(current, baseline paneNeedleScan) bool {
 // An engine without the capability plays ComposeSend and keeps the appearance-only check with no window,
 // so a text that collapses into a paste placeholder is never confirmed there and relies on the engine's own pacing.
 //
-// Before anything is typed, awaitIdleSession waits for the session to be idle, so a busy session fails the send with ErrSessionBusy.
-func sendVerified(sc sendContext, text string) error {
-	if err := awaitIdleSession(sc); err != nil {
-		return err
-	}
+// It assumes the caller has already judged the session ready to take the text.
+func typeVerified(sc sendContext, text string) error {
 	reed, engine, guid := sc.reed, sc.engine, sc.guid
 	reader, readsBox := engine.(InputBoxReader)
 	if paster, ok := engine.(TextPaster); ok && readsBox {
 		if _, cycles := engine.(SessionCycler); cycles {
-			if retryLanded(sc, text) {
-				return nil
-			}
 			return pasteVerified(sc, paster, reader, text)
 		}
 	}

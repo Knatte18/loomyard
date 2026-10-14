@@ -425,7 +425,7 @@ Their JSON error envelopes carry the way forward in the message, and a read or w
 
 ## pause
 
-A refusal here comes from a live pause entry covering the refused slug, or from the input rules of `lyx pause` and `lyx resume`.
+A refusal here comes from a live pause entry covering the refused slug, or from the input rules of `lyx pause`, `lyx resume` and `lyx tender revive`.
 Its JSON error envelope carries the way forward in the message; a covered slug's, through `pauserecord.CoveredError`.
 
 | Refusal | Trigger | Class | Way forward |
@@ -436,7 +436,8 @@ Its JSON error envelope carries the way forward in the message; a covered slug's
 | batten run under a pause | `lyx batten run` names a slug a live pause entry covers, with or without `--window` | transient | run "lyx resume <slug>", or "lyx resume" for a hub-wide pause, then re-run "lyx batten run <slug>" |
 | pause: unknown slug | `lyx pause` names a slug with no pair in the hub | correctness halt | name one of the hub's pairs, which the refusal lists |
 | pause: grace out of range | `lyx pause --grace` is outside 0 to 60 seconds | correctness halt | pass a `--grace` within 0 to 60 |
-| pause or resume: agent outside its own pair | an agent runs `lyx pause` or `lyx resume` hub-wide, or naming a slug other than its own pair's | correctness halt | ask your parent session, which runs "lyx pause" or "lyx resume" for you |
+| revive: unknown slug | `lyx tender revive` names a slug with no pair in the hub | correctness halt | name one of the hub's pairs, which the refusal lists |
+| pause, resume or revive: agent outside its own pair | an agent runs `lyx pause`, `lyx resume` or `lyx tender revive` hub-wide, or naming a slug other than its own pair's | correctness halt | ask your parent session, which runs "lyx pause", "lyx resume" or "lyx tender revive" for you |
 | resume <slug> under a hub-wide pause | `lyx resume <slug>` names a slug with no pause of its own that a live hub pause covers | transient | run "lyx resume" to lift the hub pause |
 
 ## Out of scope
