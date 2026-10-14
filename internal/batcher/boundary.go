@@ -15,7 +15,7 @@ func renameBoundaries(plan *planparser.Plan, cards []planparser.Card) []int {
 		boundaries[i] = len(cards)
 		targets := cardTargets(card)
 		for j := i + 1; j < len(cards) && boundaries[i] == len(cards); j++ {
-			for _, cover := range cardCovers(cards[j]) {
+			for _, cover := range planparser.CardCovers(cards[j]) {
 				if coversAny(plan, cover, targets) {
 					boundaries[i] = j
 					break
@@ -50,20 +50,4 @@ func cardTargets(card planparser.Card) []string {
 		}
 	}
 	return targets
-}
-
-// cardCovers returns the refs card removes or replaces: the Old side of each Rename pair and its Delete refs.
-func cardCovers(card planparser.Card) []string {
-	var covers []string
-	for _, group := range card.TargetGroups {
-		switch group.Type {
-		case planparser.CardTypeDelete:
-			covers = append(covers, group.Refs...)
-		case planparser.CardTypeRename:
-			for _, pair := range group.Pairs {
-				covers = append(covers, pair.Old)
-			}
-		}
-	}
-	return covers
 }

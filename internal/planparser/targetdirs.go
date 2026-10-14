@@ -1,4 +1,4 @@
-// targetdirs.go holds CardTargetDirs, RefFile, RefScope and RefCovers, the read-only mappings from a card's refs to the worktree directories and files they name.
+// targetdirs.go holds CardTargetDirs, RefFile, RefScope, RefCovers and CardCovers, the read-only mappings from a card's refs to the worktree directories and files they name.
 // It lives here so every ref-shape and glyph-to-path decision stays inside this package, per the Planparser Sole-Parser and Glyph Conversion Chokepoint invariants.
 
 package planparser
@@ -147,6 +147,23 @@ func RefCovers(plan *Plan, cover, target string) bool {
 		targetDir = path.Dir(targetScope)
 	}
 	return targetDir == coverScope || strings.HasPrefix(targetDir, coverScope+"/")
+}
+
+// CardCovers returns the refs card removes or replaces: the Old side of each Rename pair and its Delete refs.
+// These are the covers RefCovers takes.
+func CardCovers(card Card) []string {
+	var covers []string
+	for _, group := range card.TargetGroups {
+		switch group.Type {
+		case CardTypeDelete:
+			covers = append(covers, group.Refs...)
+		case CardTypeRename:
+			for _, pair := range group.Pairs {
+				covers = append(covers, pair.Old)
+			}
+		}
+	}
+	return covers
 }
 
 // refMember returns the canonical glyph string of a ref naming a member, a glyph or a `plan:` handle whose body parses to a glyph that is not a self glyph.

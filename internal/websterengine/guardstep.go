@@ -154,7 +154,7 @@ func (g guardTests) holdsFilesAfter(plan *planparser.Plan, cards []planparser.Ca
 	}
 	for _, card := range cards {
 		for file := range files {
-			if slices.ContainsFunc(cardCovers(card), func(cover string) bool { return planparser.RefCovers(plan, cover, file) }) {
+			if slices.ContainsFunc(planparser.CardCovers(card), func(cover string) bool { return planparser.RefCovers(plan, cover, file) }) {
 				delete(files, file)
 			}
 		}
@@ -165,22 +165,6 @@ func (g guardTests) holdsFilesAfter(plan *planparser.Plan, cards []planparser.Ca
 		}
 	}
 	return len(files) > 0
-}
-
-// cardCovers returns the refs card removes or replaces: the old side of each Rename pair and each Delete ref.
-func cardCovers(card planparser.Card) []string {
-	var covers []string
-	for _, group := range card.TargetGroups {
-		switch group.Type {
-		case planparser.CardTypeDelete:
-			covers = append(covers, group.Refs...)
-		case planparser.CardTypeRename:
-			for _, pair := range group.Pairs {
-				covers = append(covers, pair.Old)
-			}
-		}
-	}
-	return covers
 }
 
 // cardCreatedRefs returns the refs card brings into existence: its Create targets and the new side of each Rename pair.
