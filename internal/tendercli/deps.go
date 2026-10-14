@@ -27,9 +27,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/tenderengine"
 )
 
-// hubDeps fills the engine's Deps for the hub location belongs to, with strand the caller's strand name.
+// HubDeps fills the engine's Deps for the hub location belongs to, with strand the caller's strand name.
 // Every task pair of the hub is a Pair, the prime excluded, and the pair slugs are returned beside the Deps.
-func hubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []string, error) {
+func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []string, error) {
 	geometry, err := hubgeom.PauseGeometry(location)
 	if err != nil {
 		return tenderengine.Deps{}, nil, err
