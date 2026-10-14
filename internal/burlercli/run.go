@@ -94,8 +94,8 @@ fixes — drives the round through the real shuttle substrate, and prints its
 result as a single JSON envelope.
 
 The round runs two sessions one after the other. A reviewer (role
-burler-review-chair) writes the review file. Once lyx has accepted the review,
-a fixer (role burler-fix-chair) fixes what the reviewer found. A review with no
+burler-review) writes the review file. Once lyx has accepted the review,
+a fixer (role burler-fix) fixes what the reviewer found. A review with no
 findings spawns no fixer: lyx writes the fixer report itself, and the envelope
 reports fixSkipped true. A reviewer that did not finish runs no fixer. The
 envelope reports each half's identity under review and fix.

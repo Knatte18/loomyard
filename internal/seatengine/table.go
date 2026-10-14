@@ -17,11 +17,17 @@ import (
 )
 
 const (
-	// RoleChair is the chair seat's name, and the role segment its strand's name carries after the table's prefix.
+	// RoleChair is the name the chair seat carried before the lead went unnamed; no seat carries it now.
 	RoleChair = "chair"
 	// RoleAdvisor is the stem of every advisor seat's name.
 	RoleAdvisor = "advisor"
 )
+
+// leadName is the name of the lead, the table's first seat.
+const leadName = ""
+
+// chairDirectiveBlock is the shipped block that tells the lead how to work with its advisors, which a table of more than one seat's lead stencil includes.
+const chairDirectiveBlock = "seat-directive-chair"
 
 // reservedMarkers are the marker names the seat engine fills itself, sorted.
 // A table or seat value may not use one of them.
@@ -50,13 +56,25 @@ func AdvisorName(n int) string {
 }
 
 // SeatRole returns the role segment of the strand name of the seat called seat, under the table's role prefix.
+// The lead has no name, so its role is the prefix alone.
 func SeatRole(prefix, seat string) string {
+	if seat == "" {
+		return prefix
+	}
 	return prefix + "-" + seat
+}
+
+// ValidateSeatName checks the name of a seat after the lead: non-empty and a valid agent-name role, so it starts with a letter and the role formed from it never reads as reed's numbered form of the lead's role.
+func ValidateSeatName(name string) error {
+	if name == "" {
+		return fmt.Errorf("the name is empty")
+	}
+	return agentname.ValidateRole(name)
 }
 
 // Seat is one agent of a step: its name, the stencil that opens it, its model choice, the files it reads and writes, its skills and its own marker values.
 type Seat struct {
-	// Name is RoleChair for the chair and AdvisorName(n) for an advisor.
+	// Name is empty for the lead, the table's first seat, and unique and valid under ValidateSeatName for every later seat.
 	Name string
 	// Stencil is the name of the stencil, read from the told stencils directory, that opens the seat.
 	Stencil string
@@ -71,12 +89,12 @@ type Seat struct {
 	Skills []string
 	// Values are the seat's own stencil marker values; a name may not be reserved and a value may not be blank.
 	Values map[string]string
-	// Gate is an advisor's own gate, empty for an ungated advisor; the chair's gate is the table's, so the chair seat sets none.
+	// Gate is an advisor's own gate, empty for an ungated advisor; the lead's gate is the table's, so the lead sets none.
 	Gate shuttleengine.GateSpec
 	// ForkSubagents authorizes the seat's session to spawn in-session fork subagents; the engine audits none.
 	ForkSubagents bool
 	// Required marks an advisor the step depends on: any end of its run that Accept does not accept ends the step, and its held turn end still notifies the parent.
-	// The chair is never Required.
+	// The lead is never Required.
 	Required bool
 	// Accept judges a Required advisor's terminal result once it ended done with its gate passed; an error ends the step.
 	// Only a Required advisor carries one.
@@ -101,18 +119,16 @@ type Table struct {
 	Values map[string]string
 	// Optional names the table values that may be empty; such a value renders as nothing wherever its marker stands.
 	Optional []string
-	// Seats are the table's seats in order: the chair once, and advisors named AdvisorName(1), AdvisorName(2) and so on.
+	// Seats are the table's seats in order: the lead, which carries no name, then the named advisors.
 	Seats []Seat
 }
 
-// Chair returns the seat named RoleChair, or the zero Seat when the table has none.
+// Chair returns the lead, the table's first seat, or the zero Seat when the table has none.
 func (t Table) Chair() Seat {
-	for _, seat := range t.Seats {
-		if seat.Name == RoleChair {
-			return seat
-		}
+	if len(t.Seats) == 0 {
+		return Seat{}
 	}
-	return Seat{}
+	return t.Seats[0]
 }
 
 // Outputs returns every seat's outputs, in table order.
@@ -125,11 +141,12 @@ func (t Table) Outputs() []string {
 }
 
 // Validate checks the table and returns the first violated rule, naming the seat it concerns.
-// The table has exactly one chair, and its other seats are named AdvisorName(1), AdvisorName(2) and so on in table order.
-// Every seat has an output, no two seats share an output path, and every advisor output is one of the chair's inputs.
+// The table has at least one seat; the first is the lead and carries no name, and every later seat has a name valid under ValidateSeatName and unique in the table.
+// Every seat has an output, no two seats share an output path, and every advisor output is one of the lead's inputs.
 // The role prefix and every seat's formed role are valid agent-name roles.
-// The chair seat carries no gate, since the chair's gate is the table's, and is neither Required nor given an Accept hook; Accept belongs to a Required advisor.
+// The lead carries no gate, since the lead's gate is the table's, and is neither Required nor given an Accept hook; Accept belongs to a Required advisor.
 // Every seat's stencil is readable from stencilsDir, as is every block it includes, and an included block includes nothing.
+// The lead's stencil of a table of more than one seat includes seat-directive-chair.
 // A table or seat value neither collides with a reserved marker nor is blank, except a table value named in Optional, which may be blank; an Optional name may not be a reserved marker.
 func (t Table) Validate(stencilsDir string) error {
 	if err := agentname.ValidateRole(t.RolePrefix); err != nil {
@@ -148,30 +165,34 @@ func (t Table) Validate(stencilsDir string) error {
 			return err
 		}
 	}
-	for _, seat := range t.Seats {
+	for index, seat := range t.Seats {
 		if err := validateSeatRoles(seat); err != nil {
 			return err
 		}
 		if err := validateValues(fmt.Sprintf("seat %q", seat.Name), seat.Values); err != nil {
 			return err
 		}
-		if err := validateStencil(stencilsDir, seat); err != nil {
+		blocks, err := validateStencil(stencilsDir, seat)
+		if err != nil {
 			return err
+		}
+		if index == 0 && len(t.Seats) > 1 && !slices.Contains(blocks, chairDirectiveBlock) {
+			return fmt.Errorf("seatengine: the lead's stencil %q does not include %s, which a table of more than one seat needs; include %s in the lead's stencil", seat.Stencil, chairDirectiveBlock, chairDirectiveBlock)
 		}
 	}
 	return nil
 }
 
-// validateSeatRoles checks the fields only some seats may carry: no gate, Required or Accept on the chair, and Accept only on a Required advisor.
+// validateSeatRoles checks the fields only some seats may carry: no gate, Required or Accept on the lead, and Accept only on a Required advisor.
 func validateSeatRoles(seat Seat) error {
-	if seat.Name == RoleChair {
+	if seat.Name == leadName {
 		switch {
 		case len(seat.Gate) > 0:
-			return fmt.Errorf("seatengine: seat %q: carries a gate, but the chair's gate is the table's", seat.Name)
+			return fmt.Errorf("seatengine: the lead carries a gate, but the lead's gate is the table's")
 		case seat.Required:
-			return fmt.Errorf("seatengine: seat %q: is marked required, but only an advisor can be", seat.Name)
+			return fmt.Errorf("seatengine: the lead is marked required, but only an advisor can be")
 		case seat.Accept != nil:
-			return fmt.Errorf("seatengine: seat %q: carries an accept hook, but only a required advisor can", seat.Name)
+			return fmt.Errorf("seatengine: the lead carries an accept hook, but only a required advisor can")
 		}
 		return nil
 	}
@@ -192,33 +213,30 @@ func (t Table) requiredValues() map[string]string {
 	return required
 }
 
-// validateNames checks the table has one chair and its other seats are named advisor-1, advisor-2 and so on in order.
+// validateNames checks the table has a seat, its first seat carries no name, and every later seat has a valid name no earlier seat has.
 func (t Table) validateNames() error {
-	chairs := 0
-	for _, seat := range t.Seats {
-		if seat.Name == RoleChair {
-			chairs++
-		}
+	if len(t.Seats) == 0 {
+		return fmt.Errorf("seatengine: the table has no seat; give it a lead as its first seat")
 	}
-	if chairs != 1 {
-		return fmt.Errorf("seatengine: want exactly one seat named %q, found %d", RoleChair, chairs)
+	if lead := t.Seats[0]; lead.Name != leadName {
+		return fmt.Errorf("seatengine: seat %q: the first seat is the lead and carries no name; drop its name", lead.Name)
 	}
-	advisors := 0
-	for _, seat := range t.Seats {
-		if seat.Name == RoleChair {
-			continue
+	seen := make(map[string]bool, len(t.Seats))
+	for _, seat := range t.Seats[1:] {
+		if err := ValidateSeatName(seat.Name); err != nil {
+			return fmt.Errorf("seatengine: seat %q: %w; give the seat a unique name that starts with a letter", seat.Name, err)
 		}
-		advisors++
-		if want := AdvisorName(advisors); seat.Name != want {
-			return fmt.Errorf("seatengine: seat %q: want the name %q, since advisors are named in table order from 1", seat.Name, want)
+		if seen[seat.Name] {
+			return fmt.Errorf("seatengine: seat %q: the name is already taken; give the seat a unique name that starts with a letter", seat.Name)
 		}
+		seen[seat.Name] = true
 	}
 	return nil
 }
 
-// validateOutputs checks every seat has an output, no output path is shared, and every advisor output is a chair input.
+// validateOutputs checks every seat has an output, no output path is shared, and every advisor output is a lead input.
 func (t Table) validateOutputs() error {
-	chairInputs := t.Chair().Inputs
+	leadInputs := t.Chair().Inputs
 	owners := make(map[string]string)
 	for _, seat := range t.Seats {
 		if len(seat.Outputs) == 0 {
@@ -229,8 +247,8 @@ func (t Table) validateOutputs() error {
 				return fmt.Errorf("seatengine: seat %q: output %q is also seat %q's output", seat.Name, output, owner)
 			}
 			owners[output] = seat.Name
-			if seat.Name != RoleChair && !slices.Contains(chairInputs, output) {
-				return fmt.Errorf("seatengine: seat %q: output %q is not among the chair's inputs", seat.Name, output)
+			if seat.Name != leadName && !slices.Contains(leadInputs, output) {
+				return fmt.Errorf("seatengine: seat %q: output %q is not among the lead's inputs", seat.Name, output)
 			}
 		}
 	}
@@ -262,27 +280,28 @@ func validateValues(owner string, values map[string]string) error {
 }
 
 // validateStencil checks seat's stencil and every block it includes are readable from stencilsDir, and that no block includes another.
-func validateStencil(stencilsDir string, seat Seat) error {
+// It returns the names of the blocks the stencil includes.
+func validateStencil(stencilsDir string, seat Seat) ([]string, error) {
 	body, err := stencilstore.Read(stencilsDir, seat.Stencil)
 	if err != nil {
-		return fmt.Errorf("seatengine: seat %q: %w", seat.Name, err)
+		return nil, fmt.Errorf("seatengine: seat %q: %w", seat.Name, err)
 	}
 	blocks, err := stencil.IncludeNames(body)
 	if err != nil {
-		return fmt.Errorf("seatengine: seat %q: stencil %q: %w", seat.Name, seat.Stencil, err)
+		return nil, fmt.Errorf("seatengine: seat %q: stencil %q: %w", seat.Name, seat.Stencil, err)
 	}
 	for _, block := range blocks {
 		blockBody, err := stencilstore.Read(stencilsDir, block)
 		if err != nil {
-			return fmt.Errorf("seatengine: seat %q: %w", seat.Name, err)
+			return nil, fmt.Errorf("seatengine: seat %q: %w", seat.Name, err)
 		}
 		nested, err := stencil.IncludeNames(blockBody)
 		if err != nil {
-			return fmt.Errorf("seatengine: seat %q: include %q: %w", seat.Name, block, err)
+			return nil, fmt.Errorf("seatengine: seat %q: include %q: %w", seat.Name, block, err)
 		}
 		if len(nested) > 0 {
-			return fmt.Errorf("seatengine: seat %q: include %q declares an include of its own; includes resolve one level deep", seat.Name, block)
+			return nil, fmt.Errorf("seatengine: seat %q: include %q declares an include of its own; includes resolve one level deep", seat.Name, block)
 		}
 	}
-	return nil
+	return blocks, nil
 }

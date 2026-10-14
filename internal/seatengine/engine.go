@@ -229,7 +229,7 @@ func (e *Engine) Run(table Table) (Result, error) {
 	ender := newStepEnder()
 	var advisors []*seatRun
 	for _, seat := range table.Seats {
-		if seat.Name == RoleChair {
+		if seat.Name == leadName {
 			continue
 		}
 		if ender.fired() {
@@ -275,7 +275,7 @@ func (e *Engine) startSeat(table Table, seat Seat, names map[string]string, work
 		return nil, err
 	}
 	spec := seatSpec(table, seat, prompt)
-	if seat.Name == RoleChair {
+	if seat.Name == leadName {
 		spec.HoldDeferral = work.outstanding
 	}
 	handle, err := e.shuttle.StartGated(spec, seatGate(table, seat))

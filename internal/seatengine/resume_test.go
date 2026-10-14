@@ -21,11 +21,11 @@ func TestEngine_ProbeAndResume_AttachToALiveChair(t *testing.T) {
 	table.Seats[1].Gate = advisorGate
 
 	// advisor-1 is live, advisor-2 is a done advisor kept by its pane that the probe removes, and advisor-3 is gone.
-	chair := shuttle.newHandle(role(RoleChair))
-	live := shuttle.newHandle(role(AdvisorName(1)))
-	kept := shuttle.newHandle(role(AdvisorName(2)))
-	shuttle.live = map[string]*fakeHandle{role(RoleChair): chair, role(AdvisorName(1)): live}
-	shuttle.removedOnProbe = map[string]*fakeHandle{role(AdvisorName(2)): kept}
+	chair := shuttle.newHandle(role(""))
+	live := shuttle.newHandle(role(advisorName(1)))
+	kept := shuttle.newHandle(role(advisorName(2)))
+	shuttle.live = map[string]*fakeHandle{role(""): chair, role(advisorName(1)): live}
+	shuttle.removedOnProbe = map[string]*fakeHandle{role(advisorName(2)): kept}
 	keptOutput := table.Seats[2].Outputs[0]
 	if err := os.WriteFile(keptOutput, []byte("advice"), 0o644); err != nil {
 		t.Fatalf("write the kept advisor's output: %v", err)
@@ -35,7 +35,7 @@ func TestEngine_ProbeAndResume_AttachToALiveChair(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Probe() = %v", err)
 	}
-	if found.Chair != Handle(chair) || len(found.Advisors) != 1 || found.Advisors[AdvisorName(1)] != Handle(live) {
+	if found.Chair != Handle(chair) || len(found.Advisors) != 1 || found.Advisors[advisorName(1)] != Handle(live) {
 		t.Fatalf("Probe() = %+v, want the live chair and advisor-1 only", found)
 	}
 	if kept.stopCount() != 1 || live.stopCount() != 0 || chair.stopCount() != 0 {
@@ -44,8 +44,8 @@ func TestEngine_ProbeAndResume_AttachToALiveChair(t *testing.T) {
 	if _, err := os.Stat(keptOutput); err != nil {
 		t.Errorf("the kept advisor's output after the probe: %v, want it left in place", err)
 	}
-	if len(shuttle.gates[role(RoleChair)]) != 1 || !reflect.DeepEqual(shuttle.gates[role(AdvisorName(1))], advisorGate) || len(shuttle.gates[role(AdvisorName(3))]) != 0 {
-		t.Errorf("probe gates: chair %d entries, advisor-1 %+v, advisor-3 %d, want the table's gate on the chair, the seat's own on advisor-1 and none on advisor-3", len(shuttle.gates[role(RoleChair)]), shuttle.gates[role(AdvisorName(1))], len(shuttle.gates[role(AdvisorName(3))]))
+	if len(shuttle.gates[role("")]) != 1 || !reflect.DeepEqual(shuttle.gates[role(advisorName(1))], advisorGate) || len(shuttle.gates[role(advisorName(3))]) != 0 {
+		t.Errorf("probe gates: chair %d entries, advisor-1 %+v, advisor-3 %d, want the table's gate on the chair, the seat's own on advisor-1 and none on advisor-3", len(shuttle.gates[role("")]), shuttle.gates[role(advisorName(1))], len(shuttle.gates[role(advisorName(3))]))
 	}
 
 	ended := make(chan engineEnd, 1)
@@ -85,8 +85,8 @@ func TestEngine_Probe_ChairNotLiveStopsTheLiveAdvisorsAndLeavesAFreshStart(t *te
 	shuttle := newFakeShuttle(t)
 	engine, geom := engineFixture(t, shuttle)
 	table := engineTable(geom.WorktreeRoot, 2)
-	advisor := shuttle.newHandle(role(AdvisorName(1)))
-	shuttle.live = map[string]*fakeHandle{role(AdvisorName(1)): advisor}
+	advisor := shuttle.newHandle(role(advisorName(1)))
+	shuttle.live = map[string]*fakeHandle{role(advisorName(1)): advisor}
 	output := table.Seats[1].Outputs[0]
 	if err := os.WriteFile(output, []byte("stale"), 0o644); err != nil {
 		t.Fatalf("write the advisor's output: %v", err)
@@ -110,9 +110,9 @@ func TestEngine_Probe_ChairNotLiveStopsTheLiveAdvisorsAndLeavesAFreshStart(t *te
 	}
 
 	// A strand of the earlier step still holding the chair's name is a start error of the fresh run that follows.
-	shuttle.strandNames = map[string]string{role(RoleChair): "ly:task:multi-chair-2"}
+	shuttle.strandNames = map[string]string{role(""): "ly:task:multi-2"}
 	_, err = engine.Run(table)
-	if err == nil || !strings.Contains(err.Error(), `lyx reed remove --name ly:task:multi-chair"`) {
+	if err == nil || !strings.Contains(err.Error(), `lyx reed remove --name ly:task:multi"`) {
 		t.Errorf("Run() after the probe = %v, want a start error naming the holder", err)
 	}
 }
@@ -141,8 +141,8 @@ func TestEngine_ProbeAndResume_Refusals(t *testing.T) {
 		{
 			name: "an advisor that cannot be stopped",
 			script: func(f *fakeShuttle) {
-				f.live = map[string]*fakeHandle{role(AdvisorName(1)): f.newHandle(role(AdvisorName(1)))}
-				f.live[role(AdvisorName(1))].stopErr = errors.New("pane gone")
+				f.live = map[string]*fakeHandle{role(advisorName(1)): f.newHandle(role(advisorName(1)))}
+				f.live[role(advisorName(1))].stopErr = errors.New("pane gone")
 			},
 			act:     func(e *Engine, _ *fakeShuttle, table Table) error { _, err := e.Probe(table); return err },
 			wantIs:  ErrSeatNotStopped,

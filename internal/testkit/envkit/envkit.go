@@ -251,7 +251,6 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				RolePrefix: "discussion",
 				Segment:    segmentcolor.Discussion,
 				Seats: []seatengine.Seat{{
-					Name:    seatengine.RoleChair,
 					Stencil: "loom-template-discussion-chair",
 					Outputs: []string{filepath.Join(dir, "discussion-output.md")},
 				}},

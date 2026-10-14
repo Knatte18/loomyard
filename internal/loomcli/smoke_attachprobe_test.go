@@ -178,7 +178,7 @@ func TestSmokeBurlerReview_AttachesToALiveReviewerInsteadOfRespawning(t *testing
 	live, err := runner.Start(shuttleengine.Spec{
 		Prompt:      "smoke: stand in for a live burler reviewer",
 		OutputFiles: []string{reviewPath},
-		Role:        "burler-review-chair",
+		Role:        "burler-review",
 		Round:       "1",
 		Timeout:     2 * time.Minute,
 	})

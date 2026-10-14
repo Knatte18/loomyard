@@ -640,7 +640,7 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 			if err != nil {
 				t.Fatalf("seatengine.Prompts() = %v; want nil", err)
 			}
-			chairPrompt := prompts[seatengine.RoleChair]
+			chairPrompt := prompts[""]
 			if !strings.Contains(chairPrompt, "## Your parent") || !strings.Contains(chairPrompt, parentName) {
 				t.Errorf("chair prompt does not name the parent %q under its parent directive", parentName)
 			}

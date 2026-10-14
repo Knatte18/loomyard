@@ -120,6 +120,9 @@ func TestDiscussionTable(t *testing.T) {
 				if !slices.Equal(chair.Skills, discussionSkills) || chair.Model == "" || chair.Effort != "high" || chair.Stencil != discussionChairStencil {
 					t.Errorf("chair skills/model/effort/stencil = %v/%q/%q/%q; want %v, a model, high and %q", chair.Skills, chair.Model, chair.Effort, chair.Stencil, discussionSkills, discussionChairStencil)
 				}
+				if role := seatengine.SeatRole(table.RolePrefix, chair.Name); chair.Name != "" || role != "discussion" || role != DiscussionWriterRole() {
+					t.Errorf("lead name %q and role %q; want no name and the role discussion", chair.Name, role)
+				}
 				for n := 1; n <= advisors; n++ {
 					advisor := table.Seats[n]
 					if advisor.Name != seatengine.AdvisorName(n) || advisor.Stencil != discussionAdvisorStencil || !slices.Equal(advisor.Outputs, []string{DiscussionAdvisorNotes(layout, n)}) || !slices.Equal(advisor.Skills, []string{"scribe:prose"}) || advisor.Model == "" {
@@ -143,20 +146,20 @@ func TestDiscussionTable(t *testing.T) {
 					chairWants = append(chairWants, "ly:"+discussionTableSlug+":discussion-"+seatengine.AdvisorName(n+1), notes)
 				}
 				for _, want := range chairWants {
-					if !strings.Contains(prompts[seatengine.RoleChair], want) {
+					if !strings.Contains(prompts[""], want) {
 						t.Errorf("chair prompt does not contain %q", want)
 					}
 				}
-				if strings.Contains(prompts[seatengine.RoleChair], modeRules(interactive)) {
+				if strings.Contains(prompts[""], modeRules(interactive)) {
 					t.Errorf("chair prompt carries the %v-mode text; want only the %v-mode text", interactive, !interactive)
 				}
 				advisorSentence := strings.TrimPrefix(discussionModeRules(true, true), modeRules(true))
-				if has, want := strings.Contains(prompts[seatengine.RoleChair], advisorSentence), !interactive && advisors > 0; has != want {
+				if has, want := strings.Contains(prompts[""], advisorSentence), !interactive && advisors > 0; has != want {
 					t.Errorf("chair prompt carries the advisor sentence = %v; want %v", has, want)
 				}
 				for n := 1; n <= advisors; n++ {
 					advisorPrompt := prompts[seatengine.AdvisorName(n)]
-					for _, want := range []string{"`ly:" + discussionTableSlug + ":discussion-chair`", DiscussionAdvisorNotes(layout, n), discussionTableSlug} {
+					for _, want := range []string{"`ly:" + discussionTableSlug + ":discussion`", DiscussionAdvisorNotes(layout, n), discussionTableSlug} {
 						if !strings.Contains(advisorPrompt, want) {
 							t.Errorf("advisor %d prompt does not contain %q", n, want)
 						}
@@ -167,7 +170,7 @@ func TestDiscussionTable(t *testing.T) {
 						t.Errorf("%s prompt carries an unrendered marker, a skill name, --auto or an ask-the-operator sentence:\n%s", seat, prompt)
 					}
 				}
-				chairPrompt := prompts[seatengine.RoleChair]
+				chairPrompt := prompts[""]
 				if strings.Contains(strings.ToLower(chairPrompt), "twill") {
 					t.Errorf("chair prompt carries twill text; want none")
 				}
@@ -229,7 +232,7 @@ func TestDiscussionTable(t *testing.T) {
 			t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)
 		}
 
-		chairPrompt := prompts[seatengine.RoleChair]
+		chairPrompt := prompts[""]
 		directiveAt, stepOneAt := strings.Index(chairPrompt, "- PATTERN-sample: a rule"), strings.Index(chairPrompt, "## Step 1")
 		if !strings.Contains(chairPrompt, "check every design decision against these") || directiveAt < 0 || stepOneAt < 0 || directiveAt > stepOneAt {
 			t.Errorf("chair prompt directive at %d, Step 1 at %d; want the designer directive before Step 1", directiveAt, stepOneAt)
@@ -254,7 +257,7 @@ func TestDiscussionTable(t *testing.T) {
 		if err != nil {
 			t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)
 		}
-		if !strings.Contains(prompts[seatengine.RoleChair], marker) {
+		if !strings.Contains(prompts[""], marker) {
 			t.Errorf("chair prompt does not contain the on-disk-edited marker %q; want the edited stencil, not the embedded default", marker)
 		}
 	})

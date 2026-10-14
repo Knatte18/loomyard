@@ -3,6 +3,7 @@
 package seatengine
 
 import (
+	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -301,15 +302,18 @@ func engineFixture(t *testing.T, shuttle *fakeShuttle) (*Engine, Geometry) {
 	return engine, geom
 }
 
-// engineTable returns a table of one chair and the given number of advisors, whose files live under dir.
+// advisorName returns the name of the n-th advisor seat of the test tables, counting from 1.
+func advisorName(n int) string { return fmt.Sprintf("advisor-%d", n) }
+
+// engineTable returns a table of an unnamed lead and the given number of advisors, whose files live under dir.
 func engineTable(dir string, advisors int) Table {
 	table := promptTable()
 	table.Gate = shuttleengine.GateSpec{{Name: "chair-gate", Attempts: 1}}
-	table.Seats = []Seat{{Name: RoleChair, Stencil: "seat-test-chair", Outputs: []string{filepath.Join(dir, "out.md")}}}
+	table.Seats = []Seat{{Stencil: "seat-test-chair", Outputs: []string{filepath.Join(dir, "out.md")}}}
 	for n := 1; n <= advisors; n++ {
-		output := filepath.Join(dir, AdvisorName(n)+".md")
+		output := filepath.Join(dir, advisorName(n)+".md")
 		table.Seats[0].Inputs = append(table.Seats[0].Inputs, output)
-		table.Seats = append(table.Seats, Seat{Name: AdvisorName(n), Stencil: "seat-test-advisor", Outputs: []string{output}})
+		table.Seats = append(table.Seats, Seat{Name: advisorName(n), Stencil: "seat-test-advisor", Outputs: []string{output}})
 	}
 	return table
 }

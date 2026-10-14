@@ -377,7 +377,7 @@ func newParentReviewConfig(location *lyxcwd.Location, reedCfg reedengine.Config,
 	supportLog := loomengine.DiscussionSupportLog(location)
 	waitBound := time.Duration(cfg.ParentReviewWaitMin) * time.Minute
 	var keepAlive time.Duration
-	lifetime, err := engine.PromptCacheLifetime(shuttleengine.Spec{Role: loomengine.DiscussionWriterRole(cfg)}, shuttleCfg)
+	lifetime, err := engine.PromptCacheLifetime(shuttleengine.Spec{Role: loomengine.DiscussionWriterRole()}, shuttleCfg)
 	if err != nil {
 		logger.Warn("parent review keep-alive off: the writer's prompt-cache lifetime cannot be resolved", "slug", slug, "error", err.Error())
 	} else {

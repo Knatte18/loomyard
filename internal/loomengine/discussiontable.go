@@ -108,7 +108,6 @@ func DiscussionTable(layout *lyxcwd.Location, stencilsDir string, cfg Config, re
 		})
 	}
 	chair := seatengine.Seat{
-		Name:    seatengine.RoleChair,
 		Stencil: discussionChairStencil,
 		Model:   chairModel,
 		Effort:  chairEffort,

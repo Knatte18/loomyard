@@ -106,7 +106,7 @@ func chairPrompt(t *testing.T, stencilsDir, parentName string, p *Profile, table
 	if err != nil {
 		t.Fatalf("seatengine.Prompts() = %v; want nil error", err)
 	}
-	return rendered[seatengine.RoleChair]
+	return rendered[""]
 }
 
 // combinedPrompt joins a half's chair prompt with every instruction file's Content, newline-separated.

@@ -48,9 +48,9 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 		t.Fatalf("strandNames() = %v", err)
 	}
 	wantNames := map[string]string{
-		RoleChair:      "ly:task:multi-chair",
-		AdvisorName(1): "ly:task:multi-advisor-1",
-		AdvisorName(2): "ly:task:multi-advisor-2",
+		"":             "ly:task:multi",
+		advisorName(1): "ly:task:multi-advisor-1",
+		advisorName(2): "ly:task:multi-advisor-2",
 	}
 	for seat, want := range wantNames {
 		if names[seat] != want {
@@ -78,8 +78,8 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 		if want := "ly:task:multi-advisor-1\nly:task:multi-advisor-2"; values["advisor_names"] != want {
 			t.Errorf("%s advisor_names = %q, want %q", label, values["advisor_names"], want)
 		}
-		if values["chair_name"] != "ly:task:multi-chair" {
-			t.Errorf("%s chair_name = %q, want the chair's strand name", label, values["chair_name"])
+		if values["chair_name"] != "ly:task:multi" {
+			t.Errorf("%s chair_name = %q, want the lead's strand name", label, values["chair_name"])
 		}
 	}
 
@@ -107,7 +107,7 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 	if strings.Contains(chairValues["parent_directive"], "never the way forward") {
 		t.Errorf("chair parent_directive = %q, want no operator ban for an interactive chair", chairValues["parent_directive"])
 	}
-	if !strings.Contains(advisorValues["parent_directive"], "`ly:task:multi-chair`") || !strings.Contains(advisorValues["parent_directive"], "never the way forward") {
+	if !strings.Contains(advisorValues["parent_directive"], "`ly:task:multi`") || !strings.Contains(advisorValues["parent_directive"], "never the way forward") {
 		t.Errorf("advisor parent_directive = %q, want the chair as parent and the operator ban", advisorValues["parent_directive"])
 	}
 
@@ -115,7 +115,7 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("composePrompt(chair) = %v", err)
 	}
-	for _, want := range []string{"Chair of ly:task:multi-chair.", "You are the chair of this step", "ly:task:multi-advisor-1\nly:task:multi-advisor-2", "/w/out.md"} {
+	for _, want := range []string{"Chair of ly:task:multi.", "You are the chair of this step", "ly:task:multi-advisor-1\nly:task:multi-advisor-2", "/w/out.md"} {
 		if !strings.Contains(chairPrompt, want) {
 			t.Errorf("chair prompt lacks %q:\n%s", want, chairPrompt)
 		}
@@ -124,7 +124,7 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("composePrompt(advisor) = %v", err)
 	}
-	for _, want := range []string{"Advisor ly:task:multi-advisor-1.", "You are an advisor in this step", "ly:task:multi-chair", "/w/a1.md"} {
+	for _, want := range []string{"Advisor ly:task:multi-advisor-1.", "You are an advisor in this step", "ly:task:multi\n", "/w/a1.md"} {
 		if !strings.Contains(advisorPrompt, want) {
 			t.Errorf("advisor prompt lacks %q:\n%s", want, advisorPrompt)
 		}
@@ -164,7 +164,14 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 	if got := seatSpec(oneSeat, oneSeat.Seats[0], "").Display; got.Window != "" || got.WindowSize != 1 {
 		t.Errorf("one-seat table Display = %+v, want an empty window group and size 1", got)
 	}
-	requiredSpec := seatSpec(table, Seat{Name: AdvisorName(1), Required: true}, "")
+	oneSeatNames, err := strandNames(geom, oneSeat)
+	if err != nil {
+		t.Fatalf("strandNames(one seat) = %v", err)
+	}
+	if got := seatSpec(oneSeat, oneSeat.Seats[0], "").Role; got != "multi" || oneSeatNames[""] != "ly:task:multi" {
+		t.Errorf("one-seat table role %q and strand %q, want the prefix alone", got, oneSeatNames[""])
+	}
+	requiredSpec := seatSpec(table, Seat{Name: advisorName(1), Required: true}, "")
 	if requiredSpec.QuietHold || !requiredSpec.KeepPane {
 		t.Errorf("required advisor spec QuietHold/KeepPane = %v/%v, want false/true", requiredSpec.QuietHold, requiredSpec.KeepPane)
 	}
@@ -178,7 +185,7 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 		"chair":   {chairSpec.Role, string(chairSpec.Segment), chairSpec.Timeout},
 		"advisor": {advisorSpec.Role, string(advisorSpec.Segment), advisorSpec.Timeout},
 	} {
-		wantRole := "multi-" + label
+		wantRole := "multi"
 		if label == "advisor" {
 			wantRole = "multi-advisor-1"
 		}
@@ -204,8 +211,8 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 			t.Fatalf("Prompts() holds %d prompts, want one per seat (%d)", len(prompts), len(noted.Seats))
 		}
 		for _, want := range []string{"Note [].", "Block note [].", "You are the chair of this step"} {
-			if !strings.Contains(prompts[RoleChair], want) {
-				t.Errorf("chair prompt lacks %q:\n%s", want, prompts[RoleChair])
+			if !strings.Contains(prompts[""], want) {
+				t.Errorf("lead prompt lacks %q:\n%s", want, prompts[""])
 			}
 		}
 
@@ -221,8 +228,8 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 		if err != nil {
 			t.Fatalf("composePrompt(advisor) = %v", err)
 		}
-		if plain[AdvisorName(1)] != wantAdvisor {
-			t.Errorf("Prompts()[advisor-1] = %q, want composePrompt's %q", plain[AdvisorName(1)], wantAdvisor)
+		if plain[advisorName(1)] != wantAdvisor {
+			t.Errorf("Prompts()[advisor-1] = %q, want composePrompt's %q", plain[advisorName(1)], wantAdvisor)
 		}
 
 		noted.Optional = nil

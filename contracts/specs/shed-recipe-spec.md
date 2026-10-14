@@ -52,9 +52,10 @@ A `Bouncer` row's optional `carry_over` key is a scalar naming the row's own rev
 It follows the same two rules as `commit_seam` and `skip_seam`: absent leaves the seam nil, and a present key naming a closure the `Env` does not carry is a construction error.
 The value is the segment name the entry is filed under, so a recipe test pins it equal to the row's `segment`.
 
-A `MultiLLM` row runs one chair and its advisors as seats.
+A `MultiLLM` row runs one lead and its advisors as seats.
 Its keys are `role`, `segment` and `seats`, and the optional `gates`, `timeout_min`, `interactive` and `tokens`.
-Each `seats` element carries `name`, `stencil`, `model` and `outputs`, and the optional `inputs`, `skills` and `values`; `inputs` and `outputs` are worktree-relative paths.
+Each `seats` element carries `stencil`, `model` and `outputs`, and the optional `inputs`, `skills` and `values`; `inputs` and `outputs` are worktree-relative paths.
+The first `seats` element is the lead and carries no `name`; every later element requires a unique `name` starting with a letter.
 A seat's `model` is a model-spec string resolved against `Env.Models`, the run-wide registry, and an unknown alias is a construction error naming the seat.
 The row drives `Env.Seats`, and a nil seam is a construction error.
 

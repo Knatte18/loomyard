@@ -211,7 +211,7 @@ func TestNew_DiscussionSeatsRunsTheWriterRowOnSeats(t *testing.T) {
 				return seatengine.Table{
 					RolePrefix: "discussion",
 					Segment:    segmentcolor.Discussion,
-					Seats:      []seatengine.Seat{{Name: seatengine.RoleChair, Stencil: "loom-template-discussion-chair", Outputs: []string{env.DecisionRecordPath, env.SupportLogPath}}},
+					Seats:      []seatengine.Seat{{Stencil: "loom-template-discussion-chair", Outputs: []string{env.DecisionRecordPath, env.SupportLogPath}}},
 				}, nil
 			}
 

@@ -65,7 +65,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 ## Agents and prompts
 
-- `PATTERN-agent-name` — Forming or parsing an agent name: only `internal/agentname`, formed once by reed; the spawning module owns its role names. — [background](pattern/PATTERN-agent-name.md)
+- `PATTERN-agent-name` — Forming an agent name: only `internal/agentname`, once by reed; the spawner owns the role prefix, config a later seat's suffix. — [background](pattern/PATTERN-agent-name.md)
 - `PATTERN-stencil-ownership` — Reading a prompt or spec: at call time via `internal/stencilstore` from a told directory, never embedded. — [background](pattern/PATTERN-stencil-ownership.md)
 - `PATTERN-producer-pointer-rule` — Writing an instruction file: it points at another producer's format contract and never duplicates or paraphrases it.
 - `PATTERN-friction-capture` — Halting a loom run or refusing in webster: Go writes a friction note, archived only once a reflection covers it. (test) — [background](pattern/PATTERN-friction-capture.md)

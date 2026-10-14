@@ -1,5 +1,5 @@
 // entries_multillm.go implements multiLLMEntry, the Constructor for the "MultiLLM" registry row:
-// it builds the seatengine.Table of one chair and its advisors from the row's Config.
+// it builds the seatengine.Table of one lead and its named advisors from the row's Config.
 
 package shedrecipe
 
@@ -103,14 +103,18 @@ func multiLLMEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, e
 
 // multiLLMSeat builds the i-th seat of a MultiLLM row from its "seats" element.
 // Inputs and outputs are resolved under env.WorktreeRoot, and the model spec against env.Models.
+// The first seat is the lead and takes no "name" key; every later seat requires one.
 func multiLLMSeat(i int, cfg Config, env Env) (seatengine.Seat, error) {
 	wrap := func(err error) error {
 		return fmt.Errorf("shedrecipe: MultiLLM: config key %q element %d: %w", "seats", i, err)
 	}
 
-	name, err := configString(cfg, "name", true)
+	name, err := configString(cfg, "name", i > 0)
 	if err != nil {
 		return seatengine.Seat{}, wrap(err)
+	}
+	if i == 0 && name != "" {
+		return seatengine.Seat{}, wrap(fmt.Errorf("the first seat is the lead and carries no name; drop its name"))
 	}
 	stencilName, err := configString(cfg, "stencil", true)
 	if err != nil {

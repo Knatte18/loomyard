@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
 // engineMinimalConfig maps an engine name to its minimal Config, covering only the engines that need one.
@@ -26,7 +27,8 @@ import (
 // DiscussionWrite, DiscussionSeats and PlanWrite are three of them: each wraps a producer behind its own commit decorator.
 // Its Spec or table arrives as an injected Env closure (DiscussionSpec, DiscussionTable or PlanSpec) rather than as recipe Config.
 // It therefore has no config keys of its own, and its seams are filled by envkit.FullEnv instead.
-func engineMinimalConfig(stencilName, rubricStencilName string) map[string]map[string]any {
+// leadStencilName names the MultiLLM lead's stencil, which includes seat-directive-chair.
+func engineMinimalConfig(stencilName, leadStencilName, rubricStencilName string) map[string]map[string]any {
 	return map[string]map[string]any{
 		"SingleLLM": {
 			"stencil":      stencilName,
@@ -51,8 +53,7 @@ func engineMinimalConfig(stencilName, rubricStencilName string) map[string]map[s
 			"segment": "plan",
 			"seats": []any{
 				map[string]any{
-					"name":    "chair",
-					"stencil": stencilName,
+					"stencil": leadStencilName,
 					"model":   "opus",
 					"inputs":  []string{"out/advisor.md"},
 					"outputs": []string{"out/chair.md"},
@@ -77,10 +78,13 @@ func TestBuild_EveryRegisteredEngineBuilds(t *testing.T) {
 
 	const singleLLMStencil = "singlellm-coverage"
 	const bouncerRubricStencil = "bouncer-coverage"
+	const multiLLMLeadStencil = "multillm-lead-coverage"
+	stencilkit.SeedInto(t, env.StencilsDir)
+	writeStencilFile(t, env.StencilsDir, multiLLMLeadStencil, `{{template "seat-directive-chair"}}`+"\n")
 	writeStencilFile(t, env.StencilsDir, singleLLMStencil, "Body text with no markers.\n")
 	writeStencilFile(t, env.StencilsDir, bouncerRubricStencil, "Rubric body with no markers.\n")
 
-	configByEngine := engineMinimalConfig(singleLLMStencil, bouncerRubricStencil)
+	configByEngine := engineMinimalConfig(singleLLMStencil, multiLLMLeadStencil, bouncerRubricStencil)
 	env.RowBouncerModels = map[string]shedadapters.BouncerModels{"Row-Bouncer": {}}
 
 	for _, name := range shedrecipe.Names() {

@@ -27,7 +27,7 @@ func withSeatTable(env *Env, output string) *int {
 		return seatengine.Table{
 			RolePrefix: "discussion",
 			Segment:    segmentcolor.Discussion,
-			Seats:      []seatengine.Seat{{Name: seatengine.RoleChair, Stencil: "loom-template-discussion-chair", Outputs: []string{output}}},
+			Seats:      []seatengine.Seat{{Stencil: "loom-template-discussion-chair", Outputs: []string{output}}},
 		}, nil
 	}
 	return &evaluations

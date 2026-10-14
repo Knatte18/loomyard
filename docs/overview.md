@@ -540,7 +540,7 @@ User-facing modules each get one `lyx <module>` namespace:
   The driver re-launches the loop once after a deployed `lyx`, and a loom-launched driver parks at a hand-back until `lyx loom start` resumes it.
   `internal/shedrun` is the sole declarer of the `shed` run-directory path segment (`_lyx/shed/<run-id>/` durable, `.lyx/shed/<run-id>/` ephemeral), the run-id vocabulary (including the default literal `self`), and the `seed.json` contract — the closed `recipe`/`driver` vocabularies and the sole `ReadSeed`/`WriteSeed`/`List` reader-writer, consumed by `loomcli`, `battencli`, and `shedcli` alike. See [PATTERN-shed-run-directory](../pattern/PATTERN-shed-run-directory.md).
   See the `internal/shedengine`, `internal/shedadapters`, `internal/shedcheck`, `internal/shedrecipe`, `internal/shedbuild`, `internal/shedverbs`, `internal/shedcli`, `internal/shedrun`, and `internal/loomrecipe` package documentation, and [the recipe format](../contracts/specs/shed-recipe-spec.md).
-- **burler** — one review+fix round: two fresh sessions, a reviewer and then a fixer, each the chair of its own one-seat table on the seats engine, no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
+- **burler** — one review+fix round: two fresh sessions, a reviewer and then a fixer, each the unnamed lead of its own one-seat table on the seats engine (strands `burler-review` and `burler-fix`), no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
   `loom.yaml`'s `discussion_fan` and `plan_fan` turn the lens fan on for Discussion-Review and Plan-Review, off by default.
   The reviewer writes the review, Go accepts it and records its digest, and only then does a fixer start; it validates and fixes the findings, disputing one only with evidence that its premise is false or that every fix makes the target worse, and fixing a real finding with its own change when the proposed one is wrong.
   Profile-driven: `{overlay, source}` fix-scope, tool-use; `loom.yaml`'s `review` and `fix` keys pick each seat's model per round.
@@ -629,8 +629,8 @@ internal/reed     the window to the world — overlay + strand bookkeeping +    
                   them, persists to .lyx/reed.json
 internal/shuttle  run ONE LLM agent in a strand via a swappable engine over    [builds on reed]    ✅
                   the file contract; Stop-hook completion
-seats             one step as a chair and its advisors, each in its own       [builds on shuttle] ✅
-                  strand, talking over the session message
+seats             one step as an unnamed lead and its named advisors, each     [builds on shuttle] ✅
+                  in its own strand, talking over the session message
 burler            one review+fix round: reviewer (+cluster) → fixer           [builds on seats] ✅
 shed              generic outer phase-FSM: walk one flat producer list,        [stdlib +           ✅
                   honoring resume/crash-recovery/pause at producer granularity  internal/state,lock

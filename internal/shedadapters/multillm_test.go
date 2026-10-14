@@ -3,6 +3,7 @@ package shedadapters
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -23,16 +24,17 @@ var _ SeatRunner = (*shedfake.SeatRunner)(nil)
 // liveChair is a non-nil Handle the fake seat runner hands back as a live chair; the producer never calls it.
 var liveChair seatengine.Handle = (*shuttleengine.Run)(nil)
 
-// multiLLMTable returns a chair with the given number of advisors, whose files live under dir.
+// multiLLMTable returns an unnamed lead with the given number of named advisors, whose files live under dir.
 func multiLLMTable(dir string, advisors int) seatengine.Table {
 	table := seatengine.Table{
 		RolePrefix: "multi",
-		Seats:      []seatengine.Seat{{Name: seatengine.RoleChair, Outputs: []string{filepath.Join(dir, "chair.md")}}},
+		Seats:      []seatengine.Seat{{Outputs: []string{filepath.Join(dir, "chair.md")}}},
 	}
 	for n := 1; n <= advisors; n++ {
-		output := filepath.Join(dir, seatengine.AdvisorName(n)+".md")
+		name := fmt.Sprintf("advisor-%d", n)
+		output := filepath.Join(dir, name+".md")
 		table.Seats[0].Inputs = append(table.Seats[0].Inputs, output)
-		table.Seats = append(table.Seats, seatengine.Seat{Name: seatengine.AdvisorName(n), Outputs: []string{output}})
+		table.Seats = append(table.Seats, seatengine.Seat{Name: name, Outputs: []string{output}})
 	}
 	return table
 }
