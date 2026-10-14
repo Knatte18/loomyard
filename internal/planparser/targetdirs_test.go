@@ -119,6 +119,45 @@ func TestCardTargetDirs(t *testing.T) {
 	}
 }
 
+func TestRefCovers(t *testing.T) {
+	t.Parallel()
+
+	plan := &planparser.Plan{Language: "go"}
+	tests := []struct {
+		name   string
+		cover  string
+		target string
+		want   bool
+	}{
+		{name: "member covers the same member through a handle", cover: "internal/a#Foo", target: "plan:internal/a#Foo", want: true},
+		{name: "member against another member of the package", cover: "internal/a#Foo", target: "internal/a#Bar"},
+		{name: "member against the file self glyph of its file", cover: "internal/a#Foo", target: "internal/a/a.go#"},
+		{name: "file self glyph covers the plain path of the file", cover: "internal/a/a.go#", target: "internal/a/a.go", want: true},
+		{name: "file self glyph covers a member glyph in that file unit", cover: "internal/a/a.go#", target: "internal/a/a.go#Run", want: true},
+		{name: "file self glyph covers a package-unit member glyph", cover: "internal/a/a.go#", target: "internal/a#Foo", want: true},
+		{name: "file self glyph covers a package-unit handle", cover: "internal/a/a.go#", target: "plan:internal/a#Foo", want: true},
+		{name: "file self glyph covers the package self glyph of its directory", cover: "internal/a/a.go#", target: "internal/a#", want: true},
+		{name: "file against another file of the same directory", cover: "internal/a/a.go#", target: "internal/a/b.go#"},
+		{name: "file against the plain directory path of its directory", cover: "internal/a/a.go#", target: "internal/a"},
+		{name: "test file covers the external test package member", cover: "internal/a/a_test.go#", target: "internal/a_test#TestRun", want: true},
+		{name: "directory path covers a file glyph under a subdirectory", cover: "internal/a", target: "internal/a/sub/s.go#", want: true},
+		{name: "directory path covers a package-unit member glyph of that directory", cover: "internal/a", target: "internal/a#Foo", want: true},
+		{name: "directory path against a file under a sibling sharing the prefix", cover: "internal/a", target: "internal/ab/x.go#"},
+		{name: "package self glyph covers a member glyph in its file", cover: "internal/a#", target: "internal/a/a.go#Run", want: true},
+		{name: "root directory covers every mapped target", cover: ".", target: "internal/a/a.go#Run", want: true},
+		{name: "unmappable handle as cover", cover: "plan:nohash", target: "internal/a#Foo"},
+		{name: "unmappable handle as target", cover: "internal/a", target: "plan:nohash"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := planparser.RefCovers(plan, tt.cover, tt.target); got != tt.want {
+				t.Errorf("RefCovers(%q, %q) = %v; want %v", tt.cover, tt.target, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRefFile(t *testing.T) {
 	t.Parallel()
 

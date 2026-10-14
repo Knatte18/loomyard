@@ -1,4 +1,4 @@
-// targetdirs.go holds CardTargetDirs and RefFile, the read-only mappings from a card's refs to the worktree directories and files they name.
+// targetdirs.go holds CardTargetDirs, RefFile, RefScope, RefCovers and CardCovers, the read-only mappings from a card's refs to the worktree directories and files they name.
 // It lives here so every ref-shape and glyph-to-path decision stays inside this package, per the Planparser Sole-Parser and Glyph Conversion Chokepoint invariants.
 
 package planparser
@@ -105,6 +105,83 @@ func RefScope(plan *Plan, ref string) (scope string, isFile bool, ok bool) {
 		unit = goPackageDir(unit)
 	}
 	return path.Clean(unit), false, true
+}
+
+// RefCovers reports whether cover, a Rename pair's old side or a Delete target, covers target, a ref an earlier card writes.
+// A cover naming a member, a glyph or `plan:` handle that is not a self glyph, covers a target naming the same member.
+// A cover naming a file covers a target in that same file, and a glyph or handle target whose package directory is the file's directory.
+// A cover naming a directory, a plain directory path or a package self glyph, covers a target whose directory lies at or under it.
+// A ref that maps to no unit neither covers nor is covered.
+// A nil plan reads as the default language.
+func RefCovers(plan *Plan, cover, target string) bool {
+	if plan == nil {
+		plan = &Plan{}
+	}
+	if member, ok := refMember(plan, cover); ok {
+		targetMember, targetOK := refMember(plan, target)
+		return targetOK && member == targetMember
+	}
+
+	coverScope, coverIsFile, ok := RefScope(plan, cover)
+	if !ok {
+		return false
+	}
+	targetScope, targetIsFile, ok := RefScope(plan, target)
+	if !ok {
+		return false
+	}
+
+	if coverScope == "." {
+		return true
+	}
+	if coverIsFile {
+		if targetIsFile {
+			return targetScope == coverScope
+		}
+		_, targetFromGlyph, _ := refUnit(plan, target)
+		return targetFromGlyph && targetScope == path.Dir(coverScope)
+	}
+
+	targetDir := targetScope
+	if targetIsFile {
+		targetDir = path.Dir(targetScope)
+	}
+	return targetDir == coverScope || strings.HasPrefix(targetDir, coverScope+"/")
+}
+
+// CardCovers returns the refs card removes or replaces: the Old side of each Rename pair and its Delete refs.
+// These are the covers RefCovers takes.
+func CardCovers(card Card) []string {
+	var covers []string
+	for _, group := range card.TargetGroups {
+		switch group.Type {
+		case CardTypeDelete:
+			covers = append(covers, group.Refs...)
+		case CardTypeRename:
+			for _, pair := range group.Pairs {
+				covers = append(covers, pair.Old)
+			}
+		}
+	}
+	return covers
+}
+
+// refMember returns the canonical glyph string of a ref naming a member, a glyph or a `plan:` handle whose body parses to a glyph that is not a self glyph.
+// ok is false for any other ref.
+func refMember(plan *Plan, ref string) (string, bool) {
+	body := ref
+	if b, handle := HandleBody(ref); handle {
+		body = b
+	}
+	lang, ok := planLanguage(plan)
+	if !ok {
+		return "", false
+	}
+	g, err := parseGlyph(lang, body)
+	if err != nil || g.IsSelf() {
+		return "", false
+	}
+	return g.String(), true
 }
 
 // targetDir maps one target ref to its directory and whether the ref names Go source.

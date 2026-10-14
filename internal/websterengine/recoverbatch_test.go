@@ -1095,7 +1095,9 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 		batch int
 		// setup seeds the state the decision is made over; nil leaves the batch unrecorded.
 		setup func(fx *recoverFixture)
-		check func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error)
+		// unreadable is a worktree-relative directory chmodded 0o000 after setup and restored at cleanup, skipping the row where permissions do not bind.
+		unreadable string
+		check      func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error)
 	}{
 		{
 			name: "no recorded batch state spawns fresh and records the card set",
@@ -1452,6 +1454,45 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "a marked guard test renders the same guard step the begin prompt carries",
+			setup: func(fx *recoverFixture) {
+				writeWorktreeFile(t, fx.Worktree, "go.mod", "module m\n")
+				writeWorktreeFile(t, fx.Worktree, "internal/g/g_test.go", guardSourceMarked)
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				requireSpawned(t, spawned, err)
+				want := "  - `lyx gate test --tags integration ./internal/g -- -run '^(TestG)$'`\n  - `lyx loom lint-comments`"
+				if !strings.Contains(fx.Engine.LastPrompt, want) {
+					t.Errorf("recovery prompt does not contain %q; got:\n%s", want, fx.Engine.LastPrompt)
+				}
+			},
+		},
+		{
+			name: "an unreadable worktree directory refuses before archiving the stale report or starting a strand",
+			setup: func(fx *recoverFixture) {
+				writeWorktreeFile(t, fx.Worktree, "go.mod", "module m\n")
+				writeWorktreeFile(t, fx.Worktree, "internal/locked/l.go", "package l\n")
+				writeWorktreeFile(t, fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"), "status: FAILED\nhead_sha: deadbeef\n")
+			},
+			unreadable: "internal/locked",
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if err == nil || spawned {
+					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, error %v; want a refusal", spawned, err)
+				}
+				for _, want := range []string{"internal/locked", "way forward: transient, re-run `lyx webster recover-batch 1`"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error %q lacks %q", err, want)
+					}
+				}
+				if fx.Engine.PrepareCalls != 0 {
+					t.Errorf("prepareCalls = %d; want no strand started", fx.Engine.PrepareCalls)
+				}
+				if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))); statErr != nil {
+					t.Errorf("the stale report is not in place: %v", statErr)
+				}
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -1460,6 +1501,11 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 			fx := newRecoverFixture(t)
 			if tc.setup != nil {
 				tc.setup(fx)
+			}
+			if tc.unreadable != "" {
+				locked := filepath.Join(fx.Worktree, filepath.FromSlash(tc.unreadable))
+				makeUnreadable(t, locked)
+				t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
 			}
 			batch := tc.batch
 			if batch == 0 {

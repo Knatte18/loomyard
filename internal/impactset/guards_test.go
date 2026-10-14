@@ -3,6 +3,7 @@
 package impactset
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -89,18 +90,22 @@ func TestFindGuardTests(t *testing.T) {
 			root := t.TempDir()
 			writeTestFile(t, root, "dir/p", "p_test.go", tt.file)
 
-			got, err := findGuardTests(root, []string{"dir/p"})
+			got, err := FindGuardTests(root, []string{"dir/p"})
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("findGuardTests() error = %v; want it to contain %q", err, tt.wantErr)
+					t.Fatalf("FindGuardTests() error = %v; want it to contain %q", err, tt.wantErr)
+				}
+				var scanErr *GuardScanError
+				if !errors.As(err, &scanErr) || scanErr.File != "dir/p/p_test.go" {
+					t.Errorf("FindGuardTests() error = %#v; want a *GuardScanError with File %q", err, "dir/p/p_test.go")
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("findGuardTests() error = %v; want nil", err)
+				t.Fatalf("FindGuardTests() error = %v; want nil", err)
 			}
 			if !slices.Equal(got["dir/p"], tt.want) {
-				t.Errorf("findGuardTests()[dir/p] = %v; want %v", got["dir/p"], tt.want)
+				t.Errorf("FindGuardTests()[dir/p] = %v; want %v", got["dir/p"], tt.want)
 			}
 		})
 	}

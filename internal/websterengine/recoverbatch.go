@@ -250,6 +250,12 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, err
 	}
 
+	// The guard scan reads the worktree before the first mutation, so a path it cannot read refuses with nothing changed.
+	guards, err := scanGuardTests(deps.Geom.WorktreeRoot)
+	if err != nil {
+		return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster recover-batch %d` once the path reads", err, number)
+	}
+
 	// Ensure reports dir exists so the recovery strand's report write succeeds.
 	if err := os.MkdirAll(deps.Geom.ReportsDir, 0o755); err != nil {
 		return nil, fmt.Errorf("webster: create reports dir %s: %w", deps.Geom.ReportsDir, err)
@@ -273,7 +279,10 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	}
 
 	notePath := friction.NotePath(deps.FrictionDir, batchName+"-recovery")
-	cardGates := renderCardGates(deps.Plan, batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Geom.WorktreeRoot)
+	cardGates, err := renderCardGates(deps.Plan, batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, guards)
+	if err != nil {
+		return nil, err
+	}
 	uncommittedPaths, err := uncommittedPathsBlock(deps)
 	if err != nil {
 		return nil, fmt.Errorf("webster: list the worktree's uncommitted paths for batch %s: %w; way forward: transient, re-run `lyx webster recover-batch %d`", batchName, err, number)

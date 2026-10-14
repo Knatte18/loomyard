@@ -128,6 +128,7 @@ A symbol no card in the plan touches needs no edge — its state never changes d
 | Custom | either | none — explicit escape hatch | as applicable |
 
 How cards group into execution batches is not a card property; `internal/batcher`'s package doc describes it.
+A card that renames or deletes what an earlier card targets never shares that card's batch.
 
 `ImpactSummary` is required for `Edit` and `Delete` only — a `Create` card has no existing callers to have a blast radius over, which is why this spec resolves the design doc's table in favour of the design doc's own prose rather than its table row, a drafting slip the doc's prose does not carry.
 
@@ -290,9 +291,9 @@ The Webster-Burler-Fix round gate instead runs a derived impacted-set command be
 The three tiers match this repo's own test-tier discipline — `internal/planparser`'s existing `Verify` fields are the V1 precedent this generalizes, not three tiers invented for this format:
 
 - **Tier 1 (per card, automatic, no author action).**
-  Implemented as the Go-derived per-card gate: `lyx gate test` over the card's own package directories, one step per module, then the comment line-break lint.
+  Implemented as the Go-derived per-card gate: `lyx gate test` over the card's own package directories, one step per module, then one guard step over the root module's `//lyx:guard` tests, then the comment line-break lint and the PATTERN headroom lint.
   A package directory inside a nested module is tested inside that module with `lyx gate test -C <module>` and module-relative paths.
-  The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it, and the batch gate or the plan-level verify catches that.
+  The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it unless the break is in a `//lyx:guard` test, and the batch gate or the plan-level verify catches that.
   Untagged tests are fast by construction, per the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn.
   Fully mechanical — no author enumerates a file list, which is what made V1-style `verify:` lists grow long in practice.
 - **Tier 2 (per batch for its own packages, plan-level for the whole suite).**

@@ -36,6 +36,20 @@ func batchSizes(batches []batcher.Batch) []int {
 	return sizes
 }
 
+// groupCard returns a card with the given number and target groups.
+func groupCard(number int, groups ...planparser.TargetGroup) planparser.Card {
+	return planparser.Card{Number: number, TargetGroups: groups}
+}
+
+// renameGroup returns a Rename group of one old -> new pair.
+func renameGroup(oldRef, newRef string) planparser.TargetGroup {
+	return planparser.TargetGroup{
+		Type:  planparser.CardTypeRename,
+		Refs:  []string{oldRef, newRef},
+		Pairs: []planparser.MovePair{{Old: oldRef, New: newRef}},
+	}
+}
+
 // TestCostBatchifier_Limits asserts the grouping and per-batch peak the cost batchifier returns for each hard limit and the tie rule.
 func TestCostBatchifier_Limits(t *testing.T) {
 	t.Parallel()
@@ -133,6 +147,82 @@ func TestCostBatchifier_Limits(t *testing.T) {
 			before:       1,
 			wantSizes:    []int{1, 1},
 			wantEstimate: []float64{42, 52},
+		},
+		{
+			name:   "a rename of a file that earlier cards create members in starts a new batch",
+			params: batcher.CostParams{Budget: unlimited, MaxCards: 5, Weights: costWeights},
+			cards: []planparser.Card{
+				groupCard(1, planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"plan:internal/a#Foo"}}),
+				groupCard(2, planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"plan:internal/a#Bar"}}),
+				groupCard(3, renameGroup("internal/a/a.go#", "internal/n/a.go#")),
+			},
+			wantSizes: []int{2, 1},
+		},
+		{
+			name:   "a delete of a member an earlier card creates starts a new batch",
+			params: batcher.CostParams{Budget: unlimited, MaxCards: 5, Weights: costWeights},
+			cards: []planparser.Card{
+				groupCard(1, planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"plan:internal/a#Foo"}}),
+				groupCard(2, planparser.TargetGroup{Type: planparser.CardTypeDelete, Refs: []string{"internal/a#Foo"}}),
+			},
+			wantSizes: []int{1, 1},
+		},
+		{
+			name:   "a rename of a member an earlier card creates starts a new batch",
+			params: batcher.CostParams{Budget: unlimited, MaxCards: 5, Weights: costWeights},
+			cards: []planparser.Card{
+				groupCard(1, planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"plan:internal/a#Foo"}}),
+				groupCard(2, renameGroup("internal/a#Foo", "plan:internal/a#Baz")),
+			},
+			wantSizes: []int{1, 1},
+		},
+		{
+			name:   "an edit of another member shares the batch",
+			params: batcher.CostParams{Budget: unlimited, MaxCards: 5, Weights: costWeights},
+			cards: []planparser.Card{
+				groupCard(1, planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"plan:internal/a#Foo"}}),
+				groupCard(2, planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"internal/a#Bar"}}),
+			},
+			wantSizes: []int{2},
+		},
+		{
+			name:   "a delete of a file an earlier card edits starts a new batch",
+			params: batcher.CostParams{Budget: unlimited, MaxCards: 5, Weights: costWeights},
+			cards: []planparser.Card{
+				groupCard(1, planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"internal/a/a.go#Run"}}),
+				groupCard(2, planparser.TargetGroup{Type: planparser.CardTypeDelete, Refs: []string{"internal/a/a.go#"}}),
+			},
+			wantSizes: []int{1, 1},
+		},
+		{
+			name:   "a card whose own rename covers its own edit forms no boundary",
+			params: batcher.CostParams{Budget: unlimited, MaxCards: 5, Weights: costWeights},
+			cards: []planparser.Card{
+				editCard(1, []string{"internal/b/b.go#"}),
+				groupCard(2,
+					planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"internal/a/a.go#Run"}},
+					renameGroup("internal/a/a.go#", "internal/n/a.go#"),
+				),
+			},
+			wantSizes: []int{2},
+		},
+		{
+			name:   "an unmappable handle neither covers nor is covered",
+			params: batcher.CostParams{Budget: unlimited, MaxCards: 5, Weights: costWeights},
+			cards: []planparser.Card{
+				groupCard(1, planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"plan:nohash"}}),
+				groupCard(2, planparser.TargetGroup{Type: planparser.CardTypeDelete, Refs: []string{"plan:nohash"}}),
+			},
+			wantSizes: []int{2},
+		},
+		{
+			name:   "a rename that covers nothing earlier shares the batch",
+			params: batcher.CostParams{Budget: unlimited, MaxCards: 5, Weights: costWeights},
+			cards: []planparser.Card{
+				editCard(1, []string{"internal/b/b.go#"}),
+				groupCard(2, renameGroup("internal/a/a.go#", "internal/n/a.go#")),
+			},
+			wantSizes: []int{2},
 		},
 	}
 	for _, tt := range tests {

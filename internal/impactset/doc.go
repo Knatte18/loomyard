@@ -21,6 +21,7 @@
 // Every top-level test marked `//lyx:guard` runs by name in its own package, even when that package is outside the set.
 // A repository-scanning test can fail on a change far from its package.
 // A marker is found by a static parse of every `_test.go` file under every tag.
+// The marker scan is exported as FindGuardTests, and webster's card gate runs it over its own walk of the root module.
 // A marker not directly above a top-level `func Test…` line, or in a file the `integration` tier never compiles, is an error naming the file and line.
 // A `//testtiming:keep` line between the marker and the func line does not displace the marker, since a test carrying both stacks them as contiguous directive lines.
 //

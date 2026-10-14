@@ -19,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planindex"
@@ -351,6 +352,23 @@ func TestBeginBatch_Refusals(t *testing.T) {
 			},
 			wantText: []string{"Geometry.Index"},
 		},
+		{
+			name: "an unreadable worktree directory names the path and the re-run, and writes no prompt",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				writeWorktreeFile(t, fx.Worktree, "go.mod", "module m\n")
+				writeWorktreeFile(t, fx.Worktree, "internal/locked/l.go", "package l\n")
+				locked := filepath.Join(fx.Worktree, "internal", "locked")
+				makeUnreadable(t, locked)
+				t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+			},
+			wantText: []string{"internal/locked", "way forward: transient, re-run `lyx webster begin-batch 1`"},
+			check: func(t *testing.T, fx *beginFixture) {
+				entries, err := os.ReadDir(fx.PromptDir)
+				if err != nil || len(entries) != 0 {
+					t.Errorf("prompts dir = %v, %v; want it empty", entries, err)
+				}
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -413,6 +431,10 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 		prepare func(t *testing.T, fx *beginFixture)
 		number  int
 		want    []string
+		// wantNot lists text the prompt must not contain.
+		wantNot []string
+		// check inspects the whole prompt, for an ordering no single phrase pins.
+		check func(t *testing.T, prompt string)
 	}{
 		{name: "batch 1 renders the first-batch sentinel", number: 1, want: []string{"none (first batch)"}},
 		{
@@ -461,6 +483,51 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 			number: 1,
 			want:   []string{"  - `lyx gate test ./internal/alpha`\n  - `lyx loom lint-comments`\n  - `lyx loom lint-pattern`"},
 		},
+		{
+			name: "a marked guard test ends each card's steps with the guard step before the lints",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				guardFixture(t, fx, guardSourceMarked, "internal/alpha/alpha.go#")
+			},
+			number: 1,
+			want:   []string{"  - `lyx gate test ./internal/alpha`\n  - `lyx gate test --tags integration ./internal/g -- -run '^(TestG)$'`\n  - `lyx loom lint-comments`"},
+		},
+		{
+			name: "a misplaced marker renders no guard step and names the file, and the begin succeeds",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				guardFixture(t, fx, guardSourceMisplaced, "internal/alpha/alpha.go#")
+			},
+			number:  1,
+			want:    []string{"internal/g/g_test.go"},
+			wantNot: []string{"-run '^("},
+		},
+		{
+			name: "a misplaced marker in a package the card targets adds the fix line after the error text",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				guardFixture(t, fx, guardSourceMisplaced, "internal/g/g.go#")
+				fx.Deps.Batches[0].Cards[0].SourcePath = "_lyx/plan/01-json-flag.md"
+			},
+			number: 1,
+			check: func(t *testing.T, prompt string) {
+				errorAt := strings.Index(prompt, "internal/g/g_test.go")
+				if errorAt < 0 || strings.LastIndex(prompt, "01-json-flag.md") < errorAt {
+					t.Errorf("prompt has no card pointer after the scan error text; got:\n%s", prompt)
+				}
+			},
+		},
+		{
+			name: "a guard step over the command limit names the limit and renders no guard step",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				var source strings.Builder
+				source.WriteString("package g\n")
+				for i := 0; i < 700; i++ {
+					fmt.Fprintf(&source, "\n//lyx:guard\nfunc TestGuardNumber%04d(t *testing.T) {}\n", i)
+				}
+				guardFixture(t, fx, source.String(), "internal/alpha/alpha.go#")
+			},
+			number:  1,
+			want:    []string{fmt.Sprintf("the %d-character command limit", impactset.MaxCommandLength)},
+			wantNot: []string{"-run '^("},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -486,8 +553,30 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 					t.Errorf("prompt file does not contain %q; got:\n%s", want, data)
 				}
 			}
+			for _, notWant := range tt.wantNot {
+				if strings.Contains(string(data), notWant) {
+					t.Errorf("prompt file contains %q; want none; got:\n%s", notWant, data)
+				}
+			}
+			if tt.check != nil {
+				tt.check(t, string(data))
+			}
 		})
 	}
+}
+
+const (
+	guardSourceMarked    = "package g\n\n//lyx:guard\nfunc TestG(t *testing.T) {}\n"
+	guardSourceMisplaced = "package g\n\n//lyx:guard\nfunc helper() {}\n"
+)
+
+// guardFixture gives the fixture's worktree a root go.mod, an internal/g package holding test source in g_test.go, an internal/alpha directory, and card 1 the Edit targets named.
+func guardFixture(t *testing.T, fx *beginFixture, testSource string, targets ...string) {
+	t.Helper()
+	writeWorktreeFile(t, fx.Worktree, "go.mod", "module m\n")
+	writeWorktreeFile(t, fx.Worktree, "internal/g/g_test.go", testSource)
+	writeWorktreeFile(t, fx.Worktree, "internal/alpha/alpha.go", "package alpha\n")
+	fx.Deps.Batches[0].Cards[0].TargetGroups = []planparser.TargetGroup{{Type: planparser.CardTypeEdit, Refs: targets}}
 }
 
 // TestBeginBatch_Record proves the batch record BeginBatch leaves: a first begin sets CurrentBatch,
