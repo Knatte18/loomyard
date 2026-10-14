@@ -515,7 +515,7 @@ func coveredByTarget(plan *planparser.Plan, lang glyph.Language, subject coverag
 func laterEditRegions(regions []editRegion, cardNumber int, file string, line int) []editRegion {
 	var holders []editRegion
 	for _, r := range regions {
-		if r.card.Number > cardNumber && r.file == file && (r.end == 0 || (r.start <= line && line <= r.end)) {
+		if r.card.Number > cardNumber && r.holds(file, line) {
 			holders = append(holders, r)
 		}
 	}

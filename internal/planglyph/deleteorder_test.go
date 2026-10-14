@@ -42,6 +42,8 @@ func TestLaterDeleteReferences(t *testing.T) {
 		language string
 		deleting planparser.Card
 		later    planparser.Card
+		// earlier are passed beside later, numbered before the deleting card.
+		earlier []planparser.Card
 		// extraFiles are written beside deleteOrderFixture.
 		extraFiles map[string]string
 		// wantRefs lists "<severity> <location>" for each expected finding, all attributed to the deleting card: "<file>:<line>" for a blocking one and "<file> at line <n>" for an informational one.
@@ -57,6 +59,29 @@ func TestLaterDeleteReferences(t *testing.T) {
 			name:     "the delete numbered after the editing card passes",
 			deleting: groupCard(2, "del", planparser.CardTypeDelete, "sub#Foo"),
 			later:    groupCard(1, "edit", planparser.CardTypeEdit, "sub#Bar"),
+		},
+		{
+			name: "a reference the deleting card's own Edit also covers is not reported",
+			deleting: planparser.Card{Number: 1, Slug: "del", TargetGroups: []planparser.TargetGroup{
+				{Type: planparser.CardTypeDelete, Refs: []string{"sub#Foo"}},
+				{Type: planparser.CardTypeEdit, Refs: []string{"sub#Bar"}},
+			}},
+			later: groupCard(2, "edit", planparser.CardTypeEdit, "sub/b.go#"),
+		},
+		{
+			name:     "a reference an earlier card's Edit also covers is not reported",
+			deleting: groupCard(2, "del", planparser.CardTypeDelete, "sub#Foo"),
+			later:    groupCard(3, "edit", planparser.CardTypeEdit, "sub#Bar"),
+			earlier:  []planparser.Card{groupCard(1, "rewrite", planparser.CardTypeEdit, "sub#Bar")},
+		},
+		{
+			name: "a reference only a later card's Edit covers is reported beside the deleting card's own Edit",
+			deleting: planparser.Card{Number: 1, Slug: "del", TargetGroups: []planparser.TargetGroup{
+				{Type: planparser.CardTypeDelete, Refs: []string{"sub#Foo"}},
+				{Type: planparser.CardTypeEdit, Refs: []string{"sub#Bar"}},
+			}},
+			later:    groupCard(2, "edit", planparser.CardTypeEdit, "other#Use", "sub/b.go#"),
+			wantRefs: []string{"blocking other/c.go:5"},
 		},
 		{
 			name:     "a reference outside the later card's member span is not searched",
@@ -190,7 +215,7 @@ func TestLaterDeleteReferences(t *testing.T) {
 			}
 			plan := &planparser.Plan{Language: tc.language}
 
-			got, err := LaterDeleteReferences(plan, []planparser.Card{tc.deleting}, []planparser.Card{tc.later}, root)
+			got, err := LaterDeleteReferences(plan, []planparser.Card{tc.deleting}, append([]planparser.Card{tc.later}, tc.earlier...), root)
 			if err != nil {
 				t.Fatalf("LaterDeleteReferences(...) returned error: %v", err)
 			}
