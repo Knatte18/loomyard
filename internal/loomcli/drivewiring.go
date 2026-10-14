@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/arbiterstop"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -127,8 +128,7 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (goDriverDeps, error) {
 		},
 		SettlePath: settlePath,
 		EscalationPending: func(producer string) (bool, error) {
-			_, pending, err := arbiterDeps.PendingEscalation(producer)
-			return pending, err
+			return arbiterstop.EscalationEligible(producer, arbiterDeps.Stop), nil
 		},
 		VerifyRecord: func() (battenshed.ChildPublishFailure, bool, error) {
 			record, found, err := verifytree.ReadPublishFailure(verifyPaths)

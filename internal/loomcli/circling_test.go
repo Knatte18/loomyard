@@ -224,6 +224,22 @@ func TestPerchHardCap(t *testing.T) {
 			wantHard:  4,
 			wantRaise: []string{"lyx config darn --set review_hard_max_bounces=<n>"},
 		},
+		{
+			name: "a local darn cap",
+			row:  loomshed.NameDarnBouncer,
+			seed: func(t *testing.T, loc *lyxcwd.Location) {
+				seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3")
+				localPath := configengine.LocalFile(loc.AnchorPath(), "darn")
+				if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+					t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(localPath), err)
+				}
+				if err := os.WriteFile(localPath, []byte("review_hard_max_bounces: 5\n"), 0o644); err != nil {
+					t.Fatalf("WriteFile(%q) = %v; want nil", localPath, err)
+				}
+			},
+			wantHard:  5,
+			wantRaise: []string{"lyx config darn --layer local --set review_hard_max_bounces=<n>", "lyx board upsert"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,9 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/arbiterstop"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -93,6 +96,8 @@ type arbiterFixture struct {
 	stopEnvelope     string
 	escalationBrief  string
 	escalationOpen   bool
+	escalationCause  shedadapters.EscalationCause
+	escalationErr    error
 	circlingPending  bool
 	verifyRecord     *battenshed.ChildPublishFailure
 	head             string
@@ -121,6 +126,7 @@ func newArbiterFixture(t *testing.T, producer string, state shedengine.State) *a
 			History:         []shedengine.HistoryEntry{{Producer: "Plan-Write", Outcome: shedengine.Done}, {Producer: "Plan-Bouncer", Outcome: shedengine.Done}},
 		},
 		stopEnvelope:     `{"ok":false,"kind":"","transient":""}`,
+		escalationCause:  shedadapters.EscalationCircling,
 		settings:         loomengine.ArbiterSettings{Model: "claude-resolved", Effort: "high", Version: "v1", Timeout: 30 * time.Minute, MaxSpawns: 3},
 		fake:             &arbiterFake{runGUID: "guid-1"},
 		interruptPolicy:  map[string]string{},
@@ -164,18 +170,23 @@ func (f *arbiterFixture) deps() arbiterDeps {
 		AttemptDir: f.attemptDir,
 		MarkerPath: f.markerPath(),
 		Producers:  producers,
-		PendingEscalation: func(string) (string, bool, error) {
-			return f.escalationBrief, f.escalationOpen, nil
+		Stop: arbiterstop.Readers{
+			PendingEscalation: func(string) (shedadapters.EscalationCause, string, bool, error) {
+				if f.escalationErr != nil {
+					return "", "", false, f.escalationErr
+				}
+				return f.escalationCause, f.escalationBrief, f.escalationOpen, nil
+			},
+			VerifyRecord: func() (battenshed.ChildPublishFailure, bool, error) {
+				if f.verifyRecord == nil {
+					return battenshed.ChildPublishFailure{}, false, nil
+				}
+				return *f.verifyRecord, true, nil
+			},
+			Head:            func() (string, error) { return f.head, nil },
+			InterruptPolicy: func(producer string) string { return f.interruptPolicy[producer] },
 		},
 		PendingCirclingDecision: func(string) (bool, error) { return f.circlingPending, nil },
-		VerifyRecord: func() (battenshed.ChildPublishFailure, bool, error) {
-			if f.verifyRecord == nil {
-				return battenshed.ChildPublishFailure{}, false, nil
-			}
-			return *f.verifyRecord, true, nil
-		},
-		Head:            func() (string, error) { return f.head, nil },
-		InterruptPolicy: func(producer string) string { return f.interruptPolicy[producer] },
 		Prompt: arbiterPromptInput{
 			Slug:               "operator-surface-task",
 			Worktree:           f.root,
@@ -278,6 +289,29 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 				f.escalationOpen = true
 				f.escalationBrief = filepath.Join(f.root, "round-2-escalation.md")
 			},
+		},
+		{
+			name: "awaiting at a hard-cap escalation", producer: "Plan-Bouncer", state: shedengine.StateAwaiting, wantBrief: true,
+			setup: func(f *arbiterFixture) {
+				f.escalationOpen = true
+				f.escalationCause = shedadapters.EscalationHardCap
+				f.escalationBrief = filepath.Join(f.root, "round-2-escalation.md")
+			},
+		},
+		{
+			name: "awaiting at a budget escalation refused", producer: "Plan-Bouncer", state: shedengine.StateAwaiting,
+			setup: func(f *arbiterFixture) {
+				f.escalationOpen = true
+				f.escalationCause = shedadapters.EscalationBudget
+			},
+			wantRefusal: "has cause \"budget\"", wantNoSpawn: true,
+		},
+		{
+			name: "awaiting with an unreadable escalation record refused", producer: "Plan-Bouncer", state: shedengine.StateAwaiting,
+			setup: func(f *arbiterFixture) {
+				f.escalationErr = fmt.Errorf("record: %w", shedadapters.ErrEscalationMalformed)
+			},
+			wantRefusal: "unreadable", wantNoSpawn: true,
 		},
 		{name: "busy refused", producer: "Plan-Write", state: shedengine.StateFailed, envelope: `{"kind":"busy"}`, wantRefusal: "an error of kind \"busy\"", wantNoSpawn: true},
 		{name: "ownership refused", producer: "Plan-Write", state: shedengine.StateFailed, envelope: `{"kind":"ownership"}`, wantRefusal: "an error of kind \"ownership\"", wantNoSpawn: true},

@@ -237,15 +237,18 @@ func MarkArbiterApplied(dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("loom: create arbiter attempt directory: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, arbiterAppliedFileName), nil, 0o644); err != nil {
+	if err := os.WriteFile(ArbiterAppliedPath(dir), nil, 0o644); err != nil {
 		return fmt.Errorf("loom: write arbiter applied mark: %w", err)
 	}
 	return nil
 }
 
+// ArbiterAppliedPath names the applied mark of the attempt directory dir.
+func ArbiterAppliedPath(dir string) string { return filepath.Join(dir, arbiterAppliedFileName) }
+
 // ArbiterApplied reports whether the attempt directory dir carries the applied mark.
 func ArbiterApplied(dir string) (bool, error) {
-	_, err := os.Stat(filepath.Join(dir, arbiterAppliedFileName))
+	_, err := os.Stat(ArbiterAppliedPath(dir))
 	if errors.Is(err, fs.ErrNotExist) {
 		return false, nil
 	}

@@ -14,18 +14,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/arbiterstop"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // The causes an envelope carries when the verb, not the agent, made the verdict hand-on.
@@ -83,16 +80,10 @@ type arbiterDeps struct {
 	MarkerPath string
 	// Producers is the run's producer list, for goto checks.
 	Producers []shedengine.ProducerDef
-	// PendingEscalation reports, at a Bouncer row, whether the latest round awaits a decision on its escalation and the path of its brief; false elsewhere.
-	PendingEscalation func(producer string) (briefPath string, pending bool, err error)
+	// Stop holds the reads that decide whether the stop is eligible.
+	Stop arbiterstop.Readers
 	// PendingCirclingDecision reports, at a Bouncer row, whether a circling decision is recorded and unsettled; false elsewhere.
 	PendingCirclingDecision func(producer string) (bool, error)
-	// VerifyRecord returns the verify-failure record and whether one exists.
-	VerifyRecord func() (record battenshed.ChildPublishFailure, found bool, err error)
-	// Head returns the pair's HEAD commit.
-	Head func() (string, error)
-	// InterruptPolicy returns the interrupt policy of a row.
-	InterruptPolicy func(producer string) string
 	// Prompt holds the prompt inputs that do not vary per attempt; StencilsDir is where the arbiter stencil is read from.
 	Prompt      arbiterPromptInput
 	StencilsDir string
@@ -322,39 +313,7 @@ func (c *arbiterCall) recordStartedArbiter(dir string, attempt loomengine.Arbite
 // checkEligible refuses a stop the arbiter may not settle.
 // It returns the path of the review escalation brief at a Bouncer stop, and empty elsewhere.
 func (c *arbiterCall) checkEligible() (briefPath string, err error) {
-	stop := arbiterStop{
-		State:           c.status.State,
-		Producer:        c.status.CurrentProducer,
-		Kind:            c.stop.Kind,
-		Transient:       c.stop.Transient,
-		InterruptPolicy: c.deps.InterruptPolicy(c.status.CurrentProducer),
-	}
-	if c.status.State == shedengine.StateAwaiting {
-		briefPath, stop.EscalationPending, err = c.deps.PendingEscalation(c.status.CurrentProducer)
-		if err != nil {
-			return "", arbiterRefusal("the review escalation at %s: %v", c.status.CurrentProducer, err)
-		}
-	}
-	if c.status.State == shedengine.StateBlocked && (c.status.CurrentProducer == loomshed.NameMergeIn || c.status.CurrentProducer == loomshed.NamePublish) {
-		record, found, err := c.deps.VerifyRecord()
-		if err != nil {
-			return "", arbiterRefusal("the verify failure record: %v", err)
-		}
-		if found && record.Target != "" {
-			head, err := c.deps.Head()
-			if err != nil {
-				return "", arbiterRefusal("the pair's HEAD: %v", err)
-			}
-			stop.VerifyHaltNamesTarget = battenshed.RecordMatchesHalt(record, head, c.status, []string{loomshed.NameMergeIn, loomshed.NamePublish})
-		}
-	}
-	if err := arbiterEligibility(stop); err != nil {
-		return "", err
-	}
-	if !stop.EscalationPending {
-		briefPath = ""
-	}
-	return briefPath, nil
+	return arbiterstop.Check(c.status, c.stop.Kind, c.stop.Transient, c.deps.Stop)
 }
 
 // concludeWait concludes attempt after a wait ended with result and waitErr.
@@ -548,7 +507,6 @@ func (c *loomCLI) arbiterDepsFor() (arbiterDeps, error) {
 		}
 		return filepath.Join(reviewsDir, subdir), true, nil
 	}
-	verifyPaths := verifytree.NewPaths(location.WorktreePath(), verifytree.Dir(location.AnchorPath()))
 	return arbiterDeps{
 		ReadStatus:  circlingStatusReader(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath),
 		Settings:    settings,
@@ -557,14 +515,7 @@ func (c *loomCLI) arbiterDepsFor() (arbiterDeps, error) {
 		MarkerPath:  shedrun.ArbiterMarker(location, c.runID),
 		Producers:   c.routing.Producers,
 		StencilsDir: c.runDeps.Geom.StencilsDir,
-		PendingEscalation: func(producer string) (string, bool, error) {
-			runDir, isBouncer, err := bouncerRunDir(producer)
-			if err != nil || !isBouncer {
-				return "", false, err
-			}
-			_, briefPath, pending, err := shedadapters.PendingEscalation(runDir)
-			return briefPath, pending, err
-		},
+		Stop:        arbiterstop.NewReaders(location),
 		PendingCirclingDecision: func(producer string) (bool, error) {
 			runDir, isBouncer, err := bouncerRunDir(producer)
 			if err != nil || !isBouncer {
@@ -572,21 +523,6 @@ func (c *loomCLI) arbiterDepsFor() (arbiterDeps, error) {
 			}
 			return shedadapters.PendingCirclingDecision(runDir)
 		},
-		VerifyRecord: func() (battenshed.ChildPublishFailure, bool, error) {
-			record, found, err := verifytree.ReadPublishFailure(verifyPaths)
-			if err != nil || !found {
-				return battenshed.ChildPublishFailure{}, false, err
-			}
-			return battenshed.ChildPublishFailure{Row: record.Row, Head: record.Head, Target: record.Target, WrittenAt: record.WrittenAt}, true, nil
-		},
-		Head: func() (string, error) {
-			fab, err := fabricengine.Open(location)
-			if err != nil {
-				return "", err
-			}
-			return fab.HeadSHA()
-		},
-		InterruptPolicy: loomshed.InterruptPolicyFor,
 		Prompt: arbiterPromptInput{
 			Slug:               seedSlug(location.WorktreeName),
 			Worktree:           location.WorktreePath(),

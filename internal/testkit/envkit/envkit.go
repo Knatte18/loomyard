@@ -81,6 +81,7 @@ var nilLegal = map[string]bool{
 	"InnerRun.PairDir":                                 true,
 	"InnerRun.ChildDriverLockHeld":                     true,
 	"InnerRun.TacklerInFlight":                         true,
+	"InnerRun.ArbiterStop":                             true,
 	"InnerRun.GoVerifyRetrySpent":                      true,
 	"InnerRun.ChildBuildChanged":                       true,
 	"InnerRun.ChildDirtyPaths":                         true,

@@ -1,18 +1,19 @@
 // config.go — configuration for the loom module.
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint, review_max_bounces or review_hard_max_bounces below 1, rejects a discussion_max_bounces, plan_max_bounces, webster_max_bounces, merge_max_bounces or any per-perch hard cap below 0, rejects a perch whose resolved hard cap is below its resolved budget, validates every entry of fan_review, and resolves each non-empty discussion_fan and plan_fan through burlerengine.ResolveFan,
+// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_hard_max_bounces below 1, rejects a review_max_bounces, discussion_max_bounces, plan_max_bounces, webster_max_bounces or merge_max_bounces below 0 (0 giving zero rounds, null taking review_max_bounces) or any per-perch hard cap below 0, rejects a perch whose resolved hard cap is below its resolved budget, validates every entry of fan_review, and resolves each non-empty discussion_fan and plan_fan through burlerengine.ResolveFan,
 // so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
 // step_idle_timeout_min is the minutes a --until-stop step may show no activity before the loop kills it; a value below 1 is raised to 1 with one Warn and never refused.
 // discussion_fan and plan_fan each name a fan from burler.yaml and turn the lens fan on for Discussion-Review and Plan-Review; empty, the default, runs that segment solo.
 // fan_review is the reviewer model-spec list of a fanned segment, and the forks' model too, since forks run on the reviewer session's model.
 // There is no webster_fan key: Webster-Review always runs solo.
-// discussion_max_bounces, plan_max_bounces and webster_max_bounces set one perch's bounce budget, and 0 takes review_max_bounces;
+// discussion_max_bounces, plan_max_bounces and webster_max_bounces set one perch's bounce budget, null takes review_max_bounces and 0 gives the perch zero rounds, its Bouncer settling approved at once;
 // review_hard_max_bounces is the round number at or past which no perch continues a round, refused below 1, and discussion_hard_max_bounces, plan_hard_max_bounces, webster_hard_max_bounces and merge_hard_max_bounces set one perch's own, where 0 takes review_hard_max_bounces and a negative value is refused;
 // a perch whose resolved hard cap is below its resolved budget is refused too, and every one of these refusals names the command that changes the key in the layer its value comes from.
 // discussion_auto_accept, plan_auto_accept and webster_auto_accept make that perch accept a harvested round at a spent budget instead of running the soft-cap rule.
 // merge_max_bounces, merge_hard_max_bounces and merge_auto_accept do the same for the Merge-Review perch, which sends a round whose ledger holds an open BLOCKING finding to the soft-cap rule instead of accepting it;
-// skip_merge_review skips only that review, and Merge-In, the parent lock and the reroute on a moved parent still run.
+// merge_max_bounces: 0 skips only that review, and Merge-In, the parent lock and the reroute on a moved parent still run.
+// skip_merge_review is retired: MigrateConfig rewrites it onto merge_max_bounces.
 // discussion_producer selects the Discussion-Write row's producer and must be single, seats or twill.
 // plan_producer selects the Plan-Write row's producer, single or twill, and an empty value reads as single.
 // discussion_advisors lists the seats producer's advisor model-specs; every entry is resolved through the model registry at load, whatever discussion_producer holds, and an unset list loads as no advisors.
@@ -32,6 +33,7 @@
 package loomengine
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -43,6 +45,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
@@ -455,11 +458,11 @@ type Config struct {
 	ReviewHardMaxBounces     int `yaml:"review_hard_max_bounces"`
 
 	// Each perch's bounce budget, hard cap and auto-accept flag.
-	// A budget of 0 takes ReviewMaxBounces and a hard cap of 0 takes ReviewHardMaxBounces;
+	// A nil budget takes ReviewMaxBounces and a budget of 0 runs no review round for the perch; a hard cap of 0 takes ReviewHardMaxBounces;
 	// a flag true makes the perch accept a harvested round at a spent budget instead of running the soft-cap rule.
-	DiscussionMaxBounces     int  `yaml:"discussion_max_bounces"`
-	PlanMaxBounces           int  `yaml:"plan_max_bounces"`
-	WebsterMaxBounces        int  `yaml:"webster_max_bounces"`
+	DiscussionMaxBounces     *int `yaml:"discussion_max_bounces"`
+	PlanMaxBounces           *int `yaml:"plan_max_bounces"`
+	WebsterMaxBounces        *int `yaml:"webster_max_bounces"`
 	DiscussionHardMaxBounces int  `yaml:"discussion_hard_max_bounces"`
 	PlanHardMaxBounces       int  `yaml:"plan_hard_max_bounces"`
 	WebsterHardMaxBounces    int  `yaml:"webster_hard_max_bounces"`
@@ -467,12 +470,11 @@ type Config struct {
 	PlanAutoAccept           bool `yaml:"plan_auto_accept"`
 	WebsterAutoAccept        bool `yaml:"webster_auto_accept"`
 
-	// The Merge-Review perch's budget, hard cap and auto-accept flag, and the switch that skips only the review.
-	// A budget of 0 takes ReviewMaxBounces and a hard cap of 0 takes ReviewHardMaxBounces.
-	MergeMaxBounces     int  `yaml:"merge_max_bounces"`
+	// The Merge-Review perch's budget, hard cap and auto-accept flag.
+	// A nil budget takes ReviewMaxBounces and a budget of 0 runs no merge review round; a hard cap of 0 takes ReviewHardMaxBounces.
+	MergeMaxBounces     *int `yaml:"merge_max_bounces"`
 	MergeHardMaxBounces int  `yaml:"merge_hard_max_bounces"`
 	MergeAutoAccept     bool `yaml:"merge_auto_accept"`
-	SkipMergeReview     bool `yaml:"skip_merge_review"`
 }
 
 // ModelSpecList is a model-spec key's value: one model-spec for every round, or a list of model-specs, one per round, whose last entry serves every later round.
@@ -520,79 +522,69 @@ func ConfigOpenMaps() []string {
 
 // ConfigSpec returns loom's layered-load spec.
 // Only the keys that can switch off or hollow a review or approval gate are barred from the local layer.
+// The budget, hard-cap and auto-accept keys come from reviewbudget: a budget of 0 is the per-run off switch and no guard, while the auto-accept keys are guards.
 // The agent's approve at PR-Gate lands on the parent with no later gate, so a weaker alignment model, a re-opened auto-landing (alignment_pr_approve) or a local skip_alignment: false under a hub true hollows the approval gate;
 // a shorter alignment_timeout_min only routes a review to the parent.
 func ConfigSpec() configengine.Spec {
 	none := configengine.CategoryNone
 	guard := configengine.CategoryGuard
-	return configengine.Spec{
+	spec := configengine.Spec{
 		Name:     "loom",
 		Template: []byte(ConfigTemplate()),
 		OpenMaps: ConfigOpenMaps(),
 		Categories: map[string]configengine.Category{
-			"discussion":                  none,
-			"discussion_timeout_min":      none,
-			"discussion_interactive":      none,
-			"discussion_producer":         guard,
-			"discussion_advisors":         none,
-			"plan":                        none,
-			"plan_timeout_min":            none,
-			"plan_producer":               guard,
-			"review":                      none,
-			"fix":                         none,
-			"discussion_review":           none,
-			"discussion_fix":              none,
-			"plan_review":                 none,
-			"plan_fix":                    none,
-			"webster_review":              none,
-			"webster_fix":                 none,
-			"discussion_fan":              guard,
-			"plan_fan":                    guard,
-			"fan_review":                  none,
-			"judge":                       none,
-			"seed":                        none,
-			"discussion_judge":            none,
-			"plan_judge":                  none,
-			"webster_judge":               none,
-			"discussion_seed":             none,
-			"plan_seed":                   none,
-			"webster_seed":                none,
-			"rework":                      none,
-			"review_timeout_min":          none,
-			"friction":                    none,
-			"friction_timeout_min":        none,
-			"driver":                      none,
-			"arbiter":                     none,
-			"arbiter_timeout_min":         none,
-			"arbiter_max_spawns":          none,
-			"driver_kind":                 none,
-			"tackler":                     none,
-			"tackler_timeout_min":         none,
-			"tackler_max_spawns":          none,
-			"alignment":                   guard,
-			"alignment_timeout_min":       none,
-			"skip_alignment":              guard,
-			"alignment_pr_approve":        guard,
-			"parent_review_wait_min":      guard,
-			"step_idle_timeout_min":       none,
-			"review_circling_checkpoint":  none,
-			"review_max_bounces":          none,
-			"review_hard_max_bounces":     none,
-			"discussion_max_bounces":      none,
-			"plan_max_bounces":            none,
-			"webster_max_bounces":         none,
-			"discussion_hard_max_bounces": none,
-			"plan_hard_max_bounces":       none,
-			"webster_hard_max_bounces":    none,
-			"discussion_auto_accept":      guard,
-			"plan_auto_accept":            guard,
-			"webster_auto_accept":         guard,
-			"merge_max_bounces":           none,
-			"merge_hard_max_bounces":      none,
-			"merge_auto_accept":           guard,
-			"skip_merge_review":           guard,
+			"discussion":                 none,
+			"discussion_timeout_min":     none,
+			"discussion_interactive":     none,
+			"discussion_producer":        guard,
+			"discussion_advisors":        none,
+			"plan":                       none,
+			"plan_timeout_min":           none,
+			"plan_producer":              guard,
+			"review":                     none,
+			"fix":                        none,
+			"discussion_review":          none,
+			"discussion_fix":             none,
+			"plan_review":                none,
+			"plan_fix":                   none,
+			"webster_review":             none,
+			"webster_fix":                none,
+			"discussion_fan":             guard,
+			"plan_fan":                   guard,
+			"fan_review":                 none,
+			"judge":                      none,
+			"seed":                       none,
+			"discussion_judge":           none,
+			"plan_judge":                 none,
+			"webster_judge":              none,
+			"discussion_seed":            none,
+			"plan_seed":                  none,
+			"webster_seed":               none,
+			"rework":                     none,
+			"review_timeout_min":         none,
+			"friction":                   none,
+			"friction_timeout_min":       none,
+			"driver":                     none,
+			"arbiter":                    none,
+			"arbiter_timeout_min":        none,
+			"arbiter_max_spawns":         none,
+			"driver_kind":                none,
+			"tackler":                    none,
+			"tackler_timeout_min":        none,
+			"tackler_max_spawns":         none,
+			"alignment":                  guard,
+			"alignment_timeout_min":      none,
+			"skip_alignment":             guard,
+			"alignment_pr_approve":       guard,
+			"parent_review_wait_min":     guard,
+			"step_idle_timeout_min":      none,
+			"review_circling_checkpoint": none,
 		},
 	}
+	for key, category := range reviewbudget.Categories(reviewPerchNames()) {
+		spec.Categories[key] = category
+	}
+	return spec
 }
 
 // segmentModelList is one per-segment reviewer or fixer model-spec list with the loom.yaml key it came from.
@@ -698,7 +690,10 @@ func validateFanKeys(dirs configengine.Dirs, cfg Config) error {
 	return nil
 }
 
-// MigrateConfig raises a below-floor or null step_idle_timeout_min in a loom.yaml document to its floor, for lyx config reconcile, and returns the rewritten bytes with one line describing the rewrite.
+// MigrateConfig raises a below-floor or null step_idle_timeout_min in a loom.yaml document to its floor, and retires skip_merge_review, for lyx config reconcile, and returns the rewritten bytes with one line per rewrite.
+// A document holding skip_merge_review was written under the old schema, where a per-perch budget of 0 meant "take review_max_bounces":
+// each of the four per-perch budgets that is the integer 0 becomes null, skip_merge_review true becomes merge_max_bounces: 0, and the key is removed.
+// A document without skip_merge_review keeps every budget as written, since its 0 already means zero rounds.
 // Everything else is carried through with its comments;
 // the loader never calls it.
 // A document that does not parse returns an error marked configengine.ErrInvalid.
@@ -707,10 +702,87 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	if err != nil {
 		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
 	}
-	if line == "" {
-		return rewritten, nil, nil
+	var lines []string
+	if line != "" {
+		lines = append(lines, line)
 	}
-	return rewritten, []string{line}, nil
+
+	rewritten, retired, err := retireSkipMergeReview(rewritten)
+	if err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
+	}
+	lines = append(lines, retired...)
+	return rewritten, lines, nil
+}
+
+// retireSkipMergeReview rewrites a document holding the retired skip_merge_review key onto the zero-round budgets and returns the rewritten bytes with one line per rewrite.
+// A document without the key comes back unchanged.
+func retireSkipMergeReview(document []byte) ([]byte, []string, error) {
+	var parsed yaml.Node
+	if err := yaml.Unmarshal(document, &parsed); err != nil {
+		return nil, nil, fmt.Errorf("unmarshal yaml: %w", err)
+	}
+	if parsed.Kind != yaml.DocumentNode || len(parsed.Content) == 0 || parsed.Content[0].Kind != yaml.MappingNode {
+		return document, nil, nil
+	}
+	root := parsed.Content[0]
+	skipAt := mappingKeyIndex(root, "skip_merge_review")
+	if skipAt < 0 {
+		return document, nil, nil
+	}
+
+	var lines []string
+	for _, perch := range reviewPerches {
+		key := reviewbudget.SoftKey(string(perch))
+		at := mappingKeyIndex(root, key)
+		if at < 0 {
+			continue
+		}
+		value := root.Content[at+1]
+		if value.Kind == yaml.ScalarNode && value.Tag == "!!int" && value.Value == "0" {
+			value.Tag, value.Style, value.Value = "!!null", 0, "~"
+			lines = append(lines, key+": 0 rewritten to null, which takes review_max_bounces")
+		}
+	}
+
+	var skip bool
+	if err := root.Content[skipAt+1].Decode(&skip); err == nil && skip {
+		mergeKey := reviewbudget.SoftKey(string(PerchMerge))
+		if at := mappingKeyIndex(root, mergeKey); at >= 0 {
+			value := root.Content[at+1]
+			value.Kind, value.Tag, value.Style, value.Value = yaml.ScalarNode, "!!int", 0, "0"
+		} else {
+			root.Content = append(root.Content,
+				&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: mergeKey},
+				&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: "0"})
+		}
+		lines = append(lines, "skip_merge_review: true rewritten to merge_max_bounces: 0")
+	}
+
+	skipAt = mappingKeyIndex(root, "skip_merge_review")
+	root.Content = append(root.Content[:skipAt], root.Content[skipAt+2:]...)
+	lines = append(lines, "skip_merge_review: removed")
+
+	var out bytes.Buffer
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&parsed); err != nil {
+		return nil, nil, fmt.Errorf("encode yaml: %w", err)
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, nil, fmt.Errorf("encode yaml: %w", err)
+	}
+	return out.Bytes(), lines, nil
+}
+
+// mappingKeyIndex returns the index of key in mapping's Content, or -1 when mapping lacks it.
+func mappingKeyIndex(mapping *yaml.Node, key string) int {
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key {
+			return i
+		}
+	}
+	return -1
 }
 
 // validateDriverKind refuses a driver_kind other than empty, llm or go, through shedrun.ValidateDriver so the vocabulary stays shedrun's.
@@ -741,7 +813,7 @@ func validateTacklerKnobs(timeoutMin, maxSpawns int) error {
 	return nil
 }
 
-// ValidateLocalValues checks the values of the driver_kind, tackler_timeout_min and tackler_max_spawns keys a local-layer document sets, and leaves every other key to LoadConfig.
+// ValidateLocalValues checks the values of the driver_kind, tackler_timeout_min and tackler_max_spawns keys a local-layer document sets, and of every review budget and hard-cap key through reviewbudget, and leaves every other key to LoadConfig.
 // A refusal is marked configengine.ErrInvalid and names the key.
 func ValidateLocalValues(document []byte) error {
 	var set struct {
@@ -767,11 +839,16 @@ func ValidateLocalValues(document []byte) error {
 	if err := validateTacklerKnobs(timeoutMin, maxSpawns); err != nil {
 		return configengine.MarkInvalid(err)
 	}
-	return nil
+	var budgets map[string]any
+	if err := yaml.Unmarshal(document, &budgets); err != nil {
+		return configengine.MarkInvalid(fmt.Errorf("unmarshal loom local values: %w", err))
+	}
+	return reviewbudget.CheckLocal(budgets, reviewPerchNames())
 }
 
 // LoadConfig loads and unmarshals configuration for the loom module strictly through the layer stack under dirs.
 // It validates model-spec grammar at load time, and reads burler.yaml and models.yaml through the same dirs.
+// review_max_bounces and the per-perch budgets are refused below 0, null taking review_max_bounces and 0 giving zero rounds, and each refusal names the command for the layer its value comes from.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -978,76 +1055,28 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}
 
 	// A checkpoint above the budget is accepted: such a run never rules CIRCLING and reaches the soft-cap rule instead.
-	for _, knob := range []struct {
-		key   string
-		value int
-	}{
-		{"review_circling_checkpoint", cfg.ReviewCirclingCheckpoint},
-		{"review_max_bounces", cfg.ReviewMaxBounces},
-	} {
-		if knob.value < 1 {
-			return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set it to a positive integer in loom.yaml", knob.key, knob.value)
-		}
+	if cfg.ReviewCirclingCheckpoint < 1 {
+		return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set it to a positive integer in loom.yaml", "review_circling_checkpoint", cfg.ReviewCirclingCheckpoint)
 	}
 
-	// A per-perch budget of 0 takes review_max_bounces, validated above, so only a negative value is refused here.
-	for _, knob := range []struct {
-		key   string
-		value int
-	}{
-		{"discussion_max_bounces", cfg.DiscussionMaxBounces},
-		{"plan_max_bounces", cfg.PlanMaxBounces},
-		{"webster_max_bounces", cfg.WebsterMaxBounces},
-		{"merge_max_bounces", cfg.MergeMaxBounces},
-	} {
-		if knob.value < 0 {
-			return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; set it to 0 to take review_max_bounces, or to a positive integer, in loom.yaml", knob.key, knob.value)
-		}
-	}
-
-	// A hard cap below 1 has no way to hold, so it is refused with the route of the layer its value comes from.
-	if cfg.ReviewHardMaxBounces < 1 {
-		route, err := CapRoute(dirs, "review_hard_max_bounces")
-		if err != nil {
-			return Config{}, err
-		}
-		return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; way forward: %s, then run \"lyx loom resume\"", "review_hard_max_bounces", cfg.ReviewHardMaxBounces, route)
-	}
-
-	// A per-perch hard cap of 0 takes review_hard_max_bounces, so only a negative value is refused here.
-	for _, knob := range []struct {
-		key   string
-		value int
-	}{
-		{"discussion_hard_max_bounces", cfg.DiscussionHardMaxBounces},
-		{"plan_hard_max_bounces", cfg.PlanHardMaxBounces},
-		{"webster_hard_max_bounces", cfg.WebsterHardMaxBounces},
-		{"merge_hard_max_bounces", cfg.MergeHardMaxBounces},
-	} {
-		if knob.value < 0 {
-			route, err := CapRoute(dirs, knob.key)
-			if err != nil {
-				return Config{}, err
-			}
-			return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; set it to 0 to take review_hard_max_bounces, or to a positive integer; way forward: %s, then run \"lyx loom resume\"", knob.key, knob.value, route)
-		}
-	}
-
-	// Equal caps load: a round at the budget is already at the hard cap.
-	for _, perch := range []Perch{PerchDiscussion, PerchPlan, PerchWebster, PerchMerge} {
-		caps := cfg.Caps(perch)
-		if caps.Hard >= caps.Soft {
-			continue
-		}
-		hardRoute, err := CapRoute(dirs, caps.HardKey)
-		if err != nil {
-			return Config{}, err
-		}
-		softRoute, err := CapRoute(dirs, caps.SoftKey)
-		if err != nil {
-			return Config{}, err
-		}
-		return Config{}, fmt.Errorf("loom config key %q: resolved hard cap %d is below %q's resolved soft cap %d; way forward: raise the hard cap: %s, or lower the soft cap: %s, then run \"lyx loom resume\"", caps.HardKey, caps.Hard, caps.SoftKey, caps.Soft, hardRoute, softRoute)
+	if err := reviewbudget.CheckResolved(dirs, spec, reviewbudget.Values{
+		RunSoft: cfg.ReviewMaxBounces,
+		RunHard: cfg.ReviewHardMaxBounces,
+		Perches: reviewPerchNames(),
+		PerchSoft: map[string]*int{
+			string(PerchDiscussion): cfg.DiscussionMaxBounces,
+			string(PerchPlan):       cfg.PlanMaxBounces,
+			string(PerchWebster):    cfg.WebsterMaxBounces,
+			string(PerchMerge):      cfg.MergeMaxBounces,
+		},
+		PerchHard: map[string]int{
+			string(PerchDiscussion): cfg.DiscussionHardMaxBounces,
+			string(PerchPlan):       cfg.PlanHardMaxBounces,
+			string(PerchWebster):    cfg.WebsterHardMaxBounces,
+			string(PerchMerge):      cfg.MergeHardMaxBounces,
+		},
+	}); err != nil {
+		return Config{}, err
 	}
 
 	switch cfg.DiscussionProducer {
