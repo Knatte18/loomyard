@@ -60,7 +60,7 @@ func refuseCaller(c caller, slug string) error {
 	return errors.New(`pause: an agent may pause, resume or revive only its own pair; way forward: ask your parent session, which runs "lyx pause", "lyx resume" or "lyx tender revive" for you`)
 }
 
-// Command returns the cobra command for `lyx tender`: the bare group and its pause, resume and status verbs.
+// Command returns the cobra command for `lyx tender`: the bare group and its pause, resume, revive and status verbs.
 func Command() *cobra.Command {
 	tender := &cobra.Command{
 		Use:   "tender",
@@ -319,7 +319,7 @@ Example:
 	}
 }
 
-// RunCLI is the public seam for the pause module CLI, delegating to clihelp.Execute for output capture.
+// RunCLI is the public seam for the tender module CLI, delegating to clihelp.Execute for output capture.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
