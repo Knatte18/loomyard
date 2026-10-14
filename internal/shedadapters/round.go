@@ -122,6 +122,33 @@ type RoundSummary struct {
 	EscalatedRounds []int
 }
 
+// parseRoundFileName splits a `round-<N>-<kind>` file name into N and kind, and reports false for a name that is not one or whose N is not a positive integer.
+func parseRoundFileName(name string) (round int, kind string, ok bool) {
+	rest, ok := strings.CutPrefix(name, "round-")
+	if !ok {
+		return 0, "", false
+	}
+	digits, kind, ok := strings.Cut(rest, "-")
+	if !ok {
+		return 0, "", false
+	}
+	round, err := strconv.Atoi(digits)
+	if err != nil || round < 1 {
+		return 0, "", false
+	}
+	return round, kind, true
+}
+
+// OutputRound returns the round number a review segment's output path names and true, reading the base name of path as `round-<N>-<kind>`.
+// It returns 0 and false for an empty path, a name without that shape, or an N that is not a positive integer.
+func OutputRound(path string) (int, bool) {
+	round, _, ok := parseRoundFileName(filepath.Base(path))
+	if !ok {
+		return 0, false
+	}
+	return round, true
+}
+
 // ReviewRounds summarizes one review segment's directory from the file names directly in it.
 // A round is a round number that has a `round-<N>-review.md`, so a numbered round holding only a focus file does not count.
 // Outcome is the last such round's, and EscalatedRounds lists, ascending, every round number holding an escalation file.
@@ -131,16 +158,8 @@ func ReviewRounds(names []string) RoundSummary {
 	circled := map[int]bool{}
 	escalated := map[int]bool{}
 	for _, name := range names {
-		rest, ok := strings.CutPrefix(name, "round-")
+		n, kind, ok := parseRoundFileName(name)
 		if !ok {
-			continue
-		}
-		digits, kind, ok := strings.Cut(rest, "-")
-		if !ok {
-			continue
-		}
-		n, err := strconv.Atoi(digits)
-		if err != nil || n < 1 {
 			continue
 		}
 		switch kind {

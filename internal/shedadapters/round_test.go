@@ -178,4 +178,24 @@ func TestReviewRounds(t *testing.T) {
 			}
 		})
 	}
+
+	outputRounds := []struct {
+		path      string
+		wantRound int
+		wantOK    bool
+	}{
+		{"round-1-review.md", 1, true},
+		{"round-2-circling-decision.md", 2, true},
+		{"/x/round-3-review.md", 3, true},
+		{"round-3-fixer-report.md", 3, true},
+		{"round-0-review.md", 0, false},
+		{"round-x-review.md", 0, false},
+		{"notes.md", 0, false},
+		{"", 0, false},
+	}
+	for _, tt := range outputRounds {
+		if round, ok := OutputRound(tt.path); round != tt.wantRound || ok != tt.wantOK {
+			t.Errorf("OutputRound(%q) = %d, %t; want %d, %t", tt.path, round, ok, tt.wantRound, tt.wantOK)
+		}
+	}
 }
