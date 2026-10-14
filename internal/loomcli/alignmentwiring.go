@@ -126,6 +126,7 @@ func newParentReviewAligner(location *lyxcwd.Location, runID string, cfg loomeng
 			DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
 			SupportLogPath:     loomengine.DiscussionSupportLog(location),
 			PlanDir:            planparser.PlanDir(location.AnchorPath()),
+			MeasureStencil:     alignment.MeasureLoom,
 		},
 	}, nil
 }

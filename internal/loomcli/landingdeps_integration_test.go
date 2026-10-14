@@ -42,7 +42,7 @@ func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lyxcwd.ResolveWorktree(task) error = %v; want nil", err)
 	}
-	deps := landingDeps(taskLocation, websterengine.Geometry{}, "task", "https://example.com/o.git", "main",
+	deps := landingDeps(taskLocation, shedrun.RecipeLoom, websterengine.Geometry{}, "task", "https://example.com/o.git", "main",
 		true, func() error { return nil }, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, planVerifySource(taskLocation), parentLockDeps(taskLocation, shedrun.SelfRunID, "", ""))
 
 	t.Run("ConfigChanges reports the per-worktree file and not the hub-wide one", func(t *testing.T) {

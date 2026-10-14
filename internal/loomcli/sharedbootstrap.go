@@ -323,6 +323,7 @@ func (c *loomCLI) buildLoomShed() (*shedengine.Shed, error) {
 	}
 	c.env.Landing = landingDeps(
 		c.location,
+		c.recipe,
 		c.runDeps.Geom,
 		taskBranch,
 		originURL,

@@ -1,14 +1,20 @@
 # darn-recipe.yaml is the darn task recipe: one gated writer reads the board entry, edits, tests and
 # commits, the Darn-Review perch reviews the committed diff, Describe rewrites the change
-# description from the final diff, then Publish, PR-Gate and Finalize land it. It is embedded into
-# the binary by the sibling recipes.go rather than read from disk. The row names below are the
+# description from the final diff, then Publish, PR-Align, PR-Gate and Finalize land it. It is
+# embedded into the binary by the sibling recipes.go rather than read from disk. The row names below are the
 # durable on-disk identities pinned against internal/loomshed's Name* constants -- a rename here
 # without a matching constant rename breaks resume for any in-flight task, unless internal/loomrecipe
 # maps the retired name onto its successor, as it maps the writer row's former name, Darn.
 #
+# The writer writes and validates the decision record before any code, and the perch's open findings
+# land in the record's `## Open risks`. PR-Align spawns the alignment agent with darn's geometry
+# before PR-Gate and reads loom.yaml's alignment keys. An in-flight run parked on a row whose edges
+# changed with PR-Align is restarted, not migrated.
+#
 # Preflight, Merge-In, Publish and Finalize carry no on_stuck: nothing in the list produces what each of them
 # gates, so a human is the only thing that can fix them. Darn-Write and Describe carry none either:
 # an exhausted writer gate halts the run for the parent, which resumes it with a fresh budget.
+# PR-Align, like Friction-Reflect, carries none either, because it never returns Stuck.
 #
 # Darn-Bouncer, Darn-Burler-Review and Darn-Burler-Fix are the Darn-Review perch, wired like loom's
 # Webster-Review ring under one shared segment label: the Bouncer's on_stuck names the review row,
@@ -55,6 +61,11 @@ producers:
       # re-prompts the live session up to its attempts times. The verify gate's attempts here is a
       # placeholder: the builder stamps darn.yaml's verify_attempts at every build.
       gates:
+        # On a darn run the discussion gate is the darn gate: it also refuses a record missing an
+        # entry its commit history held, and commits the decision record and support log when it
+        # passes.
+        - name: discussion
+          attempts: 3
         - name: verify
           attempts: 3
         - name: description
@@ -69,13 +80,15 @@ producers:
       run_subdir: darn
       # The subject under review is the committed diff, which artifact_paths cannot name; the key is
       # required, so it names the change description the writer committed, the writer's own claim
-      # of what the diff does. The rubric names the diff as the subject and the board entry as the
-      # measuring stick.
+      # of what the diff does. The rubric names the diff as the subject and the amended board entry
+      # as the measuring stick.
       artifact_paths:
         - _lyx/landing/summary.md
       rubric_stencil: loom-rubric-darn-review
-      # No commit_seam: Darn-Burler-Fix runs fix-scope: source and commits each fix itself. No
-      # carry_over: a darn run has no decision record to file still-open findings in.
+      # No commit_seam: Darn-Burler-Fix runs fix-scope: source and commits each fix itself.
+      # carry_over names this row's own segment: the Bouncer files the round's still-open findings
+      # under it in the decision record's Open risks section, and a test pins it equal to segment.
+      carry_over: Darn-Review
 
   - name: Darn-Burler-Review
     engine: BurlerReview
@@ -99,7 +112,13 @@ producers:
           instructions: >
             The board entry of this run's task is the answer key: read it with
             `lyx board get '{"slug":"<slug>"}'`, where <slug> is this worktree's own directory
-            name. The diff's job is to make the change that entry asks for.
+            name, as amended by the `Added after Discussion` entries of
+            `_lyx/discussion/decision-record.md`, which win where they differ. The record's other
+            sections are the writer's claim, checked against the board entry and never the answer
+            key. The diff's job is to make the change the amended entry asks for. A deviation the
+            change description names as an unrecorded parent correction is a `decision`-class
+            MEDIUM finding whose fix text tells the fixer to leave the code and defer to the
+            parent.
         rubric_stencil: loom-rubric-darn-review
         # fix-scope: source: the target is the repo's own source files, and a fixer that cannot
         # write and commit source cannot fix a diff.
@@ -148,6 +167,14 @@ producers:
   - name: Publish
     engine: Publish
     on_reroute: Merge-In
+    on_done: PR-Align
+
+  # PR-Align spawns the alignment agent for the pull request Publish opened and applies its verdict
+  # through the records PR-Gate reads. It always ends Done and never Stuck, so it carries no on_stuck,
+  # and it sits outside the PR-Review segment: a Done by a row of that segment ends the gate's bounce
+  # episode.
+  - name: PR-Align
+    engine: PRAlign
     on_done: PR-Gate
 
   # PR-Gate owns every review decision on the pull request Publish opened: it returns Done on an

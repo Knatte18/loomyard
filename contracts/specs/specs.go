@@ -26,6 +26,12 @@ var LoomPlanSpec []byte
 //go:embed loom-final-summary-spec.md
 var LoomFinalSummarySpec []byte
 
+// LoomDiscussionSpec is the decision-record and support-log format contract's shipped-default content.
+// Every writer of the two files writes against its format, and internal/discussionparser checks it.
+//
+//go:embed loom-discussion-spec.md
+var LoomDiscussionSpec []byte
+
 // registryEntry pairs one spec's registered name with the embedded default bytes behind it.
 type registryEntry struct {
 	name string
@@ -39,6 +45,7 @@ type registryEntry struct {
 var entries = []registryEntry{
 	{"loom-plan-spec", &LoomPlanSpec},
 	{"loom-final-summary-spec", &LoomFinalSummarySpec},
+	{"loom-discussion-spec", &LoomDiscussionSpec},
 }
 
 // registry implements stencilstore.Registry over entries.

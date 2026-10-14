@@ -58,11 +58,11 @@ func resolveModelChoice(raw string, reg modelspec.Registry) (model, effort, vers
 }
 
 // DiscussionTable builds the seatengine.Table of one seat-table Discussion-Write run: a chair that writes the decision record and the support log, and one advisor per entry of cfg.DiscussionAdvisors that writes its notes file for the chair to read.
-// The seats' opening stencils are read at call time from stencilsDir, and every seat's parent directive is rendered by the seat engine from its geometry.
+// The seats' opening stencils are read at call time from stencilsDir, the chair's prompt points at the format spec under specsDir, and every seat's parent directive is rendered by the seat engine from its geometry.
 // The table carries no gate; the producer entry sets it.
 // An empty cfg.DiscussionAdvisors builds a chair-only table; the chair's prompt covers that case, so the chair decides each question itself.
 // A PATTERN directive or Tier 2 friction directive that cannot be rendered is left empty, the friction failure logged, and never fails the table.
-func DiscussionTable(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg modelspec.Registry, slug string) (seatengine.Table, error) {
+func DiscussionTable(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, slug string) (seatengine.Table, error) {
 	if slug == "" {
 		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: slug must not be empty")
 	}
@@ -125,6 +125,7 @@ func DiscussionTable(layout *lyxcwd.Location, stencilsDir string, cfg Config, re
 		Interactive: cfg.DiscussionInteractive,
 		Values: map[string]string{
 			"slug":                 slug,
+			"specs_dir":            specsDir,
 			"decision_record_path": DiscussionDecisionRecord(layout),
 			"support_log_path":     DiscussionSupportLog(layout),
 			"mode_rules":           discussionModeRules(!cfg.DiscussionInteractive, len(cfg.DiscussionAdvisors) > 0),

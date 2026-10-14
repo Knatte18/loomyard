@@ -8,25 +8,27 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 )
 
-// TestBouncerRowsCarryOverTheirOwnSegment pins that every Bouncer row of the shipped recipe sets carry_over to the segment the row itself belongs to.
+// TestBouncerRowsCarryOverTheirOwnSegment pins that every Bouncer row of both shipped recipes sets carry_over to the segment the row itself belongs to.
 // A Bouncer learns the segment it files its carry-over entry under from that key alone.
 func TestBouncerRowsCarryOverTheirOwnSegment(t *testing.T) {
-	recipe, err := shedbuild.Parse(recipes.LoomRecipe)
-	if err != nil {
-		t.Fatalf("shedbuild.Parse(LoomRecipe) = %v; want nil", err)
-	}
-	bouncers := 0
-	for _, row := range recipe.Producers {
-		if row.Engine != bouncerEngine {
-			continue
+	for name, source := range map[string][]byte{"LoomRecipe": recipes.LoomRecipe, "DarnRecipe": recipes.DarnRecipe} {
+		recipe, err := shedbuild.Parse(source)
+		if err != nil {
+			t.Fatalf("shedbuild.Parse(%s) = %v; want nil", name, err)
 		}
-		bouncers++
-		if got := row.Config["carry_over"]; row.Segment == "" || got != row.Segment {
-			t.Errorf("row %s: carry_over = %v, segment = %q; want carry_over equal to a non-empty segment", row.Name, got, row.Segment)
+		bouncers := 0
+		for _, row := range recipe.Producers {
+			if row.Engine != bouncerEngine {
+				continue
+			}
+			bouncers++
+			if got := row.Config["carry_over"]; row.Segment == "" || got != row.Segment {
+				t.Errorf("%s row %s: carry_over = %v, segment = %q; want carry_over equal to a non-empty segment", name, row.Name, got, row.Segment)
+			}
 		}
-	}
-	if bouncers == 0 {
-		t.Error("the shipped recipe has no Bouncer row; want at least one")
+		if bouncers == 0 {
+			t.Errorf("%s has no Bouncer row; want at least one", name)
+		}
 	}
 }
 

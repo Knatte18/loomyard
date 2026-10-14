@@ -37,7 +37,7 @@ const checkFileMissing = "discussion-file-missing"
 const checkSectionMissing = "discussion-section-missing"
 
 // requiredDiscussionSections are the seven H2 headings Validate requires decisionRecordPath to
-// carry, per contracts/stencils/loom/loom-template-discussion.md's Step 5.
+// carry, per contracts/specs/loom-discussion-spec.md.
 var requiredDiscussionSections = []string{
 	"## Goal",
 	"## Scope",

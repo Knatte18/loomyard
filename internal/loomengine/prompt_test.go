@@ -50,9 +50,10 @@ func TestComposePrompt_RendersMarkers(t *testing.T) {
 		supportLogPath     = "/hub/repo/_lyx/discussion/support-log.md"
 	)
 	stencilsDir := newTestStencilsDir(t)
+	specsDir := newTestSpecsDir(t)
 	render := func(t *testing.T, autonomous bool) string {
 		t.Helper()
-		got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", "", "", "", autonomous)
+		got, err := composePrompt(stencilsDir, specsDir, slug, decisionRecordPath, supportLogPath, "", "", "", "", autonomous)
 		if err != nil {
 			t.Fatalf("composePrompt(..., autonomous=%v) = _, %v; want nil error", autonomous, err)
 		}
@@ -79,6 +80,7 @@ func TestComposePrompt_RendersMarkers(t *testing.T) {
 				slug,
 				decisionRecordPath,
 				supportLogPath,
+				filepath.Join(specsDir, "loom", "loom-discussion-spec.md"),
 				"lyx board get",
 				"lyx loom validate-discussion",
 				"MUST NOT gather exact signatures",
@@ -122,7 +124,7 @@ func TestComposePrompt_RendersMarkers(t *testing.T) {
 
 	t.Run("twill directive lands in a paragraph of its own", func(t *testing.T) {
 		t.Parallel()
-		got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", "", "", "SENTINEL-DIRECTIVE", false)
+		got, err := composePrompt(stencilsDir, specsDir, slug, decisionRecordPath, supportLogPath, "", "", "", "SENTINEL-DIRECTIVE", false)
 		if err != nil {
 			t.Fatalf("composePrompt(sentinel) = _, %v; want nil error", err)
 		}
@@ -154,7 +156,7 @@ func TestCompose_FrictionDirective(t *testing.T) {
 			templateFile: "loom-template-discussion.md",
 			templateBody: stencils.LoomTemplateDiscussion,
 			compose: func(t *testing.T, stencilsDir, frictionDirective string) (string, error) {
-				got, err := composePrompt(stencilsDir, "add-json-flag", decisionRecordPath, supportLogPath, "", frictionDirective, "", "", false)
+				got, err := composePrompt(stencilsDir, newTestSpecsDir(t), "add-json-flag", decisionRecordPath, supportLogPath, "", frictionDirective, "", "", false)
 				return string(got), err
 			},
 		},

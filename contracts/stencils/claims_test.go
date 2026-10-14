@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/contracts/specs"
 	"github.com/Knatte18/loomyard/internal/gatecli"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -102,7 +103,10 @@ var attackSurfaceClaims = []claim{
 	{must: "what bounds it", why: "attack-surface question asks what bounds it"},
 }
 
-const discussionFenceSection = "## What you may write"
+const (
+	discussionFenceSection    = "## What you may write"
+	discussionStepFiveSection = "## Step 5 — Write the two output files"
+)
 
 var wordingClaims = []stencilClaims{
 	{"loom-rubric-discussion-review.md", LoomRubricDiscussionReview, append([]claim{
@@ -158,6 +162,16 @@ var wordingClaims = []stencilClaims{
 		{must: "without the re-sign arrow", why: "an Edit member glyph whose Intent changes its signature is a finding that names the arrow to add"},
 		{must: "never fires for an interface method or a struct field", why: "the re-sign finding exempts the two members that take no arrow"},
 	}, attackSurfaceClaims...)},
+	{"loom-rubric-darn-review.md", LoomRubricDarnReview, []claim{
+		{must: "Added after Discussion", why: "the board entry is amended by the record's added entries"},
+		{must: "_lyx/discussion/decision-record.md", why: "the amending entries are read from the decision record"},
+		{must: "a claim", why: "the writer's own account is checked, never the measuring stick"},
+		{must: "unrecorded parent correction", why: "a deviation the change description names so is deferred, not reverted"},
+		{must: "`decision`", why: "an unrecorded parent correction is filed as a decision-class finding"},
+		{must: "MEDIUM", why: "an unrecorded parent correction is filed at medium severity"},
+		{must: "leave the code in place", why: "the fixer keeps the code and defers the finding to the parent"},
+		{must: "lyx loom decision add", why: "the finding names the parent's only sound change"},
+	}},
 	{"loom-rubric-webster-review.md", LoomRubricWebsterReview, []claim{
 		{must: "## Finding class", why: "the rubric defines the finding classes for its segment"},
 		{must: "`design` means", why: "the rubric defines the gating class for its segment"},
@@ -203,11 +217,24 @@ var wordingClaims = []stencilClaims{
 			"lyx loom peers", "lyx board list", "{{.verdict_path}}", "{{.report_path}}", "escalate", "question", "superseded", "test-budget.yaml"),
 		wantAll("the agent reads the board entry by its JSON payload and settles landing order itself, escalating only a design conflict",
 			"`lyx board get '{\"slug\":\"{{.slug}}\"}'`", "`row`", "`own_row`", "lands first", "design conflict", "text-only overlap", "never reads a recipe file", "tie", "unknown order", "subject and diff", "already makes one of this run's decisions"),
+		wantAll("the pr-gate measure is told through its marker and the review segments' carried-over open risks are read as part of the run",
+			"{{.pr_gate_measure}}", "the open risks the review segments carried over"),
+		wantNone("the stencil names no recipe row for the pr-gate measure", "Merge-Review"),
 		wantNone("the overlap-escalates rule cannot return",
 			"Escalate on a substantive overlap", "a Go package or code file that this run and another run"),
 		wantNone("the agent moves nothing, writes no board entry and messages no session",
 			"SendMessage", "lyx loom approve", "lyx loom reject", "lyx loom review", "lyx loom decision", "lyx loom goto", "lyx loom resume", "lyx board upsert"),
 	)},
+	{"loom-fragment-pr-gate-loom.md", LoomFragmentPRGateLoom, []claim{
+		{must: "a recorded decision the change breaks", why: "loom's scope deviation includes a breach of a recorded decision"},
+	}},
+	{"loom-fragment-pr-gate-darn.md", LoomFragmentPRGateDarn, []claim{
+		{must: "Added after Discussion", why: "darn measures against the board entry as amended by the record's added entries"},
+		{must: "a claim", why: "the record's other sections are the writer's own claim, never the measure"},
+		{must: "unrecorded parent correction", why: "an open risk naming one is escalated"},
+		{must: "escalated to the run's parent", why: "only the parent records or refuses the correction"},
+		{mustNot: "a recorded decision the change breaks", why: "a breach of the writer's own decisions is no scope deviation on a darn run"},
+	}},
 	{"landing-template-describe.md", LandingTemplateDescribe, []claim{
 		{must: "one item to check by hand", why: "a Plan-Review or Webster-Review carry-over finding reaches the reviewer as a manual-check item"},
 		{must: "A Discussion-Review entry is not carried into the description", why: "a Discussion-Review carry-over finding concerns the record, not the change under review"},
@@ -219,6 +246,17 @@ var wordingClaims = []stencilClaims{
 		wantAll("a rejection finding is this spawn's work when it is not (none)", "Rejection findings, which are this spawn's work when they are not `(none)`"),
 		wantAll("prior work is continued from, never restarted", "continue from them and fix what the prior work names, never restart the change"),
 		wantAll("a hub-wide refusal goes to the parent, never the operator", "is the parent's to resolve, never the operator's"),
+		wantAll("the writer writes and validates the decision record before any code, in the format the discussion spec defines",
+			"`lyx loom validate-discussion`", "loom-discussion-spec.md", "holds no interview"),
+		wantAll("the record is written only while a file is absent or validate-discussion reports findings, and is left alone once it passes",
+			"is absent, or `lyx loom validate-discussion` reports findings", "never edit either file again", "leaves them as they are"),
+		wantAll("the record's added entries amend the board entry, and a correction the record lacks is named, not silently followed",
+			"`Added after Discussion`", "unrecorded parent correction"),
+		wantAll("the writer never records a correction itself", "You never run `lyx loom decision add` yourself"),
+		wantNone("the stencil restates none of the record format; the spec holds it", "`## Auto-mode assumptions`"),
+	)},
+	{"landing-template-describe-darn.md", LandingTemplateDescribeDarn, joinClaims(
+		wantAll("the darn Describe session reads the decision record, whose added entries amend the board entry", "{{.decision_record_path}}", "`Added after Discussion`"),
 	)},
 	{"loom-template-plan.md", LoomTemplatePlan, joinClaims(wantAll("the card-granularity contract reaches the agent", "What a card is", "independently committable", "Carries the coverage for the behavior it introduces", "`PATTERN-test-economy`", "no substitute for test coverage"),
 		wantAll("an existing test member is named as a glyph, a new test function takes a plan: handle and a new test file a Create path",
@@ -274,7 +312,7 @@ var wordingClaims = []stencilClaims{
 		{must: "Never copy `00-overview.md` from the archive", why: "the archived overview is never copied"},
 		{must: "`approved: false`", why: "the rewritten overview is unapproved"},
 	}},
-	{"loom-template-discussion.md", LoomTemplateDiscussion, append([]claim{
+	{"loom-template-discussion.md", LoomTemplateDiscussion, []claim{
 		{must: "read-only to you", why: "observed live: the Discussion writer rewrote _lyx/config/loom.yaml mid-run and flipped discussion_interactive, so the default is read-only"},
 		{must: "`_lyx/config/`", why: "observed live: the driver's own config is fenced"},
 		{must: "lyx config reconcile --apply", why: "observed live: reconcile --apply counts as an edit of the fenced config"},
@@ -282,7 +320,8 @@ var wordingClaims = []stencilClaims{
 		{must: "`_lyx/plan/`", why: "a later phase's artifact is fenced"},
 		{must: "no `git add`", why: "mutating git is fenced"},
 		{must: "do not repair it", why: "a broken environment is reported, never repaired"},
-		{must: "not a test to write", why: "a must-cover scenario is a behavior, which an existing test or table row may meet"},
+		{must: "{{.specs_dir}}/loom/loom-discussion-spec.md", section: discussionStepFiveSection, why: "Step 5 points at the deployed spec for the record format"},
+		{mustNot: "## Auto-mode assumptions", why: "the stencil restates none of the record format; the spec holds it"},
 		{must: "lyx board list", why: "Step 1 reads the wider board"},
 		{must: "{{.decision_record_path}}", section: discussionFenceSection, why: "the fence names the output files by marker, so the permitted set cannot drift from the paths Step 5 writes"},
 		{must: "{{.support_log_path}}", section: discussionFenceSection, why: "the fence names the output files by marker, so the permitted set cannot drift from the paths Step 5 writes"},
@@ -290,7 +329,19 @@ var wordingClaims = []stencilClaims{
 		{must: "parent-review entry to `## Review rounds`", section: discussionFenceSection, why: "the fence carves out the parent-review round entry"},
 		{must: "**A keep-alive prompt** asks only that you end your turn", section: "## Messages the gate may send after you end your turn", why: "the messages section names the keep-alive, which changes nothing"},
 		{must: "{{.twill_directive}}", section: "## Step 4 — How to get answers", why: "the twill lens review sits with the answer-gathering step, its spawn point naming the files Step 5 writes"},
-	}, attackSurfaceClaims...)},
+	}},
+	{"loom-discussion-spec.md", specs.LoomDiscussionSpec, joinClaims(
+		wantAll("the spec carries the decision record's required sections",
+			"## Goal", "## Scope", "## Decisions", "## Constraints", "## Auto-mode assumptions", "## Open risks", "## Acceptance criteria", "## Notes for the plan writer"),
+		wantAll("the spec carries the support log's required sections",
+			"## Interview", "## Rejected alternatives", "## Review rounds", "## Question ledger"),
+		wantAll("the spec carries the format rules the stencil no longer restates",
+			"_No rounds yet._",
+			"not a test to write",
+			"Added after Discussion",
+			"lyx loom decision add"),
+		attackSurfaceClaims,
+	)},
 	{"loom-template-parent-review-brief.md", LoomTemplateParentReviewBrief, []claim{
 		{must: "send the writer no message, neither an acknowledgement nor a reply to its notice", section: "## Submit the verdict", why: "D4: a reply starts a writer turn the wait loop did not start"},
 	}},
@@ -396,6 +447,7 @@ var wordingClaims = []stencilClaims{
 		{mustNot: "Do not flag", why: "the fixer holds no rubric, so its exclusions are no dispute ground"},
 		{must: "the change its `fix` key proposes", why: "each finding carries its proposed change in the fix key"},
 		{must: "never push", why: "the fixer commits to code source and never pushes"},
+		{must: "is deferred with that reason, never disputed", why: "the Darn-Burler-Fix fixer defers an unrecorded parent correction to the parent instead of reverting it"},
 		{must: "nothing fixed", why: "the fixer report states when nothing was fixed"},
 	}},
 	{"bouncer-template-seed.md", BouncerTemplateSeed, focusEntryClaims()},
@@ -783,6 +835,11 @@ var wordingClaims = []stencilClaims{
 		[]claim{
 			{must: "creates the task pair, drives the task's run inside it, loom or darn as the board entry's `recipe` says, and tears the pair down", why: "the batten run owns the pair's creation and teardown, and drives whichever recipe the entry names"},
 			{must: "a reject re-spawns the darn writer with the findings", why: "a darn run's PR-Gate reject goes back to the darn writer"},
+			{must: "PR-Gate reaches you as an alignment escalation, as in loom", section: "## The run loop", why: "a darn run's PR-Gate reaches the orch only as an alignment escalation"},
+			{mustNot: "PR-Gate is the operator's review point", why: "a darn run's PR-Gate is no longer the operator's review point"},
+			{must: "even while an agent of the run is alive", section: "## Fixing a run", why: "a scope correction on a run with a decision record goes through decision add whatever the agents' state"},
+			{mustNot: "or any darn run", section: "## The board", why: "a darn run has a decision record once Darn-Write commits it, so the verb no longer refuses on every darn run"},
+			{must: "the decision goes by message to the Darn-Write session", section: "## The board", why: "a darn run's decision before its record is committed goes to the Darn-Write session"},
 			{must: "`lyx batten run <slug> --window`", why: "a run is started in its own window of the orch's reed session"},
 			{mustNot: "setsid nohup", why: "the window, not a detached shell process, keeps a started run alive and listed"},
 			{must: "Batten reads the decision and resumes the child itself", why: "batten resumes the child after a PR-Gate decision"},

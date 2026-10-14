@@ -47,10 +47,11 @@ func DiscussionWriterRole(cfg Config) string {
 var discussionSkills = []string{"scribe:prose", "scribe:conversation"}
 
 // DiscussionSpec builds the shuttleengine.Spec for one discussion producer run.
+// specsDir is the directory the prompt points the writer at for the record format spec.
 // parentName is told, never derived; an empty one renders the no-parent directive.
 // dirs is the told config geometry the twill fan's burler.yaml is read through.
 // Segment is the discussion segment, because the run is the Discussion-Write phase.
-func DiscussionSpec(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, parentName string, cfg Config, reg modelspec.Registry, slug string, autonomous bool) (shuttleengine.Spec, error) {
+func DiscussionSpec(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir, parentName string, cfg Config, reg modelspec.Registry, slug string, autonomous bool) (shuttleengine.Spec, error) {
 	if slug == "" {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: slug must not be empty")
 	}
@@ -100,7 +101,7 @@ func DiscussionSpec(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir
 		}
 	}
 
-	prompt, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, parentDirective, twillDirective, autonomous)
+	prompt, err := composePrompt(stencilsDir, specsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, parentDirective, twillDirective, autonomous)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: %w", err)
 	}

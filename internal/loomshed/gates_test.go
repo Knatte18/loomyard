@@ -198,6 +198,72 @@ func TestNewDiscussionGate(t *testing.T) {
 			t.Errorf("gate() result = %+v; want the zero GateResult alongside a returned error", result)
 		}
 	})
+
+	// The darn gate adds the history check and the commit to the section check, so each case drives it over a told history and a counting commit.
+	const addedEntry = "\n### Added after Discussion (parent, 2026-03-04): Keep the cache\n\nDecision: Keep the cache per run.\n\nRationale: A shared cache races.\n"
+	const addedHeading = "### Added after Discussion (parent, 2026-03-04): Keep the cache"
+	historyError := errors.New("history unavailable")
+	commitError := errors.New("commit failed")
+
+	darnTests := []struct {
+		name          string
+		record        string
+		history       [][]byte
+		historyErr    error
+		commitErr     error
+		wantPassed    bool
+		wantFindings  string
+		wantErr       error
+		wantCommits   int
+		wantHistoryOn bool
+	}{
+		{name: "a record whose history holds no added entry passes and commits once", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord)}, wantPassed: true, wantCommits: 1, wantHistoryOn: true},
+		{name: "a record that keeps its added entry passes and commits once", record: validDecisionRecord + addedEntry, history: [][]byte{[]byte(validDecisionRecord + addedEntry)}, wantPassed: true, wantCommits: 1, wantHistoryOn: true},
+		{name: "a dropped added entry fails naming its heading and commits nothing", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord + addedEntry)}, wantFindings: addedHeading, wantHistoryOn: true},
+		// A `lyx fabric commit` of the overwrite leaves the dropping copy as the newest version, so the check must read the whole history.
+		{name: "a dropped entry fails when the newest version is the dropping copy", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord), []byte(validDecisionRecord + addedEntry)}, wantFindings: addedHeading, wantHistoryOn: true},
+		{name: "a record missing a section never reads the history", record: strings.Replace(validDecisionRecord, "## Goal\n\nGoal text.\n\n", "", 1), history: [][]byte{[]byte(validDecisionRecord + addedEntry)}, wantFindings: "discussion-section-missing"},
+		{name: "a history error comes back as the gate's error", record: validDecisionRecord, historyErr: historyError, wantErr: historyError, wantHistoryOn: true},
+		{name: "a commit error comes back as the gate's error", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord)}, commitErr: commitError, wantErr: commitError, wantCommits: 1, wantHistoryOn: true},
+	}
+	for _, tt := range darnTests {
+		t.Run("Darn/"+tt.name, func(t *testing.T) {
+			decisionRecordPath, supportLogPath := writeDiscussionFixture(t, t.TempDir(), tt.record, "support log")
+			historyCalls, commits := 0, 0
+			history := func() ([][]byte, error) {
+				historyCalls++
+				return tt.history, tt.historyErr
+			}
+			commit := func() error {
+				commits++
+				return tt.commitErr
+			}
+
+			result, err := NewDarnDiscussionGate(decisionRecordPath, supportLogPath, history, commit)()
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("gate() error = %v; want it to wrap %v", err, tt.wantErr)
+				}
+				if tt.commitErr != nil && !strings.Contains(err.Error(), decisionRecordPath) {
+					t.Errorf("gate() error = %q; want it to name the decision record path %q", err, decisionRecordPath)
+				}
+			} else if err != nil {
+				t.Fatalf("gate() error = %v; want nil", err)
+			}
+			if result.Passed != tt.wantPassed {
+				t.Errorf("gate() Passed = %v; want %v", result.Passed, tt.wantPassed)
+			}
+			if tt.wantFindings != "" && !strings.Contains(result.Findings, tt.wantFindings) {
+				t.Errorf("gate() Findings = %q; want it to contain %q", result.Findings, tt.wantFindings)
+			}
+			if commits != tt.wantCommits {
+				t.Errorf("commit calls = %d; want %d", commits, tt.wantCommits)
+			}
+			if (historyCalls > 0) != tt.wantHistoryOn {
+				t.Errorf("history calls = %d; want history read = %v", historyCalls, tt.wantHistoryOn)
+			}
+		})
+	}
 }
 
 func TestNewPlanGate(t *testing.T) {

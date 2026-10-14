@@ -165,6 +165,35 @@ func waitRunLockFree(t *testing.T, loc *lyxcwd.Location, timeout time.Duration) 
 	}
 }
 
+// waitRecordsIndexLockGone polls until the records worktree's git index.lock is absent, or fails the test after timeout.
+// A killed driver can leave a git child it started holding the lock for a moment after the driver's own locks are free.
+func waitRecordsIndexLockGone(t *testing.T, loc *lyxcwd.Location, timeout time.Duration) {
+	t.Helper()
+	recordsDir := fabricengine.RecordsWorktree(loc)
+	out, err := exec.Command("git", "-C", recordsDir, "rev-parse", "--git-path", "index.lock").Output()
+	if err != nil {
+		t.Fatalf("git -C %s rev-parse --git-path index.lock: %v", recordsDir, err)
+	}
+	lockPath := strings.TrimSpace(string(out))
+	if !filepath.IsAbs(lockPath) {
+		lockPath = filepath.Join(recordsDir, lockPath)
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		_, err := os.Stat(lockPath)
+		if os.IsNotExist(err) {
+			return
+		}
+		if err != nil {
+			t.Fatalf("stat %s: %v", lockPath, err)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("records index lock %s still present after %s", lockPath, timeout)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 // lockFree reports whether the lock at path is free, probing it without keeping it.
 // A lock whose directory does not exist yet has never been taken, so it reads free.
 func lockFree(t *testing.T, path string) bool {
@@ -464,6 +493,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		t.Helper()
 		killGoDriver(worktree)
 		waitRunLockFree(t, loc, 20*time.Second)
+		waitRecordsIndexLockGone(t, loc, 5*time.Second)
 		if err := os.Remove(loomengine.LoomDriverLog(loc)); err != nil && !os.IsNotExist(err) {
 			t.Fatalf("clear driver log: %v", err)
 		}
@@ -619,6 +649,10 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 	// file already self-heals, rather than leaving it stranded as an untracked file that permanently fails
 	// fabricengine.Clean's own first Preflight precondition row.
 	t.Run("origin record self-heals after a crash between write and commit", func(t *testing.T) {
+		// The previous step leaves the first bootstrap's driver alive.
+		// It commits into this same records worktree, so it must be gone before the step edits the index.
+		killDriversAndClearLog(t)
+
 		recordsDir := fabricengine.RecordsWorktree(loc)
 		originRel := filepath.Join(loc.AnchorRel, fabricengine.OriginRecordRel())
 

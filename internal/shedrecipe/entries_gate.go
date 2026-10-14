@@ -26,7 +26,7 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // a present empty list is an error, since it is an author mistake rather than an ungated row.
 //
 // Each element carries a required "name", resolved against a closed six-value vocabulary:
-// "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass requireAbsRoot and returns loomshed.NewDiscussionGate over them;
+// "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass requireAbsRoot and returns loomshed.NewDiscussionGate over them, or, when env.DiscussionHistory is set, loomshed.NewDarnDiscussionGate over them, the history seam and a non-nil env.CommitDiscussion;
 // "plan" requires env.AnchorPath, env.WorktreeRoot and a non-nil env.PlanIndex and returns loomshed.NewPlanGate over them;
 // "rework-plan" requires the same two roots and index plus a non-nil env.Rework.ReadCommitted and returns loomshed.NewReworkPlanGate over them;
 // "description" requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate over it;
@@ -178,6 +178,12 @@ func resolvePlainGateClosure(entry, row string, index int, name string, env Env)
 		}
 		if err := requireAbsRoot(entry, "SupportLogPath", env.SupportLogPath); err != nil {
 			return nil, err
+		}
+		if env.DiscussionHistory != nil {
+			if err := requireSeam(entry, "CommitDiscussion", env.CommitDiscussion); err != nil {
+				return nil, err
+			}
+			return loomshed.NewDarnDiscussionGate(env.DecisionRecordPath, env.SupportLogPath, env.DiscussionHistory, env.CommitDiscussion), nil
 		}
 		return loomshed.NewDiscussionGate(env.DecisionRecordPath, env.SupportLogPath), nil
 	case "plan":

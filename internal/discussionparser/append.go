@@ -2,6 +2,7 @@
 // The other keeps a review segment's carry-over entry in `## Open risks`.
 // AppendDecision adds one design call made after the Discussion ended to the record's `## Decisions` section,
 // so a later reader of the record sees it beside the decisions the Discussion itself made.
+// CheckAddedDecisionsKept reports the entries a record dropped from its history.
 
 package discussionparser
 
@@ -116,6 +117,51 @@ func ParseAddedDecisions(record []byte) ([]AddedDecision, error) {
 		decisions = append(decisions, decision)
 	}
 	return decisions, nil
+}
+
+// checkAddedDecisionDropped names a Finding produced when a record lacks an added-decision entry an earlier version of it held.
+const checkAddedDecisionDropped = "added-decision-dropped"
+
+// CheckAddedDecisionsKept returns one Finding per distinct added-decision entry, by author, date and title, that some of versions holds and record does not, in the order of first appearance across versions.
+// Each finding's Detail names the entry's full heading and says to restore it from the record's history, since an added entry is never the writer's to remove.
+//
+// A record whose added-decision heading does not parse is one finding carrying the parse error, because the writer can fix it.
+// A version whose heading does not parse contributes no entries: only `lyx loom decision add` writes these headings, and a garbled historical copy must not block the run.
+// It reads nothing from disk.
+func CheckAddedDecisionsKept(record []byte, versions [][]byte) []Finding {
+	kept, err := ParseAddedDecisions(record)
+	if err != nil {
+		return []Finding{{Check: checkAddedDecisionDropped, Detail: err.Error()}}
+	}
+	type entryKey struct{ by, date, title string }
+	keyOf := func(d AddedDecision) entryKey {
+		return entryKey{d.By, d.Date.UTC().Format("2006-01-02"), d.Title}
+	}
+	seen := make(map[entryKey]bool, len(kept))
+	for _, d := range kept {
+		seen[keyOf(d)] = true
+	}
+
+	var findings []Finding
+	for _, version := range versions {
+		held, err := ParseAddedDecisions(version)
+		if err != nil {
+			continue
+		}
+		for _, d := range held {
+			key := keyOf(d)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			findings = append(findings, Finding{
+				Check: checkAddedDecisionDropped,
+				Detail: fmt.Sprintf("the record dropped the entry `%s%s, %s): %s`; restore it from the record's history, since an added entry is never the writer's to remove",
+					addedDecisionHeadingPrefix, key.by, key.date, key.title),
+			})
+		}
+	}
+	return findings
 }
 
 // parseAddedDecisionHeading parses the part of an added-decision heading after its opening parenthesis: `<by>, <date>): <title>`.

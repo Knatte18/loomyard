@@ -161,7 +161,7 @@ func TestDescribeSpec_EmptyFieldIsError(t *testing.T) {
 // TestDarnDescribeSpec pins the darn Describe spec: it fills the darn stencil with every told value under the describe keys, and refuses an empty required field by name.
 func TestDarnDescribeSpec(t *testing.T) {
 	t.Parallel()
-	const darnStencilFixture = "{{.parent_directive}}\n{{.edit_directive}}\nslug={{.slug}}\nreviews={{.review_dir}}\nout={{.description_path}}\ntask={{.task_branch}}\nparent={{.parent_branch}}\n"
+	const darnStencilFixture = "{{.parent_directive}}\n{{.edit_directive}}\nslug={{.slug}}\nreviews={{.review_dir}}\nrecord={{.decision_record_path}}\nout={{.description_path}}\ntask={{.task_branch}}\nparent={{.parent_branch}}\n"
 	newInputs := func(t *testing.T) DarnDescribeInputs {
 		t.Helper()
 		stencilsDir := t.TempDir()
@@ -170,12 +170,13 @@ func TestDarnDescribeSpec(t *testing.T) {
 			t.Fatalf("WriteFile(darn describe stencil) = %v; want nil", err)
 		}
 		return DarnDescribeInputs{
-			StencilsDir:     stencilsDir,
-			ReviewDir:       "/x/reviews/darn",
-			DescriptionPath: "/x/landing/summary.md",
-			TaskBranch:      "task-branch",
-			ParentBranch:    "parent-branch",
-			Slug:            "my-slug",
+			StencilsDir:        stencilsDir,
+			ReviewDir:          "/x/reviews/darn",
+			DecisionRecordPath: "/x/discussion/decision-record.md",
+			DescriptionPath:    "/x/landing/summary.md",
+			TaskBranch:         "task-branch",
+			ParentBranch:       "parent-branch",
+			Slug:               "my-slug",
 		}
 	}
 	cfg := Config{Describe: "claude:sonnet[effort=high]", DescribeTimeoutMin: 7}
@@ -193,7 +194,7 @@ func TestDarnDescribeSpec(t *testing.T) {
 		if len(spec.OutputFiles) != 1 || spec.OutputFiles[0] != in.DescriptionPath {
 			t.Errorf("spec.OutputFiles = %v; want [%q]", spec.OutputFiles, in.DescriptionPath)
 		}
-		for _, v := range []string{"reviews=" + in.ReviewDir, "out=" + in.DescriptionPath, "task=" + in.TaskBranch, "parent=" + in.ParentBranch, "slug=" + in.Slug, "Edit or Write"} {
+		for _, v := range []string{"reviews=" + in.ReviewDir, "record=" + in.DecisionRecordPath, "out=" + in.DescriptionPath, "task=" + in.TaskBranch, "parent=" + in.ParentBranch, "slug=" + in.Slug, "Edit or Write"} {
 			if !strings.Contains(spec.Prompt, v) {
 				t.Errorf("prompt %q does not contain %q", spec.Prompt, v)
 			}
@@ -201,12 +202,13 @@ func TestDarnDescribeSpec(t *testing.T) {
 	})
 
 	fields := map[string]func(*DarnDescribeInputs){
-		"StencilsDir":     func(in *DarnDescribeInputs) { in.StencilsDir = "" },
-		"ReviewDir":       func(in *DarnDescribeInputs) { in.ReviewDir = "" },
-		"DescriptionPath": func(in *DarnDescribeInputs) { in.DescriptionPath = "" },
-		"TaskBranch":      func(in *DarnDescribeInputs) { in.TaskBranch = "" },
-		"ParentBranch":    func(in *DarnDescribeInputs) { in.ParentBranch = "" },
-		"Slug":            func(in *DarnDescribeInputs) { in.Slug = "" },
+		"StencilsDir":        func(in *DarnDescribeInputs) { in.StencilsDir = "" },
+		"ReviewDir":          func(in *DarnDescribeInputs) { in.ReviewDir = "" },
+		"DecisionRecordPath": func(in *DarnDescribeInputs) { in.DecisionRecordPath = "" },
+		"DescriptionPath":    func(in *DarnDescribeInputs) { in.DescriptionPath = "" },
+		"TaskBranch":         func(in *DarnDescribeInputs) { in.TaskBranch = "" },
+		"ParentBranch":       func(in *DarnDescribeInputs) { in.ParentBranch = "" },
+		"Slug":               func(in *DarnDescribeInputs) { in.Slug = "" },
 	}
 	for name, blank := range fields {
 		t.Run("empty "+name, func(t *testing.T) {

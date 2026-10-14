@@ -48,6 +48,10 @@ type DarnInputs struct {
 	Slug string
 	// DescriptionPath is the absolute path the writer writes the change description to.
 	DescriptionPath string
+	// DecisionRecordPath is the absolute path the writer writes the decision record to before any code.
+	DecisionRecordPath string
+	// SupportLogPath is the absolute path the writer writes the support log to before any code.
+	SupportLogPath string
 	// RejectionFindings is the reviewer's findings this spawn fixes; empty when the spawn answers no rejection.
 	RejectionFindings string
 	// PriorWork names what an earlier spawn left unfinished or broken; empty on a first spawn.
@@ -65,6 +69,8 @@ func DarnSpec(in DarnInputs, cfg Config, reg modelspec.Registry) (shuttleengine.
 		{"WorktreeRoot", in.WorktreeRoot},
 		{"Slug", in.Slug},
 		{"DescriptionPath", in.DescriptionPath},
+		{"DecisionRecordPath", in.DecisionRecordPath},
+		{"SupportLogPath", in.SupportLogPath},
 	}
 	for _, r := range required {
 		if r.value == "" {
@@ -108,6 +114,8 @@ func DarnSpec(in DarnInputs, cfg Config, reg modelspec.Registry) (shuttleengine.
 	prompt, err := stencil.FillOptional(template, map[string]string{
 		"slug":                     in.Slug,
 		"description_path":         in.DescriptionPath,
+		"decision_record_path":     in.DecisionRecordPath,
+		"support_log_path":         in.SupportLogPath,
 		"specs_dir":                in.SpecsDir,
 		"rejection_findings":       orNone(in.RejectionFindings),
 		"prior_work":               orNone(in.PriorWork),

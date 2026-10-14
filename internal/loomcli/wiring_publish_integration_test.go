@@ -60,6 +60,7 @@ func TestWire_Real_PublishRejectedPushNamesRemoteTip(t *testing.T) {
 	syncOpts := fabricengine.EnvSyncOptions()
 	deps := landingDeps(
 		location,
+		shedrun.RecipeLoom,
 		c.runDeps.Geom,
 		taskBranch,
 		originURL,

@@ -428,6 +428,7 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 	}
 	c.env.Landing = landingDeps(
 		c.location,
+		c.recipe,
 		c.runDeps.Geom,
 		taskBranch,
 		originURL,
