@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -597,4 +598,137 @@ func TestAuthRT_WaitsWhileAPauseCoversTheProcess(t *testing.T) {
 	if len(wakes) != 0 || len(captured) != 2 {
 		t.Fatalf("with no pause: wakes = %d, hits = %d; want no wake and a second hit", len(wakes), len(captured))
 	}
+}
+
+// TestAuthRT_HeldCallGetsItsFullDeadlineAfterRelease pins the transport's deadlines around a pause hold:
+// a held call gets its caller deadline moved later by the held time and its client timeout from the release, an unheld call and a call admitted before the pause keep theirs,
+// and a cancellation ends a held call unless the caller's own deadline had already passed.
+// It is not parallel: the pause network gate is process-wide state.
+func TestAuthRT_HeldCallGetsItsFullDeadlineAfterRelease(t *testing.T) {
+	setCacheDir(t, t.TempDir())
+	t.Setenv("GH_TOKEN", "test-token")
+	t.Setenv("GITHUB_TOKEN", "")
+
+	const (
+		budget = 50 * time.Millisecond
+		hold   = 150 * time.Millisecond
+	)
+
+	type env struct {
+		cancel  context.CancelFunc
+		setLive func(live bool)
+	}
+	type result struct {
+		err    error
+		sleeps int32
+		hits   int32
+	}
+	// run sends one request through an authRT with a 50 ms timeout, under a caller deadline of callerTimeout.
+	// A live hub entry exists from the start when live is set; sleep is the gate's wait seam and handler serves the request.
+	run := func(t *testing.T, callerTimeout time.Duration, live bool, sleep func(*env), handler func(*env, http.ResponseWriter, *http.Request)) result {
+		t.Helper()
+		recordPath := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
+		e := &env{}
+		e.setLive = func(live bool) {
+			t.Helper()
+			if _, err := pauserecord.Update(recordPath, time.Now(), func(r *pauserecord.Record) error {
+				r.Live = nil
+				if live {
+					r.Live = []pauserecord.Entry{{Scope: pauserecord.ScopeHub, PausedAt: time.Now()}}
+				}
+				return nil
+			}); err != nil {
+				t.Fatalf("update the pause record: %v", err)
+			}
+		}
+		e.setLive(live)
+
+		var sleeps, hits atomic.Int32
+		t.Cleanup(pauserecord.InstallGate(pauserecord.Gate{
+			Geometry: pauserecord.Geometry{RecordPath: recordPath},
+			Notify:   func(string) {},
+			Sleep: func(ctx context.Context, d time.Duration) error {
+				sleeps.Add(1)
+				sleep(e)
+				return nil
+			},
+		}))
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits.Add(1)
+			handler(e, w, r)
+		}))
+		t.Cleanup(server.Close)
+
+		ctx, cancel := context.WithTimeout(t.Context(), callerTimeout)
+		defer cancel()
+		e.cancel = cancel
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := (&http.Client{Transport: &authRT{timeout: budget}}).Do(req)
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return result{err: err, sleeps: sleeps.Load(), hits: hits.Load()}
+	}
+	answerAtOnce := func(*env, http.ResponseWriter, *http.Request) {}
+	liftAfterHold := func(e *env) {
+		time.Sleep(hold)
+		e.setLive(false)
+	}
+	neverSleeps := func(*env) {}
+	blockUntilGone := func(e *env, w http.ResponseWriter, r *http.Request) {
+		e.cancel()
+		<-r.Context().Done()
+	}
+
+	t.Run("a held call succeeds after release", func(t *testing.T) {
+		got := run(t, budget, true, liftAfterHold, answerAtOnce)
+		if got.err != nil || got.sleeps == 0 || got.hits != 1 {
+			t.Fatalf("err = %v, sleeps = %d, hits = %d; want success after a hold and one hit", got.err, got.sleeps, got.hits)
+		}
+	})
+
+	t.Run("an unheld call keeps its deadline", func(t *testing.T) {
+		got := run(t, budget, false, neverSleeps, func(*env, http.ResponseWriter, *http.Request) { time.Sleep(hold) })
+		if !errors.Is(got.err, context.DeadlineExceeded) || got.sleeps != 0 {
+			t.Fatalf("err = %v, sleeps = %d; want a deadline error and no hold", got.err, got.sleeps)
+		}
+	})
+
+	t.Run("a call admitted before the pause is neither held nor extended", func(t *testing.T) {
+		got := run(t, budget, false, neverSleeps, func(e *env, w http.ResponseWriter, r *http.Request) {
+			e.setLive(true)
+			time.Sleep(hold)
+		})
+		if !errors.Is(got.err, context.DeadlineExceeded) || got.sleeps != 0 {
+			t.Fatalf("err = %v, sleeps = %d; want a deadline error and no hold", got.err, got.sleeps)
+		}
+	})
+
+	t.Run("cancelled during the hold sends nothing", func(t *testing.T) {
+		got := run(t, 10*time.Second, true, func(e *env) {
+			e.cancel()
+			e.setLive(false)
+		}, answerAtOnce)
+		if !errors.Is(got.err, context.Canceled) || got.hits != 0 {
+			t.Fatalf("err = %v, hits = %d; want context.Canceled and nothing sent", got.err, got.hits)
+		}
+	})
+
+	t.Run("cancelled after release ends the call", func(t *testing.T) {
+		started := time.Now()
+		got := run(t, 10*time.Second, true, func(e *env) { e.setLive(false) }, blockUntilGone)
+		if !errors.Is(got.err, context.Canceled) || time.Since(started) > 5*time.Second {
+			t.Fatalf("err = %v after %v; want context.Canceled well within the deadline", got.err, time.Since(started))
+		}
+	})
+
+	t.Run("cancelled after its own deadline passed during the hold waits for the moved deadline", func(t *testing.T) {
+		got := run(t, budget, true, liftAfterHold, blockUntilGone)
+		if !errors.Is(got.err, context.DeadlineExceeded) || got.hits != 1 {
+			t.Fatalf("err = %v, hits = %d; want a deadline error after the request went out", got.err, got.hits)
+		}
+	})
 }

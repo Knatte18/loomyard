@@ -62,6 +62,7 @@
 // authRT also holds every request while a pause covers the process.
 // It waits at entry through pauserecord's network gate, before it resolves a token and outside the 401 replay, so a replay is not held twice.
 // The hold only delays the request; with no gate installed it does nothing.
+// A held call's caller deadline moves later by the time the gate held it, and authRT applies its 30s timeout from the end of the hold, so a hold does not use up the call's budget.
 //
 // # The 401 replay, and why environment-sourced tokens skip it
 //
@@ -82,17 +83,15 @@
 //
 // # The two deadlines
 //
-// Two independent timeouts bound every path through this package. The `gh
-// auth token` shell-out (token.go) is bounded at 5s via exec.CommandContext
-// behind an injectable seam, so a hung or unexpectedly prompting `gh`
-// process can never stall an autonomous lyx run. Separately, the returned
-// *github.Client's underlying http.Client carries a 30s Timeout. That
-// Client.Timeout is enforced through the request context, so it covers the
-// original attempt and a 401 replay TOGETHER -- worst case 30s total across
-// both HTTP round trips, not 30s per attempt. Neither deadline is
-// decoration: http.DefaultTransport sets no response timeout of its own, and
-// a credential path with no bound at all is indistinguishable, to an
-// autonomous process, from a hang.
+// Two independent timeouts bound every path through this package.
+// The `gh auth token` shell-out (token.go) is bounded at 5s via exec.CommandContext behind an injectable seam,
+// so a hung or unexpectedly prompting `gh` process can never stall an autonomous lyx run.
+// Separately, the returned *github.Client's transport, authRT, applies a 30s timeout itself, from the end of the pause hold and no longer through http.Client.Timeout.
+// It is enforced through the request context, so it covers the original attempt and a 401 replay TOGETHER:
+// worst case 30s total across both HTTP round trips, not 30s per attempt.
+// A held call's caller deadline moves later by the held time.
+// Neither deadline is decoration: http.DefaultTransport sets no response timeout of its own,
+// and a credential path with no bound at all is indistinguishable, to an autonomous process, from a hang.
 //
 // # Never-block-on-credentials is the package's reason for existing
 //

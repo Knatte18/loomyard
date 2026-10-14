@@ -43,7 +43,7 @@ internal/fsx: 4
 internal/gatecli: 4
 internal/gateslot: 12
 internal/gitexec: 7
-internal/githubclient: 12
+internal/githubclient: 13
 internal/gitkit: 10
 internal/gitrepo: 45
 internal/gitrepo/internal/gitoracle: 1

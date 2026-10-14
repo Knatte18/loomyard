@@ -6,8 +6,12 @@
 package githubclient
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
@@ -19,6 +23,9 @@ type authRT struct {
 	// A nil value defaults to http.DefaultTransport; tests inject an
 	// alternative to point at an httptest server without a real network hop.
 	transport http.RoundTripper
+	// timeout bounds the original attempt and a 401 replay together, from the end of the pause hold.
+	// Zero means no timeout.
+	timeout time.Duration
 }
 
 // base returns the underlying transport, defaulting to http.DefaultTransport.
@@ -35,10 +42,80 @@ func (rt *authRT) base() http.RoundTripper {
 // token is environment-sourced, in which case it returns an error instead).
 //
 // It first waits while a pause covers the process; the hold is outside the replay, so a replay is not held twice.
+// The request then goes out under a context from requestContext, which gives a held call its full deadline after the hold.
 func (rt *authRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	_, done := pauserecord.Network("github")
+	held, done := pauserecord.Network("github")
 	defer done()
 
+	ctx, cancel, err := rt.requestContext(req.Context(), held)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := rt.authenticate(req.WithContext(ctx))
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	resp.Body = &cancelOnClose{ReadCloser: resp.Body, cancel: cancel}
+	return resp, nil
+}
+
+// requestContext derives the context a request goes out under, once a hold of held has ended.
+// It returns the caller's error at once when the caller's context was cancelled.
+// For held zero the caller's context is used unchanged.
+// For held above zero the caller's values are kept, its deadline, if any, moves later by held, and a cancellation of the caller before its own deadline passed still ends the call;
+// once that deadline has passed, only the moved deadline does.
+// A positive rt.timeout then applies from now.
+// The returned cancel must run once the response body is closed, or at once on an error.
+func (rt *authRT) requestContext(caller context.Context, held time.Duration) (context.Context, context.CancelFunc, error) {
+	if err := caller.Err(); errors.Is(err, context.Canceled) {
+		return nil, nil, err
+	}
+	ctx, cancel := caller, context.CancelFunc(func() {})
+	if held > 0 {
+		var cancelHeld context.CancelFunc
+		if deadline, ok := caller.Deadline(); ok {
+			ctx, cancelHeld = context.WithDeadline(context.WithoutCancel(caller), deadline.Add(held))
+		} else {
+			ctx, cancelHeld = context.WithCancel(context.WithoutCancel(caller))
+		}
+		stop := context.AfterFunc(caller, func() {
+			if errors.Is(caller.Err(), context.Canceled) {
+				cancelHeld()
+			}
+		})
+		cancel = func() {
+			stop()
+			cancelHeld()
+		}
+	}
+	if rt.timeout > 0 {
+		var cancelTimeout context.CancelFunc
+		ctx, cancelTimeout = context.WithTimeout(ctx, rt.timeout)
+		cancelOuter := cancel
+		cancel = func() {
+			cancelTimeout()
+			cancelOuter()
+		}
+	}
+	return ctx, cancel, nil
+}
+
+// cancelOnClose closes the response body it wraps and then cancels the context the request went out under.
+type cancelOnClose struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+// Close closes the wrapped body, then cancels.
+func (c *cancelOnClose) Close() error {
+	err := c.ReadCloser.Close()
+	c.cancel()
+	return err
+}
+
+// authenticate sends req with a resolved token and handles the 401 replay.
+func (rt *authRT) authenticate(req *http.Request) (*http.Response, error) {
 	tok, source, err := resolveToken()
 	if err != nil {
 		return nil, err
