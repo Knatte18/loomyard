@@ -17,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/statuspane"
 )
@@ -27,6 +28,11 @@ var checklistClock = time.Date(2026, 1, 2, 10, 0, 0, 0, time.UTC)
 // minuteMark renders the instant minutes after checklistClock as the RFC 3339 string a status entry carries.
 func minuteMark(minutes int) string {
 	return checklistClock.Add(time.Duration(minutes) * time.Minute).Format(time.RFC3339)
+}
+
+// minuteSpan is the interval from minute from to minute to after checklistClock.
+func minuteSpan(from, to int) pauserecord.Interval {
+	return pauserecord.Interval{Start: checklistClock.Add(time.Duration(from) * time.Minute), End: checklistClock.Add(time.Duration(to) * time.Minute)}
 }
 
 // recipeRows is a recipe of plain rows with the given names.
@@ -158,8 +164,61 @@ func TestRenderChecklist(t *testing.T) {
 		wait    string
 		nowMin  int
 		arbiter []checklistArbiter
+		paused  []pauserecord.Interval
 		want    []string
 	}{
+		{
+			name:   "a visit spanning two overlapping pause intervals counts its span less their union",
+			rows:   recipe,
+			poll:   checklistStatus(shedengine.StateRunning, "Build", doneEntry("Plan", 5), doneEntry("Review", 20)),
+			nowMin: 22,
+			paused: []pauserecord.Interval{minuteSpan(8, 12), minuteSpan(10, 14)},
+			want: []string{
+				"[x] Plan 5m", "  10:00 5m done",
+				"[x] Review 9m", "  10:05 9m done",
+				"[>] Build 2m", "  10:20 2m running",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name:   "an open visit under a live pause stops growing at the pause",
+			rows:   recipe,
+			poll:   checklistStatus(shedengine.StateRunning, "Review", doneEntry("Plan", 5)),
+			nowMin: 12,
+			paused: []pauserecord.Interval{minuteSpan(8, 12)},
+			want: []string{
+				"[x] Plan 5m", "  10:00 5m done",
+				"[>] Review 3m", "  10:05 3m running",
+				"[ ] Build",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name:   "an open visit under a live pause shows the same time at a later now",
+			rows:   recipe,
+			poll:   checklistStatus(shedengine.StateRunning, "Review", doneEntry("Plan", 5)),
+			nowMin: 20,
+			paused: []pauserecord.Interval{minuteSpan(8, 20)},
+			want: []string{
+				"[x] Plan 5m", "  10:00 5m done",
+				"[>] Review 3m", "  10:05 3m running",
+				"[ ] Build",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name:   "a pause covering a whole visit floors its time at zero",
+			rows:   recipe,
+			poll:   checklistStatus(shedengine.StateRunning, "Review", doneEntry("Plan", 5)),
+			nowMin: 12,
+			paused: []pauserecord.Interval{minuteSpan(0, 12)},
+			want: []string{
+				"[x] Plan 0m", "  10:00 0m done",
+				"[>] Review 0m", "  10:05 0m running",
+				"[ ] Build",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
 		{
 			name:   "a running run's wait line carries the note in full",
 			rows:   recipe,
@@ -662,12 +721,50 @@ func TestRenderChecklist(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			now := checklistClock.Add(time.Duration(tt.nowMin) * time.Minute)
-			got := renderChecklist(checklistInput{rows: tt.rows, rowsErr: tt.rowsErr, poll: tt.poll, waitNote: tt.wait, startedAt: minuteMark(0), arbiters: tt.arbiter}, now)
+			got := renderChecklist(checklistInput{rows: tt.rows, rowsErr: tt.rowsErr, poll: tt.poll, waitNote: tt.wait, startedAt: minuteMark(0), arbiters: tt.arbiter, paused: tt.paused}, now)
 			if diff := cmp.Diff(tt.want, got.Lines); diff != "" {
 				t.Errorf("renderChecklist lines mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
+
+	t.Run("readChecklistPaused reads the slug's and the hub's intervals and nothing from an unreadable record", func(t *testing.T) {
+		t.Parallel()
+		entry := func(scope string, from, to int) pauserecord.Entry {
+			return pauserecord.Entry{Scope: scope, PausedAt: checklistClock.Add(time.Duration(from) * time.Minute), ResumedAt: checklistClock.Add(time.Duration(to) * time.Minute)}
+		}
+		record := pauserecord.Record{Resumed: []pauserecord.Entry{
+			entry("slug-a", 1, 2),
+			entry(pauserecord.ScopeHub, 3, 4),
+			entry("slug-b", 5, 6),
+		}}
+		encoded, err := json.Marshal(record)
+		if err != nil {
+			t.Fatalf("marshal record: %v", err)
+		}
+		dir := t.TempDir()
+		recordPath := filepath.Join(dir, "pause.json")
+		if err := os.WriteFile(recordPath, encoded, 0o644); err != nil {
+			t.Fatalf("write record: %v", err)
+		}
+		now := checklistClock.Add(time.Hour)
+
+		want := []pauserecord.Interval{minuteSpan(1, 2), minuteSpan(3, 4)}
+		if diff := cmp.Diff(want, readChecklistPaused(recordPath, "slug-a", now)); diff != "" {
+			t.Errorf("readChecklistPaused(slug-a) mismatch (-want +got):\n%s", diff)
+		}
+		if got := readChecklistPaused(recordPath, "slug-c", now); len(got) != 1 {
+			t.Errorf("readChecklistPaused(slug-c) = %+v; want only the hub interval", got)
+		}
+
+		garbled := filepath.Join(dir, "garbled.json")
+		if err := os.WriteFile(garbled, []byte("{not json"), 0o644); err != nil {
+			t.Fatalf("write garbled record: %v", err)
+		}
+		if got := readChecklistPaused(garbled, "slug-a", now); len(got) != 0 {
+			t.Errorf("readChecklistPaused(undecodable record) = %+v; want none", got)
+		}
+	})
 
 	t.Run("readChecklistArbiters reads each attempt directory on its own", func(t *testing.T) {
 		t.Parallel()

@@ -15,10 +15,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -44,6 +46,7 @@ const (
 
 // checklistInput is what renderChecklist draws a frame from.
 // rows is the recipe's rows, and rowsErr is set when the recipe could not be read.
+// paused is the pause record's coverage of the pair's slug, whose time no visit counts.
 type checklistInput struct {
 	rows      []loomrecipe.RecipeRow
 	rowsErr   error
@@ -51,6 +54,7 @@ type checklistInput struct {
 	waitNote  string
 	startedAt string
 	arbiters  []checklistArbiter
+	paused    []pauserecord.Interval
 }
 
 // checklistVisit is one visit of a row, read from one status history entry or from the current producer's open visit.
@@ -120,7 +124,7 @@ lines in view. The loom-status strand runs it. It reads files only.`,
 
 // checklistPoll returns the pane's poll for the worktree at location.
 // The self run's seed is read until one read succeeds, and its recipe's rows once after that.
-// The run's arbiter attempts are read from disk on every frame.
+// The run's arbiter attempts and the pause record's coverage of the pair are read from disk on every frame.
 // While the run is running, the state line carries the note the worktree's Waiting hook reports.
 func (c *loomCLI) checklistPoll(location *lyxcwd.Location) func() statuspane.Frame {
 	waiting := reviewWaitingFor(location)
@@ -133,6 +137,7 @@ func (c *loomCLI) checklistPoll(location *lyxcwd.Location) func() statuspane.Fra
 	cache := statuspane.NewStatusCache()
 	statusFile := shedrun.StatusFile(location, shedrun.SelfRunID)
 	arbiterDir := shedrun.ArbiterDir(location, shedrun.SelfRunID)
+	pauseGeometry, pauseErr := hubgeom.PauseGeometry(location)
 
 	return func() statuspane.Frame {
 		if !seedRead {
@@ -156,8 +161,23 @@ func (c *loomCLI) checklistPoll(location *lyxcwd.Location) func() statuspane.Fra
 				waitNote = note
 			}
 		}
-		return renderChecklist(checklistInput{rows: rows, rowsErr: rowsErr, poll: poll, waitNote: waitNote, startedAt: startedAt, arbiters: readChecklistArbiters(arbiterDir)}, time.Now())
+		now := time.Now()
+		var paused []pauserecord.Interval
+		if pauseErr == nil {
+			paused = readChecklistPaused(pauseGeometry.RecordPath, pauseGeometry.Slug, now)
+		}
+		return renderChecklist(checklistInput{rows: rows, rowsErr: rowsErr, poll: poll, waitNote: waitNote, startedAt: startedAt, arbiters: readChecklistArbiters(arbiterDir), paused: paused}, now)
 	}
+}
+
+// readChecklistPaused returns the intervals the pause record at recordPath covers for slug, live entries running to now.
+// A record that cannot be read or decoded gives none, so the frame counts nothing as paused and never breaks.
+func readChecklistPaused(recordPath, slug string, now time.Time) []pauserecord.Interval {
+	coverage, err := pauserecord.ReadCoverage(recordPath, slug, now)
+	if err != nil {
+		return nil
+	}
+	return coverage.Intervals
 }
 
 // renderChecklist returns the checklist frame, top to bottom:
@@ -167,6 +187,7 @@ func (c *loomCLI) checklistPoll(location *lyxcwd.Location) func() statuspane.Fra
 // with in.rowsErr set, the single line checklistRecipeBroken and then every visit line in history order, each naming its row;
 // the state line, without the wait the wait line carries; and the wait line.
 // in.startedAt is the run's seed time, where its first visit starts; an empty or unparsable value starts it at the first entry's own time.
+// in.paused is left out of every visit's time.
 func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 	stateLine := shedverbs.UnavailableLine(checklistLabel)
 	if in.poll.Found {
@@ -180,7 +201,7 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 	if in.poll.Found {
 		status = in.poll.Status
 	}
-	visits, visitedOrder, history := checklistVisitsOf(status, in.startedAt, now)
+	visits, visitedOrder, history := checklistVisitsOf(status, in.startedAt, in.paused, now)
 	arbiters := newChecklistArbiterPlacement(in.arbiters, len(status.History), now)
 
 	if in.rowsErr != nil {
@@ -543,34 +564,6 @@ func checklistVisitLine(visit checklistVisit, row string) string {
 	return line
 }
 
-// checklistDetailLines renders one row's detail block: the row name, then one indented line per visit of v.
-// A visit line reads "<start> <spent> <outcome>", then " x<n>" for a folded entry, " <output>" when it has one and " gate attempts <n>" when gated.
-// A row with no visit has no block.
-func checklistDetailLines(name string, v checklistVisits) []string {
-	if len(v.log) == 0 {
-		return nil
-	}
-	lines := []string{name}
-	for _, visit := range v.log {
-		start := checklistUnknownStart
-		if visit.startKnown {
-			start = visit.start.UTC().Format("15:04")
-		}
-		line := fmt.Sprintf("  %s %s %s", start, statuspane.FormatMinutes(visit.spent), visit.outcome)
-		if visit.folds > 1 {
-			line += fmt.Sprintf(" x%d", visit.folds)
-		}
-		if visit.output != "" {
-			line += " " + visit.output
-		}
-		if visit.gateAttempts != nil {
-			line += fmt.Sprintf(" gate attempts %d", *visit.gateAttempts)
-		}
-		lines = append(lines, line)
-	}
-	return lines
-}
-
 // checklistWaitLine is the frame's last line: the full reason the run waits, as `lyx loom status` gives it.
 // A running run with a waitNote waits on it; an awaiting run has handed off to its parent; a blocked or failed run waits on its activity's wait.
 // Every other case, an unreadable status included, waits on nothing.
@@ -603,11 +596,11 @@ func checklistWaitLine(poll statuspane.StatusPoll, waitNote string) string {
 }
 
 // checklistVisitsOf sums the status history into per-row time, visit counts and visit logs, lists the rows in the order they were first visited, and returns every visit in history order.
-// A visit lasts from the previous entry's end to its own end; a goto entry is no visit and starts the next one at its own time.
+// A visit lasts from the previous entry's end to its own end, less the time paused within that span; a goto entry is no visit and starts the next one at its own time.
 // A goto entry is in the history-order result as a zero-time line and in no per-row log.
 // While the run is not done, the current producer's open visit runs from the last entry's end to now.
 // A Stuck entry that records where it was routed reads checklistBouncedWord and one that does not reads as stored; an awaiting entry reads checklistEscalatedWord.
-func checklistVisitsOf(status shedengine.Status, startedAt string, now time.Time) (visits map[string]checklistVisits, order []string, history []checklistVisit) {
+func checklistVisitsOf(status shedengine.Status, startedAt string, paused []pauserecord.Interval, now time.Time) (visits map[string]checklistVisits, order []string, history []checklistVisit) {
 	visits = map[string]checklistVisits{}
 	visit := func(name string, count int, entry checklistVisit) {
 		v, seen := visits[name]
@@ -652,7 +645,7 @@ func checklistVisitsOf(status shedengine.Status, startedAt string, now time.Time
 		}
 		var spent time.Duration
 		if prevKnown && endKnown {
-			spent = end.Sub(prevEnd)
+			spent = end.Sub(prevEnd) - pauserecord.Excluded(paused, prevEnd, end)
 		}
 		outcome := string(entry.Outcome)
 		switch {
@@ -680,7 +673,7 @@ func checklistVisitsOf(status shedengine.Status, startedAt string, now time.Time
 	if status.CurrentProducer != "" && status.State != shedengine.StateDone {
 		var spent time.Duration
 		if prevKnown {
-			spent = now.Sub(prevEnd)
+			spent = now.Sub(prevEnd) - pauserecord.Excluded(paused, prevEnd, now)
 		}
 		visit(status.CurrentProducer, 1, checklistVisit{
 			index:      -1,
