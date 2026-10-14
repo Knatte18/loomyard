@@ -131,7 +131,8 @@ func runCore(args []string, cwd, stdin string) (stdout, stderr string, exitCode 
 	deadline := remoteDeadline
 	if remoteSubcommands[subcommand(args)] {
 		// The hold comes before the deadline's context, so a command held by a pause starts its bound only when it runs.
-		defer pauserecord.Network(subcommand(args))()
+		_, done := pauserecord.Network(subcommand(args))
+		defer done()
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(context.Background(), deadline)
 		defer cancel()

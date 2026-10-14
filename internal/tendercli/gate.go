@@ -1,6 +1,6 @@
 // gate.go installs the process-wide network gate for a lyx process that runs in a hub.
 
-package pausecli
+package tendercli
 
 import (
 	"context"
@@ -44,7 +44,7 @@ func InstallNetworkGate(ctx context.Context) {
 		HoldsParentLock: func(slug string) bool {
 			entries, err := locks.List()
 			if err != nil {
-				logger.Warn("pausecli: the parent locks cannot be listed, so the gate reads none held", "error", err)
+				logger.Warn("tendercli: the parent locks cannot be listed, so the gate reads none held", "error", err)
 				return false
 			}
 			for _, entry := range entries {
@@ -56,7 +56,7 @@ func InstallNetworkGate(ctx context.Context) {
 		},
 		Notify: func(line string) {
 			fmt.Fprintln(os.Stderr, line)
-			logger.Info("pausecli: a network call is held by a pause", "line", line)
+			logger.Info("tendercli: a network call is held by a pause", "line", line)
 		},
 	})
 }

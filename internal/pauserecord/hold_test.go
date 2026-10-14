@@ -173,7 +173,11 @@ func TestNetwork(t *testing.T) {
 
 	t.Run("no gate is a no-op writing no marker", func(t *testing.T) {
 		recordPath := filepath.Join(t.TempDir(), RecordFileName)
-		Network("fetch")()
+		held, done := Network("fetch")
+		done()
+		if held != 0 {
+			t.Fatalf("held = %v, want zero with no gate", held)
+		}
 		if _, err := os.Stat(NetDir(recordPath)); !os.IsNotExist(err) {
 			t.Fatalf("net dir stat error = %v, want not exist", err)
 		}
@@ -194,7 +198,7 @@ func TestNetwork(t *testing.T) {
 			},
 		})()
 
-		done := Network("push")
+		_, done := Network("push")
 		if sleeps != 1 {
 			t.Fatalf("sleeps = %d, want the gate to wait once", sleeps)
 		}
@@ -208,6 +212,28 @@ func TestNetwork(t *testing.T) {
 		done()
 		if ops, _ := ListNetOps(recordPath, alive); len(ops) != 0 {
 			t.Fatalf("markers after done = %+v, want none", ops)
+		}
+	})
+
+	t.Run("a gate whose sleep advances the clock reports the held time", func(t *testing.T) {
+		recordPath := filepath.Join(t.TempDir(), RecordFileName)
+		setLive(t, recordPath, Entry{Scope: ScopeHub, PausedAt: epoch})
+		clock := epoch
+		defer InstallGate(Gate{
+			Geometry: Geometry{RecordPath: recordPath, Slug: "a"},
+			Notify:   func(string) {},
+			Now:      func() time.Time { return clock },
+			Sleep: func(ctx context.Context, d time.Duration) error {
+				clock = clock.Add(3 * time.Second)
+				resumeLive(t, recordPath)
+				return nil
+			},
+		})()
+
+		held, done := Network("push")
+		done()
+		if held != 3*time.Second {
+			t.Fatalf("held = %v, want 3s", held)
 		}
 	})
 
@@ -230,9 +256,14 @@ func TestNetwork(t *testing.T) {
 		recordPath := filepath.Join(t.TempDir(), RecordFileName)
 		setLive(t, recordPath, Entry{Scope: "a", PausedAt: epoch})
 		sleeps := 0
+		clock := epoch
 		defer InstallGate(Gate{
 			Geometry: Geometry{RecordPath: recordPath},
 			Notify:   func(string) {},
+			Now: func() time.Time {
+				clock = clock.Add(time.Second)
+				return clock
+			},
 			Sleep: func(ctx context.Context, d time.Duration) error {
 				sleeps++
 				resumeLive(t, recordPath)
@@ -240,13 +271,18 @@ func TestNetwork(t *testing.T) {
 			},
 		})()
 
-		Network("fetch")()
+		held, done := Network("fetch")
+		done()
 		if sleeps != 0 {
 			t.Fatalf("sleeps = %d with an empty slug, want no hold", sleeps)
 		}
+		if held != 0 {
+			t.Fatalf("held = %v with an empty slug, want zero", held)
+		}
 		setLive(t, recordPath, Entry{Scope: "a", PausedAt: epoch})
 		SetGateSlug("a")
-		Network("fetch")()
+		_, done = Network("fetch")
+		done()
 		if sleeps != 1 {
 			t.Fatalf("sleeps = %d after SetGateSlug, want the gate held once", sleeps)
 		}

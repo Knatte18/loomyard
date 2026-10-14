@@ -39,13 +39,15 @@ type IssueComment struct {
 // ListOpenIssues returns every open issue of the inbox repository, following pagination to the last page.
 // Pull requests are excluded, although GitHub's issue list includes them.
 func ListOpenIssues() ([]Issue, error) {
+	return listOpenIssues(callTimeout)
+}
+
+// listOpenIssues is ListOpenIssues with perRequest as the deadline of each page request.
+func listOpenIssues(perRequest time.Duration) ([]Issue, error) {
 	client, owner, repo, err := repoClient()
 	if err != nil {
 		return nil, err
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
-	defer cancel()
 
 	opts := &github.IssueListByRepoOptions{
 		State:       "open",
@@ -53,7 +55,9 @@ func ListOpenIssues() ([]Issue, error) {
 	}
 	var issues []Issue
 	for {
+		ctx, cancel := context.WithTimeout(context.Background(), perRequest)
 		page, resp, listErr := client.Issues.ListByRepo(ctx, owner, repo, opts)
+		cancel()
 		if listErr != nil {
 			return nil, classifyCallError("list issues", "github issue list failed", owner, repo, listErr)
 		}
@@ -94,9 +98,6 @@ func ListIssueComments(number int) ([]IssueComment, error) {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
-	defer cancel()
-
 	sort, direction := "created", "asc"
 	opts := &github.IssueListCommentsOptions{
 		Sort:        &sort,
@@ -105,7 +106,9 @@ func ListIssueComments(number int) ([]IssueComment, error) {
 	}
 	var comments []IssueComment
 	for {
+		ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
 		page, resp, listErr := client.Issues.ListComments(ctx, owner, repo, number, opts)
+		cancel()
 		if listErr != nil {
 			return nil, classifyCallError("list issue comments", "github issue comment list failed", owner, repo, listErr)
 		}
@@ -127,10 +130,9 @@ func CommentAndClose(number int, comment string, completed bool) error {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
-	defer cancel()
-
-	_, _, commentErr := client.Issues.CreateComment(ctx, owner, repo, number, &github.IssueComment{Body: &comment})
+	commentCtx, cancelComment := context.WithTimeout(context.Background(), callTimeout)
+	_, _, commentErr := client.Issues.CreateComment(commentCtx, owner, repo, number, &github.IssueComment{Body: &comment})
+	cancelComment()
 	if commentErr != nil {
 		return classifyCallError("comment on issue", "github issue comment failed", owner, repo, commentErr)
 	}
@@ -139,7 +141,9 @@ func CommentAndClose(number int, comment string, completed bool) error {
 	if completed {
 		reason = "completed"
 	}
-	_, _, closeErr := client.Issues.Edit(ctx, owner, repo, number, &github.IssueRequest{State: &state, StateReason: &reason})
+	closeCtx, cancelClose := context.WithTimeout(context.Background(), callTimeout)
+	defer cancelClose()
+	_, _, closeErr := client.Issues.Edit(closeCtx, owner, repo, number, &github.IssueRequest{State: &state, StateReason: &reason})
 	if closeErr != nil {
 		return fmt.Errorf("comment posted on issue #%d but closing it failed, so rerunning posts a second comment: %w",
 			number, classifyCallError("close issue", "github issue close failed", owner, repo, closeErr))

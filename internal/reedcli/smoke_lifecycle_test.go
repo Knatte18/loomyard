@@ -489,6 +489,17 @@ func TestSmokeLifecycle(t *testing.T) {
 		sendKeysLine(t, tmuxPath, harness, harnessPane, smokeAttachInvokeLine(lyxExe))
 		pollPaneContains(t, tmuxPath, harness, harnessPane, "ATTACH-MARKER-ALPHA", 20*time.Second)
 
+		// On Unix the attach replaces the lyx process with tmux, so the pane's foreground command is tmux and no lyx parent is left waiting.
+		if runtime.GOOS != "windows" {
+			command, err := exec.Command(tmuxPath, "-L", harness, "display-message", "-p", "-t", harnessPane, "#{pane_current_command}").Output()
+			if err != nil {
+				t.Fatalf("read the harness pane's current command: %v", err)
+			}
+			if got := strings.TrimSpace(string(command)); !strings.HasPrefix(got, "tmux") {
+				t.Errorf("harness pane's current command = %q; want tmux, the attach having replaced the lyx process", got)
+			}
+		}
+
 		if err := exec.Command(tmuxPath, "-L", harness, "send-keys", "-t", harnessPane, "C-b", "d").Run(); err != nil {
 			t.Fatalf("send detach keys: %v", err)
 		}

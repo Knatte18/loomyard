@@ -167,6 +167,8 @@ type Gate struct {
 	// Notify and Sleep are the Waiter seams of the waits the gate makes.
 	Notify func(line string)
 	Sleep  func(ctx context.Context, d time.Duration) error
+	// Now is the clock Network measures the time it held a call on; nil means time.Now.
+	Now func() time.Time
 }
 
 var (
@@ -197,18 +199,39 @@ func SetGateSlug(slug string) {
 }
 
 // Network waits while a pause covers the process, then marks an operation op in flight and returns the function that clears the mark.
-// With no gate installed it returns a no-op at once.
+// It returns held, the time from entry until the wait returned, which is zero unless the wait slept at least once.
+// With no gate installed it returns zero and a no-op at once.
 // It only waits at entry: it fails no call, and a marker it cannot write is skipped.
-func Network(op string) (done func()) {
+func Network(op string) (held time.Duration, done func()) {
 	gate := installedGate.Load()
 	if gate == nil {
-		return func() {}
+		return 0, func() {}
+	}
+	now := gate.Now
+	if now == nil {
+		now = time.Now
 	}
 	slug := gate.Geometry.Slug
 	holdsParentLock := func() bool { return gate.HoldsParentLock != nil && gate.HoldsParentLock(slug) }
-	waiter := Waiter{Notify: gate.Notify, Sleep: gate.Sleep, SlugEntryExempt: holdsParentLock}
+	sleep := gate.Sleep
+	if sleep == nil {
+		sleep = sleepOnTimer
+	}
+	slept := false
+	waiter := Waiter{
+		Notify: gate.Notify,
+		Sleep: func(ctx context.Context, d time.Duration) error {
+			slept = true
+			return sleep(ctx, d)
+		},
+		SlugEntryExempt: holdsParentLock,
+	}
+	entered := now()
 	// The background context never ends, so the wait returns nil.
 	_ = WaitUncovered(context.Background(), gate.Geometry.RecordPath, slug, waiter)
+	if slept {
+		held = now().Sub(entered)
+	}
 
 	marker := NetOp{
 		PID:             gate.PID,
@@ -221,9 +244,9 @@ func Network(op string) (done func()) {
 	}
 	markerPath := filepath.Join(NetDir(gate.Geometry.RecordPath), fmt.Sprintf("%d-%d.json", gate.PID, netOpCounter.Add(1)))
 	if err := writeMarker(markerPath, marker); err != nil {
-		return func() {}
+		return held, func() {}
 	}
-	return func() { os.Remove(markerPath) }
+	return held, func() { os.Remove(markerPath) }
 }
 
 // writeMarker writes the marker to path, creating its directory.

@@ -1,6 +1,6 @@
-// report.go declares the seams the pause, resume and status sequences read through and the reports they return, with the holds report shared by pause and status.
+// report.go declares the seams the pause, resume, revive and status sequences read through and the reports they return, with the holds report shared by pause and status.
 
-package pauseengine
+package tenderengine
 
 import (
 	"sort"
@@ -9,6 +9,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // SessionInfo is one live shuttle-run strand of a pair.
@@ -26,6 +28,8 @@ type Pair interface {
 	Slug() string
 	// Sessions lists the pair's live shuttle-run strands, the loom driver included.
 	Sessions() ([]SessionInfo, error)
+	// State reads the session's state from its run's files, the zero state when the strand has none.
+	State(guid string) (shuttleengine.SessionState, error)
 	// Busy reports whether the session is in a running turn: busy with any cause but background work.
 	Busy(guid string) (bool, error)
 	// Background reports whether the session's turn ended with background work still running, with the outstanding tasks' labels.
@@ -41,6 +45,9 @@ type Pair interface {
 	Interrupt(guid string) error
 	// Send types text into the session through the guarded paste-submit.
 	Send(guid, text string) error
+	// SendConditioned types text into the session only while one ready reading shows it in the state want names, and reports whether a turn start followed.
+	// It fails with shuttleengine.ErrSendConditionUnmet when the session reads another state and with shuttleengine.ErrSubmissionNotLanded when the text did not land.
+	SendConditioned(guid, text string, want shuttleengine.SendCondition) (turnStarted bool, err error)
 	// Running reports the pair's current producer and whether its run reads running.
 	Running() (producer string, running bool, err error)
 }
@@ -49,14 +56,26 @@ type Pair interface {
 type Deps struct {
 	// RecordPath is the pause record file.
 	RecordPath string
-	// Pairs are the hub's pairs.
+	// Pairs are the hub's task pairs, the prime excluded.
 	Pairs []Pair
+	// Prime is the prime's sessions, nil when the hub has no prime that wires.
+	Prime Pair
+	// Processes lists the processes running on the machine.
+	Processes func() ([]proc.Process, error)
+	// HubPath is the hub directory.
+	HubPath string
+	// Executable is the running lyx's own executable path, empty when it is unknown.
+	Executable string
 	// NetOps lists the network operations in flight.
 	NetOps func() ([]pauserecord.NetOp, error)
 	// Locks lists the parent lock records.
 	Locks func() ([]parentlock.Entry, error)
 	// OrchWatcherLive reports whether an orch watcher is running.
 	OrchWatcherLive func() bool
+	// OrchStrand is the orch strand recorded in the prime's orch state, empty when none.
+	OrchStrand func() (string, error)
+	// QueueOrchRevive queues the orch's conditioned notice carrying line, and returns false when one is already queued.
+	QueueOrchRevive func(line string) (queued bool, err error)
 	// Caller is the caller's strand name, empty for an external caller.
 	Caller string
 	// Now is the clock.

@@ -1,7 +1,7 @@
 // deps_test.go pins the readings shuttlePair derives from a run's session state: running turn, and background work left by an ended turn.
 // It spawns nothing and touches neither reed nor the runner, so it stays out of the integration-tagged cli_test.go.
 
-package pausecli
+package tendercli
 
 import (
 	"fmt"

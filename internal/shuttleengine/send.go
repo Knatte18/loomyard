@@ -52,6 +52,7 @@ const (
 // A zero deadline means none, and a nil hold starts the idle wait's turn-start hold afresh.
 // startsNoTurn marks a send whose text starts no turn, such as a slash command, so no turn start reads as its landing.
 // landingStart is the session-start source whose line confirms a send that starts no turn; it is empty for every other send.
+// keepUnlanded marks a send that never clears a text that did not land, leaving it in the input box.
 type sendContext struct {
 	reed         ReedOps
 	engine       Engine
@@ -65,6 +66,7 @@ type sendContext struct {
 	hold         *turnStartHold
 	startsNoTurn bool
 	landingStart SessionStartSource
+	keepUnlanded bool
 	// activityFailures is the runner's operator-activity failure episodes, shared by every send and probe of one runner.
 	activityFailures *logger.EpisodeSet
 }
@@ -699,6 +701,7 @@ func confirmSubmitted(sc sendContext, reader InputBoxReader, normalized string, 
 // An empty box means the submission landed late, so landed is true.
 // For an engine with both the idle reading and InputBoxClearer, a box that holds exactly this send's own text is cleared and read again;
 // a box holding anything else gets no key.
+// A send that keeps its unlanded text leaves the box as it is.
 // note says what was found or done, and names a box the clear did not empty.
 func clearUnlandedText(sc sendContext, reader InputBoxReader, normalized string) (landed bool, note string) {
 	boxText, ok := readInputBox(sc, reader)
@@ -708,6 +711,9 @@ func clearUnlandedText(sc sendContext, reader InputBoxReader, normalized string)
 	box := normalizePaneText(boxText)
 	if box == "" {
 		return true, ""
+	}
+	if sc.keepUnlanded {
+		return false, "the unlanded text was left in the input box"
 	}
 	_, idleReading := sc.engine.(SessionCycler)
 	clearer, canClear := sc.engine.(InputBoxClearer)

@@ -6,3 +6,5 @@
 attach: [reed, attach]
 a: [reed, attach]
 prime: [[orch, start], [reed, attach]]
+pause: [tender, pause]
+resume: [tender, resume]

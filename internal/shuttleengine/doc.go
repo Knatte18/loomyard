@@ -303,6 +303,16 @@
 // otherwise the operator cleared the box, or the record was for another text, and the send pastes as usual.
 // A record that cannot be read or cleared is logged at Warn and the send pastes, so a broken file never wedges a strand.
 // A retry whose text started no turn, as a slash command's does not, always pastes afresh.
+//
+// Conditioned send: Runner.SendConditioned gives one line to a session only while one ready reading shows it in a named state, such as idle-stalled with cause `api-error`.
+// The reading waits on nothing, plays no key and refuses at once: with ErrRewindPickerOpen when the rewind picker is open, which stays open;
+// with ErrSendConditionUnmet when the session reads another state, so a busy session and a turn start after the stall are refused;
+// and with a SessionBusyError for a pane too short or showing no input box, for any text in the input box, a lone stray character included, and for an operator active in the pane.
+// It never clears a stray character, never closes the picker and never clears a text that did not land, so a send that does not land fails with ErrSubmissionNotLanded and leaves its text in the box.
+// It never reads the pending-send record, so a line an earlier unlanded send left pending is typed again.
+// Once the send lands it waits for a turn start past the events file's size before the send, for at most one submit window, and reports whether one read.
+// Its caller waits for one reading, at most one submit window from the start of typing to the landing and at most one more for the turn start;
+// the pane captures inside that span wait on reed's per-worktree operation lock and a tmux call with no timeout of their own, so the windows bound the polling and not a hung reed or tmux call.
 // The run's events offset is the events file's size at the moment before the prompt is sent.
 // That lies past every load turn end, the retry's included, and past any line appended after them.
 // run.json records that offset as `promptOffset` before the prompt goes out,

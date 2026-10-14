@@ -1376,6 +1376,8 @@ func (e *clearableBoxEngine) ParseSessionSignals(data []byte) ([]SessionSignal, 
 		switch trimmed := strings.TrimSpace(line); {
 		case trimmed == "START":
 			signals = append(signals, SessionSignal{Kind: SessionSignalTurnStart})
+		case trimmed == "APIERR":
+			signals = append(signals, SessionSignal{Kind: SessionSignalAPIErrorTurnEnd})
 		case strings.HasPrefix(trimmed, "STOP:"):
 			signals = append(signals, SessionSignal{Kind: SessionSignalTurnEnd})
 		case strings.HasPrefix(trimmed, "SESSIONSTART"):

@@ -1,8 +1,9 @@
-// Package pauseengine implements the pause, resume and status sequences behind `lyx pause` and `lyx resume`, over seams.
+// Package tenderengine implements the pause, resume, revive and status sequences behind `lyx tender`, over seams.
 //
 // A pause records an entry in the pause record and waits a short grace for busy sessions and network operations to finish.
 // It then interrupts every covered session still in a running turn with Esc, and reports what it saw.
 // A resume lifts entries and gives each session it interrupted one line to carry on.
+// A revive gives one carry-on line to each session stalled on an API error.
 // Status reads the live entries and the holds a pause leaves, and changes nothing.
 //
 // Every path and every probe is told through Deps; the engine resolves no working directory and spawns nothing.
@@ -36,8 +37,38 @@
 // A strand that is not live and a send the guard refuses get no line and are named with the reason, which is the guard's own for a held send and the error's message for any other failure, such as an open rewind picker.
 // The orch's session is left to the orch watcher.
 //
+// # Revive
+//
+// An empty slug covers the whole hub; a slug covers that pair.
+// For each live session of each task pair in scope, Revive reads the session's state and skips one that does not read idle-stalled with cause `api-error`, reporting the state read; it never waits for one.
+// A stalled session is then sent `ReviveLine` through the conditioned send, which re-reads the state at its own ready reading and refuses at once when the session no longer reads stalled on an API error.
+// The coverage read of the record and the send run inside one `pauserecord.Update` that changes no entry, so they hold the record's write lock for one send at a time.
+// A session a live entry covers at that read is reported `paused` and sent nothing, since resume gives it its line.
+// A send with a turn start seen is `sent`, one that landed with none seen is `sent_no_turn_start`, an unlanded one is `not_landed`, a session that changed state meanwhile is skipped, and any other refusal, such as a draft, operator activity or the rewind picker, is `refused` with its reason.
+// No send is retried.
+//
+// For the hub scope only, Revive then reads the orch's state through `Deps.Prime`, and no other prime session is read, revived or reported.
+// An orch stalled on an API error is reported `paused` when a hub entry is live, and otherwise its conditioned notice is queued through `Deps.QueueOrchRevive`;
+// the report says `queued` or `already-queued`, that the notice is conditional, and whether an orch watcher is live to deliver it.
+// The engine never types into the orch's pane.
+//
+// Bound: Revive types one fixed line only into a session that reads stalled on an API error at the conditioned send's own reading, or, for the orch, at the notice's delivery.
+// It sends no key, kills nothing and changes no live entry, so a second revive finds a revived session busy or done and sends nothing, and finds the orch's notice still queued and queues none.
+// A pause, resume or orch watcher record write waits at most one conditioned send's hold, since `pauserecord.Update` blocks on the lock with no timeout; coverage reads take no lock.
+// A pause added while a line is in flight takes its entry after that session's turn start reads or its turn-start wait ends, so its grace poll reads a started turn busy.
+// A line that landed with no turn start seen is reported `sent_no_turn_start`, and status shows the session busy under any live entry, so the operator can pause that slug again.
+//
 // # Status
 //
 // Status reports the live entries, the network operations in flight with the ones run under a parent lock marked, and the holds:
 // each parent branch a covered run holds with the runs queued behind it, and each covered run waiting in a queue with the runs behind it.
-package pauseengine
+// It adds two read-only parts:
+//
+//   - Every live session of every task pair and then of the prime, each with its state, cause and since, and whether a live entry covers its slug.
+//     A prime session is covered only by a hub entry.
+//     A session whose state reading fails is listed with the state `unknown` and the error as its cause.
+//   - The processes running a replaced binary: each process whose exe is a deleted file with the running lyx's own file name and whose cwd is the hub or inside it.
+//     A platform that cannot list processes reports the part unsupported, and any other failed reading is reported in the part; the rest of the report is unaffected either way.
+//
+// Status reads no transcript and no pane content and writes nothing, so any caller may run it.
+package tenderengine

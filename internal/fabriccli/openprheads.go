@@ -13,7 +13,7 @@ import (
 	"github.com/google/go-github/v75/github"
 )
 
-// openPRListTimeout bounds the whole open-PR listing, every page included.
+// openPRListTimeout bounds the request for one page of the open-PR listing.
 const openPRListTimeout = 30 * time.Second
 
 // openPRListPageSize is the page size of the open-PR listing, GitHub's maximum.
@@ -36,16 +36,15 @@ func fetchOpenPRHeads(ctx context.Context, remoteURL string) (map[string]bool, e
 		return nil, err
 	}
 
-	listCtx, cancel := context.WithTimeout(ctx, openPRListTimeout)
-	defer cancel()
-
 	var prs []*github.PullRequest
 	opts := &github.PullRequestListOptions{
 		State:       "open",
 		ListOptions: github.ListOptions{PerPage: openPRListPageSize},
 	}
 	for {
-		page, resp, err := client.PullRequests.List(listCtx, owner, repo, opts)
+		pageCtx, cancel := context.WithTimeout(ctx, openPRListTimeout)
+		page, resp, err := client.PullRequests.List(pageCtx, owner, repo, opts)
+		cancel()
 		if err != nil {
 			return nil, fmt.Errorf("list open pull requests of %s/%s: %w", owner, repo, err)
 		}
