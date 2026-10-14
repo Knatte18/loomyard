@@ -48,6 +48,7 @@ internal/gitkit: 10
 internal/gitrepo: 45
 internal/gitrepo/internal/gitoracle: 1
 internal/helpcli: 1
+internal/hibernateengine: 3
 internal/hubforge: 7
 internal/hubgeom: 11
 internal/hubreconcile: 18
