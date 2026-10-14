@@ -28,6 +28,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -186,6 +187,7 @@ func pathExists(path string) bool {
 // TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating pins both reconcile calls of `lyx batten run`.
 // With a fresh stamp the first call is a no-op, so the new pair losing the prime's retired key can only come from the unconditional pair call after the create row.
 // Against an absent stamp, `arm` for run reconciles ahead of armAt's non-prime refusal and its auto-seed.
+// Under --open-terminal the create row also opens the run's terminal window on the new pair, once per run.
 func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *testing.T) {
 	t.Parallel()
 
@@ -207,12 +209,26 @@ func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *t
 	retired := strings.Replace(batcher.Template(), "orientation: 31400", "master_base: 52000", 1)
 	gitkit.CommitFile(t, h.PrimeRecords(), configengine.ConfigFileRel("batcher"), retired, "fixture: retired key")
 
-	c := wireForHub(t, h, slug, nil)
+	var opened []string
+	c := &battenCLI{location: h.Location, openTerminalFlag: true, terminalOpener: func(dir, title string) error {
+		opened = append(opened, dir+" "+title)
+		return nil
+	}}
+	if err := c.wire(h.Location, slug); err != nil {
+		t.Fatalf("wire(%s): %v", slug, err)
+	}
 	if err := c.env.CreateWorktree(context.Background()); err != nil {
 		t.Fatalf("CreateWorktree: %v", err)
 	}
 
 	pair := h.PairCodeWorktree(slug)
+	// The create row opens the run's terminal window on the new pair, and a re-entered row on the complete pair opens no second one.
+	if err := c.env.CreateWorktree(context.Background()); err != nil {
+		t.Fatalf("CreateWorktree re-entered on the complete pair: %v", err)
+	}
+	if want := []string{pair + " " + slug}; !slices.Equal(opened, want) {
+		t.Errorf("terminal windows opened = %q; want %q", opened, want)
+	}
 	if data, err := os.ReadFile(configengine.ConfigFile(pair, "batcher")); err != nil || strings.Contains(string(data), "master_base") {
 		t.Errorf("new pair's batcher.yaml still carries the retired key (err %v)", err)
 	}
