@@ -121,22 +121,6 @@ func createWeftWorktree(rec *Mutations, l *lyxcwd.Location, slug, branch, startP
 	return nil
 }
 
-// pushWeftBranch pushes the weft branch to origin through push's bounded retry, honoring SkipGit/SkipPush.
-// On success it records KindBranchPushed for branch via AppendRef.
-func pushWeftBranch(rec *Mutations, l *lyxcwd.Location, slug, branch string, opts SyncOptions, push pushSeam) error {
-	if opts.SkipGit || opts.SkipPush {
-		return nil
-	}
-
-	weftPath := RecordsWorktreePath(l, slug)
-	if err := push.pushBranchWithRetry(weftPath, branch); err != nil {
-		return fmt.Errorf("push weft branch %q failed: %w", branch, err)
-	}
-	rec.AppendRef(KindBranchPushed, branch, refDetail("records", weftPath, "origin"))
-
-	return nil
-}
-
 // removeWarpJunction removes every warp junction for slug via the gate's removeLink executor.
 // Returns nil if all are absent (idempotent).
 // rec is the calling verb's own recorder, threaded straight through to removeJunctionRecords.

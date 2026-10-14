@@ -5,9 +5,8 @@
 // Both are read through res.Mutated().Entries(), exercising the exported surface a CLI or this
 // package's own live-state harness consumer actually has.
 //
-// Package fabricengine_test to reuse the
-// broken-origin-remote failure injection gitkit.MustRun/TestAdd_GitFailureCarriesGitsOwnReason
-// already established (add_rollback_adopt_test.go); shares the single TestMain in testmain_test.go.
+// Package fabricengine_test to reuse the refused-records-commit failure injection refuseRecordsCommits already established (add_rollback_adopt_test.go);
+// shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -17,7 +16,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
@@ -67,20 +65,14 @@ func TestMutationRecord_AddRollbackOrdersCreationBeforeItsOwnDestruction(t *test
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
-	// Break the warp origin remote so the push at the very end of Add fails after every earlier
-	// step — warp and weft worktree creation, junction wiring — has already landed, forcing
-	// rollbackAdd to run and undo them. The same injection add_rollback_adopt_test.go's
-	// TestAdd_GitFailureCarriesGitsOwnReason and TestAddRollback_UnwiresJunctionsOnPostWiringFailure
-	// already establish.
-	gitkit.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin",
-		filepath.Join(t.TempDir(), "no-such-remote.git"))
+	// Refuse every records commit so the origin-record commit fails after every earlier step — warp and weft worktree creation, junction wiring — has already landed, forcing rollbackAdd to run and undo them.
+	// The same injection add_rollback_adopt_test.go's TestAddRollback_UnwiresJunctionsOnPostWiringFailure already establishes.
+	refuseRecordsCommits(t, l)
 
 	topology := h.Topology
-	// SkipPush skips Add's pre-flight probes of origin, which would otherwise refuse on the broken URL before any mutation;
-	// step 11's warp push ignores SkipPush, so it still fails after creation.
-	res, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true})
+	res, err := topology.Add(l, slug, fabricengine.AddOptions{})
 	if err == nil {
-		t.Fatalf("Add(%q) = nil error; want the broken-origin push failure", slug)
+		t.Fatalf("Add(%q) = nil error; want the refused records commit", slug)
 	}
 
 	entries := res.Mutated().Entries()

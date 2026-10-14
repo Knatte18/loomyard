@@ -17,8 +17,6 @@ package fabricengine
 // It holds the configuration needed by all topology methods.
 type Topology struct {
 	cfg Config
-	// push is the seam behind Add's branch pushes; its zero value is production.
-	push pushSeam
 	// leftover is the seam behind Remove's finishing of a directory git deregistered but left; its zero value is production.
 	leftover leftoverSeam
 	// inFlight answers which other pairs' sessions are live when a pair is removed; nil answers none.

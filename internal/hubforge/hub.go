@@ -412,7 +412,8 @@ func AddPair(tb testing.TB, h *Hub, slug string) fabricengine.AddResult {
 	return AddPairWith(tb, h, slug, fabricengine.AddOptions{})
 }
 
-// AddPairWith drives h.Topology.Add for slug against h with opts, fataling on error.
+// AddPairWith drives h.Topology.Add for slug against h with opts, then pushes the new pair in the foreground unless opts skip pushing, fataling on error.
+// Add itself pushes nothing; the foreground push stands in for the detached one a production caller spawns, so fixtures see both branches on the remotes.
 func AddPairWith(tb testing.TB, h *Hub, slug string, opts fabricengine.AddOptions) fabricengine.AddResult {
 	tb.Helper()
 
@@ -421,6 +422,9 @@ func AddPairWith(tb testing.TB, h *Hub, slug string, opts fabricengine.AddOption
 	res, err := h.Topology.Add(h.Location, slug, opts)
 	if err != nil {
 		tb.Fatalf("AddPairWith(%s): %v", slug, err)
+	}
+	if _, err := fabricengine.CoalescePushBothAt(res.Path, fabricengine.RecordsWorktreePath(h.Location, slug), opts); err != nil {
+		tb.Fatalf("AddPairWith(%s): push the new pair: %v", slug, err)
 	}
 	return res
 }

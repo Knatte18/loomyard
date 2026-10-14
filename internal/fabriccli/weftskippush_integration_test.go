@@ -7,14 +7,17 @@
 package fabriccli_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
@@ -109,6 +112,54 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 
 		if got := pushSpawnedTargets(envelope.RequireOK(t, output)); len(got) != 2 {
 			t.Errorf("push_spawned targets = %v; want one entry per side (code and records)\noutput: %s", got, output)
+		}
+	})
+
+	t.Run("AddSpawnsThePairPushAndReportsAFailedSpawnWithoutFailing", func(t *testing.T) {
+		// "add" reports one push_spawned entry per side of the new pair, and a failed spawn is a push_error that leaves the verb ok and the pair whole.
+		// The test swaps the process-global add seam, which is why the scenario stays serial.
+		spawnErr := errors.New("spawn refused")
+		tests := []struct {
+			name         string
+			slug         string
+			spawnErr     error
+			wantTargets  int
+			wantPushFail bool
+		}{
+			{name: "SpawnSucceeds", slug: "add-spawn-ok-pair", wantTargets: 2},
+			{name: "SpawnFails", slug: "add-spawn-fails-pair", spawnErr: spawnErr, wantPushFail: true},
+		}
+		for _, tt := range tests {
+			var spawnedAt []*lyxcwd.Location
+			previous := fabriccli.SetPairPushForTest(func(l *lyxcwd.Location) error {
+				spawnedAt = append(spawnedAt, l)
+				return tt.spawnErr
+			})
+			code, output := runFabric(t, h.PrimeWorktree(), "add", tt.slug)
+			fabriccli.SetPairPushForTest(previous)
+			if code != 0 {
+				t.Fatalf("%s: RunCLI(add) = %d; want 0\noutput: %s", tt.name, code, output)
+			}
+			result := envelope.RequireOK(t, output)
+
+			if len(spawnedAt) != 1 || spawnedAt[0].WorktreePath() != h.PairCodeWorktree(tt.slug) {
+				t.Errorf("%s: spawned pairs = %v; want exactly the new pair at %s", tt.name, spawnedAt, h.PairCodeWorktree(tt.slug))
+			}
+			targets := pushSpawnedTargets(result)
+			if len(targets) != tt.wantTargets {
+				t.Errorf("%s: push_spawned targets = %v; want %d\noutput: %s", tt.name, targets, tt.wantTargets, output)
+			}
+			// The record names each target relative to the hub.
+			if tt.wantTargets > 0 && (!targets[filepath.Base(h.PairCodeWorktree(tt.slug))] || !targets[filepath.Base(h.PairRecordsSibling(tt.slug))]) {
+				t.Errorf("%s: push_spawned targets = %v; want the code and records worktrees", tt.name, targets)
+			}
+			pushError, hasPushError := result.Raw["push_error"].(string)
+			if hasPushError != tt.wantPushFail || (tt.wantPushFail && pushError != spawnErr.Error()) {
+				t.Errorf("%s: push_error = %q (present %v); want present %v carrying %q\noutput: %s", tt.name, pushError, hasPushError, tt.wantPushFail, spawnErr.Error(), output)
+			}
+			if _, err := os.Stat(h.PairCodeWorktree(tt.slug)); err != nil {
+				t.Errorf("%s: the pair's code worktree is gone: %v", tt.name, err)
+			}
 		}
 	})
 }

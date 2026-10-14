@@ -1,8 +1,6 @@
-// add.go implements the transactional Add: it creates the warp worktree, portal, and launchers,
-// wires junctions, records and commits the pair's parent-branch and parent-worktree provenance, then pushes last,
-// performing a best-effort full rollback on any post-creation failure so a partial worktree PAIR
-// is never left behind.
-// The rollback also deletes the warp branch this Add created, under any branch_prefix, and on origin only the one ref this Add pushed — see rollbackAdd.
+// add.go implements the transactional Add: it creates the warp worktree, portal, and launchers, wires junctions, and records and commits the pair's parent-branch and parent-worktree provenance, pushing nothing.
+// It performs a best-effort full rollback on any post-creation failure, so a partial worktree PAIR is never left behind.
+// The rollback also deletes the warp branch this Add created, under any branch_prefix, and never touches origin — see rollbackAdd.
 // Whether the pair is live, which branches origin lends it and whether a leftover remote branch from a removed pair is replaceable are all decided at pre-flight, before the first mutation (see remoteleftover.go).
 // The weft side always uses the suffixed branch produced by RecordsBranchName.
 
@@ -21,14 +19,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// addBeforeWeftReplaceHook, when non-nil, runs at step 12 just before an archived leftover weft branch is replaced.
+// addBeforeWeftReplaceHook, when non-nil, runs at step 11 just before an archived leftover weft branch is replaced.
 // It is nil in production; only a non-parallel test sets it, through SetAddBeforeWeftReplaceHookForTest.
 var addBeforeWeftReplaceHook func()
 
 // AddOptions controls optional behaviour for Add.
-// It is an alias of SyncOptions (same SkipGit/SkipPush field shape as warp's own AddOptions) rather
-// than a distinct type, so Add can pass opts straight through to pushWeftBranch, which already
-// takes SyncOptions.
+// It is an alias of SyncOptions rather than a distinct type, so Add can pass opts straight through to the records helpers, which already take SyncOptions.
+// SkipGit or SkipPush skips the origin probes and the archived-leftover replacement, leaving a pair live only by a local weft branch.
 // Tests pass these directly instead of relying on environment variables, which makes t.Parallel()
 // safe.
 type AddOptions = SyncOptions
@@ -40,7 +37,6 @@ type AddResult struct {
 	Slug   string `json:"slug"`
 	Branch string `json:"branch"`
 	Path   string `json:"path"`
-	Pushed bool   `json:"pushed"`
 }
 
 // ErrBranchExists is Add's refusal when the warp branch a slug would create already exists.
@@ -65,7 +61,8 @@ func (e *ErrBranchExists) Error() string {
 
 // Add creates a new paired warp and weft git worktree with the given slug.
 // It validates the slug, creates both worktrees, wires junctions, records and commits the pair's
-// parent-branch and parent-worktree provenance (the acting worktree's name), and pushes branches, rolling back all changes on any failure.
+// parent-branch and parent-worktree provenance (the acting worktree's name), rolling back all changes on any failure.
+// It pushes neither branch: both are left committed locally for the caller to push, as SpawnPairPush does.
 // A newly forked weft branch does not inherit the parent's shed run records: the fork is no-checkout, so the run-records root never reaches the new worktree's disk,
 // and the pair's first weft commit (the origin record's) also records the root's deletion.
 // An adopted, already-existing weft branch keeps its own run records.
@@ -154,9 +151,9 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 	parentWeftBranch := RecordsBranchName(parentBranch)
 
-	// Probe both origins before the first mutation: decide whether the pair is live, and refuse an unreplaceable leftover here rather than at step 11 or 12's push.
+	// Probe both origins before the first mutation: decide whether the pair is live, and refuse an unreplaceable leftover here rather than at the caller's later push.
 	// The weft answer is carried on: its fastForwardTo advances a behind local weft branch,
-	// and an archived leftover is replaced at step 12 just before the push.
+	// and an archived leftover is replaced at step 11, so the caller's push of the weft branch is not rejected.
 	weftOld := weftLeftover{live: weftBranchAlreadyExists}
 	var warpAdoptTip string
 	var warpPush addWarpBranch
@@ -165,7 +162,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 		if err != nil {
 			return AddResult{}, err
 		}
-		warpAdoptTip, warpPush.origin, err = probeWarpLeftover(l, slug, warpBranch, weftOld.live)
+		warpAdoptTip, err = probeWarpLeftover(l, slug, warpBranch, weftOld.live)
 		if err != nil {
 			return AddResult{}, err
 		}
@@ -286,9 +283,8 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 		return AddResult{}, fmt.Errorf("wire junctions: %w", err)
 	}
 
-	// (10c) Record and commit the pair's provenance now that the pair is fully wired, and
-	// before step 11's warp push and step 12's weft push — the weft push that already runs at
-	// step 12 carries this commit to the remote, so no new push call is added here.
+	// (10c) Record and commit the pair's provenance now that the pair is fully wired;
+	// the caller's push of the weft branch carries this commit to the remote.
 	// An adopted weft worktree that already carries the record keeps it: neither rewritten nor committed,
 	// so a task moved between machines keeps its recorded parent.
 	// A forked weft always gets its own record, though it may carry the parent's.
@@ -312,21 +308,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 		}
 	}
 
-	// (11) Push warp branch (LAST step for warp)
-	pushedTip, err := gitrepo.New(l.WorktreePath()).RefSHA("refs/heads/" + warpBranch)
-	if err != nil {
-		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
-		return AddResult{}, fmt.Errorf("read warp branch %q tip: %w", warpBranch, err)
-	}
-	warpPush.pushAttempted = true
-	warpPush.pushedSHA = pushedTip
-	if err := t.push.pushBranchWithRetry(l.WorktreePath(), warpBranch); err != nil {
-		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
-		return AddResult{}, fmt.Errorf("push branch %q failed: %w", warpBranch, err)
-	}
-	rec.AppendRef(KindBranchPushed, warpBranch, refDetail("code", l.WorktreePath(), "origin"))
-
-	// (12) Replace an archived leftover of the weft branch on origin, then push the weft branch.
+	// (11) Replace an archived leftover of the weft branch on origin, so the caller's push of the weft branch is not rejected.
 	// The lease pins the deletion to the tip the pre-flight proved archived, so a branch that moved since is refused.
 	if weftOld.tip != "" {
 		if addBeforeWeftReplaceHook != nil {
@@ -347,18 +329,11 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 			return AddResult{}, fmt.Errorf("replace leftover weft branch %q on origin: %w", weftBranch, delErr)
 		}
 	}
-	if err := pushWeftBranch(rec, l, slug, weftBranch, opts, t.push); err != nil {
-		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
-		return AddResult{}, err
-	}
 
 	return AddResult{
 		Slug:   slug,
 		Branch: warpBranch,
 		Path:   target,
-		// Pushed reflects whether the weft branch was actually pushed to the remote.
-		// It is false when either SkipPush or SkipGit suppresses the push.
-		Pushed: !opts.SkipPush && !opts.SkipGit,
 	}, nil
 }
 
@@ -366,27 +341,18 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 type addWarpBranch struct {
 	// tok proves this Add created the branch; the zero value proves nothing.
 	tok createdBranchToken
-	// origin is what the pre-flight probe found on origin.
-	origin warpOriginState
-	// pushAttempted is whether step 11 started its push.
-	pushAttempted bool
-	// pushedSHA is the warp branch's tip read just before step 11's push.
-	pushedSHA string
 }
 
 // rollbackAdd performs best-effort paired cleanup on Add failure, unwiring junctions,
 // removing worktrees and branches, preserving pre-existing adopted weft branches.
 // weftBranchAdopted is whether the local weft branch existed before this Add:
 // a branch Add created, forked or taken from origin as a local tracking branch, is deleted, while a pre-existing one survives, a fast-forward Add made to it included (it is never rewound).
-// The one origin branch it may delete is the warp branch this Add pushed at step 11.
-// It does so only when the pre-flight probe found the branch absent from origin, step 11's push was attempted, and origin still holds it at the commit that push carried (a lease), so a branch that moved since is refused.
-// No other origin branch is ever touched.
+// It never touches an origin branch: Add pushes nothing.
 // warpTok is the token createGitWorktree minted when this Add call created the warp worktree at
 // target; it is the ownership proof the gate's warp-side removal requires.
 // warp carries the proof that this Add created the warp branch, which lets the gate delete the local branch whether it was forked or adopted from origin.
-// It also carries what step 11 did about origin.
 // A refused or failed branch deletion is logged, not swallowed (this function's return is discarded by every caller), so a branch left behind is visible in the trace.
-// Rollback never restores a remote weft branch Add's step 12 replaced:
+// Rollback never restores a remote weft branch Add's step 11 replaced:
 // its content stays reachable from the archive tag, and recreating it would re-block the next retry.
 // rec is Add's own recorder, threaded through to all six gate-bound calls this function reaches
 // (its own removeGitWorktree and deleteBranch, plus removeWeftWorktree, removeWarpJunction,
@@ -402,11 +368,7 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lyxcwd.Location, slug, warpBra
 
 	// (1) Remove the weft worktree; delete the weft branch only when this Add
 	// created it, so a rollback never destroys pre-existing weft history.
-	// remote is hardcoded false here — not because the branch was never pushed (Add pushes the warp
-	// branch at step (11) and the weft branch at step (12), so a rollback can genuinely face an
-	// already-pushed branch on either side), but because an unattended best-effort rollback on an
-	// error path the operator did not choose must not make a network-visible destructive change:
-	// --remote is opt-in precisely because deleting a shared ref needs an explicit operator decision.
+	// remote is hardcoded false here: Add pushes nothing, and an adopted branch's copy on origin is not this Add's to delete.
 	if _, err := removeWeftWorktree(rec, l, slug, weftBranch, true, !weftBranchAdopted, false, t.cfg.BranchPrefix); err != nil {
 		if firstErr == nil {
 			firstErr = err
@@ -460,7 +422,7 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lyxcwd.Location, slug, warpBra
 		firstErr = err
 	}
 
-	// (5) Delete the warp branch this Add created, locally, then on origin when this Add alone put it there.
+	// (5) Delete the warp branch this Add created, locally.
 	branchReq := branchRequest{
 		what:      "delete warp branch",
 		repoDir:   l.WorktreePath(),
@@ -483,24 +445,6 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lyxcwd.Location, slug, warpBra
 		logger.Warn("fabricengine: rollbackAdd's warp-branch deletion failed", "branch", warpBranch, "error", err)
 		if firstErr == nil {
 			firstErr = err
-		}
-	}
-	if warp.origin == warpOriginAbsent && warp.pushAttempted {
-		_, err = deleteRemoteBranch(rec, remoteBranchRequest{
-			what:      "delete the warp branch this Add pushed",
-			repoDir:   l.WorktreePath(),
-			remote:    originRemoteName,
-			branch:    warpBranch,
-			ownership: ownedCreatedBranch(l, warp.tok),
-			dirtiness: dirtyPushedByThisCall(),
-			leaseSHA:  warp.pushedSHA,
-			force:     false,
-		})
-		if err != nil {
-			logger.Warn("fabricengine: rollbackAdd left the warp branch on origin: its deletion was refused or failed", "branch", warpBranch, "lease", warp.pushedSHA, "error", err)
-			if firstErr == nil {
-				firstErr = err
-			}
 		}
 	}
 

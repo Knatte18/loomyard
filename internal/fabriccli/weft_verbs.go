@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
@@ -236,6 +237,8 @@ Related commands:
 				res, err := fabricengine.CoalescePushBothAt(warpPath, weftPath, fabricengine.SyncOptions{})
 				rec.Extend(res.Mutated())
 				if err != nil {
+					// The detached child's stdout goes nowhere, so the trace log is the only place its failure surfaces.
+					logger.Warn("fabriccli: detached push failed; the commits stay local for the pair's next push", "warp_path", warpPath, "weft_path", weftPath, "error", err)
 					clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 					return nil
 				}

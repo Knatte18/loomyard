@@ -24,6 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -76,6 +77,14 @@ func SpawnDetachedPush(warpPath, weftPath string) error {
 	}
 	logger.Info("fabricengine: spawned detached push", "exe", exe, "args", args, "pid", cmd.Process.Pid)
 	return nil // intentionally not Wait()ed
+}
+
+// SpawnPairPush launches the detached push of the task pair at l: its code worktree and its paired records worktree, with the gating of SpawnDetachedPush.
+// It resolves both sides from l alone, so a caller outside the Fabric Vocabulary Invariant's owner set never names the records side.
+// A failed or never-run push leaves the pair's commits local; the pair's next detached push carries them, and creates a never-pushed branch's upstream.
+// l must not be the hub's prime, whose code branch is the operator's to push.
+func SpawnPairPush(l *lyxcwd.Location) error {
+	return spawnDetachedPushFn(l.WorktreePath(), RecordsWorktree(l))
 }
 
 // PushWarpAt pushes unpushed commits at warpPath directly, with no Fabric instance and no weft path

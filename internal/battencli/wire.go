@@ -59,6 +59,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
+// spawnPairPush launches the detached push of a task pair; tests replace it, since a detached push forks the running binary.
+var spawnPairPush = fabricengine.SpawnPairPush
+
 // driverAliveFrom answers whether the child's driver strand is live, over an injected status reader so its answers are testable without tmux.
 // An absent task worktree is false without reading status, and so is an absent reed session -- no session means no driver -- while every other status error is returned unchanged.
 func driverAliveFrom(present bool, status func() (reedengine.StatusResult, error)) (bool, error) {
@@ -672,7 +675,7 @@ func dirtyPathsOutsideRunRecords(taskLocation *lyxcwd.Location) ([]string, error
 	return loomengine.PathsOutsideRunRecords(taskLocation, shedrun.SelfRunID, paths), nil
 }
 
-// openTerminal returns the Run-Shed seam that opens a terminal window titled slug, attached to the task worktree's reed session, or nil when the run was not asked to open one.
+// openTerminal returns the seam that opens a terminal window titled slug, attached to the task worktree's reed session, or nil when the run was not asked to open one.
 func (c *battenCLI) openTerminal(slug string, locateTask func() (*lyxcwd.Location, error)) func(context.Context) error {
 	if !c.openTerminalFlag {
 		return nil
@@ -681,6 +684,9 @@ func (c *battenCLI) openTerminal(slug string, locateTask func() (*lyxcwd.Locatio
 		taskLocation, err := locateTask()
 		if err != nil {
 			return err
+		}
+		if c.terminalOpener != nil {
+			return c.terminalOpener(taskLocation.AnchorPath(), slug)
 		}
 		launcher, err := termwindow.Resolve()
 		if err != nil {
@@ -759,6 +765,15 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		return reedengine.New(reedCfg, reedGeom).Directory()
 	}
 
+	// The terminal window opens once per run under Run-Shed's once-marker: from the create row as soon as the pair exists, else from Run-Shed after its spawn.
+	openTerminal := c.openTerminal(slug, locateTask)
+	openTerminalOnceCreated := func(ctx context.Context) {
+		if openTerminal == nil {
+			return
+		}
+		battenshed.OpenTerminalOnce(ctx, BattenDir(location, slug), battenrecipe.NameRunShed, slug, openTerminal)
+	}
+
 	env := shedrecipe.Env{
 		Slug:       slug,
 		ScratchDir: BattenDir(location, slug),
@@ -785,7 +800,11 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			}
 			if complete {
 				logger.Info("battencli: create worktree skipped, the task worktree is already present", "slug", slug)
-				return reconcileTaskPair(location, slug)
+				if err := reconcileTaskPair(location, slug); err != nil {
+					return err
+				}
+				openTerminalOnceCreated(ctx)
+				return nil
 			}
 			if present {
 				// A worktree exists but Add never finished it -- see taskWorktreeComplete's own doc
@@ -803,7 +822,18 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			if err != nil {
 				return createRefusal(err)
 			}
-			return reconcileTaskPair(location, slug)
+			if err := reconcileTaskPair(location, slug); err != nil {
+				return err
+			}
+			// Add pushes nothing; the new pair goes out through a detached push the run never waits on.
+			// A failed spawn leaves the branches local for the pair's next detached push, so it only warns.
+			if taskLocation, err := locateTask(); err != nil {
+				logger.Warn("battencli: locate the new pair to push it failed; its next push carries the branches", "slug", slug, "error", err)
+			} else if err := spawnPairPush(taskLocation); err != nil {
+				logger.Warn("battencli: spawn the new pair's push failed; its next push carries the branches", "slug", slug, "error", err)
+			}
+			openTerminalOnceCreated(ctx)
+			return nil
 		},
 		// Both teardown halves go through the pair-teardown composite and are idempotent against their shared post-condition, "the pair is gone".
 		// shedengine persists the row's transition only after the producer returns, so a process killed right after Remove succeeded re-enters this row with no pair on disk.
@@ -1147,7 +1177,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 				return state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
 			},
-			OpenTerminal: c.openTerminal(slug, locateTask),
+			OpenTerminal: openTerminal,
 		},
 		SeedChild: battenshed.SeedChildDeps{
 			// ReadBoardType opens the Board fresh on every Call, over fabricengine.BoardDir(location.HubPath), and returns the task's own Recipe field -- never a value captured at wiring time, so a recipe corrected after prime was seeded is still honoured.
@@ -1282,15 +1312,14 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				return err
 			},
 			MarkWatched: markWatched,
-			// PushSeed pushes the child's own fabric pair, the same location CommitSeed just
-			// committed onto.
+			// PushSeed spawns the detached push of the child's own fabric pair, the same location CommitSeed just
+			// committed onto, and never waits on it: the child reads its seed locally.
 			PushSeed: func(ctx context.Context) error {
 				childLocation, err := locateTask()
 				if err != nil {
 					return err
 				}
-				_, err = fabricengine.PushAnchored(childLocation, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait)
-				return err
+				return spawnPairPush(childLocation)
 			},
 		},
 	}

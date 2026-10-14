@@ -743,30 +743,6 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 		assertRefusalCheck(t, checkBranchRequest(req), CheckOwnership)
 	})
 
-	t.Run("RemoteBranchPushedByThisCallEmptyLeaseRefused", func(t *testing.T) {
-		l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
-		req := remoteBranchRequest{
-			what:      "test",
-			repoDir:   t.TempDir(),
-			remote:    originRemoteName,
-			branch:    "task",
-			ownership: ownedCreatedBranch(l, createdBranchToken{branch: "task"}),
-			dirtiness: dirtyPushedByThisCall(),
-		}
-		assertRefusalCheck(t, checkRemoteBranchRequest(req), CheckDirtiness)
-	})
-
-	t.Run("BranchRequestPushedByThisCallRefused", func(t *testing.T) {
-		l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
-		req := branchRequest{
-			what:      "test",
-			repoDir:   t.TempDir(),
-			branch:    "task",
-			ownership: ownedCreatedBranch(l, createdBranchToken{branch: "task"}),
-			dirtiness: dirtyPushedByThisCall(),
-		}
-		assertRefusalCheck(t, checkBranchRequest(req), CheckDirtiness)
-	})
 }
 
 // TestGate_AbsentTargetIsNoOp proves an absent target is a no-op success, for every ownership kind,

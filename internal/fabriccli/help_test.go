@@ -29,15 +29,15 @@ func TestCommand_VerbDeclarations(t *testing.T) {
 		}
 	})
 
-	t.Run("AddSaysItPushesToOrigin", func(t *testing.T) {
+	t.Run("AddSaysItPushesDetached", func(t *testing.T) {
 		t.Parallel()
 
 		add, _, err := fabriccli.Command().Find([]string{"add"})
 		if err != nil {
 			t.Fatalf("Find([add]) error: %v", err)
 		}
-		if !strings.Contains(add.Long, "pushes the new code branch and the records branches to origin") {
-			t.Errorf("add.Long = %q; want it to say the verb pushes to origin", add.Long)
+		if !strings.Contains(add.Long, "a detached child pushes the code and records branches") {
+			t.Errorf("add.Long = %q; want it to say a detached child pushes the new branches", add.Long)
 		}
 	})
 

@@ -16,15 +16,19 @@
 package battencli
 
 import (
+	"errors"
 	"os"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // TestMain runs the hermetic git setup once before the whole suite, then runs it under tmuxkit.Main.
+// A pair push is refused rather than detached, which would fork this test binary; no test of this suite has a pair to push.
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
+	spawnPairPush = func(*lyxcwd.Location) error { return errors.New("battencli: unit tests push no pair") }
 	os.Exit(tmuxkit.Main(m))
 }

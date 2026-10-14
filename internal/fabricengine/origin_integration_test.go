@@ -228,9 +228,9 @@ func TestAdd_RecordsParentBranch_SubpathAnchoredHub(t *testing.T) {
 }
 
 // TestAddRollback_CreatedPathLeavesNoOriginRecord forces Add to fail after the record has been
-// written and committed (a broken origin remote fails the nearest later step, the warp push) on the
+// written (a refused records commit fails its commit) on the
 // created-branch path, and asserts rollback's existing weft-worktree-and-branch removal takes the
-// record and its commit with it: nothing survives to be read back.
+// record with it: nothing survives to be read back.
 func TestAddRollback_CreatedPathLeavesNoOriginRecord(t *testing.T) {
 	t.Parallel()
 
@@ -239,16 +239,14 @@ func TestAddRollback_CreatedPathLeavesNoOriginRecord(t *testing.T) {
 	const slug = "created-path-no-record"
 	weftBranch := fabricengine.RecordsBranchName(slug)
 
-	gitkit.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
+	refuseRecordsCommits(t, l)
 
-	// SkipPush skips Add's pre-flight probes of origin, which would otherwise refuse on the broken URL before any mutation;
-	// step 11's warp push ignores SkipPush, so it still fails after the record step.
-	_, err := h.Topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true})
+	_, err := h.Topology.Add(l, slug, fabricengine.AddOptions{})
 	if err == nil {
-		t.Fatalf("Add(%q) should have failed (broken origin remote)", slug)
+		t.Fatalf("Add(%q) should have failed (records commit refused)", slug)
 	}
-	if !strings.Contains(err.Error(), "push branch") {
-		t.Fatalf("Add(%q) error = %v; want the step-11 push failure, so rollback runs after the record step", slug, err)
+	if !strings.Contains(err.Error(), "commit parent branch record") {
+		t.Fatalf("Add(%q) error = %v; want the record commit failure, so rollback runs after the record is written", slug, err)
 	}
 
 	if gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), weftBranch) {
@@ -259,65 +257,6 @@ func TestAddRollback_CreatedPathLeavesNoOriginRecord(t *testing.T) {
 	}
 	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("warp worktree dir still exists at %s after rollback", fabricengine.WorktreePath(l, slug))
-	}
-}
-
-// TestAddRollback_AdoptedPathPreservesOriginRecordCommit forces the same post-record-step failure
-// against an adopted pre-existing weft branch, and asserts the rollback's deliberate
-// !weftBranchAdopted guard leaves the record's own commit in place on that branch — on top of the
-// pre-existing history, which survives untouched alongside it.
-func TestAddRollback_AdoptedPathPreservesOriginRecordCommit(t *testing.T) {
-	t.Parallel()
-
-	const slug = "adopted-path-keeps-record"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	weftBranch := fabricengine.RecordsBranchName(slug)
-
-	// Pre-create the weft branch with a unique commit that predates the Add, exactly as
-	// TestAddRollback_AdoptedWeftBranchSurvives does.
-	seedDir := filepath.Join(t.TempDir(), "seed")
-	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.RecordsBranchName("main"))
-	gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
-	preciousSHA := gitkit.RevParse(t, seedDir, "HEAD")
-	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "remove", seedDir)
-
-	// Break the warp origin remote so the push (the nearest step after the record's write-and-commit
-	// step) fails, triggering rollbackAdd — the same injection
-	// TestAddRollback_UnwiresJunctionsOnPostWiringFailure uses for the identical adopted-branch
-	// post-wiring failure shape.
-	gitkit.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
-
-	// SkipPush skips Add's pre-flight probes of origin, which would otherwise refuse on the broken URL before any mutation;
-	// step 11's warp push ignores SkipPush, so it still fails after creation.
-	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
-		t.Fatalf("Add(%q) should have failed (broken origin remote)", slug)
-	}
-
-	weftRoot := mustRecordsRepoRoot(t, l)
-	if !gitkit.BranchExists(t, weftRoot, weftBranch) {
-		t.Fatalf("adopted weft branch %q was deleted by Add's rollback; want it preserved", weftBranch)
-	}
-
-	headSHA := gitkit.RevParse(t, weftRoot, "refs/heads/"+weftBranch)
-	if headSHA == preciousSHA {
-		t.Fatalf("adopted weft branch %q HEAD = %s (the pre-existing commit); want the record's own commit retained on top of it", weftBranch, headSHA)
-	}
-	parentSHA := gitkit.RevParse(t, weftRoot, "refs/heads/"+weftBranch+"^")
-	if parentSHA != preciousSHA {
-		t.Errorf("adopted weft branch %q's retained commit's parent = %s; want the pre-existing commit %s", weftBranch, parentSHA, preciousSHA)
-	}
-
-	gitRelPath := filepath.ToSlash(filepath.Join(l.AnchorRel, fabricengine.OriginRecordRel()))
-	shown := gitShow(t, weftRoot, weftBranch, gitRelPath)
-	if !strings.Contains(shown, `"parent_branch": "main"`) {
-		t.Errorf("git show %s:%s = %q; want the retained commit to carry the origin record content", weftBranch, gitRelPath, shown)
-	}
-
-	// The pre-existing history survives untouched alongside the retained record commit.
-	precious := gitShow(t, weftRoot, weftBranch, "precious.txt")
-	if !strings.Contains(precious, "pre-existing weft work") {
-		t.Errorf("git show %s:precious.txt = %q; want the pre-existing file content preserved", weftBranch, precious)
 	}
 }
 

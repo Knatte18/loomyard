@@ -508,12 +508,13 @@
 // A pair that is not live has a removed pair's leftovers: the archive tag is the orphan proof,
 // and a remote weft tip equal to, or an ancestor of, an `archive/<slug>/*` tag's target on origin is replaceable.
 // The warp side of such a pair is refused unless the remote warp tip is an ancestor of `HEAD`.
-// A replaceable weft leftover is deleted at step 12, immediately before the weft push, through the destructive gate with a lease on the probed tip, so a branch that moved since the probe is refused and `Add` rolls back.
-// A rollback deletes the local branches this `Add` created, a weft branch taken from origin included, and never restores the deleted remote weft branch: its content is reachable from the archive tag.
-// It also deletes the warp branch this `Add` pushed from origin, but only when the pre-flight probe found it absent there, step 11's push was attempted, and origin still holds it at the commit that push carried; a branch origin already had is never touched.
+// A replaceable weft leftover is deleted at step 11, `Add`'s last, through the destructive gate with a lease on the probed tip, so a branch that moved since the probe is refused and `Add` rolls back.
+// `Add` pushes neither branch: its callers spawn the pair's detached push through `SpawnPairPush`, and the leftover's deletion keeps that push from being rejected.
+// A failed or never-run push leaves both branches committed locally, and the pair's next detached push, which every fabric commit and sync spawns, carries them and creates a never-pushed branch's upstream.
+// A rollback deletes the local branches this `Add` created, a weft branch taken from origin included, never touches an origin branch, and never restores the deleted remote weft branch: its content is reachable from the archive tag.
 // A fast-forward `Add` made to a pre-existing local weft branch is not rewound.
 // Every plain fabric push retries a push the server refuses on the pushed ref with a bare `(failed)` or a remote `cannot lock ref`, through gitrepo's bounded retry with exponential backoff;
-// `Add`'s two branch pushes and the archive tag push included, and every other push failure returns on the first attempt.
+// the archive tag push included, and every other push failure returns on the first attempt.
 // The coalesced push logs a Warn and leaves the commits unpushed once the attempts run out.
 // `SkipPush`/`SkipGit` skip every probe and the replacement: the pair is then live only by a local weft branch,
 // and the warp branch forks from `HEAD`.

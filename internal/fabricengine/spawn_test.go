@@ -7,7 +7,13 @@
 
 package fabricengine
 
-import "testing"
+import (
+	"errors"
+	"path/filepath"
+	"testing"
+
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+)
 
 // TestSpawnDetachedPush_SkipEnvAndEmptyPaths covers every case where SpawnDetachedPush must return
 // nil without forking a child: FABRIC_SKIP_GIT set, FABRIC_SKIP_PUSH set, and both paths empty (with
@@ -51,5 +57,30 @@ func TestPushWarpAt_Gating(t *testing.T) {
 				t.Errorf("PushWarpAt(%+v) = %v; want nil", tt.opts, err)
 			}
 		})
+	}
+}
+
+// TestSpawnPairPush_HandsTheDetachedPushBothSidesOfThePair asserts SpawnPairPush resolves the code worktree and its paired records worktree from the location alone, and returns the spawn's error.
+// Serial: the test assigns the package-level spawnDetachedPushFn.
+func TestSpawnPairPush_HandsTheDetachedPushBothSidesOfThePair(t *testing.T) {
+	l := &lyxcwd.Location{HubPath: filepath.Join(t.TempDir(), "hub-LYXHUB"), WorktreeName: "task", AnchorRel: "."}
+	spawnErr := errors.New("spawn failed")
+
+	original := spawnDetachedPushFn
+	t.Cleanup(func() { spawnDetachedPushFn = original })
+	var gotWarpPath, gotWeftPath string
+	spawnDetachedPushFn = func(warpPath, weftPath string) error {
+		gotWarpPath, gotWeftPath = warpPath, weftPath
+		return spawnErr
+	}
+
+	if err := SpawnPairPush(l); !errors.Is(err, spawnErr) {
+		t.Errorf("SpawnPairPush() = %v; want %v", err, spawnErr)
+	}
+	if gotWarpPath != l.WorktreePath() {
+		t.Errorf("warp path = %q; want %q", gotWarpPath, l.WorktreePath())
+	}
+	if want := RecordsWorktree(l); gotWeftPath != want {
+		t.Errorf("weft path = %q; want %q", gotWeftPath, want)
 	}
 }

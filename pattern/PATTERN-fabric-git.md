@@ -29,6 +29,7 @@ The entry binds lyx's own code only.
 - `Unwire` removes warp junctions and exclude entries only; weft-side `_lyx` and `.lyx` content is always preserved.
 - Every teardown of an existing pair's weft branch (`Remove`, `Cleanup`) first pushes an `archive/<slug>/<tip>` tag to the weft origin, so the run records stay reachable.
   A rolled-back `Add` is excepted, and `force` never skips the tag.
-  A rolled-back `Add` also deletes the warp branch it created, and from origin only that branch, when the pre-flight probe found it absent there and the lease holds on the commit it pushed.
+  A rolled-back `Add` also deletes the warp branch it created, locally only: `Add` pushes nothing, so no origin branch is its to delete.
+- `Add` leaves the new pair's branches committed locally; its callers push them through the detached `SpawnPairPush`, never a synchronous push.
 - `Remove` first commits the sibling worktree's uncommitted changes under the scoped record pathspec, so the tag holds them; `force` skips neither the commit nor the tag.
 - `Add` replaces a leftover remote weft branch only when an `archive/<slug>/*` tag covers its tip.
