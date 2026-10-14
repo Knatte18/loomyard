@@ -108,7 +108,7 @@ Run it as one background job from the session's own cwd, with the stop envelope'
 Run it at exactly these stops, and never run it at any other:
 
 - a `blocked` stop;
-- an `awaiting` stop whose envelope carries a non-empty `parent_notice`, PR-Gate's included;
+- an `awaiting` stop whose envelope carries a non-empty `parent_notice`, whatever row it stops at;
 - an `error` or `interrupted` stop, after the fork's action is an escalation, a transient one included.
 
 Never run it at an error stop whose fork named a repair verb or a re-launch.
