@@ -146,7 +146,7 @@ func RefCovers(plan *Plan, cover, target string) bool {
 	if targetIsFile {
 		targetDir = path.Dir(targetScope)
 	}
-	return targetDir == coverScope ||strings.HasPrefix(targetDir, coverScope+"/")
+	return targetDir == coverScope || strings.HasPrefix(targetDir, coverScope+"/")
 }
 
 // refMember returns the canonical glyph string of a ref naming a member, a glyph or a `plan:` handle whose body parses to a glyph that is not a self glyph.
