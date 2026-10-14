@@ -194,15 +194,17 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 	c.env.DiscussionHistory = discussionHistory(location)
 	c.env.DarnSpec = func(told loomshed.DarnTold) (shuttleengine.Spec, error) {
 		return darnengine.DarnSpec(darnengine.DarnInputs{
-			StencilsDir:       stencilsDir,
-			SpecsDir:          specsDir,
-			WorktreeRoot:      location.WorktreePath(),
-			FrictionDir:       frictionDir,
-			ParentName:        c.parentName,
-			Slug:              seedSlug(location.WorktreeName),
-			DescriptionPath:   summaryparser.Path(loomengine.LandingDir(location)),
-			RejectionFindings: told.RejectionFindings,
-			PriorWork:         told.PriorWork,
+			StencilsDir:        stencilsDir,
+			SpecsDir:           specsDir,
+			WorktreeRoot:       location.WorktreePath(),
+			FrictionDir:        frictionDir,
+			ParentName:         c.parentName,
+			Slug:               seedSlug(location.WorktreeName),
+			DescriptionPath:    summaryparser.Path(loomengine.LandingDir(location)),
+			DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
+			SupportLogPath:     loomengine.DiscussionSupportLog(location),
+			RejectionFindings:  told.RejectionFindings,
+			PriorWork:          told.PriorWork,
 		}, cfg, registry)
 	}
 	reviewSubdir, isBouncer, err := loomrecipe.BouncerRunSubdir(loomshed.NameDarnBouncer)

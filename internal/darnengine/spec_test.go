@@ -26,6 +26,9 @@ func newSpecInputs(t *testing.T) DarnInputs {
 		WorktreeRoot:    t.TempDir(),
 		Slug:            "fix-the-thing",
 		DescriptionPath: filepath.Join(t.TempDir(), "description.md"),
+
+		DecisionRecordPath: filepath.Join(t.TempDir(), "decision-record.md"),
+		SupportLogPath:     filepath.Join(t.TempDir(), "support-log.md"),
 	}
 }
 
@@ -55,7 +58,7 @@ func TestDarnSpec(t *testing.T) {
 			name:      "first spawn renders both optional tokens as none",
 			configure: func(in *DarnInputs) {},
 			wantInPrompt: func(in DarnInputs) []string {
-				return []string{"`lyx board get '{\"slug\":\"fix-the-thing\"}'`", in.DescriptionPath, filepath.ToSlash(in.SpecsDir) + "/loom/loom-final-summary-spec.md"}
+				return []string{"`lyx board get '{\"slug\":\"fix-the-thing\"}'`", in.DescriptionPath, filepath.ToSlash(in.SpecsDir) + "/loom/loom-final-summary-spec.md", in.DecisionRecordPath, in.SupportLogPath, filepath.ToSlash(in.SpecsDir) + "/loom/loom-discussion-spec.md"}
 			},
 			wantNone:     2,
 			wantNoParent: true,
@@ -128,6 +131,8 @@ func TestDarnSpec_Refusals(t *testing.T) {
 		{"empty WorktreeRoot", func(t *testing.T, in *DarnInputs, cfg *Config) { in.WorktreeRoot = "" }, "WorktreeRoot"},
 		{"empty Slug", func(t *testing.T, in *DarnInputs, cfg *Config) { in.Slug = "" }, "Slug"},
 		{"empty DescriptionPath", func(t *testing.T, in *DarnInputs, cfg *Config) { in.DescriptionPath = "" }, "DescriptionPath"},
+		{"empty DecisionRecordPath", func(t *testing.T, in *DarnInputs, cfg *Config) { in.DecisionRecordPath = "" }, "DecisionRecordPath"},
+		{"empty SupportLogPath", func(t *testing.T, in *DarnInputs, cfg *Config) { in.SupportLogPath = "" }, "SupportLogPath"},
 		{"malformed writer spec", func(t *testing.T, in *DarnInputs, cfg *Config) { cfg.Writer = "opus[effort=high" }, "writer model-spec"},
 		{"missing stencil", func(t *testing.T, in *DarnInputs, cfg *Config) { stencilkit.Remove(t, in.StencilsDir, darnStencilName) }, darnStencilName},
 	}
