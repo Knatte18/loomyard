@@ -34,7 +34,6 @@ package loomengine
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -44,7 +43,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
@@ -151,38 +149,6 @@ func DiscussionDecisionRecord(l *lyxcwd.Location) string {
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func DiscussionSupportLog(l *lyxcwd.Location) string {
 	return filepath.Join(DiscussionDir(l), "support-log.md")
-}
-
-// DiscussionReadyMarker returns the path to the twill writer's ready marker.
-// It is untracked state the writer creates once its decision record passes the self-check, and the condition its lens forks wait on.
-// It sits under the anchor's lyxdirs.DotLyxDirName at the subpath mirroring DiscussionDir.
-func DiscussionReadyMarker(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, discussionDirName, "decision-record.md.ready")
-}
-
-// RemoveDiscussionReadyMarker removes the ready marker and treats a missing one as success.
-// It runs before every fresh Discussion-Write spawn, so a marker left by an earlier spawn never wakes a later spawn's forks.
-func RemoveDiscussionReadyMarker(l *lyxcwd.Location) error {
-	if err := os.Remove(DiscussionReadyMarker(l)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("loom: remove discussion ready marker: %w", err)
-	}
-	return nil
-}
-
-// PlanReadyMarker returns the path to the twill plan writer's ready marker.
-// It is untracked state the writer creates once its plan passes the self-check, and the condition its lens forks wait on.
-// It sits under the anchor's lyxdirs.DotLyxDirName at the subpath mirroring the plan directory.
-func PlanReadyMarker(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, planparser.PlanDirName, filepath.Base(planparser.PlanOverview(l.AnchorPath()))+".ready")
-}
-
-// RemovePlanReadyMarker removes the plan ready marker and treats a missing one as success.
-// It runs before every fresh Plan-Write spawn, so a marker left by an earlier spawn never wakes a later spawn's forks.
-func RemovePlanReadyMarker(l *lyxcwd.Location) error {
-	if err := os.Remove(PlanReadyMarker(l)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("loom: remove plan ready marker: %w", err)
-	}
-	return nil
 }
 
 // LoomDriverLog returns the path to the detached driver's captured stdout and stderr for this

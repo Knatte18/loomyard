@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// planWriteEntry is the Constructor for the "PlanWrite" registry row: it validates Env.PlanSpec, Env.CommitPlan, Env.PreparePlanSpawn, Env.Shuttle, Env.AnchorPath, Env.StencilsDir and Env.Rework.ArchiveWebster, resolves the row's "gates" Config key through resolveGateSpec, then builds a gated SingleLLMProducer whose fresh-spawn preparation runs Env.PreparePlanSpawn and then loomshed.NewPlanDirRotator, behind loomshed.NewPlanWrite's post-Done commit decorator.
+// planWriteEntry is the Constructor for the "PlanWrite" registry row: it validates Env.PlanSpec, Env.CommitPlan, Env.Shuttle, Env.AnchorPath, Env.StencilsDir and Env.Rework.ArchiveWebster, resolves the row's "gates" Config key through resolveGateSpec, then builds a gated SingleLLMProducer carrying loomshed.NewPlanDirRotator as its fresh-spawn preparation, behind loomshed.NewPlanWrite's post-Done commit decorator.
 //
 // The Spec arrives as an injected shedadapters.SpecSource closure rather than as recipe Config
 // because building it needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this
@@ -46,9 +46,6 @@ func planWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 	if err := requireSeam("PlanWrite", "CommitPlan", env.CommitPlan); err != nil {
 		return nil, err
 	}
-	if err := requireSeam("PlanWrite", "PreparePlanSpawn", env.PreparePlanSpawn); err != nil {
-		return nil, err
-	}
 	if err := requireSeam("PlanWrite", "Shuttle", env.Shuttle); err != nil {
 		return nil, err
 	}
@@ -65,15 +62,7 @@ func planWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 	// ahead of it: it must not touch _lyx/plan until the producer's own attach probe has proved no
 	// live plan agent is writing there. See loomshed.NewPlanDirRotator.
 	rotate := loomshed.NewPlanDirRotator(env.AnchorPath, env.StencilsDir, env.Rework.ArchiveWebster, env.Now)
-	preparePlanSpawn := env.PreparePlanSpawn
-	// The marker removal is its own step ahead of the rotation, since the rotation returns early when the plan directory holds no stale file.
-	prepare := func() (string, error) {
-		if err := preparePlanSpawn(); err != nil {
-			return "", err
-		}
-		return rotate()
-	}
-	inner := shedadapters.NewSingleLLMProducerGated(name, env.PlanSpec, env.Shuttle, env.Now, prepare, gate)
+	inner := shedadapters.NewSingleLLMProducerGated(name, env.PlanSpec, env.Shuttle, env.Now, rotate, gate)
 	return loomshed.NewPlanWrite(name, inner, env.CommitPlan), nil
 }
 

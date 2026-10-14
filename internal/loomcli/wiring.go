@@ -683,14 +683,6 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		DiscussionSpec: func() (shuttleengine.Spec, error) {
 			return loomengine.DiscussionSpec(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, c.parentName, loomCfg, registry, seedSlug(location.WorktreeName), !loomCfg.DiscussionInteractive)
 		},
-		// PrepareDiscussionSpawn removes a ready marker an earlier writer spawn left, whichever producer is configured, since removing an absent marker is a no-op.
-		PrepareDiscussionSpawn: func() error {
-			return loomengine.RemoveDiscussionReadyMarker(location)
-		},
-		// PreparePlanSpawn removes a ready marker an earlier plan writer spawn left, whichever producer is configured, since removing an absent marker is a no-op.
-		PreparePlanSpawn: func() error {
-			return loomengine.RemovePlanReadyMarker(location)
-		},
 		// DiscussionTable is evaluated per Call for the same stencil-ownership reason as DiscussionSpec.
 		// It is wired whatever discussion_producer holds; only a row built on DiscussionSeats evaluates it.
 		DiscussionTable: func() (seatengine.Table, error) {

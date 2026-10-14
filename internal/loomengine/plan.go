@@ -12,11 +12,11 @@
 // settle is what flips `approved` to `true`, immediately before its commit seam fires.
 //
 // With plan_producer twill the spec is the single writer's with the twill directive rendered into the plan template between Step 2 and Step 3, and fork subagents authorized.
-// The directive's lenses come from the twill-plan fan in burler.yaml, the forks wait on the ready marker, which the writer creates once its plan passes the self-check and Go removes before every fresh spawn, and the writer records the lens review in the plan directory's lens-review.md.
+// The directive's lenses come from the twill-plan fan in burler.yaml, the writer spawns the forks once its plan is written and passes the self-check, so they review the plan their inherited context holds, and the writer records the lens review in the plan directory's lens-review.md.
 // The writer runs `lyx loom validate-plan --lens-review` as its final self-check, and the row's gate requires a recorded lens-review.md for a twill-spawned run.
 // The spec sets ForkSubagents, so the writer may spawn subagents of type fork.
 // While the shuttle config's claude_deny_agent_tool is true, the Agent hook admits fork subagents only and refuses every other subagent type; with it false no Agent hook is installed.
-// Forks run on the writer's model, read-only and without the Agent tool by the stencil's boilerplate, and give up after 15 empty waits of up to five minutes each.
+// Forks run on the writer's model, read-only and without the Agent tool by the stencil's boilerplate.
 // The plan gates and the Plan-Review segment still bound what lands in the plan.
 // With plan_producer single the prompt keeps its bytes and ForkSubagents stays false.
 //

@@ -11,11 +11,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// discussionWriteEntry is the Constructor for the "DiscussionWrite" registry row: it validates Env.DiscussionSpec, Env.PrepareDiscussionSpawn, Env.CommitDiscussion, and Env.Shuttle, resolves the row's "gates" Config key through resolveGateSpec, then returns loomshed.NewDiscussionWrite(name, shedadapters.NewSingleLLMProducerGated(name, env.DiscussionSpec, env.Shuttle, env.Now, prepare, gate), env.CommitDiscussion) -- a gated SingleLLMProducer behind a commit decorator.
+// discussionWriteEntry is the Constructor for the "DiscussionWrite" registry row: it validates Env.DiscussionSpec, Env.CommitDiscussion, and Env.Shuttle, resolves the row's "gates" Config key through resolveGateSpec, then returns loomshed.NewDiscussionWrite(name, shedadapters.NewSingleLLMProducerGated(name, env.DiscussionSpec, env.Shuttle, env.Now, prepare, gate), env.CommitDiscussion) -- a gated SingleLLMProducer behind a commit decorator.
 //
-// The producer's fresh-spawn preparation runs Env.PrepareDiscussionSpawn first and then, when the resolved gate list holds an enabled "parent-review" entry, calls Env.ParentReview.Store.PrepareRound; it returns an empty amendment and the first error.
-// A start therefore opens the next round unless the latest one holds no request, a reject or a superseding approve, which the gate must read, and an attach runs neither step and continues the latest round.
-// A disabled or absent parent-review entry leaves only the first step.
+// When the resolved gate list holds an enabled "parent-review" entry, the producer's fresh-spawn preparation calls Env.ParentReview.Store.PrepareRound and returns an empty amendment, so a start opens the next round unless the latest one holds no request, a reject or a superseding approve, which the gate must read, and an attach continues the latest one.
+// A disabled or absent entry leaves the preparation nil.
 //
 // The Spec arrives as an injected shedadapters.SpecSource closure rather than as recipe Config
 // because building it needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this
@@ -38,35 +37,22 @@ func discussionWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProd
 	if err := requireSeam("DiscussionWrite", "DiscussionSpec", env.DiscussionSpec); err != nil {
 		return nil, err
 	}
-	if err := requireSeam("DiscussionWrite", "PrepareDiscussionSpawn", env.PrepareDiscussionSpawn); err != nil {
-		return nil, err
-	}
 	if err := requireSeam("DiscussionWrite", "CommitDiscussion", env.CommitDiscussion); err != nil {
 		return nil, err
 	}
 	if err := requireSeam("DiscussionWrite", "Shuttle", env.Shuttle); err != nil {
 		return nil, err
 	}
-	var prepareRound func() error
+	var prepare func() (string, error)
 	for _, ge := range gate {
 		if ge.Name == "parent-review" && ge.Attempts > 0 {
 			store := env.ParentReview.Store
-			prepareRound = func() error {
+			prepare = func() (string, error) {
 				_, err := store.PrepareRound()
-				return err
+				return "", err
 			}
 			break
 		}
-	}
-	prepareSpawn := env.PrepareDiscussionSpawn
-	prepare := func() (string, error) {
-		if err := prepareSpawn(); err != nil {
-			return "", err
-		}
-		if prepareRound == nil {
-			return "", nil
-		}
-		return "", prepareRound()
 	}
 	inner := shedadapters.NewSingleLLMProducerGated(name, env.DiscussionSpec, env.Shuttle, env.Now, prepare, gate)
 	return loomshed.NewDiscussionWrite(name, inner, env.CommitDiscussion), nil
