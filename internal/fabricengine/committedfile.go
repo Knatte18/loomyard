@@ -1,5 +1,5 @@
-// committedfile.go implements CommittedAnchoredFile, the read-only twin of CommitAnchoredPaths:
-// it reads one anchored file as committed at HEAD without the caller naming the side of the pair that holds it.
+// committedfile.go implements CommittedAnchoredFile and CommittedAnchoredFileHistory, the read-only twins of CommitAnchoredPaths:
+// they read one anchored file as committed at HEAD, or at every commit that touched it, without the caller naming the side of the pair that holds it.
 
 package fabricengine
 
@@ -39,4 +39,35 @@ func CommittedAnchoredFile(l *lyxcwd.Location, relPath string) (data []byte, fou
 		return nil, false, fmt.Errorf("fabricengine: read %s at %s: %w", relPath, sha, err)
 	}
 	return data, true, nil
+}
+
+// CommittedAnchoredFileHistory returns relPath's contents at every commit that touched it, newest first, unaffected by any uncommitted edit to the working-tree copy.
+//
+// relPath is anchor-relative and the commit target resolves from l, both exactly as CommittedAnchoredFile resolves them.
+// A commit that deleted the path holds no contents and is skipped.
+//
+// A path with no history, or an unborn HEAD, returns an empty slice and a nil error;
+// every other failure is an error naming the path.
+// It is read-only, so the Fabric Git Invariant exempts it from the commit seam.
+func CommittedAnchoredFileHistory(l *lyxcwd.Location, relPath string) ([][]byte, error) {
+	repo := gitrepo.New(RecordsWorktree(l))
+	scoped := filepath.ToSlash(ScopedPathspec(l.AnchorRel, []string{relPath})[0])
+
+	revisions, err := repo.PathRevisions(scoped, 0)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: list revisions for %s: %w", relPath, err)
+	}
+
+	versions := make([][]byte, 0, len(revisions))
+	for _, sha := range revisions {
+		data, err := repo.FileAtRevision(sha, scoped)
+		if err != nil {
+			if errors.Is(err, gitrepo.ErrPathNotAtRevision) {
+				continue
+			}
+			return nil, fmt.Errorf("fabricengine: read %s at %s: %w", relPath, sha, err)
+		}
+		versions = append(versions, data)
+	}
+	return versions, nil
 }
