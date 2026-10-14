@@ -130,35 +130,36 @@ func CountOrch(dir string, runs []RunTally) (OrchTally, error) {
 	return tally, nil
 }
 
-// readTranscript returns the text of an orch transcript's first user message that holds text, and its assistant messages not already in seen and timestamped within the tally's span.
+// readTranscript returns the text of an orch transcript's first user message that holds text, and its assistant messages not already in seen and whose last line is timestamped within the tally's span.
 func (tally *OrchTally) readTranscript(path string, seen map[string]bool) (string, []orchMessage, error) {
 	prompt := ""
-	var messages []orchMessage
+	var usageLines []line
 	err := eachLine(path, func(l line) {
-		if l.Message == nil {
-			return
-		}
-		if prompt == "" && l.Type == "user" {
+		if prompt == "" && l.Type == "user" && l.Message != nil {
 			prompt = strings.Join(userTexts(l.Message.Content), "\n")
 		}
-		if l.Type != "assistant" || l.Message.Usage == nil {
-			return
+		if isUsageLine(l) {
+			usageLines = append(usageLines, l)
 		}
-		id := l.Message.ID
-		if id == "" {
-			id = l.UUID
-		}
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	lastLines, _ := lastLinePerMessage(usageLines)
+	var messages []orchMessage
+	for _, l := range lastLines {
+		id := messageKey(l)
 		if seen[id] {
-			return
+			continue
 		}
 		seen[id] = true
 		at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
 		if err != nil || at.Before(tally.From) || at.After(tally.To) {
-			return
+			continue
 		}
 		messages = append(messages, orchMessage{At: at, Usage: *l.Message.Usage, Cost: messageCost(l.Message.Model, *l.Message.Usage)})
-	})
-	return prompt, messages, err
+	}
+	return prompt, messages, nil
 }
 
 // chargeByTime splits a message equally among the runs whose active window holds its timestamp, or leaves it unattributed when none does.
