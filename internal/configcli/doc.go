@@ -39,6 +39,9 @@
 // A key under one of the module's declared open maps (`configreg.Module.OpenMaps`) adds or rewrites one entry with a scalar value, as in `lyx config board --set labels.quarry="glyphs and the quarry index"`.
 // It refuses when the map holds a list,
 // and removing an entry stays an editor edit.
+// A key that is itself a declared open map holding a scalar or a list, such as loom's per-round model keys `review`, `fix`, `fan_review` and each segment's `*_review` and `*_fix`, takes either shape:
+// a value starting with `[` is written as a YAML flow list of scalars and any other value as a string, as in `lyx config loom --set 'plan_review=["opus[medium]", "sonnet[high]"]'`.
+// An entry holding `[` or `]` must be quoted, and a bracketed value that is not a list of scalars is refused, never written as a string.
 // Any other key must exist in the template;
 // pre-existing keys the template lacks are preserved and reported in a `preserved` field.
 //
