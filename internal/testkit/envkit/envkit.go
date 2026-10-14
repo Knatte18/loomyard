@@ -31,7 +31,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -289,10 +288,14 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		Rework:               ReworkDeps(t, dir),
 		DarnVerifyAttempts:   3,
 		DarnReviewMaxBounces: 1,
-		DarnSpec: func(loomshed.DarnTold) (shuttleengine.Spec, error) {
-			return shuttleengine.Spec{
-				Prompt:      "test darn prompt",
-				OutputFiles: []string{filepath.Join(dir, "darn-description.md")},
+		DarnTable: func(loomshed.DarnTold) (seatengine.Table, error) {
+			return seatengine.Table{
+				RolePrefix: "darn",
+				Segment:    segmentcolor.Darn,
+				Seats: []seatengine.Seat{{
+					Stencil: "darn-template-write",
+					Outputs: []string{filepath.Join(dir, "darn-description.md")},
+				}},
 			}, nil
 		},
 		Darn: loomshed.DarnDeps{

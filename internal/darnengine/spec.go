@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -131,6 +132,70 @@ func DarnSpec(in DarnInputs, cfg Config, reg modelspec.Registry) (shuttleengine.
 		Segment:     segmentcolor.Darn,
 		Skills:      darnSkills,
 		Timeout:     time.Duration(cfg.WriterTimeoutMin) * time.Minute,
+	}, nil
+}
+
+// DarnTable builds the seatengine.Table of one darn writer spawn: one lead that writes the change description.
+// An empty required field of in is refused by name, and cfg.Writer is resolved against reg.
+// The lead is non-interactive, carries the change description as its one output file, and the table runs for cfg.WriterTimeoutMin minutes.
+// The table's values are the stencil's markers, and the seat engine renders the parent and edit directives from its geometry, so the table reads no ParentName.
+// The table carries no gate; the producer entry sets it.
+// A friction directive that fails to render is logged and left empty, because the note is optional bookkeeping.
+func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
+	required := []struct{ field, value string }{
+		{"StencilsDir", in.StencilsDir},
+		{"SpecsDir", in.SpecsDir},
+		{"WorktreeRoot", in.WorktreeRoot},
+		{"Slug", in.Slug},
+		{"DescriptionPath", in.DescriptionPath},
+	}
+	for _, r := range required {
+		if r.value == "" {
+			return seatengine.Table{}, fmt.Errorf("darn: DarnTable: %s must not be empty", r.field)
+		}
+	}
+
+	parsed, err := modelspec.Parse(cfg.Writer)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("darn: DarnTable: writer model-spec: %w", err)
+	}
+	resolved, err := reg.Resolve(parsed)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("darn: DarnTable: writer model-spec: %w", err)
+	}
+
+	patternDirective, err := pattern.Directive(in.WorktreeRoot, in.StencilsDir, pattern.RoleImplementer)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("darn: DarnTable: %w", err)
+	}
+	frictionDirective, err := friction.Directive(friction.NotePath(in.FrictionDir, "Darn-Write"), in.StencilsDir, friction.RoleImplementer)
+	if err != nil {
+		logger.Warn("darn: friction directive failed, continuing without one", "role", darnRole, "stencil", darnStencilName, "error", err)
+		frictionDirective = ""
+	}
+
+	return seatengine.Table{
+		RolePrefix: darnRole,
+		Segment:    segmentcolor.Darn,
+		Timeout:    time.Duration(cfg.WriterTimeoutMin) * time.Minute,
+		Values: map[string]string{
+			"slug":               in.Slug,
+			"description_path":   in.DescriptionPath,
+			"specs_dir":          in.SpecsDir,
+			"rejection_findings": orNone(in.RejectionFindings),
+			"prior_work":         orNone(in.PriorWork),
+			"pattern_directive":  patternDirective,
+			friction.MarkerName:  frictionDirective,
+		},
+		Optional: []string{"pattern_directive", friction.MarkerName},
+		Seats: []seatengine.Seat{{
+			Stencil: darnStencilName,
+			Model:   resolved.Model,
+			Effort:  resolved.Params["effort"],
+			Version: resolved.Params["version"],
+			Outputs: []string{in.DescriptionPath},
+			Skills:  darnSkills,
+		}},
 	}, nil
 }
 

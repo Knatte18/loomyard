@@ -21,7 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -219,9 +218,9 @@ type Env struct {
 	// Rework is a whole-struct passthrough to loomshed.NewPRRework, following Env.Landing's own precedent:
 	// the producer has behaviour of its own -- the generation archive, the round record and the rejection removal -- that per-seam fakes must be able to substitute individually.
 	Rework loomshed.PRReworkDeps
-	// DarnSpec is the injected Spec factory the DarnWrite entry evaluates once per Call, with the token texts the producer tells that session.
+	// DarnTable is the injected table factory the DarnWrite entry evaluates once per Call, with the token texts the producer tells that session.
 	// It arrives as a closure for the reason ReworkTable does.
-	DarnSpec func(loomshed.DarnTold) (shuttleengine.Spec, error)
+	DarnTable func(loomshed.DarnTold) (seatengine.Table, error)
 	// DarnVerifyAttempts is the verify gate's attempt budget of the darn recipe, which `darn.yaml`'s verify_attempts supplies.
 	// internal/loomrecipe alone reads it, stamping it onto the verify gates of the Darn-Write and Darn-Burler-Fix rows at every build.
 	DarnVerifyAttempts int

@@ -38,7 +38,7 @@ func seedDarnHubConfig(t *testing.T, hub, verify, verifyAttempts string) {
 func TestWire_DarnRecipe(t *testing.T) {
 	t.Parallel()
 
-	darnSeams := []string{"DarnSpec", "Darn.ReadRejection", "Darn.ClearRejection", "Darn.Commit", "Darn.LatestOutcome", "Darn.PublishFailure"}
+	darnSeams := []string{"DarnTable", "Darn.ReadRejection", "Darn.ClearRejection", "Darn.Commit", "Darn.LatestOutcome", "Darn.PublishFailure"}
 
 	t.Run("a darn seed fills the darn seams, the verify source and the attempts", func(t *testing.T) {
 		t.Parallel()
@@ -90,8 +90,8 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
-		if c.env.DarnSpec != nil || c.env.Darn.Commit != nil || c.env.VerifyMergeBase != nil || c.env.VerifyWholeDiff || c.env.DarnVerifyAttempts != 0 {
-			t.Errorf("a loom seed filled a darn seam: DarnSpec nil = %v, Darn.Commit nil = %v, VerifyMergeBase nil = %v, VerifyWholeDiff = %v, DarnVerifyAttempts = %d", c.env.DarnSpec == nil, c.env.Darn.Commit == nil, c.env.VerifyMergeBase == nil, c.env.VerifyWholeDiff, c.env.DarnVerifyAttempts)
+		if c.env.DarnTable != nil || c.env.Darn.Commit != nil || c.env.VerifyMergeBase != nil || c.env.VerifyWholeDiff || c.env.DarnVerifyAttempts != 0 {
+			t.Errorf("a loom seed filled a darn seam: DarnTable nil = %v, Darn.Commit nil = %v, VerifyMergeBase nil = %v, VerifyWholeDiff = %v, DarnVerifyAttempts = %d", c.env.DarnTable == nil, c.env.Darn.Commit == nil, c.env.VerifyMergeBase == nil, c.env.VerifyWholeDiff, c.env.DarnVerifyAttempts)
 		}
 		if got := c.verifySource().failedWayForward; !strings.Contains(got, `"lyx loom goto --to Webster-Burler-Review"`) {
 			t.Errorf("verifySource().failedWayForward = %q; want it to route back to the Webster-Burler-Review row", got)

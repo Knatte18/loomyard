@@ -21,7 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/verifytree"
@@ -191,13 +190,12 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 		return loomrecipe.DarnRouting(cfg.ReviewMaxBounces)
 	})
 	c.env.Darn = darnDeps(location, c.runID, c.env.VerifyDir)
-	c.env.DarnSpec = func(told loomshed.DarnTold) (shuttleengine.Spec, error) {
-		return darnengine.DarnSpec(darnengine.DarnInputs{
+	c.env.DarnTable = func(told loomshed.DarnTold) (seatengine.Table, error) {
+		return darnengine.DarnTable(darnengine.DarnInputs{
 			StencilsDir:       stencilsDir,
 			SpecsDir:          specsDir,
 			WorktreeRoot:      location.WorktreePath(),
 			FrictionDir:       frictionDir,
-			ParentName:        c.parentName,
 			Slug:              seedSlug(location.WorktreeName),
 			DescriptionPath:   summaryparser.Path(loomengine.LandingDir(location)),
 			RejectionFindings: told.RejectionFindings,

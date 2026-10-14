@@ -1,10 +1,10 @@
 <!-- This is the darn writer's entire instruction set. It is shipped as an embedded default in the
      top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lyx/stencils/darn/
-     and read from there at call time by darnengine's DarnSpec via internal/stencil, then handed to
+     and read from there at call time by internal/seatengine, which fills it from the lead's value map that darnengine's DarnTable builds, then hands it to
      shuttle as the writer's whole prompt.
      Every marker below is a top-level {{.X}} substitution;
-     stencil.FillOptional requires every marker except pattern_directive, friction_directive and parent_directive non-empty, and there are no {{if}}/{{range}} conditionals anywhere in this file.
-     rejection_findings and prior_work are never empty: DarnSpec fills each with (none) when it has nothing to tell.
+     stencil.FillWith requires every marker except pattern_directive, friction_directive and parent_directive non-empty, and there are no {{if}}/{{range}} conditionals anywhere in this file.
+     rejection_findings and prior_work are never empty: DarnTable fills each with (none) when it has nothing to tell.
      edit_directive is a required marker, rendered unconditionally by internal/editdirective. -->
 
 # Darn — make the change a board entry asks for, in one session
