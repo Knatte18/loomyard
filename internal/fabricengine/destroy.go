@@ -441,7 +441,7 @@ func ownedPairWarpBranch(warpBranch, parentBranch string) branchOwnership {
 
 // ownedPairWeftBranch declares branch as owned when it is exactly RecordsBranchName(warpBranch), is accepted by WeftWarpSlug, and is not l's primary weft branch.
 // It deliberately has no checked-out test:
-// at Add's step 12 the same-named local branch is the replacement, checked out at the new weft worktree, which is exactly what ownedManagedBranch refuses.
+// while Add builds the pair the same-named local branch is the replacement, checked out at the new weft worktree, which is exactly what ownedManagedBranch refuses.
 // An empty warpBranch matches nothing.
 func ownedPairWeftBranch(l *lyxcwd.Location, warpBranch string) branchOwnership {
 	return branchOwnership{kind: branchOwnershipPairWeft, location: l, warpBranch: warpBranch}
