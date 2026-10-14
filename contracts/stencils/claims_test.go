@@ -232,6 +232,9 @@ var wordingClaims = []stencilClaims{
 		wantAll("the writer never records a correction itself", "You never run `lyx loom decision add` yourself"),
 		wantNone("the stencil restates none of the record format; the spec holds it", "`## Auto-mode assumptions`"),
 	)},
+	{"landing-template-describe-darn.md", LandingTemplateDescribeDarn, joinClaims(
+		wantAll("the darn Describe session reads the decision record, whose added entries amend the board entry", "{{.decision_record_path}}", "`Added after Discussion`"),
+	)},
 	{"loom-template-plan.md", LoomTemplatePlan, joinClaims(wantAll("the card-granularity contract reaches the agent", "What a card is", "independently committable", "Carries the coverage for the behavior it introduces", "`PATTERN-test-economy`", "no substitute for test coverage"),
 		wantAll("an existing test member is named as a glyph, a new test function takes a plan: handle and a new test file a Create path",
 			"A card names an existing test function, fake or helper it changes as a member glyph", "A new test function in an existing file is a `**Create:**` declaration with a `plan:` handle", "A new test file is a `**Create:**` path"),

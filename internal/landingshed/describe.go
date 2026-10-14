@@ -139,6 +139,8 @@ type DarnDescribeInputs struct {
 	ParentName string
 	// ReviewDir is the review perch's run directory, read only for the findings of a round the review passed unconverged.
 	ReviewDir string
+	// DecisionRecordPath is the decision record the darn writer wrote, read beside the board entry for the scope and decisions the description covers.
+	DecisionRecordPath string
 	// DescriptionPath is the file the agent writes: the change description.
 	DescriptionPath string
 	// TaskBranch is the branch whose diff the description covers.
@@ -149,12 +151,13 @@ type DarnDescribeInputs struct {
 	Slug string
 }
 
-// DarnDescribeSpec builds the shuttleengine.Spec for the Describe session of a darn run, which describes the diff from the board entry with no decision record or run record to read.
+// DarnDescribeSpec builds the shuttleengine.Spec for the Describe session of a darn run, which describes the diff from the board entry and the decision record, and still reads no run record.
 // It is DescribeSpec's twin in every other respect: the model and timeout come from cfg's describe keys, the role, segment and skills are the same, and an empty required field is an error naming it.
 func DarnDescribeSpec(in DarnDescribeInputs, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
 	required := []struct{ name, value string }{
 		{"StencilsDir", in.StencilsDir},
 		{"ReviewDir", in.ReviewDir},
+		{"DecisionRecordPath", in.DecisionRecordPath},
 		{"DescriptionPath", in.DescriptionPath},
 		{"TaskBranch", in.TaskBranch},
 		{"ParentBranch", in.ParentBranch},
@@ -167,11 +170,12 @@ func DarnDescribeSpec(in DarnDescribeInputs, cfg Config, reg modelspec.Registry)
 	}
 
 	spec, err := describeSessionSpec(darnDescribeStencilName, in.StencilsDir, in.ParentName, in.DescriptionPath, map[string]string{
-		"slug":             in.Slug,
-		"review_dir":       in.ReviewDir,
-		"description_path": in.DescriptionPath,
-		"task_branch":      in.TaskBranch,
-		"parent_branch":    in.ParentBranch,
+		"slug":                 in.Slug,
+		"review_dir":           in.ReviewDir,
+		"decision_record_path": in.DecisionRecordPath,
+		"description_path":     in.DescriptionPath,
+		"task_branch":          in.TaskBranch,
+		"parent_branch":        in.ParentBranch,
 	}, cfg, reg)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("landingshed: DarnDescribeSpec: %w", err)

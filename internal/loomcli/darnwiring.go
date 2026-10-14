@@ -163,7 +163,7 @@ func (c *loomCLI) darnReviewBudget() (int, error) {
 	return template.ReviewMaxBounces, nil
 }
 
-// wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe, and replaces the loom DescribeSpec with the darn one, which reads no decision record or run record.
+// wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe, and replaces the loom DescribeSpec with the darn one, which reads the decision record but no run record.
 // It loads the hub-wide darn.yaml strictly and reads its verify command once, so start, run, step and resume refuse an absent or empty command before any row builds.
 func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, frictionDir string, landingCfg landingshed.Config, registry modelspec.Registry) error {
 	dirs := fabricengine.ConfigDirs(location)
@@ -225,13 +225,14 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 			return shuttleengine.Spec{}, err
 		}
 		return landingshed.DarnDescribeSpec(landingshed.DarnDescribeInputs{
-			StencilsDir:     stencilsDir,
-			ParentName:      c.parentName,
-			ReviewDir:       filepath.Join(loomengine.LoomReviewsDir(location), reviewSubdir),
-			DescriptionPath: summaryparser.Path(loomengine.LandingDir(location)),
-			TaskBranch:      taskBranch,
-			ParentBranch:    parentBranch,
-			Slug:            seedSlug(location.WorktreeName),
+			StencilsDir:        stencilsDir,
+			ParentName:         c.parentName,
+			ReviewDir:          filepath.Join(loomengine.LoomReviewsDir(location), reviewSubdir),
+			DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
+			DescriptionPath:    summaryparser.Path(loomengine.LandingDir(location)),
+			TaskBranch:         taskBranch,
+			ParentBranch:       parentBranch,
+			Slug:               seedSlug(location.WorktreeName),
 		}, landingCfg, registry)
 	}
 
