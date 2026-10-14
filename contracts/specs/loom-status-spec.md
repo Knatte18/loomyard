@@ -48,7 +48,7 @@ A fresh seed carries `current_producer: "Preflight"`, `state: "running"`, empty 
   "activity": {"now": "...", "last": "...", "wait": "..."}, // Shed-owned, mechanically composed
   "history": [                                 // Shed-owned: one entry per producer call
     {"producer": "Preflight", "outcome": "done", "output": "", "at": "2026-07-17T10:01:30Z"}
-    // a reroute entry also carries "routed_to": "<target row>"; the Stuck entry of a reroute-cap halt carries "reroute_capped": true
+    // a reroute entry also carries "routed_to": "<target row>", and so does a Stuck entry whose row's on_stuck edge bounced the run; the Stuck entry of a reroute-cap halt carries "reroute_capped": true
   ],
   "product": {                                 // loom-owned, opaque to Shed
     "slug": "loom-contracts",                  // board-task pointer (board owns title/description)
