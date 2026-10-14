@@ -124,6 +124,8 @@ type Watcher struct {
 
 	// pause is the told pause-record reading, nil when the watcher was never told one.
 	pause *PauseWatch
+	// binaryCheck re-execs the process onto a replaced binary, nil when the watcher was never told one.
+	binaryCheck func()
 	// firstTick is the time of the watcher's first tick, zero before it.
 	firstTick time.Time
 	// pauseHandled holds the PausedAt, as Unix nanoseconds, of each hub entry already handled.

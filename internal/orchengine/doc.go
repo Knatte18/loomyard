@@ -367,6 +367,20 @@
 //     An orch the entry does not own, such as an idle one or the caller, gets none.
 //   - An unreadable record holds nothing, with one Warn per change of error.
 //
+// # Binary re-exec
+//
+// A watcher told a check through `WatchBinary`, which `lyx orch watch` wires to a `selfexec` watcher, re-execs onto a replaced binary.
+// `Watcher.Run` calls the check after a tick that succeeded and returned not done, before the poll sleep, so it adds no wake of its own and runs at most once per poll.
+// It runs only at a restart-safe tick: the state, re-read from disk after the tick, is in phase idle, so no cycle step is in flight and the persisted cycle state carries over,
+// and the told pause record reads with no live hub entry, handled or not, so no in-memory pause handling is lost.
+// A watcher never told a pause record reads no entry, and a state or record read error waits for the next tick.
+//
+// The exec keeps the argv and environment, and the watch lock does not survive it, since the lock file is opened close-on-exec.
+// The new image takes the lock again through the acquire retry.
+// In that gap `lyx orch start` may spawn a second watcher; both contend for the one lock and the loser exits as already running, so exactly one watcher remains.
+// A refresh, distill, hub pause or revive in the gap reports no live watcher, as it does with none.
+// The new image holds the cycle machine under a live hub entry from its first tick, and interrupts a busy orch only for an entry whose grace end is still ahead.
+//
 // # Migrating from an operator's own terminal session
 //
 // In the running terminal session, ask for a note in the orch note's three sections and note the file it writes, then exit that session.
