@@ -14,12 +14,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/twilldirective"
 )
 
-// twillFan names the burler.yaml fan whose lenses the twill writer's forks review the decision record through.
-const twillFan = "twill-discussion"
-
-// twillPlanFan names the burler.yaml fan whose lenses the twill plan writer's forks review the plan through.
-const twillPlanFan = "twill-plan"
-
 const (
 	// planTwillSpawnPoint is the Plan-Write host's spawn point, rendered verbatim into the twill directive.
 	// It overrides the plan template's opening line, which says the producer has no review logic of its own.
@@ -35,15 +29,16 @@ const (
 )
 
 // twillLenses returns the lenses of the named fan, resolved against burler.yaml's layer stack under dirs and the embedded template.
-// row names the spawning row in the errors: an unreadable burler.yaml, or a fan that does not resolve, fails with an error naming the fan and burler.yaml and the way forward.
-func twillLenses(dirs configengine.Dirs, fan, row string) ([]twilldirective.Lens, error) {
+// key is the loom.yaml key that names the fan, which the errors carry:
+// an unreadable burler.yaml, a fan that is undefined or holds no lenses, and a fan naming an undefined lens are each refused naming the key and the way forward.
+func twillLenses(dirs configengine.Dirs, fan, key string) ([]twilldirective.Lens, error) {
 	burlerConfig, err := burlerengine.LoadConfig(dirs)
 	if err != nil {
-		return nil, fmt.Errorf("%s: burler.yaml unreadable for twill, which needs the %s fan; fix burler.yaml: %w", row, fan, err)
+		return nil, fmt.Errorf("loom config key %q: burler.yaml unreadable for the %q fan: %w; fix burler.yaml, or set the key to \"\" to turn the lens forks off", key, fan, err)
 	}
 	resolved, err := burlerengine.ResolveFan(burlerConfig, fan)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %s fan unresolvable; define %s and its lenses in burler.yaml or restore the template's: %w", row, fan, fan, err)
+		return nil, fmt.Errorf("loom config key %q: fan %q unresolvable through burler.yaml: %w; define the fan and its lenses in burler.yaml, or set the key to \"\" to turn the lens forks off", key, fan, err)
 	}
 	lenses := make([]twilldirective.Lens, len(resolved))
 	for i, lens := range resolved {
@@ -52,10 +47,11 @@ func twillLenses(dirs configengine.Dirs, fan, row string) ([]twilldirective.Lens
 	return lenses, nil
 }
 
-// planTwillDirective returns the twill directive for the Plan-Write lead's prompt, filled with the plan host's values and the lenses of the twillPlanFan fan, resolved through burler.yaml's layer stack under dirs.
+// planLensDirective returns the twill directive for the Plan-Write lead's prompt, filled with the plan host's values and the lenses of the named fan, resolved through burler.yaml's layer stack under dirs.
 // The forks review the overview and every card file its Card Index names, and the writer records the lens review in the plan directory's lens review file.
-func planTwillDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir string) (string, error) {
-	lenses, err := twillLenses(dirs, twillPlanFan, "Plan-Write")
+// A fan that does not resolve is refused naming the plan_lenses key.
+func planLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, fan string) (string, error) {
+	lenses, err := twillLenses(dirs, fan, planLensesKey)
 	if err != nil {
 		return "", err
 	}
@@ -75,11 +71,11 @@ func planTwillDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencil
 	})
 }
 
-// discussionTwillDirective returns the twill directive for the Discussion-Write prompt.
-// The lenses come from the twillFan fan, resolved against burler.yaml's layer stack under dirs and the embedded template.
-// An unreadable burler.yaml, or a fan that does not resolve, fails with an error naming the fan and burler.yaml and the way forward.
-func discussionTwillDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir string) (string, error) {
-	lenses, err := twillLenses(dirs, twillFan, "Discussion-Write")
+// discussionLensDirective returns the twill directive for the Discussion-Write prompt.
+// The lenses come from the named fan, resolved against burler.yaml's layer stack under dirs and the embedded template.
+// An unreadable burler.yaml, or a fan that does not resolve, is refused naming the discussion_lenses key and the way forward.
+func discussionLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, fan string) (string, error) {
+	lenses, err := twillLenses(dirs, fan, discussionLensesKey)
 	if err != nil {
 		return "", err
 	}

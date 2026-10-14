@@ -13,10 +13,11 @@
 // discussion_auto_accept, plan_auto_accept and webster_auto_accept make that perch accept a harvested round at a spent budget instead of running the soft-cap rule.
 // merge_max_bounces, merge_hard_max_bounces and merge_auto_accept do the same for the Merge-Review perch, which sends a round whose ledger holds an open BLOCKING finding to the soft-cap rule instead of accepting it;
 // skip_merge_review skips only that review, and Merge-In, the parent lock and the reroute on a moved parent still run.
-// discussion_producer selects the Discussion-Write row's producer and must be single, seats or twill.
-// plan_producer selects the Plan-Write row's producer, single or twill, and an empty value reads as single.
-// discussion_advisors lists the seats producer's advisor model-specs; every entry is resolved through the model registry at load, whatever discussion_producer holds, and an unset list loads as no advisors.
-// Under seats, no advisors runs the chair alone, deciding each question itself.
+// discussion_advisors lists the Discussion-Write advisors, each entry a {name, model} pair: name is the advisor's seat name and model its model-spec, resolved through the model registry at load, and an unset list loads as no advisors.
+// With no advisors the Discussion-Write lead decides each question itself.
+// discussion_lenses and plan_lenses each name the burler.yaml fan whose lenses the Discussion-Write or Plan-Write lead forks itself for once its output is written and self-checked; empty, the default, turns the forks off.
+// Neither is the discussion_fan or plan_fan of a review perch, and all three of these keys are closed to the local layer.
+// The retired discussion_producer and plan_producer keys are rewritten into these by MigrateConfig.
 // seed, discussion_judge, plan_judge, webster_judge, discussion_seed, plan_seed, webster_seed and rework are role model-specs validated only when non-empty, an empty value meaning the fallback:
 // a per-segment judge takes judge, a per-segment seed takes seed, seed takes that segment's resolved judge, and rework takes plan.
 // arbiter is a role model-spec validated only when non-empty, an empty value taking opus[high]; arbiter_timeout_min and arbiter_max_spawns are refused when negative, and a zero arbiter_max_spawns turns the arbiter off.
@@ -32,9 +33,11 @@
 package loomengine
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
@@ -43,6 +46,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
@@ -375,32 +379,13 @@ func LoomFrictionLock(l *lyxcwd.Location) string {
 	return filepath.Join(LoomScratchDir(l), frictionDirName+".lock")
 }
 
-const (
-	// DiscussionProducerSingle selects the single-agent writer for the Discussion-Write row.
-	DiscussionProducerSingle = "single"
-	// DiscussionProducerSeats selects the chair with its advisors for the Discussion-Write row.
-	DiscussionProducerSeats = "seats"
-	// DiscussionProducerTwill selects the single-agent writer with lens forks for the Discussion-Write row.
-	DiscussionProducerTwill = "twill"
-)
-
-const (
-	// PlanProducerSingle selects the single-agent writer for the Plan-Write row.
-	PlanProducerSingle = "single"
-	// PlanProducerTwill selects the single-agent writer with lens forks for the Plan-Write row.
-	PlanProducerTwill = "twill"
-)
-
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.
 type Config struct {
 	Discussion            string        `yaml:"discussion"`
 	DiscussionTimeoutMin  int           `yaml:"discussion_timeout_min"`
 	DiscussionInteractive bool          `yaml:"discussion_interactive"`
-	DiscussionProducer    string        `yaml:"discussion_producer"`
-	DiscussionAdvisors    ModelSpecList `yaml:"discussion_advisors"`
 	Plan                  string        `yaml:"plan"`
 	PlanTimeoutMin        int           `yaml:"plan_timeout_min"`
-	PlanProducer          string        `yaml:"plan_producer"`
 	Review                ModelSpecList `yaml:"review"`
 	Fix                   ModelSpecList `yaml:"fix"`
 	DiscussionReview      ModelSpecList `yaml:"discussion_review"`
@@ -427,6 +412,17 @@ type Config struct {
 	Driver                string        `yaml:"driver"`
 	ParentReviewWaitMin   int           `yaml:"parent_review_wait_min"`
 	StepIdleTimeoutMin    int           `yaml:"step_idle_timeout_min"`
+
+	// DiscussionAdvisors are the Discussion-Write advisors, one seat each; an empty list runs the lead alone.
+	DiscussionAdvisors DiscussionAdvisorList `yaml:"discussion_advisors"`
+
+	// DiscussionLenses names the burler.yaml fan whose lenses the Discussion-Write lead forks itself for once its record is written and self-checked; empty turns the forks off.
+	// It names the writer's lens fan, not the Discussion-Review perch's DiscussionFan.
+	DiscussionLenses string `yaml:"discussion_lenses"`
+
+	// PlanLenses names the burler.yaml fan whose lenses the Plan-Write lead forks itself for once its plan is written and self-checked; empty turns the forks off.
+	// It names the writer's lens fan, not the Plan-Review perch's PlanFan.
+	PlanLenses string `yaml:"plan_lenses"`
 
 	// The arbiter's model-spec, timeout and spawn budget.
 	// An empty Arbiter takes opus[high], a zero ArbiterTimeoutMin takes 30 minutes, and a zero ArbiterMaxSpawns turns the arbiter off.
@@ -513,7 +509,48 @@ func (l *ModelSpecList) UnmarshalYAML(node *yaml.Node) error {
 	}
 }
 
-// ConfigOpenMaps returns the loom.yaml keys whose value is a scalar or a per-round list, which configengine carries whole through reconcile and --set.
+// DiscussionAdvisor is one Discussion-Write advisor: Name is its seat name and Model its model-spec.
+type DiscussionAdvisor struct {
+	Name  string `yaml:"name"`
+	Model string `yaml:"model"`
+}
+
+// DiscussionAdvisorList is the discussion_advisors value: a sequence of {name, model} mappings.
+type DiscussionAdvisorList []DiscussionAdvisor
+
+// advisorWayForward is the way forward every discussion_advisors refusal about its entries ends with.
+const advisorWayForward = "set the key to a list of {name, model} entries, each with a distinct seat name and a model-spec the registry defines, or to an empty list for no advisors"
+
+// advisorEntryWayForward is the way forward of an entry that is not a {name, model} mapping.
+const advisorEntryWayForward = "rewrite the entry as {name: <seat name>, model: <model-spec>}"
+
+// advisorShapeError reports a discussion_advisors value that is not a sequence of {name, model} mappings; its text names the entry or the line and the way forward.
+type advisorShapeError struct {
+	text string
+}
+
+func (e *advisorShapeError) Error() string {
+	return e.text
+}
+
+// UnmarshalYAML accepts a sequence of mappings with the keys name and model and rejects any other shape, a string entry included.
+func (l *DiscussionAdvisorList) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.SequenceNode {
+		return &advisorShapeError{text: fmt.Sprintf("value at line %d is not a list of {name, model} entries; %s", node.Line, advisorWayForward)}
+	}
+	advisors := make(DiscussionAdvisorList, 0, len(node.Content))
+	for i, entry := range node.Content {
+		var advisor DiscussionAdvisor
+		if entry.Kind != yaml.MappingNode || entry.Decode(&advisor) != nil {
+			return &advisorShapeError{text: fmt.Sprintf("entry %d (line %d) is not a {name, model} mapping; %s", i+1, entry.Line, advisorEntryWayForward)}
+		}
+		advisors = append(advisors, advisor)
+	}
+	*l = advisors
+	return nil
+}
+
+// ConfigOpenMaps returns the loom.yaml keys whose value is a scalar, a per-round list or a list of entries, which configengine carries whole through reconcile and --set.
 func ConfigOpenMaps() []string {
 	return []string{"review", "fix", "discussion_review", "discussion_fix", "plan_review", "plan_fix", "webster_review", "webster_fix", "fan_review", "discussion_advisors"}
 }
@@ -522,6 +559,7 @@ func ConfigOpenMaps() []string {
 // Only the keys that can switch off or hollow a review or approval gate are barred from the local layer.
 // The agent's approve at PR-Gate lands on the parent with no later gate, so a weaker alignment model, a re-opened auto-landing (alignment_pr_approve) or a local skip_alignment: false under a hub true hollows the approval gate;
 // a shorter alignment_timeout_min only routes a review to the parent.
+// discussion_advisors, discussion_lenses and plan_lenses are barred too, so no local override or task run_settings can start advisors, turn the lens forks off or change their fan.
 func ConfigSpec() configengine.Spec {
 	none := configengine.CategoryNone
 	guard := configengine.CategoryGuard
@@ -533,11 +571,11 @@ func ConfigSpec() configengine.Spec {
 			"discussion":                  none,
 			"discussion_timeout_min":      none,
 			"discussion_interactive":      none,
-			"discussion_producer":         guard,
-			"discussion_advisors":         none,
+			"discussion_advisors":         guard,
+			"discussion_lenses":           guard,
 			"plan":                        none,
 			"plan_timeout_min":            none,
-			"plan_producer":               guard,
+			"plan_lenses":                 guard,
 			"review":                      none,
 			"fix":                         none,
 			"discussion_review":           none,
@@ -648,21 +686,39 @@ func validateModelSpecList(key string, specs ModelSpecList) error {
 	return nil
 }
 
-// discussionAdvisorsKey is the loom.yaml key holding the seat-table producer's advisor model-specs.
-const discussionAdvisorsKey = "discussion_advisors"
+const (
+	// discussionAdvisorsKey is the loom.yaml key holding the Discussion-Write advisors.
+	discussionAdvisorsKey = "discussion_advisors"
+	// discussionLensesKey is the loom.yaml key naming the fan the Discussion-Write lead forks its lenses from.
+	discussionLensesKey = "discussion_lenses"
+	// planLensesKey is the loom.yaml key naming the fan the Plan-Write lead forks its lenses from.
+	planLensesKey = "plan_lenses"
+)
 
-// advisorWayForward is the way forward every discussion_advisors refusal about its entries ends with.
-const advisorWayForward = "set the key to a list of model-specs the registry defines, one per advisor, or to an empty list for no advisors"
-
-// validateAdvisorSpecs rejects an empty entry, one that is not a model-spec and one the registry does not define, naming key and the 1-based entry index.
-func validateAdvisorSpecs(key string, specs ModelSpecList, reg modelspec.Registry) error {
-	for i, raw := range specs {
-		spec, err := modelspec.Parse(raw)
+// validateDiscussionAdvisors rejects a missing or blank name, a name an earlier entry already holds, a name seatengine.ValidateSeatName refuses, and a model that is no model-spec or that the registry does not define, naming the key and the 1-based entry.
+func validateDiscussionAdvisors(advisors DiscussionAdvisorList, reg modelspec.Registry) error {
+	refuse := func(entry int, err error) error {
+		return fmt.Errorf("loom config key %q entry %d: %w; %s", discussionAdvisorsKey, entry, err, advisorWayForward)
+	}
+	firstEntryOfName := make(map[string]int, len(advisors))
+	for i, advisor := range advisors {
+		entry := i + 1
+		if strings.TrimSpace(advisor.Name) == "" {
+			return refuse(entry, errors.New("the name is missing or blank"))
+		}
+		if first, repeated := firstEntryOfName[advisor.Name]; repeated {
+			return refuse(entry, fmt.Errorf("the name %q repeats entry %d", advisor.Name, first))
+		}
+		firstEntryOfName[advisor.Name] = entry
+		if err := seatengine.ValidateSeatName(advisor.Name); err != nil {
+			return refuse(entry, fmt.Errorf("the name %q is no seat name: %w", advisor.Name, err))
+		}
+		spec, err := modelspec.Parse(advisor.Model)
 		if err != nil {
-			return fmt.Errorf("loom config key %q entry %d: %w; %s", key, i+1, err, advisorWayForward)
+			return refuse(entry, err)
 		}
 		if _, err := reg.Resolve(spec); err != nil {
-			return fmt.Errorf("loom config key %q entry %d: %w; %s", key, i+1, err, advisorWayForward)
+			return refuse(entry, err)
 		}
 	}
 	return nil
@@ -698,19 +754,170 @@ func validateFanKeys(dirs configengine.Dirs, cfg Config) error {
 	return nil
 }
 
-// MigrateConfig raises a below-floor or null step_idle_timeout_min in a loom.yaml document to its floor, for lyx config reconcile, and returns the rewritten bytes with one line describing the rewrite.
-// Everything else is carried through with its comments;
+// MigrateConfig rewrites a loom.yaml document for lyx config reconcile and returns the rewritten bytes with one line per rewrite.
+// It raises a below-floor or null step_idle_timeout_min to its floor, and replaces the retired producer keys:
+// discussion_producer twill becomes discussion_lenses twill-discussion, and single, seats and any other value become an empty discussion_lenses;
+// plan_producer twill becomes plan_lenses twill-plan, and any other value an empty plan_lenses.
+// A document that set discussion_producer also gets discussion_advisors written to match.
+// Under seats each string entry n becomes {name: advisor-n, model: <entry>}, which the report line asks the operator to rename.
+// Under any other value the list is set to empty even when the document set none, so a lower layer's list stays off where this document turned it off.
+// A seats document with no list of its own is left as it is and the report line says where its advisors come from.
+// A document without a retired key is returned unchanged, so a migrated file is unchanged on a second pass.
+// Everything else is carried through yaml node editing with its comments;
 // the loader never calls it.
 // A document that does not parse returns an error marked configengine.ErrInvalid.
 func MigrateConfig(existing []byte) ([]byte, []string, error) {
-	rewritten, line, err := yamlengine.RaiseIntFloor(existing, "step_idle_timeout_min", stepIdleTimeoutFloorMin)
+	raised, floorLine, err := yamlengine.RaiseIntFloor(existing, "step_idle_timeout_min", stepIdleTimeoutFloorMin)
 	if err != nil {
 		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
 	}
-	if line == "" {
-		return rewritten, nil, nil
+	var rewrites []string
+	if floorLine != "" {
+		rewrites = append(rewrites, floorLine)
 	}
-	return rewritten, []string{line}, nil
+	migrated, producerLines, err := migrateProducerKeys(raised)
+	if err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
+	}
+	return migrated, append(rewrites, producerLines...), nil
+}
+
+// migrateProducerKeys replaces the retired discussion_producer and plan_producer keys of document, as MigrateConfig describes, and returns document itself, with no lines, when it holds neither.
+func migrateProducerKeys(document []byte) ([]byte, []string, error) {
+	var tree yaml.Node
+	if err := yaml.Unmarshal(document, &tree); err != nil {
+		return nil, nil, err
+	}
+	if tree.Kind != yaml.DocumentNode || len(tree.Content) == 0 || tree.Content[0].Kind != yaml.MappingNode {
+		return document, nil, nil
+	}
+	root := tree.Content[0]
+	discussionProducer := mappingValueNode(root, "discussion_producer")
+	planProducer := mappingValueNode(root, "plan_producer")
+	if discussionProducer == nil && planProducer == nil {
+		return document, nil, nil
+	}
+
+	var lines []string
+	if discussionProducer != nil {
+		producer := discussionProducer.Value
+		lines = append(lines, replaceProducerKey(root, "discussion_producer", discussionLensesKey, "twill-discussion", discussionProducer))
+		lines = append(lines, migrateAdvisors(root, producer))
+	}
+	if planProducer != nil {
+		lines = append(lines, replaceProducerKey(root, "plan_producer", planLensesKey, "twill-plan", planProducer))
+	}
+
+	var out bytes.Buffer
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&tree); err != nil {
+		return nil, nil, fmt.Errorf("encode migrated loom config: %w", err)
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, nil, fmt.Errorf("encode migrated loom config: %w", err)
+	}
+	return out.Bytes(), slices.DeleteFunc(lines, func(line string) bool { return line == "" }), nil
+}
+
+// replaceProducerKey renames the retired producer key of root to lensesKey in place, keeping its comments, and gives it fan when the producer was twill and an empty value otherwise.
+// value is the producer key's value node, and the returned line reports the rewrite.
+func replaceProducerKey(root *yaml.Node, producerKey, lensesKey, fan string, value *yaml.Node) string {
+	old := value.Value
+	lenses := ""
+	if old == "twill" {
+		lenses = fan
+	}
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value == producerKey {
+			root.Content[i].Value = lensesKey
+		}
+	}
+	value.Kind, value.Tag, value.Value, value.Content = yaml.ScalarNode, "!!str", lenses, nil
+	value.Style = 0
+	if lenses == "" {
+		value.Style = yaml.DoubleQuotedStyle
+	}
+	return fmt.Sprintf("%s: %s replaced by %s: %q", producerKey, old, lensesKey, lenses)
+}
+
+// migrateAdvisors rewrites root's discussion_advisors to match the retired discussion_producer value producer, and returns the line reporting it, or "" when nothing changed.
+func migrateAdvisors(root *yaml.Node, producer string) string {
+	advisors := mappingValueNode(root, discussionAdvisorsKey)
+	if producer != "seats" {
+		if advisors == nil {
+			root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: discussionAdvisorsKey}, emptySequenceNode())
+			return fmt.Sprintf("%s: set to [] because discussion_producer was %s", discussionAdvisorsKey, producer)
+		}
+		if len(advisorEntryNodes(advisors)) == 0 {
+			return ""
+		}
+		*advisors = emptySequenceNodeKeeping(advisors)
+		return fmt.Sprintf("%s: emptied because discussion_producer was %s", discussionAdvisorsKey, producer)
+	}
+	if advisors == nil {
+		return fmt.Sprintf("discussion_producer was seats and %s is not set here, so its advisors come from a lower layer whose migration may have emptied them; set %s to a list of {name, model} entries", discussionAdvisorsKey, discussionAdvisorsKey)
+	}
+	entries := advisorEntryNodes(advisors)
+	if len(entries) == 0 {
+		*advisors = emptySequenceNodeKeeping(advisors)
+		return ""
+	}
+	renamed := 0
+	rewritten := make([]*yaml.Node, len(entries))
+	for i, entry := range entries {
+		if entry.Kind != yaml.ScalarNode {
+			rewritten[i] = entry
+			continue
+		}
+		renamed++
+		rewritten[i] = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "name"},
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: fmt.Sprintf("advisor-%d", i+1)},
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "model"},
+			entry,
+		}}
+	}
+	advisors.Kind, advisors.Tag, advisors.Value, advisors.Style, advisors.Content = yaml.SequenceNode, "!!seq", "", 0, rewritten
+	if renamed == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s: %d string entries rewritten as {name: advisor-<n>, model: <entry>}; rename each advisor to its seat name", discussionAdvisorsKey, renamed)
+}
+
+// advisorEntryNodes returns the entries of a retired-form discussion_advisors value: the sequence's own entries, the lone scalar of a scalar value, and none for an empty or null value, a list of one empty string included.
+func advisorEntryNodes(value *yaml.Node) []*yaml.Node {
+	entries := value.Content
+	if value.Kind == yaml.ScalarNode {
+		scalar := *value
+		entries = []*yaml.Node{&scalar}
+	}
+	if len(entries) == 1 && entries[0].Kind == yaml.ScalarNode && entries[0].Value == "" {
+		return nil
+	}
+	return entries
+}
+
+// emptySequenceNode returns a flow-style sequence node holding no entries.
+func emptySequenceNode() *yaml.Node {
+	return &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Style: yaml.FlowStyle}
+}
+
+// emptySequenceNodeKeeping returns an empty flow-style sequence node carrying node's comments.
+func emptySequenceNodeKeeping(node *yaml.Node) yaml.Node {
+	empty := emptySequenceNode()
+	empty.HeadComment, empty.LineComment, empty.FootComment = node.HeadComment, node.LineComment, node.FootComment
+	return *empty
+}
+
+// mappingValueNode returns the value node stored under key in mapping, or nil when mapping lacks the key.
+func mappingValueNode(mapping *yaml.Node, key string) *yaml.Node {
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key {
+			return mapping.Content[i+1]
+		}
+	}
+	return nil
 }
 
 // validateDriverKind refuses a driver_kind other than empty, llm or go, through shedrun.ValidateDriver so the vocabulary stays shedrun's.
@@ -787,11 +994,11 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
 		var shape *modelSpecShapeError
 		if errors.As(err, &shape) {
-			key := keyAtLine(resolved, shape.line)
-			if key == discussionAdvisorsKey {
-				return Config{}, fmt.Errorf("loom config key %q: value at line %d is neither a model-spec nor a list of model-specs; %s", key, shape.line, advisorWayForward)
-			}
-			return Config{}, fmt.Errorf("loom config key %q: %w", key, err)
+			return Config{}, fmt.Errorf("loom config key %q: %w", keyAtLine(resolved, shape.line), err)
+		}
+		var advisorShape *advisorShapeError
+		if errors.As(err, &advisorShape) {
+			return Config{}, fmt.Errorf("loom config key %q: %w", discussionAdvisorsKey, err)
 		}
 		return Config{}, fmt.Errorf("unmarshal loom config: %w", err)
 	}
@@ -829,14 +1036,14 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		return Config{}, err
 	}
 
-	if isUnsetModelSpecList(cfg.DiscussionAdvisors) {
+	if len(cfg.DiscussionAdvisors) == 0 {
 		cfg.DiscussionAdvisors = nil
 	} else {
 		reg, err := modelspec.LoadRegistry(dirs)
 		if err != nil {
 			return Config{}, fmt.Errorf("loom config key %q: %w; fix models.yaml, or set the key to an empty list for no advisors", discussionAdvisorsKey, err)
 		}
-		if err := validateAdvisorSpecs(discussionAdvisorsKey, cfg.DiscussionAdvisors, reg); err != nil {
+		if err := validateDiscussionAdvisors(cfg.DiscussionAdvisors, reg); err != nil {
 			return Config{}, err
 		}
 	}
@@ -1048,21 +1255,6 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 			return Config{}, err
 		}
 		return Config{}, fmt.Errorf("loom config key %q: resolved hard cap %d is below %q's resolved soft cap %d; way forward: raise the hard cap: %s, or lower the soft cap: %s, then run \"lyx loom resume\"", caps.HardKey, caps.Hard, caps.SoftKey, caps.Soft, hardRoute, softRoute)
-	}
-
-	switch cfg.DiscussionProducer {
-	case DiscussionProducerSingle, DiscussionProducerSeats, DiscussionProducerTwill:
-	default:
-		return Config{}, fmt.Errorf("loom config key %q: unknown value %q; set it to %q, %q or %q", "discussion_producer", cfg.DiscussionProducer, DiscussionProducerSingle, DiscussionProducerSeats, DiscussionProducerTwill)
-	}
-
-	if cfg.PlanProducer == "" {
-		cfg.PlanProducer = PlanProducerSingle
-	}
-	switch cfg.PlanProducer {
-	case PlanProducerSingle, PlanProducerTwill:
-	default:
-		return Config{}, fmt.Errorf("loom config key %q: unknown value %q; set it to %q or %q", "plan_producer", cfg.PlanProducer, PlanProducerSingle, PlanProducerTwill)
 	}
 
 	return cfg, nil

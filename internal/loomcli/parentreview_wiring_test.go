@@ -107,22 +107,19 @@ func TestNewParentReviewConfig_ReviewerFromResolver(t *testing.T) {
 }
 
 // TestNewParentReviewConfig_KeepAliveInterval asserts the keep-alive interval is the writer role's prompt-cache lifetime less a minute, and zero when the lifetime reaches the wait bound or cannot be resolved.
-// The writer is the discussion role for every producer, so a role mapped for it decides every row.
+// The writer is the discussion role whatever seats the table holds, so a role mapped for it decides every row.
 func TestNewParentReviewConfig_KeepAliveInterval(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name       string
-		producer   string
 		defaultTTL string
 		roles      map[string]string
 		want       time.Duration
 	}{
-		{name: "single at the 5m default", producer: loomengine.DiscussionProducerSingle, defaultTTL: "5m", want: 4 * time.Minute},
-		{name: "single with the discussion role mapped to 1h", producer: loomengine.DiscussionProducerSingle, defaultTTL: "5m", roles: map[string]string{"discussion": "1h"}, want: 0},
-		{name: "seats with the discussion role mapped to 1h", producer: loomengine.DiscussionProducerSeats, defaultTTL: "5m", roles: map[string]string{"discussion": "1h"}, want: 0},
-		{name: "seats at the 5m default", producer: loomengine.DiscussionProducerSeats, defaultTTL: "5m", want: 4 * time.Minute},
-		{name: "invalid TTL", producer: loomengine.DiscussionProducerSingle, defaultTTL: "1H", want: 0},
+		{name: "the 5m default", defaultTTL: "5m", want: 4 * time.Minute},
+		{name: "the discussion role mapped to 1h", defaultTTL: "5m", roles: map[string]string{"discussion": "1h"}, want: 0},
+		{name: "invalid TTL", defaultTTL: "1H", want: 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -135,7 +132,7 @@ func TestNewParentReviewConfig_KeepAliveInterval(t *testing.T) {
 			}
 			shuttleCfg.ClaudePromptCacheTTL = tt.defaultTTL
 			shuttleCfg.ClaudePromptCacheTTLRoles = tt.roles
-			loomCfg := loomengine.Config{DiscussionProducer: tt.producer, ParentReviewWaitMin: 60}
+			loomCfg := loomengine.Config{ParentReviewWaitMin: 60}
 			cfg, err := newParentReviewConfig(loc, reedengine.Config{}, loomCfg, t.TempDir(), claudeengine.NewFromConfig(shuttleCfg), shuttleCfg)
 			if err != nil {
 				t.Fatalf("newParentReviewConfig = %v; want nil", err)

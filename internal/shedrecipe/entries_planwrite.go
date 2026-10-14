@@ -27,7 +27,7 @@ import (
 // The row carries exactly one Config key, "gates", per the Config Strictness Invariant.
 // It carries a "gates" key even though this entry's own dedicated constructor could imply the validator, so that one key means one thing at every gated site and a reader of the recipe can see which validator guards each row without opening Go;
 // the key still names the validator.
-// The entry adds only the lens-review closure that shuttle evaluates in place of the "plan" closure for a run whose lead carries fork authorization, which the table sets exactly under plan_producer: twill.
+// The entry adds only the lens-review closure that shuttle evaluates in place of the "plan" closure for a run whose lead carries fork authorization, which the table sets exactly when plan_lenses is set.
 func planWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	gate, err := planWriteGateSpec(cfg, env)
 	if err != nil {
@@ -71,7 +71,7 @@ func planWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 }
 
 // planWriteGateSpec resolves the PlanWrite row's "gates" key through resolveGateSpec, then sets Forked on every resolved entry named "plan" to loomshed.NewLensReviewPlanGate over the same roots and index.
-// Forked is consulted only for a run whose lead carries fork authorization, and the closure runs the plan gate's own set plus one presence check.
+// Forked is consulted only for a run whose lead carries fork authorization, which loom.yaml's plan_lenses sets, and the closure runs the plan gate's own set plus one presence check.
 // The "plan" entry's resolution has already required the roots and the index, so the closure is built over checked values.
 func planWriteGateSpec(cfg Config, env Env) (shuttleengine.GateSpec, error) {
 	spec, err := resolveGateSpec("PlanWrite", cfg, env)

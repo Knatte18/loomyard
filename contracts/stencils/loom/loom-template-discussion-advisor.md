@@ -1,4 +1,4 @@
-<!-- This is an advisor's opening prompt when the Discussion-Write row runs as a seat table (loom.yaml's discussion_producer: seats).
+<!-- This is an advisor's opening prompt, one per entry of loom.yaml's discussion_advisors, when the Discussion-Write row runs as a seat table; an advisor never forks, whatever discussion_lenses holds.
      internal/seatengine is its only filler, through stencil.FillWith, from the advisor's value map.
      It declares seven top-level markers: {{.parent_directive}}, {{.edit_directive}}, {{.pattern_directive}}, {{.slug}}, {{.decision_record_path}}, {{.support_log_path}} and {{.output_files}};
      pattern_directive is optional and renders as nothing when the PATTERN tier is inactive.

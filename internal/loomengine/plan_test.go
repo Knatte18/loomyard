@@ -34,12 +34,15 @@ func planTableLayout(t *testing.T, anchorRel string) *lyxcwd.Location {
 	return layout
 }
 
-// planTableConfig returns a config on the given plan producer.
-func planTableConfig(producer string) Config {
-	return Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120, PlanProducer: producer}
+// planTableConfig returns a config whose plan_lenses key is lenses.
+func planTableConfig(lenses string) Config {
+	return Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120, PlanLenses: lenses}
 }
 
-// TestPlanTable verifies PlanTable builds the lead the Plan-Write row needs, at an unanchored location and at a subpath-anchored one, under the single and the twill producer.
+// templatePlanFan is the fan the embedded burler template defines for the Plan-Write lead's lens forks.
+const templatePlanFan = "twill-plan"
+
+// TestPlanTable verifies PlanTable builds the lead the Plan-Write row needs, at an unanchored location and at a subpath-anchored one, with and without the plan_lenses key.
 // Its lead carries the plan role, model, effort, version, outputs, skills, segment, timeout, interactivity and fork flag,
 // and its prompt from seatengine.Prompts names the told paths.
 // The anchored row has a non-"." AnchorRel so the anchor path and the worktree path are distinguishable strings:
@@ -56,13 +59,13 @@ func TestPlanTable(t *testing.T) {
 	tests := []struct {
 		name      string
 		anchorRel string
-		producer  string
+		lenses    string
 		wantForks bool
 	}{
-		{"single unanchored", "", PlanProducerSingle, false},
-		{"single anchored under backend", "backend", PlanProducerSingle, false},
-		{"twill unanchored", "", PlanProducerTwill, true},
-		{"twill anchored under backend", "backend", PlanProducerTwill, true},
+		{"no lens key unanchored", "", "", false},
+		{"no lens key anchored under backend", "backend", "", false},
+		{"lens key unanchored", "", templatePlanFan, true},
+		{"lens key anchored under backend", "backend", templatePlanFan, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -73,7 +76,7 @@ func TestPlanTable(t *testing.T) {
 			if !filepath.IsAbs(specsDir) {
 				t.Fatalf("newTestSpecsDir(t) = %q; want an absolute path -- a deployed spec sits outside the agent's own worktree, so only an absolute spelling is reachable", specsDir)
 			}
-			cfg := planTableConfig(tt.producer)
+			cfg := planTableConfig(tt.lenses)
 			dirs := configengine.Dirs{Anchor: layout.AnchorPath()}
 
 			table, err := PlanTable(layout, dirs, stencilsDir, specsDir, cfg, reg)
@@ -169,7 +172,7 @@ func TestPlanTable(t *testing.T) {
 				}
 				stencilsDir := newTestStencilsDir(t)
 
-				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), planTableConfig(PlanProducerSingle), reg)
+				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), planTableConfig(""), reg)
 				if err != nil {
 					t.Fatalf("PlanTable(...) = _, %v; want nil error", err)
 				}
@@ -209,7 +212,7 @@ func TestPlanTable(t *testing.T) {
 			t.Fatal("friction.NotePath(LoomFrictionDir(layout), \"Plan-Write\") = \"\"; want a resolved path")
 		}
 		for _, enabled := range []bool{true, false} {
-			cfg := planTableConfig(PlanProducerSingle)
+			cfg := planTableConfig("")
 			if enabled {
 				cfg.Friction = "sonnet[medium]"
 			}
@@ -234,7 +237,7 @@ func TestPlanTable(t *testing.T) {
 		t.Parallel()
 		layout := planTableLayout(t, "")
 		stencilsDir := newMinimalStencilsDir(t)
-		cfg := planTableConfig(PlanProducerSingle)
+		cfg := planTableConfig("")
 		cfg.Friction = "sonnet[medium]"
 
 		table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg)
@@ -246,11 +249,11 @@ func TestPlanTable(t *testing.T) {
 		}
 	})
 
-	t.Run("twill lens review", func(t *testing.T) {
+	t.Run("lens review", func(t *testing.T) {
 		t.Parallel()
-		templateFan, err := burlerengine.ResolveFan(burlerengine.Config{}, twillPlanFan)
+		templateFan, err := burlerengine.ResolveFan(burlerengine.Config{}, templatePlanFan)
 		if err != nil {
-			t.Fatalf("ResolveFan(zero Config, %q) = _, %v; want nil error", twillPlanFan, err)
+			t.Fatalf("ResolveFan(zero Config, %q) = _, %v; want nil error", templatePlanFan, err)
 		}
 		tests := []struct {
 			name       string
@@ -269,7 +272,7 @@ func TestPlanTable(t *testing.T) {
 				}
 				stencilsDir := newTestStencilsDir(t)
 
-				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), planTableConfig(PlanProducerTwill), reg)
+				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), planTableConfig(templatePlanFan), reg)
 				if err != nil {
 					t.Fatalf("PlanTable(twill) = _, %v; want nil error", err)
 				}
@@ -332,9 +335,10 @@ func TestPlanTable(t *testing.T) {
 	t.Run("refusals", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
-			name          string
-			plan          string
-			twill         bool
+			name string
+			plan string
+			// lenses is the plan_lenses value.
+			lenses        string
 			removeStencil bool
 			// burlerYAML, when non-empty, is planted as the anchor's burler.yaml.
 			burlerYAML   string
@@ -342,8 +346,10 @@ func TestPlanTable(t *testing.T) {
 		}{
 			{name: "unparsable plan model-spec", plan: "opus[effort", wantErrNames: []string{"plan role model-spec"}},
 			{name: "missing stencil", plan: "opus[effort=high]", removeStencil: true, wantErrNames: []string{"loom-template-plan"}},
-			{name: "twill burler.yaml does not parse", plan: "opus[effort=high]", twill: true, burlerYAML: "fans: [unterminated\n", wantErrNames: []string{"twill-plan", "burler.yaml"}},
-			{name: "twill fan names an undefined lens", plan: "opus[effort=high]", twill: true, burlerYAML: "fans:\n  twill-plan:\n    - no-such-lens\n", wantErrNames: []string{"twill-plan", "burler.yaml"}},
+			{name: "lens fan with a burler.yaml that does not parse", plan: "opus[effort=high]", lenses: templatePlanFan, burlerYAML: "fans: [unterminated\n", wantErrNames: []string{"plan_lenses", "twill-plan", "burler.yaml", `set the key to ""`}},
+			{name: "lens fan naming an undefined lens", plan: "opus[effort=high]", lenses: templatePlanFan, burlerYAML: "fans:\n  twill-plan:\n    - no-such-lens\n", wantErrNames: []string{"plan_lenses", "twill-plan", "no-such-lens", "burler.yaml", `set the key to ""`}},
+			{name: "lens fan missing from burler.yaml and the template", plan: "opus[effort=high]", lenses: "no-such-fan", wantErrNames: []string{"plan_lenses", "no-such-fan", "burler.yaml", "define the fan and its lenses in burler.yaml", `set the key to ""`}},
+			{name: "lens fan with no lenses", plan: "opus[effort=high]", lenses: templatePlanFan, burlerYAML: "fans:\n  twill-plan: []\n", wantErrNames: []string{"plan_lenses", "twill-plan", "burler.yaml", `set the key to ""`}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -356,11 +362,8 @@ func TestPlanTable(t *testing.T) {
 				if tt.removeStencil {
 					stencilkit.Remove(t, stencilsDir, planStencil)
 				}
-				cfg := planTableConfig(PlanProducerSingle)
+				cfg := planTableConfig(tt.lenses)
 				cfg.Plan = tt.plan
-				if tt.twill {
-					cfg.PlanProducer = PlanProducerTwill
-				}
 
 				// A missing stencil is the seat engine's refusal: the table builder reads none, and Validate reads every seat's.
 				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg)

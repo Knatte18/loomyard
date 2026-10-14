@@ -74,7 +74,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	wantLocalDenied := map[string][]string{
 		"reed":    {"debug_log", "mouse", "shell", "tmux", "tmux_conf"},
 		"shuttle": {"claude", "claude_deny_agent_tool", "claude_deny_ask_user_question", "claude_deny_python", "run_dir"},
-		"loom":    {"alignment", "alignment_pr_approve", "discussion_auto_accept", "discussion_fan", "discussion_producer", "merge_auto_accept", "parent_review_wait_min", "plan_auto_accept", "plan_fan", "plan_producer", "skip_alignment", "skip_merge_review", "webster_auto_accept"},
+		"loom":    {"alignment", "alignment_pr_approve", "discussion_advisors", "discussion_auto_accept", "discussion_fan", "discussion_lenses", "merge_auto_accept", "parent_review_wait_min", "plan_auto_accept", "plan_fan", "plan_lenses", "skip_alignment", "skip_merge_review", "webster_auto_accept"},
 		"burler":  {"fans", "lenses"},
 	}
 	for _, m := range Modules() {
@@ -140,7 +140,9 @@ func TestModules_LocalLayerRefusals(t *testing.T) {
 		{"darn", "review_max_bounces: 0\n", "review_max_bounces", false},
 		{"landing", "require_pr_to_base: false\n", "require_pr_to_base", false},
 		{"reed", "mouse: true\n", "mouse", false},
-		{"loom", "discussion_producer: single\n", "discussion_producer", false},
+		{"loom", "discussion_advisors:\n  - name: critic\n    model: sonnet[low]\n", "discussion_advisors", false},
+		{"loom", "discussion_lenses: twill-discussion\n", "discussion_lenses", false},
+		{"loom", "plan_lenses: twill-plan\n", "plan_lenses", false},
 		{"loom", "plan_fan: \"\"\n", "plan_fan", false},
 		{"shuttle", "claude_prompt_cache_ttl_roles:\n  worker: 1h\n", "", true},
 	}

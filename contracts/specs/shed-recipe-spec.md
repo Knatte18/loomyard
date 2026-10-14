@@ -16,7 +16,7 @@ Its table also carries per-run values a static recipe `Config` cannot hold — t
 That is why it ships as its own `DiscussionWrite` registry entry, over an injected `shedadapters.TableSource` closure, rather than as a `MultiLLM` row.
 The entry runs the lead and its advisors, when the table has any, on `MultiLLMProducer`, over a table told through `Env.DiscussionTable`.
 It carries the row's gates on the lead and, for an enabled `parent-review` entry, the fresh-spawn preparation that opens the next review round.
-The recipe file names `DiscussionWrite`, and the built row carries that engine whichever producer `discussion_producer` selects.
+The recipe file names `DiscussionWrite`, and the built row carries that engine whatever `discussion_advisors` and `discussion_lenses` hold.
 `Plan-Write` is the second such row: its seat table is resolved from the `plan` role's own model-spec and timeout rather than from recipe strings, and building it needs a `*lyxcwd.Location` to build the plan paths, so it ships as its own `PlanWrite` entry for the same reason.
 The question the discussion worked through was whether the *other* rows (the loom-specific ones — `Loom-Preflight`, `Batchifier`) resist this shape, and the answer was no: they don't need to be reusable to fit the pattern, they just need a name in the same registry as everything else — a bespoke, single-consumer `Engine` is exactly as valid a registry entry as a widely-shared one.
 

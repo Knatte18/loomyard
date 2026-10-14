@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -388,7 +389,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Errorf("lead role = %q; want %q", role, "plan")
 		}
 		if len(table.Seats) != 1 {
-			t.Errorf("table has %d seats; want the lead alone under the template's single producer", len(table.Seats))
+			t.Errorf("table has %d seats; want the lead alone", len(table.Seats))
 		}
 		if want := []string{"scribe:prose", "scribe:testing"}; !reflect.DeepEqual(lead.Skills, want) {
 			t.Errorf("lead.Skills = %v; want %v", lead.Skills, want)
@@ -513,7 +514,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 	})
 }
 
-// TestWire_DiscussionTableEvaluatesToExpectedShape evaluates c.env.DiscussionTable() for both discussion_interactive values and asserts the table's settings, the lead's seat, and a lead prompt over the wired geometry that names the parent and carries no unrendered marker, then the table's seats under each discussion_producer value.
+// TestWire_DiscussionTableEvaluatesToExpectedShape evaluates c.env.DiscussionTable() for both discussion_interactive values and asserts the table's settings, the lead's seat, and a lead prompt over the wired geometry that names the parent and carries no unrendered marker, then the table's seats and fork authorization under the discussion_advisors and discussion_lenses keys.
 func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 	t.Parallel()
 
@@ -569,7 +570,7 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 				t.Error("chair.Model = \"\"; want non-empty")
 			}
 			if len(table.Seats) != 1 {
-				t.Errorf("table has %d seats; want the lead alone under the template's single producer", len(table.Seats))
+				t.Errorf("table has %d seats; want the lead alone under the template's empty advisors", len(table.Seats))
 			}
 
 			// The fixture hub records no shortname, so the wired parent is empty; the geometry tells a parent and shortname instead.
@@ -595,22 +596,26 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 		})
 	}
 
-	// discussion_producer decides which seats the wired table holds: the lead alone under single and twill, the lead and one advisor per configured entry under seats, and the lead alone carries the fork authorization under twill.
-	producerTests := []struct {
+	// discussion_advisors and discussion_lenses decide which seats the wired table holds and whether its lead may fork:
+	// the template keeps the lead alone, each configured advisor adds a seat named by its entry, and a lens key authorizes the lead's forks and no advisor's.
+	const advisorEntries = `[{name: critic, model: "sonnet[low]"}, {name: skeptic, model: "opus[high]"}]`
+	keyTests := []struct {
 		name      string
-		producer  string
+		values    map[string]string
+		wantSeats []string
 		wantForks bool
 	}{
-		{"TemplateKeepsTheLeadAlone", "", false},
-		{"SeatsKeyAddsTheAdvisors", loomengine.DiscussionProducerSeats, false},
-		{"TwillKeyAuthorizesTheLeadsForks", loomengine.DiscussionProducerTwill, true},
+		{"TemplateKeepsTheLeadAlone", nil, []string{""}, false},
+		{"AdvisorsAddASeatEach", map[string]string{"discussion_advisors": advisorEntries}, []string{"", "critic", "skeptic"}, false},
+		{"LensKeyAuthorizesTheLeadsForks", map[string]string{"discussion_lenses": "twill-discussion"}, []string{""}, true},
+		{"AdvisorsWithLensesForkFromTheLeadOnly", map[string]string{"discussion_advisors": advisorEntries, "discussion_lenses": "twill-discussion"}, []string{"", "critic", "skeptic"}, true},
 	}
-	for _, tt := range producerTests {
+	for _, tt := range keyTests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			loc := hubLocation(t, "pair", ".")
-			if tt.producer != "" {
-				seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"discussion_producer": tt.producer})
+			if tt.values != nil {
+				seedLoomConfigWithKeys(t, loc.AnchorPath(), tt.values)
 			}
 
 			c := &loomCLI{runID: shedrun.SelfRunID}
@@ -622,15 +627,15 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 				t.Fatalf("c.env.DiscussionTable() = %v; want nil", err)
 			}
 
-			wantSeats := 1
-			if tt.producer == loomengine.DiscussionProducerSeats {
-				wantSeats += len(c.cfg.DiscussionAdvisors)
+			var seatNames []string
+			for index, seat := range table.Seats {
+				seatNames = append(seatNames, seat.Name)
+				if wantFork := index == 0 && tt.wantForks; seat.ForkSubagents != wantFork {
+					t.Errorf("seat %q ForkSubagents = %v; want %v", seat.Name, seat.ForkSubagents, wantFork)
+				}
 			}
-			if len(table.Seats) != wantSeats {
-				t.Errorf("table has %d seats; want %d", len(table.Seats), wantSeats)
-			}
-			if lead := table.Chair(); lead.ForkSubagents != tt.wantForks {
-				t.Errorf("lead.ForkSubagents = %v; want %v", lead.ForkSubagents, tt.wantForks)
+			if !slices.Equal(seatNames, tt.wantSeats) {
+				t.Errorf("table seats = %q; want %q", seatNames, tt.wantSeats)
 			}
 		})
 	}

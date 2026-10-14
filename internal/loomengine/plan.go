@@ -10,14 +10,14 @@
 // logic of its own beyond the twill lens review below (the Bouncer+Burler segment's separate job); `Plan-Bouncer`'s approved
 // settle is what flips `approved` to `true`, immediately before its commit seam fires.
 //
-// With plan_producer twill the lead carries the twill directive rendered into the plan template between Step 2 and Step 3, and fork subagents are authorized.
-// The directive's lenses come from the twill-plan fan in burler.yaml, the writer spawns the forks once its plan is written and passes the self-check, so they review the plan their inherited context holds, and the writer records the lens review in the plan directory's lens-review.md.
-// The writer runs `lyx loom validate-plan --lens-review` as its final self-check, and the row's gate requires a recorded lens-review.md for a twill-spawned run.
+// With plan_lenses set the lead carries the twill directive rendered into the plan template between Step 2 and Step 3, and fork subagents are authorized.
+// The directive's lenses come from the burler.yaml fan plan_lenses names, the writer spawns the forks once its plan is written and passes the self-check, so they review the plan their inherited context holds, and the writer records the lens review in the plan directory's lens-review.md.
+// The writer runs `lyx loom validate-plan --lens-review` as its final self-check, and the row's gate requires a recorded lens-review.md for a run whose lead was authorized to fork.
 // The lead sets ForkSubagents, so the writer may spawn subagents of type fork.
 // While the shuttle config's claude_deny_agent_tool is true, the Agent hook admits fork subagents only and refuses every other subagent type; with it false no Agent hook is installed.
 // Forks run on the writer's model, read-only and without the Agent tool by the stencil's boilerplate.
 // The plan gates and the Plan-Review segment still bound what lands in the plan.
-// With plan_producer single the prompt keeps its bytes and ForkSubagents stays false.
+// With plan_lenses empty the prompt keeps its bytes and ForkSubagents stays false.
 //
 // PlanTable is a pure builder: it does not stat the decision record,
 // does not stat or create `_lyx/plan/`, and does not spawn anything.
@@ -52,7 +52,7 @@ var planSkills = []string{"scribe:prose", "scribe:testing"}
 const planStencil = "loom-template-plan"
 
 // PlanTable builds the seatengine.Table of one Plan-Write run: a lead that writes the plan directory's cards and, last, its overview.
-// Under plan_producer twill the lead alone is authorized to spawn fork subagents and carries the twill lens review directive, whose twill-plan fan is resolved through burler.yaml under dirs; otherwise the prompt keeps its bytes.
+// When cfg.PlanLenses is set the lead alone is authorized to spawn fork subagents and carries the twill lens review directive, whose fan is resolved through burler.yaml under dirs; otherwise the prompt keeps its bytes.
 // specsDir is told, never derived: this package is bound by the Told-Geometry Invariant.
 // The seat's opening stencil is read at call time from stencilsDir, and the seat engine renders the parent and edit directives from its geometry.
 // The table carries no gate; the producer entry sets it.
@@ -79,14 +79,14 @@ func PlanTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 		frictionDirective = ""
 	}
 
-	twill := cfg.PlanProducer == PlanProducerTwill
+	forks := cfg.PlanLenses != ""
 	var leadValues map[string]string
-	if twill {
-		twillDirective, err := planTwillDirective(layout, dirs, stencilsDir)
+	if forks {
+		lensDirective, err := planLensDirective(layout, dirs, stencilsDir, cfg.PlanLenses)
 		if err != nil {
 			return seatengine.Table{}, fmt.Errorf("loom: PlanTable: %w", err)
 		}
-		leadValues = map[string]string{twilldirective.MarkerName: setOffParagraph(twillDirective)}
+		leadValues = map[string]string{twilldirective.MarkerName: setOffParagraph(lensDirective)}
 	}
 
 	overviewPath := planparser.PlanOverview(layout.AnchorPath())
@@ -111,7 +111,7 @@ func PlanTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 			Outputs:       []string{overviewPath},
 			Skills:        planSkills,
 			Values:        leadValues,
-			ForkSubagents: twill,
+			ForkSubagents: forks,
 		}},
 	}, nil
 }
