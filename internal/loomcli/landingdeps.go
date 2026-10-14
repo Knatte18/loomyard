@@ -50,6 +50,7 @@ import (
 // internal/mergeresolve/deps.go:46.
 func landingDeps(
 	l *lyxcwd.Location,
+	recipe string,
 	geom websterengine.Geometry,
 	taskBranch, originURL, parentBranch string,
 	pushSkipped bool,
@@ -190,7 +191,7 @@ func landingDeps(
 		},
 		MergeRecordPath:   landingshed.MergeRecordPath(loomengine.LoomScratchDir(l)),
 		MergeReviewedPath: landingshed.MergeReviewedPath(loomengine.LoomScratchDir(l)),
-		Alignment:         landingAlignmentDeps(l, geom.StencilsDir, registry, runner, runner.PauseGeometry()),
+		Alignment:         landingAlignmentDeps(l, recipe, geom.StencilsDir, registry, runner, runner.PauseGeometry()),
 	}
 }
 
@@ -200,9 +201,14 @@ const alignmentNoteFile = "note.json"
 // landingAlignmentDeps builds PR-Align's seams for the worktree l.
 // Its Config loads loom's config on each call, so an edit to skip_alignment or alignment_pr_approve takes effect at the next step;
 // its session works under the run's PR-Gate alignment directory, which also holds the alignment note.
-func landingAlignmentDeps(l *lyxcwd.Location, stencilsDir string, registry modelspec.Registry, runner *shuttleengine.Runner, pause pauserecord.Geometry) landingshed.AlignmentDeps {
+// A darn run's prompt names no plan directory and carries darn's measure; every other recipe keeps the plan directory and loom's measure.
+func landingAlignmentDeps(l *lyxcwd.Location, recipe, stencilsDir string, registry modelspec.Registry, runner *shuttleengine.Runner, pause pauserecord.Geometry) landingshed.AlignmentDeps {
 	root := shedrun.AlignmentDir(l, shedrun.SelfRunID, string(alignment.PointPRGate))
 	slug := seedSlug(l.WorktreeName)
+	planDir, measure := planparser.PlanDir(l.AnchorPath()), alignment.MeasureLoom
+	if recipe == shedrun.RecipeDarn {
+		planDir, measure = "", alignment.MeasureDarn
+	}
 	return landingshed.AlignmentDeps{
 		Config: func() (landingshed.AlignmentConfig, error) {
 			cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(l), "loom")
@@ -231,7 +237,8 @@ func landingAlignmentDeps(l *lyxcwd.Location, stencilsDir string, registry model
 			Worktree:           l.WorktreePath(),
 			DecisionRecordPath: loomengine.DiscussionDecisionRecord(l),
 			SupportLogPath:     loomengine.DiscussionSupportLog(l),
-			PlanDir:            planparser.PlanDir(l.AnchorPath()),
+			PlanDir:            planDir,
+			MeasureStencil:     measure,
 		},
 		NotePath: filepath.Join(root, alignmentNoteFile),
 	}

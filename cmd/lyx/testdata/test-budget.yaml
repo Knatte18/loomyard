@@ -27,7 +27,7 @@ internal/configengine: 18
 internal/configreg: 10
 internal/configsync: 8
 internal/darnengine: 4
-internal/discussionparser: 18
+internal/discussionparser: 19
 internal/dotgit: 3
 internal/editdirective: 2
 internal/envsource: 3

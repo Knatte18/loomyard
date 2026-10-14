@@ -60,6 +60,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if c.env.VerifyMergeBase == nil {
 			t.Error("c.env.VerifyMergeBase is nil after wire() of a darn seed; want the merge base reader")
 		}
+		if c.env.DiscussionHistory == nil {
+			t.Error("c.env.DiscussionHistory is nil after wire() of a darn seed; want the history seam")
+		}
 		if !c.env.VerifyWholeDiff {
 			t.Error("c.env.VerifyWholeDiff = false after wire() of a darn seed; want true")
 		}
@@ -89,6 +92,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeLoom}
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if c.env.DiscussionHistory != nil {
+			t.Error("a loom seed filled c.env.DiscussionHistory; want nil")
 		}
 		if c.env.DarnSpec != nil || c.env.Darn.Commit != nil || c.env.VerifyMergeBase != nil || c.env.VerifyWholeDiff || c.env.DarnVerifyAttempts != 0 {
 			t.Errorf("a loom seed filled a darn seam: DarnSpec nil = %v, Darn.Commit nil = %v, VerifyMergeBase nil = %v, VerifyWholeDiff = %v, DarnVerifyAttempts = %d", c.env.DarnSpec == nil, c.env.Darn.Commit == nil, c.env.VerifyMergeBase == nil, c.env.VerifyWholeDiff, c.env.DarnVerifyAttempts)

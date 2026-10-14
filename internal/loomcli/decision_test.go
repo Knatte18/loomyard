@@ -39,6 +39,27 @@ type decisionFake struct {
 	commits     int
 	lastAdded   discussionparser.AddedDecision
 	clock       time.Time
+
+	// darn and darnErr are the answer of the run-is-darn seam.
+	darn    bool
+	darnErr error
+	// readRecordErr, when set, is what the record's working-copy read returns in place of the file.
+	readRecordErr error
+	// committedCopy, committedFound and committedErr are the record as committed at HEAD before the commit.
+	committedCopy  []byte
+	committedFound bool
+	committedErr   error
+	// committedAfterErr is the committed read's error once the commit has run.
+	committedAfterErr error
+	// historyVersions and historyErr are the record's committed versions.
+	historyVersions [][]byte
+	historyErr      error
+	// darnCalls counts every call of a darn seam.
+	darnCalls int
+	// dropEntryOnCommit makes the commit leave the committed copy without the appended entry.
+	dropEntryOnCommit bool
+	// commitLeaves, when set, are the bytes the commit leaves as the committed copy.
+	commitLeaves []byte
 }
 
 func newDecisionFake(t *testing.T) *decisionFake {
@@ -48,6 +69,17 @@ func newDecisionFake(t *testing.T) *decisionFake {
 		t.Fatal(err)
 	}
 	return &decisionFake{path: path, clock: time.Date(2026, 3, 3, 23, 30, 0, 0, time.FixedZone("late", -5*3600))}
+}
+
+// newDarnDecisionFake is a fake of a darn run whose record is committed and unchanged since, with a history holding only that version.
+func newDarnDecisionFake(t *testing.T) *decisionFake {
+	t.Helper()
+	f := newDecisionFake(t)
+	f.darn = true
+	f.committedCopy = []byte(decisionPriorRecord)
+	f.committedFound = true
+	f.historyVersions = [][]byte{[]byte(decisionPriorRecord)}
+	return f
 }
 
 func (f *decisionFake) deps() decisionDeps {
@@ -73,8 +105,48 @@ func (f *decisionFake) deps() decisionDeps {
 			entry := fmt.Sprintf("\n### %s\n\nDecision: %s\n", addedDecisionHeading(d), d.Decision)
 			return nil, os.WriteFile(f.path, append(prior, entry...), 0o644)
 		},
-		commit: func() error { f.commits++; return f.commitErr },
-		now:    func() time.Time { return f.clock },
+		commit: func() error {
+			f.commits++
+			if f.commitErr != nil {
+				return f.commitErr
+			}
+			switch {
+			case f.commitLeaves != nil:
+				f.committedCopy = f.commitLeaves
+			case f.dropEntryOnCommit:
+			default:
+				data, err := os.ReadFile(f.path)
+				if err != nil {
+					return err
+				}
+				f.committedCopy = data
+			}
+			f.committedFound = true
+			return nil
+		},
+		now: func() time.Time { return f.clock },
+		darn: func() (bool, error) {
+			f.darnCalls++
+			return f.darn, f.darnErr
+		},
+		readRecord: func() ([]byte, error) {
+			f.darnCalls++
+			if f.readRecordErr != nil {
+				return nil, f.readRecordErr
+			}
+			return os.ReadFile(f.path)
+		},
+		committed: func() ([]byte, bool, error) {
+			f.darnCalls++
+			if f.commits > 0 && f.committedAfterErr != nil {
+				return nil, false, f.committedAfterErr
+			}
+			return f.committedCopy, f.committedFound, f.committedErr
+		},
+		history: func() ([][]byte, error) {
+			f.darnCalls++
+			return f.historyVersions, f.historyErr
+		},
 	}
 }
 
@@ -99,7 +171,13 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 		strandName  string
 		parentName  string
 		arbiterName string
+		// darn runs the case on a darn run whose record is committed and unchanged; running also sets the status running at Darn-Write.
+		darn    bool
+		running bool
 	}{
+		{name: "darn run from an unnamed shell", by: "parent", darn: true},
+		{name: "darn run from the recorded parent", by: "parent", strandName: "hub:orch", parentName: "hub:orch", darn: true},
+		{name: "darn run while Darn-Write runs", by: "parent", darn: true, running: true},
 		{name: "parent label from an unnamed shell", by: "parent"},
 		{name: "operator label from an unnamed shell", by: "operator"},
 		{name: "recorded parent's own name", by: "parent", strandName: "hub:orch", parentName: "hub:orch"},
@@ -110,6 +188,13 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 		by := tc.by
 		t.Run(tc.name, func(t *testing.T) {
 			f := newDecisionFake(t)
+			if tc.darn {
+				f = newDarnDecisionFake(t)
+			}
+			if tc.running {
+				f.status = shedengine.Status{State: shedengine.StateRunning, CurrentProducer: loomshed.NameDarnWrite}
+				f.found = true
+			}
 			f.strandName = tc.strandName
 			f.arbiterName = tc.arbiterName
 			f.parent = hubgeom.Parent{Name: tc.parentName}
@@ -144,13 +229,127 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 		name  string
 		setup func(f *decisionFake, in *decisionInput)
 		want  []string
-		// inputRefusal marks a refusal of the input or the caller, which must not reach the append.
+		// notWant lists text the message must not contain.
+		notWant []string
+		// inputRefusal marks a refusal before the append: of the input, the caller or a darn run's record.
 		inputRefusal bool
+		// noDarnReads marks a refusal that must come before any darn seam is read.
+		noDarnReads bool
+		// afterCommit marks a refusal that follows the commit, so the record is no longer untouched and one commit has run.
+		afterCommit bool
 	}{
 		{
-			name:  "no decision record",
-			setup: func(f *decisionFake, _ *decisionInput) { f.appendErr = fmt.Errorf("read: %w", fs.ErrNotExist) },
-			want:  []string{"loom: decision add:", "no decision record", "way forward:", "lyx loom start"},
+			name:    "no decision record",
+			setup:   func(f *decisionFake, _ *decisionInput) { f.appendErr = fmt.Errorf("read: %w", fs.ErrNotExist) },
+			want:    []string{"loom: decision add:", "no decision record", "way forward:", "lyx loom start", "Darn-Write has validated it"},
+			notWant: []string{"never has one"},
+		},
+		{
+			name: "darn record missing",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.darn = true
+				f.readRecordErr = fmt.Errorf("read: %w", fs.ErrNotExist)
+			},
+			inputRefusal: true,
+			want:         []string{"no decision record", "way forward:", "message the running Darn-Write session", "board note naming the task"},
+		},
+		{
+			name: "darn record not committed",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.darn = true
+				f.committedFound = false
+			},
+			inputRefusal: true,
+			want:         []string{"not committed yet", "way forward:", "message the running Darn-Write session"},
+		},
+		{
+			name: "darn working copy differing from its committed copy",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.darn = true
+				f.committedFound = true
+				f.committedCopy = []byte(decisionPriorRecord + "\nedited after validation\n")
+			},
+			inputRefusal: true,
+			want:         []string{"differs from its committed copy", "way forward:", "once the committed record is unchanged"},
+		},
+		{
+			name: "darn record missing an entry its history held",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.darn = true
+				f.committedFound = true
+				f.committedCopy = []byte(decisionPriorRecord)
+				f.historyVersions = [][]byte{[]byte(decisionPriorRecord + "\n### Added after Discussion (parent, 2026-03-01): Gone entry\n\nDecision: d.\n\nRationale: r.\n")}
+			},
+			inputRefusal: true,
+			want:         []string{"Added after Discussion (parent, 2026-03-01): Gone entry", "way forward:", "message the running Darn-Write session"},
+		},
+		{
+			name:         "darn run read failure",
+			setup:        func(f *decisionFake, _ *decisionInput) { f.darnErr = errors.New("seed boom") },
+			inputRefusal: true,
+			want:         []string{"read the run's recipe: seed boom", "way forward:", "nothing is appended"},
+		},
+		{
+			name: "darn record read failure",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.darn = true
+				f.readRecordErr = errors.New("read boom")
+			},
+			inputRefusal: true,
+			want:         []string{"read boom", "way forward:", "nothing is appended"},
+		},
+		{
+			name: "darn committed copy read failure",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.darn = true
+				f.committedErr = errors.New("committed boom")
+			},
+			inputRefusal: true,
+			want:         []string{"committed boom", "way forward:", "nothing is appended"},
+		},
+		{
+			name: "darn history read failure",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.darn = true
+				f.committedFound = true
+				f.committedCopy = []byte(decisionPriorRecord)
+				f.historyErr = errors.New("history boom")
+			},
+			inputRefusal: true,
+			want:         []string{"history boom", "way forward:", "nothing is appended"},
+		},
+		{
+			name: "darn entry missing from the committed record after the commit",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.darn = true
+				f.committedFound = true
+				f.committedCopy = []byte(decisionPriorRecord)
+				f.dropEntryOnCommit = true
+			},
+			afterCommit: true,
+			want:        []string{"Added after Discussion (parent, 2026-03-04): Keep the cache", "way forward:", "a Darn-Write write landed during the append"},
+		},
+		{
+			name: "darn committed record unparseable after the commit",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.darn = true
+				f.committedFound = true
+				f.committedCopy = []byte(decisionPriorRecord)
+				f.commitLeaves = []byte("## Decisions\n\n### Added after Discussion (alice): t\n")
+			},
+			afterCommit: true,
+			want:        []string{"could not be read", "way forward:", "a Darn-Write write landed during the append"},
+		},
+		{
+			name: "darn committed read failure after the commit",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.darn = true
+				f.committedFound = true
+				f.committedCopy = []byte(decisionPriorRecord)
+				f.committedAfterErr = errors.New("after boom")
+			},
+			afterCommit: true,
+			want:        []string{"after boom", "way forward:", "a Darn-Write write landed during the append"},
 		},
 		{
 			name: "Discussion-Write running",
@@ -193,10 +392,12 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 		{
 			name: "named caller differing from the recorded parent",
 			setup: func(f *decisionFake, _ *decisionInput) {
+				f.darn = true
 				f.strandName = "hub:slug:plan"
 				f.parent = hubgeom.Parent{Name: "hub:orch"}
 			},
 			inputRefusal: true,
+			noDarnReads:  true,
 			want:         []string{`"hub:slug:plan"`, "way forward:", "ask hub:orch to run the verb", "operator's own unnamed shell"},
 		},
 		{
@@ -291,14 +492,25 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 					t.Errorf("message %q lacks %q", msg, w)
 				}
 			}
-			if got := readDecisionRecord(t, f.path); got != decisionPriorRecord {
+			for _, w := range tc.notWant {
+				if strings.Contains(msg, w) {
+					t.Errorf("message %q contains %q", msg, w)
+				}
+			}
+			wantCommits := 0
+			if tc.afterCommit {
+				wantCommits = 1
+			} else if got := readDecisionRecord(t, f.path); got != decisionPriorRecord {
 				t.Errorf("record = %q; want it untouched", got)
 			}
-			if f.commits != 0 {
-				t.Errorf("commits = %d; want 0 after a refusal", f.commits)
+			if f.commits != wantCommits {
+				t.Errorf("commits = %d; want %d", f.commits, wantCommits)
 			}
 			if tc.inputRefusal && f.appends != 0 {
-				t.Errorf("appends = %d; want 0 for an input refusal", f.appends)
+				t.Errorf("appends = %d; want 0 for a refusal before the append", f.appends)
+			}
+			if tc.noDarnReads && f.darnCalls != 0 {
+				t.Errorf("darn seam calls = %d; want 0 for a refusal before any darn read", f.darnCalls)
 			}
 		})
 	}

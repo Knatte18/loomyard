@@ -19,7 +19,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
 
-const discussionTableSlug = "add-json-flag"
+const (
+	discussionTableSlug = "add-json-flag"
+
+	// discussionTableSpecsDir is the specs directory the table tests tell DiscussionTable.
+	discussionTableSpecsDir = "/hub/_lyx/specs"
+)
 
 // discussionTableLayout returns an anchored location under a temp hub whose worktree directory exists.
 func discussionTableLayout(t *testing.T) *lyxcwd.Location {
@@ -91,7 +96,7 @@ func TestDiscussionTable(t *testing.T) {
 				stencilsDir := newTestStencilsDir(t)
 				cfg := discussionTableConfig(advisors, interactive)
 
-				table, err := DiscussionTable(layout, stencilsDir, cfg, reg, discussionTableSlug)
+				table, err := DiscussionTable(layout, stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug)
 				if err != nil {
 					t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 				}
@@ -130,6 +135,9 @@ func TestDiscussionTable(t *testing.T) {
 					t.Errorf("advisor efforts = %q and %q; want each advisor's own resolved effort", table.Seats[1].Effort, table.Seats[2].Effort)
 				}
 
+				if got := table.Values["specs_dir"]; got != discussionTableSpecsDir {
+					t.Errorf("table.Values[\"specs_dir\"] = %q; want %q", got, discussionTableSpecsDir)
+				}
 				if err := table.Validate(stencilsDir); err != nil {
 					t.Fatalf("table.Validate() = %v; want nil", err)
 				}
@@ -198,7 +206,7 @@ func TestDiscussionTable(t *testing.T) {
 				cfg := discussionTableConfig(1, false)
 				cfg.Friction = tt.friction
 
-				table, err := DiscussionTable(layout, stencilsDir, cfg, reg, discussionTableSlug)
+				table, err := DiscussionTable(layout, stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug)
 				if err != nil {
 					t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 				}
@@ -220,7 +228,7 @@ func TestDiscussionTable(t *testing.T) {
 			t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
 		}
 
-		table, err := DiscussionTable(layout, stencilsDir, discussionTableConfig(1, false), reg, discussionTableSlug)
+		table, err := DiscussionTable(layout, stencilsDir, discussionTableSpecsDir, discussionTableConfig(1, false), reg, discussionTableSlug)
 		if err != nil {
 			t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 		}
@@ -246,7 +254,7 @@ func TestDiscussionTable(t *testing.T) {
 			t.Fatalf("WriteFile(chair stencil) = %v; want nil", err)
 		}
 
-		table, err := DiscussionTable(layout, stencilsDir, discussionTableConfig(1, false), reg, discussionTableSlug)
+		table, err := DiscussionTable(layout, stencilsDir, discussionTableSpecsDir, discussionTableConfig(1, false), reg, discussionTableSlug)
 		if err != nil {
 			t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 		}
@@ -292,7 +300,7 @@ func TestDiscussionTable_Refuses(t *testing.T) {
 				tt.mutate(&cfg)
 			}
 
-			_, err := DiscussionTable(layout, stencilsDir, cfg, reg, tt.slug)
+			_, err := DiscussionTable(layout, stencilsDir, discussionTableSpecsDir, cfg, reg, tt.slug)
 			if err == nil {
 				t.Fatalf("DiscussionTable(slug=%q) = _, nil; want a refusal", tt.slug)
 			}

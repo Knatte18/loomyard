@@ -6,6 +6,7 @@
      which shedadapters.SingleLLMProducer drives through the shuttle seam as recipe row 3.
      The loom-template-discussion-chair stencil includes this one whole, and internal/seatengine fills it through stencil.FillWith as its second filler, from the chair's value map.
      Every marker below is a top-level {{.X}} substitution;
+     specs_dir is a required marker, naming the directory the discussion format spec is deployed to;
      stencil.FillOptional requires the four original markers non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). pattern_directive and friction_directive are the two optional markers: each is filled via stencil.FillOptional and renders as nothing when its own tier is inactive (PATTERN for pattern_directive, Tier 2 for friction_directive).
      parent_directive is a third optional marker, rendered by internal/parentdirective.
      twill_directive is a fourth optional marker, rendered by internal/twilldirective through internal/loomengine;
@@ -83,49 +84,8 @@ Apply YAGNI: do not design for a hypothetical requirement nobody asked for.
 Once the design is settled, write BOTH of the following files.
 Create the `_lyx/discussion/` directory first if it does not already exist.
 
-### `{{.decision_record_path}}` — the decision record
-
-This is the Plan producer's **sole** input;
-it never reads anything else out of `_lyx/discussion/`.
-Write these H2 sections, in this exact order,
-and no others besides the optional eighth:
-
-1. `## Goal`
-2. `## Scope`
-3. `## Decisions`
-4. `## Constraints`
-5. `## Auto-mode assumptions`
-6. `## Open risks`
-7. `## Acceptance criteria`
-8. `## Notes for the plan writer` (optional — a non-exhaustive head start for the Plan producer, never a completeness requirement;
-   the Plan producer explores the codebase itself)
-
-No frontmatter: no `format:` field, no `approved:` field.
-
-Compaction rules for this file:
-
-- **`## Decisions` carries Decision + Rationale only.**
-  Never list a rejected alternative here — those go to the support log's `## Rejected alternatives` section instead.
-  A decision record that re-litigates what was *not* chosen is not distilled.
-- **Must-cover test scenarios go under `## Acceptance criteria`.**
-  There is no separate `## Testing` section.
-  A scenario names a behavior to cover, not a test to write, and an existing test or a new table row may meet it.
-- **A Decision that adds an edge or weakens a guard states its bound.**
-  When a Decision introduces a new verb, flag, escape hatch or routing edge, or removes, downgrades or makes bypassable a guard, state in that Decision what it can now skip or let through and what bounds it.
-  Discussion-Review flags one left unbounded.
-- **No italic prose-coaching.**
-  Write terse, structured prose the Plan producer can act on directly — not a template with meta-commentary about how to fill it in.
-
-### `{{.support_log_path}}` — the support log
-
-Read only by the Discussion-review gate, never by the Plan producer.
-Write these H2 sections, in this exact order:
-
-1. `## Interview` — turn-by-turn, distilled, not a verbatim transcript.
-2. `## Rejected alternatives` — what was considered and not chosen, and why.
-3. `## Review rounds` — seed this section with the header and a single line reading `_No rounds yet._`;
-   the Discussion-review gate appends round entries here later.
-4. `## Question ledger` — every open and resolved question, including any self-picks made under autonomous mode.
+Write `{{.decision_record_path}}` and `{{.support_log_path}}` in the format `{{.specs_dir}}/loom/loom-discussion-spec.md` defines.
+That spec is authoritative, and this prompt restates none of it.
 
 ## Step 6 — Self-check before ending your turn
 
