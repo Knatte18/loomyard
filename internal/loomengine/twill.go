@@ -1,4 +1,4 @@
-// twill.go renders the twill blocks of the Discussion-Write and Plan-Write prompts: the lens review directive for either host and the Discussion write-scope paragraph, filled with the host's own values and the lenses of its fan.
+// twill.go renders the twill lens review directive of the Discussion-Write and Plan-Write prompts, filled with the host's own values and the lenses of its fan.
 
 package loomengine
 
@@ -24,8 +24,7 @@ const (
 	// planTwillSpawnPoint is the Plan-Write host's spawn point, rendered verbatim into the twill directive.
 	// It overrides the plan template's opening line, which says the producer has no review logic of its own.
 	planTwillSpawnPoint = "This lens review is the one review step you run on your own plan: it overrides this prompt's opening line, which says you have no review logic of your own.\n" +
-		"Once Step 2's reading is done, run this procedure once, and before you write anything, read the rubric, state the cards you will write in a text reply, one line each with its number, slug and the decisions it carries, and spawn the forks in that same turn.\n" +
-		"Write no file under the plan directory before the Agent call.\n" +
+		"Once you have written the plan per Step 3 and Step 4 and `lyx loom validate-plan` passes per Step 5, run this procedure once, before you end your turn.\n" +
 		"Add this line to every fork's prompt, after the fork boilerplate and before its lens text, as the one addition to it: \"Report defects only, never a passed check. Give each finding's evidence as the `path:line` or glyph read.\""
 
 	// planTwillRejectionRule is the Plan-Write host's rejection rule, rendered verbatim into the twill directive.
@@ -66,7 +65,6 @@ func planTwillDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencil
 		SpawnPoint:            planTwillSpawnPoint,
 		RejectionRule:         planTwillRejectionRule,
 		SeverityRule:          planTwillSeverityRule,
-		ReadyMarker:           PlanReadyMarker(layout),
 		RubricPath:            stencilstore.Path(stencilsDir, "loom-rubric-plan-review"),
 		Lenses:                lenses,
 		FormatStep:            "Step 3 and Step 4",
@@ -77,22 +75,19 @@ func planTwillDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencil
 	})
 }
 
-// twillBlocks returns the twill directive and the twill write-scope paragraph for the Discussion-Write prompt.
+// discussionTwillDirective returns the twill directive for the Discussion-Write prompt.
 // The lenses come from the twillFan fan, resolved against burler.yaml's layer stack under dirs and the embedded template.
 // An unreadable burler.yaml, or a fan that does not resolve, fails with an error naming the fan and burler.yaml and the way forward.
-func twillBlocks(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir string) (string, string, error) {
+func discussionTwillDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir string) (string, error) {
 	lenses, err := twillLenses(dirs, twillFan, "Discussion-Write")
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
-
-	readyMarker := DiscussionReadyMarker(layout)
-	directive, err := twilldirective.Directive(stencilsDir, twilldirective.Values{
+	return twilldirective.Directive(stencilsDir, twilldirective.Values{
 		ReviewedFiles:         "`" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "`",
-		SpawnPoint:            "When the design is settled and before you write any output file, run this procedure once:",
+		SpawnPoint:            "Once you have written both output files per Step 5 and `lyx loom validate-discussion` passes per Step 6, run this procedure once, before you end your turn:",
 		RejectionRule:         "Fix the record, or reject the finding with a one-line reason.",
 		SeverityRule:          "a severity (`BLOCKING`, `MEDIUM` or `LOW`)",
-		ReadyMarker:           readyMarker,
 		RubricPath:            stencilstore.Path(stencilsDir, "loom-rubric-discussion-review"),
 		Lenses:                lenses,
 		FormatStep:            "Step 5",
@@ -101,12 +96,4 @@ func twillBlocks(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir st
 		FinalSelfCheckCommand: "lyx loom validate-discussion",
 		DispositionPlace:      "the last turn of the support log's `## Interview` section",
 	})
-	if err != nil {
-		return "", "", err
-	}
-	writeScope, err := twilldirective.WriteScope(stencilsDir, readyMarker)
-	if err != nil {
-		return "", "", err
-	}
-	return directive, writeScope, nil
 }

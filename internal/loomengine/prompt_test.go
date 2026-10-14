@@ -52,7 +52,7 @@ func TestComposePrompt_RendersMarkers(t *testing.T) {
 	stencilsDir := newTestStencilsDir(t)
 	render := func(t *testing.T, autonomous bool) string {
 		t.Helper()
-		got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", "", "", "", "", autonomous)
+		got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", "", "", "", autonomous)
 		if err != nil {
 			t.Fatalf("composePrompt(..., autonomous=%v) = _, %v; want nil error", autonomous, err)
 		}
@@ -94,7 +94,7 @@ func TestComposePrompt_RendersMarkers(t *testing.T) {
 				}
 			}
 			if strings.Contains(strings.ToLower(rendered), "twill") {
-				t.Errorf("composePrompt(..., twill blocks empty) output carries twill text; want none")
+				t.Errorf("composePrompt(..., twill directive empty) output carries twill text; want none")
 			}
 			if want := modeRules(tt.autonomous) + "\n\n## Step 5"; !strings.Contains(rendered, want) {
 				t.Errorf("composePrompt(...) output does not hold the mode rules, one blank line, then Step 5")
@@ -120,19 +120,14 @@ func TestComposePrompt_RendersMarkers(t *testing.T) {
 		t.Error("composePrompt(autonomous=true) and composePrompt(autonomous=false) rendered identically; want them to differ")
 	}
 
-	t.Run("twill blocks land each in a paragraph of its own", func(t *testing.T) {
+	t.Run("twill directive lands in a paragraph of its own", func(t *testing.T) {
 		t.Parallel()
-		got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", "", "", "SENTINEL-DIRECTIVE", "SENTINEL-SCOPE", false)
+		got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", "", "", "SENTINEL-DIRECTIVE", false)
 		if err != nil {
-			t.Fatalf("composePrompt(sentinels) = _, %v; want nil error", err)
+			t.Fatalf("composePrompt(sentinel) = _, %v; want nil error", err)
 		}
-		for _, want := range []string{
-			modeRules(false) + "\n\nSENTINEL-DIRECTIVE\n\n## Step 5",
-			"- `" + supportLogPath + "`\n\nSENTINEL-SCOPE\n\nTwo narrow carve-outs",
-		} {
-			if !strings.Contains(string(got), want) {
-				t.Errorf("composePrompt(sentinels) output does not contain %q", want)
-			}
+		if want := modeRules(false) + "\n\nSENTINEL-DIRECTIVE\n\n## Step 5"; !strings.Contains(string(got), want) {
+			t.Errorf("composePrompt(sentinel) output does not contain %q", want)
 		}
 	})
 }
@@ -159,7 +154,7 @@ func TestCompose_FrictionDirective(t *testing.T) {
 			templateFile: "loom-template-discussion.md",
 			templateBody: stencils.LoomTemplateDiscussion,
 			compose: func(t *testing.T, stencilsDir, frictionDirective string) (string, error) {
-				got, err := composePrompt(stencilsDir, "add-json-flag", decisionRecordPath, supportLogPath, "", frictionDirective, "", "", "", false)
+				got, err := composePrompt(stencilsDir, "add-json-flag", decisionRecordPath, supportLogPath, "", frictionDirective, "", "", false)
 				return string(got), err
 			},
 		},
