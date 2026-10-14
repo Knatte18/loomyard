@@ -1,4 +1,4 @@
-// cost.go implements costBatcher, the cost-model Batcher: it splits the card sequence into the fewest contiguous batches whose estimated peak context fits the budget, by an exact dynamic program.
+// cost.go implements costBatcher, the cost-model Batcher: it splits the card sequence into the fewest contiguous batches whose estimated peak context fits the budget and that never hold a card renaming or deleting an earlier card's target, by an exact dynamic program.
 
 package batcher
 
@@ -50,7 +50,7 @@ type split struct {
 // The k-th batch of the result is the fork at position before + k, where before is the number of batches the run executes ahead of cards[0], and its start context grows with that position, so a segment's peak depends on the batch it forms.
 // base is part of every segment's start context.
 // A one-card segment is always feasible;
-// a longer segment needs at most MaxCards cards and a PeakContext at its own position within Budget.
+// a longer segment needs at most MaxCards cards, a PeakContext at its own position within Budget, and no card that renames or deletes a target of an earlier card of the segment.
 // Budget limits only segments of two or more cards, so a card whose own peak at its position exceeds it still runs alone, and nothing halts or warns;
 // the recorded Estimate and Position show it.
 // Among splits with the fewest batches it takes the one whose largest batch has the smallest PeakContext, so batches come out balanced;
@@ -68,6 +68,8 @@ func (b costBatcher) Batch(plan *planparser.Plan, cards []planparser.Card, sizes
 		loads[i] = load
 	}
 
+	boundaries := renameBoundaries(plan, cards)
+
 	// table[k][end] is the best split of cards[:end] into exactly k batches, the last of them at position before + k.
 	table := make([][]split, len(cards)+1)
 	for k := range table {
@@ -79,8 +81,9 @@ func (b costBatcher) Batch(plan *planparser.Plan, cards []planparser.Card, sizes
 		peak.start(w, base, before+1)
 		for begin := end - 1; begin >= 0; begin-- {
 			peak.add(loads[begin], w)
-			if end-begin > 1 && (end-begin > b.params.MaxCards || peak.value > b.params.Budget) {
+			if end-begin > 1 && (end-begin > b.params.MaxCards || peak.value > b.params.Budget || boundaries[begin] < end) {
 				// The peak at the first position only grows as the segment reaches back, and later positions only add to it, so no longer segment ending here fits either.
+				// The inner loop only lowers begin, so a longer segment ending at end still holds the covering pair and is infeasible too.
 				break
 			}
 			// peak.value is the segment's peak at position before + 1; each later position adds its growth.

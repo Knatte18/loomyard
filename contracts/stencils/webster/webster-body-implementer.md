@@ -33,6 +33,11 @@ For EACH card file listed above, in the order listed:
 
 {{.card_gates}}
 
+   A card gate's guard step, the `lyx gate test --tags integration … -- -run` step over the repository's `//lyx:guard` tests, can fail on a file the card does not list, such as the pinned set in a `cmd/lyx` test.
+   Fix it under the card's commit.
+   Fix the code that broke the guard where that is the right fix, and change a pinned set or an allowlist only when the pin itself must move.
+   Change only a file the guard step's failure names this way; every other deviation rule stands.
+
 4. Commit the card to the repo — normal dev git, run from your working directory — never any `_lyx` path.
    One commit per card is the norm.
    The commit subject is `N: <name>` — the card's own number and heading name (e.g. `1: alpha`) — unless the card FILE carries a `**Commit:**` line, which pins the exact subject to use verbatim.

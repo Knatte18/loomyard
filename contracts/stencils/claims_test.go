@@ -457,6 +457,11 @@ var wordingClaims = []stencilClaims{
 			"unless the card FILE carries a `**Commit:**` line"),
 		wantAll("the card's gate steps are Go-rendered through the card_gates marker, so the fork derives none itself",
 			"{{.card_gates}}", "Run each step of the card's gate from the list below"),
+		wantAll("a failure of the card gate's guard step on a file outside the card is fixed under the card's commit, moving a pin only when the pin itself must move",
+			"can fail on a file the card does not list",
+			"Fix it under the card's commit.",
+			"change a pinned set or an allowlist only when the pin itself must move",
+			"every other deviation rule stands"),
 		wantAll("the locate step and the kick-start pack section are filled through markers, so a fork without a pack reads the quarry fragment and one with a pack reads the pack fragment",
 			"{{.locate}}", "{{.kickstart_pack}}"),
 		wantAll("the pack read line ends the body, after the batch-report section, since the end of a prompt is what an agent acts on first",
@@ -550,6 +555,17 @@ var wordingClaims = []stencilClaims{
 	{"webster-fragment-pack-empty.md", WebsterFragmentPackEmpty, joinClaims(
 		wantAll("a card that names no member glyph says so in one line", "no member glyphs on this card"),
 		wantNone("the line is per card, never per batch", "this batch's cards"),
+	)},
+	{"webster-fragment-guard-scan-error.md", WebsterFragmentGuardScanError, joinClaims(
+		wantAll("the line carries the scan error through its marker and says the card gates run no guard tests", "{{.guard_error}}", "no card gate above runs the repository's `//lyx:guard` tests"),
+		wantAll("the plan-level verify still runs the guard tests", "The plan-level verify still runs them."),
+	)},
+	{"webster-fragment-guard-too-long.md", WebsterFragmentGuardTooLong, joinClaims(
+		wantAll("the line carries the step's length and the limit through markers and says the card gates run without the step", "{{.guard_length}}", "{{.guard_limit}}", "run without it"),
+		wantAll("the plan-level verify still runs the guard tests", "The plan-level verify still runs the guard tests."),
+	)},
+	{"webster-fragment-guard-fix.md", WebsterFragmentGuardFix, joinClaims(
+		wantAll("the line names the file and the card through markers and puts the fix under that card's commit", "{{.guard_file}}", "{{.card_path}}", "fix that file under that card's commit"),
 	)},
 	{"webster-fragment-pack-card.md", WebsterFragmentPackCard, joinClaims(
 		wantAll("a card's subsection opens with a heading that is the card's path", "### `{{.card_path}}`"),

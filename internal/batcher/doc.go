@@ -59,7 +59,7 @@
 // The cost-model batchifier (cost.go), built by NewCost from CostParams, splits the card sequence into the fewest contiguous batches that fit.
 // Cards share a fork only inside a contiguous segment of the given order, so card order and every forward dependency are kept.
 // A one-card segment is always feasible;
-// a segment of two or more cards is feasible only when it holds at most MaxCards cards and its PeakContext at its own batch position stays within Budget.
+// a segment of two or more cards is feasible only when it holds at most MaxCards cards, its PeakContext at its own batch position stays within Budget, and no card in it renames or deletes a target of an earlier card in it.
 // A card over Budget at its position therefore runs alone, as under identity, with nothing halting or warning, and no threshold value makes the split infeasible;
 // the recorded Estimate and Position show it.
 // Among the splits with the fewest batches it takes the one whose largest batch peaks lowest, so batches come out balanced;
@@ -67,4 +67,10 @@
 // Batch is told how many batches the run executes ahead of its cards, so the k-th batch of the result is at position before + k, and a segment's peak depends on the batch it forms.
 // An exact dynamic program over (batches so far, last card placed) finds the split in O(cards² x MaxCards) segment evaluations, accumulating each segment's position-independent peak one card at a time and adding the position term per batch count.
 // Each batch carries the profile name, its PeakContext at its own position as its estimate and the estimate's Breakdown, which records that position.
+//
+// A card that renames or deletes what an earlier, distinct card targets starts a new batch, so a batch's done-check and card gates read a tree that still holds each card's targets (boundary.go).
+// A card's targets are its Create, Edit and Delete refs and the new side of each Rename pair; its covers are the old side of each Rename pair and its Delete refs, and planparser.RefCovers decides when a cover covers a target.
+// The rule only adds boundaries: it never merges batches, reorders cards or moves a card across a dependency, and every grouping batchifier applies it.
+// Its bound is that a file-level old side over-splits from a package-unit target in that file's directory.
+// A recorded partition in state.json is never regrouped, since only a derivation applies the rule.
 package batcher
