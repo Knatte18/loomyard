@@ -392,7 +392,7 @@ func (c *battenCLI) runInWindow(cmd *cobra.Command) error {
 		}
 	}
 	launcherName, launcherErr := resolveLauncher()
-	terminalWindow := fmt.Sprintf("opens through %s as soon as the task worktree is created", launcherName)
+	terminalWindow := fmt.Sprintf("opens through %s at the Open-Window row", launcherName)
 	if launcherErr != nil {
 		terminalWindow = fmt.Sprintf("none opened: %v", launcherErr)
 	} else {
