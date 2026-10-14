@@ -16,13 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-const (
-	// RoleChair is the name the chair seat carried before the lead went unnamed; no seat carries it now.
-	RoleChair = "chair"
-	// RoleAdvisor is the stem of every advisor seat's name.
-	RoleAdvisor = "advisor"
-)
-
 // leadName is the name of the lead, the table's first seat.
 const leadName = ""
 
@@ -48,11 +41,6 @@ var reservedMarkers = []string{
 // ReservedMarkers returns the marker names the seat engine fills itself, sorted.
 func ReservedMarkers() []string {
 	return slices.Clone(reservedMarkers)
-}
-
-// AdvisorName returns the seat name of the n-th advisor, counting from 1.
-func AdvisorName(n int) string {
-	return fmt.Sprintf("%s-%d", RoleAdvisor, n)
 }
 
 // SeatRole returns the role segment of the strand name of the seat called seat, under the table's role prefix.
