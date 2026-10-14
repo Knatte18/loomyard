@@ -148,10 +148,11 @@
 // A cycle phase held for good is still marked stuck by the handoff timeout.
 //
 // Session.SessionState reads the orch session's state from its shuttle run record, which is interactive with a never-written sentinel output, so its turn ends read `asking`.
-// The watcher only logs it: after a successful probe that is not too short, a probe that reads idle beside the state `busy`, or not idle beside `idle-done`, `idle-stalled` or `idle-fresh`, logs `orch: session state disagrees with the idle probe` at Info.
+// The watcher logs it, and reads it to drop a conditioned notice: after a successful probe that is not too short, a probe that reads idle beside the state `busy`, or not idle beside `idle-done`, `idle-stalled` or `idle-fresh`, logs `orch: session state disagrees with the idle probe` at Info.
 // An idle probe beside `busy` on background work agrees, and so does a probe that is not idle beside `asking`.
 // A disagreement is logged once per episode, the key being the idle answer, the state, its cause and when the state began; a probe that agrees forgets nothing, so only a changed key logs again, the last pair being watcher memory and not State.
-// A state that cannot be read is logged at Debug, and no probe result, cycle, delivery or State write depends on the state.
+// A state that cannot be read is logged at Debug.
+// The drop of a conditioned notice at delivery is the one decision that reads the state: no probe result, cycle or State write depends on it.
 // The same read logs the hook's session-start event as `orch: session start signal read` at Info, once per new time.
 //
 // A soft cycle holds the same gates with `soft_idle_s` in place of the idle grace, and adds one:
@@ -339,6 +340,12 @@
 //   - In phase idle, when `tickIdle` has not started a cycle on the tick and the idle probe passes on that tick, the watcher types the oldest notice as a turn and then removes its file.
 //     It delivers one notice per tick, and a non-idle probe, a running cycle or a watcher that is down leaves the queue untouched.
 //   - Delivery is at least once: a watcher that dies between typing and removing types the notice again after a restart.
+//   - `QueueConditionalNotice` queues a notice that carries a session state, `NoticeCondition`, in its file name as `.when-<state>+<cause>` after the random suffix, and ends the name in `.cnotice` in place of `.notice`.
+//     It queues nothing when a notice with the same line and condition is already queued, so a second revive before delivery queues no second notice; two calls racing may each queue one.
+//     At delivery the watcher reads the session state of the oldest notice that carries a condition before the idle probe, and removes the notice without typing it, logging one Info, when the state's name or cause differs from the condition;
+//     it delivers nothing on that tick.
+//     A state that cannot be read returns the error and keeps the notice.
+//     A watcher that lists only `.notice` names leaves a conditioned notice queued and never types it unchecked.
 //   - A notice can be delayed by a busy session, a too-short pane or a cycle, but is never typed over a draft or a running turn.
 //   - `Watcher.Run` drops the queue at start when the orch state records no strand.
 //

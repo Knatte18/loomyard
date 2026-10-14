@@ -39,7 +39,7 @@ type Session interface {
 	ContextTokens(turnEnd shuttleengine.Event) (shuttleengine.ContextReading, error)
 	// SessionIdle probes whether the session shows an empty input box with no turn in progress, and whether the pane is too short to tell.
 	SessionIdle(guid string) (shuttleengine.IdleProbe, error)
-	// SessionState returns the session's state as read from the run's files; the watcher only logs it.
+	// SessionState returns the session's state as read from the run's files; the watcher logs it and reads it to drop a conditioned notice.
 	SessionState(guid string) (shuttleengine.RunSessionState, error)
 	// Send types text into the session as a new turn.
 	Send(guid, text string) error
@@ -600,7 +600,7 @@ func reloadStepName(step int) string {
 // An episode is the idle answer, state, cause and the state's since; the line logs only when that differs from the last pair logged, and an agreeing probe forgets nothing.
 // It also logs the hook's session-start event once per new time.
 // A probe that reports the pane too short is not compared.
-// A state that cannot be read is logged at Debug, and nothing the watcher decides depends on the state.
+// A state that cannot be read is logged at Debug, and dropping a conditioned notice is the one decision the watcher takes from the state.
 func (w *Watcher) logIdleStateDisagreement(strand string, probe shuttleengine.IdleProbe) {
 	reading, err := w.session.SessionState(strand)
 	if err != nil {
@@ -645,6 +645,8 @@ func storeReading(st *State, reading shuttleengine.ContextReading, turnEnd shutt
 // It runs after tickIdle and delivers only when the persisted phase is still idle, so a tick that started a cycle delivers nothing,
 // and only when the idle probe passes, so a notice is never typed over a draft or a running turn.
 // Delivery is at least once: a watcher that dies between typing and removing types the notice again after restart.
+// A notice carrying a condition is first checked against the session state, read before the idle probe:
+// one whose state or cause differs is removed without typing and the tick delivers nothing, and a state that cannot be read keeps the notice and returns the error.
 func (w *Watcher) deliverNotice() error {
 	notices, err := ListNotices(w.paths)
 	if err != nil || len(notices) == 0 {
@@ -656,6 +658,16 @@ func (w *Watcher) deliverNotice() error {
 	}
 	if st.Phase != PhaseIdle {
 		return nil
+	}
+	if when := notices[0].Condition; when != nil {
+		reading, err := w.session.SessionState(st.Strand)
+		if err != nil {
+			return err
+		}
+		if reading.State.Name != when.State || reading.State.Cause != when.Cause {
+			logger.Info("orch: conditioned notice dropped, its session state no longer reads", "strandGUID", st.Strand, "notice", notices[0].Line, "wantState", string(when.State), "wantCause", when.Cause, "state", string(reading.State.Name), "cause", reading.State.Cause)
+			return RemoveNotice(notices[0])
+		}
 	}
 	probe, err := w.probeIdle(&st)
 	if err != nil {

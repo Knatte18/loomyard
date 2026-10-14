@@ -2603,3 +2603,67 @@ func TestWatcher_HeldTypedStepRetriesOnTheNextTickWithoutAdvancing(t *testing.T)
 func (e *watchEnv) reloadStepOf(st State) int {
 	return e.w.reloadStep(st)
 }
+
+func TestWatcher_ConditionalNoticeDeliveredOnlyWhileItsStateReads(t *testing.T) {
+	t.Parallel()
+
+	stalled := shuttleengine.SessionState{Name: shuttleengine.SessionIdleStalled, Cause: shuttleengine.SessionCauseAPIError}
+	when := NoticeCondition{State: stalled.Name, Cause: stalled.Cause}
+	queueConditional := func(e *watchEnv, line string) {
+		e.t.Helper()
+		e.clock.advance(time.Millisecond)
+		if queued, err := QueueConditionalNotice(e.paths, line, when, e.clock.now); err != nil || !queued {
+			e.t.Fatalf("QueueConditionalNotice(%q) = %v, %v", line, queued, err)
+		}
+	}
+
+	t.Run("a state that reads the condition types the notice", func(t *testing.T) {
+		t.Parallel()
+		e := newWatchEnv(t)
+		e.s.sessionState = stalled
+		queueConditional(e, "carry on")
+		e.tick()
+		if got := strings.Join(e.s.calls, "|"); got != "send:carry on" {
+			t.Errorf("calls = %q, want send:carry on", got)
+		}
+		if got := e.noticeLines(); len(got) != 0 {
+			t.Errorf("queue = %v, want it empty", got)
+		}
+	})
+
+	for name, state := range map[string]shuttleengine.SessionState{
+		"busy":      {Name: shuttleengine.SessionBusy, Cause: shuttleengine.SessionCauseTurn},
+		"idle-done": {Name: shuttleengine.SessionIdleDone, Cause: shuttleengine.SessionCauseDone},
+	} {
+		t.Run("a "+name+" state drops the notice untyped, and the unconditioned one behind it goes out next tick", func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			e.s.sessionState = state
+			queueConditional(e, "carry on")
+			e.queue("plain")
+			e.tick()
+			e.assertNoCalls()
+			if got := e.noticeLines(); !slices.Equal(got, []string{"plain"}) {
+				t.Fatalf("queue after the dropping tick = %v, want [plain]", got)
+			}
+			e.tick()
+			if got := strings.Join(e.s.calls, "|"); got != "send:plain" {
+				t.Errorf("calls = %q, want send:plain", got)
+			}
+		})
+	}
+
+	t.Run("an unreadable state keeps the notice and returns the error", func(t *testing.T) {
+		t.Parallel()
+		e := newWatchEnv(t)
+		e.s.sessionStateErr = errors.New("events unreadable")
+		queueConditional(e, "carry on")
+		if _, err := e.w.Tick(); err == nil {
+			t.Fatal("Tick error = nil, want the state read error")
+		}
+		e.assertNoCalls()
+		if got := e.noticeLines(); !slices.Equal(got, []string{"carry on"}) {
+			t.Errorf("queue = %v, want the notice kept", got)
+		}
+	})
+}
