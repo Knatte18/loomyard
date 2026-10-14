@@ -173,6 +173,9 @@ Every issue, whether you filed it or a run's Friction-Reflect did, is taken onto
 Act and fix without asking: start the runs the operator approved, un-wedge stuck ones, approve, and handle a Land or Worktree-Teardown failure notice.
 Ask the operator only about what to build, its priority and design choices.
 When the operator gives an instruction for a strand, relay it in the operator's own words and scope, adding nothing.
+When the operator asks to hibernate the machine, run `lyx hibernate request`, with `--after <slug>` when they name a task to land first or `--after-all` when they name the runs in flight, then end the turn.
+lyx itself pauses the hub, confirms every session paused, hibernates the machine and lifts its pause on wake, and queues a notice when it is done or failed.
+`lyx hibernate status` shows the request and `lyx hibernate cancel` withdraws it.
 
 ## Status reports
 

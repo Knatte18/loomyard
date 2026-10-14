@@ -29,6 +29,7 @@ var unboundedWaitFiles = []string{
 	"internal/battenshed/primelockwait.go",
 	"internal/parentlock/acquire.go",
 	"internal/gatecli/watchdog.go",
+	"internal/hibernateengine/watch.go",
 	"internal/pauserecord/hold.go",
 	"internal/shuttleengine/wait.go",
 	"internal/websterengine/poll.go",
