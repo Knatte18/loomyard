@@ -69,8 +69,8 @@ producers:
       run_subdir: darn
       # The subject under review is the committed diff, which artifact_paths cannot name; the key is
       # required, so it names the change description the writer committed, the writer's own claim
-      # of what the diff does. The rubric names the diff as the subject and the board entry as the
-      # measuring stick.
+      # of what the diff does. The rubric names the diff as the subject and the amended board entry
+      # as the measuring stick.
       artifact_paths:
         - _lyx/landing/summary.md
       rubric_stencil: loom-rubric-darn-review
@@ -99,7 +99,13 @@ producers:
           instructions: >
             The board entry of this run's task is the answer key: read it with
             `lyx board get '{"slug":"<slug>"}'`, where <slug> is this worktree's own directory
-            name. The diff's job is to make the change that entry asks for.
+            name, as amended by the `Added after Discussion` entries of
+            `_lyx/discussion/decision-record.md`, which win where they differ. The record's other
+            sections are the writer's claim, checked against the board entry and never the answer
+            key. The diff's job is to make the change the amended entry asks for. A deviation the
+            change description names as an unrecorded parent correction is a `decision`-class
+            MEDIUM finding whose fix text tells the fixer to leave the code and defer to the
+            parent.
         rubric_stencil: loom-rubric-darn-review
         # fix-scope: source: the target is the repo's own source files, and a fixer that cannot
         # write and commit source cannot fix a diff.

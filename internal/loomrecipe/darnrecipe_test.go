@@ -30,6 +30,7 @@ var wantDarnProducerTable = []wantProducerRow{
 	{loomshed.NameFrictionReflect, "FrictionReflect", frictionReflectProducerType()},
 }
 
+// TestNewDarn_RowsMatchTheDarnTable pins the darn recipe's rows against wantDarnProducerTable in order, and that the Darn-Burler-Review row's fasit instructions name the amended board entry, the writer's claim and the deferral of an unrecorded parent correction.
 func TestNewDarn_RowsMatchTheDarnTable(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := NewDarn(env, paths)
@@ -56,6 +57,23 @@ func TestNewDarn_RowsMatchTheDarnTable(t *testing.T) {
 	for i, want := range wantDarnProducerTable {
 		if recipe.Producers[i].Engine != want.engine {
 			t.Errorf("recipe row %q engine = %q; want %q", want.name, recipe.Producers[i].Engine, want.engine)
+		}
+	}
+
+	var fasit string
+	for _, row := range recipe.Producers {
+		if row.Name != loomshed.NameDarnBurlerReview {
+			continue
+		}
+		profile, _ := row.Config["profile"].(map[string]any)
+		fasitConfig, _ := profile["fasit"].(map[string]any)
+		fasit, _ = fasitConfig["instructions"].(string)
+	}
+	for _, want := range []string{
+		"Added after Discussion", "claim", "unrecorded parent correction", "decision", "MEDIUM", "leave the code",
+	} {
+		if !strings.Contains(fasit, want) {
+			t.Errorf("Darn-Burler-Review fasit instructions lack %q; got %q", want, fasit)
 		}
 	}
 }
