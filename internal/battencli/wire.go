@@ -825,6 +825,13 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			if err := reconcileTaskPair(location, slug); err != nil {
 				return err
 			}
+			// Add pushes nothing; the new pair goes out through a detached push the run never waits on.
+			// A failed spawn leaves the branches local for the pair's next detached push, so it only warns.
+			if taskLocation, err := locateTask(); err != nil {
+				logger.Warn("battencli: locate the new pair to push it failed; its next push carries the branches", "slug", slug, "error", err)
+			} else if err := spawnPairPush(taskLocation); err != nil {
+				logger.Warn("battencli: spawn the new pair's push failed; its next push carries the branches", "slug", slug, "error", err)
+			}
 			openTerminalOnceCreated(ctx)
 			return nil
 		},

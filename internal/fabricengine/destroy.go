@@ -528,7 +528,6 @@ const (
 	branchDirtinessUnlandedWork
 	branchDirtinessArchivedOnRemote
 	branchDirtinessUnlandedRemoteTip
-	branchDirtinessPushedByThisCall
 )
 
 // branchDirtiness declares which dirtiness probe the pipeline runs against a branchRequest's branch.
@@ -547,13 +546,6 @@ type branchDirtiness struct {
 // and an empty archiveTag is refused as covered by no archive tag.
 func dirtyArchivedOnRemote(archiveTag string) branchDirtiness {
 	return branchDirtiness{kind: branchDirtinessArchivedOnRemote, archiveTag: archiveTag}
-}
-
-// dirtyPushedByThisCall declares that the remote branch is one this same call pushed, so deleting it loses no work.
-// It answers a remote question only: checkRemoteBranchRequest accepts it and requires a non-empty leaseSHA, the commit this call pushed,
-// and checkBranchDirtiness refuses it for a local delete.
-func dirtyPushedByThisCall() branchDirtiness {
-	return branchDirtiness{kind: branchDirtinessPushedByThisCall}
 }
 
 // dirtyUnlandedWork declares that the pipeline's dirtiness step refuses a branch whose work would be
@@ -1031,9 +1023,6 @@ func checkBranchDirtiness(req branchRequest) error {
 	if req.dirtiness.kind == branchDirtinessUnlandedRemoteTip {
 		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "unlanded-remote-tip dirtiness answers a remote question; a local branch delete has no remote tip to probe"}
 	}
-	if req.dirtiness.kind == branchDirtinessPushedByThisCall {
-		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "pushed-by-this-call dirtiness answers a remote question; a local branch delete has no pushed commit to lease"}
-	}
 	if req.dirtiness.kind == branchDirtinessUnlandedWork {
 		return checkUnlandedWork(req)
 	}
@@ -1168,13 +1157,6 @@ func checkRemoteBranchRequest(req remoteBranchRequest) error {
 		}
 		if req.leaseSHA == "" {
 			return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "no lease SHA: the archive-coverage proof holds only for the tip it was computed against"}
-		}
-		return nil
-	}
-
-	if req.dirtiness.kind == branchDirtinessPushedByThisCall {
-		if req.leaseSHA == "" {
-			return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "no lease SHA: the push this call made holds only for the commit it pushed"}
 		}
 		return nil
 	}

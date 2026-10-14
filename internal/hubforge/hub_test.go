@@ -207,17 +207,14 @@ func TestNewHub(t *testing.T) {
 				{"AddPairWith_SkipPushKeepsWeftBranchOffTheBare", func(t *testing.T) {
 					skipped := AddPairWith(t, h, "skipped", fabricengine.AddOptions{SkipPush: true})
 					skippedWeft := fabricengine.RecordsBranchName(skipped.Branch)
-					if skipped.Pushed {
-						t.Errorf("AddPairWith(SkipPush) Pushed = true; want false")
-					}
 					if gitkit.BranchExists(t, h.RecordsBare, skippedWeft) {
 						t.Errorf("branch %q is on the weft bare; want it absent under SkipPush", skippedWeft)
 					}
 
 					pushed := AddPairWith(t, h, "pushed", fabricengine.AddOptions{})
 					pushedWeft := fabricengine.RecordsBranchName(pushed.Branch)
-					if !pushed.Pushed || !gitkit.BranchExists(t, h.RecordsBare, pushedWeft) {
-						t.Errorf("zero-options AddPairWith: Pushed = %v, weft branch on bare = %v; want both true", pushed.Pushed, gitkit.BranchExists(t, h.RecordsBare, pushedWeft))
+					if !gitkit.BranchExists(t, h.RecordsBare, pushedWeft) {
+						t.Errorf("zero-options AddPairWith: weft branch %q absent from the bare; want it pushed", pushedWeft)
 					}
 				}},
 				{"OpenFabricOpensThePrimePair", func(t *testing.T) {
