@@ -60,12 +60,17 @@ func classifyDeleteOrderRef(lang glyph.Language, ref string) (refShape, glyph.Gl
 	return shapePackage, g, unitPath
 }
 
-// editRegion is the code one later card's Edit target covers: lines start..end of file, or the whole file when end is zero.
+// editRegion is the code one card's Edit target covers: lines start..end of file, or the whole file when end is zero.
 type editRegion struct {
 	card  planparser.Card
 	file  string
 	start int
 	end   int
+}
+
+// holds reports whether line of file lies in r's code.
+func (r editRegion) holds(file string, line int) bool {
+	return r.file == file && (r.end == 0 || (r.start <= line && line <= r.end))
 }
 
 // editTarget is one Edit-group ref of a card, a member glyph or a file, with its shape and disk path.
@@ -120,6 +125,7 @@ func buildEditRegions(edits []editTarget, index map[string]quarry.ResolveResult,
 // LaterDeleteReferences reports every place a card in later numbered above a card in deleting still references a symbol that card deletes.
 // The deleting card's Delete targets that are member glyphs or package self glyphs are looked up; a file-path Delete target, and a member target that no longer resolves found, are not checked.
 // The searched code is each later card's Edit targets: a member glyph's resolved span, or the whole file for a file path or file self glyph; any other Edit target shape is not searched.
+// A reference that an Edit target of the deleting card, or of a card in deleting or later numbered before it, also covers is not reported, since that card rewrites the code first.
 // Only Go files outside the directories the go tool ignores are searched, so a comment, a string literal and a non-Go target never match.
 // A reference is found the way a caller of the deleted member is: a package-level member by its bare identifier inside its own package and elsewhere through an import of its path, a method by its name after a dot.
 // No type load runs, so a package-level reference is blocking and a method matched by name alone is informational, since its receiver is not resolved.
@@ -152,10 +158,16 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 			}
 		}
 	}
-	edits := collectEditTargets(lang, sortedCards(later))
-	if len(deletes) == 0 || len(edits) == 0 {
+	if len(deletes) == 0 || len(collectEditTargets(lang, later)) == 0 {
 		return nil, nil
 	}
+	editing := slices.Clone(later)
+	for _, c := range deleting {
+		if !slices.ContainsFunc(editing, func(other planparser.Card) bool { return other.Number == c.Number }) {
+			editing = append(editing, c)
+		}
+	}
+	edits := collectEditTargets(lang, sortedCards(editing))
 
 	seenTarget := make(map[string]bool)
 	var targets []string
@@ -200,8 +212,12 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 		}
 	}
 
-	regions, regionFindings := buildEditRegions(edits, index, partitioned)
+	allRegions, regionFindings := buildEditRegions(edits, index, partitioned)
 	findings = append(findings, regionFindings...)
+	// Cards added from deleting only supply exemption regions; a holder is reported only from a card in later.
+	regions := slices.DeleteFunc(slices.Clone(allRegions), func(r editRegion) bool {
+		return !slices.ContainsFunc(later, func(c planparser.Card) bool { return c.Number == r.card.Number })
+	})
 
 	deletingView := *plan
 	deletingView.Cards = deleting
@@ -215,7 +231,7 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 		if err != nil {
 			return findings, err
 		}
-		findings = append(findings, deleteOrderFindings(subjects, resolved, nameOnly, regions)...)
+		findings = append(findings, deleteOrderFindings(subjects, resolved, nameOnly, regions, allRegions)...)
 	}
 
 	importFindings, err := laterImportFindings(lang, deleting, regions, worktreeRoot)
@@ -223,10 +239,12 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 }
 
 // deleteOrderFindings returns, for each deleted subject, the delete-before-reference findings for its references that lie inside a later card's Edit region.
+// A line that an Edit region of the deleting card or an earlier card also holds is skipped, since that card rewrites it before any later card runs.
 // A resolved line gets one blocking finding, naming the first later card whose region holds it.
 // A method's name-only lines get one informational finding per subject, naming every file with its lines and each later card whose region holds one of them.
 // resolved and nameOnly are memberReferences' answers, one map per subject; a re-signed subject is skipped, since its references are caller-uncovered's.
-func deleteOrderFindings(subjects []coverageSubject, resolved, nameOnly []map[string][]int, regions []editRegion) []Finding {
+// regions are the later cards' Edit regions, the only ones reported; allRegions adds the deleting cards' regions and serves only the rewritten-line exemption.
+func deleteOrderFindings(subjects []coverageSubject, resolved, nameOnly []map[string][]int, regions, allRegions []editRegion) []Finding {
 	var findings []Finding
 	for i, subject := range subjects {
 		if !subject.deleted {
@@ -234,7 +252,7 @@ func deleteOrderFindings(subjects []coverageSubject, resolved, nameOnly []map[st
 		}
 		for _, file := range sortedFiles(resolved[i]) {
 			for _, line := range resolved[i][file] {
-				holders := laterEditRegions(regions, subject.card.Number, file, line)
+				holders := unrewrittenLaterEditRegions(regions, allRegions, subject.card.Number, file, line)
 				if len(holders) == 0 {
 					continue
 				}
@@ -255,7 +273,7 @@ func deleteOrderFindings(subjects []coverageSubject, resolved, nameOnly []map[st
 		for _, file := range sortedFiles(nameOnly[i]) {
 			var inside []int
 			for _, line := range nameOnly[i][file] {
-				holders := laterEditRegions(regions, subject.card.Number, file, line)
+				holders := unrewrittenLaterEditRegions(regions, allRegions, subject.card.Number, file, line)
 				if len(holders) == 0 {
 					continue
 				}
@@ -284,6 +302,17 @@ func deleteOrderFindings(subjects []coverageSubject, resolved, nameOnly []map[st
 		}
 	}
 	return findings
+}
+
+// unrewrittenLaterEditRegions returns, in order, the regions of cards numbered above cardNumber whose code holds line of file, or none when a region of allRegions of a card numbered at or below cardNumber also holds it.
+func unrewrittenLaterEditRegions(regions, allRegions []editRegion, cardNumber int, file string, line int) []editRegion {
+	rewritten := slices.ContainsFunc(allRegions, func(r editRegion) bool {
+		return r.card.Number <= cardNumber && r.holds(file, line)
+	})
+	if rewritten {
+		return nil
+	}
+	return laterEditRegions(regions, cardNumber, file, line)
 }
 
 // laterImportFindings returns a blocking delete-before-reference finding for each quoted import of a package that a card in deleting deletes, found in the code of a later card's region.
