@@ -121,7 +121,7 @@ func (s driveStop) key() loomengine.ArbiterStopKey {
 
 // driveFacts carries the disk reads the loop makes before deciding.
 type driveFacts struct {
-	// EscalationPending is true when the awaiting Bouncer row awaits its escalation.
+	// EscalationPending is true when the arbiter verb would admit the awaiting stop: its eligibility, not mere pendency of an escalation.
 	EscalationPending bool
 	// VerifyMatches is true when the Publish failure record matches the halt; VerifyTarget is the row it names.
 	VerifyMatches bool

@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -200,7 +201,11 @@ func perchHardCap(location *lyxcwd.Location, row string) (int, string, error) {
 		if err != nil {
 			return 0, "", err
 		}
-		return cfg.ReviewHardMaxBounces, `run "lyx config darn --set review_hard_max_bounces=<n>" from the prime`, nil
+		raise, err := reviewbudget.Route(dirs, darnengine.ConfigSpec(), reviewbudget.RunHardKey)
+		if err != nil {
+			return 0, "", err
+		}
+		return cfg.ReviewHardMaxBounces, raise, nil
 	}
 	perch, ok := loomPerches[row]
 	if !ok {
@@ -211,7 +216,7 @@ func perchHardCap(location *lyxcwd.Location, row string) (int, string, error) {
 		return 0, "", err
 	}
 	caps := cfg.Caps(perch)
-	raise, err := loomengine.CapRoute(dirs, caps.HardKey)
+	raise, err := reviewbudget.Route(dirs, loomengine.ConfigSpec(), caps.HardKey)
 	if err != nil {
 		return 0, "", err
 	}

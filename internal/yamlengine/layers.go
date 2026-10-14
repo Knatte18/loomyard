@@ -150,6 +150,7 @@ func (rule unitRule) stripMapping(lower, upper *yaml.Node, path string, topLevel
 // a list key takes a YAML flow list such as [] or [a, b], and an open-map entry is a scalar in the mapping at P.
 // A key at P itself, when P holds a scalar or a list, takes either: a value starting with [ is written as a flow list of scalars, any other value as a string, and a bracketed value that is not such a list is an error.
 // Unknown lists the requested keys that are not known, Known the sorted known set, and Merged is nil when Unknown is non-empty.
+// A scalar leaf outside a scalar-or-list open-map path takes its template leaf's tag, except that a value spelling a null (`~`, `null`, `Null`, `NULL`), or a template leaf holding a null, gives it the tag its own text resolves to.
 // Preserved stays empty.
 func SetSparse(template, existing []byte, pairs []KV, openMaps ...string) (SetResult, error) {
 	var templateNode yaml.Node
@@ -211,7 +212,7 @@ func SetSparse(template, existing []byte, pairs []KV, openMaps ...string) (SetRe
 			setEntry(parent, name, sequence)
 			continue
 		}
-		setEntry(parent, name, &yaml.Node{Kind: yaml.ScalarNode, Tag: templateLeaves[pair.Key].Tag, Value: pair.Value})
+		setEntry(parent, name, &yaml.Node{Kind: yaml.ScalarNode, Tag: scalarSetTag(templateLeaves[pair.Key].Tag, pair.Value), Value: pair.Value})
 	}
 
 	merged, err := yaml.Marshal(existingDoc)

@@ -109,7 +109,7 @@
 //     A continue recorded at or past it is moved aside (the escalation record, its parent notice and then the decision file, each to a timestamped sibling no reader opens)
 //     and the round re-escalates with cause `hard-cap`, the third cause beside budget and circling.
 //     An escalation at or past the hard cap, whatever its cause, carries the accept-only Reason and the bouncer-fragment-decide-capped decide step; below it the Reason and the bouncer-fragment-decide-open step offer accept and continue.
-//     PendingCirclingDecision and PendingEscalation read a run directory's latest round: the first reports a decision file not yet settled, the second a Bouncer-written escalation, with its round and brief path, that no decision file answers.
+//     PendingCirclingDecision, PendingEscalation and PendingEscalationCause read a run directory's latest round: the first reports a decision file not yet settled, the second a Bouncer-written escalation, with its round and brief path, that no decision file answers, and the third the same escalation with its cause and brief path.
 //     Auto-accept: a Bouncer told BouncerConfig.AutoAccept settles a spent budget as an accept instead of running the soft-cap rule.
 //     It fires at the soft cap alone, also over a CIRCLING verdict, and only on a harvest, the judge having written the verdict in this call, over a round with no decision and no escalation record.
 //     A replay and a round BlockingEscalates sends to the rule (an open BLOCKING entry, or an unreadable ledger) go to the rule instead.

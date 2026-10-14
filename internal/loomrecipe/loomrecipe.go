@@ -33,8 +33,9 @@ import (
 // New runs the Discussion-Write row on the DiscussionSeats engine when env.DiscussionSeats is true, by changing the parsed recipe's engine for that row before the build; Routing never reads the choice.
 //
 // New sets MaxBounces on every row of a review segment (a segment holding a
-// Bouncer row) after the build: the segment's Bouncer's env.RowMaxBounces entry when above 0, env.ReviewMaxBounces otherwise.
-// It refuses an env.ReviewMaxBounces below 1 as its first act.
+// Bouncer row) after the build: the segment's Bouncer's env.RowMaxBounces entry when the map holds one, 0 included, env.ReviewMaxBounces otherwise.
+// A segment whose resolved budget is 0 has zero_rounds stamped on its Bouncer row before the build, so the Bouncer settles approved at once.
+// It refuses an env.ReviewMaxBounces below 0 as its first act.
 // The recipe declares no max_bounces on those rows; the budget comes from loom.yaml.
 //
 // New makes one further check of its own, and it is a coherence check across its two arguments rather
@@ -73,19 +74,20 @@ func New(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error
 	}
 	applyDiscussionProducer(&parsed, env.DiscussionSeats)
 
+	segments, err := reviewSegments(recipes.LoomRecipe)
+	if err != nil {
+		return nil, err
+	}
+	stampZeroRounds(&parsed, segments, env.ReviewMaxBounces, env.RowMaxBounces)
+
 	shed, err := shedbuild.NewShedFrom(parsed, env, paths)
 	if err != nil {
 		return nil, fmt.Errorf("loomrecipe: %w", err)
 	}
 
-	segments, err := reviewSegments(recipes.LoomRecipe)
-	if err != nil {
-		return nil, err
-	}
 	if err := applyReviewBudget(shed.Producers, segments, env.ReviewMaxBounces, env.RowMaxBounces); err != nil {
 		return nil, err
 	}
-	applyMergeReviewOff(shed.Producers, env.MergeReviewOff)
 
 	return shed, nil
 }
@@ -119,11 +121,11 @@ func applyDiscussionProducer(recipe *shedbuild.Recipe, seats bool) {
 // that never builds a Shed (the status verb) can compute progress. A parse error is returned
 // prefixed with "loomrecipe: ". Routing.MaxBounces is left 0.
 //
-// Every row of a review segment carries its Bouncer's rowMaxBounces entry, or reviewMaxBounces where the entry is absent or 0, as its MaxBounces, the same value New
+// Every row of a review segment carries its Bouncer's rowMaxBounces entry, or reviewMaxBounces where the map holds none, as its MaxBounces, the same value New
 // applies, so the projection never reports the engine default for a review row.
-// A reviewMaxBounces below 1 is refused, naming ReviewMaxBounces, and a negative rowMaxBounces entry for a Bouncer row is refused, naming the row.
-// mergeReviewOff routes Merge-In's Done straight to Publish exactly as New does for env.MergeReviewOff, so the projection shows the graph the engine runs.
-func Routing(reviewMaxBounces int, rowMaxBounces map[string]int, mergeReviewOff bool) (shedengine.Routing, error) {
+// The exception is a zero-round segment: its rows carry MaxBounces 0, which the progress projection reads as shedengine's inherited budget.
+// A reviewMaxBounces below 0 is refused, naming ReviewMaxBounces, and a negative rowMaxBounces entry for a Bouncer row is refused, naming the row.
+func Routing(reviewMaxBounces int, rowMaxBounces map[string]int) (shedengine.Routing, error) {
 	if err := checkReviewBudget("ReviewMaxBounces", reviewMaxBounces); err != nil {
 		return shedengine.Routing{}, err
 	}
@@ -140,28 +142,14 @@ func Routing(reviewMaxBounces int, rowMaxBounces map[string]int, mergeReviewOff 
 	if err := applyReviewBudget(routing.Producers, segments, reviewMaxBounces, rowMaxBounces); err != nil {
 		return shedengine.Routing{}, err
 	}
-	applyMergeReviewOff(routing.Producers, mergeReviewOff)
 
 	return routing, nil
 }
 
-// applyMergeReviewOff routes Merge-In's Done straight to Publish when off is true, leaving the Merge-Review rows in the list unreached.
-// It skips only the review: Merge-In, the parent lock and the reroute still run.
-func applyMergeReviewOff(producers []shedengine.ProducerDef, off bool) {
-	if !off {
-		return
-	}
-	for i := range producers {
-		if producers[i].Name == loomshed.NameMergeIn {
-			producers[i].OnDone = loomshed.NamePublish
-		}
-	}
-}
-
-// checkReviewBudget refuses a review bounce budget below 1; name is the caller's own name for the value.
+// checkReviewBudget refuses a review bounce budget below 0; name is the caller's own name for the value.
 func checkReviewBudget(name string, budget int) error {
-	if budget < 1 {
-		return fmt.Errorf("loomrecipe: %s = %d; want at least 1 (set review_max_bounces in loom.yaml)", name, budget)
+	if budget < 0 {
+		return fmt.Errorf("loomrecipe: %s = %d; want 0 or more (set review_max_bounces in loom.yaml)", name, budget)
 	}
 
 	return nil
@@ -185,7 +173,7 @@ func reviewSegments(source []byte) (map[string]string, error) {
 }
 
 // applyReviewBudget sets MaxBounces on every producer whose segment is a review segment.
-// A segment's rows take its Bouncer's rowMaxBounces entry when that is above 0, and fallback otherwise.
+// A segment's rows take its Bouncer's rowMaxBounces entry whenever the map holds one, 0 included, and fallback otherwise.
 // A negative entry for a Bouncer row of segments is a wiring error naming that row.
 func applyReviewBudget(producers []shedengine.ProducerDef, segments map[string]string, fallback int, rowMaxBounces map[string]int) error {
 	for _, bouncer := range segments {
@@ -199,11 +187,36 @@ func applyReviewBudget(producers []shedengine.ProducerDef, segments map[string]s
 		if !ok {
 			continue
 		}
-		producers[i].MaxBounces = fallback
-		if budget := rowMaxBounces[bouncer]; budget > 0 {
-			producers[i].MaxBounces = budget
-		}
+		producers[i].MaxBounces = resolvedBudget(bouncer, fallback, rowMaxBounces)
 	}
 
 	return nil
+}
+
+// stampZeroRounds sets zero_rounds on the Bouncer row of every review segment whose resolved budget is 0.
+// The budget resolves as applyReviewBudget resolves it, so a stamped Bouncer settles approved at once exactly where its rows carry MaxBounces 0.
+func stampZeroRounds(recipe *shedbuild.Recipe, segments map[string]string, fallback int, rowMaxBounces map[string]int) {
+	for _, bouncer := range segments {
+		if resolvedBudget(bouncer, fallback, rowMaxBounces) != 0 {
+			continue
+		}
+		for i := range recipe.Producers {
+			if recipe.Producers[i].Name != bouncer {
+				continue
+			}
+			if recipe.Producers[i].Config == nil {
+				recipe.Producers[i].Config = map[string]any{}
+			}
+			recipe.Producers[i].Config["zero_rounds"] = true
+		}
+	}
+}
+
+// resolvedBudget returns the Bouncer row's entry in rowMaxBounces when the map holds one, else fallback.
+func resolvedBudget(bouncer string, fallback int, rowMaxBounces map[string]int) int {
+	if budget, ok := rowMaxBounces[bouncer]; ok {
+		return budget
+	}
+
+	return fallback
 }

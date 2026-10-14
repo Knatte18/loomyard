@@ -41,7 +41,7 @@ func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.Burler
 		if err != nil || !found {
 			return 0, 0, false, err
 		}
-		routing, err := Routing(budgetEscalationBudget, nil, false)
+		routing, err := Routing(budgetEscalationBudget, nil)
 		if err != nil {
 			return 0, 0, false, err
 		}
@@ -277,7 +277,7 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 				if err != nil || !found {
 					return 0, 0, false, err
 				}
-				routing, err := Routing(env.ReviewMaxBounces, rowBudgets, false)
+				routing, err := Routing(env.ReviewMaxBounces, rowBudgets)
 				if err != nil {
 					return 0, 0, false, err
 				}
