@@ -252,6 +252,8 @@ func TestPendingCirclingDecision(t *testing.T) {
 		// wantEscalation is PendingEscalation's pending result; wantEscalationMalformed is its error instead.
 		wantEscalation          bool
 		wantEscalationMalformed bool
+		// wantCause is PendingEscalationCause's cause; empty where nothing is pending.
+		wantCause EscalationCause
 	}{
 		{name: "no round", noRound: true},
 		{name: "no decision file"},
@@ -259,7 +261,10 @@ func TestPendingCirclingDecision(t *testing.T) {
 		{name: "pending continue", decisionFile: "---\nround: 1\ndecision: continue\ncause: budget\nsettled: false\n---\n", want: true},
 		{name: "settled accept", decisionFile: "---\nround: 1\ndecision: accept\ncause: circling\nsettled: true\n---\n"},
 		{name: "malformed decision file names its path", decisionFile: "accept\n", wantErrPath: true},
-		{name: "escalated with no decision", escalationFile: escalationRecord, wantEscalation: true},
+		{name: "escalated with no decision", escalationFile: escalationRecord, wantEscalation: true, wantCause: EscalationBudget},
+		{name: "hard-cap escalation with no decision", escalationFile: "---\nround: 1\ncause: hard-cap\n---\nbrief\n", wantEscalation: true, wantCause: EscalationHardCap},
+		{name: "budget escalation with no decision", escalationFile: "---\nround: 1\ncause: budget\n---\nbrief\n", wantEscalation: true, wantCause: EscalationBudget},
+		{name: "escalation with an unknown cause", escalationFile: "---\nround: 1\ncause: bogus\n---\nbrief\n", wantEscalationMalformed: true},
 		{
 			name:           "escalated with a pending decision",
 			escalationFile: escalationRecord,
@@ -301,6 +306,14 @@ func TestPendingCirclingDecision(t *testing.T) {
 				t.Errorf("PendingEscalation = (%v, %v); want (%v, nil)", pending, escErr, tt.wantEscalation)
 			} else if pending && (round != 1 || brief != escalationPath(dir, 1)) {
 				t.Errorf("PendingEscalation round, brief = %d, %q; want 1, %q", round, brief, escalationPath(dir, 1))
+			}
+
+			cause, causeBrief, causePending, causeErr := PendingEscalationCause(dir)
+			if causePending != pending || causeBrief != brief || (causeErr == nil) != (escErr == nil) || (escErr != nil && causeErr.Error() != escErr.Error()) {
+				t.Errorf("PendingEscalationCause = (%q, %v, %v); want pending, brief and error as PendingEscalation's (%q, %v, %v)", causeBrief, causePending, causeErr, brief, pending, escErr)
+			}
+			if cause != tt.wantCause {
+				t.Errorf("PendingEscalationCause cause = %q; want %q", cause, tt.wantCause)
 			}
 
 			got, err := PendingCirclingDecision(dir)
