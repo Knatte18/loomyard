@@ -1,4 +1,4 @@
-// describe_test.go — untagged Tier-1 unit tests for DescribeTable and DarnDescribeTable, checked against the spec builders they replace.
+// describe_test.go — untagged Tier-1 unit tests for DescribeTable and DarnDescribeTable.
 // The stencil is a fixture written into a t.TempDir() stencils dir, so no shipped default is read;
 // the lead's prompt is composed through seatengine.Prompts, which starts nothing.
 
@@ -15,7 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
@@ -58,39 +57,35 @@ func describeLeadPrompt(t *testing.T, stencilsDir, parentName string, table seat
 	return prompts[""]
 }
 
-// requireLeadEqualsSpec asserts table's lead is the spec's session: same role, model, effort, version, outputs, skills, segment, timeout, interactivity and fork flag, and a prompt byte-equal to the spec's under a geometry naming parentName.
-func requireLeadEqualsSpec(t *testing.T, stencilsDir, parentName string, table seatengine.Table, spec shuttleengine.Spec) {
+// requireDescribeLead asserts table is the Describe session's: the lead alone, in the describe role, segment and skills, writing wantOutput, with no version choice, non-interactive and without forks.
+func requireDescribeLead(t *testing.T, table seatengine.Table, wantOutput string) {
 	t.Helper()
 	lead := table.Chair()
 	if len(table.Seats) != 1 {
 		t.Fatalf("table has %d seats; want the lead alone", len(table.Seats))
 	}
-	if role := seatengine.SeatRole(table.RolePrefix, lead.Name); lead.Name != "" || role != spec.Role || role != "describe" {
-		t.Errorf("lead name %q and role %q; want no name and the role %q the spec carries", lead.Name, role, spec.Role)
+	if role := seatengine.SeatRole(table.RolePrefix, lead.Name); lead.Name != "" || role != "describe" {
+		t.Errorf("lead name %q and role %q; want no name and the role %q", lead.Name, role, "describe")
 	}
-	if lead.Model != spec.Model || lead.Effort != spec.Effort || lead.Version != spec.Version {
-		t.Errorf("lead model/effort/version = %q/%q/%q; want the spec's %q/%q/%q", lead.Model, lead.Effort, lead.Version, spec.Model, spec.Effort, spec.Version)
+	if lead.Version != "" {
+		t.Errorf("lead version = %q; want none", lead.Version)
 	}
-	if !slices.Equal(lead.Outputs, spec.OutputFiles) || !slices.Equal(lead.Skills, spec.Skills) {
-		t.Errorf("lead outputs/skills = %v/%v; want the spec's %v/%v", lead.Outputs, lead.Skills, spec.OutputFiles, spec.Skills)
+	if want := []string{wantOutput}; !slices.Equal(lead.Outputs, want) {
+		t.Errorf("lead outputs = %v; want %v", lead.Outputs, want)
 	}
-	if table.Segment != spec.Segment || table.Segment != segmentcolor.Describe || table.Timeout != spec.Timeout || table.Interactive != spec.Interactive || lead.ForkSubagents != spec.ForkSubagents {
-		t.Errorf("table segment/timeout/interactive/fork = %q/%v/%v/%v; want the spec's %q/%v/%v/%v", table.Segment, table.Timeout, table.Interactive, lead.ForkSubagents, spec.Segment, spec.Timeout, spec.Interactive, spec.ForkSubagents)
+	if want := []string{"scribe:prose"}; !slices.Equal(lead.Skills, want) {
+		t.Errorf("lead skills = %v; want %v", lead.Skills, want)
 	}
-	if prompt := describeLeadPrompt(t, stencilsDir, parentName, table); prompt != spec.Prompt {
-		t.Errorf("lead prompt = %q; want the spec's prompt %q byte for byte", prompt, spec.Prompt)
+	if table.Segment != segmentcolor.Describe || table.Interactive || lead.ForkSubagents {
+		t.Errorf("table segment/interactive/fork = %q/%v/%v; want %q/false/false", table.Segment, table.Interactive, lead.ForkSubagents, segmentcolor.Describe)
 	}
 }
 
 func TestDescribeSpec_ComposesSpec(t *testing.T) {
 	in := newDescribeInputs(t)
-	in.ParentName = "ab:cd:webster"
+	parentName := "ab:cd:webster"
 	cfg := Config{Describe: "claude:sonnet[effort=high]", DescribeTimeoutMin: 7}
 
-	spec, err := DescribeSpec(in, cfg, modelspec.Registry{})
-	if err != nil {
-		t.Fatalf("DescribeSpec = _, %v; want nil error", err)
-	}
 	table, err := DescribeTable(in, cfg, modelspec.Registry{})
 	if err != nil {
 		t.Fatalf("DescribeTable = _, %v; want nil error", err)
@@ -100,15 +95,12 @@ func TestDescribeSpec_ComposesSpec(t *testing.T) {
 	}
 
 	lead := table.Chair()
-	if lead.Model != "sonnet" || lead.Effort != "high" || table.Timeout != 7*time.Minute || table.Interactive || lead.ForkSubagents {
-		t.Errorf("lead model/effort, table timeout/interactive, fork = %q/%q, %v/%v, %v; want sonnet/high, 7m/false, false", lead.Model, lead.Effort, table.Timeout, table.Interactive, lead.ForkSubagents)
+	if lead.Model != "sonnet" || lead.Effort != "high" || table.Timeout != 7*time.Minute {
+		t.Errorf("lead model/effort, table timeout = %q/%q, %v; want sonnet/high, 7m", lead.Model, lead.Effort, table.Timeout)
 	}
-	if len(lead.Outputs) != 1 || lead.Outputs[0] != in.DescriptionPath {
-		t.Errorf("lead.Outputs = %v; want [%q]", lead.Outputs, in.DescriptionPath)
-	}
-	requireLeadEqualsSpec(t, in.StencilsDir, in.ParentName, table, spec)
+	requireDescribeLead(t, table, in.DescriptionPath)
 
-	prompt := describeLeadPrompt(t, in.StencilsDir, in.ParentName, table)
+	prompt := describeLeadPrompt(t, in.StencilsDir, parentName, table)
 	for _, v := range []string{in.DecisionRecordPath, in.RunRecordPath, in.DescriptionPath, in.TaskBranch, in.ParentBranch, in.Slug} {
 		if !strings.Contains(prompt, v) {
 			t.Errorf("prompt %q does not contain input value %q", prompt, v)
@@ -212,7 +204,7 @@ func TestDescribeSpec_EmptyFieldIsError(t *testing.T) {
 	})
 }
 
-// TestDarnDescribeSpec pins the darn Describe table: it fills the darn stencil with every told value under the describe keys, equals the spec it replaces, and refuses an empty required field by name.
+// TestDarnDescribeSpec pins the darn Describe table: it fills the darn stencil with every told value under the describe keys, and refuses an empty required field by name.
 func TestDarnDescribeSpec(t *testing.T) {
 	t.Parallel()
 	const darnStencilFixture = "{{.parent_directive}}\n{{.edit_directive}}\nslug={{.slug}}\nreviews={{.review_dir}}\nout={{.description_path}}\ntask={{.task_branch}}\nparent={{.parent_branch}}\n"
@@ -237,11 +229,7 @@ func TestDarnDescribeSpec(t *testing.T) {
 	t.Run("composes from the darn stencil", func(t *testing.T) {
 		t.Parallel()
 		in := newInputs(t)
-		in.ParentName = "ab:cd:webster"
-		spec, err := DarnDescribeSpec(in, cfg, modelspec.Registry{})
-		if err != nil {
-			t.Fatalf("DarnDescribeSpec = _, %v; want nil error", err)
-		}
+		parentName := "ab:cd:webster"
 		table, err := DarnDescribeTable(in, cfg, modelspec.Registry{})
 		if err != nil {
 			t.Fatalf("DarnDescribeTable = _, %v; want nil error", err)
@@ -253,12 +241,9 @@ func TestDarnDescribeSpec(t *testing.T) {
 		if lead.Model != "sonnet" || table.Timeout != 7*time.Minute {
 			t.Errorf("lead model, table timeout = %q, %v; want sonnet, 7m", lead.Model, table.Timeout)
 		}
-		if len(lead.Outputs) != 1 || lead.Outputs[0] != in.DescriptionPath {
-			t.Errorf("lead.Outputs = %v; want [%q]", lead.Outputs, in.DescriptionPath)
-		}
-		requireLeadEqualsSpec(t, in.StencilsDir, in.ParentName, table, spec)
+		requireDescribeLead(t, table, in.DescriptionPath)
 
-		prompt := describeLeadPrompt(t, in.StencilsDir, in.ParentName, table)
+		prompt := describeLeadPrompt(t, in.StencilsDir, parentName, table)
 		for _, v := range []string{"reviews=" + in.ReviewDir, "out=" + in.DescriptionPath, "task=" + in.TaskBranch, "parent=" + in.ParentBranch, "slug=" + in.Slug, "Edit or Write"} {
 			if !strings.Contains(prompt, v) {
 				t.Errorf("prompt %q does not contain %q", prompt, v)

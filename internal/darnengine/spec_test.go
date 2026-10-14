@@ -1,4 +1,4 @@
-// spec_test.go — untagged Tier-1 unit tests for DarnTable, checked against the DarnSpec it replaces.
+// spec_test.go — untagged Tier-1 unit tests for DarnTable.
 // Pure Go over an in-memory Config, a temp-dir modelspec registry and seeded stencils;
 // the lead's prompt is composed through seatengine.Prompts, which starts nothing.
 
@@ -57,7 +57,7 @@ func leadPrompt(t *testing.T, in DarnInputs, parentName string, table seatengine
 	return prompts[""]
 }
 
-// TestDarnSpec covers the table's lead and settings, its equality with the spec it replaces, and the rendered tokens for a first spawn, where both optional tokens render (none), and for a spawn that carries rejection findings, prior work, a parent and a friction directory.
+// TestDarnSpec covers the table's lead and settings, and the rendered tokens for a first spawn, where both optional tokens render (none), and for a spawn that carries rejection findings, prior work, a parent and a friction directory.
 func TestDarnSpec(t *testing.T) {
 	t.Parallel()
 
@@ -65,6 +65,7 @@ func TestDarnSpec(t *testing.T) {
 	tests := []struct {
 		name         string
 		configure    func(in *DarnInputs)
+		parentName   string
 		wantInPrompt func(in DarnInputs) []string
 		wantNone     int
 		wantNoParent bool
@@ -83,9 +84,9 @@ func TestDarnSpec(t *testing.T) {
 			configure: func(in *DarnInputs) {
 				in.RejectionFindings = "the cache is never invalidated"
 				in.PriorWork = "the verify gate failed on TestCache"
-				in.ParentName = "the-parent"
 				in.FrictionDir = t.TempDir()
 			},
+			parentName: "the-parent",
 			wantInPrompt: func(in DarnInputs) []string {
 				return []string{"the cache is never invalidated", "the verify gate failed on TestCache", "the-parent", filepath.Join(in.FrictionDir, "Darn-Write.md")}
 			},
@@ -98,10 +99,6 @@ func TestDarnSpec(t *testing.T) {
 			in := newSpecInputs(t)
 			tt.configure(&in)
 			reg := newTestRegistry(t)
-			spec, err := DarnSpec(in, cfg, reg)
-			if err != nil {
-				t.Fatalf("DarnSpec() = _, %v; want nil error", err)
-			}
 			table, err := DarnTable(in, cfg, reg)
 			if err != nil {
 				t.Fatalf("DarnTable() = _, %v; want nil error", err)
@@ -114,32 +111,29 @@ func TestDarnSpec(t *testing.T) {
 			}
 
 			lead := table.Chair()
-			if role := seatengine.SeatRole(table.RolePrefix, lead.Name); lead.Name != "" || role != spec.Role || role != "darn" {
-				t.Errorf("lead name %q and role %q; want no name and the role %q the spec carries", lead.Name, role, spec.Role)
+			if role := seatengine.SeatRole(table.RolePrefix, lead.Name); lead.Name != "" || role != "darn" {
+				t.Errorf("lead name %q and role %q; want no name and the role %q", lead.Name, role, "darn")
 			}
-			if lead.Model != spec.Model || lead.Effort != spec.Effort || lead.Version != spec.Version || lead.Model == "" || lead.Effort != "high" {
-				t.Errorf("lead model/effort/version = %q/%q/%q; want the spec's %q/%q/%q at effort high", lead.Model, lead.Effort, lead.Version, spec.Model, spec.Effort, spec.Version)
+			if lead.Model != "opus" || lead.Effort != "high" || lead.Version != "" {
+				t.Errorf("lead model/effort/version = %q/%q/%q; want opus/high/none", lead.Model, lead.Effort, lead.Version)
 			}
-			if !slices.Equal(lead.Outputs, spec.OutputFiles) || !slices.Equal(lead.Outputs, []string{in.DescriptionPath}) {
-				t.Errorf("lead outputs = %v; want the spec's %v, the description alone", lead.Outputs, spec.OutputFiles)
+			if want := []string{in.DescriptionPath}; !slices.Equal(lead.Outputs, want) {
+				t.Errorf("lead outputs = %v; want the description alone %v", lead.Outputs, want)
 			}
-			if !slices.Equal(lead.Skills, spec.Skills) || !slices.Equal(lead.Skills, []string{"scribe:prose", "scribe:code-quality"}) {
-				t.Errorf("lead skills = %v; want the spec's %v", lead.Skills, spec.Skills)
+			if want := []string{"scribe:prose", "scribe:code-quality"}; !slices.Equal(lead.Skills, want) {
+				t.Errorf("lead skills = %v; want %v", lead.Skills, want)
 			}
-			if table.Segment != spec.Segment || table.Segment != segmentcolor.Darn {
-				t.Errorf("table segment = %q; want the spec's %q", table.Segment, spec.Segment)
+			if table.Segment != segmentcolor.Darn {
+				t.Errorf("table segment = %q; want %q", table.Segment, segmentcolor.Darn)
 			}
-			if table.Timeout != spec.Timeout || table.Timeout != 45*time.Minute {
-				t.Errorf("table timeout = %s; want the spec's %s", table.Timeout, spec.Timeout)
+			if table.Timeout != 45*time.Minute {
+				t.Errorf("table timeout = %s; want 45m0s", table.Timeout)
 			}
-			if table.Interactive != spec.Interactive || table.Interactive || lead.ForkSubagents != spec.ForkSubagents || lead.ForkSubagents {
-				t.Errorf("table interactive %v and lead fork %v; want the spec's %v and %v, both false", table.Interactive, lead.ForkSubagents, spec.Interactive, spec.ForkSubagents)
+			if table.Interactive || lead.ForkSubagents {
+				t.Errorf("table interactive %v and lead fork %v; want both false", table.Interactive, lead.ForkSubagents)
 			}
 
-			prompt := leadPrompt(t, in, in.ParentName, table)
-			if prompt != spec.Prompt {
-				t.Errorf("lead prompt differs from the spec's prompt; want byte-equal prompts\nlead:\n%s\nspec:\n%s", prompt, spec.Prompt)
-			}
+			prompt := leadPrompt(t, in, tt.parentName, table)
 			for _, want := range tt.wantInPrompt(in) {
 				if !strings.Contains(prompt, want) {
 					t.Errorf("lead prompt does not contain %q", want)

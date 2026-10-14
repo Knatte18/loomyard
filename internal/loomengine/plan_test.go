@@ -1,4 +1,4 @@
-// plan_test.go — untagged Tier-1 unit tests for PlanTable, checked against the PlanSpec it replaces.
+// plan_test.go — untagged Tier-1 unit tests for PlanTable.
 // Pure Go over an in-memory Config, a temp-dir modelspec registry and a seeded stencils directory;
 // the lead's prompt is composed through seatengine.Prompts, which starts nothing.
 
@@ -40,12 +40,12 @@ func planTableConfig(producer string) Config {
 }
 
 // TestPlanTable verifies PlanTable builds the lead the Plan-Write row needs, at an unanchored location and at a subpath-anchored one, under the single and the twill producer.
-// Its lead equals the PlanSpec it replaces in role, model, effort, version, outputs, skills, segment, timeout, interactivity and fork flag, and its prompt from seatengine.Prompts under a geometry naming the same parent is byte-equal to the spec's,
-// so the seat probe matches a run the spec started and the prompt keeps its bytes.
+// Its lead carries the plan role, model, effort, version, outputs, skills, segment, timeout, interactivity and fork flag,
+// and its prompt from seatengine.Prompts names the told paths.
 // The anchored row has a non-"." AnchorRel so the anchor path and the worktree path are distinguishable strings:
 // the plan paths must be rooted at layout.AnchorPath() and never layout.WorktreePath().
 //
-//testtiming:keep pins the parity of every lead field and the prompt bytes with PlanSpec, and the anchor-rooted plan paths, which TestProducerSpecs_SkillsAndParentDirective does not assert
+//testtiming:keep pins every lead field and the anchor-rooted plan paths, which TestProducerSpecs_SkillsAndParentDirective does not assert
 func TestPlanTable(t *testing.T) {
 	t.Parallel()
 	reg := discussionTableRegistry(t)
@@ -76,10 +76,6 @@ func TestPlanTable(t *testing.T) {
 			cfg := planTableConfig(tt.producer)
 			dirs := configengine.Dirs{Anchor: layout.AnchorPath()}
 
-			spec, err := PlanSpec(layout, dirs, stencilsDir, specsDir, "ly:orch", cfg, reg)
-			if err != nil {
-				t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
-			}
 			table, err := PlanTable(layout, dirs, stencilsDir, specsDir, cfg, reg)
 			if err != nil {
 				t.Fatalf("PlanTable(...) = _, %v; want nil error", err)
@@ -92,29 +88,29 @@ func TestPlanTable(t *testing.T) {
 			}
 
 			lead := table.Chair()
-			if role := seatengine.SeatRole(table.RolePrefix, lead.Name); lead.Name != "" || role != spec.Role || role != "plan" {
-				t.Errorf("lead name %q and role %q; want no name and the role %q the spec carries", lead.Name, role, spec.Role)
+			if role := seatengine.SeatRole(table.RolePrefix, lead.Name); lead.Name != "" || role != "plan" {
+				t.Errorf("lead name %q and role %q; want no name and the role %q", lead.Name, role, "plan")
 			}
-			if lead.Model != spec.Model || lead.Effort != spec.Effort || lead.Version != spec.Version || lead.Model == "" || lead.Effort != "high" {
-				t.Errorf("lead model/effort/version = %q/%q/%q; want the spec's %q/%q/%q", lead.Model, lead.Effort, lead.Version, spec.Model, spec.Effort, spec.Version)
+			if lead.Model != "opus" || lead.Effort != "high" || lead.Version != "" {
+				t.Errorf("lead model/effort/version = %q/%q/%q; want opus/high/none", lead.Model, lead.Effort, lead.Version)
 			}
-			if want := []string{wantOverview(layout)}; !slices.Equal(lead.Outputs, spec.OutputFiles) || !slices.Equal(lead.Outputs, want) {
-				t.Errorf("lead outputs = %v; want the spec's %v, the overview %v", lead.Outputs, spec.OutputFiles, want)
+			if want := []string{wantOverview(layout)}; !slices.Equal(lead.Outputs, want) {
+				t.Errorf("lead outputs = %v; want the overview %v", lead.Outputs, want)
 			}
-			if !slices.Equal(lead.Skills, spec.Skills) || !slices.Equal(lead.Skills, []string{"scribe:prose", "scribe:testing"}) {
-				t.Errorf("lead skills = %v; want the spec's %v", lead.Skills, spec.Skills)
+			if want := []string{"scribe:prose", "scribe:testing"}; !slices.Equal(lead.Skills, want) {
+				t.Errorf("lead skills = %v; want %v", lead.Skills, want)
 			}
-			if table.Segment != spec.Segment || table.Segment != segmentcolor.Plan {
-				t.Errorf("table segment = %q; want the spec's %q", table.Segment, spec.Segment)
+			if table.Segment != segmentcolor.Plan {
+				t.Errorf("table segment = %q; want %q", table.Segment, segmentcolor.Plan)
 			}
-			if table.Timeout != spec.Timeout || table.Timeout != 120*time.Minute {
-				t.Errorf("table timeout = %s; want the spec's %s", table.Timeout, spec.Timeout)
+			if table.Timeout != 120*time.Minute {
+				t.Errorf("table timeout = %s; want 2h0m0s", table.Timeout)
 			}
-			if table.Interactive != spec.Interactive || table.Interactive {
-				t.Errorf("table interactive = %v; want the spec's %v", table.Interactive, spec.Interactive)
+			if table.Interactive {
+				t.Error("table interactive = true; want false")
 			}
-			if lead.ForkSubagents != spec.ForkSubagents || lead.ForkSubagents != tt.wantForks {
-				t.Errorf("lead ForkSubagents = %v; want the spec's %v (%v)", lead.ForkSubagents, spec.ForkSubagents, tt.wantForks)
+			if lead.ForkSubagents != tt.wantForks {
+				t.Errorf("lead ForkSubagents = %v; want %v", lead.ForkSubagents, tt.wantForks)
 			}
 
 			prompts, err := seatengine.Prompts(discussionTableGeometry(layout, stencilsDir), table)
@@ -122,9 +118,6 @@ func TestPlanTable(t *testing.T) {
 				t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)
 			}
 			prompt := prompts[""]
-			if prompt != spec.Prompt {
-				t.Errorf("lead prompt differs from the spec's prompt; want byte-equal prompts\nlead:\n%s\nspec:\n%s", prompt, spec.Prompt)
-			}
 
 			wantPlanDir := filepath.Join(layout.AnchorPath(), lyxdirs.LyxDirName, planparser.PlanDirName)
 			for _, want := range []string{"`ly:orch`", DiscussionDecisionRecord(layout), planparser.PlanDir(layout.AnchorPath()), planparser.PlanOverview(layout.AnchorPath()), wantPlanDir, specsDir} {

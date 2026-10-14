@@ -1,63 +1,6 @@
-// prompt.go composes the discussion producer's interview prompt: it reads the discussion stencil
-// from stencilsDir at call time, builds the four marker values it requires, and fills it via
-// internal/stencil, mirroring internal/burlerengine's composePrompt shape.
+// prompt.go holds the two marker-value helpers the table builders share: setOffParagraph, which sets a block off as its own paragraph, and modeRules, the {{.mode_rules}} block of the discussion prompt.
 
 package loomengine
-
-import (
-	"fmt"
-
-	"github.com/Knatte18/loomyard/internal/editdirective"
-	"github.com/Knatte18/loomyard/internal/friction"
-	"github.com/Knatte18/loomyard/internal/parentdirective"
-	"github.com/Knatte18/loomyard/internal/stencil"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
-	"github.com/Knatte18/loomyard/internal/twilldirective"
-)
-
-// composePrompt builds the discussion producer's interview prompt by reading the
-// "loom-template-discussion" stencil from stencilsDir and filling it with the four required
-// top-level marker values plus the optional pattern_directive and friction_directive markers.
-// patternDirective is the caller-resolved PATTERN directive -- an empty string means PATTERN is inactive,
-// and renders as nothing.
-// frictionDirective is the caller-resolved Tier 2 note directive for this run --
-// an empty string means Tier 2 is off or the read failed, and renders as nothing.
-// parentDirective is the caller-rendered parent directive and renders as nothing when empty.
-// twillDirective is the caller-rendered twill directive and renders as nothing when empty;
-// a non-empty one is set off with a newline on each side, so it sits in a paragraph of its own.
-func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, parentDirective, twillDirective string, autonomous bool) ([]byte, error) {
-	template, err := stencilstore.Read(stencilsDir, "loom-template-discussion")
-	if err != nil {
-		return nil, err
-	}
-
-	friction.WarnIfMarkerAbsent(template, "loom-template-discussion", frictionDirective)
-
-	editDirective, err := editdirective.Directive(stencilsDir)
-	if err != nil {
-		return nil, fmt.Errorf("loom: compose discussion prompt: %w", err)
-	}
-
-	values := map[string]string{
-		"slug":                     slug,
-		"decision_record_path":     decisionRecordPath,
-		"support_log_path":         supportLogPath,
-		"mode_rules":               modeRules(autonomous),
-		"pattern_directive":        patternDirective,
-		friction.MarkerName:        frictionDirective,
-		parentdirective.MarkerName: parentDirective,
-		editdirective.MarkerName:   editDirective,
-
-		twilldirective.MarkerName: setOffParagraph(twillDirective),
-	}
-
-	optional := []string{"pattern_directive", friction.MarkerName, parentdirective.MarkerName, twilldirective.MarkerName}
-	rendered, err := stencil.FillOptional(template, values, optional)
-	if err != nil {
-		return nil, fmt.Errorf("loom: compose discussion prompt: %w", err)
-	}
-	return rendered, nil
-}
 
 // setOffParagraph wraps a non-empty block in one newline on each side, so the line it replaces gains a blank line before and after it; an empty block stays empty.
 func setOffParagraph(block string) string {

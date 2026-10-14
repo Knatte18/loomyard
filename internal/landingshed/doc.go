@@ -132,9 +132,9 @@
 //
 // The Describe session loads `scribe:prose` before its prompt.
 // Its stencil, like the conflict session's, carries the parent directive that internal/parentdirective renders from the told name:
-// DescribeInputs.ParentName for Describe, and Deps.ParentName passed through to the resolver for Merge-In and Finalize.
-// DescribeSpec composes a loom run's session, which reads the decision record and the webster run records;
-// DarnDescribeSpec composes a darn run's from its own stencil, `landing-template-describe-darn`, which reads the board entry, the diff and the review perch's run directory, under the same describe keys, role and skills.
+// the seat engine's geometry for Describe, and Deps.ParentName passed through to the resolver for Merge-In and Finalize.
+// DescribeTable builds a loom run's session, which reads the decision record and the webster run records;
+// DarnDescribeTable builds a darn run's from its own stencil, `landing-template-describe-darn`, which reads the board entry, the diff and the review perch's run directory, under the same describe keys, role and skills.
 //
 // It takes told absolute paths and has no direct production import of internal/lyxcwd, per the
 // Told-Geometry Invariant: every path this package operates on is handed to it by its caller, and it
