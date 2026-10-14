@@ -7,12 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -47,6 +50,7 @@ type checklistInput struct {
 	poll      statuspane.StatusPoll
 	waitNote  string
 	startedAt string
+	arbiters  []checklistArbiter
 }
 
 // checklistVisit is one visit of a row, read from one status history entry or from the current producer's open visit.
@@ -116,6 +120,7 @@ lines in view. The loom-status strand runs it. It reads files only.`,
 
 // checklistPoll returns the pane's poll for the worktree at location.
 // The self run's seed is read until one read succeeds, and its recipe's rows once after that.
+// The run's arbiter attempts are read from disk on every frame.
 // While the run is running, the state line carries the note the worktree's Waiting hook reports.
 func (c *loomCLI) checklistPoll(location *lyxcwd.Location) func() statuspane.Frame {
 	waiting := reviewWaitingFor(location)
@@ -127,6 +132,7 @@ func (c *loomCLI) checklistPoll(location *lyxcwd.Location) func() statuspane.Fra
 	)
 	cache := statuspane.NewStatusCache()
 	statusFile := shedrun.StatusFile(location, shedrun.SelfRunID)
+	arbiterDir := shedrun.ArbiterDir(location, shedrun.SelfRunID)
 
 	return func() statuspane.Frame {
 		if !seedRead {
@@ -150,13 +156,14 @@ func (c *loomCLI) checklistPoll(location *lyxcwd.Location) func() statuspane.Fra
 				waitNote = note
 			}
 		}
-		return renderChecklist(checklistInput{rows: rows, rowsErr: rowsErr, poll: poll, waitNote: waitNote, startedAt: startedAt}, time.Now())
+		return renderChecklist(checklistInput{rows: rows, rowsErr: rowsErr, poll: poll, waitNote: waitNote, startedAt: startedAt, arbiters: readChecklistArbiters(arbiterDir)}, time.Now())
 	}
 }
 
 // renderChecklist returns the checklist frame, top to bottom:
 // one line per row of the recipe in recipe order, each visited row's visit lines under it, then the history-only rows the same way, marked checklistNotInRecipe;
 // a review segment, drawn by checklistReviewBlock at the place of its first row, takes the place of its rows' own lines;
+// each arbiter attempt standing right after the line of the history entry its stop key names, in every list the frame draws, and the others after the last row;
 // with in.rowsErr set, the single line checklistRecipeBroken and then every visit line in history order, each naming its row;
 // the state line, without the wait the wait line carries; and the wait line.
 // in.startedAt is the run's seed time, where its first visit starts; an empty or unparsable value starts it at the first entry's own time.
@@ -174,14 +181,20 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 		status = in.poll.Status
 	}
 	visits, visitedOrder, history := checklistVisitsOf(status, in.startedAt, now)
+	arbiters := newChecklistArbiterPlacement(in.arbiters, len(status.History), now)
 
 	if in.rowsErr != nil {
 		lines := []string{checklistRecipeBroken}
 		for _, visit := range history {
-			if !visit.isGoto {
-				lines = append(lines, "  "+checklistVisitLine(visit, visit.row))
+			if visit.isGoto {
+				continue
+			}
+			lines = append(lines, "  "+checklistVisitLine(visit, visit.row))
+			for _, arbiter := range arbiters.linesAfter(visit.index) {
+				lines = append(lines, "  "+arbiter)
 			}
 		}
+		lines = append(lines, arbiters.endLines()...)
 		return statuspane.Frame{Lines: append(lines, stateLine, waitLine)}
 	}
 
@@ -212,7 +225,7 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 		if row, ok := recipeRow[name]; ok && reviewSegment[row.Segment] {
 			if !drawnSegment[row.Segment] {
 				drawnSegment[row.Segment] = true
-				lines = append(lines, checklistReviewBlock(row.Segment, in.rows, history, status)...)
+				lines = append(lines, checklistReviewBlock(row.Segment, in.rows, history, status, arbiters)...)
 			}
 			continue
 		}
@@ -229,15 +242,25 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 		lines = append(lines, line)
 		for _, visit := range visits[name].log {
 			lines = append(lines, "  "+checklistVisitLine(visit, ""))
+			for _, arbiter := range arbiters.linesAfter(visit.index) {
+				lines = append(lines, "  "+arbiter)
+			}
 		}
 	}
+	lines = append(lines, arbiters.endLines()...)
 	return statuspane.Frame{Lines: append(lines, stateLine, waitLine)}
+}
+
+// checklistBlockLine is one visit line of a review block and the status history index of the entry it shows, -1 for the open visit.
+type checklistBlockLine struct {
+	text  string
+	index int
 }
 
 // checklistRound is one opened round of a review block: its number and the lines under it, in the order they ran.
 type checklistRound struct {
 	number int
-	lines  []string
+	lines  []checklistBlockLine
 }
 
 // checklistReviewBlock renders a review segment, a recipe segment holding a Bouncer row, as one block from the history-order visits.
@@ -247,7 +270,8 @@ type checklistRound struct {
 // A bounced Bouncer line waits and stands first in the next round that opens.
 // A fix-row entry, a goto into the segment, a reroute into the segment and a Bouncer entry that routes nowhere stand as the last line of the round in progress, or before round 1.
 // The open visit of a segment row opens the round after the last when a bounced Bouncer line waits, and otherwise joins the round in progress.
-func checklistReviewBlock(segment string, rows []loomrecipe.RecipeRow, visits []checklistVisit, status shedengine.Status) []string {
+// Each line is followed by the arbiter lines placed after its history entry.
+func checklistReviewBlock(segment string, rows []loomrecipe.RecipeRow, visits []checklistVisit, status shedengine.Status, arbiters *checklistArbiterPlacement) []string {
 	inSegment := map[string]bool{}
 	bouncers := map[string]bool{}
 	reviewRows := map[string]bool{}
@@ -285,10 +309,10 @@ func checklistReviewBlock(segment string, rows []loomrecipe.RecipeRow, visits []
 	}
 
 	var (
-		before  []string
+		before  []checklistBlockLine
 		rounds  []checklistRound
-		waiting []string
-		closing []string
+		waiting []checklistBlockLine
+		closing []checklistBlockLine
 		current = -1
 	)
 	roundIndex := map[int]int{}
@@ -298,7 +322,7 @@ func checklistReviewBlock(segment string, rows []loomrecipe.RecipeRow, visits []
 		current = len(rounds) - 1
 		roundIndex[number] = current
 	}
-	placeInProgress := func(line string) {
+	placeInProgress := func(line checklistBlockLine) {
 		if current < 0 {
 			before = append(before, line)
 			return
@@ -306,7 +330,7 @@ func checklistReviewBlock(segment string, rows []loomrecipe.RecipeRow, visits []
 		rounds[current].lines = append(rounds[current].lines, line)
 	}
 	for _, visit := range visits {
-		line := checklistVisitLine(visit, visit.row)
+		line := checklistBlockLine{text: checklistVisitLine(visit, visit.row), index: visit.index}
 		switch {
 		case visit.isGoto:
 			if inSegment[visit.row] {
@@ -356,19 +380,143 @@ func checklistReviewBlock(segment string, rows []loomrecipe.RecipeRow, visits []
 	}
 
 	lines := []string{fmt.Sprintf("%s %s %s rounds %d", box, segment, statuspane.FormatMinutes(spent), len(rounds))}
-	for _, line := range before {
-		lines = append(lines, "  "+line)
-	}
+	lines = appendChecklistBlockLines(lines, "  ", before, arbiters)
 	for _, round := range rounds {
 		lines = append(lines, fmt.Sprintf("  round %d", round.number))
-		for _, line := range round.lines {
-			lines = append(lines, "    "+line)
+		lines = appendChecklistBlockLines(lines, "    ", round.lines, arbiters)
+	}
+	return appendChecklistBlockLines(lines, "  ", closing, arbiters)
+}
+
+// appendChecklistBlockLines appends each of block to lines at indent, each followed by the arbiter lines placed after its history entry.
+func appendChecklistBlockLines(lines []string, indent string, block []checklistBlockLine, arbiters *checklistArbiterPlacement) []string {
+	for _, line := range block {
+		lines = append(lines, indent+line.text)
+		for _, arbiter := range arbiters.linesAfter(line.index) {
+			lines = append(lines, indent+arbiter)
 		}
 	}
-	for _, line := range closing {
-		lines = append(lines, "  "+line)
-	}
 	return lines
+}
+
+// checklistArbiter is what one arbiter attempt directory gave.
+// With unreadable set only dir, the directory's name, is filled.
+// Otherwise the attempt's record gave number, spawnedAt, historyLength (its stop key's) and deadline, and the envelope read gave hasEnvelope and envelope, or envelopeErr.
+type checklistArbiter struct {
+	dir           string
+	unreadable    bool
+	number        int
+	spawnedAt     time.Time
+	historyLength int
+	deadline      time.Time
+	envelope      loomengine.ArbiterEnvelope
+	hasEnvelope   bool
+	envelopeErr   bool
+}
+
+// readChecklistArbiters reads every subdirectory of arbiterDir as one arbiter attempt, read-only and without a lock, so one bad attempt leaves the others drawn.
+// An absent directory gives none; an attempt whose record errors is unreadable and names its directory; an envelope read error marks that attempt alone.
+// It reads the envelope, never the agent's verdict.yaml, so a hand-on the verb concluded itself shows too.
+func readChecklistArbiters(arbiterDir string) []checklistArbiter {
+	entries, err := os.ReadDir(arbiterDir)
+	if err != nil {
+		return nil
+	}
+	var arbiters []checklistArbiter
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		dir := filepath.Join(arbiterDir, entry.Name())
+		attempt, err := loomengine.ReadArbiterAttempt(dir)
+		if err != nil {
+			arbiters = append(arbiters, checklistArbiter{dir: entry.Name(), unreadable: true})
+			continue
+		}
+		arbiter := checklistArbiter{
+			dir:           entry.Name(),
+			number:        attempt.Number,
+			spawnedAt:     attempt.SpawnedAt,
+			historyLength: attempt.StopKey.HistoryLength,
+			deadline:      attempt.Deadline,
+		}
+		envelope, found, err := loomengine.ReadArbiterEnvelope(loomengine.ArbiterEnvelopePath(dir))
+		arbiter.envelope, arbiter.hasEnvelope, arbiter.envelopeErr = envelope, found, err != nil
+		arbiters = append(arbiters, arbiter)
+	}
+	return arbiters
+}
+
+// checklistArbiterLine renders one attempt as "<spawn hh:mm> arbiter attempt <n> <verdict>".
+// The verdict is the envelope's, followed by " (<cause>)" when it has a cause; with no envelope it is "running" before the attempt's deadline and "no verdict" from it on, and "verdict unreadable" when the envelope read failed.
+// An unreadable attempt reads "arbiter attempt unreadable (<directory name>)".
+func checklistArbiterLine(a checklistArbiter, now time.Time) string {
+	if a.unreadable {
+		return "arbiter attempt unreadable (" + a.dir + ")"
+	}
+	var verdict string
+	switch {
+	case a.envelopeErr:
+		verdict = "verdict unreadable"
+	case a.hasEnvelope:
+		verdict = a.envelope.Verdict
+		if a.envelope.Cause != "" {
+			verdict += " (" + a.envelope.Cause + ")"
+		}
+	case now.Before(a.deadline):
+		verdict = checklistOpenOutcome
+	default:
+		verdict = "no verdict"
+	}
+	return fmt.Sprintf("%s arbiter attempt %d %s", a.spawnedAt.UTC().Format("15:04"), a.number, verdict)
+}
+
+// checklistArbiterPlacement holds the rendered arbiter lines of a frame by where they stand.
+// A readable attempt whose stop key names history entry k, 1 <= k <= the history's length, stands after the line of entry k-1; the rest stand at the end of the frame, unreadable ones last.
+type checklistArbiterPlacement struct {
+	after      map[int][]string
+	outside    []string
+	unreadable []string
+}
+
+// newChecklistArbiterPlacement sorts arbiters into a placement for a status history of historyLength entries.
+func newChecklistArbiterPlacement(arbiters []checklistArbiter, historyLength int, now time.Time) *checklistArbiterPlacement {
+	placement := &checklistArbiterPlacement{after: map[int][]string{}}
+	for _, a := range arbiters {
+		line := checklistArbiterLine(a, now)
+		switch {
+		case a.unreadable:
+			placement.unreadable = append(placement.unreadable, line)
+		case a.historyLength >= 1 && a.historyLength <= historyLength:
+			placement.after[a.historyLength-1] = append(placement.after[a.historyLength-1], line)
+		default:
+			placement.outside = append(placement.outside, line)
+		}
+	}
+	return placement
+}
+
+// linesAfter takes the lines that stand after the line of history entry index, none for the open visit's -1.
+// Each is taken once, so a history entry drawn in two lists carries them in the first.
+func (p *checklistArbiterPlacement) linesAfter(index int) []string {
+	lines := p.after[index]
+	delete(p.after, index)
+	return lines
+}
+
+// endLines returns the lines that stand at the end of the frame: attempts outside the history, readable ones whose entry no list drew, and last the unreadable ones.
+func (p *checklistArbiterPlacement) endLines() []string {
+	indexes := make([]int, 0, len(p.after))
+	for index := range p.after {
+		indexes = append(indexes, index)
+	}
+	slices.Sort(indexes)
+	var lines []string
+	for _, index := range indexes {
+		lines = append(lines, p.after[index]...)
+	}
+	lines = append(lines, p.outside...)
+	return append(lines, p.unreadable...)
 }
 
 // checklistVisitLine renders one visit as "<start> <spent> <outcome>", then " x<n>" for a folded entry, " <output>" when it has one and " gate attempts <n>" when gated.

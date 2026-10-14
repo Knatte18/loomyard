@@ -7,12 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/statuspane"
@@ -81,6 +84,27 @@ func handOnEntry(atMinute, round int) shedengine.HistoryEntry {
 	return entry
 }
 
+// resolvedArbiter is an attempt spawned spawnMinute after checklistClock whose envelope carries verdict and cause.
+func resolvedArbiter(number, spawnMinute, historyLength int, verdict, cause string) checklistArbiter {
+	return checklistArbiter{
+		number:        number,
+		spawnedAt:     checklistClock.Add(time.Duration(spawnMinute) * time.Minute),
+		historyLength: historyLength,
+		envelope:      loomengine.ArbiterEnvelope{Verdict: verdict, Cause: cause},
+		hasEnvelope:   true,
+	}
+}
+
+// pendingArbiter is an attempt spawned spawnMinute after checklistClock that has no envelope yet and whose deadline is deadlineMinute after it.
+func pendingArbiter(number, spawnMinute, historyLength, deadlineMinute int) checklistArbiter {
+	return checklistArbiter{
+		number:        number,
+		spawnedAt:     checklistClock.Add(time.Duration(spawnMinute) * time.Minute),
+		historyLength: historyLength,
+		deadline:      checklistClock.Add(time.Duration(deadlineMinute) * time.Minute),
+	}
+}
+
 // gotoEntry is the goto history entry that moved the run onto producer at the given minute.
 func gotoEntry(producer string, atMinute int) shedengine.HistoryEntry {
 	return shedengine.HistoryEntry{Producer: producer, Outcome: shedengine.OutcomeGoto, At: minuteMark(atMinute)}
@@ -133,6 +157,7 @@ func TestRenderChecklist(t *testing.T) {
 		poll    statuspane.StatusPoll
 		wait    string
 		nowMin  int
+		arbiter []checklistArbiter
 		want    []string
 	}{
 		{
@@ -517,6 +542,114 @@ func TestRenderChecklist(t *testing.T) {
 			},
 		},
 		{
+			name: "a round-3 escalation and its arbiter attempt stand in round 3 and round 4 opens after them",
+			rows: reviewRecipe,
+			poll: checklistStatus(shedengine.StateRunning, "Rev-Fix",
+				doneEntry("Build", 5),
+				bouncedEntry(6), roundEntry("Rev-Review", 7, 1, "review"),
+				bouncedEntry(8), roundEntry("Rev-Review", 9, 2, "review"),
+				bouncedEntry(10), roundEntry("Rev-Review", 11, 3, "review"), roundEntry("Rev-Fix", 12, 3, "fixer-report"),
+				awaitingEntry("Rev-Bouncer", 13),
+				bouncedEntry(15), roundEntry("Rev-Review", 17, 4, "review")),
+			nowMin:  19,
+			arbiter: []checklistArbiter{resolvedArbiter(1, 13, 9, "resume", "")},
+			want: []string{
+				"[x] Build 5m", "  10:00 5m done",
+				"[>] Rev 14m rounds 4",
+				"  round 1",
+				"    10:05 1m Rev-Bouncer bounced",
+				"    10:06 1m Rev-Review done round-1-review.md",
+				"  round 2",
+				"    10:07 1m Rev-Bouncer bounced",
+				"    10:08 1m Rev-Review done round-2-review.md",
+				"  round 3",
+				"    10:09 1m Rev-Bouncer bounced",
+				"    10:10 1m Rev-Review done round-3-review.md",
+				"    10:11 1m Rev-Fix done round-3-fixer-report.md",
+				"    10:12 1m Rev-Bouncer escalated",
+				"    10:13 arbiter attempt 1 resume",
+				"  round 4",
+				"    10:13 2m Rev-Bouncer bounced",
+				"    10:15 2m Rev-Review done round-4-review.md",
+				"    10:17 2m Rev-Fix running",
+				"[ ] Publish", "[ ] PR-Review", "[ ] PR-Rework",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name:    "an attempt whose envelope carries hand-on with cause died renders hand-on (died) after its entry",
+			rows:    recipe,
+			poll:    checklistStatus(shedengine.StateRunning, "Review", doneEntry("Plan", 5)),
+			nowMin:  7,
+			arbiter: []checklistArbiter{resolvedArbiter(1, 5, 1, "hand-on", "died")},
+			want: []string{
+				"[x] Plan 5m", "  10:00 5m done", "  10:05 arbiter attempt 1 hand-on (died)",
+				"[>] Review 2m", "  10:05 2m running",
+				"[ ] Build",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name:   "an attempt with no envelope renders running before its deadline and no verdict from it on",
+			rows:   recipe,
+			poll:   checklistStatus(shedengine.StateRunning, "Review", doneEntry("Plan", 5)),
+			nowMin: 7,
+			arbiter: []checklistArbiter{
+				pendingArbiter(1, 5, 1, 10),
+				pendingArbiter(2, 6, 1, 6),
+			},
+			want: []string{
+				"[x] Plan 5m", "  10:00 5m done",
+				"  10:05 arbiter attempt 1 running", "  10:06 arbiter attempt 2 no verdict",
+				"[>] Review 2m", "  10:05 2m running",
+				"[ ] Build",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name:    "an attempt whose stop key exceeds the history stands at the end of the frame",
+			rows:    recipe,
+			poll:    checklistStatus(shedengine.StateRunning, "Review", doneEntry("Plan", 5)),
+			nowMin:  7,
+			arbiter: []checklistArbiter{resolvedArbiter(1, 6, 5, "resume", "")},
+			want: []string{
+				"[x] Plan 5m", "  10:00 5m done",
+				"[>] Review 2m", "  10:05 2m running",
+				"[ ] Build",
+				"10:06 arbiter attempt 1 resume",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name:   "an unreadable attempt stands before the state line beside a readable one drawn in place",
+			rows:   recipe,
+			poll:   checklistStatus(shedengine.StateRunning, "Review", doneEntry("Plan", 5)),
+			nowMin: 7,
+			arbiter: []checklistArbiter{
+				{dir: "attempt-2", unreadable: true},
+				resolvedArbiter(1, 5, 1, "hand-on", ""),
+			},
+			want: []string{
+				"[x] Plan 5m", "  10:00 5m done", "  10:05 arbiter attempt 1 hand-on",
+				"[>] Review 2m", "  10:05 2m running",
+				"[ ] Build",
+				"arbiter attempt unreadable (attempt-2)",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name:    "an unreadable recipe lists the attempt after the visit its stop key names",
+			rowsErr: errors.New("no seed is recorded"),
+			poll:    checklistStatus(shedengine.StateRunning, "Plan", doneEntry("Plan", 5)),
+			nowMin:  7,
+			arbiter: []checklistArbiter{resolvedArbiter(1, 5, 1, "resume", "")},
+			want: []string{
+				"recipe unreadable",
+				"  10:00 5m Plan done", "  10:05 arbiter attempt 1 resume", "  10:05 2m Plan running",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
 			name: "an absent status shows every row not reached above the unavailable line",
 			rows: recipe,
 			want: []string{
@@ -529,12 +662,62 @@ func TestRenderChecklist(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			now := checklistClock.Add(time.Duration(tt.nowMin) * time.Minute)
-			got := renderChecklist(checklistInput{rows: tt.rows, rowsErr: tt.rowsErr, poll: tt.poll, waitNote: tt.wait, startedAt: minuteMark(0)}, now)
+			got := renderChecklist(checklistInput{rows: tt.rows, rowsErr: tt.rowsErr, poll: tt.poll, waitNote: tt.wait, startedAt: minuteMark(0), arbiters: tt.arbiter}, now)
 			if diff := cmp.Diff(tt.want, got.Lines); diff != "" {
 				t.Errorf("renderChecklist lines mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
+
+	t.Run("readChecklistArbiters reads each attempt directory on its own", func(t *testing.T) {
+		t.Parallel()
+		arbiterDir := t.TempDir()
+		attempt := func(number int) loomengine.ArbiterAttempt {
+			return loomengine.ArbiterAttempt{
+				Number:    number,
+				StopKey:   loomengine.ArbiterStopKey{HistoryLength: 2},
+				SpawnedAt: checklistClock,
+				Deadline:  checklistClock.Add(10 * time.Minute),
+			}
+		}
+		writeAttempt := func(name string, number int) string {
+			dir := filepath.Join(arbiterDir, name)
+			if err := loomengine.WriteArbiterAttempt(dir, attempt(number)); err != nil {
+				t.Fatalf("WriteArbiterAttempt(%s) = %v", name, err)
+			}
+			return dir
+		}
+		withEnvelope := writeAttempt("a1", 1)
+		if err := loomengine.WriteArbiterEnvelope(loomengine.ArbiterEnvelopePath(withEnvelope), loomengine.ArbiterEnvelope{Verdict: "resume"}); err != nil {
+			t.Fatalf("WriteArbiterEnvelope = %v", err)
+		}
+		writeAttempt("a2", 2)
+		garbled := writeAttempt("a3", 3)
+		if err := os.WriteFile(loomengine.ArbiterEnvelopePath(garbled), []byte("{not json"), 0o644); err != nil {
+			t.Fatalf("write garbled envelope: %v", err)
+		}
+		if err := os.Mkdir(filepath.Join(arbiterDir, "a4"), 0o755); err != nil {
+			t.Fatalf("mkdir a4: %v", err)
+		}
+
+		got := readChecklistArbiters(arbiterDir)
+		var lines []string
+		for _, arbiter := range got {
+			lines = append(lines, checklistArbiterLine(arbiter, checklistClock.Add(time.Minute)))
+		}
+		want := []string{
+			"10:00 arbiter attempt 1 resume",
+			"10:00 arbiter attempt 2 running",
+			"10:00 arbiter attempt 3 verdict unreadable",
+			"arbiter attempt unreadable (a4)",
+		}
+		if diff := cmp.Diff(want, lines); diff != "" {
+			t.Errorf("readChecklistArbiters lines mismatch (-want +got):\n%s", diff)
+		}
+		if absent := readChecklistArbiters(filepath.Join(arbiterDir, "absent")); len(absent) != 0 {
+			t.Errorf("readChecklistArbiters(absent directory) = %+v; want none", absent)
+		}
+	})
 }
 
 func TestChecklistCmd_ReportsAResolutionFailureOnTheEnvelope(t *testing.T) {
