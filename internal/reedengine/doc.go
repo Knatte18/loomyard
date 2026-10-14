@@ -346,10 +346,12 @@
 // An invalid window_split or window_share_max never refuses a removal: the layout is skipped and the key is reported in Removed.ConfigWarning.
 //
 // Focus rules: an agent window is a window holding a pane bound to an own-window strand; the overview, the shell and hidden windows are not agent windows.
-// An automatic window switch happens only at three points, each deciding from reed state, window ids and pane liveness alone, never from @lyx_unseen, @lyx_hidden or a wait mark, and none moves a viewer off the shell or a live agent window.
+// An automatic window switch happens only at three points, each deciding from reed state, window ids, strand roles and pane liveness alone, never from @lyx_unseen, @lyx_hidden or a wait mark, and none moves a viewer off the shell or an older live agent window the operator picked by hand.
 // relevantWindow is the target of two of them: among the listed windows not about to end, the highest-index agent window holding a pane that is not dead, else the overview strand's window, else none.
 // Attach (attachWindowSelectionLocked, resolved by AttachArgv right after the shell check) appends `; select-window -t <relevant window>` to every argv it returns, and appends nothing when another client is attached or a listing fails.
-// A new agent window is selected by openOwnWindowLocked, for an own-window strand and never the overview, when newAgentWindowSelected holds: always for a Focus strand, otherwise only when the viewer is on the overview window or on an agent window whose every pane is dead; it then carries no @lyx_unseen.
+// A new agent window is selected by openOwnWindowLocked, for an own-window strand and never the overview, when newAgentWindowSelected holds: always for a Focus strand, otherwise only when the viewer is on the overview window, on an agent window whose every pane is dead, on the relevant window as listed before the new one opens, or on a window holding a live own-window pane of a strand whose role is the driver role; it then carries no @lyx_unseen.
+// So an attached viewer follows the newest agent window as strands spawn, and a viewer the operator moved to another window stays there.
+// Every client of a session shares its current window, so the one select-window moves each attached client.
 // A viewed window ending, by RemoveStrand, by ReplaceStrand and by reconcile ending an orphan own window (selectRelevantWindowIfCurrentLocked), moves a viewer on it to the relevant window among those left, never the shell, and with none left to tmux.
 // A viewer elsewhere is never moved, and a strand leaving a shared window that stays open ends no window and switches nothing.
 // An automatic switch races an operator's own window change by at most one switch.
