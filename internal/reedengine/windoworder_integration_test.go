@@ -325,9 +325,10 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 		return s
 	}
 
+	var fromOverview Strand
 	t.Run("ANewAgentWindowIsSelectedFromTheOverviewAndFromAnAllDeadAgentWindow", func(t *testing.T) {
 		selectWindow(windowOfPane(t, e, overview.PaneID))
-		fromOverview := addFocused("from-overview", false)
+		fromOverview = addFocused("from-overview", false)
 		fromOverviewWindow := windowOfPane(t, e, fromOverview.PaneID)
 		if got := currentWindow(); got != fromOverviewWindow {
 			t.Errorf("current window = %s, want the new agent window %s selected from the overview", got, fromOverviewWindow)
@@ -348,13 +349,33 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 		}
 	})
 
-	t.Run("ANewAgentWindowKeepsAViewerOnALiveAgentOrTheShellAndCarriesUnseen", func(t *testing.T) {
-		live := currentWindow()
-		fromLive := addFocused("from-live", false)
-		if got := currentWindow(); got != live {
-			t.Errorf("current window = %s, want the viewer kept on the live agent window %s", got, live)
+	t.Run("ANewAgentWindowIsSelectedFromTheNewestLiveAgentAndFromTheDriver", func(t *testing.T) {
+		fromNewest := addFocused("from-newest", false)
+		fromNewestWindow := windowOfPane(t, e, fromNewest.PaneID)
+		if got := currentWindow(); got != fromNewestWindow {
+			t.Errorf("current window = %s, want the new agent window %s selected from the newest live agent", got, fromNewestWindow)
 		}
-		if got := unseen(windowOfPane(t, e, fromLive.PaneID)); got != "1" {
+		if got := unseen(fromNewestWindow); got != "" {
+			t.Errorf("selected agent window @lyx_unseen = %q, want it unset", got)
+		}
+
+		driver := addFocused("driver", false)
+		addFocused("after-driver", false)
+		selectWindow(windowOfPane(t, e, driver.PaneID))
+		fromDriver := addFocused("from-driver", false)
+		if got, want := currentWindow(), windowOfPane(t, e, fromDriver.PaneID); got != want {
+			t.Errorf("current window = %s, want the new agent window %s selected from the driver window", got, want)
+		}
+	})
+
+	t.Run("ANewAgentWindowKeepsAViewerOnAnOlderLiveAgentOrTheShellAndCarriesUnseen", func(t *testing.T) {
+		older := windowOfPane(t, e, fromOverview.PaneID)
+		selectWindow(older)
+		fromOlder := addFocused("from-older", false)
+		if got := currentWindow(); got != older {
+			t.Errorf("current window = %s, want the viewer kept on the older live agent window %s", got, older)
+		}
+		if got := unseen(windowOfPane(t, e, fromOlder.PaneID)); got != "1" {
 			t.Errorf("unselected agent window @lyx_unseen = %q, want 1", got)
 		}
 
@@ -377,17 +398,18 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 		}
 	})
 
-	t.Run("ReplacingTheViewedAgentWhileAnOlderAgentIsLiveLeavesTheViewerOnTheOlderAgent", func(t *testing.T) {
-		older := addFocused("replace-older", false)
+	t.Run("ReplacingTheViewedAgentLandsTheViewerOnTheReplacement", func(t *testing.T) {
+		addFocused("replace-older", false)
 		viewed := addFocused("replace-viewed", false)
 		selectWindow(windowOfPane(t, e, viewed.PaneID))
 
-		if _, err := e.ReplaceStrand(viewed.GUID, AddSpec{NameOverride: "replace-viewed", Cmd: "sleep 300", Display: ownDisplay}); err != nil {
+		replacement, err := e.ReplaceStrand(viewed.GUID, AddSpec{NameOverride: "replace-viewed", Cmd: "sleep 300", Display: ownDisplay})
+		if err != nil {
 			t.Fatalf("ReplaceStrand: %v", err)
 		}
 
-		if got, want := currentWindow(), windowOfPane(t, e, older.PaneID); got != want {
-			t.Errorf("current window = %s, want the older live agent's window %s", got, want)
+		if got, want := currentWindow(), windowOfPane(t, e, replacement.PaneID); got != want {
+			t.Errorf("current window = %s, want the replacement's window %s, reached through the older agent it fell back to", got, want)
 		}
 	})
 

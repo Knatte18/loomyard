@@ -1,4 +1,5 @@
 // ownwindow_test.go pins the own-window group placement: the pure plan that chooses between a shared window and a window of its own, and the join of a pane into a group's shared window.
+// It also pins the rule deciding which window a viewer leaves for a new agent window.
 
 package reedengine
 
@@ -60,6 +61,53 @@ func TestPlanOwnWindowPlacement(t *testing.T) {
 			}
 			if place != tt.wantPlace || record != tt.wantRecord {
 				t.Errorf("planOwnWindowPlacement = (%d, %+v), want (%d, %+v)", place, record, tt.wantPlace, tt.wantRecord)
+			}
+		})
+	}
+}
+
+// TestNewAgentWindowSelected pins which window a viewer leaves for a new agent window: a viewer following the run follows it, and one on a window picked by hand stays.
+func TestNewAgentWindowSelected(t *testing.T) {
+	t.Parallel()
+	own := render.Display{Anchor: render.AnchorOwnWindow}
+	st := &ReedState{Strands: []Strand{
+		{Name: "ly:loom-status", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOverview}},
+		{Name: "ly:driver", PaneID: "%2", Display: own},
+		{Name: "ly:plan", PaneID: "%3", Display: own},
+		{Name: "ly:review", PaneID: "%4", Display: own},
+		{Name: "ly:dying", PaneID: "%5", Display: own},
+		{Name: "ly:driver-2", PaneID: "%6", Display: render.Display{Anchor: render.AnchorBelowParent}},
+	}}
+	windows := []sessionWindow{{ID: "@0", Index: 0}, {ID: "@1", Index: 1}, {ID: "@2", Index: 2}, {ID: "@3", Index: 3}, {ID: "@4", Index: 4}, {ID: "@5", Index: 5}}
+	panes := []windowPane{
+		{WindowID: "@0", PaneID: "%0"},
+		{WindowID: "@0", PaneID: "%6"},
+		{WindowID: "@1", Own: true, PaneID: "%1"},
+		{WindowID: "@2", Own: true, PaneID: "%2"},
+		{WindowID: "@3", Own: true, PaneID: "%3"},
+		{WindowID: "@4", Own: true, PaneID: "%4"},
+		{WindowID: "@5", Own: true, PaneID: "%5", Dead: true},
+	}
+	tests := []struct {
+		name    string
+		current string
+		focus   bool
+		want    bool
+	}{
+		{name: "a focus strand takes the viewer from the shell", current: "@0", focus: true, want: true},
+		{name: "an unknown current window keeps the viewer", current: "", want: false},
+		{name: "the overview passes the viewer on", current: "@1", want: true},
+		{name: "an all-dead agent window passes the viewer on", current: "@5", want: true},
+		{name: "the newest live agent window passes the viewer on", current: "@4", want: true},
+		{name: "the driver window passes the viewer on while a newer agent is live", current: "@2", want: true},
+		{name: "an older live agent window keeps the viewer", current: "@3", want: false},
+		{name: "the shell keeps the viewer even with a driver pane in it", current: "@0", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := newAgentWindowSelected(st, windows, panes, tt.current, tt.focus); got != tt.want {
+				t.Errorf("newAgentWindowSelected(current %q, focus %v) = %v, want %v", tt.current, tt.focus, got, tt.want)
 			}
 		})
 	}
