@@ -619,6 +619,10 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 	// file already self-heals, rather than leaving it stranded as an untracked file that permanently fails
 	// fabricengine.Clean's own first Preflight precondition row.
 	t.Run("origin record self-heals after a crash between write and commit", func(t *testing.T) {
+		// The previous step leaves the first bootstrap's driver alive; it commits into this same records
+		// worktree, so it must be gone before the step edits the index.
+		killDriversAndClearLog(t)
+
 		recordsDir := fabricengine.RecordsWorktree(loc)
 		originRel := filepath.Join(loc.AnchorRel, fabricengine.OriginRecordRel())
 
