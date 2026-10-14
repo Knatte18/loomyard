@@ -84,17 +84,21 @@ func ResolveArbiter(cfg Config, reg modelspec.Registry) (ArbiterSettings, error)
 		return ArbiterSettings{}, fmt.Errorf("loom: ResolveArbiter: arbiter role model-spec: %w", err)
 	}
 
-	timeout := arbiterDefaultTimeout
-	if cfg.ArbiterTimeoutMin > 0 {
-		timeout = time.Duration(cfg.ArbiterTimeoutMin) * time.Minute
-	}
 	return ArbiterSettings{
 		Model:     resolved.Model,
 		Effort:    resolved.Params["effort"],
 		Version:   resolved.Params["version"],
-		Timeout:   timeout,
+		Timeout:   ArbiterTimeout(cfg),
 		MaxSpawns: cfg.ArbiterMaxSpawns,
 	}, nil
+}
+
+// ArbiterTimeout returns how long one arbiter spawn may run: arbiter_timeout_min in minutes, or 30 minutes when it is 0.
+func ArbiterTimeout(cfg Config) time.Duration {
+	if cfg.ArbiterTimeoutMin > 0 {
+		return time.Duration(cfg.ArbiterTimeoutMin) * time.Minute
+	}
+	return arbiterDefaultTimeout
 }
 
 // tacklerDefaultModelSpec is the model-spec an empty tackler key takes.
