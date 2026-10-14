@@ -1,4 +1,4 @@
-// spawn.go implements the ide entry point Spawn (`ide spawn`).
+// spawn.go implements the ide entry point Spawn (`ide spawn`), and its two halves for a task pair, SeedTask and OpenTask.
 // It assigns a title-bar color, generates the worktree's .vscode/ config, and launches VS Code;
 // it regenerates the interactive chain on every call and keeps .vscode/ out of git through info/exclude.
 // A task slug opens its bare folder.
@@ -41,13 +41,7 @@ var KeybindingsPath = vscode.UserKeybindingsPath
 func Spawn(l *lyxcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 	worktreeDir, color, primeName, primeResolved := resolveSpawnTarget(l, slug, targetUnknown)
 
-	// Resolve both binary paths the generated folderOpen chain stamps in absolute.
-	// Each degrades to the empty string on error so vscode.WriteConfig's own bare-name
-	// fallback rule applies; Spawn substitutes no bare name itself.
-	lyxPath, _ := os.Executable()
-	claudePath, _ := exec.LookPath("claude")
-
-	if err := writeVSCodeConfig(l, worktreeDir, slug, color, lyxPath, claudePath, vscode.TaskChainInteractive); err != nil {
+	if err := writeInteractiveConfig(l, worktreeDir, slug, color); err != nil {
 		return vscode.KeybindingsResult{}, err
 	}
 
@@ -63,6 +57,26 @@ func Spawn(l *lyxcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 	}
 
 	return keybindings, CodeLauncher(openDir)
+}
+
+// SeedTask writes task slug's title-bar color and interactive .vscode/ chain, as Spawn does for a task pair, and launches nothing.
+// It leaves the user's keybindings.json alone.
+func SeedTask(l *lyxcwd.Location, slug string) error {
+	worktreeDir, color, _, _ := resolveSpawnTarget(l, slug, targetTask)
+	return writeInteractiveConfig(l, worktreeDir, slug, color)
+}
+
+// OpenTask launches VS Code on task slug's bare folder, as Spawn does for a task pair, and writes nothing.
+func OpenTask(l *lyxcwd.Location, slug string) error {
+	return CodeLauncher(filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel))
+}
+
+// writeInteractiveConfig writes the interactive chain's config through writeVSCodeConfig, stamping in the absolute lyx and claude paths.
+// Each path degrades to the empty string on error so vscode.WriteConfig's own bare-name fallback rule applies.
+func writeInteractiveConfig(l *lyxcwd.Location, worktreeDir, slug, color string) error {
+	lyxPath, _ := os.Executable()
+	claudePath, _ := exec.LookPath("claude")
+	return writeVSCodeConfig(l, worktreeDir, slug, color, lyxPath, claudePath, vscode.TaskChainInteractive)
 }
 
 // seedKeybindings seeds the user's keybindings.json through the KeybindingsPath seam; a path it cannot resolve is a skip.

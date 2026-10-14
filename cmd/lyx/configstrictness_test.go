@@ -53,6 +53,7 @@ var configStrictnessDegradingSet = map[string]bool{
 	"internal/batcher":       true,
 	"internal/orchengine":    true,
 	"internal/loggerconfig":  true,
+	"internal/battenshed":    true,
 }
 
 // configStrictnessStrictSet is the pinned set of module-relative, slash-separated

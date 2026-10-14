@@ -20,6 +20,8 @@ import (
 // battenshedAllowedImports are the only non-stdlib import paths production code in this package
 // may use.
 var battenshedAllowedImports = []string{
+	"github.com/Knatte18/loomyard/internal/configengine",
+	"gopkg.in/yaml.v3",
 	"github.com/Knatte18/loomyard/internal/shedengine",
 	"github.com/Knatte18/loomyard/internal/logger",
 	"github.com/Knatte18/loomyard/internal/parentlock",
