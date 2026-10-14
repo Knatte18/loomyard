@@ -49,6 +49,8 @@ internal/gitkit: 10
 internal/gitrepo: 45
 internal/gitrepo/internal/gitoracle: 1
 internal/helpcli: 1
+internal/hibernatecli: 1
+internal/hibernateengine: 4
 internal/hubforge: 7
 internal/hubgeom: 11
 internal/hubreconcile: 18
@@ -83,7 +85,7 @@ internal/preflightshed: 8
 internal/proc: 18
 internal/quarrycli: 7
 internal/reedcli: 40
-internal/reedengine: 265
+internal/reedengine: 266
 internal/reedengine/render: 12
 internal/reportcli: 3
 internal/reportengine: 8
@@ -106,7 +108,7 @@ internal/shell: 14
 internal/shortcutcli: 2
 internal/shuttlecli: 26
 internal/shuttleengine: 172
-internal/shuttleengine/claudeengine: 111
+internal/shuttleengine/claudeengine: 112
 internal/standalonegeom: 7
 internal/standalonestate: 6
 internal/state: 9

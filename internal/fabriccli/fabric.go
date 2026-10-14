@@ -121,7 +121,11 @@ branch's name with fabric's uniform suffix appended.
 A pair whose weft branch already exists, locally or on origin, is adopted
 rather than forked.
 
-The command pushes the new code branch and the records branches to origin.
+The command commits the new pair locally and returns without waiting on
+origin: a detached child pushes the code and records branches, as "lyx fabric
+sync" does, and the envelope's mutations record one push_spawned entry per
+side. A failed spawn is reported in push_error and leaves the branches for the
+pair's next push.
 
 The command errors if the worktree is on a detached HEAD or an unborn branch,
 because a fork point cannot be determined in either case.
@@ -494,12 +498,27 @@ func runAdd(ctx context.Context, out io.Writer, args []string) int {
 		}
 		return errWithRecord(out, r.Mutated(), err)
 	}
-	return okWithRecord(out, r.Mutated(), map[string]any{
+	// Add pushes nothing: the new pair's branches go out through a detached push, as sync's do, so the verb returns without waiting on the remote.
+	// A failed spawn leaves the pair whole with its branches local, and the pair's next detached push carries them, so it is reported but never fails the verb.
+	rec := fabricengine.NewMutations(l.HubPath)
+	rec.Extend(r.Mutated())
+	codeWorktree, recordsWorktree := fabricengine.WorktreePath(l, slug), fabricengine.RecordsWorktreePath(l, slug)
+	fields := map[string]any{
 		"slug":   r.Slug,
 		"branch": r.Branch,
 		"path":   r.Path,
-		"pushed": r.Pushed,
-	})
+	}
+	pairLocation, err := lyxcwd.ResolveWorktree(codeWorktree)
+	if err == nil {
+		err = spawnPairPush(pairLocation)
+	}
+	if err != nil {
+		fields["push_error"] = err.Error()
+	} else {
+		rec.Append(fabricengine.KindPushSpawned, codeWorktree, "detached")
+		rec.Append(fabricengine.KindPushSpawned, recordsWorktree, "detached")
+	}
+	return okWithRecord(out, rec.Snapshot(), fields)
 }
 
 // runList parses and executes the fabric list subcommand.
@@ -1088,8 +1107,8 @@ func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResul
 }
 
 // addOptionsFromEnv returns the AddOptions for a CLI-driven `lyx fabric add`,
-// always returning the zero value. The add subcommand always pushes both sides;
-// bypass gates do not apply.
+// always returning the zero value, so the origin probes always run.
+// The new pair's detached push is gated by FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH alone, as every detached push is.
 func addOptionsFromEnv() fabricengine.AddOptions {
 	return fabricengine.AddOptions{}
 }

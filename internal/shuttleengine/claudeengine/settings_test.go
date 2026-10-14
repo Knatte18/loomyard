@@ -288,12 +288,13 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 					t.Errorf("autonomous AskUserQuestion command = %q; want the deny JSON payload", command)
 				}
 			}
-			pythonInstalled, rawGoInstalled, inPlaceInstalled, computedRmInstalled := false, false, false, false
+			pythonInstalled, rawGoInstalled, inPlaceInstalled, computedRmInstalled, sleepInstalled := false, false, false, false, false
 			for _, command := range matcherCommands(doc, "Bash") {
 				pythonInstalled = pythonInstalled || strings.Contains(command, steerPythonDeny)
 				rawGoInstalled = rawGoInstalled || strings.Contains(command, steerRawGoDeny)
 				inPlaceInstalled = inPlaceInstalled || strings.Contains(command, steerInPlaceEditDeny)
 				computedRmInstalled = computedRmInstalled || strings.Contains(command, steerComputedRmDeny)
+				sleepInstalled = sleepInstalled || strings.Contains(command, steerSleepDeny)
 			}
 			if pythonInstalled != tt.pythonDeny {
 				t.Errorf("python Bash PreToolUse entry present = %v; want %v (preToolUse: %v)", pythonInstalled, tt.pythonDeny, preToolUse)
@@ -302,15 +303,18 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 			if !rawGoInstalled {
 				t.Errorf("raw go Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
 			}
-			// The in-place edit and computed-rm denies have no toggle either.
+			// The in-place edit, computed-rm and sleep denies have no toggle either.
 			if !inPlaceInstalled {
 				t.Errorf("in-place edit Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
 			}
 			if !computedRmInstalled {
 				t.Errorf("computed-rm Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
 			}
-			if !tt.wantAgentEntry && !tt.wantAskUserEntry && !tt.pythonDeny && len(preToolUse) != 3 {
-				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the raw go, in-place edit and computed-rm denies", preToolUse)
+			if !sleepInstalled {
+				t.Errorf("sleep Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
+			}
+			if !tt.wantAgentEntry && !tt.wantAskUserEntry && !tt.pythonDeny && len(preToolUse) != 4 {
+				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the raw go, in-place edit, computed-rm and sleep denies", preToolUse)
 			}
 		})
 	}
@@ -367,7 +371,7 @@ const (
 // Fork mode on with the deny configured replaces the blanket Agent deny with the conditional grep hook;
 // fork mode off leaves the blanket deny;
 // the deny configured off, or the per-run allowance, emits no Agent entry and drops its notice sentence while the AskUserQuestion deny and its sentence stay.
-// The fork-loop-deadlock guard is the only Bash entry any document carries, so no run mode installs a Bash stdin rewrite:
+// Beside the always-installed raw go, in-place edit, computed-rm and sleep denies, the fork-loop-deadlock guard is the only Bash entry any document carries, so no run mode installs a Bash stdin rewrite:
 // a fork-mode run emits a PreToolUse(Bash) hook that greps the payload for a fork-context agent_id AND a `lyx webster` command before denying (with steerWebsterForkDeny), and always exits 0 via the trailing `; true`.
 // The guard is independent of ClaudeDenyAgentTool and of the allowance, and absent entirely when fork mode is off (no Master, so no fork could reach the loop).
 //
@@ -421,8 +425,8 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 				}
 			}
 
-			// The raw go, in-place edit and computed-rm denies are installed under every input; the rest of the Bash entries are the fork guard.
-			var bashCommands, rawGoCommands, inPlaceCommands, computedRmCommands []string
+			// The raw go, in-place edit, computed-rm and sleep denies are installed under every input; the rest of the Bash entries are the fork guard.
+			var bashCommands, rawGoCommands, inPlaceCommands, computedRmCommands, sleepCommands []string
 			for _, command := range matcherCommands(doc, "Bash") {
 				switch {
 				case strings.Contains(command, steerRawGoDeny):
@@ -431,6 +435,8 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 					inPlaceCommands = append(inPlaceCommands, command)
 				case strings.Contains(command, steerComputedRmDeny):
 					computedRmCommands = append(computedRmCommands, command)
+				case strings.Contains(command, steerSleepDeny):
+					sleepCommands = append(sleepCommands, command)
 				default:
 					bashCommands = append(bashCommands, command)
 				}
@@ -443,6 +449,9 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 			}
 			if len(computedRmCommands) != 1 {
 				t.Errorf("computed-rm Bash PreToolUse entries = %q; want exactly one (data: %s)", computedRmCommands, data)
+			}
+			if len(sleepCommands) != 1 {
+				t.Errorf("sleep Bash PreToolUse entries = %q; want exactly one (data: %s)", sleepCommands, data)
 			}
 			if !tt.wantBashGuard {
 				if len(bashCommands) != 0 {
@@ -675,6 +684,9 @@ func TestBuildDenyNotice_SentenceContent(t *testing.T) {
 		}
 		if !strings.Contains(notice, noticeComputedRmDeny) {
 			t.Errorf("%s notice = %q; want it to contain the computed-rm sentence", name, notice)
+		}
+		if !strings.Contains(notice, noticeSleepDeny) {
+			t.Errorf("%s notice = %q; want it to contain the sleep sentence", name, notice)
 		}
 	}
 	if !strings.Contains(nonFork, "The Agent tool is unavailable") {

@@ -85,10 +85,7 @@ type StaleProcess struct {
 // Resume lifts live entries and gives each session they interrupted one line.
 // A slug with no entry of its own that a live hub entry covers is refused, naming `lyx resume`; resuming nothing succeeds.
 func Resume(deps Deps, req ResumeRequest) (ResumeReport, error) {
-	report := ResumeReport{Resumed: []string{}, Moved: []string{}, Lines: []string{}, NoLine: []SessionNote{}}
-	now := deps.Now()
-	var resumed []pauserecord.Entry
-	_, err := pauserecord.Update(deps.RecordPath, now, func(record *pauserecord.Record) error {
+	return liftEntries(deps, func(record *pauserecord.Record) ([]pauserecord.Entry, error) {
 		var targets, kept []pauserecord.Entry
 		for _, live := range record.Live {
 			if req.Slug == "" || live.Scope == req.Slug {
@@ -99,11 +96,50 @@ func Resume(deps Deps, req ResumeRequest) (ResumeReport, error) {
 		}
 		if len(targets) == 0 {
 			if _, covered := record.Covering(req.Slug); req.Slug != "" && covered {
-				return fmt.Errorf("pause: %q has no pause of its own, and a hub-wide pause covers it; way forward: run \"lyx resume\" to lift the hub pause", req.Slug)
+				return nil, fmt.Errorf("pause: %q has no pause of its own, and a hub-wide pause covers it; way forward: run \"lyx resume\" to lift the hub pause", req.Slug)
 			}
-			return nil
+			return nil, nil
 		}
 		record.Live = kept
+		return targets, nil
+	})
+}
+
+// EntryRef names one pause entry by its scope, caller and pause time.
+type EntryRef struct {
+	Scope    string    `json:"scope"`
+	Caller   string    `json:"caller"`
+	PausedAt time.Time `json:"paused_at"`
+}
+
+// Lift lifts the live entry ref names and gives the sessions it owns the same lines Resume does.
+// An entry that is no longer live, a newer entry of the same scope and an entry another caller added match nothing, so nothing is lifted and the call succeeds.
+func Lift(deps Deps, ref EntryRef) (ResumeReport, error) {
+	return liftEntries(deps, func(record *pauserecord.Record) ([]pauserecord.Entry, error) {
+		var targets, kept []pauserecord.Entry
+		for _, live := range record.Live {
+			if live.Scope == ref.Scope && live.Caller == ref.Caller && live.PausedAt.Equal(ref.PausedAt) {
+				targets = append(targets, live)
+			} else {
+				kept = append(kept, live)
+			}
+		}
+		record.Live = kept
+		return targets, nil
+	})
+}
+
+// liftEntries moves the entries pick selects and removes from the record to the resumed list under the record lock, then gives their remaining sessions the resume line.
+// pick may refuse, which ends the lift with its error and changes nothing.
+func liftEntries(deps Deps, pick func(record *pauserecord.Record) ([]pauserecord.Entry, error)) (ResumeReport, error) {
+	report := ResumeReport{Resumed: []string{}, Moved: []string{}, Lines: []string{}, NoLine: []SessionNote{}}
+	now := deps.Now()
+	var resumed []pauserecord.Entry
+	_, err := pauserecord.Update(deps.RecordPath, now, func(record *pauserecord.Record) error {
+		targets, err := pick(record)
+		if err != nil {
+			return err
+		}
 		for _, target := range targets {
 			target.ResumedAt = now
 			var owned []pauserecord.Session

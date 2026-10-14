@@ -15,6 +15,8 @@
 // Under the record lock it adds the entry with its grace end and the caller; a live entry of the same scope adds none.
 // It then polls each second until every covered session reads idle and no covered network operation is in flight, the grace end passes, or the entry is no longer live.
 // An entry resumed during the grace ends the sequence with no Esc.
+// A request's `Added` callback is called once with the entry a pause adds, right after the record update and before the grace, and never for a scope that already had a live entry;
+// its error ends the pause at once, wrapped, with the entry left live.
 //
 // Each covered session that reads a running turn is then recorded in the entry under the record lock, and only then interrupted through shuttle's guarded interrupt, so a pause killed before its Esc leaves the session recorded.
 // The caller's own session and a session another live entry owns are skipped.
@@ -36,6 +38,7 @@
 // There is no busy pre-check: a recorded session gets its attempt whatever its state reads now.
 // A strand that is not live and a send the guard refuses get no line and are named with the reason, which is the guard's own for a held send and the error's message for any other failure, such as an open rewind picker.
 // The orch's session is left to the orch watcher.
+// `Lift` runs the same sequence for the one live entry whose scope, caller and pause time equal an `EntryRef`, and lifts nothing for an entry no longer live.
 //
 // # Revive
 //

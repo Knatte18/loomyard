@@ -448,6 +448,21 @@ Its JSON error envelope carries the way forward in the message; a covered slug's
 | pause, resume or revive: agent outside its own pair | an agent runs `lyx pause`, `lyx resume` or `lyx tender revive` hub-wide, or naming a slug other than its own pair's | correctness halt | ask your parent session, which runs "lyx pause", "lyx resume" or "lyx tender revive" for you |
 | resume <slug> under a hub-wide pause | `lyx resume <slug>` names a slug with no pause of its own that a live hub pause covers | transient | run "lyx resume" to lift the hub pause |
 
+## hibernate
+
+A refusal here comes from the caller and platform rules of `lyx hibernate`, the input rules of `request`, or a request already pending.
+Its JSON error envelope carries the way forward in the message.
+
+| Refusal | Trigger | Class | Way forward |
+|---|---|---|---|
+| hibernate: agent caller | an agent runs `lyx hibernate request`, `cancel` or `watch` | correctness halt | ask your parent session, which runs "lyx hibernate request" or "lyx hibernate cancel" for you |
+| hibernate: not Linux | `lyx hibernate request`, `cancel` or `watch` runs on a machine that is not Linux | correctness halt | hibernate the machine from the desktop yourself |
+| hibernate: systemctl missing | `lyx hibernate request` finds no `systemctl` on `PATH` | correctness halt | put `systemctl` on `PATH`, then re-run "lyx hibernate request" |
+| hibernate: --after beside --after-all | `lyx hibernate request` is given both flags | correctness halt | pass one of them, or neither to hibernate once the pause is confirmed |
+| hibernate: --after slug without a batten status | `lyx hibernate request --after` names a slug with no batten status in the hub | correctness halt | name one of the slugs that has a batten status, which the refusal lists |
+| hibernate: request pending | `lyx hibernate request` finds a request that has not ended and whose daemon is live | transient | run "lyx hibernate cancel", then request again |
+| hibernate: cancel while hibernating | `lyx hibernate cancel` finds the machine going into hibernation with the daemon live | transient | none until the machine wakes, when the daemon lifts its own pause; run "lyx hibernate status" to follow it |
+
 ## Out of scope
 
 Landing, batten, orch, fabric, burler and board refusals are not in this table, except the batten lock rows above, and the verify-gate, dirty-tree, conflict-session, superseded-strand, hub-wide config write, Seed-Child run settings and batten typed child-driver rows above;

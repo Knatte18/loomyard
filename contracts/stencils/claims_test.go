@@ -852,6 +852,7 @@ var wordingClaims = []stencilClaims{
 			{must: "Every `landed` notice goes to After landing", section: "## The run loop", why: "D16: every landing sends a landed notice, which is the cue to count the task landed, not a stop"},
 			{must: "neither is investigated as a stop", section: "## Investigating a stop", why: "a parent-review request and a landed notice are not stops"},
 			{mustNot: "land and clean up", section: "## Acting without asking", why: "batten's Land and Worktree-Teardown rows land and clean up, so the orch does neither"},
+			{must: "lyx hibernate request", section: "## Acting without asking", why: "a hibernate request from the operator goes through the daemon, never a session's own call"},
 			{must: "a landing needs nothing more from you than these steps", anyCase: true, section: "## After landing", why: "batten's Land row pulls, deploys and prunes after a landing, and the steps below are all the orch adds"},
 			{must: "`lyx batten run <slug> --window`", section: "## After landing", why: "a landed notice is answered by starting the tasks it names"},
 			{must: "reading `<slug>: landed`", section: "## After landing", why: "D16: every landing notice is handled in After landing"},

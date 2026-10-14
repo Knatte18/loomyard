@@ -1127,22 +1127,27 @@ func (p *innerRunProducer) driverLocksHeld(ctx context.Context) bool {
 }
 
 // openTerminalOnce opens the operator's terminal window through deps.OpenTerminal unless the once-marker already exists.
+func (p *innerRunProducer) openTerminalOnce(ctx context.Context) {
+	OpenTerminalOnce(ctx, p.scratchDir, p.name, p.slug, p.deps.OpenTerminal)
+}
+
+// OpenTerminalOnce opens the operator's terminal window through open unless the once-marker TerminalOpenedFile(scratchDir, producer) already exists.
 // An open error is logged rather than escalated, and the marker is written whatever the outcome, so a failed open is not retried;
 // a marker write failure is logged too, since a lost marker costs only one extra window.
-func (p *innerRunProducer) openTerminalOnce(ctx context.Context) {
-	markerPath := TerminalOpenedFile(p.scratchDir, p.name)
+func OpenTerminalOnce(ctx context.Context, scratchDir, producer, slug string, open func(context.Context) error) {
+	markerPath := TerminalOpenedFile(scratchDir, producer)
 	if _, err := os.Stat(markerPath); err == nil {
 		return
 	}
-	if err := p.deps.OpenTerminal(ctx); err != nil {
-		logger.Warn("battenshed: open terminal window failed", "producer", p.name, "slug", p.slug, "error", err)
+	if err := open(ctx); err != nil {
+		logger.Warn("battenshed: open terminal window failed", "producer", producer, "slug", slug, "error", err)
 	}
-	if err := os.MkdirAll(p.scratchDir, 0o755); err != nil {
-		logger.Warn("battenshed: create scratch directory for terminal-opened marker failed", "producer", p.name, "slug", p.slug, "scratchDir", p.scratchDir, "error", err)
+	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+		logger.Warn("battenshed: create scratch directory for terminal-opened marker failed", "producer", producer, "slug", slug, "scratchDir", scratchDir, "error", err)
 		return
 	}
 	if err := os.WriteFile(markerPath, []byte("opened\n"), 0o644); err != nil {
-		logger.Warn("battenshed: write terminal-opened marker failed", "producer", p.name, "slug", p.slug, "path", markerPath, "error", err)
+		logger.Warn("battenshed: write terminal-opened marker failed", "producer", producer, "slug", slug, "path", markerPath, "error", err)
 	}
 }
 

@@ -342,6 +342,50 @@ func TestPause(t *testing.T) {
 				t.Errorf("report = %+v with %d Esc; want scope hub and a interrupted by the first Esc alone", report, len(p.interrupts))
 			}
 		}},
+		{"Added is called once with the added entry, before any Esc and before the grace, and not for a repeated pause", func(t *testing.T) {
+			p := newPair("p1", "a")
+			p.busy["g-a"] = []bool{true}
+			e := newEnv(t, p)
+			var got []pauserecord.Entry
+			var recordAtCall pauserecord.Record
+			var interruptsAtCall int
+			var elapsedAtCall time.Duration
+			added := func(entry pauserecord.Entry) error {
+				got = append(got, entry)
+				recordAtCall, interruptsAtCall, elapsedAtCall = e.record(), len(p.interrupts), e.clock.elapsed()
+				return nil
+			}
+
+			first, err := Pause(e.deps(), PauseRequest{Grace: 10 * time.Second, Added: added})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Pause(e.deps(), PauseRequest{Added: added}); err != nil {
+				t.Fatal(err)
+			}
+
+			if len(got) != 1 || got[0].Scope != pauserecord.ScopeHub || !got[0].PausedAt.Equal(first.PausedAt) {
+				t.Fatalf("added entries = %+v; want the one hub entry the first pause added", got)
+			}
+			if len(recordAtCall.Live) != 1 || !recordAtCall.Live[0].PausedAt.Equal(got[0].PausedAt) || interruptsAtCall != 0 || elapsedAtCall != 0 {
+				t.Errorf("at the call: record %+v, %d Esc, clock %s; want the entry recorded, no Esc and the clock unmoved", recordAtCall, interruptsAtCall, elapsedAtCall)
+			}
+		}},
+		{"an Added error ends the pause before any Esc and leaves the entry live", func(t *testing.T) {
+			p := newPair("p1", "a")
+			p.busy["g-a"] = []bool{true}
+			e := newEnv(t, p)
+			boom := errors.New("boom")
+
+			_, err := Pause(e.deps(), PauseRequest{Added: func(pauserecord.Entry) error { return boom }})
+
+			if !errors.Is(err, boom) || len(p.interrupts) != 0 {
+				t.Errorf("err %v, interrupts %v; want the wrapped error and no Esc", err, p.interrupts)
+			}
+			if live := e.record().Live; len(live) != 1 {
+				t.Errorf("live entries = %+v; want the entry still live", live)
+			}
+		}},
 		{"the grace waits for a busy session and never past the grace end", func(t *testing.T) {
 			p := newPair("p1", "a")
 			p.busy["g-a"] = []bool{true}
