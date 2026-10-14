@@ -1,5 +1,8 @@
 // Package alignment is the alignment agent's records, prompt and launch spec: the cold session that settles loom's parent review and PR-Gate in the run's place, or escalates to the run's parent.
 //
+// The agent settles a run's parent review and its PR-Gate.
+// What it measures a run against at `pr-gate`, and what counts there as a scope deviation, is a told fragment named by `PromptInput.MeasureStencil`, so the stencil names no recipe row.
+//
 // The agent reads the board, the other in-flight runs' records through `lyx loom peers` and the parent's landed commits.
 // It approves, or rejects on a scope deviation, unless it finds a design conflict with another run or a question it cannot settle, which it escalates.
 // An overlap that is no design conflict is not escalated: the agent records its landing order, the run furthest along by its recipe row landing first.

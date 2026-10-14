@@ -73,6 +73,16 @@ var LoomTemplateTackler []byte
 //go:embed loom/loom-template-alignment.md
 var LoomTemplateAlignment []byte
 
+// LoomFragmentPRGateLoom is loom's pr-gate measure, filled into the alignment stencil's pr_gate_measure marker.
+//
+//go:embed loom/loom-fragment-pr-gate-loom.md
+var LoomFragmentPRGateLoom []byte
+
+// LoomFragmentPRGateDarn is darn's pr-gate measure, filled into the alignment stencil's pr_gate_measure marker.
+//
+//go:embed loom/loom-fragment-pr-gate-darn.md
+var LoomFragmentPRGateDarn []byte
+
 // LoomRubricDiscussionReview is the Discussion-Review rubric, read by both rows of the
 // Discussion-Review perch.
 //
@@ -463,6 +473,8 @@ var entries = []registryEntry{
 	{"loom-template-arbiter", &LoomTemplateArbiter},
 	{"loom-template-tackler", &LoomTemplateTackler},
 	{"loom-template-alignment", &LoomTemplateAlignment},
+	{"loom-fragment-pr-gate-loom", &LoomFragmentPRGateLoom},
+	{"loom-fragment-pr-gate-darn", &LoomFragmentPRGateDarn},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
 	{"loom-rubric-webster-review", &LoomRubricWebsterReview},

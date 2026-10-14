@@ -232,6 +232,7 @@ func landingAlignmentDeps(l *lyxcwd.Location, stencilsDir string, registry model
 			DecisionRecordPath: loomengine.DiscussionDecisionRecord(l),
 			SupportLogPath:     loomengine.DiscussionSupportLog(l),
 			PlanDir:            planparser.PlanDir(l.AnchorPath()),
+			MeasureStencil:     alignment.MeasureLoom,
 		},
 		NotePath: filepath.Join(root, alignmentNoteFile),
 	}
