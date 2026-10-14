@@ -694,22 +694,21 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// DescriptionPath is the change description Describe writes and its gate and the landing
 		// rows read.
 		DescriptionPath: summaryparser.Path(loomengine.LandingDir(location)),
-		// DescribeSpec is evaluated per Call, so the stencil is read at call time. It opens the
-		// fabric lazily: wire() also runs for status/pause, where opening the fabric must not
-		// happen: opening stat-checks the paired sibling, and this pre-run must not fail
-		// "status"/"pause" against a healthy-but-unwired location.
-		DescribeSpec: func() (shuttleengine.Spec, error) {
+		// DescribeTable is evaluated per Call, so the stencil is read at call time.
+		// It opens the fabric lazily: wire() also runs for status/pause, where opening the fabric must not happen:
+		// opening stat-checks the paired sibling, and this pre-run must not fail "status"/"pause" against a healthy-but-unwired location.
+		DescribeTable: func() (seatengine.Table, error) {
 			handle, err := fabricengine.Open(location)
 			if err != nil {
-				return shuttleengine.Spec{}, err
+				return seatengine.Table{}, err
 			}
 			taskBranch, parentBranch, err := landingBranches(handle, location)
 			if err != nil {
-				return shuttleengine.Spec{}, err
+				return seatengine.Table{}, err
 			}
 			priorDirs, err := loomshed.ArchivedWebsterDirs(loomengine.LoomReworkDir(location))
 			if err != nil {
-				return shuttleengine.Spec{}, err
+				return seatengine.Table{}, err
 			}
 			var priorRecords []string
 			for _, dir := range priorDirs {
@@ -719,13 +718,12 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 					continue
 				}
 				if err != nil {
-					return shuttleengine.Spec{}, fmt.Errorf("loom: describe: stat prior run record %s: %w", record, err)
+					return seatengine.Table{}, fmt.Errorf("loom: describe: stat prior run record %s: %w", record, err)
 				}
 				priorRecords = append(priorRecords, record)
 			}
-			return landingshed.DescribeSpec(landingshed.DescribeInputs{
+			return landingshed.DescribeTable(landingshed.DescribeInputs{
 				StencilsDir:         websterGeom.StencilsDir,
-				ParentName:          c.parentName,
 				DecisionRecordPath:  loomengine.DiscussionDecisionRecord(location),
 				RunRecordPath:       summaryparser.Path(websterGeom.WebsterDir),
 				PriorRunRecordPaths: priorRecords,
@@ -864,11 +862,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		},
 
 		// Landing is deliberately left unfilled here, for a different reason than the four above:
-		// Env.Landing is assembled in run.go, immediately before loomrecipe.New, because
-		// NewPublish/NewFinalize both open their fabric pair eagerly at construction, and wire()
-		// runs for every verb including "status"/"pause" -- the same open-at-wire hazard the
-		// DescribeSpec comment above guards against. See landingDeps (landingdeps.go) and the
-		// env-landing-filled-in-run-not-wire design decision.
+		// Env.Landing is assembled in run.go, immediately before loomrecipe.New, because NewPublish/NewFinalize both open their fabric pair eagerly at construction.
+		// wire() runs for every verb including "status"/"pause" -- the same open-at-wire hazard the DescribeTable comment above guards against.
+		// See landingDeps (landingdeps.go) and the env-landing-filled-in-run-not-wire design decision.
 	}
 
 	// c.shedPaths carries the five told values shedengine.Shed itself reads and no shedrecipe.Env

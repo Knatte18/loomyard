@@ -186,8 +186,9 @@ func (f *fakeWebsterRun) run(deps websterengine.RunDeps, _ websterengine.RunOpti
 	return websterengine.RunResult{Outcome: "done"}, nil
 }
 
-// newLoomShuttle returns the shedfake.Shuttle serving row 6 (Plan-Write), the Describe row and all three segments' Bouncer rows' spawn roles:
+// newLoomShuttle returns the shedfake.Shuttle serving all three segments' Bouncer rows' spawn roles:
 // shedrecipe.Env carries one Shuttle field, not one per row, so this single fake serves all of them, and its RunFn branches on the Spec's own Role.
+// The Plan-Write and Describe rows run on the seat engine, whose fake newLoomSeats shares writeLoomOutputs with this one.
 // On spec.Role == "plan" it writes the whole plan-directory fixture -- writePlanFixture(planDir, false) -- rather than only spec.OutputFiles, because loomshed.NewPlanWrite's rotation archives every top-level .md file in the plan directory (including the card file seedPlanFixture pre-wrote) before the shuttle runs,
 // so writing only the overview would leave the Card Index naming a card file that no longer exists and Plan-Write's own gate would fail.
 // The overview it writes is unapproved, mirroring the plan stencil's own "you never self-approve" rule: the real Plan-Write producer can never emit an approved plan,
@@ -419,16 +420,20 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 // Driving their merge logic for real needs a genuine two-worktree pair and therefore git, which this package's untagged tier stays out of.
 // The real thing is covered by an integration tier instead.
 //
-// Row 3 (Discussion-Write) is no longer skipped over by a Stub: it now runs a real shedadapters.MultiLLMProducer behind loomshed's commit decorator.
-// env.Seats is a newLoomSeats writing its outputs, env.DiscussionTable is a closure returning a one-lead table whose outputs are the same [decisionRecordPath, supportLogPath] pair this fixture already computes above, and env.CommitDiscussion keeps FullEnv's no-op, which a test that counts commits wraps.
+// The Discussion-Write, Plan-Write and Describe rows run a real shedadapters.MultiLLMProducer over env.Seats, each behind its own decorator.
+// env.Seats is a newLoomSeats writing its outputs, and each row's table closure returns a one-lead table whose role prefix picks the files the fake seat runner writes.
+//
+// Row 3 (Discussion-Write) sits behind loomshed's commit decorator.
+// env.DiscussionTable returns a table whose outputs are the same [decisionRecordPath, supportLogPath] pair this fixture already computes above, and env.CommitDiscussion keeps FullEnv's no-op, which a test that counts commits wraps.
 // The fake seat runner writing both output files on every Run is what keeps Discussion-Write's own gate passing here:
 // shedadapters.archiveStaleOutputs renames the fixture's own pre-written files away on every Call, so without the fake rewriting them the clean sequence run would find both files absent.
 //
-// Row 6 (Plan-Write) is likewise a real shedadapters.MultiLLMProducer behind loomshed's rotate-and-commit decorator.
-// The same newLoomSeats serves this row too, with a planDir that is the same _lyx/plan expression seedPlanFixture already builds.
-// env.PlanTable is a closure returning a one-lead table with role prefix "plan" and the single overview path as its output.
+// Row 6 (Plan-Write) sits behind loomshed's rotate-and-commit decorator.
+// Its planDir is the same _lyx/plan expression seedPlanFixture already builds, and env.PlanTable returns a table with role prefix "plan" and the single overview path as its output.
 // The seat runner's "plan"-role branch rewrites the whole plan directory (see newLoomShuttle's own doc comment for why) rather than only the overview,
 // so Plan-Write's own gate still finds a complete, unapproved, zero-findings plan after the decorator's rotation archived the seeded one away -- the real Plan-Write producer can never write it approved, and neither does this fake.
+//
+// The Describe row sits behind the Discussion-Write commit decorator, and env.DescribeTable returns a table with role prefix "describe" and the description path as its output, which the fake seat runner fills with a valid change description.
 // env.ApprovePlan is a closure running the real planparser.SetApproved over the same plan directory, wired to Plan-Bouncer's approve_seam key -- the flag is only ever set once the review segment's approved settle fires.
 func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, paths shedbuild.ShedPaths) {
 	t.Helper()
@@ -510,12 +515,14 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 		}, nil
 	}
 	env.DescriptionPath = descriptionPath
-	env.DescribeSpec = func() (shuttleengine.Spec, error) {
-		return shuttleengine.Spec{
-			Prompt:      "describe prompt",
-			OutputFiles: []string{descriptionPath},
-			Interactive: false,
-			Role:        "describe",
+	env.DescribeTable = func() (seatengine.Table, error) {
+		return seatengine.Table{
+			RolePrefix: "describe",
+			Segment:    segmentcolor.Describe,
+			Seats: []seatengine.Seat{{
+				Stencil: "landing-template-describe",
+				Outputs: []string{descriptionPath},
+			}},
 		}, nil
 	}
 	env.PlanTable = func() (seatengine.Table, error) {

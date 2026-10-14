@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -163,7 +164,7 @@ func (c *loomCLI) darnReviewBudget() (int, error) {
 	return template.ReviewMaxBounces, nil
 }
 
-// wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe, and replaces the loom DescribeSpec with the darn one, which reads no decision record or run record.
+// wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe, and replaces the loom DescribeTable with the darn one, which reads no decision record or run record.
 // It loads the hub-wide darn.yaml strictly and reads its verify command once, so start, run, step and resume refuse an absent or empty command before any row builds.
 func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, frictionDir string, landingCfg landingshed.Config, registry modelspec.Registry) error {
 	dirs := fabricengine.ConfigDirs(location)
@@ -210,19 +211,18 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 	if !isBouncer {
 		return fmt.Errorf("loom: the embedded darn recipe's %s row is not a Bouncer with a run_subdir, so this lyx build is broken", loomshed.NameDarnBouncer)
 	}
-	// DescribeSpec opens the fabric lazily, for the reason the loom DescribeSpec gives.
-	c.env.DescribeSpec = func() (shuttleengine.Spec, error) {
+	// DescribeTable opens the fabric lazily, for the reason the loom DescribeTable gives.
+	c.env.DescribeTable = func() (seatengine.Table, error) {
 		handle, err := fabricengine.Open(location)
 		if err != nil {
-			return shuttleengine.Spec{}, err
+			return seatengine.Table{}, err
 		}
 		taskBranch, parentBranch, err := landingBranches(handle, location)
 		if err != nil {
-			return shuttleengine.Spec{}, err
+			return seatengine.Table{}, err
 		}
-		return landingshed.DarnDescribeSpec(landingshed.DarnDescribeInputs{
+		return landingshed.DarnDescribeTable(landingshed.DarnDescribeInputs{
 			StencilsDir:     stencilsDir,
-			ParentName:      c.parentName,
 			ReviewDir:       filepath.Join(loomengine.LoomReviewsDir(location), reviewSubdir),
 			DescriptionPath: summaryparser.Path(loomengine.LandingDir(location)),
 			TaskBranch:      taskBranch,

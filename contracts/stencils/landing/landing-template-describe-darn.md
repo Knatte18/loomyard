@@ -1,8 +1,8 @@
 <!-- This is the darn recipe's Describe session's entire instruction set. It is shipped as an embedded
      default in the top-level stencils package (stencils/stencils.go), seeded to
-     <hub>/_board/_lyx/stencils/landing/, and read from there at call time by landingshed's
-     DarnDescribeSpec via internal/stencil, then handed to shuttle as the describing agent's whole
-     prompt. Every marker below is a top-level {{.X}} substitution; stencil.Fill requires every
+     <hub>/_board/_lyx/stencils/landing/, and read from there at call time by internal/seatengine,
+     which fills it from the lead's value map that landingshed's DarnDescribeTable builds, then hands it to shuttle as the describing agent's whole
+     prompt. Every marker below is a top-level {{.X}} substitution; stencil.FillWith requires every
      marker non-empty, parent_directive (rendered by internal/parentdirective) and edit_directive (rendered unconditionally by internal/editdirective) included, and there are no {{if}}/{{range}} conditionals anywhere in this file. -->
 
 # Change description — write the one description this task lands under

@@ -171,11 +171,10 @@ type Env struct {
 	// CommitDiscussion is the injected closure that commits the discussion output directory,
 	// invoked by the commit decorator of every entry that wraps a discussion producer on a Done outcome.
 	CommitDiscussion func() error
-	// DescribeSpec is the injected shedadapters.SpecSource the Describe entry evaluates once per
-	// Call. It arrives as a closure rather than as recipe Config because building the Spec needs a
-	// *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing
-	// directly; internal/loomcli's wire() is what supplies it.
-	DescribeSpec shedadapters.SpecSource
+	// DescribeTable is the injected shedadapters.TableSource the Describe entry evaluates once per Call.
+	// It arrives as a closure rather than as recipe Config because building the table needs the fabric's landing geometry, which the Shed Recipe Registry Invariant bars this package from deriving;
+	// internal/loomcli's wire() is what supplies it.
+	DescribeTable shedadapters.TableSource
 	// CommitDescription is the injected closure that commits the change description's directory,
 	// invoked by the Describe entry's commit decorator on a Done outcome.
 	CommitDescription func() error

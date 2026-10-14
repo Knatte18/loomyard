@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -222,5 +223,106 @@ func describeSessionSpec(stencilName, stencilsDir, parentName, descriptionPath s
 		Segment:     segmentcolor.Describe,
 		Skills:      describeSkills,
 		Timeout:     time.Duration(cfg.DescribeTimeoutMin) * time.Minute,
+	}, nil
+}
+
+// DescribeTable builds the seatengine.Table of the Describe session: one lead that writes the change description.
+// An empty input field other than ParentName and PriorRunRecordPaths is an error naming the field, and so is a stencil missing from in.StencilsDir, so a mis-wired closure fails before the row runs rather than rendering a blank path into the prompt.
+// The table's values are the stencil's markers; the seat engine renders the parent and edit directives from its geometry, so the table reads no ParentName.
+// The table carries no gate; the producer entry sets it.
+// Segment is the describe segment, because the session writes the pull request description.
+func DescribeTable(in DescribeInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
+	required := []struct{ name, value string }{
+		{"StencilsDir", in.StencilsDir},
+		{"DecisionRecordPath", in.DecisionRecordPath},
+		{"RunRecordPath", in.RunRecordPath},
+		{"DescriptionPath", in.DescriptionPath},
+		{"TaskBranch", in.TaskBranch},
+		{"ParentBranch", in.ParentBranch},
+		{"Slug", in.Slug},
+	}
+	for _, r := range required {
+		if r.value == "" {
+			return seatengine.Table{}, fmt.Errorf("landingshed: DescribeTable: %s is empty", r.name)
+		}
+	}
+	if _, err := stencilstore.Read(in.StencilsDir, describeStencilName); err != nil {
+		return seatengine.Table{}, fmt.Errorf("landingshed: DescribeTable: %w", err)
+	}
+
+	table, err := describeSessionTable(describeStencilName, in.DescriptionPath, map[string]string{
+		"slug":                 in.Slug,
+		"decision_record_path": in.DecisionRecordPath,
+		"run_record_paths":     runRecordBullets(in),
+		"description_path":     in.DescriptionPath,
+		"task_branch":          in.TaskBranch,
+		"parent_branch":        in.ParentBranch,
+	}, cfg, reg)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("landingshed: DescribeTable: %w", err)
+	}
+
+	return table, nil
+}
+
+// DarnDescribeTable builds the seatengine.Table of the Describe session of a darn run, which describes the diff from the board entry with no decision record or run record to read.
+// It is DescribeTable's twin in every other respect: the model and timeout come from cfg's describe keys, the role, segment and skills are the same, and an empty required field or a missing stencil is an error.
+func DarnDescribeTable(in DarnDescribeInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
+	required := []struct{ name, value string }{
+		{"StencilsDir", in.StencilsDir},
+		{"ReviewDir", in.ReviewDir},
+		{"DescriptionPath", in.DescriptionPath},
+		{"TaskBranch", in.TaskBranch},
+		{"ParentBranch", in.ParentBranch},
+		{"Slug", in.Slug},
+	}
+	for _, r := range required {
+		if r.value == "" {
+			return seatengine.Table{}, fmt.Errorf("landingshed: DarnDescribeTable: %s is empty", r.name)
+		}
+	}
+	if _, err := stencilstore.Read(in.StencilsDir, darnDescribeStencilName); err != nil {
+		return seatengine.Table{}, fmt.Errorf("landingshed: DarnDescribeTable: %w", err)
+	}
+
+	table, err := describeSessionTable(darnDescribeStencilName, in.DescriptionPath, map[string]string{
+		"slug":             in.Slug,
+		"review_dir":       in.ReviewDir,
+		"description_path": in.DescriptionPath,
+		"task_branch":      in.TaskBranch,
+		"parent_branch":    in.ParentBranch,
+	}, cfg, reg)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("landingshed: DarnDescribeTable: %w", err)
+	}
+
+	return table, nil
+}
+
+// describeSessionTable builds a Describe session's table from the stencil registered as stencilName, with markers as the table's values.
+// The one lead seat writes descriptionPath, its one output file, under cfg's describe model and timeout.
+func describeSessionTable(stencilName, descriptionPath string, markers map[string]string, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
+	parsed, err := modelspec.Parse(cfg.Describe)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("describe model-spec: %w", err)
+	}
+	resolved, err := reg.Resolve(parsed)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("describe model-spec: %w", err)
+	}
+
+	return seatengine.Table{
+		RolePrefix: describeRole,
+		Segment:    segmentcolor.Describe,
+		Timeout:    time.Duration(cfg.DescribeTimeoutMin) * time.Minute,
+		Values:     markers,
+		Seats: []seatengine.Seat{{
+			Stencil: stencilName,
+			Model:   resolved.Model,
+			Effort:  resolved.Params["effort"],
+			Version: resolved.Params["version"],
+			Outputs: []string{descriptionPath},
+			Skills:  describeSkills,
+		}},
 	}, nil
 }

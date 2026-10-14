@@ -203,15 +203,6 @@ func ReworkDeps(t testing.TB, dir string) loomshed.PRReworkDeps {
 func FullEnv(t testing.TB) shedrecipe.Env {
 	t.Helper()
 	dir := t.TempDir()
-	specOver := func(prompt, output string) func() (shuttleengine.Spec, error) {
-		return func() (shuttleengine.Spec, error) {
-			return shuttleengine.Spec{
-				Prompt:      prompt,
-				OutputFiles: []string{filepath.Join(dir, output)},
-			}, nil
-		}
-	}
-
 	return shedrecipe.Env{
 		Cwd:                mustMkdir(t, filepath.Join(dir, "cwd")),
 		AnchorPath:         mustMkdir(t, filepath.Join(dir, "anchor")),
@@ -255,8 +246,17 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				}},
 			}, nil
 		},
-		CommitDiscussion:  func() error { return nil },
-		DescribeSpec:      specOver("test describe prompt", "description.md"),
+		CommitDiscussion: func() error { return nil },
+		DescribeTable: func() (seatengine.Table, error) {
+			return seatengine.Table{
+				RolePrefix: "describe",
+				Segment:    segmentcolor.Describe,
+				Seats: []seatengine.Seat{{
+					Stencil: "landing-template-describe",
+					Outputs: []string{filepath.Join(dir, "description.md")},
+				}},
+			}, nil
+		},
 		CommitDescription: func() error { return nil },
 		PlanTable: func() (seatengine.Table, error) {
 			return seatengine.Table{

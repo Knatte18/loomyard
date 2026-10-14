@@ -31,6 +31,7 @@ var landingshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/parentlock",
 	"github.com/Knatte18/loomyard/internal/configengine",
 	"github.com/Knatte18/loomyard/internal/logger",
+	"github.com/Knatte18/loomyard/internal/seatengine",
 	"github.com/Knatte18/loomyard/internal/shedengine",
 	"github.com/Knatte18/loomyard/internal/shedtransient", // classifies a failed remote call as a transient hard error
 	"github.com/Knatte18/loomyard/internal/githubclient",
