@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -83,6 +84,29 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 		if got := c.verifySource().failureTarget; got != "Darn-Write" {
 			t.Errorf("verifySource().failureTarget = %q; want Darn-Write", got)
+		}
+	})
+
+	t.Run("a local darn override sets the run's budget and hard cap", func(t *testing.T) {
+		t.Parallel()
+		loc := hubLocation(t, "pair", ".")
+		seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3")
+		localPath := configengine.LocalFile(loc.AnchorPath(), "darn")
+		if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(localPath), err)
+		}
+		if err := os.WriteFile(localPath, []byte("review_max_bounces: 2\nreview_hard_max_bounces: 3\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", localPath, err)
+		}
+		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
+		if err := c.wire(loc, loc.AnchorPath()); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if c.env.DarnReviewMaxBounces != 2 {
+			t.Errorf("c.env.DarnReviewMaxBounces = %d; want the local 2", c.env.DarnReviewMaxBounces)
+		}
+		if got := c.env.RowHardMaxBounces[loomshed.NameDarnBouncer]; got != 3 {
+			t.Errorf("c.env.RowHardMaxBounces[%q] = %d; want the local 3", loomshed.NameDarnBouncer, got)
 		}
 	})
 

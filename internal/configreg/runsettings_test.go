@@ -100,9 +100,26 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
+			name:     "darn's review budget of zero is open to run settings",
+			settings: map[string]any{"darn": map[string]any{"review_max_bounces": float64(0)}},
+			wantDocs: map[string]string{"darn": "review_max_bounces: 0\n"},
+		},
+		{
+			name:     "darn's review budget and hard cap are both settable through run_settings",
+			settings: map[string]any{"darn": map[string]any{"review_max_bounces": float64(2), "review_hard_max_bounces": float64(3)}},
+			wantDocs: map[string]string{"darn": "review_hard_max_bounces: 3\nreview_max_bounces: 2\n"},
+		},
+		{
+			name:        "darn's review hard cap of zero is refused by darn's CheckValues",
+			settings:    map[string]any{"darn": map[string]any{"review_hard_max_bounces": float64(0)}},
+			wantRefusal: "review_hard_max_bounces",
+			wantModule:  "darn",
+			wantInvalid: true,
+		},
+		{
 			name:        "D4-closed key of a hub-wide module",
-			settings:    map[string]any{"darn": map[string]any{"review_max_bounces": float64(0)}},
-			wantRefusal: "review_max_bounces",
+			settings:    map[string]any{"darn": map[string]any{"verify": "true"}},
+			wantRefusal: "verify",
 			wantModule:  "darn",
 			wantInvalid: true,
 		},

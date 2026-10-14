@@ -89,7 +89,7 @@ func Modules() []Module {
 		{Name: "batcher", Template: batcher.ConfigTemplate, OpenMaps: batcher.ConfigOpenMaps(), Migrate: batcher.MigrateConfig, Spec: batcher.ConfigSpec},
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, Spec: boardengine.ConfigSpec},
 		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true, Spec: burlerengine.ConfigSpec},
-		{Name: "darn", Template: darnengine.ConfigTemplate, HubWide: true, Spec: darnengine.ConfigSpec},
+		{Name: "darn", Template: darnengine.ConfigTemplate, HubWide: true, CheckValues: darnengine.ValidateLocalValues, Spec: darnengine.ConfigSpec},
 		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true, Spec: fabricengine.ConfigSpec},
 		{Name: "gate", Template: gateslot.ConfigTemplate, HubWide: true, Spec: gateslot.ConfigSpec},
 		{Name: "landing", Template: landingshed.ConfigTemplate, HubWide: true, SeedsFromPrime: true, Spec: landingshed.ConfigSpec},

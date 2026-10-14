@@ -57,6 +57,11 @@ func TestLoadConfig(t *testing.T) {
 			wantErr:  []string{"review_hard_max_bounces", "must be at least 1", "lyx config darn --set"},
 		},
 		{
+			name: "negative budget", seed: true,
+			contents: strings.Replace(ConfigTemplate(), "review_max_bounces: 1", "review_max_bounces: -1", 1),
+			wantErr:  []string{"review_max_bounces", "set it to 0 for no review round", "lyx config darn --set"},
+		},
+		{
 			name: "budget above the default hard cap", seed: true,
 			contents: strings.Replace(ConfigTemplate(), "review_max_bounces: 1", "review_max_bounces: 5", 1),
 			wantErr:  []string{"review_hard_max_bounces", "review_max_bounces", "lyx config darn --set", "lyx loom resume"},
@@ -107,31 +112,54 @@ func TestLoadConfig(t *testing.T) {
 		}
 	})
 
-	for _, tt := range []struct {
-		name  string
-		local string
-		key   string
-	}{
-		{"a local verify is refused naming the local file and the key", "verify: rm -rf .\n", "verify"},
-		{"a local review_hard_max_bounces is refused naming the local file and the key", "review_hard_max_bounces: 9\n", "review_hard_max_bounces"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			board, anchor := t.TempDir(), t.TempDir()
-			seedDarnConfig(t, board, ConfigTemplate())
-			localPath := writeLocalDarnConfig(t, anchor, tt.local)
+	t.Run("a local verify is refused naming the local file and the key", func(t *testing.T) {
+		t.Parallel()
+		board, anchor := t.TempDir(), t.TempDir()
+		seedDarnConfig(t, board, ConfigTemplate())
+		localPath := writeLocalDarnConfig(t, anchor, "verify: rm -rf .\n")
 
-			_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "darn")
-			if !errors.Is(err, configengine.ErrInvalid) {
-				t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
+		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "darn")
+		if !errors.Is(err, configengine.ErrInvalid) {
+			t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
+		}
+		for _, want := range []string{localPath, "verify"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
 			}
-			for _, want := range []string{localPath, tt.key} {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
-				}
+		}
+	})
+
+	t.Run("a local budget and hard cap load", func(t *testing.T) {
+		t.Parallel()
+		board, anchor := t.TempDir(), t.TempDir()
+		seedDarnConfig(t, board, ConfigTemplate())
+		writeLocalDarnConfig(t, anchor, "review_max_bounces: 2\nreview_hard_max_bounces: 3\n")
+
+		got, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "darn")
+		if err != nil {
+			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
+		}
+		if got.ReviewMaxBounces != 2 || got.ReviewHardMaxBounces != 3 {
+			t.Errorf("LoadConfig() budget, hard cap = %d, %d; want 2, 3", got.ReviewMaxBounces, got.ReviewHardMaxBounces)
+		}
+	})
+
+	t.Run("a local budget over the hub's hard cap names the local and the hub route", func(t *testing.T) {
+		t.Parallel()
+		board, anchor := t.TempDir(), t.TempDir()
+		seedDarnConfig(t, board, ConfigTemplate())
+		writeLocalDarnConfig(t, anchor, "review_max_bounces: 5\n")
+
+		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "darn")
+		if err == nil {
+			t.Fatal("LoadConfig() = _, nil; want a refusal")
+		}
+		for _, want := range []string{"lyx config darn --layer local --set review_max_bounces=<n>", "lyx board upsert", "lyx config darn --set review_hard_max_bounces=<n>"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
 			}
-		})
-	}
+		}
+	})
 }
 
 // writeLocalDarnConfig writes contents as anchor's local darn override and returns its path.
