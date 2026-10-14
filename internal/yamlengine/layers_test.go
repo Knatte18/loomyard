@@ -87,12 +87,12 @@ func TestStrip(t *testing.T) {
 	}
 }
 
-const sparseTemplate = "name: tmpl\nport: 80\nnested:\n    deep: 1\nlabels: {}\nlist: [a]\n"
+const sparseTemplate = "name: tmpl\nport: 80\nnested:\n    deep: 1\nlabels: {}\nlist: [a]\nrounds: \"\"\n"
 
 // TestSetSparse pins that SetSparse writes only the set keys: into empty bytes, beside an existing key, through intermediate mappings, as an open-map entry and as a flow list, with a template tag kept and an unknown or misshapen request refused.
 func TestSetSparse(t *testing.T) {
 	t.Parallel()
-	openMaps := []string{"labels"}
+	openMaps := []string{"labels", "rounds"}
 	tests := []struct {
 		name        string
 		existing    string
@@ -115,6 +115,13 @@ func TestSetSparse(t *testing.T) {
 		{name: "unknown key is reported and nothing written", pairs: []KV{{Key: "name", Value: "x"}, {Key: "nope", Value: "1"}}, wantUnknown: []string{"nope"}},
 		{name: "list key refuses a scalar", pairs: []KV{{Key: "list", Value: "foo"}}, wantErr: true},
 		{name: "open map holding a list is refused", existing: "labels: [a]\n", pairs: []KV{{Key: "labels.bug", Value: "desc"}}, wantErr: true},
+		{name: "scalar-or-list key takes a quoted flow list", pairs: []KV{{Key: "rounds", Value: `["opus[medium]", "sonnet[high]"]`}}, want: "rounds: [\"opus[medium]\", \"sonnet[high]\"]\n"},
+		{name: "scalar-or-list key holding a list takes a scalar", existing: "rounds: [a, b]\n", pairs: []KV{{Key: "rounds", Value: "opus[high]"}}, want: "rounds: opus[high]\n"},
+		{name: "scalar-or-list key refuses unquoted bracketed entries", existing: "rounds: a\n", pairs: []KV{{Key: "rounds", Value: "[opus[medium], sonnet[high]]"}}, wantErr: true},
+		{name: "scalar-or-list key takes the empty list", pairs: []KV{{Key: "rounds", Value: "[]"}}, want: "rounds: []\n"},
+		{name: "scalar-or-list key refuses a nested list", pairs: []KV{{Key: "rounds", Value: "[[a], b]"}}, wantErr: true},
+		{name: "scalar-or-list key refuses text after the closing bracket", pairs: []KV{{Key: "rounds", Value: `["a"] trailing`}}, wantErr: true},
+		{name: "mapping open map holding a list refuses a scalar", existing: "labels: [a]\n", pairs: []KV{{Key: "labels", Value: "x"}}, wantErr: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
