@@ -215,6 +215,11 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil ArbiterInFlight resolves to reporting none in NewInnerRun.
 	ArbiterInFlight func(ctx context.Context) (arbiter ChildArbiter, found bool, err error)
+	// ArbiterStop reads the facts the eligible-stop hold decides on for the child's halted stop status.
+	// The state-changed notice of a blocked or awaiting child is held while the arbiter may still settle the stop.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil ArbiterStop resolves to a reading that is not eligible in NewInnerRun.
+	ArbiterStop func(ctx context.Context, status shedengine.Status) (ChildArbiterStop, error)
 	// NoticeQuiet is how long a running child's agents may all stay idle, with its driver strand alive and no wait marker live, before the row sends a quiet notice.
 	// Zero disables the quiet notice.
 	NoticeQuiet time.Duration

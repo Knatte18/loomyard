@@ -11,7 +11,7 @@ internal/arbiterstop: 2
 internal/batcher: 9
 internal/battencli: 79
 internal/battenrecipe: 9
-internal/battenshed: 113
+internal/battenshed: 114
 internal/boardcli: 13
 internal/boardengine: 78
 internal/boardengine/boardtest: 3

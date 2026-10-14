@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/arbiterstop"
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -855,6 +856,14 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return "", time.Time{}, false, err
 				}
 				return readStopReport(taskLocation)
+			},
+			// ArbiterStop reads, in the task worktree, the facts the eligible-stop hold decides on at the child's halted stop.
+			ArbiterStop: func(ctx context.Context, status shedengine.Status) (battenshed.ChildArbiterStop, error) {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return battenshed.ChildArbiterStop{}, err
+				}
+				return arbiterstop.HoldReading(taskLocation, status)
 			},
 			MarkWatched: markWatched,
 			VerifyRows:  []string{loomshed.NameMergeIn, loomshed.NamePublish},
