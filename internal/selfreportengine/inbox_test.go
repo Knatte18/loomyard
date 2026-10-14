@@ -4,17 +4,22 @@
 package selfreportengine
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/githubclient"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/google/go-github/v75/github"
 )
 
 const issuesPath = "/repos/Knatte18/loomyard/issues"
@@ -62,6 +67,70 @@ func TestListOpenIssues_PaginatesAndExcludesPullRequests(t *testing.T) {
 			t.Errorf("request = %q; want the %s path with state=open", p, issuesPath)
 		}
 	}
+
+	t.Run("a page held by a pause gets its own deadline", func(t *testing.T) {
+		const (
+			perRequest = 400 * time.Millisecond
+			pageTime   = 250 * time.Millisecond
+			holdTime   = 150 * time.Millisecond
+		)
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+		t.Setenv("LOCALAPPDATA", t.TempDir())
+		t.Setenv("GH_TOKEN", "test-token")
+		t.Setenv("GITHUB_TOKEN", "")
+
+		recordPath := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
+		setLive := func(live bool) {
+			if _, err := pauserecord.Update(recordPath, time.Now(), func(r *pauserecord.Record) error {
+				r.Live = nil
+				if live {
+					r.Live = []pauserecord.Entry{{Scope: pauserecord.ScopeHub, PausedAt: time.Now()}}
+				}
+				return nil
+			}); err != nil {
+				t.Errorf("update the pause record: %v", err)
+			}
+		}
+		var sleeps atomic.Int32
+		t.Cleanup(pauserecord.InstallGate(pauserecord.Gate{
+			Geometry: pauserecord.Geometry{RecordPath: recordPath},
+			Notify:   func(string) {},
+			Sleep: func(ctx context.Context, d time.Duration) error {
+				sleeps.Add(1)
+				time.Sleep(holdTime)
+				setLive(false)
+				return nil
+			},
+		}))
+
+		var server *httptest.Server
+		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("page") == "2" {
+				time.Sleep(pageTime)
+				_, _ = w.Write([]byte(`[{"number":3,"title":"three","state":"open","labels":[]}]`))
+				return
+			}
+			setLive(true)
+			time.Sleep(pageTime)
+			w.Header().Set("Link", fmt.Sprintf(`<%s%s?page=2>; rel="next"`, server.URL, issuesPath))
+			_, _ = w.Write([]byte(`[{"number":1,"title":"one","state":"open","labels":[]}]`))
+		}))
+		t.Cleanup(server.Close)
+		original := NewGitHubClient
+		NewGitHubClient = func() (*github.Client, error) { return githubclient.NewWithBaseURL(server.URL, nil) }
+		t.Cleanup(func() { NewGitHubClient = original })
+
+		got, err := listOpenIssues(perRequest)
+		if err != nil {
+			t.Fatalf("listOpenIssues(%v) error = %v; want nil", perRequest, err)
+		}
+		if len(got) != 2 || got[0].Number != 1 || got[1].Number != 3 {
+			t.Fatalf("listOpenIssues(%v) = %+v; want issues 1 and 3", perRequest, got)
+		}
+		if sleeps.Load() != 1 {
+			t.Errorf("gate waits = %d; want the second page held once", sleeps.Load())
+		}
+	})
 }
 
 // TestListIssueComments_PaginatesOldestFirst follows the Link header across two pages, asserts the exact comments path with the created-ascending sort, and carries bodies and creation times over in order;

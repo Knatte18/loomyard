@@ -29,8 +29,9 @@ const targetRepo = "Knatte18/loomyard"
 // labels. It is unexported so DefaultLabels is the single way to observe it.
 const defaultLabel = "bug"
 
-// callTimeout bounds each call this package makes to GitHub, including a 401-triggered credential re-resolution and replay performed internally by githubclient's transport.
-// It matches the 30s budget githubclient.New's returned client already carries on its underlying http.Client, so no call relies solely on a caller-supplied context.Background() to keep an autonomous run from hanging.
+// callTimeout bounds each request this package makes to GitHub, including a 401-triggered credential re-resolution and replay performed internally by githubclient's transport.
+// A call that spans several requests derives a fresh deadline per request, so a pause hold on one request moves only that request's deadline.
+// It matches the 30s budget githubclient's own transport applies from the end of a pause hold, so no call relies solely on a caller-supplied context.Background() to keep an autonomous run from hanging.
 const callTimeout = 30 * time.Second
 
 // NewGitHubClient is the seam through which CreateIssue obtains an authenticated *github.Client,
