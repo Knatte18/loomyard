@@ -950,9 +950,8 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 			wantDeleteOrder: []string{"informational callers/callers.go at line 9"},
 		},
 		{
-			name:            "a covered reference inside a later card's code is delete-before-reference's",
-			cards:           []string{coveredTargetCard(covers), editCard("callers#UseTarget")},
-			wantDeleteOrder: []string{"blocking callers/callers.go:6"},
+			name:  "a reference inside a later card's code that the deleting card's own Edit covers is not reported",
+			cards: []string{coveredTargetCard(covers), editCard("callers#UseTarget")},
 		},
 		{
 			name:  "a deleted package's import is searched in Go regions alone",
