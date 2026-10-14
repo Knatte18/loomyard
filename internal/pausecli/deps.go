@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauseengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -63,10 +64,29 @@ func hubDeps(location *lyxcwd.Location, strand string) (pauseengine.Deps, []stri
 		slugs = append(slugs, pairLocation.WorktreeName)
 	}
 
+	var primePair pauseengine.Pair
+	if prime != nil {
+		wired, err := newShuttlePair(prime)
+		if err != nil {
+			logger.Warn("pausecli: the prime does not wire, so its sessions are not listed", "worktree", prime.WorktreePath(), "error", err)
+		} else {
+			primePair = wired
+		}
+	}
+	// An unreadable executable path is empty, which keeps no stale process.
+	executable, err := os.Executable()
+	if err != nil {
+		executable = ""
+	}
+
 	locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(location.HubPath))}
 	deps := pauseengine.Deps{
 		RecordPath: geometry.RecordPath,
 		Pairs:      pairs,
+		Prime:      primePair,
+		Processes:  proc.ListProcesses,
+		HubPath:    location.HubPath,
+		Executable: executable,
 		NetOps: func() ([]pauserecord.NetOp, error) {
 			return pauserecord.ListNetOps(geometry.RecordPath, parentlock.ProcessAlive)
 		},
@@ -145,8 +165,8 @@ func (p shuttlePair) Sessions() ([]pauseengine.SessionInfo, error) {
 	return sessions, nil
 }
 
-// state reads the session state of the running run with the strand guid, or the zero state when the strand has none.
-func (p shuttlePair) state(guid string) (shuttleengine.SessionState, error) {
+// State reads the session state of the running run with the strand guid, or the zero state when the strand has none.
+func (p shuttlePair) State(guid string) (shuttleengine.SessionState, error) {
 	readings, err := shuttleengine.ReadSessionStates(p.cfg, p.location.AnchorPath(), p.engine, time.Now())
 	if err != nil {
 		return shuttleengine.SessionState{}, err
@@ -173,14 +193,14 @@ func readTurn(state shuttleengine.SessionState) (running bool, labels []string, 
 
 // Busy reports whether the run's session state reads a running turn.
 func (p shuttlePair) Busy(guid string) (bool, error) {
-	state, err := p.state(guid)
+	state, err := p.State(guid)
 	running, _, _ := readTurn(state)
 	return running, err
 }
 
 // Background reports whether the run's session turn ended with background work still running, with the outstanding tasks' labels.
 func (p shuttlePair) Background(guid string) ([]string, bool, error) {
-	state, err := p.state(guid)
+	state, err := p.State(guid)
 	_, labels, background := readTurn(state)
 	return labels, background, err
 }

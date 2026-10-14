@@ -9,6 +9,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // SessionInfo is one live shuttle-run strand of a pair.
@@ -26,6 +28,8 @@ type Pair interface {
 	Slug() string
 	// Sessions lists the pair's live shuttle-run strands, the loom driver included.
 	Sessions() ([]SessionInfo, error)
+	// State reads the session's state from its run's files, the zero state when the strand has none.
+	State(guid string) (shuttleengine.SessionState, error)
 	// Busy reports whether the session is in a running turn: busy with any cause but background work.
 	Busy(guid string) (bool, error)
 	// Background reports whether the session's turn ended with background work still running, with the outstanding tasks' labels.
@@ -49,8 +53,16 @@ type Pair interface {
 type Deps struct {
 	// RecordPath is the pause record file.
 	RecordPath string
-	// Pairs are the hub's pairs.
+	// Pairs are the hub's task pairs, the prime excluded.
 	Pairs []Pair
+	// Prime is the prime's sessions, nil when the hub has no prime that wires.
+	Prime Pair
+	// Processes lists the processes running on the machine.
+	Processes func() ([]proc.Process, error)
+	// HubPath is the hub directory.
+	HubPath string
+	// Executable is the running lyx's own executable path, empty when it is unknown.
+	Executable string
 	// NetOps lists the network operations in flight.
 	NetOps func() ([]pauserecord.NetOp, error)
 	// Locks lists the parent lock records.

@@ -96,6 +96,12 @@ func TestPauseAndResume_WriteLiftAndRefuseOverTheHub(t *testing.T) {
 	if entries, _ := report(t, status, "status")["live"].([]any); len(entries) != 1 {
 		t.Errorf("status live = %v; want the one entry", entries)
 	}
+	if sessions, isArray := report(t, status, "status")["sessions"].([]any); !isArray || len(sessions) != 0 {
+		t.Errorf("status sessions = %v; want an empty array with no agents running", report(t, status, "status")["sessions"])
+	}
+	if stale, _ := report(t, status, "status")["stale"].(map[string]any); stale["supported"] != true {
+		t.Errorf("status stale = %v; want supported true", stale)
+	}
 	if liveAfter, _ := liveEntries(t, h); len(liveAfter) != 1 || !liveAfter[0].PausedAt.Equal(liveBefore[0].PausedAt) {
 		t.Errorf("status changed the record: %+v then %+v", liveBefore, liveAfter)
 	}

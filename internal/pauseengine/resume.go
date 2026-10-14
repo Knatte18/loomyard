@@ -5,8 +5,12 @@ package pauseengine
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -30,7 +34,7 @@ type ResumeReport struct {
 	OrchLeftToWatcher bool `json:"orch_left_to_watcher"`
 }
 
-// StatusReport is what a pause currently holds.
+// StatusReport is what a pause currently holds and what runs, waits, stalls or runs stale in the hub.
 type StatusReport struct {
 	// Live holds the live entries.
 	Live []pauserecord.Entry `json:"live"`
@@ -38,6 +42,43 @@ type StatusReport struct {
 	NetOps []NetOpReport `json:"net_ops"`
 	// Holds holds the parent locks the covered runs hold or wait in.
 	Holds holdReport `json:"holds"`
+	// Sessions holds every live session of the hub's task pairs and of the prime.
+	Sessions []SessionStatus `json:"sessions"`
+	// Stale holds the processes running a replaced binary.
+	Stale StaleReport `json:"stale"`
+}
+
+// SessionStatus is one live session with the state its run's files read.
+type SessionStatus struct {
+	Slug   string `json:"slug"`
+	Strand string `json:"strand"`
+	// State is the session state's name, "unknown" when the reading failed.
+	State string `json:"state"`
+	// Cause says why the session is in the state, or the error of a failed reading.
+	Cause string `json:"cause"`
+	// Since is when the causing line or reading happened, in RFC 3339, empty when it has no time.
+	Since string `json:"since"`
+	// Prime is true for a session of the prime.
+	Prime bool `json:"prime"`
+	// Paused is true when a live entry covers the session's slug.
+	Paused bool `json:"paused"`
+}
+
+// StaleReport lists the processes running a binary that was replaced on disk.
+type StaleReport struct {
+	// Supported is false where the platform cannot list processes.
+	Supported bool `json:"supported"`
+	// Processes holds each process running a replaced lyx inside the hub.
+	Processes []StaleProcess `json:"processes"`
+	// Error is the message of a failed process reading, empty otherwise.
+	Error string `json:"error,omitempty"`
+}
+
+// StaleProcess is one process running a replaced binary.
+type StaleProcess struct {
+	PID       int      `json:"pid"`
+	StartTime string   `json:"start_time"`
+	Argv      []string `json:"argv"`
 }
 
 // Resume lifts live entries and gives each session they interrupted one line.
@@ -144,16 +185,94 @@ func sendResumeLine(deps Deps, held pauserecord.Session) string {
 	return ""
 }
 
-// Status reads the live entries and the holds, changing nothing.
+// Status reads the live entries, the holds, every live session's state and the processes running a replaced binary, changing nothing.
+// A failed state or process reading is reported inside its own part and leaves the rest of the report intact.
 func Status(deps Deps) (StatusReport, error) {
 	record, err := pauserecord.Read(deps.RecordPath)
 	if err != nil {
 		return StatusReport{}, err
 	}
-	report := StatusReport{Live: append([]pauserecord.Entry{}, record.Live...)}
+	report := StatusReport{Live: append([]pauserecord.Entry{}, record.Live...), Stale: StaleReport{Supported: true, Processes: []StaleProcess{}}}
+	if report.Sessions, err = sessionStatuses(deps, record); err != nil {
+		return report, err
+	}
+	if deps.Processes != nil {
+		processes, err := deps.Processes()
+		switch {
+		case errors.Is(err, errors.ErrUnsupported):
+			report.Stale.Supported = false
+		case err != nil:
+			report.Stale.Error = err.Error()
+		default:
+			report.Stale.Processes = staleProcesses(processes, deps.HubPath, deps.Executable)
+		}
+	}
 	if report.NetOps, err = netOpReports(deps, func(string) bool { return true }); err != nil {
 		return report, err
 	}
 	report.Holds, err = readHolds(deps, record)
 	return report, err
+}
+
+// sessionStatuses lists every live session of every task pair and then of the prime, each with its state.
+// A session whose state reading fails is listed with the state "unknown" and the error as its cause.
+func sessionStatuses(deps Deps, record pauserecord.Record) ([]SessionStatus, error) {
+	type scope struct {
+		pair  Pair
+		prime bool
+	}
+	var scopes []scope
+	for _, pair := range deps.Pairs {
+		scopes = append(scopes, scope{pair: pair})
+	}
+	if deps.Prime != nil {
+		scopes = append(scopes, scope{pair: deps.Prime, prime: true})
+	}
+	statuses := []SessionStatus{}
+	for _, covered := range scopes {
+		sessions, err := covered.pair.Sessions()
+		if err != nil {
+			return nil, err
+		}
+		for _, session := range sessions {
+			_, paused := record.Covering(session.Slug)
+			status := SessionStatus{Slug: session.Slug, Strand: session.Strand, Prime: covered.prime, Paused: paused}
+			state, err := covered.pair.State(session.GUID)
+			if err != nil {
+				status.State, status.Cause = string(shuttleengine.SessionUnknown), err.Error()
+			} else {
+				status.State, status.Cause = string(state.Name), state.Cause
+				if !state.Since.IsZero() {
+					status.Since = state.Since.UTC().Format(time.RFC3339)
+				}
+			}
+			statuses = append(statuses, status)
+		}
+	}
+	return statuses, nil
+}
+
+// deletedSuffix is what the kernel appends to an exe or cwd link whose target was removed.
+const deletedSuffix = " (deleted)"
+
+// staleProcesses keeps each process whose exe is a deleted file named as executable and whose cwd is hubPath or inside it, a deleted working directory included.
+// An empty executable keeps nothing.
+func staleProcesses(processes []proc.Process, hubPath, executable string) []StaleProcess {
+	stale := []StaleProcess{}
+	if executable == "" {
+		return stale
+	}
+	wantName := filepath.Base(strings.TrimSuffix(executable, deletedSuffix))
+	for _, process := range processes {
+		exe, deleted := strings.CutSuffix(process.Exe, deletedSuffix)
+		if !deleted || filepath.Base(exe) != wantName {
+			continue
+		}
+		relative, err := filepath.Rel(hubPath, strings.TrimSuffix(process.Cwd, deletedSuffix))
+		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			continue
+		}
+		stale = append(stale, StaleProcess{PID: process.PID, StartTime: process.StartTime, Argv: process.Argv})
+	}
+	return stale
 }

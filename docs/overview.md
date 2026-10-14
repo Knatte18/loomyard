@@ -405,7 +405,7 @@ User-facing modules each get one `lyx <module>` namespace:
 - **tender** — the one ordered pause that makes the hub safe to suspend within seconds (`internal/pausecli` + `internal/pauseengine`; `lyx tender pause [<slug>] [--grace <seconds>]`, `lyx tender resume [<slug>]` and `lyx tender status`, from any worktree of the hub; `lyx pause` and `lyx resume` are shortcuts for the first two).
   `lyx tender pause` records an entry, waits a short grace for busy agent sessions and network operations to finish, interrupts every covered session still in a running turn with Esc and holds every path that would start agent or network work; the orchestrator is interrupted by its own watcher at the grace end.
   `lyx tender resume` lifts the entry and gives each interrupted session one line to carry on.
-  `lyx tender status` lists the live entries, the network operations in flight and the parent locks held, and changes nothing; any caller may run it.
+  `lyx tender status` lists the live entries, the network operations in flight and the parent locks held, every live session in the hub with its state, cause and whether an entry covers it, and the lyx processes running a replaced binary; it changes nothing, and any caller may run it.
   An agent may pause or resume only its own pair; the orchestrator and an external caller may do both for the hub or any pair.
   Every lyx process in a hub runs its network git and GitHub calls under a gate that waits while a pause covers it, and every reader that reacts to an unexpected stop or to idle time consults the record (`internal/pauserecord`).
   ✅ Implemented. See the `internal/pauseengine` and `internal/pausecli` package documentation.

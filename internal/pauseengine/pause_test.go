@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -37,6 +38,10 @@ type fakePair struct {
 	paneErr       map[string]error
 	// paneRunning is what PaneRunningTurn answers per session.
 	paneRunning map[string]bool
+	// states holds each session's scripted state; a session with none reads idle-done.
+	states map[string]shuttleengine.SessionState
+	// stateErr fails State for a key present.
+	stateErr map[string]error
 	// settle is the InterruptSettle answer.
 	settle   time.Duration
 	producer string
@@ -56,6 +61,7 @@ func newPair(slug string, strands ...string) *fakePair {
 	p := &fakePair{
 		slug: slug, busy: map[string][]bool{}, dead: map[string]bool{}, interruptErrs: map[string][]error{}, sendErr: map[string]error{},
 		background: map[string][]string{}, backgroundErr: map[string]error{}, paneErr: map[string]error{}, paneRunning: map[string]bool{},
+		states: map[string]shuttleengine.SessionState{}, stateErr: map[string]error{},
 		settle: 2 * time.Second,
 	}
 	for _, strand := range strands {
@@ -68,6 +74,16 @@ func (p *fakePair) Slug() string                     { return p.slug }
 func (p *fakePair) Sessions() ([]SessionInfo, error) { return p.sessions, nil }
 func (p *fakePair) Running() (string, bool, error)   { return p.producer, p.running, nil }
 func (p *fakePair) Live(guid string) (bool, error)   { return !p.dead[guid], nil }
+
+func (p *fakePair) State(guid string) (shuttleengine.SessionState, error) {
+	if err := p.stateErr[guid]; err != nil {
+		return shuttleengine.SessionState{}, err
+	}
+	if state, scripted := p.states[guid]; scripted {
+		return state, nil
+	}
+	return shuttleengine.SessionState{Name: shuttleengine.SessionIdleDone, Cause: shuttleengine.SessionCauseDone}, nil
+}
 
 func (p *fakePair) Busy(guid string) (bool, error) {
 	p.mu.Lock()
@@ -175,6 +191,13 @@ type env struct {
 	locks       []parentlock.Entry
 	watcherLive bool
 	caller      string
+	// prime is the prime's pair, left out of the deps when nil.
+	prime *fakePair
+	// processes and processErr are what the process reading answers.
+	processes  []proc.Process
+	processErr error
+	hubPath    string
+	executable string
 }
 
 func newEnv(t *testing.T, pairs ...*fakePair) *env {
@@ -187,9 +210,12 @@ func (e *env) deps() Deps {
 	for _, p := range e.pairs {
 		pairs = append(pairs, p)
 	}
-	return Deps{
+	deps := Deps{
 		RecordPath:      e.path,
 		Pairs:           pairs,
+		Processes:       func() ([]proc.Process, error) { return e.processes, e.processErr },
+		HubPath:         e.hubPath,
+		Executable:      e.executable,
 		NetOps:          func() ([]pauserecord.NetOp, error) { return e.netOps, nil },
 		Locks:           func() ([]parentlock.Entry, error) { return e.locks, nil },
 		OrchWatcherLive: func() bool { return e.watcherLive },
@@ -197,6 +223,11 @@ func (e *env) deps() Deps {
 		Now:             e.clock.Now,
 		Sleep:           e.clock.Sleep,
 	}
+	// A nil *fakePair in the interface would read as a prime.
+	if e.prime != nil {
+		deps.Prime = e.prime
+	}
+	return deps
 }
 
 func (e *env) record() pauserecord.Record {

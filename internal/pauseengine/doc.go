@@ -40,4 +40,13 @@
 //
 // Status reports the live entries, the network operations in flight with the ones run under a parent lock marked, and the holds:
 // each parent branch a covered run holds with the runs queued behind it, and each covered run waiting in a queue with the runs behind it.
+// It adds two read-only parts:
+//
+//   - Every live session of every task pair and then of the prime, each with its state, cause and since, and whether a live entry covers its slug.
+//     A prime session is covered only by a hub entry.
+//     A session whose state reading fails is listed with the state `unknown` and the error as its cause.
+//   - The processes running a replaced binary: each process whose exe is a deleted file with the running lyx's own file name and whose cwd is the hub or inside it.
+//     A platform that cannot list processes reports the part unsupported, and any other failed reading is reported in the part; the rest of the report is unaffected either way.
+//
+// Status reads no transcript and no pane content and writes nothing, so any caller may run it.
 package pauseengine

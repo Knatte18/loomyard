@@ -3,14 +3,17 @@
 package pauseengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -182,4 +185,110 @@ func TestStatus(t *testing.T) {
 	if string(before) != string(after) || len(p.interrupts)+len(p.sends) != 0 {
 		t.Errorf("status changed the record or touched a session")
 	}
+
+	read := func(t *testing.T, e *env) StatusReport {
+		t.Helper()
+		report, err := Status(e.deps())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return report
+	}
+
+	t.Run("sessions list every pair and the prime with state, cause, since and paused", func(t *testing.T) {
+		p1, p2, prime := newPair("p1", "a"), newPair("p2", "b"), newPair("prime", "orch")
+		since := newFakeClock().Now()
+		p1.states["g-a"] = shuttleengine.SessionState{Name: shuttleengine.SessionBusy, Cause: shuttleengine.SessionCauseTurn}
+		p2.states["g-b"] = shuttleengine.SessionState{Name: shuttleengine.SessionIdleStalled, Cause: shuttleengine.SessionCauseAPIError, Since: since}
+		e := newEnv(t, p1, p2)
+		e.prime = prime
+		e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: since, GraceEnd: since, Caller: "EXTERNAL"})
+
+		want := []SessionStatus{
+			{Slug: "p1", Strand: "a", State: "busy", Cause: "turn", Paused: true},
+			{Slug: "p2", Strand: "b", State: "idle-stalled", Cause: "api-error", Since: since.Format(time.RFC3339)},
+			{Slug: "prime", Strand: "orch", State: "idle-done", Cause: "done", Prime: true},
+		}
+		if got := read(t, e).Sessions; !reflect.DeepEqual(got, want) {
+			t.Errorf("sessions under a slug entry = %+v; want %+v", got, want)
+		}
+
+		e.seedLive(hubEntry(since))
+		for _, session := range read(t, e).Sessions {
+			if !session.Paused {
+				t.Errorf("session %+v under a hub entry; want it paused, the prime's included", session)
+			}
+		}
+	})
+
+	t.Run("stale processes keep a replaced lyx inside the hub and nothing else", func(t *testing.T) {
+		e := newEnv(t)
+		e.hubPath = "/home/u/hub"
+		e.executable = "/home/u/go/bin/lyx"
+		listed := func(pid int, exe, cwd string) proc.Process {
+			return proc.Process{PID: pid, StartTime: "t" + fmt.Sprint(pid), Exe: exe, Cwd: cwd, Argv: []string{"lyx", "orch", "watch"}}
+		}
+		e.processes = []proc.Process{
+			listed(1, "/home/u/go/bin/lyx (deleted)", "/home/u/hub/prime"),
+			listed(2, "/home/u/hub/x/.dev-bin/lyx (deleted)", "/home/u/hub"),
+			listed(3, "/home/u/go/bin/lyx", "/home/u/hub"),
+			listed(4, "/home/u/go/bin/other (deleted)", "/home/u/hub"),
+			listed(5, "/home/u/go/bin/lyx (deleted)", "/home/u/hub-other"),
+			listed(6, "/home/u/go/bin/lyx (deleted)", "/home/u"),
+			listed(7, "/home/u/go/bin/lyx (deleted)", "/home/u/hub/gone (deleted)"),
+		}
+
+		report := read(t, e)
+
+		var pids []int
+		for _, process := range report.Stale.Processes {
+			pids = append(pids, process.PID)
+		}
+		if !report.Stale.Supported || !reflect.DeepEqual(pids, []int{1, 2, 7}) {
+			t.Errorf("stale = %+v; want pids 1, 2 and 7 on a supported platform", report.Stale)
+		}
+		if first := report.Stale.Processes[0]; first.StartTime != "t1" || !reflect.DeepEqual(first.Argv, []string{"lyx", "orch", "watch"}) {
+			t.Errorf("first stale process = %+v; want its start time and argv", first)
+		}
+	})
+
+	t.Run("a failed reading is reported in its own part and the rest still reads", func(t *testing.T) {
+		p := newPair("p1", "a", "b")
+		p.stateErr["g-b"] = errors.New("events unreadable")
+		e := newEnv(t, p)
+		e.seedLive(hubEntry(e.clock.Now()))
+		e.processErr = errors.New("proc is gone")
+
+		report := read(t, e)
+
+		if len(report.Sessions) != 2 || report.Sessions[1].State != "unknown" || report.Sessions[1].Cause != "events unreadable" || report.Sessions[0].State != "idle-done" {
+			t.Errorf("sessions = %+v; want a read and b unknown with the error as its cause", report.Sessions)
+		}
+		if report.Stale.Error != "proc is gone" || !report.Stale.Supported || len(report.Stale.Processes) != 0 || len(report.Live) != 1 {
+			t.Errorf("stale = %+v, live = %+v; want the error reported and the live entry still read", report.Stale, report.Live)
+		}
+	})
+
+	t.Run("an unsupported process reading marks the part unsupported", func(t *testing.T) {
+		e := newEnv(t, newPair("p1", "a"))
+		e.seedLive(hubEntry(e.clock.Now()))
+		e.processErr = fmt.Errorf("proc: %w", errors.ErrUnsupported)
+
+		report := read(t, e)
+
+		if report.Stale.Supported || report.Stale.Error != "" || len(report.Stale.Processes) != 0 || len(report.Sessions) != 1 || len(report.Live) != 1 {
+			t.Errorf("report = %+v; want the stale part unsupported with no error and sessions and live entries read", report)
+		}
+	})
+
+	t.Run("an empty hub reads empty lists, not nil", func(t *testing.T) {
+		report := read(t, newEnv(t))
+
+		if report.Live == nil || report.Sessions == nil || report.Stale.Processes == nil || !report.Stale.Supported {
+			t.Errorf("report = %+v; want empty non-nil lists and a supported stale part", report)
+		}
+		if len(report.Live)+len(report.Sessions)+len(report.Stale.Processes) != 0 {
+			t.Errorf("report = %+v; want nothing listed", report)
+		}
+	})
 }
