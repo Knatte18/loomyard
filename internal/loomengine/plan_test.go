@@ -259,7 +259,7 @@ func TestPlanSpec_Refuses(t *testing.T) {
 	}
 }
 
-// TestPlanSpec_Twill verifies plan_producer twill renders the twill directive between Step 2 and Step 3 with the plan host's values and the lenses of the twill-plan fan, authorizes fork subagents, and renders no write-scope paragraph.
+// TestPlanSpec_Twill verifies plan_producer twill renders the twill directive between Step 2 and Step 3 with the plan host's values and the lenses of the twill-plan fan, authorizes fork subagents, and renders no ready-marker wait.
 // The lenses are the template's fan without a burler.yaml, and the burler.yaml fan with one.
 func TestPlanSpec_Twill(t *testing.T) {
 	t.Parallel()
@@ -317,13 +317,12 @@ func TestPlanSpec_Twill(t *testing.T) {
 			}
 
 			for _, want := range []string{
-				PlanReadyMarker(layout),
 				stencilstore.Path(stencilsDir, "loom-rubric-plan-review"),
 				filepath.Join(planparser.PlanDir(layout.AnchorPath()), planparser.LensReviewFileName),
-				"lyx shuttle await",
 				`subagent_type: "fork"`,
-				"run `lyx loom validate-plan` per `Step 5` until it passes",
-				"8. Run `lyx loom validate-plan --lens-review` again until it passes",
+				"runs `lyx loom validate-plan` per `Step 5` until it passes",
+				"6. Run `lyx loom validate-plan --lens-review` again until it passes",
+				"Once you have written the plan per Step 3 and Step 4 and `lyx loom validate-plan` passes per Step 5, run this procedure once",
 				"Step 3 and Step 4",
 				strings.SplitN(planTwillSpawnPoint, "\n", 2)[0],
 				"Report defects only, never a passed check. Give each finding's evidence as the `path:line` or glyph read.",
@@ -334,8 +333,8 @@ func TestPlanSpec_Twill(t *testing.T) {
 					t.Errorf("PlanSpec(twill).Prompt lacks %q", want)
 				}
 			}
-			if strings.Contains(prompt, "and you create its parent directory too") {
-				t.Error("PlanSpec(twill).Prompt carries the write-scope paragraph; want none, since Plan-Write fences no write scope")
+			if strings.Contains(prompt, "lyx shuttle await") {
+				t.Error("PlanSpec(twill).Prompt carries a ready-marker wait; want the forks to wait on nothing")
 			}
 
 			stepTwoAt := strings.Index(prompt, "## Step 2")

@@ -7,7 +7,6 @@ package shedrecipe
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,18 +48,6 @@ func TestPlanWriteEntry_ConstructionFailures(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "PlanWrite") || !strings.Contains(err.Error(), "CommitPlan") {
 			t.Errorf("planWriteEntry() error = %v; want it to name entry %q and field %q", err, "PlanWrite", "CommitPlan")
-		}
-	})
-
-	t.Run("NilPreparePlanSpawn", func(t *testing.T) {
-		env := newTestEnv(t)
-		env.PreparePlanSpawn = nil
-		_, err := planWriteEntry("Row", Config{}, env)
-		if err == nil {
-			t.Fatalf("planWriteEntry() error = nil; want non-nil when Env.PreparePlanSpawn is nil")
-		}
-		if !strings.Contains(err.Error(), "PlanWrite") || !strings.Contains(err.Error(), "PreparePlanSpawn") {
-			t.Errorf("planWriteEntry() error = %v; want it to name entry %q and field %q", err, "PlanWrite", "PreparePlanSpawn")
 		}
 	})
 
@@ -219,84 +206,6 @@ func TestPlanWriteEntry_CallAppendsPriorPlanBlock(t *testing.T) {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("prompt = %q; want it to contain %q", prompt, want)
 		}
-	}
-}
-
-// TestPlanWriteEntry_PreparePlanSpawn pins that Env.PreparePlanSpawn runs once per fresh spawn, ahead of the plan-directory rotation and whether or not the directory holds stale files, never on an attach or a relaunch, and that its error stops the spawn before anything is rotated.
-func TestPlanWriteEntry_PreparePlanSpawn(t *testing.T) {
-	tests := []struct {
-		name            string
-		stale           bool
-		attach          shuttleengine.Outcome
-		attached        bool
-		prepareErr      error
-		wantCalls       int
-		wantStaleAtCall bool
-		wantStaleKept   bool
-	}{
-		{name: "fresh spawn with no plan directory", wantCalls: 1},
-		{name: "fresh spawn over a stale plan", stale: true, wantCalls: 1, wantStaleAtCall: true},
-		{name: "attach to a live writer", stale: true, attached: true, attach: shuttleengine.OutcomeDone, wantStaleKept: true},
-		{name: "relaunch of a dead writer", stale: true, attached: true, attach: shuttleengine.OutcomeDied, wantStaleKept: true},
-		{name: "preparation error", stale: true, prepareErr: errors.New("marker locked"), wantCalls: 1, wantStaleAtCall: true, wantStaleKept: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			env := newTestEnv(t)
-			writeStencil(t, env.StencilsDir, "loom-template-prior-plan", "PRIOR {{.archive_dir}}\n{{.moved_files}}\n")
-			stalePath := filepath.Join(planparser.PlanDir(env.AnchorPath), "00-overview.md")
-			if tt.stale {
-				if err := os.MkdirAll(filepath.Dir(stalePath), 0o755); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(stalePath, []byte("stale"), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
-			env.PlanSpec = func() (shuttleengine.Spec, error) {
-				return shuttleengine.Spec{Prompt: "plan prompt", OutputFiles: []string{stalePath}}, nil
-			}
-			env.CommitPlan = func() error { return nil }
-			calls := 0
-			staleAtCall := false
-			env.PreparePlanSpawn = func() error {
-				calls++
-				_, err := os.Stat(stalePath)
-				staleAtCall = err == nil
-				return tt.prepareErr
-			}
-			fake := env.Shuttle.(*shedfake.Shuttle)
-			if tt.attached {
-				fake.AttachFound = true
-				fake.AttachResult = shuttleengine.Result{Outcome: tt.attach}
-			} else {
-				fake.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
-			}
-			producer, err := planWriteEntry("Row", Config{}, env)
-			if err != nil {
-				t.Fatalf("planWriteEntry() error = %v; want nil", err)
-			}
-
-			_, _, err = producer.Call(context.Background())
-
-			if tt.prepareErr != nil && (err == nil || !strings.Contains(err.Error(), tt.prepareErr.Error())) {
-				t.Errorf("Call() error = %v; want it to carry %v", err, tt.prepareErr)
-			}
-			if calls != tt.wantCalls {
-				t.Errorf("PreparePlanSpawn ran %d times; want %d", calls, tt.wantCalls)
-			}
-			if staleAtCall != tt.wantStaleAtCall {
-				t.Errorf("stale plan file present when PreparePlanSpawn ran = %v; want %v", staleAtCall, tt.wantStaleAtCall)
-			}
-			if tt.prepareErr != nil && len(fake.Specs) != 0 {
-				t.Errorf("fake.Specs has %d entries after a failed preparation; want 0", len(fake.Specs))
-			}
-			if tt.wantStaleKept {
-				if _, statErr := os.Stat(stalePath); statErr != nil {
-					t.Errorf("stale plan file = %v; want it kept in place", statErr)
-				}
-			}
-		})
 	}
 }
 

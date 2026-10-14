@@ -513,13 +513,13 @@ User-facing modules each get one `lyx <module>` namespace:
   Both prompt renderings ship in the same stencil, selected by the `{{.mode_rules}}` marker.
   The second Discussion producer, selected by `discussion_producer: seats`, is a chair that interviews and writes the same two files while advisors study the task, the board, the code and PATTERN in parallel.
   The advisors answer the chair over the session message channel, and each writes a notes file beside the discussion files.
-  The third, selected by `discussion_producer: twill`, is the single writer that settles its design, forks itself once per lens of the `twill-discussion` fan in `burler.yaml`, writes, marks the record ready, takes the forks' findings in and finalises.
-  The forks wait on `lyx shuttle await`, so their prompt cache stays warm.
+  The third, selected by `discussion_producer: twill`, is the single writer that settles its design, writes and self-checks the record, forks itself once per lens of the `twill-discussion` fan in `burler.yaml`, takes the forks' findings in and finalises.
+  The forks review the record their inherited context holds, without reading it again.
   All seats run as seats of `MultiLLMProducer`, over a table built in Go by `internal/loomengine`'s `DiscussionTable`.
   The chair opens with `contracts/stencils/loom/loom-template-discussion-chair.md`, which includes the discussion stencil whole and adds the advisors section, worded to cover a chair with no advisors too, so an empty `discussion_advisors` runs the chair alone, deciding each question itself; each advisor opens with `contracts/stencils/loom/loom-template-discussion-advisor.md`.
   The row keeps its name, gates and routing whichever producer runs.
   The Planner producer, the same way (`contracts/stencils/loom/loom-template-plan.md`), composed by `internal/loomengine`'s `prompt.go` + `plan.go`.
-  `plan_producer: twill` selects the single plan writer that forks itself once per lens of the `twill-plan` fan in `burler.yaml` after its exploration, writes and self-checks the plan, marks it ready, takes the forks' findings in, records them in `lens-review.md` and rejects a `BLOCKING` or `MEDIUM` finding only with a cited code read.
+  `plan_producer: twill` selects the single plan writer that explores, writes and self-checks the plan, forks itself once per lens of the `twill-plan` fan in `burler.yaml`, takes the forks' findings in, records them in `lens-review.md` and rejects a `BLOCKING` or `MEDIUM` finding only with a cited code read.
   It runs `validate-plan --lens-review` as its last self-check, and its gate refuses Done until `lens-review.md` holds the lens review.
   The row keeps its name, `gates` key and routing while a twill-spawned run's plan gate also requires the lens review.
   See the `internal/loomengine` and `internal/loomcli` package documentation.
