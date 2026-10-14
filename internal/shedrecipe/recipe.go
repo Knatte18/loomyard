@@ -123,9 +123,6 @@ type Env struct {
 	// Its values are already resolved, since the per-perch fallback lives in the caller's config.
 	RowHardMaxBounces map[string]int
 
-	// DiscussionSeats, when true, runs the Discussion-Write row on the DiscussionSeats engine instead of the recipe's DiscussionWrite, read by loomrecipe alone.
-	DiscussionSeats bool
-
 	// ReviewCirclingCheckpoint is the run-wide first round a Bouncer's judge may rule CIRCLING in.
 	// The Bouncer entry requires it positive and passes it to shedadapters.BouncerConfig.CirclingCheckpoint.
 	ReviewCirclingCheckpoint int
@@ -166,14 +163,9 @@ type Env struct {
 	// Now is the injected clock. Nil is legal and defaults to time.Now inside the underlying
 	// constructors.
 	Now func() time.Time
-	// DiscussionSpec is the injected shedadapters.SpecSource the DiscussionWrite entry evaluates
-	// once per Call. It arrives as a closure rather than as recipe Config because building the
-	// Spec needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package
-	// from importing directly. It is named per-producer rather than carried in a generic keyed
-	// map because Env already carries per-producer named fields.
-	DiscussionSpec shedadapters.SpecSource
-	// DiscussionTable is the injected shedadapters.TableSource the DiscussionSeats entry evaluates once per Call.
-	// It arrives as a closure for the same reason DiscussionSpec does: building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly.
+	// DiscussionTable is the injected shedadapters.TableSource the DiscussionWrite entry evaluates once per Call.
+	// It arrives as a closure rather than as recipe Config because building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly.
+	// It is named per-producer rather than carried in a generic keyed map because Env already carries per-producer named fields.
 	DiscussionTable shedadapters.TableSource
 	// CommitDiscussion is the injected closure that commits the discussion output directory,
 	// invoked by the commit decorator of every entry that wraps a discussion producer on a Done outcome.

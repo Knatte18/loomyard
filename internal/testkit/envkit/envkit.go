@@ -242,10 +242,9 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		WebsterRun: func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
 			return websterengine.RunResult{}, nil
 		},
-		WebsterDeps:    shedfake.WebsterSeams(),
-		CommitWebster:  func() error { return nil },
-		Landing:        LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
-		DiscussionSpec: specOver("test discussion prompt", "discussion-output.md"),
+		WebsterDeps:   shedfake.WebsterSeams(),
+		CommitWebster: func() error { return nil },
+		Landing:       LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
 		DiscussionTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "discussion",

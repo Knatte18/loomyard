@@ -24,8 +24,8 @@ import (
 // all, and Loom-Run's own two Config keys (poll_interval_s, poll_attempts) both default, so an
 // empty Config block is legal there too.
 //
-// DiscussionWrite, DiscussionSeats and PlanWrite are three of them: each wraps a producer behind its own commit decorator.
-// Its Spec or table arrives as an injected Env closure (DiscussionSpec, DiscussionTable or PlanSpec) rather than as recipe Config.
+// DiscussionWrite and PlanWrite are two of them: each wraps a producer behind its own commit decorator.
+// Its Spec or table arrives as an injected Env closure (DiscussionTable or PlanSpec) rather than as recipe Config.
 // It therefore has no config keys of its own, and its seams are filled by envkit.FullEnv instead.
 // leadStencilName names the MultiLLM lead's stencil, which includes seat-directive-chair.
 func engineMinimalConfig(stencilName, leadStencilName, rubricStencilName string) map[string]map[string]any {

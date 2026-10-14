@@ -88,7 +88,6 @@ func TestNames(t *testing.T) {
 			"BurlerReview",
 			"DarnWrite",
 			"Describe",
-			"DiscussionSeats",
 			"DiscussionWrite",
 			"Finalize",
 			"FrictionReflect",

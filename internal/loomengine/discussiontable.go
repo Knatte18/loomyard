@@ -1,4 +1,4 @@
-// discussiontable.go implements DiscussionTable, the seat-table Discussion producer's table factory: a pure composer that resolves the chair's and each advisor's model, names the files the seats read and write, and returns the seatengine.Table the DiscussionSeats producer runs.
+// discussiontable.go implements DiscussionTable, the Discussion-Write row's table factory: a pure composer that resolves the lead's and each advisor's model, names the files the seats read and write, and returns the seatengine.Table the row's seat producer runs.
 // It does no spawning, polling or filesystem writing itself.
 
 package loomengine
@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -57,12 +58,13 @@ func resolveModelChoice(raw string, reg modelspec.Registry) (model, effort, vers
 	return resolved.Model, resolved.Params["effort"], resolved.Params["version"], nil
 }
 
-// DiscussionTable builds the seatengine.Table of one seat-table Discussion-Write run: a chair that writes the decision record and the support log, and one advisor per entry of cfg.DiscussionAdvisors that writes its notes file for the chair to read.
+// DiscussionTable builds the seatengine.Table of one Discussion-Write run: a lead that writes the decision record and the support log, and, only when cfg.DiscussionProducer is seats, one advisor per entry of cfg.DiscussionAdvisors that writes its notes file for the lead to read.
+// Under twill the lead alone is authorized to spawn fork subagents and carries the twill lens review directive, whose fan is resolved through burler.yaml under dirs.
 // The seats' opening stencils are read at call time from stencilsDir, and every seat's parent directive is rendered by the seat engine from its geometry.
 // The table carries no gate; the producer entry sets it.
-// An empty cfg.DiscussionAdvisors builds a chair-only table; the chair's prompt covers that case, so the chair decides each question itself.
+// A lead with no advisors decides each question itself, as its prompt says.
 // A PATTERN directive or Tier 2 friction directive that cannot be rendered is left empty, the friction failure logged, and never fails the table.
-func DiscussionTable(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg modelspec.Registry, slug string) (seatengine.Table, error) {
+func DiscussionTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir string, cfg Config, reg modelspec.Registry, slug string) (seatengine.Table, error) {
 	if slug == "" {
 		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: slug must not be empty")
 	}
@@ -88,9 +90,23 @@ func DiscussionTable(layout *lyxcwd.Location, stencilsDir string, cfg Config, re
 		frictionDirective = ""
 	}
 
-	seats := make([]seatengine.Seat, 0, 1+len(cfg.DiscussionAdvisors))
+	twill := cfg.DiscussionProducer == DiscussionProducerTwill
+	var leadValues map[string]string
+	if twill {
+		twillDirective, err := discussionTwillDirective(layout, dirs, stencilsDir)
+		if err != nil {
+			return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: %w", err)
+		}
+		leadValues = map[string]string{twilldirective.MarkerName: setOffParagraph(twillDirective)}
+	}
+
+	var advisorEntries ModelSpecList
+	if cfg.DiscussionProducer == DiscussionProducerSeats {
+		advisorEntries = cfg.DiscussionAdvisors
+	}
+	seats := make([]seatengine.Seat, 0, 1+len(advisorEntries))
 	var notes []string
-	for n, raw := range cfg.DiscussionAdvisors {
+	for n, raw := range advisorEntries {
 		model, effort, version, err := resolveModelChoice(raw, reg)
 		if err != nil {
 			return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: %s entry %d: %w; set the entry to a model-spec the registry defines", discussionAdvisorsKey, n+1, err)
@@ -107,14 +123,16 @@ func DiscussionTable(layout *lyxcwd.Location, stencilsDir string, cfg Config, re
 			Skills:  discussionAdvisorSkills,
 		})
 	}
-	chair := seatengine.Seat{
-		Stencil: discussionChairStencil,
-		Model:   chairModel,
-		Effort:  chairEffort,
-		Version: chairVersion,
-		Inputs:  notes,
-		Outputs: []string{DiscussionDecisionRecord(layout), DiscussionSupportLog(layout)},
-		Skills:  discussionSkills,
+	lead := seatengine.Seat{
+		Stencil:       discussionChairStencil,
+		Model:         chairModel,
+		Effort:        chairEffort,
+		Version:       chairVersion,
+		Inputs:        notes,
+		Outputs:       []string{DiscussionDecisionRecord(layout), DiscussionSupportLog(layout)},
+		Skills:        discussionSkills,
+		Values:        leadValues,
+		ForkSubagents: twill,
 	}
 
 	return seatengine.Table{
@@ -126,11 +144,11 @@ func DiscussionTable(layout *lyxcwd.Location, stencilsDir string, cfg Config, re
 			"slug":                 slug,
 			"decision_record_path": DiscussionDecisionRecord(layout),
 			"support_log_path":     DiscussionSupportLog(layout),
-			"mode_rules":           discussionModeRules(!cfg.DiscussionInteractive, len(cfg.DiscussionAdvisors) > 0),
+			"mode_rules":           discussionModeRules(!cfg.DiscussionInteractive, len(advisorEntries) > 0),
 			"pattern_directive":    patternDirective,
 			friction.MarkerName:    frictionDirective,
 		},
 		Optional: []string{"pattern_directive", friction.MarkerName, twilldirective.MarkerName},
-		Seats:    append([]seatengine.Seat{chair}, seats...),
+		Seats:    append([]seatengine.Seat{lead}, seats...),
 	}, nil
 }

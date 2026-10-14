@@ -14,9 +14,6 @@
 // The loom recipe's landing tail reads `Describe → Merge-In → Merge-Review → Publish → PR-Align → PR-Gate → Finalize`.
 // PR-Align always ends Done, so it carries no on_stuck and sits outside the PR-Review segment; the darn recipe has no PR-Align row.
 //
-// The second value New takes from the env is the Discussion-Write producer: when shedrecipe.Env.DiscussionSeats is true, New runs that row on the DiscussionSeats engine instead of the recipe's DiscussionWrite.
-// The row keeps its name, gates and routing, and Routing never reads the choice.
-//
 // NewDarn is the second builder: it builds the embedded darn recipe, and DarnRouting projects that recipe's routing.
 // Its verify budget is not declared in the recipe: NewDarn stamps shedrecipe.Env.DarnVerifyAttempts, the `verify_attempts` of `darn.yaml`, onto the verify gates of the `Darn-Write` and `Darn-Burler-Fix` rows at every build and refuses a value below 1.
 // Nor is the bounce budget of its Darn-Review perch: NewDarn takes it from shedrecipe.Env.DarnReviewMaxBounces, the `review_max_bounces` of `darn.yaml`, and DarnRouting from its argument, and both set it on the perch's rows and refuse a value below 0.

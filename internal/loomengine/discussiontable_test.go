@@ -12,11 +12,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/twilldirective"
 )
 
 const discussionTableSlug = "add-json-flag"
@@ -43,12 +47,22 @@ func discussionTableGeometry(layout *lyxcwd.Location, stencilsDir string) seaten
 	}
 }
 
-// discussionTableConfig returns a config with the first advisors entries of the two advisor model-specs.
+// discussionTableDirs returns the config geometry the twill fan's burler.yaml is read through for layout.
+func discussionTableDirs(layout *lyxcwd.Location) configengine.Dirs {
+	return configengine.Dirs{Anchor: layout.AnchorPath()}
+}
+
+// discussionTableConfig returns a config with the first advisors entries of the two advisor model-specs, on the seats producer when advisors is positive and the single producer otherwise.
 func discussionTableConfig(advisors int, interactive bool) Config {
+	producer := DiscussionProducerSingle
+	if advisors > 0 {
+		producer = DiscussionProducerSeats
+	}
 	return Config{
 		Discussion:            "opus[effort=high]",
 		DiscussionTimeoutMin:  480,
 		DiscussionInteractive: interactive,
+		DiscussionProducer:    producer,
 		DiscussionAdvisors:    ModelSpecList{"sonnet[low]", "opus[high]"}[:advisors],
 	}
 }
@@ -91,7 +105,7 @@ func TestDiscussionTable(t *testing.T) {
 				stencilsDir := newTestStencilsDir(t)
 				cfg := discussionTableConfig(advisors, interactive)
 
-				table, err := DiscussionTable(layout, stencilsDir, cfg, reg, discussionTableSlug)
+				table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, cfg, reg, discussionTableSlug)
 				if err != nil {
 					t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 				}
@@ -201,7 +215,7 @@ func TestDiscussionTable(t *testing.T) {
 				cfg := discussionTableConfig(1, false)
 				cfg.Friction = tt.friction
 
-				table, err := DiscussionTable(layout, stencilsDir, cfg, reg, discussionTableSlug)
+				table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, cfg, reg, discussionTableSlug)
 				if err != nil {
 					t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 				}
@@ -223,7 +237,7 @@ func TestDiscussionTable(t *testing.T) {
 			t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
 		}
 
-		table, err := DiscussionTable(layout, stencilsDir, discussionTableConfig(1, false), reg, discussionTableSlug)
+		table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableConfig(1, false), reg, discussionTableSlug)
 		if err != nil {
 			t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 		}
@@ -249,7 +263,7 @@ func TestDiscussionTable(t *testing.T) {
 			t.Fatalf("WriteFile(chair stencil) = %v; want nil", err)
 		}
 
-		table, err := DiscussionTable(layout, stencilsDir, discussionTableConfig(1, false), reg, discussionTableSlug)
+		table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableConfig(1, false), reg, discussionTableSlug)
 		if err != nil {
 			t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 		}
@@ -261,23 +275,191 @@ func TestDiscussionTable(t *testing.T) {
 			t.Errorf("chair prompt does not contain the on-disk-edited marker %q; want the edited stencil, not the embedded default", marker)
 		}
 	})
+
+	t.Run("the friction note path reaches the lead prompt", func(t *testing.T) {
+		t.Parallel()
+		layout := discussionTableLayout(t)
+		stencilsDir := newTestStencilsDir(t)
+		cfg := discussionTableConfig(0, false)
+		cfg.Friction = "sonnet[medium]"
+
+		table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, cfg, reg, discussionTableSlug)
+		if err != nil {
+			t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
+		}
+		prompts, err := seatengine.Prompts(discussionTableGeometry(layout, stencilsDir), table)
+		if err != nil {
+			t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)
+		}
+		notePath := friction.NotePath(LoomFrictionDir(layout), "Discussion-Write")
+		if notePath == "" || !strings.Contains(prompts[""], notePath) {
+			t.Errorf("lead prompt does not contain the friction note path %q", notePath)
+		}
+	})
+
+	// advisors configured, so the producers that run no advisors are told apart from the seats producer.
+	producers := []struct {
+		name          string
+		producer      string
+		wantSeats     int
+		wantForks     bool
+		wantDirective bool
+	}{
+		{"single runs the lead alone", DiscussionProducerSingle, 1, false, false},
+		{"twill runs the lead alone with lens forks", DiscussionProducerTwill, 1, true, true},
+		{"seats runs the lead with its advisors", DiscussionProducerSeats, 3, false, false},
+	}
+	for _, tt := range producers {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			layout := discussionTableLayout(t)
+			stencilsDir := newTestStencilsDir(t)
+			cfg := discussionTableConfig(2, false)
+			cfg.DiscussionProducer = tt.producer
+
+			table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, cfg, reg, discussionTableSlug)
+			if err != nil {
+				t.Fatalf("DiscussionTable(producer=%q) = _, %v; want nil error", tt.producer, err)
+			}
+			if len(table.Seats) != tt.wantSeats {
+				t.Fatalf("DiscussionTable(producer=%q) has %d seats; want %d", tt.producer, len(table.Seats), tt.wantSeats)
+			}
+			for index, seat := range table.Seats {
+				wantFork, wantDirective := index == 0 && tt.wantForks, index == 0 && tt.wantDirective
+				if seat.ForkSubagents != wantFork {
+					t.Errorf("seat %d ForkSubagents = %v; want %v", index, seat.ForkSubagents, wantFork)
+				}
+				if _, has := seat.Values[twilldirective.MarkerName]; has != wantDirective {
+					t.Errorf("seat %d carries the twill directive = %v; want %v", index, has, wantDirective)
+				}
+			}
+			prompts, err := seatengine.Prompts(discussionTableGeometry(layout, stencilsDir), table)
+			if err != nil {
+				t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)
+			}
+			if has := strings.Contains(prompts[""], "## Lens review by forks"); has != tt.wantDirective {
+				t.Errorf("lead prompt carries the twill block = %v; want %v", has, tt.wantDirective)
+			}
+		})
+	}
+
+	t.Run("twill lens review", func(t *testing.T) {
+		t.Parallel()
+		templateFan, err := burlerengine.ResolveFan(burlerengine.Config{}, twillFan)
+		if err != nil {
+			t.Fatalf("ResolveFan(zero Config, %q) = _, %v; want nil error", twillFan, err)
+		}
+		tests := []struct {
+			name       string
+			burlerYAML string
+			// defaultYAML, when non-empty, is the burler.yaml of a temp board dir the load is told, so the fan lives only in the repo default.
+			defaultYAML string
+			wantLenses  []string
+		}{
+			{name: "template fan without burler.yaml", wantLenses: lensNames(templateFan)},
+			{name: "burler.yaml redefines the fan", burlerYAML: "fans:\n  twill-discussion: [goal-scope]\n", wantLenses: []string{"goal-scope"}},
+			{name: "the fan lives only in the repo default", defaultYAML: "fans:\n  twill-discussion: [goal-scope]\n", wantLenses: []string{"goal-scope"}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				layout := discussionTableLayout(t)
+				if tt.burlerYAML != "" {
+					writeBurlerYAML(t, layout, tt.burlerYAML)
+				}
+				dirs := discussionTableDirs(layout)
+				if tt.defaultYAML != "" {
+					dirs.Board = t.TempDir()
+					defaultPath := configengine.ConfigFile(dirs.Board, "burler")
+					if err := os.MkdirAll(filepath.Dir(defaultPath), 0o755); err != nil {
+						t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(defaultPath), err)
+					}
+					if err := os.WriteFile(defaultPath, []byte(tt.defaultYAML), 0o644); err != nil {
+						t.Fatalf("WriteFile(%q) = %v; want nil", defaultPath, err)
+					}
+				}
+				stencilsDir := newTestStencilsDir(t)
+				cfg := discussionTableConfig(0, false)
+				cfg.DiscussionProducer = DiscussionProducerTwill
+
+				table, err := DiscussionTable(layout, dirs, stencilsDir, cfg, reg, discussionTableSlug)
+				if err != nil {
+					t.Fatalf("DiscussionTable(twill) = _, %v; want nil error", err)
+				}
+				prompts, err := seatengine.Prompts(discussionTableGeometry(layout, stencilsDir), table)
+				if err != nil {
+					t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)
+				}
+				prompt := prompts[""]
+
+				at := 0
+				for _, lens := range tt.wantLenses {
+					next := strings.Index(prompt[at:], "- "+lens+": ")
+					if next < 0 {
+						t.Fatalf("twill lead prompt lacks lens %q after offset %d; want the lenses %v in order", lens, at, tt.wantLenses)
+					}
+					at += next
+				}
+				if tt.burlerYAML != "" || tt.defaultYAML != "" {
+					for _, dropped := range templateFan {
+						if dropped.Name != "goal-scope" && strings.Contains(prompt, "- "+dropped.Name+": ") {
+							t.Errorf("twill lead prompt carries lens %q; want only the burler.yaml fan %v", dropped.Name, tt.wantLenses)
+						}
+					}
+				}
+
+				for _, want := range []string{
+					stencilstore.Path(stencilsDir, "loom-rubric-discussion-review"),
+					`subagent_type: "fork"`,
+					"runs `lyx loom validate-discussion` per `Step 6` until it passes",
+					"6. Run `lyx loom validate-discussion` again until it passes",
+					"per `Step 5`",
+					"The writer wrote `" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "` and passed its self-check before spawning you.",
+					"Once you have written both output files per Step 5 and `lyx loom validate-discussion` passes per Step 6, run this procedure once, before you end your turn:",
+					"Fix the record, or reject the finding with a one-line reason.",
+					"each with a severity (`BLOCKING`, `MEDIUM` or `LOW`), the section or decision it concerns",
+				} {
+					if !strings.Contains(prompt, want) {
+						t.Errorf("twill lead prompt lacks %q", want)
+					}
+				}
+				if strings.Contains(prompt, "lyx shuttle await") {
+					t.Error("twill lead prompt carries a ready-marker wait; want the forks to wait on nothing")
+				}
+
+				modeRulesAt := strings.Index(prompt, modeRules(true))
+				directiveAt := strings.Index(prompt, "## Lens review by forks")
+				stepFiveAt := strings.Index(prompt, "## Step 5")
+				if modeRulesAt < 0 || directiveAt < modeRulesAt || stepFiveAt < directiveAt {
+					t.Errorf("mode rules at %d, directive at %d, Step 5 at %d; want the directive between the mode rules and Step 5", modeRulesAt, directiveAt, stepFiveAt)
+				}
+				if want := modeRules(true) + "\n\n## Lens review by forks"; !strings.Contains(prompt, want) {
+					t.Errorf("twill lead prompt does not set the directive off as a paragraph after the mode rules")
+				}
+			})
+		}
+	})
 }
 
-// TestDiscussionTable_Refuses verifies DiscussionTable rejects an empty slug, an unreadable designer directive stencil (the first stencil it reads, when PATTERN.md is active), an unparsable chair model, and an advisor entry the registry does not define, naming the key, the index and the way forward.
+// TestDiscussionTable_Refuses verifies DiscussionTable rejects an empty slug, an unreadable designer directive stencil (the first stencil it reads, when PATTERN.md is active), an unparsable chair model, an advisor entry the registry does not define, and, under twill, a burler.yaml that does not parse or a fan that does not resolve, naming the key, the index or the fan and the way forward.
 func TestDiscussionTable_Refuses(t *testing.T) {
 	t.Parallel()
 	reg := discussionTableRegistry(t)
 	tests := []struct {
-		name        string
-		slug        string
-		missingDir  bool
-		mutate      func(*Config)
+		name       string
+		slug       string
+		missingDir bool
+		mutate     func(*Config)
+		// burlerYAML, when non-empty, is planted as the anchor's burler.yaml.
+		burlerYAML  string
 		wantErrHold []string
 	}{
 		{name: "empty slug", slug: "", wantErrHold: []string{"slug must not be empty"}},
 		{name: "missing stencils directory", slug: discussionTableSlug, missingDir: true, wantErrHold: []string{"pattern-directive-designer"}},
 		{name: "unparsable chair model", slug: discussionTableSlug, mutate: func(c *Config) { c.Discussion = "opus[effort" }, wantErrHold: []string{"discussion role model-spec"}},
 		{name: "advisor the registry does not define", slug: discussionTableSlug, mutate: func(c *Config) { c.DiscussionAdvisors = ModelSpecList{"sonnet[low]", "ghost"} }, wantErrHold: []string{"discussion_advisors", "entry 2", "ghost", "set the entry to a model-spec the registry defines"}},
+		{name: "twill burler.yaml does not parse", slug: discussionTableSlug, mutate: func(c *Config) { c.DiscussionProducer = DiscussionProducerTwill }, burlerYAML: "fans: [unterminated\n", wantErrHold: []string{"twill-discussion", "burler.yaml"}},
+		{name: "twill fan names an undefined lens", slug: discussionTableSlug, mutate: func(c *Config) { c.DiscussionProducer = DiscussionProducerTwill }, burlerYAML: "fans:\n  twill-discussion:\n    - no-such-lens\n", wantErrHold: []string{"twill-discussion", "burler.yaml"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -290,12 +472,15 @@ func TestDiscussionTable_Refuses(t *testing.T) {
 					t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
 				}
 			}
+			if tt.burlerYAML != "" {
+				writeBurlerYAML(t, layout, tt.burlerYAML)
+			}
 			cfg := discussionTableConfig(1, false)
 			if tt.mutate != nil {
 				tt.mutate(&cfg)
 			}
 
-			_, err := DiscussionTable(layout, stencilsDir, cfg, reg, tt.slug)
+			_, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, cfg, reg, tt.slug)
 			if err == nil {
 				t.Fatalf("DiscussionTable(slug=%q) = _, nil; want a refusal", tt.slug)
 			}

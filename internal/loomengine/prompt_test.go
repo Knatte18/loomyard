@@ -1,4 +1,4 @@
-// prompt_test.go — untagged Tier-1 unit tests for composePrompt and modeRules.
+// prompt_test.go — untagged Tier-1 unit tests for the friction directive in the plan prompt.
 // Assertions are stable substrings on load-bearing tokens, not full golden-file equality, so the
 // template's prose can evolve without breaking this test.
 // It also declares newTestStencilsDir, the package-local test helper every loomengine test uses to
@@ -41,104 +41,10 @@ func newMinimalStencilsDir(t *testing.T) string {
 	return dir
 }
 
-// TestComposePrompt_RendersMarkers verifies the rendered prompt of each mode has no unrendered markers, contains the slug, the paths and the board-read command, and names no skill (skills load from the spec, not the stencil), that the modes carry different language (and modeRules returns distinct non-empty strings for them), and that the autonomous output and its mode rules name no nonexistent `--auto` flag.
-func TestComposePrompt_RendersMarkers(t *testing.T) {
-	t.Parallel()
-	const (
-		slug               = "add-json-flag"
-		decisionRecordPath = "/hub/repo/_lyx/discussion/decision-record.md"
-		supportLogPath     = "/hub/repo/_lyx/discussion/support-log.md"
-	)
-	stencilsDir := newTestStencilsDir(t)
-	render := func(t *testing.T, autonomous bool) string {
-		t.Helper()
-		got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", "", "", "", autonomous)
-		if err != nil {
-			t.Fatalf("composePrompt(..., autonomous=%v) = _, %v; want nil error", autonomous, err)
-		}
-		return string(got)
-	}
-
-	tests := []struct {
-		name         string
-		autonomous   bool
-		wantLanguage string
-	}{
-		{"Interactive", false, "operator"},
-		{"Autonomous", true, "best-judgment"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			rendered := render(t, tt.autonomous)
-
-			if strings.Contains(rendered, "{{") {
-				t.Errorf("composePrompt(...) output contains an unrendered marker token:\n%s", rendered)
-			}
-			for _, want := range []string{
-				slug,
-				decisionRecordPath,
-				supportLogPath,
-				"lyx board get",
-				"lyx loom validate-discussion",
-				"MUST NOT gather exact signatures",
-				tt.wantLanguage,
-			} {
-				if !strings.Contains(rendered, want) {
-					t.Errorf("composePrompt(..., autonomous=%v) output does not contain %q", tt.autonomous, want)
-				}
-			}
-			for _, skill := range discussionSkills {
-				if strings.Contains(rendered, skill) {
-					t.Errorf("composePrompt(...) output names the skill %q; skills load from the spec, not the stencil", skill)
-				}
-			}
-			if strings.Contains(strings.ToLower(rendered), "twill") {
-				t.Errorf("composePrompt(..., twill directive empty) output carries twill text; want none")
-			}
-			if want := modeRules(tt.autonomous) + "\n\n## Step 5"; !strings.Contains(rendered, want) {
-				t.Errorf("composePrompt(...) output does not hold the mode rules, one blank line, then Step 5")
-			}
-			if want := "- `" + supportLogPath + "`\n\nTwo narrow carve-outs"; !strings.Contains(rendered, want) {
-				t.Errorf("composePrompt(...) output does not hold the support-log bullet, one blank line, then the carve-outs")
-			}
-			if rules := modeRules(tt.autonomous); rules == "" {
-				t.Errorf("modeRules(%v) = \"\"; want non-empty string", tt.autonomous)
-			}
-			if tt.autonomous {
-				if strings.Contains(rendered, "--auto") || strings.Contains(modeRules(true), "--auto") {
-					t.Errorf("autonomous output or modeRules(true) contains %q; want no reference to the nonexistent flag", "--auto")
-				}
-			}
-		})
-	}
-
-	if modeRules(true) == modeRules(false) {
-		t.Error("modeRules(true) == modeRules(false); want distinct strings")
-	}
-	if render(t, true) == render(t, false) {
-		t.Error("composePrompt(autonomous=true) and composePrompt(autonomous=false) rendered identically; want them to differ")
-	}
-
-	t.Run("twill directive lands in a paragraph of its own", func(t *testing.T) {
-		t.Parallel()
-		got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", "", "", "SENTINEL-DIRECTIVE", false)
-		if err != nil {
-			t.Fatalf("composePrompt(sentinel) = _, %v; want nil error", err)
-		}
-		if want := modeRules(false) + "\n\nSENTINEL-DIRECTIVE\n\n## Step 5"; !strings.Contains(string(got), want) {
-			t.Errorf("composePrompt(sentinel) output does not contain %q", want)
-		}
-	})
-}
-
-// TestCompose_FrictionDirective verifies, for the discussion and the plan composer, that a real friction directive resolved via friction.NotePath/friction.Directive exactly as the spec builders resolve one lands its resolved absolute note path verbatim in the prompt (the property that catches a composer wiring the wrong path); that an empty directive (Tier 2 off) over a stencilsDir carrying no friction-directive stencil still renders with no friction content (the composer reads no friction stencil of its own); and that a seeded template whose bytes carry no {{.friction_directive}} literal still composes while Tier 2 is enabled -- the operator-edited-stencil and dev-build case, since internal/stencilstore/reconcile.go never refreshes a StateEdited stencil, so it must degrade to a warning rather than a failed run.
+// TestCompose_FrictionDirective verifies, for the plan composer, that a real friction directive resolved via friction.NotePath/friction.Directive exactly as the spec builders resolve one lands its resolved absolute note path verbatim in the prompt (the property that catches a composer wiring the wrong path); that an empty directive (Tier 2 off) over a stencilsDir carrying no friction-directive stencil still renders with no friction content (the composer reads no friction stencil of its own); and that a seeded template whose bytes carry no {{.friction_directive}} literal still composes while Tier 2 is enabled -- the operator-edited-stencil and dev-build case, since internal/stencilstore/reconcile.go never refreshes a StateEdited stencil, so it must degrade to a warning rather than a failed run.
 func TestCompose_FrictionDirective(t *testing.T) {
 	t.Parallel()
-	const (
-		decisionRecordPath = "/hub/repo/_lyx/discussion/decision-record.md"
-		supportLogPath     = "/hub/repo/_lyx/discussion/support-log.md"
-	)
+	const decisionRecordPath = "/hub/repo/_lyx/discussion/decision-record.md"
 	composers := []struct {
 		name         string
 		producerRow  string
@@ -147,17 +53,6 @@ func TestCompose_FrictionDirective(t *testing.T) {
 		templateBody []byte
 		compose      func(t *testing.T, stencilsDir, frictionDirective string) (string, error)
 	}{
-		{
-			name:         "discussion",
-			producerRow:  "Discussion-Write",
-			role:         friction.RoleInterview,
-			templateFile: "loom-template-discussion.md",
-			templateBody: stencils.LoomTemplateDiscussion,
-			compose: func(t *testing.T, stencilsDir, frictionDirective string) (string, error) {
-				got, err := composePrompt(stencilsDir, "add-json-flag", decisionRecordPath, supportLogPath, "", frictionDirective, "", "", false)
-				return string(got), err
-			},
-		},
 		{
 			name:         "plan",
 			producerRow:  "Plan-Write",

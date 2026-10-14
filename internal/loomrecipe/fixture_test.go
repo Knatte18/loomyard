@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -185,9 +186,8 @@ func (f *fakeWebsterRun) run(deps websterengine.RunDeps, _ websterengine.RunOpti
 	return websterengine.RunResult{Outcome: "done"}, nil
 }
 
-// newLoomShuttle returns the shedfake.Shuttle serving row 3 (Discussion-Write), row 6 (Plan-Write),
-// and all three segments' Bouncer rows' spawn roles: shedrecipe.Env carries one Shuttle field, not
-// one per row, so this single fake serves all of them, and its RunFn branches on the Spec's own Role.
+// newLoomShuttle returns the shedfake.Shuttle serving row 6 (Plan-Write), the Describe row and all three segments' Bouncer rows' spawn roles:
+// shedrecipe.Env carries one Shuttle field, not one per row, so this single fake serves all of them, and its RunFn branches on the Spec's own Role.
 // On spec.Role == "plan" it writes the whole plan-directory fixture -- writePlanFixture(planDir, false) -- rather than only spec.OutputFiles, because loomshed.NewPlanWrite's rotation archives every top-level .md file in the plan directory (including the card file seedPlanFixture pre-wrote) before the shuttle runs,
 // so writing only the overview would leave the Card Index naming a card file that no longer exists and Plan-Write's own gate would fail.
 // The overview it writes is unapproved, mirroring the plan stencil's own "you never self-approve" rule: the real Plan-Write producer can never emit an approved plan,
@@ -210,26 +210,14 @@ func newLoomShuttle(planDir string, writeOutputs bool) *shedfake.Shuttle {
 	}
 }
 
-// newLoomSeats returns the shedfake.SeatRunner serving the Discussion-Write row when it runs on the seat engine.
-// Its RunFn writes the chair's outputs with the fixture's valid discussion content when writeOutputs is true and reports a done chair carrying no GateOutcome, so the fake evaluates the table's own gate once.
-func newLoomSeats(writeOutputs bool) *shedfake.SeatRunner {
+// newLoomSeats returns the shedfake.SeatRunner serving the Discussion-Write row, which runs on the seat engine.
+// Its RunFn writes the lead's outputs as writeLoomOutputs does for the table's role prefix and reports a done lead carrying no GateOutcome, so the fake evaluates the table's own gate once.
+func newLoomSeats(planDir string, writeOutputs bool) *shedfake.SeatRunner {
 	return &shedfake.SeatRunner{
 		RunFn: func(table seatengine.Table) (seatengine.Result, error) {
 			outputs := table.Chair().Outputs
-			if writeOutputs {
-				contents := []string{validDecisionRecord, "support log"}
-				for i, path := range outputs {
-					if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-						return seatengine.Result{}, fmt.Errorf("loom seats: mkdir %s: %w", filepath.Dir(path), err)
-					}
-					content := ""
-					if i < len(contents) {
-						content = contents[i]
-					}
-					if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-						return seatengine.Result{}, fmt.Errorf("loom seats: write %s: %w", path, err)
-					}
-				}
+			if err := writeLoomOutputs(planDir, writeOutputs, table.RolePrefix, outputs); err != nil {
+				return seatengine.Result{}, fmt.Errorf("loom seats: %w", err)
 			}
 			return seatengine.Result{
 				Chair:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
@@ -239,48 +227,69 @@ func newLoomSeats(writeOutputs bool) *shedfake.SeatRunner {
 	}
 }
 
+// countSeatRole reports how many of seats' Run calls carried a table with the role prefix prefix.
+func countSeatRole(seats *shedfake.SeatRunner, prefix string) int {
+	count := 0
+	for _, table := range seats.GotTables {
+		if table.RolePrefix == prefix {
+			count++
+		}
+	}
+	return count
+}
+
 // runLoomShuttle is newLoomShuttle's per-role dispatch.
 func runLoomShuttle(planDir string, writeOutputs bool, spec shuttleengine.Spec) (shuttleengine.Result, error) {
-	switch spec.Role {
+	if spec.Role == "bouncer-judge" {
+		return writeBouncerJudge(spec, "CONVERGED")
+	}
+	if err := writeLoomOutputs(planDir, writeOutputs, spec.Role, spec.OutputFiles); err != nil {
+		return shuttleengine.Result{}, fmt.Errorf("loom shuttle: %w", err)
+	}
+	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
+}
+
+// writeLoomOutputs writes the files a fake writer of the given role leaves behind, so both the shuttle and the seat runner serve one set of row fixtures.
+// Role "plan" writes the whole plan directory under planDir, role "describe" writes a valid change description to each output, and any other role writes the valid discussion content to outputs when writeOutputs is true.
+func writeLoomOutputs(planDir string, writeOutputs bool, role string, outputs []string) error {
+	switch role {
 	case "plan":
 		if err := writePlanFixture(planDir, false); err != nil {
-			return shuttleengine.Result{}, fmt.Errorf("loom shuttle: write plan fixture %s: %w", planDir, err)
+			return fmt.Errorf("write plan fixture %s: %w", planDir, err)
 		}
-		return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
+		return nil
 
 	case "describe":
 		// A valid change description: a "# title" heading and a non-empty body, no trailer line,
 		// so the description gate passes.
-		for _, path := range spec.OutputFiles {
+		for _, path := range outputs {
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-				return shuttleengine.Result{}, fmt.Errorf("loom shuttle: mkdir %s: %w", filepath.Dir(path), err)
+				return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
 			}
 			if err := os.WriteFile(path, []byte("# Fixture change\n\nFixture description body.\n"), 0o644); err != nil {
-				return shuttleengine.Result{}, fmt.Errorf("loom shuttle: write description %s: %w", path, err)
+				return fmt.Errorf("write description %s: %w", path, err)
 			}
 		}
-		return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
-
-	case "bouncer-judge":
-		return writeBouncerJudge(spec, "CONVERGED")
+		return nil
 	}
 
-	if writeOutputs {
-		contents := []string{validDecisionRecord, "support log"}
-		for i, path := range spec.OutputFiles {
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-				return shuttleengine.Result{}, fmt.Errorf("loom shuttle: mkdir %s: %w", filepath.Dir(path), err)
-			}
-			content := ""
-			if i < len(contents) {
-				content = contents[i]
-			}
-			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-				return shuttleengine.Result{}, fmt.Errorf("loom shuttle: write %s: %w", path, err)
-			}
+	if !writeOutputs {
+		return nil
+	}
+	contents := []string{validDecisionRecord, "support log"}
+	for i, path := range outputs {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
+		}
+		content := ""
+		if i < len(contents) {
+			content = contents[i]
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			return fmt.Errorf("write %s: %w", path, err)
 		}
 	}
-	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
+	return nil
 }
 
 // writeBouncerJudge writes the three files spec.OutputFiles names, in shedadapters' own fixed
@@ -410,15 +419,10 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 // Driving their merge logic for real needs a genuine two-worktree pair and therefore git, which this package's untagged tier stays out of.
 // The real thing is covered by an integration tier instead.
 //
-// Row 3 (Discussion-Write) is no longer skipped over by a Stub: it now runs a real
-// shedadapters.SingleLLMProducer behind loomshed's commit decorator. env.Shuttle is a
-// newLoomShuttle writing its outputs, env.DiscussionSpec is a closure returning a Spec whose
-// OutputFiles is the same [decisionRecordPath, supportLogPath] pair this fixture already computes
-// above, and env.CommitDiscussion keeps FullEnv's no-op, which a test that counts commits wraps.
-// The fake shuttle writing both output files on every Run is what keeps Discussion-Write's own gate
-// passing here: shedadapters.archiveStaleOutputs renames the fixture's own pre-written files away
-// on every Call, so without the fake rewriting them the clean sequence run would find both files
-// absent.
+// Row 3 (Discussion-Write) is no longer skipped over by a Stub: it now runs a real shedadapters.MultiLLMProducer behind loomshed's commit decorator.
+// env.Seats is a newLoomSeats writing its outputs, env.DiscussionTable is a closure returning a one-lead table whose outputs are the same [decisionRecordPath, supportLogPath] pair this fixture already computes above, and env.CommitDiscussion keeps FullEnv's no-op, which a test that counts commits wraps.
+// The fake seat runner writing both output files on every Run is what keeps Discussion-Write's own gate passing here:
+// shedadapters.archiveStaleOutputs renames the fixture's own pre-written files away on every Call, so without the fake rewriting them the clean sequence run would find both files absent.
 //
 // Row 6 (Plan-Write) is likewise a real shedadapters.SingleLLMProducer behind loomshed's rotate-and-commit decorator.
 // The same loom shuttle serves this row too: its planDir is the same _lyx/plan expression seedPlanFixture already builds,
@@ -494,12 +498,15 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 	env.SpecsDir = specsDir
 	env.Burler = newLoomBurler(t)
 	env.Now = func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }
-	env.DiscussionSpec = func() (shuttleengine.Spec, error) {
-		return shuttleengine.Spec{
-			Prompt:      "discussion prompt",
-			OutputFiles: []string{decisionRecordPath, supportLogPath},
-			Interactive: false,
-			Role:        "discussion",
+	env.Seats = newLoomSeats(planDir, true)
+	env.DiscussionTable = func() (seatengine.Table, error) {
+		return seatengine.Table{
+			RolePrefix: "discussion",
+			Segment:    segmentcolor.Discussion,
+			Seats: []seatengine.Seat{{
+				Stencil: "loom-template-discussion-chair",
+				Outputs: []string{decisionRecordPath, supportLogPath},
+			}},
 		}, nil
 	}
 	env.DescriptionPath = descriptionPath

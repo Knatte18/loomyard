@@ -674,19 +674,12 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			Slug:         reedGeom.NameSlug,
 		}),
 		Models: registry,
-		// DiscussionSpec is evaluated per Call, not resolved here, so the stencil is read at call
-		// time -- what the Stencil Ownership Invariant requires. autonomous is now
-		// !loomCfg.DiscussionInteractive, read fresh on every wire() call. Nothing compares it
-		// against the mode a live run was started with: the resume decision is made purely on
-		// live-agent evidence, so flipping the key between a crash and a resume is permitted and
-		// benign -- it means only that the next spawn is interviewed differently.
-		DiscussionSpec: func() (shuttleengine.Spec, error) {
-			return loomengine.DiscussionSpec(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, c.parentName, loomCfg, registry, seedSlug(location.WorktreeName), !loomCfg.DiscussionInteractive)
-		},
-		// DiscussionTable is evaluated per Call for the same stencil-ownership reason as DiscussionSpec.
-		// It is wired whatever discussion_producer holds; only a row built on DiscussionSeats evaluates it.
+		// DiscussionTable is evaluated per Call, not resolved here, so the stencils are read at call time -- what the Stencil Ownership Invariant requires.
+		// The lead's interactivity is loomCfg.DiscussionInteractive, read fresh on every wire() call.
+		// Nothing compares it against the mode a live run was started with:
+		// the resume decision is made purely on live-agent evidence, so flipping the key between a crash and a resume is permitted and benign -- it means only that the next spawn is interviewed differently.
 		DiscussionTable: func() (seatengine.Table, error) {
-			return loomengine.DiscussionTable(location, websterGeom.StencilsDir, loomCfg, registry, seedSlug(location.WorktreeName))
+			return loomengine.DiscussionTable(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, loomCfg, registry, seedSlug(location.WorktreeName))
 		},
 		// CommitDiscussion mirrors the seed commit start.go already performs, including its
 		// NewMutations("") record and its EnvSyncOptions(). The pathspec is the whole discussion
@@ -749,7 +742,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			return err
 		},
 		// PlanSpec is evaluated per Call, not resolved here, so the stencil is read at call time --
-		// what the Stencil Ownership Invariant requires. Unlike DiscussionSpec beside it, PlanSpec
+		// what the Stencil Ownership Invariant requires. PlanSpec
 		// takes no autonomous argument: the Plan producer is autonomous by design and hard-codes
 		// Interactive: false internally.
 		PlanSpec: func() (shuttleengine.Spec, error) {
@@ -816,7 +809,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		Rework: reworkDeps,
 		// StencilsDir, SpecsDir, RunRoot, Burler, and Now are filled for both review segments.
 		// That is the Discussion-Bouncer and Discussion-Burler-* rows and the Plan-Bouncer and Plan-Burler-* rows alike.
-		// StencilsDir and SpecsDir are websterGeom.StencilsDir and websterGeom.SpecsDir, the same values the DiscussionSpec and PlanSpec closures above already capture directly.
+		// StencilsDir and SpecsDir are websterGeom.StencilsDir and websterGeom.SpecsDir, the same values the DiscussionTable and PlanSpec closures above already capture directly.
 		// So each is one value read from one place, not a second copy that could drift from theirs.
 		// Now is filled explicitly with time.Now rather than left nil, even though nil defaults to time.Now inside the underlying constructors.
 		// The Bouncer's archive-filename collision suffix is the one place a test wants to inject a clock.
@@ -837,7 +830,6 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		RowMaxBounces:            perchMaxBounces(loomCfg),
 		RowAutoAccept:            perchAutoAccept(loomCfg),
 		RowHardMaxBounces:        perchHardMaxBounces(loomCfg),
-		DiscussionSeats:          loomCfg.DiscussionProducer == loomengine.DiscussionProducerSeats,
 		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
 
 		ReviewModels:  reviewSettings.Models,
