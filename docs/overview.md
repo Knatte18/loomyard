@@ -291,6 +291,8 @@ github.com/Knatte18/loomyard/
 ├── internal/parentlock/          the per-branch parent lock: one record valid while its owner process lives, a ticket queue and compare-and-release
 ├── internal/tendercli/           the `lyx tender` commands (`pause`, `resume`, `revive` and `status`) and the network gate every lyx process in a hub runs under
 ├── internal/tenderengine/        the pause, resume, revive and status sequences over seams: the entry, the grace, the Esc, the resume line and the revive line
+├── internal/hibernatecli/        the `lyx hibernate` commands (`request`, `cancel`, `status` and the hidden `watch`), their hub wiring and the daemon and `systemctl` spawns
+├── internal/hibernateengine/     the hibernate request file and the submit, cancel, status and daemon sequences over seams
 ├── internal/output/              shared JSON output
 ├── internal/modelspec/           model-spec parser + models.yaml registry leaf
 ├── internal/pattern/             PATTERN directive leaf (root PATTERN.md inlined per role) + format checker
@@ -410,6 +412,13 @@ User-facing modules each get one `lyx <module>` namespace:
   An agent may pause, resume or revive only its own pair; the orchestrator and an external caller may do each for the hub or any pair.
   Every lyx process in a hub runs its network git and GitHub calls under a gate that waits while a pause covers it, and every reader that reacts to an unexpected stop or to idle time consults the record (`internal/pauserecord`).
   ✅ Implemented. See the `internal/tenderengine` and `internal/tendercli` package documentation.
+- **hibernate** — a queued hibernate of the machine that lyx's own Go code carries out once every session in the hub is safely paused, so no LLM session runs it (`internal/hibernatecli` + `internal/hibernateengine`; `lyx hibernate request [--after <slug>] [--after-all]`, `lyx hibernate cancel` and `lyx hibernate status`, from any worktree of the hub; Linux only).
+  `request` records the hub's one request and spawns a detached daemon, the hidden `lyx hibernate watch`, then returns; the trigger is at once, the end of one batten run's Land row, or no batten run in flight.
+  The daemon waits for its trigger, pauses the hub through tender's engine, confirms every session paused, hibernates the machine, detects the wake and lifts its own pause entry by identity, then queues a notice for the orch when it is done or failed.
+  `cancel` ends the request, stops the daemon and lifts the entry, and is refused while the machine is going into hibernation; `status` changes nothing and any caller may run it.
+  Only the orch or an external caller may request or cancel; an agent asks its parent session.
+  Bounds: the daemon waits a fixed window for the pause to confirm and for the wake, and fails the request, leaving its reason in the file, when either runs out.
+  ✅ Implemented. See the `internal/hibernateengine` and `internal/hibernatecli` package documentation.
 - **gate** — the one sanctioned route for an agent's slotted `go test`: it waits for a free slot of the hub-wide gate pool, runs `go test` inside it under the slot's `-p` cap and exits with go's code, or with 75 when the hub stays busy past `cli_wait_sec` (`internal/gatecli`; `lyx gate test [-C <dir>] [--tags <tags>] <packages...> [-- <go test flags>]`). A run inside a slot an enclosing gate run holds takes no second one, and a target outside every hub runs unslotted. A Go test binary that keeps a core busy past `busy_quit_sec` gets one SIGQUIT, so its goroutine stacks reach the log long before go test's own timeout. ✅ Implemented. See the `internal/gatecli` package documentation.
 - **quarry** — the planner's only source of glyph spellings: four read-only repository queries over the current worktree's own glyph alphabet, each delegating to a `planglyph` wrapper and emitting quarry's own rendering verbatim, with no repository-path flag on any of them (`internal/quarrycli`; `lyx quarry toc|glyphs|resolve|expand`).
   `toc` answers a table-of-contents query for a path;
