@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/contracts/specs"
 	"github.com/Knatte18/loomyard/internal/gatecli"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -102,7 +103,10 @@ var attackSurfaceClaims = []claim{
 	{must: "what bounds it", why: "attack-surface question asks what bounds it"},
 }
 
-const discussionFenceSection = "## What you may write"
+const (
+	discussionFenceSection    = "## What you may write"
+	discussionStepFiveSection = "## Step 5 — Write the two output files"
+)
 
 var wordingClaims = []stencilClaims{
 	{"loom-rubric-discussion-review.md", LoomRubricDiscussionReview, append([]claim{
@@ -274,7 +278,7 @@ var wordingClaims = []stencilClaims{
 		{must: "Never copy `00-overview.md` from the archive", why: "the archived overview is never copied"},
 		{must: "`approved: false`", why: "the rewritten overview is unapproved"},
 	}},
-	{"loom-template-discussion.md", LoomTemplateDiscussion, append([]claim{
+	{"loom-template-discussion.md", LoomTemplateDiscussion, []claim{
 		{must: "read-only to you", why: "observed live: the Discussion writer rewrote _lyx/config/loom.yaml mid-run and flipped discussion_interactive, so the default is read-only"},
 		{must: "`_lyx/config/`", why: "observed live: the driver's own config is fenced"},
 		{must: "lyx config reconcile --apply", why: "observed live: reconcile --apply counts as an edit of the fenced config"},
@@ -282,7 +286,8 @@ var wordingClaims = []stencilClaims{
 		{must: "`_lyx/plan/`", why: "a later phase's artifact is fenced"},
 		{must: "no `git add`", why: "mutating git is fenced"},
 		{must: "do not repair it", why: "a broken environment is reported, never repaired"},
-		{must: "not a test to write", why: "a must-cover scenario is a behavior, which an existing test or table row may meet"},
+		{must: "{{.specs_dir}}/loom/loom-discussion-spec.md", section: discussionStepFiveSection, why: "Step 5 points at the deployed spec for the record format"},
+		{mustNot: "## Auto-mode assumptions", why: "the stencil restates none of the record format; the spec holds it"},
 		{must: "lyx board list", why: "Step 1 reads the wider board"},
 		{must: "{{.decision_record_path}}", section: discussionFenceSection, why: "the fence names the output files by marker, so the permitted set cannot drift from the paths Step 5 writes"},
 		{must: "{{.support_log_path}}", section: discussionFenceSection, why: "the fence names the output files by marker, so the permitted set cannot drift from the paths Step 5 writes"},
@@ -291,7 +296,19 @@ var wordingClaims = []stencilClaims{
 		{must: "**A keep-alive prompt** asks only that you end your turn", section: "## Messages the gate may send after you end your turn", why: "the messages section names the keep-alive, which changes nothing"},
 		{must: "{{.twill_directive}}", section: "## Step 4 — How to get answers", why: "the twill lens review sits with the answer-gathering step, ahead of the files Step 5 writes"},
 		{must: "{{.twill_write_scope}}", section: discussionFenceSection, why: "the ready marker joins the write scope inside the fence"},
-	}, attackSurfaceClaims...)},
+	}},
+	{"loom-discussion-spec.md", specs.LoomDiscussionSpec, joinClaims(
+		wantAll("the spec carries the decision record's required sections",
+			"## Goal", "## Scope", "## Decisions", "## Constraints", "## Auto-mode assumptions", "## Open risks", "## Acceptance criteria", "## Notes for the plan writer"),
+		wantAll("the spec carries the support log's required sections",
+			"## Interview", "## Rejected alternatives", "## Review rounds", "## Question ledger"),
+		wantAll("the spec carries the format rules the stencil no longer restates",
+			"_No rounds yet._",
+			"not a test to write",
+			"Added after Discussion",
+			"lyx loom decision add"),
+		attackSurfaceClaims,
+	)},
 	{"loom-template-parent-review-brief.md", LoomTemplateParentReviewBrief, []claim{
 		{must: "send the writer no message, neither an acknowledgement nor a reply to its notice", section: "## Submit the verdict", why: "D4: a reply starts a writer turn the wait loop did not start"},
 	}},
