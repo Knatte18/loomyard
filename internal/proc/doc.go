@@ -5,5 +5,6 @@
 //
 // TreeCPU samples the user plus system CPU time of a process and each of its descendants.
 // IsAncestor reports whether a pid is one of the calling process's ancestors.
-// Both read /proc, so they work on Linux only: on Windows TreeCPU returns errors.ErrUnsupported and IsAncestor is false.
+// ListProcesses lists every process with its start time, exe and cwd links and command line.
+// All three read /proc, so they work on Linux only: on Windows TreeCPU and ListProcesses return errors.ErrUnsupported and IsAncestor is false.
 package proc
