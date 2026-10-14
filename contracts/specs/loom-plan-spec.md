@@ -128,6 +128,7 @@ A symbol no card in the plan touches needs no edge — its state never changes d
 | Custom | either | none — explicit escape hatch | as applicable |
 
 How cards group into execution batches is not a card property; `internal/batcher`'s package doc describes it.
+A card that renames or deletes what an earlier card targets never shares that card's batch.
 
 `ImpactSummary` is required for `Edit` and `Delete` only — a `Create` card has no existing callers to have a blast radius over, which is why this spec resolves the design doc's table in favour of the design doc's own prose rather than its table row, a drafting slip the doc's prose does not carry.
 

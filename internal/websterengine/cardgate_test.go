@@ -4,9 +4,13 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
 func writeGateFile(t *testing.T, root, rel string) {
@@ -255,5 +259,51 @@ func TestRenderBatchGate(t *testing.T) {
 				t.Errorf("renderBatchGate() =\n%s\nwant\n%s", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestRenameBoundary_BatchesCheckAndGateTheirOwnTree runs the shape a rename-after-create plan has end to end:
+// the cost batchifier splits before the rename, and each batch's done-checks and batch gate read a tree that still holds its own cards' targets.
+func TestRenameBoundary_BatchesCheckAndGateTheirOwnTree(t *testing.T) {
+	t.Parallel()
+
+	plan := &planparser.Plan{Language: "go"}
+	cards := []planparser.Card{
+		numberedGateCard(1, planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"plan:internal/a#Foo"}}),
+		numberedGateCard(2, planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"plan:internal/a#Bar"}}),
+		numberedGateCard(3, planparser.TargetGroup{
+			Type:  planparser.CardTypeRename,
+			Refs:  []string{"internal/a/a.go#", "internal/n/a.go#"},
+			Pairs: []planparser.MovePair{{Old: "internal/a/a.go#", New: "internal/n/a.go#"}},
+		}),
+	}
+	const source = "package a\n\nfunc Foo() {}\n\nfunc Bar() {}\n"
+	firstTree := plankit.Repo(t, map[string]string{"internal/a/a.go": source})
+	secondTree := plankit.Repo(t, map[string]string{"internal/n/a.go": source})
+
+	weights := batcher.Weights{Orientation: 1, ForkMessages: 1, MessageContext: 1, TargetMessages: 1, ContextPerLine: 1}
+	costBatcher := batcher.NewCost("test", batcher.CostParams{Budget: 1e9, MaxCards: 5, Weights: weights})
+	batches, err := costBatcher.Batch(plan, cards, batcher.DiskSizes(firstTree), 0, batcher.StartBase{})
+	if err != nil {
+		t.Fatalf("Batch: %v", err)
+	}
+	if len(batches) != 2 || len(batches[0].Cards) != 2 || len(batches[1].Cards) != 1 {
+		t.Fatalf("batch sizes = %d batches; want [2 1]", len(batches))
+	}
+
+	for i, tree := range []struct{ root, wantPackage string }{
+		{firstTree, "./internal/a"},
+		{secondTree, "./internal/n"},
+	} {
+		findings, err := planglyph.DoneChecks(plan, batches[i].Cards, tree.root)
+		if err != nil {
+			t.Fatalf("batch %d: DoneChecks: %v", i+1, err)
+		}
+		if len(findings) != 0 {
+			t.Errorf("batch %d: DoneChecks = %+v; want no finding", i+1, findings)
+		}
+		if gate := renderBatchGate(plan, batches[i].Cards, tree.root); !strings.Contains(gate, tree.wantPackage) {
+			t.Errorf("batch %d: renderBatchGate() = %q; want it to name %s", i+1, gate, tree.wantPackage)
+		}
 	}
 }
