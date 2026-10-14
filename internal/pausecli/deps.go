@@ -87,6 +87,19 @@ func hubDeps(location *lyxcwd.Location, strand string) (pauseengine.Deps, []stri
 		Processes:  proc.ListProcesses,
 		HubPath:    location.HubPath,
 		Executable: executable,
+		OrchStrand: func() (string, error) {
+			if prime == nil {
+				return "", nil
+			}
+			orchState, err := orchengine.LoadState(orchcli.PrimePaths(prime))
+			return orchState.Strand, err
+		},
+		QueueOrchRevive: func(line string) (bool, error) {
+			if prime == nil {
+				return false, nil
+			}
+			return orchengine.QueueConditionalNotice(orchcli.PrimePaths(prime), line, orchengine.NoticeCondition{State: shuttleengine.SessionIdleStalled, Cause: shuttleengine.SessionCauseAPIError}, time.Now())
+		},
 		NetOps: func() ([]pauserecord.NetOp, error) {
 			return pauserecord.ListNetOps(geometry.RecordPath, parentlock.ProcessAlive)
 		},
@@ -232,6 +245,11 @@ func (p shuttlePair) Interrupt(guid string) error { return p.runner.Interrupt(gu
 
 // Send types text through the runner's guarded paste-submit.
 func (p shuttlePair) Send(guid, text string) error { return p.runner.Send(guid, text) }
+
+// SendConditioned types text through the runner's conditioned send, which refuses at once unless the session reads want.
+func (p shuttlePair) SendConditioned(guid, text string, want shuttleengine.SendCondition) (bool, error) {
+	return p.runner.SendConditioned(guid, text, want)
+}
 
 // Running reports the pair's loom run's current producer and whether its status file reads running.
 func (p shuttlePair) Running() (string, bool, error) {

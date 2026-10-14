@@ -1,4 +1,4 @@
-// report.go declares the seams the pause, resume and status sequences read through and the reports they return, with the holds report shared by pause and status.
+// report.go declares the seams the pause, resume, revive and status sequences read through and the reports they return, with the holds report shared by pause and status.
 
 package pauseengine
 
@@ -45,6 +45,9 @@ type Pair interface {
 	Interrupt(guid string) error
 	// Send types text into the session through the guarded paste-submit.
 	Send(guid, text string) error
+	// SendConditioned types text into the session only while one ready reading shows it in the state want names, and reports whether a turn start followed.
+	// It fails with shuttleengine.ErrSendConditionUnmet when the session reads another state and with shuttleengine.ErrSubmissionNotLanded when the text did not land.
+	SendConditioned(guid, text string, want shuttleengine.SendCondition) (turnStarted bool, err error)
 	// Running reports the pair's current producer and whether its run reads running.
 	Running() (producer string, running bool, err error)
 }
@@ -69,6 +72,10 @@ type Deps struct {
 	Locks func() ([]parentlock.Entry, error)
 	// OrchWatcherLive reports whether an orch watcher is running.
 	OrchWatcherLive func() bool
+	// OrchStrand is the orch strand recorded in the prime's orch state, empty when none.
+	OrchStrand func() (string, error)
+	// QueueOrchRevive queues the orch's conditioned notice carrying line, and returns false when one is already queued.
+	QueueOrchRevive func(line string) (queued bool, err error)
 	// Caller is the caller's strand name, empty for an external caller.
 	Caller string
 	// Now is the clock.

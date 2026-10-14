@@ -329,6 +329,7 @@ Does `lyx cleanup` run from a task worktree instead refuse, name the prime workt
 Does `lyx tender status` list the one live entry and change nothing?
 While the pause stands, does `lyx board` print one line that names the pause and the `lyx resume` that lifts it, and then continue only after the resume?
 Does `lyx resume` lift the entry, and does a second `lyx resume` report nothing resumed?
+Does `lyx tender revive` with nothing stalled print an empty report and succeed?
 Does `lyx pause no-such-slug` refuse and list the slugs that have a pair, and does `lyx pause --grace 61` refuse and name the range 0 to 60?
 
 **Verdict:** `OK` / `WARN` / `FAIL`

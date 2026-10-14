@@ -42,6 +42,11 @@ type fakePair struct {
 	states map[string]shuttleengine.SessionState
 	// stateErr fails State for a key present.
 	stateErr map[string]error
+	// conditionedErr fails SendConditioned for a key present, and noTurnStart makes it land with no turn start seen.
+	conditionedErr map[string]error
+	noTurnStart    map[string]bool
+	// onConditioned runs inside SendConditioned before it returns, outside the lock.
+	onConditioned func(guid string)
 	// settle is the InterruptSettle answer.
 	settle   time.Duration
 	producer string
@@ -53,7 +58,9 @@ type fakePair struct {
 
 	interrupts []string
 	sends      []string
-	paneReads  int
+	// conditioned holds the guids SendConditioned sent the revive line to.
+	conditioned []string
+	paneReads   int
 }
 
 // newPair builds a pair with one session per strand name, whose guid is "g-" and the name, and a 2 s interrupt settle.
@@ -61,7 +68,7 @@ func newPair(slug string, strands ...string) *fakePair {
 	p := &fakePair{
 		slug: slug, busy: map[string][]bool{}, dead: map[string]bool{}, interruptErrs: map[string][]error{}, sendErr: map[string]error{},
 		background: map[string][]string{}, backgroundErr: map[string]error{}, paneErr: map[string]error{}, paneRunning: map[string]bool{},
-		states: map[string]shuttleengine.SessionState{}, stateErr: map[string]error{},
+		states: map[string]shuttleengine.SessionState{}, stateErr: map[string]error{}, conditionedErr: map[string]error{}, noTurnStart: map[string]bool{},
 		settle: 2 * time.Second,
 	}
 	for _, strand := range strands {
@@ -150,6 +157,21 @@ func (p *fakePair) Send(guid, text string) error {
 	return nil
 }
 
+func (p *fakePair) SendConditioned(guid, text string, want shuttleengine.SendCondition) (bool, error) {
+	p.mu.Lock()
+	err, noTurnStart, hook := p.conditionedErr[guid], p.noTurnStart[guid], p.onConditioned
+	if text != ReviveLine {
+		err = fmt.Errorf("sent %q; want the revive line", text)
+	} else {
+		p.conditioned = append(p.conditioned, guid)
+	}
+	p.mu.Unlock()
+	if hook != nil {
+		hook(guid)
+	}
+	return err == nil && !noTurnStart, err
+}
+
 // fakeClock is a clock whose Sleep advances it at once.
 type fakeClock struct {
 	mu      sync.Mutex
@@ -198,6 +220,10 @@ type env struct {
 	processErr error
 	hubPath    string
 	executable string
+	// orchStrand is the orch strand the prime's state records; orchQueued holds each notice the queue accepted, and orchAlreadyQueued makes it refuse as a duplicate.
+	orchStrand        string
+	orchQueued        []string
+	orchAlreadyQueued bool
 }
 
 func newEnv(t *testing.T, pairs ...*fakePair) *env {
@@ -211,11 +237,19 @@ func (e *env) deps() Deps {
 		pairs = append(pairs, p)
 	}
 	deps := Deps{
-		RecordPath:      e.path,
-		Pairs:           pairs,
-		Processes:       func() ([]proc.Process, error) { return e.processes, e.processErr },
-		HubPath:         e.hubPath,
-		Executable:      e.executable,
+		RecordPath: e.path,
+		Pairs:      pairs,
+		Processes:  func() ([]proc.Process, error) { return e.processes, e.processErr },
+		HubPath:    e.hubPath,
+		Executable: e.executable,
+		OrchStrand: func() (string, error) { return e.orchStrand, nil },
+		QueueOrchRevive: func(line string) (bool, error) {
+			if e.orchAlreadyQueued {
+				return false, nil
+			}
+			e.orchQueued = append(e.orchQueued, line)
+			return true, nil
+		},
 		NetOps:          func() ([]pauserecord.NetOp, error) { return e.netOps, nil },
 		Locks:           func() ([]parentlock.Entry, error) { return e.locks, nil },
 		OrchWatcherLive: func() bool { return e.watcherLive },

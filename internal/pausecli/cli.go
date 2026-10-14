@@ -51,26 +51,27 @@ func callerOf(strand string) caller {
 	return caller{agent: true, slug: name.Slug}
 }
 
-// refuseCaller refuses an agent's hub-wide pause or resume, and either naming a slug other than its own pair's.
+// refuseCaller refuses an agent's hub-wide pause, resume or revive, and any of them naming a slug other than its own pair's.
 // The orch and an external caller are never refused.
 func refuseCaller(c caller, slug string) error {
 	if !c.agent || (slug != "" && slug == c.slug) {
 		return nil
 	}
-	return errors.New(`pause: an agent may pause or resume only its own pair; way forward: ask your parent session, which runs "lyx pause" or "lyx resume" for you`)
+	return errors.New(`pause: an agent may pause, resume or revive only its own pair; way forward: ask your parent session, which runs "lyx pause", "lyx resume" or "lyx tender revive" for you`)
 }
 
 // Command returns the cobra command for `lyx tender`: the bare group and its pause, resume and status verbs.
 func Command() *cobra.Command {
 	tender := &cobra.Command{
 		Use:   "tender",
-		Short: "hub-wide control over what runs: pause, resume and status",
+		Short: "hub-wide control over what runs: pause, resume, revive and status",
 		Long: `tender holds the hub-wide verbs over the agent and network work that runs:
-pause holds it, resume lifts the hold, and status shows the live entries, the
-holds and what runs. "lyx pause" and "lyx resume" are shortcuts for the first two.`,
+pause holds it, resume lifts the hold, revive gives a carry-on line to sessions
+stalled on an API error, and status shows the live entries, the holds and what
+runs. "lyx pause" and "lyx resume" are shortcuts for the first two.`,
 		RunE: clihelp.GroupRunE,
 	}
-	tender.AddCommand(pauseCmd(), resumeCmd(), statusCmd())
+	tender.AddCommand(pauseCmd(), resumeCmd(), reviveCmd(), statusCmd())
 	return tender
 }
 
@@ -204,6 +205,69 @@ Example:
 				return fail(err)
 			}
 			clihelp.SetExit(ctx, output.Ok(out, map[string]any{"resume": report}))
+			return nil
+		},
+	}
+}
+
+// reviveCmd returns the `tender revive` verb.
+func reviveCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "revive [<slug>]",
+		Short:       "give one carry-on line to each session stalled on an API error",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `revive types one fixed carry-on line into each session whose last turn stopped
+on an API error, the case a network outage without a machine sleep leaves
+behind. A session in any other state is skipped with the state read, and a
+session a live pause covers is left to "lyx resume".
+
+With no slug it covers the whole hub, the orchestrator included: the orch gets
+a conditional notice its own watcher delivers while it still reads stalled on
+the error. With a slug it covers that pair. Every send is refused at once when
+the session no longer reads stalled, or when a draft, operator activity or an
+open rewind picker holds the pane; none is retried.
+
+Example:
+  lyx tender revive
+  lyx tender revive my-task`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			ctx := cmd.Context()
+			out := cmd.OutOrStdout()
+			fail := func(err error) error {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
+			slug := ""
+			if len(args) == 1 {
+				slug = args[0]
+			}
+			if err := refuseCaller(callerOf(os.Getenv(agentname.StrandNameEnv)), slug); err != nil {
+				return fail(err)
+			}
+			cwd, err := lyxcwd.CwdFrom(ctx)
+			if err != nil {
+				return fail(err)
+			}
+			location, err := lyxcwd.Resolve(cwd)
+			if err != nil {
+				return fail(err)
+			}
+			deps, slugs, err := hubDeps(location, os.Getenv(agentname.StrandNameEnv))
+			if err != nil {
+				return fail(err)
+			}
+			if slug != "" && !slices.Contains(slugs, slug) {
+				return fail(fmt.Errorf("revive: %q has no pair in this hub; way forward: name one of the pairs: %s", slug, strings.Join(slugs, ", ")))
+			}
+			report, err := pauseengine.Revive(deps, pauseengine.ReviveRequest{Slug: slug})
+			if err != nil {
+				return fail(err)
+			}
+			clihelp.SetExit(ctx, output.Ok(out, map[string]any{"revive": report}))
 			return nil
 		},
 	}

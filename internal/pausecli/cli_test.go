@@ -1,6 +1,6 @@
 //go:build integration
 
-// cli_test.go drives `lyx tender pause`, `status` and `resume` through the cobra commands over a hubforge hub with one pair and no agents running, and the network gate installer over the same hub.
+// cli_test.go drives `lyx tender pause`, `status`, `resume` and `revive` through the cobra commands over a hubforge hub with one pair and no agents running, and the network gate installer over the same hub.
 // No test calls t.Parallel: each sets the strand-name variable or reads the process-wide network gate.
 
 package pausecli
@@ -118,6 +118,17 @@ func TestPauseAndResume_WriteLiftAndRefuseOverTheHub(t *testing.T) {
 	if unknown.OK || code == 0 || !strings.Contains(unknown.Error, pairSlug) {
 		t.Errorf("unknown slug: ok=%v error=%q; want a refusal listing %q", unknown.OK, unknown.Error, pairSlug)
 	}
+	nothingStalled, code := verb(t, Command(), prime, "revive")
+	if !nothingStalled.OK || code != 0 {
+		t.Fatalf("revive: ok=%v error=%q", nothingStalled.OK, nothingStalled.Error)
+	}
+	if sent, isArray := report(t, nothingStalled, "revive")["sent"].([]any); !isArray || len(sent) != 0 {
+		t.Errorf("revive sent = %v; want an empty array with nothing stalled", report(t, nothingStalled, "revive")["sent"])
+	}
+	unknownRevive, code := verb(t, Command(), prime, "revive", "no-such-pair")
+	if unknownRevive.OK || code == 0 || !strings.Contains(unknownRevive.Error, pairSlug) {
+		t.Errorf("revive unknown slug: ok=%v error=%q; want a refusal listing %q", unknownRevive.OK, unknownRevive.Error, pairSlug)
+	}
 	badGrace, code := verb(t, Command(), prime, "pause", "--grace", "61")
 	if badGrace.OK || code == 0 || !strings.Contains(badGrace.Error, "0 to 60") {
 		t.Errorf("--grace 61: ok=%v error=%q; want a refusal naming the range", badGrace.OK, badGrace.Error)
@@ -166,6 +177,8 @@ func TestPauseAndResume_ApplyTheCallerRules(t *testing.T) {
 		{"a hub-wide pause", Command(), []string{"pause"}},
 		{"a hub-wide resume", Command(), []string{"resume"}},
 		{"a pause of another slug", Command(), []string{"pause", "other-pair"}},
+		{"a hub-wide revive", Command(), []string{"revive"}},
+		{"a revive of another slug", Command(), []string{"revive", "other-pair"}},
 	} {
 		env, code := verb(t, tc.command, prime, tc.args...)
 		if env.OK || code == 0 || !strings.Contains(env.Error, "ask your parent session") {
@@ -177,6 +190,9 @@ func TestPauseAndResume_ApplyTheCallerRules(t *testing.T) {
 	}
 	if status, code := verb(t, Command(), prime, "status"); !status.OK || code != 0 {
 		t.Errorf("agent status: ok=%v error=%q; want it to succeed", status.OK, status.Error)
+	}
+	if revived, code := verb(t, Command(), prime, "revive", pairSlug); !revived.OK || code != 0 {
+		t.Errorf("agent revive of its own pair: ok=%v error=%q; want it to succeed", revived.OK, revived.Error)
 	}
 	own, code := verb(t, Command(), prime, "pause", pairSlug)
 	if !own.OK || code != 0 {

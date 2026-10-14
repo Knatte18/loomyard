@@ -1,4 +1,4 @@
-// resume_test.go drives the resume sequence and the status read over the fakes pause_test.go declares.
+// resume_test.go drives the resume sequence, the revive sequence and the status read over the fakes pause_test.go declares.
 
 package pauseengine
 
@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -140,6 +141,203 @@ func TestResume(t *testing.T) {
 				if err != nil || len(report.Resumed) != 0 || len(report.Lines) != 0 {
 					t.Errorf("resume(%q) = %+v, %v; want a no-op success", slug, report, err)
 				}
+			}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, tt.run)
+	}
+}
+
+func TestRevive(t *testing.T) {
+	stalled := shuttleengine.SessionState{Name: shuttleengine.SessionIdleStalled, Cause: shuttleengine.SessionCauseAPIError}
+	strands := func(notes []SessionNote) []string {
+		names := []string{}
+		for _, note := range notes {
+			names = append(names, note.Strand)
+		}
+		return names
+	}
+	revive := func(t *testing.T, e *env, slug string) ReviveReport {
+		t.Helper()
+		report, err := Revive(e.deps(), ReviveRequest{Slug: slug})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return report
+	}
+
+	tests := []struct {
+		name string
+		run  func(t *testing.T)
+	}{
+		{"nothing stalled lists nothing, reports no orch and sends nothing", func(t *testing.T) {
+			p := newPair("p1")
+			e := newEnv(t, p)
+
+			report := revive(t, e, "")
+
+			empty := len(report.Sent)+len(report.SentNoTurnStart)+len(report.NotLanded)+len(report.Paused)+len(report.Skipped)+len(report.Refused) == 0
+			if !empty || report.Sent == nil || report.Orch != nil || len(p.conditioned) != 0 {
+				t.Errorf("report %+v, sent to %v; want every list empty, no orch part and nothing sent", report, p.conditioned)
+			}
+		}},
+		{"only a session stalled on an api error is sent the line", func(t *testing.T) {
+			p := newPair("p1", "a", "b", "c", "d")
+			p.states["g-a"] = stalled
+			p.states["g-b"] = shuttleengine.SessionState{Name: shuttleengine.SessionBusy, Cause: shuttleengine.SessionCauseTurn}
+			p.states["g-d"] = shuttleengine.SessionState{Name: shuttleengine.SessionIdleStalled, Cause: shuttleengine.SessionCauseInterrupt}
+			e := newEnv(t, p)
+
+			report := revive(t, e, "")
+
+			if !reflect.DeepEqual(report.Sent, []string{"a"}) || !reflect.DeepEqual(strands(report.Skipped), []string{"b", "c", "d"}) || !reflect.DeepEqual(p.conditioned, []string{"g-a"}) {
+				t.Errorf("report %+v, sent to %v; want a sent and b, c and d skipped with one send", report, p.conditioned)
+			}
+			if report.Skipped[0].Reason != "busy (turn)" {
+				t.Errorf("b's skip reason = %q; want the state read", report.Skipped[0].Reason)
+			}
+		}},
+		{"a session a live entry covers is reported paused and sent nothing", func(t *testing.T) {
+			p := newPair("p1", "a")
+			p.states["g-a"] = stalled
+			e := newEnv(t, p)
+			now := e.clock.Now()
+			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: now, GraceEnd: now, Caller: "EXTERNAL"})
+
+			report := revive(t, e, "")
+
+			if !reflect.DeepEqual(strands(report.Paused), []string{"a"}) || len(p.conditioned) != 0 {
+				t.Errorf("report %+v, sent to %v; want a paused and nothing sent", report, p.conditioned)
+			}
+		}},
+		{"the send holds the record lock, so a pause added meanwhile waits and then interrupts the started turn", func(t *testing.T) {
+			p := newPair("p1", "a")
+			p.states["g-a"] = stalled
+			e := newEnv(t, p)
+			done := make(chan struct{})
+			var pauseErr error
+			p.onConditioned = func(string) {
+				held, acquired, err := lock.TryAcquireWriteLock(e.path + ".lock")
+				if err != nil {
+					t.Errorf("TryAcquireWriteLock: %v", err)
+				}
+				if acquired {
+					_ = held.Release()
+					t.Errorf("the record lock was free during the conditioned send")
+				}
+				p.mu.Lock()
+				p.busy["g-a"] = []bool{true}
+				p.mu.Unlock()
+				go func() {
+					defer close(done)
+					_, pauseErr = Pause(e.deps(), PauseRequest{})
+				}()
+			}
+
+			report := revive(t, e, "")
+			<-done
+
+			if pauseErr != nil || !reflect.DeepEqual(report.Sent, []string{"a"}) {
+				t.Fatalf("pause error %v, report %+v; want a sent and the pause to succeed", pauseErr, report)
+			}
+			live := e.record().Live
+			if len(live) != 1 || len(live[0].Sessions) != 1 || live[0].Sessions[0].GUID != "g-a" || len(p.interrupts) == 0 {
+				t.Errorf("live entries %+v, interrupts %v; want the pause's entry to record a and interrupt it", live, p.interrupts)
+			}
+		}},
+		{"a line that landed with no turn start seen is reported as such", func(t *testing.T) {
+			p := newPair("p1", "a")
+			p.states["g-a"] = stalled
+			p.noTurnStart["g-a"] = true
+			e := newEnv(t, p)
+
+			report := revive(t, e, "")
+
+			if !reflect.DeepEqual(report.SentNoTurnStart, []string{"a"}) || len(report.Sent) != 0 {
+				t.Errorf("report %+v; want a under sent_no_turn_start only", report)
+			}
+		}},
+		{"a refused or unlanded send is reported with its reason and sent once", func(t *testing.T) {
+			p := newPair("p1", "a", "b")
+			p.states["g-a"], p.states["g-b"] = stalled, stalled
+			p.conditionedErr["g-a"] = &shuttleengine.SessionBusyError{Reason: "the input box holds a draft", Err: shuttleengine.ErrSessionBusy}
+			p.conditionedErr["g-b"] = fmt.Errorf("%w: strand g-b: the text stayed in the box", shuttleengine.ErrSubmissionNotLanded)
+			e := newEnv(t, p)
+
+			report := revive(t, e, "")
+
+			if len(report.Refused) != 1 || report.Refused[0].Strand != "a" || report.Refused[0].Reason != "the input box holds a draft" {
+				t.Errorf("refused = %+v; want a with the guard's reason", report.Refused)
+			}
+			if len(report.NotLanded) != 1 || report.NotLanded[0].Strand != "b" || !strings.Contains(report.NotLanded[0].Reason, "the text stayed in the box") {
+				t.Errorf("not landed = %+v; want b with its reason", report.NotLanded)
+			}
+			if !reflect.DeepEqual(p.conditioned, []string{"g-a", "g-b"}) {
+				t.Errorf("sent to %v; want each session once", p.conditioned)
+			}
+		}},
+		{"a session that turned busy before the send is skipped, and a second revive sends nothing", func(t *testing.T) {
+			p := newPair("p1", "a")
+			p.states["g-a"] = stalled
+			p.conditionedErr["g-a"] = fmt.Errorf("%w: strand g-a reads busy", shuttleengine.ErrSendConditionUnmet)
+			e := newEnv(t, p)
+
+			first := revive(t, e, "")
+
+			if !reflect.DeepEqual(strands(first.Skipped), []string{"a"}) || len(p.conditioned) != 1 {
+				t.Fatalf("first revive %+v, sent to %v; want a skipped after one send", first, p.conditioned)
+			}
+			p.states["g-a"] = shuttleengine.SessionState{Name: shuttleengine.SessionIdleDone, Cause: shuttleengine.SessionCauseDone}
+
+			second := revive(t, e, "")
+
+			if !reflect.DeepEqual(strands(second.Skipped), []string{"a"}) || len(p.conditioned) != 1 {
+				t.Errorf("second revive %+v, sent to %v; want a skipped and no further send", second, p.conditioned)
+			}
+		}},
+		{"a failed state reading refuses the session and sends nothing", func(t *testing.T) {
+			p := newPair("p1", "a")
+			p.stateErr["g-a"] = errors.New("events unreadable")
+			e := newEnv(t, p)
+
+			report := revive(t, e, "")
+
+			if len(report.Refused) != 1 || !strings.Contains(report.Refused[0].Reason, "events unreadable") || len(p.conditioned) != 0 {
+				t.Errorf("report %+v, sent to %v; want a refused with the error and nothing sent", report, p.conditioned)
+			}
+		}},
+		{"the orch's notice is queued once and no other prime session is read or reported", func(t *testing.T) {
+			prime := newPair("prime", "orch", "other")
+			prime.states["g-orch"], prime.states["g-other"] = stalled, stalled
+			e := newEnv(t, newPair("p1"))
+			e.prime, e.orchStrand = prime, "g-orch"
+
+			e.watcherLive = true
+			live := revive(t, e, "")
+			if live.Orch == nil || live.Orch.Result != "queued" || !live.Orch.Conditional || !live.Orch.WatcherLive || !reflect.DeepEqual(e.orchQueued, []string{ReviveLine}) {
+				t.Errorf("orch part %+v, queued %v; want a conditional queued notice with the watcher live", live.Orch, e.orchQueued)
+			}
+			e.watcherLive = false
+			if idle := revive(t, e, ""); idle.Orch == nil || idle.Orch.Result != "queued" || idle.Orch.WatcherLive {
+				t.Errorf("orch part %+v; want queued with no watcher live", idle.Orch)
+			}
+			if len(prime.conditioned) != 0 || len(live.Sent)+len(live.Skipped)+len(live.Refused) != 0 {
+				t.Errorf("prime sent to %v, report %+v; want no prime session sent to or reported", prime.conditioned, live)
+			}
+
+			e.orchAlreadyQueued = true
+			if again := revive(t, e, ""); again.Orch == nil || again.Orch.Result != "already-queued" {
+				t.Errorf("orch part %+v; want already-queued", again.Orch)
+			}
+			if slugScope := revive(t, e, "p1"); slugScope.Orch != nil {
+				t.Errorf("orch part %+v for a slug revive; want none", slugScope.Orch)
+			}
+
+			e.orchAlreadyQueued, e.orchQueued = false, nil
+			e.seedLive(hubEntry(e.clock.Now()))
+			if covered := revive(t, e, ""); covered.Orch == nil || covered.Orch.Result != "paused" || len(e.orchQueued) != 0 {
+				t.Errorf("orch part %+v, queued %v; want paused and nothing queued under a hub entry", covered.Orch, e.orchQueued)
 			}
 		}},
 	}

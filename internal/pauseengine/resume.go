@@ -1,4 +1,4 @@
-// resume.go implements the resume sequence and the status read.
+// resume.go implements the resume sequence, the revive sequence beside it and the status read.
 
 package pauseengine
 
@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -183,6 +184,176 @@ func sendResumeLine(deps Deps, held pauserecord.Session) string {
 		return "the send failed: " + err.Error()
 	}
 	return ""
+}
+
+// ReviveLine is the one line revive types, into a session stalled on an API error.
+const ReviveLine = "[lyx] Your last turn stopped on an API error. Carry on where you stopped: rerun the tool call that failed. If nothing was cut, end your turn."
+
+// Orch results a revive reports.
+const (
+	orchQueued        = "queued"
+	orchAlreadyQueued = "already-queued"
+	orchPaused        = "paused"
+	orchSkipped       = "skipped"
+)
+
+// ReviveRequest asks for a revive.
+type ReviveRequest struct {
+	// Slug is the pair to revive; empty covers the whole hub.
+	Slug string
+}
+
+// ReviveReport is what a revive did.
+type ReviveReport struct {
+	// Sent holds the strands given the line, with a turn start seen after it.
+	Sent []string `json:"sent"`
+	// SentNoTurnStart holds the strands whose line landed with no turn start seen within the wait.
+	SentNoTurnStart []string `json:"sent_no_turn_start"`
+	// NotLanded holds the sessions whose line did not land, each with the reason.
+	NotLanded []SessionNote `json:"not_landed"`
+	// Paused holds the sessions a live entry covers, which resume gives their line.
+	Paused []SessionNote `json:"paused"`
+	// Skipped holds the sessions that did not read stalled on an API error, each with the state read.
+	Skipped []SessionNote `json:"skipped"`
+	// Refused holds the sessions whose state reading or guarded send was refused, each with the reason.
+	Refused []SessionNote `json:"refused"`
+	// Orch is what became of the orch, nil for a pair revive and when the hub has no orch strand or no prime.
+	Orch *OrchRevive `json:"orch,omitempty"`
+}
+
+// OrchRevive says what became of the orch's carry-on line.
+type OrchRevive struct {
+	// Result is queued, already-queued, paused or skipped.
+	Result string `json:"result"`
+	// Conditional is true for a queued or already-queued notice, which the orch watcher delivers only while the orch still reads stalled on an API error.
+	Conditional bool `json:"conditional"`
+	// WatcherLive reports whether an orch watcher is running, which a queued notice needs to be delivered.
+	WatcherLive bool `json:"watcher_live"`
+	// Reason is the state read for a skipped orch.
+	Reason string `json:"reason,omitempty"`
+}
+
+// Revive gives ReviveLine to each live session stalled on an API error, in the hub for an empty slug and in one pair for a slug.
+// The hub scope also queues the orch's conditioned notice when the orch is stalled the same way and no hub entry is live; it never types into the orch.
+// A session a live entry covers is left to resume, and no send is retried.
+func Revive(deps Deps, req ReviveRequest) (ReviveReport, error) {
+	report := ReviveReport{
+		Sent: []string{}, SentNoTurnStart: []string{}, NotLanded: []SessionNote{}, Paused: []SessionNote{}, Skipped: []SessionNote{}, Refused: []SessionNote{},
+	}
+	scope := pauserecord.ScopeHub
+	if req.Slug != "" {
+		scope = req.Slug
+	}
+	sessions, err := coveredSessions(deps, scope)
+	if err != nil {
+		return report, err
+	}
+	for _, s := range sessions {
+		if err := reviveSession(deps, s, &report); err != nil {
+			return report, err
+		}
+	}
+	if scope != pauserecord.ScopeHub {
+		return report, nil
+	}
+	record, err := pauserecord.Read(deps.RecordPath)
+	if err != nil {
+		return report, err
+	}
+	report.Orch, err = reviveOrch(deps, record)
+	return report, err
+}
+
+// reviveSession gives s the revive line when its state reads idle-stalled with cause api-error and no live entry covers it, and records the outcome in report.
+// The coverage read and the conditioned send run under the record's write lock, so a pause added meanwhile waits for the send and then finds the session's state as the send left it.
+// The returned error is a record failure only; every refusal of the session is a note in report.
+func reviveSession(deps Deps, s session, report *ReviveReport) error {
+	state, err := s.pair.State(s.GUID)
+	if err != nil {
+		report.Refused = append(report.Refused, SessionNote{s.Strand, s.Slug, "state reading failed: " + err.Error()})
+		return nil
+	}
+	if !stalledOnAPIError(state) {
+		report.Skipped = append(report.Skipped, SessionNote{s.Strand, s.Slug, describeState(state)})
+		return nil
+	}
+	var (
+		covered     bool
+		turnStarted bool
+		sendErr     error
+	)
+	_, err = pauserecord.Update(deps.RecordPath, deps.Now(), func(record *pauserecord.Record) error {
+		if _, covered = record.Covering(s.Slug); covered {
+			return nil
+		}
+		turnStarted, sendErr = s.pair.SendConditioned(s.GUID, ReviveLine, shuttleengine.SendCondition{State: shuttleengine.SessionIdleStalled, Cause: shuttleengine.SessionCauseAPIError})
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	var busy *shuttleengine.SessionBusyError
+	switch {
+	case covered:
+		report.Paused = append(report.Paused, SessionNote{s.Strand, s.Slug, "a live pause entry covers it; resume gives it its line"})
+	case sendErr == nil && turnStarted:
+		report.Sent = append(report.Sent, s.Strand)
+	case sendErr == nil:
+		report.SentNoTurnStart = append(report.SentNoTurnStart, s.Strand)
+	case errors.Is(sendErr, shuttleengine.ErrSubmissionNotLanded):
+		report.NotLanded = append(report.NotLanded, SessionNote{s.Strand, s.Slug, sendErr.Error()})
+	case errors.Is(sendErr, shuttleengine.ErrSendConditionUnmet):
+		report.Skipped = append(report.Skipped, SessionNote{s.Strand, s.Slug, "the session changed state before the send"})
+	case errors.As(sendErr, &busy):
+		report.Refused = append(report.Refused, SessionNote{s.Strand, s.Slug, busy.Reason})
+	default:
+		report.Refused = append(report.Refused, SessionNote{s.Strand, s.Slug, sendErr.Error()})
+	}
+	return nil
+}
+
+// reviveOrch reports what became of the orch's carry-on line and queues its conditioned notice when the orch reads stalled on an API error and no hub entry is live.
+// It returns nil for a hub with no orch strand or no prime, and reads no other prime session.
+func reviveOrch(deps Deps, record pauserecord.Record) (*OrchRevive, error) {
+	if deps.Prime == nil || deps.OrchStrand == nil {
+		return nil, nil
+	}
+	strand, err := deps.OrchStrand()
+	if err != nil {
+		return nil, fmt.Errorf("revive: read the orch strand: %w", err)
+	}
+	if strand == "" {
+		return nil, nil
+	}
+	state, err := deps.Prime.State(strand)
+	if err != nil {
+		return nil, fmt.Errorf("revive: read the orch's state: %w", err)
+	}
+	if !stalledOnAPIError(state) {
+		return &OrchRevive{Result: orchSkipped, Reason: describeState(state)}, nil
+	}
+	if slices.ContainsFunc(record.Live, func(entry pauserecord.Entry) bool { return entry.Scope == pauserecord.ScopeHub }) {
+		return &OrchRevive{Result: orchPaused}, nil
+	}
+	queued, err := deps.QueueOrchRevive(ReviveLine)
+	if err != nil {
+		return nil, fmt.Errorf("revive: queue the orch's notice: %w", err)
+	}
+	revive := &OrchRevive{Result: orchAlreadyQueued, Conditional: true, WatcherLive: deps.OrchWatcherLive != nil && deps.OrchWatcherLive()}
+	if queued {
+		revive.Result = orchQueued
+	}
+	return revive, nil
+}
+
+// stalledOnAPIError reports whether state is idle-stalled with cause api-error, the one state revive acts on.
+func stalledOnAPIError(state shuttleengine.SessionState) bool {
+	return state.Name == shuttleengine.SessionIdleStalled && state.Cause == shuttleengine.SessionCauseAPIError
+}
+
+// describeState renders state as its name and cause.
+func describeState(state shuttleengine.SessionState) string {
+	return fmt.Sprintf("%s (%s)", state.Name, state.Cause)
 }
 
 // Status reads the live entries, the holds, every live session's state and the processes running a replaced binary, changing nothing.
