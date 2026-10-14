@@ -286,4 +286,11 @@ type Env struct {
 	// PrimeLock is the told hub-scoped advisory lock WorktreeCreate and WorktreeTeardown both
 	// acquire, read by those two bookend entries only.
 	PrimeLock battenshed.PrimeLock
+
+	// OpenWindow is the switched seam pair the OpenWindow entry reads: the run's flag and the opening of its terminal window.
+	OpenWindow shedadapters.SwitchedAction
+	// SeedIDE is the switched seam pair the SeedIDE entry reads: the run's flag and the writing of the pair's IDE config.
+	SeedIDE shedadapters.SwitchedAction
+	// OpenIDE is the switched seam pair the OpenIDE entry reads: the run's flag and the opening of the IDE on the pair.
+	OpenIDE shedadapters.SwitchedAction
 }

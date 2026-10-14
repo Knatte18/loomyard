@@ -29,7 +29,7 @@ func TestNew_RowNamesMatchTheDurableIdentityConstants(t *testing.T) {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
 
-	wantNames := []string{NameWorktreeCreate, NameSeedChild, NameRunShed, NameLand, NameWorktreeTeardown}
+	wantNames := []string{NameWorktreeCreate, NameSeedChild, NameOpenWindow, NameSeedIDE, NameOpenIDE, NameRunShed, NameLand, NameWorktreeTeardown}
 	if len(shed.Producers) != len(wantNames) {
 		t.Fatalf("New() row count = %d, want %d", len(shed.Producers), len(wantNames))
 	}
@@ -40,7 +40,7 @@ func TestNew_RowNamesMatchTheDurableIdentityConstants(t *testing.T) {
 	}
 }
 
-// TestNew_OnDoneChainAndLoadBearingEdges asserts the Worktree-Create -> Seed-Child -> Run-Shed -> Land -> Worktree-Teardown OnDone chain.
+// TestNew_OnDoneChainAndLoadBearingEdges asserts the Worktree-Create -> Seed-Child -> Open-Window -> Seed-IDE -> Open-IDE -> Run-Shed -> Land -> Worktree-Teardown OnDone chain.
 // It also asserts Run-Shed's OnStuck self-route, Land's empty OnStuck, Worktree-Teardown's empty OnDone, and that no row declares a Segment.
 func TestNew_OnDoneChainAndLoadBearingEdges(t *testing.T) {
 	env, paths := testEnv(t)
@@ -59,9 +59,15 @@ func TestNew_OnDoneChainAndLoadBearingEdges(t *testing.T) {
 		t.Errorf("Worktree-Create OnDone = %q; want %q", create.OnDone, NameSeedChild)
 	}
 
-	seedChild := shed.Producers[byName[NameSeedChild]]
-	if seedChild.OnDone != NameRunShed {
-		t.Errorf("Seed-Child OnDone = %q; want %q", seedChild.OnDone, NameRunShed)
+	for row, wantOnDone := range map[string]string{
+		NameSeedChild:  NameOpenWindow,
+		NameOpenWindow: NameSeedIDE,
+		NameSeedIDE:    NameOpenIDE,
+		NameOpenIDE:    NameRunShed,
+	} {
+		if got := shed.Producers[byName[row]].OnDone; got != wantOnDone {
+			t.Errorf("%s OnDone = %q; want %q", row, got, wantOnDone)
+		}
 	}
 
 	runShed := shed.Producers[byName[NameRunShed]]
@@ -155,7 +161,7 @@ func TestNameRunShed_ValueIsPinnedAgainstASymmetryRename(t *testing.T) {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
 
-	wantNames := []string{NameWorktreeCreate, NameSeedChild, NameRunShed, NameLand, NameWorktreeTeardown}
+	wantNames := []string{NameWorktreeCreate, NameSeedChild, NameOpenWindow, NameSeedIDE, NameOpenIDE, NameRunShed, NameLand, NameWorktreeTeardown}
 	if len(shed.Producers) != len(wantNames) {
 		t.Fatalf("New() row count = %d, want %d", len(shed.Producers), len(wantNames))
 	}

@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
-	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -34,10 +33,6 @@ func TestBattenPreStep_SeedsAbsentStatus(t *testing.T) {
 		t.Fatalf("precondition: status read = (found=%v, err=%v); want (false, nil)", found, err)
 	}
 
-	markerPath := battenshed.TerminalOpenedFile(c.env.ScratchDir, battenrecipe.NameRunShed)
-	if err := os.WriteFile(markerPath, []byte("opened\n"), 0o644); err != nil {
-		t.Fatalf("plant terminal-opened marker: %v", err)
-	}
 	rowNoticePath := filepath.Join(c.env.ScratchDir, battenrecipe.NameWorktreeTeardown+"-row-notice")
 	if err := os.WriteFile(rowNoticePath, []byte("failure 3\n"), 0o644); err != nil {
 		t.Fatalf("plant row-notice marker: %v", err)
@@ -49,9 +44,6 @@ func TestBattenPreStep_SeedsAbsentStatus(t *testing.T) {
 	}
 	if kind != "" {
 		t.Errorf("battenPreStep() kind = %q; want empty on success", kind)
-	}
-	if _, err := os.Stat(markerPath); !os.IsNotExist(err) {
-		t.Errorf("terminal-opened marker stat error = %v; want it cleared by the fresh seed", err)
 	}
 	if _, err := os.Stat(rowNoticePath); !os.IsNotExist(err) {
 		t.Errorf("row-notice marker stat error = %v; want it cleared by the fresh seed", err)

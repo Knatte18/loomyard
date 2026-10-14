@@ -297,7 +297,6 @@ func (p *innerRunProducer) publishRetryResume(ctx context.Context, w *childWait,
 	}
 	p.driverBusyNoticed = false
 	recordSpawnConfirmed(p.name, p.slug, p.scratchDir, SpawnConfirmedFile(p.scratchDir, p.name))
-	p.openTerminalOnce(ctx)
 	if err := p.writePublishRetryMarker(publishRetryResumed, r.started, r.target); err != nil {
 		return hardEnd(err)
 	}

@@ -95,7 +95,7 @@ internal/segmentcolor: 4
 internal/selfexec: 2
 internal/selfreportcli: 3
 internal/selfreportengine: 12
-internal/shedadapters: 155
+internal/shedadapters: 156
 internal/shedbuild: 13
 internal/shedcheck: 3
 internal/shedcli: 17
