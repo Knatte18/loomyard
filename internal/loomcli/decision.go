@@ -9,11 +9,19 @@
 // The one other caller is the run's own arbiter strand, which alone may pass `--by arbiter`; any other caller of that label is refused.
 // The check reads only the exported strand name and the recorded parent name, so it guards a mistaken call, not a session that clears or forges the variable, and `--by` stays an unverified label.
 // That is bounded by the entry being append-only, one entry per call, under an `Added after Discussion` heading with the claimed label and the date, in a committed diff.
+//
+// On a darn run the verb works once Darn-Write has validated and committed its record, and also while Darn-Write runs.
+// The caller rule and the append-only, labelled, committed entry are unchanged.
+// The one new edge is appending while the writer runs, bounded to a record the writer validated and has not touched.
+// The working copy must equal the committed copy and hold every added entry its history held.
+// After the commit the committed record must hold the appended entry, so an entry a writer write displaced is refused rather than reported.
+//
 // The verb never routes the run, never touches the support log or the plan, and an approved plan is not re-planned by it.
 
 package loomcli
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -25,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -42,12 +51,15 @@ const (
 	decisionByOperator = "operator"
 	decisionByArbiter  = "arbiter"
 
-	decisionWayNoRecord  = `way forward: the record exists once Discussion-Write has written it; "lyx loom status <slug>" shows whether the run has reached that row, and "lyx loom start" begins or resumes the run; a darn run never has one, so name the call in your report to the run's parent instead`
-	decisionWayWriter    = `way forward: Discussion-Write owns the record while it runs; message the Discussion-Write session with the decision instead, or re-run once the row has handed off`
-	decisionWayNoHeading = `way forward: restore the "## Decisions" heading in the decision record, then re-run the verb`
-	decisionWayRetry     = `way forward: re-run "lyx loom decision add"; nothing is appended`
-	decisionWayFindings  = `way forward: the record is restored; fix the named section and re-run the verb`
-	decisionWayArbiter   = `way forward: the "arbiter" label is the run's own arbiter's; pass --by parent from the run's parent, or --by operator from the operator's own shell`
+	decisionWayNoRecord = `way forward: the record exists once Discussion-Write has written it; "lyx loom status <slug>" shows whether the run has reached that row, and "lyx loom start" begins or resumes the run; on a darn run the record exists once Darn-Write has validated it, and until then message the running Darn-Write session with the call or, with no writer live, record the call as a board note naming the task`
+	decisionWayWriter   = `way forward: Discussion-Write owns the record while it runs; message the Discussion-Write session with the decision instead, or re-run once the row has handed off`
+
+	decisionWayDarnWriter = `way forward: Darn-Write has not finished its record or is editing it after validating it; message the running Darn-Write session, and re-run "lyx loom decision add" once the committed record is unchanged`
+	decisionWayEntryLost  = `way forward: a Darn-Write write landed during the append; message the running Darn-Write session to leave the record alone, then re-run "lyx loom decision add"`
+	decisionWayNoHeading  = `way forward: restore the "## Decisions" heading in the decision record, then re-run the verb`
+	decisionWayRetry      = `way forward: re-run "lyx loom decision add"; nothing is appended`
+	decisionWayFindings   = `way forward: the record is restored; fix the named section and re-run the verb`
+	decisionWayArbiter    = `way forward: the "arbiter" label is the run's own arbiter's; pass --by parent from the run's parent, or --by operator from the operator's own shell`
 )
 
 // decisionInput is the four flag values of one `decision add` call.
@@ -73,6 +85,63 @@ type decisionDeps struct {
 	commit func() error
 	// now is the clock the entry's date comes from.
 	now func() time.Time
+	// darn reports whether the target's run is a darn run.
+	darn func() (bool, error)
+	// readRecord reads the decision record's working copy.
+	readRecord func() ([]byte, error)
+	// committed reads the decision record as committed at HEAD; found is false when HEAD holds no record.
+	committed func() ([]byte, bool, error)
+	// history returns every committed version of the decision record, newest first.
+	history func() ([][]byte, error)
+}
+
+// checkDarnRecord returns the refusal text for a darn run's record that is not safe to append to, or empty when it is.
+// The record is safe once the writer has validated and committed it and not touched it since: it exists, is committed, equals its committed copy and holds every added entry its history held.
+// A failed read of any of the four is returned as an error.
+func checkDarnRecord(deps decisionDeps) (string, error) {
+	working, err := deps.readRecord()
+	if errors.Is(err, fs.ErrNotExist) {
+		return fmt.Sprintf("the run has no decision record at %s; %s", deps.recordPath, decisionWayNoRecord), nil
+	}
+	if err != nil {
+		return "", err
+	}
+	committed, found, err := deps.committed()
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "the darn run's decision record is not committed yet; " + decisionWayDarnWriter, nil
+	}
+	if !bytes.Equal(working, committed) {
+		return "the decision record differs from its committed copy; " + decisionWayDarnWriter, nil
+	}
+	versions, err := deps.history()
+	if err != nil {
+		return "", err
+	}
+	if findings := discussionparser.CheckAddedDecisionsKept(working, versions); len(findings) > 0 {
+		return "the decision record is missing an entry its history held: " + strings.Join(renderFindings(findings), "; ") + "; " + decisionWayDarnWriter, nil
+	}
+	return "", nil
+}
+
+// committedHoldsEntry reports whether the record as committed at HEAD holds an `Added after Discussion` entry with the heading of added.
+func committedHoldsEntry(deps decisionDeps, added discussionparser.AddedDecision) (bool, error) {
+	committed, found, err := deps.committed()
+	if err != nil || !found {
+		return false, err
+	}
+	entries, err := discussionparser.ParseAddedDecisions(committed)
+	if err != nil {
+		return false, err
+	}
+	for _, entry := range entries {
+		if addedDecisionHeading(entry) == addedDecisionHeading(added) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // decisionVerb appends the decision in input to the record and commits it, or refuses with a way forward.
@@ -115,6 +184,20 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		return refuse("%s is running and owns the decision record; %s", loomshed.NameDiscussionWrite, decisionWayWriter)
 	}
 
+	darn, err := deps.darn()
+	if err != nil {
+		return refuse("read the run's recipe: %s; %s", err, decisionWayRetry)
+	}
+	if darn {
+		refusal, err := checkDarnRecord(deps)
+		if err != nil {
+			return refuse("read the darn run's decision record: %s; %s", err, decisionWayRetry)
+		}
+		if refusal != "" {
+			return refuse("%s", refusal)
+		}
+	}
+
 	added := discussionparser.AddedDecision{
 		By:        input.by,
 		Title:     input.title,
@@ -135,6 +218,16 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 	}
 	if err := deps.commit(); err != nil {
 		return refuse("the entry is appended but the commit failed: %s; way forward: run \"lyx fabric commit\" to commit the record; a session lyx refuses the verb from reports status: FAILED and the orch runs it", err)
+	}
+	if darn {
+		held, err := committedHoldsEntry(deps, added)
+		if err != nil || !held {
+			cause := "the committed record holds no entry"
+			if err != nil {
+				cause = "the committed record could not be read: " + err.Error()
+			}
+			return refuse("%s under %q; %s", cause, addedDecisionHeading(added), decisionWayEntryLost)
+		}
 	}
 	return output.Ok(out, map[string]any{
 		"slug":    slug,
@@ -206,6 +299,18 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 		},
 		commit: func() error { return commitDiscussion(target) },
 		now:    time.Now,
+		darn: func() (bool, error) {
+			seed, found, err := shedrun.ReadSeed(target, shedrun.SelfRunID)
+			if err != nil {
+				return false, err
+			}
+			return resolveSeedRecipe(seed, found) == shedrun.RecipeDarn, nil
+		},
+		readRecord: func() ([]byte, error) { return os.ReadFile(recordPath) },
+		committed: func() ([]byte, bool, error) {
+			return fabricengine.CommittedAnchoredFile(target, loomengine.DiscussionDecisionRecordRel())
+		},
+		history: discussionHistory(target),
 	}
 	return nil
 }
@@ -250,6 +355,13 @@ parent or, for --by arbiter, its arbiter: ask the parent to run it, or run it
 from the operator's own shell. It is
 refused while Discussion-Write is running, since that row owns the record;
 message the Discussion-Write session with the decision instead.
+
+On a darn run it works once Darn-Write has validated and committed its record,
+including while Darn-Write runs. It then refuses a record that is missing,
+not committed, differing from its committed copy or missing an entry its
+history held, and a commit after which the committed record lacks the entry.
+That bounds the append to a record the writer validated and has not touched,
+and to an entry that reached the weft.
 
 Example:
   lyx loom decision add <slug> --by parent --title "Keep the cache" --decision "Keep the cache per run." --rationale "A shared cache races."`,
