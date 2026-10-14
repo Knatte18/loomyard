@@ -181,9 +181,13 @@ type Env struct {
 	// DiscussionTable is the injected shedadapters.TableSource the DiscussionSeats entry evaluates once per Call.
 	// It arrives as a closure for the same reason DiscussionSpec does: building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly.
 	DiscussionTable shedadapters.TableSource
-	// CommitDiscussion is the injected closure that commits the discussion output directory,
-	// invoked by the commit decorator of every entry that wraps a discussion producer on a Done outcome.
+	// CommitDiscussion is the injected closure that commits the discussion output directory.
+	// The commit decorator of every entry that wraps a discussion producer invokes it on a Done outcome.
+	// The "discussion" gate invokes it when it passes on a darn run.
 	CommitDiscussion func() error
+	// DiscussionHistory returns every committed version of the decision record, newest first.
+	// Only the darn wiring sets it, together with CommitDiscussion; nil on a loom run, where the "discussion" gate resolves to the loom form.
+	DiscussionHistory func() ([][]byte, error)
 	// DescribeSpec is the injected shedadapters.SpecSource the Describe entry evaluates once per
 	// Call. It arrives as a closure rather than as recipe Config because building the Spec needs a
 	// *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing
