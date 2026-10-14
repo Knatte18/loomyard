@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -47,6 +48,37 @@ func stuckEntry(producer string, atMinute int, routedTo string) shedengine.Histo
 // awaitingEntry is an Awaiting history entry of producer at the given minute.
 func awaitingEntry(producer string, atMinute int) shedengine.HistoryEntry {
 	return shedengine.HistoryEntry{Producer: producer, Outcome: shedengine.Awaiting, At: minuteMark(atMinute)}
+}
+
+// reviewRecipe is a recipe holding a review segment, Rev, of a Bouncer, a review and a fix row, and a segment, PR, with no Bouncer row.
+var reviewRecipe = []loomrecipe.RecipeRow{
+	{Name: "Build"},
+	{Name: "Rev-Bouncer", Segment: "Rev", OnStuck: "Rev-Review", Bouncer: true},
+	{Name: "Rev-Review", Segment: "Rev", OnStuck: "Rev-Fix"},
+	{Name: "Rev-Fix", Segment: "Rev", OnStuck: "Rev-Bouncer"},
+	{Name: "Publish"},
+	{Name: "PR-Review", Segment: "PR"},
+	{Name: "PR-Rework", Segment: "PR"},
+}
+
+// bouncedEntry is the Rev-Bouncer entry at the given minute that bounced the run to the review row.
+func bouncedEntry(atMinute int) shedengine.HistoryEntry {
+	return stuckEntry("Rev-Bouncer", atMinute, "Rev-Review")
+}
+
+// roundEntry is a Done entry of producer at the given minute whose output is the round file of the given kind, such as round-2-review.md.
+func roundEntry(producer string, atMinute, round int, kind string) shedengine.HistoryEntry {
+	entry := doneEntry(producer, atMinute)
+	entry.Output = fmt.Sprintf("round-%d-%s.md", round, kind)
+	return entry
+}
+
+// handOnEntry is the budget-exempt Stuck entry of the review row at the given minute, whose output names the round.
+func handOnEntry(atMinute, round int) shedengine.HistoryEntry {
+	entry := stuckEntry("Rev-Review", atMinute, "")
+	entry.Output = fmt.Sprintf("round-%d-review.md", round)
+	entry.BudgetExempt = true
+	return entry
 }
 
 // gotoEntry is the goto history entry that moved the run onto producer at the given minute.
@@ -314,6 +346,173 @@ func TestRenderChecklist(t *testing.T) {
 			want: []string{
 				"recipe unreadable",
 				"  10:00 5m Plan done", "  10:05 3m Review bounced", "  10:08 2m Plan running",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a review segment renders one block grouped by round, with the closing Bouncer done outside any round",
+			rows: reviewRecipe,
+			poll: checklistStatus(shedengine.StateRunning, "Publish",
+				doneEntry("Build", 5),
+				bouncedEntry(6), roundEntry("Rev-Review", 10, 1, "review"), roundEntry("Rev-Fix", 15, 1, "fixer-report"),
+				bouncedEntry(16), roundEntry("Rev-Review", 20, 2, "review"), roundEntry("Rev-Fix", 25, 2, "fixer-report"),
+				doneEntry("Rev-Bouncer", 26)),
+			nowMin: 30,
+			want: []string{
+				"[x] Build 5m", "  10:00 5m done",
+				"[x] Rev 21m rounds 2",
+				"  round 1",
+				"    10:05 1m Rev-Bouncer bounced",
+				"    10:06 4m Rev-Review done round-1-review.md",
+				"    10:10 5m Rev-Fix done round-1-fixer-report.md",
+				"  round 2",
+				"    10:15 1m Rev-Bouncer bounced",
+				"    10:16 4m Rev-Review done round-2-review.md",
+				"    10:20 5m Rev-Fix done round-2-fixer-report.md",
+				"  10:25 1m Rev-Bouncer done",
+				"[>] Publish 4m", "  10:26 4m running",
+				"[ ] PR-Review", "[ ] PR-Rework",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a hand-on naming an opened round joins it and one naming an unopened round opens it",
+			rows: reviewRecipe,
+			poll: checklistStatus(shedengine.StateRunning, "Rev-Fix",
+				doneEntry("Build", 5),
+				bouncedEntry(6), roundEntry("Rev-Review", 10, 1, "review"), handOnEntry(12, 1), handOnEntry(14, 2)),
+			nowMin: 16,
+			want: []string{
+				"[x] Build 5m", "  10:00 5m done",
+				"[>] Rev 11m rounds 2",
+				"  round 1",
+				"    10:05 1m Rev-Bouncer bounced",
+				"    10:06 4m Rev-Review done round-1-review.md",
+				"    10:10 2m Rev-Review stuck round-1-review.md",
+				"  round 2",
+				"    10:12 2m Rev-Review stuck round-2-review.md",
+				"    10:14 2m Rev-Fix running",
+				"[ ] Publish", "[ ] PR-Review", "[ ] PR-Rework",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a goto into the review row ends round 1 and round 2 opens with its review line and no Bouncer line",
+			rows: reviewRecipe,
+			poll: checklistStatus(shedengine.StateRunning, "Rev-Fix",
+				doneEntry("Build", 5),
+				bouncedEntry(6), roundEntry("Rev-Review", 10, 1, "review"), roundEntry("Rev-Fix", 15, 1, "fixer-report"),
+				gotoEntry("Rev-Review", 16), roundEntry("Rev-Review", 20, 2, "review")),
+			nowMin: 22,
+			want: []string{
+				"[x] Build 5m", "  10:00 5m done",
+				"[>] Rev 16m rounds 2",
+				"  round 1",
+				"    10:05 1m Rev-Bouncer bounced",
+				"    10:06 4m Rev-Review done round-1-review.md",
+				"    10:10 5m Rev-Fix done round-1-fixer-report.md",
+				"    10:16 0m Rev-Review goto",
+				"  round 2",
+				"    10:16 4m Rev-Review done round-2-review.md",
+				"    10:20 2m Rev-Fix running",
+				"[ ] Publish", "[ ] PR-Review", "[ ] PR-Rework",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a reroute into the review row renders the same shape as a goto into it",
+			rows: reviewRecipe,
+			poll: checklistStatus(shedengine.StateRunning, "Rev-Fix",
+				doneEntry("Build", 5),
+				bouncedEntry(6), roundEntry("Rev-Review", 10, 1, "review"), roundEntry("Rev-Fix", 15, 1, "fixer-report"),
+				shedengine.HistoryEntry{Producer: "Rev-Fix", Outcome: shedengine.OutcomeReroute, At: minuteMark(16), RoutedTo: "Rev-Review"},
+				roundEntry("Rev-Review", 20, 2, "review")),
+			nowMin: 22,
+			want: []string{
+				"[x] Build 5m", "  10:00 5m done",
+				"[>] Rev 17m rounds 2",
+				"  round 1",
+				"    10:05 1m Rev-Bouncer bounced",
+				"    10:06 4m Rev-Review done round-1-review.md",
+				"    10:10 5m Rev-Fix done round-1-fixer-report.md",
+				"    10:15 1m Rev-Fix reroute",
+				"  round 2",
+				"    10:16 4m Rev-Review done round-2-review.md",
+				"    10:20 2m Rev-Fix running",
+				"[ ] Publish", "[ ] PR-Review", "[ ] PR-Rework",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a goto into the segment before any round opened stands before round 1",
+			rows: reviewRecipe,
+			poll: checklistStatus(shedengine.StateRunning, "Rev-Bouncer",
+				doneEntry("Build", 5), gotoEntry("Rev-Bouncer", 6)),
+			nowMin: 8,
+			want: []string{
+				"[x] Build 5m", "  10:00 5m done",
+				"[>] Rev 2m rounds 0",
+				"  10:06 0m Rev-Bouncer goto",
+				"  10:06 2m Rev-Bouncer running",
+				"[ ] Publish", "[ ] PR-Review", "[ ] PR-Rework",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a Bouncer that bounced while the review row still runs shows its line and the open review visit under the next round",
+			rows: reviewRecipe,
+			poll: checklistStatus(shedengine.StateRunning, "Rev-Review",
+				doneEntry("Build", 5),
+				bouncedEntry(6), roundEntry("Rev-Review", 10, 1, "review"), roundEntry("Rev-Fix", 15, 1, "fixer-report"),
+				bouncedEntry(16)),
+			nowMin: 18,
+			want: []string{
+				"[x] Build 5m", "  10:00 5m done",
+				"[>] Rev 13m rounds 2",
+				"  round 1",
+				"    10:05 1m Rev-Bouncer bounced",
+				"    10:06 4m Rev-Review done round-1-review.md",
+				"    10:10 5m Rev-Fix done round-1-fixer-report.md",
+				"  round 2",
+				"    10:15 1m Rev-Bouncer bounced",
+				"    10:16 2m Rev-Review running",
+				"[ ] Publish", "[ ] PR-Review", "[ ] PR-Rework",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a Bouncer awaiting line reads escalated as the last line of its round",
+			rows: reviewRecipe,
+			poll: checklistStatus(shedengine.StateAwaiting, "Rev-Bouncer",
+				doneEntry("Build", 5),
+				bouncedEntry(6), roundEntry("Rev-Review", 10, 1, "review"), roundEntry("Rev-Fix", 15, 1, "fixer-report"),
+				awaitingEntry("Rev-Bouncer", 16)),
+			nowMin: 17,
+			want: []string{
+				"[x] Build 5m", "  10:00 5m done",
+				"[-] Rev 12m rounds 1",
+				"  round 1",
+				"    10:05 1m Rev-Bouncer bounced",
+				"    10:06 4m Rev-Review done round-1-review.md",
+				"    10:10 5m Rev-Fix done round-1-fixer-report.md",
+				"    10:15 1m Rev-Bouncer escalated",
+				"    10:16 1m Rev-Bouncer running",
+				"[ ] Publish", "[ ] PR-Review", "[ ] PR-Rework",
+				"loom awaiting | now working", "waiting on the parent: escalation from Rev-Bouncer",
+			},
+		},
+		{
+			name: "a segment without a Bouncer row renders its rows as per-row lines and an unvisited review segment is one bare line",
+			rows: reviewRecipe,
+			poll: checklistStatus(shedengine.StateRunning, "PR-Rework",
+				doneEntry("Build", 5), doneEntry("PR-Review", 8)),
+			nowMin: 10,
+			want: []string{
+				"[x] Build 5m", "  10:00 5m done",
+				"[ ] Rev",
+				"[ ] Publish",
+				"[x] PR-Review 3m", "  10:05 3m done",
+				"[>] PR-Rework 2m", "  10:08 2m running",
 				"loom running | now working", "waiting on nothing",
 			},
 		},
