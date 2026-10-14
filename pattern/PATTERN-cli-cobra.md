@@ -30,6 +30,6 @@ Deviations:
 - `quarrycli` uses `internal/planglyph`.
 - `battencli` uses `internal/battenshed` and `internal/battenrecipe`, with no engine package of its own.
 - `shedcli` uses `internal/shedverbs`, `internal/loomcli` and `internal/battencli`, with no engine package of its own.
-- `pausecli` uses `pauseengine`, and mounts one root command, `tender`.
+- `tendercli` uses `tenderengine`, and mounts one root command, `tender`.
 - `shortcutcli` mounts one root command per shortcut from its embedded file, with no `Command()` or `RunCLI`; a shortcut is an alias stretched to a sequence of argvs, so the module guards skip its group.
 - `cleanupcli` calls the cleanup functions of `battencli`, `boardengine`, `orchengine`, `logger` and `lyxtemp`, with no engine package of its own.

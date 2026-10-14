@@ -1,6 +1,6 @@
 // report.go declares the seams the pause, resume, revive and status sequences read through and the reports they return, with the holds report shared by pause and status.
 
-package pauseengine
+package tenderengine
 
 import (
 	"sort"

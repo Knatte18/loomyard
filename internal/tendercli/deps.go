@@ -1,6 +1,6 @@
-// deps.go fills pauseengine.Deps for a hub: its task pairs as shuttle-backed Pair values, the network operation and parent lock readers, and the orch watcher probe.
+// deps.go fills tenderengine.Deps for a hub: its task pairs as shuttle-backed Pair values, the network operation and parent lock readers, and the orch watcher probe.
 
-package pausecli
+package tendercli
 
 import (
 	"cmp"
@@ -16,7 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/parentlock"
-	"github.com/Knatte18/loomyard/internal/pauseengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -25,21 +24,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/tenderengine"
 )
 
 // hubDeps fills the engine's Deps for the hub location belongs to, with strand the caller's strand name.
 // Every task pair of the hub is a Pair, the prime excluded, and the pair slugs are returned beside the Deps.
-func hubDeps(location *lyxcwd.Location, strand string) (pauseengine.Deps, []string, error) {
+func hubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []string, error) {
 	geometry, err := hubgeom.PauseGeometry(location)
 	if err != nil {
-		return pauseengine.Deps{}, nil, err
+		return tenderengine.Deps{}, nil, err
 	}
 	worktrees, err := fabricengine.List(location.WorktreePath())
 	if err != nil {
-		return pauseengine.Deps{}, nil, err
+		return tenderengine.Deps{}, nil, err
 	}
 	var (
-		pairs []pauseengine.Pair
+		pairs []tenderengine.Pair
 		slugs []string
 		prime *lyxcwd.Location
 	)
@@ -49,7 +49,7 @@ func hubDeps(location *lyxcwd.Location, strand string) (pauseengine.Deps, []stri
 		}
 		pairLocation, err := lyxcwd.ResolveWorktree(worktree.Path)
 		if err != nil {
-			logger.Warn("pausecli: skipping a worktree that does not resolve", "worktree", worktree.Path, "error", err)
+			logger.Warn("tendercli: skipping a worktree that does not resolve", "worktree", worktree.Path, "error", err)
 			continue
 		}
 		if worktree.Main {
@@ -58,17 +58,17 @@ func hubDeps(location *lyxcwd.Location, strand string) (pauseengine.Deps, []stri
 		}
 		pair, err := newShuttlePair(pairLocation)
 		if err != nil {
-			return pauseengine.Deps{}, nil, fmt.Errorf("pause: wire the pair %s: %w", pairLocation.WorktreeName, err)
+			return tenderengine.Deps{}, nil, fmt.Errorf("pause: wire the pair %s: %w", pairLocation.WorktreeName, err)
 		}
 		pairs = append(pairs, pair)
 		slugs = append(slugs, pairLocation.WorktreeName)
 	}
 
-	var primePair pauseengine.Pair
+	var primePair tenderengine.Pair
 	if prime != nil {
 		wired, err := newShuttlePair(prime)
 		if err != nil {
-			logger.Warn("pausecli: the prime does not wire, so its sessions are not listed", "worktree", prime.WorktreePath(), "error", err)
+			logger.Warn("tendercli: the prime does not wire, so its sessions are not listed", "worktree", prime.WorktreePath(), "error", err)
 		} else {
 			primePair = wired
 		}
@@ -80,7 +80,7 @@ func hubDeps(location *lyxcwd.Location, strand string) (pauseengine.Deps, []stri
 	}
 
 	locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(location.HubPath))}
-	deps := pauseengine.Deps{
+	deps := tenderengine.Deps{
 		RecordPath: geometry.RecordPath,
 		Pairs:      pairs,
 		Prime:      primePair,
@@ -110,7 +110,7 @@ func hubDeps(location *lyxcwd.Location, strand string) (pauseengine.Deps, []stri
 			}
 			live, err := orchengine.WatcherLive(orchcli.PrimePaths(prime))
 			if err != nil {
-				logger.Warn("pausecli: the orch watcher probe failed, reading it as not live", "error", err)
+				logger.Warn("tendercli: the orch watcher probe failed, reading it as not live", "error", err)
 			}
 			return live
 		},
@@ -160,19 +160,19 @@ func newShuttlePair(location *lyxcwd.Location) (shuttlePair, error) {
 func (p shuttlePair) Slug() string { return p.location.WorktreeName }
 
 // Sessions lists the pair's running runs whose strand reed reports live.
-func (p shuttlePair) Sessions() ([]pauseengine.SessionInfo, error) {
+func (p shuttlePair) Sessions() ([]tenderengine.SessionInfo, error) {
 	readings, err := shuttleengine.ReadSessionStates(p.cfg, p.location.AnchorPath(), p.engine, time.Now())
 	if err != nil || len(readings) == 0 {
 		return nil, err
 	}
-	var sessions []pauseengine.SessionInfo
+	var sessions []tenderengine.SessionInfo
 	for _, reading := range readings {
 		live, err := p.Live(reading.StrandGUID)
 		if err != nil {
 			return nil, err
 		}
 		if live {
-			sessions = append(sessions, pauseengine.SessionInfo{Strand: reading.StrandName, GUID: reading.StrandGUID, Slug: p.Slug()})
+			sessions = append(sessions, tenderengine.SessionInfo{Strand: reading.StrandName, GUID: reading.StrandGUID, Slug: p.Slug()})
 		}
 	}
 	return sessions, nil

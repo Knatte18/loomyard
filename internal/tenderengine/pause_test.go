@@ -1,7 +1,7 @@
 // pause_test.go drives the pause sequence over fake pairs, a fake clock whose Sleep advances it, and a temp record.
 // It also holds the fakes resume_test.go shares.
 
-package pauseengine
+package tenderengine
 
 import (
 	"errors"

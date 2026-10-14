@@ -1,6 +1,6 @@
 // cli.go builds the tender cobra command with its pause, resume and status verbs, the caller rules and the RunCLI/RunCLIIn seams that wire them into the standard io.Writer-based call contract.
 
-package pausecli
+package tendercli
 
 import (
 	"errors"
@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/pauseengine"
+	"github.com/Knatte18/loomyard/internal/tenderengine"
 	"github.com/spf13/cobra"
 )
 
@@ -139,7 +139,7 @@ Example:
 			if slug != "" && !slices.Contains(slugs, slug) {
 				return fail(fmt.Errorf("pause: %q has no pair in this hub; way forward: name one of the pairs: %s", slug, strings.Join(slugs, ", ")))
 			}
-			report, err := pauseengine.Pause(deps, pauseengine.PauseRequest{Slug: slug, Grace: time.Duration(grace) * time.Second})
+			report, err := tenderengine.Pause(deps, tenderengine.PauseRequest{Slug: slug, Grace: time.Duration(grace) * time.Second})
 			if err != nil {
 				return fail(err)
 			}
@@ -200,7 +200,7 @@ Example:
 			if err != nil {
 				return fail(err)
 			}
-			report, err := pauseengine.Resume(deps, pauseengine.ResumeRequest{Slug: slug})
+			report, err := tenderengine.Resume(deps, tenderengine.ResumeRequest{Slug: slug})
 			if err != nil {
 				return fail(err)
 			}
@@ -263,7 +263,7 @@ Example:
 			if slug != "" && !slices.Contains(slugs, slug) {
 				return fail(fmt.Errorf("revive: %q has no pair in this hub; way forward: name one of the pairs: %s", slug, strings.Join(slugs, ", ")))
 			}
-			report, err := pauseengine.Revive(deps, pauseengine.ReviveRequest{Slug: slug})
+			report, err := tenderengine.Revive(deps, tenderengine.ReviveRequest{Slug: slug})
 			if err != nil {
 				return fail(err)
 			}
@@ -307,7 +307,7 @@ Example:
 			if err != nil {
 				return fail(err)
 			}
-			report, err := pauseengine.Status(deps)
+			report, err := tenderengine.Status(deps)
 			if err != nil {
 				return fail(err)
 			}

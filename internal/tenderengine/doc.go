@@ -1,4 +1,4 @@
-// Package pauseengine implements the pause, resume, revive and status sequences behind `lyx tender`, over seams.
+// Package tenderengine implements the pause, resume, revive and status sequences behind `lyx tender`, over seams.
 //
 // A pause records an entry in the pause record and waits a short grace for busy sessions and network operations to finish.
 // It then interrupts every covered session still in a running turn with Esc, and reports what it saw.
@@ -71,4 +71,4 @@
 //     A platform that cannot list processes reports the part unsupported, and any other failed reading is reported in the part; the rest of the report is unaffected either way.
 //
 // Status reads no transcript and no pane content and writes nothing, so any caller may run it.
-package pauseengine
+package tenderengine

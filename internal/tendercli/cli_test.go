@@ -3,7 +3,7 @@
 // cli_test.go drives `lyx tender pause`, `status`, `resume` and `revive` through the cobra commands over a hubforge hub with one pair and no agents running, and the network gate installer over the same hub.
 // No test calls t.Parallel: each sets the strand-name variable or reads the process-wide network gate.
 
-package pausecli
+package tendercli
 
 import (
 	"bytes"

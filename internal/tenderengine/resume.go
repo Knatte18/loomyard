@@ -1,6 +1,6 @@
 // resume.go implements the resume sequence, the revive sequence beside it and the status read.
 
-package pauseengine
+package tenderengine
 
 import (
 	"errors"

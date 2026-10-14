@@ -34,7 +34,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/orchcli"
-	"github.com/Knatte18/loomyard/internal/pausecli"
 	"github.com/Knatte18/loomyard/internal/quarrycli"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reportcli"
@@ -43,6 +42,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shortcutcli"
 	"github.com/Knatte18/loomyard/internal/shuttlecli"
 	"github.com/Knatte18/loomyard/internal/stencilcli"
+	"github.com/Knatte18/loomyard/internal/tendercli"
 	"github.com/Knatte18/loomyard/internal/webstercli"
 )
 
@@ -111,7 +111,7 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				logger.MintOrAdoptAndExport()
 				logger.Arm()
 				// The pause gate holds this process's network git and GitHub calls while a pause covers it.
-				pausecli.InstallNetworkGate(cmd.Context())
+				tendercli.InstallNetworkGate(cmd.Context())
 			}
 			// Seeding must never block a command from running, regardless of its outcome.
 			seedStencils(cmd)
@@ -147,7 +147,7 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 		// than spliced into the argument vector, so it is discoverable in help
 		// and covered by the help-tree and registration guards.
 		loomcli.StartAliasCommand(),
-		pausecli.Command(),
+		tendercli.Command(),
 		quarrycli.Command(),
 		gatecli.Command(),
 	)
