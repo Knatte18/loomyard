@@ -600,6 +600,9 @@ func TestAuthRT_WaitsWhileAPauseCoversTheProcess(t *testing.T) {
 	}
 }
 
+// pauseHoldDuration is a top-level constant so the untagged-test sleep guard can resolve it.
+const pauseHoldDuration = 150 * time.Millisecond
+
 // TestAuthRT_HeldCallGetsItsFullDeadlineAfterRelease pins the transport's deadlines around a pause hold:
 // a held call gets its caller deadline moved later by the held time and its client timeout from the release, an unheld call and a call admitted before the pause keep theirs,
 // and a cancellation ends a held call unless the caller's own deadline had already passed.
@@ -609,10 +612,7 @@ func TestAuthRT_HeldCallGetsItsFullDeadlineAfterRelease(t *testing.T) {
 	t.Setenv("GH_TOKEN", "test-token")
 	t.Setenv("GITHUB_TOKEN", "")
 
-	const (
-		budget = 50 * time.Millisecond
-		hold   = 150 * time.Millisecond
-	)
+	const budget = 50 * time.Millisecond
 
 	type env struct {
 		cancel  context.CancelFunc
@@ -674,7 +674,7 @@ func TestAuthRT_HeldCallGetsItsFullDeadlineAfterRelease(t *testing.T) {
 	}
 	answerAtOnce := func(*env, http.ResponseWriter, *http.Request) {}
 	liftAfterHold := func(e *env) {
-		time.Sleep(hold)
+		time.Sleep(pauseHoldDuration)
 		e.setLive(false)
 	}
 	neverSleeps := func(*env) {}
@@ -691,7 +691,7 @@ func TestAuthRT_HeldCallGetsItsFullDeadlineAfterRelease(t *testing.T) {
 	})
 
 	t.Run("an unheld call keeps its deadline", func(t *testing.T) {
-		got := run(t, budget, false, neverSleeps, func(*env, http.ResponseWriter, *http.Request) { time.Sleep(hold) })
+		got := run(t, budget, false, neverSleeps, func(*env, http.ResponseWriter, *http.Request) { time.Sleep(pauseHoldDuration) })
 		if !errors.Is(got.err, context.DeadlineExceeded) || got.sleeps != 0 {
 			t.Fatalf("err = %v, sleeps = %d; want a deadline error and no hold", got.err, got.sleeps)
 		}
@@ -700,7 +700,7 @@ func TestAuthRT_HeldCallGetsItsFullDeadlineAfterRelease(t *testing.T) {
 	t.Run("a call admitted before the pause is neither held nor extended", func(t *testing.T) {
 		got := run(t, budget, false, neverSleeps, func(e *env, w http.ResponseWriter, r *http.Request) {
 			e.setLive(true)
-			time.Sleep(hold)
+			time.Sleep(pauseHoldDuration)
 		})
 		if !errors.Is(got.err, context.DeadlineExceeded) || got.sleeps != 0 {
 			t.Fatalf("err = %v, sleeps = %d; want a deadline error and no hold", got.err, got.sleeps)

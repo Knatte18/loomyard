@@ -24,6 +24,12 @@ import (
 
 const issuesPath = "/repos/Knatte18/loomyard/issues"
 
+// Top-level constants so the untagged-test sleep guard can resolve them.
+const (
+	inboxPageDelay = 250 * time.Millisecond
+	inboxPauseHold = 150 * time.Millisecond
+)
+
 // TestListOpenIssues_PaginatesAndExcludesPullRequests follows the Link header across two pages,
 // drops the pull request, and asserts the exact owner/repo path and the open filter.
 func TestListOpenIssues_PaginatesAndExcludesPullRequests(t *testing.T) {
@@ -69,11 +75,7 @@ func TestListOpenIssues_PaginatesAndExcludesPullRequests(t *testing.T) {
 	}
 
 	t.Run("a page held by a pause gets its own deadline", func(t *testing.T) {
-		const (
-			perRequest = 400 * time.Millisecond
-			pageTime   = 250 * time.Millisecond
-			holdTime   = 150 * time.Millisecond
-		)
+		const perRequest = 400 * time.Millisecond
 		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 		t.Setenv("LOCALAPPDATA", t.TempDir())
 		t.Setenv("GH_TOKEN", "test-token")
@@ -97,7 +99,7 @@ func TestListOpenIssues_PaginatesAndExcludesPullRequests(t *testing.T) {
 			Notify:   func(string) {},
 			Sleep: func(ctx context.Context, d time.Duration) error {
 				sleeps.Add(1)
-				time.Sleep(holdTime)
+				time.Sleep(inboxPauseHold)
 				setLive(false)
 				return nil
 			},
@@ -106,12 +108,12 @@ func TestListOpenIssues_PaginatesAndExcludesPullRequests(t *testing.T) {
 		var server *httptest.Server
 		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Query().Get("page") == "2" {
-				time.Sleep(pageTime)
+				time.Sleep(inboxPageDelay)
 				_, _ = w.Write([]byte(`[{"number":3,"title":"three","state":"open","labels":[]}]`))
 				return
 			}
 			setLive(true)
-			time.Sleep(pageTime)
+			time.Sleep(inboxPageDelay)
 			w.Header().Set("Link", fmt.Sprintf(`<%s%s?page=2>; rel="next"`, server.URL, issuesPath))
 			_, _ = w.Write([]byte(`[{"number":1,"title":"one","state":"open","labels":[]}]`))
 		}))
