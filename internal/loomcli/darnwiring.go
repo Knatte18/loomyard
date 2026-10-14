@@ -190,6 +190,8 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 		return loomrecipe.DarnRouting(cfg.ReviewMaxBounces)
 	})
 	c.env.Darn = darnDeps(location, c.runID, c.env.VerifyDir)
+	// The history seam turns the Darn-Write row's "discussion" gate into the darn gate.
+	c.env.DiscussionHistory = discussionHistory(location)
 	c.env.DarnSpec = func(told loomshed.DarnTold) (shuttleengine.Spec, error) {
 		return darnengine.DarnSpec(darnengine.DarnInputs{
 			StencilsDir:       stencilsDir,

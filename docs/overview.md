@@ -418,7 +418,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `quarrycli` is a named CLI/Cobra Invariant package-naming deviation: it imports `internal/planglyph`, not a `quarryengine`. ✅ Implemented.
 - **discussionparser** — the sole reader of `_lyx/discussion/`'s on-disk format (the decision record's required sections and the support log's existence);
   it takes told absolute paths and declares no location of its own — deliberately unlike `planparser`, because `loomengine`'s accessors take a `*lyxcwd.Location`, which this stdlib-only leaf may not import.
-  Consumed by `loomshed.NewDiscussionGate` (the Discussion-Write and Discussion-Burler-Fix rows' own gates) and by the `lyx loom validate-discussion` verb (`internal/discussionparser`). ✅ Implemented.
+  Consumed by `loomshed.NewDiscussionGate` (the Discussion-Write and Discussion-Burler-Fix rows' own gates), `loomshed.NewDarnDiscussionGate` (the Darn-Write row's gate) and by the `lyx loom validate-discussion` verb (`internal/discussionparser`). ✅ Implemented.
 - **summaryparser** — the sole declarer of the final-summary artifact's filename and the sole parser of its format (see [loom-final-summary-spec.md](../contracts/specs/loom-final-summary-spec.md));
   it takes told paths and declares no directory of its own, and is stdlib-only so neither consumer depends on a producer.
   Consumed by `internal/landingshed`'s `Publish` and `Finalize`, by `internal/websterengine`, by the `description` gate on loom's `Describe` row, and by the `lyx loom validate-description` verb (`internal/summaryparser`). ✅ Implemented.
@@ -457,6 +457,7 @@ User-facing modules each get one `lyx <module>` namespace:
   and a legacy `_lyx/shed/self/` still resolves.
   `pause` records a `--before` or `--after` condition and refuses bare, naming `lyx pause` for stopping the agents.
   `validate-discussion` runs the same checks Discussion-Write's and Discussion-Burler-Fix's own gates run, standalone, exiting 0 on a clean gate and 1 otherwise, with findings in the failure envelope so a writer agent can self-check before handing off.
+  On a darn run the verb also checks the record's history for dropped `Added after Discussion` entries and commits the decision record and support log on a clean run.
   `decision add [<slug>] --by parent|operator --title <t> --decision <d> --rationale <r>` appends one design call made after the Discussion to the decision record under an `Added after Discussion` heading, re-runs the discussion check (restoring the record on a finding) and commits the record.
   It is refused while Discussion-Write is running, refuses a named session other than the run's recorded parent (the operator's own unnamed shell always passes) and resumes nothing.
   `validate-plan` runs the same checks a non-twill Plan-Write run's and Plan-Burler-Fix's own gates run, standalone, with the same exit-code and findings-envelope contract, over the current worktree's plan instead of its discussion.

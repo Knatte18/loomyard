@@ -828,6 +828,15 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	if c.env.Rework.ReadCommitted == nil {
 		t.Error("env.Rework.ReadCommitted = nil; want the committed-file seam validate-plan --rework reads")
 	}
+	// A loom run leaves the darn validate-discussion seams nil; a darn run fills both, still with no config load.
+	if c.env.DiscussionHistory != nil || c.env.CommitDiscussion != nil {
+		t.Error("a loom-recipe wireLightweight filled the darn discussion seams; want both nil")
+	}
+	darn := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
+	darn.wireLightweight(location, location.AnchorPath())
+	if darn.env.DiscussionHistory == nil || darn.env.CommitDiscussion == nil {
+		t.Error("a darn-recipe wireLightweight left a discussion seam nil; want the history and commit seams")
+	}
 	// Nothing that a module config would have filled may be populated: that is what proves no load
 	// happened rather than merely that none failed.
 	if c.reed != nil {

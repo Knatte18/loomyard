@@ -239,8 +239,10 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 
 // wireLightweight builds the minimum the verbUsesLightweightWiring set needs onto c: location, cwd,
 // the two status-file paths, and (for the validate verbs) the c.env path fields they read plus the
-// committed-file seam validate-plan --rework reads. It loads
-// no module config, constructs no engine, and can fail only if loomengine's own path accessors do,
+// committed-file seam validate-plan --rework reads.
+// On a darn run it also fills the history and commit seams validate-discussion uses;
+// they read committed history and commit through the fabric at call time.
+// It loads no module config, constructs no engine, and can fail only if loomengine's own path accessors do,
 // which they cannot.
 //
 // It exists because wire() below loads eight module configs, a model-spec registry and the active
@@ -294,6 +296,10 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	c.env.SupportLogPath = loomengine.DiscussionSupportLog(location)
 	c.env.DescriptionPath = summaryparser.Path(loomengine.LandingDir(location))
 	c.env.Rework.ReadCommitted = committedAnchoredReader(location)
+	if c.recipe == shedrun.RecipeDarn {
+		c.env.DiscussionHistory = discussionHistory(location)
+		c.env.CommitDiscussion = func() error { return commitDiscussion(location) }
+	}
 	c.env.PlanIndex = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), hubgeom.GateSlots(location), gateslot.WaitDir(location.AnchorPath()))
 }
 
@@ -341,6 +347,14 @@ func discussionCommitPathspec(location *lyxcwd.Location) []string {
 func commitDiscussion(location *lyxcwd.Location) error {
 	_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, discussionCommitPathspec(location), fmt.Sprintf("loom: discussion artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 	return err
+}
+
+// discussionHistory returns the seam that reads every committed version of location's decision record, newest first.
+// Building it opens nothing: the fabric is read on each call.
+func discussionHistory(location *lyxcwd.Location) func() ([][]byte, error) {
+	return func() ([][]byte, error) {
+		return fabricengine.CommittedAnchoredFileHistory(location, loomengine.DiscussionDecisionRecordRel())
+	}
 }
 
 // writeCarryOver writes entry into the decision record of location's worktree and commits the record alone.
