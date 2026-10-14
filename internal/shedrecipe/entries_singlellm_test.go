@@ -7,28 +7,13 @@ package shedrecipe
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
-
-// writeStencilFile writes content to the on-disk location stencilstore.Read(dir, name) resolves
-// name to, creating any parent directory the family convention requires.
-func writeStencilFile(t *testing.T, dir, name, content string) {
-	t.Helper()
-	path := stencilstore.Path(dir, name)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("mkdir stencil parent %s: %v", filepath.Dir(path), err)
-	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write stencil %s: %v", path, err)
-	}
-}
 
 // validSingleLLMEnv returns a fresh newTestEnv(t) with a readable, marker-free stencil already
 // written into it, plus that stencil's stencilstore name.

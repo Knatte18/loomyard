@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -37,6 +38,18 @@ type noFindingsPlanIndex struct{ planindex.Index }
 
 func (noFindingsPlanIndex) ValidateFormat(*planparser.Plan, string, []planparser.Card) ([]planindex.Finding, error) {
 	return nil, nil
+}
+
+// writeStencilFile writes content to the on-disk location stencilstore.Read(dir, name) resolves name to, creating any parent directory the family convention requires.
+func writeStencilFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	path := stencilstore.Path(dir, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir stencil parent %s: %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write stencil %s: %v", path, err)
+	}
 }
 
 // newTestEnv builds an Env whose every path field is an absolute path derived from a single t.TempDir(), one subdirectory per field: a directory field (Cwd, WorktreeRoot, StencilsDir, SpecsDir, RunRoot, AnchorPath, ScratchDir) is created with os.MkdirAll, while a file field (StatusPath, StatusLockPath, DecisionRecordPath, SupportLogPath, PrimeLock.Path) is left as a joined path nobody creates.
