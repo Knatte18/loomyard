@@ -86,6 +86,7 @@ internal/reedengine: 265
 internal/reedengine/render: 12
 internal/reportcli: 3
 internal/reportengine: 8
+internal/reviewbudget: 3
 internal/seatengine: 17
 internal/segmentcolor: 4
 internal/selfexec: 2
