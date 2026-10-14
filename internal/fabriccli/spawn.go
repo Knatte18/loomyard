@@ -13,5 +13,5 @@ func spawnPush(warpPath, weftPath string) error {
 	return fabricengine.SpawnDetachedPush(warpPath, weftPath)
 }
 
-// spawnPairPush launches the detached push of a new pair's code and records worktrees.
-var spawnPairPush = spawnPush
+// spawnPairPush launches the detached push of the new pair at the given location: its code and records worktrees.
+var spawnPairPush = fabricengine.SpawnPairPush

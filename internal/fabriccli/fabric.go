@@ -508,7 +508,11 @@ func runAdd(ctx context.Context, out io.Writer, args []string) int {
 		"branch": r.Branch,
 		"path":   r.Path,
 	}
-	if err := spawnPairPush(codeWorktree, recordsWorktree); err != nil {
+	pairLocation, err := lyxcwd.ResolveWorktree(codeWorktree)
+	if err == nil {
+		err = spawnPairPush(pairLocation)
+	}
+	if err != nil {
 		fields["push_error"] = err.Error()
 	} else {
 		rec.Append(fabricengine.KindPushSpawned, codeWorktree, "detached")
