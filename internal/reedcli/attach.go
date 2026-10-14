@@ -2,8 +2,10 @@
 // — no new window is spawned.
 // attach is the one registered JSON-envelope exception in this package: every fallible step runs
 // pre-flight on the envelope,
-// but the terminal-handover tail (once stdio is inherited by the child tmux process) emits no JSON
+// but the terminal-handover tail (once stdio belongs to tmux) emits no JSON
 // on success.
+// The handover itself is handOver, declared once per platform.
+// It execs tmux over this process on Unix and runs it as a child process on Windows.
 // The handover argv itself comes from reedengine.Engine.AttachArgv, not a package-level builder here:
 // this file's only remaining pre-flight addition is reading the operator's own terminal size via
 // golang.org/x/term and handing it to the engine's builder. That size read and the builder call are
@@ -31,8 +33,10 @@ func (c *reedCLI) attachCmd() *cobra.Command {
 		Use:         "attach",
 		Short:       "attach the operator's terminal to the reed session in place",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `attach hands the operator's own stdio over to a tmux attach-session
-child, in place — no new window is spawned (never wt.exe). attach boots
+		Long: `attach hands the operator's own terminal over to tmux attach-session, in
+place — no new window is spawned (never wt.exe). On Unix attach replaces
+itself with tmux, so no lyx process outlives the handover; on Windows it runs
+tmux as a child with the terminal inherited. attach boots
 this worktree's session when none is up, rather than refusing. Every
 fallible step (booting the session if it is cold, then checking that the
 server/session is up) runs pre-flight and reports through the normal JSON
@@ -95,30 +99,39 @@ Example:
 				cols, rows = 0, 0
 			}
 
-			attach := exec.Command(c.eng.TmuxPath(), c.eng.AttachArgv(cols, rows)...)
-			attach.Stdin = os.Stdin
-			attach.Stdout = os.Stdout
-			attach.Stderr = os.Stderr
-
-			// Terminal-handover tail: stdio is now inherited by the child
-			// process, so this is the one documented exception to "every RunE
-			// ends in a JSON envelope" — no JSON is written here even on
-			// failure (tmux's own stderr already reached the operator's
-			// terminal), but the child's exit code still propagates so a
-			// failed attach is not reported as success.
-			logger.Info("reedcli: spawning tmux attach", "tmux", c.eng.TmuxPath(), "cols", cols, "rows", rows)
-			if err := attach.Run(); err != nil {
-				exitCode := 1
-				var exitErr *exec.ExitError
-				if errors.As(err, &exitErr) {
-					exitCode = exitErr.ExitCode()
-				}
-				logger.Info("reedcli: tmux attach exited", "tmux", c.eng.TmuxPath(), "exitCode", exitCode)
+			// Terminal-handover tail: stdio now belongs to tmux, so this is the one documented exception to "every RunE ends in a JSON envelope".
+			// No JSON is written here even on failure, since tmux's own stderr already reached the operator's terminal.
+			// The exit code still propagates, so a failed attach is not reported as success.
+			exitCode, err := handOver(c.eng.TmuxPath(), c.eng.AttachArgv(cols, rows))
+			if err != nil {
+				logger.Warn("reedcli: tmux attach handover failed", "tmux", c.eng.TmuxPath(), "err", err)
+			}
+			if exitCode != 0 {
 				clihelp.SetExit(cmd.Context(), exitCode)
-			} else {
-				logger.Info("reedcli: tmux attach exited", "tmux", c.eng.TmuxPath(), "exitCode", 0)
 			}
 			return nil
 		},
 	}
+}
+
+// runAttachChild runs tmux with args as a child that inherits the operator's stdio and returns the child's exit code.
+// A child that ran and exited non-zero returns its code and a nil error; one that could not start returns 1 and the error.
+func runAttachChild(tmux string, args []string) (exitCode int, err error) {
+	attach := exec.Command(tmux, args...)
+	attach.Stdin = os.Stdin
+	attach.Stdout = os.Stdout
+	attach.Stderr = os.Stderr
+
+	logger.Info("reedcli: spawning tmux attach", "tmux", tmux, "args", args)
+	runErr := attach.Run()
+	var exitErr *exec.ExitError
+	switch {
+	case runErr == nil:
+	case errors.As(runErr, &exitErr):
+		exitCode = exitErr.ExitCode()
+	default:
+		exitCode, err = 1, runErr
+	}
+	logger.Info("reedcli: tmux attach exited", "tmux", tmux, "exitCode", exitCode)
+	return exitCode, err
 }
