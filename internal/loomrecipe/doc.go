@@ -5,10 +5,11 @@
 // internal/lyxcwd, per the Told-Geometry Invariant.
 //
 // The bounce budget of every review segment (a segment holding a Bouncer row) is not declared in the loom recipe.
-// It is the perch's own `<perch>_max_bounces` of loom.yaml, falling back to `review_max_bounces` where that is 0:
+// It is the perch's own entry in the per-perch map, 0 included, falling back to `review_max_bounces` where the map holds none:
 // New takes the run-wide value from shedrecipe.Env.ReviewMaxBounces and the per-perch ones from shedrecipe.Env.RowMaxBounces, keyed by the segment's Bouncer row name, and Routing takes both from its arguments.
 // Both set the resolved value on every row of the segment, the Bouncer, the review row and the fix row, so the engine and the routing projection hold one value per perch.
-// A negative per-perch entry is a wiring error naming its Bouncer row.
+// A resolved budget of 0 also stamps `zero_rounds` on the segment's Bouncer row, which then settles approved at once; the segment keeps its route.
+// A negative per-perch entry is a wiring error naming its Bouncer row, and a run-wide value below 0 is refused.
 // PR-Gate keeps the recipe's own max_bounces.
 //
 // The loom recipe's landing tail reads `Describe → Merge-In → Merge-Review → Publish → PR-Align → PR-Gate → Finalize`.

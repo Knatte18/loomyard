@@ -820,7 +820,6 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		MergeReview: func() string {
 			return landingshed.MergeReviewNote(landingshed.MergeRecordPath(loomengine.LoomScratchDir(location)))
 		},
-		MergeReviewOff: loomCfg.SkipMergeReview,
 		// ReworkSpec is evaluated per Call like PlanSpec above, so the stencil is read at call time.
 		// The values the session is told arrive from the PR-Rework producer, which decides them.
 		ReworkSpec: func(told loomshed.ReworkTold) (shuttleengine.Spec, error) {
@@ -844,7 +843,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
 		Slug: seedSlug(location.WorktreeName),
 		SegmentBounces: segmentBounces(statusPath, statusLockPath, func() (shedengine.Routing, error) {
-			return loomrecipe.Routing(loomCfg.ReviewMaxBounces, perchMaxBounces(loomCfg), loomCfg.SkipMergeReview)
+			return loomrecipe.Routing(loomCfg.ReviewMaxBounces, perchMaxBounces(loomCfg))
 		}),
 
 		ReviewMaxBounces:         loomCfg.ReviewMaxBounces,
@@ -948,14 +947,23 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 }
 
 // perchMaxBounces maps loom.yaml's per-perch budget keys onto the Discussion, Plan, Webster and Merge Bouncer rows' names.
-// A 0 entry means the perch takes the run-wide review_max_bounces.
+// A perch whose key is 0 has no entry and takes the run-wide review_max_bounces, and skip_merge_review gives the Merge-Bouncer an entry of 0, which is zero rounds.
 func perchMaxBounces(cfg loomengine.Config) map[string]int {
-	return map[string]int{
+	budgets := map[string]int{}
+	for row, budget := range map[string]int{
 		loomshed.NameDiscussionBouncer: cfg.DiscussionMaxBounces,
 		loomshed.NamePlanBouncer:       cfg.PlanMaxBounces,
 		loomshed.NameWebsterBouncer:    cfg.WebsterMaxBounces,
 		loomshed.NameMergeBouncer:      cfg.MergeMaxBounces,
+	} {
+		if budget > 0 {
+			budgets[row] = budget
+		}
 	}
+	if cfg.SkipMergeReview {
+		budgets[loomshed.NameMergeBouncer] = 0
+	}
+	return budgets
 }
 
 // loomPerches maps each loom Bouncer row's name to the review perch it belongs to.

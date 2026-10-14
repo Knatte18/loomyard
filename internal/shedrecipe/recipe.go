@@ -112,7 +112,7 @@ type Env struct {
 	// It is set on each row of a segment holding a Bouncer row, because the recipe declares no max_bounces there.
 	ReviewMaxBounces int
 	// RowMaxBounces is the bounce budget of each review segment, keyed by the segment's Bouncer row name as RowBouncerModels is, read by loomrecipe alone.
-	// A nil map, a missing entry and 0 take ReviewMaxBounces.
+	// A nil map and a missing entry take ReviewMaxBounces, and an entry of 0 gives the perch zero rounds.
 	RowMaxBounces map[string]int
 	// RowAutoAccept is the auto-accept flag of each Bouncer row, keyed by row name; a nil map and a missing entry mean false.
 	// A Bouncer told true accepts a harvested round at a spent bounce budget instead of running the soft-cap rule.
@@ -217,8 +217,6 @@ type Env struct {
 	// MergeReview returns the merge record note the Merge-Review rubric renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
 	// Nil renders `none`.
 	MergeReview func() string
-	// MergeReviewOff is loom.yaml's skip_merge_review, which routes the recipe's Merge-In row straight to Publish.
-	MergeReviewOff bool
 	// CarryOver is the injected closure that writes and commits one review segment's carry-over entry into the decision record, read by the Bouncer entry's carry_over key.
 	// It is run-wide, and the entry the Bouncer passes names its own segment.
 	CarryOver func(discussionparser.CarryOver) error
