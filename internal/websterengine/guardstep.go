@@ -10,9 +10,13 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/impactset"
+	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // guardTests is what one render of the card gates found in the root module's test files.
@@ -104,6 +108,143 @@ func scanGuardTests(worktree string) (guardTests, error) {
 		guards.goFiles[dir] = goFiles[dir]
 	}
 	return guards, nil
+}
+
+// step returns the guard step of cards[index], or "" when it renders none, and the step's length.
+// The step is `lyx gate test --tags integration <guard packages> -- -run '^(<guard test names>)$'`, the packages in sorted directory order and the names sorted, each once.
+// A guard directory drops out for cards[index] when the cards from cards[0] through cards[index] have emptied it,
+// so the step never names a directory gone by that card's gate.
+// The step is "" when the scan failed or no directory is left.
+func (g guardTests) step(plan *planparser.Plan, cards []planparser.Card, index int) (step string, length int) {
+	if g.scanErr != nil {
+		return "", 0
+	}
+	dirs := make([]string, 0, len(g.names))
+	for dir := range g.names {
+		dirs = append(dirs, dir)
+	}
+	slices.Sort(dirs)
+
+	var packages, names []string
+	for _, dir := range dirs {
+		if !g.holdsFilesAfter(plan, cards[:index+1], dir) {
+			continue
+		}
+		packages = append(packages, packageArg(dir))
+		for _, name := range g.names[dir] {
+			if !slices.Contains(names, name) {
+				names = append(names, name)
+			}
+		}
+	}
+	if len(packages) == 0 {
+		return "", 0
+	}
+	slices.Sort(names)
+	step = "lyx gate test --tags integration " + strings.Join(packages, " ") + " -- -run '^(" + strings.Join(names, "|") + ")$'"
+	return step, len(step)
+}
+
+// holdsFilesAfter reports whether guard directory dir still holds a .go file once cards have run in order.
+// Each card first removes every file one of its covers covers, then adds each .go file its Create targets and Rename new sides name in dir.
+func (g guardTests) holdsFilesAfter(plan *planparser.Plan, cards []planparser.Card, dir string) bool {
+	files := map[string]bool{}
+	for _, file := range g.goFiles[dir] {
+		files[file] = true
+	}
+	for _, card := range cards {
+		for file := range files {
+			if slices.ContainsFunc(cardCovers(card), func(cover string) bool { return planparser.RefCovers(plan, cover, file) }) {
+				delete(files, file)
+			}
+		}
+		for _, ref := range cardCreatedRefs(card) {
+			if file, ok := planparser.RefFile(plan, ref); ok && path.Ext(file) == ".go" && path.Dir(file) == dir {
+				files[file] = true
+			}
+		}
+	}
+	return len(files) > 0
+}
+
+// cardCovers returns the refs card removes or replaces: the old side of each Rename pair and each Delete ref.
+func cardCovers(card planparser.Card) []string {
+	var covers []string
+	for _, group := range card.TargetGroups {
+		switch group.Type {
+		case planparser.CardTypeDelete:
+			covers = append(covers, group.Refs...)
+		case planparser.CardTypeRename:
+			for _, pair := range group.Pairs {
+				covers = append(covers, pair.Old)
+			}
+		}
+	}
+	return covers
+}
+
+// cardCreatedRefs returns the refs card brings into existence: its Create targets and the new side of each Rename pair.
+func cardCreatedRefs(card planparser.Card) []string {
+	var refs []string
+	for _, group := range card.TargetGroups {
+		switch group.Type {
+		case planparser.CardTypeCreate:
+			refs = append(refs, group.Refs...)
+		case planparser.CardTypeRename:
+			for _, pair := range group.Pairs {
+				refs = append(refs, pair.New)
+			}
+		}
+	}
+	return refs
+}
+
+// guardNotice returns the prompt text that replaces the guard step where it could not be rendered, read from stencilsDir, and "" when nothing needs replacing.
+// A failed scan renders its error, followed by the fix line when the failing file lies in a package one of cards targets, naming the first such card as planDirDisplay spells its pointer.
+// A tooLong above 0, the largest length any card's step had, renders the over-long line.
+func guardNotice(plan *planparser.Plan, cards []planparser.Card, planDirDisplay, stencilsDir string, guards guardTests, tooLong int) (string, error) {
+	var paragraphs []string
+	if guards.scanErr != nil {
+		text, err := fillFragment(stencilsDir, "webster-fragment-guard-scan-error", map[string]string{"guard_error": guards.scanErr.Error()})
+		if err != nil {
+			return "", err
+		}
+		paragraphs = append(paragraphs, text)
+
+		fileDir := path.Dir(guards.scanErr.File)
+		for _, card := range cards {
+			if !slices.ContainsFunc(planparser.CardTargetDirs(plan, card), func(target planparser.TargetDir) bool { return target.Dir == fileDir }) {
+				continue
+			}
+			text, err := fillFragment(stencilsDir, "webster-fragment-guard-fix", map[string]string{"guard_file": guards.scanErr.File, "card_path": cardPointerPath(card, planDirDisplay)})
+			if err != nil {
+				return "", err
+			}
+			paragraphs = append(paragraphs, text)
+			break
+		}
+	}
+	if tooLong > 0 {
+		text, err := fillFragment(stencilsDir, "webster-fragment-guard-too-long", map[string]string{"guard_length": strconv.Itoa(tooLong), "guard_limit": strconv.Itoa(impactset.MaxCommandLength)})
+		if err != nil {
+			return "", err
+		}
+		paragraphs = append(paragraphs, text)
+	}
+	return strings.Join(paragraphs, "\n\n"), nil
+}
+
+// fillFragment reads the fragment stencil name from stencilsDir, fills its markers with values and returns the text without its banner or trailing newlines.
+func fillFragment(stencilsDir, name string, values map[string]string) (string, error) {
+	raw, err := stencilstore.Read(stencilsDir, name)
+	if err != nil {
+		return "", err
+	}
+	filled, err := stencil.Fill(raw, values)
+	if err != nil {
+		return "", fmt.Errorf("fill fragment %s: %w", name, err)
+	}
+	return strings.TrimRight(string(filled), "\r\n"), nil
 }
 
 // skipGuardDir returns filepath.SkipDir for a directory below the root that the walk leaves out, and nil for one it enters.

@@ -498,6 +498,12 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster begin-batch %d`", err, batchNumber)
 	}
 
+	// The guard scan reads the worktree before the first mutation, so a path it cannot read refuses with nothing changed.
+	guards, err := scanGuardTests(deps.Geom.WorktreeRoot)
+	if err != nil {
+		return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster begin-batch %d` once the path reads", err, batchNumber)
+	}
+
 	// The fork writes its report here with whatever tool it likes — a plain
 	// shell redirect included, which unlike an agent Write tool never creates
 	// missing parents. Only the --fresh archive path recreated this dir
@@ -556,7 +562,10 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// mode's WorktreeRoot is the anchor path, the exact value this call
 	// rendered before this Geometry split.
 	notePath := friction.NotePath(deps.FrictionDir, batchName)
-	cardGates := renderCardGates(deps.Plan, batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Geom.WorktreeRoot)
+	cardGates, err := renderCardGates(deps.Plan, batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, guards)
+	if err != nil {
+		return nil, err
+	}
 	batchGate := renderBatchGate(deps.Plan, batch.Cards, deps.Geom.WorktreeRoot)
 	promptPath, err := filepath.Abs(filepath.Join(deps.Geom.PromptsDir, batchName+".md"))
 	if err != nil {

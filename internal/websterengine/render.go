@@ -302,7 +302,7 @@ func cardPointerPath(c planparser.Card, planDirDisplay string) string {
 // friction.Directive error swallowed as a Warn rather than propagated.
 // specsDir is the told deployed-specs directory, filled into the shared implementer-job body's
 // required specs_dir marker.
-// cardGates is the caller-rendered per-card gate step list (renderCardGates), filled into the body's required card_gates marker.
+// cardGates is the caller-rendered per-card gate step list followed by any guard notice (renderCardGates), filled into the body's required card_gates marker.
 // batchGate is the caller-rendered batch package list and gate (renderBatchGate), filled into the body's required batch_gate marker.
 // outcomePath and summaryPath are Merriam's two contract files, filled into the fork prefix's outcome_path and summary_path markers so the fork is told never to write them.
 // pack is the batch's kick-start pack, one entry per card, or nil to render the prompt without one.
@@ -389,7 +389,7 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 // pattern.Directive call immediately above, which does propagate.
 // specsDir is the told deployed-specs directory, filled into the shared implementer-job body's
 // required specs_dir marker.
-// cardGates and batchGate are the caller-rendered gate texts, as for RenderForkPrompt.
+// cardGates is the caller-rendered per-card gate step list followed by any guard notice, and batchGate the caller-rendered batch package list and gate.
 // parentName is the told parent agent name; an empty one renders parentdirective's no-parent variant.
 // failureDigest is the prior failed record's reasons and suspect paths, or "" when the batch was not failed;
 // it fills the optional failure_digest marker, rendered as "none" when empty, and being optional it leaves an older deployed stencil rendering.

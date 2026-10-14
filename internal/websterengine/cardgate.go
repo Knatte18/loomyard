@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
@@ -84,10 +85,19 @@ func (s gateScope) steps(tags string) []string {
 	return steps
 }
 
-// cardGateCommand returns the gate for card as its ordered steps: `lyx gate test` over the card's own packages, one step per module, then the comment line-break lint and the PATTERN headroom lint.
-// A card with no surviving package directory runs only the two lints.
-func cardGateCommand(plan *planparser.Plan, card planparser.Card, worktree string) []string {
-	return append(gateScopeOf(plan, []planparser.Card{card}, worktree).steps(""), "lyx loom lint-comments", "lyx loom lint-pattern")
+// cardGateCommand returns the gate for cards[index] as its ordered steps: `lyx gate test` over the card's own packages, one step per module, then the guard step over the root module's `//lyx:guard` tests, then the comment line-break lint and the PATTERN headroom lint.
+// A card with no surviving package directory runs only the guard step, when there is one, and the two lints.
+// A guard step longer than impactset.MaxCommandLength is left out and its length returned as guardTooLong, which is 0 otherwise.
+func cardGateCommand(plan *planparser.Plan, cards []planparser.Card, index int, worktree string, guards guardTests) (steps []string, guardTooLong int) {
+	steps = gateScopeOf(plan, cards[index:index+1], worktree).steps("")
+	if guard, length := guards.step(plan, cards, index); guard != "" {
+		if length > impactset.MaxCommandLength {
+			guardTooLong = length
+		} else {
+			steps = append(steps, guard)
+		}
+	}
+	return append(steps, "lyx loom lint-comments", "lyx loom lint-pattern"), guardTooLong
 }
 
 // moduleRelative returns dir relative to module, "." for the module directory itself.
@@ -123,15 +133,27 @@ func holdsGoFile(dir string) bool {
 // renderCardGates renders each card in declared order as its pointer bullet with one indented sub-bullet per gate step.
 // Each step is its own backticked command, never chained, so a fork runs each as its own Bash call.
 // Pointers are spelled as renderCardPointers spells them.
-func renderCardGates(plan *planparser.Plan, cards []planparser.Card, planDirDisplay, worktree string) string {
+// A guard notice, read from stencilsDir, follows after a blank line when the guard scan failed or a card's guard step was over-long.
+func renderCardGates(plan *planparser.Plan, cards []planparser.Card, planDirDisplay, worktree, stencilsDir string, guards guardTests) (string, error) {
 	var lines []string
-	for _, c := range cards {
-		lines = append(lines, fmt.Sprintf("- `%s/%s`:", planDirDisplay, filepath.Base(c.SourcePath)))
-		for _, step := range cardGateCommand(plan, c, worktree) {
+	tooLong := 0
+	for i, c := range cards {
+		lines = append(lines, fmt.Sprintf("- `%s`:", cardPointerPath(c, planDirDisplay)))
+		steps, guardTooLong := cardGateCommand(plan, cards, i, worktree, guards)
+		tooLong = max(tooLong, guardTooLong)
+		for _, step := range steps {
 			lines = append(lines, fmt.Sprintf("  - `%s`", step))
 		}
 	}
-	return strings.Join(lines, "\n")
+	text := strings.Join(lines, "\n")
+	notice, err := guardNotice(plan, cards, planDirDisplay, stencilsDir, guards, tooLong)
+	if err != nil {
+		return "", err
+	}
+	if notice != "" {
+		text += "\n\n" + notice
+	}
+	return text, nil
 }
 
 // renderBatchGate renders the batch's Go package list and its gate: the union of its cards' surviving directories per module, then one `lyx gate test --tags integration` step per module, one step per line.

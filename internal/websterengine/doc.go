@@ -72,7 +72,15 @@
 // After the last card the fork runs the batch gate once, over the batch's packages with `-tags integration`;
 // Go never runs it, and Webster's plan-level verify gate catches a fork that skips it.
 // The fork runs every card gate step, card `verify:` line and the batch gate in the foreground under the gate rule in its system prompt and never backgrounds a call, so its only turn end is its final report.
-// A card's own gate, which begin-batch and recover-batch render into the fork's prompt, is `lyx gate test` over the card's own package directories, one step per module (a directory inside a nested module is tested inside it with `lyx gate test -C <module>` and module-relative paths), one step per line, and ends with `lyx loom lint-comments`, the comment line-break lint, then `lyx loom lint-pattern`, the PATTERN headroom lint.
+// A card's own gate, which begin-batch and recover-batch render into the fork's prompt, is `lyx gate test` over the card's own package directories, one step per module (a directory inside a nested module is tested inside it with `lyx gate test -C <module>` and module-relative paths), one step per line, then one guard step over the root module's `//lyx:guard` tests, and ends with `lyx loom lint-comments`, the comment line-break lint, then `lyx loom lint-pattern`, the PATTERN headroom lint.
+// The guard step is `lyx gate test --tags integration <guard packages> -- -run '^(<guard test names>)$'`.
+// It comes from a walk of the worktree that spawns no process: every directory directly holding a `_test.go` file is scanned through `impactset.FindGuardTests`, skipping, below the root, a directory named `testdata` or `vendor`, one whose name begins with `_` or `.`, and one holding a `go.mod`, each with its whole subtree.
+// A guard package drops out of a card's step once the cards up to and including it have emptied it, so a step never names a directory gone by that card's gate:
+// a card's Rename old sides and Delete targets remove the files they cover (`planparser.RefCovers`), and its Create targets and Rename new sides add `.go` files back.
+// A scan error sitting in a test file's content, and a step longer than `impactset.MaxCommandLength`, never refuse: the card gates render without the step, and a prompt line after the gate list says so, with the plan-level verify still running the guard tests.
+// When the failing file lies in a package a card targets, a second line points that card at fixing it under its commit.
+// A path the walk cannot read, or a test file it cannot open, refuses begin-batch and recover-batch as a transient before they mutate anything.
+// The implementer body tells a fork to fix a guard step failure on a file outside the card's list under the card's commit, moving a pin only when the pin itself must move.
 //
 // record-batch and recover-batch apply one merge-only rule when they cross-check the consumed report's `head_sha` against the worktree's HEAD,
 // so a parent merge-in landing between a fork's commit and the report's consumption cannot wedge the run.

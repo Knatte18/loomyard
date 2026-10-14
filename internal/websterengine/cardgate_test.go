@@ -1,6 +1,7 @@
 package websterengine
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
@@ -42,7 +44,7 @@ func TestCardGateCommand(t *testing.T) {
 		root := t.TempDir()
 		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"internal/a/a.go#", "internal/b/b.go#Run"}})
 		want := []string{"lyx gate test ./internal/a ./internal/b", lintComments, lintPattern}
-		if got := cardGateCommand(plan, card, root); !slices.Equal(got, want) {
+		if got, _ := cardGateCommand(plan, []planparser.Card{card}, 0, root, guardTests{}); !slices.Equal(got, want) {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
 	})
@@ -52,7 +54,7 @@ func TestCardGateCommand(t *testing.T) {
 		root := t.TempDir()
 		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"internal/a#Run", "internal/a_test#TestRun"}})
 		want := []string{"lyx gate test ./internal/a", lintComments, lintPattern}
-		if got := cardGateCommand(plan, card, root); !slices.Equal(got, want) {
+		if got, _ := cardGateCommand(plan, []planparser.Card{card}, 0, root, guardTests{}); !slices.Equal(got, want) {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
 	})
@@ -66,7 +68,7 @@ func TestCardGateCommand(t *testing.T) {
 			planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"internal/kept/k.go#"}},
 		)
 		want := []string{"lyx gate test ./internal/kept", lintComments, lintPattern}
-		if got := cardGateCommand(plan, card, root); !slices.Equal(got, want) {
+		if got, _ := cardGateCommand(plan, []planparser.Card{card}, 0, root, guardTests{}); !slices.Equal(got, want) {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
 	})
@@ -77,7 +79,7 @@ func TestCardGateCommand(t *testing.T) {
 		writeGateFile(t, root, "contracts/stencils/x.md")
 		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeProsa, Refs: []string{"contracts/stencils/x.md"}})
 		want := []string{lintComments, lintPattern}
-		if got := cardGateCommand(plan, card, root); !slices.Equal(got, want) {
+		if got, _ := cardGateCommand(plan, []planparser.Card{card}, 0, root, guardTests{}); !slices.Equal(got, want) {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
 	})
@@ -88,7 +90,7 @@ func TestCardGateCommand(t *testing.T) {
 		writeGateFile(t, root, "testdata/helper.go")
 		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeProsa, Refs: []string{"testdata/notes.md"}})
 		want := []string{"lyx gate test ./testdata", lintComments, lintPattern}
-		if got := cardGateCommand(plan, card, root); !slices.Equal(got, want) {
+		if got, _ := cardGateCommand(plan, []planparser.Card{card}, 0, root, guardTests{}); !slices.Equal(got, want) {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
 	})
@@ -97,7 +99,7 @@ func TestCardGateCommand(t *testing.T) {
 		t.Parallel()
 		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"main.go"}})
 		want := []string{"lyx gate test .", lintComments, lintPattern}
-		if got := cardGateCommand(plan, card, t.TempDir()); !slices.Equal(got, want) {
+		if got, _ := cardGateCommand(plan, []planparser.Card{card}, 0, t.TempDir(), guardTests{}); !slices.Equal(got, want) {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
 	})
@@ -173,8 +175,144 @@ func TestCardGateCommand(t *testing.T) {
 					writeGateFile(t, root, file)
 				}
 				nestedPlan := &planparser.Plan{Language: "go", Cards: tt.cards}
-				if got := cardGateCommand(nestedPlan, tt.cards[tt.index], root); !slices.Equal(got, tt.want) {
+				if got, _ := cardGateCommand(nestedPlan, tt.cards, tt.index, root, guardTests{}); !slices.Equal(got, tt.want) {
 					t.Errorf("cardGateCommand() = %q; want %q", got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("guard", func(t *testing.T) {
+		t.Parallel()
+		const (
+			guardSourceG = "package g\n\n//lyx:guard\nfunc TestG(t *testing.T) {}\n"
+			guardStepG   = "lyx gate test --tags integration ./internal/g -- -run '^(TestG)$'"
+		)
+		gateRename := func(pairs ...planparser.MovePair) planparser.TargetGroup {
+			group := planparser.TargetGroup{Type: planparser.CardTypeRename, Pairs: pairs}
+			for _, pair := range pairs {
+				group.Refs = append(group.Refs, pair.Old, pair.New)
+			}
+			return group
+		}
+		movedOut := gateRename(
+			planparser.MovePair{Old: "internal/g/g.go#", New: "internal/h/g.go#"},
+			planparser.MovePair{Old: "internal/g/g_test.go#", New: "internal/h/g_test.go#"},
+		)
+		gDir := map[string]string{"go.mod": "module m\n", "internal/g/g.go": "package g\n", "internal/g/g_test.go": guardSourceG}
+
+		var manyTests strings.Builder
+		manyTests.WriteString("package g\n")
+		for i := 0; i < 700; i++ {
+			fmt.Fprintf(&manyTests, "\n//lyx:guard\nfunc TestGuardNumber%04d(t *testing.T) {}\n", i)
+		}
+
+		tests := []struct {
+			name  string
+			files map[string]string
+			cards []planparser.Card
+			// wants is the exact step list of each card, by index.
+			wants [][]string
+			// overLong marks the one row whose guard step is left out for its length.
+			overLong bool
+		}{
+			{
+				name: "a card's steps end with one guard step naming every guard package and name before the lints",
+				files: map[string]string{
+					"go.mod":               "module m\n",
+					"root_test.go":         "package m\n\n//lyx:guard\nfunc TestRoot(t *testing.T) {}\n",
+					"internal/a/a_test.go": "package a\n\n//lyx:guard\nfunc TestA2(t *testing.T) {}\n\n//lyx:guard\nfunc TestA1(t *testing.T) {}\n",
+					"internal/b/b_test.go": "package b\n\n//lyx:guard\nfunc TestB(t *testing.T) {}\n",
+				},
+				cards: []planparser.Card{numberedGateCard(1, gateEdit("internal/a/a.go#"))},
+				wants: [][]string{{
+					"lyx gate test ./internal/a",
+					"lyx gate test --tags integration . ./internal/a ./internal/b -- -run '^(TestA1|TestA2|TestB|TestRoot)$'",
+					lintComments, lintPattern,
+				}},
+			},
+			{
+				name:  "a package whose files all move out is dropped for the cards from the move on",
+				files: gDir,
+				cards: []planparser.Card{
+					numberedGateCard(1, gateEdit("internal/g/g.go#")),
+					numberedGateCard(2, movedOut),
+					numberedGateCard(3, gateEdit("internal/h/h.go#")),
+				},
+				wants: [][]string{
+					{"lyx gate test ./internal/g", guardStepG, lintComments, lintPattern},
+					{"lyx gate test ./internal/h", lintComments, lintPattern},
+					{"lyx gate test ./internal/h", lintComments, lintPattern},
+				},
+			},
+			{
+				name:  "a package keeps its guard step when only one of its files moves out",
+				files: gDir,
+				cards: []planparser.Card{
+					numberedGateCard(1, gateEdit("internal/g/g.go#")),
+					numberedGateCard(2, gateRename(planparser.MovePair{Old: "internal/g/g.go#", New: "internal/h/g.go#"})),
+					numberedGateCard(3, gateEdit("internal/h/h.go#")),
+				},
+				wants: [][]string{
+					{"lyx gate test ./internal/g", guardStepG, lintComments, lintPattern},
+					{"lyx gate test ./internal/h", guardStepG, lintComments, lintPattern},
+					{"lyx gate test ./internal/h", guardStepG, lintComments, lintPattern},
+				},
+			},
+			{
+				name:  "a package whose directory a card deletes is dropped for the cards from the delete on",
+				files: gDir,
+				cards: []planparser.Card{
+					numberedGateCard(1, gateEdit("internal/g/g.go#")),
+					numberedGateCard(2, planparser.TargetGroup{Type: planparser.CardTypeDelete, Refs: []string{"internal/g"}}),
+					numberedGateCard(3, gateEdit("internal/h/h.go#")),
+				},
+				wants: [][]string{
+					{"lyx gate test ./internal/g", guardStepG, lintComments, lintPattern},
+					{lintComments, lintPattern},
+					{"lyx gate test ./internal/h", lintComments, lintPattern},
+				},
+			},
+			{
+				name:  "a package whose files move out and a new file is created in it keeps its guard step",
+				files: gDir,
+				cards: []planparser.Card{
+					numberedGateCard(1, gateEdit("internal/g/g.go#")),
+					numberedGateCard(2, movedOut, gateCreate("internal/g/new.go#")),
+					numberedGateCard(3, gateEdit("internal/h/h.go#")),
+				},
+				wants: [][]string{
+					{"lyx gate test ./internal/g", guardStepG, lintComments, lintPattern},
+					{"lyx gate test ./internal/h ./internal/g", guardStepG, lintComments, lintPattern},
+					{"lyx gate test ./internal/h", guardStepG, lintComments, lintPattern},
+				},
+			},
+			{
+				name:     "a guard step over the command limit is left out",
+				files:    map[string]string{"go.mod": "module m\n", "internal/g/g_test.go": manyTests.String()},
+				cards:    []planparser.Card{numberedGateCard(1, gateEdit("internal/g/g.go#"))},
+				wants:    [][]string{{"lyx gate test ./internal/g", lintComments, lintPattern}},
+				overLong: true,
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				root := t.TempDir()
+				writeGuardFixture(t, root, tt.files)
+				guards, err := scanGuardTests(root)
+				if err != nil {
+					t.Fatalf("scanGuardTests() error = %v; want nil", err)
+				}
+				guardPlan := &planparser.Plan{Language: "go", Cards: tt.cards}
+				for i := range tt.cards {
+					got, tooLong := cardGateCommand(guardPlan, tt.cards, i, root, guards)
+					if !slices.Equal(got, tt.wants[i]) {
+						t.Errorf("card %d: cardGateCommand() = %q; want %q", i+1, got, tt.wants[i])
+					}
+					if tt.overLong != (tooLong > impactset.MaxCommandLength) || (!tt.overLong && tooLong != 0) {
+						t.Errorf("card %d: guardTooLong = %d; want over %d: %v", i+1, tooLong, impactset.MaxCommandLength, tt.overLong)
+					}
 				}
 			})
 		}
@@ -203,7 +341,10 @@ func TestRenderCardGates_OneBulletPerCardWithAStepSubBulletEach(t *testing.T) {
 		gateCard(planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"internal/a/a.go#"}}),
 		{Number: 2, Slug: "docs", SourcePath: "_lyx/plan/02-docs.md"},
 	}
-	got := renderCardGates(&planparser.Plan{Language: "go"}, cards, "_lyx/plan", t.TempDir())
+	got, err := renderCardGates(&planparser.Plan{Language: "go"}, cards, "_lyx/plan", t.TempDir(), t.TempDir(), guardTests{})
+	if err != nil {
+		t.Fatalf("renderCardGates() error = %v; want nil", err)
+	}
 	want := "- `_lyx/plan/01-gate.md`:\n" +
 		"  - `lyx gate test ./internal/a`\n" +
 		"  - `lyx loom lint-comments`\n" +
