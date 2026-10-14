@@ -220,7 +220,7 @@ func TestRecipeRouting(t *testing.T) {
 		t.Run("recipe "+tt.recipe, func(t *testing.T) {
 			t.Parallel()
 			c := &loomCLI{recipe: tt.recipe, darnCfg: &darnengine.Config{ReviewMaxBounces: 3}}
-			c.cfg.ReviewMaxBounces = 3
+			c.cfg.ReviewMaxBounces, c.cfg.ReviewHardMaxBounces = 3, 4
 			routing, err := c.recipeRouting()
 			if err != nil {
 				t.Fatalf("recipeRouting() = %v; want nil", err)

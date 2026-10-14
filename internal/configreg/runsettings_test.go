@@ -33,6 +33,18 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"loom": "review_hard_max_bounces: 3\nreview_max_bounces: 2\n"},
 		},
 		{
+			name:     "a zero per-perch budget keeps its zero-rounds meaning through loom's Migrate",
+			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(0)}},
+			wantDocs: map[string]string{"loom": "plan_max_bounces: 0\n"},
+		},
+		{
+			name:        "a review hard cap of zero is refused by loom's CheckValues",
+			settings:    map[string]any{"loom": map[string]any{"review_hard_max_bounces": float64(0)}},
+			wantRefusal: "review_hard_max_bounces",
+			wantModule:  "loom",
+			wantInvalid: true,
+		},
+		{
 			name:     "below-floor step_idle_timeout_min is raised by loom's Migrate",
 			settings: map[string]any{"loom": map[string]any{"step_idle_timeout_min": float64(0)}},
 			wantDocs: map[string]string{"loom": "step_idle_timeout_min: 1\n"},

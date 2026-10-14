@@ -947,21 +947,18 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 }
 
 // perchMaxBounces maps loom.yaml's per-perch budget keys onto the Discussion, Plan, Webster and Merge Bouncer rows' names.
-// A perch whose key is 0 has no entry and takes the run-wide review_max_bounces, and skip_merge_review gives the Merge-Bouncer an entry of 0, which is zero rounds.
+// A perch whose key is null has no entry and takes the run-wide review_max_bounces; an entry of 0 gives the perch zero rounds.
 func perchMaxBounces(cfg loomengine.Config) map[string]int {
 	budgets := map[string]int{}
-	for row, budget := range map[string]int{
+	for row, budget := range map[string]*int{
 		loomshed.NameDiscussionBouncer: cfg.DiscussionMaxBounces,
 		loomshed.NamePlanBouncer:       cfg.PlanMaxBounces,
 		loomshed.NameWebsterBouncer:    cfg.WebsterMaxBounces,
 		loomshed.NameMergeBouncer:      cfg.MergeMaxBounces,
 	} {
-		if budget > 0 {
-			budgets[row] = budget
+		if budget != nil {
+			budgets[row] = *budget
 		}
-	}
-	if cfg.SkipMergeReview {
-		budgets[loomshed.NameMergeBouncer] = 0
 	}
 	return budgets
 }

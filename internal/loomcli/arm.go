@@ -255,10 +255,10 @@ func (c *loomCLI) verifySource() verifySource {
 }
 
 // reviewBudget returns the run-wide review bounce budget, and the per-perch budget map the routing projection reports.
-// The full wiring has already loaded loom.yaml into c.cfg; the lightweight wiring loads no config, so it reads loom.yaml here once more.
+// The full wiring has already loaded loom.yaml into c.cfg, which holds a hard cap of at least 1 once loaded, since the run-wide budget may be 0; the lightweight wiring loads no config, so it reads loom.yaml here once more.
 // An unreadable loom.yaml degrades to the template's defaults with a warning, because the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
 func (c *loomCLI) reviewBudget() (int, map[string]int, error) {
-	if c.cfg.ReviewMaxBounces > 0 {
+	if c.cfg.ReviewHardMaxBounces > 0 {
 		return c.cfg.ReviewMaxBounces, perchMaxBounces(c.cfg), nil
 	}
 
