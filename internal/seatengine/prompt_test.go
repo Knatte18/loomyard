@@ -194,6 +194,26 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 		}
 	}
 
+	t.Run("an Amendment follows the lead's prompt and no later seat's", func(t *testing.T) {
+		t.Parallel()
+		plain, err := Prompts(geom, table)
+		if err != nil {
+			t.Fatalf("Prompts(plain table) = %v", err)
+		}
+		amended := table
+		amended.Amendment = "\n## Amendment\nStart over.\n"
+		got, err := Prompts(geom, amended)
+		if err != nil {
+			t.Fatalf("Prompts(amended table) = %v", err)
+		}
+		if want := plain[""] + amended.Amendment; got[""] != want {
+			t.Errorf("lead prompt = %q, want the plain prompt followed by the amendment, %q", got[""], want)
+		}
+		if got[advisorName(1)] != plain[advisorName(1)] || got[advisorName(2)] != plain[advisorName(2)] {
+			t.Error("an advisor prompt changed with the table's Amendment, want it unchanged")
+		}
+	})
+
 	t.Run("Prompts composes one prompt per seat", func(t *testing.T) {
 		t.Parallel()
 		writeStencil(t, geom.StencilsDir, "seat-test-note-block", "Block note [{{.note}}].\n")

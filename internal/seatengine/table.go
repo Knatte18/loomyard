@@ -119,6 +119,9 @@ type Table struct {
 	Values map[string]string
 	// Optional names the table values that may be empty; such a value renders as nothing wherever its marker stands.
 	Optional []string
+	// Amendment is text appended verbatim to the lead's composed prompt when the table starts fresh; empty leaves the prompt unchanged.
+	// A later seat's prompt never carries it, and a resumed lead keeps the prompt it started with.
+	Amendment string
 	// Seats are the table's seats in order: the lead, which carries no name, then the named advisors.
 	Seats []Seat
 }

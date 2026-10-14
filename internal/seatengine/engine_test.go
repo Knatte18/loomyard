@@ -607,6 +607,36 @@ func TestEngine_Run_ChairHoldDeferral(t *testing.T) {
 			await(t, ended)
 		})
 	}
+
+	t.Run("a one-seat table's lead never defers and is sent nothing", func(t *testing.T) {
+		t.Parallel()
+		shuttle := newFakeShuttle(t)
+		engine, geom := engineFixture(t, shuttle)
+		table := engineTable(geom.WorktreeRoot, 0)
+		table.Amendment = "\nFresh start.\n"
+		ended := runAsync(engine, table)
+		shuttle.awaitStarts(1)
+		lead := shuttle.handle(role(""))
+		if prompt := shuttle.spec(role("")).Prompt; !strings.HasSuffix(prompt, table.Amendment) {
+			t.Errorf("lead prompt = %q, want it to end with the table's Amendment", prompt)
+		}
+		predicate := shuttle.spec(role("")).HoldDeferral
+		if predicate == nil {
+			t.Fatal("the lead spec carries no hold deferral")
+		}
+		if predicate() {
+			t.Error("hold deferral = true before the lead reads busy, want false")
+		}
+		lead.setSession(midTurn, nil)
+		if predicate() {
+			t.Error("hold deferral = true with the lead mid-turn, want false")
+		}
+		lead.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
+		await(t, ended)
+		if attempts := lead.attemptCount(); attempts != 0 {
+			t.Errorf("lead took %d send attempts, want none", attempts)
+		}
+	})
 }
 
 // heldAdvisor scripts an advisor's session to read as name.

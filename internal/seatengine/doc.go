@@ -47,6 +47,7 @@
 // Engine.Run validates the table, forms every seat's strand name from the geometry's shortname and slug and the seat's role, and starts the chair first, then the advisors in table order.
 // The chair is the step's main agent: whoever talks to a producer running seats talks to the chair, and it holds the gate, the operator's channel and the step's outcome.
 // Each seat's prompt is its stencil filled, with the blocks it includes, from a value map holding the table's values, the seat's own and every reserved marker.
+// A table's Amendment is appended verbatim to the lead's composed prompt on this fresh path only, and Prompts appends it the same way; a later seat's prompt never carries it, and Probe and Resume never read it, since a probe's spec carries no prompt and a resumed lead keeps the prompt it started with.
 // The chair starts with the table's gate and is the only interactive seat; an advisor starts with its seat's gate, ungated when it has none, keeps its pane and holds a turn end quietly.
 // The chair's held-turn notice to the parent is deferred while advisor work is outstanding, so the chair's planned wait on its advisors does not reach the parent as a stall notice.
 // The chair's spec carries a HoldDeferral predicate, backed by the advisors started so far and the notice sender:
@@ -68,6 +69,7 @@
 // An advisor that reaches done queues nothing, since it stays reachable and the chair reads its file.
 // An advisor that dies, times out or whose wait errors queues one line for the chair.
 // A required advisor queues no line, neither an ending nor a not-started one, since its end stops the chair.
+// The sender carries advisor lines only, so a one-seat table queues no line and its lead's hold deferral never holds, since the deferral counts advisors.
 // One goroutine per chair types the queued lines through the chair's handle, one at a time, so two lines are never interleaved.
 // It retries a busy or unlanded send after the engine's notice interval until the line lands, the chair's outputs all exist or the sender is stopped, and logs a line that never lands rather than failing the step.
 //

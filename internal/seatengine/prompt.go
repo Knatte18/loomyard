@@ -91,6 +91,7 @@ func seatValues(geom Geometry, table Table, seat Seat, names map[string]string) 
 }
 
 // Prompts returns the prompt every seat of table reads at a fresh start, keyed by seat name, and starts nothing.
+// The lead's prompt ends with the table's Amendment.
 // It validates table against geom.StencilsDir, so a table that would be refused at start is refused here.
 func Prompts(geom Geometry, table Table) (map[string]string, error) {
 	if err := table.Validate(geom.StencilsDir); err != nil {
@@ -110,9 +111,17 @@ func Prompts(geom Geometry, table Table) (map[string]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		prompts[seat.Name] = prompt
+		prompts[seat.Name] = amendLeadPrompt(table, seat, prompt)
 	}
 	return prompts, nil
+}
+
+// amendLeadPrompt returns prompt followed by the table's Amendment when seat is the lead, and prompt unchanged for any other seat.
+func amendLeadPrompt(table Table, seat Seat, prompt string) string {
+	if seat.Name != leadName {
+		return prompt
+	}
+	return prompt + table.Amendment
 }
 
 // composePrompt reads seat's stencil and every block it includes from stencilsDir and fills them from values, with no marker optional.

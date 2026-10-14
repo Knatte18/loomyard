@@ -274,7 +274,7 @@ func (e *Engine) startSeat(table Table, seat Seat, names map[string]string, work
 	if err != nil {
 		return nil, err
 	}
-	spec := seatSpec(table, seat, prompt)
+	spec := seatSpec(table, seat, amendLeadPrompt(table, seat, prompt))
 	if seat.Name == leadName {
 		spec.HoldDeferral = work.outstanding
 	}
