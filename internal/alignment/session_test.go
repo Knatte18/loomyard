@@ -136,6 +136,7 @@ func (h *sessionHarness) spawnInput(key string) SpawnInput {
 			SupportLogPath:     "/hub/task-a/_lyx/discussion/support-log.md",
 			PlanDir:            "/hub/task-a/_lyx/plan",
 			ParentBranch:       "main",
+			MeasureStencil:     MeasureLoom,
 		},
 		Settings: Settings{Model: "claude-opus", Timeout: 20 * time.Minute},
 		Snapshot: "snap",

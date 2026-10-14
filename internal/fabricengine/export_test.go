@@ -597,13 +597,6 @@ func CleanupRemoteWarpWithHookForTest(t *Topology, l *lyxcwd.Location, apply boo
 	return t.cleanupRemoteWarp(l, apply, openPRHeads, afterEnumerate)
 }
 
-// SetPushSeamForTest makes t's Add pushes run through run and wait through sleep instead of the production runner and a real sleep.
-// A nil argument keeps the production behaviour for that part.
-// It sets the seam on the one Topology, so parallel tests inject per instance.
-func SetPushSeamForTest(t *Topology, run func(args []string, cwd string) (string, error), sleep func(delay time.Duration)) {
-	t.push = pushSeam{run: run, sleep: sleep}
-}
-
 // SetLeftoverSeamForTest makes t's Remove finish a directory git deregistered but left through remove and wait through sleep instead of the contained removal and a real sleep.
 // A nil argument keeps the production behaviour for that part.
 // It sets the seam on the one Topology, so parallel tests inject per instance.

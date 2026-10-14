@@ -55,6 +55,40 @@ func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
 			}
 		})
 	}
+
+	// A history seam selects the darn form of the "discussion" gate: it fails on an entry the record dropped and commits only on a pass.
+	t.Run("discussion with a history seam", func(t *testing.T) {
+		const entry = "\n### Added after Discussion (parent, 2026-03-04): Keep the cache\n\nDecision: d.\n\nRationale: r.\n"
+		record := "## Goal\n\ng\n\n## Scope\n\ns\n\n## Decisions\n\nd\n\n## Constraints\n\nc\n\n## Auto-mode assumptions\n\na\n\n## Open risks\n\no\n\n## Acceptance criteria\n\nac\n"
+
+		env := newTestEnv(t)
+		for path, content := range map[string]string{env.DecisionRecordPath: record, env.SupportLogPath: "support log"} {
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatalf("WriteFile(%q) = %v", path, err)
+			}
+		}
+		var history [][]byte
+		commits := 0
+		env.DiscussionHistory = func() ([][]byte, error) { return history, nil }
+		env.CommitDiscussion = func() error { commits++; return nil }
+
+		spec, err := resolveGateSpec("Row", gatesCfg("discussion", 4), env)
+		if err != nil {
+			t.Fatalf("resolveGateSpec() error = %v; want nil", err)
+		}
+
+		history = [][]byte{[]byte(record + entry)}
+		result, err := spec[0].Gate()
+		if err != nil || result.Passed || !strings.Contains(result.Findings, "### Added after Discussion (parent, 2026-03-04): Keep the cache") || commits != 0 {
+			t.Fatalf("Gate() with a dropped entry = (%+v, %v) after %d commits; want a failure naming the heading and no commit", result, err, commits)
+		}
+
+		history = nil
+		result, err = spec[0].Gate()
+		if err != nil || !result.Passed || commits != 1 {
+			t.Errorf("Gate() with an empty history = (%+v, %v) after %d commits; want a pass and one commit", result, err, commits)
+		}
+	})
 }
 
 func TestResolveGateSpec_PlanGatesRequirePlanIndex(t *testing.T) {

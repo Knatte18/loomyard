@@ -17,7 +17,6 @@
 package fabricengine_test
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,7 +26,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -43,6 +41,17 @@ func mustRecordsRepoRoot(t *testing.T, l *lyxcwd.Location) string {
 		t.Fatalf("RecordsRepoRoot: %v", err)
 	}
 	return root
+}
+
+// refuseRecordsCommits points l's records repository at a hooks directory whose pre-commit hook refuses every commit, so Add fails at its origin-record commit, the last step that can fail after the pair is wired.
+func refuseRecordsCommits(t *testing.T, l *lyxcwd.Location) {
+	t.Helper()
+
+	hooks := t.TempDir()
+	if err := os.WriteFile(filepath.Join(hooks, "pre-commit"), []byte("#!/bin/sh\necho refused by test >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatalf("write pre-commit hook: %v", err)
+	}
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "config", "core.hooksPath", hooks)
 }
 
 // TestAddRollback_AdoptedWeftBranchSurvives pre-creates a weft branch carrying a unique commit,
@@ -218,47 +227,6 @@ func TestAddRollback_WarpBranchDeletedUnderEmptyPrefix(t *testing.T) {
 	}
 }
 
-// TestAddRollback_RefusedWarpBranchDeletionLogsWarn pins the origin deletion's lease: a warp branch that moved on origin after step 11's push is left there,
-// and a WARN line names the branch and the lease the deletion was pinned to.
-// A pre-receive hook on the weft bare advances the warp bare's branch and declines step 12's push, which fails Add after step 11 landed.
-//
-// It is deliberately NOT parallel: it rebinds the process-global logger sink via SetOutput, and Go
-// pauses t.Parallel() tests until the sequential ones finish, so a non-parallel test owns the sink for
-// its duration with no cross-talk from a concurrently-logging sibling.
-func TestAddRollback_RefusedWarpBranchDeletionLogsWarn(t *testing.T) {
-	const slug = "warn-on-refused-lease"
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	pushedTip := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
-
-	clone := t.TempDir()
-	gitkit.MustRun(t, clone, "git", "clone", "--quiet", h.CodeBare, ".")
-	movedTip := gitkit.CommitFile(t, clone, "moved.txt", "moved\n", "moved on origin")
-	gitkit.MustRun(t, clone, "git", "push", "--quiet", "origin", "HEAD:refs/heads/elsewhere")
-	installPreReceive(t, h.RecordsBare, "#!/bin/sh\nenv -i PATH=\"$PATH\" git --git-dir='"+filepath.ToSlash(h.CodeBare)+"' update-ref refs/heads/"+slug+" "+movedTip+"\necho declined >&2\nexit 1\n")
-
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
-
-	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{}); err == nil {
-		t.Fatalf("Add should have failed (weft push declined)")
-	}
-
-	if got := gitkit.RevParse(t, h.CodeBare, slug); got != movedTip {
-		t.Errorf("origin warp branch = %s; want the moved tip %s left in place", got, movedTip)
-	}
-	if gitkit.BranchExists(t, l.WorktreePath(), slug) {
-		t.Errorf("local warp branch %q survived the rollback", slug)
-	}
-	logged := buf.String()
-	for _, want := range []string{"left the warp branch on origin", slug, "lease=" + pushedTip} {
-		if !strings.Contains(logged, want) {
-			t.Errorf("WARN output lacks %q; got:\n%s", want, logged)
-		}
-	}
-}
-
 // TestAddRollback_AdoptedWarpBranchLocalCopyDeleted forces Add to fail after it adopted a live pair's warp branch from origin, and asserts the rollback deletes the local copy and leaves origin's branch untouched.
 func TestAddRollback_AdoptedWarpBranchLocalCopyDeleted(t *testing.T) {
 	t.Parallel()
@@ -342,7 +310,7 @@ func TestAdd_WiresJunctionsEagerly(t *testing.T) {
 // preserving an adopted pre-existing weft branch exactly as
 // TestAddRollback_AdoptedWeftBranchSurvives does.
 // Reuses that test's adopt fixture,
-// but injects the failure via a broken warp origin remote instead of a portal blocker so the
+// but injects the failure via a refused records commit instead of a portal blocker so the
 // failure lands AFTER wiring (step 10b) rather than before it (step 9) — otherwise the junctions
 // would never have been wired and this test would prove nothing.
 func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
@@ -362,21 +330,19 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	preciousSHA := gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
 	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
-	// Break the warp origin remote so step 11's push fails AFTER step 10b has
+	// Refuse every records commit so step 10c's origin-record commit fails AFTER step 10b has
 	// already wired the junctions — the mid-add failure this test covers.
-	gitkit.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
+	refuseRecordsCommits(t, l)
 
 	const branchPrefix = "task/"
 	warpBranch := branchPrefix + slug
 	topology := fabricengine.NewTopology(fabricengine.Config{BranchPrefix: branchPrefix})
-	// SkipPush skips Add's pre-flight probes of origin, which would otherwise refuse on the broken URL before any mutation;
-	// step 11's warp push ignores SkipPush, so it still fails after wiring.
 	_, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true})
 	if err == nil {
-		t.Fatalf("Add should have failed (broken origin remote)")
+		t.Fatalf("Add should have failed (records commit refused)")
 	}
-	if !strings.Contains(err.Error(), "push branch") {
-		t.Fatalf("Add error = %v; want the step-11 push failure, so rollback runs after wiring", err)
+	if !strings.Contains(err.Error(), "commit parent branch record") {
+		t.Fatalf("Add error = %v; want the step-10c commit failure, so rollback runs after wiring", err)
 	}
 
 	// rollbackAdd removed both warp junctions it wired.
@@ -428,19 +394,18 @@ func TestAdd_GitFailureCarriesGitsOwnReason(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
-	// Point origin at a path that does not exist, so the push at the end of Add fails for a reason
+	// Point origin at a path that does not exist, so the warp origin probe fails for a reason
 	// only git can state while every fabric-side precondition still passes.
 	gitkit.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin",
 		filepath.Join(t.TempDir(), "no-such-remote.git"))
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
-	// SkipPush skips Add's pre-flight probes of origin, so the failure comes from step 11's warp push, which ignores SkipPush.
-	_, err := topology.Add(l, "push-fail", fabricengine.AddOptions{SkipPush: true})
+	_, err := topology.Add(l, "probe-fail", fabricengine.AddOptions{})
 	if err == nil {
-		t.Fatal("Add() error = nil; want a push failure against a nonexistent remote")
+		t.Fatal("Add() error = nil; want a probe failure against a nonexistent remote")
 	}
-	if !strings.Contains(err.Error(), "push branch") {
-		t.Errorf("Add() error = %q; want the step-11 push failure", err.Error())
+	if !strings.Contains(err.Error(), "look up branch") {
+		t.Errorf("Add() error = %q; want the warp origin probe failure", err.Error())
 	}
 	if strings.Contains(err.Error(), "cwd is not a valid git worktree") {
 		t.Errorf("Add() error = %q; want the real cause, not a claim about cwd", err.Error())

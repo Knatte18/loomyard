@@ -82,7 +82,6 @@ package fabricengine_test
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -108,9 +107,8 @@ type VerbFixture struct {
 	// Target is the StateTarget a hostile or dirty state plants against, resolved per verb per the
 	// verified dirtiness-scope table above.
 	Target StateTarget
-	// BrokenOriginURL is the nonexistent remote URL Add's Arrange points the prime warp worktree's
-	// origin at, so Add's push fails after the branch and worktree already exist.
-	BrokenOriginURL string
+	// PortalBlocker is the file Add's Arrange plants at the pair's portal link path, so Add's portal step fails after the branch and both worktrees already exist.
+	PortalBlocker string
 	// AdvancedFromSHA is the prime warp worktree's HEAD before Pull's Arrange pushes a new commit to
 	// the hub's own warp bare.
 	AdvancedFromSHA string
@@ -408,15 +406,13 @@ func assertExists(tb testing.TB, path string) {
 
 // addCase builds Topology.Add's VerbCase.
 //
-// Arrange breaks the warp origin remote (`git remote set-url origin <nonexistent>`) so the push at the
-// end of Add fails after the branch and worktree already exist, triggering rollbackAdd.
-// Without it, Add never reaches the gate at all: rollbackAdd fires only at post-creation sites
-// (add.go:139-204), and none of the ten states induces one on its own.
+// Arrange plants a file at the pair's portal link path, so Add's portal step fails after the branch and both worktrees already exist, triggering rollbackAdd.
+// Without it, Add never reaches the gate at all: rollbackAdd fires only at post-creation sites, and none of the ten states induces one on its own.
 //
 // Because the arrangement forces every non-preflight-refused path through rollbackAdd, and rollback's
 // own removal calls (dirtinessNA, correct ownership on a clean hub) succeed unconditionally, Add's
-// clean-state Run genuinely returns an error (the push failure) and the hub is left exactly as it was
-// before Run — this is the verified behaviour of add.go's own documented rollback contract, not an
+// clean-state Run genuinely returns an error (the portal failure) and the hub is left as it was
+// before Run but for the blocker — this is the verified behaviour of add.go's own documented rollback contract, not an
 // assumption, and it is why this cell's Expectation is RefusedBefore rather than Proceeds.
 func addCase() VerbCase {
 	return VerbCase{
@@ -425,12 +421,17 @@ func addCase() VerbCase {
 			tb.Helper()
 
 			slug := "verb-add-owner"
-			broken := filepath.Join(tb.TempDir(), "nonexistent-origin")
-			mustGit(h.PrimeWorktree(), "remote", "set-url", "origin", broken)
+			blocker := h.PairPortalLink(slug)
+			if err := os.MkdirAll(filepath.Dir(blocker), 0o755); err != nil {
+				tb.Fatalf("mkdir portal parent: %v", err)
+			}
+			if err := os.WriteFile(blocker, []byte("blocker"), 0o644); err != nil {
+				tb.Fatalf("plant portal blocker: %v", err)
+			}
 
 			return VerbFixture{
-				Slug:            slug,
-				BrokenOriginURL: broken,
+				Slug:          slug,
+				PortalBlocker: blocker,
 				Target: StateTarget{
 					WarpCheckout: h.PrimeWorktree(),
 					WeftCheckout: h.PrimeRecords(),
@@ -445,9 +446,7 @@ func addCase() VerbCase {
 		},
 		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			// SkipPush skips Add's pre-flight probes of origin, which would otherwise refuse on the broken URL before any mutation;
-			// step 11's warp push ignores SkipPush, so it still fails after creation.
-			res, err := h.Topology.Add(h.Location, f.Slug, fabricengine.AddOptions{SkipPush: true})
+			res, err := h.Topology.Add(h.Location, f.Slug, fabricengine.AddOptions{})
 			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
@@ -480,44 +479,25 @@ func addCase() VerbCase {
 					},
 				}
 			default:
-				// Every other state's own pre-flight (or absence of one) lets Add proceed through
-				// creation and wiring; the broken-remote arrangement then fails the push
-				// unconditionally, and rollbackAdd reverts every step it can.
-				// The warp branch is reverted too.
-				// rollbackAdd deletes the branch this Add created whatever the BranchPrefix, and under SkipPush leaves origin alone.
+				// Every other state's own pre-flight (or absence of one) lets Add proceed through both worktrees;
+				// the portal blocker then fails the portal step unconditionally, its error naming the link path and so the slug, and rollbackAdd reverts every step it can.
+				// The warp branch is reverted too, whatever the BranchPrefix.
 				return Expectation{
 					Kind:      KindRefusedBefore,
-					Substring: "push branch",
+					Substring: "verb-add-owner",
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						assertGone(tb, h.PairCodeWorktree(f.Slug))
 						assertGone(tb, h.PairRecordsSibling(f.Slug))
-						assertGone(tb, h.PairPortalLink(f.Slug))
 						assertGone(tb, h.PairLauncherDir(f.Slug))
 						if gitkit.BranchExists(tb, h.PrimeWorktree(), f.Slug) {
 							tb.Errorf("Add's rollback left branch %q behind", f.Slug)
-						}
-						if got := mustGitRemoteURL(tb, h.PrimeWorktree()); got != f.BrokenOriginURL {
-							tb.Errorf("Add's Arrange origin URL = %q; want %q", got, f.BrokenOriginURL)
 						}
 					},
 				}
 			}
 		},
 	}
-}
-
-// mustGitRemoteURL returns `git remote get-url origin` in dir, failing tb on error.
-func mustGitRemoteURL(tb testing.TB, dir string) string {
-	tb.Helper()
-
-	cmd := exec.Command("git", "remote", "get-url", "origin")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		tb.Fatalf("git remote get-url origin in %s: %v", dir, err)
-	}
-	return strings.TrimSpace(string(out))
 }
 
 // removeCase builds Topology.Remove's VerbCase.

@@ -1,5 +1,5 @@
 // prompt.go composes the discussion producer's interview prompt: it reads the discussion stencil
-// from stencilsDir at call time, builds the four marker values it requires, and fills it via
+// from stencilsDir at call time, builds the marker values it requires, specs_dir among them, and fills it via
 // internal/stencil, mirroring internal/burlerengine's composePrompt shape.
 
 package loomengine
@@ -17,7 +17,8 @@ import (
 
 // composePrompt builds the discussion producer's interview prompt by reading the
 // "loom-template-discussion" stencil from stencilsDir and filling it with the four required
-// top-level marker values plus the optional pattern_directive and friction_directive markers.
+// top-level marker values and the required specs_dir marker, plus the optional pattern_directive and friction_directive markers.
+// specsDir is the directory the discussion format spec is deployed to.
 // patternDirective is the caller-resolved PATTERN directive -- an empty string means PATTERN is inactive,
 // and renders as nothing.
 // frictionDirective is the caller-resolved Tier 2 note directive for this run --
@@ -25,7 +26,7 @@ import (
 // parentDirective is the caller-rendered parent directive and renders as nothing when empty.
 // twillDirective is the caller-rendered twill directive and renders as nothing when empty;
 // a non-empty one is set off with a newline on each side, so it sits in a paragraph of its own.
-func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, parentDirective, twillDirective string, autonomous bool) ([]byte, error) {
+func composePrompt(stencilsDir, specsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, parentDirective, twillDirective string, autonomous bool) ([]byte, error) {
 	template, err := stencilstore.Read(stencilsDir, "loom-template-discussion")
 	if err != nil {
 		return nil, err
@@ -40,6 +41,7 @@ func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patter
 
 	values := map[string]string{
 		"slug":                     slug,
+		"specs_dir":                specsDir,
 		"decision_record_path":     decisionRecordPath,
 		"support_log_path":         supportLogPath,
 		"mode_rules":               modeRules(autonomous),

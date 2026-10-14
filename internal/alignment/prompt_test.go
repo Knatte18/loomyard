@@ -40,6 +40,7 @@ func TestPrompt(t *testing.T) {
 		ParentBranch:       "main",
 		VerdictPath:        "/attempt/verdict-tok.yaml",
 		ReportPath:         "/attempt/report-tok.md",
+		MeasureStencil:     MeasureLoom,
 	}
 	parentReview := base
 	parentReview.Point = PointParentReview
@@ -48,14 +49,19 @@ func TestPrompt(t *testing.T) {
 	prGate.Point = PointPRGate
 	prGate.PRNumber = 42
 	prGate.HeadSHA = "abc1234"
+	prGateDarn := prGate
+	prGateDarn.PlanDir = ""
+	prGateDarn.MeasureStencil = MeasureDarn
 
 	tests := []struct {
-		name     string
-		in       PromptInput
-		contains []string
+		name        string
+		in          PromptInput
+		contains    []string
+		notContains []string
 	}{
-		{"parent-review names its brief and fills the pull request as none", parentReview, []string{"# Alignment for `task-a` at `parent-review`", "/attempt/brief.md", "pull request none at `none`"}},
-		{"pr-gate names its pull request and fills the brief as none", prGate, []string{"# Alignment for `task-a` at `pr-gate`", "pull request 42 at `abc1234`", "The brief `none`"}},
+		{"parent-review names its brief and fills the pull request as none", parentReview, []string{"# Alignment for `task-a` at `parent-review`", "/attempt/brief.md", "pull request none at `none`"}, nil},
+		{"pr-gate names its pull request and fills the brief as none", prGate, []string{"# Alignment for `task-a` at `pr-gate`", "pull request 42 at `abc1234`", "The brief `none`", "a recorded decision the change breaks"}, nil},
+		{"a darn pr-gate fills an empty plan directory as none and carries darn's measure", prGateDarn, []string{"the plan in `none`", "Added after Discussion", "unrecorded parent correction"}, []string{"a recorded decision the change breaks"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -76,8 +82,32 @@ func TestPrompt(t *testing.T) {
 					t.Errorf("Prompt() lacks %q", phrase)
 				}
 			}
+			for _, phrase := range tt.notContains {
+				if strings.Contains(got, phrase) {
+					t.Errorf("Prompt() contains %q", phrase)
+				}
+			}
 		})
 	}
+
+	t.Run("an empty measure stencil is an error naming the field", func(t *testing.T) {
+		t.Parallel()
+		in := prGate
+		in.MeasureStencil = ""
+		if _, err := Prompt(stencilsDir, in); err == nil || !strings.Contains(err.Error(), "MeasureStencil") {
+			t.Errorf("Prompt() error = %v; want it to name MeasureStencil", err)
+		}
+	})
+
+	t.Run("an absent measure fragment is an error naming it", func(t *testing.T) {
+		t.Parallel()
+		empty := t.TempDir()
+		stencilkit.SeedInto(t, empty)
+		stencilkit.Remove(t, empty, MeasureDarn)
+		if _, err := Prompt(empty, prGateDarn); err == nil || !strings.Contains(err.Error(), MeasureDarn) {
+			t.Errorf("Prompt() error = %v; want it to name %q", err, MeasureDarn)
+		}
+	})
 
 	t.Run("an absent stencil is an error naming it", func(t *testing.T) {
 		t.Parallel()

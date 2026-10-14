@@ -1,6 +1,6 @@
 // validate.go implements the `validate-discussion`, `validate-plan` and `validate-description` loom
 // verbs: standalone, zero-argument callers of the identical package functions the Discussion,
-// Plan, PR-Rework and Describe rows' own gates call, per the shared-implementation-is-the-whole-point Shared
+// Plan, PR-Rework, Describe and Darn-Write rows' own gates call, per the shared-implementation-is-the-whole-point Shared
 // Decision. No verb re-implements or re-derives any check; each maps its package's result onto the
 // envelope-and-exit-contract Shared Decision.
 
@@ -44,6 +44,10 @@ Discussion-Write's and Discussion-Burler-Fix's own gate runs -- and reports the
 result as one JSON envelope. It takes no arguments and no flags; it always
 checks the worktree's own discussion files.
 
+On a darn run it is the Darn-Write row's gate check: it also refuses a record
+missing an "Added after Discussion" entry its commit history held, and a clean
+run commits the decision record and support log.
+
 Example:
   lyx loom validate-discussion`,
 		Args: cobra.NoArgs,
@@ -53,7 +57,14 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			findings, err := discussionparser.Validate(c.env.DecisionRecordPath, c.env.SupportLogPath)
+			darn := c.env.DiscussionHistory != nil
+			var findings []discussionparser.Finding
+			var err error
+			if darn {
+				findings, err = loomshed.ValidateDarnDiscussion(c.env.DecisionRecordPath, c.env.SupportLogPath, c.env.DiscussionHistory)
+			} else {
+				findings, err = discussionparser.Validate(c.env.DecisionRecordPath, c.env.SupportLogPath)
+			}
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate discussion record "+c.env.DecisionRecordPath+": "+err.Error()))
 				return nil
@@ -63,6 +74,12 @@ Example:
 					"findings": renderFindings(findings),
 				}))
 				return nil
+			}
+			if darn {
+				if err := c.env.CommitDiscussion(); err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate discussion: commit the discussion files: "+err.Error()+`; way forward: re-run "lyx loom validate-discussion"`))
+					return nil
+				}
 			}
 
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
