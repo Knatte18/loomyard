@@ -32,6 +32,11 @@ var deniedRecoveryForms = [][]string{
 	{"python3"},
 	{"sed", "-i"},
 	{"perl", "-i"},
+	{"systemctl", "sleep"},
+	{"systemctl", "hibernate"},
+	{"systemctl", "suspend"},
+	{"systemctl", "hybrid-sleep"},
+	{"systemctl", "suspend-then-hibernate"},
 }
 
 // deniedRecoveryTokenPattern splits a line into command tokens.

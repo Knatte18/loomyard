@@ -210,13 +210,15 @@ func TestMount_File(t *testing.T) {
 		wantMounted map[string]string
 	}{
 		{
-			name: "the shipped file mounts a, attach, prime, pause and resume", data: shortcutFile,
+			name: "the shipped file mounts a, attach, prime, pause, p, resume and r", data: shortcutFile,
 			wantMounted: map[string]string{
 				"a":      "shortcut: lyx reed attach",
 				"attach": "shortcut: lyx reed attach",
 				"prime":  "shortcut: lyx orch start, then lyx reed attach",
 				"pause":  "shortcut: lyx tender pause",
+				"p":      "shortcut: lyx tender pause",
 				"resume": "shortcut: lyx tender resume",
+				"r":      "shortcut: lyx tender resume",
 			},
 		},
 		{name: "malformed YAML mounts nothing", data: []byte("attach: [reed, attach")},

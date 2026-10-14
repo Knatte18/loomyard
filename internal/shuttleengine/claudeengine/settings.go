@@ -9,6 +9,7 @@
 // denying AskUserQuestion in autonomous runs (where there is no operator present to answer it),
 // and recording — never denying — a live AskUserQuestion call in interactive runs so the run loop holds it like any turn end without output.
 // The Bash tool's default stdin is set by the env file Prepare writes (see command.go), not by a hook.
+// A Bash deny refusing the machine sleep commands is installed for every run.
 // buildDenyNotice, built from the same standingDenies table so the two cannot drift, is the one-line system-prompt notice announcing each installed deny to the session.
 // Every document also sets `promptSuggestionEnabled` to false: a capture carries no styling,
 // so a greyed suggestion in an empty input box would read as a draft and IdleSession would never pass.
@@ -91,6 +92,17 @@ const rmCommandPattern = commandPositionPattern + `rm([^A-Za-z0-9_./-]|$)`
 // shellExpansionPattern is the grep -E pattern matching a command substitution, $( or a backtick, or a shell variable expansion, $ followed by a letter, a digit, _, {, @ or *.
 // The @ and * take in the positional parameters $@ and $*; the special parameters $$, $?, $# and $! are not matched.
 const shellExpansionPattern = "[$][A-Za-z0-9_{@*(]|`"
+
+// steerSleepDeny refuses a Bash systemctl machine sleep command; it must contain no single/double quote or backslash (checked at init).
+const steerSleepDeny = "the machine sleep commands are refused here; a hibernate goes through lyx hibernate request, which waits until every session is paused, and a pair agent asks its parent session to run it"
+
+// noticeSleepDeny announces the sleep deny in the same wording as its steer.
+const noticeSleepDeny = steerSleepDeny + "."
+
+// sleepCommandPattern is the grep -E pattern the sleep deny matches against the raw PreToolUse payload JSON.
+// It matches systemctl in command position, optionally path-prefixed, followed by any flag words and then one of the verbs sleep, hibernate, suspend, hybrid-sleep or suspend-then-hibernate as a whole word, so hibernate.target is no verb.
+// A word that is not a flag ends the match, so systemctl status and every other verb pass.
+const sleepCommandPattern = commandPositionPattern + `systemctl([[:space:]]+-` + goWordPattern + `)*[[:space:]]+(sleep|hibernate|suspend|hybrid-sleep|suspend-then-hibernate)([^A-Za-z0-9_.-]|$)`
 
 // steerRawGoDeny refuses a Bash go run that bypasses the gate slots; it must contain no single/double quote or backslash (checked at init).
 // It is the gate rule every lyx-spawned session and its forks read, which stencils point at as "the gate rule in your system prompt".
@@ -303,6 +315,16 @@ var standingDenies = []standingDeny{
 		command:   "in=$(cat); { printf '%s' \"$in\" | grep -Eq '" + rmCommandPattern + "'; } && { printf '%s' \"$in\" | grep -Eq '" + shellExpansionPattern + "'; } && echo '" + denyJSON(steerComputedRmDeny) + "'; true",
 		steer:     steerComputedRmDeny,
 		notice:    noticeComputedRmDeny,
+		installed: func(denyInputs) bool { return true },
+	},
+	{
+		// Installed for every run, the orch included, with no config key.
+		// A guardrail, not a barrier: bash -c, eval, a shell variable, systemctl start or isolate of a sleep target and other sleep routes such as busctl, dbus-send and rtcwake pass, and a matching spelling inside a quoted argument or another payload field is falsely denied.
+		// Ending with `; true` guarantees exit 0 so a non-match allows the call.
+		matcher:   "Bash",
+		command:   "grep -Eq '" + sleepCommandPattern + "' && echo '" + denyJSON(steerSleepDeny) + "'; true",
+		steer:     steerSleepDeny,
+		notice:    noticeSleepDeny,
 		installed: func(denyInputs) bool { return true },
 	},
 }

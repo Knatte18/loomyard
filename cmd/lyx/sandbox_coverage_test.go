@@ -48,6 +48,10 @@ var excludedModules = []scankit.Entry{
 		Key: "orch",
 		Why: "spawns a long-lived interactive Claude session and a detached watcher in the hub prime; exercised by internal/orchcli's smoke test instead",
 	},
+	{
+		Key: "hibernate",
+		Why: "its daemon hibernates the host machine, which no sandbox scenario may do",
+	},
 }
 
 // TestSandboxCoverage_AllModulesCoveredOrExcluded asserts every module is covered or excluded.

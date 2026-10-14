@@ -123,6 +123,8 @@ func TestShortcuts_FileAndRootListing(t *testing.T) {
 		"- `attach [<args>...]`: shortcut: lyx reed attach",
 		"- `pause [<args>...]`: shortcut: lyx tender pause",
 		"- `resume [<args>...]`: shortcut: lyx tender resume",
+		"- `p [<args>...]`: shortcut: lyx tender pause",
+		"- `r [<args>...]`: shortcut: lyx tender resume",
 	} {
 		if !strings.Contains(index.String(), line) {
 			t.Errorf("the operator index lacks the line %q:\n%s", line, index.String())

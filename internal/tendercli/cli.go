@@ -132,7 +132,7 @@ Example:
 			if err != nil {
 				return fail(err)
 			}
-			deps, slugs, err := hubDeps(location, os.Getenv(agentname.StrandNameEnv))
+			deps, slugs, err := HubDeps(location, os.Getenv(agentname.StrandNameEnv))
 			if err != nil {
 				return fail(err)
 			}
@@ -196,7 +196,7 @@ Example:
 			if err != nil {
 				return fail(err)
 			}
-			deps, _, err := hubDeps(location, os.Getenv(agentname.StrandNameEnv))
+			deps, _, err := HubDeps(location, os.Getenv(agentname.StrandNameEnv))
 			if err != nil {
 				return fail(err)
 			}
@@ -256,7 +256,7 @@ Example:
 			if err != nil {
 				return fail(err)
 			}
-			deps, slugs, err := hubDeps(location, os.Getenv(agentname.StrandNameEnv))
+			deps, slugs, err := HubDeps(location, os.Getenv(agentname.StrandNameEnv))
 			if err != nil {
 				return fail(err)
 			}
@@ -305,7 +305,7 @@ Example:
 			if err != nil {
 				return fail(err)
 			}
-			deps, _, err := hubDeps(location, os.Getenv(agentname.StrandNameEnv))
+			deps, _, err := HubDeps(location, os.Getenv(agentname.StrandNameEnv))
 			if err != nil {
 				return fail(err)
 			}

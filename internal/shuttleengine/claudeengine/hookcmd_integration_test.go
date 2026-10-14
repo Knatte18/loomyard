@@ -1,7 +1,7 @@
 //go:build integration
 
 // hookcmd_integration_test.go runs the hook commands settings.go builds under `sh`:
-// the python, in-place edit and computed-rm denies' against PreToolUse payloads, pinning which Bash commands it denies and which it lets through,
+// the python, in-place edit, computed-rm and sleep denies' against PreToolUse payloads, pinning which Bash commands it denies and which it lets through,
 // and the recording hooks' against payloads on standard input, pinning what they append to the events file.
 
 package claudeengine
@@ -220,6 +220,44 @@ func TestComputedRmDenyHook_DeniesRmOnComputedPathsOnly(t *testing.T) {
 			want := ""
 			if tt.denied {
 				want = denyJSON(steerComputedRmDeny) + "\n"
+			}
+			if got := preToolUseOutput(t, hookCommand, tt.command); got != want {
+				t.Errorf("hook output for %q = %q; want %q", tt.command, got, want)
+			}
+		})
+	}
+}
+
+// TestSleepDenyHook_DeniesMachineSleepVerbsOnly feeds the sleep row's hook command a PreToolUse payload per Bash command and asserts the deny JSON, or empty output and exit 0 for a command it lets through.
+func TestSleepDenyHook_DeniesMachineSleepVerbsOnly(t *testing.T) {
+	t.Parallel()
+
+	hookCommand := denyHookCommand(t, steerSleepDeny)
+	tests := []struct {
+		name    string
+		command string
+		denied  bool
+	}{
+		{"sleep", "systemctl sleep", true},
+		{"hibernate", "systemctl hibernate", true},
+		{"suspend", "systemctl suspend", true},
+		{"hybrid_sleep", "systemctl hybrid-sleep", true},
+		{"suspend_then_hibernate", "systemctl suspend-then-hibernate", true},
+		{"flag_before_the_verb", "systemctl --no-wall hibernate", true},
+		{"path_prefixed_systemctl", "/usr/bin/systemctl hibernate", true},
+		{"after_sudo", "sudo systemctl suspend", true},
+		{"after_and_separator", "cd x && systemctl hibernate", true},
+		{"status", "systemctl status", false},
+		{"status_of_the_hibernate_target", "systemctl status hibernate.target", false},
+		{"restart_of_another_unit", "systemctl restart sshd", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			want := ""
+			if tt.denied {
+				want = denyJSON(steerSleepDeny) + "\n"
 			}
 			if got := preToolUseOutput(t, hookCommand, tt.command); got != want {
 				t.Errorf("hook output for %q = %q; want %q", tt.command, got, want)
