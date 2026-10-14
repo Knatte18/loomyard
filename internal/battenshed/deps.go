@@ -360,7 +360,7 @@ type SeedChildDeps struct {
 	// CommitSeed commits the just-written seed file. A non-nil error is Stuck: it names why a
 	// commit failed, a condition a human can act on.
 	CommitSeed func(ctx context.Context) error
-	// PushSeed pushes the just-committed seed. A non-nil error is only warned about and never
+	// PushSeed starts the push of the just-committed seed and need not wait for it to land. A non-nil error is only warned about and never
 	// changes SeedChild's verdict: an offline machine must not halt a run, and the next push on
 	// this pair catches the branch up.
 	PushSeed func(ctx context.Context) error

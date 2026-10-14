@@ -11,6 +11,7 @@
 package fabricengine_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -56,8 +57,8 @@ func TestVerbCases_CleanState(t *testing.T) {
 					// passing.
 					switch vc.Name {
 					case "Add":
-						if got := mustGitRemoteURL(t, h.PrimeWorktree()); got != fixture.BrokenOriginURL {
-							t.Errorf("Add's Arrange: prime warp origin URL = %q; want the broken URL %q", got, fixture.BrokenOriginURL)
+						if info, err := os.Lstat(fixture.PortalBlocker); err != nil || !info.Mode().IsRegular() {
+							t.Errorf("Add's Arrange: portal blocker %s is not a regular file (err %v)", fixture.PortalBlocker, err)
 						}
 					case "Checkout":
 						if fixture.CheckoutBranch == fixture.OriginalBranch {
