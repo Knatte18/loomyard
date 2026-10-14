@@ -16,7 +16,6 @@ func filledValues() Values {
 		SpawnPoint:            "SPAWN-POINT-SENTENCE",
 		RejectionRule:         "REJECTION-RULE-SENTENCE",
 		SeverityRule:          "SEVERITY-RULE-PHRASE",
-		ReadyMarker:           "/abs/.ready/marker",
 		RubricPath:            "/abs/rubric.md",
 		Lenses:                []Lens{{Name: "alpha", Text: "Look at A.\nThen at B.\n"}, {Name: "beta", Text: "Look at C."}},
 		FormatStep:            "STEP-FORMAT",
@@ -37,16 +36,15 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 		t.Fatalf("Directive = _, %v; want nil error", err)
 	}
 	for _, want := range []string{
-		"read `/abs/one.md` and `/abs/two.md` and review them",
+		"wrote `/abs/one.md` and `/abs/two.md` and passed",
 		"SPAWN-POINT-SENTENCE\n",
 		"REJECTION-RULE-SENTENCE",
 		"each with SEVERITY-RULE-PHRASE, the section or decision it concerns",
-		"/abs/.ready/marker",
 		"/abs/rubric.md",
 		"- alpha: Look at A. Then at B.\n- beta: Look at C.",
 		"STEP-FORMAT",
-		"run `lyx check --now` per `STEP-CHECK` until it passes",
-		"8. Run `lyx check --final` again",
+		"runs `lyx check --now` per `STEP-CHECK` until it passes",
+		"6. Run `lyx check --final` again",
 		"the PLACE section",
 	} {
 		if !strings.Contains(got, want) {
@@ -98,48 +96,17 @@ func TestDirective_MissingValueNamesTheMarker(t *testing.T) {
 	}
 }
 
-// TestWriteScope_RendersTheMarker covers the seeded stencil: the marker lands, with no marker left over, banner or trailing newline.
-func TestWriteScope_RendersTheMarker(t *testing.T) {
+// TestDirective_MissingStencilNamesIt covers the directive stencil removed from the directory: Directive's error names it.
+func TestDirective_MissingStencilNamesIt(t *testing.T) {
 	t.Parallel()
 	dir := stencilkit.Seed(t)
+	stencilkit.Remove(t, dir, directiveStencil)
 
-	got, err := WriteScope(dir, "/abs/.ready/marker")
-	if err != nil {
-		t.Fatalf("WriteScope = _, %v; want nil error", err)
+	got, err := Directive(dir, filledValues())
+	if err == nil {
+		t.Fatalf("Directive = %q, nil; want an error", got)
 	}
-	if !strings.Contains(got, "`/abs/.ready/marker`") {
-		t.Errorf("WriteScope = %q; want it to contain the marker path", got)
-	}
-	if strings.Contains(got, "{{") || strings.HasPrefix(got, "<!--") || strings.HasSuffix(got, "\n") {
-		t.Errorf("WriteScope = %q; want no marker, leading comment or trailing newline", got)
-	}
-}
-
-// TestRenderers_MissingStencilNamesIt covers a stencil removed from the directory: each renderer's error names it.
-func TestRenderers_MissingStencilNamesIt(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		stencil string
-		render  func(dir string) (string, error)
-	}{
-		{"Directive", directiveStencil, func(dir string) (string, error) { return Directive(dir, Values{}) }},
-		{"WriteScope", writeScopeStencil, func(dir string) (string, error) { return WriteScope(dir, "/abs/marker") }},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			dir := stencilkit.Seed(t)
-			stencilkit.Remove(t, dir, tt.stencil)
-
-			got, err := tt.render(dir)
-			if err == nil {
-				t.Fatalf("%s = %q, nil; want an error", tt.name, got)
-			}
-			if !strings.Contains(err.Error(), tt.stencil) {
-				t.Errorf("error = %q; want it to name %q", err, tt.stencil)
-			}
-		})
+	if !strings.Contains(err.Error(), directiveStencil) {
+		t.Errorf("error = %q; want it to name %q", err, directiveStencil)
 	}
 }
