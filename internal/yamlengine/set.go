@@ -51,7 +51,7 @@ type SetResult struct {
 // replaces its list whole; a value that is not a YAML list is an error.
 // Otherwise every pair is applied to the working tree (later pairs for a repeated key win) and the
 // mutated tree is marshalled into SetResult.Merged.
-// A scalar keeps its leaf's tag, except that a value spelling a null (`~`, `null`, `Null`, `NULL`), or a leaf holding a null, gives the scalar the tag its own text resolves to.
+// A scalar leaf outside a scalar-or-list open-map path keeps its tag, except that a value spelling a null (`~`, `null`, `Null`, `NULL`), or a leaf holding a null, gives the scalar the tag its own text resolves to.
 //
 // Each openMaps entry is a dotted key path whose value is an open map:
 // any key P.<name> is known,
