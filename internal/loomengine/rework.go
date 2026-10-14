@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -170,5 +171,74 @@ func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir, parentName strin
 		Segment:     segmentcolor.Webster,
 		Skills:      reworkSkills,
 		Timeout:     time.Duration(cfg.PlanTimeoutMin) * time.Minute,
+	}, nil
+}
+
+// ReworkTable builds the seatengine.Table of one PR-Rework run: a lead that turns the pending rejection's findings into a whole new plan generation and writes the coverage file last as its completion signal.
+// stencilsDir and specsDir are told, never derived: this package is bound by the Told-Geometry Invariant.
+// firstCard is the number the new generation's first card takes, one past the highest card of the retired generation, and priorPlanDir is where that generation's plan was archived; both are told as values because the session cannot derive them from the worktree it runs in.
+// The model is ResolveRework's and the timeout is PlanTimeoutMin.
+// Segment is the webster segment, because rework belongs to the Webster row of the loom.
+// The lead's opening stencil is read at call time from stencilsDir, and the seat engine renders the parent and edit directives from its geometry.
+// The table carries no gate; the producer entry sets it.
+// A PATTERN directive that cannot be rendered fails the table; a friction directive that cannot be rendered is left empty, the failure logged.
+func ReworkTable(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, firstCard int, priorPlanDir string) (seatengine.Table, error) {
+	model, err := ResolveRework(cfg, reg)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("loom: ReworkTable: %w", err)
+	}
+
+	paths := reworkPaths{
+		rejection:      LoomRejectionPath(layout),
+		planDir:        planparser.PlanDir(layout.AnchorPath()),
+		overview:       planparser.PlanOverview(layout.AnchorPath()),
+		decisionRecord: DiscussionDecisionRecord(layout),
+		coverage:       LoomReworkCoveragePath(layout),
+		planStencil:    stencilstore.Path(stencilsDir, "loom-template-plan"),
+		priorPlan:      priorPlanDir,
+	}
+
+	patternDirective, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleImplementer)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("loom: ReworkTable: %w", err)
+	}
+
+	var frictionDir string
+	if cfg.Friction != "" {
+		frictionDir = LoomFrictionDir(layout)
+	}
+	frictionDirective, err := friction.Directive(friction.NotePath(frictionDir, "PR-Rework"), stencilsDir, friction.RoleImplementer)
+	if err != nil {
+		// A friction directive is optional bookkeeping, so a stencil read failure here must never fail the rework spawn.
+		logger.Warn("loom: friction directive failed, continuing without one", "role", "rework", "stencil", reworkStencilName, "error", err)
+		frictionDirective = ""
+	}
+
+	return seatengine.Table{
+		RolePrefix: reworkRole,
+		Segment:    segmentcolor.Webster,
+		Timeout:    time.Duration(cfg.PlanTimeoutMin) * time.Minute,
+		Values: map[string]string{
+			"rejection_path":       paths.rejection,
+			"plan_dir":             paths.planDir,
+			"overview_path":        paths.overview,
+			"decision_record_path": paths.decisionRecord,
+			"coverage_path":        paths.coverage,
+			"plan_stencil_path":    paths.planStencil,
+			"first_card":           strconv.Itoa(firstCard),
+			"prior_plan_dir":       paths.priorPlan,
+			"specs_dir":            specsDir,
+			"pattern_directive":    patternDirective,
+			friction.MarkerName:    frictionDirective,
+		},
+		Optional: []string{"pattern_directive", friction.MarkerName},
+		Seats: []seatengine.Seat{{
+			Stencil: reworkStencilName,
+			Model:   model.Model,
+			Effort:  model.Effort,
+			Version: model.Version,
+			Outputs: []string{paths.coverage},
+			Skills:  reworkSkills,
+		}},
 	}, nil
 }

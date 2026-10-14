@@ -276,10 +276,14 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		MergeReview:        func() string { return "none" },
 		CarryOver:          func(discussionparser.CarryOver) error { return nil },
 		ReflectFriction:    func() string { return "skipped" },
-		ReworkSpec: func(loomshed.ReworkTold) (shuttleengine.Spec, error) {
-			return shuttleengine.Spec{
-				Prompt:      "test rework prompt",
-				OutputFiles: []string{filepath.Join(dir, "rework-coverage.md")},
+		ReworkTable: func(loomshed.ReworkTold) (seatengine.Table, error) {
+			return seatengine.Table{
+				RolePrefix: "rework",
+				Segment:    segmentcolor.Webster,
+				Seats: []seatengine.Seat{{
+					Stencil: "loom-template-rework",
+					Outputs: []string{filepath.Join(dir, "rework-coverage.md")},
+				}},
 			}, nil
 		},
 		Rework:               ReworkDeps(t, dir),

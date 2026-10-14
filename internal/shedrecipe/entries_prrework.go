@@ -1,22 +1,24 @@
 // entries_prrework.go implements prReworkEntry, the Constructor for the "PRRework" registry row:
-// it wraps a gated shedadapters.SingleLLMProducer in loomshed.NewPRRework's generation-archive and round-record decorator, so it lives in its own file like planWriteEntry.
+// it runs the told one-seat table of the PR-Rework lead on a gated shedadapters.MultiLLMProducer inside loomshed.NewPRRework's generation-archive and round-record decorator, so it lives in its own file like planWriteEntry.
 
 package shedrecipe
 
 import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // prReworkEntry is the Constructor for the "PRRework" registry row:
-// it resolves the row's "gates" Config key through resolveGateSpec, validates Env.ReworkSpec, Env.Shuttle, every seam of Env.Rework, and the absolute Env.Rework.PlanDir, Env.Rework.ReworkDir and Env.Rework.ReviewsDir, then builds a gated SingleLLMProducer behind loomshed.NewPRRework.
+// it resolves the row's "gates" Config key through resolveGateSpec, validates Env.ReworkTable, Env.Seats, every seam of Env.Rework, and the absolute Env.Rework.PlanDir, Env.Rework.ReworkDir and Env.Rework.ReviewsDir, then builds a seat-table producer behind loomshed.NewPRRework.
+// Env.Shuttle is never read: the lead runs through Env.Seats.
 //
 // No fresh-spawn preparation is passed: the adapter already archives a stale coverage file on a fresh spawn,
 // and nothing else may be moved out from under the plan.
 //
-// The Spec arrives as an injected func(loomshed.ReworkTold) for the reason planWriteEntry gives, evaluated with the value the producer tells each session it builds.
+// The table arrives as an injected func(loomshed.ReworkTold) for the reason planWriteEntry gives, evaluated with the value the producer tells each session it builds.
+// The resolved gate is stamped onto each table it returns, so the row's "gates" key guards the lead.
 func prReworkEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	gate, err := resolveGateSpec("PRRework", cfg, env)
 	if err != nil {
@@ -25,10 +27,10 @@ func prReworkEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, e
 	if err := configRejectUnknown(cfg, "gates"); err != nil {
 		return nil, err
 	}
-	if err := requireSeam("PRRework", "ReworkSpec", env.ReworkSpec); err != nil {
+	if err := requireSeam("PRRework", "ReworkTable", env.ReworkTable); err != nil {
 		return nil, err
 	}
-	if err := requireSeam("PRRework", "Shuttle", env.Shuttle); err != nil {
+	if err := requireSeam("PRRework", "Seats", env.Seats); err != nil {
 		return nil, err
 	}
 	rw := env.Rework
@@ -57,8 +59,15 @@ func prReworkEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, e
 		return nil, err
 	}
 	session := func(told loomshed.ReworkTold) shedengine.ShedProducer {
-		spec := func() (shuttleengine.Spec, error) { return env.ReworkSpec(told) }
-		return shedadapters.NewSingleLLMProducerGated(name, spec, env.Shuttle, env.Now, nil, gate)
+		tables := func() (seatengine.Table, error) {
+			table, err := env.ReworkTable(told)
+			if err != nil {
+				return seatengine.Table{}, err
+			}
+			table.Gate = gate
+			return table, nil
+		}
+		return shedadapters.NewMultiLLMProducerSourced(name, tables, env.Seats, env.Now, nil)
 	}
 	return loomshed.NewPRRework(name, session, rw), nil
 }

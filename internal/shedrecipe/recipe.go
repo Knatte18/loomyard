@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/planindex"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -212,15 +213,15 @@ type Env struct {
 	// resolved on internal/loomcli's receiver, and building them here would pull friction, lock and
 	// loom-config imports into this Told-Geometry-bound package.
 	ReflectFriction func() string
-	// ReworkSpec is the injected Spec factory the PRRework entry evaluates once per Call, with the values the producer tells that session.
-	// It arrives as a closure rather than as recipe Config because building the Spec needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly;
+	// ReworkTable is the injected table factory the PRRework entry evaluates once per Call, with the values the producer tells that session.
+	// It arrives as a closure rather than as recipe Config because building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly;
 	// internal/loomcli's wire() is what supplies it.
-	ReworkSpec func(loomshed.ReworkTold) (shuttleengine.Spec, error)
+	ReworkTable func(loomshed.ReworkTold) (seatengine.Table, error)
 	// Rework is a whole-struct passthrough to loomshed.NewPRRework, following Env.Landing's own precedent:
 	// the producer has behaviour of its own -- the generation archive, the round record and the rejection removal -- that per-seam fakes must be able to substitute individually.
 	Rework loomshed.PRReworkDeps
 	// DarnSpec is the injected Spec factory the DarnWrite entry evaluates once per Call, with the token texts the producer tells that session.
-	// It arrives as a closure for the reason ReworkSpec does.
+	// It arrives as a closure for the reason ReworkTable does.
 	DarnSpec func(loomshed.DarnTold) (shuttleengine.Spec, error)
 	// DarnVerifyAttempts is the verify gate's attempt budget of the darn recipe, which `darn.yaml`'s verify_attempts supplies.
 	// internal/loomrecipe alone reads it, stamping it onto the verify gates of the Darn-Write and Darn-Burler-Fix rows at every build.

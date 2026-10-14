@@ -505,7 +505,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	// ReworkSpec resolves again per Call; this resolution fails an unknown rework alias before round 1.
+	// ReworkTable resolves again per Call; this resolution fails an unknown rework alias before round 1.
 	if _, err := loomengine.ResolveRework(loomCfg, registry); err != nil {
 		return err
 	}
@@ -798,10 +798,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			return landingshed.MergeReviewNote(landingshed.MergeRecordPath(loomengine.LoomScratchDir(location)))
 		},
 		MergeReviewOff: loomCfg.SkipMergeReview,
-		// ReworkSpec is evaluated per Call like PlanSpec above, so the stencil is read at call time.
+		// ReworkTable is evaluated per Call like PlanTable above, so the stencil is read at call time.
 		// The values the session is told arrive from the PR-Rework producer, which decides them.
-		ReworkSpec: func(told loomshed.ReworkTold) (shuttleengine.Spec, error) {
-			return loomengine.ReworkSpec(location, websterGeom.StencilsDir, websterGeom.SpecsDir, c.parentName, loomCfg, registry, told.FirstCard, told.PriorPlanDir)
+		ReworkTable: func(told loomshed.ReworkTold) (seatengine.Table, error) {
+			return loomengine.ReworkTable(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, told.FirstCard, told.PriorPlanDir)
 		},
 		// Rework opens nothing at wire time: every closure reads or writes on demand, since wire() also runs for status/pause.
 		Rework: reworkDeps,

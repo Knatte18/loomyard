@@ -40,7 +40,7 @@ func lensNames(lenses []burlerengine.Lens) []string {
 }
 
 // TestProducerSpecs_SkillsAndParentDirective verifies each loom producer carries its role's skills in order, names the told parent in its prompt, and renders the no-parent variant for an empty name.
-// The Discussion-Write rows read the lead's skills and prompt through seatengine.Prompts under a geometry naming the parent.
+// Every row reads the lead's skills and prompt from its table through seatengine.Prompts under a geometry naming the parent.
 // The operator-ban line is absent only for the interactive Discussion.
 func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 	t.Parallel()
@@ -92,8 +92,9 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 			}, parent)
 		},
 		"rework": func(parent string) ([]string, string, error) {
-			spec, err := ReworkSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), parent, cfg, reg, 4, "prior")
-			return spec.Skills, spec.Prompt, err
+			return leadOfTable(func(stencilsDir string) (seatengine.Table, error) {
+				return ReworkTable(layout, stencilsDir, newTestSpecsDir(t), cfg, reg, 4, "prior")
+			}, parent)
 		},
 	}
 	wantSkills := map[string][]string{

@@ -75,7 +75,7 @@ var intentionallyNil = map[string]string{
 	"MergeReview":                 "loom-only seam, batten has no merge review",
 	"CarryOver":                   "loom-only seam, batten runs no review segment",
 	"ReflectFriction":             "loom-only seam, batten has no reflect segment",
-	"ReworkSpec":                  "loom-only seam, batten has no rework segment",
+	"ReworkTable":                 "loom-only seam, batten has no rework segment",
 	"Rework.ReadCommitted":        "loom-only seam, batten has no rework segment",
 	"Rework.ReadRejection":        "loom-only seam, batten has no rework segment",
 	"Rework.ClearRejection":       "loom-only seam, batten has no rework segment",
