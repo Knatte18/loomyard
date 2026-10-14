@@ -230,7 +230,7 @@ github.com/Knatte18/loomyard/
 ├── internal/fabricengine/        the fabric domain kernel
 ├── internal/gatecli/             the gate CLI command (`lyx gate test`, the slotted route for an agent's go test)
 ├── internal/helpcli/             the help CLI command (`lyx help [<command>...]`, `lyx help index`)
-├── internal/shortcutcli/         the top-level operator shortcuts (`lyx a`, `lyx attach`, `lyx prime`) from one embedded file
+├── internal/shortcutcli/         the top-level operator shortcuts (`lyx a`, `lyx attach`, `lyx prime`, `lyx pause`, `lyx resume`) from one embedded file
 ├── internal/idecli/              the ide CLI command
 ├── internal/ideengine/           the ide domain kernel
 ├── internal/pairteardown/        the one sequence that ends a pair: quiet wait, refusal probe, reed session end, then fabric removal
@@ -289,7 +289,7 @@ github.com/Knatte18/loomyard/
 ├── internal/lyxtemp/             lyx's per-user temp root in the system temp directory, one locked run directory per process and the sweep of dead owners' run directories, a leaf over the standard library and `internal/lock`
 ├── internal/gateslot/            the hub-wide pool of gate slots: file-lock slots, holder records, the inherited-slot environment and wait records
 ├── internal/parentlock/          the per-branch parent lock: one record valid while its owner process lives, a ticket queue and compare-and-release
-├── internal/pausecli/            the pause CLI commands (`lyx pause`, `lyx resume`) and the network gate every lyx process in a hub runs under
+├── internal/pausecli/            the `lyx tender` commands (`pause`, `resume` and `status`) and the network gate every lyx process in a hub runs under
 ├── internal/pauseengine/         the pause, resume and status sequences over seams: the entry, the grace, the Esc and the resume line
 ├── internal/output/              shared JSON output
 ├── internal/modelspec/           model-spec parser + models.yaml registry leaf
@@ -393,7 +393,7 @@ User-facing modules each get one `lyx <module>` namespace:
 - **planglyph** — the sole owner of every `quarry.Repo` call (`Open`, `Resolve`, `DeltaGit`) and of the package-level `quarry.Name`, plus the resolve-backed validation pass layered on top of `planparser`'s pure checks: `planglyph.ValidateFormat`/`Validate` call `planparser.ValidateFormat`/`Validate` and append only resolve findings, composing rather than reimplementing (`internal/planglyph`). ✅ Implemented.
 - **planindex** — the cgo-free seam over `planglyph`: the plan gates' finding types, `ErrQuarryUnavailable` and the `Index` and `Delta` interfaces a package receives instead of importing the package that links tree-sitter (`internal/planindex`). ✅ Implemented.
 - **help** — cobra's help command, replaced: `lyx help [<command>...]` prints a command's help and refuses a word that names no subcommand, and `lyx help index [--audience <audience>]` prints a generated one-line-per-command index of the running binary, filtered by the `audience` annotation every invocable command carries (`internal/helpcli`; the renderer is `clihelp.RenderIndex`). ✅ Implemented. See the `internal/helpcli` package documentation.
-- **shortcuts** — `lyx attach` and `lyx a` (both `lyx reed attach`) and `lyx prime` (`lyx orch start`, then `lyx reed attach`) are top-level operator shortcuts declared in `internal/shortcutcli/shortcuts.yaml`, embedded in the binary and added only by a commit to that file; global verbosity flags reach every expanded command and other words the last; they are not modules. See the `internal/shortcutcli` package documentation.
+- **shortcuts** — `lyx attach` and `lyx a` (both `lyx reed attach`) `lyx prime` (`lyx orch start`, then `lyx reed attach`), `lyx pause` (`lyx tender pause`) and `lyx resume` (`lyx tender resume`) are top-level operator shortcuts declared in `internal/shortcutcli/shortcuts.yaml`, embedded in the binary and added only by a commit to that file; global verbosity flags reach every expanded command and other words the last; they are not modules. See the `internal/shortcutcli` package documentation.
 - **cleanup** — the routine cleanups of the hub prime's leftover state, as one verb (`internal/cleanupcli`; `lyx cleanup [--apply]`, prime only).
   Without `--apply` it is a dry run that lists, per segment, what `--apply` would remove.
   The segments run in order and each calls its owner's own cleanup in-process: `lyx batten cleanup`, `lyx board prune`, `lyx orch cleanup`, the prime's `.scratch/` children older than 14 days that no open board entry cites, logger's trace retention sweep, and the temp root's sweep of dead owners' run directories.
@@ -402,9 +402,10 @@ User-facing modules each get one `lyx <module>` namespace:
 - **report** — the read-only convergence report (`internal/reportcli` + `internal/reportengine`; `lyx report convergence [--since <date>] [--fresh-days <n>] [--format json|markdown]`, prime only).
   It reports, per finished run and per ISO week, what woke the orch, what stopped and repaired runs, how many review rounds each segment took and how landings fared, from records lyx already writes.
   ✅ Implemented. See the `internal/reportengine` package documentation.
-- **pause** — the one ordered pause that makes the hub safe to suspend within seconds (`internal/pausecli` + `internal/pauseengine`; `lyx pause [<slug>] [--grace <seconds>]`, `lyx pause --status` and `lyx resume [<slug>]`, from any worktree of the hub).
-  `lyx pause` records an entry, waits a short grace for busy agent sessions and network operations to finish, interrupts every covered session still in a running turn with Esc and holds every path that would start agent or network work; the orchestrator is interrupted by its own watcher at the grace end.
-  `lyx resume` lifts the entry and gives each interrupted session one line to carry on.
+- **tender** — the one ordered pause that makes the hub safe to suspend within seconds (`internal/pausecli` + `internal/pauseengine`; `lyx tender pause [<slug>] [--grace <seconds>]`, `lyx tender resume [<slug>]` and `lyx tender status`, from any worktree of the hub; `lyx pause` and `lyx resume` are shortcuts for the first two).
+  `lyx tender pause` records an entry, waits a short grace for busy agent sessions and network operations to finish, interrupts every covered session still in a running turn with Esc and holds every path that would start agent or network work; the orchestrator is interrupted by its own watcher at the grace end.
+  `lyx tender resume` lifts the entry and gives each interrupted session one line to carry on.
+  `lyx tender status` lists the live entries, the network operations in flight and the parent locks held, and changes nothing; any caller may run it.
   An agent may pause or resume only its own pair; the orchestrator and an external caller may do both for the hub or any pair.
   Every lyx process in a hub runs its network git and GitHub calls under a gate that waits while a pause covers it, and every reader that reacts to an unexpected stop or to idle time consults the record (`internal/pauserecord`).
   ✅ Implemented. See the `internal/pauseengine` and `internal/pausecli` package documentation.

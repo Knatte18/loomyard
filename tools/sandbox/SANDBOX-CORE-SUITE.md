@@ -323,10 +323,10 @@ Does `lyx cleanup` run from a task worktree instead refuse, name the prime workt
 
 **Goal:** "Pause the sandbox hub while nothing runs, see the pause held, and lift it again."
 
-**Covers:** pause, resume
+**Covers:** tender
 
 **Watch:** Does `lyx pause` print one `{"ok":true}` envelope under `pause` that names the hub scope and reports empty lists, and does a second `lyx pause` report `already_paused` and add no entry?
-Does `lyx pause --status` list the one live entry and change nothing?
+Does `lyx tender status` list the one live entry and change nothing?
 While the pause stands, does `lyx board` print one line that names the pause and the `lyx resume` that lifts it, and then continue only after the resume?
 Does `lyx resume` lift the entry, and does a second `lyx resume` report nothing resumed?
 Does `lyx pause no-such-slug` refuse and list the slugs that have a pair, and does `lyx pause --grace 61` refuse and name the range 0 to 60?

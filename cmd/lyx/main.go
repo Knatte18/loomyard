@@ -96,7 +96,7 @@ all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output; --json prints the help as JSON and
 never runs the command.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed, orch, cleanup, report, pause, resume, gate, help.
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed, orch, cleanup, report, tender, gate, help.
 Shortcuts, declared in internal/shortcutcli's embedded file, are listed under their own heading in lyx --help.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -148,8 +148,6 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 		// and covered by the help-tree and registration guards.
 		loomcli.StartAliasCommand(),
 		pausecli.Command(),
-		// ResumeCommand is the pause module's second root command, beside pause.
-		pausecli.ResumeCommand(),
 		quarrycli.Command(),
 		gatecli.Command(),
 	)
