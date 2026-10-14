@@ -44,6 +44,7 @@
 //
 // One API message can appear on several transcript lines, and a fork repeats its
 // parent's context, so usage is counted once per message id within a run.
+// A message's usage is read from its last line in a transcript: a sub-agent transcript records a streamed message's earlier lines with a partial output_tokens.
 //
 // One fork is one sub-agent transcript of a session whose role is webster;
 // the report's "Webster forks" section lists every such fork of every run, by run as listed and then by start time, with the cards it ran, its start context, its counted messages, its peak context and its weight.

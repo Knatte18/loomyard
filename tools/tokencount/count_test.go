@@ -232,6 +232,8 @@ func TestCountRun(t *testing.T) {
 	writeLines(t, filepath.Join(dir, "b", "subagents", "agent-1.jsonl"),
 		toolResult("2026-01-02T03:04:05.5Z", jsonString(t, "no pointer here")),
 		assistant("m2", "sonnet", 1, 1), // the parent's context repeated in the fork
+		// A streamed message's first line carries a partial output_tokens; its last line holds the message's usage.
+		assistant("m3", "opus", 1, 5),
 		assistant("m3", "opus", 4, 5),
 		toolResult("2026-01-02T03:04:06Z", `[{"type":"text","text":`+jsonString(t, prompt)+`}]`),
 		assistant("m5", "opus", 2, 9),
@@ -267,8 +269,8 @@ func TestCountRun(t *testing.T) {
 			t.Errorf("%s usage = %+v, want %+v", role, got, u)
 		}
 	}
-	if run.Duplicates != 2 {
-		t.Errorf("duplicates = %d, want 2", run.Duplicates)
+	if run.Duplicates != 3 {
+		t.Errorf("duplicates = %d, want 3", run.Duplicates)
 	}
 	if run.BaseSHA != "early00" {
 		t.Errorf("BaseSHA = %q, want the earliest successful begin-batch envelope's early00", run.BaseSHA)

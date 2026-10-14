@@ -797,6 +797,7 @@ func (run *RunTally) countFile(path, role string, seen map[string]bool, fork *Fo
 	}
 	tally.Sessions++
 	var points []turnPoint
+	var usageLines []line
 	err := eachLine(path, func(l line) {
 		if fork != nil {
 			fork.observe(l)
@@ -805,16 +806,20 @@ func (run *RunTally) countFile(path, role string, seen map[string]bool, fork *Fo
 		if at, ok := lineTime(l); ok {
 			points = append(points, turnPoint{at, endsTurn(l), startsTurn(l)})
 		}
-		if l.Type != "assistant" || l.Message == nil || l.Message.Usage == nil {
-			return
+		if isUsageLine(l) {
+			usageLines = append(usageLines, l)
 		}
-		id := l.Message.ID
-		if id == "" {
-			id = l.UUID
-		}
+	})
+	if err != nil {
+		return err
+	}
+	messages, repeats := lastLinePerMessage(usageLines)
+	run.Duplicates += repeats
+	for _, l := range messages {
+		id := messageKey(l)
 		if seen[id] {
 			run.Duplicates++
-			return
+			continue
 		}
 		seen[id] = true
 		tally.Usage.add(*l.Message.Usage)
@@ -830,14 +835,41 @@ func (run *RunTally) countFile(path, role string, seen map[string]bool, fork *Fo
 			}
 			fork.PeakContext = max(fork.PeakContext, context)
 		}
-	})
-	if err != nil {
-		return err
 	}
 	working := workingIntervals(points)
 	tally.Working = unionIntervals(append(tally.Working, working...))
 	run.Working = unionIntervals(append(run.Working, working...))
 	return nil
+}
+
+// isUsageLine reports whether l is an assistant line carrying a usage record.
+func isUsageLine(l line) bool {
+	return l.Type == "assistant" && l.Message != nil && l.Message.Usage != nil
+}
+
+// messageKey is the API message id of a usage line, or the line's uuid when the message has no id.
+func messageKey(l line) string {
+	if l.Message.ID != "" {
+		return l.Message.ID
+	}
+	return l.UUID
+}
+
+// lastLinePerMessage returns one of a transcript's usage lines per message key, in the order the keys first appear, each the key's last line, and how many earlier lines it dropped.
+// A message streamed over several lines carries a partial output_tokens on all but its last line.
+func lastLinePerMessage(usageLines []line) ([]line, int) {
+	index := map[string]int{}
+	var messages []line
+	for _, l := range usageLines {
+		key := messageKey(l)
+		if i, ok := index[key]; ok {
+			messages[i] = l
+			continue
+		}
+		index[key] = len(messages)
+		messages = append(messages, l)
+	}
+	return messages, len(usageLines) - len(messages)
 }
 
 // observe records a line's timestamp and, until a card pointer has been found, its card attribution: the fork's prompt is the first tool result holding a card pointer line.

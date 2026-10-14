@@ -59,6 +59,10 @@ func TestCountOrch(t *testing.T) {
 		timedAssistant("two", model, "2026-01-02T11:30:00Z", 2_000_000),
 		// After the latest window: cut off.
 		timedAssistant("after", model, "2026-01-02T15:00:00Z", 9_000_000),
+		// One message on two lines: the first, outside the span, carries a partial output count;
+		// the last, between windows, carries the full count and decides both the span check and the charge.
+		timedAssistant("straddle", model, "2026-01-02T09:00:00Z", 1),
+		timedAssistant("straddle", model, "2026-01-02T12:30:00Z", 500_000),
 	)
 	writeLines(t, filepath.Join(prime, "a", "subagents", "agent-b.jsonl"),
 		userPrompt(t, "2026-01-02T13:29:00Z", "You are the parent reviewer for run `run-b`, in pair /hub/run-b-old and /hub/run-b."),
@@ -97,7 +101,7 @@ func TestCountOrch(t *testing.T) {
 		{"OneRunInFlight_PlusHalfOfTwo", *orch.Charges["run-a"], 2_000_000},
 		{"HalfOfTwo_PlusForkNamingIt", *orch.Charges["run-b"], 5_000_000},
 		{"ForkNamingTwoRuns_ChargedByTime", *orch.Charges["run-c"], 5_000_000},
-		{"NoRunInFlight", orch.Unattributed, 3_000_000},
+		{"NoRunInFlight_PlusLastLineOfSplitMessage", orch.Unattributed, 3_500_000},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -114,8 +118,8 @@ func TestCountOrch(t *testing.T) {
 			}
 		})
 	}
-	if orch.Main.Sessions != 2 || orch.Main.Messages != 3 || orch.Sub.Sessions != 2 || orch.Sub.Messages != 2 {
-		t.Errorf("parts = main %+v, sub %+v; want main 2 sessions 3 messages, sub 2 sessions 2 messages", orch.Main, orch.Sub)
+	if orch.Main.Sessions != 2 || orch.Main.Messages != 4 || orch.Sub.Sessions != 2 || orch.Sub.Messages != 2 {
+		t.Errorf("parts = main %+v, sub %+v; want main 2 sessions 4 messages, sub 2 sessions 2 messages", orch.Main, orch.Sub)
 	}
 
 	var buf bytes.Buffer
@@ -135,12 +139,12 @@ func TestCountOrch(t *testing.T) {
 		"Total weight 75.0M;",
 		"## run-a\n\n| role |",
 		"| burler | 1 | 1000000 | 0 | 0 | 0 | 5.0M | 33.3% | 0s | 0.0% | $20.00 | claude-opus-5-5: 1 |\n| idle | | | | | | | | 2h0m0s | 100.0% | | |\n| orch | | | | | | 10.0M | 66.7% | | | $40.00 | |\n",
-		"| orch | 2 | 3 | 6.0M | $120.00 |",
+		"| orch | 2 | 4 | 6.5M | $130.00 |",
 		"| orch+sub | 2 | 2 | 9.0M | $180.00 |",
-		"| total | 4 | 5 | 15.0M | $300.00 |",
+		"| total | 4 | 6 | 15.5M | $310.00 |",
 		"| run-a | 2.0M | $40.00 | $20.00 | 66.7% |",
 		"| run-b | 5.0M | $100.00 | $20.00 | 83.3% |",
-		"| unattributed | 3.0M | $60.00 | | |",
+		"| unattributed | 3.5M | $70.00 | | |",
 		orchAttributionRule,
 	} {
 		if !strings.Contains(report, want) {
