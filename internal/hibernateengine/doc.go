@@ -41,4 +41,36 @@
 // # Status
 //
 // Status reads the request and whether its daemon is live and writes nothing, so a halted `--after` run's reason and a dead daemon show up in it.
+//
+// # The daemon
+//
+// Watch is the sequence the spawned daemon runs.
+// It refuses an agent caller and a non-Linux platform as Submit does, and acts only for a non-terminal request carrying the running process's own pid and start time; with no request, a terminal one or another daemon's it returns at once and writes nothing.
+// Every phase change is written under the request lock and stops the sequence quietly, leaving the lifting to Cancel, when the request is no longer this daemon's or has gone terminal.
+// The daemon sends no key and no text of its own: every interrupt and resume line is tender's, under its guards.
+// The timings are fixed constants with no config key.
+//
+// The trigger wait reads the trigger and writes the reason it still waits into the request, so status shows it.
+// `now` fires at once.
+// `after` fires once the run is done or at the row after Land in any state; a run halted before Land keeps the wait going with the halt reason, and a status that is gone fails the request.
+// `after-all` fires once no run reads running, at once with none, and skips a listed slug whose status is missing.
+// The poll starts at one second, doubles to thirty seconds while the reason is unchanged and returns to one second when it changes.
+// Bound: the wait has no deadline, since the operator cancels a request whose run halted.
+//
+// Firing pauses the hub through tender with a ten second grace.
+// The pause's `Added` callback records the entry as the request's owned entry before the grace, whatever the phase, and the daemon keeps it in memory even when that write fails.
+// A pause that found a live hub entry owns none, so neither the daemon nor Cancel lifts that pause.
+// A pause lifted during its grace cancels the request.
+// A pause error fails the request, lifts the owned entry and queues one notice; the lift and the notice run even when the failed write fails.
+//
+// Confirmation reads the hub right after the pause and then up to 120 times, five seconds apart, ten minutes in all.
+// A reading confirms when a hub entry is live, every session reads idle, asking or dead, no network operation is in flight and the land lock is free.
+// The first reading also withholds while the pause left a strand busy or refused a session.
+// The parent locks a paused run keeps by design are not read.
+// A reading with no live hub entry cancels the request, and a reading error counts as unconfirmed.
+// Without a confirmed reading the request fails with the last withholding reason and `Hibernate` is never called.
+//
+// Right before the hibernate the daemon reads the hub once more, needs a live hub entry, and moves the request to hibernating only if it is still this daemon's.
+// The wake is a sleep the clock gap watch records ending after the hibernate call, seen within five minutes of awake time; a hibernate error or no wake fails the request with the owned entry lifted and one notice.
+// On the wake the owned entry is lifted by identity, so an entry already resumed, with another hub entry added meanwhile, lifts nothing, and the request ends done with one notice saying what became of the pause.
 package hibernateengine

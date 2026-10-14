@@ -60,7 +60,7 @@ type fakeWorld struct {
 	// landLock holds the land lock readings, consumed per call with the last repeated; no reading is not held.
 	landLock []bool
 
-	// stillBusy, refused, resumedDuringGrace and pauseErr are what the fake pause reports.
+	// stillBusy, refused, resumedDuringGrace and pauseErr are what the fake pause reports; pauseErr is returned after the entry is added and Added is called.
 	stillBusy          []string
 	refused            []tenderengine.SessionNote
 	resumedDuringGrace bool
@@ -82,18 +82,23 @@ type fakeWorld struct {
 
 	hibernateCalls int
 	hibernateErr   error
-	notices        []string
+	// noWake makes a successful hibernate leave the clocks alone, so no sleep is ever seen.
+	noWake  bool
+	notices []string
+	start   time.Time
 }
 
 // newFakeWorld builds a Linux hub with systemctl on PATH, an external caller, and the clocks at a fixed instant.
 func newFakeWorld(t *testing.T) *fakeWorld {
 	t.Helper()
 	root := t.TempDir()
+	start := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	return &fakeWorld{
 		t:           t,
 		requestPath: filepath.Join(root, "hibernate", "request.json"),
 		recordPath:  filepath.Join(root, "pause", pauserecord.RecordFileName),
-		wall:        time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+		wall:        start,
+		start:       start,
 		goos:        "linux",
 		systemctl:   true,
 		nextPID:     1000,
@@ -214,9 +219,6 @@ func (w *fakeWorld) pause(req tenderengine.PauseRequest) (tenderengine.PauseRepo
 		ResumedDuringGrace: w.resumedDuringGrace,
 	}
 	w.mu.Unlock()
-	if pauseErr != nil {
-		return report, pauseErr
-	}
 
 	now := w.now()
 	var entry pauserecord.Entry
@@ -242,7 +244,7 @@ func (w *fakeWorld) pause(req tenderengine.PauseRequest) (tenderengine.PauseRepo
 			return report, fmt.Errorf("pause: report the added entry: %w", err)
 		}
 	}
-	return report, nil
+	return report, pauseErr
 }
 
 func (w *fakeWorld) tenderStatus() (tenderengine.StatusReport, error) {
@@ -290,8 +292,39 @@ func (w *fakeWorld) hibernate() error {
 	if w.hibernateErr != nil {
 		return w.hibernateErr
 	}
-	w.pendingSleep = true
+	w.pendingSleep = !w.noWake
 	return nil
+}
+
+func (w *fakeWorld) hibernates() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.hibernateCalls
+}
+
+func (w *fakeWorld) pauseCount() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return len(w.pauses)
+}
+
+func (w *fakeWorld) noticeList() []string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]string(nil), w.notices...)
+}
+
+func (w *fakeWorld) sleepList() []time.Duration {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]time.Duration(nil), w.sleeps...)
+}
+
+// elapsed is how far the wall clock has moved since the world was built.
+func (w *fakeWorld) elapsed() time.Duration {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.wall.Sub(w.start)
 }
 
 func (w *fakeWorld) notify(line string) error {
