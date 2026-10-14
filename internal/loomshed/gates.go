@@ -1,4 +1,4 @@
-// gates.go implements this package's four gate closures: NewDiscussionGate, NewPlanGate, NewLensReviewPlanGate and NewReworkPlanGate.
+// gates.go implements this package's gate closures: NewDiscussionGate, NewDarnDiscussionGate, NewPlanGate, NewLensReviewPlanGate and NewReworkPlanGate.
 // Each is the gate half of the Gate Self-Check Parity Invariant -- each calls the identical package
 // function its CLI self-check verb does (discussionparser.Validate, ValidatePlan, ValidatePlanLensReview and
 // ValidateReworkPlan, respectively), so the operator's own self-check verb and the automated gate can never disagree
@@ -114,6 +114,54 @@ func NewDiscussionGate(decisionRecordPath, supportLogPath string) shuttleengine.
 		formatted := formatDiscussionFindings(findings)
 		logger.Warn("loomshed: discussion gate failed validation", "gate", "Discussion-Gate", "decisionRecord", decisionRecordPath, "findings", formatted)
 		return shuttleengine.GateResult{Passed: false, Findings: formatted}, nil
+	}
+}
+
+// ValidateDarnDiscussion is the darn run's discussion check: discussionparser.Validate's section check, then the history check.
+// A record Validate finds defects in comes back with those findings alone, since a missing or section-less record has no history worth comparing yet.
+// Otherwise history supplies every committed version of the record, and the findings are the added-decision entries the record dropped from them.
+// A read error and a history error are returned errors, as Validate's I/O errors are.
+func ValidateDarnDiscussion(decisionRecordPath, supportLogPath string, history func() ([][]byte, error)) ([]discussionparser.Finding, error) {
+	findings, err := discussionparser.Validate(decisionRecordPath, supportLogPath)
+	if err != nil || len(findings) > 0 {
+		return findings, err
+	}
+
+	record, err := os.ReadFile(decisionRecordPath)
+	if err != nil {
+		return nil, err
+	}
+	versions, err := history()
+	if err != nil {
+		return nil, err
+	}
+
+	findings = discussionparser.CheckAddedDecisionsKept(record, versions)
+	for i := range findings {
+		findings[i].Path = decisionRecordPath
+	}
+	return findings, nil
+}
+
+// NewDarnDiscussionGate returns the darn run's discussion gate closure: a shuttleengine.Gate that calls ValidateDarnDiscussion and commits the record once the check is clean.
+// Findings fail the gate with the same formatted findings and warn line NewDiscussionGate produces, and commit nothing.
+// A clean check calls commit and passes; a commit error is returned wrapped with the decision record path, so the handoff halts as a transient fault instead of passing over an uncommitted record.
+// A repeat pass over an unchanged record commits nothing new when commit treats a clean path as a no-op.
+func NewDarnDiscussionGate(decisionRecordPath, supportLogPath string, history func() ([][]byte, error), commit func() error) shuttleengine.Gate {
+	return func() (shuttleengine.GateResult, error) {
+		findings, err := ValidateDarnDiscussion(decisionRecordPath, supportLogPath, history)
+		if err != nil {
+			return shuttleengine.GateResult{}, err
+		}
+		if len(findings) > 0 {
+			formatted := formatDiscussionFindings(findings)
+			logger.Warn("loomshed: discussion gate failed validation", "gate", "Discussion-Gate", "decisionRecord", decisionRecordPath, "findings", formatted)
+			return shuttleengine.GateResult{Passed: false, Findings: formatted}, nil
+		}
+		if err := commit(); err != nil {
+			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: commit decision record %s: %w", decisionRecordPath, err)
+		}
+		return shuttleengine.GateResult{Passed: true}, nil
 	}
 }
 
