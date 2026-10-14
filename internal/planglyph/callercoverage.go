@@ -133,7 +133,7 @@ func callerCoverageFindings(plan *planparser.Plan, lang glyph.Language, worktree
 			findings = append(findings, unresolvedMethodFinding(subject, unresolvedLines))
 		}
 	}
-	return append(findings, deleteOrderFindings(subjects, resolved, nameOnly, regions)...), nil
+	return append(findings, deleteOrderFindings(subjects, resolved, nameOnly, regions, regions)...), nil
 }
 
 // memberReferences returns, per subject, the lines of each Go file in candidates that reference it: resolved, where the reference is typed or resolved by import path, and nameOnly, where a method is matched by its name alone.
