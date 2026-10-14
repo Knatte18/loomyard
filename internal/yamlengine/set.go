@@ -12,6 +12,7 @@ package yamlengine
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -57,6 +58,9 @@ type SetResult struct {
 // and the pair sets <name> to the scalar value, appending the key when absent.
 // A pair under an open map that holds a list is an error naming the path;
 // the list is never converted.
+// A pair at P itself, when P holds a scalar or a list, replaces P whole with the shape the value spells:
+// a value starting with [ is a YAML flow list of scalars, and any other value a string;
+// a bracketed value that is not such a list is an error.
 // Known lists each open map as P.<name>.
 func SetValues(template, existing []byte, pairs []KV, openMaps ...string) (SetResult, error) {
 	// Parse the template into the tree we will mutate and ultimately marshal.
@@ -119,6 +123,16 @@ func SetValues(template, existing []byte, pairs []KV, openMaps ...string) (SetRe
 	// the working tree always contains every template leaf. Apply pairs in
 	// order so a repeated key's later value wins.
 	for _, pair := range pairs {
+		if isScalarOrListOpenMap(&templateNode, pair.Key, openMaps) {
+			value, err := scalarOrListNode(pair)
+			if err != nil {
+				return SetResult{}, err
+			}
+			current := findValueNode(&templateNode, pair.Key)
+			value.HeadComment, value.LineComment, value.FootComment = current.HeadComment, current.LineComment, current.FootComment
+			*current = *value
+			continue
+		}
 		if open, name, ok := splitOpenMapKey(pair.Key, openMaps); ok {
 			if err := setOpenMapEntry(&templateNode, open, name, pair.Value); err != nil {
 				return SetResult{}, err
@@ -182,6 +196,36 @@ func setOpenMapEntry(root *yaml.Node, open, name, value string) error {
 // stringNode returns a !!str scalar node holding value.
 func stringNode(value string) *yaml.Node {
 	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
+}
+
+// isScalarOrListOpenMap reports whether key is itself a declared open-map path whose value in root is a scalar or a list rather than a mapping.
+// Such a key takes whichever of the two shapes its set value spells.
+func isScalarOrListOpenMap(root *yaml.Node, key string, openMaps []string) bool {
+	if !slices.Contains(openMaps, key) {
+		return false
+	}
+	value := findValueNode(root, key)
+	return value != nil && value.Kind != yaml.MappingNode
+}
+
+// scalarOrListNode returns the node pair.Value spells for a key that takes a scalar or a list:
+// a value whose first non-blank character is [ is a YAML flow list of scalars, and any other value is a string scalar.
+// A bracketed value that does not parse as a list of scalars is an error naming the key and the quoted-entry form, never a string.
+func scalarOrListNode(pair KV) (*yaml.Node, error) {
+	if !strings.HasPrefix(strings.TrimSpace(pair.Value), "[") {
+		return stringNode(pair.Value), nil
+	}
+	refusal := fmt.Errorf("value for %s is neither one value nor a YAML flow list of scalars, got %q: quote each entry that holds [ or ], e.g. [\"opus[medium]\", \"sonnet[high]\"]", pair.Key, pair.Value)
+	sequence := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+	if err := replaceSequence(sequence, pair); err != nil {
+		return nil, refusal
+	}
+	for _, entry := range sequence.Content {
+		if entry.Kind != yaml.ScalarNode {
+			return nil, refusal
+		}
+	}
+	return sequence, nil
 }
 
 // replaceSequence replaces sequence's elements with pair.Value parsed as a YAML list, so a list key

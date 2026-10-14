@@ -12,6 +12,7 @@ const (
 	openMapSetTemplate = "name: tmpl\nlabels: {}\n"
 	preservedMarker    = "# preserved (not in current template)"
 	listKeyTemplate    = "require_pr_to_base: [\"main\"] # bases\nsquash: true\n"
+	roundListTemplate  = "plan_review: \"\" # rounds\n"
 )
 
 // TestSetValues pins what a successful SetValues merges: the requested values land byte-for-byte, every other key keeps its existing value or its template default, template comments and key order survive, an orphan top-level key is preserved whole and reported, list keys and open maps are set whole, and a second call on the merged output reproduces it.
@@ -126,6 +127,28 @@ func TestSetValues(t *testing.T) {
 			pairs:    []KV{{Key: "labels.x", Value: "new x"}, {Key: "labels.a", Value: "new a"}},
 			openMaps: []string{"labels"},
 			contains: []string{"a: new a", "x: new x", "name: mine"},
+		},
+		{
+			name:     "scalar-or-list key takes a quoted flow list",
+			template: roundListTemplate,
+			pairs:    []KV{{Key: "plan_review", Value: `["opus[medium]", "sonnet[high]"]`}},
+			openMaps: []string{"plan_review"},
+			contains: []string{`plan_review: ["opus[medium]", "sonnet[high]"] # rounds`},
+		},
+		{
+			name:       "scalar-or-list key holding a list takes a scalar",
+			template:   roundListTemplate,
+			existing:   "plan_review: [\"opus[high]\"]\n",
+			pairs:      []KV{{Key: "plan_review", Value: "sonnet[high]"}},
+			openMaps:   []string{"plan_review"},
+			wantValues: map[string]string{"plan_review": "sonnet[high]"},
+		},
+		{
+			name:     "scalar-or-list key takes the empty list",
+			template: roundListTemplate,
+			pairs:    []KV{{Key: "plan_review", Value: "[]"}},
+			openMaps: []string{"plan_review"},
+			contains: []string{"plan_review: [] # rounds"},
 		},
 		{
 			name:        "open map on an empty template writes a block mapping",
@@ -258,6 +281,20 @@ func TestSetValues_Refusals(t *testing.T) {
 			pair:     KV{Key: "labels.x", Value: "v"},
 			openMaps: []string{"labels"},
 			want:     []string{"labels", "map of name to description"},
+		},
+		{
+			name:     "unquoted bracketed entries for a scalar-or-list key",
+			template: roundListTemplate,
+			pair:     KV{Key: "plan_review", Value: "[opus[medium], sonnet[high]]"},
+			openMaps: []string{"plan_review"},
+			want:     []string{"plan_review", `["opus[medium]", "sonnet[high]"]`},
+		},
+		{
+			name:     "nested list for a scalar-or-list key",
+			template: roundListTemplate,
+			pair:     KV{Key: "plan_review", Value: "[[a], b]"},
+			openMaps: []string{"plan_review"},
+			want:     []string{"plan_review", "flow list of scalars"},
 		},
 	}
 

@@ -356,6 +356,11 @@ func buildConfigLong() string {
 		"  lyx config board --set design_prefix=foo- --set readme=Home.md\n" +
 		"A list-valued key takes a YAML flow list and is replaced whole, e.g.\n" +
 		"  lyx config landing --set 'require_pr_to_base=[]'\n" +
+		"A key that takes one value or a per-round list, such as loom's review,\n" +
+		"fix and each segment's *_review and *_fix, takes either: a value starting\n" +
+		"with [ is written as a list, any other as one value. Quote an entry that\n" +
+		"holds [ or ]; an unquoted one is refused, e.g.\n" +
+		"  lyx config loom --set 'plan_review=[\"opus[medium]\", \"sonnet[high]\"]'\n" +
 		"A module may declare an open map, whose keys are the repo's own; --set\n" +
 		"adds or rewrites one entry of it with a scalar value, e.g.\n" +
 		"  lyx config board --set labels.quarry=\"glyphs and the quarry index\"\n" +
