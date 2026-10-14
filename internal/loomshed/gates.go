@@ -1,6 +1,6 @@
 // gates.go implements this package's gate closures: NewDiscussionGate, NewDarnDiscussionGate, NewPlanGate, NewLensReviewPlanGate and NewReworkPlanGate.
 // Each is the gate half of the Gate Self-Check Parity Invariant -- each calls the identical package
-// function its CLI self-check verb does (discussionparser.Validate, ValidatePlan, ValidatePlanLensReview and
+// function its CLI self-check verb does (discussionparser.Validate, ValidateDarnDiscussion, ValidatePlan, ValidatePlanLensReview and
 // ValidateReworkPlan, respectively), so the operator's own self-check verb and the automated gate can never disagree
 // about what "valid" means.
 
