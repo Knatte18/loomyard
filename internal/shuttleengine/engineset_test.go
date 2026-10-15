@@ -8,6 +8,20 @@ import (
 	"testing"
 )
 
+// singleEngineSet wraps one engine as the default of a one-engine set, for tests that exercise a consumer of the set.
+func singleEngineSet(engine Engine) EngineSet {
+	return NewEngineSet("fake", map[string]Engine{"fake": engine})
+}
+
+// requireEngineSkipEpisode asserts the log holds one engine-skip episode that names runDir: one Warn, two Debug lines and one recovery.
+func requireEngineSkipEpisode(t *testing.T, log, runDir string) {
+	t.Helper()
+	requireFailureEpisode(t, log, "skipping a run whose engine is not registered", 2, "run engine registered again")
+	if got := countLevelLines(log, "WARN", runDir); got != 1 {
+		t.Errorf("WARN lines naming %s = %d, want 1; log: %s", runDir, got, log)
+	}
+}
+
 // TestEngineSet_Lookup pins how a name resolves: the empty name to the default, a registered name to its own engine,
 // and an unknown name or an unregistered default to ErrEngineNotRegistered naming the sorted registered names.
 func TestEngineSet_Lookup(t *testing.T) {

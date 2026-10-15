@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
@@ -107,7 +108,7 @@ func (c *loomCLI) stopStepRuns(tie shuttleengine.StepTie) (shuttleengine.StepSto
 }
 
 // agentActivityFor returns the reading of the run's agent activity: the newest LastActivity over every live agent run of loc's worktree.
-// The runs come from shuttle through a Claude engine, which lists every strand, so a MultiLLM row's chair and each of its advisors count.
+// The runs come from shuttle through its registered engines, which list every strand, so a MultiLLM row's chair and each of its advisors count.
 // A running verify, a live parent lock wait, or a shuttle wait that is not a held turn end, reads as activity now.
 // All three are read from their marker or record files.
 // The boolean is false when nothing is live.
@@ -137,7 +138,11 @@ func agentActivityFor(loc *lyxcwd.Location, cfg shuttleengine.Config) func() (ti
 				return time.Now(), true, nil
 			}
 		}
-		readings, err := shuttleengine.ReadAgentActivity(cfg, anchor, claudeengine.NewFromConfig(cfg))
+		engines, err := shuttleengines.New(cfg)
+		if err != nil {
+			return time.Time{}, false, err
+		}
+		readings, err := shuttleengine.ReadAgentActivity(cfg, anchor, engines)
 		if err != nil {
 			return time.Time{}, false, err
 		}

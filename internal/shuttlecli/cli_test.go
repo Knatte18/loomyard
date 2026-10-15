@@ -689,7 +689,7 @@ func TestStateCmd_ListsRunningRunsAndNarrowsByStrand(t *testing.T) {
 	}
 
 	run := func(args ...string) map[string]any {
-		c := &shuttleCLI{cfg: shuttleengine.Config{RunDir: root}, anchorPath: t.TempDir(), engine: stateEngine{&shuttlefake.Engine{}}}
+		c := &shuttleCLI{cfg: shuttleengine.Config{RunDir: root}, anchorPath: t.TempDir(), engines: shuttlefake.EngineSet(stateEngine{&shuttlefake.Engine{}})}
 		cmd := c.stateCmd()
 		var out bytes.Buffer
 		cmd.SetOut(&out)

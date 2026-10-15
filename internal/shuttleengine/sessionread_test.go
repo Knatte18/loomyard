@@ -71,6 +71,8 @@ type readRun struct {
 	promptOffset int64
 	// outputExists makes the run declare one output file that exists.
 	outputExists bool
+	// engine is the engine name the record carries; empty leaves the record naming none.
+	engine string
 }
 
 func TestReadSessionStates(t *testing.T) {
@@ -180,7 +182,7 @@ func TestReadSessionStates(t *testing.T) {
 				engine = tt.engine.fakeEngine
 			}
 
-			got, err := ReadSessionStates(Config{RunDir: root}, t.TempDir(), engine, now)
+			got, err := ReadSessionStates(Config{RunDir: root}, t.TempDir(), singleEngineSet(engine), now)
 			if err != nil {
 				t.Fatalf("ReadSessionStates error = %v; want nil", err)
 			}
@@ -198,7 +200,7 @@ func TestReadSessionStates(t *testing.T) {
 	}
 
 	t.Run("an absent root returns none", func(t *testing.T) {
-		got, err := ReadSessionStates(Config{RunDir: filepath.Join(t.TempDir(), "missing")}, t.TempDir(), &fakeEngine{}, now)
+		got, err := ReadSessionStates(Config{RunDir: filepath.Join(t.TempDir(), "missing")}, t.TempDir(), singleEngineSet(&fakeEngine{}), now)
 		if err != nil || got != nil {
 			t.Errorf("ReadSessionStates = (%v, %v); want (nil, nil)", got, err)
 		}
@@ -218,16 +220,55 @@ func TestReadSessionStates(t *testing.T) {
 		engine := &readEngine{fakeEngine: &fakeEngine{}}
 
 		for range 3 {
-			if _, err := ReadSessionStates(Config{RunDir: root}, t.TempDir(), engine, now); err != nil {
+			if _, err := ReadSessionStates(Config{RunDir: root}, t.TempDir(), singleEngineSet(engine), now); err != nil {
 				t.Fatal(err)
 			}
 		}
 		writeReadRun(t, root, "run-a", finished)
-		if _, err := ReadSessionStates(Config{RunDir: root}, t.TempDir(), engine, now); err != nil {
+		if _, err := ReadSessionStates(Config{RunDir: root}, t.TempDir(), singleEngineSet(engine), now); err != nil {
 			t.Fatal(err)
 		}
 
 		requireFailureEpisode(t, buf.String(), "skipping an unreadable run record", 2, "run record readable again")
+	})
+
+	t.Run("each run is read through the engine its record names", func(t *testing.T) {
+		buf := logcapture.CaptureVerbose(t)
+		logger.SetVerbosity(2)
+		root := t.TempDir()
+		// Only beta reads the recorded session's process as gone, so a run's state names the engine that read it.
+		engines := NewEngineSet("alpha", map[string]Engine{
+			"alpha": &readEngine{fakeEngine: &fakeEngine{}},
+			"beta":  &readEngine{fakeEngine: &fakeEngine{}, livenessByID: map[string]Liveness{"recorded-session": LivenessDead}},
+		})
+		for name, engine := range map[string]string{"run-a": "alpha", "run-b": "beta", "run-c": "", "run-d": "gamma"} {
+			writeReadRun(t, root, name, readRun{outcome: runOutcomeRunning, events: startLine, engine: engine})
+		}
+		read := func() []SessionStateName {
+			got, err := ReadSessionStates(Config{RunDir: root}, t.TempDir(), engines, now)
+			if err != nil {
+				t.Fatalf("ReadSessionStates error = %v; want nil", err)
+			}
+			var names []SessionStateName
+			for _, reading := range got {
+				names = append(names, reading.State.Name)
+			}
+			return names
+		}
+		want := []SessionStateName{SessionBusy, SessionDead, SessionBusy}
+
+		for range 3 {
+			if got := read(); !reflect.DeepEqual(got, want) {
+				t.Fatalf("ReadSessionStates states = %v; want %v (alpha, beta, the default alpha; the gamma run skipped)", got, want)
+			}
+		}
+		writeReadRun(t, root, "run-d", readRun{outcome: runOutcomeRunning, events: startLine, engine: "beta"})
+		want = append(want, SessionDead)
+		if got := read(); !reflect.DeepEqual(got, want) {
+			t.Errorf("ReadSessionStates states after run-d names beta = %v; want %v", got, want)
+		}
+
+		requireEngineSkipEpisode(t, buf.String(), filepath.Join(root, "run-d"))
 	})
 }
 
@@ -244,7 +285,7 @@ func writeReadRun(t *testing.T, root, name string, run readRun) {
 	}
 	state := RunState{
 		RunID: name, StrandGUID: "guid-" + name, StrandName: "hub:task:driver", SessionID: run.sessionID,
-		EventsPath: eventsPath, Outcome: run.outcome, PID: 4343, PromptOffset: run.promptOffset,
+		EventsPath: eventsPath, Outcome: run.outcome, PID: 4343, PromptOffset: run.promptOffset, Engine: run.engine,
 	}
 	if run.outputExists {
 		output := filepath.Join(runDir, "report.md")

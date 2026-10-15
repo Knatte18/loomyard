@@ -22,17 +22,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/spf13/cobra"
 )
 
 // shuttleCLI is the receiver every shuttle verb hangs off of;
-// runner, cfg, anchorPath and engine are populated by PersistentPreRunE.
-// The read-only verbs read through cfg, anchorPath and engine directly.
+// runner, cfg, anchorPath, engines and engine are populated by PersistentPreRunE.
+// The read-only verbs read through cfg, anchorPath and engines directly.
 type shuttleCLI struct {
 	runner     *shuttleengine.Runner
 	cfg        shuttleengine.Config
 	anchorPath string
+	engines    shuttleengine.EngineSet
 	engine     shuttleengine.Engine
 	// pause is the pair's pause geometry, set by PersistentPreRunE; send refuses into a covered strand through it.
 	pause pauserecord.Geometry
@@ -112,7 +113,19 @@ provider specifics.`,
 				return nil
 			}
 			reedEngine := reedengine.New(reedCfg, reedGeom)
-			c.cfg, c.anchorPath, c.engine = shuttleCfg, reedGeom.AnchorPath, claudeengine.NewFromConfig(shuttleCfg)
+			engines, err := shuttleengines.New(shuttleCfg)
+			if err != nil {
+				output.Err(out, err.Error())
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
+			engine, err := engines.Lookup("")
+			if err != nil {
+				output.Err(out, err.Error())
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
+			c.cfg, c.anchorPath, c.engines, c.engine = shuttleCfg, reedGeom.AnchorPath, engines, engine
 			c.runner = shuttleengine.NewRunner(reedEngine, c.engine, c.anchorPath, reedGeom.WorktreeRoot, c.cfg)
 			pauseGeom, err := hubgeom.PauseGeometry(layout)
 			if err != nil {

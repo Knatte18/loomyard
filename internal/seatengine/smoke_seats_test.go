@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
@@ -132,7 +133,7 @@ func TestSmokeSeatsChairAsksAdvisor(t *testing.T) {
 				return
 			case <-time.After(2 * time.Second):
 			}
-			readings, readErr := shuttleengine.ReadSessionStates(shuttleCfg, reedGeom.AnchorPath, claudeengine.New(), time.Now())
+			readings, readErr := shuttleengine.ReadSessionStates(shuttleCfg, reedGeom.AnchorPath, shuttlefake.EngineSet(claudeengine.New()), time.Now())
 			if readErr != nil {
 				continue
 			}

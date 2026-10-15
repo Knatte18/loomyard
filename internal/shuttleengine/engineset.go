@@ -6,6 +6,7 @@ package shuttleengine
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -43,6 +44,19 @@ func (s EngineSet) Lookup(name string) (Engine, error) {
 		return nil, fmt.Errorf("%w: %q; registered engines: %s", ErrEngineNotRegistered, name, strings.Join(s.Names(), ", "))
 	}
 	return engine, nil
+}
+
+// engineOfRun resolves the engine rs was started with, the default engine for a record naming none.
+// A record naming an engine the set does not hold reads as not resolved: the skip is logged once per episode under a key of its own in runDir, and recovered once the engine resolves again.
+func (s EngineSet) engineOfRun(runDir string, rs RunState) (Engine, bool) {
+	key := filepath.Join(runDir, "engine")
+	engine, err := s.Lookup(rs.Engine)
+	if err != nil {
+		unreadableFiles.Fail(key, "shuttle: skipping a run whose engine is not registered", "runDir", runDir, "cause", err)
+		return nil, false
+	}
+	unreadableFiles.Recover(key, "shuttle: run engine registered again", "runDir", runDir)
+	return engine, true
 }
 
 // Names returns the registered engine names, sorted.

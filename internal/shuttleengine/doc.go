@@ -40,6 +40,7 @@
 // and the Windows-to-POSIX path helper the engine layer needs for hook commands.
 // shuttle.yaml carries the provider's prompt-cache TTL default and per-role map, which shuttleengine passes through to the engine uninterpreted.
 // MigrateConfig raises the module's below-floor poll_interval_ms to its floor for lyx config reconcile.
+// The cross-run readers ReadAgentActivity, ReadSessionStates and ReadAgentWaits read each run through the engine its run record names, the engine set's default for a record naming none, and skip a run whose engine the set does not hold.
 // The run-loop half — Runner/Run in run.go, Wait in wait.go, and Attach in attach.go — drives a
 // LIVE agent through the ReedOps seam: it registers and removes strands, polls a real pane's capture
 // through the engine's Startup classifier, plays key choreography into that pane for
