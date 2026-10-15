@@ -60,7 +60,7 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 		NameShortname: "tc",
 		NameSlug:      "tslug",
 	}
-	e := New(cfg, geom)
+	e := New(cfg, geom, testScrub)
 
 	// Always torn down, success or failure: a leaked scratch server on a per-test-tempdir-derived socket is harmless to a real hub server, but leaves a stray process behind if the test does not clean up.
 	tmuxkit.KillOnCleanup(t, cfg.Tmux, geom.SocketKey)
@@ -131,7 +131,7 @@ func TestMouseBootIntegration_NoLiveToggleWithoutRestart(t *testing.T) {
 	// geometry and cfg (with Mouse overridden) rather than a fresh temp dir.
 	cfg2 := e1.cfg
 	cfg2.Mouse = "on"
-	e2 := New(cfg2, e1.geom)
+	e2 := New(cfg2, e1.geom, testScrub)
 	if _, err := e2.Up(); err != nil {
 		t.Fatalf("second Up() against the already-up session: %v", err)
 	}

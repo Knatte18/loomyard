@@ -101,11 +101,11 @@ func (c *loomCLI) stopStepRuns(tie shuttleengine.StepTie) (shuttleengine.StepSto
 		if err != nil {
 			return shuttleengine.StepStopReport{}, err
 		}
-		engines, err := shuttleengines.New(shuttleCfg)
+		engines, err := shuttleengines.New(shuttleCfg, configDirs)
 		if err != nil {
 			return shuttleengine.StepStopReport{}, err
 		}
-		runner = shuttleengine.NewRunner(reedengine.New(reedCfg, reedGeom), engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+		runner = shuttleengine.NewRunner(reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()), engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	}
 	return runner.StopStepRuns(tie)
 }
@@ -141,7 +141,7 @@ func agentActivityFor(loc *lyxcwd.Location, cfg shuttleengine.Config) func() (ti
 				return time.Now(), true, nil
 			}
 		}
-		engines, err := shuttleengines.New(cfg)
+		engines, err := shuttleengines.New(cfg, fabricengine.ConfigDirs(loc))
 		if err != nil {
 			return time.Time{}, false, err
 		}

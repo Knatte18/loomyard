@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -26,6 +27,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
+
+// scrubProbeEnv is a process variable the cold-boot test sets and its engine's scrub names, so the stripped-key record is observable.
+const scrubProbeEnv = "LYX_REED_SCRUB_PROBE"
 
 // newColdScratchEngine builds an *Engine rooted at a fresh t.TempDir(), against the real,
 // LoadConfig-resolved cfg, on its own scratch socket derived from that tmpDir's own hash — the same
@@ -62,7 +66,7 @@ func newColdScratchEngine(t *testing.T) *Engine {
 
 		DiscoverSignalPath: filepath.Join(hub, DiscoverSignalFileName),
 	}
-	e := New(cfg, geom)
+	e := New(cfg, geom, EnvScrub{Names: append([]string{scrubProbeEnv}, testScrub.Names...), Prefixes: testScrub.Prefixes})
 
 	// Registered before the Down cleanup so it runs after it: the kill-server is the belt-and-suspenders guard against a leaked scratch server on a genuine test failure that never reached a clean teardown, and it removes the server's socket file.
 	tmuxkit.KillOnCleanup(t, cfg.Tmux, geom.SocketKey)
@@ -79,6 +83,7 @@ func newColdScratchEngine(t *testing.T) *Engine {
 // attribution log lines derive from: EnsureSession answers true against a worktree whose session has
 // never been created, and false when called again against the live session it just created.
 func TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm(t *testing.T) {
+	t.Setenv(scrubProbeEnv, "1")
 	e := newColdScratchEngine(t)
 
 	// The kit pre-started a session-less hermetic server on this key; the cold boot must reuse it, not wait out the stale-holder grace and replace it.
@@ -120,6 +125,19 @@ func TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm(t *testing.T) {
 	}
 	if booted {
 		t.Errorf("EnsureSession (warm) booted = true, want false — the session it just created is already usable")
+	}
+
+	st, err := LoadState(e.stateDir())
+	if err != nil {
+		t.Fatalf("LoadState after the cold boot: %v", err)
+	}
+	if !slices.Contains(st.StrippedEnv, scrubProbeEnv) {
+		t.Errorf("StrippedEnv = %v, want it to hold %s", st.StrippedEnv, scrubProbeEnv)
+	}
+	for _, key := range st.StrippedEnv {
+		if !e.scrub.matches(key) {
+			t.Errorf("StrippedEnv holds %q, which is no name or prefix of the told scrub", key)
+		}
 	}
 	if _, err := os.Stat(signal); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("discover signal after a warm ensure: stat error = %v, want it absent — an attach touches nothing", err)

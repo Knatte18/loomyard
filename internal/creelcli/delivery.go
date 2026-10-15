@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -17,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
 
 // worktreeOps is the four calls the adapter makes on one worktree: reed's status and a shuttle runner's idle probe, send and interrupt.
@@ -39,7 +41,7 @@ type hubDelivery struct {
 }
 
 // newHubDelivery returns the Delivery of the hub at hubPath, building each worktree's shuttle engines with enginesFor.
-func newHubDelivery(hubPath string, enginesFor func(shuttleengine.Config) (shuttleengine.EngineSet, error)) *hubDelivery {
+func newHubDelivery(hubPath string, enginesFor func(shuttleengine.Config, configengine.Dirs) (shuttleengine.EngineSet, error)) *hubDelivery {
 	return &hubDelivery{
 		hubPath: hubPath,
 		wire: func(location *lyxcwd.Location) (worktreeOps, error) {
@@ -55,7 +57,7 @@ type shuttleOps struct {
 }
 
 // wireShuttle builds the worktree's reed and shuttle config, its reed geometry, and the reed engine and runner over them.
-func wireShuttle(location *lyxcwd.Location, enginesFor func(shuttleengine.Config) (shuttleengine.EngineSet, error)) (shuttleOps, error) {
+func wireShuttle(location *lyxcwd.Location, enginesFor func(shuttleengine.Config, configengine.Dirs) (shuttleengine.EngineSet, error)) (shuttleOps, error) {
 	configDirs := fabricengine.ConfigDirs(location)
 	reedCfg, err := reedengine.LoadConfig(configDirs, "reed")
 	if err != nil {
@@ -69,11 +71,11 @@ func wireShuttle(location *lyxcwd.Location, enginesFor func(shuttleengine.Config
 	if err != nil {
 		return shuttleOps{}, err
 	}
-	engines, err := enginesFor(shuttleCfg)
+	engines, err := enginesFor(shuttleCfg, configDirs)
 	if err != nil {
 		return shuttleOps{}, err
 	}
-	reed := reedengine.New(reedCfg, reedGeom)
+	reed := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 	runner := shuttleengine.NewRunner(reed, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	return shuttleOps{reed: reed, runner: runner}, nil
 }

@@ -18,26 +18,30 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
-// deniedRecoveryForms is the closed list of commands the agents' settings deny today, each as its token sequence.
-// claudeengine's deny table in settings.go owns lyx's own denies, and the operator's permission set the rest; this list follows both.
-var deniedRecoveryForms = [][]string{
+// operatorDeniedForms are the denied commands the operator's permission set owns and no lyx table declares, each as its token sequence.
+var operatorDeniedForms = [][]string{
 	{"git", "reset", "--hard"},
 	{"git", "push", "--force"},
 	{"git", "push", "-f"},
 	{"rm", "-rf"},
-	{"python"},
-	{"python3"},
-	{"sed", "-i"},
-	{"perl", "-i"},
-	{"systemctl", "sleep"},
-	{"systemctl", "hibernate"},
-	{"systemctl", "suspend"},
-	{"systemctl", "hybrid-sleep"},
-	{"systemctl", "suspend-then-hibernate"},
 }
+
+// shellGuardForms returns the command forms of every shell guard row, in table order.
+func shellGuardForms() [][]string {
+	var forms [][]string
+	for _, row := range shellguard.Rows("") {
+		forms = append(forms, row.Forms...)
+	}
+	return forms
+}
+
+// deniedRecoveryForms is the closed list of commands the agents' settings deny today, each as its token sequence.
+// internal/shellguard owns lyx's own denies, and the operator's permission set the rest; this list follows both.
+var deniedRecoveryForms = append(append([][]string{}, operatorDeniedForms...), shellGuardForms()...)
 
 // deniedRecoveryTokenPattern splits a line into command tokens.
 // Whitespace, backticks, quotes, brackets, commas and semicolons separate tokens, so a form matches only as a whole token sequence and `git push --force-with-lease` is not `git push --force`.
@@ -224,6 +228,14 @@ func TestNoDeniedRecovery_ScanSelfCheck(t *testing.T) {
 		{"directive wording forbids each", "never `sed -i`, never `perl -i`, never `awk`", 0},
 		{"sed -n is a read", "read it with sed -n 3p f", 0},
 		{"suffixed sed -i is outside the scan", "way forward: sed -i.bak s/a/b/ f", 0},
+	}
+	for _, form := range deniedRecoveryForms {
+		joined := strings.Join(form, " ")
+		cases = append(cases, struct {
+			name string
+			text string
+			want int
+		}{"planted form " + joined, "way forward: " + joined, 1})
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

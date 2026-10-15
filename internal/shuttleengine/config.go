@@ -8,6 +8,7 @@
 package shuttleengine
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
@@ -18,7 +19,7 @@ import (
 )
 
 // Config represents the resolved shuttle.yaml configuration: run directories, timeouts, poll knobs,
-// and claude engine denies.
+// and the python guard switch.
 type Config struct {
 	RunDir         string `yaml:"run_dir"`
 	PollIntervalMS int    `yaml:"poll_interval_ms"` // Wait loop's tick interval; a value below one second is floored to it.
@@ -41,46 +42,35 @@ type Config struct {
 	// Engine names the engine of a spec that names none; it must be a registered engine name, checked where the registry builds the set.
 	Engine string `yaml:"engine"`
 
-	Claude                    string `yaml:"claude"`
-	ClaudeDenyAgentTool       bool   `yaml:"claude_deny_agent_tool"`
-	ClaudeDenyAskUserQuestion bool   `yaml:"claude_deny_ask_user_question"`
-	ClaudeDenyPython          bool   `yaml:"claude_deny_python"`
-
-	// ClaudePromptCacheTTL is Claude Code's prompt-cache TTL for a role without a map entry; the claude engine validates it, not LoadConfig.
-	ClaudePromptCacheTTL string `yaml:"claude_prompt_cache_ttl"`
-
-	// ClaudePromptCacheTTLRoles maps a strand's role segment (Spec.Role) to Claude Code's prompt-cache TTL; the claude engine validates it, not LoadConfig.
-	ClaudePromptCacheTTLRoles map[string]string `yaml:"claude_prompt_cache_ttl_roles"`
-}
-
-// ConfigOpenMaps returns the shuttle.yaml keys whose entries are the operator's own, which configengine carries whole through reconcile and --set.
-func ConfigOpenMaps() []string {
-	return []string{"claude_prompt_cache_ttl_roles"}
+	// DenyPython switches the python guard of the shell-guard table for every engine; off in a Python target repo.
+	DenyPython bool `yaml:"deny_python"`
 }
 
 // ConfigSpec returns shuttle's layered-load spec.
-// It carries the template, the open maps and the per-key classification that decides which keys a local override may hold.
+// It carries the template, the per-key classification that decides which keys a local override may hold,
+// and the retired keys an unreconciled layer may still hold.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     "shuttle",
 		Template: []byte(ConfigTemplate()),
-		OpenMaps: ConfigOpenMaps(),
 		Categories: map[string]configengine.Category{
-			"run_dir":                       configengine.CategoryCrossPair,
-			"poll_interval_ms":              configengine.CategoryNone,
-			"liveness_every_n_polls":        configengine.CategoryNone,
-			"run_timeout_min":               configengine.CategoryNone,
-			"startup_timeout_s":             configengine.CategoryNone,
-			"background_shell_wait_min":     configengine.CategoryNone,
-			"send_ready_timeout_s":          configengine.CategoryNone,
-			"submit_confirm_timeout_s":      configengine.CategoryNone,
-			"submit_settle_ms":              configengine.CategoryNone,
-			"submit_redraw_settle_ms":       configengine.CategoryNone,
-			"engine":                        configengine.CategoryNone,
+			"run_dir":                   configengine.CategoryCrossPair,
+			"poll_interval_ms":          configengine.CategoryNone,
+			"liveness_every_n_polls":    configengine.CategoryNone,
+			"run_timeout_min":           configengine.CategoryNone,
+			"startup_timeout_s":         configengine.CategoryNone,
+			"background_shell_wait_min": configengine.CategoryNone,
+			"send_ready_timeout_s":      configengine.CategoryNone,
+			"submit_confirm_timeout_s":  configengine.CategoryNone,
+			"submit_settle_ms":          configengine.CategoryNone,
+			"submit_redraw_settle_ms":   configengine.CategoryNone,
+			"engine":                    configengine.CategoryNone,
+			"deny_python":               configengine.CategoryGuard,
+		},
+		RetiredKeys: map[string]configengine.Category{
 			"claude":                        configengine.CategoryExecutable,
 			"claude_deny_agent_tool":        configengine.CategoryGuard,
 			"claude_deny_ask_user_question": configengine.CategoryGuard,
-			"claude_deny_python":            configengine.CategoryGuard,
 			"claude_prompt_cache_ttl":       configengine.CategoryNone,
 			"claude_prompt_cache_ttl_roles": configengine.CategoryNone,
 		},
@@ -136,7 +126,8 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	return cfg, nil
 }
 
-// MigrateConfig raises a below-floor or null poll_interval_ms in a shuttle.yaml document to the poll floor, for lyx config reconcile, and returns the rewritten bytes with one line describing the rewrite.
+// MigrateConfig raises a below-floor or null poll_interval_ms in a shuttle.yaml document to the poll floor, for lyx config reconcile.
+// It also renames a legacy claude_deny_python to deny_python, and returns the rewritten bytes with one line per rewrite.
 // Everything else is carried through with its comments;
 // the loader never calls it.
 // A document that does not parse returns an error marked configengine.ErrInvalid.
@@ -145,8 +136,67 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	if err != nil {
 		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate shuttle config: %w", err))
 	}
-	if line == "" {
-		return rewritten, nil, nil
+	var lines []string
+	if line != "" {
+		lines = append(lines, line)
 	}
-	return rewritten, []string{line}, nil
+	rewritten, renameLine, err := renameDenyPython(rewritten)
+	if err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate shuttle config: %w", err))
+	}
+	if renameLine != "" {
+		lines = append(lines, renameLine)
+	}
+	return rewritten, lines, nil
+}
+
+// renameDenyPython renames a top-level claude_deny_python key to deny_python in place, keeping its value, position and line comment, and returns the rewritten document with one line describing the rewrite.
+// A document already holding deny_python beside claude_deny_python keeps deny_python and drops the legacy key, and the line reports the dropped value.
+// A document holding neither key, or no content, comes back unchanged with an empty line.
+// A document that does not parse, or whose root is not a mapping, returns an error.
+func renameDenyPython(existing []byte) ([]byte, string, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal(existing, &document); err != nil {
+		return nil, "", fmt.Errorf("unmarshal yaml: %w", err)
+	}
+	if document.Kind != yaml.DocumentNode || len(document.Content) == 0 {
+		return existing, "", nil
+	}
+	root := document.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return nil, "", fmt.Errorf("yaml root is not a mapping")
+	}
+
+	legacyIndex, currentIndex := -1, -1
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		switch root.Content[i].Value {
+		case "claude_deny_python":
+			legacyIndex = i
+		case "deny_python":
+			currentIndex = i
+		}
+	}
+	if legacyIndex < 0 {
+		return existing, "", nil
+	}
+
+	var line string
+	if currentIndex >= 0 {
+		line = fmt.Sprintf("claude_deny_python: %s dropped, deny_python already set", root.Content[legacyIndex+1].Value)
+		root.Content = append(root.Content[:legacyIndex], root.Content[legacyIndex+2:]...)
+	} else {
+		root.Content[legacyIndex].Value = "deny_python"
+		line = "claude_deny_python: renamed to deny_python"
+	}
+
+	var out bytes.Buffer
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&document); err != nil {
+		return nil, "", fmt.Errorf("encode yaml: %w", err)
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, "", fmt.Errorf("encode yaml: %w", err)
+	}
+	return out.Bytes(), line, nil
 }

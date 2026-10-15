@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
@@ -85,7 +86,7 @@ func TestSmokeCreelFakeProviderPane(t *testing.T) {
 	if capture, ok := smoke.awaitPane(t, guid, fakeProviderBox); !ok {
 		t.Fatalf("the fake provider drew no input box; pane:\n%s", capture)
 	}
-	smoke.startDaemon(t, func(shuttleengine.Config) (shuttleengine.EngineSet, error) {
+	smoke.startDaemon(t, func(shuttleengine.Config, configengine.Dirs) (shuttleengine.EngineSet, error) {
 		return shuttleengine.NewEngineSet("script", map[string]shuttleengine.Engine{"script": &scriptProviderEngine{}}), nil
 	})
 

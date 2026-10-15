@@ -60,9 +60,30 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"models": "opus:\n    defaults:\n        version: \"5\"\n"},
 		},
 		{
-			name:     "role under an open map passes",
-			settings: map[string]any{"shuttle": map[string]any{"claude_prompt_cache_ttl_roles": map[string]any{"worker": "1h"}}},
-			wantDocs: map[string]string{"shuttle": "claude_prompt_cache_ttl_roles:\n    worker: 1h\n"},
+			name:         "role under an open map moves from shuttle to claude",
+			settings:     map[string]any{"shuttle": map[string]any{"claude_prompt_cache_ttl_roles": map[string]any{"worker": "1h"}}},
+			wantDocs:     map[string]string{"claude": "prompt_cache_ttl_roles:\n    worker: 1h\n"},
+			wantNoModule: "shuttle",
+		},
+		{
+			name:         "a moved key yields to the value claude already holds",
+			settings:     map[string]any{"shuttle": map[string]any{"claude_prompt_cache_ttl": "1h"}, "claude": map[string]any{"prompt_cache_ttl": "5m"}},
+			wantDocs:     map[string]string{"claude": "prompt_cache_ttl: 5m\n"},
+			wantNoModule: "shuttle",
+		},
+		{
+			name:        "non-object shuttle value is still refused",
+			settings:    map[string]any{"shuttle": "fast"},
+			wantRefusal: "shuttle",
+			wantModule:  "shuttle",
+			wantInvalid: true,
+		},
+		{
+			name:        "the legacy python switch is renamed by shuttle's Migrate and refused as a guard key",
+			settings:    map[string]any{"shuttle": map[string]any{"claude_deny_python": true}},
+			wantRefusal: "deny_python",
+			wantModule:  "shuttle",
+			wantInvalid: true,
 		},
 		{
 			name:         "empty module object is dropped",

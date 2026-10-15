@@ -190,7 +190,11 @@ func load(dirs Dirs, spec Spec, fallbackOnAbsent bool) ([]byte, error) {
 	}
 
 	label := stack.Layers[len(stack.Layers)-1].Path
-	filled, filledKeys, err := yamlengine.FillMissing(spec.Template, stack.Doc, spec.OpenMaps...)
+	stackDoc, err := dropRetired(stack.Doc, spec)
+	if err != nil {
+		return nil, MarkInvalid(fmt.Errorf("config file %s: %w", label, err))
+	}
+	filled, filledKeys, err := yamlengine.FillMissing(spec.Template, stackDoc, spec.OpenMaps...)
 	if err != nil {
 		return nil, MarkInvalid(fmt.Errorf("config file %s: %w", label, err))
 	}

@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -78,6 +79,7 @@ func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lyxcwd.Location, w
 
 	h = hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedConfig(t, h, map[string]string{
+		"claude":  claudeConfigWithBinary(providerlessBinary),
 		"loom":    fastDeadlineLoomConfig(),
 		"reed":    reedengine.ConfigTemplate(),
 		"shuttle": providerlessShuttleConfig(),
@@ -96,10 +98,8 @@ func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lyxcwd.Location, w
 	return h, loc, worktree, slug
 }
 
-// providerlessShuttleConfig returns shuttle's shipped config template with two values overridden so
-// no fixture in this suite can ever start a real provider session: the provider binary is a path
-// that cannot exist, and the startup window is short enough that the resulting launch failure is
-// classified within a test's own patience rather than ninety seconds later.
+// providerlessShuttleConfig returns shuttle's shipped config template with the startup window shortened.
+// A launch failure from the unreachable provider binary that providerlessBinary seeds into claude.yaml is then classified within a test's own patience rather than ninety seconds later.
 //
 // This is a correction, not a convenience. The suite's own header used to assert that every fixture
 // here "bounces before a real spawn", and the campaign's cost model was written on that claim. It
@@ -111,9 +111,21 @@ func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lyxcwd.Location, w
 // zero-subprocess claim true by construction instead of by hope.
 func providerlessShuttleConfig() string {
 	cfg := shuttleengine.ConfigTemplate()
-	cfg = strings.Replace(cfg, "claude: ${env:LYX_SHUTTLE_CLAUDE:-}", "claude: /nonexistent/lyx-smoke-has-no-provider", 1)
-	cfg = strings.Replace(cfg, "startup_timeout_s: 90", "startup_timeout_s: 2", 1)
-	return cfg
+	return strings.Replace(cfg, "startup_timeout_s: 90", "startup_timeout_s: 2", 1)
+}
+
+// providerlessBinary is a provider path that cannot exist, which keeps a fixture from starting a real session.
+const providerlessBinary = "/nonexistent/lyx-smoke-has-no-provider"
+
+// claudeConfigWithBinary returns claude.yaml's shipped template with its binary: value pointed at binary, so a fixture seeding it launches that executable rather than the real claude on PATH.
+// It panics when the template no longer holds the line it rewrites, so drift fails loudly.
+func claudeConfigWithBinary(binary string) string {
+	const binaryValue = "binary: ${env:LYX_SHUTTLE_CLAUDE:-}"
+	template := claudeengine.ConfigTemplate()
+	if !strings.Contains(template, binaryValue) {
+		panic("claude config template drift: " + binaryValue + " not found")
+	}
+	return strings.Replace(template, binaryValue, "binary: "+binary, 1)
 }
 
 // fastDeadlineLoomConfig returns loom's shipped config template with the discussion producer's
@@ -247,6 +259,7 @@ func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lyxcwd.Location)) 
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedConfig(t, h, map[string]string{
+		"claude":  claudeConfigWithBinary(providerlessBinary),
 		"loom":    fastDeadlineLoomConfig(),
 		"reed":    strings.Join(lines, "\n"),
 		"shuttle": providerlessShuttleConfig(),

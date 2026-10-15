@@ -51,7 +51,7 @@ func newReviveHub(t *testing.T, names ...string) (engines []*Engine, entries []R
 			WorktreeName:  name,
 			NameShortname: "tc",
 			NameSlug:      name,
-		})
+		}, testScrub)
 		engines = append(engines, e)
 		entries = append(entries, ReviveEntry{Worktree: name, Revive: e.Revive})
 	}

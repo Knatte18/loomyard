@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
@@ -186,7 +187,7 @@ func TestSmokeOrch_OneFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reed geometry: %v", err)
 	}
-	reed := reedengine.New(reedCfg, reedGeom)
+	reed := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 	tmuxkit.KillOnCleanup(t, tmuxPath, reedGeom.SocketKey)
 	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: prime}, "shuttle")
 	if err != nil {

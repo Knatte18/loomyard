@@ -6,9 +6,9 @@ package shuttleengine_test
 
 import (
 	"errors"
-	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -36,10 +36,7 @@ func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
 	}
 }
 
-// TestLoadConfig_TemplateDefaultsResolve also pins the precondition the gate loop's per-attempt
-// done-signal narrowing rests on: the per-attempt done-signal is the next turn boundary and nothing
-// more, and that holds only because the in-process Agent tool is denied at every gated site.
-// The ClaudeDenyAgentTool failure message names what the value protects.
+// TestLoadConfig_TemplateDefaultsResolve also pins that shuttle.yaml carries no Claude key.
 //
 //testtiming:keep pins every shipped template default, which the BackgroundShellWaitMin table does not assert
 func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
@@ -89,28 +86,13 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.Engine != "claude" {
 		t.Errorf("Engine = %q, want claude", cfg.Engine)
 	}
-	if cfg.Claude != "" {
-		t.Errorf("Claude = %q, want empty default", cfg.Claude)
+	if !cfg.DenyPython {
+		t.Error("DenyPython = false, want true")
 	}
-	if !cfg.ClaudeDenyAgentTool {
-		t.Error("Config.ClaudeDenyAgentTool = false against the shipped template: flipping this default " +
-			"re-opens the compound-quiescence question this task deliberately declined — a gate could now " +
-			"fire while an async in-process subagent, spawned through the Agent tool, is still working, " +
-			"undermining the narrowing that the per-attempt done-signal is the next turn boundary and " +
-			"nothing more. The narrowing decision must be re-opened deliberately, not " +
-			"this test updated.")
-	}
-	if !cfg.ClaudeDenyAskUserQuestion {
-		t.Error("ClaudeDenyAskUserQuestion = false, want true")
-	}
-	if !cfg.ClaudeDenyPython {
-		t.Error("ClaudeDenyPython = false, want true")
-	}
-	if cfg.ClaudePromptCacheTTL != "5m" {
-		t.Errorf("ClaudePromptCacheTTL = %q, want 5m", cfg.ClaudePromptCacheTTL)
-	}
-	if want := map[string]string{"driver": "1h", "webster": "1h"}; !maps.Equal(cfg.ClaudePromptCacheTTLRoles, want) {
-		t.Errorf("ClaudePromptCacheTTLRoles = %v, want %v", cfg.ClaudePromptCacheTTLRoles, want)
+	for _, line := range strings.Split(shuttleengine.ConfigTemplate(), "\n") {
+		if strings.HasPrefix(line, "claude") {
+			t.Errorf("template holds a top-level key starting with claude: %q", line)
+		}
 	}
 
 	t.Run("RepoDefaultResolvesBeneathSparseWorktreeFile", func(t *testing.T) {
@@ -136,7 +118,7 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(localFile), 0o755); err != nil {
 			t.Fatalf("mkdir local dir: %v", err)
 		}
-		if err := os.WriteFile(localFile, []byte("claude_deny_python: false\n"), 0o644); err != nil {
+		if err := os.WriteFile(localFile, []byte("deny_python: false\n"), 0o644); err != nil {
 			t.Fatalf("write local file: %v", err)
 		}
 
@@ -144,60 +126,128 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		if !errors.Is(err, configengine.ErrInvalid) {
 			t.Fatalf("err = %v, want ErrInvalid", err)
 		}
-		if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), `"claude_deny_python"`) {
-			t.Errorf("err = %q, want it to name %s and key claude_deny_python", err, localFile)
+		if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), `"deny_python"`) {
+			t.Errorf("err = %q, want it to name %s and key deny_python", err, localFile)
 		}
 	})
 }
 
-func TestLoadConfig_PromptCacheTTLKeys(t *testing.T) {
+// TestLoadConfig_RetiredClaudeKeys pins that the Claude keys moved to claude.yaml still load from an unreconciled layer and are dropped.
+func TestLoadConfig_RetiredClaudeKeys(t *testing.T) {
 	t.Parallel()
-
-	// The TTL keys are the template's last lines; each row replaces them with its own and keeps every other template key.
-	templateWithoutTTLKeys := shuttleengine.ConfigTemplate()
-	templateWithoutTTLKeys = templateWithoutTTLKeys[:strings.Index(templateWithoutTTLKeys, "claude_prompt_cache_ttl:")]
 
 	tests := []struct {
 		name      string
-		ttlKeys   string
-		wantTTL   string
-		wantRoles map[string]string
+		localBody string
+		wantErr   string
+	}{
+		{name: "retired TTL roles map in the local layer loads", localBody: "claude_prompt_cache_ttl_roles:\n  a: 1h\n  b: 5m\n"},
+		{name: "retired TTL map in the local layer loads", localBody: "claude_prompt_cache_ttl: {a: 1}\n"},
+		{name: "retired executable key in the local layer is refused", localBody: "claude: /opt/claude\n", wantErr: `"claude"`},
+		{name: "retired guard key in the local layer is refused", localBody: "claude_deny_agent_tool: false\n", wantErr: `"claude_deny_agent_tool"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			anchor := t.TempDir()
+			localFile := configengine.LocalFile(anchor, "shuttle")
+			if err := os.MkdirAll(filepath.Dir(localFile), 0o755); err != nil {
+				t.Fatalf("mkdir local dir: %v", err)
+			}
+			if err := os.WriteFile(localFile, []byte(tt.localBody), 0o644); err != nil {
+				t.Fatalf("write local file: %v", err)
+			}
+			dirs := configengine.Dirs{Anchor: anchor}
+
+			_, err := shuttleengine.LoadConfig(dirs, "shuttle")
+			if tt.wantErr != "" {
+				if !errors.Is(err, configengine.ErrInvalid) || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("LoadConfig err = %v, want ErrInvalid naming %s", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadConfig: %v", err)
+			}
+
+			merged, err := configengine.LoadOrTemplate(dirs, shuttleengine.ConfigSpec())
+			if err != nil {
+				t.Fatalf("LoadOrTemplate: %v", err)
+			}
+			if strings.Contains(string(merged), "claude_prompt_cache_ttl") {
+				t.Errorf("merged document keeps a retired key:\n%s", merged)
+			}
+		})
+	}
+
+	t.Run("worktree file holding every retired key loads with the python switch at its default", func(t *testing.T) {
+		t.Parallel()
+
+		anchor := t.TempDir()
+		seedLyxConfig(t, anchor, "shuttle", shuttleengine.ConfigTemplate()+
+			"claude: /opt/claude\nclaude_deny_agent_tool: false\nclaude_deny_ask_user_question: false\n"+
+			"claude_prompt_cache_ttl: 1h\nclaude_prompt_cache_ttl_roles:\n  orch: 1h\nclaude_deny_python: false\n")
+
+		cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: anchor}, "shuttle")
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if !cfg.DenyPython {
+			t.Error("DenyPython = false, want true: claude_deny_python is renamed by a reconcile walk, not read by the loader")
+		}
+	})
+}
+
+// TestMigrateConfig_RenamesDenyPython pins the claude_deny_python to deny_python rename, which keeps the value and comment.
+func TestMigrateConfig_RenamesDenyPython(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		in        string
+		wantDoc   string
+		wantLines []string
 	}{
 		{
-			name:      "file lacking both keys resolves the template default and map",
-			ttlKeys:   "",
-			wantTTL:   "5m",
-			wantRoles: map[string]string{"driver": "1h", "webster": "1h"},
+			name:      "rename keeps value and comment",
+			in:        "run_timeout_min: 30\nclaude_deny_python: false  # off here\nengine: claude\n",
+			wantDoc:   "run_timeout_min: 30\ndeny_python: false # off here\nengine: claude\n",
+			wantLines: []string{"claude_deny_python: renamed to deny_python"},
 		},
 		{
-			name:      "present map replaces the template map whole",
-			ttlKeys:   "claude_prompt_cache_ttl_roles:\n  orch: 1h\n",
-			wantTTL:   "5m",
-			wantRoles: map[string]string{"orch": "1h"},
+			name:    "document without the key is unchanged",
+			in:      "run_timeout_min: 30\n",
+			wantDoc: "run_timeout_min: 30\n",
 		},
 		{
-			name:      "default without a map keeps the template map",
-			ttlKeys:   "claude_prompt_cache_ttl: 1h\n",
-			wantTTL:   "1h",
-			wantRoles: map[string]string{"driver": "1h", "webster": "1h"},
+			name:      "both keys keep deny_python and report the dropped value",
+			in:        "deny_python: true\nclaude_deny_python: false\n",
+			wantDoc:   "deny_python: true\n",
+			wantLines: []string{"claude_deny_python: false dropped, deny_python already set"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			tmpDir := t.TempDir()
-			seedLyxConfig(t, tmpDir, "shuttle", templateWithoutTTLKeys+tt.ttlKeys)
-
-			cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "shuttle")
+			got, lines, err := shuttleengine.MigrateConfig([]byte(tt.in))
 			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+				t.Fatalf("MigrateConfig: %v", err)
 			}
-			if cfg.ClaudePromptCacheTTL != tt.wantTTL {
-				t.Errorf("ClaudePromptCacheTTL = %q, want %q", cfg.ClaudePromptCacheTTL, tt.wantTTL)
+			if string(got) != tt.wantDoc {
+				t.Errorf("MigrateConfig document = %q, want %q", got, tt.wantDoc)
 			}
-			if !maps.Equal(cfg.ClaudePromptCacheTTLRoles, tt.wantRoles) {
-				t.Errorf("ClaudePromptCacheTTLRoles = %v, want %v", cfg.ClaudePromptCacheTTLRoles, tt.wantRoles)
+			if !slices.Equal(lines, tt.wantLines) {
+				t.Errorf("MigrateConfig lines = %q, want %q", lines, tt.wantLines)
+			}
+
+			again, againLines, err := shuttleengine.MigrateConfig(got)
+			if err != nil {
+				t.Fatalf("second MigrateConfig: %v", err)
+			}
+			if string(again) != string(got) || len(againLines) != 0 {
+				t.Errorf("second pass = %q with lines %q, want the first pass's output and no lines", again, againLines)
 			}
 		})
 	}
@@ -252,20 +302,6 @@ func TestLoadConfig_EngineKey(t *testing.T) {
 				t.Errorf("Engine = %q, want %q", cfg.Engine, tt.want)
 			}
 		})
-	}
-}
-
-func TestLoadConfig_EnvOverride(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("LYX_SHUTTLE_CLAUDE", `D:\tools\claude.exe`)
-	seedLyxConfig(t, tmpDir, "shuttle", shuttleengine.ConfigTemplate())
-
-	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "shuttle")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if cfg.Claude != `D:\tools\claude.exe` {
-		t.Errorf("Claude = %q, want env override", cfg.Claude)
 	}
 }
 
@@ -430,7 +466,7 @@ func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	if cfg.StartupTimeoutS != 90 {
 		t.Errorf("StartupTimeoutS = %d, want 90", cfg.StartupTimeoutS)
 	}
-	if !cfg.ClaudeDenyAgentTool {
-		t.Error("ClaudeDenyAgentTool = false, want true")
+	if !cfg.DenyPython {
+		t.Error("DenyPython = false, want true")
 	}
 }

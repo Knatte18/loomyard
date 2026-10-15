@@ -47,8 +47,9 @@
 // The pure, hermetic half derives nothing and spawns nothing: the config module (shuttle.yaml), the
 // run Spec and its validation, the run directory / run.json state and its age-guarded orphan sweep,
 // and the Windows-to-POSIX path helper the engine layer needs for hook commands.
-// shuttle.yaml carries the provider's prompt-cache TTL default and per-role map, which shuttleengine passes through to the engine uninterpreted.
-// MigrateConfig raises the module's below-floor poll_interval_ms to its floor for lyx config reconcile.
+// shuttle.yaml carries no provider key but the neutral python guard switch `deny_python`; the keys a provider owns live in that engine's own config module.
+// Its retired Claude keys still load from an unreconciled layer and are dropped.
+// MigrateConfig raises the module's below-floor poll_interval_ms to its floor and renames a legacy `claude_deny_python` to `deny_python` for lyx config reconcile.
 // The cross-run readers ReadAgentActivity, ReadSessionStates and ReadAgentWaits read each run through the engine its run record names, the engine set's default for a record naming none, and skip a run whose engine the set does not hold.
 // The run-loop half — Runner/Run in run.go, Wait in wait.go, and Attach in attach.go — drives a
 // LIVE agent through the ReedOps seam: it registers and removes strands, polls a real pane's capture

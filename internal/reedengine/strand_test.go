@@ -35,7 +35,7 @@ func TestAddStrandLocked(t *testing.T) {
 	e := newTestEngine(t)
 	st := &ReedState{}
 	hidden := render.Display{Anchor: render.AnchorHidden}
-	spec := AddSpec{Cmd: "claude --session-id abc", SessionID: "caller-session-abc", Display: hidden}
+	spec := AddSpec{Cmd: "claude --session-id abc", SessionID: "caller-session-abc", Provider: "claude", Display: hidden}
 
 	first, err := e.addStrandLocked(st, spec)
 	if err != nil {
@@ -60,6 +60,9 @@ func TestAddStrandLocked(t *testing.T) {
 		}
 		if s.SessionID != spec.SessionID {
 			t.Errorf("hidden-add strand %q SessionID = %q, want %q", s.GUID, s.SessionID, spec.SessionID)
+		}
+		if s.Provider != spec.Provider {
+			t.Errorf("hidden-add strand %q Provider = %q, want %q", s.GUID, s.Provider, spec.Provider)
 		}
 	}
 	if err := SaveState(e.stateDir(), st); err != nil {

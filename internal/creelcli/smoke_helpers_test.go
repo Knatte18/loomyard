@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -24,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -59,7 +61,7 @@ func newSmokeHub(t *testing.T) *smokeHub {
 	if err != nil {
 		t.Fatalf("LoadConfig(reed) = %v", err)
 	}
-	smoke := &smokeHub{hub: hub, cwd: hub.PrimeWorktree(), reed: reedengine.New(reedConfig, reedGeometry)}
+	smoke := &smokeHub{hub: hub, cwd: hub.PrimeWorktree(), reed: reedengine.New(reedConfig, reedGeometry, shuttleengines.EnvScrub())}
 
 	var up bytes.Buffer
 	if code := reedcli.RunCLIIn(smoke.cwd, &up, []string{"up"}); code != 0 {
@@ -99,7 +101,7 @@ func (s *smokeHub) addStrand(t *testing.T, role, command string) (name, guid str
 }
 
 // startDaemon runs the creel daemon in process on the hub's real socket, with the hub delivery over enginesFor, and stops it when the test ends.
-func (s *smokeHub) startDaemon(t *testing.T, enginesFor func(shuttleengine.Config) (shuttleengine.EngineSet, error)) {
+func (s *smokeHub) startDaemon(t *testing.T, enginesFor func(shuttleengine.Config, configengine.Dirs) (shuttleengine.EngineSet, error)) {
 	t.Helper()
 	ready := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())

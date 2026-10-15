@@ -26,7 +26,7 @@ internal/commentlint: 3
 internal/configcli: 12
 internal/configengine: 18
 internal/configreg: 10
-internal/configsync: 8
+internal/configsync: 9
 internal/creelcli: 4
 internal/creelengine: 11
 internal/darnengine: 4
@@ -110,11 +110,12 @@ internal/shedrun: 25
 internal/shedtransient: 2
 internal/shedverbs: 84
 internal/shell: 14
+internal/shellguard: 3
 internal/shortcutcli: 2
 internal/shuttlecli: 26
 internal/shuttleengine: 177
-internal/shuttleengine/claudeengine: 112
-internal/shuttleengines: 3
+internal/shuttleengine/claudeengine: 113
+internal/shuttleengines: 5
 internal/sleepjournal: 2
 internal/standalonegeom: 7
 internal/standalonestate: 6

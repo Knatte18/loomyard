@@ -44,6 +44,9 @@ type Strand struct {
 	// Segment is the loom segment its spawner named, an opaque display field reed reads only to look up the segment's color.
 	// A strand recorded before the field existed decodes with none.
 	Segment string `json:"segment,omitempty"`
+	// Provider is the opaque tag its spawner set; reed stores it and keys the session namers by it, never reading what it means.
+	// A strand recorded before the field existed, or added outside shuttle, decodes with none.
+	Provider string `json:"provider,omitempty"`
 	// LyxBin is the absolute `lyx` path the strand's pane prelude exported as LYX_BIN at its latest launch, empty when no prelude was composed.
 	// A strand recorded before the field existed decodes with none.
 	LyxBin string `json:"lyxBin,omitempty"`

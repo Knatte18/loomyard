@@ -451,7 +451,7 @@ func parentWorktreeReviewerLive(location *lyxcwd.Location, reedCfg reedengine.Co
 	if err != nil {
 		return false, fmt.Errorf("loom: reed geometry of parent worktree %q: %w", parent.Worktree, err)
 	}
-	return strandLive(parent.Name, reedengine.New(reedCfg, geom).Status)
+	return strandLive(parent.Name, reedengine.New(reedCfg, geom, shuttleengines.EnvScrub()).Status)
 }
 
 // strandLive reports whether status lists a live strand named name.
@@ -541,8 +541,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		return err
 	}
 	c.parentName = reedGeom.ParentName
-	reedEngine := reedengine.New(reedCfg, reedGeom)
-	engines, err := shuttleengines.New(shuttleCfg)
+	reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
+	engines, err := shuttleengines.New(shuttleCfg, fabricengine.ConfigDirs(location))
 	if err != nil {
 		return err
 	}

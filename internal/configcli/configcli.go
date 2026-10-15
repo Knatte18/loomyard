@@ -516,6 +516,16 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
 		if len(result.Inherited) > 0 {
 			m["inherited"] = result.Inherited
 		}
+		// moved, keptTarget and overwritten are exceptional too: only a declared key move sets them.
+		if len(result.Moved) > 0 {
+			m["moved"] = result.Moved
+		}
+		if len(result.KeptTarget) > 0 {
+			m["keptTarget"] = result.KeptTarget
+		}
+		if len(result.Overwritten) > 0 {
+			m["overwritten"] = result.Overwritten
+		}
 		modules[i] = m
 	}
 

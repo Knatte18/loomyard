@@ -95,10 +95,10 @@ func resolveModelID(model, version string) (string, error) {
 	return "claude-" + model + "-" + strings.ReplaceAll(version, ".", "-"), nil
 }
 
-// claudeBinary returns cfg.Claude if set, otherwise "claude".
-func claudeBinary(cfg shuttleengine.Config) string {
-	if cfg.Claude != "" {
-		return cfg.Claude
+// claudeBinary returns claude.Binary if set, otherwise "claude".
+func claudeBinary(claude Config) string {
+	if claude.Binary != "" {
+		return claude.Binary
 	}
 	return "claude"
 }
@@ -130,46 +130,50 @@ var validPromptCacheTTLs = map[string]bool{
 }
 
 // validatePromptCacheTTL reports an error unless value is a member of validPromptCacheTTLs.
-// key names the shuttle.yaml entry the value came from, so the error points at what to fix.
+// key names the claude.yaml entry the value came from, so the error points at what to fix.
 func validatePromptCacheTTL(key, value string) error {
 	if validPromptCacheTTLs[value] {
 		return nil
 	}
-	return fmt.Errorf("claudeengine: invalid %s %q; valid values are 5m, 1h (case-sensitive); fix it in shuttle.yaml", key, value)
+	return fmt.Errorf("claudeengine: invalid %s %q; valid values are 5m, 1h (case-sensitive); fix it in claude.yaml with lyx config claude", key, value)
 }
 
 // resolvePromptCacheTTL returns the prompt-cache TTL for a strand's role.
-// It first validates cfg.ClaudePromptCacheTTL and every value in cfg.ClaudePromptCacheTTLRoles, in sorted key order so the reported entry is deterministic.
-// One bad entry therefore refuses every role until shuttle.yaml is fixed.
+// It first validates claude.PromptCacheTTL and every value in claude.PromptCacheTTLRoles, in sorted key order so the reported entry is deterministic.
+// One bad entry therefore refuses every role until claude.yaml is fixed.
 // It then returns the map's entry for role when one exists, and the default otherwise;
 // an empty role takes the default.
-func resolvePromptCacheTTL(role string, cfg shuttleengine.Config) (string, error) {
-	if err := validatePromptCacheTTL("claude_prompt_cache_ttl", cfg.ClaudePromptCacheTTL); err != nil {
+func resolvePromptCacheTTL(role string, claude Config) (string, error) {
+	if err := validatePromptCacheTTL("prompt_cache_ttl", claude.PromptCacheTTL); err != nil {
 		return "", err
 	}
-	roles := make([]string, 0, len(cfg.ClaudePromptCacheTTLRoles))
-	for mappedRole := range cfg.ClaudePromptCacheTTLRoles {
+	roles := make([]string, 0, len(claude.PromptCacheTTLRoles))
+	for mappedRole := range claude.PromptCacheTTLRoles {
 		roles = append(roles, mappedRole)
 	}
 	slices.Sort(roles)
 	for _, mappedRole := range roles {
-		if err := validatePromptCacheTTL(fmt.Sprintf("claude_prompt_cache_ttl_roles[%s]", mappedRole), cfg.ClaudePromptCacheTTLRoles[mappedRole]); err != nil {
+		if err := validatePromptCacheTTL(fmt.Sprintf("prompt_cache_ttl_roles[%s]", mappedRole), claude.PromptCacheTTLRoles[mappedRole]); err != nil {
 			return "", err
 		}
 	}
 	if role == "" {
-		return cfg.ClaudePromptCacheTTL, nil
+		return claude.PromptCacheTTL, nil
 	}
-	if ttl, ok := cfg.ClaudePromptCacheTTLRoles[role]; ok {
+	if ttl, ok := claude.PromptCacheTTLRoles[role]; ok {
 		return ttl, nil
 	}
-	return cfg.ClaudePromptCacheTTL, nil
+	return claude.PromptCacheTTL, nil
 }
 
 // PromptCacheLifetime returns the prompt-cache TTL Prepare puts on the pane line for spec's role, parsed as a duration.
-// A resolution error is returned unchanged, with its shuttle.yaml advice.
+// It loads claude.yaml first; a load or resolution error is returned with its claude.yaml advice.
 func (c *Claude) PromptCacheLifetime(spec shuttleengine.Spec, cfg shuttleengine.Config) (time.Duration, error) {
-	ttl, err := resolvePromptCacheTTL(spec.Role, cfg)
+	claude, err := loadConfigOrRefuse(c.dirs)
+	if err != nil {
+		return 0, err
+	}
+	ttl, err := resolvePromptCacheTTL(spec.Role, claude)
 	if err != nil {
 		return 0, err
 	}
@@ -257,11 +261,15 @@ func buildOpenCmd(sh shell.Shell, bin, sessionID, model, effort string, resume b
 }
 
 // OpenLaunch returns the launch of a named interactive session with no prompt.
-// It validates the effort and resolves the model and version into a model id before anything else, mints a session id, and returns the fresh line as Cmd.
+// It loads claude.yaml, validates the effort and resolves the model and version into a model id before anything else, mints a session id, and returns the fresh line as Cmd.
 // ResumeCmd resumes the session and falls back to a fresh start under the same id, because Claude Code keeps no transcript for a session that never took a turn, so --resume fails there.
 // Bound: the fresh line runs whenever the resume line exits nonzero, including a resumed session that ends nonzero after a working life;
 // a fresh start under a session id whose transcript exists fails at once, so the fallback never starts a second live session over a recorded one.
 func (c *Claude) OpenLaunch(spec shuttleengine.OpenSpec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
+	claude, err := loadConfigOrRefuse(c.dirs)
+	if err != nil {
+		return shuttleengine.Launch{}, err
+	}
 	if err := validateEffort(spec.Effort); err != nil {
 		return shuttleengine.Launch{}, err
 	}
@@ -274,7 +282,7 @@ func (c *Claude) OpenLaunch(spec shuttleengine.OpenSpec, cfg shuttleengine.Confi
 		return shuttleengine.Launch{}, fmt.Errorf("mint session id: %w", err)
 	}
 	sh := shell.ForGOOS()
-	bin := claudeBinary(cfg)
+	bin := claudeBinary(claude)
 	fresh := buildOpenCmd(sh, bin, sessionID, resolvedModel, spec.Effort, false)
 	resumeLine := buildOpenCmd(sh, bin, sessionID, resolvedModel, spec.Effort, true)
 	return shuttleengine.Launch{Cmd: fresh, ResumeCmd: sh.OrElse(resumeLine, fresh), SessionID: sessionID}, nil
