@@ -104,7 +104,7 @@
 // A record that does not decode is a Finding, and a figure a run's records lack is nil, never zero.
 //
 // A landed run is exactly a full run as run selection picks it, read once with its seed, status and batten snapshots; a partial run enters neither the run table nor any bucket.
-// A run in flight is a pair records branch of Sources.Branches: a branch other than the records branch whose name fabricengine.WeftWarpSlug parses into a slug.
+// A run in flight is a pair records branch of Sources.Branches: a branch other than the records branch whose name is the one fabricengine.RecordsBranchName forms from a slug.
 // A branch whose tip is the commit of one of its slug's archive tags is landed and skipped; one whose slug TimingOptions.Live names is in flight; any other is abandoned and left out with a finding.
 // A pair not seeded yet, or seeded to another recipe, is left out silently.
 // A run in flight takes the batten snapshots committed after its slug's newest archive tag, so a reused slug never reads an earlier run's.
