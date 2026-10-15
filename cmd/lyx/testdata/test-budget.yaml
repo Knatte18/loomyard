@@ -27,7 +27,7 @@ internal/configcli: 12
 internal/configengine: 18
 internal/configreg: 10
 internal/configsync: 8
-internal/creelengine: 4
+internal/creelengine: 5
 internal/darnengine: 4
 internal/discussionparser: 19
 internal/dotgit: 3
