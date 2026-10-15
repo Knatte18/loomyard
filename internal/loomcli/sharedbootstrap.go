@@ -349,10 +349,8 @@ func (c *loomCLI) wireLanding() error {
 	return nil
 }
 
-// buildLoomShed builds the *shedengine.Shed run.go's RunE runs -- today's shed-construction
-// block from run.go, held here verbatim and in today's order: open the fabric, read the current
-// branch and origin URL, resolve the recorded origin and the landing parent, assemble Env.Landing,
-// and construct the shed via loomrecipe.New.
+// buildLoomShed builds the *shedengine.Shed run.go's RunE runs: it assembles Env.Landing through
+// wireLanding, then constructs the shed via loomrecipe.New.
 //
 // It returns the constructed shed and a nil error, or a nil shed and the first error encountered,
 // unwrapped.
