@@ -31,6 +31,11 @@ func minuteMark(minutes int) string {
 	return checklistClock.Add(time.Duration(minutes) * time.Minute).Format(time.RFC3339)
 }
 
+// secondMark renders the instant seconds after checklistClock as the RFC 3339 string a status entry carries.
+func secondMark(seconds int) string {
+	return checklistClock.Add(time.Duration(seconds) * time.Second).Format(time.RFC3339)
+}
+
 // minuteSpan is the interval from minute from to minute to after checklistClock.
 func minuteSpan(from, to int) pauserecord.Interval {
 	return pauserecord.Interval{Start: checklistClock.Add(time.Duration(from) * time.Minute), End: checklistClock.Add(time.Duration(to) * time.Minute)}
@@ -175,8 +180,8 @@ func TestRenderChecklist(t *testing.T) {
 			nowMin: 22,
 			paused: []pauserecord.Interval{minuteSpan(8, 12), minuteSpan(10, 14)},
 			want: []string{
-				"[x] Plan 5m", "  10:00 5m done",
-				"[x] Review 9m", "  10:05 9m done",
+				"[x] Plan 5m00s", "  10:00 5m00s done",
+				"[x] Review 9m00s", "  10:05 9m00s done",
 				"[>] Build 2m", "  10:20 2m running",
 				"loom running | now working", "waiting on nothing",
 			},
@@ -188,7 +193,7 @@ func TestRenderChecklist(t *testing.T) {
 			nowMin: 12,
 			paused: []pauserecord.Interval{minuteSpan(8, 12)},
 			want: []string{
-				"[x] Plan 5m", "  10:00 5m done",
+				"[x] Plan 5m00s", "  10:00 5m00s done",
 				"[>] Review 3m", "  10:05 3m running",
 				"[ ] Build",
 				"loom running | now working", "waiting on nothing",
@@ -201,7 +206,7 @@ func TestRenderChecklist(t *testing.T) {
 			nowMin: 20,
 			paused: []pauserecord.Interval{minuteSpan(8, 20)},
 			want: []string{
-				"[x] Plan 5m", "  10:00 5m done",
+				"[x] Plan 5m00s", "  10:00 5m00s done",
 				"[>] Review 3m", "  10:05 3m running",
 				"[ ] Build",
 				"loom running | now working", "waiting on nothing",
@@ -214,7 +219,7 @@ func TestRenderChecklist(t *testing.T) {
 			nowMin: 12,
 			paused: []pauserecord.Interval{minuteSpan(0, 12)},
 			want: []string{
-				"[x] Plan 0m", "  10:00 0m done",
+				"[x] Plan 0s", "  10:00 0s done",
 				"[>] Review 0m", "  10:05 0m running",
 				"[ ] Build",
 				"loom running | now working", "waiting on nothing",
@@ -227,7 +232,7 @@ func TestRenderChecklist(t *testing.T) {
 			wait:   "Review: waiting for the parent lock on main held by other 1m",
 			nowMin: 12,
 			want: []string{
-				"[x] Plan 5m", "  10:00 5m done",
+				"[x] Plan 5m00s", "  10:00 5m00s done",
 				"[>] Review 7m", "  10:05 7m running",
 				"[ ] Build",
 				"loom running | now working",
@@ -240,7 +245,7 @@ func TestRenderChecklist(t *testing.T) {
 			poll:   checklistStatus(shedengine.StateRunning, "Review", doneEntry("Plan", 5)),
 			nowMin: 12,
 			want: []string{
-				"[x] Plan 5m", "  10:00 5m done",
+				"[x] Plan 5m00s", "  10:00 5m00s done",
 				"[>] Review 7m", "  10:05 7m running",
 				"[ ] Build",
 				"loom running | now working", "waiting on nothing",
@@ -253,8 +258,8 @@ func TestRenderChecklist(t *testing.T) {
 				doneEntry("Plan", 5), doneEntry("Review", 10)),
 			nowMin: 12,
 			want: []string{
-				"[x] Plan 5m", "  10:00 5m done",
-				"[x] Review 5m", "  10:05 5m done",
+				"[x] Plan 5m00s", "  10:00 5m00s done",
+				"[x] Review 5m00s", "  10:05 5m00s done",
 				"[>] Build 2m", "  10:10 2m running",
 				"[ ] Publish",
 				"loom running | now working", "waiting on nothing",
@@ -267,8 +272,8 @@ func TestRenderChecklist(t *testing.T) {
 				doneEntry("Plan", 5), stuckEntry("Review", 8, ""), doneEntry("Plan", 15)),
 			nowMin: 20,
 			want: []string{
-				"[x] Plan 12m x2", "  10:00 5m done", "  10:08 7m done",
-				"[>] Review 8m x2", "  10:05 3m stuck", "  10:15 5m running",
+				"[x] Plan 12m00s x2", "  10:00 5m00s done", "  10:08 7m00s done",
+				"[>] Review 8m x2", "  10:05 3m00s stuck", "  10:15 5m running",
 				"[ ] Build",
 				"loom running | now working", "waiting on nothing",
 			},
@@ -280,8 +285,8 @@ func TestRenderChecklist(t *testing.T) {
 				doneEntry("Plan", 5), repeatedReview, gotoEntry("Plan", 40), doneEntry("Plan", 45)),
 			nowMin: 60,
 			want: []string{
-				"[x] Plan 10m x2", "  10:00 5m done", "  10:40 5m done",
-				"[x] Review 25m x2", "  10:05 25m stuck x2",
+				"[x] Plan 10m00s x2", "  10:00 5m00s done", "  10:40 5m00s done",
+				"[x] Review 25m00s x2", "  10:05 25m00s stuck x2",
 				"[ ] Build",
 				"loom done | now working", "waiting on nothing",
 			},
@@ -292,8 +297,8 @@ func TestRenderChecklist(t *testing.T) {
 			poll:   checklistStatus(shedengine.StateRunning, "Build", doneEntry("Plan", 5), doneEntry("Review", 60)),
 			nowMin: 63,
 			want: []string{
-				"[x] Plan 5m", "  10:00 5m done",
-				"[x] Review 55m", "  10:05 55m done",
+				"[x] Plan 5m00s", "  10:00 5m00s done",
+				"[x] Review 55m00s", "  10:05 55m00s done",
 				"[>] Build 3m", "  11:00 3m running",
 				"loom running | now working", "waiting on nothing",
 			},
@@ -305,8 +310,8 @@ func TestRenderChecklist(t *testing.T) {
 				doneEntry("Plan", 5), stuckEntry("Review", 10, ""), gotoEntry("Plan", 120)),
 			nowMin: 124,
 			want: []string{
-				"[>] Plan 9m x2", "  10:00 5m done", "  12:00 4m running",
-				"[x] Review 5m", "  10:05 5m stuck",
+				"[>] Plan 9m x2", "  10:00 5m00s done", "  12:00 4m running",
+				"[x] Review 5m00s", "  10:05 5m00s stuck",
 				"[ ] Build",
 				"loom running | now working", "waiting on nothing",
 			},
@@ -319,7 +324,7 @@ func TestRenderChecklist(t *testing.T) {
 			nowMin: 10,
 			want: []string{
 				"[ ] Plan",
-				"[>] Review 10m x3", "  10:00 5m bounced", "  10:05 3m stuck", "  10:08 2m running",
+				"[>] Review 10m x3", "  10:00 5m00s bounced", "  10:05 3m00s stuck", "  10:08 2m running",
 				"[ ] Build",
 				"loom running | now working", "waiting on nothing",
 			},
@@ -331,7 +336,7 @@ func TestRenderChecklist(t *testing.T) {
 			nowMin: 6,
 			want: []string{
 				"[ ] Plan",
-				"[-] Review 6m x2", "  10:00 5m escalated", "  10:05 1m running",
+				"[-] Review 6m x2", "  10:00 5m00s escalated", "  10:05 1m running",
 				"[ ] Build",
 				"loom awaiting | now working", "waiting on the parent: escalation from Review",
 			},
@@ -342,7 +347,7 @@ func TestRenderChecklist(t *testing.T) {
 			poll:   checklistStatus(shedengine.StateBlocked, "Review", doneEntry("Plan", 5)),
 			nowMin: 35,
 			want: []string{
-				"[x] Plan 5m", "  10:00 5m done",
+				"[x] Plan 5m00s", "  10:00 5m00s done",
 				"[-] Review 30m", "  10:05 30m running",
 				"[ ] Build",
 				"loom blocked | now working", "waiting on nothing",
@@ -366,7 +371,7 @@ func TestRenderChecklist(t *testing.T) {
 			poll:   checklistStatus(shedengine.StateAwaiting, "Review", doneEntry("Plan", 5)),
 			nowMin: 6,
 			want: []string{
-				"[x] Plan 5m", "  10:00 5m done",
+				"[x] Plan 5m00s", "  10:00 5m00s done",
 				"[-] Review 1m", "  10:05 1m running",
 				"[ ] Build",
 				"loom awaiting | now working", "waiting on the parent: escalation from Review",
@@ -389,7 +394,7 @@ func TestRenderChecklist(t *testing.T) {
 			poll:   checklistStatus(shedengine.StateFailed, "Review", doneEntry("Plan", 5)),
 			nowMin: 9,
 			want: []string{
-				"[x] Plan 5m", "  10:00 5m done",
+				"[x] Plan 5m00s", "  10:00 5m00s done",
 				"[!] Review 4m", "  10:05 4m running",
 				"[ ] Build",
 				"loom failed | now working", "waiting on nothing",
@@ -403,10 +408,25 @@ func TestRenderChecklist(t *testing.T) {
 			nowMin: 25,
 			want: []string{
 				"[>] Build 25m x5",
-				"  10:00 5m done out/build.md gate attempts 2",
-				"  10:05 15m stuck x3",
+				"  10:00 5m00s done out/build.md gate attempts 2",
+				"  10:05 15m00s stuck x3",
 				"  10:20 5m running",
 				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "visits ending on seconds draw 45s and 12m05s lines and a 1h05m12s row total",
+			rows: recipe,
+			poll: checklistStatus(shedengine.StateDone, "",
+				shedengine.HistoryEntry{Producer: "Plan", Outcome: shedengine.Done, At: secondMark(45)},
+				shedengine.HistoryEntry{Producer: "Review", Outcome: shedengine.Done, At: secondMark(770)},
+				shedengine.HistoryEntry{Producer: "Plan", Outcome: shedengine.Done, At: secondMark(4637)}),
+			nowMin: 80,
+			want: []string{
+				"[x] Plan 1h05m12s x2", "  10:00 45s done", "  10:12 1h04m27s done",
+				"[x] Review 12m05s", "  10:00 12m05s done",
+				"[ ] Build",
+				"loom done | now working", "waiting on nothing",
 			},
 		},
 		{
@@ -418,7 +438,7 @@ func TestRenderChecklist(t *testing.T) {
 				"[>] Plan 2m", "  10:05 2m running",
 				"[ ] Review",
 				"[ ] Build",
-				"[x] Retired 5m (not in recipe)", "  10:00 5m done",
+				"[x] Retired 5m00s (not in recipe)", "  10:00 5m00s done",
 				"loom running | now working", "waiting on nothing",
 			},
 		},
@@ -430,7 +450,7 @@ func TestRenderChecklist(t *testing.T) {
 			nowMin: 10,
 			want: []string{
 				"recipe unreadable",
-				"  10:00 5m Plan done", "  10:05 3m Review bounced", "  10:08 2m Plan running",
+				"  10:00 5m00s Plan done", "  10:05 3m00s Review bounced", "  10:08 2m Plan running",
 				"loom running | now working", "waiting on nothing",
 			},
 		},
@@ -444,17 +464,17 @@ func TestRenderChecklist(t *testing.T) {
 				doneEntry("Rev-Bouncer", 26)),
 			nowMin: 30,
 			want: []string{
-				"[x] Build 5m", "  10:00 5m done",
-				"[x] Rev 21m rounds 2",
-				"  round 1",
-				"    10:05 1m Rev-Bouncer bounced",
-				"    10:06 4m Rev-Review done round-1-review.md",
-				"    10:10 5m Rev-Fix done round-1-fixer-report.md",
-				"  round 2",
-				"    10:15 1m Rev-Bouncer bounced",
-				"    10:16 4m Rev-Review done round-2-review.md",
-				"    10:20 5m Rev-Fix done round-2-fixer-report.md",
-				"  10:25 1m Rev-Bouncer done",
+				"[x] Build 5m00s", "  10:00 5m00s done",
+				"[x] Rev 21m00s rounds 2",
+				"  round 1 10m00s",
+				"    10:05 1m00s Rev-Bouncer bounced",
+				"    10:06 4m00s Rev-Review done round-1-review.md",
+				"    10:10 5m00s Rev-Fix done round-1-fixer-report.md",
+				"  round 2 10m00s",
+				"    10:15 1m00s Rev-Bouncer bounced",
+				"    10:16 4m00s Rev-Review done round-2-review.md",
+				"    10:20 5m00s Rev-Fix done round-2-fixer-report.md",
+				"  10:25 1m00s Rev-Bouncer done",
 				"[>] Publish 4m", "  10:26 4m running",
 				"[ ] PR-Review", "[ ] PR-Rework",
 				"loom running | now working", "waiting on nothing",
@@ -468,14 +488,14 @@ func TestRenderChecklist(t *testing.T) {
 				bouncedEntry(6), roundEntry("Rev-Review", 10, 1, "review"), handOnEntry(12, 1), handOnEntry(14, 2)),
 			nowMin: 16,
 			want: []string{
-				"[x] Build 5m", "  10:00 5m done",
+				"[x] Build 5m00s", "  10:00 5m00s done",
 				"[>] Rev 11m rounds 2",
-				"  round 1",
-				"    10:05 1m Rev-Bouncer bounced",
-				"    10:06 4m Rev-Review done round-1-review.md",
-				"    10:10 2m Rev-Review stuck round-1-review.md",
-				"  round 2",
-				"    10:12 2m Rev-Review stuck round-2-review.md",
+				"  round 1 7m00s",
+				"    10:05 1m00s Rev-Bouncer bounced",
+				"    10:06 4m00s Rev-Review done round-1-review.md",
+				"    10:10 2m00s Rev-Review stuck round-1-review.md",
+				"  round 2 4m",
+				"    10:12 2m00s Rev-Review stuck round-2-review.md",
 				"    10:14 2m Rev-Fix running",
 				"[ ] Publish", "[ ] PR-Review", "[ ] PR-Rework",
 				"loom running | now working", "waiting on nothing",
@@ -490,15 +510,15 @@ func TestRenderChecklist(t *testing.T) {
 				gotoEntry("Rev-Review", 16), roundEntry("Rev-Review", 20, 2, "review")),
 			nowMin: 22,
 			want: []string{
-				"[x] Build 5m", "  10:00 5m done",
+				"[x] Build 5m00s", "  10:00 5m00s done",
 				"[>] Rev 16m rounds 2",
-				"  round 1",
-				"    10:05 1m Rev-Bouncer bounced",
-				"    10:06 4m Rev-Review done round-1-review.md",
-				"    10:10 5m Rev-Fix done round-1-fixer-report.md",
-				"    10:16 0m Rev-Review goto",
-				"  round 2",
-				"    10:16 4m Rev-Review done round-2-review.md",
+				"  round 1 10m00s",
+				"    10:05 1m00s Rev-Bouncer bounced",
+				"    10:06 4m00s Rev-Review done round-1-review.md",
+				"    10:10 5m00s Rev-Fix done round-1-fixer-report.md",
+				"    10:16 0s Rev-Review goto",
+				"  round 2 6m",
+				"    10:16 4m00s Rev-Review done round-2-review.md",
 				"    10:20 2m Rev-Fix running",
 				"[ ] Publish", "[ ] PR-Review", "[ ] PR-Rework",
 				"loom running | now working", "waiting on nothing",
@@ -514,15 +534,15 @@ func TestRenderChecklist(t *testing.T) {
 				roundEntry("Rev-Review", 20, 2, "review")),
 			nowMin: 22,
 			want: []string{
-				"[x] Build 5m", "  10:00 5m done",
+				"[x] Build 5m00s", "  10:00 5m00s done",
 				"[>] Rev 17m rounds 2",
-				"  round 1",
-				"    10:05 1m Rev-Bouncer bounced",
-				"    10:06 4m Rev-Review done round-1-review.md",
-				"    10:10 5m Rev-Fix done round-1-fixer-report.md",
-				"    10:15 1m Rev-Fix reroute",
-				"  round 2",
-				"    10:16 4m Rev-Review done round-2-review.md",
+				"  round 1 11m00s",
+				"    10:05 1m00s Rev-Bouncer bounced",
+				"    10:06 4m00s Rev-Review done round-1-review.md",
+				"    10:10 5m00s Rev-Fix done round-1-fixer-report.md",
+				"    10:15 1m00s Rev-Fix reroute",
+				"  round 2 6m",
+				"    10:16 4m00s Rev-Review done round-2-review.md",
 				"    10:20 2m Rev-Fix running",
 				"[ ] Publish", "[ ] PR-Review", "[ ] PR-Rework",
 				"loom running | now working", "waiting on nothing",
@@ -535,9 +555,9 @@ func TestRenderChecklist(t *testing.T) {
 				doneEntry("Build", 5), gotoEntry("Rev-Bouncer", 6)),
 			nowMin: 8,
 			want: []string{
-				"[x] Build 5m", "  10:00 5m done",
+				"[x] Build 5m00s", "  10:00 5m00s done",
 				"[>] Rev 2m rounds 0",
-				"  10:06 0m Rev-Bouncer goto",
+				"  10:06 0s Rev-Bouncer goto",
 				"  10:06 2m Rev-Bouncer running",
 				"[ ] Publish", "[ ] PR-Review", "[ ] PR-Rework",
 				"loom running | now working", "waiting on nothing",
@@ -552,14 +572,14 @@ func TestRenderChecklist(t *testing.T) {
 				bouncedEntry(16)),
 			nowMin: 18,
 			want: []string{
-				"[x] Build 5m", "  10:00 5m done",
+				"[x] Build 5m00s", "  10:00 5m00s done",
 				"[>] Rev 13m rounds 2",
-				"  round 1",
-				"    10:05 1m Rev-Bouncer bounced",
-				"    10:06 4m Rev-Review done round-1-review.md",
-				"    10:10 5m Rev-Fix done round-1-fixer-report.md",
-				"  round 2",
-				"    10:15 1m Rev-Bouncer bounced",
+				"  round 1 10m00s",
+				"    10:05 1m00s Rev-Bouncer bounced",
+				"    10:06 4m00s Rev-Review done round-1-review.md",
+				"    10:10 5m00s Rev-Fix done round-1-fixer-report.md",
+				"  round 2 3m",
+				"    10:15 1m00s Rev-Bouncer bounced",
 				"    10:16 2m Rev-Review running",
 				"[ ] Publish", "[ ] PR-Review", "[ ] PR-Rework",
 				"loom running | now working", "waiting on nothing",
@@ -574,13 +594,13 @@ func TestRenderChecklist(t *testing.T) {
 				awaitingEntry("Rev-Bouncer", 16)),
 			nowMin: 17,
 			want: []string{
-				"[x] Build 5m", "  10:00 5m done",
+				"[x] Build 5m00s", "  10:00 5m00s done",
 				"[-] Rev 12m rounds 1",
-				"  round 1",
-				"    10:05 1m Rev-Bouncer bounced",
-				"    10:06 4m Rev-Review done round-1-review.md",
-				"    10:10 5m Rev-Fix done round-1-fixer-report.md",
-				"    10:15 1m Rev-Bouncer escalated",
+				"  round 1 12m",
+				"    10:05 1m00s Rev-Bouncer bounced",
+				"    10:06 4m00s Rev-Review done round-1-review.md",
+				"    10:10 5m00s Rev-Fix done round-1-fixer-report.md",
+				"    10:15 1m00s Rev-Bouncer escalated",
 				"    10:16 1m Rev-Bouncer running",
 				"[ ] Publish", "[ ] PR-Review", "[ ] PR-Rework",
 				"loom awaiting | now working", "waiting on the parent: escalation from Rev-Bouncer",
@@ -593,10 +613,10 @@ func TestRenderChecklist(t *testing.T) {
 				doneEntry("Build", 5), doneEntry("PR-Review", 8)),
 			nowMin: 10,
 			want: []string{
-				"[x] Build 5m", "  10:00 5m done",
+				"[x] Build 5m00s", "  10:00 5m00s done",
 				"[ ] Rev",
 				"[ ] Publish",
-				"[x] PR-Review 3m", "  10:05 3m done",
+				"[x] PR-Review 3m00s", "  10:05 3m00s done",
 				"[>] PR-Rework 2m", "  10:08 2m running",
 				"loom running | now working", "waiting on nothing",
 			},
@@ -614,23 +634,23 @@ func TestRenderChecklist(t *testing.T) {
 			nowMin:  19,
 			arbiter: []checklistArbiter{resolvedArbiter(1, 13, 9, "resume", "")},
 			want: []string{
-				"[x] Build 5m", "  10:00 5m done",
+				"[x] Build 5m00s", "  10:00 5m00s done",
 				"[>] Rev 14m rounds 4",
-				"  round 1",
-				"    10:05 1m Rev-Bouncer bounced",
-				"    10:06 1m Rev-Review done round-1-review.md",
-				"  round 2",
-				"    10:07 1m Rev-Bouncer bounced",
-				"    10:08 1m Rev-Review done round-2-review.md",
-				"  round 3",
-				"    10:09 1m Rev-Bouncer bounced",
-				"    10:10 1m Rev-Review done round-3-review.md",
-				"    10:11 1m Rev-Fix done round-3-fixer-report.md",
-				"    10:12 1m Rev-Bouncer escalated",
+				"  round 1 2m00s",
+				"    10:05 1m00s Rev-Bouncer bounced",
+				"    10:06 1m00s Rev-Review done round-1-review.md",
+				"  round 2 2m00s",
+				"    10:07 1m00s Rev-Bouncer bounced",
+				"    10:08 1m00s Rev-Review done round-2-review.md",
+				"  round 3 4m00s",
+				"    10:09 1m00s Rev-Bouncer bounced",
+				"    10:10 1m00s Rev-Review done round-3-review.md",
+				"    10:11 1m00s Rev-Fix done round-3-fixer-report.md",
+				"    10:12 1m00s Rev-Bouncer escalated",
 				"    10:13 arbiter attempt 1 resume",
-				"  round 4",
-				"    10:13 2m Rev-Bouncer bounced",
-				"    10:15 2m Rev-Review done round-4-review.md",
+				"  round 4 6m",
+				"    10:13 2m00s Rev-Bouncer bounced",
+				"    10:15 2m00s Rev-Review done round-4-review.md",
 				"    10:17 2m Rev-Fix running",
 				"[ ] Publish", "[ ] PR-Review", "[ ] PR-Rework",
 				"loom running | now working", "waiting on nothing",
@@ -643,7 +663,7 @@ func TestRenderChecklist(t *testing.T) {
 			nowMin:  7,
 			arbiter: []checklistArbiter{resolvedArbiter(1, 5, 1, "hand-on", "died")},
 			want: []string{
-				"[x] Plan 5m", "  10:00 5m done", "  10:05 arbiter attempt 1 hand-on (died)",
+				"[x] Plan 5m00s", "  10:00 5m00s done", "  10:05 arbiter attempt 1 hand-on (died)",
 				"[>] Review 2m", "  10:05 2m running",
 				"[ ] Build",
 				"loom running | now working", "waiting on nothing",
@@ -659,7 +679,7 @@ func TestRenderChecklist(t *testing.T) {
 				pendingArbiter(2, 6, 1, 6),
 			},
 			want: []string{
-				"[x] Plan 5m", "  10:00 5m done",
+				"[x] Plan 5m00s", "  10:00 5m00s done",
 				"  10:05 arbiter attempt 1 running", "  10:06 arbiter attempt 2 no verdict",
 				"[>] Review 2m", "  10:05 2m running",
 				"[ ] Build",
@@ -673,7 +693,7 @@ func TestRenderChecklist(t *testing.T) {
 			nowMin:  7,
 			arbiter: []checklistArbiter{resolvedArbiter(1, 6, 5, "resume", "")},
 			want: []string{
-				"[x] Plan 5m", "  10:00 5m done",
+				"[x] Plan 5m00s", "  10:00 5m00s done",
 				"[>] Review 2m", "  10:05 2m running",
 				"[ ] Build",
 				"10:06 arbiter attempt 1 resume",
@@ -690,7 +710,7 @@ func TestRenderChecklist(t *testing.T) {
 				resolvedArbiter(1, 5, 1, "hand-on", ""),
 			},
 			want: []string{
-				"[x] Plan 5m", "  10:00 5m done", "  10:05 arbiter attempt 1 hand-on",
+				"[x] Plan 5m00s", "  10:00 5m00s done", "  10:05 arbiter attempt 1 hand-on",
 				"[>] Review 2m", "  10:05 2m running",
 				"[ ] Build",
 				"arbiter attempt unreadable (attempt-2)",
@@ -705,7 +725,7 @@ func TestRenderChecklist(t *testing.T) {
 			arbiter: []checklistArbiter{resolvedArbiter(1, 5, 1, "resume", "")},
 			want: []string{
 				"recipe unreadable",
-				"  10:00 5m Plan done", "  10:05 arbiter attempt 1 resume", "  10:05 2m Plan running",
+				"  10:00 5m00s Plan done", "  10:05 arbiter attempt 1 resume", "  10:05 2m Plan running",
 				"loom running | now working", "waiting on nothing",
 			},
 		},
@@ -728,6 +748,19 @@ func TestRenderChecklist(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a second passing inside a minute leaves the frame byte-identical", func(t *testing.T) {
+		t.Parallel()
+		poll := checklistStatus(shedengine.StateRunning, "Rev-Review",
+			doneEntry("Build", 5), bouncedEntry(6), roundEntry("Rev-Review", 10, 1, "review"), roundEntry("Rev-Fix", 15, 1, "fixer-report"), bouncedEntry(16))
+		frameAt := func(now time.Time) string {
+			return strings.Join(renderChecklist(checklistInput{rows: reviewRecipe, poll: poll, startedAt: minuteMark(0)}, now).Lines, "\n")
+		}
+		now := checklistClock.Add(18*time.Minute + 5*time.Second)
+		if diff := cmp.Diff(frameAt(now), frameAt(now.Add(time.Second))); diff != "" {
+			t.Errorf("frame changed within a minute (-now +next second):\n%s", diff)
+		}
+	})
 
 	t.Run("readChecklistPaused reads the slug's and the hub's intervals and nothing from an unreadable record", func(t *testing.T) {
 		t.Parallel()

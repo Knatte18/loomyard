@@ -188,6 +188,7 @@ func readChecklistPaused(recordPath, slug string, now time.Time) []pauserecord.I
 // the state line, without the wait the wait line carries; and the wait line.
 // in.startedAt is the run's seed time, where its first visit starts; an empty or unparsable value starts it at the first entry's own time.
 // in.paused is left out of every visit's time.
+// A row's total is drawn to the second unless one of its visits is the open one, and then in whole minutes.
 func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 	stateLine := shedverbs.UnavailableLine(checklistLabel)
 	if in.poll.Found {
@@ -252,7 +253,7 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 		}
 		line := checklistBox(name, visits[name], status) + " " + name
 		if v := visits[name]; v.visits > 0 {
-			line += " " + statuspane.FormatMinutes(v.spent)
+			line += " " + checklistTime(v.spent, slices.ContainsFunc(v.log, checklistVisitIsOpen))
 			if v.visits > 1 {
 				line += fmt.Sprintf(" x%d", v.visits)
 			}
@@ -272,10 +273,13 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 	return statuspane.Frame{Lines: append(lines, stateLine, waitLine)}
 }
 
-// checklistBlockLine is one visit line of a review block and the status history index of the entry it shows, -1 for the open visit.
+// checklistBlockLine is one visit line of a review block, the status history index of the entry it shows (-1 for the open visit) and the time the line spent.
+// open is true for the open visit.
 type checklistBlockLine struct {
 	text  string
 	index int
+	spent time.Duration
+	open  bool
 }
 
 // checklistRound is one opened round of a review block: its number and the lines under it, in the order they ran.
@@ -284,9 +288,34 @@ type checklistRound struct {
 	lines  []checklistBlockLine
 }
 
+// total returns the round's time as "<time>": the sum of its lines' spent, in whole minutes when the round holds the open visit and to the second otherwise.
+func (r checklistRound) total() string {
+	var spent time.Duration
+	open := false
+	for _, line := range r.lines {
+		spent += line.spent
+		open = open || line.open
+	}
+	return checklistTime(spent, open)
+}
+
+// checklistVisitIsOpen reports whether visit is the current producer's open visit.
+func checklistVisitIsOpen(visit checklistVisit) bool {
+	return visit.index < 0
+}
+
+// checklistTime renders spent in whole minutes when it includes the open visit and to the second when it is closed, so a frame changes at most once a minute.
+func checklistTime(spent time.Duration, includesOpen bool) string {
+	if includesOpen {
+		return statuspane.FormatMinutes(spent)
+	}
+	return statuspane.FormatSeconds(spent)
+}
+
 // checklistReviewBlock renders a review segment, a recipe segment holding a Bouncer row, as one block from the history-order visits.
 // The heading reads "<box> <segment> <time> rounds <n>"; an unvisited segment is the single line "[ ] <segment>".
-// Under it come the lines placed before any round opened, then each opened round in the order opened as "  round <n>" with its lines, and last a Bouncer done that ends the segment.
+// Under it come the lines placed before any round opened, then each opened round in the order opened as "  round <n> <time>", the sum of its lines' time, with its lines, and last a Bouncer done that ends the segment.
+// A time that includes the open visit is drawn in whole minutes and every other time to the second.
 // A review-row entry, the row a Bouncer row's OnStuck names, opens or joins the round its output names through shedadapters.OutputRound.
 // A bounced Bouncer line waits and stands first in the next round that opens.
 // A fix-row entry, a goto into the segment, a reroute into the segment and a Bouncer entry that routes nowhere stand as the last line of the round in progress, or before round 1.
@@ -308,10 +337,12 @@ func checklistReviewBlock(segment string, rows []loomrecipe.RecipeRow, visits []
 	}
 
 	var spent time.Duration
+	segmentOpen := false
 	visitCount := map[string]int{}
 	for _, visit := range visits {
 		if !visit.isGoto && inSegment[visit.row] {
 			spent += visit.spent
+			segmentOpen = segmentOpen || checklistVisitIsOpen(visit)
 			visitCount[visit.row]++
 		}
 	}
@@ -351,7 +382,7 @@ func checklistReviewBlock(segment string, rows []loomrecipe.RecipeRow, visits []
 		rounds[current].lines = append(rounds[current].lines, line)
 	}
 	for _, visit := range visits {
-		line := checklistBlockLine{text: checklistVisitLine(visit, visit.row), index: visit.index}
+		line := checklistBlockLine{text: checklistVisitLine(visit, visit.row), index: visit.index, spent: visit.spent, open: checklistVisitIsOpen(visit)}
 		switch {
 		case visit.isGoto:
 			if inSegment[visit.row] {
@@ -400,10 +431,10 @@ func checklistReviewBlock(segment string, rows []loomrecipe.RecipeRow, visits []
 		placeInProgress(line)
 	}
 
-	lines := []string{fmt.Sprintf("%s %s %s rounds %d", box, segment, statuspane.FormatMinutes(spent), len(rounds))}
+	lines := []string{fmt.Sprintf("%s %s %s rounds %d", box, segment, checklistTime(spent, segmentOpen), len(rounds))}
 	lines = appendChecklistBlockLines(lines, "  ", before, arbiters)
 	for _, round := range rounds {
-		lines = append(lines, fmt.Sprintf("  round %d", round.number))
+		lines = append(lines, fmt.Sprintf("  round %d %s", round.number, round.total()))
 		lines = appendChecklistBlockLines(lines, "    ", round.lines, arbiters)
 	}
 	return appendChecklistBlockLines(lines, "  ", closing, arbiters)
@@ -540,14 +571,14 @@ func (p *checklistArbiterPlacement) endLines() []string {
 	return append(lines, p.unreadable...)
 }
 
-// checklistVisitLine renders one visit as "<start> <spent> <outcome>", then " x<n>" for a folded entry, " <output>" when it has one and " gate attempts <n>" when gated.
+// checklistVisitLine renders one visit as "<start> <spent> <outcome>", the time to the second except for the open visit's in whole minutes, then " x<n>" for a folded entry, " <output>" when it has one and " gate attempts <n>" when gated.
 // A non-empty row is written before the outcome, for a list that does not sit under the row's own line.
 func checklistVisitLine(visit checklistVisit, row string) string {
 	start := checklistUnknownStart
 	if visit.startKnown {
 		start = visit.start.UTC().Format("15:04")
 	}
-	line := start + " " + statuspane.FormatMinutes(visit.spent)
+	line := start + " " + checklistTime(visit.spent, checklistVisitIsOpen(visit))
 	if row != "" {
 		line += " " + row
 	}
