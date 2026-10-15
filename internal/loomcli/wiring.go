@@ -602,6 +602,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			return readRecordedParentBranch(location)
 		},
 		LanguageSkills: languageSkills,
+		// InstructionFiles looks Master's engine up lazily, so loom's status and pause, which only wire, are never refused by the master key.
+		InstructionFiles: websterengine.MasterInstructionFiles(engines, roles[websterengine.RoleMaster]),
 	}
 
 	statusPath := shedrun.StatusFile(location, c.runID)

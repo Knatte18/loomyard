@@ -41,6 +41,28 @@ func roleAuditEngine(engines AuditEngines, role Role, choice shuttleengine.Model
 	return nil
 }
 
+// MasterInstructionFiles returns a lister of the instruction file names Master's engine loads.
+// The lookup is lazy: it runs when the lister is called, so a verb that never calls it is never refused for the master key.
+// An engine without the shuttleengine.InstructionFileLister capability lists none;
+// an engine engines does not hold is refused wrapping the lookup's error, with the way forward to set master in webster.yaml.
+func MasterInstructionFiles(engines AuditEngines, master shuttleengine.ModelChoice) func() ([]string, error) {
+	return func() ([]string, error) {
+		engine, err := engines.Lookup(master.Engine)
+		if err != nil {
+			name := master.Engine
+			if name == "" {
+				name = engines.DefaultName()
+			}
+			return nil, fmt.Errorf("webster: the master role's engine %q is not held by this lyx: %w; way forward: set master in webster.yaml to an alias whose engine the set holds with lyx config webster, then re-run the verb", name, err)
+		}
+		lister, ok := engine.(shuttleengine.InstructionFileLister)
+		if !ok {
+			return nil, nil
+		}
+		return lister.InstructionFiles(), nil
+	}
+}
+
 // sessionAuditEngine resolves the engine that session ran under from recorded, the engine name its state entry holds.
 // A name engines holds resolves to that engine; one without fork audit is an internal error, since every spawn checks its engine.
 // A name engines does not hold is refused wrapping the lookup's error, naming the session and the engine.

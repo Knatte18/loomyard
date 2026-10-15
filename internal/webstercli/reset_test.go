@@ -66,6 +66,8 @@ func newResetFixture(t *testing.T, h *hubforge.Hub, slug string) *resetFixture {
 		anchorRel:  loc.AnchorRel,
 		geom:       hubgeom.WebsterGeometry(loc),
 		openFabric: func() (*fabricengine.Fabric, error) { return fabricengine.Open(loc) },
+		// Reset runs on a recorded state and prices no partition, so a lister that fails proves it is never called.
+		instructionFiles: failingInstructionFiles,
 		parentBranch: func() (string, error) {
 			origin, found, err := fabricengine.ReadOrigin(loc)
 			if err != nil || !found {

@@ -597,6 +597,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			name:  "Merriam's start base is unreadable",
 			cards: 1,
 			setup: func(t *testing.T, fx *runFixture) func() {
+				fx.Deps.InstructionFiles = func() ([]string, error) { return []string{"CLAUDE.md"}, nil }
 				if err := os.Mkdir(filepath.Join(fx.Worktree, "CLAUDE.md"), 0o755); err != nil {
 					t.Fatalf("plant a directory in place of CLAUDE.md: %v", err)
 				}
@@ -1039,6 +1040,7 @@ func TestRun_AutoRebaseline(t *testing.T) {
 				cards: 1,
 				edit: func(t *testing.T, fx *runFixture) {
 					addCards(t, fx, 2)
+					fx.Deps.InstructionFiles = func() ([]string, error) { return []string{"CLAUDE.md"}, nil }
 					if err := os.Mkdir(filepath.Join(fx.Worktree, "CLAUDE.md"), 0o755); err != nil {
 						t.Fatalf("plant a directory in place of CLAUDE.md: %v", err)
 					}

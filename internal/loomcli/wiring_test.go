@@ -265,6 +265,10 @@ func TestWire_DefaultConfig(t *testing.T) {
 		if deps.ReadOnly == nil {
 			t.Error("runDeps.ReadOnly = nil; want the read-only classifier beside the reference matcher")
 		}
+		// wire returned nil above and only stored the lister, so it looked no engine up for it: status and pause, which run wire, are never refused by the master key.
+		if deps.InstructionFiles == nil {
+			t.Error("runDeps.InstructionFiles = nil; want Master's instruction file lister")
+		}
 
 		// The same value must also be embedded verbatim in c.env.WebsterDeps.
 		if c.env.WebsterDeps.Geom != deps.Geom {

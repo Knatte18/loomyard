@@ -158,6 +158,18 @@ type RunDeps struct {
 
 	// LanguageSkills are the hub's language skills the master loads after roleSkills; empty for none.
 	LanguageSkills []string
+
+	// InstructionFiles lists the names of the instruction files Master's engine loads, which Merriam's start base counts; nil means none.
+	// It is called where a fresh partition is formed and where an auto-rebaseline prices the tail.
+	InstructionFiles func() ([]string, error)
+}
+
+// instructionFiles returns the instruction file names Merriam's start base counts, none when InstructionFiles is nil.
+func (d RunDeps) instructionFiles() ([]string, error) {
+	if d.InstructionFiles == nil {
+		return nil, nil
+	}
+	return d.InstructionFiles()
 }
 
 // reentryStep returns the step that re-enters the run, defaulting to `lyx webster run`.
@@ -468,7 +480,11 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// rebaselineStep is the step the plan refusals name once an auto-rebaseline was accepted, and empty otherwise.
 	var rebaselineStep string
 	newPartition := func() ([]batcher.Batch, error) {
-		base, err := MerriamBase(deps.Geom)
+		instructionFiles, err := deps.instructionFiles()
+		if err != nil {
+			return nil, err
+		}
+		base, err := MerriamBase(deps.Geom, instructionFiles)
 		if err != nil {
 			return nil, fmt.Errorf("%w; way forward: transient, %s", err, deps.reentryStep())
 		}

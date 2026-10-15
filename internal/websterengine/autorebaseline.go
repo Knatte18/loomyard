@@ -46,7 +46,11 @@ func autoRebaseline(deps RunDeps, plan *planparser.Plan, st *State, sizes batche
 			cards = append(cards, number)
 		}
 	}
-	base, err := MerriamBase(deps.Geom)
+	instructionFiles, err := deps.instructionFiles()
+	if err != nil {
+		return "", err
+	}
+	base, err := MerriamBase(deps.Geom, instructionFiles)
 	if err != nil {
 		return "", transient(err)
 	}

@@ -36,7 +36,8 @@ func (c *websterCLI) runDeps() websterengine.RunDeps {
 		FrictionDir:  c.frictionDir,
 		ParentBranch: c.parentBranch,
 
-		LanguageSkills: c.languageSkills,
+		LanguageSkills:   c.languageSkills,
+		InstructionFiles: c.instructionFiles,
 	}
 }
 

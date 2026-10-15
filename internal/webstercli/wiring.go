@@ -211,6 +211,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	c.shuttleCfg = shuttleCfg
 	c.cfg = websterCfg
 	c.roles = roles
+	c.instructionFiles = websterengine.MasterInstructionFiles(engines, roles[websterengine.RoleMaster])
 	c.geom = geom
 	c.anchorRel = loc.AnchorRel
 	// The matcher is built eagerly because NewRefScanner only compiles a regexp and cannot fail. The
@@ -332,6 +333,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	c.shuttleCfg = shuttleCfg
 	c.cfg = websterCfg
 	c.roles = roles
+	c.instructionFiles = websterengine.MasterInstructionFiles(engines, roles[websterengine.RoleMaster])
 	c.geom = geom
 	c.anchorRel = ""
 	// standalone has no fabric repo by construction: the matcher never sees a fabric reference

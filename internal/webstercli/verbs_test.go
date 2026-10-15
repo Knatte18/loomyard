@@ -648,6 +648,8 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("FABRIC_SKIP_GIT", "1")
 			fx := newVerbsFixture(t)
+			// record-batch runs on a recorded state and prices no partition, so a lister that fails proves it is never called.
+			fx.CLI.instructionFiles = failingInstructionFiles
 			st := fx.initState(t)
 			// DoneChecks resolves a card's Create target against
 			// deps.Geom.WorktreeRoot, which hubgeom.WebsterGeometry fills
@@ -969,6 +971,8 @@ func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
 func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
+	// recover-batch runs on a recorded state and prices no partition, so a lister that fails proves it is never called.
+	fx.CLI.instructionFiles = failingInstructionFiles
 	fx.initState(t)
 
 	// First call: no prior record for batch 1, so RecoverBatch spawns a
