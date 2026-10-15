@@ -132,10 +132,16 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	// a write failure returns the composed line itself, so the pane still launches.
 	// The payload is sent as a literal string (-l) so tmux never reinterprets any part of it as a key name (e.g. "Enter", "C-c") or splits it on an embedded ';' — the launch command is opaque and shuttle builds arbitrary PowerShell command chains.
 	// A separate Enter then submits it.
+	// The dialect's discard-line key goes first: input routed to the booting pane before the payload, a viewer's keystrokes or a terminal reply while a window switch lands on it, would otherwise prefix the launch line and break it.
 	sh := shell.ForGOOS()
 	composedLine, exe := composePaneLaunchLine(sh, launchCmd, s.GUID, s.Name, e.geom.ParentName)
 	s.LyxBin = exe
 	payload := stageLaunchScript(sh, e.stateDir(), s.GUID, composedLine)
+	if key := sh.DiscardLineKey(); key != "" {
+		if err := e.tmux.run("send-keys", "-t", paneID, key); err != nil {
+			return fmt.Errorf("discard the pane's pending input: %w", err)
+		}
+	}
 	if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(payload)); err != nil {
 		return fmt.Errorf("send launch command: %w", err)
 	}
@@ -335,7 +341,7 @@ func (e *Engine) openOwnWindowLocked(st *ReedState, s *Strand, name, group strin
 		name = overviewWindowName
 		placement = overviewWindowInsertArgs(windows)
 	} else {
-		selectNew = e.newAgentWindowTakesViewerLocked(st, s.Display.Focus)
+		selectNew = e.newAgentWindowTakesViewerLocked(st, s.Display)
 	}
 	out, err := e.newWindowLocked(placement,
 		[]string{"-P", "-F", "#{pane_id} #{window_id}", "-n", name, "-c", e.geom.PaneCwd})

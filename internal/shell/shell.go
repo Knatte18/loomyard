@@ -1,4 +1,4 @@
-// shell.go defines the Shell interface — pane-shell mechanics (argument quoting, the call operator, session-scoped env export, live-PATH prepend, single-line statement chaining, script sourcing, and the sourced-script file extension) that every provider engine composes its launch/resume command strings from — and the ForGOOS/Pwsh/Posix constructors that select or directly expose an implementation.
+// shell.go defines the Shell interface — pane-shell mechanics (argument quoting, the call operator, session-scoped env export, live-PATH prepend, single-line statement chaining, script sourcing, the sourced-script file extension, and the key that discards an unsubmitted input line) that every provider engine composes its launch/resume command strings from — and the ForGOOS/Pwsh/Posix constructors that select or directly expose an implementation.
 
 package shell
 
@@ -53,6 +53,9 @@ type Shell interface {
 	EnvRef(key string) string
 	// ScriptExt returns the file extension, leading dot included, that a script this dialect sources carries.
 	ScriptExt() string
+	// DiscardLineKey returns the tmux key name that discards the shell's unsubmitted input line, sent ahead of a typed line so stray input never prefixes it.
+	// It is empty for a dialect with no key that is safe to send right before typed text.
+	DiscardLineKey() string
 }
 
 // chainStatements drops empty strings from parts and joins the remainder with "; ".

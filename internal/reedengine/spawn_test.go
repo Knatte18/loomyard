@@ -453,11 +453,11 @@ func breakSaveState(t *testing.T, e *Engine) {
 }
 
 // TestLaunchStrandLocked_LaunchScript pins, per launch sequence, what launchStrandLocked types and what the strand's launch script holds:
-// each launch types the source statement for the script (a single line) and then Enter as a separate send-keys call,
+// each launch sends the dialect's discard-line key, when it has one, then types the source statement for the script (a single line) and then Enter, each a separate send-keys call,
 // and the script holds the composed pane-binary prelude joined onto the strand's command, not the bare command.
 // A relaunch regenerates the script, an unresolvable executable path leaves the command alone in it, and an empty command writes the prelude alone.
 //
-//testtiming:keep pins what a launch types and writes: the source statement then a separate Enter, and a launch script holding the prelude joined onto the command, regenerated on relaunch, the bare command when the executable is unresolvable and the prelude alone for an empty command; its covering tests run this code without asserting it
+//testtiming:keep pins what a launch types and writes: any discard-line key, the source statement then a separate Enter, and a launch script holding the prelude joined onto the command, regenerated on relaunch, the bare command when the executable is unresolvable and the prelude alone for an empty command; its covering tests run this code without asserting it
 func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
 	const exe = "/opt/lyx/bin/lyx"
 	tests := []struct {
@@ -514,17 +514,27 @@ func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
 			}
 
 			sh := shell.ForGOOS()
+			discard := sh.DiscardLineKey()
+			perLaunch := 2
+			if discard != "" {
+				perLaunch = 3
+			}
 			sendKeysCalls := fake.ArgvFor("send-keys")
-			if len(sendKeysCalls) != 2*len(tt.cmds) {
-				t.Fatalf("send-keys called %d times, want %d (the literal payload, then Enter, per launch): %v", len(sendKeysCalls), 2*len(tt.cmds), sendKeysCalls)
+			if len(sendKeysCalls) != perLaunch*len(tt.cmds) {
+				t.Fatalf("send-keys called %d times, want %d (any discard-line key, the literal payload, then Enter, per launch): %v", len(sendKeysCalls), perLaunch*len(tt.cmds), sendKeysCalls)
 			}
 			path := filepath.Join(e.stateDir(), "reed", "launch", s.GUID+sh.ScriptExt())
 			wantLiteral := sendKeysLiteralArg(sh.Source(path))
 			if strings.Contains(wantLiteral, "\n") {
 				t.Errorf("source statement payload = %q, want a single line with no newline", wantLiteral)
 			}
-			for i := 0; i < len(sendKeysCalls); i += 2 {
-				literal, enter := sendKeysCalls[i], sendKeysCalls[i+1]
+			for i := 0; i < len(sendKeysCalls); i += perLaunch {
+				if discard != "" {
+					if first := sendKeysCalls[i]; first[len(first)-1] != discard || slices.Contains(first, "-l") {
+						t.Errorf("send-keys args = %v, want the key %q sent ahead of the payload as a key, not literal text", first, discard)
+					}
+				}
+				literal, enter := sendKeysCalls[i+perLaunch-2], sendKeysCalls[i+perLaunch-1]
 				if literal[len(literal)-1] != wantLiteral {
 					t.Errorf("send-keys args = %v, want the last argument to be the source statement %q", literal, wantLiteral)
 				}
@@ -569,8 +579,9 @@ func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
 	}
 	line, _ := composePaneLaunchLine(shell.ForGOOS(), launchCmd, "guid-w", st.Strands[0].Name, e.geom.ParentName)
 	want := sendKeysLiteralArg(line)
-	if first := fake.ArgvFor("send-keys")[0]; first[len(first)-1] != want {
-		t.Errorf("first send-keys args = %v, want the full composed line %q", first, want)
+	sends := fake.ArgvFor("send-keys")
+	if literal := sends[len(sends)-2]; literal[len(literal)-1] != want {
+		t.Errorf("literal send-keys args = %v, want the full composed line %q", literal, want)
 	}
 	if !strings.Contains(buf.String(), "guid-w") {
 		t.Errorf("log %q does not name the strand GUID", buf.String())
