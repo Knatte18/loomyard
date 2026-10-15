@@ -214,6 +214,9 @@ type RunTally struct {
 	// Merriams holds one start per webster-role session, ordered by Started.
 	Merriams   []MerriamStart
 	Duplicates int // transcript lines skipped as a repeat of a message already counted
+	// WebsterEngine is the name of the engine that located the run's first counted webster-role session, in located order;
+	// empty when the run has none.
+	WebsterEngine string
 	// BaseSHA is the start_sha of the earliest successful begin-batch result in the run's webster sessions, the HEAD before its first batch forked;
 	// empty when there is none.
 	BaseSHA string
@@ -576,6 +579,9 @@ func CountRun(reads ReadSet, worktree, slug string, bound time.Time) (RunTally, 
 		pricer := reads[l.engine].Pricer
 		run.countFile(l.engine, pricer, session.Main, role, seen, nil)
 		if role == websterMasterRole {
+			if run.WebsterEngine == "" {
+				run.WebsterEngine = l.engine
+			}
 			run.recordBase(session.Main.Entries)
 			run.Merriams = append(run.Merriams, readMerriamStart(session.Main))
 		}

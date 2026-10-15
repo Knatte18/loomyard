@@ -218,17 +218,19 @@ func percentile(sorted []float64, p float64) float64 {
 // Calibrate runs the estimator over every run's forks, with the weights of the profile named in batcher.yaml under configDir.
 // A run or fork that cannot be reconstructed is a skip, never an error;
 // an error is a failed read of the history or the base tree, or an unusable profile.
-func Calibrate(runs []RunTally, profile, configDir string, history PlanHistory, base BaseTrees) (Calibration, error) {
+// Each run's Merriam texts take the instruction files of the engine that located its Webster session, found through reads.
+func Calibrate(runs []RunTally, profile, configDir string, history PlanHistory, base BaseTrees, reads ReadSet) (Calibration, error) {
 	weights, err := batcher.ProfileWeights(configengine.Dirs{Anchor: configDir}, profile)
 	if err != nil {
 		return Calibration{}, err
 	}
 	calibration := Calibration{Profile: profile, Weights: weights, bases: map[string]runStartBase{}}
 	for _, run := range runs {
-		if err := calibration.addStarts(run, history, base); err != nil {
+		instructionFiles := websterInstructionFiles(reads, run)
+		if err := calibration.addStarts(run, history, base, instructionFiles); err != nil {
 			return Calibration{}, err
 		}
-		if err := calibration.addFixed(run, base); err != nil {
+		if err := calibration.addFixed(run, base, instructionFiles); err != nil {
 			return Calibration{}, err
 		}
 	}
@@ -276,8 +278,8 @@ func forkPositions(forks []ForkTally) []int {
 // addStarts adds a row per card-naming fork of run, carrying the run's computed Merriam base or the reason it has none.
 // A run whose base cannot be reconstructed is a row without a base, never an error;
 // an error is a failed read of the history or the base tree.
-func (c *Calibration) addStarts(run RunTally, history PlanHistory, base BaseTrees) error {
-	runBase, err := readRunStartBase(run, history, base)
+func (c *Calibration) addStarts(run RunTally, history PlanHistory, base BaseTrees, instructionFiles []string) error {
+	runBase, err := readRunStartBase(run, history, base, instructionFiles)
 	if err != nil {
 		return err
 	}
@@ -311,13 +313,24 @@ func fileAtBase(trees BaseTrees, run RunTally, name string) (data []byte, found 
 	return data, true, nil
 }
 
+// websterInstructionFiles returns the instruction file names of the engine that located run's Webster session, from that engine's Instructions in reads.
+// A run with no Webster engine, an engine absent from reads, and an engine without Instructions give none.
+func websterInstructionFiles(reads ReadSet, run RunTally) []string {
+	instructions := reads[run.WebsterEngine].Instructions
+	if instructions == nil {
+		return nil
+	}
+	return instructions.InstructionFiles()
+}
+
 // merriamTexts reconstructs, at run's base commit, the texts websterengine.MerriamBase counts but the plan's 00-overview.md:
-// CLAUDE.md, the Master template and the orchestrator PATTERN directive rendered from the directive stencil and PATTERN.md.
-// A CLAUDE.md or PATTERN.md absent at the base commit adds nothing, as it does for a live run.
-// CLAUDE.local.md, which MerriamBase also counts, is untracked and cannot be reconstructed; the derivation assumes the run's worktree had none, as a lyx-created worktree has none.
+// the Webster session engine's instruction files in the engine's order, the Master template and the orchestrator PATTERN directive rendered from the directive stencil and PATTERN.md.
+// An instruction file or PATTERN.md absent at the base commit adds nothing, as it does for a live run.
+// An instruction file the engine loads but git does not track is untracked and cannot be reconstructed, so it is absent at every base commit;
+// the derivation assumes the run's worktree had none, as a lyx-created worktree has none.
 // A run without a base, whose base commit is not in the repository, or whose Master template or directive stencil is absent there has a reason instead of texts;
 // a failed read or render is an error.
-func merriamTexts(run RunTally, trees BaseTrees) ([]string, string, error) {
+func merriamTexts(run RunTally, trees BaseTrees, instructionFiles []string) ([]string, string, error) {
 	switch {
 	case run.BaseSHA == "":
 		return nil, "no base: no begin-batch result in its webster sessions", nil
@@ -326,12 +339,14 @@ func merriamTexts(run RunTally, trees BaseTrees) ([]string, string, error) {
 	}
 
 	var texts []string
-	claude, found, err := fileAtBase(trees, run, "CLAUDE.md")
-	if err != nil {
-		return nil, "", err
-	}
-	if found {
-		texts = append(texts, string(claude))
+	for _, name := range instructionFiles {
+		instruction, found, err := fileAtBase(trees, run, name)
+		if err != nil {
+			return nil, "", err
+		}
+		if found {
+			texts = append(texts, string(instruction))
+		}
 	}
 	template, found, err := fileAtBase(trees, run, masterTemplatePath)
 	if err != nil {
@@ -365,7 +380,7 @@ func merriamTexts(run RunTally, trees BaseTrees) ([]string, string, error) {
 
 // readRunStartBase reconstructs the Merriam base of run: websterengine.MerriamBaseOf over merriamTexts and the plan's 00-overview.md.
 // A run whose plan, base commit, Master template or directive stencil cannot be found has a reason instead of a base.
-func readRunStartBase(run RunTally, history PlanHistory, trees BaseTrees) (runStartBase, error) {
+func readRunStartBase(run RunTally, history PlanHistory, trees BaseTrees, instructionFiles []string) (runStartBase, error) {
 	plan, reason, err := readRunPlan(run, history)
 	if err != nil {
 		return runStartBase{}, err
@@ -373,7 +388,7 @@ func readRunStartBase(run RunTally, history PlanHistory, trees BaseTrees) (runSt
 	if plan == nil {
 		return runStartBase{reason: reason}, nil
 	}
-	texts, reason, err := merriamTexts(run, trees)
+	texts, reason, err := merriamTexts(run, trees, instructionFiles)
 	if err != nil {
 		return runStartBase{}, err
 	}
@@ -386,8 +401,8 @@ func readRunStartBase(run RunTally, history PlanHistory, trees BaseTrees) (runSt
 // addFixed adds the Merriam fixed-context row of run's first Merriam session, by start time, and a skip for each session it cannot measure.
 // A session with no measured start, and any session of a run whose merriamTexts gives a reason, is a skip with that reason;
 // every later session of the run starts with prior conversation or a compaction summary in context, and is a skip for that.
-func (c *Calibration) addFixed(run RunTally, trees BaseTrees) error {
-	texts, reason, err := merriamTexts(run, trees)
+func (c *Calibration) addFixed(run RunTally, trees BaseTrees, instructionFiles []string) error {
+	texts, reason, err := merriamTexts(run, trees, instructionFiles)
 	if err != nil {
 		return err
 	}

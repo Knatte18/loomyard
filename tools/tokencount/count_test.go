@@ -82,9 +82,17 @@ func (p fakePricer) PriceMessage(model string, u shuttleengine.MessageUsage) (fl
 	return rate * float64(u.Input+u.CacheWrite+u.CacheRead+u.Output) / 1e6, true
 }
 
-// fakeReadSet is a read set of one engine named fakeEngine, reading through fake and pricing at fakeRates.
+// fakeInstructions is an in-memory instruction file lister.
+type fakeInstructions []string
+
+func (f fakeInstructions) InstructionFiles() []string { return f }
+
+// fakeInstructionFiles are the instruction file names the fake engine lists, the second of which no base commit holds.
+var fakeInstructionFiles = fakeInstructions{"INSTRUCTIONS.md", "LOCAL.md"}
+
+// fakeReadSet is a read set of one engine named fakeEngine, reading through fake, pricing at fakeRates and listing fakeInstructionFiles.
 func fakeReadSet(fake fakeTranscripts) ReadSet {
-	return ReadSet{fakeEngine: {Transcripts: fake, Pricer: fakeRates}}
+	return ReadSet{fakeEngine: {Transcripts: fake, Pricer: fakeRates, Instructions: fakeInstructionFiles}}
 }
 
 // oneEngine is a one-engine read set whose engine located every given session under worktree.
@@ -323,6 +331,9 @@ func TestCountRun(t *testing.T) {
 	if run.BaseSHA != "early00" {
 		t.Errorf("BaseSHA = %q, want the earliest successful begin-batch envelope's early00", run.BaseSHA)
 	}
+	if run.WebsterEngine != fakeEngine {
+		t.Errorf("WebsterEngine = %q, want %q, the engine that located the webster session", run.WebsterEngine, fakeEngine)
+	}
 
 	// A key repeated across two sessions of one engine counts once and adds one to Duplicates.
 	const dedupeTree = "/hub/dedupe"
@@ -339,6 +350,9 @@ func TestCountRun(t *testing.T) {
 	}
 	if got := deduped.Roles["burler"]; got.Usage.Output != 12 || got.Sessions != 2 || deduped.Duplicates != 1 {
 		t.Errorf("same-engine repeat: burler output = %d over %d sessions, Duplicates = %d; want 12 over 2 sessions, 1", got.Usage.Output, got.Sessions, deduped.Duplicates)
+	}
+	if deduped.WebsterEngine != "" {
+		t.Errorf("WebsterEngine = %q for a run with no webster session; want empty", deduped.WebsterEngine)
 	}
 	// A second engine on the same worktree counts beside the first, and the same key under each engine counts twice.
 	second := newFakeTranscripts()

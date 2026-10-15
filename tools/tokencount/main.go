@@ -61,7 +61,7 @@
 //
 // A fork's position is one plus the card-naming forks before it in the same Merriam session, by start time, so a resumed session restarts its positions at 1.
 // The start table gives each fork's measured start context beside the run's computed Merriam base and the start the profile estimates for its position, base + orientation + (position - 1) x batch_growth.
-// A run's base is websterengine.MerriamBaseOf over CLAUDE.md, the repository's copy of the Master template, and the orchestrator PATTERN directive rendered from the directive stencil and PATTERN.md, each at the run's base commit, and the run's 00-overview.md from its plan commit, priced at the profile's context_per_line.
+// A run's base is websterengine.MerriamBaseOf over the instruction files of the engine that located the run's Webster session, the repository's copy of the Master template, and the orchestrator PATTERN directive rendered from the directive stencil and PATTERN.md, each at the run's base commit, and the run's 00-overview.md from its plan commit, priced at the profile's context_per_line.
 // A run whose plan or base commit cannot be read keeps its rows, listed with the reason it has no base.
 // Below it the section prints the least-squares fit of orientation and batch_growth, the measured start minus the base over position - 1 across the forks of the runs that have a base, beside the profile's values, with its residual spread: the 75th over the 25th percentile of each fork's measured start over its fitted start.
 // With fewer than two distinct positions among those forks it prints "not fitted" with that reason, and a negative fitted coefficient is printed and marked unusable, since batcher.yaml refuses a negative weight.
@@ -83,7 +83,7 @@
 //
 // The calibration section also ends with a "Merriam fixed context" subsection, which re-measures websterengine's merriamFixedContext.
 // A Merriam session is a webster-role session, and its start context is the input + cache write + cache read of the first assistant message after the result of its read of the prompt file named by the launch line lyx types.
-// For each run's first Merriam session by start time, the subsection gives the measured start, the line count of the texts MerriamBase counts but the plan overview (CLAUDE.md, the Master template and the rendered directive; CLAUDE.local.md is assumed absent), and the fixed context left once those lines are priced at context_per_line.
+// For each run's first Merriam session by start time, the subsection gives the measured start, the line count of the texts MerriamBase counts but the plan overview (the Webster session engine's instruction files, the Master template and the rendered directive; an untracked instruction file is assumed absent), and the fixed context left once those lines are priced at context_per_line.
 // Below the table it gives the median and the 25th and 75th percentiles of the fixed figures beside the current constant.
 // A session with no measured start, a run whose texts cannot be reconstructed, and every later session of a run (a resume, a refresh or a re-launch starts with prior conversation or a compaction summary in context) are listed with their reasons.
 //
@@ -290,7 +290,7 @@ func run(args []string, stdout io.Writer, reads ReadSet) error {
 		if *configDir == "" {
 			*configDir = wd
 		}
-		c, err := Calibrate(report.Runs, *calibrate, *configDir, fabric, gitrepo.New(wd))
+		c, err := Calibrate(report.Runs, *calibrate, *configDir, fabric, gitrepo.New(wd), reads)
 		if err != nil {
 			return err
 		}

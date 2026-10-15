@@ -50,7 +50,7 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	gitkit.Git(t, dir, "rm", "-r", "-q", "_lyx/plan")
 	write("internal/a/a.go", lines(100))
 	// The base tree also holds the files a run's Merriam base is computed from.
-	write("CLAUDE.md", lines(claudeLines))
+	write("INSTRUCTIONS.md", lines(instructionLines))
 	write("PATTERN.md", lines(patternLines))
 	write(directiveStencilPath, directiveStencil)
 	write(masterTemplatePath, lines(templateLines))
@@ -83,11 +83,12 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	transcript := fork(started, 10, 220, "01-c1")
 	transcript.File = "agent-1.jsonl"
 	runs := []RunTally{{
-		Slug: "alpha", BaseSHA: baseSHA, Forks: []ForkTally{transcript},
+		Slug: "alpha", BaseSHA: baseSHA, WebsterEngine: fakeEngine, Forks: []ForkTally{transcript},
 		Merriams: []MerriamStart{{Session: "w.jsonl", Started: started, StartContext: 20000}},
 	}}
 
-	got, err := Calibrate(runs, "fit", configDir, repo, repo)
+	calibrationReads := fakeReadSet(newFakeTranscripts())
+	got, err := Calibrate(runs, "fit", configDir, repo, repo, calibrationReads)
 	if err != nil {
 		t.Fatalf("Calibrate over git: %v", err)
 	}
@@ -106,7 +107,7 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 		files: map[string]string{baseSHA + ":internal/a/a.go": lines(100)},
 	}
 	withBaseFiles(memBase.files, baseSHA)
-	want, err := Calibrate(runs, "fit", configDir, memHistory, memBase)
+	want, err := Calibrate(runs, "fit", configDir, memHistory, memBase, calibrationReads)
 	if err != nil {
 		t.Fatalf("Calibrate in memory: %v", err)
 	}
