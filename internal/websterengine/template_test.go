@@ -276,22 +276,21 @@ func masterTemplateMarkerValues() map[string]string {
 // friction_directive, the fork template's own one optional marker.
 func forkTemplateMarkerValues() map[string]string {
 	return map[string]string{
-		"card_pointers":      "- `_lyx/plan/02-list-tests.md`",
-		"card_gates":         testCardGates,
-		"batch_gate":         testBatchGate,
-		"report_path":        "/webster/reports/02-list-tests.yaml",
-		"self_fix_cap":       "2",
-		"worktree_root":      "/worktree",
-		"prev_digest":        "01-json-flag: done head_sha=abc123",
-		"specs_dir":          "/hub/repo/_board/_lyx/specs",
-		"outcome_path":       testOutcomePath,
-		"summary_path":       testSummaryPath,
-		"locate":             "   Locate them with one `lyx quarry resolve <glyph>...` call.",
-		"card_read":          "Read the card file.",
-		"fresh_read":         "Inherited context can be stale.",
-		"kickstart_pack":     "\n\n## Kick-start pack\n\nthe pack.",
-		"friction_directive": "## Friction note — optional, only if something went wrong\n\nWrite it to /webster/friction/02-list-tests.md.",
-
+		"card_pointers":         "- `_lyx/plan/02-list-tests.md`",
+		"card_gates":            testCardGates,
+		"batch_gate":            testBatchGate,
+		"report_path":           "/webster/reports/02-list-tests.yaml",
+		"self_fix_cap":          "2",
+		"worktree_root":         "/worktree",
+		"prev_digest":           "01-json-flag: done head_sha=abc123",
+		"specs_dir":             "/hub/repo/_board/_lyx/specs",
+		"outcome_path":          testOutcomePath,
+		"summary_path":          testSummaryPath,
+		"locate":                "   Locate them with one `lyx quarry resolve <glyph>...` call.",
+		"card_read":             "Read the card file.",
+		"fresh_read":            "Inherited context can be stale.",
+		"kickstart_pack":        "\n\n## Kick-start pack\n\nthe pack.",
+		"friction_directive":    "## Friction note — optional, only if something went wrong\n\nWrite it to /webster/friction/02-list-tests.md.",
 		"kickstart_pack_inline": "\n\n## Kick-start pack\n\nthe inline pack.",
 	}
 }
