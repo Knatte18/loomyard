@@ -366,6 +366,32 @@ func TestComputeTiming(t *testing.T) {
 			},
 		},
 		{
+			name: "a sleep with fractional seconds is cut to whole seconds, so the phases plus sleep equal the span",
+			sleeps: []Interval{
+				{From: secondsAfter(run, 720).Add(400 * time.Millisecond), To: secondsAfter(run, 960).Add(700 * time.Millisecond)},
+			},
+			setup: func(w *world) {
+				loom := []shedengine.HistoryEntry{
+					entryAt(loomshed.NamePreflight, secondsAfter(run, 300)),
+					entryAt(loomshed.NameDiscussionWrite, secondsAfter(run, 1200)),
+					entryAt(loomshed.NameFinalize, secondsAfter(run, 1500)),
+				}
+				landedRun(w, "fraction", "t1", 3, seedStartedAt(run), loom)
+			},
+			check: func(t *testing.T, got TimingReport) {
+				got1 := runOf(t, got, "fraction")
+				var phases int64
+				for _, seconds := range got1.Phases {
+					if seconds != nil {
+						phases += *seconds
+					}
+				}
+				if phases+got1.SleepSeconds != got1.SpanSeconds {
+					t.Errorf("phases %d + sleep %d != span %d", phases, got1.SleepSeconds, got1.SpanSeconds)
+				}
+			},
+		},
+		{
 			name: "a folded entry's last_at closes its interval, and a run without the batten source opens at the seed's started_at with land nil",
 			setup: func(w *world) {
 				folded := entryAt(loomshed.NamePlanWrite, secondsAfter(run, 1200))

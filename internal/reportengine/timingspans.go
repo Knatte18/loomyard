@@ -204,7 +204,9 @@ func spanOpening(row RunRow, rows []timedRow) (opening time.Time, found bool, fi
 // The span opens as spanOpening says and closes at the last stamp of either history, or at snapshot for a run in flight, whose trailing interval counts under the phase of its loom status's current producer.
 // Each row's interval runs from the latest stamp so far to the row's own stamp; a stamp earlier than the latest, or none, gives a zero interval and a finding.
 // A run no stamp opens a span for comes back as the zero TimingRun with a finding.
+// Every boundary is cut to a whole second, as the row stamps are, so the truncated figures add up to the truncated span.
 func timeRun(row RunRow, opts TimingOptions, snapshot time.Time) (TimingRun, []Finding) {
+	snapshot = snapshot.Truncate(time.Second)
 	rows, findings := mergeRows(row)
 	file := statusFileOf(row.Slug)
 	opening, found, openFinding := spanOpening(row, rows)
@@ -249,7 +251,11 @@ func timeRun(row RunRow, opts TimingOptions, snapshot time.Time) (TimingRun, []F
 	}
 
 	span := Interval{From: opening, To: latest}
-	sleeps := clipIntervals(unionIntervals(opts.Sleeps), span)
+	wholeSleeps := make([]Interval, len(opts.Sleeps))
+	for i, sleep := range opts.Sleeps {
+		wholeSleeps[i] = Interval{From: sleep.From.Truncate(time.Second), To: sleep.To.Truncate(time.Second)}
+	}
+	sleeps := clipIntervals(unionIntervals(wholeSleeps), span)
 	var parts []phasedInterval
 	phaseTime := map[string]time.Duration{}
 	for _, interval := range intervals {

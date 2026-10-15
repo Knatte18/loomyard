@@ -115,9 +115,9 @@ func runWaits(row RunRow, rows []timedRow, end time.Time) []waitInterval {
 		}
 		to := end
 		if round.Verdict != nil && !round.Verdict.RecordedAt.IsZero() {
-			to = round.Verdict.RecordedAt.UTC()
+			to = round.Verdict.RecordedAt.UTC().Truncate(time.Second)
 		}
-		waits = append(waits, waitInterval{kind: WaitParentReview, Interval: Interval{From: round.Request.OpenedAt.UTC(), To: to}})
+		waits = append(waits, waitInterval{kind: WaitParentReview, Interval: Interval{From: round.Request.OpenedAt.UTC().Truncate(time.Second), To: to}})
 	}
 
 	for _, change := range row.changes {
@@ -136,7 +136,8 @@ func runWaits(row RunRow, rows []timedRow, end time.Time) []waitInterval {
 		if change.At.IsZero() {
 			continue
 		}
-		waits = append(waits, waitInterval{kind: kind, Interval: Interval{From: change.At, To: stampAfter(rows, change.At, end)}})
+		at := change.At.Truncate(time.Second)
+		waits = append(waits, waitInterval{kind: kind, Interval: Interval{From: at, To: stampAfter(rows, at, end)}})
 	}
 
 	history := latestBattenHistory(row)
@@ -226,6 +227,7 @@ func runAttempts(row RunRow, rows []timedRow, span Interval, sleeps []Interval) 
 	counts := map[string]int{}
 	for _, one := range spawns {
 		counts[one.kind]++
+		one.spawnedAt = one.spawnedAt.Truncate(time.Second)
 		part := attemptPart{kind: one.kind, spawnedAt: one.spawnedAt.UTC()}
 		to := span.To
 		absent := ""
