@@ -289,9 +289,9 @@ func TestConfigLong(t *testing.T) {
 	}
 }
 
-// runMenuWith runs menu over a hub fixture with the given input and editor, and returns the exit code, the output and the sync tracker.
+// runMenuWith runs menu over a hub fixture with the given input, terminal answer and editor, and returns the exit code, the output and the sync tracker.
 // Each seed names a module, optionally as "<module>:default" or "<module>:local" for that layer's file; a bare name seeds the module's own default file.
-func runMenuWith(t *testing.T, input string, editor configengine.EditorFunc, seed ...string) (int, string, *fakeSyncTracker) {
+func runMenuWith(t *testing.T, input string, terminal bool, editor configengine.EditorFunc, seed ...string) (int, string, *fakeSyncTracker) {
 	t.Helper()
 	fx := newHubFixture(t)
 	dirs := dirsOf(fx.layout)
@@ -319,7 +319,7 @@ func runMenuWith(t *testing.T, input string, editor configengine.EditorFunc, see
 
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := menu(dirs, strings.NewReader(input), &out, editor, tracker.syncFunc(), nil)
+	code := menu(dirs, strings.NewReader(input), &out, editor, tracker.syncFunc(), nil, terminal)
 	return code, out.String(), tracker
 }
 
@@ -332,10 +332,15 @@ func TestMenu(t *testing.T) {
 		seed  []string
 		// editsAllowed lets the editor run; otherwise the editor fails the test if called.
 		editsAllowed bool
-		wantCode     int
-		wantSynced   bool
-		wantOut      []string
+		// noTerminal runs the menu with no terminal on its input.
+		noTerminal bool
+		wantCode   int
+		wantSynced bool
+		wantOut    []string
+		// wantNotOut is text the output must not hold.
+		wantNotOut []string
 	}{
+		{name: "no terminal refuses before reading a choice", input: "1\n", noTerminal: true, wantCode: 1, wantOut: []string{"--print", "--set"}, wantNotOut: []string{"1) "}},
 		{name: "valid selection", input: "1\nq\n", seed: []string{"batcher"}, editsAllowed: true, wantSynced: true, wantOut: []string{"board"}},
 		{name: "quit", input: "q\n"},
 		{name: "non-number", input: "abc\n", wantCode: 1, wantOut: []string{"invalid"}},
@@ -362,7 +367,7 @@ func TestMenu(t *testing.T) {
 				editor = fakeEditor("test: value\n", nil)
 			}
 
-			code, output, tracker := runMenuWith(t, tt.input, editor, tt.seed...)
+			code, output, tracker := runMenuWith(t, tt.input, !tt.noTerminal, editor, tt.seed...)
 
 			if code != tt.wantCode {
 				t.Errorf("menu(%q) = %d; want %d", tt.input, code, tt.wantCode)
@@ -373,6 +378,11 @@ func TestMenu(t *testing.T) {
 			for _, want := range tt.wantOut {
 				if !strings.Contains(output, want) {
 					t.Errorf("menu(%q) output missing %q; got %q", tt.input, want, output)
+				}
+			}
+			for _, unwanted := range tt.wantNotOut {
+				if strings.Contains(output, unwanted) {
+					t.Errorf("menu(%q) output holds %q; got %q", tt.input, unwanted, output)
 				}
 			}
 		})
@@ -497,7 +507,7 @@ func TestPrint(t *testing.T) {
 			}
 
 			var out bytes.Buffer
-			code := dispatch(makeLayoutAt(baseDir), &out, tt.args, makeNeverCalledEditor(t), nil, nil, true, nil, "", nil)
+			code := dispatch(makeLayoutAt(baseDir), &out, tt.args, makeNeverCalledEditor(t), nil, nil, true, nil, "", nil, true)
 
 			if code != tt.wantCode {
 				t.Errorf("dispatch(print=true, %v) = %d; want %d; output: %q", tt.args, code, tt.wantCode, out.String())
@@ -596,7 +606,7 @@ func TestDispatchSet(t *testing.T) {
 				syncCalls++
 				return 0
 			}
-			code := dispatch(makeLayoutAt(baseDir), &out, tt.args, countingEditor(&editorCalls), sync, nil, tt.printOnly, tt.setFlags, "", nil)
+			code := dispatch(makeLayoutAt(baseDir), &out, tt.args, countingEditor(&editorCalls), sync, nil, tt.printOnly, tt.setFlags, "", nil, true)
 
 			if code != tt.wantCode {
 				t.Fatalf("dispatch(--set) = %d; want %d; output: %q", code, tt.wantCode, out.String())
@@ -881,7 +891,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 			sync := &fakeSyncTracker{}
 			var out bytes.Buffer
 
-			code := dispatch(fx.layout, &out, []string{"board"}, edit, sync.syncFunc(), commit.commitFunc(), row.printOnly, row.setFlags, "", row.guard)
+			code := dispatch(fx.layout, &out, []string{"board"}, edit, sync.syncFunc(), commit.commitFunc(), row.printOnly, row.setFlags, "", row.guard, true)
 
 			if code != row.wantCode {
 				t.Errorf("dispatch = %d; want %d; output: %q", code, row.wantCode, out.String())
@@ -922,6 +932,8 @@ func TestDispatchLayers(t *testing.T) {
 		layer     string
 		setFlags  []string
 		printOnly bool
+		// noTerminal runs the call with no terminal on its input.
+		noTerminal bool
 		// seedBoard and seedLocal are the module's board file and local file before the call; empty seeds nothing.
 		seedBoard string
 		seedLocal string
@@ -1085,6 +1097,48 @@ func TestDispatchLayers(t *testing.T) {
 				}
 			},
 		},
+		{
+			// The refusal is before layer dispatch, so one row stands for every layer, and the failing guard pins that it also precedes the hub-write guard.
+			name: "no terminal refuses the editor and writes nothing", module: "loom", layer: "default", noTerminal: true,
+			seedBoard: loomTemplate(), seedLocal: "review_max_bounces: 5\n", wantCode: 1, wantErr: "--print",
+			guard: func(hubFixture) func() (string, error) {
+				return func() (string, error) {
+					t.Error("the hub-write guard ran before the no-terminal refusal")
+					return "", nil
+				}
+			},
+			check: func(t *testing.T, fx hubFixture, out string) {
+				assertJSONErrContains(t, out, "--set")
+				if data, _ := os.ReadFile(configengine.ConfigFile(fx.board, "loom")); string(data) != loomTemplate() {
+					t.Errorf("board loom.yaml = %q; want it unchanged", data)
+				}
+				if data, _ := os.ReadFile(configengine.LocalFile(fx.worktree, "loom")); string(data) != "review_max_bounces: 5\n" {
+					t.Errorf("local loom.yaml = %q; want it unchanged", data)
+				}
+				if _, err := os.Stat(configengine.ConfigFile(fx.worktree, "loom")); !os.IsNotExist(err) {
+					t.Errorf("worktree loom.yaml exists after a refused editor path; stat err = %v", err)
+				}
+			},
+		},
+		{
+			name: "no terminal still prints", module: "loom", layer: "default", noTerminal: true, printOnly: true,
+			seedBoard: loomTemplate(),
+			check: func(t *testing.T, fx hubFixture, out string) {
+				if out != loomTemplate() {
+					t.Errorf("print output = %q; want the seeded bytes", out)
+				}
+			},
+		},
+		{
+			name: "no terminal still sets", module: "loom", noTerminal: true,
+			setFlags: []string{"discussion_timeout_min=60"}, wantSyncs: 1,
+			check: func(t *testing.T, fx hubFixture, out string) {
+				data, err := os.ReadFile(configengine.ConfigFile(fx.worktree, "loom"))
+				if err != nil || string(data) != "discussion_timeout_min: 60\n" {
+					t.Errorf("worktree loom.yaml = %q, %v; want the value written", data, err)
+				}
+			},
+		},
 	}
 
 	for _, row := range rows {
@@ -1111,7 +1165,7 @@ func TestDispatchLayers(t *testing.T) {
 			sync := func(io.Writer) int { syncs++; return 0 }
 			var out bytes.Buffer
 
-			code := dispatch(fx.layout, &out, []string{row.module}, makeNeverCalledEditor(t), sync, commit.commitFunc(), row.printOnly, row.setFlags, row.layer, guard)
+			code := dispatch(fx.layout, &out, []string{row.module}, makeNeverCalledEditor(t), sync, commit.commitFunc(), row.printOnly, row.setFlags, row.layer, guard, !row.noTerminal)
 
 			if code != row.wantCode {
 				t.Errorf("dispatch = %d; want %d; output: %q", code, row.wantCode, out.String())

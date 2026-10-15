@@ -37,6 +37,12 @@
 //
 // `--print` writes the on-disk YAML verbatim, for one module or for all of them, and never opens an editor.
 //
+// Every editor path refuses when the command's input is not a terminal, and writes nothing:
+// `lyx config <module>` on any layer and `lyx config menu` return a refusal whose way forward is `lyx config <module> --print` to read and `lyx config <module> --set key=value` to write.
+// The refusal comes before the layer is dispatched, the hub-write guard is consulted, a file is scaffolded or the editor runs, and `menu` refuses before it lists or reads a choice.
+// `--print` and `--set` need no terminal and are unaffected.
+// The bound: the guard stops a caller with no terminal, such as an agent's shell; a caller with a terminal and an editor that exits at once is covered by the empty-result abort above.
+//
 // `--set key=value` (repeatable) writes values through `configengine.Set` with no editor and syncs once.
 // A key under one of the module's declared open maps (`configreg.Module.OpenMaps`) adds or rewrites one entry with a scalar value, as in `lyx config board --set labels.quarry="glyphs and the quarry index"`.
 // It refuses when the map holds a list,

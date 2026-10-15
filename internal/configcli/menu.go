@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
+	"github.com/Knatte18/loomyard/internal/output"
 )
 
 // layersHolding returns the names of the layers that hold a file for module, joined by ", ", or "template" when none does.
@@ -40,7 +41,11 @@ func (d configDirs) layersHolding(module configreg.Module) string {
 // It reads one line from in and quits with 0 on 'q'.
 // Otherwise it parses the line as a 1-indexed number and routes a valid choice to editOne,
 // returning 1 on invalid input.
-func menu(dirs configDirs, in io.Reader, out io.Writer, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc) int {
+// Without a terminal it refuses first, before printing the list or reading a choice.
+func menu(dirs configDirs, in io.Reader, out io.Writer, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc, terminal bool) int {
+	if !terminal {
+		return output.Err(out, noTerminalRefusal(""))
+	}
 	modules := configreg.Modules()
 
 	for i, mod := range modules {
