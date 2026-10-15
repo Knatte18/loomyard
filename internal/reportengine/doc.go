@@ -168,4 +168,6 @@
 // The JSON envelope is the Report itself: selection, runs, partial, landings, weeks, absent and findings.
 // RenderMarkdown renders the same fields as the selection and one table per board question: wakes per run, recurring stop and failure classes, the fresh-code fix share, and review rounds per segment.
 // A nil figure renders as no data.
+// RenderTimingMarkdown renders a TimingReport as the selection and sleep note, then four tables: runs (span, active, each wait kind, sleep, each phase and the attempt counts with their time), phase medians, time per bucket, and stops per settler per bucket.
+// Every duration is spelled through durfmt.FormatSeconds, with seconds below a day and as 2d03h from a day on.
 package reportengine

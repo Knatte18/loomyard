@@ -1295,3 +1295,106 @@ func TestComputeTiming(t *testing.T) {
 		})
 	}
 }
+
+// markdownSection returns the text of the section under heading, up to the next section heading or the end.
+func markdownSection(t *testing.T, document, heading string) string {
+	t.Helper()
+
+	_, rest, found := strings.Cut(document, heading+"\n")
+	if !found {
+		t.Fatalf("document holds no heading %q:\n%s", heading, document)
+	}
+	section, _, _ := strings.Cut(rest, "\n## ")
+	return section
+}
+
+// markdownCell returns the cell of column header in the first row of section whose first cell is first.
+func markdownCell(t *testing.T, section, header, first string) string {
+	t.Helper()
+
+	split := func(line string) []string {
+		return strings.Split(strings.TrimSuffix(strings.TrimPrefix(line, "| "), " |"), " | ")
+	}
+	lines := strings.Split(strings.TrimSpace(section), "\n")
+	column := slices.Index(split(lines[0]), header)
+	if column < 0 {
+		t.Fatalf("section holds no column %q:\n%s", header, section)
+	}
+	for _, line := range lines[2:] {
+		if cells := split(line); cells[0] == first {
+			return cells[column]
+		}
+	}
+	t.Fatalf("section holds no row starting %q:\n%s", first, section)
+	return ""
+}
+
+func TestRenderTimingMarkdown(t *testing.T) {
+	t.Parallel()
+
+	landTime := seconds(1800)
+	report := TimingReport{
+		Selection: TimingSelection{RecordsBranch: "records", RecordsTip: "tip1", Since: at(0), By: BucketDay, SnapshotAt: at(200)},
+		Runs: []TimingRun{
+			{
+				Slug: "short", State: RunStateLanded, Start: at(1), SpanSeconds: 3725, ActiveSeconds: 3000, SleepSeconds: 90,
+				Waits:    map[string]int64{WaitParentReview: 0, WaitPRGate: 600, WaitEscalation: 0, WaitHalt: 35},
+				Phases:   map[string]*int64{PhaseSetup: seconds(45), PhaseLand: nil, PhasePublishFinalize: landTime},
+				Attempts: TimingAttempts{Arbiter: AttemptFigure{Count: 2, Seconds: seconds(250)}},
+			},
+			{Slug: "long", State: RunStateInFlight, Start: at(2), SpanSeconds: 183600, Phases: map[string]*int64{}},
+		},
+		Phases:    map[string]*PhaseMedian{PhaseSetup: {Seconds: seconds(45), Runs: 1}, PhaseLand: {Runs: 0}},
+		Buckets:   []TimingBucket{{Label: "2026-01-05", Runs: 2, SleepSeconds: 90, Settlers: map[string]map[string]int{StopKindStop: {"orch": 2, SettledByShed: 1}}}},
+		SleepNote: "from the test",
+		Findings:  []Finding{{Tag: "t", Error: "e"}},
+	}
+
+	got := RenderTimingMarkdown(report)
+
+	last := -1
+	for _, heading := range []string{HeadingTimingRuns, HeadingTimingPhases, HeadingTimingBuckets, HeadingTimingSettlers} {
+		index := strings.Index(got, heading+"\n")
+		if index <= last {
+			t.Errorf("heading %q at %d, after %d; want the four headings in order:\n%s", heading, index, last, got)
+		}
+		last = index
+	}
+	if !strings.Contains(got, "- runs: 2, in flight: 1, findings: 1\n") || !strings.Contains(got, "- sleep: from the test\n") {
+		t.Errorf("selection lacks the counts or the sleep note:\n%s", got)
+	}
+
+	runs := markdownSection(t, got, HeadingTimingRuns)
+	for _, tt := range []struct{ run, column, want string }{
+		{"short", "Span", "1h02m05s"},
+		{"long", "Span", "2d03h"},
+		{"short", PhaseLand, "no data"},
+		{"short", PhasePublishFinalize, "30m00s"},
+		{"short", "Sleep", "1m30s"},
+		{"short", WaitPRGate, "10m00s"},
+		{"short", "Arbiter attempts", "2 (4m10s)"},
+		{"short", "Alignment attempts", "0 (no data)"},
+		{"long", WaitHalt, "no data"},
+	} {
+		if cell := markdownCell(t, runs, tt.column, tt.run); cell != tt.want {
+			t.Errorf("run %s column %s = %q; want %q", tt.run, tt.column, cell, tt.want)
+		}
+	}
+	if cell := markdownCell(t, markdownSection(t, got, HeadingTimingPhases), "Median", PhaseLand); cell != "no data" {
+		t.Errorf("land median = %q; want no data", cell)
+	}
+	if cell := markdownCell(t, markdownSection(t, got, HeadingTimingBuckets), "Sleep", "2026-01-05"); cell != "1m30s" {
+		t.Errorf("bucket sleep = %q; want 1m30s", cell)
+	}
+	settlers := markdownSection(t, got, HeadingTimingSettlers)
+	if !strings.Contains(settlers, "| 2026-01-05 | stop | orch | 2 |\n") || !strings.Contains(settlers, "| 2026-01-05 | stop | shed | 1 |\n") {
+		t.Errorf("stops by settler = %q; want a row per settler", settlers)
+	}
+
+	empty := RenderTimingMarkdown(TimingReport{})
+	for _, heading := range []string{HeadingTimingRuns, HeadingTimingPhases, HeadingTimingBuckets, HeadingTimingSettlers} {
+		if section := markdownSection(t, empty, heading); strings.TrimSpace(section) != "no data" {
+			t.Errorf("empty report section %q = %q; want no data", heading, section)
+		}
+	}
+}
