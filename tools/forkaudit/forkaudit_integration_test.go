@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -320,6 +321,12 @@ func rowWhere(t *testing.T, rows []map[string]string, key, value string) map[str
 	return nil
 }
 
+// cell returns the cell of a table whose rows are metrics and whose columns are arms.
+func cell(t *testing.T, report, heading, metric, arm string) string {
+	t.Helper()
+	return rowWhere(t, tableRows(t, report, heading), "metric", metric)[arm]
+}
+
 // withoutGenerated drops the generation-time line, the only line two runs over the same input differ in.
 func withoutGenerated(report string) string {
 	var kept []string
@@ -612,6 +619,41 @@ func TestForkauditReport(t *testing.T) {
 				if cut["arm"] != "raf" || cut["dropped lines"] != "1" {
 					t.Errorf("the truncated fork row = arm %q, dropped lines %q; want raf, 1", cut["arm"], cut["dropped lines"])
 				}
+				wantCells := []struct{ heading, metric, arm, want string }{
+					{"## Pack use", "pack read before the first edit", "file", "1 of 1 (n=1)"},
+					{"## Pack use", "spans reached before the first edit, strict share, median", "file", "50% (n=1)"},
+					{"## Pack use", "spans reached before the first edit, strict share, pooled", "file", "50% (n=1)"},
+					{"## Pack use", "spans reached in the first work turn, strict share, pooled", "file", "43%"},
+					{"## Pack use", "forks reaching half their spans (strict) before the first edit", "file", "1 of 1 (n=1)"},
+					{"## Pack use", "spans reached before the first edit, strict share, median", "inline", "n/a"},
+					{"## Pack use", "spans reached in the first work turn, file-level share, pooled", "inline", "n/a"},
+					{"## Arm comparison", "forks with 3+ parallel calls in the first work turn, share", "file", "50%"},
+					{"## Arm comparison", "exploration calls, raw, median per card", "file", "4.5"},
+					{"## Arm comparison", "exploration calls, raw, pooled per card", "file", "4.33"},
+					{"## Arm comparison", "exploration calls, net, median per card", "file", "3.75"},
+					{"## Arm comparison", "turns, median per card", "file", "3.75"},
+					{"## Arm comparison", "output tokens, median per card", "file", "3750"},
+					{"## Arm comparison", "calls before the first edit, net, median per card", "file", "2 (n=1)"},
+				}
+				for _, want := range wantCells {
+					if got := cell(t, report, want.heading, want.metric, want.arm); got != want.want {
+						t.Errorf("%s: %s, arm %s = %q, want %q", want.heading, want.metric, want.arm, got, want.want)
+					}
+				}
+				for _, row := range tableRows(t, report, "## Pack use") {
+					if row["none"] != "n/a" {
+						t.Errorf("pack use %q, arm none = %q, want n/a", row["metric"], row["none"])
+					}
+				}
+				for _, row := range tableRows(t, report, "## Arm comparison") {
+					if strings.Contains(row["metric"], "per card") && row["unknown"] != "n/a" {
+						t.Errorf("arm comparison %q, arm unknown = %q, want n/a", row["metric"], row["unknown"])
+					}
+				}
+				quartiles := rowWhere(t, tableRows(t, report, "## Exploration quartiles"), "arm", "file")
+				if got := []string{quartiles["n"], quartiles["min"], quartiles["q1"], quartiles["median"], quartiles["q3"], quartiles["max"]}; !slices.Equal(got, []string{"2", "3.5", "3.5", "4", "4", "4"}) {
+					t.Errorf("file arm quartile row = %v, want n=2 and 3.5 3.5 4 4 4", got)
+				}
 			}},
 		{name: "a second run replaces the first report with an identical one",
 			prepare: func(t *testing.T, d *auditDirs) []string {
@@ -646,6 +688,18 @@ func TestForkauditReport(t *testing.T) {
 				for _, agent := range []string{"agent-finline", "agent-fnone", "agent-funknown", "agent-rafcut"} {
 					if strings.Contains(report, agent) {
 						t.Errorf("report holds %s from the other run", agent)
+					}
+				}
+				for _, heading := range []string{"## Pack use", "## Arm comparison"} {
+					if header := tableCells(t, report, heading)[0]; !slices.Equal(header, []string{"metric", "file", "raf"}) {
+						t.Errorf("%s columns = %v, want metric, file, raf", heading, header)
+					}
+				}
+				for _, heading := range []string{"## Samples", "## Exploration quartiles"} {
+					for _, row := range tableRows(t, report, heading) {
+						if arm := row["arm"]; arm != "file" && arm != "raf" {
+							t.Errorf("%s has a row for arm %s with no forks", heading, arm)
+						}
 					}
 				}
 			}},

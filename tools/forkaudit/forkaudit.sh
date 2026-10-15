@@ -54,7 +54,11 @@
 #
 # Intermediate files in --work: projects.txt (matched project directories), candidates.txt (candidate transcripts),
 # webster-files.txt (candidates holding the job heading) and records.jsonl (one record per kept fork).
-# The report body is rendered from records.jsonl by report.jq.
+# The report body is rendered from records.jsonl by report.jq:
+# a samples table, a pack-use table, an arm comparison table, the quartiles of net exploration calls per card and a per-fork table.
+# A fork lacking a metric is left out of that metric's median and pooled value, and a cell shows its sample size when that is
+# smaller than the arm's fork count, or n/a when none is left; the rule is stated in full at the head of report.jq.
+# An arm with no forks is left out of the tables and named once under the samples table.
 
 set -u
 set -o pipefail

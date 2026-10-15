@@ -2,23 +2,88 @@
 # Arguments: $arms, the marker table's arm names in table order.
 # Rows and arms sort by arm (marker-table order, then any other arm name alphabetically), run, start time and agent id,
 # so two runs over the same input differ only in the generation-time line.
+#
+# Missing-metric rule: a fork lacking a metric is left out of that metric's median and pooled value.
+# No edit leaves out every "before the first edit" metric, a pack with no spans every span share,
+# arm none every pack metric, and zero cards every per-card metric.
+# A cell whose sample is smaller than the arm's fork count shows its size as `<value> (n=<k>)`, and a cell with no sample left shows n/a.
 
-def armkey: [($arms | index(.)) // 1000, .];
+def armkey: . as $arm | [($arms | index($arm)) // 1000, $arm];
 def dash: if . == null then "-" else tostring end;
 def table($head; $rows):
   ["| " + ($head | join(" | ")) + " |", "| " + ($head | map("---") | join(" | ")) + " |"]
   + [$rows[] | "| " + (map(dash) | join(" | ")) + " |"];
+
+def med: map(select(. != null)) | sort | if length == 0 then null elif length % 2 == 1 then .[length / 2 | floor] else (.[length / 2 - 1] + .[length / 2]) / 2 end;
+def q($p): sort | .[((length - 1) * $p) | round];
+def n2: if . == null then "n/a" else (. * 100 | round / 100 | tostring) end;
+def pct: if . == null then "n/a" else ((. * 100 | round | tostring) + "%") end;
+
+# sized($k; $n; $text): $text, with its sample size when $k of the arm's $n forks have the metric, and n/a when none do.
+def sized($k; $n; $text): if $k == 0 then "n/a" elif $k < $n then "\($text) (n=\($k))" else $text end;
+# The cell helpers take an arm's records and a per-record filter that yields the metric, or null when the fork lacks it.
+def med_cell($recs; f; fmt): [$recs[] | f | select(. != null)] as $v | sized($v | length; $recs | length; ($v | med | fmt));
+# f yields [numerator, denominator]; the cell is the sum of numerators over the sum of denominators.
+def ratio_cell($recs; f; fmt):
+  [$recs[] | f | select(. != null)] as $v
+  | ($v | map(.[1]) | add) as $den
+  | sized($v | length; $recs | length; (if $den == null or $den == 0 then null else (($v | map(.[0]) | add) / $den) end | fmt));
+# f yields a boolean; the cell is the count of true over the count of forks that have the metric.
+def count_cell($recs; f):
+  [$recs[] | f | select(. != null)] as $v
+  | sized($v | length; $recs | length; "\($v | map(select(.)) | length) of \($v | length)");
+
+def packed(f): if .arm == "none" then null else f end;
+def edited(f): if .pre_edit == null then null else f end;
+def spanned(f): if .nspans == 0 then null else f end;
+def per_card($k): if .cards > 0 and .[$k] != null then .[$k] / .cards else null end;
+def pooled_card($k): if .cards > 0 and .[$k] != null then [.[$k], .cards] else null end;
 
 . as $recs
 | ($arms + ["unknown"]) as $known
 | ([$recs[].arm] | unique | sort_by(armkey)) as $present
 | ($recs | group_by(.arm) | map({key: .[0].arm, value: .}) | from_entries) as $by
 | ($known - $present) as $absent
+| def row($label; c): [$label] + [$present[] | . as $a | $by[$a] | c];
+  [
+    ["exploration calls, raw", "ex_tools"], ["exploration calls, net", "ex_net"],
+    ["whole-file reads, raw", "rfull"], ["whole-file reads, net", "rfull_net"],
+    ["partial reads", "rpart"], ["greps", "grep"], ["member greps", "gmem"], ["quarry lookups", "quarry"],
+    ["calls before the first edit, net", "pre_edit_net"],
+    ["turns", "turns"], ["output tokens", "out"], ["fresh input tokens", "fresh_in"], ["cache reads", "cache_read"]
+  ] as $comparison
 | (
   ["## Samples", ""]
   + table(["arm", "forks", "runs", "cards"];
       [$present[] | . as $a | [$a, ($by[$a] | length), ($by[$a] | map(.proj) | unique | length), ($by[$a] | map(.cards) | add)]])
   + (if ($absent | length) > 0 then ["", "Arms with no forks: " + ($absent | join(", ")) + "."] else [] end)
+  + ["", "## Pack use", ""]
+  + table(["metric"] + $present; [
+      row("pack file opened"; count_cell(.; packed(.pack_opened))),
+      row("pack read in assistant turn, median"; med_cell(.; packed(.pack_turn); n2)),
+      row("pack read before the first edit"; count_cell(.; packed(edited(.pack_before_edit)))),
+      row("distinct spans per fork, median"; med_cell(.; packed(.nspans); n2)),
+      row("distinct spans per card, median"; med_cell(.; packed(per_card("nspans")); n2)),
+      row("spans reached before the first edit, strict share, median"; med_cell(.; packed(edited(spanned(.spans_strict_pre / .nspans))); pct)),
+      row("spans reached before the first edit, strict share, pooled"; ratio_cell(.; packed(edited(spanned([.spans_strict_pre, .nspans]))); pct)),
+      row("span files touched before the first edit, file-level share, median"; med_cell(.; packed(edited(spanned(.spans_file_pre / .nspans))); pct)),
+      row("span files touched before the first edit, file-level share, pooled"; ratio_cell(.; packed(edited(spanned([.spans_file_pre, .nspans]))); pct)),
+      row("spans reached in the first work turn, strict share, pooled"; ratio_cell(.; packed(spanned([.spans_strict_first, .nspans])); pct)),
+      row("spans reached in the first work turn, file-level share, pooled"; ratio_cell(.; packed(spanned([.spans_file_first, .nspans])); pct)),
+      row("forks reaching half their spans (strict) before the first edit"; count_cell(.; packed(edited(spanned(.spans_strict_pre / .nspans >= 0.5)))))
+    ])
+  + ["", "## Arm comparison", ""]
+  + table(["metric"] + $present;
+      [ $comparison[] as [$label, $key]
+        | row($label + ", median per card"; med_cell(.; per_card($key); n2)),
+          row($label + ", pooled per card"; ratio_cell(.; pooled_card($key); n2)) ]
+      + [row("forks with 3+ parallel calls in the first work turn, share"; (map(select(.first_par >= 3)) | length) / length | pct)])
+  + ["", "## Exploration quartiles", ""]
+  + table(["arm", "n", "min", "q1", "median", "q3", "max"];
+      [ $present[] | . as $a
+        | [$by[$a][] | select(.cards > 0) | .ex_net / .cards] as $v
+        | if ($v | length) == 0 then [$a, 0, "n/a", "n/a", "n/a", "n/a", "n/a"]
+          else [$a, ($v | length), ($v | min | n2), ($v | q(0.25) | n2), ($v | q(0.5) | n2), ($v | q(0.75) | n2), ($v | max | n2)] end ])
   + ["", "## Per-fork", ""]
   + table(
       ["arm", "run", "agent", "start", "cards", "pack opened", "pack turn", "pack before edit", "first work turn", "first parallel", "spans",
